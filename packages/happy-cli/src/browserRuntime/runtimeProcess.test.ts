@@ -12,7 +12,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PrivilegeOps } from './privilegeDrop'
 import type { ProfileId } from './contracts'
-import { connectAtStart, runRuntime } from './runtimeProcess'
+import { browserReadiness, connectAtStart, runRuntime } from './runtimeProcess'
 
 const ENV_KEYS = ['ABP_STATE_DIR', 'ABP_CONFIG_FILE', 'ABP_KEYS_FILE', 'ABP_PROFILES', 'ABP_RUNTIME_UID', 'ABP_RUNTIME_GID', 'ABP_WRITER_FLOCK'] as const
 const savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]))
@@ -96,5 +96,15 @@ describe('browser connection at start-up', () => {
     it("stops waiting at the deadline on a shared machine, so one user's browser cannot keep the others out", async () => {
         const result = await connectAtStart([{ profileId: 'a' as ProfileId, connect: async () => {} }, { profileId: 'b' as ProfileId, connect: never }], 30)
         expect([...result.pending.keys()]).toEqual(['b'])
+    })
+})
+
+describe('browser readiness', () => {
+    const drivers = new Map([['a', { isConnected: () => true }], ['b', { isConnected: () => false }]]) as never
+    it('needs every browser on a dedicated machine', () => {
+        expect(browserReadiness('dedicated', ['a', 'b'] as ProfileId[], drivers)).toEqual({ browsers: false, profileBrowsers: { a: true, b: false } })
+    })
+    it("reports each browser on a shared machine, so one user's broken browser does not make the Runtime unready", () => {
+        expect(browserReadiness('shared', ['a', 'b'] as ProfileId[], drivers)).toEqual({ browsers: true, profileBrowsers: { a: true, b: false } })
     })
 })

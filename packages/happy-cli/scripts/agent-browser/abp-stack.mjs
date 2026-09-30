@@ -298,21 +298,29 @@ export function createStack(deps) {
     const profiles = mounts.filter((m) => m.Destination === "/home/browser/profile");
     return profiles.length === 1 && profiles[0].Type === "volume" && profiles[0].Name === browser.volume && profiles[0].RW === true;
   }
-  async function verifyAssignment(options) {
+  /**
+   * The Runtime serves these assignments, cleaned up. A dedicated machine needs every browser; a shared one only
+   * the browsers of `requireBrowsers` (the profile a change is about), so one user's broken browser holds nobody else.
+   */
+  async function verifyAssignment(options, { requireBrowsers = [] } = {}) {
+    const shared = options.tenancyMode === "shared";
     const deadline = deps.now() + DEFAULT_READY_TIMEOUT_MS;
     for (;;) {
       const ready = await deps.adminReady();
-      if (ready && ready.assignment?.state === "ready" && same(ready.assignment.applied, assignments(options)) && same(identity({ profiles: ready.profiles ?? [] }), identity(options)) && ["browsers", "writerLock", "disk", "revocations", "principalState"].every((key) => ready.checks?.[key] === true)) break;
+      if (ready && ready.assignment?.state === "ready" && same(ready.assignment.applied, assignments(options)) && same(identity({ profiles: ready.profiles ?? [] }), identity(options))
+        && [...shared ? [] : ["browsers"], "writerLock", "disk", "revocations", "principalState"].every((key) => ready.checks?.[key] === true)
+        && requireBrowsers.every((profileId) => ready.profileBrowsers?.[profileId] === true)) break;
       if (deps.now() >= deadline) throw new Error("admin readiness or applied assignment mismatch");
       await deps.sleep(1000);
     }
     const plan = stackLayout(options);
     const current = readState().current;
-    for (const [name, expected] of [[plan.runtime.container, current.runtime], ...plan.browsers.map((b) => [b.container, current.browser])]) {
+    const browsers = shared ? plan.browsers.filter((browser) => requireBrowsers.includes(browser.profileId)) : plan.browsers;
+    for (const [name, expected] of [[plan.runtime.container, current.runtime], ...browsers.map((b) => [b.container, current.browser])]) {
       const actual = docker(["inspect", "-f", `{{.State.Running}} ${IMAGE_LABEL}`, name]).stdout;
       if (actual !== `true ${expected}`) throw new Error(`unexpected container image: ${name}`);
     }
-    for (const browser of plan.browsers) {
+    for (const browser of browsers) {
       validateVolume(browser.volume, browser.volumeLabels);
       if (!hasExpectedProfileMount(browser)) throw new Error(`wrong profile mount: ${browser.container}`);
     }
@@ -600,13 +608,13 @@ export function createStack(deps) {
     if (availableBytes < (CONTAINER_MEMORY_GIB.browser + 1) * GiB) throw full("not enough memory available right now for another browser profile", "memory");
   }
   /** Recreates the Runtime for these profiles (browsers keep running), verifies it and opens admission. */
-  async function recreateRuntime(options) {
+  async function recreateRuntime(options, requireBrowsers = []) {
     const plan = stackLayout(options);
     stopAndRemove(plan.runtime.container, 30);
     writeRuntimeConfig({ ...options, admissionHold: true });
     ensureNetwork(plan.runtimeNetwork);
     createAndStartRuntime(plan, readState().current.runtime);
-    await verifyAssignment(options);
+    await verifyAssignment(options, { requireBrowsers });
     writeState({ ...readState(), applied: identity(options) });
     await releaseAdmission(options);
   }
@@ -655,7 +663,7 @@ export function createStack(deps) {
       }
       writeInstall(next);
       writeState({ ...readState(), profileOp: { ...readState().profileOp, phase: "committed" } });
-      await recreateRuntime(next);
+      await recreateRuntime(next, op === "add" ? [profileId] : []);
       if (op === "remove") {
         stopAndRemove(browser.container, BROWSER_STOP_S);
         docker(["network", "rm", browser.network], { allowFail: true });

@@ -30,6 +30,8 @@ interface HostOptions {
     memory?: { totalBytes: number; availableBytes: number }
     /** Whether the Runtime reports every browser connected for these profiles (default: yes). */
     browsersReady?: (profiles: Array<{ profileId: string }>) => boolean
+    /** Profiles whose browser the Runtime reports not connected (per-profile readiness). */
+    brokenBrowsers?: string[]
     /** Profile requests the Runtime's admin socket lists (first use on a shared machine). */
     requests?: Array<{ principalId: string; requestedAtMs: number }>
 }
@@ -150,6 +152,7 @@ function fakeHost(options: HostOptions = {}) {
         async adminReady() {
             const profiles = JSON.parse(files.get(PATHS.installConfig)!.data).profiles
             return { admission: JSON.parse(files.get(PATHS.runtimeConfig)!.data).admissionHold ? 'hold' : 'open', checks: { browsers: options.browsersReady?.(profiles) ?? true, writerLock: true, disk: true, revocations: true, principalState: true }, profiles,
+                profileBrowsers: Object.fromEntries(profiles.map((p: any) => [p.profileId, !(options.brokenBrowsers ?? []).includes(p.profileId)])),
                 assignment: { state: 'ready', applied: Object.fromEntries(profiles.map((p: any) => [p.profileId, p.assignmentId])) } }
         },
         async openAdmission(_assignments: Record<string, string>) { return true },
@@ -1204,7 +1207,7 @@ describe('shared machine profiles (add-profile, remove-profile)', () => {
     })
 
     it('rolls a failed addition back to the previous profiles (the new browser never comes up)', async () => {
-        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, browsersReady: (profiles) => profiles.length < 2 })
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, brokenBrowsers: [U3] })
         await expect(createStack(host.deps).addProfile('user-3')).rejects.toThrow(/add-profile failed/)
         expect(installed(host).profiles.map((p: any) => p.principalId)).toEqual(['user-1'])
         expect(runtimeJson(host).profiles.map((p: any) => p.profileId)).toEqual([U1])
@@ -1212,6 +1215,15 @@ describe('shared machine profiles (add-profile, remove-profile)', () => {
         expect(runtimeJson(host).admissionHold).toBe(false)
         expect(host.state().profileOp).toBeUndefined()
         expect(host.state().history.at(-1)).toMatchObject({ action: 'add-profile', result: 'rolled-back', profileId: U3 })
+    })
+
+    it("goes ahead while another user's browser is broken: only the changed profile's browser must come up", async () => {
+        const host = fakeHost({ shared: [['user-1', 0], ['user-2', 2]], serviceActive: true, brokenBrowsers: [U1] })
+        host.containers.get(`abp-browser-${U1}`)!.running = false
+        await createStack(host.deps).addProfile('user-3')
+        await createStack(host.deps).removeProfile('user-2')
+        expect(installed(host).profiles.map((p: any) => p.principalId)).toEqual(['user-1', 'user-3'])
+        expect(runtimeJson(host).admissionHold).toBe(false)
     })
 
     it('an unfinished profile change holds start, supervision and other operations until recover-profiles', async () => {
@@ -1274,7 +1286,7 @@ describe('first-use profile requests (the abp-stack service)', () => {
         const release = await host.deps.opLock()
         expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toEqual({ busy: true })
         release()
-        const failing = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], browsersReady: (profiles) => profiles.length < 2 })
+        const failing = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], brokenBrowsers: [sharedProfileId('user-3')] })
         const backoff = new Map()
         expect(await createStack(failing.deps).provisionRequestedProfiles(backoff)).toEqual({ failed: ['user-3'] })
         const calls = failing.calls.length

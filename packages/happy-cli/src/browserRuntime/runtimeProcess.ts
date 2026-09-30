@@ -138,6 +138,16 @@ export async function connectAtStart(connections: Array<{ profileId: ProfileId; 
     }
     return { pending }
 }
+/**
+ * Readiness of the browsers. A dedicated Runtime is ready only with every browser connected; a shared one reports
+ * each profile's browser and stays ready without some (abp-stack verifies the browser a change is about), so one
+ * user's broken browser cannot hold every other user's change or start-up.
+ */
+export function browserReadiness(tenancyMode: 'dedicated' | 'shared', profileIds: ProfileId[], drivers: ReadonlyMap<ProfileId, Pick<CdpDriver, 'isConnected'>>): { browsers: boolean; profileBrowsers: Record<string, boolean> } {
+    const profileBrowsers = Object.fromEntries(profileIds.map((profileId) => [profileId, drivers.get(profileId)?.isConnected() === true]))
+    return { browsers: tenancyMode === 'shared' || Object.values(profileBrowsers).every(Boolean), profileBrowsers }
+}
+
 /** A shared machine's Runtime waits this long for its browsers at start-up. */
 const SHARED_START_CONNECT_MS = 30_000
 
@@ -512,7 +522,7 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
     const readyChecks = async (): Promise<Record<string, boolean>> => {
         const disk = await statfs(stateDir).catch(() => undefined)
         return {
-            browsers: profiles.every((profile) => drivers.get(profile.profileId)!.isConnected()),
+            browsers: browserReadiness(config?.tenancyMode ?? 'dedicated', profiles.map((profile) => profile.profileId), drivers).browsers,
             writerLock: Date.now() - heartbeatOkAtMs <= 3 * LOCK_HEARTBEAT_MS && (flockHeld || !production),
             disk: Boolean(disk && disk.bavail * disk.bsize >= MIN_FREE_DISK_BYTES),
             revocations: (broker?.pendingRevocations() ?? 0) === 0,
@@ -562,6 +572,7 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
             admission: admissionOpen ? 'open' : 'hold',
             assignment: runtime.assignmentReport(),
             profiles: (config?.profiles ?? []).map(({ profileId, principalId, assignmentId }) => ({ profileId, principalId, ...(assignmentId ? { assignmentId } : {}) })),
+            profileBrowsers: browserReadiness(config?.tenancyMode ?? 'dedicated', profiles.map((profile) => profile.profileId), drivers).profileBrowsers,
         }),
         openAdmission: async (expected) => {
             const report = runtime.assignmentReport()
