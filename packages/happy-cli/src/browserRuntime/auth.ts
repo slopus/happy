@@ -127,6 +127,45 @@ function verifyServerToken(parts: string[], policy: VerifyPolicy): Credential {
     return credential
 }
 
+/**
+ * Studio's statement of who started a session on a shared machine (abp2, header type `abp-session-user`).
+ * The broker binds the session to that user's profile. It grants nothing by itself, so the task API never
+ * accepts it (another header type) and there is no one-time ledger: shared machines trust their users.
+ */
+export interface SessionUserAttestation {
+    kind: 'session-user'
+    iss: string
+    /** This machine. */
+    aud: string
+    principalId: PrincipalId
+    workspaceId: WorkspaceId
+    machineId: MachineId
+    issuedAtMs: number
+    expiresAtMs: number
+}
+export const SESSION_USER_TYP = 'abp-session-user'
+export const MAX_SESSION_USER_LIFETIME_MS = 10 * 60_000
+
+/** Signs a session-user attestation the way the Saycode server does (tests and the harness). */
+export function signSessionUserAttestation(attestation: SessionUserAttestation, signer: { kid: string; privateKey: KeyObject | string }): string {
+    return signServerEnvelope(SESSION_USER_TYP, attestation, signer)
+}
+
+export function verifySessionUserAttestation(token: string, policy: { machineId: MachineId; workspaceId: WorkspaceId; trustedIssuers: readonly TrustedIssuer[] }, nowMs: number): { principalId: PrincipalId; issuedAtMs: number } {
+    const parts = token.split('.')
+    if (parts[0] !== 'abp2') throw new BrowserRuntimeError('UNAUTHORIZED', 'Malformed session attestation')
+    const claims = openServerEnvelope<Partial<SessionUserAttestation>>(parts, SESSION_USER_TYP, policy.trustedIssuers)
+    if (!claims || claims.kind !== 'session-user' || claims.iss !== INTERACTIVE_CAPABILITY_ISSUER) throw new BrowserRuntimeError('UNAUTHORIZED', 'Not a session attestation of a trusted issuer')
+    if (claims.aud !== policy.machineId || claims.machineId !== policy.machineId) throw new BrowserRuntimeError('UNAUTHORIZED', 'Session attestation is for another machine')
+    if (claims.workspaceId !== policy.workspaceId) throw new BrowserRuntimeError('UNAUTHORIZED', 'Session attestation is for another workspace')
+    if (typeof claims.principalId !== 'string' || claims.principalId.length === 0 || claims.principalId.length > 256) throw new BrowserRuntimeError('UNAUTHORIZED', 'Session attestation has no user')
+    const { issuedAtMs, expiresAtMs } = claims
+    if (typeof issuedAtMs !== 'number' || typeof expiresAtMs !== 'number' || !Number.isFinite(issuedAtMs) || !Number.isFinite(expiresAtMs)
+        || issuedAtMs > nowMs + issuedAtClockSkewMs || expiresAtMs <= nowMs || expiresAtMs <= issuedAtMs || expiresAtMs - issuedAtMs > MAX_SESSION_USER_LIFETIME_MS)
+        throw new BrowserRuntimeError('UNAUTHORIZED', 'Session attestation is expired or outside its lifetime')
+    return { principalId: claims.principalId, issuedAtMs }
+}
+
 /** Configured identity binds every credential kind: machine, workspace, and the owner of the profile. */
 function assertConfiguredScope(credential: Credential, policy: VerifyPolicy): void {
     if (policy.machineId && credential.machineId !== policy.machineId) throw new BrowserRuntimeError('UNAUTHORIZED', 'Credential is for another machine')

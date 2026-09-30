@@ -1,7 +1,7 @@
 import { generateKeyPairSync } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { BrowserRuntimeError, INTERACTIVE_CAPABILITY_ISSUER, type AgentGrant, type GrantId, type MachineId, type PrincipalId, type ProfileId, type WorkspaceId } from './contracts'
-import { mintAgentGrant, mintInteractiveCapability, signServerCapability, verifyToken, type ServerCapability, type VerifyPolicy } from './auth'
+import { mintAgentGrant, mintInteractiveCapability, signServerCapability, signSessionUserAttestation, verifySessionUserAttestation, verifyToken, type ServerCapability, type SessionUserAttestation, type VerifyPolicy } from './auth'
 
 const keys = { agentKey: 'synthetic-agent-key', interactiveKey: 'synthetic-ui-key' }
 const grant = (operations: AgentGrant['operations'] = ['getTask']): AgentGrant => ({
@@ -158,5 +158,46 @@ describe('profile assignment of agent grants', () => {
         const token = mintInteractiveCapability({ kind: 'interactive', capabilityId: 'c1', principalId: 'p1' as never, workspaceId: 'w1' as never, machineId: 'm1' as never,
             viewerSessionId: 'v1', profileId: 'profile1' as ProfileId, operations: ['approve'], issuedAtMs: 10, expiresAtMs: 1000 }, keys, 20)
         expect(verifyToken(token, keys, 20, new Set(), assignmentPolicy(later))).toBeTruthy()
+    })
+})
+
+describe('session-user attestation (shared machines)', () => {
+    const issuer = generateKeyPairSync('ed25519')
+    const trustedIssuers = [{ kid: 'k1', publicKeyPem: issuer.publicKey.export({ type: 'spki', format: 'pem' }).toString() }]
+    const policy = { machineId: 'm1' as MachineId, workspaceId: 'w1' as WorkspaceId, trustedIssuers }
+    const now = 1_000_000
+    const claims = (overrides: Partial<SessionUserAttestation> = {}): SessionUserAttestation => ({
+        kind: 'session-user', principalId: 'user-1' as PrincipalId, workspaceId: 'w1' as WorkspaceId, machineId: 'm1' as MachineId,
+        aud: 'm1', iss: INTERACTIVE_CAPABILITY_ISSUER, issuedAtMs: now, expiresAtMs: now + 600_000, ...overrides,
+    })
+    const sign = (value: SessionUserAttestation, key = issuer.privateKey, kid = 'k1') => signSessionUserAttestation(value, { kid, privateKey: key })
+    const rejects = (token: string) => expect(() => verifySessionUserAttestation(token, policy, now)).toThrowError(BrowserRuntimeError)
+
+    it('returns the session user of an attestation a trusted issuer signed for this machine', () => {
+        expect(verifySessionUserAttestation(sign(claims()), policy, now)).toEqual({ principalId: 'user-1', issuedAtMs: now })
+    })
+
+    it('rejects a forged signature, an unknown kid, a changed payload and another header type', () => {
+        rejects(sign(claims(), generateKeyPairSync('ed25519').privateKey))
+        rejects(sign(claims(), issuer.privateKey, 'k2'))
+        const [prefix, header, , signature] = sign(claims()).split('.')
+        rejects([prefix, header, Buffer.from(JSON.stringify(claims({ principalId: 'user-2' as PrincipalId }))).toString('base64url'), signature].join('.'))
+        // A capability's header (typ abp-cap) is not an attestation, and an attestation is not a capability.
+        const capabilityHeader = Buffer.from(JSON.stringify({ alg: 'EdDSA', kid: 'k1', typ: 'abp-cap' })).toString('base64url')
+        rejects(['abp2', capabilityHeader, sign(claims()).split('.')[2], signature].join('.'))
+        expect(() => verifyToken(sign(claims()), { agentKey: 'k' }, now, new Set(), { authMode: 'production', ...policy })).toThrowError(BrowserRuntimeError)
+    })
+
+    it('rejects another machine, workspace, issuer or kind, and an expired or over-10-minute attestation', () => {
+        rejects(sign(claims({ aud: 'm2' })))
+        rejects(sign(claims({ machineId: 'm2' as MachineId })))
+        rejects(sign(claims({ workspaceId: 'w2' as WorkspaceId })))
+        rejects(sign(claims({ iss: 'someone' })))
+        rejects(sign(claims({ kind: 'interactive' as never })))
+        rejects(sign(claims({ expiresAtMs: now })))
+        rejects(sign(claims({ expiresAtMs: now + 600_001 })))
+        rejects(sign(claims({ issuedAtMs: now + 31_000, expiresAtMs: now + 60_000 })))
+        rejects(sign(claims({ principalId: '' as PrincipalId })))
+        rejects('abp1.x.y')
     })
 })
