@@ -549,6 +549,11 @@ export function chromiumSeccompProfile(base) {
   };
 }
 
+/** Docker volume holding a profile's browser data (cookies, logins). */
+export function profileVolumeName(profileId) {
+  return `abp-profile-${profileId}`;
+}
+
 /**
  * Production layout: one bridge per profile shared only by that browser and the Runtime.
  * Profile i gets the i-th /24 of the browser subnet pool (gateway .1, browser .2, Runtime .3) and a
@@ -564,7 +569,7 @@ export function stackLayout(install) {
       container: `abp-browser-${profileId}`,
       alias: `browser-${profileId}`,
       network: `abp-net-${profileId}`,
-      volume: `abp-profile-${profileId}`,
+      volume: profileVolumeName(profileId),
       bridge: `br-abp-${createHash("sha256").update(profileId).digest("hex").slice(0, 8)}`,
       subnet: `${intToIp(base)}/24`,
       gateway: intToIp(base + 1),
