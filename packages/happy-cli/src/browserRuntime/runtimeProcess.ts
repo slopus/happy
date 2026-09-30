@@ -117,6 +117,30 @@ async function connectWithRetry(driver: CdpDriver, profile: ProfileConfig, log: 
     }
 }
 
+/**
+ * Start-up connection to the browsers, before task recovery (it compares browser instance ids). Without a
+ * deadline (dedicated machine) every browser is waited for. With one (shared machine) the Runtime goes on
+ * after it, so one user's browser that does not come up cannot keep the other users out; the connections
+ * still pending are returned and finish in the background.
+ */
+export async function connectAtStart(connections: Array<{ profileId: ProfileId; connect: () => Promise<void> }>, deadlineMs: number | undefined): Promise<{ pending: Map<ProfileId, Promise<void>> }> {
+    const pending = new Map<ProfileId, Promise<void>>()
+    const attempts = connections.map(({ profileId, connect }) => {
+        const attempt = connect()
+        pending.set(profileId, attempt)
+        return attempt.then(() => { pending.delete(profileId) })
+    })
+    if (deadlineMs === undefined) await Promise.all(attempts)
+    else {
+        let timer: NodeJS.Timeout | undefined
+        await Promise.race([Promise.all(attempts), new Promise((resolve) => { timer = setTimeout(resolve, deadlineMs) })])
+        clearTimeout(timer)
+    }
+    return { pending }
+}
+/** A shared machine's Runtime waits this long for its browsers at start-up. */
+const SHARED_START_CONNECT_MS = 30_000
+
 const MIN_SECRET_LENGTH = 32
 /** Longer than the store's 20 s heartbeat lease, so a dead writer's lock always expires first. */
 const LOCK_WAIT_MS = 30_000
@@ -307,7 +331,9 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
         drivers.set(profile.profileId, new CdpDriver({ browserWsUrl: '', browserInstanceIdProvider: instanceIdProvider(profile), maxAgentWindows: windows }))
     }
     // Connect before recovery so it can compare browser instance ids.
-    await Promise.all(profiles.map((profile) => connectWithRetry(drivers.get(profile.profileId)!, profile, log)))
+    const { pending: connecting } = await connectAtStart(profiles.map((profile) => ({ profileId: profile.profileId, connect: () => connectWithRetry(drivers.get(profile.profileId)!, profile, log) })),
+        config?.tenancyMode === 'shared' ? SHARED_START_CONNECT_MS : undefined)
+    for (const profileId of connecting.keys()) log(`profile=${profileId} browser not connected at start; serving the other profiles meanwhile`)
 
     // Harness keeps the PoC space quota and no idle reclamation unless asked.
     const harnessIdleMs = process.env.ABP_SPACE_IDLE_RECLAIM_MS ? Number(process.env.ABP_SPACE_IDLE_RECLAIM_MS) : undefined
@@ -337,6 +363,17 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
         driver.onDisconnect(() => {
             recovering ??= recover()
         })
+        // Still connecting after the start-up deadline: its tasks wait as if it had disconnected, until it is up.
+        const late = connecting.get(profile.profileId)
+        if (late) recovering = (async () => {
+            await runtime.onDriverDisconnected(profile.profileId)
+            await late
+            while (!driver.isConnected()) await connectWithRetry(driver, profile, log)
+            await runtime.onDriverReconnected(profile.profileId)
+            log(`profile=${profile.profileId} browser connected`)
+        })()
+            .catch((error) => { log(`late connect handling failed code=${(error as BrowserRuntimeError).code ?? 'ERROR'}`) })
+            .finally(() => { recovering = undefined })
     }
 
     // Keeps the writer lock's heartbeat fresh; another Runtime may only take the
@@ -461,7 +498,8 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
     }
     // D2: the Runtime is the only viewer endpoint; x11vnc is reachable on the profile networks only.
     const vncEndpoints = new Map(profiles.flatMap((profile) => profile.vncAddress ? [[profile.profileId, vncEndpoint(profile.vncAddress)] as const] : []))
-    const viewer = vncPassword && vncEndpoints.size ? new ViewerProxy({
+    // A shared machine may start with no profile yet; its viewer is there for the ones it gets.
+    const viewer = vncPassword && (vncEndpoints.size || config?.tenancyMode === 'shared') ? new ViewerProxy({
         leases: runtime.leases,
         endpoint: (profileId) => vncEndpoints.get(profileId),
         vncPassword,

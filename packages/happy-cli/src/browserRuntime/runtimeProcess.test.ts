@@ -11,7 +11,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import type { PrivilegeOps } from './privilegeDrop'
-import { runRuntime } from './runtimeProcess'
+import type { ProfileId } from './contracts'
+import { connectAtStart, runRuntime } from './runtimeProcess'
 
 const ENV_KEYS = ['ABP_STATE_DIR', 'ABP_CONFIG_FILE', 'ABP_KEYS_FILE', 'ABP_PROFILES', 'ABP_RUNTIME_UID', 'ABP_RUNTIME_GID', 'ABP_WRITER_FLOCK'] as const
 const savedEnv = Object.fromEntries(ENV_KEYS.map((key) => [key, process.env[key]]))
@@ -75,5 +76,25 @@ describe('Runtime root start', () => {
         expect(await reachable({ port: started.runtimePort })).toBe(false)
         expect(await reachable({ path: join(started.dir, 'broker.sock') })).toBe(false)
         expect(await reachable({ path: join(started.dir, 'admin.sock') })).toBe(false)
+    })
+})
+
+describe('browser connection at start-up', () => {
+    const never = () => new Promise<void>(() => {})
+    it('waits for every browser without a deadline (dedicated machine)', async () => {
+        let resolveLate!: () => void
+        const late = new Promise<void>((resolve) => { resolveLate = resolve })
+        let done = false
+        const started = connectAtStart([{ profileId: 'a' as ProfileId, connect: async () => {} }, { profileId: 'b' as ProfileId, connect: () => late }], undefined)
+            .then((result) => { done = true; return result })
+        await new Promise((resolve) => setTimeout(resolve, 30))
+        expect(done).toBe(false)
+        resolveLate()
+        expect((await started).pending.size).toBe(0)
+    })
+
+    it("stops waiting at the deadline on a shared machine, so one user's browser cannot keep the others out", async () => {
+        const result = await connectAtStart([{ profileId: 'a' as ProfileId, connect: async () => {} }, { profileId: 'b' as ProfileId, connect: never }], 30)
+        expect([...result.pending.keys()]).toEqual(['b'])
     })
 })
