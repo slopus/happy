@@ -255,7 +255,7 @@ export function DesktopTagDetailDialog({ groups, hideArchived, listColors, onClo
                                 testID={`tag-detail-toggle-${group.id}`}
                             >
                                 <Feather color={theme.colors.textSecondary} name={expanded ? 'chevron-down' : 'chevron-right'} size={15} />
-                                <Feather color={color} name={group.kind === 'archived' ? 'archive' : group.list?.kind === 'agent' ? 'cpu' : group.list ? 'folder' : 'inbox'} size={15} />
+                                <Feather color={color} name={group.kind === 'archived' ? 'archive' : group.list ? 'folder' : 'inbox'} size={15} />
                                 <Text numberOfLines={1} style={styles.groupTitle}>{label}</Text>
                                 <Text style={styles.groupCount}>{group.sessions.length}</Text>
                             </Pressable>

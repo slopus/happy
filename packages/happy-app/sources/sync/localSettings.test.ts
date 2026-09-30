@@ -210,7 +210,7 @@ describe('localSettings desktop Lists and Tags', () => {
         expect(localSettingsParse({ sidebarOrganization }).sidebarOrganization).toEqual(sidebarOrganization);
     });
 
-    it('strips workspace presets and legacy prompts from Agent Lists', () => {
+    it('converts legacy Agent Lists without reviving their launch presets', () => {
         const parsed = localSettingsParse({
             sidebarOrganization: {
                 lists: [{
@@ -223,7 +223,8 @@ describe('localSettings desktop Lists and Tags', () => {
         });
 
         expect(parsed.sidebarOrganization.lists[0]).toEqual({
-            id: 'advisor', name: 'Advisor', kind: 'agent', color: 'pink', createdAt: 1,
+            id: 'advisor', name: 'Advisor', kind: 'workspace', color: 'pink', createdAt: 1,
+            machineId: null, path: null, defaultAgent: null,
         });
     });
 

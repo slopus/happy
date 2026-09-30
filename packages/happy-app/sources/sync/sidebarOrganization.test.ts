@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+    SidebarOrganizationSchema,
     buildSidebarSessionIndex,
     buildSidebarTagSessionGroups,
     mergeSidebarOrganizations,
@@ -11,13 +12,14 @@ import {
     reorderSidebarList,
     removeSidebarList,
     removeSidebarTag,
+    serializeSidebarOrganizationWithRaw,
     type SidebarOrganization,
 } from './sidebarOrganization';
 
 const organization: SidebarOrganization = {
     lists: [
         { id: 'workspace', name: 'Happy', kind: 'workspace', color: 'blue', machineId: 'mac', path: '~/happy', defaultAgent: 'codex', createdAt: 1 },
-        { id: 'advisor', name: 'Advisor', kind: 'agent', color: 'pink', createdAt: 2 },
+        { id: 'advisor', name: 'Advisor', kind: 'workspace', color: 'pink', machineId: null, path: null, defaultAgent: null, createdAt: 2 },
     ],
     tags: [
         { id: 'product', name: 'product', color: 'green', createdAt: 1 },
@@ -27,6 +29,52 @@ const organization: SidebarOrganization = {
 };
 
 describe('sidebar organization model', () => {
+    it('converts a saved Agent List to a regular List without losing its sessions or reviving legacy presets', () => {
+        const saved = {
+            lists: [{
+                id: 'advisor', name: 'Advisor', kind: 'agent', color: 'pink', createdAt: 2,
+                machineId: 'old-machine', path: '/old/path', prompt: 'old prompt',
+                futureFlag: true,
+            }],
+            tags: [],
+            sessions: { 'session-1': { listId: 'advisor', tagIds: [] } },
+        };
+
+        const parsed = SidebarOrganizationSchema.parse(saved);
+
+        expect(parsed.lists).toEqual([{
+            id: 'advisor', name: 'Advisor', kind: 'workspace', color: 'pink', createdAt: 2,
+            machineId: null, path: null, defaultAgent: null, futureFlag: true,
+        }]);
+        expect(parsed.sessions['session-1']).toEqual({ listId: 'advisor', tagIds: [] });
+        expect((serializeSidebarOrganizationWithRaw(parsed, saved) as typeof saved).lists).toEqual(parsed.lists);
+    });
+
+    it('keeps migrated List assignments when a local rename meets a remote session change', () => {
+        const legacy = {
+            lists: [{ id: 'advisor', name: 'Advisor', kind: 'agent', color: 'pink', createdAt: 2 }],
+            tags: [],
+            sessions: { 'session-1': { listId: 'advisor', tagIds: [] } },
+        };
+        const base = SidebarOrganizationSchema.parse(legacy);
+        const local = { ...base, lists: [{ ...base.lists[0], name: 'Research' }] };
+        const remote = SidebarOrganizationSchema.parse({
+            ...legacy,
+            sessions: {
+                ...legacy.sessions,
+                'session-2': { listId: 'advisor', tagIds: [] },
+            },
+        });
+
+        const merged = mergeSidebarOrganizations(base, local, remote);
+
+        expect(merged.lists).toEqual([expect.objectContaining({ id: 'advisor', kind: 'workspace', name: 'Research' })]);
+        expect(merged.sessions).toEqual({
+            'session-1': { listId: 'advisor', tagIds: [] },
+            'session-2': { listId: 'advisor', tagIds: [] },
+        });
+    });
+
     it('normalizes a typed hashtag without storing the hash marker', () => {
         expect(normalizeSidebarTagName('  ##  Product  ')).toBe('Product');
         expect(normalizeSidebarTagName('#')).toBe('');
@@ -262,20 +310,23 @@ describe('sidebar organization model', () => {
             lists: Array.from({ length: 199 }, (_, index) => ({
                 id: `list-${index}`,
                 name: `List ${index}`,
-                kind: 'agent' as const,
+                kind: 'workspace' as const,
                 color: 'blue' as const,
+                machineId: null,
+                path: null,
+                defaultAgent: null,
                 createdAt: index,
             })),
             tags: baseTags,
             sessions: { 'session-1': { listId: null, tagIds: baseTags.slice(0, 99).map((tag) => tag.id) } },
         };
         const local: SidebarOrganization = {
-            lists: [...base.lists, { id: 'list-local', name: 'Local', kind: 'agent', color: 'green', createdAt: 200 }],
+            lists: [...base.lists, { id: 'list-local', name: 'Local', kind: 'workspace', color: 'green', machineId: null, path: null, defaultAgent: null, createdAt: 200 }],
             tags: [...base.tags, { id: 'tag-local', name: 'local', color: 'green', createdAt: 100 }],
             sessions: { 'session-1': { listId: null, tagIds: [...base.sessions['session-1'].tagIds, 'tag-local'] } },
         };
         const remote: SidebarOrganization = {
-            lists: [...base.lists, { id: 'list-remote', name: 'Remote', kind: 'agent', color: 'pink', createdAt: 201 }],
+            lists: [...base.lists, { id: 'list-remote', name: 'Remote', kind: 'workspace', color: 'pink', machineId: null, path: null, defaultAgent: null, createdAt: 201 }],
             tags: [...base.tags, { id: 'tag-remote', name: 'remote', color: 'pink', createdAt: 101 }],
             sessions: { 'session-1': { listId: null, tagIds: [...base.sessions['session-1'].tagIds, 'tag-remote'] } },
         };

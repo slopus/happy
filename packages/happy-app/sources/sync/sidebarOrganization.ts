@@ -22,15 +22,7 @@ export type SidebarWorkspaceList = {
     createdAt: number;
 };
 
-export type SidebarAgentList = {
-    id: string;
-    name: string;
-    kind: 'agent';
-    color: SidebarListColor;
-    createdAt: number;
-};
-
-export type SidebarList = SidebarWorkspaceList | SidebarAgentList;
+export type SidebarList = SidebarWorkspaceList;
 
 export type SidebarTag = {
     id: string;
@@ -67,14 +59,15 @@ const SidebarWorkspaceListSchema = z.object({
     defaultAgent: z.enum(['ask', 'claude', 'codex', 'gemini', 'opencode', 'openclaw']).nullable(),
     createdAt: z.number().finite(),
 }).passthrough();
-const SidebarAgentListSchema = z.object({
+const SidebarLegacyAgentListSchema = z.object({
     id: z.string().min(1).max(100),
     name: z.string().min(1).max(SIDEBAR_LIST_NAME_MAX_LENGTH),
     kind: z.literal('agent'),
     color: SidebarListColorSchema,
     createdAt: z.number().finite(),
 }).passthrough();
-const SidebarListSchema = z.discriminatedUnion('kind', [SidebarWorkspaceListSchema, SidebarAgentListSchema]);
+// Read old Agent Lists so their IDs and session assignments survive migration.
+const SidebarStoredListSchema = z.discriminatedUnion('kind', [SidebarWorkspaceListSchema, SidebarLegacyAgentListSchema]);
 
 const SidebarTagSchema = z.object({
     id: z.string().min(1).max(100),
@@ -89,7 +82,7 @@ const SidebarSessionOrganizationSchema = z.object({
 }).passthrough();
 
 const StrictSidebarOrganizationSchema = z.object({
-    lists: z.array(SidebarListSchema),
+    lists: z.array(SidebarStoredListSchema),
     tags: z.array(SidebarTagSchema),
     sessions: z.record(z.string(), SidebarSessionOrganizationSchema),
 }).passthrough();
@@ -98,7 +91,7 @@ export const SidebarOrganizationSchema = z.object({
     lists: z.array(z.unknown()).transform((items): SidebarList[] => {
         const lists: SidebarList[] = [];
         for (const item of items) {
-            const parsed = SidebarListSchema.safeParse(item);
+            const parsed = SidebarStoredListSchema.safeParse(item);
             if (!parsed.success) continue;
             if (parsed.data.kind !== 'agent') {
                 lists.push(parsed.data);
@@ -112,9 +105,16 @@ export const SidebarOrganizationSchema = z.object({
                 path: _path,
                 prompt: _prompt,
                 presets: _presets,
+                defaultAgent: _defaultAgent,
                 ...agentList
             } = parsed.data;
-            lists.push(agentList);
+            lists.push({
+                ...agentList,
+                kind: 'workspace',
+                machineId: null,
+                path: null,
+                defaultAgent: null,
+            });
         }
         return lists;
     }),
@@ -155,7 +155,7 @@ export function serializeSidebarOrganizationWithRaw(
     if (!isUsableSidebarOrganizationPayload(rawValue)) return organization;
 
     const unknownLists = rawValue.lists.filter((item) => (
-        !SidebarListSchema.safeParse(item).success
+        !SidebarStoredListSchema.safeParse(item).success
     ));
     const unknownTags = rawValue.tags.filter((item) => !SidebarTagSchema.safeParse(item).success);
     const unknownSessions = Object.fromEntries(Object.entries(rawValue.sessions).filter(([, assignment]) => (
