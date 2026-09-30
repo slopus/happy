@@ -9,7 +9,7 @@ the Saycode server flag is on (S7); nothing here changes the server or Desktop.
 | File | Role |
 |---|---|
 | `abp-install` | install, update (idempotent re-run) and `check`; `--dry-run` prints every action |
-| `abp-stack.mjs` (installed as `/usr/local/sbin/abp-stack`) | `up`, `down`, `status`, `upgrade`, `rollback`, `rotate-keys`, `set-principal`, `prune-profiles`, `load`, `build`, `run` (systemd only) |
+| `abp-stack.mjs` (installed as `/usr/local/sbin/abp-stack`) | `up`, `down`, `status`, `upgrade`, `rollback`, `rotate-keys`, `set-principal`, `migrate-legacy-profile`, `delete-profile-volume`, `load`, `build`, `run` (systemd only) |
 | `abp-uninstall` | remove services; keeps volumes, config and secrets unless `--purge` |
 | `abp-firewall` | owner firewall rules (`apply`, `check`, `remove`), run by `abp-firewall.service` |
 | `abp-plan.mjs`, `lib/abpPlan.mjs` | every generated file, table and container argument (unit-tested) |
@@ -178,9 +178,9 @@ retry after about a minute (existing Happy behaviour, not specific to this insta
 | start / stop | `abp-stack up` (waits for ready) / `abp-stack down` (Runtime first; running tasks recover paused) |
 | logs | `journalctl -u abp-stack -u abp-happy-daemon -u abp-egress-proxy`; `docker logs abp-runtime` |
 | metrics | `curl --unix-socket /run/abp/admin.sock http://admin/admin/metrics` (root) |
-| reassign the machine | After changing the dedicated user in Studio's admin screen, run `abp-stack set-principal <profileId> <studio userId>` on H (Studio does not tell H). It stops the whole stack, switches install.json/runtime.json, and starts it on **the new owner's browser volume**; the previous owner's volume (their logins) stays detached, and comes back if they are assigned again. Verified (mount, owners, ready); otherwise the previous owner is put back. Sessions started for the previous owner get no grant any more, their open spaces close and unfinished tasks end (`principal-changed`). `abp-install --profile` refuses owner changes. |
-| previous owners' logins | kept `--profile-retention-days` (default 30; 0 = removed at the reassignment), then removed by `abp-profile-prune.timer` (daily, so 30–31 days) or `abp-stack prune-profiles [--older-than-days N]`. Never a current owner's volume or one in use. Volumes without a mark (lost state file) are kept and shown by `status`; `prune-profiles --adopt-orphans` starts their retention. Plain `abp-uninstall` keeps the volumes and stops pruning; `--purge` fails if a volume cannot be removed |
-| upgrading from before per-owner volumes | the old `abp-profile-<profile>` volume (whose owner cannot be told) is removed on the first start: the assigned user logs in to sites once more. Going back to an operations package from before per-owner volumes is not supported |
+| reassign the machine | After changing the dedicated user in Studio, run `abp-stack set-principal main <studio userId>` on H. Stops the whole stack, switches config and browser volume, verifies the actual mount, labels, Runtime applied assignment and readiness over the root admin socket before opening admission. Failure restores the previous owner with a **fresh execution generation**. `abp-install --profile` refuses owner changes. |
+| previous owners' logins | Retained indefinitely; site session expiry still applies. No automatic prune or retention-days setting. `abp-stack delete-profile-volume <volume> --confirm <volume>` removes one inactive, detached volume after checking exact labels. Unmapped volumes are retained and shown in status. Plain uninstall preserves logins; explicit `--purge` deletes them. |
+| upgrading from before per-owner volumes | Unknown-owner `abp-profile-main` is quarantined; startup/upgrade refuses it. Confirm its actual owner and run `abp-stack migrate-legacy-profile main --owner <studio userId> --owner-verified`. Never infer the owner from the current config. The target must not exist. The stopped source is copied read-only and a path/type/mode/size/hash/symlink manifest verified; source is retained. |
 | config change | re-run `abp-install` with the flags; each service restarts only when its inputs changed (the message names the input): stack ← runtime.json, VNC secret, egress rules, seccomp, its unit; daemon ← env, token, unit, **Happy package digest**; egress proxy ← unit, egress policy, **Happy package digest**. The firewall units are re-applied with `reload-or-restart` (a restart would restart everything that `Requires=` them) |
 | new Happy package | `abp-install --happy-tarball <new.tgz>`: the content digest of the installed package (`/var/lib/abp/happy-package.sha256`) changes, so the daemon (sessions stay alive, KillMode=process) and the egress proxy restart onto the new code; the stack is untouched |
 
@@ -188,12 +188,64 @@ The stack survives reboots: `abp-firewall` applies the rules at boot before the 
 and the daemon; tmpfiles recreates `/run/abp*`; `abp-stack.service` recreates the containers
 from the pinned digests (volumes kept) and restarts exited ones with backoff (2 s → 60 s).
 
+## Assignment recovery and compatibility
+
+The browser volume identifies `(profile, principal)`; the 128-bit random `assignmentId`
+identifies execution authority. A→B→A reuses A's login volume but never A's old agent
+secret, grant, pending approval or runnable task. Start a new conversation after reassignment.
+Ordinary same-assignment restart retains continuity. First schema-2 startup retires old
+unversioned execution state; completed owner-protected history remains readable, and uncertain
+writes are retained. No history lets the new owner read the previous owner's task data.
+
+`stack-state.json` stores a durable transition journal and applied identities. Do not edit
+owner/generation fields by hand. Pending transitions keep API and broker admission held across
+reboots, suppress the supervisor, and block install/up/upgrade/rollback/rotate/delete operations.
+Use `abp-stack set-principal --resume` to retry the journal target or `--abort` to restore its
+original owner; both create a fresh generation. If restoration fails the service is stopped,
+containers verified down, fence retained, and the journal stays blocked. Logs and `status`
+explain the pending state. Same-owner no-op still verifies the applied assignment and mount.
+
+An interrupted legacy copy keeps both volumes and blocks startup. Retry with the same owner
+and `--owner-verified --resume`; only the journaled, never-admitted partial destination is
+cleared and recopied. An unrelated/existing target is never overwritten. The source is never
+automatically deleted, including after successful migration. Explicit single-volume deletion
+is refused during any incomplete migration or assignment transition.
+
+Install/runtime config schema 2, package `contract.json`, and image label
+`ai.saycode.abp.contract=2` prevent supported downgrade paths. Previous incompatible image
+pairs cannot be rolled back to; a failed upgrade with no compatible fallback stays stopped and
+fenced. These guards do not constrain an operator who manually replaces the tools as root.
+The installer disables/removes any former automatic-prune timer and `check` verifies the units are absent. Both staged and already-installed Happy packages must advertise contract 2; reusing an old daemon that omits fork lineage is refused even when no tarball was supplied.
+For an old-image/legacy-volume installation, use `abp-install --no-start` with the current package,
+then `abp-stack upgrade --images <contract-2 images> --no-start`. This stages compatible images
+without touching legacy data or admitting traffic. Confirm ownership and migrate next. Unknown
+ownership deliberately keeps the service stopped; do not assign a guessed owner to regain service.
+
+Autonomous service startup takes the same operations lock. An operation already holding that lock
+(including the installer) delegates only held container creation through a root-owned startup request;
+it then verifies and opens admission itself. A leftover request is recovered by `up` (or the pending
+assignment/migration recovery command). Healthy `up` verifies the stack without restarting it; `up --restart` forces a restart to apply changed configuration, which the installer uses for changed inputs.
+Deterministic config/identity/compatibility/legacy refusals exit 78 (`RestartPreventExitStatus`) to avoid retry storms; recover explicitly. Transient Docker, egress or readiness failures stop the stack and exit 1 so systemd retries.
+Egress firewall checks continue even while startup, assignment or migration is held.
+
+A crash after migration verification but before startup is recovered by `up`. A crash immediately
+after recording the copy hold may leave the previous stack running; `--resume` stops and verifies it
+before copying. A named, labelled copier left by a crash is stopped and removed before retry.
+`--resume` for an assignment retries the **originally requested** owner even if automatic rollback
+also failed; `--abort` restores the original owner. Both refresh the generation.
+
+`abp-state` contains execution ledgers. Preserve it along with config on backup/restore; arbitrary
+root restoration of old state is outside the supported downgrade contract. Browser cookies alone
+are not an authority backup. Resumed/forked conversations with unverifiable lineage are refused;
+use a new conversation.
+
 ## Upgrade and rollback
 
 ```sh
 abp-stack upgrade --images /path/new-images [--ready-timeout 180]
 abp-stack upgrade --runtime-image sha256:… --browser-image sha256:…   # already loaded
-abp-stack rollback                                                    # back to the previous digests
+abp-stack rollback                                                    # back to compatible previous digests
+abp-stack upgrade --images /path/v2-images --no-start                  # pin images while stopped, before legacy migration
 ```
 
 Upgrade (and rollback, rotate-keys, set-principal): load and verify the digests → **fence**
@@ -219,8 +271,8 @@ restarting them meanwhile):
   paused (`browser-replaced`);
 - both: browsers first, then the Runtime.
 
-The fence is lifted after the new containers start → wait until the Runtime **of the new digest**
-answers `/v1/ready`. Not ready, or any step fails (e.g. a container cannot be created) →
+The root admin socket verifies readiness, the applied assignment, labels and the exact browser mount
+before admission and the public fence are opened; the Runtime **of the new digest** must then answer `/v1/ready`. Not ready, or any step fails (e.g. a container cannot be created) →
 automatic rollback to the previous digests, replacing again only what differs, and exit 1. A stack
 that is not running is simply started with the new digests. History records `replaced`. Volumes are never
 touched. The history entry carries the fence and drain result (`quiesce`). The broker socket is
@@ -381,3 +433,53 @@ answered 200 throughout the drain and was refused only while the containers were
 
 The firewall script was exercised in its own
 network namespace (idempotent, foreign rules kept, shadowing repaired).
+
+### Execution lineage boundary
+
+The broker relies on the authenticated daemon and supported client flow to report fork lineage.
+The current account holder can always put old text into a genuinely new conversation; transcript
+content is not itself an execution credential. The provider fork RPC still accepts a client-supplied
+parent, so stronger provenance for deliberately modified clients is a future hardening item.
+Cross-user cookie access and previous grants/secrets remain refused independently of that lineage.
+A daemon restart loses a pending in-memory bind retry; an unbound session then has no browser grant
+and may need a new conversation. No registration is treated as successfully bound merely because
+retry was scheduled.
+
+### Login persistence limitation
+
+Keeping a profile volume preserves on-disk browser data, not an unconditional login session.
+Chromium does not reload non-persistent session cookies after a browser restart (for example,
+`the-internet`'s `rack.session`). Such sites require login again after reassignment, even when
+the same user returns. Persistent cookies (for example, an httpbin cookie with `Max-Age`)
+survive A→B→A until the site expires or revokes them. `RestoreOnStartup` is not enabled: restoring
+old tabs would interfere with the Runtime's assignment-scoped tab management.
+
+Graceful container stop requests CDP `Browser.close` before waiting for Chromium to exit.
+SIGTERM alone can lose freshly set persistent cookies before its delayed disk write.
+If the local shutdown request fails, a warning precedes TERM/KILL fallback; recent changes
+are not guaranteed to survive forced termination or a machine crash.
+
+If `abp-uninstall --purge` fails, some volumes may already have been removed. Configuration
+and stack metadata remain for recovery. Re-run the uninstall script from the installer bundle
+after resolving the Docker error (installed tools are removed before purge).
+
+### Profile assignment verification (2026-09-30, dev H)
+
+The v2→v3 installation kept the existing per-user volume and `profileVolumes` mapping,
+upgraded config to schema 2, removed the active pruning timer/service, and passed installer
+checks. The legacy volume had already been deleted by v2; legacy migration was not exercised
+on this machine.
+
+After reproducing newly set persistent-cookie loss with TERM-only shutdown, the CDP close
+path passed 10 immediate HTTP `Max-Age` cookie A→B→A rounds. B's Cookies DB contained no
+`the-internet`/`httpbin` cookies. A's previous grant, secret, same-session rebind and resume
+lineage stayed denied after A returned. An intentionally mislabelled test volume failed
+startup and automatically restored A with a fresh assignment; readiness, mount and cookies
+were verified after rollback.
+
+Affected local regression: 38 files, 632 passed / 1 skipped (shellcheck unavailable),
+including typecheck and production build. Repository-wide runs were not fully green: Mac
+process/cache permissions and temporary-path assumptions, and dev H's mandatory sandbox
+policy/root execution affected unrelated suites. These runs are not reported as passing.
+Reboot/crash recovery and real legacy copying remain unexecuted E2E scenarios; unit coverage
+is not a substitute for those deployment checks.
