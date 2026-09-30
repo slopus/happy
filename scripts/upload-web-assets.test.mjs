@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { chmod, copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -180,6 +181,37 @@ test('rejects a missing second desktop skin before invoking OSS', async () => {
         assert.notEqual(result.status, 0);
         assert.match(result.stderr, /背景资源数量不正确/);
         assert.equal(result.log, '');
+    } finally {
+        await rm(fixture.directory, { recursive: true, force: true });
+    }
+});
+
+
+test('large bundles use bounded multipart uploads and reuse only matching checksums', async () => {
+    const fixture = await createFixture();
+    try {
+        await writeFile(join(fixture.dist, '_expo', 'static', 'app.js'), Buffer.alloc(9 * 1024 * 1024, 65));
+        const first = await runUpload(fixture);
+        assert.equal(first.status, 0, first.stderr);
+        assert.match(first.log, /--bigfile-threshold 8Mi --part-size 1Mi --parallel 4/);
+        const key = `web/releases/${revision}/_expo/static/app.js`;
+        const state = JSON.parse(await readFile(fixture.statePath, 'utf8'));
+        assert.match(state[key].md5, /^[a-f0-9]{32}-9$/);
+        await writeFile(fixture.logPath, '');
+        const retry = await runUpload(fixture);
+        assert.equal(retry.status, 0, retry.stderr);
+        assert.match(retry.stdout, /0 uploaded/);
+        assert.doesNotMatch(retry.log, /ossutil cp -r \/tmp\/paws-oss-upload-/);
+        state[key].md5 = createHash('md5').update(Buffer.alloc(9 * 1024 * 1024, 65)).digest('hex');
+        await writeFile(fixture.statePath, JSON.stringify(state));
+        const legacy = await runUpload(fixture);
+        assert.equal(legacy.status, 0, legacy.stderr);
+        assert.match(legacy.stdout, /0 uploaded/);
+        state[key].md5 = '0'.repeat(32) + '-9';
+        await writeFile(fixture.statePath, JSON.stringify(state));
+        const corrupt = await runUpload(fixture);
+        assert.notEqual(corrupt.status, 0);
+        assert.match(corrupt.stderr, /Immutable OSS object differs/);
     } finally {
         await rm(fixture.directory, { recursive: true, force: true });
     }

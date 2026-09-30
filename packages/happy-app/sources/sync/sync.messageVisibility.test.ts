@@ -420,7 +420,7 @@ async function seedLocalProjectionSession() {
     return storage;
 }
 
-async function localHistoryViewHarness(options: { historical?: boolean; holdLocalApply?: boolean; complete?: boolean } = {}) {
+async function localHistoryViewHarness(options: { historical?: boolean; anchoredLatest?: boolean; holdLocalApply?: boolean; complete?: boolean } = {}) {
     globalThis.indexedDB = new IDBFactory(); globalThis.IDBKeyRange = IDBKeyRange;
     const storage = await useRealMessageComposition();
     storage.getState().applySessions([hydrated(snapshot('paint-history', 40))]);
@@ -443,10 +443,12 @@ async function localHistoryViewHarness(options: { historical?: boolean; holdLoca
         },
     }, new EncryptionCache()));
     await history.commitPage('paint-history', { direction: 'older', boundary: 2147483647,
-        messages: options.historical ? page(1, 400) : page(40, 40), hasMore: false });
-    const reading = { version: 1 as const, anchorId: 'message-150', anchorSeq: 150, offset: 12, expandedGroupIds: [] };
-    if (options.historical) await history.writeReadingState('paint-history', reading);
-    else await history.commitReconciliation({ changes: [{ sessionId: 'paint-history', revision: '1', deleted: false,
+        messages: options.historical ? page(1, 400) : options.anchoredLatest ? page(1, 40) : page(40, 40), hasMore: false });
+    const reading = { version: 1 as const, anchorId: options.anchoredLatest ? 'message-40' : 'message-150',
+        anchorSeq: options.anchoredLatest ? 40 : 150, offset: 12, expandedGroupIds: [],
+        ...(options.anchoredLatest ? { followLatest: false } : {}) };
+    if (options.historical || options.anchoredLatest) await history.writeReadingState('paint-history', reading);
+    if (!options.historical) await history.commitReconciliation({ changes: [{ sessionId: 'paint-history', revision: '1', deleted: false,
         lastMessageSeq: options.complete ? 40 : 42, metadataVersion: 0, agentStateVersion: 0 }], nextCursor: '1' });
     const probe = installPhase2Probe('deep-link', { mountsRoute: true });
     const marker = vi.fn(probe.markFreshLatestMessageComplete);
@@ -758,6 +760,65 @@ describe('message visibility synchronization', () => {
         } finally { view.close(); }
     });
 
+    it('verifies an anchored window that already contains the latest tail without losing the reading position', async () => {
+        mocks.apiRequest.mockResolvedValue(response({ messages: [], hasMore: false }));
+        const view = await localHistoryViewHarness({ complete: true, anchoredLatest: true });
+        try {
+            await act(async () => { await view.opening; });
+            await vi.waitFor(() => expect(view.storage.getState().sessionMessages['paint-history'].latestVerifiedOwnerEpoch).not.toBeNull());
+            expect(mocks.apiRequest).toHaveBeenCalledWith('/v3/sessions/paint-history/messages?after_seq=40&limit=100');
+            expect(await view.history.readReadingState('paint-history')).toEqual(view.reading);
+            expect(view.storage.getState().sessionMessages['paint-history'].messages).toContainEqual(
+                expect.objectContaining({ kind: 'user-text', text: 'message-40' }));
+        } finally { view.close(); }
+    });
+
+    it.each([false, true])('keeps the visible reading anchor when background verification discovers multiple new pages (warm: %s)', async warm => {
+        let tail = deferred<Response>();
+        mocks.apiRequest.mockReturnValueOnce(tail.promise);
+        const view = await localHistoryViewHarness({ complete: true, anchoredLatest: true });
+        try {
+            await act(async () => { await view.opening; });
+            if (warm) {
+                await act(async () => { tail.resolve(response({ messages: [], hasMore: false })); });
+                await vi.waitFor(() => expect(view.storage.getState().sessionMessages['paint-history'].latestVerifiedOwnerEpoch).not.toBeNull());
+                mocks.apiRequest.mockReset();
+                tail = deferred<Response>();
+                mocks.apiRequest.mockReturnValueOnce(tail.promise);
+                sync.leaveSessionRoute(syncForTest.activeOpenSession.owner);
+                await act(async () => { void sync.openSession('paint-history'); });
+            }
+            await vi.waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledTimes(1));
+            mocks.apiRequest.mockResolvedValueOnce(response({ messages: view.page(416, 440), hasMore: true }));
+            await act(async () => { tail.resolve(response({ messages: view.page(41, 140), hasMore: true })); });
+            await vi.waitFor(() => expect(view.storage.getState().sessionMessages['paint-history'].hasMoreNewer).toBe(true));
+            const messages = view.storage.getState().sessionMessages['paint-history'];
+            expect(messages).toMatchObject({ isAtLatest: false, latestVerifiedOwnerEpoch: null });
+            expect(messages.messages).toContainEqual(expect.objectContaining({ kind: 'user-text', text: 'message-40' }));
+            expect(await view.history.readReadingState('paint-history')).toEqual(view.reading);
+            expect((await view.history.readWindow('paint-history'))?.newestSeq).toBe(440);
+            expect(mocks.apiRequest).toHaveBeenCalledTimes(2);
+        } finally { view.close(); }
+    });
+
+    it.each([false, true])('verifies a cached complete tail when returning from anchored history (concurrent cache load: %s)', async concurrentLoad => {
+        mocks.apiRequest.mockResolvedValue(response({ messages: [], hasMore: false }));
+        const view = await localHistoryViewHarness({ historical: true });
+        try {
+            await act(async () => { await view.opening; });
+            expect(mocks.apiRequest).not.toHaveBeenCalled();
+            await act(async () => {
+                const loading = concurrentLoad ? syncForTest.loadHistoryBoundary('paint-history', 'latest') : undefined;
+                await sync.jumpToLatestMessages('paint-history');
+                await loading;
+            });
+            expect(mocks.apiRequest).toHaveBeenCalledWith('/v3/sessions/paint-history/messages?after_seq=400&limit=100');
+            expect(view.storage.getState().sessionMessages['paint-history']).toMatchObject({
+                isAtLatest: true, latestVerifiedOwnerEpoch: syncForTest.activeOpenSession.owner.ownerEpoch,
+            });
+        } finally { view.close(); }
+    });
+
     it('verifies the network fallback on a warm reopen when durable message writes fail', async () => {
         mocks.apiRequest.mockResolvedValue(response({ messages: [], hasMore: false }));
         const view = await localHistoryViewHarness({ complete: true });
@@ -858,7 +919,7 @@ describe('message visibility synchronization', () => {
         } finally { tail.resolve(response({}, 503)); view.localApply.resolve(); view.close(); }
     });
 
-    it('restores an archived reading window and navigates cached history with zero body requests', async () => {
+    it('restores and pages cached history locally, then verifies an explicit jump to latest', async () => {
         globalThis.indexedDB = new IDBFactory();
         globalThis.IDBKeyRange = IDBKeyRange;
         installSession('archive');
@@ -872,10 +933,13 @@ describe('message visibility synchronization', () => {
         expect(mocks.state.sessionMessages.archive.isAtLatest).toBe(false);
         expect(mocks.state.sessionMessages.archive.messages.length).toBeLessThanOrEqual(300);
         await syncForTest.loadNewerMessages('archive');
+        expect(mocks.apiRequest).not.toHaveBeenCalled();
+        mocks.apiRequest.mockResolvedValue(response({ messages: [], hasMore: false }));
         await syncForTest.jumpToLatestMessages('archive');
         expect(mocks.state.sessionMessages.archive.isAtLatest).toBe(true);
         await syncForTest.loadOlderMessages('archive');
-        expect(mocks.apiRequest).not.toHaveBeenCalled();
+        expect(mocks.apiRequest).toHaveBeenCalledTimes(1);
+        expect(mocks.apiRequest).toHaveBeenCalledWith('/v3/sessions/archive/messages?after_seq=400&limit=100');
         expect(mocks.state.sessionMessages.archive.messages.length).toBeGreaterThan(300);
         expect(mocks.state.sessionMessages.archive.messages.length).toBeLessThanOrEqual(500);
     }, 20000);

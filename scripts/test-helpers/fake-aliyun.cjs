@@ -40,6 +40,18 @@ if (args[0] !== 'ossutil' || args[1] !== 'cp') process.exit(2);
 const recursive = args[2] === '-r';
 const source = args[recursive ? 3 : 2];
 const destination = args[recursive ? 4 : 3];
+const objectMetadata = (bytes) => {
+  let etag = crypto.createHash('md5').update(bytes).digest('hex');
+  if (args.includes('--bigfile-threshold') && flag('--bigfile-threshold') === '8Mi' && bytes.length > 8 * 1024 * 1024) {
+    const partSize = 1024 * 1024;
+    const parts = [];
+    for (let offset = 0; offset < bytes.length; offset += partSize) {
+      parts.push(crypto.createHash('md5').update(bytes.subarray(offset, offset + partSize)).digest('hex').toUpperCase());
+    }
+    etag = crypto.createHash('md5').update(parts.join('')).digest('hex') + '-' + parts.length;
+  }
+  return { size: bytes.length, md5: etag };
+};
 const files = [];
 if (source.startsWith('oss://')) {
   const sourceKey = strip(source);
@@ -55,7 +67,7 @@ if (source.startsWith('oss://')) {
         const bytes = fs.readFileSync(path.join(directory, entry.name));
         files.push({
           relative: nested.split(path.sep).join('/'),
-          value: { size: bytes.length, md5: crypto.createHash('md5').update(bytes).digest('hex') },
+          value: objectMetadata(bytes),
         });
       }
     }
@@ -63,7 +75,7 @@ if (source.startsWith('oss://')) {
   visit(source);
 } else {
   const bytes = fs.readFileSync(source);
-  files.push({ relative: '', value: { size: bytes.length, md5: crypto.createHash('md5').update(bytes).digest('hex') } });
+  files.push({ relative: '', value: objectMetadata(bytes) });
 }
 
 const targetPrefix = strip(destination);

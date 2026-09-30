@@ -9,6 +9,8 @@ const { execFileSync } = require('node:child_process');
 const aliyunBin = process.env.ALIYUN_BIN || 'aliyun';
 const endpoint = process.env.OSS_UPLOAD_ENDPOINT || 'https://oss-cn-hangzhou.aliyuncs.com';
 const addressingStyle = process.env.OSS_ADDRESSING_STYLE || 'virtual';
+const multipartThreshold = 8 * 1024 * 1024;
+const multipartPartSize = 1024 * 1024;
 
 function aliyun(args, inherit = false) {
   return execFileSync(aliyunBin, args, {
@@ -55,13 +57,23 @@ function localFiles(directory) {
   return files;
 }
 
-function md5(file) {
-  return crypto.createHash('md5').update(fs.readFileSync(file)).digest('hex');
+function fileChecksums(file) {
+  const bytes = fs.readFileSync(file);
+  const md5 = crypto.createHash('md5').update(bytes).digest('hex');
+  if (bytes.length <= multipartThreshold) return { md5 };
+  // OSS 的分片 ETag 是各分片大写 MD5 文本拼接后的 MD5，加上分片数量。
+  const parts = [];
+  for (let offset = 0; offset < bytes.length; offset += multipartPartSize) {
+    parts.push(crypto.createHash('md5').update(bytes.subarray(offset, offset + multipartPartSize)).digest('hex').toUpperCase());
+  }
+  const multipartETag = crypto.createHash('md5').update(parts.join('')).digest('hex') + '-' + parts.length;
+  return { md5, multipartETag };
 }
 
 function matches(object, file) {
+  const etag = String(object?.ETag || '').replace(/^"|"$/g, '').toLowerCase();
   return object && Number(object.Size) === file.size &&
-    String(object.ETag || '').replace(/^"|"$/g, '').toLowerCase() === file.md5;
+    (etag === file.md5 || etag === file.multipartETag);
 }
 
 function syncDirectory(sourceDirectory, bucket, prefix, options = {}) {
@@ -74,7 +86,7 @@ function syncDirectory(sourceDirectory, bucket, prefix, options = {}) {
       relativePath,
       key: prefix + relativePath,
       size: fs.statSync(filePath).size,
-      md5: md5(filePath),
+      ...fileChecksums(filePath),
     };
   });
   const existing = listObjects(bucket, prefix);
@@ -101,7 +113,7 @@ function syncDirectory(sourceDirectory, bucket, prefix, options = {}) {
       }
       const args = [
         'ossutil', 'cp', '-r', `${staging}/`, `oss://${bucket}/${prefix}`,
-        '--force', '--bigfile-threshold', '5G',
+        '--force', '--bigfile-threshold', '8Mi', '--part-size', '1Mi', '--parallel', '4',
         '--endpoint', endpoint, '--addressing-style', addressingStyle,
       ];
       if (options.cacheControl) args.push('--cache-control', options.cacheControl);

@@ -920,7 +920,7 @@ class Sync {
         return true;
     };
 
-    private loadHistoryBoundary = (id: string, direction: 'older' | 'newer' | 'latest', viewport?: HistoryViewportReader, verifyLatest = false): Promise<void> => {
+    private loadHistoryBoundary = (id: string, direction: 'older' | 'newer' | 'latest', viewport?: HistoryViewportReader, verifyLatest = false, preserveReading = false): Promise<void> => {
         const existing = this.historyWindowLoads.get(id);
         if (existing && this.historyBoundaryLoadingTokens.get(id)?.isCurrent()) return existing;
         const history = this.localHistory;
@@ -951,6 +951,9 @@ class Sync {
             } }) : state);
             patch({ [field]: true, [direction === 'older' ? 'olderError' : 'newerError']: null });
             try {
+                const reading = preserveReading ? await this.readSessionReadingState(id) : null;
+                if (!owner.isCurrent()) return;
+                const readingAnchor = reading && reading.followLatest !== true ? reading.anchorSeq : undefined;
                 let latest = direction === 'latest' ? await history?.readWindow(id) ?? null : null;
                 if (!owner.isCurrent()) return;
                 if (latest && (!latest.isAtLatest || verifyLatest)) {
@@ -1026,6 +1029,15 @@ class Sync {
                         }
                     }
                 }
+                if (latest && readingAnchor !== undefined) {
+                    // 后台验证保留原阅读锚点；只有用户主动跳转才替换为最新尾部。
+                    const anchored = await history?.readWindow(id, { anchorSeq: readingAnchor, limit: 300 });
+                    if (!owner.isCurrent()) return;
+                    if (anchored) latest = anchored;
+                    else if (current) latest = { ...current,
+                        isAtLatest: current.isAtLatest && latest.isAtLatest && current.newestSeq === latest.newestSeq,
+                        hasMoreNewer: !current.isAtLatest || !latest.isAtLatest || current.newestSeq !== latest.newestSeq };
+                }
                 if (latest && owner.isCurrent()) {
                     const applied = await this.applyHistoryWindow(id, latest, operation, {
                         retainCurrentWebRows: direction !== 'latest',
@@ -1047,7 +1059,7 @@ class Sync {
         })().finally(() => { if (this.historyWindowLoads.get(id) === pending) this.historyWindowLoads.delete(id); });
         this.historyWindowLoads.set(id, pending); return pending;
     };
-    public retryLatestMessageVerification = (id: string): Promise<void> => this.loadHistoryBoundary(id, 'latest', undefined, true);
+    public retryLatestMessageVerification = (id: string): Promise<void> => this.loadHistoryBoundary(id, 'latest', undefined, true, true);
 
     public loadNewerMessages = (id: string, viewport?: HistoryViewportReader): Promise<void> => this.historyWindows.get(id)?.hasMoreNewer === false
         ? Promise.resolve() : this.loadHistoryBoundary(id, 'newer', viewport);
@@ -1057,8 +1069,12 @@ class Sync {
         const pending = this.historyWindowLoads.get(id);
         if (pending) await pending;
         if (this.localHistory !== history || this.encryption !== encryption) return;
-        if (pending && this.historyWindows.get(id)?.isAtLatest) return;
-        await this.loadHistoryBoundary(id, 'latest');
+        const route = this.activeOpenSession;
+        const verifyLatest = route?.sessionId === id && this.sessionRouteOwnership.owns(route.owner);
+        if (pending && this.historyWindows.get(id)?.isAtLatest && (!verifyLatest
+            || storage.getState().sessionMessages[id]?.latestVerifiedOwnerEpoch === route.owner.ownerEpoch)) return;
+        // 当前会话回到最新时校验网络；离线路径继续允许浏览完整缓存。
+        await this.loadHistoryBoundary(id, 'latest', undefined, verifyLatest);
     };
 
     private reconcileHistory = (): Promise<void> => {
@@ -2904,7 +2920,7 @@ class Sync {
                 const reading = await historyOwner.readReadingState(sessionId);
                 const window = await historyOwner.readWindow(sessionId, { anchorSeq: reading?.anchorSeq });
                 if (window) return { messages: window.messages, hasMore: window.hasMoreOlder, localWindow: window,
-                    revalidateTail: !reading || reading.followLatest === true };
+                    revalidateTail: !reading || reading.followLatest === true || window.isAtLatest };
                 return this.fetchLatestMessagePageRaw(sessionId);
             })() : this.fetchLatestMessagePageRaw(sessionId);
         const operation: SessionRouteOperation = {
@@ -2934,7 +2950,7 @@ class Sync {
 
             if (hasLoadedMessageCache) {
                 if (this.localHistory && storage.getState().sessionMessages[sessionId]?.isAtLatest !== false) {
-                    await this.loadHistoryBoundary(sessionId, 'latest', undefined, true);
+                    await this.loadHistoryBoundary(sessionId, 'latest', undefined, true, true);
                 } else if (!this.localHistory) {
                     await this.getMessagesSync(sessionId).invalidateAndAwait();
                     this.markLatestVerified(sessionId, operation.committedPageOperation);
@@ -2965,7 +2981,7 @@ class Sync {
                         if (this.localHistory === historyOwner && this.sessionRouteOwnership.owns(owner)
                             && this.sessionMessageLoadGate.isCurrent(operation.messageLoad)
                             && storage.getState().sessionMessages[sessionId]?.latestVerifiedOwnerEpoch !== owner.ownerEpoch) {
-                            void this.loadHistoryBoundary(sessionId, 'latest', undefined, true);
+                            void this.loadHistoryBoundary(sessionId, 'latest', undefined, true, true);
                         }
                     }, 0);
                     return 'ready';

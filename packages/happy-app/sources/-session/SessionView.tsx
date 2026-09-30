@@ -1681,10 +1681,10 @@ function SessionViewLoaded({
     );
     const failedContinueQueued = renderedContinuedFailedTurnKey === failedTurnKey
         || continuedFailedTurnKey.current === failedTurnKey || failedTurnHasFollowUp;
-    // Before the latest page is verified, an unseen follow-up may already exist.
-    const failedHistoryLoading = !isLoaded || verifiedRouteOwnerEpoch === null;
     // An older history window cannot prove whether a follow-up already exists.
     const failedHistoryBehind = !isAtLatest || hasMoreNewer;
+    // 历史窗口已加载时提示查看最新，避免把有意保留的阅读位置显示成永久加载。
+    const failedHistoryLoading = !isLoaded || (!failedHistoryBehind && verifiedRouteOwnerEpoch === null);
     const handleSend = React.useCallback(() => {
         if (sendInFlight.current) return;
         const composer = composerHandleRef.current;

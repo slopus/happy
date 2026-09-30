@@ -594,6 +594,7 @@ describe('SessionView Agent-space boundary', () => {
         mocks.session.agentState = { turnStatus: { status: 'failed', updatedAt: 1, turnId: 'turn-1' } };
         mocks.isAtLatest = false;
         mocks.hasMoreNewer = true;
+        mocks.verifiedOwnerEpoch = null;
         let renderer: any;
         await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
 
