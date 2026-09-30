@@ -451,6 +451,17 @@ Independent synthetic evaluation found a small routing recall improvement, not
 95% P2 acceptance. Revisit the threshold only with separate development data and
 a fresh frozen evaluation; do not retune against the recorded test.
 
+`difficultyRoutingPolicy.ts` snapshots Desktop's `USER_REQUEST_MODELS`. Since
+2026-09-30 routine runs `claude-sonnet-5-5/medium`, and codex routine, hard and
+escalated all run `gpt-6.1-sol` at low/high/xhigh (Claude Code 2.1.284+, Codex
+0.159+; both verified with a real turn). `KNOWN_ROUTE_TIERS` keeps every earlier
+pair so floors stored under a previous table are still retained exactly. When
+an org policy forces a model-only substitution and tiers share that model, the
+highest non-escalated tier wins: escalated is a one-turn override, and Desktop's
+`difficultyForModel` also reads the escalated model as hard. Revisit when
+Desktop changes that reading, or when a shared catalog package replaces the
+snapshot.
+
 ## Project lesson host
 
 A session can be shown procedures verified in earlier work on the same
