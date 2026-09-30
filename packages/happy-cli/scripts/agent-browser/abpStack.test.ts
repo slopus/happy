@@ -1273,6 +1273,21 @@ describe('shared machine profiles (add-profile, remove-profile)', () => {
         expect(host.state().history.at(-1)).toMatchObject({ action: 'recover-profiles', result: 'ready' })
     })
 
+    it('abp-stack up --restart settles a change that failed for good (the recovery the error names)', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true })
+        leaveOp(host, { op: 'add', principalId: 'user-3', profileId: U3, phase: 'failed' }, [...installed(host).profiles, U3profile])
+        await createStack(host.deps).up({ restart: true })
+        expect(installed(host).profiles.map((p: any) => p.principalId)).toEqual(['user-1'])
+        expect(host.state().profileOp).toBeUndefined()
+        expect(runtimeJson(host).admissionHold).toBe(false)
+    })
+
+    it('still checks every browser volume and mount after a change, only not that the others are connected', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true })
+        await createStack(host.deps).addProfile('user-3')
+        expect(host.calls).toContain(`docker inspect -f {{json .Mounts}} abp-browser-${U1}`)
+    })
+
     it('a failure before the Runtime is touched cleans up only the new browser: no Runtime restart for everyone', async () => {
         const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, handlers: [[/^docker network create .*abp-net-s1$/, () => ({ status: 1, stderr: 'Pool overlaps' })]] })
         await expect(createStack(host.deps).addProfile('user-3')).rejects.toThrow(/add-profile failed/)
@@ -1361,6 +1376,32 @@ describe('first-use profile requests (the abp-stack service)', () => {
         const failing = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], brokenBrowsers: [sharedProfileId('user-3')] })
         await createStack(failing.deps).provisionRequestedProfiles(new Map())
         expect(failing.refusals).toEqual([{ principalId: 'user-3', reason: 'failed', retryAfterMs: 600_000 }])
+    })
+
+    it('refuses a user whose additions keep failing for longer each time (10, 30, 90 minutes)', async () => {
+        const failing = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], brokenBrowsers: [sharedProfileId('user-3')] })
+        const backoff = new Map()
+        const stack = createStack(failing.deps)
+        await stack.provisionRequestedProfiles(backoff)
+        await failing.deps.sleep(600_001)
+        await stack.provisionRequestedProfiles(backoff)
+        await failing.deps.sleep(1_800_001)
+        await stack.provisionRequestedProfiles(backoff)
+        expect(failing.refusals.map((r) => r.retryAfterMs)).toEqual([600_000, 1_800_000, 5_400_000])
+    })
+
+    it('does not refuse a request when the machine was only busy (drain timed out, nothing changed), and tries again soon', async () => {
+        const busy = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], running: Array(200).fill(1) })
+        expect(await createStack(busy.deps).provisionRequestedProfiles(new Map())).toEqual({ busy: true })
+        expect(busy.refusals).toEqual([])
+    })
+
+    it('asks the service to restart when a change failed for good, so the next start settles it and lifts the fence', async () => {
+        let runtimeCreates = 0
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], brokenBrowsers: [sharedProfileId('user-3')],
+            handlers: [[/^docker create --name=abp-runtime /, () => (++runtimeCreates > 1 ? { status: 1 } : undefined)]] })
+        expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toMatchObject({ restartToSettle: true })
+        expect(host.state().profileOp).toMatchObject({ phase: 'failed' })
     })
 
     it('does nothing on a dedicated machine', async () => {

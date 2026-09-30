@@ -267,8 +267,10 @@ abp-stack recover-profiles                         # put the previous profiles b
 - Only the stack service's containers are changed: after `down` or `emergency-stop`, run `up` first.
 - A change is journaled. A failure before the Runtime is touched removes only the new browser; an addition
   that fails later is rolled back; a removal that fails after its commit goes forward. A change left behind
-  (crash, reboot) is settled by the next service start: before its commit the previous profiles, after it the
-  new ones. Supervision of the other browsers continues after a change that failed for good.
+  (crash, reboot) is settled by the next service start or `abp-stack up --restart`: before its commit the
+  previous profiles, after it the new ones. A first-use addition that failed for good restarts the service
+  itself, so its fence does not stay; supervision of the other browsers continues meanwhile. A user whose
+  additions keep failing is refused for 10, 30, 90 minutes...; a drain that timed out only postpones (2 min).
 - Verification after a change needs the Runtime and that profile's browser only: another user's broken browser
   holds neither changes nor start-up.
 - Removal ends that user's sessions and tasks; their login volume is kept indefinitely (re-adding restores

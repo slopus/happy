@@ -55,6 +55,7 @@ const MAINTENANCE_FLAG = "/run/abp-stack-maintenance";
 const MAINTENANCE_MAX_MS = 15 * 60_000;
 /** A first-use profile request the machine cannot hold (or that failed) is refused this long. */
 const PROFILE_REFUSAL_MS = 10 * 60_000;
+const PROFILE_BUSY_RETRY_MS = 2 * 60_000;
 const PROFILE_POLL_MS = 3_000;
 const NETWORK_FORMAT = '{{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}} {{index .Options "com.docker.network.bridge.name"}}';
 const SERVICE = "abp-stack.service";
@@ -166,6 +167,8 @@ export function systemDeps() {
 }
 
 export function createStack(deps) {
+  /** First-use additions that failed, per user, for the service's lifetime (their refusals grow). */
+  const failedAdditions = new Map();
   const docker = (args, opts) => deps.run("docker", args, opts);
   const systemctl = (args, opts) => deps.run("systemctl", args, opts);
   const firewall = (args, opts) => deps.run(FIREWALL, args, opts);
@@ -320,7 +323,8 @@ export function createStack(deps) {
       const actual = docker(["inspect", "-f", `{{.State.Running}} ${IMAGE_LABEL}`, name]).stdout;
       if (actual !== `true ${expected}`) throw new Error(`unexpected container image: ${name}`);
     }
-    for (const browser of browsers) {
+    // Every browser is on its owner's volume, connected or not.
+    for (const browser of plan.browsers) {
       validateVolume(browser.volume, browser.volumeLabels);
       if (!hasExpectedProfileMount(browser)) throw new Error(`wrong profile mount: ${browser.container}`);
     }
@@ -411,7 +415,7 @@ export function createStack(deps) {
     const abort = (reason, detail) => {
       iptables(["-F", "ABP-FENCE"], { allowFail: true });
       writeState(record(readState(), { action, result: "aborted", reason, ...detail }));
-      throw new Error(`${action} aborted: ${reason}; nothing was stopped or changed (abp-stack emergency-stop stops regardless)`);
+      throw Object.assign(new Error(`${action} aborted: ${reason}; nothing was stopped or changed (abp-stack emergency-stop stops regardless)`), { nothingChanged: true });
     };
     let state;
     try { state = containerState(runtime.container); } catch (error) { abort(error.message); }
@@ -624,6 +628,18 @@ export function createStack(deps) {
    * (profileOp) so that start, supervision and other operations hold until it finished or recover-profiles
    * put the previous profiles back. A failure is rolled back to the previous profiles.
    */
+  /**
+   * Settles a profile change left behind: before its commit (or an addition whose rollback failed) the previous
+   * profiles, after it the new ones. Only for a caller that then recreates every container (start, up --restart).
+   */
+  function settleProfileChange() {
+    const { profileOp, ...rest } = readState();
+    if (!profileOp) return;
+    const adopted = profileOp.phase === "committed" || (profileOp.phase === "failed" && profileOp.committed && profileOp.op === "remove") ? "next" : "before";
+    if (adopted === "before") writeInstall(profileOp.before);
+    writeState(record({ ...rest, applied: identity(install()) }, { action: "settle-profile-change", op: profileOp.op, profileId: profileOp.profileId, phase: profileOp.phase, adopted }));
+  }
+
   /** Containers change only under the running stack service (never after down or emergency-stop). */
   function requireRunningService() {
     if (deps.exists(EMERGENCY_FLAG)) throw refusal("the stack is emergency-stopped; bring it back with abp-stack up first");
@@ -670,9 +686,9 @@ export function createStack(deps) {
     const action = `${op}-profile`;
     const quiesced = await quiesce(action);
     const browser = stackLayout(op === "add" ? next : options).browsers.find((entry) => entry.profileId === profileId);
-    const journal = (phase) => writeState({ ...readState(), profileOp: { op, principalId, profileId, phase, before: options } });
-    const finish = (result, detail = {}) => { const { profileOp, ...state } = readState(); writeState(record(state, { action, result, profileId, ...detail })); };
     let committed = false;
+    const journal = (phase) => writeState({ ...readState(), profileOp: { op, principalId, profileId, phase, committed, before: options } });
+    const finish = (result, detail = {}) => { const { profileOp, ...state } = readState(); writeState(record(state, { action, result, profileId, ...detail })); };
     try {
       journal("started");
       deps.writeFileAtomic(MAINTENANCE_FLAG, String(deps.now()), { mode: 0o600, owner: "root", group: "root" });
@@ -745,13 +761,25 @@ export function createStack(deps) {
         deps.log(`profile added on first use: ${sharedProfileId(request.principalId)}`);
         return { added: [request.principalId] };
       } catch (error) {
-        // An addition that failed is refused too (the session is told to ask the operator), so a persistent
-        // failure never restarts everyone's Runtime every minute; the request comes back after the refusal.
+        const message = error instanceof Error ? error.message : "failed";
+        // Only busy (the drain timed out, nothing changed): tried again shortly, nobody refused.
+        if (error?.nothingChanged) {
+          backoff.set(request.principalId, deps.now() + PROFILE_BUSY_RETRY_MS);
+          deps.log(`profile request postponed: ${message}`);
+          return { busy: true };
+        }
+        // A request that cannot be served is refused (the session is told why), for longer each time an addition
+        // fails, so a persistent failure does not restart everyone's Runtime over and over.
         const reason = error?.capacityReason ?? "failed";
-        backoff.set(request.principalId, deps.now() + PROFILE_REFUSAL_MS);
-        await deps.refuseProfileRequest(request.principalId, reason, PROFILE_REFUSAL_MS);
-        deps.log(`profile request refused (${reason}): ${sharedProfileId(request.principalId)}: ${error instanceof Error ? error.message : "failed"}`);
-        return { refused: [{ principalId: request.principalId, reason }] };
+        const failures = reason === "failed" ? (failedAdditions.get(request.principalId) ?? 0) + 1 : 1;
+        if (reason === "failed") failedAdditions.set(request.principalId, failures);
+        const refusalMs = Math.min(PROFILE_REFUSAL_MS * 3 ** (failures - 1), 24 * 60 * 60_000);
+        backoff.set(request.principalId, deps.now() + refusalMs);
+        await deps.refuseProfileRequest(request.principalId, reason, refusalMs);
+        deps.log(`profile request refused (${reason}): ${sharedProfileId(request.principalId)}: ${message}`);
+        // A change that failed for good holds the fence: the service restarts, and its start settles it.
+        const restartToSettle = readState().profileOp?.phase === "failed";
+        return { refused: [{ principalId: request.principalId, reason }], ...restartToSettle ? { restartToSettle: true } : {} };
       } finally { release(); }
     },
     /** Puts back the profiles from before an unfinished add/remove-profile (the whole stack restarts). */
@@ -800,13 +828,8 @@ export function createStack(deps) {
         assertImages(state.current);
         if (state.migrationHold) throw refusal("incomplete legacy migration; startup held");
         // A profile change left behind (crash, reboot, failed rollback) is settled here, under the lock: start
-        // recreates every container anyway. Before its commit the previous profiles stay; after it the new ones.
-        if (state.profileOp && !request) {
-          const { profileOp, ...rest } = state;
-          const adopted = profileOp.phase === "started" || (profileOp.op === "add" && profileOp.phase === "failed") ? "before" : "next";
-          if (adopted === "before") writeInstall(profileOp.before);
-          writeState(record({ ...rest, applied: identity(install()) }, { action: "settle-profile-change", op: profileOp.op, profileId: profileOp.profileId, phase: profileOp.phase, adopted }));
-        }
+        // recreates every container anyway.
+        if (!request) settleProfileChange();
         const options = install();
         validConfig(options);
         if (state.transition && !["committed", "verified"].includes(state.transition.phase)) throw refusal("assignment transition blocked; use set-principal --resume or --abort");
@@ -845,6 +868,11 @@ export function createStack(deps) {
 
     up({ restart = false } = {}) {
       return locked(async () => {
+        // A profile change left behind is settled by a restart (up --restart), which recreates every container.
+        if (readState().profileOp) {
+          if (!restart) throw refusal(`unfinished ${readState().profileOp.op}-profile; run abp-stack up --restart`);
+          settleProfileChange();
+        }
         assertStable(true);
         if (!restart && !deps.exists(START_REQUEST) && systemctl(["is-active", SERVICE], { allowFail: true }).stdout === "active"
           && (await deps.adminReady())?.admission === "open") {
@@ -1271,25 +1299,31 @@ function option(args, name) {
 async function runForeground(deps, stack) {
   let stopping = false;
   let provisioning;
-  const stop = () => {
+  // exitCode 1 (not 78): systemd restarts the service (Restart=always).
+  const stop = (exitCode = 0) => {
     if (stopping) return;
     stopping = true;
     deps.log("stopping: fence, drain, Runtime, browsers");
     // A first-use addition in progress gets up to 60 s (systemd allows 150 s); cut short, the next start settles it.
-    const inFlight = provisioning ? Promise.race([provisioning, deps.sleep(60_000)]) : Promise.resolve();
-    inFlight.then(() => stack.stop()).then(() => process.exit(0), (error) => {
+    const inFlight = provisioning && exitCode === 0 ? Promise.race([provisioning, deps.sleep(60_000)]) : Promise.resolve();
+    inFlight.then(() => stack.stop()).then(() => process.exit(exitCode), (error) => {
       deps.log(`stop failed: ${error instanceof Error ? error.message : "failed"}`);
       process.exit(1);
     });
   };
-  process.on("SIGTERM", stop);
-  process.on("SIGINT", stop);
+  process.on("SIGTERM", () => stop());
+  process.on("SIGINT", () => stop());
   await stack.start();
   // First-use profile requests run beside supervision, never blocking it (an addition takes a minute).
   const profileBackoff = new Map();
   const provision = setInterval(() => {
     if (stopping || provisioning) return;
     provisioning = stack.provisionRequestedProfiles(profileBackoff)
+      .then((result) => {
+        if (!result?.restartToSettle) return;
+        deps.log("a profile change failed for good; restarting the service so its start settles it");
+        stop(1);
+      })
       .catch((error) => deps.log(`profile requests: ${error instanceof Error ? error.message : "failed"}`))
       .finally(() => { provisioning = undefined; });
   }, PROFILE_POLL_MS);
