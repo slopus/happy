@@ -185,6 +185,35 @@ export function createStack(deps) {
     deps.writeFileAtomic(PATHS.runtimeConfig, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600, owner: "root", group: "root" });
   }
 
+  /** The detached marks after a reassignment: the previous volume detached now, the new one attached. */
+  function markVolumes(marks, profileId, fromVolume, toVolume) {
+    const next = (marks ?? []).map((mark) => ({ ...mark }));
+    const entry = (volume) => next.find((mark) => mark.volume === volume) ?? next[next.push({ profileId, volume }) - 1];
+    entry(fromVolume).detachedAtMs = deps.now();
+    delete entry(toVolume).detachedAtMs;
+    return next;
+  }
+
+  /** Stops the stack, writes the owners (install.json, runtime.json, volume marks), starts it and verifies it. */
+  async function applyOwners(options, marks) {
+    systemctl(["stop", SERVICE]);
+    verifyStopped();
+    deps.writeFileAtomic(PATHS.installConfig, `${JSON.stringify(options, null, 2)}\n`, { mode: 0o600, owner: "root", group: "root" });
+    writeRuntimeConfig(options);
+    const state = readState();
+    const { profileVolumes: _marks, ...rest } = state;
+    writeState(marks === undefined ? rest : { ...rest, profileVolumes: marks });
+    systemctl(["start", SERVICE]);
+    const ready = await waitReady(readState().current?.runtime, DEFAULT_READY_TIMEOUT_MS);
+    if (!ready.ok) throw new Error("the Runtime is not ready");
+    for (const browser of stackLayout(options).browsers) {
+      const mounted = docker(["inspect", "-f", "{{range .Mounts}}{{.Name}} {{end}}", browser.container], { allowFail: true });
+      if (mounted.status !== 0 || !mounted.stdout.split(" ").includes(browser.volume)) throw new Error(`${browser.container} does not mount ${browser.volume}`);
+    }
+    const owners = (profiles) => JSON.stringify((profiles ?? []).map(({ profileId, principalId }) => [profileId, principalId]));
+    if (owners(readJson(PATHS.runtimeConfig).profiles) !== owners(options.profiles)) throw new Error("runtime.json owners do not match");
+  }
+
   /** runtime.json is derived from install.json: an interrupted reassignment leaves them apart, fixed before start. */
   function alignRuntimeConfig(options) {
     const existing = deps.exists(PATHS.runtimeConfig) ? readJson(PATHS.runtimeConfig) : {};
@@ -601,15 +630,45 @@ export function createStack(deps) {
       });
     },
 
+    /**
+     * Reassigns a profile. The whole stack stops (the supervisor goes with the service), install.json
+     * (the single source; volumes and runtime.json derive from it) switches, and the stack starts on the
+     * new owner's volume; the previous owner's volume stays detached until pruned. The result is
+     * verified (browser mount, owners in runtime.json, Runtime ready); otherwise the previous owner is
+     * put back the same way, and if even that cannot be verified the stack is left stopped and fenced.
+     */
     setPrincipal(profileId, principalId) {
       const options = install();
-      if (!options.profiles.some((profile) => profile.profileId === profileId)) throw new Error(`unknown profile ${profileId}`);
+      const current = options.profiles.find((profile) => profile.profileId === profileId);
+      if (!current) throw new Error(`unknown profile ${profileId}`);
+      if (current.principalId === principalId) {
+        deps.log(`set-principal: ${profileId} already belongs to that owner; nothing to do`);
+        return Promise.resolve();
+      }
       return locked(async () => {
-        await quiesce("set-principal");
-        const merged = mergeInstallOptions(options, { profiles: options.profiles.map((profile) => (profile.profileId === profileId ? { profileId, principalId } : profile)) });
-        deps.writeFileAtomic(PATHS.installConfig, `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600, owner: "root", group: "root" });
-        writeRuntimeConfig(merged);
-        await restartQuiescedRuntime();
+        const quiesced = await quiesce("set-principal");
+        const target = mergeInstallOptions(options, { profiles: options.profiles.map((profile) => (profile.profileId === profileId ? { profileId, principalId } : profile)) });
+        const fromVolume = stackLayout(options).browsers.find((browser) => browser.profileId === profileId).volume;
+        const toVolume = stackLayout(target).browsers.find((browser) => browser.profileId === profileId).volume;
+        const marksBefore = readState().profileVolumes;
+        const detail = { profileId, from: fromVolume, to: toVolume, quiesce: quiesced };
+        try {
+          await applyOwners(target, markVolumes(marksBefore, profileId, fromVolume, toVolume));
+        } catch (error) {
+          const reason = error instanceof Error ? error.message : "failed";
+          try {
+            await applyOwners(options, marksBefore);
+          } catch (restoreError) {
+            systemctl(["stop", SERVICE], { allowFail: true });
+            iptables(["-A", "ABP-FENCE", ...fenceRule(layout().runtimePort)], { allowFail: true });
+            const restoreReason = restoreError instanceof Error ? restoreError.message : "failed";
+            writeState(record(readState(), { action: "set-principal", result: "failed-unrestored", error: reason, restoreError: restoreReason, ...detail }));
+            throw new Error(`set-principal failed (${reason}) and the previous owner could not be restored (${restoreReason}); the stack is stopped and fenced`);
+          }
+          writeState(record(readState(), { action: "set-principal", result: "failed", error: reason, ...detail }));
+          throw new Error(`set-principal failed (${reason}); the previous owner was restored`);
+        }
+        writeState(record(readState(), { action: "set-principal", result: "ready", ...detail }));
       });
     },
 
