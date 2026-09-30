@@ -190,7 +190,7 @@ function mergeSharedProfiles(merged, flags) {
   merged.memoryReserveMiB ??= 4096;
   integer(merged.memoryReserveMiB, "memoryReserveMiB", 0, 1024 * 1024);
   merged.profileTombstones ??= [];
-  if (!Array.isArray(merged.profileTombstones)) fail("profileTombstones", "must be a list");
+  if (!Array.isArray(merged.profileTombstones) || merged.profileTombstones.length > 1024) fail("profileTombstones", "must be a list of at most 1024");
   merged.profileTombstones.forEach((entry, index) => {
     if (!TEXT_ID.test(entry?.principalId ?? "")) fail(`profileTombstones[${index}].principalId`, "is required");
     integer(entry.removedAtMs, `profileTombstones[${index}].removedAtMs`, 0, Number.MAX_SAFE_INTEGER);

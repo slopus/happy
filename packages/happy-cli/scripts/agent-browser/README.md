@@ -251,21 +251,28 @@ and login volume.
 abp-stack add-profile <studio userId>              # or automatically on the user's first use
 abp-stack remove-profile <studio userId> [--block] # --block: only add-profile brings them back
 abp-stack list-profiles [--json]
-abp-stack recover-profiles                         # after an interrupted add/remove: the previous profiles
+abp-stack recover-profiles                         # put the previous profiles back after a failed change
 ```
 
 - First use: when a user's new chat (attested by Studio) asks for a grant, the broker records a request and the
   session waits (`PROFILE_PROVISIONING`, up to 90 s); the abp-stack service polls the admin socket every 3 s
-  and adds one profile at a time when no other operation holds the lock. If the machine cannot hold another,
-  the request is refused for 10 minutes and the session is told why (`PROFILE_UNAVAILABLE`: capacity or
-  memory).
+  and adds one profile at a time when no other operation holds the lock. A request that cannot be served is
+  refused for 10 minutes and the session is told why (`PROFILE_UNAVAILABLE`: capacity, memory, blocked, or a
+  failed addition), so a persistent failure never restarts everyone's Runtime over and over.
 - Adding or removing a profile fences the API, drains running tasks (up to 60 s, else nothing changes),
   handles that user's browser and network, and recreates the Runtime. The other browsers keep running
   with their pages and pending approvals; every user sees a few seconds of `RUNTIME_UNAVAILABLE` (retried).
 - At most 8 profiles, and only while `MemTotal - memoryReserveMiB (4096) >= 1 GiB + 2 GiB x profiles` and
   3 GiB is available right now. Slots are not reclaimed automatically.
+- Only the stack service's containers are changed: after `down` or `emergency-stop`, run `up` first.
+- A change is journaled. A failure before the Runtime is touched removes only the new browser; an addition
+  that fails later is rolled back; a removal that fails after its commit goes forward. A change left behind
+  (crash, reboot) is settled by the next service start: before its commit the previous profiles, after it the
+  new ones. Supervision of the other browsers continues after a change that failed for good.
+- Verification after a change needs the Runtime and that profile's browser only: another user's broken browser
+  holds neither changes nor start-up.
 - Removal ends that user's sessions and tasks; their login volume is kept indefinitely (re-adding restores
-  their logins, with a new assignment, so their old chats need a new chat). To cut a user off: remove them
+  their logins, with a new assignment; the removal time is kept, so their old chats need a new chat). To cut a user off: remove them
   from the machine's access list in Studio first, then `remove-profile`.
 - `set-principal` is refused on a shared machine.
 - Images and the package of a shared machine must be contract 3 (its runtime.json carries `tenancyMode`).

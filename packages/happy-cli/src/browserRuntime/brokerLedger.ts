@@ -70,7 +70,17 @@ export interface RegistryFile {
 /** A user's profile requested (waiting for abp-stack), or refused until `retryAtMs` (or a newer registration). */
 export type ProfileRequest =
     | { state: 'requested'; atMs: number }
-    | { state: 'refused'; atMs: number; reason: 'capacity' | 'memory'; retryAtMs: number }
+    | { state: 'refused'; atMs: number; reason: ProfileRefusal; retryAtMs: number }
+
+/** Why abp-stack did not create a profile: the machine is full, short of memory, the user is blocked, or it failed. */
+export const PROFILE_REFUSALS = ['capacity', 'memory', 'blocked', 'failed'] as const
+export type ProfileRefusal = (typeof PROFILE_REFUSALS)[number]
+const REFUSAL_MESSAGES: Record<ProfileRefusal, string> = {
+    capacity: 'this machine has no room for another browser profile (at most 8); ask the operator',
+    memory: 'this machine does not have enough memory for another browser profile right now; ask the operator or try later',
+    blocked: 'this user was removed from the machine\'s browser; ask the operator to add them again',
+    failed: "the user's browser profile could not be created; ask the operator (abp-stack logs) or try again in a few minutes",
+}
 
 export interface AssignmentLedger {
     /** A logical session of an earlier assignment (or retired): its attention is not delivered. */
@@ -303,9 +313,7 @@ export function sharedLedger(registry: RegistryFile, options: LedgerOptions): As
                 // Created on first use: requested for abp-stack (the broker persists it), unless refused lately.
                 const request = requests[tuple.principalId]
                 if (request?.state === 'refused' && now() < request.retryAtMs && registration.createdAtMs <= request.atMs)
-                    throw new BrowserRuntimeError('PROFILE_UNAVAILABLE', request.reason === 'capacity'
-                        ? 'this machine has no room for another browser profile (at most 8); ask the operator'
-                        : 'this machine does not have enough memory for another browser profile right now; ask the operator or try later')
+                    throw new BrowserRuntimeError('PROFILE_UNAVAILABLE', REFUSAL_MESSAGES[request.reason])
                 if (request?.state !== 'requested') requests[tuple.principalId] = { state: 'requested', atMs: now() }
                 throw new BrowserRuntimeError('PROFILE_PROVISIONING', "the user's browser profile is being created; retry shortly", true)
             }

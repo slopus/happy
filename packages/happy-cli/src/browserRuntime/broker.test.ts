@@ -660,6 +660,8 @@ describe('broker on a shared machine (a profile per session user)', () => {
         await h.broker.refuseProfileRequest('user-2', 'capacity', 600_000)
         h.setNow(1_600_002)
         denied(await grantFor(h, pending.sessionSecret, 's2'), 'PROFILE_PROVISIONING')
+        await h.broker.refuseProfileRequest('user-2', 'failed', 600_000)
+        expect((await grantFor(h, pending.sessionSecret, 's2')).body.error.message).toMatch(/could not be created/)
     })
 
     it('gives a session without an attested user no grant (an old daemon, or a spawn Studio did not attest)', async () => {

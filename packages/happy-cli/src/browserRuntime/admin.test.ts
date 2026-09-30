@@ -84,8 +84,9 @@ describe('admin server', () => {
         cleanups.push(() => server.close())
         expect((await call({ socketPath }, 'GET', '/admin/profile-requests')).body.result).toEqual({ requests: [{ principalId: 'user-2', requestedAtMs: 5 }] })
         expect((await call({ socketPath }, 'POST', '/admin/profile-requests/refuse', {}, { principalId: 'user-2', reason: 'memory', retryAfterMs: 600_000 })).status).toBe(200)
+        expect((await call({ socketPath }, 'POST', '/admin/profile-requests/refuse', {}, { principalId: 'user-2', reason: 'blocked', retryAfterMs: 600_000 })).status).toBe(200)
         expect((await call({ socketPath }, 'POST', '/admin/profile-requests/refuse', {}, { principalId: 'user-2', reason: 'other', retryAfterMs: 1 })).status).toBe(500)
-        expect(refused).toEqual([['user-2', 'memory', 600_000]])
+        expect(refused).toEqual([['user-2', 'memory', 600_000], ['user-2', 'blocked', 600_000]])
     })
 
     it('lists spaces and closes one for the operator (abp-stack spaces list|close)', async () => {

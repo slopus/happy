@@ -49,7 +49,7 @@ import { mintAgentGrant, verifySessionUserAttestation, type TrustedIssuer } from
 import type { AttentionOutbox } from './attention'
 import { AGENT_OPERATIONS, BrowserRuntimeError, type AgentSessionId, type GrantId, type MachineId, type PrincipalId, type ProfileId, type WorkspaceId } from './contracts'
 import { MAX_SUBSCRIBE_WAIT_MS, httpStatusFor } from './server'
-import { adoptRegistry, dedicatedLedger, sharedLedger, type RegistryFile, type Registration } from './brokerLedger'
+import { adoptRegistry, dedicatedLedger, sharedLedger, type ProfileRefusal, type RegistryFile, type Registration } from './brokerLedger'
 import { sessionOwnerSchema } from './sessionRegistration'
 import type { TenancyMode } from './tenancy'
 
@@ -110,7 +110,7 @@ export interface Broker {
     /** Shared machines: users whose profile was requested on first use and not yet created (root abp-stack polls). */
     profileRequests(): Array<{ principalId: string; requestedAtMs: number }>
     /** Shared machines: abp-stack could not create the profile; its sessions are told why until `retryAfterMs` passes. */
-    refuseProfileRequest(principalId: string, reason: 'capacity' | 'memory', retryAfterMs: number): Promise<void>
+    refuseProfileRequest(principalId: string, reason: ProfileRefusal, retryAfterMs: number): Promise<void>
 }
 
 /** The credential denylist for the task API: the Runtime's revocations plus grants still being revoked. */

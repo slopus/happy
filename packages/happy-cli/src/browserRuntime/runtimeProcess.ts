@@ -45,6 +45,7 @@ import { collectRuntimeMetrics, startAdminServer, type AdminServer } from './adm
 import { AttentionOutbox } from './attention'
 import { verifyToken, type AuthKeys, type VerifyPolicy } from './auth'
 import { listenOnSocket, startBroker, withRevokingGrants, type Broker } from './broker'
+import type { ProfileRefusal } from './brokerLedger'
 import { BrowserRuntimeError, POC_LIMITS, type BrowserInstanceId, type BrowserRuntimeApi, type ProfileId } from './contracts'
 import { CdpDriver, DEFAULT_MAX_AGENT_WINDOWS } from './drivers/cdpDriver'
 import { dropRoot, joinGroup, processPrivilegeOps, runtimeIdentity, type PrivilegeOps } from './privilegeDrop'
@@ -564,7 +565,7 @@ export async function runRuntime(deps: RuntimeProcessDeps = {}): Promise<void> {
         },
         ...(broker && config?.tenancyMode === 'shared' ? { profileRequests: {
             list: () => broker!.profileRequests(),
-            refuse: (principalId: string, reason: 'capacity' | 'memory', retryAfterMs: number) => broker!.refuseProfileRequest(principalId, reason, retryAfterMs),
+            refuse: (principalId: string, reason: ProfileRefusal, retryAfterMs: number) => broker!.refuseProfileRequest(principalId, reason, retryAfterMs),
         } } : {}),
         // abp-stack verifies a reassignment under its fence (host packets to the API port are reset): here.
         readiness: async () => ({

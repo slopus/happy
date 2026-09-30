@@ -12,6 +12,7 @@ import { statfs } from 'node:fs/promises'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { listenOnSocket } from './broker'
+import { PROFILE_REFUSALS, type ProfileRefusal } from './brokerLedger'
 import { BrowserRuntimeError, type ActionId, type GrantId, type ProfileId, type TaskId, type TaskSpaceId } from './contracts'
 import type { CdpDriver } from './drivers/cdpDriver'
 import type { BrowserRuntime } from './runtime'
@@ -58,7 +59,7 @@ export interface AdminServerInput {
      */
     profileRequests?: {
         list(): Array<{ principalId: string; requestedAtMs: number }>
-        refuse(principalId: string, reason: 'capacity' | 'memory', retryAfterMs: number): Promise<void>
+        refuse(principalId: string, reason: ProfileRefusal, retryAfterMs: number): Promise<void>
     }
 }
 
@@ -95,10 +96,10 @@ export async function startAdminServer(input: AdminServerInput): Promise<AdminSe
                 }
                 if (path === '/admin/profile-requests/refuse' && input.profileRequests) {
                     const { principalId, reason, retryAfterMs } = body
-                    if (typeof principalId !== 'string' || !principalId || (reason !== 'capacity' && reason !== 'memory')
+                    if (typeof principalId !== 'string' || !principalId || !PROFILE_REFUSALS.includes(reason as ProfileRefusal)
                         || typeof retryAfterMs !== 'number' || !Number.isInteger(retryAfterMs) || retryAfterMs < 0 || retryAfterMs > 24 * 60 * 60_000)
-                        throw new BrowserRuntimeError('INVALID_REQUEST', 'principalId, reason (capacity|memory) and retryAfterMs are required')
-                    await input.profileRequests.refuse(principalId, reason, retryAfterMs)
+                        throw new BrowserRuntimeError('INVALID_REQUEST', 'principalId, reason (capacity|memory|blocked|failed) and retryAfterMs are required')
+                    await input.profileRequests.refuse(principalId, reason as ProfileRefusal, retryAfterMs)
                     return sendJson(res, 200, { ok: true, result: { refused: true } })
                 }
                 if (path === '/admin/revoke-grant') {
