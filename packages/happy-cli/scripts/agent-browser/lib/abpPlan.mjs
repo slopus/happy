@@ -54,6 +54,8 @@ export const RELEASE_PROFILE = "main";
 const MAX_PROFILES = 16;
 /** Profiles of a shared machine (one network slot each; the Runtime's MAX_SHARED_PROFILES). */
 export const MAX_SHARED_PROFILES = 8;
+/** Container memory limits (docker --memory), also the budget abp-stack add-profile plans with. */
+export const CONTAINER_MEMORY_GIB = { runtime: 1, browser: 2 };
 /** Container-side paths (fixed by the images). */
 const IN_CONTAINER = { secrets: "/run/secrets/abp", vncPassword: "/run/secrets/abp/vnc-password", state: "/var/lib/abp", stateDir: "/var/lib/abp/state", profile: "/home/browser/profile" };
 export const STACK_LABEL = "ai.saycode.abp=stack";
@@ -185,6 +187,8 @@ function mergeSharedProfiles(merged, flags) {
   if (new Set(merged.profiles.map((profile) => profile.profileId)).size !== merged.profiles.length) fail("profiles", "a user has one profile");
   merged.profiles.forEach((profile, index) => integer(profile.networkSlot, `profiles[${index}].networkSlot`, 0, MAX_SHARED_PROFILES - 1));
   if (new Set(merged.profiles.map((profile) => profile.networkSlot)).size !== merged.profiles.length) fail("profiles.networkSlot", "each profile needs a slot of its own");
+  merged.memoryReserveMiB ??= 4096;
+  integer(merged.memoryReserveMiB, "memoryReserveMiB", 0, 1024 * 1024);
   merged.profileTombstones ??= [];
   if (!Array.isArray(merged.profileTombstones)) fail("profileTombstones", "must be a list");
   merged.profileTombstones.forEach((entry, index) => {
@@ -740,7 +744,7 @@ export function runtimeCreateArgs(layout, image) {
     `--network=${layout.runtime.network}`, `--ip=${layout.runtime.ip}`, `--network-alias=${layout.runtime.alias}`,
     // S2 production start: root with only SETUID/SETGID to read the root-only config and bind the sockets, then drop.
     "--user=0:0", "--cap-drop=ALL", "--cap-add=SETUID", "--cap-add=SETGID", "--security-opt=no-new-privileges",
-    "--read-only", "--tmpfs=/tmp:rw,size=64m", "--pids-limit=256", "--memory=1g", "--cpus=1", "--restart=no", ...logOpts,
+    "--read-only", "--tmpfs=/tmp:rw,size=64m", "--pids-limit=256", `--memory=${CONTAINER_MEMORY_GIB.runtime}g`, "--cpus=1", "--restart=no", ...logOpts,
     `--mount=type=volume,source=${layout.runtime.volume},target=${IN_CONTAINER.state}`,
     `--mount=type=bind,source=${PATHS.run},target=${PATHS.run}`,
     `--mount=type=bind,source=${PATHS.runtimeConfig},target=${PATHS.runtimeConfig},readonly`,
@@ -762,7 +766,7 @@ export function browserCreateArgs(layout, browser, image) {
     `--network=${browser.network}`, `--ip=${browser.browserIp}`, `--network-alias=${browser.alias}`,
     `--user=${uid}:${uid}`, "--cap-drop=ALL", "--security-opt=no-new-privileges", `--security-opt=seccomp=${PATHS.seccompProfile}`,
     "--read-only", "--tmpfs=/tmp:rw,size=128m", tmpfs("/run/abp", "1m"), tmpfs("/home/browser/.cache", "64m"), tmpfs("/home/browser/.config", "64m"), tmpfs("/home/browser/.local", "64m"),
-    "--pids-limit=512", "--memory=2g", "--cpus=2", "--shm-size=256m", "--restart=no", ...logOpts,
+    "--pids-limit=512", `--memory=${CONTAINER_MEMORY_GIB.browser}g`, "--cpus=2", "--shm-size=256m", "--restart=no", ...logOpts,
     `--mount=type=volume,source=${browser.volume},target=${IN_CONTAINER.profile}`,
     `--mount=type=bind,source=${PATHS.browserSecrets},target=${IN_CONTAINER.secrets},readonly`,
     `--env=ABP_CDP_HOST=${browser.alias}:9223`,

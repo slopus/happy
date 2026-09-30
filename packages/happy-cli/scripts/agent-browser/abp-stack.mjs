@@ -9,6 +9,8 @@
 //   abp-stack rotate-keys [--daemon-token] [--vnc-password]      (both when neither is given)
 //   abp-stack set-principal <profileId> <principalId>              (switches to that owner's browser volume)
 //   abp-stack set-principal --resume | --abort
+//   abp-stack add-profile <studio userId> | remove-profile <studio userId> [--block]   (shared machine)
+//   abp-stack list-profiles [--json] | recover-profiles                                 (shared machine)
 //   abp-stack load <dir> [--set-initial]                          (docker load + digest check)
 //   abp-stack build --source <happy-cli dir> [--out <dir>] [--tag <tag>] [--set-initial]
 //   abp-stack run                                                 (abp-stack.service only)
@@ -24,7 +26,7 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { PATHS, STACK_LABEL, browserCreateArgs, fenceRule, legacyProfileVolumeName, profileVolumeName, profileVolumeLabels, mergeInstallOptions, networkCreateArgs, runtimeConfig, runtimeCreateArgs, stackLayout } from "./lib/abpPlan.mjs";
+import { CONTAINER_MEMORY_GIB, MAX_SHARED_PROFILES, PATHS, STACK_LABEL, browserCreateArgs, fenceRule, legacyProfileVolumeName, profileVolumeName, profileVolumeLabels, mergeInstallOptions, networkCreateArgs, runtimeConfig, runtimeCreateArgs, sharedProfileId, stackLayout } from "./lib/abpPlan.mjs";
 
 import { PROFILE_COPY } from "./lib/profileCopy.mjs";
 
@@ -123,6 +125,12 @@ export function systemDeps() {
     /** Admin metrics over the root-only admin socket; undefined when the Runtime does not answer. */
     adminReady: () => unixJson(PATHS.adminSocket, "/admin/ready", {}).then((r) => r.status === 200 ? r.body?.result : undefined, () => undefined),
     openAdmission: (assignments) => unixJson(PATHS.adminSocket, "/admin/open-admission", {}, { assignments }).then((r) => r.status === 200 && r.body?.result?.admission === "open", () => false),
+    /** /proc/meminfo in bytes: add-profile checks the budget and what is available now. */
+    memInfo: () => {
+      const info = readFileSync("/proc/meminfo", "utf8");
+      const kib = (key) => Number(new RegExp(`^${key}:\\s+(\\d+) kB$`, "m").exec(info)?.[1] ?? NaN) * 1024;
+      return { totalBytes: kib("MemTotal"), availableBytes: kib("MemAvailable") };
+    },
     adminMetrics: () => unixJson(PATHS.adminSocket, "/admin/metrics", {}).then((reply) => (reply.status === 200 ? reply.body?.result : undefined), () => undefined),
     /** Status of an authenticated, read-only broker call made with the given daemon token (200 = accepted). */
     brokerProbe: (token) => unixJson(PATHS.brokerSocket, "/v1/attention?afterSeq=0&waitMs=0", { "x-abp-daemon-token": token }).then((reply) => reply.status, () => 0),
@@ -234,6 +242,7 @@ export function createStack(deps) {
     if (!allowStartRecovery && deps.exists(START_REQUEST)) throw refusal("unfinished service startup; use abp-stack up or assignment/migration recovery");
     if (state.migrationHold) throw refusal("incomplete legacy migration; preserve both volumes and inspect before recovery");
     if (state.transition) throw refusal("unfinished assignment transition; use set-principal --resume or --abort");
+    if (state.profileOp) throw refusal(`unfinished ${state.profileOp.op}-profile; run abp-stack recover-profiles`);
     if (state.applied && !same(state.applied, identity(install()))) throw refusal("install identity differs from applied assignment; direct edits are refused");
   }
   function validConfig(options) {
@@ -571,8 +580,137 @@ export function createStack(deps) {
     }
   }
 
+  function requireShared(options) {
+    if (options.tenancyMode !== "shared") throw refusal("profiles are added and removed only on a shared machine (abp-install --tenancy shared)");
+  }
+  /** K11: fewer than 8 profiles, a static budget of container limits, and memory available right now. */
+  function assertCapacity(options) {
+    if (options.profiles.length >= MAX_SHARED_PROFILES) throw refusal(`a shared machine runs at most ${MAX_SHARED_PROFILES} browser profiles`);
+    const GiB = 2 ** 30;
+    const { totalBytes, availableBytes } = deps.memInfo();
+    const budget = (CONTAINER_MEMORY_GIB.runtime + CONTAINER_MEMORY_GIB.browser * (options.profiles.length + 1)) * GiB;
+    if (totalBytes - (options.memoryReserveMiB ?? 4096) * 2 ** 20 < budget) throw refusal(`not enough memory for another browser profile (${options.profiles.length} running; memoryReserveMiB ${options.memoryReserveMiB ?? 4096})`);
+    if (availableBytes < (CONTAINER_MEMORY_GIB.browser + 1) * GiB) throw refusal("not enough memory available right now for another browser profile");
+  }
+  /** Recreates the Runtime for these profiles (browsers keep running), verifies it and opens admission. */
+  async function recreateRuntime(options) {
+    const plan = stackLayout(options);
+    stopAndRemove(plan.runtime.container, 30);
+    writeRuntimeConfig({ ...options, admissionHold: true });
+    ensureNetwork(plan.runtimeNetwork);
+    createAndStartRuntime(plan, readState().current.runtime);
+    await verifyAssignment(options);
+    writeState({ ...readState(), applied: identity(options) });
+    await releaseAdmission(options);
+  }
+  /**
+   * add-profile / remove-profile (K9): the browser's own containers and network, and a new Runtime for the
+   * new set of profiles; the other browsers keep running with their pages and pending approvals. Journaled
+   * (profileOp) so that start, supervision and other operations hold until it finished or recover-profiles
+   * put the previous profiles back. A failure is rolled back to the previous profiles.
+   */
+  async function changeProfile(op, principalId, { block = false } = {}) {
+    const options = install();
+    requireShared(options);
+    assertStable();
+    if (typeof principalId !== "string" || !/^[\x21-\x7e]{1,256}$/.test(principalId)) throw refusal("usage: a Studio user id");
+    const profileId = sharedProfileId(principalId);
+    const existing = options.profiles.find((profile) => profile.principalId === principalId);
+    const tombstones = (options.profileTombstones ?? []).filter((entry) => entry.principalId !== principalId);
+    let next;
+    if (op === "add") {
+      if (existing) return { changed: false, profileId, networkSlot: existing.networkSlot };
+      assertCapacity(options);
+      const used = new Set(options.profiles.map((profile) => profile.networkSlot));
+      const networkSlot = [...Array(MAX_SHARED_PROFILES).keys()].find((slot) => !used.has(slot));
+      next = { ...options, profiles: [...options.profiles, { profileId, principalId, assignmentId: randomBytes(16).toString("hex"), networkSlot }], profileTombstones: tombstones };
+    } else {
+      next = { ...options, profiles: options.profiles.filter((profile) => profile.principalId !== principalId),
+        profileTombstones: [...tombstones, { principalId, removedAtMs: block ? Number.MAX_SAFE_INTEGER : deps.now() }] };
+      if (!existing) {
+        writeInstall(mergeInstallOptions(next, {}));
+        writeRuntimeConfig({ ...next, admissionHold: false });
+        return { changed: false, profileId };
+      }
+    }
+    next = mergeInstallOptions(next, {});
+    const action = `${op}-profile`;
+    const quiesced = await quiesce(action);
+    writeState({ ...readState(), profileOp: { op, principalId, profileId, phase: "started", before: options } });
+    deps.writeFileAtomic(MAINTENANCE_FLAG, String(deps.now()), { mode: 0o600, owner: "root", group: "root" });
+    const browser = stackLayout(op === "add" ? next : options).browsers.find((entry) => entry.profileId === profileId);
+    try {
+      if (op === "add") {
+        ensureNetwork(browser);
+        checkLegacyVolumes([browser]);
+        ensureProfileVolume(browser);
+        createAndStartBrowser(stackLayout(next), browser, readState().current.browser);
+      }
+      writeInstall(next);
+      writeState({ ...readState(), profileOp: { ...readState().profileOp, phase: "committed" } });
+      await recreateRuntime(next);
+      if (op === "remove") {
+        stopAndRemove(browser.container, BROWSER_STOP_S);
+        docker(["network", "rm", browser.network], { allowFail: true });
+      }
+      const { profileOp, ...state } = readState();
+      writeState(record(state, { action, result: "ready", profileId, quiesce: quiesced }));
+      return { changed: true, profileId, ...op === "add" ? { networkSlot: next.profiles.find((profile) => profile.profileId === profileId).networkSlot } : {} };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "failed";
+      try {
+        writeInstall(options);
+        if (op === "add") {
+          stopAndRemove(browser.container, BROWSER_STOP_S);
+          docker(["network", "rm", browser.network], { allowFail: true });
+        }
+        await recreateRuntime(options);
+        const { profileOp, ...state } = readState();
+        writeState(record(state, { action, result: "rolled-back", profileId, error: reason }));
+      } catch (rollbackError) {
+        writeState(record({ ...readState(), profileOp: { ...readState().profileOp, phase: "failed" } }, { action, result: "failed", profileId, error: reason }));
+        throw new Error(`${action} failed (${reason}) and could not be rolled back (${rollbackError instanceof Error ? rollbackError.message : "failed"}); run abp-stack recover-profiles`);
+      }
+      throw new Error(`${action} failed (${reason}); the previous profiles were restored`);
+    } finally {
+      if (deps.exists(MAINTENANCE_FLAG)) deps.remove(MAINTENANCE_FLAG);
+    }
+  }
+
   const stack = {
     locked,
+    addProfile: (principalId) => locked(() => changeProfile("add", principalId)),
+    removeProfile: (principalId, options) => locked(() => changeProfile("remove", principalId, options)),
+    /** Puts back the profiles from before an unfinished add/remove-profile (the whole stack restarts). */
+    recoverProfiles() {
+      return locked(async () => {
+        const journal = readState().profileOp;
+        if (!journal) throw new Error("no unfinished profile change");
+        systemctl(["stop", SERVICE]);
+        verifyStopped();
+        writeInstall(journal.before);
+        const { profileOp, ...state } = readState();
+        writeState({ ...state, applied: identity(journal.before) });
+        await startServiceHeld(journal.before);
+        await releaseAdmission(journal.before);
+        clearStartRequest();
+        writeState(record(readState(), { action: "recover-profiles", result: "ready", profileId: journal.profileId, op: journal.op }));
+      });
+    },
+    listProfiles() {
+      const options = install();
+      requireShared(options);
+      const plan = stackLayout(options);
+      return {
+        profiles: options.profiles.map(({ profileId, principalId, networkSlot, assignmentId }) => {
+          let running = false;
+          try { running = containerState(plan.browsers.find((b) => b.profileId === profileId).container) === "running"; } catch {}
+          return { profileId, principalId, networkSlot, assignmentId, volume: profileVolumeName(profileId, principalId), running };
+        }),
+        removed: (options.profileTombstones ?? []).map(({ principalId, removedAtMs }) => ({ principalId, removedAtMs, blocked: removedAtMs === Number.MAX_SAFE_INTEGER })),
+        capacity: { max: MAX_SHARED_PROFILES, used: options.profiles.length },
+      };
+    },
     assertStable,
     /** Recreates the stack containers from the current digests (volumes kept) behind a live egress firewall, then lifts the fence. */
     async start() {
@@ -590,6 +728,7 @@ export function createStack(deps) {
         const options = install();
         validConfig(options);
         if (state.migrationHold) throw refusal("incomplete legacy migration; startup held");
+        if (state.profileOp) throw refusal(`unfinished ${state.profileOp.op}-profile; run abp-stack recover-profiles`);
         if (state.transition && !["committed", "verified"].includes(state.transition.phase)) throw refusal("assignment transition blocked; use set-principal --resume or --abort");
         if (!state.transition) assertStable(true);
         else if (!same(identity(options), identity(state.transition.target))) throw refusal("transition target mismatch");
@@ -604,6 +743,7 @@ export function createStack(deps) {
         const old = docker(["ps", "-aq", "--filter", `label=${STACK_LABEL}`]).stdout.split("\n").filter(Boolean);
         for (const name of old) stopAndRemove(name, name === plan.runtime.container ? 30 : BROWSER_STOP_S);
         checkLegacyVolumes(plan.browsers, !request);
+        if (plan.runtimeNetwork) ensureNetwork(plan.runtimeNetwork);
         for (const browser of plan.browsers) ensureNetwork(browser);
         // Only the current owners' volumes: a previous owner's stays detached indefinitely.
         if (docker(["volume", "inspect", plan.runtime.volume], { allowFail: true }).status !== 0) docker(["volume", "create", `--label=${STACK_LABEL}`, plan.runtime.volume]);
@@ -657,7 +797,7 @@ export function createStack(deps) {
           }
           lastEgressCheckMs = deps.now();
         }
-        if (readState().transition || readState().migrationHold || deps.exists(START_REQUEST)) return;
+        if (readState().transition || readState().migrationHold || readState().profileOp || deps.exists(START_REQUEST)) return;
         assertStable(false, { checkPackage: false });
         let maintenance;
         try { maintenance = Number(deps.readFile(MAINTENANCE_FLAG)); }
@@ -836,6 +976,7 @@ export function createStack(deps) {
     /** Whole-stack assignment transaction. Even rollback creates a fresh execution generation. */
     setPrincipal(profileId, principalId, recovery) {
       return locked(async () => {
+        if (install().tenancyMode === "shared") throw refusal("a shared machine has a profile per user: use add-profile/remove-profile");
         let journal = readState().transition;
         if (recovery) {
           if (!journal) throw new Error("no unfinished assignment transition");
@@ -1118,12 +1259,30 @@ export async function main(argv, deps = systemDeps()) {
         await stack.setPrincipal(args[0], args[1]);
       }
       return;
+    case "add-profile":
+    case "remove-profile": {
+      if (!args[0]) throw new Error(`usage: abp-stack ${command} <studio userId>${command === "remove-profile" ? " [--block]" : ""}`);
+      const result = command === "add-profile" ? await stack.addProfile(args[0]) : await stack.removeProfile(args[0], { block: args.includes("--block") });
+      console.log(JSON.stringify(result));
+      return;
+    }
+    case "list-profiles": {
+      const list = stack.listProfiles();
+      if (args.includes("--json")) console.log(JSON.stringify(list, null, 2));
+      else {
+        for (const p of list.profiles) console.log(`${p.profileId}  ${p.principalId}  slot ${p.networkSlot}  ${p.running ? "running" : "stopped"}  ${p.volume}`);
+        for (const r of list.removed) console.log(`removed  ${r.principalId}${r.blocked ? "  (blocked)" : ""}`);
+        console.log(`${list.capacity.used}/${list.capacity.max} profiles`);
+      }
+      return;
+    }
+    case "recover-profiles": await stack.recoverProfiles(); return;
     case "migrate-legacy-profile":
       return stack.migrateLegacyProfile(args[0], option(args, "--owner"), args.includes("--owner-verified"), args.includes("--resume"));
     case "delete-profile-volume":
       return stack.deleteProfileVolume(args[0], option(args, "--confirm"));
     default:
-      throw new Error("usage: abp-stack up|down|emergency-stop|status|upgrade|rollback|rotate-keys|set-principal|migrate-legacy-profile|delete-profile-volume|load|build|run");
+      throw new Error("usage: abp-stack up|down|emergency-stop|status|upgrade|rollback|rotate-keys|set-principal|add-profile|remove-profile|list-profiles|recover-profiles|migrate-legacy-profile|delete-profile-volume|load|build|run");
   }
 }
 

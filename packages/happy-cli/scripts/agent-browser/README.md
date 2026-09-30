@@ -239,6 +239,32 @@ root restoration of old state is outside the supported downgrade contract. Brows
 are not an authority backup. Resumed/forked conversations with unverifiable lineage are refused;
 use a new conversation.
 
+## Shared machines (a browser profile per user)
+
+`abp-install --tenancy shared` installs a machine several users of one company share (Saydo
+`specs/agent-browser-shared-profiles/design.md`). It is not a security boundary between those users. The mode
+is fixed at install; to change it, uninstall (volumes are kept) and install again. A shared machine starts
+with no profile: each user gets `u-<16 hex of sha256(userId)>`, with its own browser, network slot (0-7)
+and login volume.
+
+```
+abp-stack add-profile <studio userId>              # or automatically on the user's first use
+abp-stack remove-profile <studio userId> [--block] # --block: only add-profile brings them back
+abp-stack list-profiles [--json]
+abp-stack recover-profiles                         # after an interrupted add/remove: the previous profiles
+```
+
+- Adding or removing a profile fences the API, drains running tasks (up to 60 s, else nothing changes),
+  handles that user's browser and network, and recreates the Runtime. The other browsers keep running
+  with their pages and pending approvals; every user sees a few seconds of `RUNTIME_UNAVAILABLE` (retried).
+- At most 8 profiles, and only while `MemTotal - memoryReserveMiB (4096) >= 1 GiB + 2 GiB x profiles` and
+  3 GiB is available right now. Slots are not reclaimed automatically.
+- Removal ends that user's sessions and tasks; their login volume is kept indefinitely (re-adding restores
+  their logins, with a new assignment, so their old chats need a new chat). To cut a user off: remove them
+  from the machine's access list in Studio first, then `remove-profile`.
+- `set-principal` is refused on a shared machine.
+- Images and the package of a shared machine must be contract 3 (its runtime.json carries `tenancyMode`).
+
 ## Upgrade and rollback
 
 ```sh
