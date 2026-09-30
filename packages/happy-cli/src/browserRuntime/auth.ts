@@ -68,10 +68,15 @@ export function mintInteractiveCapability(capability: InteractiveCapability, key
  * holds a private key; this exists for tests and the harness.
  */
 export function signServerCapability(capability: ServerCapability, signer: { kid: string; privateKey: KeyObject | string }): string {
-    const header = Buffer.from(canonicalJson({ alg: 'EdDSA', kid: signer.kid, typ: 'abp-cap' })).toString('base64url')
-    const payload = Buffer.from(canonicalJson(capability)).toString('base64url')
-    const signature = signBytes(null, Buffer.from(`abp2.${header}.${payload}`), signer.privateKey).toString('base64url')
-    return `abp2.${header}.${payload}.${signature}`
+    return signServerEnvelope('abp-cap', capability, signer)
+}
+
+/** An abp2 token: `abp2.<header {alg EdDSA, kid, typ}>.<payload>.<Ed25519 signature>`. */
+function signServerEnvelope(typ: string, payload: object, signer: { kid: string; privateKey: KeyObject | string }): string {
+    const header = Buffer.from(canonicalJson({ alg: 'EdDSA', kid: signer.kid, typ })).toString('base64url')
+    const body = Buffer.from(canonicalJson(payload)).toString('base64url')
+    const signature = signBytes(null, Buffer.from(`abp2.${header}.${body}`), signer.privateKey).toString('base64url')
+    return `abp2.${header}.${body}.${signature}`
 }
 
 function decodeJson<T>(part: string): T {
@@ -101,14 +106,19 @@ function issuerKey(issuers: readonly TrustedIssuer[], kid: string): KeyObject | 
     return keys.get(kid)
 }
 
-function verifyServerToken(parts: string[], policy: VerifyPolicy): Credential {
+/** The payload of an abp2 token of header type `typ`, signed by a trusted issuer. */
+function openServerEnvelope<T>(parts: string[], typ: string, trustedIssuers: readonly TrustedIssuer[]): T {
     if (parts.length !== 4) throw new BrowserRuntimeError('UNAUTHORIZED', 'Malformed credential')
     const header = decodeJson<{ alg?: unknown; kid?: unknown; typ?: unknown }>(parts[1])
-    if (!header || header.alg !== 'EdDSA' || header.typ !== 'abp-cap' || typeof header.kid !== 'string') throw new BrowserRuntimeError('UNAUTHORIZED', 'Unsupported credential header')
-    const key = issuerKey(policy.trustedIssuers ?? [], header.kid)
+    if (!header || header.alg !== 'EdDSA' || header.typ !== typ || typeof header.kid !== 'string') throw new BrowserRuntimeError('UNAUTHORIZED', 'Unsupported credential header')
+    const key = issuerKey(trustedIssuers, header.kid)
     if (!key || key.asymmetricKeyType !== 'ed25519') throw new BrowserRuntimeError('UNAUTHORIZED', 'Credential issuer is not trusted')
     if (!verifyBytes(null, Buffer.from(`abp2.${parts[1]}.${parts[2]}`), key, Buffer.from(parts[3], 'base64url'))) throw new BrowserRuntimeError('UNAUTHORIZED', 'Invalid credential signature')
-    const credential = decodeJson<ServerCapability>(parts[2])
+    return decodeJson<T>(parts[2])
+}
+
+function verifyServerToken(parts: string[], policy: VerifyPolicy): Credential {
+    const credential = openServerEnvelope<ServerCapability>(parts, 'abp-cap', policy.trustedIssuers ?? [])
     // Agent grants are minted by this Runtime only; the server signs interactive capabilities only.
     if (!credential || credential.kind !== 'interactive') throw new BrowserRuntimeError('UNAUTHORIZED', 'Server credentials must be interactive capabilities')
     if (credential.iss !== INTERACTIVE_CAPABILITY_ISSUER) throw new BrowserRuntimeError('UNAUTHORIZED', 'Credential issuer is not trusted')
