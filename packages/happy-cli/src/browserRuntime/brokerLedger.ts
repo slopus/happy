@@ -4,6 +4,7 @@
  * See broker.ts for the rules; the ledger lives in the broker registry file.
  */
 import { BrowserRuntimeError, type PrincipalId, type ProfileId } from './contracts'
+import { sharedProfileId, type TenancyMode } from './tenancy'
 import type { SessionOwner } from './sessionRegistration'
 
 export interface SessionLineage { parentSessionIds?: string[]; conversationIds?: string[] }
@@ -26,6 +27,8 @@ export interface Registration {
     lineage?: SessionLineage
     /** The session user Studio attested at spawn (a new chat), if any. */
     attestedPrincipalId?: string
+    /** Shared machines: the user, profile and assignment the session belongs to, fixed at registration. */
+    tuple?: SessionTuple
     grantIds: string[]
     /**
      * Revocation started: no grant is issued any more, and the registration (with
@@ -37,8 +40,16 @@ export interface Registration {
     endSession?: true
 }
 
+/**
+ * Shared machines: whose session it is. `assignmentId` is null while the user's profile does not exist yet
+ * (pending); the first grant after it is created confirms the session in its assignment. `sinceMs` is when a
+ * pending session's user was attested: a profile removal after that retires it.
+ */
+export interface SessionTuple { principalId: string; profileId: string; assignmentId: string | null; sinceMs: number }
+
 export interface RegistryFile {
-    schemaVersion: 1
+    /** 1: dedicated (one canonical assignment key). 2: shared (a tuple per session). */
+    schemaVersion: 1 | 2
     registrations: Record<string, Registration>
     orphanedSessions?: Record<string, number>
     /**
@@ -48,6 +59,10 @@ export interface RegistryFile {
     sessionAssignments?: Record<string, string>
     /** Provider conversation id (e.g. `claude:<id>`) → the assignments it was continued in; never pruned. */
     conversationAssignments?: Record<string, string>
+    /** Schema 2: logical session id → its tuple, or RETIRED. Never pruned. */
+    sessionTuples?: Record<string, SessionTuple | typeof RETIRED>
+    /** Schema 2: provider conversation id → the tuple it was continued in, or RETIRED. Never pruned. */
+    conversationTuples?: Record<string, SessionTuple | typeof RETIRED>
 }
 
 export interface AssignmentLedger {
@@ -63,7 +78,7 @@ export interface AssignmentLedger {
     /** Records a bind of the registration to the logical session; throws when it is not admitted. */
     bind(registration: Registration, agentSessionId: string): void
     /** The owner, profile and assignment a grant for the registration is issued in; throws when it is not admitted. */
-    grant(registration: Registration, profileId: string): { principalId: PrincipalId; profileId: ProfileId; assignmentId?: string }
+    grant(registration: Registration, profileId: string | undefined): { principalId: PrincipalId; profileId: ProfileId; assignmentId?: string }
 }
 
 /** A verified session-user attestation. */
@@ -73,6 +88,34 @@ export interface LedgerOptions {
     profiles: ReadonlyMap<ProfileId, PrincipalId>
     assignments?: ReadonlyMap<ProfileId, string>
     sessionHistory?(agentSessionId: string): Iterable<string | undefined>
+    /** Shared machines: users whose profile was removed, and when (MAX_SAFE_INTEGER: blocked for good). */
+    profileTombstones?: ReadonlyMap<PrincipalId, number>
+}
+
+/**
+ * A registry written under the other tenancy mode (the machine was reinstalled): its registrations carry no
+ * usable owner, so each is revoked (its session ends) and every session and conversation it knew is retired.
+ * Returns how many registrations were marked, or undefined when the registry already fits the mode.
+ */
+export function adoptRegistry(registry: RegistryFile, mode: TenancyMode): number | undefined {
+    const schemaVersion = mode === 'shared' ? 2 : 1
+    if (registry.schemaVersion === schemaVersion) return undefined
+    const sessions = new Set([...Object.keys(registry.sessionAssignments ?? {}), ...Object.keys(registry.sessionTuples ?? {})])
+    const conversations = new Set([...Object.keys(registry.conversationAssignments ?? {}), ...Object.keys(registry.conversationTuples ?? {})])
+    let marked = 0
+    for (const registration of Object.values(registry.registrations)) {
+        for (const conversation of registration.lineage?.conversationIds ?? []) conversations.add(conversation)
+        if (registration.agentSessionId) sessions.add(registration.agentSessionId)
+        if (registration.revoking) continue
+        registration.revoking = true
+        if (registration.agentSessionId) registration.endSession = true
+        marked++
+    }
+    const retired = (ids: Set<string>) => Object.fromEntries([...ids].map((id) => [id, RETIRED] as const))
+    delete registry.sessionAssignments; delete registry.conversationAssignments; delete registry.sessionTuples; delete registry.conversationTuples
+    if (mode === 'shared') Object.assign(registry, { schemaVersion, sessionTuples: retired(sessions), conversationTuples: retired(conversations) })
+    else Object.assign(registry, { schemaVersion, sessionAssignments: retired(sessions), conversationAssignments: retired(conversations) })
+    return marked
 }
 
 /** Ledger value of a session from before assignments were recorded (or whose registration had none). */
@@ -143,8 +186,8 @@ export function dedicatedLedger(registry: RegistryFile, options: LedgerOptions):
             for (const conversation of registration.lineage?.conversationIds ?? []) conversations[conversation] ??= currentKey
         },
         grant: (registration, profileId) => {
-            const principalId = options.profiles.get(profileId as ProfileId)
-            if (!principalId) throw new BrowserRuntimeError('SCOPE_DENIED', 'profile is not allowed')
+            const principalId = profileId === undefined ? undefined : options.profiles.get(profileId as ProfileId)
+            if (profileId === undefined || !principalId) throw new BrowserRuntimeError('SCOPE_DENIED', 'profile is not allowed')
             // Registrations from before owners were recorded have no owner to compare: refused (a new spawn registers again).
             if (registration.principals?.[profileId] !== principalId) throw new BrowserRuntimeError('SCOPE_DENIED', 'the session was started for another owner of this profile')
             // Studio says another user started it: Studio treats the machine as shared, this install as dedicated.
@@ -154,6 +197,105 @@ export function dedicatedLedger(registry: RegistryFile, options: LedgerOptions):
             if (currentAssignments && (!assignmentId || registration.assignments?.[profileId] !== assignmentId))
                 throw new BrowserRuntimeError('SCOPE_DENIED', 'the session was started in an earlier assignment of this profile')
             return { principalId, profileId: profileId as ProfileId, ...(assignmentId ? { assignmentId } : {}) }
+        },
+    }
+}
+
+/**
+ * Shared machines: each session belongs to one user's profile and assignment (its tuple), so reassigning or
+ * removing one user's profile retires only that user's sessions. A new chat gets its tuple from Studio's
+ * attestation; a resume, fork or recovery inherits its parents' tuple from the ledger (whoever sent the
+ * message: the browser belongs to whoever started the chat) and may not mix users.
+ */
+export function sharedLedger(registry: RegistryFile, options: LedgerOptions): AssignmentLedger {
+    const ledger = registry.sessionTuples ??= {}
+    const conversations = registry.conversationTuples ??= {}
+    const currentValues = new Set(options.assignments?.values() ?? [])
+    const retired = (tuple: SessionTuple | typeof RETIRED): boolean => {
+        if (tuple === RETIRED) return true
+        if (tuple.assignmentId !== null) return options.assignments?.get(tuple.profileId as ProfileId) !== tuple.assignmentId
+        const removedAtMs = options.profileTombstones?.get(tuple.principalId as PrincipalId)
+        return removedAtMs !== undefined && removedAtMs >= tuple.sinceMs
+    }
+    const isRetired = (agentSessionId: string): boolean => agentSessionId in ledger && retired(ledger[agentSessionId])
+    const sessionOfEarlierAssignment = (agentSessionId: string): boolean => isRetired(agentSessionId)
+        || [...options.sessionHistory?.(agentSessionId) ?? []].some((assignment) => !assignment || !currentValues.has(assignment))
+    const refuse = (message: string): never => { throw new BrowserRuntimeError('SCOPE_DENIED', message) }
+    /** The tuple a continued conversation inherits, undefined for a fresh chat; throws when the ledger cannot vouch for it. */
+    const inherited = (lineage: SessionLineage | undefined): SessionTuple | undefined => {
+        const parents = lineage?.parentSessionIds ?? []
+        const conversationIds = lineage?.conversationIds ?? []
+        if (parents.length === 0 && conversationIds.length === 0) return undefined
+        if (parents.some(sessionOfEarlierAssignment) || conversationIds.some((id) => id in conversations && retired(conversations[id])))
+            refuse('the conversation belongs to an earlier assignment of its browser profile; start a new chat')
+        // Without a known parent every conversation must be known; with one, a new conversation is that parent's.
+        const vouchers = parents.length > 0 ? parents.map((parent) => ledger[parent]) : conversationIds.map((id) => conversations[id])
+        const known = [...vouchers, ...conversationIds.map((id) => conversations[id]).filter(Boolean)]
+        if (vouchers.some((tuple) => tuple === undefined)) refuse('the conversation cannot be shown to belong to a user of this machine; start a new chat')
+        const tuples = known as SessionTuple[]
+        if (new Set(tuples.map((tuple) => tuple.principalId)).size > 1) refuse('the conversation continues sessions of different users')
+        return { ...tuples[0] }
+    }
+    const confirm = (registration: Registration, tuple: SessionTuple): void => {
+        if (registration.agentSessionId) ledger[registration.agentSessionId] = { ...tuple }
+        for (const id of registration.lineage?.conversationIds ?? []) {
+            const known = conversations[id]
+            if (known === undefined || (known !== RETIRED && known.assignmentId === null && known.principalId === tuple.principalId)) conversations[id] = { ...tuple }
+        }
+    }
+    return {
+        isRetired,
+        retireStale: (registrations) => {
+            let stale = 0
+            for (const registration of registrations) {
+                const tuple = registration.tuple
+                if (!tuple) continue
+                if (registration.agentSessionId && !(registration.agentSessionId in ledger)) ledger[registration.agentSessionId] = { ...tuple }
+                for (const id of registration.lineage?.conversationIds ?? []) conversations[id] ??= { ...tuple }
+                if (registration.revoking || !retired(tuple)) continue
+                registration.revoking = true
+                if (registration.agentSessionId) registration.endSession = true
+                stale++
+            }
+            return stale
+        },
+        register: (lineage, attested) => {
+            const parent = inherited(lineage)
+            if (parent && attested && attested.principalId !== parent.principalId) refuse('the conversation belongs to another user of this machine')
+            let tuple = parent
+            if (!tuple && attested) {
+                const profileId = sharedProfileId(attested.principalId)
+                const exists = options.profiles.get(profileId) === attested.principalId
+                tuple = { principalId: attested.principalId, profileId, assignmentId: exists ? options.assignments?.get(profileId) ?? null : null, sinceMs: attested.issuedAtMs }
+            }
+            if (tuple && retired(tuple)) refuse("the user's browser profile on this machine was removed; ask the operator to add it again")
+            return { ...(tuple ? { tuple } : {}), ...(attested ? { attestedPrincipalId: attested.principalId } : {}) }
+        },
+        bind: (registration, agentSessionId) => {
+            if (sessionOfEarlierAssignment(agentSessionId)) refuse('the session was started in an earlier assignment of its browser profile; start a new chat')
+            const tuple = registration.tuple
+            if (!tuple) return
+            if (retired(tuple)) refuse('the registration belongs to an earlier assignment of its browser profile')
+            const known = ledger[agentSessionId]
+            if (known !== undefined && known !== RETIRED && known.principalId !== tuple.principalId) refuse('the session belongs to another user of this machine')
+            if (known === undefined || known === RETIRED || known.assignmentId === null || tuple.assignmentId !== null) ledger[agentSessionId] = { ...tuple }
+            for (const id of registration.lineage?.conversationIds ?? []) conversations[id] ??= { ...tuple }
+        },
+        grant: (registration) => {
+            const tuple = registration.tuple
+            if (!tuple) return refuse('the session has no attested user; start a new chat from Studio to use the browser on a shared machine')
+            if (retired(tuple)) refuse('the session was started in an earlier assignment of its browser profile')
+            const profileId = tuple.profileId as ProfileId
+            const principalId = options.profiles.get(profileId)
+            if (principalId === undefined) refuse("this user has no browser profile on this machine yet")
+            if (principalId !== tuple.principalId) refuse('the browser profile belongs to another user')
+            const assignmentId = options.assignments?.get(profileId)
+            if (!assignmentId) return refuse('the browser profile has no assignment')
+            if (tuple.assignmentId === null) {
+                tuple.assignmentId = assignmentId
+                confirm(registration, tuple)
+            } else if (tuple.assignmentId !== assignmentId) refuse('the session was started in an earlier assignment of its browser profile')
+            return { principalId: principalId as PrincipalId, profileId, assignmentId }
         },
     }
 }

@@ -11,6 +11,7 @@ import { INTERACTIVE_CAPABILITY_ISSUER } from './contracts'
 import { AttentionOutbox } from './attention'
 import { BROKER_GRANT_TTL_MS, startBroker, withRevokingGrants, type Broker } from './broker'
 import { TaskStore } from './taskStore'
+import { sharedProfileId } from './tenancy'
 
 const DAEMON_TOKEN = 'synthetic-daemon-token-0123456789abcdef'
 const keys = { agentKey: 'synthetic-agent-key-0123456789abcdef' }
@@ -38,7 +39,9 @@ const attest = (principalId: string, issuedAtMs = 1_000_000, key = issuer.privat
     kind: 'session-user', iss: INTERACTIVE_CAPABILITY_ISSUER, aud: 'machine-h', machineId: 'machine-h' as never, workspaceId: 'workspace-1' as never,
     principalId: principalId as PrincipalId, issuedAtMs, expiresAtMs: issuedAtMs + 600_000,
 }, { kid: 'k1', privateKey: key })
-async function harness(options: { dir?: string; owner?: string; assignment?: string | null; admit?: () => Promise<void>; sessionHistory?: (agentSessionId: string) => Array<string | undefined>; revokeGrant?: (grantId: GrantId) => Promise<void>; recoveryRetryMs?: number; endSession?: (agentSessionId: string) => Promise<void>; sessionWaiting?: (agentSessionId: string) => Promise<boolean> } = {}) {
+/** A shared machine: [principalId, assignmentId] per configured profile, and removed principals. */
+interface SharedSetup { profiles: Array<[string, string]>; tombstones?: Record<string, number> }
+async function harness(options: { dir?: string; owner?: string; assignment?: string | null; shared?: SharedSetup; admit?: () => Promise<void>; sessionHistory?: (agentSessionId: string) => Array<string | undefined>; revokeGrant?: (grantId: GrantId) => Promise<void>; recoveryRetryMs?: number; endSession?: (agentSessionId: string) => Promise<void>; sessionWaiting?: (agentSessionId: string) => Promise<boolean> } = {}) {
     const dir = options.dir ?? await mkdtemp(join(tmpdir(), 'abp-broker-'))
     if (!options.dir) cleanups.push(() => rm(dir, { recursive: true, force: true }))
     const store = await TaskStore.open(dir)
@@ -52,8 +55,15 @@ async function harness(options: { dir?: string; owner?: string; assignment?: str
         socketPath, stateDir: dir, attention,
         daemonTokenSha256: createHash('sha256').update(DAEMON_TOKEN).digest('hex'),
         identity: { machineId: 'machine-h' as never, workspaceId: 'workspace-1' as never },
-        profiles: new Map([['profile-a' as ProfileId, (options.owner ?? 'user-1') as PrincipalId]]),
-        ...(options.assignment === null ? {} : { assignments: new Map([['profile-a' as ProfileId, options.assignment ?? ASSIGNMENT]]) }),
+        ...options.shared ? {
+            tenancyMode: 'shared' as const,
+            profiles: new Map(options.shared.profiles.map(([principalId]) => [sharedProfileId(principalId), principalId as PrincipalId])),
+            assignments: new Map(options.shared.profiles.map(([principalId, assignmentId]) => [sharedProfileId(principalId), assignmentId])),
+            profileTombstones: new Map(Object.entries(options.shared.tombstones ?? {}) as Array<[PrincipalId, number]>),
+        } : {
+            profiles: new Map([['profile-a' as ProfileId, (options.owner ?? 'user-1') as PrincipalId]]),
+            ...(options.assignment === null ? {} : { assignments: new Map([['profile-a' as ProfileId, options.assignment ?? ASSIGNMENT]]) }),
+        },
         ...(options.admit ? { admit: options.admit } : {}),
         ...(options.sessionHistory ? { sessionHistory: options.sessionHistory } : {}),
         allowedOrigins: ['https://shop.example'],
@@ -591,5 +601,117 @@ describe('broker socket', () => {
     it('creates the socket group-accessible only', async () => {
         const h = await harness()
         expect((await stat(h.socketPath)).mode & 0o777).toBe(0o660)
+    })
+})
+
+describe('broker on a shared machine (a profile per session user)', () => {
+    const A1 = '1'.repeat(32)
+    const A2 = '2'.repeat(32)
+    const B1 = 'b'.repeat(32)
+    const U1 = sharedProfileId('user-1')
+    const U2 = sharedProfileId('user-2')
+    const both: SharedSetup = { profiles: [['user-1', A1], ['user-2', B1]] }
+    const grantFor = (h: Awaited<ReturnType<typeof harness>>, secret: string, agentSessionId: string) => h.grant(secret, { agentSessionId })
+    const denied = (reply: Reply, code = 'SCOPE_DENIED') => { expect(reply.status).toBeGreaterThanOrEqual(400); expect(reply.body.error.code).toBe(code) }
+
+    it("grants each session its attested user's profile only, whatever profile the request names", async () => {
+        const h = await harness({ shared: both })
+        const one = await h.register('s1', { attestation: attest('user-1') })
+        const two = await h.register('s2', { attestation: attest('user-2') })
+        const g1 = await h.grant(one.sessionSecret, { agentSessionId: 's1', profileId: U2 })
+        expect(g1.status).toBe(200)
+        expect(g1.body.result.profileId).toBe(U1)
+        expect(verifyToken(g1.body.result.token, keys, 1_000_000).credential).toMatchObject({ principalId: 'user-1', profileId: U1, assignmentId: A1 })
+        const g2 = await grantFor(h, two.sessionSecret, 's2')
+        expect(verifyToken(g2.body.result.token, keys, 1_000_000).credential).toMatchObject({ principalId: 'user-2', profileId: U2, assignmentId: B1 })
+    })
+
+    it('gives a session without an attested user no grant (an old daemon, or a spawn Studio did not attest)', async () => {
+        const h = await harness({ shared: both })
+        const plain = await h.register('s1')
+        denied(await grantFor(h, plain.sessionSecret, 's1'))
+    })
+
+    it("keeps a user's session pending until their profile exists, then confirms it in that profile's assignment", async () => {
+        const first = await harness({ shared: { profiles: [['user-1', A1]] } })
+        const pending = await first.register('s2', { attestation: attest('user-2') })
+        denied(await grantFor(first, pending.sessionSecret, 's2'))
+        await first.close()
+        // The profile was added (a new Runtime): the same registration now gets user 2's grant.
+        const added = await harness({ dir: first.dir, shared: both })
+        const granted = await grantFor(added, pending.sessionSecret, 's2')
+        expect(granted.status).toBe(200)
+        expect(verifyToken(granted.body.result.token, keys, 1_000_000).credential).toMatchObject({ principalId: 'user-2', profileId: U2, assignmentId: B1 })
+        await added.close()
+        // Confirmed in B1: reassigning user 2's profile retires it.
+        const reassigned = await harness({ dir: first.dir, shared: { profiles: [['user-1', A1], ['user-2', 'c'.repeat(32)]] } })
+        denied(await grantFor(reassigned, pending.sessionSecret, 's2'), 'UNAUTHORIZED')
+        expect(reassigned.broker.isRetired('s2')).toBe(true)
+    })
+
+    it("reassigning one user's profile ends only that user's sessions", async () => {
+        const first = await harness({ shared: both })
+        const one = await first.register('s1', { attestation: attest('user-1') })
+        const two = await first.register('s2', { attestation: attest('user-2') })
+        await first.close()
+        const next = await harness({ dir: first.dir, shared: { profiles: [['user-1', A2], ['user-2', B1]] } })
+        denied(await grantFor(next, one.sessionSecret, 's1'), 'UNAUTHORIZED')
+        expect(next.broker.isRetired('s1')).toBe(true)
+        expect((await grantFor(next, two.sessionSecret, 's2')).status).toBe(200)
+        expect(next.broker.isRetired('s2')).toBe(false)
+    })
+
+    it("a resume inherits the session's user from the ledger (whoever sends the message), and refuses another attested user", async () => {
+        const h = await harness({ shared: both })
+        await h.register('s1', { attestation: attest('user-1') })
+        // The process exits: its registration goes, the ledger keeps s1 as user 1's.
+        expect((await call(h.socketPath, 'POST', '/v1/sessions/revoke', h.daemon, { schemaVersion: 1, agentSessionId: 's1' })).status).toBe(200)
+        const resumed = await h.register('s1', { lineage: { parentSessionIds: ['s1'] } })
+        const granted = await grantFor(h, resumed.sessionSecret, 's1')
+        expect(granted.body.result.profileId).toBe(U1)
+        const mixed = await call(h.socketPath, 'POST', '/v1/sessions/register', h.daemon, { schemaVersion: 1, lineage: { parentSessionIds: ['s1'] }, attestation: attest('user-2') })
+        denied(mixed)
+        const unknown = await call(h.socketPath, 'POST', '/v1/sessions/register', h.daemon, { schemaVersion: 1, lineage: { parentSessionIds: ['never-seen'] }, attestation: attest('user-2') })
+        denied(unknown)
+    })
+
+    it('refuses a lineage that mixes two users', async () => {
+        const h = await harness({ shared: both })
+        await h.register('s1', { attestation: attest('user-1') })
+        await h.register('s2', { attestation: attest('user-2') })
+        denied(await call(h.socketPath, 'POST', '/v1/sessions/register', h.daemon, { schemaVersion: 1, lineage: { parentSessionIds: ['s1', 's2'] } }))
+    })
+
+    it("retires a removed user's pending sessions, and admits only attestations issued after the removal", async () => {
+        const first = await harness({ shared: { profiles: [['user-1', A1]] } })
+        const before = await first.register('s2', { attestation: attest('user-2', 1_000_000) })
+        await first.close()
+        const removed = await harness({ dir: first.dir, shared: { profiles: [['user-1', A1]], tombstones: { 'user-2': 1_500_000 } } })
+        expect(removed.broker.isRetired('s2')).toBe(true)
+        denied(await grantFor(removed, before.sessionSecret, 's2'), 'UNAUTHORIZED')
+        removed.setNow(1_600_000)
+        denied(await call(removed.socketPath, 'POST', '/v1/sessions/register', removed.daemon, { schemaVersion: 1, attestation: attest('user-2', 1_400_000) }))
+        await removed.register('s4', { attestation: attest('user-2', 1_600_000) })
+        expect(removed.broker.isRetired('s4')).toBe(false)
+    })
+
+    it('revokes every registration of a dedicated-era registry when the machine becomes shared, and retires its sessions', async () => {
+        const dedicated = await harness()
+        const old = await dedicated.register('s1')
+        await dedicated.close()
+        const shared = await harness({ dir: dedicated.dir, shared: both })
+        await vi.waitFor(() => expect(shared.endedSessions).toContain('s1'))
+        expect(shared.broker.isRetired('s1')).toBe(true)
+        denied(await grantFor(shared, old.sessionSecret, 's1'), 'UNAUTHORIZED')
+        expect(JSON.parse(await readFile(join(dedicated.dir, 'broker-sessions.json'), 'utf8')).schemaVersion).toBe(2)
+    })
+
+    it('a dedicated broker starting on a shared registry revokes its registrations too', async () => {
+        const shared = await harness({ shared: both })
+        await shared.register('s1', { attestation: attest('user-1') })
+        await shared.close()
+        const dedicated = await harness({ dir: shared.dir })
+        await vi.waitFor(() => expect(dedicated.endedSessions).toContain('s1'))
+        expect(dedicated.broker.isRetired('s1')).toBe(true)
     })
 })

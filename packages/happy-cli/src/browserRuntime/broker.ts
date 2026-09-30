@@ -49,8 +49,9 @@ import { mintAgentGrant, verifySessionUserAttestation, type TrustedIssuer } from
 import type { AttentionOutbox } from './attention'
 import { AGENT_OPERATIONS, BrowserRuntimeError, type AgentSessionId, type GrantId, type MachineId, type PrincipalId, type ProfileId, type WorkspaceId } from './contracts'
 import { MAX_SUBSCRIBE_WAIT_MS, httpStatusFor } from './server'
-import { dedicatedLedger, type RegistryFile, type Registration } from './brokerLedger'
+import { adoptRegistry, dedicatedLedger, sharedLedger, type RegistryFile, type Registration } from './brokerLedger'
 import { sessionOwnerSchema } from './sessionRegistration'
+import type { TenancyMode } from './tenancy'
 
 /** Session processes renew 5 minutes before expiry. */
 export const BROKER_GRANT_TTL_MS = 55 * 60_000
@@ -69,6 +70,10 @@ export interface BrokerOptions {
     profiles: ReadonlyMap<ProfileId, PrincipalId>
     /** Each profile's current assignment (runtime.json schema 2). Without it (harness) assignments are not checked. */
     assignments?: ReadonlyMap<ProfileId, string>
+    /** dedicated (default): one canonical assignment ledger. shared: a tuple ledger, a profile per session user. */
+    tenancyMode?: TenancyMode
+    /** Shared machines: users whose profile was removed, and when. */
+    profileTombstones?: ReadonlyMap<PrincipalId, number>
     /** Rejects while the Runtime admits no new work (start-up cleanup, a reassignment awaiting verification). */
     admit?(): Promise<void>
     /** Assignment ids a logical session's retained tasks and spaces were created in (undefined: untagged). */
@@ -120,7 +125,8 @@ const schemas = {
         z.object({ schemaVersion: z.literal(1), agentSessionId: id, endSession: z.boolean().optional() }).strict(),
         z.object({ schemaVersion: z.literal(1), registrationId: id, endSession: z.boolean().optional() }).strict(),
     ]),
-    grant: z.object({ schemaVersion: z.literal(1), agentSessionId: id, profileId: id }).strict(),
+    // Shared machines ignore profileId: a session uses its user's profile.
+    grant: z.object({ schemaVersion: z.literal(1), agentSessionId: id, profileId: id.optional() }).strict(),
     waiting: z.object({ agentSessionId: id }).strict(),
     attention: z.object({ afterSeq: z.coerce.number().int().nonnegative(), waitMs: z.coerce.number().int().nonnegative().max(MAX_SUBSCRIBE_WAIT_MS).default(0) }),
 }
@@ -157,16 +163,18 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
     const log = options.log ?? (() => {})
     const expectedDaemonToken = Buffer.from(options.daemonTokenSha256, 'hex')
     const registryPath = join(options.stateDir, REGISTRY_FILE)
-    let registry: RegistryFile = { schemaVersion: 1, registrations: {} }
+    const tenancyMode = options.tenancyMode ?? 'dedicated'
+    let registry: RegistryFile = { schemaVersion: tenancyMode === 'shared' ? 2 : 1, registrations: {} }
     try {
         registry = JSON.parse(await readFile(registryPath, 'utf8')) as RegistryFile
-        if (registry.schemaVersion !== 1) throw new Error('schema')
+        if (registry.schemaVersion !== 1 && registry.schemaVersion !== 2) throw new Error('schema')
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw new BrowserRuntimeError('JOURNAL_UNAVAILABLE', 'Broker registry is unreadable')
     }
     const orphaned = registry.orphanedSessions ??= {}
     const orphanTtlMs = options.orphanTtlMs ?? 60 * 60_000
-    const ledger = dedicatedLedger(registry, options)
+    const adopted = adoptRegistry(registry, tenancyMode)
+    const ledger = (tenancyMode === 'shared' ? sharedLedger : dedicatedLedger)(registry, options)
     let writeTail: Promise<void> = Promise.resolve()
     const persist = (): Promise<void> => {
         const snapshot = JSON.stringify(registry)
@@ -228,8 +236,8 @@ export async function startBroker(options: BrokerOptions): Promise<Broker> {
 
     // A registration of another assignment is revoked for good (its session ended) before anything is served:
     // marked here, so its grants are denied from the first request, then replayed like any revocation.
-    const stale = ledger.retireStale(Object.values(registry.registrations))
-    if (stale) {
+    const stale = ledger.retireStale(Object.values(registry.registrations)) + (adopted ?? 0)
+    if (stale || adopted !== undefined) {
         await persist().catch(() => { throw new BrowserRuntimeError('JOURNAL_UNAVAILABLE', 'Broker registry could not be written') })
         log(`broker: ${stale} registration(s) of an earlier profile assignment revoked`)
     }
