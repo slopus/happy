@@ -4,7 +4,8 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { PendingRevocationQueueError, browserTaskLineage, createBrowserTaskSessionBroker, registerResumedBrowserSession, spawnResumedWithBrowserTaskRegistration } from './browserTaskBroker'
+import { MachineMetadataSchema } from '@/api/types'
+import { PendingRevocationQueueError, agentBrowserMachineCapability, browserTaskLineage, createBrowserTaskSessionBroker, registerResumedBrowserSession, spawnResumedWithBrowserTaskRegistration } from './browserTaskBroker'
 
 const dirs: string[] = []
 afterEach(async () => { await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true }))) })
@@ -371,5 +372,15 @@ describe('registration while the Runtime holds admission (start-up, reassignment
         const denied = await brokerWith([{ status: 403, body: { ok: false, error: { code: 'SCOPE_DENIED', retryable: false } } }])
         expect(await denied.broker.register({ parentSessionIds: ['session-1'] })).toBeUndefined()
         expect(denied.registers()).toBe(1)
+    })
+})
+
+describe('agent browser machine capability (Studio sends attestations only to daemons that report it)', () => {
+    it('is reported on an execution machine only, with its tenancy', () => {
+        expect(agentBrowserMachineCapability({})).toBeUndefined()
+        expect(agentBrowserMachineCapability({ HAPPY_BROWSER_TASK_RUNTIME_URL: 'http://127.0.0.1:38700' })).toEqual({ protocol: 2, tenancyMode: 'dedicated' })
+        expect(agentBrowserMachineCapability({ HAPPY_BROWSER_TASK_RUNTIME_URL: 'http://127.0.0.1:38700', HAPPY_BROWSER_TASK_TENANCY: 'shared' })).toEqual({ protocol: 2, tenancyMode: 'shared' })
+        const parsed = MachineMetadataSchema.safeParse({ host: 'h', platform: 'linux', happyCliVersion: '1', homeDir: '/h', happyHomeDir: '/h/.happy', happyLibDir: '/l', agentBrowser: { protocol: 2, tenancyMode: 'shared' } })
+        expect(parsed.success && parsed.data.agentBrowser).toEqual({ protocol: 2, tenancyMode: 'shared' })
     })
 })

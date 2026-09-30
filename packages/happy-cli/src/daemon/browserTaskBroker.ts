@@ -162,6 +162,16 @@ function writeQueueFileDurably(file: string, data: string): void {
     try { fsyncSync(dirFd) } finally { closeSync(dirFd) }
 }
 
+/**
+ * Machine metadata of an execution machine (HAPPY_BROWSER_TASK_RUNTIME_URL, set by abp-install): protocol 2
+ * accepts Studio's session-user attestation at spawn; tenancyMode lets Studio refuse a machine it thinks is
+ * of the other mode. Absent elsewhere and on older daemons, which Studio sends no attestation to.
+ */
+export function agentBrowserMachineCapability(env: NodeJS.ProcessEnv = process.env): { protocol: 2; tenancyMode: 'dedicated' | 'shared' } | undefined {
+    if (!env.HAPPY_BROWSER_TASK_RUNTIME_URL) return undefined
+    return { protocol: 2, tenancyMode: env.HAPPY_BROWSER_TASK_TENANCY === 'shared' ? 'shared' : 'dedicated' }
+}
+
 export interface BrowserTaskBrokerConfig { socketPath: string; daemonToken: string }
 
 export function readBrowserTaskBrokerConfig(env: NodeJS.ProcessEnv = process.env): BrowserTaskBrokerConfig | undefined {
