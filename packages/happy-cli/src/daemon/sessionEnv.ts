@@ -127,13 +127,60 @@ function readRequestedSaycodeAgentGrant(
     )
 }
 
+/**
+ * A spawn, resume or automation request supplies environment for the session, but the Happy process
+ * itself runs with it first — before the claude UID switch and the sandbox. Variables that make that
+ * process (node, the shells and git it runs) load code, change its paths or trust, or steer Happy's own
+ * internals would run the requester's code as the daemon user, who holds the daemon token. Any company
+ * member can send such a request, so these never come from one; ordinary project variables still do.
+ */
+const UNSAFE_REQUEST_ENV_KEYS = new Set([
+    'NODE_OPTIONS', 'NODE_PATH', 'NODE_EXTRA_CA_CERTS', 'NODE_TLS_REJECT_UNAUTHORIZED', 'NODE_REPL_EXTERNAL_MODULE',
+    'NODE_ICU_DATA', 'NODE_PRESERVE_SYMLINKS', 'NODE_PRESERVE_SYMLINKS_MAIN',
+    'PATH', 'HOME', 'SHELL', 'BASH_ENV', 'ENV', 'ZDOTDIR', 'IFS', 'PROMPT_COMMAND', 'TMPDIR',
+    'XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME', 'XDG_STATE_HOME', 'XDG_RUNTIME_DIR',
+    'SSL_CERT_FILE', 'SSL_CERT_DIR', 'SSH_ASKPASS', 'CLAUDE_CONFIG_DIR', 'CODEX_HOME',
+    // OpenSSL loads config, providers and engines (code) from these; bash runs startup options and traces.
+    'OPENSSL_CONF', 'OPENSSL_MODULES', 'OPENSSL_ENGINES', 'SHELLOPTS', 'BASHOPTS', 'PS4',
+])
+const UNSAFE_REQUEST_ENV_PREFIXES = ['LD_', 'DYLD_', 'GIT_', 'HAPPY_', 'SAYCODE_', 'BASH_FUNC_']
+/** Request values under the Happy/Saycode prefixes that are legitimately per-session (validated elsewhere). */
+const REQUEST_ENV_ALLOWED_INTERNAL = new Set(['HAPPY_PROJECT_SANDBOX_CONFIG'])
+
+function isUnsafeRequestKey(key: string): boolean {
+    // Environment names are case-insensitive on Windows (Path, node_options): compare them upper-cased.
+    const name = key.toUpperCase()
+    // Commit identity only; every other GIT_* variable can point git at config, hooks or programs.
+    if (REQUEST_ENV_ALLOWED_INTERNAL.has(name) || /^GIT_(AUTHOR|COMMITTER)_(NAME|EMAIL|DATE)$/.test(name)) return false
+    if (UNSAFE_REQUEST_ENV_KEYS.has(name) || name.endsWith('_PROXY')) return true
+    return UNSAFE_REQUEST_ENV_PREFIXES.some((prefix) => name.startsWith(prefix))
+}
+
+/** Returns a copy of request-supplied environment without the variables above. */
+export function stripUnsafeRequestedEnvironment(requested: Record<string, string>): Record<string, string> {
+    return Object.fromEntries(Object.entries(requested).filter(([key]) => !isUnsafeRequestKey(key)))
+}
+
+/**
+ * The browser PoC harness points a session at its Runtime and grant file through the request. Only an
+ * isolated PoC daemon started with HAPPY_BROWSER_POC_REQUEST_ENV=1 (its own environment, never a request;
+ * the installer never sets it) admits these two.
+ */
+const POC_BROWSER_TASK_REQUEST_KEYS = ['HAPPY_BROWSER_TASK_RUNTIME_URL', 'HAPPY_BROWSER_TASK_GRANT_FILE'] as const
+
 /** Keeps request-supplied project env from impersonating daemon-owned session state. */
 export function buildSpawnRequestEnvironment(
     auth: Record<string, string>,
     requested: Record<string, string> | undefined,
+    options: { allowPocBrowserTaskEnv?: boolean } = {},
 ): Record<string, string> {
+    const poc = options.allowPocBrowserTaskEnv
+        ? Object.fromEntries(POC_BROWSER_TASK_REQUEST_KEYS.flatMap((key) => requested?.[key] === undefined ? [] : [[key, requested[key]]]))
+        : {}
     return {
-        ...scrubSessionLineageEnv(requested ?? {}),
+        ...scrubSessionLineageEnv(stripUnsafeRequestedEnvironment(requested ?? {})),
+        ...poc,
+        // The agent grant is re-admitted only after its own validation (paths and counts).
         ...readRequestedSaycodeAgentGrant(requested ?? {}),
         ...auth,
     }
@@ -224,8 +271,9 @@ export function buildResumedSessionSpawnEnvironment(input: {
     const policy = input.explicit[policyKey] ?? input.automation?.[policyKey]
         ?? input.runtime?.[policyKey] ?? input.agentEnvironment?.[policyKey]
     return buildSessionSpawnEnvironment({ ...input.inherited, [policyKey]: undefined }, {
-        ...scrubSessionLineageEnv(input.runtime ?? {}),
-        ...scrubSessionLineageEnv(input.automation ?? {}),
+        // runtime (the resume request) and automation environments are request-supplied too.
+        ...scrubSessionLineageEnv(stripUnsafeRequestedEnvironment(input.runtime ?? {})),
+        ...scrubSessionLineageEnv(stripUnsafeRequestedEnvironment(input.automation ?? {})),
         ...input.explicit,
         ...(input.agentEnvironment ?? {}),
         ...(policy !== undefined ? { [policyKey]: policy } : {}),

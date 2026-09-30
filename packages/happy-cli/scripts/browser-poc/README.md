@@ -51,7 +51,7 @@ Suite-specific fixture routes (`// ---- a05a06a08a09a11 routes ----` block, site
 
 ## Real-agent runs (A01 / A08 / sandbox)
 
-These need (1) an isolated Happy daemon running this branch — `node scripts/install-isolated.cjs`, then copy an authenticated `access.key` into its home and `happy daemon start` with `HAPPY_HOME_DIR` set (see the script's printed commands; remove the key copy afterwards), and (2) a Desktop checkout with `desktop-session-client.ts.txt` copied to `.abp-harness/sessionClient.ts` (set `ABP_SESSION_CLIENT_DIR` to that checkout). Then:
+These need (1) an isolated Happy daemon running this branch — `node scripts/install-isolated.cjs`, then copy an authenticated `access.key` into its home and `happy daemon start` with `HAPPY_HOME_DIR` **and `HAPPY_BROWSER_POC_REQUEST_ENV=1`** set (see the script's printed commands; remove the key copy afterwards). The harness passes each session's Runtime URL and grant file in the spawn request; a daemon drops request-supplied `HAPPY_*` variables unless its own environment carries that flag, and the session then has no `browser_task_*` tools, and (2) a Desktop checkout with `desktop-session-client.ts.txt` copied to `.abp-harness/sessionClient.ts` (set `ABP_SESSION_CLIENT_DIR` to that checkout). Then:
 
 ```sh
 pnpm exec tsx src/browserRuntime/e2e/stackCli.ts up <run>
@@ -73,7 +73,8 @@ On H:
 ABP_PUBLISH_HOST=0.0.0.0 ABP_PORT_BASE=38700 pnpm exec tsx src/browserRuntime/e2e/stackCli.ts up <run>   # as root
 HAPPY_CLI_ISOLATED_ROOT=/home/agent/.happy-cli-isolated-abp node scripts/install-isolated.cjs            # then chown -R agent
 # systemd unit for the daemon (User=agent, HAPPY_HOME_DIR, HAPPY_BROWSER_TASK_RUNTIME_URL=http://127.0.0.1:38700,
-# HAPPY_BROWSER_TASK_GRANT_FILE=/home/agent/abp-grants/current.token, ExecStart=happy daemon start-sync, ExecStop=happy daemon stop)
+# HAPPY_BROWSER_TASK_GRANT_FILE=/home/agent/abp-grants/current.token, HAPPY_BROWSER_POC_REQUEST_ENV=1 (harness spawns
+# pass per-session Runtime/grant variables), ExecStart=happy daemon start-sync, ExecStop=happy daemon stop)
 ```
 
 `ABP_PORT_BASE` pins the host ports (runtime, admin +1, control +2, noVNC +3/+4); without it docker reassigns them when H reboots and a service configured with the Runtime URL points at another container. The agent user also needs `claude` logged in. Copy `.abp/<run>/env.json` and `keys.json` from H to the same path here (harness role), then:

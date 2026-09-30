@@ -658,3 +658,85 @@ describe('리뷰 수정: 확인할 수 없는 선택은 통과시키지 않는�
             .toBeUndefined()
     })
 })
+
+describe('request-supplied environment cannot run code outside the agent sandbox', () => {
+    // A spawn/resume request (any company member can send one to a shared or dedicated machine) reaches the
+    // Happy process itself, before the claude UID switch and bwrap: loader, shell, path and config variables
+    // there would run the requester's code as the daemon user.
+    const hostile = {
+        NODE_OPTIONS: '--require /work/evil.js',
+        NODE_PATH: '/work/mods',
+        NODE_EXTRA_CA_CERTS: '/work/ca.pem',
+        LD_PRELOAD: '/work/evil.so',
+        LD_LIBRARY_PATH: '/work/lib',
+        DYLD_INSERT_LIBRARIES: '/work/evil.dylib',
+        PATH: '/work/bin:/usr/bin',
+        HOME: '/work',
+        SHELL: '/work/sh',
+        BASH_ENV: '/work/rc',
+        ENV: '/work/rc',
+        ZDOTDIR: '/work',
+        TMPDIR: '/work/tmp',
+        XDG_CONFIG_HOME: '/work/cfg',
+        SSL_CERT_FILE: '/work/ca.pem',
+        HTTPS_PROXY: 'http://attacker:3128',
+        http_proxy: 'http://attacker:3128',
+        GIT_CONFIG_GLOBAL: '/work/gitconfig',
+        GIT_SSH_COMMAND: '/work/ssh',
+        SSH_ASKPASS: '/work/askpass',
+        CLAUDE_CONFIG_DIR: '/work/claude',
+        CODEX_HOME: '/work/codex',
+        HAPPY_SERVER_URL: 'https://attacker.test',
+        HAPPY_BROWSER_TASK_GRANT_FILE: '/work/grant',
+        SAYCODE_MCP_SOCKET: '/work/mcp.sock',
+        OPENSSL_CONF: '/work/openssl.cnf',
+        OPENSSL_MODULES: '/work/ossl',
+        OPENSSL_ENGINES: '/work/engines',
+        SHELLOPTS: 'xtrace',
+        BASHOPTS: 'extdebug',
+        PS4: '$(/work/x)',
+        'BASH_FUNC_ls%%': '() { /work/x; }',
+        // Windows environment names are case-insensitive.
+        Path: 'C:\\work\\bin',
+        node_options: '--require /work/evil.js',
+    }
+    const kept = {
+        PROJECT_TOKEN: 'project-token',
+        NODE_ENV: 'production',
+        DATABASE_URL: 'postgres://db',
+        HAPPY_PROJECT_SANDBOX_CONFIG: '{"mode":"workspace"}',
+        GIT_AUTHOR_NAME: 'Bot',
+        GIT_COMMITTER_EMAIL: 'bot@example.com',
+    }
+
+    it('drops them from a spawn request while keeping ordinary project variables', () => {
+        expect(buildSpawnRequestEnvironment({}, { ...hostile, ...kept })).toEqual(kept)
+    })
+
+    it('drops them from a resume request and from automation environments too', () => {
+        const resumed = buildResumedSessionSpawnEnvironment({
+            inherited: { PATH: '/usr/bin', HOME: '/home/agent' },
+            explicit: {},
+            runtime: { ...hostile, PROJECT_TOKEN: 'runtime-token' },
+            automation: { NODE_OPTIONS: '--require /work/evil.js', AUTOMATION_FLAG: '1' },
+            sessionId: 'session-3',
+        })
+        expect(resumed).toEqual({ PATH: '/usr/bin', HOME: '/home/agent', PROJECT_TOKEN: 'runtime-token', AUTOMATION_FLAG: '1', APLUS_SESSION_ID: 'session-3' })
+    })
+
+    it('admits the PoC browser-task variables only when the daemon itself opted in (isolated PoC daemon)', () => {
+        const poc = { HAPPY_BROWSER_TASK_RUNTIME_URL: 'http://127.0.0.1:18787', HAPPY_BROWSER_TASK_GRANT_FILE: '/home/u/grants/a.token' }
+        expect(buildSpawnRequestEnvironment({}, poc)).toEqual({})
+        expect(buildSpawnRequestEnvironment({}, { ...poc, NODE_OPTIONS: '--require x' }, { allowPocBrowserTaskEnv: true })).toEqual(poc)
+    })
+
+    it('still lets the daemon set its own values (explicit and inherited are trusted)', () => {
+        const resumed = buildResumedSessionSpawnEnvironment({
+            inherited: { PATH: '/usr/local/bin:/usr/bin' },
+            explicit: { HAPPY_RECONNECT_SESSION_ID: 'session-4', NODE_OPTIONS: '--max-old-space-size=4096' },
+            sessionId: 'session-4',
+        })
+        expect(resumed).toMatchObject({ PATH: '/usr/local/bin:/usr/bin', NODE_OPTIONS: '--max-old-space-size=4096', HAPPY_RECONNECT_SESSION_ID: 'session-4' })
+    })
+})
+
