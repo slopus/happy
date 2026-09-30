@@ -1558,7 +1558,7 @@ function SessionViewLoaded({
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const isTablet = useIsTablet();
-    const { messages, isLoaded, isAtLatest, hasMoreNewer } = useSessionMessages(sessionId);
+    const { messages, isLoaded, isAtLatest, hasMoreNewer, newerError } = useSessionMessages(sessionId);
     const [followLatestRequest, setFollowLatestRequest] = React.useState(0);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
     const zenMode = useLocalSetting('zenMode');
@@ -1707,6 +1707,16 @@ function SessionViewLoaded({
     }, [composerHandleRef, sessionId, selectedImages, removeImage]);
 
     const handleContinueFailedTurn = React.useCallback(() => {
+        if (failedHistoryLoading && newerError && !failedHistoryBehind) {
+            if (sendInFlight.current) return;
+            sendInFlight.current = true;
+            setContinuingFailedTurn(true);
+            void sync.retryLatestMessageVerification(sessionId).finally(() => {
+                sendInFlight.current = false;
+                setContinuingFailedTurn(false);
+            });
+            return;
+        }
         if (sendInFlight.current || continuedFailedTurnKey.current === failedTurnKey
             || failedContinueQueued || failedHistoryLoading || failedHistoryBehind) return;
         sendInFlight.current = true;
@@ -1726,7 +1736,7 @@ function SessionViewLoaded({
                 setContinuingFailedTurn(false);
             }
         })();
-    }, [sessionId, failedContinueQueued, failedHistoryLoading, failedHistoryBehind, failedTurnKey]);
+    }, [sessionId, failedContinueQueued, failedHistoryLoading, failedHistoryBehind, failedTurnKey, newerError]);
 
     const handleAbort = React.useCallback(() => {
         storage.getState().resetSessionAgentOverrides(sessionId);
@@ -1861,6 +1871,7 @@ function SessionViewLoaded({
                 continuingFailed={continuingFailedTurn}
                 continueFailedQueued={failedContinueQueued}
                 continueFailedHistoryLoading={failedHistoryLoading}
+                continueFailedHistoryError={Boolean(newerError)}
                 continueFailedHistoryBehind={failedHistoryBehind}
                 unavailableMessage={resumeSessionSubtitle}
             />
@@ -2049,6 +2060,7 @@ function InactiveArchivedHint(props: {
     continueFailedQueued?: boolean;
     continueFailedHistoryLoading?: boolean;
     continueFailedHistoryBehind?: boolean;
+    continueFailedHistoryError?: boolean;
     unavailableMessage?: string;
 }) {
     const { theme } = useUnistyles();
@@ -2084,12 +2096,12 @@ function InactiveArchivedHint(props: {
                     testID="failed-session-continue-button"
                     accessibilityRole="button"
                     onPress={props.onContinueFailed}
-                    disabled={props.continuingFailed || props.continueFailedQueued || props.continueFailedHistoryLoading || props.continueFailedHistoryBehind}
+                    disabled={props.continuingFailed || props.continueFailedQueued || (props.continueFailedHistoryLoading && !props.continueFailedHistoryError) || props.continueFailedHistoryBehind}
                     style={({ pressed }) => ({
                         height: 40,
                         borderRadius: 10,
                         backgroundColor: theme.colors.button.primary.background,
-                        opacity: props.continuingFailed || props.continueFailedQueued || props.continueFailedHistoryLoading || props.continueFailedHistoryBehind ? 0.6 : pressed ? 0.8 : 1,
+                        opacity: props.continuingFailed || props.continueFailedQueued || (props.continueFailedHistoryLoading && !props.continueFailedHistoryError) || props.continueFailedHistoryBehind ? 0.6 : pressed ? 0.8 : 1,
                         alignItems: 'center',
                         justifyContent: 'center',
                         marginHorizontal: 8,
@@ -2100,7 +2112,7 @@ function InactiveArchivedHint(props: {
                     ) : (
                         <Text style={{ color: theme.colors.button.primary.tint, fontSize: 15, fontWeight: '600' }}>
                             {props.continueFailedQueued ? t('status.queued', { count: 1 })
-                                : props.continueFailedHistoryLoading ? t('common.loading')
+                                : props.continueFailedHistoryLoading ? t(props.continueFailedHistoryError ? 'common.retry' : 'common.loading')
                                 : props.continueFailedHistoryBehind ? t('session.failedContinueViewLatest')
                                 : t('session.failedContinueTask')}
                         </Text>

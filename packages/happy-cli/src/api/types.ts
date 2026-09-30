@@ -382,6 +382,7 @@ export type Metadata = {
   },
   capabilities?: {
     regenerateTitle?: boolean
+    codexCredentialRecovery?: boolean
   },
   machineId?: string,
   claudeSessionId?: string, // Claude Code session ID

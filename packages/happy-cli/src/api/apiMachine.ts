@@ -111,7 +111,7 @@ interface DaemonToServerEvents {
 
 type MachineRpcHandlers = {
     spawnSession: (options: TracedSpawnSessionOptions) => Promise<SpawnSessionResult>;
-    resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string }) => Promise<SpawnSessionResult>;
+    resumeSession?: (sessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }) => Promise<SpawnSessionResult>;
     stopSession: (sessionId: string) => boolean;
     requestShutdown: () => void;
     refreshCodexUsage?: () => Promise<void>;
@@ -154,7 +154,7 @@ export class ApiMachineClient {
     private lastKnownCLIAvailability: CLIAvailability | null = null;
     private lastKnownResumeSupport: ResumeSupport | null = null;
     private rpcHandlerManager: RpcHandlerManager;
-    private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string }) => Promise<SpawnSessionResult>) | null = null;
+    private resumeSessionHandler: ((sessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }) => Promise<SpawnSessionResult>) | null = null;
     private reconnectInterval: NodeJS.Timeout | null = null;
     private readonly codexAttachCandidates = createCodexAttachCandidateService({
         statePath: join(configuration.happyHomeDir, 'codex-attach-candidates.json'),
@@ -550,7 +550,7 @@ export class ApiMachineClient {
         if (this.resumeSessionHandler) {
             if (!this.rpcHandlerManager.hasHandler(method)) {
                 this.rpcHandlerManager.registerHandler(method, async (params: any) => {
-                    const { sessionId, model, permissionMode, effort, codexSessionGrant } = params || {};
+                    const { sessionId, model, permissionMode, effort, codexSessionGrant, expectedFailedTurn, expectedWorkerPid } = params || {};
 
                     if (!sessionId || typeof sessionId !== 'string') {
                         throw new Error('Session ID is required');
@@ -561,7 +561,7 @@ export class ApiMachineClient {
                         throw new Error('Resume session handler not available');
                     }
 
-                    const result = await handler(sessionId, { model, permissionMode, effort, ...(codexSessionGrant !== undefined ? { codexSessionGrant } : {}) });
+                    const result = await handler(sessionId, { model, permissionMode, effort, ...(codexSessionGrant !== undefined ? { codexSessionGrant } : {}), ...(expectedFailedTurn ? { expectedFailedTurn } : {}), ...(expectedWorkerPid ? { expectedWorkerPid } : {}) });
                     switch (result.type) {
                         case 'success':
                             return { type: 'success', sessionId: result.sessionId };

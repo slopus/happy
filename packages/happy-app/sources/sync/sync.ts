@@ -77,6 +77,7 @@ import { log } from '@/log';
 import { gitStatusSync } from './gitStatusSync';
 import { resyncOnForeground } from './foregroundResync';
 import { AsyncLock } from '@/utils/lock';
+import { FailedCodexSessionRecovery } from './failedCodexSessionRecovery';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
@@ -919,7 +920,7 @@ class Sync {
         return true;
     };
 
-    private loadHistoryBoundary = (id: string, direction: 'older' | 'newer' | 'latest', viewport?: HistoryViewportReader): Promise<void> => {
+    private loadHistoryBoundary = (id: string, direction: 'older' | 'newer' | 'latest', viewport?: HistoryViewportReader, verifyLatest = false): Promise<void> => {
         const existing = this.historyWindowLoads.get(id);
         if (existing && this.historyBoundaryLoadingTokens.get(id)?.isCurrent()) return existing;
         const history = this.localHistory;
@@ -952,7 +953,7 @@ class Sync {
             try {
                 let latest = direction === 'latest' ? await history?.readWindow(id) ?? null : null;
                 if (!owner.isCurrent()) return;
-                if (latest && !latest.isAtLatest) {
+                if (latest && (!latest.isAtLatest || verifyLatest)) {
                     const afterSeq = latest.newestSeq ?? 0;
                     const response = await apiSocket.request(`/v3/sessions/${id}/messages?after_seq=${afterSeq}&limit=100`);
                     if (!owner.isCurrent()) return;
@@ -989,6 +990,7 @@ class Sync {
                         if (!owner.isCurrent()) return;
                         if (response.status === 404) { this.removeSessionLocally(id); return; }
                         if (!response.ok) throw new Error(`History ${direction} failed: ${response.status}`);
+                        if (direction === 'latest') verifiedLatestFromNetwork = true;
                         const data = await response.json() as V3GetSessionMessagesResponse;
                         if (!owner.isCurrent()) return;
                         page = { direction: direction === 'newer' ? 'newer' : 'older', boundary: boundary!, ...data };
@@ -1045,6 +1047,8 @@ class Sync {
         })().finally(() => { if (this.historyWindowLoads.get(id) === pending) this.historyWindowLoads.delete(id); });
         this.historyWindowLoads.set(id, pending); return pending;
     };
+    public retryLatestMessageVerification = (id: string): Promise<void> => this.loadHistoryBoundary(id, 'latest', undefined, true);
+
     public loadNewerMessages = (id: string, viewport?: HistoryViewportReader): Promise<void> => this.historyWindows.get(id)?.hasMoreNewer === false
         ? Promise.resolve() : this.loadHistoryBoundary(id, 'newer', viewport);
     public jumpToLatestMessages = async (id: string): Promise<void> => {
@@ -1815,7 +1819,26 @@ class Sync {
         return { uploaded, failed };
     }
 
+    private failedCodexRecovery = new FailedCodexSessionRecovery();
+
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions): Promise<LocalMessageQueueReceipt> {
+        const recoveryOwner = this.encryption;
+        const failedSession = storage.getState().sessions[sessionId];
+        await this.failedCodexRecovery.ensure(failedSession, recoveryOwner, async () => {
+            const { machineResumeSession } = await import('./ops');
+            if (this.encryption !== recoveryOwner || !accountRuntimeCurrent() || options?.isCurrent?.() === false) {
+                throw new Error('local-message-session-unavailable');
+            }
+            const modes = resolveMessageModeMeta(failedSession!, storage.getState().settings);
+            return machineResumeSession({ machineId: failedSession!.metadata!.machineId!, sessionId, agent: 'codex',
+                model: modes.model ?? undefined, permissionMode: modes.permissionMode, effort: modes.effort,
+                ...(failedSession!.agentState!.turnStatus!.status === 'failed'
+                    ? { expectedFailedTurn: failedSession!.agentState!.turnStatus! }
+                    : { expectedWorkerPid: failedSession!.metadata!.hostPid }) });
+        });
+        if (this.encryption !== recoveryOwner || !accountRuntimeCurrent() || options?.isCurrent?.() === false) {
+            throw new Error('local-message-session-unavailable');
+        }
         const snapshots = { session: storage.getState().sessions[sessionId], settings: storage.getState().settings };
         if (!snapshots.session?.metadata?.continuationContext || !snapshots.session.metadata.continuationOfSessionId) {
             return this.sendMessageWithContext(sessionId, text, options, snapshots);
@@ -2881,7 +2904,7 @@ class Sync {
                 const reading = await historyOwner.readReadingState(sessionId);
                 const window = await historyOwner.readWindow(sessionId, { anchorSeq: reading?.anchorSeq });
                 if (window) return { messages: window.messages, hasMore: window.hasMoreOlder, localWindow: window,
-                    revalidateTail: (!reading || reading.followLatest === true) && !window.isAtLatest };
+                    revalidateTail: !reading || reading.followLatest === true };
                 return this.fetchLatestMessagePageRaw(sessionId);
             })() : this.fetchLatestMessagePageRaw(sessionId);
         const operation: SessionRouteOperation = {
@@ -2910,7 +2933,9 @@ class Sync {
             if (!found) return 'not-found';
 
             if (hasLoadedMessageCache) {
-                if (!this.localHistory) {
+                if (this.localHistory && storage.getState().sessionMessages[sessionId]?.isAtLatest !== false) {
+                    await this.loadHistoryBoundary(sessionId, 'latest', undefined, true);
+                } else if (!this.localHistory) {
                     await this.getMessagesSync(sessionId).invalidateAndAwait();
                     this.markLatestVerified(sessionId, operation.committedPageOperation);
                 }
@@ -2938,8 +2963,9 @@ class Sync {
                         // Replaying that winner as local history would clear its
                         // verification before Deferred can paint it.
                         if (this.localHistory === historyOwner && this.sessionRouteOwnership.owns(owner)
-                            && this.historyWindows.get(sessionId)?.isAtLatest !== true) {
-                            void this.jumpToLatestMessages(sessionId);
+                            && this.sessionMessageLoadGate.isCurrent(operation.messageLoad)
+                            && storage.getState().sessionMessages[sessionId]?.latestVerifiedOwnerEpoch !== owner.ownerEpoch) {
+                            void this.loadHistoryBoundary(sessionId, 'latest', undefined, true);
                         }
                     }, 0);
                     return 'ready';

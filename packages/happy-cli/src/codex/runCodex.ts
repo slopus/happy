@@ -71,7 +71,7 @@ import type { GoalCommand, UsageCommand } from '@/parsers/specialCommands';
 import { listCodexSkillNames } from './codexSkills';
 import { registerSessionTitleWorker } from '@/title/sessionTitleWorker';
 import { updateQueuedMessageCount } from '@/api/sessionTurnStatus';
-import { mergeReconnectMetadata } from './reconnectMetadata';
+import { mergeReconnectMetadata, applyCodexReconnectUpdate } from './reconnectMetadata';
 import type { WorkerSessionStartupLifecycle } from '@/api/sessionStartupTrace';
 import { startCodexAccountWorkerObserver, codexAccountSessionMetadata } from './codexAccountWorker';
 import { CodexSessionCredentialRecovery } from './codexSessionCredentialRecovery';
@@ -423,6 +423,8 @@ export async function runCodex(opts: {
     const metadata = {
         ...hydratedMetadata,
         ...codexAccountSessionMetadata(),
+        capabilities: { ...hydratedMetadata.capabilities, codexCredentialRecovery: Boolean(process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID && process.env.CODEX_HOME
+            && basename(process.env.CODEX_HOME).startsWith('happy-codex-home-')) },
         codexPawsOriginToken,
         ...(!hydratedMetadata.summary?.text?.trim() && importedSessionTitle
             ? { summary: { text: importedSessionTitle, updatedAt: Date.now() } }
@@ -487,12 +489,7 @@ export async function runCodex(opts: {
     if (reconnectSessionId) {
         session.suppressNextArchiveSignal();
         session.skipExistingMessages();
-        reconnectMetadataReady = session.updateMetadataAndAwait((meta) => ({
-            ...meta,
-            codexPawsOriginToken: meta.codexPawsOriginToken ?? codexPawsOriginToken,
-            lifecycleState: 'running',
-            archivedBy: undefined,
-        })).then(() => {
+        reconnectMetadataReady = session.updateMetadataAndAwait((meta) => applyCodexReconnectUpdate(meta, metadata)).then(() => {
             codexPawsOriginToken = session.getMetadata()?.codexPawsOriginToken ?? codexPawsOriginToken;
         });
     }

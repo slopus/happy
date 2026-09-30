@@ -287,6 +287,8 @@ export interface ResumeSessionOptions {
     sessionId: string;
     /** Source session flavor; required so Codex never silently skips authorization. */
     agent: string;
+    expectedFailedTurn?: { turnId?: string; updatedAt: number };
+    expectedWorkerPid?: number;
 }
 
 // Exported session operation functions
@@ -514,8 +516,8 @@ export async function codexListRewindPoints(
 export async function machineResumeSession(
     options: ResumeSessionOptions & { model?: string; permissionMode?: string; effort?: string | null },
 ): Promise<SpawnSessionResult> {
-    const { machineId, sessionId, agent, model, permissionMode, effort } = options;
-    return machineStartSession(machineId, 'resume-happy-session', agent === 'codex', { sessionId, model, permissionMode, effort });
+    const { machineId, sessionId, agent, model, permissionMode, effort, expectedFailedTurn, expectedWorkerPid } = options;
+    return machineStartSession(machineId, 'resume-happy-session', agent === 'codex', { sessionId, model, permissionMode, effort, ...(expectedFailedTurn ? { expectedFailedTurn } : {}), ...(expectedWorkerPid ? { expectedWorkerPid } : {}) });
 }
 
 export async function machineAttachCodexCandidate(options: {

@@ -29,3 +29,19 @@ export function mergeReconnectMetadata(
         return localMetadata;
     }
 }
+
+/** metadata 版本冲突后仍以当前 worker 的身份与恢复能力完成重连。 */
+export function applyCodexReconnectUpdate(current: Metadata, worker: Metadata): Metadata {
+    return {
+        ...current,
+        hostPid: worker.hostPid,
+        startedBy: worker.startedBy,
+        startedFromDaemon: worker.startedFromDaemon,
+        capabilities: { ...current.capabilities, ...worker.capabilities },
+        codexAccountProfileId: worker.codexAccountProfileId,
+        codexAccountCredentialVersion: worker.codexAccountCredentialVersion,
+        codexPawsOriginToken: current.codexPawsOriginToken ?? worker.codexPawsOriginToken,
+        lifecycleState: 'running',
+        archivedBy: undefined,
+    };
+}

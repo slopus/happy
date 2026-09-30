@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiSessionClient } from './apiSession';
+import { applyCodexReconnectUpdate } from '@/codex/reconnectMetadata';
 import { ApiClient } from './api';
 import { createWorkerSessionStartupLifecycleFromEnvironment, WorkerSessionStartupLifecycle } from './sessionStartupTrace';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
@@ -952,6 +953,18 @@ describe('ApiSessionClient v3 messages API migration', () => {
         await new Promise(resolve => setTimeout(resolve, 10));
 
         expect(mockSocket.emitWithAck).not.toHaveBeenCalled();
+    });
+
+    it('persists the current Codex worker identity and recovery capability after a metadata version conflict', async () => {
+        const client = new ApiSessionClient('fake-token', session);
+        const latest = { ...session.metadata, hostPid: 12, capabilities: { regenerateTitle: true }, codexSyncCursor: { threadId: 'thread', turnId: 'latest-turn' } };
+        const worker = { ...session.metadata, hostPid: 99, capabilities: { codexCredentialRecovery: true } };
+        mockSocket.emitWithAck.mockResolvedValueOnce({ result: 'version-mismatch', version: 3, metadata: encryptContent(session, latest) })
+            .mockImplementationOnce(async (_event: string, payload: any) => ({ result: 'success', version: 4, metadata: payload.metadata }));
+        await client.updateMetadataAndAwait(meta => applyCodexReconnectUpdate(meta, worker));
+        expect(mockSocket.emitWithAck).toHaveBeenCalledTimes(2);
+        const saved = decrypt(session.encryptionKey, session.encryptionVariant, decodeBase64(mockSocket.emitWithAck.mock.calls[1][1].metadata));
+        expect(saved).toMatchObject({ hostPid: 99, capabilities: { regenerateTitle: true, codexCredentialRecovery: true }, codexSyncCursor: latest.codexSyncCursor });
     });
 
     it('fresh ready clears stale running while preserving permission state through a version retry', async () => {

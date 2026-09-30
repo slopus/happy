@@ -6,7 +6,7 @@ import type { SpawnOptions } from 'node:child_process';
 
 import { ApiClient } from '@/api/api';
 import { TrackedSession, SessionEncryptionData } from './types';
-import { MachineMetadata, DaemonState, Metadata } from '@/api/types';
+import { MachineMetadata, DaemonState, Metadata, AgentState } from '@/api/types';
 import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { logger } from '@/ui/logger';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
@@ -28,6 +28,7 @@ import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { detectCLIAvailability } from '@/utils/detectCLI';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { isUnusedCodexSession } from './emptyCodexSession';
+import { stopDetachedCodexWorker } from './stopDetachedCodexWorker';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
 import { CODEX_ACCOUNT_UNSET_ENV, withCodexAccountLaunch, type CodexAccountLaunch } from './codexAccountLaunch';
@@ -278,6 +279,8 @@ export async function startDaemon(): Promise<void> {
     // Pre-populate from disk so sessions survive daemon restarts.
     const sessionIdToFinishedSession = new Map<string, TrackedSession>();
     const resumeSessionInFlight = new Map<string, Promise<SpawnSessionResult>>();
+    const recoveredFailedTurns = new Map<string, { key: string; worker: TrackedSession }>();
+    const failedTurnKey = (turn: { turnId?: string; updatedAt: number }) => `${turn.turnId ?? ''}:${turn.updatedAt}`;
     const persisted = readPersistedSessions();
     for (const [id, s] of Object.entries(persisted)) {
       sessionIdToFinishedSession.set(id, {
@@ -809,7 +812,7 @@ export async function startDaemon(): Promise<void> {
       sessionId: string,
       encryptionKey: Uint8Array,
       encryptionVariant: 'legacy' | 'dataKey',
-    ): Promise<{ metadata: Metadata; seq: number; metadataVersion: number; active: boolean } | null> => {
+    ): Promise<{ metadata: Metadata; seq: number; metadataVersion: number; active: boolean; agentState: AgentState | null } | null> => {
       try {
         const response = await axios.get(`${configuration.serverUrl}/v1/sessions`, {
           headers: { Authorization: `Bearer ${credentials.token}` },
@@ -821,6 +824,7 @@ export async function startDaemon(): Promise<void> {
           metadata: string;
           seq: number;
           metadataVersion: number;
+          agentState?: string | null;
         }> }).sessions;
         const matched = sessions.find(s => s.id === sessionId);
         if (!matched) return null;
@@ -829,6 +833,7 @@ export async function startDaemon(): Promise<void> {
         return {
           metadata: decrypted as Metadata,
           active: matched.active,
+          agentState: matched.agentState ? decrypt(encryptionKey, encryptionVariant, decodeBase64(matched.agentState)) as AgentState | null : null,
           seq: matched.seq,
           metadataVersion: matched.metadataVersion,
         };
@@ -838,7 +843,7 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    const resumeSessionUnlocked = async (happySessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string }): Promise<SpawnSessionResult> => {
+    const resumeSessionUnlocked = async (happySessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }): Promise<SpawnSessionResult> => {
       try {
         const tracked = findTrackedSessionById(happySessionId);
         if (!tracked) {
@@ -865,6 +870,11 @@ export async function startDaemon(): Promise<void> {
           }
           return { type: 'error', errorMessage: `Session ${happySessionId} is not tracked by this daemon. It may have been started before the daemon or on another machine.` };
         }
+        const recovered = recoveredFailedTurns.get(happySessionId);
+        if (options?.expectedFailedTurn && recovered?.key === failedTurnKey(options.expectedFailedTurn)
+            && recovered.worker === tracked && pidToTrackedSession.get(tracked.pid) === tracked) {
+          return { type: 'success', sessionId: happySessionId };
+        }
         if (!tracked.happySessionMetadataFromLocalWebhook) {
           return { type: 'error', errorMessage: `Session ${happySessionId} has no metadata. Cannot resume.` };
         }
@@ -881,6 +891,25 @@ export async function startDaemon(): Promise<void> {
           tracked.encryption.encryptionKey,
           tracked.encryption.encryptionVariant,
         );
+        if (options?.expectedWorkerPid && serverSnapshot
+            && (serverSnapshot.metadata.hostPid !== options.expectedWorkerPid
+              || serverSnapshot.agentState?.turnStatus?.status === 'running'
+              || serverSnapshot.metadata.capabilities?.codexCredentialRecovery === true)) {
+          return { type: 'success', sessionId: happySessionId };
+        }
+        if (options?.expectedFailedTurn || options?.expectedWorkerPid) {
+          if (!serverSnapshot) throw new Error('Cannot verify the current worker before recovery.');
+        }
+        if (options?.expectedFailedTurn) {
+          if (!serverSnapshot) throw new Error('Cannot verify the current failed turn before recovery.');
+          const currentTurn = serverSnapshot.agentState?.turnStatus;
+          // 其他设备可能已恢复或开始新回合，不能再次重启正在工作的执行进程。
+          if (currentTurn?.status === 'running' || (serverSnapshot.active && (currentTurn?.status !== 'failed'
+              || currentTurn.turnId !== options.expectedFailedTurn.turnId
+              || currentTurn.updatedAt !== options.expectedFailedTurn.updatedAt))) {
+            return { type: 'success', sessionId: happySessionId };
+          }
+        }
         if (serverSnapshot) {
           metadata = serverSnapshot.metadata;
           tracked.happySessionMetadataFromLocalWebhook = serverSnapshot.metadata;
@@ -930,7 +959,21 @@ export async function startDaemon(): Promise<void> {
         await fs.access(launch.cwd);
 
         const agent = metadata?.flavor === 'codex' || metadata?.codexThreadId ? 'codex' : 'claude';
-        return withCodexAccountLaunch({ agent, codexSessionGrant: options?.codexSessionGrant }, api, machineId, async (codexLaunch) => {
+        let recoverySuperseded = false;
+        const resumed = await withCodexAccountLaunch({ agent, codexSessionGrant: options?.codexSessionGrant }, api, machineId, async (codexLaunch) => {
+        if (options?.expectedFailedTurn || options?.expectedWorkerPid) {
+          const latest = await fetchServerSessionSnapshot(happySessionId, tracked.encryption!.encryptionKey, tracked.encryption!.encryptionVariant);
+          if (!latest) return { type: 'error', errorMessage: 'Cannot verify the failed turn before stopping its worker.' };
+          const turn = latest.agentState?.turnStatus;
+          if (options?.expectedFailedTurn
+            ? turn?.status === 'running' || (latest.active && (turn?.status !== 'failed' || failedTurnKey(turn) !== failedTurnKey(options.expectedFailedTurn)))
+            : latest.metadata.hostPid !== options.expectedWorkerPid || turn?.status === 'running'
+              || latest.metadata.capabilities?.codexCredentialRecovery === true) {
+            recoverySuperseded = true;
+            // 返回错误使未使用的新凭证目录被清理，不把它关联到正在工作的原会话。
+            return { type: 'error', errorMessage: 'Recovery was superseded by a newer turn.' };
+          }
+        }
         // Do this only after metadata, cwd, and (for a bound Codex account) the
         // fresh launch credential/history have been validated. Never allow the
         // old and replacement wrappers to own one Happy session concurrently.
@@ -949,6 +992,10 @@ export async function startDaemon(): Promise<void> {
           if (!exited) {
             return { type: 'error', errorMessage: 'The failed session did not stop cleanly, so Paws did not start a replacement.' };
           }
+        }
+        if (!liveEntry && agent === 'codex') {
+          await stopDetachedCodexWorker({ pid: metadata.hostPid, sessionId: happySessionId, machineId,
+            profileId: metadata.codexAccountProfileId, homesRoot: join(configuration.happyHomeDir, 'codex-session-homes') });
         }
         const env = {
             ...process.env,
@@ -973,6 +1020,7 @@ export async function startDaemon(): Promise<void> {
           sourceThreadId: metadata.codexThreadId,
           sourceProfileId: metadata.codexAccountProfileId,
         });
+        return recoverySuperseded ? { type: 'success', sessionId: happySessionId } : resumed;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : (error && typeof error === 'object' ? JSON.stringify(error) : String(error));
         logger.debug(`[DAEMON RUN] Failed to resume session: ${errorMessage}`, error instanceof Error ? error.stack : undefined);
@@ -983,13 +1031,19 @@ export async function startDaemon(): Promise<void> {
       }
     };
 
-    const resumeSession = (happySessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string }): Promise<SpawnSessionResult> => {
+    const resumeSession = (happySessionId: string, options?: { model?: string; permissionMode?: string; effort?: string | null; codexSessionGrant?: string; expectedFailedTurn?: { turnId?: string; updatedAt: number }; expectedWorkerPid?: number }): Promise<SpawnSessionResult> => {
       const existing = resumeSessionInFlight.get(happySessionId);
       if (existing) return existing;
       const pending = resumeSessionUnlocked(happySessionId, options);
       resumeSessionInFlight.set(happySessionId, pending);
       void pending.then(
-        () => resumeSessionInFlight.delete(happySessionId),
+        result => {
+          resumeSessionInFlight.delete(happySessionId);
+          const worker = findTrackedSessionById(happySessionId);
+          if (result.type === 'success' && options?.expectedFailedTurn && worker && pidToTrackedSession.get(worker.pid) === worker) {
+            recoveredFailedTurns.set(happySessionId, { key: failedTurnKey(options.expectedFailedTurn), worker });
+          }
+        },
         () => resumeSessionInFlight.delete(happySessionId),
       );
       return pending;

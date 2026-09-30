@@ -69,6 +69,8 @@ const mocks = vi.hoisted(() => ({
     hasMoreNewer: false,
     historyLoaded: true,
     verifiedOwnerEpoch: 1 as number | null,
+    newerError: null as string | null,
+    retryLatestMessageVerification: vi.fn(async () => {}),
     overlayPublish: vi.fn(),
     overlayReset: vi.fn(),
     abandonSessionRoute: vi.fn(),
@@ -367,7 +369,7 @@ vi.mock('@/sync/storage', () => ({
     useSession: () => mocks.sessionAvailable ? mocks.session : null,
     useSessionMessages: () => ({ messages: mocks.sessionMessages, isLoaded: mocks.historyLoaded,
         isAtLatest: mocks.isAtLatest, hasMoreNewer: mocks.hasMoreNewer,
-        latestVerifiedOwnerEpoch: mocks.verifiedOwnerEpoch }),
+        latestVerifiedOwnerEpoch: mocks.verifiedOwnerEpoch, newerError: mocks.newerError }),
     useSessionUsage: () => undefined,
     useSetting: (key: string) => {
         if (key === 'fileDiffsSidebar') return mocks.fileDiffsSidebarEnabled;
@@ -386,6 +388,7 @@ vi.mock('@/sync/sync', () => ({ sync: {
     onSessionVisible: vi.fn(),
     openSession: mocks.openSession,
     sendMessage: mocks.sendMessage,
+    retryLatestMessageVerification: mocks.retryLatestMessageVerification,
     hasPendingOutboxMessagesForSession: mocks.hasPendingOutboxMessagesForSession,
     sessionRouteBecameInteractive: mocks.sessionRouteBecameInteractive,
 } }));
@@ -485,6 +488,7 @@ describe('SessionView Agent-space boundary', () => {
         mocks.hasMoreNewer = false;
         mocks.historyLoaded = true;
         mocks.verifiedOwnerEpoch = 1;
+        mocks.newerError = null;
         mocks.session.agentState = null;
         mocks.sendMessage.mockResolvedValue(undefined);
         mocks.hasPendingOutboxMessagesForSession.mockReturnValue(false);
@@ -614,6 +618,23 @@ describe('SessionView Agent-space boundary', () => {
         expect(continueButton.props.disabled).toBe(true);
         expect(continueButton.findByType('Text').children).toContain('common.loading');
         await act(async () => { continueButton.props.onPress(); });
+        expect(mocks.sendMessage).not.toHaveBeenCalled();
+        act(() => renderer.unmount());
+    });
+
+    it('offers an actionable verification retry without sending another task after a network error', async () => {
+        mocks.isDataReady = true;
+        mocks.statusState = 'failed';
+        mocks.session.agentState = { turnStatus: { status: 'failed', updatedAt: 1, turnId: 'turn-1' } };
+        mocks.verifiedOwnerEpoch = null;
+        mocks.newerError = 'Latest history failed: 503';
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        const button = renderer.root.findByProps({ testID: 'failed-session-continue-button' });
+        expect(button.props.disabled).toBe(false);
+        await act(async () => { button.props.onPress(); button.props.onPress(); });
+        expect(mocks.retryLatestMessageVerification).toHaveBeenCalledTimes(1);
+        expect(mocks.retryLatestMessageVerification).toHaveBeenCalledWith('session-1');
         expect(mocks.sendMessage).not.toHaveBeenCalled();
         act(() => renderer.unmount());
     });
