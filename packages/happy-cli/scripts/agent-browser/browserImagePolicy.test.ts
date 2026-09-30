@@ -32,11 +32,14 @@ describe('browser image Chromium policy', () => {
     it('lets Chromium exit on its own when the container stops, so a login just made reaches the profile volume', () => {
         const entrypoint = readFileSync(join(here, 'images/browser-entrypoint.sh'), 'utf8')
         expect(entrypoint).toMatch(/^trap on_term TERM INT$/m)
-        expect(entrypoint).toMatch(/kill -TERM "\$chrome_pid"/)
-        expect(entrypoint).toMatch(/chromium exited cleanly/)
+        expect(entrypoint.indexOf('python3 /usr/local/bin/browser-shutdown')).toBeGreaterThan(0)
+        expect(entrypoint.indexOf('python3 /usr/local/bin/browser-shutdown')).toBeLessThan(entrypoint.indexOf('pkill -TERM -x chromium'))
+        expect(readFileSync(join(here, 'images/browser.Dockerfile'), 'utf8')).toContain('python3-websocket')
+        expect(readFileSync(join(here, 'images/browser-shutdown.py'), 'utf8')).toContain('Browser.close')
+        expect(entrypoint).toMatch(/all Chromium processes exited/)
         expect(entrypoint).toMatch(/did not exit within 20 s/)
         // docker stop must wait longer than the entrypoint does.
-        expect(readFileSync(join(here, 'abp-stack.mjs'), 'utf8')).toMatch(/const BROWSER_STOP_S = 25;/)
+        expect(readFileSync(join(here, 'abp-stack.mjs'), 'utf8')).toMatch(/const BROWSER_STOP_S = 30;/)
     })
 })
 

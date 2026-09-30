@@ -233,7 +233,7 @@ describe('abp-stack stop (admission fence, drain, verified stop)', () => {
         const stopRuntime = indexOf(calls, 'docker stop -t 30 abp-runtime')
         expect(stopRuntime).toBeGreaterThan(1)
         expect(host.logs.join('\n')).toMatch(/draining: 2 running/)
-        expect(indexOf(calls, 'docker stop -t 25 abp-browser-main')).toBeGreaterThan(stopRuntime)
+        expect(indexOf(calls, 'docker stop -t 30 abp-browser-main')).toBeGreaterThan(stopRuntime)
         expect(calls).toContain('docker inspect -f {{.State.Running}} abp-runtime')
         expect(calls.some((line) => line.startsWith('docker kill'))).toBe(false)
     })
@@ -314,7 +314,7 @@ describe('abp-stack supervise', () => {
             [/^docker inspect -f \{\{\.State\.Running\}\} \{\{\.State\.ExitCode\}\}/, () => ({ stdout: 'false 1' })],
         ] })
         createStack(host.deps).superviseOnce(new Map())
-        expect(host.calls).toContain('docker stop -t 25 abp-browser-main')
+        expect(host.calls).toContain('docker stop -t 30 abp-browser-main')
         expect(host.calls.some((line) => line.startsWith('docker start'))).toBe(false)
         expect(host.logs.join('\n')).toMatch(/egress firewall/)
     })

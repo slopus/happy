@@ -36,7 +36,7 @@ const RESTART_BACKOFF_MS = { first: 2_000, max: 60_000, resetAfterRunningMs: 60_
 const DEFAULT_READY_TIMEOUT_MS = 180_000;
 const DEFAULT_DRAIN_MS = 60_000;
 /** Browser stop: the entrypoint gives Chromium 20 s to exit and write its profile (cookies). */
-const BROWSER_STOP_S = 25;
+const BROWSER_STOP_S = 30;
 const EGRESS_CHECK_INTERVAL_MS = 10_000;
 const FIREWALL = `${PATHS.libexec}/abp-firewall`;
 /** Set by emergency-stop so the service stop skips the drain; removed by the next start. */
@@ -1000,7 +1000,7 @@ export function createStack(deps) {
         const poc = join(packageDir, "scripts/browser-poc/images");
         const own = join(packageDir, "scripts/agent-browser/images");
         for (const [from, name] of [[join(poc, "runtime-entrypoint.sh"), "runtime-entrypoint.sh"], [join(poc, "cdp-proxy.py"), "cdp-proxy.py"], [join(poc, "instance-server.py"), "instance-server.py"],
-          [join(own, "runtime.Dockerfile"), "runtime.Dockerfile"], [join(own, "browser.Dockerfile"), "browser.Dockerfile"], [join(own, "browser-entrypoint.sh"), "browser-entrypoint.sh"],
+          [join(own, "runtime.Dockerfile"), "runtime.Dockerfile"], [join(own, "browser.Dockerfile"), "browser.Dockerfile"], [join(own, "browser-entrypoint.sh"), "browser-entrypoint.sh"], [join(own, "browser-shutdown.py"), "browser-shutdown.py"],
           [join(own, "chromium-policy.json"), "chromium-policy.json"]]) {
           deps.copyFile(from, join(staging, name));
         }
