@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { parseRuntimeConfig } from '../../src/browserRuntime/runtimeConfig'
+import { sharedProfileId } from '../../src/browserRuntime/tenancy'
 import {
     DEFAULT_RUNTIME_PORT, PATHS, browserCreateArgs, chromiumSeccompProfile, daemonEnv, egressRules, egressRulesFile, fenceRule, firewallRules,
     firewallRulesFile, happySettings, mergeInstallOptions, profileVolumeName, profileVolumeLabels, networkCreateArgs, permissionTable, runtimeConfig, runtimeCreateArgs, stackLayout, sudoersDropIn,
@@ -70,6 +71,31 @@ describe('install options', () => {
             expect(() => mergeInstallOptions(base(), override), name).toThrow()
         }
         expect(() => mergeInstallOptions(undefined, { workspaceId: 'w', profiles: [{ profileId: 'a', principalId: 'u' }], issuers: [{ kid: 'k', publicKeyPem: pem() }] }), 'missing machineId').toThrow(/machineId/)
+    })
+
+    it('installs a shared machine with no profile yet (users get theirs on first use or by add-profile), and fixes the mode', () => {
+        const shared = mergeInstallOptions(undefined, { tenancyMode: 'shared', machineId: 'machine-1', workspaceId: 'ws-1', issuers: [{ kid: 'k1', publicKeyPem: pem() }] })
+        expect(shared).toMatchObject({ tenancyMode: 'shared', profiles: [] })
+        expect(shared).not.toHaveProperty('agentProfileId')
+        expect(base().tenancyMode).toBe('dedicated')
+        // Profiles of a shared machine come from abp-stack add-profile, never from --profile.
+        expect(() => mergeInstallOptions(shared, { profiles: [{ profileId: 'main', principalId: 'u' }] })).toThrow(/add-profile/)
+        const withUsers = { ...shared, profiles: ['user-1', 'user-2'].map((principalId, index) => ({ profileId: sharedProfileId(principalId), principalId, assignmentId: String(index).repeat(32) })) }
+        expect(mergeInstallOptions(withUsers, {}).profiles).toHaveLength(2)
+        expect(() => mergeInstallOptions({ ...shared, profiles: [{ profileId: 'main', principalId: 'user-1', assignmentId: '0'.repeat(32) }] }, {})).toThrow(/profileId/)
+        const nine = Array.from({ length: 9 }, (_, index) => ({ profileId: sharedProfileId(`user-${index}`), principalId: `user-${index}`, assignmentId: String(index).repeat(32) }))
+        expect(() => mergeInstallOptions({ ...shared, profiles: nine }, {})).toThrow(/at most 8/)
+        expect(() => mergeInstallOptions(base(), { tenancyMode: 'shared' })).toThrow(/tenancyMode/)
+        expect(() => mergeInstallOptions(shared, { tenancyMode: 'dedicated' })).toThrow(/tenancyMode/)
+        expect(() => mergeInstallOptions(undefined, { tenancyMode: 'other', machineId: 'm', workspaceId: 'w', issuers: [{ kid: 'k1', publicKeyPem: pem() }] })).toThrow(/tenancyMode/)
+    })
+
+    it('writes tenancyMode to runtime.json for a shared machine only (a pre-contract-3 image refuses it)', () => {
+        const shared = mergeInstallOptions(undefined, { tenancyMode: 'shared', machineId: 'machine-1', workspaceId: 'ws-1', issuers: [{ kid: 'k1', publicKeyPem: pem() }] })
+        const config = runtimeConfig(shared, { sessionGid: 1, daemonTokenSha256: 'b'.repeat(64) })
+        expect(config.tenancyMode).toBe('shared')
+        expect(parseRuntimeConfig(config).tenancyMode).toBe('shared')
+        expect(runtimeConfig(base(), { sessionGid: 1, daemonTokenSha256: 'b'.repeat(64) })).not.toHaveProperty('tenancyMode')
     })
 
     it('allows exactly one profile named main in release 1 (the Desktop requests profile main)', () => {

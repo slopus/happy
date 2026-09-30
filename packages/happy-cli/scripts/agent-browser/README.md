@@ -215,7 +215,7 @@ Install/runtime config schema 2, package `contract.json`, and image label
 `ai.saycode.abp.contract=2` prevent supported downgrade paths. Previous incompatible image
 pairs cannot be rolled back to; a failed upgrade with no compatible fallback stays stopped and
 fenced. These guards do not constrain an operator who manually replaces the tools as root.
-The installer disables/removes any former automatic-prune timer and `check` verifies the units are absent. Both staged and already-installed Happy packages must advertise contract 2; reusing an old daemon that omits fork lineage is refused even when no tarball was supplied.
+The installer disables/removes any former automatic-prune timer and `check` verifies the units are absent. Both staged and already-installed Happy packages must advertise contract 2 or later (images and packages of a shared machine: 3, whose runtime.json carries `tenancyMode`); reusing an old daemon that omits fork lineage is refused even when no tarball was supplied.
 For an old-image/legacy-volume installation, use `abp-install --no-start` with the current package,
 then `abp-stack upgrade --images <contract-2 images> --no-start`. This stages compatible images
 without touching legacy data or admitting traffic. Confirm ownership and migrate next. Unknown

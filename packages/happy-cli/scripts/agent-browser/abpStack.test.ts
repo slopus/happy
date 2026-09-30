@@ -1069,6 +1069,12 @@ describe('installed daemon compatibility', () => {
         expect([...h.containers.values()].every((c) => !c.running)).toBe(true)
     })
 
+    it('accepts a newer (contract 3) package and images on a dedicated machine', async () => {
+        const h = fakeHost({ handlers: [[/ai.saycode.abp.contract/, () => ({ stdout: '3' })]] })
+        h.files.set('/opt/abp/happy/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json', { data: '{"contractVersion":3}', mode: 0o644, owner: 'root', group: 'root' })
+        await expect(createStack(h.deps).upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_NEW } })).resolves.not.toThrow()
+    })
+
     it("does not stop a running stack when a supervisor tick lands inside abp-install's package swap (marker briefly absent)", () => {
         const h = fakeHost()
         h.files.delete('/opt/abp/happy/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json')

@@ -52,6 +52,8 @@ export const DEFAULT_BROWSER_SUBNET_POOL = "10.249.240.0/20";
 /** The only profile release 1 installs (the Desktop requests it). */
 export const RELEASE_PROFILE = "main";
 const MAX_PROFILES = 16;
+/** Profiles of a shared machine (one network slot each; the Runtime's MAX_SHARED_PROFILES). */
+export const MAX_SHARED_PROFILES = 8;
 /** Container-side paths (fixed by the images). */
 const IN_CONTAINER = { secrets: "/run/secrets/abp", vncPassword: "/run/secrets/abp/vnc-password", state: "/var/lib/abp", stateDir: "/var/lib/abp/state", profile: "/home/browser/profile" };
 export const STACK_LABEL = "ai.saycode.abp=stack";
@@ -132,6 +134,11 @@ export function mergeInstallOptions(saved, flags) {
     ...Object.fromEntries(Object.entries(flags).filter(([key, value]) => value !== undefined && key !== "issuers")),
   };
   if (flags.issuers !== undefined) merged.trustedIssuers = flags.issuers;
+  // Fixed at install: the broker ledger, profiles and networks differ between the modes.
+  merged.tenancyMode ??= "dedicated";
+  if (!["dedicated", "shared"].includes(merged.tenancyMode)) fail("tenancyMode", "must be dedicated or shared");
+  if (saved && (saved.tenancyMode ?? "dedicated") !== merged.tenancyMode) fail("tenancyMode", "is fixed at install; uninstall (volumes are kept) and install again to change it");
+  if (merged.tenancyMode === "shared") return mergeSharedProfiles(merged, flags);
   if (!merged.agentProfileId || (flags.profiles && !flags.agentProfileId && !flags.profiles.some((p) => p.profileId === merged.agentProfileId))) {
     merged.agentProfileId = merged.profiles?.[0]?.profileId;
   }
@@ -159,6 +166,31 @@ export function mergeInstallOptions(saved, flags) {
   // below support several profiles; lift this check together with the Desktop when that ships.
   if (merged.profiles.length !== 1 || merged.profiles[0].profileId !== RELEASE_PROFILE) fail("profiles", `release 1 installs exactly one profile named ${RELEASE_PROFILE} (--profile ${RELEASE_PROFILE}=<studio userId>)`);
   if (!seen.has(merged.agentProfileId)) fail("agentProfileId", "must be one of the configured profiles");
+  return validateCommon(merged);
+}
+
+/** Shared machines: a profile per user, added by abp-stack add-profile (or on first use), none at install. */
+function mergeSharedProfiles(merged, flags) {
+  if (flags.profiles || flags.agentProfileId) fail("profiles", "a shared machine's profiles are managed with abp-stack add-profile/remove-profile, not --profile");
+  delete merged.agentProfileId;
+  merged.schemaVersion = 2;
+  merged.profiles ??= [];
+  if (!Array.isArray(merged.profiles)) fail("profiles", "must be a list");
+  if (merged.profiles.length > MAX_SHARED_PROFILES) fail("profiles", `at most ${MAX_SHARED_PROFILES} on a shared machine`);
+  for (const [index, profile] of merged.profiles.entries()) {
+    if (!TEXT_ID.test(profile?.principalId ?? "")) fail(`profiles[${index}].principalId`, "is required");
+    if (profile.profileId !== sharedProfileId(profile.principalId)) fail(`profiles[${index}].profileId`, "must be u-<16 hex of sha256(principalId)>");
+    if (!/^[0-9a-f]{32}$/.test(profile.assignmentId ?? "")) fail(`profiles[${index}].assignmentId`, "must be 32 lowercase hex characters");
+  }
+  if (new Set(merged.profiles.map((profile) => profile.profileId)).size !== merged.profiles.length) fail("profiles", "a user has one profile");
+  for (const field of ["machineId", "workspaceId"]) {
+    if (typeof merged[field] !== "string" || !TEXT_ID.test(merged[field])) fail(field, "is required (1-256 printable characters)");
+  }
+  return validateCommon(merged);
+}
+
+/** Checks both modes share: issuers, sites, ports, networks, the Happy prefix. */
+function validateCommon(merged) {
   if (!Array.isArray(merged.trustedIssuers) || merged.trustedIssuers.length === 0) fail("trustedIssuers", "at least one --issuer <kid>=<public-key.pem> is required");
   merged.trustedIssuers = merged.trustedIssuers.map((issuer, index) => {
     if (!TEXT_ID.test(issuer?.kid ?? "")) fail(`trustedIssuers[${index}].kid`, "is required");
@@ -219,6 +251,8 @@ export function runtimeConfig(install, { sessionGid, daemonTokenSha256 }) {
   integer(sessionGid, "abp-session gid", 1, 2 ** 31 - 1);
   return {
     schemaVersion: 2,
+    // Dedicated machines leave it out, so their runtime.json still fits a contract 2 image (rollback).
+    ...install.tenancyMode === "shared" ? { tenancyMode: "shared" } : {},
     admissionHold: install.admissionHold === true,
     authMode: "production",
     machineId: install.machineId,
@@ -560,6 +594,8 @@ export function chromiumSeccompProfile(base) {
 }
 
 const principalHash = (principalId) => createHash("sha256").update(principalId).digest("hex").slice(0, 16);
+/** A shared machine's profile of a user (the Runtime's sharedProfileId). */
+export const sharedProfileId = (principalId) => `u-${principalHash(principalId)}`;
 
 /**
  * Docker volume holding a profile's browser data (cookies, logins) for one owner. Derived only from

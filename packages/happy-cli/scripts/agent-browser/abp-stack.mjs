@@ -31,6 +31,8 @@ import { PROFILE_COPY } from "./lib/profileCopy.mjs";
 const refusal = (message) => Object.assign(new Error(message), { exitCode: 78 });
 
 const IMAGE_ID = /^sha256:[0-9a-f]{64}$/;
+/** Lowest image and package contract an install runs on: shared machines need tenancyMode in runtime.json (3). */
+const requiredContract = (install) => (install?.tenancyMode === "shared" ? 3 : 2);
 const IMAGE_LABEL = '{{index .Config.Labels "ai.saycode.abp.image"}}';
 const RESTART_BACKOFF_MS = { first: 2_000, max: 60_000, resetAfterRunningMs: 60_000 };
 const DEFAULT_READY_TIMEOUT_MS = 180_000;
@@ -180,7 +182,8 @@ export function createStack(deps) {
       if (found.status !== 0) throw new Error(`${role} image ${ids[role]} is not loaded`);
       if (found.stdout !== ids[role]) throw refusal(`${role} image digest mismatch`);
       const contract = docker(["image", "inspect", "--format", '{{index .Config.Labels "ai.saycode.abp.contract"}}', ids[role]]);
-      if (contract.stdout !== "2") throw refusal(`${role} image requires assignment contract 2; downgrade refused`);
+      const required = requiredContract(install());
+      if (!/^\d+$/.test(contract.stdout) || Number(contract.stdout) < required) throw refusal(`${role} image requires assignment contract ${required}; downgrade refused`);
     }
   }
 
@@ -218,7 +221,8 @@ export function createStack(deps) {
     const marker = join(options.happyPrefix ?? PATHS.happyPrefix, "lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json");
     let contract;
     try { contract = readJson(marker); } catch {}
-    if (contract?.contractVersion !== 2) throw refusal("installed Happy package requires assignment/lineage contract 2; install the current --happy-tarball");
+    const required = requiredContract(options);
+    if (!(contract?.contractVersion >= required)) throw refusal(`installed Happy package requires assignment/lineage contract ${required}; install the current --happy-tarball`);
   }
   /**
    * checkPackage false (the periodic supervisor): abp-install swaps the package with two renames, and a tick

@@ -409,9 +409,9 @@ replace_happy_package() {
         rm -rf "$stage"
         die "the staged Happy package is incomplete; $prefix is unchanged"
     fi
-    if [ "$DRY_RUN" = 0 ] && ! "$NODE" -e 'const fs=require("fs"); const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(c.contractVersion!==2)process.exit(1)' "$stage/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json"; then
+    if [ "$DRY_RUN" = 0 ] && ! "$NODE" -e 'const fs=require("fs"); const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(!(c.contractVersion>=2))process.exit(1)' "$stage/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json"; then
         run rm -rf "$stage"
-        die "the staged Happy package lacks browser assignment contract 2; $prefix is unchanged"
+        die "the staged Happy package lacks browser assignment contract 2 or later; $prefix is unchanged"
     fi
     run touch "$stage/$HAPPY_PREFIX_MARKER"
     # Root-owned and not writable by anyone else (sandbox preflight), readable by agent, agent-sbx and abp-proxy.
@@ -433,8 +433,8 @@ install_happy() {
         [ -d "$(dirname "$HAPPY_PREFIX")" ] || ensure_dir "$(dirname "$HAPPY_PREFIX")" root root 0755
         replace_happy_package "$HAPPY_PREFIX" "$HAPPY_TARBALL"
     fi
-    if [ "$DRY_RUN" = 0 ] && ! "$NODE" -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(c.contractVersion!==2)process.exit(1)' "$HAPPY_PREFIX/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json"; then
-        die "installed Happy package requires assignment/lineage contract 2; provide the current --happy-tarball"
+    if [ "$DRY_RUN" = 0 ] && ! "$NODE" -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!(c.contractVersion>=2))process.exit(1)' "$HAPPY_PREFIX/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json"; then
+        die "installed Happy package requires assignment/lineage contract 2 or later; provide the current --happy-tarball"
     fi
     local entry=$HAPPY_PREFIX/lib/node_modules/@buzzni/happy-cli/dist/sandbox/egressProxyMain.mjs
     require_file "$HAPPY_PREFIX/bin/happy" "the Happy package (--happy-tarball)"
