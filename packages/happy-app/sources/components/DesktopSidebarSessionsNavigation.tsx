@@ -1,11 +1,13 @@
 import * as React from 'react';
 import {
+    AccessibilityInfo,
     FlatList,
     Platform,
     Pressable,
     ScrollView,
     TextInput,
     View,
+    findNodeHandle,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { usePathname, useRouter } from 'expo-router';
@@ -269,21 +271,23 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingVertical: 8,
     },
     multilineInput: { minHeight: 88, textAlignVertical: 'top' },
-    segmented: { backgroundColor: theme.colors.surfaceHigh, borderRadius: 7, flexDirection: 'row', padding: 2 },
-    segment: {
+    editorSettingTrigger: {
         alignItems: 'center',
-        borderRadius: 5,
-        flex: 1,
-        justifyContent: 'center',
+        backgroundColor: theme.colors.surface,
+        borderRadius: 7,
+        flexDirection: 'row',
+        gap: 10,
         minHeight: {
             [mq.only.width(0, 768)]: 44,
-            [mq.only.width(768)]: 34,
+            [mq.only.width(768)]: 42,
         },
-        paddingHorizontal: 8,
+        paddingHorizontal: 12,
     },
-    segmentSelected: { backgroundColor: theme.colors.surface },
-    segmentText: { color: theme.colors.textSecondary, fontSize: 12, ...Typography.default('semiBold') },
-    segmentTextSelected: { color: theme.colors.text },
+    editorSettingTriggerPressed: { backgroundColor: theme.colors.surfacePressed },
+    editorSettingTriggerExpanded: { backgroundColor: theme.colors.surfaceSelected },
+    editorSettingTriggerDisabled: { opacity: 0.5 },
+    editorSettingValue: { color: theme.colors.text, flex: 1, fontSize: 13, ...Typography.default(), textAlign: 'right' },
+    editorSettingChoices: { paddingTop: 8 },
     choices: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
     choice: {
         alignItems: 'center',
@@ -586,14 +590,9 @@ function SidebarListsView() {
 
     const createSession = React.useCallback((list: SidebarList) => {
         const draft = useNewSessionDraft.getState();
-        if (list.kind === 'workspace') {
-            if (list.machineId) draft.setMachineId(list.machineId);
-            if (list.path) draft.setPath(list.path);
-            if (list.defaultAgent) draft.setAgentType(list.defaultAgent);
-        } else {
-            draft.setAgentType('ask');
-            draft.setInput('');
-        }
+        if (list.machineId) draft.setMachineId(list.machineId);
+        if (list.path) draft.setPath(list.path);
+        if (list.defaultAgent) draft.setAgentType(list.defaultAgent);
         router.navigate({ pathname: '/new', params: { sidebarListId: list.id } });
     }, [router]);
 
@@ -743,9 +742,7 @@ function SidebarListsView() {
         if (item.type === 'list') {
             const { list } = item;
             const isExpanded = isSidebarGroupExpanded(sidebarGroupExpansion, 'lists', list.id, false);
-            const meta = list.kind === 'agent'
-                ? `${t('sidebarLists.agentList')} · ${t('newSession.askMode')}`
-                : [list.machineId, list.path].filter(Boolean).join(' · ') || t('sidebarLists.workspaceList');
+            const meta = [list.machineId, list.path].filter(Boolean).join(' · ') || t('sidebarLists.noPreset');
             return (
                 <WebDropTarget
                     active={dropFeedback?.entity === 'session' && dropFeedback.listId === list.id}
@@ -765,7 +762,7 @@ function SidebarListsView() {
                         <Pressable accessibilityRole="button" accessibilityState={{ expanded: isExpanded }} onPress={() => toggleExpanded(list.id)} style={({ pressed }) => [styles.listRowMain, pressed && styles.listRowPressed]} testID={`sidebar-list-${list.id}`}>
                             <Feather color={theme.colors.textSecondary} name={isExpanded ? 'chevron-down' : 'chevron-right'} size={15} />
                             <View style={[styles.listGlyph, { backgroundColor: theme.colors.surfaceHigh }]}>
-                                <Feather color={listColors[list.color]} name={list.kind === 'agent' ? 'cpu' : 'folder'} size={16} />
+                                <Feather color={listColors[list.color]} name="folder" size={16} />
                             </View>
                             <View style={styles.listCopy}>
                                 <Text numberOfLines={1} style={styles.listName}>{list.name}</Text>
@@ -968,11 +965,14 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
     const listColors = getListColors(theme.colors);
     const machines = useAllMachines({ includeOffline: true });
     const [name, setName] = React.useState('');
-    const [kind, setKind] = React.useState<'workspace' | 'agent'>('workspace');
     const [color, setColor] = React.useState<SidebarListColor>('blue');
     const [machineId, setMachineId] = React.useState<string | null>(null);
     const [path, setPath] = React.useState('');
     const [defaultAgent, setDefaultAgent] = React.useState<NewSessionAgentType | null>(null);
+    const [openSetting, setOpenSetting] = React.useState<'machine' | 'directory' | 'agent' | null>(null);
+    const machineTriggerRef = React.useRef<View>(null);
+    const directoryTriggerRef = React.useRef<View>(null);
+    const agentTriggerRef = React.useRef<View>(null);
     const selectedMachine = React.useMemo(
         () => machines.find((machine) => machine.id === machineId) ?? null,
         [machineId, machines],
@@ -995,28 +995,46 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
     }, [machineId, selectedMachine, sessions]);
     const duplicate = organization.lists.some((item) => item.id !== list?.id && item.name.toLocaleLowerCase() === name.trim().toLocaleLowerCase());
     const canSave = name.trim().length > 0 && !duplicate && (list !== null || organization.lists.length < SIDEBAR_LIST_MAX_COUNT);
+    const machineLabel = selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host || machineId || t('sidebarLists.noPreset');
+    const directoryLabel = path ? formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir) : t('sidebarLists.noPreset');
+    const agentLabel = defaultAgent === 'ask' ? t('newSession.askMode') : defaultAgent ? t(AGENT_LABEL_KEYS[defaultAgent]) : t('sidebarLists.noPreset');
+    const focusTrigger = (setting: 'machine' | 'directory' | 'agent') => {
+        if (typeof requestAnimationFrame !== 'function') return;
+        requestAnimationFrame(() => {
+            const target = setting === 'machine' ? machineTriggerRef.current : setting === 'directory' ? directoryTriggerRef.current : agentTriggerRef.current;
+            if (!target) return;
+            if (Platform.OS === 'web') {
+                (target as unknown as HTMLElement).focus?.();
+            } else {
+                const handle = findNodeHandle(target);
+                if (handle) AccessibilityInfo.setAccessibilityFocus(handle);
+            }
+        });
+    };
 
     React.useEffect(() => {
         if (!visible) return;
         setName(list?.name ?? '');
-        setKind(list?.kind ?? 'workspace');
         setColor(list?.color ?? 'blue');
-        setMachineId(list?.kind === 'workspace' ? list.machineId : null);
-        setPath(list?.kind === 'workspace' ? list.path ?? '' : '');
-        setDefaultAgent(list?.kind === 'workspace' ? list.defaultAgent : null);
+        setMachineId(list?.machineId ?? null);
+        setPath(list?.path ?? '');
+        setDefaultAgent(list?.defaultAgent ?? null);
+        setOpenSetting(null);
     }, [list, visible]);
 
     const save = () => {
         if (!canSave) return;
-        const common = {
+        onSave({
+            ...list,
             id: list?.id ?? createSidebarOrganizationId('list'),
             name: name.trim(),
+            kind: 'workspace',
             color,
+            machineId,
+            path: machineId && path.trim() ? path.trim() : null,
+            defaultAgent,
             createdAt: list?.createdAt ?? Date.now(),
-        };
-        onSave(kind === 'agent'
-            ? { ...common, kind: 'agent' }
-            : { ...common, kind: 'workspace', machineId, path: path.trim() || null, defaultAgent });
+        });
         onClose();
     };
     const deleteList = async () => {
@@ -1040,19 +1058,26 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
                     {duplicate ? <Text style={styles.fieldLabel}>{t('sidebarLists.duplicateListName')}</Text> : null}
                 </View>
                 <View style={styles.field}>
-                    <Text style={styles.fieldLabel}>{t('sidebarLists.listType')}</Text>
-                    <View accessibilityLabel={t('sidebarLists.listType')} accessibilityRole="radiogroup" style={styles.segmented}>
-                        {(['workspace', 'agent'] as const).map((value) => <Pressable aria-checked={kind === value} accessibilityRole="radio" accessibilityState={{ checked: kind === value }} key={value} onPress={() => setKind(value)} style={[styles.segment, kind === value && styles.segmentSelected]} testID={`sidebar-list-kind-${value}`}><Text style={[styles.segmentText, kind === value && styles.segmentTextSelected]}>{value === 'workspace' ? t('sidebarLists.workspaceList') : t('sidebarLists.agentList')}</Text></Pressable>)}
-                    </View>
-                </View>
-                <View style={styles.field}>
                     <Text style={styles.fieldLabel}>{t('sidebarLists.color')}</Text>
                     <View accessibilityLabel={t('sidebarLists.color')} accessibilityRole="radiogroup" style={styles.choices}>{SIDEBAR_LIST_COLORS.map((value) => <Pressable aria-checked={color === value} accessibilityLabel={t(COLOR_LABEL_KEYS[value])} accessibilityRole="radio" accessibilityState={{ checked: color === value }} key={value} onPress={() => setColor(value)} style={styles.colorChoice} testID={`sidebar-list-color-${value}`}><View style={[styles.colorSwatch, { backgroundColor: listColors[value] }, color === value && styles.colorChoiceSelected]} /></Pressable>)}</View>
                 </View>
-                {kind === 'workspace' ? (
-                    <>
-                        <View style={styles.field} testID="sidebar-list-machine-picker">
-                            <Text style={styles.fieldLabel}>{t('sidebarLists.defaultMachine')}</Text>
+                <View style={styles.field}>
+                    <Text style={styles.fieldLabel}>{t('sidebarLists.defaultMachine')}</Text>
+                    <Pressable
+                        accessibilityLabel={`${t('sidebarLists.defaultMachine')}: ${machineLabel}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: openSetting === 'machine' }}
+                        onPress={() => setOpenSetting(openSetting === 'machine' ? null : 'machine')}
+                        ref={machineTriggerRef}
+                        style={({ pressed }) => [styles.editorSettingTrigger, openSetting === 'machine' && styles.editorSettingTriggerExpanded, pressed && styles.editorSettingTriggerPressed]}
+                        testID="sidebar-list-machine-trigger"
+                    >
+                        <Feather color={theme.colors.textSecondary} name="monitor" size={16} />
+                        <Text numberOfLines={1} style={styles.editorSettingValue}>{machineLabel}</Text>
+                        <Feather color={theme.colors.textSecondary} name={openSetting === 'machine' ? 'chevron-up' : 'chevron-down'} size={16} />
+                    </Pressable>
+                    {openSetting === 'machine' ? (
+                        <View testID="sidebar-list-machine-picker">
                             <PickerContent
                                 embedded
                                 fixedItems={[{ key: '__none__', label: t('sidebarLists.noPreset') }]}
@@ -1061,22 +1086,35 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
                                     const nextMachineId = key === '__none__' ? null : key;
                                     if (nextMachineId !== machineId) setPath('');
                                     setMachineId(nextMachineId);
+                                    setOpenSetting(nextMachineId ? 'directory' : null);
+                                    focusTrigger(nextMachineId ? 'directory' : 'machine');
                                 }}
                                 searchPlaceholder={t('sidebarLists.defaultMachine')}
                                 selectedKey={machineId ?? '__none__'}
                                 title={t('sidebarLists.defaultMachine')}
                             />
                         </View>
-                        <View style={styles.field} testID="sidebar-list-directory-picker">
-                            <Text style={styles.fieldLabel}>{t('sidebarLists.defaultDirectory')}</Text>
-                            <View style={styles.choices}>
-                                <Choice
-                                    label={t('sidebarLists.noPreset')}
-                                    onPress={() => setPath('')}
-                                    selected={path.trim().length === 0}
-                                    testID="sidebar-list-directory-none"
-                                />
-                            </View>
+                    ) : null}
+                </View>
+                <View style={styles.field}>
+                    <Text style={styles.fieldLabel}>{t('sidebarLists.defaultDirectory')}</Text>
+                    <Pressable
+                        accessibilityLabel={`${t('sidebarLists.defaultDirectory')}: ${directoryLabel}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ disabled: !machineId, expanded: openSetting === 'directory' }}
+                        disabled={!machineId}
+                        onPress={() => setOpenSetting(openSetting === 'directory' ? null : 'directory')}
+                        ref={directoryTriggerRef}
+                        style={({ pressed }) => [styles.editorSettingTrigger, !machineId && styles.editorSettingTriggerDisabled, openSetting === 'directory' && styles.editorSettingTriggerExpanded, pressed && styles.editorSettingTriggerPressed]}
+                        testID="sidebar-list-directory-trigger"
+                    >
+                        <Feather color={theme.colors.textSecondary} name="folder" size={16} />
+                        <Text numberOfLines={1} style={styles.editorSettingValue}>{directoryLabel}</Text>
+                        <Feather color={theme.colors.textSecondary} name={openSetting === 'directory' ? 'chevron-up' : 'chevron-down'} size={16} />
+                    </Pressable>
+                    {openSetting === 'directory' ? (
+                        <View style={styles.editorSettingChoices} testID="sidebar-list-directory-picker">
+                            <Choice label={t('sidebarLists.noPreset')} onPress={() => { setPath(''); setOpenSetting(null); focusTrigger('directory'); }} selected={path.trim().length === 0} testID="sidebar-list-directory-none" />
                             <PathPickerContent
                                 embedded
                                 emptyRecentLabel={t('agents.folderNoRecent')}
@@ -1086,22 +1124,36 @@ function ListEditorDialog({ list, onClose, onDelete, onSave, organization, sessi
                                 machineId={machineId}
                                 machineOnline={selectedMachine ? isMachineOnline(selectedMachine) : false}
                                 manualInput={false}
-                                onChangeValue={setPath}
+                                onChangeValue={(value) => { setPath(value); setOpenSetting(null); focusTrigger('directory'); }}
                                 recentLabel={t('agents.folderRecent')}
                                 title={t('sidebarLists.defaultDirectory')}
                                 value={path}
                             />
                         </View>
-                        <View style={styles.field}><Text style={styles.fieldLabel}>{t('sidebarLists.defaultAgent')}</Text><View accessibilityLabel={t('sidebarLists.defaultAgent')} accessibilityRole="radiogroup" style={styles.choices}><Choice label={t('sidebarLists.noPreset')} onPress={() => setDefaultAgent(null)} selected={defaultAgent === null} />{AGENT_TYPES.map((agent) => <Choice key={agent} label={t(AGENT_LABEL_KEYS[agent])} onPress={() => setDefaultAgent(agent)} selected={defaultAgent === agent} />)}</View></View>
-                    </>
-                ) : (
-                    <View style={styles.field}>
-                        <Text style={styles.fieldLabel}>{t('sidebarLists.defaultAgent')}</Text>
-                        <View accessibilityRole="radiogroup" style={styles.choices}>
-                            <Choice disabled label={t('newSession.askMode')} onPress={() => undefined} selected />
+                    ) : null}
+                </View>
+                <View style={styles.field}>
+                    <Text style={styles.fieldLabel}>{t('sidebarLists.defaultAgent')}</Text>
+                    <Pressable
+                        accessibilityLabel={`${t('sidebarLists.defaultAgent')}: ${agentLabel}`}
+                        accessibilityRole="button"
+                        accessibilityState={{ expanded: openSetting === 'agent' }}
+                        onPress={() => setOpenSetting(openSetting === 'agent' ? null : 'agent')}
+                        ref={agentTriggerRef}
+                        style={({ pressed }) => [styles.editorSettingTrigger, openSetting === 'agent' && styles.editorSettingTriggerExpanded, pressed && styles.editorSettingTriggerPressed]}
+                        testID="sidebar-list-agent-trigger"
+                    >
+                        <Feather color={theme.colors.textSecondary} name="cpu" size={16} />
+                        <Text numberOfLines={1} style={styles.editorSettingValue}>{agentLabel}</Text>
+                        <Feather color={theme.colors.textSecondary} name={openSetting === 'agent' ? 'chevron-up' : 'chevron-down'} size={16} />
+                    </Pressable>
+                    {openSetting === 'agent' ? (
+                        <View accessibilityLabel={t('sidebarLists.defaultAgent')} accessibilityRole="radiogroup" style={[styles.choices, styles.editorSettingChoices]} testID="sidebar-list-agent-choices">
+                            <Choice label={t('sidebarLists.noPreset')} onPress={() => { setDefaultAgent(null); setOpenSetting(null); focusTrigger('agent'); }} selected={defaultAgent === null} />
+                            {AGENT_TYPES.map((agent) => <Choice key={agent} label={t(AGENT_LABEL_KEYS[agent])} onPress={() => { setDefaultAgent(agent); setOpenSetting(null); focusTrigger('agent'); }} selected={defaultAgent === agent} />)}
                         </View>
-                    </View>
-                )}
+                    ) : null}
+                </View>
             </ScrollView>
             <View style={styles.dialogFooter}>
                 {list ? <Pressable onPress={() => void deleteList()} style={[styles.button, styles.destructiveButton]} testID="sidebar-delete-list"><Text style={styles.destructiveButtonText}>{t('common.delete')}</Text></Pressable> : null}

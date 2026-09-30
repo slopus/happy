@@ -688,8 +688,11 @@ describe('settings', () => {
             const knownList = {
                 id: 'known-list',
                 name: 'Known',
-                kind: 'agent' as const,
+                kind: 'workspace' as const,
                 color: 'green' as const,
+                machineId: null,
+                path: null,
+                defaultAgent: null,
                 createdAt: 3,
             };
 
@@ -733,7 +736,16 @@ describe('settings', () => {
             const payload = settingsToSyncPayload(parsed);
 
             expect(parsed.sidebarOrganizationRaw).toBeNull();
-            expect(payload.sidebarOrganization).toEqual(rawOrganization);
+            expect(payload.sidebarOrganization).toEqual({
+                ...rawOrganization,
+                lists: [{
+                    ...rawOrganization.lists[0],
+                    kind: 'workspace',
+                    machineId: null,
+                    path: null,
+                    defaultAgent: null,
+                }],
+            });
         });
     });
 

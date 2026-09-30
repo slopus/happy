@@ -1535,8 +1535,11 @@ describe('SessionView Agent-space boundary', () => {
             lists: [{
                 id: 'list-1',
                 name: 'Happy',
-                kind: 'agent',
+                kind: 'workspace',
                 color: 'green',
+                machineId: null,
+                path: null,
+                defaultAgent: null,
                 createdAt: 1,
             }],
             tags: [
