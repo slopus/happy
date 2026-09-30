@@ -57,18 +57,18 @@ test('preview and production manifests reuse one uploaded bundle and one dedupli
         const state = JSON.parse(await readFile(f.statePath, 'utf8'));
         const shared = Object.keys(state).filter((key) => key.startsWith('updates/android/shared/'));
         assert.equal(shared.length, 2, shared.join('\n'));
-        const previewKey = Object.keys(state).find((key) => key.startsWith('manifests/android/23/preview/') && !key.endsWith('latest.json'));
-        const productionKey = Object.keys(state).find((key) => key.startsWith('manifests/android/24/production/') && !key.endsWith('latest.json'));
+        const previewKey = Object.keys(state).find((key) => key.startsWith('manifests/android/24/preview/') && !key.endsWith('latest.json'));
+        const productionKey = Object.keys(state).find((key) => key.startsWith('manifests/android/25/production/') && !key.endsWith('latest.json'));
         const previewManifest = JSON.parse(state[previewKey].text);
         const productionManifest = JSON.parse(state[productionKey].text);
-        assert.equal(previewManifest.runtimeVersion, '23');
-        assert.equal(productionManifest.runtimeVersion, '24');
+        assert.equal(previewManifest.runtimeVersion, '24');
+        assert.equal(productionManifest.runtimeVersion, '25');
         assert.equal(previewManifest.launchAsset.url, productionManifest.launchAsset.url);
         assert.equal(previewManifest.assets[0].url, previewManifest.assets[1].url);
         assert.equal(previewManifest.assets[0].url, productionManifest.assets[0].url);
         const log = await readFile(f.logPath, 'utf8');
         assert.equal((log.match(/ossutil cp -r /g) || []).length, 2, log);
-        assert.ok(log.indexOf('meta/android/24/production/') < log.indexOf('manifests/android/24/production/latest.json'));
+        assert.ok(log.indexOf('meta/android/25/production/') < log.indexOf('manifests/android/25/production/latest.json'));
         assert.match(production.stdout, /0 uploaded/);
     } finally {
         await rm(f.directory, { recursive: true, force: true });
@@ -78,11 +78,11 @@ test('preview and production manifests reuse one uploaded bundle and one dedupli
 test('keeps production latest unchanged if version metadata upload fails', async () => {
     const f = await fixture();
     try {
-        const result = publish(f, 'production', { FAKE_FAIL_DEST_PREFIX: 'meta/android/24/production/' });
+        const result = publish(f, 'production', { FAKE_FAIL_DEST_PREFIX: 'meta/android/25/production/' });
         assert.notEqual(result.status, 0);
         const state = JSON.parse(await readFile(f.statePath, 'utf8'));
-        assert.ok(Object.keys(state).some((key) => key.startsWith('manifests/android/24/production/') && !key.endsWith('latest.json')));
-        assert.ok(!state['manifests/android/24/production/latest.json']);
+        assert.ok(Object.keys(state).some((key) => key.startsWith('manifests/android/25/production/') && !key.endsWith('latest.json')));
+        assert.ok(!state['manifests/android/25/production/latest.json']);
     } finally {
         await rm(f.directory, { recursive: true, force: true });
     }
@@ -100,7 +100,7 @@ test('does not publish a manifest when a shared hash key has conflicting bytes',
         assert.notEqual(production.status, 0);
         assert.match(production.stderr, /Immutable OSS object differs/);
         const nextState = JSON.parse(await readFile(f.statePath, 'utf8'));
-        assert.ok(!Object.keys(nextState).some((key) => key.startsWith('manifests/android/24/production/')));
+        assert.ok(!Object.keys(nextState).some((key) => key.startsWith('manifests/android/25/production/')));
     } finally {
         await rm(f.directory, { recursive: true, force: true });
     }

@@ -6,6 +6,7 @@ import { Linking, Platform } from 'react-native';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { clearRegisteredPushToken, loadRegisteredPushToken, saveRegisteredPushToken } from './persistence';
 import { registerPushToken, unregisterPushToken } from './apiPush';
+import expoProject from '../../expo-project.json';
 
 export type PushPermissionStatus = 'unsupported' | 'granted' | 'denied' | 'undetermined';
 
@@ -33,7 +34,7 @@ export interface SyncCurrentPushTokenResult {
     error?: string;
 }
 
-const BUNDLED_EXPO_PROJECT_ID = '4558dd3d-cd5a-47cd-bad9-e591a241cc06';
+const BUNDLED_EXPO_PROJECT_ID = expoProject.projectId;
 
 function normalizePushPermission(result: {
     status: string;

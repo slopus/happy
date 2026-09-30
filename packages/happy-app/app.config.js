@@ -1,5 +1,6 @@
 const { execFileSync } = require('node:child_process');
 const { getBuildVariantConfig } = require('./scripts/ota-runtime-config.js');
+const expoProject = require('./expo-project.json');
 
 const variant = process.env.APP_ENV || 'development';
 const buildVariant = getBuildVariantConfig(variant);
@@ -237,7 +238,7 @@ export default {
                 root: "./sources/app"
             },
             eas: {
-                projectId: "4558dd3d-cd5a-47cd-bad9-e591a241cc06"
+                projectId: expoProject.projectId
             },
             app: {
                 postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
@@ -253,6 +254,6 @@ export default {
                 buildCommitTimestamp: buildMetadata.commitTimestamp,
             }
         },
-        owner: "bulkacorp"
+        owner: expoProject.owner
     }
 };
