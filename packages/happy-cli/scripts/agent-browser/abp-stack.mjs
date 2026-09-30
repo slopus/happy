@@ -31,6 +31,8 @@ const IMAGE_LABEL = '{{index .Config.Labels "ai.saycode.abp.image"}}';
 const RESTART_BACKOFF_MS = { first: 2_000, max: 60_000, resetAfterRunningMs: 60_000 };
 const DEFAULT_READY_TIMEOUT_MS = 180_000;
 const DEFAULT_DRAIN_MS = 60_000;
+/** Browser stop: the entrypoint gives Chromium 20 s to exit and write its profile (cookies). */
+const BROWSER_STOP_S = 25;
 const EGRESS_CHECK_INTERVAL_MS = 10_000;
 const FIREWALL = `${PATHS.libexec}/abp-firewall`;
 /** Set by emergency-stop so the service stop skips the drain; removed by the next start. */
@@ -431,7 +433,7 @@ export function createStack(deps) {
       if (browsers.length && !egressInPlace()) throw new Error("browser egress firewall is not in place");
       if (runtime) stopAndRemove(plan.runtime.container, 30);
       for (const browser of browsers) {
-        stopAndRemove(browser.container, 10);
+        stopAndRemove(browser.container, BROWSER_STOP_S);
         createAndStartBrowser(plan, browser, target.browser);
       }
       if (runtime) createAndStartRuntime(plan, target.runtime);
@@ -513,7 +515,7 @@ export function createStack(deps) {
       if (deps.now() - lastEgressCheckMs >= EGRESS_CHECK_INTERVAL_MS) {
         if (!egressInPlace()) {
           deps.log("browser egress firewall missing and not restorable; browsers stopped until it is back");
-          for (const browser of plan.browsers) docker(["stop", "-t", "10", browser.container], { allowFail: true });
+          for (const browser of plan.browsers) docker(["stop", "-t", String(BROWSER_STOP_S), browser.container], { allowFail: true });
           return;
         }
         lastEgressCheckMs = deps.now();
@@ -545,7 +547,7 @@ export function createStack(deps) {
       const plan = layout();
       await fenceAndDrainBestEffort(deps.exists(EMERGENCY_FLAG) ? 0 : drainMs);
       docker(["stop", "-t", "30", plan.runtime.container], { allowFail: true });
-      for (const browser of plan.browsers) docker(["stop", "-t", "10", browser.container], { allowFail: true });
+      for (const browser of plan.browsers) docker(["stop", "-t", String(BROWSER_STOP_S), browser.container], { allowFail: true });
       verifyStopped();
     },
 

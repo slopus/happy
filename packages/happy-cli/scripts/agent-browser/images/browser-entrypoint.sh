@@ -19,6 +19,24 @@ Xvfb :99 -screen 0 1280x900x24 -nolisten tcp &
 socat TCP-LISTEN:9223,bind=0.0.0.0,reuseaddr,fork TCP:127.0.0.1:9225 &
 python3 /usr/local/bin/cdp-proxy &
 python3 /usr/local/bin/instance-server &
+# docker stop: let Chromium exit on its own so recent cookies (a login just made in the viewer) are
+# written to the profile volume before the container goes; killed only after 20 s (docker waits 25).
+chrome_pid=
+on_term() {
+  if [ -n "$chrome_pid" ] && kill -0 "$chrome_pid" 2>/dev/null; then
+    kill -TERM "$chrome_pid" 2>/dev/null || true
+    waited=0
+    while kill -0 "$chrome_pid" 2>/dev/null && [ "$waited" -lt 40 ]; do sleep 0.5; waited=$((waited + 1)); done
+    if kill -0 "$chrome_pid" 2>/dev/null; then
+      echo "abp-browser: chromium did not exit within 20 s; killing it (recent cookies may be lost)" >&2
+      kill -KILL "$chrome_pid" 2>/dev/null || true
+    else
+      echo "abp-browser: chromium exited cleanly" >&2
+    fi
+  fi
+  exit 0
+}
+trap on_term TERM INT
 while :; do
   rm -f /home/browser/profile/Singleton*
   # Drop the previous identity before the new Chromium accepts CDP connections,

@@ -222,7 +222,7 @@ describe('abp-stack stop (admission fence, drain, verified stop)', () => {
         const stopRuntime = indexOf(calls, 'docker stop -t 30 abp-runtime')
         expect(stopRuntime).toBeGreaterThan(1)
         expect(host.logs.join('\n')).toMatch(/draining: 2 running/)
-        expect(indexOf(calls, 'docker stop -t 10 abp-browser-main')).toBeGreaterThan(stopRuntime)
+        expect(indexOf(calls, 'docker stop -t 25 abp-browser-main')).toBeGreaterThan(stopRuntime)
         expect(calls).toContain('docker inspect -f {{.State.Running}} abp-runtime')
         expect(calls.some((line) => line.startsWith('docker kill'))).toBe(false)
     })
@@ -303,7 +303,7 @@ describe('abp-stack supervise', () => {
             [/^docker inspect -f \{\{\.State\.Running\}\} \{\{\.State\.ExitCode\}\}/, () => ({ stdout: 'false 1' })],
         ] })
         createStack(host.deps).superviseOnce(new Map())
-        expect(host.calls).toContain('docker stop -t 10 abp-browser-main')
+        expect(host.calls).toContain('docker stop -t 25 abp-browser-main')
         expect(host.calls.some((line) => line.startsWith('docker start'))).toBe(false)
         expect(host.logs.join('\n')).toMatch(/egress firewall/)
     })
@@ -482,7 +482,7 @@ describe('abp-stack upgrade on a running stack: only containers whose digest cha
         expect(touched(calls, 'abp-runtime')).toEqual([])
         expect(calls).not.toContain('docker restart -t 30 abp-runtime')
         for (const [name, ip] of [['abp-browser-main', '10.249.240.2'], ['abp-browser-ops', '10.249.241.2']]) {
-            const stop = calls.indexOf(`docker stop -t 10 ${name}`)
+            const stop = calls.indexOf(`docker stop -t 25 ${name}`)
             expect(stop).toBeGreaterThan(calls.indexOf(FENCE))
             expect(calls.indexOf(`docker rm -f ${name}`)).toBeGreaterThan(stop)
             expect(indexOf(calls, new RegExp(`^docker create --name=${name} .*--ip=${ip.replace(/\./g, '\\.')} .*sha256:d{64}$`))).toBeGreaterThan(stop)
