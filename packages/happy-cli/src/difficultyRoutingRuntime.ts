@@ -475,7 +475,7 @@ function buildDecision(args: {
   // it is a one-turn override, not a new floor — and a policy substitution is
   // taken at face value, because a floor the org forbids can never be run.
   const baseTier: Difficulty = allowed.substituted
-    ? (catalogRouteForModel(input.agent, routed.model)?.tier ?? escalated.stickyDifficulty ?? args.difficulty)
+    ? (routed.difficulty ?? escalated.stickyDifficulty ?? args.difficulty)
     : (escalated.stickyDifficulty ?? args.difficulty)
   const base: RoutingRouteSnapshot = {
     difficulty: baseTier,
