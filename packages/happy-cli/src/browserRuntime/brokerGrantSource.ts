@@ -12,6 +12,8 @@ import { BrowserRuntimeError, type RuntimeErrorBody } from './contracts'
 
 const RENEW_BEFORE_EXPIRY_MS = 5 * 60_000
 const REQUEST_TIMEOUT_MS = 10_000
+/** Shared machines: how long a session waits while its user's profile is created, inside Codex MCP clients' 60 s tool timeout. */
+export const PROFILE_PROVISIONING_WAIT_MS = 45_000
 /** A freshly spawned session may ask before the daemon bound its id. */
 const DEFAULT_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000]
 
@@ -41,7 +43,7 @@ export interface BrokerGrantSourceOptions {
     profileId: string
     now?: () => number
     retryDelaysMs?: readonly number[]
-    /** Shared machines: how long to wait while the user's profile is created (default 90 s), polling this often (3 s). */
+    /** Shared machines: how long to wait while the user's profile is created (default 45 s), polling this often (3 s). */
     provisioningWaitMs?: number
     provisioningPollMs?: number
 }
@@ -82,14 +84,14 @@ export function createBrokerGrantSource(options: BrokerGrantSourceOptions): Brok
             // Retry only what can resolve by itself: an unreachable broker or a not-yet-bound session.
             const retryable = !reply || reply.body.error?.retryable === true
             const code = reply?.body.error?.code
-            if (code === 'PROFILE_PROVISIONING') provisioningUntil ??= Date.now() + (options.provisioningWaitMs ?? 90_000)
+            if (code === 'PROFILE_PROVISIONING') provisioningUntil ??= Date.now() + (options.provisioningWaitMs ?? PROFILE_PROVISIONING_WAIT_MS)
             if (retryable && provisioningUntil !== undefined && Date.now() < provisioningUntil) {
                 await new Promise((resolve) => setTimeout(resolve, options.provisioningPollMs ?? 3_000))
                 continue
             }
             if (!retryable || attempt >= delays.length || provisioningUntil !== undefined) {
                 // The agent is told what the user can do: wait for the profile, or ask the operator (the reason).
-                if (code === 'PROFILE_PROVISIONING' || code === 'PROFILE_UNAVAILABLE')
+                if (code === 'PROFILE_PROVISIONING' || code === 'PROFILE_UNAVAILABLE' || code === 'SCOPE_DENIED')
                     throw new BrowserRuntimeError(code, reply?.body.error?.message ?? 'browser profile unavailable', code === 'PROFILE_PROVISIONING')
                 throw new BrowserRuntimeError('UNAUTHORIZED', `browser task grant is unavailable (${code ?? 'broker unreachable'})`)
             }

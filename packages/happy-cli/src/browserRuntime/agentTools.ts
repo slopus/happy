@@ -93,6 +93,8 @@ export function registerBrowserTaskTools(mcp: McpServer, client: RuntimeClient, 
     hostContinues?: boolean
 }): void {
     const grantedProfile = typeof opts.profileId === 'string' ? async () => opts.profileId as string : opts.profileId
+    // Known only from the broker's grant (execution machine H): that decides, a profile the agent names is ignored.
+    const brokerDecides = typeof opts.profileId !== 'string'
     const id = (v?: string) => v ?? randomUUID()
     const parked = Boolean(opts.exitAfterFirstTurn && opts.hostContinues)
     const sessionNote = !opts.exitAfterFirstTurn ? ''
@@ -116,7 +118,7 @@ export function registerBrowserTaskTools(mcp: McpServer, client: RuntimeClient, 
         title: 'Create browser task space',
         description: 'Create an isolated task space (tab group) in the granted browser profile. profileId defaults to the session’s granted profile.' + sessionNote,
         inputSchema: { profileId: z.string().min(1).optional(), requestId: reqId },
-    }, async (a) => { const r = id(a.requestId); return run(r, async () => client.createSpace({ profileId: (a.profileId ?? await grantedProfile()) as never, requestId: r as never })) })
+    }, async (a) => { const r = id(a.requestId); return run(r, async () => client.createSpace({ profileId: ((brokerDecides ? undefined : a.profileId) ?? await grantedProfile()) as never, requestId: r as never })) })
 
     mcp.registerTool('browser_task_create', {
         title: 'Create browser task',

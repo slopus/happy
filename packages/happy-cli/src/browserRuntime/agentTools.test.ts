@@ -108,6 +108,9 @@ describe('browser task agent tools', () => {
         await Promise.all([mcp.connect(a), client.connect(b)])
         await client.callTool({ name: 'browser_task_create_space', arguments: {} })
         expect(createSpace).toHaveBeenLastCalledWith(expect.objectContaining({ profileId: 'u-0123456789abcdef' }))
+        // A profile the agent names is ignored: the broker's grant decides (it would only be refused).
+        await client.callTool({ name: 'browser_task_create_space', arguments: { profileId: 'main' } })
+        expect(createSpace).toHaveBeenLastCalledWith(expect.objectContaining({ profileId: 'u-0123456789abcdef' }))
     })
 
     it('generates a requestId when omitted and returns it', async () => {

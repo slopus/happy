@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { BrowserRuntimeError } from './contracts'
-import { brokerRequest, createBrokerGrantSource } from './brokerGrantSource'
+import { PROFILE_PROVISIONING_WAIT_MS, brokerRequest, createBrokerGrantSource } from './brokerGrantSource'
 
 const SECRET = 'synthetic-session-secret-0123456789abcdef'
 const cleanups: Array<() => Promise<unknown>> = []
@@ -98,6 +98,16 @@ describe('broker grant source', () => {
         expect(error).toBeInstanceOf(BrowserRuntimeError)
         expect(error).toMatchObject({ code: 'UNAUTHORIZED' })
         expect(String((error as Error).message)).not.toContain(SECRET)
+    })
+
+    it("passes the broker's reason for a refused scope on (e.g. no attested user on a shared machine)", async () => {
+        const broker = await fakeBroker(() => ({ status: 403, body: { ok: false, error: { code: 'SCOPE_DENIED', message: 'the session has no attested user; start a new chat from Studio', retryable: false, mayHaveSideEffects: false } } }))
+        const token = createBrokerGrantSource({ socketPath: broker.socketPath, sessionSecret: SECRET, agentSessionId: () => 'session-1', profileId: 'default' })
+        await expect(token()).rejects.toMatchObject({ code: 'SCOPE_DENIED', message: expect.stringMatching(/no attested user/) })
+    })
+
+    it('waits 45 s by default for a profile being created, inside the 60 s tool timeout of Codex MCP clients', () => {
+        expect(PROFILE_PROVISIONING_WAIT_MS).toBe(45_000)
     })
 
     it('reports an unreachable broker as UNAUTHORIZED grant unavailability', async () => {

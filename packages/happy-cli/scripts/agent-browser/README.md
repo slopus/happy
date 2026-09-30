@@ -255,7 +255,7 @@ abp-stack recover-profiles                         # put the previous profiles b
 ```
 
 - First use: when a user's new chat (attested by Studio) asks for a grant, the broker records a request and the
-  session waits (`PROFILE_PROVISIONING`, up to 90 s); the abp-stack service polls the admin socket every 3 s
+  session waits (`PROFILE_PROVISIONING`, up to 45 s); the abp-stack service polls the admin socket every 3 s
   and adds one profile at a time when no other operation holds the lock. A request that cannot be served is
   refused for 10 minutes and the session is told why (`PROFILE_UNAVAILABLE`: capacity, memory, blocked, or a
   failed addition), so a persistent failure never restarts everyone's Runtime over and over.
