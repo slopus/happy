@@ -30,6 +30,8 @@ interface HostOptions {
     memory?: { totalBytes: number; availableBytes: number }
     /** Whether the Runtime reports every browser connected for these profiles (default: yes). */
     browsersReady?: (profiles: Array<{ profileId: string }>) => boolean
+    /** Profile requests the Runtime's admin socket lists (first use on a shared machine). */
+    requests?: Array<{ principalId: string; requestedAtMs: number }>
 }
 
 /**
@@ -88,6 +90,7 @@ function fakeHost(options: HostOptions = {}) {
     let fenced = false
     let secretCount = 0
     let clock = 1_000_000
+    const refusals: Array<{ principalId: string; reason: string; retryAfterMs: number }> = []
     const deps = {
         run(cmd: string, args: string[], opts: { allowFail?: boolean } = {}): Result {
             const line = [cmd, ...args].join(' ')
@@ -157,6 +160,8 @@ function fakeHost(options: HostOptions = {}) {
         async brokerProbe(token: string) { return token === JSON.parse(files.get(PATHS.runtimeConfig)!.data).probeToken ? 401 : 200 },
         async sleep(ms = 1000) { clock += ms },
         memInfo: () => options.memory ?? { totalBytes: 16 * 2 ** 30, availableBytes: 9 * 2 ** 30 },
+        async adminProfileRequests() { return options.requests ?? [] },
+        async refuseProfileRequest(principalId: string, reason: string, retryAfterMs: number) { refusals.push({ principalId, reason, retryAfterMs }); return true },
         now: () => clock,
         log: (line: string) => { logs.push(line) },
         secret: (kind: string) => `synthetic-${kind}-${++secretCount}`.padEnd(kind === 'vnc-password' ? 0 : 40, 'x').slice(0, kind === 'vnc-password' ? 8 : 64),
@@ -166,7 +171,7 @@ function fakeHost(options: HostOptions = {}) {
             return () => { lockHeld = false }
         },
     }
-    return { deps, calls, logs, files, state, containers, volumes }
+    return { deps, calls, logs, files, state, containers, volumes, refusals }
 }
 
 const indexOf = (calls: string[], pattern: RegExp | string) => calls.findIndex((line) => (typeof pattern === 'string' ? line === pattern : pattern.test(line)))
@@ -1243,5 +1248,42 @@ describe('shared machine profiles (add-profile, remove-profile)', () => {
         expect(list.profiles).toEqual([{ profileId: U1, principalId: 'user-1', networkSlot: 0, assignmentId: '1'.repeat(32), volume: profileVolumeName(U1, 'user-1'), running: true }])
         expect(list.removed).toEqual([{ principalId: 'user-2', removedAtMs: 1_000_000, blocked: false }])
         expect(list.capacity).toMatchObject({ max: 8 })
+    })
+})
+
+describe('first-use profile requests (the abp-stack service)', () => {
+    const U3 = sharedProfileId('user-3')
+
+    it('adds the profile a session asked for', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }] })
+        expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toEqual({ added: ['user-3'] })
+        expect(JSON.parse(host.files.get(PATHS.installConfig)!.data).profiles.map((p: any) => p.profileId)).toContain(U3)
+    })
+
+    it('refuses a request the machine cannot hold, with the reason, and does not retry it meanwhile', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], memory: { totalBytes: 16 * 2 ** 30, availableBytes: 2 ** 30 } })
+        expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toEqual({ refused: [{ principalId: 'user-3', reason: 'memory' }] })
+        expect(host.refusals).toEqual([{ principalId: 'user-3', reason: 'memory', retryAfterMs: 600_000 }])
+        const full = fakeHost({ shared: Array.from({ length: 8 }, (_, i) => [`user-${i + 10}`, i] as [string, number]), serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], memory: { totalBytes: 64 * 2 ** 30, availableBytes: 40 * 2 ** 30 } })
+        await createStack(full.deps).provisionRequestedProfiles(new Map())
+        expect(full.refusals[0]).toMatchObject({ principalId: 'user-3', reason: 'capacity' })
+    })
+
+    it('leaves requests for later while another operation holds the lock, and backs off a failed addition', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }] })
+        const release = await host.deps.opLock()
+        expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toEqual({ busy: true })
+        release()
+        const failing = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], browsersReady: (profiles) => profiles.length < 2 })
+        const backoff = new Map()
+        expect(await createStack(failing.deps).provisionRequestedProfiles(backoff)).toEqual({ failed: ['user-3'] })
+        const calls = failing.calls.length
+        expect(await createStack(failing.deps).provisionRequestedProfiles(backoff)).toEqual({})
+        expect(failing.calls.length).toBe(calls)
+    })
+
+    it('does nothing on a dedicated machine', async () => {
+        const host = fakeHost({ serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }] })
+        expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toEqual({})
     })
 })

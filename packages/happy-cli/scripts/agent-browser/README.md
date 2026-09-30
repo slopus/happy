@@ -254,6 +254,11 @@ abp-stack list-profiles [--json]
 abp-stack recover-profiles                         # after an interrupted add/remove: the previous profiles
 ```
 
+- First use: when a user's new chat (attested by Studio) asks for a grant, the broker records a request and the
+  session waits (`PROFILE_PROVISIONING`, up to 90 s); the abp-stack service polls the admin socket every 3 s
+  and adds one profile at a time when no other operation holds the lock. If the machine cannot hold another,
+  the request is refused for 10 minutes and the session is told why (`PROFILE_UNAVAILABLE`: capacity or
+  memory).
 - Adding or removing a profile fences the API, drains running tasks (up to 60 s, else nothing changes),
   handles that user's browser and network, and recreates the Runtime. The other browsers keep running
   with their pages and pending approvals; every user sees a few seconds of `RUNTIME_UNAVAILABLE` (retried).

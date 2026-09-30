@@ -53,6 +53,10 @@ const EMERGENCY_FLAG = "/run/abp-stack-emergency";
 const START_REQUEST = "/run/abp-stack-start-request";
 const MAINTENANCE_FLAG = "/run/abp-stack-maintenance";
 const MAINTENANCE_MAX_MS = 15 * 60_000;
+/** A first-use profile request the machine cannot hold is refused this long; another failure is retried after a minute. */
+const PROFILE_REFUSAL_MS = 10 * 60_000;
+const PROFILE_RETRY_MS = 60_000;
+const PROFILE_POLL_MS = 3_000;
 const NETWORK_FORMAT = '{{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}} {{index .Options "com.docker.network.bridge.name"}}';
 const SERVICE = "abp-stack.service";
 const DAEMON_SERVICE = "abp-happy-daemon.service";
@@ -131,6 +135,8 @@ export function systemDeps() {
       const kib = (key) => Number(new RegExp(`^${key}:\\s+(\\d+) kB$`, "m").exec(info)?.[1] ?? NaN) * 1024;
       return { totalBytes: kib("MemTotal"), availableBytes: kib("MemAvailable") };
     },
+    adminProfileRequests: () => unixJson(PATHS.adminSocket, "/admin/profile-requests", {}).then((reply) => (reply.status === 200 ? reply.body?.result?.requests : undefined), () => undefined),
+    refuseProfileRequest: (principalId, reason, retryAfterMs) => unixJson(PATHS.adminSocket, "/admin/profile-requests/refuse", {}, { principalId, reason, retryAfterMs }).then((reply) => reply.status === 200, () => false),
     adminMetrics: () => unixJson(PATHS.adminSocket, "/admin/metrics", {}).then((reply) => (reply.status === 200 ? reply.body?.result : undefined), () => undefined),
     /** Status of an authenticated, read-only broker call made with the given daemon token (200 = accepted). */
     brokerProbe: (token) => unixJson(PATHS.brokerSocket, "/v1/attention?afterSeq=0&waitMs=0", { "x-abp-daemon-token": token }).then((reply) => reply.status, () => 0),
@@ -585,12 +591,13 @@ export function createStack(deps) {
   }
   /** K11: fewer than 8 profiles, a static budget of container limits, and memory available right now. */
   function assertCapacity(options) {
-    if (options.profiles.length >= MAX_SHARED_PROFILES) throw refusal(`a shared machine runs at most ${MAX_SHARED_PROFILES} browser profiles`);
+    const full = (message, reason) => Object.assign(refusal(message), { capacityReason: reason });
+    if (options.profiles.length >= MAX_SHARED_PROFILES) throw full(`a shared machine runs at most ${MAX_SHARED_PROFILES} browser profiles`, "capacity");
     const GiB = 2 ** 30;
     const { totalBytes, availableBytes } = deps.memInfo();
     const budget = (CONTAINER_MEMORY_GIB.runtime + CONTAINER_MEMORY_GIB.browser * (options.profiles.length + 1)) * GiB;
-    if (totalBytes - (options.memoryReserveMiB ?? 4096) * 2 ** 20 < budget) throw refusal(`not enough memory for another browser profile (${options.profiles.length} running; memoryReserveMiB ${options.memoryReserveMiB ?? 4096})`);
-    if (availableBytes < (CONTAINER_MEMORY_GIB.browser + 1) * GiB) throw refusal("not enough memory available right now for another browser profile");
+    if (totalBytes - (options.memoryReserveMiB ?? 4096) * 2 ** 20 < budget) throw full(`not enough memory for another browser profile (${options.profiles.length} running; memoryReserveMiB ${options.memoryReserveMiB ?? 4096})`, "memory");
+    if (availableBytes < (CONTAINER_MEMORY_GIB.browser + 1) * GiB) throw full("not enough memory available right now for another browser profile", "memory");
   }
   /** Recreates the Runtime for these profiles (browsers keep running), verifies it and opens admission. */
   async function recreateRuntime(options) {
@@ -681,6 +688,35 @@ export function createStack(deps) {
     locked,
     addProfile: (principalId) => locked(() => changeProfile("add", principalId)),
     removeProfile: (principalId, options) => locked(() => changeProfile("remove", principalId, options)),
+    /**
+     * The abp-stack service, every few seconds on a shared machine: adds a profile a session asked for on first use
+     * (the broker verified the user's attestation). One at a time, and only when no other operation holds the lock;
+     * a machine that cannot hold it gets the request refused with the reason (for 10 minutes); another failure
+     * is retried after a minute.
+     */
+    async provisionRequestedProfiles(backoff) {
+      if (install().tenancyMode !== "shared") return {};
+      const requests = (await deps.adminProfileRequests()) ?? [];
+      const request = requests.find((entry) => (backoff.get(entry.principalId) ?? 0) <= deps.now());
+      if (!request) return {};
+      let release;
+      try { release = await deps.opLock(); } catch { return { busy: true }; }
+      try {
+        await changeProfile("add", request.principalId);
+        backoff.delete(request.principalId);
+        deps.log(`profile added on first use: ${sharedProfileId(request.principalId)}`);
+        return { added: [request.principalId] };
+      } catch (error) {
+        if (error?.capacityReason) {
+          await deps.refuseProfileRequest(request.principalId, error.capacityReason, PROFILE_REFUSAL_MS);
+          deps.log(`profile request refused (${error.capacityReason}): ${sharedProfileId(request.principalId)}`);
+          return { refused: [{ principalId: request.principalId, reason: error.capacityReason }] };
+        }
+        backoff.set(request.principalId, deps.now() + PROFILE_RETRY_MS);
+        deps.log(`profile request failed, retried later: ${error instanceof Error ? error.message : "failed"}`);
+        return { failed: [request.principalId] };
+      } finally { release(); }
+    },
     /** Puts back the profiles from before an unfinished add/remove-profile (the whole stack restarts). */
     recoverProfiles() {
       return locked(async () => {
@@ -1200,6 +1236,17 @@ async function runForeground(deps, stack) {
   process.on("SIGTERM", stop);
   process.on("SIGINT", stop);
   await stack.start();
+  // First-use profile requests run beside supervision, never blocking it (an addition takes a minute).
+  const profileBackoff = new Map();
+  let provisioning = false;
+  const provision = setInterval(() => {
+    if (stopping || provisioning) return;
+    provisioning = true;
+    stack.provisionRequestedProfiles(profileBackoff)
+      .catch((error) => deps.log(`profile requests: ${error instanceof Error ? error.message : "failed"}`))
+      .finally(() => { provisioning = false; });
+  }, PROFILE_POLL_MS);
+  provision.unref();
   const backoff = new Map();
   for (;;) {
     await deps.sleep(2_000);
