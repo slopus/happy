@@ -22,7 +22,8 @@ export interface SessionModelPinTurn {
     model?: string;
     specifiesEffort: boolean;
     effort?: string;
-    /** Absent means 'user': desktop and web never send this field. */
+    /** Absent means 'user' (older clients never send it); 'auto' means the
+     *  sender is on Auto, which clears the pin. */
     source?: 'user' | 'auto';
 }
 
@@ -60,9 +61,13 @@ export function applySessionModelPinTurn(input: {
     const { pin, published, turn } = input;
     // A model the client's router picked for this turn is not a choice the user
     // made. Recording it would hand the next client a pin it reads as deliberate,
-    // and auto-routing would never resume.
+    // and auto-routing would never resume. A client only routes when its own
+    // selection is Auto, so the turn also says the user is not pinned any more:
+    // desktop and mobile have no other way to go back to Auto (they never send
+    // `model: null` for a routable agent), and keeping the old pin leaves every
+    // other device reading it as the user's choice.
     const next: SessionModelPin = turn.source === 'auto'
-        ? pin
+        ? {}
         : {
             model: turn.specifiesModel ? normalize(turn.model) : pin.model,
             effort: turn.specifiesEffort ? normalize(turn.effort) : pin.effort,
