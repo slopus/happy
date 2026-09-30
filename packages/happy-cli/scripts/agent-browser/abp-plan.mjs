@@ -100,6 +100,13 @@ export function main(argv, out = (text) => process.stdout.write(text)) {
       const flags = parseOptionFlags(rest);
       // "auto" is resolved from the agent's Happy settings after the users exist.
       const merged = mergeInstallOptions(saved, { ...flags, machineId: flags.machineId ?? saved?.machineId ?? "auto" });
+      // An owner change must switch the browser volume and verify it; the installer only restarts.
+      for (const profile of merged.profiles) {
+        const before = saved?.profiles?.find((entry) => entry.profileId === profile.profileId);
+        if (before && before.principalId !== profile.principalId) {
+          throw new Error(`profiles: ${profile.profileId} already belongs to another owner; reassign it with abp-stack set-principal ${profile.profileId} <studio userId>`);
+        }
+      }
       return out(`${JSON.stringify(merged, null, 2)}\n`);
     }
     case "resolve-machine-id": {

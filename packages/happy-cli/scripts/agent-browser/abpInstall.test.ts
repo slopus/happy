@@ -38,6 +38,17 @@ describe('abp-plan CLI', () => {
         expect(() => parseOptionFlags(['--bogus', 'x'])).toThrow(/unknown option/)
     })
 
+    it("refuses to change an installed profile's owner (that is abp-stack set-principal, which switches volumes)", () => {
+        let out = ''
+        planMain(['install-options', '--saved', join(dir, 'missing.json'), '--workspace-id', 'w', '--profile', 'main=user-1', '--issuer', `k=${pemFile}`], (text: string) => { out += text })
+        const saved = join(dir, 'owner-install.json')
+        writeFileSync(saved, out)
+        expect(() => planMain(['install-options', '--saved', saved, '--profile', 'main=user-2'], () => {})).toThrow(/abp-stack set-principal main <studio userId>/)
+        let again = ''
+        planMain(['install-options', '--saved', saved, '--profile', 'main=user-1'], (text: string) => { again += text })
+        expect(JSON.parse(again).profiles).toEqual([{ profileId: 'main', principalId: 'user-1' }])
+    })
+
     it('keeps the machine id "auto" until the agent has logged in to Happy', () => {
         let out = ''
         planMain(['install-options', '--saved', join(dir, 'missing.json'), '--workspace-id', 'w', '--profile', 'main=u', '--issuer', `k=${pemFile}`], (text: string) => { out += text })
