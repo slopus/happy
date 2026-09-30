@@ -444,6 +444,21 @@ describe('abp-stack upgrade on a running stack: only containers whose digest cha
     const MAINTENANCE = '/run/abp-stack-maintenance'
     const touched = (calls: string[], name: string) => calls.filter((line) => new RegExp(`^docker (stop|kill|rm|create --name=)[^ ]*.* ?${name}( |$)`).test(line) || line.startsWith(`docker create --name=${name} `))
 
+    it("replaces a browser still on the pre-per-owner volume, on its owner's labelled volume, and removes the old one", async () => {
+        const host = fakeHost({ serviceActive: true, profiles: [{ profileId: 'main', principalId: 'user-1' }],
+            handlers: [[/^docker volume ls -q --filter label=ai\.saycode\.abp=stack$/, () => ({ stdout: 'abp-state\nabp-profile-main' })],
+                [/^docker volume inspect abp-profile-main-/, () => ({ status: 1 })]] })
+        host.containers.get('abp-browser-main')!.mounts = ['abp-profile-main']
+        await createStack(host.deps).upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_OLD }, readyTimeoutMs: 10_000 })
+        const volume = profileVolumeName('main', 'user-1')
+        const { calls } = host
+        const stopped = indexOf(calls, 'docker stop -t 25 abp-browser-main')
+        expect(stopped).toBeGreaterThan(-1)
+        expect(indexOf(calls, 'docker volume rm abp-profile-main')).toBeGreaterThan(stopped)
+        expect(indexOf(calls, new RegExp(`^docker volume create .*--label=ai\\.saycode\\.abp\\.role=profile .*${volume}$`))).toBeGreaterThan(stopped)
+        expect(host.containers.get('abp-browser-main')!.mounts).toEqual([volume])
+    })
+
     it('Runtime-only: fence and drain, replace the Runtime, keep every browser (profile, pages, pending approvals), lift the fence', async () => {
         const host = fakeHost({ serviceActive: true, running: [1, 0] })
         let flagDuringReplace = false

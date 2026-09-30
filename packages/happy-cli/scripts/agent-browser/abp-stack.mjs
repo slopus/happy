@@ -264,15 +264,21 @@ export function createStack(deps) {
    * The pre-per-user profile volume holds some earlier owner's logins and that owner cannot be told
    * from the configuration: it is never mounted and is removed (stack containers are gone by now).
    */
-  function removeLegacyProfileVolumes(plan) {
+  function removeLegacyProfileVolumes(browsers) {
     const listed = docker(["volume", "ls", "-q", "--filter", `label=${STACK_LABEL}`]).stdout.split("\n").filter(Boolean);
-    for (const browser of plan.browsers) {
+    for (const browser of browsers) {
       const legacy = legacyProfileVolumeName(browser.profileId);
       if (!listed.includes(legacy)) continue;
       const removed = docker(["volume", "rm", legacy], { allowFail: true });
       if (removed.status !== 0) throw new Error(`legacy profile volume ${legacy} could not be removed (${(removed.stderr ?? "").split("\n")[0] || `status ${removed.status}`}); not starting`);
       writeState(record(readState(), { action: "legacy-profile-removed", volume: legacy }));
     }
+  }
+
+  /** The browser's current owner volume, created with its labels when missing (never left to docker's unlabelled auto-create). */
+  function ensureProfileVolume(browser) {
+    if (docker(["volume", "inspect", browser.volume], { allowFail: true }).status === 0) return;
+    docker(["volume", "create", ...browser.volumeLabels.map((label) => `--label=${label}`), browser.volume]);
   }
 
   /**
@@ -424,7 +430,12 @@ export function createStack(deps) {
       const [running, label] = docker(["inspect", "-f", `{{.State.Running}} ${IMAGE_LABEL}`, name], { allowFail: true }).stdout.split(" ");
       return running !== "true" || label !== image;
     };
-    const browsers = plan.browsers.filter((browser) => differs(browser.container, target.browser));
+    // A browser still on another volume (from before per-owner volumes) is replaced too.
+    const onOtherVolume = (browser) => {
+      const mounted = docker(["inspect", "-f", "{{range .Mounts}}{{.Name}} {{end}}", browser.container], { allowFail: true });
+      return mounted.status === 0 && !mounted.stdout.split(" ").includes(browser.volume);
+    };
+    const browsers = plan.browsers.filter((browser) => differs(browser.container, target.browser) || onOtherVolume(browser));
     const runtime = differs(plan.runtime.container, target.runtime);
     const replaced = [...browsers.length ? ["browser"] : [], ...runtime ? ["runtime"] : []];
     const detail = { replaced, ...quiesced ? { quiesce: quiesced } : {} };
@@ -434,6 +445,8 @@ export function createStack(deps) {
       if (runtime) stopAndRemove(plan.runtime.container, 30);
       for (const browser of browsers) {
         stopAndRemove(browser.container, BROWSER_STOP_S);
+        removeLegacyProfileVolumes([browser]);
+        ensureProfileVolume(browser);
         createAndStartBrowser(plan, browser, target.browser);
       }
       if (runtime) createAndStartRuntime(plan, target.runtime);
@@ -483,7 +496,7 @@ export function createStack(deps) {
       alignRuntimeConfig(install());
       const old = docker(["ps", "-aq", "--filter", `label=${STACK_LABEL}`]).stdout.split("\n").filter(Boolean);
       if (old.length) docker(["rm", "-f", ...old]);
-      removeLegacyProfileVolumes(plan);
+      removeLegacyProfileVolumes(plan.browsers);
       for (const browser of plan.browsers) {
         const found = docker(["network", "inspect", "-f", NETWORK_FORMAT, browser.network], { allowFail: true });
         if (found.status === 0 && found.stdout === `${browser.subnet} ${browser.gateway} ${browser.bridge}`) continue;
@@ -491,12 +504,8 @@ export function createStack(deps) {
         docker(networkCreateArgs(browser));
       }
       // Only the current owners' volumes: a previous owner's stays detached until pruned.
-      const labels = new Map(plan.browsers.map((browser) => [browser.volume, browser.volumeLabels]));
-      for (const volume of plan.volumes) {
-        if (docker(["volume", "inspect", volume], { allowFail: true }).status !== 0) {
-          docker(["volume", "create", ...(labels.get(volume) ?? [STACK_LABEL]).map((label) => `--label=${label}`), volume]);
-        }
-      }
+      if (docker(["volume", "inspect", plan.runtime.volume], { allowFail: true }).status !== 0) docker(["volume", "create", `--label=${STACK_LABEL}`, plan.runtime.volume]);
+      for (const browser of plan.browsers) ensureProfileVolume(browser);
       for (const browser of plan.browsers) createAndStartBrowser(plan, browser, state.current.browser);
       createAndStartRuntime(plan, state.current.runtime);
       unfence();
