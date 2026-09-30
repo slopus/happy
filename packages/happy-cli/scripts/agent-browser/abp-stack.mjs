@@ -23,7 +23,7 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { PATHS, STACK_LABEL, browserCreateArgs, fenceRule, mergeInstallOptions, networkCreateArgs, runtimeConfig, runtimeCreateArgs, stackLayout } from "./lib/abpPlan.mjs";
+import { PATHS, STACK_LABEL, browserCreateArgs, fenceRule, legacyProfileVolumeName, mergeInstallOptions, networkCreateArgs, runtimeConfig, runtimeCreateArgs, stackLayout } from "./lib/abpPlan.mjs";
 
 const IMAGE_ID = /^sha256:[0-9a-f]{64}$/;
 const IMAGE_LABEL = '{{index .Config.Labels "ai.saycode.abp.image"}}';
@@ -183,6 +183,30 @@ export function createStack(deps) {
     if (!machineId) throw new Error("machineId is unresolved; run abp-install after the agent's Happy login");
     const config = runtimeConfig({ ...options, machineId }, { sessionGid: deps.groupId("abp-session"), daemonTokenSha256: daemonTokenSha256 ?? existing.daemonTokenSha256 });
     deps.writeFileAtomic(PATHS.runtimeConfig, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600, owner: "root", group: "root" });
+  }
+
+  /** runtime.json is derived from install.json: an interrupted reassignment leaves them apart, fixed before start. */
+  function alignRuntimeConfig(options) {
+    const existing = deps.exists(PATHS.runtimeConfig) ? readJson(PATHS.runtimeConfig) : {};
+    const owners = (profiles) => JSON.stringify((profiles ?? []).map(({ profileId, principalId }) => [profileId, principalId]));
+    if (owners(existing.profiles) === owners(options.profiles)) return;
+    deps.log("runtime.json profile owners differ from install.json; rewriting it");
+    writeRuntimeConfig(options);
+  }
+
+  /**
+   * The pre-per-user profile volume holds some earlier owner's logins and that owner cannot be told
+   * from the configuration: it is never mounted and is removed (stack containers are gone by now).
+   */
+  function removeLegacyProfileVolumes(plan) {
+    const listed = docker(["volume", "ls", "-q", "--filter", `label=${STACK_LABEL}`]).stdout.split("\n").filter(Boolean);
+    for (const browser of plan.browsers) {
+      const legacy = legacyProfileVolumeName(browser.profileId);
+      if (!listed.includes(legacy)) continue;
+      const removed = docker(["volume", "rm", legacy], { allowFail: true });
+      if (removed.status !== 0) throw new Error(`legacy profile volume ${legacy} could not be removed (${(removed.stderr ?? "").split("\n")[0] || `status ${removed.status}`}); not starting`);
+      writeState(record(readState(), { action: "legacy-profile-removed", volume: legacy }));
+    }
   }
 
   /**
@@ -390,16 +414,22 @@ export function createStack(deps) {
       if (!egressInPlace()) throw new Error("browser egress firewall is not in place (abp-firewall check-egress); not starting");
       if (deps.exists(EMERGENCY_FLAG)) deps.remove(EMERGENCY_FLAG);
       const plan = layout();
+      alignRuntimeConfig(install());
       const old = docker(["ps", "-aq", "--filter", `label=${STACK_LABEL}`]).stdout.split("\n").filter(Boolean);
       if (old.length) docker(["rm", "-f", ...old]);
+      removeLegacyProfileVolumes(plan);
       for (const browser of plan.browsers) {
         const found = docker(["network", "inspect", "-f", NETWORK_FORMAT, browser.network], { allowFail: true });
         if (found.status === 0 && found.stdout === `${browser.subnet} ${browser.gateway} ${browser.bridge}`) continue;
         if (found.status === 0) docker(["network", "rm", browser.network]);
         docker(networkCreateArgs(browser));
       }
+      // Only the current owners' volumes: a previous owner's stays detached until pruned.
+      const labels = new Map(plan.browsers.map((browser) => [browser.volume, browser.volumeLabels]));
       for (const volume of plan.volumes) {
-        if (docker(["volume", "inspect", volume], { allowFail: true }).status !== 0) docker(["volume", "create", `--label=${STACK_LABEL}`, volume]);
+        if (docker(["volume", "inspect", volume], { allowFail: true }).status !== 0) {
+          docker(["volume", "create", ...(labels.get(volume) ?? [STACK_LABEL]).map((label) => `--label=${label}`), volume]);
+        }
       }
       for (const browser of plan.browsers) createAndStartBrowser(plan, browser, state.current.browser);
       createAndStartRuntime(plan, state.current.runtime);

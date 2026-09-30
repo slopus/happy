@@ -1,7 +1,7 @@
 import { createHash, generateKeyPairSync } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { createStack } from './abp-stack.mjs'
-import { mergeInstallOptions, PATHS } from './lib/abpPlan.mjs'
+import { mergeInstallOptions, PATHS, profileVolumeName } from './lib/abpPlan.mjs'
 
 const RUNTIME_OLD = 'sha256:' + 'a'.repeat(64)
 const BROWSER_OLD = 'sha256:' + 'b'.repeat(64)
@@ -132,7 +132,7 @@ describe('abp-stack start', () => {
         const host = fakeHost({ handlers: [
             [/^docker network inspect -f .* abp-net-main$/, () => ({ stdout: '10.249.240.0/24 10.249.240.1 br-abp-wrong' })],
             [/^docker network inspect -f .* abp-net-ops$/, () => ({ status: 1 })],
-            [/^docker volume inspect abp-profile-ops/, () => ({ status: 1 })],
+            [/^docker volume inspect abp-profile-ops-/, () => ({ status: 1 })],
             [/^docker ps -aq --filter label=ai.saycode.abp=stack/, () => ({ stdout: 'old1\nold2' })],
         ] })
         await createStack(host.deps).start()
@@ -143,7 +143,8 @@ describe('abp-stack start', () => {
         expect(indexOf(calls, 'docker network rm abp-net-main')).toBeGreaterThan(removeOld)
         expect(indexOf(calls, /^docker network create .*--subnet=10\.249\.240\.0\/24 .*abp-net-main$/)).toBeGreaterThan(indexOf(calls, 'docker network rm abp-net-main'))
         expect(indexOf(calls, /^docker network create .*--subnet=10\.249\.241\.0\/24 .*abp-net-ops$/)).toBeGreaterThan(removeOld)
-        expect(calls).toContain('docker volume create --label=ai.saycode.abp=stack abp-profile-ops')
+        const opsVolume = profileVolumeName('ops', 'user-2')
+        expect(calls).toContain(`docker volume create --label=ai.saycode.abp=stack --label=ai.saycode.abp.role=profile --label=ai.saycode.abp.profile=ops --label=ai.saycode.abp.principal=${opsVolume.slice(-16)} ${opsVolume}`)
         const browserCreate = indexOf(calls, /^docker create --name=abp-browser-main .*--ip=10\.249\.240\.2 .*sha256:b{64}$/)
         const runtimeCreate = indexOf(calls, /^docker create --name=abp-runtime .*--ip=10\.249\.240\.3 .*sha256:a{64}$/)
         expect(browserCreate).toBeGreaterThan(removeOld)
@@ -151,6 +152,34 @@ describe('abp-stack start', () => {
         expect(calls).toContain('docker network connect --alias=runtime --ip=10.249.241.3 abp-net-ops abp-runtime')
         expect(indexOf(calls, UNFENCE)).toBeGreaterThan(indexOf(calls, 'docker start abp-runtime'))
         expect(calls.some((line) => /volume rm|--no-sandbox/.test(line))).toBe(false)
+    })
+
+    it('removes the legacy per-profile volume (owner unknown) before creating containers, and never mounts it', async () => {
+        const host = fakeHost({ handlers: [[/^docker volume ls -q --filter label=ai\.saycode\.abp=stack$/, () => ({ stdout: 'abp-state\nabp-profile-main' })]] })
+        await createStack(host.deps).start()
+        const removed = indexOf(host.calls, 'docker volume rm abp-profile-main')
+        expect(removed).toBeGreaterThan(indexOf(host.calls, /^docker ps -aq --filter label/))
+        expect(removed).toBeLessThan(indexOf(host.calls, /^docker create --name=abp-browser-main /))
+        expect(host.calls.some((line) => line.includes('source=abp-profile-main,'))).toBe(false)
+        expect(host.state().history.map((entry: { action: string }) => entry.action)).toContain('legacy-profile-removed')
+    })
+
+    it('refuses to start when the legacy volume cannot be removed (something else still uses it)', async () => {
+        const host = fakeHost({ handlers: [
+            [/^docker volume ls -q --filter label=ai\.saycode\.abp=stack$/, () => ({ stdout: 'abp-profile-main' })],
+            [/^docker volume rm abp-profile-main$/, () => ({ status: 1, stderr: 'volume is in use' })],
+        ] })
+        await expect(createStack(host.deps).start()).rejects.toThrow(/legacy profile volume abp-profile-main/)
+        expect(host.calls.some((line) => line.startsWith('docker create'))).toBe(false)
+    })
+
+    it('rewrites runtime.json from install.json when their owners differ (an interrupted reassignment)', async () => {
+        const host = fakeHost()
+        host.files.set(PATHS.runtimeConfig, { data: JSON.stringify({ machineId: 'machine-1', daemonTokenSha256: 'e'.repeat(64), profiles: [{ profileId: 'main', principalId: 'user-old' }] }), mode: 0o600, owner: 'root', group: 'root' })
+        await createStack(host.deps).start()
+        const config = JSON.parse(host.files.get(PATHS.runtimeConfig)!.data)
+        expect(config.profiles).toEqual([{ profileId: 'main', principalId: 'user-1' }, { profileId: 'ops', principalId: 'user-2' }])
+        expect(config.daemonTokenSha256).toBe('e'.repeat(64))
     })
 
     it('re-applies a missing egress firewall, and refuses to start any container when it cannot', async () => {

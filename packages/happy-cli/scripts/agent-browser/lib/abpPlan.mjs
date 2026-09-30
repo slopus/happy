@@ -549,9 +549,24 @@ export function chromiumSeccompProfile(base) {
   };
 }
 
-/** Docker volume holding a profile's browser data (cookies, logins). */
-export function profileVolumeName(profileId) {
+const principalHash = (principalId) => createHash("sha256").update(principalId).digest("hex").slice(0, 16);
+
+/**
+ * Docker volume holding a profile's browser data (cookies, logins) for one owner. Derived only from
+ * install.json, so a reassignment mounts the new owner's volume and keeps the previous one detached;
+ * the owner appears only as a hash (fewer identifiers in `docker volume ls`, not a secret).
+ */
+export function profileVolumeName(profileId, principalId) {
+  return `abp-profile-${profileId}-${principalHash(principalId)}`;
+}
+
+/** The pre-per-user volume, whose owner cannot be told: never mounted, removed on start. */
+export function legacyProfileVolumeName(profileId) {
   return `abp-profile-${profileId}`;
+}
+
+export function profileVolumeLabels(profileId, principalId) {
+  return [STACK_LABEL, "ai.saycode.abp.role=profile", `ai.saycode.abp.profile=${profileId}`, `ai.saycode.abp.principal=${principalHash(principalId)}`];
 }
 
 /**
@@ -562,14 +577,16 @@ export function profileVolumeName(profileId) {
  */
 export function stackLayout(install) {
   const [pool] = parseCidr(install.browserSubnetPool ?? DEFAULT_BROWSER_SUBNET_POOL);
-  const browsers = install.profiles.map(({ profileId }, index) => {
+  const browsers = install.profiles.map(({ profileId, principalId }, index) => {
     const base = pool + index * 256;
     return {
       profileId,
+      principalId,
       container: `abp-browser-${profileId}`,
       alias: `browser-${profileId}`,
       network: `abp-net-${profileId}`,
-      volume: profileVolumeName(profileId),
+      volume: profileVolumeName(profileId, principalId),
+      volumeLabels: profileVolumeLabels(profileId, principalId),
       bridge: `br-abp-${createHash("sha256").update(profileId).digest("hex").slice(0, 8)}`,
       subnet: `${intToIp(base)}/24`,
       gateway: intToIp(base + 1),

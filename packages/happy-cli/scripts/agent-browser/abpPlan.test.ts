@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { parseRuntimeConfig } from '../../src/browserRuntime/runtimeConfig'
 import {
     DEFAULT_RUNTIME_PORT, PATHS, browserCreateArgs, chromiumSeccompProfile, daemonEnv, egressRules, egressRulesFile, fenceRule, firewallRules,
-    firewallRulesFile, happySettings, mergeInstallOptions, networkCreateArgs, permissionTable, runtimeConfig, runtimeCreateArgs, stackLayout, sudoersDropIn,
+    firewallRulesFile, happySettings, mergeInstallOptions, profileVolumeName, profileVolumeLabels, networkCreateArgs, permissionTable, runtimeConfig, runtimeCreateArgs, stackLayout, sudoersDropIn,
     systemdUnits, tmpfilesConf,
 } from './lib/abpPlan.mjs'
 
@@ -440,7 +440,7 @@ describe('stack containers', () => {
         const args = browserCreateArgs(layout, layout.browsers[1], IMAGE_B)
         expect(args.some((arg: string) => arg.startsWith('--publish') || arg === '-p')).toBe(false)
         for (const flag of ['--cap-drop=ALL', '--security-opt=no-new-privileges', `--security-opt=seccomp=${PATHS.seccompProfile}`, '--read-only', '--user=10871:10871']) expect(args).toContain(flag)
-        expect(args).toContain('--mount=type=volume,source=abp-profile-ops,target=/home/browser/profile')
+        expect(args).toContain(`--mount=type=volume,source=${profileVolumeName('ops', layout.browsers[1].principalId)},target=/home/browser/profile`)
         expect(args).toContain('--network-alias=browser-ops')
         expect(args).toContain('--env=ABP_CDP_HOST=browser-ops:9223')
         expect(args.join(' ')).not.toMatch(/no-sandbox|seccomp=unconfined|--privileged|ABP_VNC_PASSWORD=/)
@@ -450,5 +450,30 @@ describe('stack containers', () => {
     it('refuses an image reference that is not a content digest', () => {
         expect(() => runtimeCreateArgs(layout, 'abp-runtime:latest')).toThrow()
         expect(() => browserCreateArgs(layout, layout.browsers[0], 'abp-browser:latest')).toThrow()
+    })
+})
+
+describe('per-user profile volumes', () => {
+    it('names the volume after the profile and a hash of its owner, never the owner itself', () => {
+        const name = profileVolumeName('main', 'user-1')
+        expect(name).toMatch(/^abp-profile-main-[0-9a-f]{16}$/)
+        expect(name).not.toContain('user-1')
+        expect(profileVolumeName('main', 'user-1')).toBe(name)
+        expect(profileVolumeName('main', 'user-2')).not.toBe(name)
+    })
+
+    it('labels a profile volume so pruning can tell it from the journal', () => {
+        expect(profileVolumeLabels('main', 'user-1')).toEqual([
+            'ai.saycode.abp=stack', 'ai.saycode.abp.role=profile', 'ai.saycode.abp.profile=main',
+            `ai.saycode.abp.principal=${profileVolumeName('main', 'user-1').slice('abp-profile-main-'.length)}`,
+        ])
+    })
+
+    it("mounts only the current owner's volume", () => {
+        const install = mergeInstallOptions(undefined, { machineId: 'm', workspaceId: 'w', profiles: [{ profileId: 'main', principalId: 'user-9' }],
+            issuers: [{ kid: 'k1', publicKeyPem: generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString() }] })
+        const plan = stackLayout(install)
+        expect(plan.browsers[0].volume).toBe(profileVolumeName('main', 'user-9'))
+        expect(plan.volumes).toEqual(['abp-state', profileVolumeName('main', 'user-9')])
     })
 })
