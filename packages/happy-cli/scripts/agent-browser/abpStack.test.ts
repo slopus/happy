@@ -834,6 +834,20 @@ describe('assignment safety boundaries', () => {
         expect(host.state().applied.main.assignmentId).not.toBe('1'.repeat(32))
     })
 
+    it.each([['resume', 'user-2', 'user-1'], ['abort', 'user-1', 'user-2']])('marks the owner it leaves detached on --%s after install.json already switched', async (recovery, attached, detached) => {
+        const host = fakeHost({ profiles: one })
+        const before = JSON.parse(host.files.get(PATHS.installConfig)!.data)
+        const target = { ...before, profiles: [{ profileId: 'main', principalId: 'user-2', assignmentId: 'b'.repeat(32) }] }
+        // Interrupted after the commit: install.json already names the new owner.
+        host.files.set(PATHS.installConfig, { ...host.files.get(PATHS.installConfig)!, data: JSON.stringify(target) })
+        putState(host, { transition: { id: 'j', phase: 'committed', profileId: 'main', before, target, requested: target } })
+        await createStack(host.deps).setPrincipal(undefined, undefined, recovery as 'resume' | 'abort')
+        const marks = host.state().profileVolumes as Array<{ volume: string; detachedAtMs?: number }>
+        expect(marks.find((mark) => mark.volume === profileVolumeName('main', detached))?.detachedAtMs).toBe(1_000_000)
+        expect(marks.find((mark) => mark.volume === profileVolumeName('main', attached))?.detachedAtMs).toBeUndefined()
+        expect(host.containers.get('abp-browser-main')!.mounts).toEqual([profileVolumeName('main', attached)])
+    })
+
     it('rejects direct identity edits after an applied assignment', async () => {
         const host = fakeHost({ profiles: one })
         await createStack(host.deps).start()

@@ -833,9 +833,12 @@ export function createStack(deps) {
         if (recovery) {
           if (!journal) throw new Error("no unfinished assignment transition");
           const options = recovery === "abort" ? journal.before : (journal.requested ?? journal.target);
+          // The owner being left comes from the journal, not install.json (already the target after a commit).
+          const leaving = recovery === "abort" ? (journal.requested ?? journal.target) : journal.before;
+          const ownerIn = (config) => config.profiles.find((p) => p.profileId === journal.profileId).principalId;
           const target = { ...options, profiles: options.profiles.map((p) => p.profileId === journal.profileId ? { ...p, assignmentId: randomBytes(16).toString("hex") } : p) };
           writeState({ ...readState(), transition: { ...journal, target, phase: "prepared" } });
-          await applyOwners(target, markVolumes(readState().profileVolumes, journal.profileId, profileVolumeName(journal.profileId, install().profiles.find((p) => p.profileId === journal.profileId).principalId), profileVolumeName(journal.profileId, target.profiles.find((p) => p.profileId === journal.profileId).principalId)));
+          await applyOwners(target, markVolumes(readState().profileVolumes, journal.profileId, profileVolumeName(journal.profileId, ownerIn(leaving)), profileVolumeName(journal.profileId, ownerIn(target))));
           return;
         }
         assertStable();
