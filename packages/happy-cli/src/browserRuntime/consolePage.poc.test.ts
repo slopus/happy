@@ -120,12 +120,14 @@ describe.skipIf(!chromePath)('console page (real Chrome)', () => {
         ops.length = 0
         const target = await harness.openFrontTab(`${origin}/console`)
         await harness.evaluate(target, `window.__requests = 0; window.addEventListener('message', (e) => { if (e.data && e.data.type === 'abp-capability-request') window.__requests++ })`)
-        expect(await eventually(() => harness.evaluate(target, 'window.__requests'), (count) => count >= 1, 15_000)).toBeGreaterThanOrEqual(1)
+        // The listener is installed after load, so it usually misses the first request and sees the retry
+        // (every 10 s): leave room for one retry on a loaded machine.
+        expect(await eventually(() => harness.evaluate(target, 'window.__requests'), (count) => count >= 1, 25_000)).toBeGreaterThanOrEqual(1)
         const cap = token('boot', Date.now() + 600_000)
         await harness.evaluate(target, `window.postMessage({ type: 'abp-capability', token: ${JSON.stringify(cap)}, expiresAtMs: Date.now() + 600_000 }, location.origin)`)
         expect((await eventually(() => ops.find((entry) => entry.op === 'listTasks'), Boolean, 5_000))?.bearer).toBe(cap)
         await harness.closeTarget(target)
-    }, 30_000)
+    }, 45_000)
 
     it("takes over with the selected tab's own lease epoch", async () => {
         ops.length = 0
