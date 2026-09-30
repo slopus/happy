@@ -6,7 +6,8 @@
 
 import { FileHandle } from 'node:fs/promises'
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
-import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync, chmodSync, statSync, openSync, closeSync } from 'node:fs'
+import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync, chmodSync, statSync, openSync, closeSync, mkdirSync, rmSync } from 'node:fs'
+import { join } from 'node:path'
 import { constants } from 'node:fs'
 import { randomBytes } from 'node:crypto'
 import { configuration } from '@/configuration'
@@ -15,6 +16,7 @@ import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Metadata } from '@/api/types';
 import type { SaycodeAgentEnvironment } from '@/daemon/sessionEnv';
 import { logger } from '@/ui/logger';
+import { parseMachineIdentity, type MachineIdentity } from '@/machineIdentity';
 import { getProcessStartedAt, getWindowsProcessStartedAt } from '@/utils/processStartTime';
 
 export const SandboxConfigSchema = z.object({
@@ -450,8 +452,8 @@ export function buildProvisionedLegacyCredentials(
 export async function provisionLegacyMachineKey(
   credentials: Credentials,
   accountPublicKeyBase64: string,
+  machineKey: Uint8Array = new Uint8Array(randomBytes(32)),
 ): Promise<Credentials> {
-  const machineKey = new Uint8Array(randomBytes(32));
   const { updated, serialized } = buildProvisionedLegacyCredentials(credentials, accountPublicKeyBase64, machineKey);
   await writeFile(configuration.privateKeyFile, JSON.stringify(serialized, null, 2));
   return updated;
@@ -461,6 +463,28 @@ export async function clearCredentials(): Promise<void> {
   if (existsSync(configuration.privateKeyFile)) {
     await unlink(configuration.privateKeyFile);
   }
+}
+
+// specs/machine-identity-reuse — survives `auth logout` so the same account comes back as the same machine.
+export function machineIdentityFile(): string {
+  return join(configuration.happyHomeDir, 'machine-identity.json');
+}
+
+export function readMachineIdentity(): MachineIdentity | null {
+  try {
+    return parseMachineIdentity(JSON.parse(readFileSync(machineIdentityFile(), 'utf8')));
+  } catch {
+    return null; // Absent or unreadable: behave as before and register a new machine.
+  }
+}
+
+export function writeMachineIdentity(identity: MachineIdentity): void {
+  mkdirSync(configuration.happyHomeDir, { recursive: true });
+  writeFileSync(machineIdentityFile(), JSON.stringify(identity, null, 2), { mode: 0o600 });
+}
+
+export function clearMachineIdentity(): void {
+  rmSync(machineIdentityFile(), { force: true });
 }
 
 export async function clearMachineId(): Promise<void> {

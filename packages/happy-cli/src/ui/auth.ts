@@ -5,7 +5,8 @@ import tweetnacl from 'tweetnacl';
 import axios from 'axios';
 import { displayQRCode } from "./qrcode";
 import { delay } from "@/utils/time";
-import { writeCredentialsLegacy, readCredentials, updateSettings, Credentials, writeCredentialsDataKey, provisionLegacyMachineKey, readPersistedSessions } from "@/persistence";
+import { writeCredentialsLegacy, readCredentials, updateSettings, Credentials, writeCredentialsDataKey, provisionLegacyMachineKey, readPersistedSessions, readMachineIdentity, writeMachineIdentity } from "@/persistence";
+import { buildMachineIdentity, reusableDataKeyMachineKey, reusableMachineId } from "@/machineIdentity";
 import { planDataKeyOnboarding } from "@/datakey/onboarding";
 import { existsSync, writeFileSync } from "node:fs";
 import { generateWebAuthUrl } from "@/api/webAuth";
@@ -190,9 +191,11 @@ async function waitForAuthentication(keypair: tweetnacl.BoxKeyPair): Promise<Cre
                             };
                         } else {
                             if (decrypted[0] === 0) {
+                                const publicKey = decrypted.slice(1, 33);
                                 const credentials = {
-                                    publicKey: decrypted.slice(1, 33),
-                                    machineKey: randomBytes(32),
+                                    publicKey,
+                                    // The same account on this computer keeps the key its server machine is read with.
+                                    machineKey: reusableDataKeyMachineKey(readMachineIdentity(), publicKey) ?? randomBytes(32),
                                     token: token
                                 }
                                 await writeCredentialsDataKey(credentials);
@@ -278,11 +281,15 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
 
     // Make sure we have a machine ID
     // Server machine entity will be created either by the daemon or by the CLI
+    // specs/machine-identity-reuse — the same account comes back as the same machine.
+    const identity = readMachineIdentity();
     const settings = await updateSettings(async s => {
         if (newAuth || !s.machineId) {
+            const reused = reusableMachineId(identity, credentials!);
+            if (reused) logger.debug(`[AUTH] Reusing machine ID from the previous login of this account`);
             return {
                 ...s,
-                machineId: randomUUID()
+                machineId: reused ?? randomUUID()
             };
         }
         return s;
@@ -299,7 +306,10 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
         && !credentials.encryption.provisioned
         && settings.accountPublicKey) {
         try {
-            credentials = await provisionLegacyMachineKey(credentials, settings.accountPublicKey);
+            const previousKey = identity?.machineId === settings.machineId
+                ? reusableDataKeyMachineKey(identity, decodeBase64(settings.accountPublicKey))
+                : null;
+            credentials = await provisionLegacyMachineKey(credentials, settings.accountPublicKey, previousKey ?? undefined);
             logger.debug('[AUTH] Provisioned machine data key for account public key');
         } catch (e) {
             logger.debug('[AUTH] Machine key provisioning failed — continuing in plain legacy mode', e);
@@ -330,6 +340,13 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
         }
     } catch (e) {
         logger.debug('[AUTH] dataKey onboarding failed — continuing in current mode', e);
+    }
+
+    try {
+        writeMachineIdentity(buildMachineIdentity(settings.machineId!, credentials, identity));
+    } catch (e) {
+        // Only the next re-login's reuse is lost; this login is complete.
+        logger.debug('[AUTH] Could not record machine identity — the next re-login registers a new machine', e);
     }
 
     return { credentials, machineId: settings.machineId!, serverPublicKey: settings.serverPublicKey ?? null };

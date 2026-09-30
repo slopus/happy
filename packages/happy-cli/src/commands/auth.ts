@@ -1,5 +1,6 @@
 import chalk from 'chalk';
-import { readCredentials, clearCredentials, clearMachineId, readSettings, updateSettings } from '@/persistence';
+import { readCredentials, clearCredentials, clearMachineId, readSettings, updateSettings, readMachineIdentity, writeMachineIdentity, clearMachineIdentity } from '@/persistence';
+import { buildMachineIdentity } from '@/machineIdentity';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { configuration } from '@/configuration';
 import { existsSync, rmSync } from 'node:fs';
@@ -103,8 +104,9 @@ async function handleAuthLogin(args: string[]): Promise<void> {
     await clearCredentials();
     console.log(chalk.gray('✓ Cleared credentials'));
 
-    // Clear machine ID
+    // Clear machine ID; forgetting the identity too makes --force register a new machine.
     await clearMachineId();
+    clearMachineIdentity();
     console.log(chalk.gray('✓ Cleared machine ID'));
 
     console.log('');
@@ -181,10 +183,16 @@ async function handleAuthLogout(): Promise<void> {
         if (error instanceof DaemonStopRefused) throw new Error(daemonStopRefusedMessage(error));
       }
 
+      // Keep only the machine identity so logging in again with the same
+      // account returns as the same machine (specs/machine-identity-reuse).
+      const machineId = (await readSettings())?.machineId;
+      const identity = machineId ? buildMachineIdentity(machineId, credentials, readMachineIdentity()) : readMachineIdentity();
+
       // Remove entire happy directory (as current logout does)
       if (existsSync(happyDir)) {
         rmSync(happyDir, { recursive: true, force: true });
       }
+      if (identity) writeMachineIdentity(identity);
 
       console.log(chalk.green('✓ Successfully logged out'));
       console.log(chalk.gray('  Run "happy auth login" to authenticate again'));
