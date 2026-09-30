@@ -179,6 +179,15 @@ const sandboxConfig: SandboxConfig = {
 };
 
 describe('CodexAppServerClient sandbox integration', () => {
+    it('allows thread startup to outlast Codex shell snapshot without relaxing other RPC timeouts', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {});
+        const request = vi.fn(async () => ({ thread: { id: 'thread-after-snapshot' }, model: 'gpt-test', reasoningEffort: null }));
+        (client as any).request = request;
+        await client.startThread({ cwd: '/tmp/project' });
+        expect(request).toHaveBeenCalledWith('thread/start', expect.any(Object), 120_000);
+    });
+
     it('streams root text before completion, preserves whitespace and discards stale deltas', async () => {
         const { CodexAppServerClient } = await import('./codexAppServerClient');
         vi.useFakeTimers();

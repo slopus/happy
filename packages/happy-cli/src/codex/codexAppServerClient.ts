@@ -1347,7 +1347,9 @@ export class CodexAppServerClient {
             persistExtendedHistory: true,
         };
 
-        const result = await this.request('thread/start', params) as NewConversationResponse;
+        // Codex may spend its own shell-snapshot timeout preparing a new thread.
+        // Keep this startup RPC above that timeout without relaxing all RPCs.
+        const result = await this.request('thread/start', params, 120_000) as NewConversationResponse;
         this._threadId = result.thread.id;
         this._turnId = null;
         this.rememberThreadDefaults({

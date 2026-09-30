@@ -103,6 +103,18 @@ export async function completeCodexProcessorStartup(
     session.sendSessionEvent({ type: 'ready' });
 }
 
+export async function archiveFailedCodexProcessorStartup(
+    session: Pick<ApiSessionClient, 'updateMetadataAndAwait'>,
+): Promise<void> {
+    await session.updateMetadataAndAwait((metadata) => metadata.lifecycleState === 'archived' ? metadata : ({
+        ...metadata,
+        lifecycleState: 'archived',
+        lifecycleStateSince: Date.now(),
+        archivedBy: 'cli',
+        archiveReason: 'Codex processor failed before ready',
+    }));
+}
+
 function formatCodexGoal(goal: ThreadGoal): string {
     const budget = goal.tokenBudget === null
         ? `${goal.tokensUsed} tokens used`
@@ -1178,6 +1190,7 @@ export async function runCodex(opts: {
     let browserStepPromptInjected = false;
     const skillPathResolutionInstruction = createCodexSkillPathResolutionPromptLifecycle();
 
+    let processorStartupComplete = false;
     try {
         await reconnectMetadataReady;
         logger.debug('[codex]: client.connect begin');
@@ -1636,6 +1649,7 @@ export async function runCodex(opts: {
             effort: currentEffort,
             fast: currentFastMode,
         }));
+        processorStartupComplete = true;
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
@@ -1877,6 +1891,15 @@ export async function runCodex(opts: {
         try {
             logger.debug('[codex]: sendSessionDeath');
             await codexCursorSync;
+            // A failed thread/start otherwise leaves an inactive but resumable
+            // session with no durable stop proof for its caller to reconcile.
+            if (!processorStartupComplete) {
+                try {
+                    await archiveFailedCodexProcessorStartup(session);
+                } catch (error) {
+                    logger.warn('[Codex] Could not persist startup failure lifecycle', error);
+                }
+            }
             session.sendSessionDeath();
             logger.debug('[codex]: flush begin');
             await session.flush();
