@@ -118,6 +118,8 @@ export function mergeInstallOptions(saved, flags) {
     runtimePort: DEFAULT_RUNTIME_PORT,
     maxAgentWindows: 4,
     retentionDays: 7,
+    // A previous owner's browser volume is kept this long after a reassignment (0: removed at once).
+    profileRetentionDays: 30,
     viewerOrigins: [],
     egressDomains: [],
     sites: [],
@@ -170,6 +172,7 @@ export function mergeInstallOptions(saved, flags) {
   integer(merged.runtimePort, "runtimePort", 1024, 65535);
   integer(merged.maxAgentWindows, "maxAgentWindows", 1, 16);
   integer(merged.retentionDays, "retentionDays", 1, 365);
+  integer(merged.profileRetentionDays, "profileRetentionDays", 0, 3650);
   merged.viewerOrigins.forEach((origin, index) => bareOrigin(origin, `viewerOrigins[${index}]`));
   if (merged.serverUrl !== undefined) serverOrigin(merged.serverUrl);
   if (merged.egressDomains.length > 64) fail("egressDomains", "at most 64");
@@ -493,6 +496,28 @@ export function systemdUnits({ happyPrefix = PATHS.happyPrefix } = {}) {
       "",
       "[Install]",
       "WantedBy=multi-user.target",
+    ]),
+    // Previous owners' browser volumes past the retention (abp-stack prune-profiles takes the operation lock).
+    "abp-profile-prune.service": unit([
+      "[Unit]",
+      "Description=Agent Browser: remove previous owners' browser volumes past the retention",
+      "After=docker.service",
+      "Requires=docker.service",
+      "",
+      "[Service]",
+      "Type=oneshot",
+      `ExecStart=${PATHS.stackBin} prune-profiles`,
+    ]),
+    "abp-profile-prune.timer": unit([
+      "[Unit]",
+      "Description=Daily Agent Browser profile volume pruning",
+      "",
+      "[Timer]",
+      "OnCalendar=daily",
+      "Persistent=true",
+      "",
+      "[Install]",
+      "WantedBy=timers.target",
     ]),
     "abp-happy-daemon.service": unit([
       "[Unit]",

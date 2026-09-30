@@ -149,7 +149,9 @@ describe('abp-install --dry-run', () => {
         expect(out).toMatch(/ {4}\| -A OUTPUT -d 127\.0\.0\.1\/32 -p tcp -m owner --uid-owner \d+ -m tcp --dport 3128 -j ACCEPT/)
         expect(out).toContain('+ write /etc/systemd/system/abp-stack.service (root:root 0644')
         expect(out).toContain('+ write /etc/abp/happy-daemon.env (root:root 0644')
-        expect(out).toContain('+ systemctl enable abp-firewall.service abp-egress.service abp-egress-proxy.service abp-stack.service abp-happy-daemon.service')
+        expect(out).toContain('+ systemctl enable abp-firewall.service abp-egress.service abp-egress-proxy.service abp-stack.service abp-happy-daemon.service abp-profile-prune.timer')
+        expect(out).toContain('+ write /etc/systemd/system/abp-profile-prune.service (root:root 0644')
+        expect(out).toContain('+ systemctl start abp-profile-prune.timer')
         expect(out).toContain('+ write /etc/abp/egress.rules4 (root:root 0644')
         expect(out).toMatch(/ {4}\| jump DOCKER-USER -i br-abp\+ -j ABP-EGRESS/)
         // Re-applying the rules must not restart their dependents (Requires= propagates a restart to the
@@ -524,6 +526,9 @@ describe('abp-uninstall', () => {
         expect(kept.stdout).toMatch(/\+ systemctl disable --now abp-happy-daemon\.service/)
         expect(kept.stdout).toMatch(/\+ \/usr\/local\/libexec\/abp\/abp-firewall remove$/m)
         expect(kept.stdout).not.toMatch(/volume rm|rm -rf \/etc\/abp|rm -rf \/var\/lib\/abp/)
+        // The prune timer goes first, so no pruning runs while the stack is being removed.
+        expect(kept.stdout).toMatch(/\+ systemctl disable --now abp-profile-prune\.timer/)
+        expect(kept.stdout).toMatch(/\+ rm -f .*\/etc\/systemd\/system\/abp-profile-prune\.service \/etc\/systemd\/system\/abp-profile-prune\.timer/)
         const purged = bash('abp-uninstall', ['--dry-run', '--purge'])
         expect(purged.status).toBe(0)
         expect(purged.stdout).toMatch(/docker volume rm/)
@@ -544,6 +549,18 @@ describe('abp-uninstall', () => {
         expect(at('+ pkill -TERM -u agent-sbx')).toBeGreaterThan(daemon)
         expect(at('+ pkill -TERM -u agent')).toBeGreaterThan(daemon)
         expect(rules).toBeGreaterThan(kill)
+    })
+
+    it('fails a purge that could not remove a volume (browser logins left behind)', () => {
+        const script = `set -euo pipefail; source "$1"
+            run() { if [ "$1 $2 $3" = "docker volume rm" ] && [ "$4" = "abp-profile-main-0123456789abcdef" ]; then return 1; fi; printf '+ %s\\n' "$*"; }
+            listed() { printf 'abp-state\\nabp-profile-main-0123456789abcdef\\n'; }
+            DRY_RUN=0
+            purge`
+        const result = spawnSync('bash', ['-c', script, 'test', join(here, 'abp-uninstall')], { encoding: 'utf8' })
+        expect(result.status).toBe(1)
+        expect(result.stderr).toMatch(/purge incomplete, volumes not removed: abp-profile-main-0123456789abcdef/)
+        expect(result.stdout).toContain('+ docker volume rm abp-state')
     })
 
     it('keeps the firewall rules and fails when a session process survives SIGKILL', () => {

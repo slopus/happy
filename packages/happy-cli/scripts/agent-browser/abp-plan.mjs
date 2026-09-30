@@ -49,6 +49,7 @@ export function parseOptionFlags(argv) {
       case "--runtime-port": flags.runtimePort = Number(value); break;
       case "--max-agent-windows": flags.maxAgentWindows = Number(value); break;
       case "--retention-days": flags.retentionDays = Number(value); break;
+      case "--profile-retention-days": flags.profileRetentionDays = Number(value); break;
       case "--viewer-origin": list("viewerOrigins", value); break;
       case "--egress-domain": list("egressDomains", value); break;
       case "--happy-prefix": flags.happyPrefix = value; break;

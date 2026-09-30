@@ -7,7 +7,8 @@
 //   abp-stack upgrade (--images <dir> | --runtime-image <sha256:…> --browser-image <sha256:…>) [--ready-timeout <s>]
 //   abp-stack rollback [--ready-timeout <s>]
 //   abp-stack rotate-keys [--daemon-token] [--vnc-password]      (both when neither is given)
-//   abp-stack set-principal <profileId> <principalId>
+//   abp-stack set-principal <profileId> <principalId>              (switches to that owner's browser volume)
+//   abp-stack prune-profiles [--older-than-days <n>] [--adopt-orphans]
 //   abp-stack load <dir> [--set-initial]                          (docker load + digest check)
 //   abp-stack build --source <happy-cli dir> [--out <dir>] [--tag <tag>] [--set-initial]
 //   abp-stack run                                                 (abp-stack.service only)
@@ -183,6 +184,40 @@ export function createStack(deps) {
     if (!machineId) throw new Error("machineId is unresolved; run abp-install after the agent's Happy login");
     const config = runtimeConfig({ ...options, machineId }, { sessionGid: deps.groupId("abp-session"), daemonTokenSha256: daemonTokenSha256 ?? existing.daemonTokenSha256 });
     deps.writeFileAtomic(PATHS.runtimeConfig, `${JSON.stringify(config, null, 2)}\n`, { mode: 0o600, owner: "root", group: "root" });
+  }
+
+  const DAY_MS = 86_400_000;
+
+  /**
+   * Removes previous owners' browser volumes kept longer than the retention (install.json
+   * profileRetentionDays, default 30; the daily timer makes it 30 to 31 days). Never the current owners'
+   * volumes, never one whose users cannot be listed or that something uses, never one marked in the
+   * future; a mark goes only after its volume is gone. Volumes without a mark (a lost state file) are
+   * kept and reported; adoptOrphans starts their clock now. Caller holds the operation lock.
+   */
+  function pruneUnlocked({ olderThanDays, adoptOrphans = false } = {}) {
+    const options = install();
+    const days = olderThanDays ?? options.profileRetentionDays ?? 30;
+    const current = new Set(stackLayout(options).browsers.map((browser) => browser.volume));
+    const listed = docker(["volume", "ls", "-q", "--filter", "label=ai.saycode.abp.role=profile"]).stdout.split("\n").filter(Boolean);
+    let marks = (readState().profileVolumes ?? []).map((mark) => ({ ...mark }));
+    const orphans = listed.filter((volume) => !current.has(volume) && !marks.some((mark) => mark.volume === volume));
+    if (adoptOrphans) marks = [...marks, ...orphans.map((volume) => ({ profileId: volume.replace(/^abp-profile-/, "").replace(/-[0-9a-f]{16}$/, ""), volume, detachedAtMs: deps.now() }))];
+    const removed = [];
+    for (const mark of [...marks]) {
+      if (mark.detachedAtMs === undefined || current.has(mark.volume)) continue;
+      if (mark.detachedAtMs > deps.now() || deps.now() - mark.detachedAtMs < days * DAY_MS) continue;
+      if (!listed.includes(mark.volume)) { marks = marks.filter((entry) => entry !== mark); continue; }
+      const users = docker(["ps", "-aq", "--filter", `volume=${mark.volume}`], { allowFail: true });
+      if (users.status !== 0 || users.stdout.trim()) { deps.log(`prune-profiles: keeping ${mark.volume} (${users.status !== 0 ? "users unknown" : "in use"})`); continue; }
+      if (docker(["volume", "rm", mark.volume], { allowFail: true }).status !== 0) { deps.log(`prune-profiles: could not remove ${mark.volume}`); continue; }
+      marks = marks.filter((entry) => entry !== mark);
+      removed.push(mark.volume);
+    }
+    const remainingOrphans = adoptOrphans ? [] : orphans;
+    if (remainingOrphans.length) deps.log(`prune-profiles: ${remainingOrphans.length} profile volume(s) without a mark kept (abp-stack prune-profiles --adopt-orphans starts their retention)`);
+    writeState(record({ ...readState(), profileVolumes: marks }, { action: "prune-profiles", result: "done", removed, orphans: remainingOrphans.length }));
+    return { removed, orphans: remainingOrphans };
   }
 
   /** The detached marks after a reassignment: the previous volume detached now, the new one attached. */
@@ -669,7 +704,13 @@ export function createStack(deps) {
           throw new Error(`set-principal failed (${reason}); the previous owner was restored`);
         }
         writeState(record(readState(), { action: "set-principal", result: "ready", ...detail }));
+        // A separate step: the switch stands even if this fails.
+        try { pruneUnlocked(); } catch (error) { deps.log(`prune-profiles failed after set-principal: ${error instanceof Error ? error.message : "failed"}`); }
       });
+    },
+
+    pruneProfiles(opts = {}) {
+      return locked(async () => pruneUnlocked(opts));
     },
 
     async status() {
@@ -694,6 +735,18 @@ export function createStack(deps) {
       check("published ports", published.length === 1 && published[0] === expected, published.join("; ") || "none");
       const ready = await deps.ready(plan.runtimePort);
       check("runtime ready", ready.status === 200, JSON.stringify(ready.body ?? {}));
+      // Informational: previous owners' volumes wait for prune-profiles; unmarked ones are never pruned.
+      const profileVolumes = docker(["volume", "ls", "-q", "--filter", "label=ai.saycode.abp.role=profile"], { allowFail: true });
+      if (profileVolumes.status === 0) {
+        const currentVolumes = plan.browsers.map((browser) => browser.volume);
+        const marks = state.profileVolumes ?? [];
+        const kept = marks.filter((mark) => mark.detachedAtMs !== undefined && !currentVolumes.includes(mark.volume));
+        const oldest = kept.length ? new Date(Math.min(...kept.map((mark) => mark.detachedAtMs))).toISOString().slice(0, 10) : undefined;
+        const unmarked = profileVolumes.stdout.split("\n").filter(Boolean).filter((volume) => !currentVolumes.includes(volume) && !marks.some((mark) => mark.volume === volume));
+        check("profile volumes", true, `current ${currentVolumes.join(", ")}; kept ${kept.length}${oldest ? ` (oldest detached ${oldest})` : ""}; unmarked ${unmarked.length}`);
+      } else {
+        check("profile volumes", false, "docker volume ls failed");
+      }
       // A sandboxed renderer/zygote lives in a nested PID namespace (NSpid has two ids); no process may carry --no-sandbox.
       const probe = "s=0; for p in $(pgrep -f -- '--type=([r]enderer|[z]ygote)'); do set -- $(grep '^NSpid:' /proc/$p/status 2>/dev/null); [ $# -ge 3 ] && s=$((s+1)); done; echo \"sandboxed $s\"; echo \"nosandbox $(pgrep -fc -- '--no-[s]andbox' || true)\"";
       for (const browser of plan.browsers) {
@@ -816,8 +869,14 @@ export async function main(argv, deps = systemDeps()) {
       if (!args[0] || !args[1]) throw new Error("usage: abp-stack set-principal <profileId> <principalId>");
       await stack.setPrincipal(args[0], args[1]);
       return;
+    case "prune-profiles": {
+      const days = option(args, "--older-than-days");
+      if (days !== undefined && !/^\d+$/.test(days)) throw new Error("--older-than-days takes a whole number of days");
+      console.log(JSON.stringify(await stack.pruneProfiles({ olderThanDays: days === undefined ? undefined : Number(days), adoptOrphans: args.includes("--adopt-orphans") })));
+      return;
+    }
     default:
-      throw new Error("usage: abp-stack up|down|emergency-stop|status|upgrade|rollback|rotate-keys|set-principal|load|build|run");
+      throw new Error("usage: abp-stack up|down|emergency-stop|status|upgrade|rollback|rotate-keys|set-principal|prune-profiles|load|build|run");
   }
 }
 

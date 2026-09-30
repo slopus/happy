@@ -638,7 +638,7 @@ describe('abp-stack set-principal', () => {
             { profileId: 'main', volume: profileVolumeName('main', 'user-1'), detachedAtMs: 1_000_000 },
             { profileId: 'main', volume: profileVolumeName('main', 'user-9') },
         ])
-        expect(host.state().history.at(-1)).toMatchObject({ action: 'set-principal', profileId: 'main', result: 'ready' })
+        expect(host.state().history.findLast((entry: { action: string }) => entry.action === 'set-principal')).toMatchObject({ profileId: 'main', result: 'ready' })
         expect(JSON.stringify(host.state())).not.toContain('user-9')
     })
 
@@ -680,6 +680,72 @@ describe('abp-stack set-principal', () => {
     })
 })
 
+describe('abp-stack prune-profiles', () => {
+    const DAY = 86_400_000
+    const one = [{ profileId: 'main', principalId: 'user-1' }]
+    const current = profileVolumeName('main', 'user-1')
+    const old = profileVolumeName('main', 'user-old')
+    const young = profileVolumeName('main', 'user-young')
+    const orphan = profileVolumeName('main', 'user-orphan')
+    const withMarks = (host: ReturnType<typeof fakeHost>, marks: unknown[]) => {
+        host.files.set(PATHS.stackState, { ...host.files.get(PATHS.stackState)!, data: JSON.stringify({ ...host.state(), profileVolumes: marks }) })
+    }
+    const listed = (names: string[]): [RegExp, Handler] => [/^docker volume ls -q --filter label=ai\.saycode\.abp\.role=profile$/, () => ({ stdout: names.join('\n') })]
+
+    it('removes only detached volumes past retention that nothing uses, and drops their marks after the removal succeeded', async () => {
+        const host = fakeHost({ profiles: one, handlers: [listed([current, old, young, orphan])] })
+        withMarks(host, [
+            { profileId: 'main', volume: current, detachedAtMs: 1_000_000 - 90 * DAY },
+            { profileId: 'main', volume: old, detachedAtMs: 1_000_000 - 30 * DAY },
+            { profileId: 'main', volume: young, detachedAtMs: 1_000_000 - 29 * DAY },
+        ])
+        const result = await createStack(host.deps).pruneProfiles()
+        expect(result).toEqual({ removed: [old], orphans: [orphan] })
+        expect(host.calls).toContain(`docker volume rm ${old}`)
+        for (const name of [current, young, orphan]) expect(host.calls).not.toContain(`docker volume rm ${name}`)
+        expect(host.state().profileVolumes.map((mark: { volume: string }) => mark.volume)).toEqual([current, young])
+    })
+
+    it('keeps a volume when its users cannot be listed, when something still uses it, or when its mark lies in the future', async () => {
+        const inUse = profileVolumeName('main', 'user-in-use')
+        const future = profileVolumeName('main', 'user-future')
+        const host = fakeHost({ profiles: one, handlers: [
+            listed([old, inUse, future]),
+            [new RegExp(`^docker ps -aq --filter volume=${old}$`), () => ({ status: 1, stderr: 'daemon unreachable' })],
+            [new RegExp(`^docker ps -aq --filter volume=${inUse}$`), () => ({ stdout: 'c0ffee' })],
+        ] })
+        withMarks(host, [
+            { profileId: 'main', volume: old, detachedAtMs: 0 },
+            { profileId: 'main', volume: inUse, detachedAtMs: 0 },
+            { profileId: 'main', volume: future, detachedAtMs: 1_000_000 + DAY },
+        ])
+        expect((await createStack(host.deps).pruneProfiles()).removed).toEqual([])
+        expect(host.calls.some((line) => line.startsWith('docker volume rm'))).toBe(false)
+        expect(host.state().profileVolumes).toHaveLength(3)
+    })
+
+    it('keeps the mark when the removal fails, and adopts orphans into the retention clock only when asked', async () => {
+        const host = fakeHost({ profiles: one, handlers: [listed([old, orphan]), [new RegExp(`^docker volume rm ${old}$`), () => ({ status: 1, stderr: 'in use' })]] })
+        withMarks(host, [{ profileId: 'main', volume: old, detachedAtMs: 0 }])
+        await createStack(host.deps).pruneProfiles()
+        expect(host.state().profileVolumes).toEqual([{ profileId: 'main', volume: old, detachedAtMs: 0 }])
+        await createStack(host.deps).pruneProfiles({ adoptOrphans: true })
+        expect(host.state().profileVolumes).toContainEqual({ profileId: 'main', volume: orphan, detachedAtMs: 1_000_000 })
+    })
+
+    it('with retention 0, set-principal removes the previous volume once the switch is verified; a failed prune does not fail the switch', async () => {
+        const host = fakeHost({ profiles: one, serviceActive: true, handlers: [listed([current, profileVolumeName('main', 'user-9')])] })
+        host.files.set(PATHS.installConfig, { ...host.files.get(PATHS.installConfig)!, data: JSON.stringify({ ...JSON.parse(host.files.get(PATHS.installConfig)!.data), profileRetentionDays: 0 }) })
+        await createStack(host.deps).setPrincipal('main', 'user-9')
+        expect(indexOf(host.calls, `docker volume rm ${current}`)).toBeGreaterThan(host.calls.lastIndexOf('systemctl start abp-stack.service'))
+
+        const failing = fakeHost({ profiles: one, serviceActive: true, handlers: [[/^docker volume ls -q --filter label=ai\.saycode\.abp\.role=profile$/, () => ({ status: 1 })]] })
+        await createStack(failing.deps).setPrincipal('main', 'user-9')
+        expect(failing.state().history.findLast((entry: { action: string }) => entry.action === 'set-principal')).toMatchObject({ result: 'ready' })
+        expect(failing.logs.some((line) => /prune-profiles failed/.test(line))).toBe(true)
+    })
+})
+
 describe('abp-stack status', () => {
     const healthy: Array<[RegExp, Handler]> = [
         [/^systemctl is-active abp-stack.service/, () => ({ stdout: 'active' })],
@@ -688,6 +754,19 @@ describe('abp-stack status', () => {
         [/^docker ps --filter label=ai.saycode.abp=stack --format/, () => ({ stdout: 'abp-runtime\t127.0.0.1:38700->38700/tcp\nabp-browser-main\t5900/tcp, 9223-9224/tcp\nabp-browser-ops\t' })],
         [/^docker exec abp-browser-\S+ sh -c/, () => ({ stdout: 'sandboxed 2\nnosandbox 0' })],
     ]
+
+    it("lists the current owners' volumes, the kept previous ones and unmarked ones (informational)", async () => {
+        const kept = profileVolumeName('main', 'user-old')
+        const unmarked = profileVolumeName('main', 'user-lost')
+        const host = fakeHost({ handlers: [...healthy, [/^docker volume ls -q --filter label=ai\.saycode\.abp\.role=profile$/, () => ({ stdout: [profileVolumeName('main', 'user-1'), kept, unmarked].join('\n') })]] })
+        host.files.set(PATHS.stackState, { ...host.files.get(PATHS.stackState)!, data: JSON.stringify({ ...host.state(), profileVolumes: [{ profileId: 'main', volume: kept, detachedAtMs: 0 }] }) })
+        const report = await createStack(host.deps).status()
+        const check = report.checks.find((entry: { name: string }) => entry.name === 'profile volumes')
+        expect(check).toMatchObject({ ok: true })
+        expect(check.detail).toContain(`current ${profileVolumeName('main', 'user-1')}`)
+        expect(check.detail).toContain('kept 1 (oldest detached 1970-01-01)')
+        expect(check.detail).toContain('unmarked 1')
+    })
 
     it('reports ready when only the Runtime port is published on loopback, egress rules are live and Chromium runs sandboxed', async () => {
         const host = fakeHost({ handlers: healthy })

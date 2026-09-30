@@ -241,7 +241,10 @@ describe('system files', () => {
 
     it('orders firewall before proxy, stack and daemon, and supervises the stack and daemon', () => {
         const units = systemdUnits({ happyPrefix: '/opt/abp/happy' })
-        expect(Object.keys(units).sort()).toEqual(['abp-egress-proxy.service', 'abp-egress.service', 'abp-firewall.service', 'abp-happy-daemon.service', 'abp-stack.service'])
+        expect(Object.keys(units).sort()).toEqual(['abp-egress-proxy.service', 'abp-egress.service', 'abp-firewall.service', 'abp-happy-daemon.service', 'abp-profile-prune.service', 'abp-profile-prune.timer', 'abp-stack.service'])
+        // Previous owners' browser volumes are pruned daily (a missed run catches up after boot).
+        expect(units['abp-profile-prune.service']).toMatch(/Type=oneshot[\s\S]*ExecStart=\/usr\/local\/sbin\/abp-stack prune-profiles/)
+        expect(units['abp-profile-prune.timer']).toMatch(/OnCalendar=daily[\s\S]*Persistent=true[\s\S]*WantedBy=timers\.target/)
         expect(units['abp-firewall.service']).toMatch(/Type=oneshot[\s\S]*RemainAfterExit=yes/)
         expect(units['abp-firewall.service']).toMatch(/Before=.*abp-egress-proxy\.service.*abp-stack\.service.*abp-happy-daemon\.service/)
         expect(units['abp-stack.service']).toMatch(/Restart=always/)
@@ -475,5 +478,13 @@ describe('per-user profile volumes', () => {
         const plan = stackLayout(install)
         expect(plan.browsers[0].volume).toBe(profileVolumeName('main', 'user-9'))
         expect(plan.volumes).toEqual(['abp-state', profileVolumeName('main', 'user-9')])
+    })
+
+    it('keeps a previous owner\'s volume 30 days by default, 0 to remove it at reassignment', () => {
+        const base = { machineId: 'm', workspaceId: 'w', profiles: [{ profileId: 'main', principalId: 'u' }],
+            issuers: [{ kid: 'k1', publicKeyPem: generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString() }] }
+        expect(mergeInstallOptions(undefined, base).profileRetentionDays).toBe(30)
+        expect(mergeInstallOptions(undefined, { ...base, profileRetentionDays: 0 }).profileRetentionDays).toBe(0)
+        expect(() => mergeInstallOptions(undefined, { ...base, profileRetentionDays: -1 })).toThrow(/profileRetentionDays/)
     })
 })

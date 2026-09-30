@@ -39,6 +39,8 @@ DAEMON_TOKEN=$VARLIB/daemon-token
 # Content digest of the installed Happy package: a change restarts the daemon and the egress proxy.
 HAPPY_DIGEST=$VARLIB/happy-package.sha256
 UNITS="abp-firewall.service abp-egress.service abp-egress-proxy.service abp-stack.service abp-happy-daemon.service"
+# Enabled and started like UNITS, but its service is a oneshot run by the timer.
+TIMERS="abp-profile-prune.timer"
 OPS_LOCK=/run/abp-stack-ops.lock
 # Desktop chats: the Saycode server makes the daemon create workspaces under ~agent/workspace, while
 # the sandbox launcher accepts only working directories whose realpath is under /work.
@@ -612,12 +614,12 @@ main_install() {
 
     say "systemd units"
     local name
-    for name in $UNITS; do
+    for name in $UNITS abp-profile-prune.service $TIMERS; do
         emit "/etc/systemd/system/$name" root root 0644 show unit --install "$WORK/install.json" --name "$name"
     done
     run systemctl daemon-reload
     # shellcheck disable=SC2086 # unit names have no spaces
-    run systemctl enable $UNITS
+    run systemctl enable $UNITS $TIMERS
 
     if [ "$NO_START" = 1 ]; then say "not starting (--no-start)"; return 0; fi
     say "start"
@@ -634,6 +636,8 @@ main_install() {
         # Sessions outlive the daemon restart (KillMode=process).
         restart_or_start abp-happy-daemon.service "$ETC/happy-daemon.env" /etc/systemd/system/abp-happy-daemon.service "$DAEMON_TOKEN" "$HAPPY_DIGEST" "$AGENT_HAPPY_SETTINGS"
     fi
+    # shellcheck disable=SC2086 # unit names have no spaces
+    run systemctl start $TIMERS
     say "done. Next: see README (Claude login for agent-sbx), then: abp-install check"
 }
 
@@ -724,7 +728,7 @@ main_check() {
     fi
     expect "browser egress rules are live (DOCKER-USER, INPUT, IPv6)" "$LIBEXEC/abp-firewall" check-egress
     expect "agent can read the live rules (preflight)" as agent "$LIBEXEC/abp-firewall-read"
-    for unit in $UNITS; do
+    for unit in $UNITS $TIMERS; do
         expect "$unit enabled" systemctl is-enabled --quiet "$unit"
         expect "$unit active" systemctl is-active --quiet "$unit"
     done
