@@ -1,3 +1,5 @@
+import { mkdtemp, readFile as readTestFile, rm as removeTestDirectory } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import type { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 import { delimiter, join } from 'node:path'
@@ -132,6 +134,20 @@ function setup(
 }
 
 describe('AI credential machine runtime', () => {
+  it('verifies only requested local Claude identities without importing, switching or restarting rotation', async () => {
+    const { runtime, execFile, supervisor, calls } = setup()
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => command === 'cswap' && args[0] === 'export'
+      ? { stdout: claudeOauthPayload([{ email: 'shared@example.com' }]), stderr: '' }
+      : command === 'claude' ? { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 }
+      : original(command, args, options))
+    const result = await runtime.verify({ provider: 'claude', accounts: [{ email: 'shared@example.com' }] })
+    expect(result.accounts).toEqual([{ account: 1, ok: true, model: 'haiku' }])
+    expect(supervisor.enable).not.toHaveBeenCalled()
+    expect(supervisor.stop).not.toHaveBeenCalled()
+    expect(calls.some(call => call.args[0] === 'import' || call.args[0] === 'switch')).toBe(false)
+  })
+
   it('adds Claude accounts, retains personal active/disabled slots and attributes only new shared identities', async () => {
     const { runtime, files, calls, execFile, supervisor } = setup()
     let accounts: Array<Record<string, unknown>> = [
@@ -2372,6 +2388,21 @@ describe('AI credential machine runtime', () => {
       ['-e', 'setInterval(() => {}, 1000)'],
       { timeoutMs: 20 },
     )).rejects.toMatchObject({ kind: 'COMMAND_TIMED_OUT' })
+  })
+
+  it.skipIf(process.platform === 'win32')('terminates the native child of a one-shot CLI wrapper on timeout', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'one-shot-tree-test-'))
+    const pidFile = join(directory, 'child.pid')
+    let descendant = 0
+    try {
+      const script = `const {spawn}=require('node:child_process'); const c=spawn(process.execPath,['-e','setInterval(()=>{},1000)'],{stdio:'ignore'}); require('node:fs').writeFileSync(process.argv[1],String(c.pid)); setInterval(()=>{},1000)`
+      await expect(runAiCredentialCommand(process.execPath, ['-e', script, pidFile], { timeoutMs: 500, terminateProcessTree: true })).rejects.toMatchObject({ kind: 'COMMAND_TIMED_OUT' })
+      descendant = Number(await readTestFile(pidFile, 'utf8'))
+      await vi.waitFor(() => expect(() => process.kill(descendant, 0)).toThrow(), { timeout: 3000 })
+    } finally {
+      if (descendant > 0) { try { process.kill(descendant, 'SIGKILL') } catch {} }
+      await removeTestDirectory(directory, { recursive: true, force: true })
+    }
   })
 
   it('waits for command stdio to close before returning captured output', async () => {

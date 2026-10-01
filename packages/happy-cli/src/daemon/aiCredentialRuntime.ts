@@ -1,3 +1,5 @@
+import { spawn as crossSpawn } from 'cross-spawn'
+import { verifyLocalAiAccounts, type VerificationIdentity } from './aiCredentialVerification'
 import { mergeCodexAccounts } from './aiCredentialAdditive'
 import { CODEX_MULTI_AUTH_VERSION, isSupportedCodexMultiAuthVersion, SUPPORTED_CODEX_MULTI_AUTH_VERSIONS } from '../utils/codexMultiAuthVersions'
 import { stagingParent } from './stagedCredentialRoot'
@@ -71,6 +73,8 @@ export type AiCredentialRotationStatus = {
 }
 
 type CommandOptions = {
+  cwd?: string
+  terminateProcessTree?: boolean
   maxOutputBytes?: number
   timeoutMs?: number
   acceptNonZeroExit?: boolean
@@ -1244,6 +1248,34 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     }))
   }
 
+  async function verify(input: { provider: AiCredentialProvider; accounts: VerificationIdentity[] }) {
+    const selected = provider(input?.provider)
+    if (selected === 'zai' || !Array.isArray(input.accounts) || input.accounts.length === 0 || input.accounts.length > 100
+      || input.accounts.some(identity => !isObject(identity)
+        || (selected === 'claude' ? typeof identity.email !== 'string' || !identity.email
+          : !(typeof identity.accountId === 'string' && identity.accountId) && !(typeof identity.email === 'string' && identity.email)))) {
+      throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
+    }
+    return serialize(() => withSafeErrors('AI_CREDENTIAL_VERIFICATION_FAILED', async () => {
+      let accounts: Array<Record<string, unknown>>
+      if (selected === 'claude') {
+        const listed = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], { maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout)
+        const exported = await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })
+        const parsed = JSON.parse(exported.stdout)
+        if (parsed.version !== 1 || parsed.encrypted === true || !Array.isArray(parsed.accounts)) throw new Error('invalid local export')
+        accounts = parsed.accounts.map((account: Record<string, unknown> & { email: string }) => ({
+          ...account,
+          disabled: listed.accounts.find(candidate => claudeListAccountIdentity(candidate) === claudeListAccountIdentity(account))?.disabled === true,
+        }))
+      } else {
+        const parsed = JSON.parse(await deps.readFile(join(codexMultiAuthDir(), 'openai-codex-accounts.json')))
+        if (parsed.version !== 3 || !Array.isArray(parsed.accounts)) throw new Error('invalid local pool')
+        accounts = parsed.accounts
+      }
+      return verifyLocalAiAccounts(deps, selected, input.accounts, accounts)
+    }))
+  }
+
   async function rotation(input: { action: 'start' | 'stop' }) {
     if (input?.action !== 'start' && input?.action !== 'stop') {
       throw new AiCredentialRuntimeError('UNSUPPORTED_ROTATION_ACTION')
@@ -1280,7 +1312,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
-  return { capture, apply, purge, status, rotation, sessionEnvironment, capabilities: () => ({ version: 1, applyModes: ['merge', 'replace'] }) }
+  return { capture, apply, purge, status, verify, rotation, sessionEnvironment, capabilities: () => ({ version: 1, verificationVersion: 1, applyModes: ['merge', 'replace'] }) }
 }
 
 type ClaudeListDetails = {
@@ -1657,7 +1689,7 @@ export function createNodeAiCredentialRuntime(
     homeDir,
     now: Date.now,
     env,
-    execFile: runAiCredentialCommand,
+    execFile: (command, args, options) => runAiCredentialCommand(command, args, options, options?.terminateProcessTree ? crossSpawn as typeof spawn : spawn),
     readFile: (path) => readFile(path, 'utf8'),
     readdir: (path) => readdir(path),
     writeFile: async (path, content, options) => { await writeFile(path, content, options) },
@@ -1685,6 +1717,8 @@ export function runAiCredentialCommand(
         : environment,
       stdio: [options.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       windowsHide: true,
+      ...(options.cwd ? { cwd: options.cwd } : {}),
+      ...(options.terminateProcessTree && process.platform !== 'win32' ? { detached: true } : {}),
     })
     const stdout: Buffer[] = []
     const stderr: Buffer[] = []
@@ -1694,7 +1728,18 @@ export function runAiCredentialCommand(
       if (settled) return
       settled = true
       if (timeout) clearTimeout(timeout)
-      child.kill('SIGKILL')
+      if (options.terminateProcessTree && child.pid) {
+        if (process.platform === 'win32') {
+          const killer = spawnCommand('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true })
+          const killTimeout = setTimeout(() => { killer.kill('SIGKILL'); child.kill('SIGKILL'); reject(new AiCredentialRuntimeError('COMMAND_TREE_TERMINATION_FAILED')) }, 5_000)
+          killer.on('error', () => { clearTimeout(killTimeout); child.kill('SIGKILL'); reject(new AiCredentialRuntimeError('COMMAND_TREE_TERMINATION_FAILED')) })
+          killer.on('close', (code) => { clearTimeout(killTimeout); reject(new AiCredentialRuntimeError(code === 0 ? kind : 'COMMAND_TREE_TERMINATION_FAILED')) })
+          return
+        }
+        try { process.kill(-child.pid, 'SIGKILL') } catch { child.kill('SIGKILL') }
+      } else {
+        child.kill('SIGKILL')
+      }
       reject(new AiCredentialRuntimeError(kind))
     }
     const collect = (target: Buffer[]) => {
