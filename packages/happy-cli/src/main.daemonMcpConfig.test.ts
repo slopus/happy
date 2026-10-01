@@ -36,7 +36,7 @@ describe('daemon MCP config CLI startup', () => {
     vi.stubEnv('HAPPY_APLUS_MCP_CONFIG_URL', undefined)
     vi.stubEnv('HAPPY_APLUS_MCP_CALLER_GRANT', 'session-grant')
     vi.stubEnv('HAPPY_APLUS_CAPABILITY_TOKEN', 'session-capability')
-    mocks.spawn.mockReturnValue({ unref: vi.fn() })
+    mocks.spawn.mockReturnValue({ unref: vi.fn(), once: vi.fn() }) // daemon start listens for the start-sync exit
     mocks.startDaemon.mockImplementation(async () => undefined)
     vi.spyOn(process, 'exit').mockImplementation(() => undefined as never)
     vi.spyOn(console, 'log').mockImplementation(() => undefined)
