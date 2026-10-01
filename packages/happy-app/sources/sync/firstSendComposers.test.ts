@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
 import * as spawnLifecycle from './spawnRequestId';
+import { parseSideQuestionCommand, supportsSideQuestions } from './sideQuestion';
 
 vi.mock('expo-crypto', () => ({ randomUUID: () => crypto.randomUUID() }));
 
@@ -137,9 +138,9 @@ describe('new-session screen callback boundary', () => {
 });
 
 describe('chat composer callback boundary', () => {
-    function chatBoundary() {
-        const composer = { getMessage: vi.fn(() => 'original'), clearMessage: vi.fn() };
-        const session = { draft: 'original', draftUpdatedAt: 5, metadata: { client: { id: 'rig' }, rigMetadataVersion: 1 } };
+    function chatBoundary(options: { message?: string; metadata?: Record<string, unknown> } = {}) {
+        const composer = { getMessage: vi.fn(() => options.message ?? 'original'), clearMessage: vi.fn() };
+        const session = { draft: 'original', draftUpdatedAt: 5, metadata: options.metadata ?? { client: { id: 'rig' }, rigMetadataVersion: 1 } };
         const scope = {
             storage: { getState: () => ({ sessions: { 'original-session': session } }) },
             isRigMetadataV1: () => true,
@@ -147,9 +148,21 @@ describe('chat composer callback boundary', () => {
             sendingSessionsRef: { current: new Set() }, currentSessionIdRef: { current: 'original-session' as string | null },
             selectedImages: [{ id: 'image' }], removeImage: vi.fn(), pendingCommunications: [{ id: 'question', kind: 'question' }],
             sessionCancelCommunication: vi.fn(), sync: { sendMessage: vi.fn() },
+            supportsSideQuestions, parseSideQuestionCommand, showSideQuestionSheet: vi.fn(),
         };
         return { scope, composer, session, send: callbackAt(chatScreen, sendCallback, scope) as () => void };
     }
+
+    it('opens /btw in the side-question sheet instead of sending it in a Claude chat', () => {
+        const { scope, composer, send } = chatBoundary({
+            message: '/btw what changed?',
+            metadata: { path: '/project', host: 'localhost', flavor: 'claude' },
+        });
+        send();
+        expect(scope.showSideQuestionSheet).toHaveBeenCalledWith('original-session', 'what changed?');
+        expect(composer.clearMessage).toHaveBeenCalledOnce();
+        expect(scope.sync.sendMessage).not.toHaveBeenCalled();
+    });
 
     it.each(['failure', 'new-text', 'new-picker', 'navigation'])('preserves the correct draft and question on %s', async (change) => {
         const { scope, composer, session, send } = chatBoundary();

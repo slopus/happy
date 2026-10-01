@@ -4,6 +4,7 @@ import { EnhancedMode } from "./loop";
 import { logger } from "@/ui/logger";
 import type { JsRuntime } from "./runClaude";
 import type { SandboxConfig } from "@/persistence";
+import type { AskSideQuestion } from "./sideQuestion";
 
 export class Session {
     readonly path: string;
@@ -26,6 +27,8 @@ export class Session {
     sessionId: string | null;
     mode: 'local' | 'remote' = 'local';
     thinking: boolean = false;
+    /** Asks the running Claude query a side question (/btw); null while no query is running. */
+    askSideQuestion: AskSideQuestion | null = null;
     
     /** Callbacks to be notified when session ID is found/changed */
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
