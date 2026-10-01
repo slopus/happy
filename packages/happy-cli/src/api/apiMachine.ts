@@ -13,6 +13,7 @@ import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
+import { AgentModelCatalogs, detectAgentModelCatalogs, sameAgentModelCatalogs } from '@/utils/agentModelCatalog';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
 import {
     releaseReconnectCapabilityMonitor,
@@ -148,6 +149,7 @@ export class ApiMachineClient {
     private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
     private keepAliveInterval: NodeJS.Timeout | null = null;
     private lastKnownCLIAvailability: CLIAvailability | null = null;
+    private lastKnownAgentModels: AgentModelCatalogs | undefined = undefined;
     private lastKnownResumeSupport: ResumeSupport | null = null;
     private rpcHandlerManager: RpcHandlerManager;
     private resumeSessionHandler: ((sessionId: string, options?: ResumeSessionOptions) => Promise<SpawnSessionResult>) | null = null;
@@ -618,14 +620,22 @@ export class ApiMachineClient {
         // metadata update so fields owned by the app (for example displayName)
         // are preserved.
         const cliVersionChanged = this.machine.metadata?.happyCliVersion !== configuration.currentCliVersion;
+        // Read after availability, so an agent that has just disappeared is not
+        // executed, and an agent that has just arrived is asked on the same
+        // pass that announces it. Upgrading an agent in place changes its models
+        // without changing anything else here, so this is compared on its own.
+        const newAgentModels = detectAgentModelCatalogs(newAvailability);
+        const agentModelsChanged = !sameAgentModelCatalogs(this.lastKnownAgentModels, newAgentModels);
 
-        if (cliAvailabilityChanged || resumeSupportChanged || cliVersionChanged) {
+        if (cliAvailabilityChanged || resumeSupportChanged || cliVersionChanged || agentModelsChanged) {
             this.lastKnownCLIAvailability = newAvailability;
             this.lastKnownResumeSupport = newResumeSupport;
+            this.lastKnownAgentModels = newAgentModels;
             this.updateMachineMetadata((metadata) => ({
                 ...(metadata || {} as any),
                 happyCliVersion: configuration.currentCliVersion,
                 cliAvailability: newAvailability,
+                agentModels: newAgentModels,
                 resumeSupport: { ...newResumeSupport, rpcAvailable: !!this.resumeSessionHandler },
             })).catch((err) => {
                 logger.debug('[API MACHINE] Failed to update machine capabilities:', err);
