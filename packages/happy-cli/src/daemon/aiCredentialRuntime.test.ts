@@ -134,6 +134,59 @@ function setup(
 }
 
 describe('AI credential machine runtime', () => {
+  it.each(['claude', 'codex'] as const)('verifies only the active %s account without changing selection', async (provider) => {
+    const { runtime, execFile, files, supervisor } = setup()
+    const original = execFile.getMockImplementation()!
+    const pool = codexMultiAuthBundle().accounts
+    pool.activeIndex = 1
+    files.set('/home/operator/.codex/multi-auth/openai-codex-accounts.json', JSON.stringify(pool))
+    const payload = claudeOauthPayload([{ email: 'inactive@example.com' }, { email: 'active@example.com' }])
+    let probes = 0
+    execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: 2,
+        accounts: [{ number: 1, email: 'inactive@example.com' }, { number: 2, email: 'active@example.com', active: true }] }), stderr: '' }
+      if (command === 'cswap' && args[0] === 'export') return { stdout: payload, stderr: '' }
+      if (command === provider) {
+        probes += 1
+        const home = options?.environment?.HOME
+        if (provider === 'claude') {
+          expect(JSON.parse(files.get(`${home}/.claude/.credentials.json`)!).claudeAiOauth.accessToken).toBe('oauth-2')
+          return { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 }
+        }
+        expect(JSON.parse(files.get(`${home}/.codex/auth.json`)!).account_id).toBe('account-b')
+        return { stdout: JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'SHARED_AI_OK' } }) + '\n' + JSON.stringify({ type: 'turn.completed' }), stderr: '', exitCode: 0 }
+      }
+      return original(command, args, options)
+    })
+    const result = await runtime.verify({ provider, scope: 'active' } as never)
+    expect(result).toMatchObject({ scope: 'active', activeAccountNumber: 2, accounts: [{ account: 1, ok: true }] })
+    expect(probes).toBe(1)
+    expect(execFile.mock.calls.some(([, args]) => ['import', 'switch', 'remove'].includes(args[0]!))).toBe(false)
+    expect(supervisor.stop).not.toHaveBeenCalled()
+    expect(supervisor.enable).not.toHaveBeenCalled()
+  })
+
+  it.each([null, 1])('does not report active verification success when selection is missing or changes to %s', async (after) => {
+    const { runtime, execFile } = setup()
+    const original = execFile.getMockImplementation()!
+    let lists = 0
+    let probes = 0
+    execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'cswap' && args[0] === 'list') {
+        lists += 1
+        return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: after === null ? null : lists === 1 ? 2 : after,
+          accounts: [{ number: 1, email: 'inactive@example.com' }, { number: 2, email: 'active@example.com' }] }), stderr: '' }
+      }
+      if (command === 'cswap' && args[0] === 'export') return { stdout: claudeOauthPayload([{ email: 'inactive@example.com' }, { email: 'active@example.com' }]), stderr: '' }
+      if (command === 'claude') { probes += 1; return { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 } }
+      return original(command, args, options)
+    })
+    await expect(runtime.verify({ provider: 'claude', scope: 'active' })).rejects.toMatchObject({
+      kind: after === null ? 'ACTIVE_ACCOUNT_NOT_SELECTED' : 'ACTIVE_ACCOUNT_CHANGED',
+    })
+    expect(probes).toBe(after === null ? 0 : 1)
+  })
+
   it.each([[7, false], [9, false], [7, true]] as const)('repairs matching shared or personal credentials while preserving selected slot %i and enabled rotation %s', async (active, rotating) => {
     const { runtime, files, calls, execFile, supervisor } = setup()
     supervisor.status.mockReturnValue({ state: rotating ? 'running' : 'stopped' as never, lastErrorKind: null })

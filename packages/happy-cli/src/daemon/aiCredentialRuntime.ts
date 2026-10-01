@@ -1334,18 +1334,29 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     }))
   }
 
-  async function verify(input: { provider: AiCredentialProvider; accounts: VerificationIdentity[] }) {
+  async function verify(input: { provider: AiCredentialProvider; accounts?: VerificationIdentity[]; scope?: 'active' | 'accounts' }) {
     const selected = provider(input?.provider)
-    if (selected === 'zai' || !Array.isArray(input.accounts) || input.accounts.length === 0 || input.accounts.length > 100
+    const scope = input.scope ?? 'accounts'
+    if (selected === 'zai' || !['active', 'accounts'].includes(scope) || (scope === 'accounts' && (!Array.isArray(input.accounts) || input.accounts.length === 0 || input.accounts.length > 100
       || input.accounts.some(identity => !isObject(identity)
         || (selected === 'claude' ? typeof identity.email !== 'string' || !identity.email
-          : !(typeof identity.accountId === 'string' && identity.accountId) && !(typeof identity.email === 'string' && identity.email)))) {
+          : !(typeof identity.accountId === 'string' && identity.accountId) && !(typeof identity.email === 'string' && identity.email)))))) {
       throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
     }
     return serialize(() => withSafeErrors('AI_CREDENTIAL_VERIFICATION_FAILED', async () => {
       let accounts: Array<Record<string, unknown>>
+      let requested = input.accounts ?? []
+      let activeAccountNumber: number | null = null
+      let activeAccount = ''
       if (selected === 'claude') {
         const listed = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], { maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout)
+        if (scope === 'active') {
+          const active = listed.accounts.find(account => account.number === listed.activeAccountNumber)
+          if (!active) throw new AiCredentialRuntimeError('ACTIVE_ACCOUNT_NOT_SELECTED')
+          activeAccountNumber = active.number
+          activeAccount = active.email
+          requested = [{ email: active.email, organizationUuid: typeof active.organizationUuid === 'string' ? active.organizationUuid : '' }]
+        }
         const exported = await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })
         const parsed = JSON.parse(exported.stdout)
         if (parsed.version !== 1 || parsed.encrypted === true || !Array.isArray(parsed.accounts)) throw new Error('invalid local export')
@@ -1357,8 +1368,30 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         const parsed = JSON.parse(await deps.readFile(join(codexMultiAuthDir(), 'openai-codex-accounts.json')))
         if (parsed.version !== 3 || !Array.isArray(parsed.accounts)) throw new Error('invalid local pool')
         accounts = parsed.accounts
+        if (scope === 'active') {
+          const active = Number.isInteger(parsed.activeIndex) ? accounts[parsed.activeIndex] : undefined
+          if (!active || (!active.accountId && !active.email)) throw new AiCredentialRuntimeError('ACTIVE_ACCOUNT_NOT_SELECTED')
+          activeAccountNumber = parsed.activeIndex + 1
+          activeAccount = typeof active.email === 'string' ? active.email : ''
+          requested = [{ accountId: active.accountId as string | undefined, email: active.email as string | undefined }]
+        }
       }
-      return verifyLocalAiAccounts(deps, selected, input.accounts, accounts)
+      const verification = await verifyLocalAiAccounts(deps, selected, requested, accounts)
+      if (scope !== 'active') return verification
+      if (selected === 'claude') {
+        const current = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], { maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout)
+        const active = current.accounts.find(account => account.number === current.activeAccountNumber)
+        if (!active || active.number !== activeAccountNumber || active.email !== requested[0]?.email
+          || (active.organizationUuid ?? '') !== requested[0]?.organizationUuid) throw new AiCredentialRuntimeError('ACTIVE_ACCOUNT_CHANGED')
+      } else {
+        const current = JSON.parse(await deps.readFile(join(codexMultiAuthDir(), 'openai-codex-accounts.json')))
+        const active = current.accounts?.[current.activeIndex]
+        if (current.activeIndex + 1 !== activeAccountNumber || !active
+          || (requested[0]?.accountId ? active.accountId !== requested[0].accountId : active.email !== requested[0]?.email)) {
+          throw new AiCredentialRuntimeError('ACTIVE_ACCOUNT_CHANGED')
+        }
+      }
+      return { ...verification, scope: 'active' as const, activeAccountNumber, activeAccount: maskEmail(activeAccount) }
     }))
   }
 
@@ -1398,7 +1431,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
-  return { capture, apply, purge, status, verify, rotation, sessionEnvironment, capabilities: () => ({ version: 1, verificationVersion: 1, applyModes: ['merge', 'replace', 'repair'] }) }
+  return { capture, apply, purge, status, verify, rotation, sessionEnvironment, capabilities: () => ({ version: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'] }) }
 }
 
 type ClaudeListDetails = {
