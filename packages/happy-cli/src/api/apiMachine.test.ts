@@ -8,6 +8,8 @@ import { logger } from '@/ui/logger';
 import type { Machine } from './types';
 import { CHANNEL_SUPPORT_CAPABILITY } from '@/channel/channelSupportCapability';
 import { AI_AUTH_SELECTION_CAPABILITY } from '@/daemon/sessionEnv';
+import { createAiCredentialRuntime } from '@/daemon/aiCredentialRuntime';
+import { join } from 'node:path';
 
 const {
     mockIo,
@@ -496,6 +498,53 @@ describe('ApiMachineClient socket reconnection', () => {
         expect(spawnSession).toHaveBeenCalledWith(expect.objectContaining({
             additionalDirectories: ['/home/user/frontend'],
         }));
+    });
+
+    it('exports a Codex account pool through the credential RPC when optional settings are absent', async () => {
+        const accounts = { version: 3, activeIndex: 0, accounts: [
+            { accountId: 'account-1', refreshToken: 'fixture-refresh', addedAt: 1, lastUsed: 1 },
+        ] };
+        const poolPath = join('/fixed/codex', 'multi-auth', 'openai-codex-accounts.json');
+        const readFile = vi.fn(async (filePath: string) => {
+            if (filePath === join('/global/node_modules', 'codex-multi-auth', 'package.json')) {
+                return JSON.stringify({ version: '2.16.0' });
+            }
+            if (filePath === poolPath) return JSON.stringify(accounts);
+            throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+        });
+        const writeFile = vi.fn(async () => undefined);
+        const runtime = createAiCredentialRuntime({
+            homeDir: '/home/operator', now: () => 0, env: { CODEX_HOME: '/fixed/codex' },
+            execFile: vi.fn(async (command: string) => ({
+                stdout: command === 'npm' ? '/global/node_modules\n' : '2.16.0\n', stderr: '',
+            })),
+            readFile, writeFile, readdir: vi.fn(async () => []),
+            mkdir: vi.fn(async () => undefined), rename: vi.fn(async () => undefined),
+            chmod: vi.fn(async () => undefined), rm: vi.fn(async () => undefined),
+            makeTempDir: vi.fn(async () => '/unused'),
+            supervisor: {
+                enable: vi.fn(async () => undefined), stop: vi.fn(async () => undefined),
+                status: vi.fn(() => ({ state: 'stopped' as const, lastErrorKind: null })),
+            },
+        });
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.setRPCHandlers({
+            spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn(),
+            portRegistry: {} as any, aiCredentialRuntime: runtime,
+        });
+        const handler = (client as any).rpcHandlerManager.registerHandler.mock.calls
+            .find(([method]: [string]) => method === 'ai-credential:export')?.[1];
+
+        expect(handler).toBeTypeOf('function');
+        const captured = await handler({ provider: 'codex' });
+
+        expect(captured.provider).toBe('codex');
+        expect(JSON.parse(captured.payload)).toEqual({
+            version: 1, kind: 'codex-multi-auth', packageVersion: '2.16.0', accounts,
+            settings: { version: 1, pluginConfig: {} },
+        });
+        expect(readFile).not.toHaveBeenCalledWith(join('/fixed/codex', 'auth.json'));
+        expect(writeFile).not.toHaveBeenCalled();
     });
 
     it('exposes additive credential capability without receiving credentials', async () => {
