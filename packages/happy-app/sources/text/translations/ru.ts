@@ -733,6 +733,22 @@ export const ru: TranslationStructure = {
         close: 'Закрыть боковой чат',
     },
 
+    sideQuestion: {
+        title: 'Вопрос между делом',
+        subtitle: 'Ответ по этому чату — в сам чат ничего не попадёт.',
+        placeholder: 'Спросите об этом чате…',
+        followUpPlaceholder: 'Задайте уточняющий вопрос…',
+        send: 'Спросить',
+        close: 'Закрыть',
+        answering: 'Claude отвечает…',
+        noAnswer: 'У Claude нет ответа.',
+        terminalMode: 'Эта сессия запущена в терминале. Используйте /btw там или отправьте сообщение из приложения, чтобы взять управление на себя.',
+        notStarted: 'Claude в этой сессии ещё не запущен. Сначала отправьте сообщение — после этого /btw работает, даже когда Claude занят.',
+        cliOutdated: 'Happy CLI в этой сессии слишком старый для /btw. Обновите его на том компьютере.',
+        offline: 'Эта сессия не в сети.',
+        failed: ({ error }: { error: string }) => `Не удалось получить ответ: ${error}`,
+    },
+
     settingsVoice: {
         // Voice settings screen
         languageTitle: 'Язык',

@@ -715,6 +715,22 @@ export const zhHant: TranslationStructure = {
         close: '關閉側邊聊天',
     },
 
+    sideQuestion: {
+        title: '順便提問',
+        subtitle: '根據此聊天作答——這裡的內容不會加入對話。',
+        placeholder: '詢問關於此聊天的問題…',
+        followUpPlaceholder: '繼續追問…',
+        send: '提問',
+        close: '關閉',
+        answering: 'Claude 正在回答…',
+        noAnswer: 'Claude 沒有給出回答。',
+        terminalMode: '此工作階段正在終端中執行。請在終端中使用 /btw，或從應用程式傳送一則訊息以接手控制。',
+        notStarted: '此工作階段中的 Claude 尚未執行。請先傳送一則訊息——之後即使 Claude 正在忙碌，也可以使用 /btw。',
+        cliOutdated: '執行此工作階段的 Happy CLI 版本過舊，無法使用 /btw。請在那台電腦上更新。',
+        offline: '此工作階段已離線。',
+        failed: ({ error }: { error: string }) => `無法取得回答：${error}`,
+    },
+
     settingsVoice: {
         // Voice settings screen
         languageTitle: '語言',

@@ -751,6 +751,22 @@ export const en = {
         close: 'Close side chat',
     },
 
+    sideQuestion: {
+        title: 'Side question',
+        subtitle: 'Answered from this chat — nothing here is added to it.',
+        placeholder: 'Ask about this chat…',
+        followUpPlaceholder: 'Ask a follow-up…',
+        send: 'Ask',
+        close: 'Close',
+        answering: 'Claude is answering…',
+        noAnswer: 'Claude had no answer.',
+        terminalMode: 'This session is running in the terminal. Use /btw there, or send a message from the app to take it over.',
+        notStarted: 'Claude isn’t running in this session yet. Send a message first — after that, /btw works even while Claude is busy.',
+        cliOutdated: 'The Happy CLI running this session is too old for /btw. Update it on that computer.',
+        offline: 'This session is offline.',
+        failed: ({ error }: { error: string }) => `Couldn’t get an answer: ${error}`,
+    },
+
     settingsVoice: {
         // Voice settings screen
         languageTitle: 'Language',

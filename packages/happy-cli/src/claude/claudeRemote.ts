@@ -16,6 +16,7 @@ import { fromRateLimitEvent, windowsFromGetUsage, type UnboundRateLimit, type Us
 import type { UsageLimitWindow } from "@/api/types";
 import { pluginsFromArgs } from './utils/pluginsFromArgs';
 import { claudeProviderAuthMessage } from './utils/providerAuth';
+import type { AskSideQuestion, SideQuestionTurn } from './sideQuestion';
 
 export async function claudeRemote(opts: {
 
@@ -28,8 +29,8 @@ export async function claudeRemote(opts: {
     allowedTools: string[],
     signal?: AbortSignal,
     canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: CanCallToolOptions) => Promise<PermissionResult>,
-    /** Called when the Query object is ready — allows permission handler to call setPermissionMode */
-    onQueryReady?: (query: { setPermissionMode: (mode: string) => Promise<void> }) => void,
+    /** Called when the Query object is ready — lets the permission handler change modes and the app ask side questions (/btw) */
+    onQueryReady?: (query: { setPermissionMode: (mode: string) => Promise<void>, askSideQuestion: AskSideQuestion }) => void,
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string,
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
@@ -176,10 +177,28 @@ export async function claudeRemote(opts: {
         options: sdkOptions,
     });
 
-    // Expose query control methods to permission handler
+    // Expose query control methods: the permission handler switches modes
+    // through them, and the app's /btw asks side questions.
     if (opts.onQueryReady) {
+        // The SDK ships Query.askSideQuestion and the CLI serves the
+        // `side_question` request behind it, but the method is missing from the
+        // SDK's public typings (checked through 0.3.286) — typeof-gated in case
+        // a later SDK drops it.
+        const sdkAskSideQuestion = (response as unknown as {
+            askSideQuestion?: (
+                question: string,
+                options: { history: SideQuestionTurn[]; signal: AbortSignal },
+            ) => Promise<{ response: string; synthetic?: boolean } | null>;
+        }).askSideQuestion;
         opts.onQueryReady({
             setPermissionMode: (mode: string) => response.setPermissionMode(mode as any),
+            askSideQuestion: async (question, options) => {
+                if (typeof sdkAskSideQuestion !== 'function') {
+                    throw new Error('This version of Claude Code cannot answer side questions');
+                }
+                const answer = await sdkAskSideQuestion.call(response, question, options);
+                return { response: answer?.response ?? null, synthetic: answer?.synthetic ?? false };
+            },
         });
     }
 

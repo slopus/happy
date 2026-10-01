@@ -714,6 +714,22 @@ export const pt: TranslationStructure = {
         close: 'Fechar chat lateral',
     },
 
+    sideQuestion: {
+        title: 'Pergunta paralela',
+        subtitle: 'Respondida com base neste chat — nada daqui é adicionado à conversa.',
+        placeholder: 'Pergunte sobre este chat…',
+        followUpPlaceholder: 'Faça outra pergunta…',
+        send: 'Perguntar',
+        close: 'Fechar',
+        answering: 'Claude está respondendo…',
+        noAnswer: 'Claude não teve resposta.',
+        terminalMode: 'Esta sessão está em execução no terminal. Use /btw lá ou envie uma mensagem pelo app para assumir o controle.',
+        notStarted: 'O Claude ainda não está em execução nesta sessão. Envie uma mensagem primeiro — depois disso, /btw funciona mesmo enquanto o Claude está ocupado.',
+        cliOutdated: 'O Happy CLI desta sessão é antigo demais para /btw. Atualize-o naquele computador.',
+        offline: 'Esta sessão está offline.',
+        failed: ({ error }: { error: string }) => `Não foi possível obter uma resposta: ${error}`,
+    },
+
     settingsVoice: {
         // Voice settings screen
         languageTitle: 'Idioma',
