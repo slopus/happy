@@ -612,6 +612,11 @@ main_install() {
     else
         warn "machine id unresolved: log the agent in to Happy (sudo -iu agent happy auth login) and run abp-install again"
     fi
+    # A fresh install over an earlier one (abp-uninstall keeps /var/lib/abp, e.g. to change the tenancy): the
+    # earlier assignment identity no longer applies. The stack verifies and records the new one when it starts.
+    if [ "$DRY_RUN" = 0 ] && [ ! -f "$INSTALL_JSON" ] && [ -s "$VARLIB/stack-state.json" ]; then
+        "$NODE" -e 'const fs=require("fs");const p=process.argv[1];const s=JSON.parse(fs.readFileSync(p,"utf8"));if(s.applied===undefined)process.exit(0);delete s.applied;s.history=[...(s.history??[]),{atMs:Date.now(),action:"fresh-install",result:"previous assignment identity cleared"}].slice(-50);fs.writeFileSync(p+".tmp",JSON.stringify(s,null,2)+"\n",{mode:0o600});fs.renameSync(p+".tmp",p)' "$VARLIB/stack-state.json"
+    fi
     write_file "$INSTALL_JSON" root root 0600 show < "$WORK/install.json"
     emit "$ETC/happy-daemon.env" root root 0644 show daemon-env --install "$WORK/install.json"
 
