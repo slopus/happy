@@ -56,6 +56,8 @@ const MAINTENANCE_MAX_MS = 15 * 60_000;
 /** A first-use profile request the machine cannot hold (or that failed) is refused this long. */
 const PROFILE_REFUSAL_MS = 10 * 60_000;
 const PROFILE_BUSY_RETRY_MS = 2 * 60_000;
+/** Busy postponements of one request before it is refused as busy. */
+const PROFILE_BUSY_RETRIES = 3;
 const PROFILE_POLL_MS = 3_000;
 const NETWORK_FORMAT = '{{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}} {{index .Options "com.docker.network.bridge.name"}}';
 const SERVICE = "abp-stack.service";
@@ -169,6 +171,8 @@ export function systemDeps() {
 export function createStack(deps) {
   /** First-use additions that failed, per user, for the service's lifetime (their refusals grow). */
   const failedAdditions = new Map();
+  /** Consecutive busy postponements per user (the drain timed out). */
+  const busyPostponements = new Map();
   const docker = (args, opts) => deps.run("docker", args, opts);
   const systemctl = (args, opts) => deps.run("systemctl", args, opts);
   const firewall = (args, opts) => deps.run(FIREWALL, args, opts);
@@ -674,7 +678,8 @@ export function createStack(deps) {
       next = { ...options, profiles: [...options.profiles, { profileId, principalId, assignmentId: randomBytes(16).toString("hex"), networkSlot }], profileTombstones: [...others, ...kept] };
     } else {
       next = { ...options, profiles: options.profiles.filter((profile) => profile.principalId !== principalId),
-        profileTombstones: [...others, { principalId, removedAtMs: block ? Number.MAX_SAFE_INTEGER : deps.now() }] };
+        // A block stays until add-profile lifts it, also through a later plain remove-profile.
+        profileTombstones: [...others, { principalId, removedAtMs: block || tombstone?.removedAtMs === Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : deps.now() }] };
       if (!existing) {
         // Nothing runs for the user: the tombstone reaches the broker with the next Runtime start.
         writeInstall(mergeInstallOptions(next, {}));
@@ -751,30 +756,46 @@ export function createStack(deps) {
     async provisionRequestedProfiles(backoff) {
       if (install().tenancyMode !== "shared") return {};
       const requests = (await deps.adminProfileRequests()) ?? [];
-      const request = requests.find((entry) => (backoff.get(entry.principalId) ?? 0) <= deps.now());
+      const now = deps.now();
+      // A newer chat of a refused user asks again: the broker gets the same refusal for what is left of it.
+      for (const entry of requests) {
+        const held = backoff.get(entry.principalId);
+        if (held?.reason && held.until > now) await deps.refuseProfileRequest(entry.principalId, held.reason, held.until - now);
+      }
+      const request = requests.find((entry) => (backoff.get(entry.principalId)?.until ?? 0) <= now);
       if (!request) return {};
       let release;
       try { release = await deps.opLock(); } catch { return { busy: true }; }
       try {
+        // A journal while the lock is free: its owner died. The service restarts and its start settles it.
+        if (readState().profileOp) return { restartToSettle: true };
         await changeProfile("add", request.principalId, { firstUse: true });
         backoff.delete(request.principalId);
+        busyPostponements.delete(request.principalId);
         deps.log(`profile added on first use: ${sharedProfileId(request.principalId)}`);
         return { added: [request.principalId] };
       } catch (error) {
         const message = error instanceof Error ? error.message : "failed";
-        // Only busy (the drain timed out, nothing changed): tried again shortly, nobody refused.
+        // Busy (the drain timed out, nothing changed): tried again shortly, then refused as busy, so the fence of a
+        // retry does not interrupt everyone every 2 minutes for as long as the machine stays busy.
+        let reason = error?.capacityReason ?? "failed";
         if (error?.nothingChanged) {
-          backoff.set(request.principalId, deps.now() + PROFILE_BUSY_RETRY_MS);
-          deps.log(`profile request postponed: ${message}`);
-          return { busy: true };
+          const postponed = (busyPostponements.get(request.principalId) ?? 0) + 1;
+          if (postponed <= PROFILE_BUSY_RETRIES) {
+            busyPostponements.set(request.principalId, postponed);
+            backoff.set(request.principalId, { until: deps.now() + PROFILE_BUSY_RETRY_MS });
+            deps.log(`profile request postponed: ${message}`);
+            return { busy: true };
+          }
+          busyPostponements.delete(request.principalId);
+          reason = "busy";
         }
         // A request that cannot be served is refused (the session is told why), for longer each time an addition
         // fails, so a persistent failure does not restart everyone's Runtime over and over.
-        const reason = error?.capacityReason ?? "failed";
         const failures = reason === "failed" ? (failedAdditions.get(request.principalId) ?? 0) + 1 : 1;
         if (reason === "failed") failedAdditions.set(request.principalId, failures);
         const refusalMs = Math.min(PROFILE_REFUSAL_MS * 3 ** (failures - 1), 24 * 60 * 60_000);
-        backoff.set(request.principalId, deps.now() + refusalMs);
+        backoff.set(request.principalId, { until: deps.now() + refusalMs, reason });
         await deps.refuseProfileRequest(request.principalId, reason, refusalMs);
         deps.log(`profile request refused (${reason}): ${sharedProfileId(request.principalId)}: ${message}`);
         // A change that failed for good holds the fence: the service restarts, and its start settles it.
@@ -782,6 +803,7 @@ export function createStack(deps) {
         return { refused: [{ principalId: request.principalId, reason }], ...restartToSettle ? { restartToSettle: true } : {} };
       } finally { release(); }
     },
+
     /** Puts back the profiles from before an unfinished add/remove-profile (the whole stack restarts). */
     recoverProfiles() {
       return locked(async () => {

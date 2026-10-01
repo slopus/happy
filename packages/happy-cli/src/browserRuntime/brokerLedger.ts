@@ -72,14 +72,15 @@ export type ProfileRequest =
     | { state: 'requested'; atMs: number }
     | { state: 'refused'; atMs: number; reason: ProfileRefusal; retryAtMs: number }
 
-/** Why abp-stack did not create a profile: the machine is full, short of memory, the user is blocked, or it failed. */
-export const PROFILE_REFUSALS = ['capacity', 'memory', 'blocked', 'failed'] as const
+/** Why abp-stack did not create a profile: the machine is full, short of memory or busy, the user is blocked, or it failed. */
+export const PROFILE_REFUSALS = ['capacity', 'memory', 'blocked', 'failed', 'busy'] as const
 export type ProfileRefusal = (typeof PROFILE_REFUSALS)[number]
 const REFUSAL_MESSAGES: Record<ProfileRefusal, string> = {
     capacity: 'this machine has no room for another browser profile (at most 8); ask the operator',
     memory: 'this machine does not have enough memory for another browser profile right now; ask the operator or try later',
     blocked: 'this user was removed from the machine\'s browser; ask the operator to add them again',
     failed: "the user's browser profile could not be created; ask the operator (abp-stack logs) or try again in a few minutes",
+    busy: 'this machine is too busy to add a browser profile right now; try again in a few minutes',
 }
 
 export interface AssignmentLedger {

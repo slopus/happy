@@ -270,7 +270,9 @@ abp-stack recover-profiles                         # put the previous profiles b
   (crash, reboot) is settled by the next service start or `abp-stack up --restart`: before its commit the
   previous profiles, after it the new ones. A first-use addition that failed for good restarts the service
   itself, so its fence does not stay; supervision of the other browsers continues meanwhile. A user whose
-  additions keep failing is refused for 10, 30, 90 minutes...; a drain that timed out only postpones (2 min).
+  additions keep failing is refused for 10, 30, 90 minutes...; a drain that timed out postpones (2 min) up to three
+  times, then the request is refused as busy. While a refusal lasts, newer chats of that user get its reason.
+- A block stays through a later plain `remove-profile`; only `add-profile` lifts it.
 - Verification after a change needs the Runtime and that profile's browser only: another user's broken browser
   holds neither changes nor start-up.
 - Removal ends that user's sessions and tasks; their login volume is kept indefinitely (re-adding restores

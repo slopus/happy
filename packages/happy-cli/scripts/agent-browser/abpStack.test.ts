@@ -1404,6 +1404,47 @@ describe('first-use profile requests (the abp-stack service)', () => {
         expect(host.state().profileOp).toMatchObject({ phase: 'failed' })
     })
 
+    it('keeps a block when the blocked user is later removed without --block (only add-profile lifts it)', async () => {
+        const host = fakeHost({ shared: [['user-1', 0], ['user-2', 2]], serviceActive: true, requests: [{ principalId: 'user-2', requestedAtMs: 1 }] })
+        await createStack(host.deps).removeProfile('user-2', { block: true })
+        await createStack(host.deps).removeProfile('user-2')
+        expect(JSON.parse(host.files.get(PATHS.installConfig)!.data).profileTombstones).toEqual([{ principalId: 'user-2', removedAtMs: Number.MAX_SAFE_INTEGER }])
+        expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toEqual({ refused: [{ principalId: 'user-2', reason: 'blocked' }] })
+    })
+
+    it('refuses a request as busy after three postponements, instead of fencing everyone every 2 minutes forever', async () => {
+        const busy = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], running: Array(1000).fill(1) })
+        const stack = createStack(busy.deps)
+        const backoff = new Map()
+        for (let i = 0; i < 3; i++) {
+            expect(await stack.provisionRequestedProfiles(backoff)).toEqual({ busy: true })
+            await busy.deps.sleep(120_001)
+        }
+        expect(await stack.provisionRequestedProfiles(backoff)).toEqual({ refused: [{ principalId: 'user-3', reason: 'busy' }] })
+        expect(busy.refusals).toEqual([{ principalId: 'user-3', reason: 'busy', retryAfterMs: 600_000 }])
+    })
+
+    it("restarts the service to settle a change whose owner died (the lock is free), refusing nobody", async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }] })
+        host.files.set(PATHS.stackState, { data: JSON.stringify({ ...host.state(), profileOp: { op: 'add', principalId: 'user-4', profileId: sharedProfileId('user-4'), phase: 'started', before: JSON.parse(host.files.get(PATHS.installConfig)!.data) } }), mode: 0o600, owner: 'root', group: 'root' })
+        expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toEqual({ restartToSettle: true })
+        expect(host.refusals).toEqual([])
+    })
+
+    it('keeps telling new chats why a user was refused while the refusal lasts', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], memory: { totalBytes: 16 * 2 ** 30, availableBytes: 2 ** 30 } })
+        const stack = createStack(host.deps)
+        const backoff = new Map()
+        await stack.provisionRequestedProfiles(backoff)
+        await host.deps.sleep(60_000)
+        // A newer chat asked again: the broker gets the same refusal for what is left of it.
+        expect(await stack.provisionRequestedProfiles(backoff)).toEqual({})
+        expect(host.refusals).toEqual([
+            { principalId: 'user-3', reason: 'memory', retryAfterMs: 600_000 },
+            { principalId: 'user-3', reason: 'memory', retryAfterMs: 540_000 },
+        ])
+    })
+
     it('does nothing on a dedicated machine', async () => {
         const host = fakeHost({ serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }] })
         expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toEqual({})
