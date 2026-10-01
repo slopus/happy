@@ -45,6 +45,7 @@ import { preflightDaemonControlServer } from './daemon/controlServer'
 import { resolveMcpConfigPresetUrl } from './aplus/mcpConfigPresets'
 import { readManagedStartup } from '@/managed/managedStartup';
 import { resolveDaemonMcpConfigEnvironment } from './daemon/daemonMcpConfig'
+import { waitForDaemonStart } from './daemon/waitForDaemonStart'
 
 
 (async () => {
@@ -622,17 +623,18 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         stdio: captureSpawnOutputStdio('daemon-start-sync.log', `daemon start from pid ${process.pid}`),
         env: daemonEnv
       });
+      let childExited = false;
+      child.once('exit', () => { childExited = true });
       child.unref();
 
-      // Wait for daemon to write state file (up to 5 seconds)
-      let started = false;
-      for (let i = 0; i < 50; i++) {
-        if (await checkIfDaemonRunningAndCleanupStaleState()) {
-          started = true;
-          break;
-        }
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
+      // Wait until the daemon is up or start-sync has exited. A fixed 5s failed a slow Windows PC
+      // whose daemon wrote its state at 6.9s; 25s stays inside startDetachedHappyCLI's 30s.
+      const started = await waitForDaemonStart({
+        isRunning: checkIfDaemonRunningAndCleanupStaleState,
+        childExited: () => childExited,
+        now: () => Date.now(),
+        sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
+      }, { timeoutMs: 25_000, pollMs: 100 }) === 'started';
 
       if (started) {
         console.log('Daemon started successfully');
