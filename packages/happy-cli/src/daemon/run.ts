@@ -268,6 +268,8 @@ import {
   reapplyAdditionalDirectoriesOnResume,
 } from './additionalDirectories';
 import { mergeAdditionalDirectoriesIntoSandboxEnvironment } from '@/utils/additionalDirectoriesEnv';
+import { readClaudeTranscriptBranch, restoreMissingManagedWorktree } from './missingWorktreeRestore';
+import { getProjectPath } from '@/claude/utils/path';
 import { CHANNEL_SUPPORT_CAPABILITY } from '@/channel/channelSupportCapability';
 import {
   channelHostDirectories,
@@ -2633,6 +2635,23 @@ export async function startDaemon(): Promise<void> {
             claudeStartingMode: 'remote',
           },
         );
+
+        // The managed worktree this session ran in may have been cleaned up
+        // while it was idle; put it back at the same path so the agent's
+        // transcript (keyed by that path) resumes intact.
+        const claudeSessionId = metadata.claudeSessionId;
+        const restoredWorktree = await restoreMissingManagedWorktree({
+          cwd: launch.cwd,
+          readBranchHint: async () => claudeSessionId
+            ? readClaudeTranscriptBranch(join(getProjectPath(launch.cwd), `${claudeSessionId}.jsonl`))
+            : null,
+        });
+        if (restoredWorktree.kind === 'recreated' || restoredWorktree.kind === 'failed') {
+          logger.debug(`[DAEMON RUN] Missing worktree for resumed session ${happySessionId}`, restoredWorktree);
+        }
+        if (restoredWorktree.kind === 'failed') {
+          throw new Error(`session directory ${launch.cwd} was removed and could not be recreated (${restoredWorktree.reason})`);
+        }
 
         if (options?.model) {
           launch.args.push('--model', options.model);
