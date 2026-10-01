@@ -17,11 +17,10 @@ import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { createWorktree } from '@/utils/worktree';
 import {
     getEffortLevelsForModel,
-    getHardcodedModelModes,
+    getModelModesForMachine,
     getHardcodedPermissionModes,
     filterPermissionModesForCli,
     getSupportsWorktree,
-    includeConfiguredModel,
 } from '@/components/modelModeOptions';
 import { Modal } from '@/modal';
 import { t } from '@/text';
@@ -334,9 +333,13 @@ export function useStartSessionFromDraft() {
                 : [draft.permissionMode, defaults.permissionMode, rigCreation ? null : getCodeAgentDefaults(agentType, machine.metadata?.happyCliVersion).permissionMode],
         );
         const model = resolveOption<{ key: string }>(
-            rigCreation?.models ?? includeConfiguredModel(
+            // Resolved against what the destination machine reports, so a start
+            // cannot land on a model Happy knows but that machine's agent does
+            // not have.
+            rigCreation?.models ?? getModelModesForMachine(
                 agentType,
-                getHardcodedModelModes(agentType, t),
+                machine.metadata,
+                t,
                 defaults.modelMode,
             ),
             agentChanged
@@ -348,7 +351,7 @@ export function useStartSessionFromDraft() {
         const effort = resolveOption<{ key: string }>(
             rigCreation
                 ? rigCreation.effortsForModel(model?.key).map((key) => ({ key, name: key }))
-                : getEffortLevelsForModel(agentType, model?.key ?? 'default'),
+                : getEffortLevelsForModel(agentType, model?.key ?? 'default', undefined, machine.metadata),
             agentChanged
                 ? [effortDefault]
                 : [draft.effortLevel, effortDefault],

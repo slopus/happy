@@ -127,6 +127,18 @@ vi.mock('@/components/modelModeOptions', () => ({
         { key: 'default', name: 'Default' },
         { key: 'opus', name: 'Opus' },
     ],
+    // Mirrors the real resolver: the machine's own catalog when it reported one,
+    // the shipped list otherwise. Tests that care pass `agentModels` on the
+    // machine; every other test keeps the list above.
+    getModelModesForMachine: (flavor: string, machineMetadata: any, _t: unknown, configured?: string | null) => {
+        const reported = machineMetadata?.agentModels?.[flavor]?.models;
+        const models = reported?.length
+            ? reported.map((model: any) => ({ key: model.id, name: model.name }))
+            : [{ key: 'default', name: 'Default' }, { key: 'opus', name: 'Opus' }];
+        return configured && !models.some((model: any) => model.key === configured)
+            ? [...models, { key: configured, name: configured }]
+            : models;
+    },
     getEffortLevelsForModel: () => [
         { key: 'medium', name: 'Medium' },
     ],
