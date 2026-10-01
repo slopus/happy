@@ -99,6 +99,7 @@ export function getAskModelModes(): ModelMode[] {
 
 const CODEX_CURRENT_MODELS: ModelMode[] = [
     { key: 'gpt-6-astra', name: 'gpt-6-astra', description: null },
+    { key: 'gpt-6.1-sol', name: 'gpt-6.1-sol', description: null },
     { key: 'gpt-6-sol', name: 'gpt-6-sol', description: null },
     { key: 'gpt-6-luna', name: 'gpt-6-luna', description: null },
 ];
@@ -214,7 +215,7 @@ export function getSuggestedModelModes(
 ): ModelMode[] {
     const models = getAvailableModels(flavor, metadata, translate);
     if (flavor !== 'codex' || !metadata?.models?.some((model) =>
-        model.code.startsWith('gpt-6-') || model.code.startsWith('gpt-5.6-'))) {
+        model.code.startsWith('gpt-6-') || model.code.startsWith('gpt-6.1-') || model.code.startsWith('gpt-5.6-'))) {
         return models;
     }
     const byKey = new Map(models.map((model) => [model.key, model]));
@@ -313,7 +314,7 @@ export function getEffortLevelsForModel(flavor: AgentFlavor, modelKey: string, m
     if (flavor === 'codex') {
         // A borrowed Astra catalog may contain ultra/minimal, which the new
         // Sol/Luna models do not support. Offer the documented reasoning range.
-        if ((modelKey === 'gpt-6-sol' || modelKey === 'gpt-6-luna')
+        if ((modelKey === 'gpt-6.1-sol' || modelKey === 'gpt-6-sol' || modelKey === 'gpt-6-luna')
             && (metadata?.currentModelCode !== modelKey || !metadata.thoughtLevels?.length)) {
             return [
                 { key: 'default', name: DEFAULT_EFFORT_LABEL, description: null },
@@ -340,7 +341,7 @@ export function normalizeModelEffortKey(
     effortKey: string | null | undefined,
     metadata?: Metadata | null,
 ): string | null | undefined {
-    if (flavor !== 'codex' || !['gpt-6-sol', 'gpt-6-luna'].includes(modelKey) || !effortKey) {
+    if (flavor !== 'codex' || !['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'].includes(modelKey) || !effortKey) {
         return effortKey;
     }
     return getEffortLevelsForModel(flavor, modelKey, metadata).some((level) => level.key === effortKey)

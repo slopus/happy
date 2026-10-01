@@ -65,7 +65,7 @@ describe('SessionComposerModeSelector', () => {
         consoleErrorSpy.mockRestore();
     });
 
-    it.each(['gpt-6-sol', 'gpt-6-luna'])('offers %s from an existing session catalog', (model) => {
+    it.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'])('offers %s from an existing session catalog', (model) => {
         const modes = resolveRunningSessionTurnModes({
             session: { modelMode: null, effortLevel: null, metadata: {
                 flavor: 'codex', currentModelCode: 'gpt-6-astra',

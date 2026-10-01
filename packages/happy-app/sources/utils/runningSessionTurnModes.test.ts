@@ -4,7 +4,7 @@ import { resolveRunningSessionTurnModes } from './runningSessionTurnModes';
 const translate = (key: string) => key;
 
 describe('resolveRunningSessionTurnModes', () => {
-    it('shows GPT-6 Sol and Luna in an existing session with a startup-time catalog', () => {
+    it('shows current Codex models in an existing session with a startup-time catalog', () => {
         const session = {
             modelMode: null, effortLevel: 'medium',
             metadata: {
@@ -19,12 +19,12 @@ describe('resolveRunningSessionTurnModes', () => {
         } as any;
         const result = resolveRunningSessionTurnModes({ session, agentDefaultOverrides: {}, translate });
         expect(result.availableModels.map((model) => model.key)).toEqual([
-            'default', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna',
+            'default', 'gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna',
             'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna',
         ]);
         expect(result.modelMode?.key).toBe('gpt-6-astra');
         expect(result.availableModels[1].description).toBe('Frontier intelligence');
-        for (const modelMode of ['gpt-6-sol', 'gpt-6-luna']) {
+        for (const modelMode of ['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna']) {
             const selected = resolveRunningSessionTurnModes({
                 session: { ...session, modelMode }, agentDefaultOverrides: {}, translate,
             });
@@ -34,7 +34,7 @@ describe('resolveRunningSessionTurnModes', () => {
         }
     });
 
-    it.each(['gpt-6-sol', 'gpt-6-luna'])('resets stale ultra for %s in both picker and outgoing message', async (modelMode) => {
+    it.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'])('resets stale ultra for %s in both picker and outgoing message', async (modelMode) => {
         const { resolveMessageModeMeta } = await import('@/sync/messageMeta');
         for (const effortLevel of ['ultra', null]) {
             const session = { modelMode, effortLevel, metadata: {

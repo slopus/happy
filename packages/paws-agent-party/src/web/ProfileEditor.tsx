@@ -8,7 +8,7 @@ import { machineLabel } from './machine-label.js';
 import type { Api } from './api.js';
 
 // Same configured fallback candidates as Happy's getCodexModelModes (not device capabilities).
-const PAWS_CODEX_CANDIDATES = ['gpt-6-astra', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark'];
+const PAWS_CODEX_CANDIDATES = ['gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark'];
 export type ConfigurationSession = { sessionId: string; machineId: string };
 export function ProfileEditor({ initial, machines, sessions, api, onSave, submitLabel = '保存 Agent' }: {
   initial?: AgentProfileInput; machines: MachinesResponse['machines']; sessions: ConfigurationSession[]; api: Api;

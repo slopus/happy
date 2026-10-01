@@ -38,6 +38,7 @@ describe('modelModeOptions', () => {
         expect(models.map((model) => model.key)).toEqual([
             'default',
             'gpt-6-astra',
+            'gpt-6.1-sol',
             'gpt-6-sol',
             'gpt-6-luna',
             'gpt-5.6-sol',
@@ -50,7 +51,7 @@ describe('modelModeOptions', () => {
         ]);
         expect(models[0].name).toBe('default model');
         expect(models[1].name).toBe('gpt-6-astra');
-        expect(models[2].name).toBe('gpt-6-sol');
+        expect(models[2].name).toBe('gpt-6.1-sol');
     });
 
     it('shows new Codex suggestions despite a stale session catalog without changing live options', () => {
@@ -61,7 +62,7 @@ describe('modelModeOptions', () => {
         ] } as any;
         const models = getSuggestedModelModes('codex', metadata, translate);
         expect(models.map((model) => model.key)).toEqual([
-            'default', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'custom-model',
+            'default', 'gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna', 'gpt-5.6-sol', 'custom-model',
         ]);
         expect(models[1]).toEqual({ key: 'gpt-6-astra', name: 'Astra', description: 'From catalog' });
         expect(getAvailableModels('codex', metadata, translate).map((model) => model.key))
@@ -76,9 +77,15 @@ describe('modelModeOptions', () => {
         ] } as any;
         const original = JSON.stringify(metadata);
         const models = getSuggestedModelModes('codex', metadata, translate);
-        expect(models.map((model) => model.key)).toEqual(['default', 'gpt-6-astra', 'gpt-6-sol', 'gpt-6-luna']);
-        expect(models[2].description).toBe('Live description');
+        expect(models.map((model) => model.key)).toEqual(['default', 'gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna']);
+        expect(models[3].description).toBe('Live description');
         expect(JSON.stringify(metadata)).toBe(original);
+    });
+
+    it('supplements a catalog containing only GPT-6.1 Sol', () => {
+        const metadata = { models: [{ code: 'gpt-6.1-sol', value: 'GPT-6.1 Sol' }] } as any;
+        expect(getSuggestedModelModes('codex', metadata, translate).map((model) => model.key))
+            .toEqual(['default', 'gpt-6-astra', 'gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna']);
     });
 
     it('leaves custom provider catalogs alone and uses current fallbacks without metadata', () => {
@@ -90,7 +97,7 @@ describe('modelModeOptions', () => {
         expect(getSuggestedModelModes('codex', null, translate)).toEqual(getCodexModelModes());
     });
 
-    it.each(['gpt-6-sol', 'gpt-6-luna'])('does not inherit Astra-only efforts for %s', (model) => {
+    it.each(['gpt-6.1-sol', 'gpt-6-sol', 'gpt-6-luna'])('does not inherit Astra-only efforts for %s', (model) => {
         const metadata = { thoughtLevels: [{ code: 'ultra', value: 'ultra' }] } as any;
         expect(getEffortLevelsForModel('codex', model, metadata).map((level) => level.key))
             .toEqual(['default', 'low', 'medium', 'high', 'xhigh', 'max']);
