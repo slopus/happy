@@ -162,6 +162,25 @@ describe('restoreMissingManagedWorktree', () => {
         expect(result.kind).toBe('failed');
         expect(await exists(worktree)).toBe(false);
     });
+
+    it.each([
+        ['no transcript branch', null],
+        ['a transcript branch that no longer exists', 'old-name'],
+    ])('never nests a worktree inside a live worktree whose subdirectory is missing (%s)', async (_, hint) => {
+        const { root } = await fixture();
+        const live = join(root, '.aplus/worktrees/project-a/eager-lynx');
+        await git(root, 'worktree', 'add', '-b', 'feature/kept', live);
+        await git(live, 'rm', '-r', '-q', 'packages');
+        await git(live, 'commit', '-m', 'drop packages');
+        const cwd = join(live, 'packages');
+
+        const result = await restoreMissingManagedWorktree({ cwd, readBranchHint: async () => hint });
+
+        expect(result.kind).toBe('failed');
+        expect(await exists(cwd)).toBe(false);
+        expect(await git(root, 'worktree', 'list', '--porcelain')).not.toContain(cwd);
+        expect(await git(root, 'branch', '--list', 'old-name')).toBe('');
+    });
 });
 
 describe('readClaudeTranscriptBranch', () => {

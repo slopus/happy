@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { access, open, realpath } from 'node:fs/promises';
-import { basename, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 
 /*
@@ -58,6 +58,14 @@ async function isBranchName(root: string, name: string): Promise<boolean> {
     return !name.startsWith('-') && (await git(root, ['check-ref-format', '--branch', name])).ok;
 }
 
+/** Whether `dir` belongs to the main checkout at `root` rather than to another worktree. */
+async function isCheckoutOf(dir: string, root: string): Promise<boolean> {
+    const toplevel = await git(dir, ['rev-parse', '--show-toplevel']);
+    if (!toplevel.ok) return false;
+    const actual = await realpath(toplevel.stdout).catch(() => null);
+    return actual !== null && actual === await realpath(root).catch(() => null);
+}
+
 /** The shallowest missing directory below the managed root is the removed worktree itself. */
 async function removedWorktreePath(managedRoot: string, cwd: string): Promise<string | null> {
     let candidate = managedRoot;
@@ -90,6 +98,11 @@ export async function restoreMissingManagedWorktree(input: {
 
     const worktreePath = await removedWorktreePath(managedRoot, cwd);
     if (!worktreePath) return { kind: 'failed', reason: 'could not locate the removed worktree' };
+    // A directory missing inside a worktree that still exists is not a removed
+    // worktree; adding one there would nest it inside the live one.
+    if (!await isCheckoutOf(dirname(worktreePath), root)) {
+        return { kind: 'failed', reason: 'session directory is inside an existing worktree' };
+    }
 
     // A worktree deleted without `git worktree remove` stays registered and
     // blocks `add`. Pruning only drops entries whose directory is gone.
