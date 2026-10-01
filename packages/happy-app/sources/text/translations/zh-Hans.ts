@@ -727,7 +727,7 @@ export const zhHans: TranslationStructure = {
         noAnswer: 'Claude 没有给出回答。',
         terminalMode: '此会话正在终端中运行。请在终端中使用 /btw，或从应用发送一条消息以接管控制。',
         notStarted: '此会话中的 Claude 尚未运行。请先发送一条消息——之后即使 Claude 正忙，也可以使用 /btw。',
-        cliOutdated: '运行此会话的 Happy CLI 版本过旧，无法使用 /btw。请在那台电脑上更新。',
+        cliOutdated: '此会话运行的 Happy CLI 早于 /btw。如尚未更新，请在那台电脑上更新 CLI，然后重新启动此会话。',
         offline: '此会话已离线。',
         failed: ({ error }: { error: string }) => `无法获取回答：${error}`,
     },

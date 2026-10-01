@@ -724,7 +724,7 @@ export const it: TranslationStructure = {
         noAnswer: 'Claude non ha una risposta.',
         terminalMode: 'Questa sessione è in esecuzione nel terminale. Usa /btw lì oppure invia un messaggio dall’app per prenderne il controllo.',
         notStarted: 'Claude non è ancora in esecuzione in questa sessione. Invia prima un messaggio — dopo, /btw funziona anche mentre Claude è occupato.',
-        cliOutdated: 'L’Happy CLI di questa sessione è troppo vecchio per /btw. Aggiornalo su quel computer.',
+        cliOutdated: 'Questa sessione usa un Happy CLI precedente a /btw. Aggiorna il CLI su quel computer, se non l’hai già fatto, poi riavvia la sessione.',
         offline: 'Questa sessione è offline.',
         failed: ({ error }: { error: string }) => `Impossibile ottenere una risposta: ${error}`,
     },

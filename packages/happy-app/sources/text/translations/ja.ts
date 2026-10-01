@@ -727,7 +727,7 @@ export const ja: TranslationStructure = {
         noAnswer: 'Claude からの回答はありませんでした。',
         terminalMode: 'このセッションはターミナルで実行中です。ターミナルで /btw を使うか、アプリからメッセージを送って操作を引き継いでください。',
         notStarted: 'このセッションではまだ Claude が起動していません。先にメッセージを送ってください — その後は Claude の作業中でも /btw を使えます。',
-        cliOutdated: 'このセッションの Happy CLI は古いため /btw を使えません。そのコンピューターで更新してください。',
+        cliOutdated: 'このセッションは /btw 非対応の古い Happy CLI で動いています。必要ならそのコンピューターで CLI を更新してから、セッションを再起動してください。',
         offline: 'このセッションはオフラインです。',
         failed: ({ error }: { error: string }) => `回答を取得できませんでした: ${error}`,
     },

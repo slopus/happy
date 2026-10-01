@@ -726,7 +726,7 @@ export const zhHant: TranslationStructure = {
         noAnswer: 'Claude 沒有給出回答。',
         terminalMode: '此工作階段正在終端中執行。請在終端中使用 /btw，或從應用程式傳送一則訊息以接手控制。',
         notStarted: '此工作階段中的 Claude 尚未執行。請先傳送一則訊息——之後即使 Claude 正在忙碌，也可以使用 /btw。',
-        cliOutdated: '執行此工作階段的 Happy CLI 版本過舊，無法使用 /btw。請在那台電腦上更新。',
+        cliOutdated: '此工作階段執行的 Happy CLI 早於 /btw。若尚未更新，請在那台電腦上更新 CLI，然後重新啟動此工作階段。',
         offline: '此工作階段已離線。',
         failed: ({ error }: { error: string }) => `無法取得回答：${error}`,
     },
