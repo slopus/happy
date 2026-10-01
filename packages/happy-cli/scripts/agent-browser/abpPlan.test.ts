@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { parseRuntimeConfig } from '../../src/browserRuntime/runtimeConfig'
+import { sharedProfileId } from '../../src/browserRuntime/tenancy'
 import {
     DEFAULT_RUNTIME_PORT, PATHS, browserCreateArgs, chromiumSeccompProfile, daemonEnv, egressRules, egressRulesFile, fenceRule, firewallRules,
     firewallRulesFile, happySettings, mergeInstallOptions, profileVolumeName, profileVolumeLabels, networkCreateArgs, permissionTable, runtimeConfig, runtimeCreateArgs, stackLayout, sudoersDropIn,
@@ -70,6 +71,34 @@ describe('install options', () => {
             expect(() => mergeInstallOptions(base(), override), name).toThrow()
         }
         expect(() => mergeInstallOptions(undefined, { workspaceId: 'w', profiles: [{ profileId: 'a', principalId: 'u' }], issuers: [{ kid: 'k', publicKeyPem: pem() }] }), 'missing machineId').toThrow(/machineId/)
+    })
+
+    it('installs a shared machine with no profile yet (users get theirs on first use or by add-profile), and fixes the mode', () => {
+        const shared = mergeInstallOptions(undefined, { tenancyMode: 'shared', machineId: 'machine-1', workspaceId: 'ws-1', issuers: [{ kid: 'k1', publicKeyPem: pem() }] })
+        expect(shared).toMatchObject({ tenancyMode: 'shared', profiles: [] })
+        expect(shared).not.toHaveProperty('agentProfileId')
+        expect(base().tenancyMode).toBe('dedicated')
+        // Profiles of a shared machine come from abp-stack add-profile, never from --profile.
+        expect(() => mergeInstallOptions(shared, { profiles: [{ profileId: 'main', principalId: 'u' }] })).toThrow(/add-profile/)
+        const withUsers = { ...shared, profiles: ['user-1', 'user-2'].map((principalId, index) => ({ profileId: sharedProfileId(principalId), principalId, assignmentId: String(index).repeat(32), networkSlot: index })) }
+        expect(mergeInstallOptions(withUsers, {}).profiles).toHaveLength(2)
+        expect(() => mergeInstallOptions({ ...shared, profiles: [{ profileId: 'main', principalId: 'user-1', assignmentId: '0'.repeat(32), networkSlot: 0 }] }, {})).toThrow(/profileId/)
+        // Each profile keeps its own network slot 0-7.
+        expect(() => mergeInstallOptions({ ...withUsers, profiles: withUsers.profiles.map((profile) => ({ ...profile, networkSlot: 3 })) }, {})).toThrow(/networkSlot/)
+        expect(() => mergeInstallOptions({ ...withUsers, profiles: [{ ...withUsers.profiles[0], networkSlot: 8 }] }, {})).toThrow(/networkSlot/)
+        const nine = Array.from({ length: 9 }, (_, index) => ({ profileId: sharedProfileId(`user-${index}`), principalId: `user-${index}`, assignmentId: String(index).repeat(32), networkSlot: index }))
+        expect(() => mergeInstallOptions({ ...shared, profiles: nine }, {})).toThrow(/at most 8/)
+        expect(() => mergeInstallOptions(base(), { tenancyMode: 'shared' })).toThrow(/tenancyMode/)
+        expect(() => mergeInstallOptions(shared, { tenancyMode: 'dedicated' })).toThrow(/tenancyMode/)
+        expect(() => mergeInstallOptions(undefined, { tenancyMode: 'other', machineId: 'm', workspaceId: 'w', issuers: [{ kid: 'k1', publicKeyPem: pem() }] })).toThrow(/tenancyMode/)
+    })
+
+    it('writes tenancyMode to runtime.json for a shared machine only (a pre-contract-3 image refuses it)', () => {
+        const shared = mergeInstallOptions(undefined, { tenancyMode: 'shared', machineId: 'machine-1', workspaceId: 'ws-1', issuers: [{ kid: 'k1', publicKeyPem: pem() }] })
+        const config = runtimeConfig(shared, { sessionGid: 1, daemonTokenSha256: 'b'.repeat(64) })
+        expect(config.tenancyMode).toBe('shared')
+        expect(parseRuntimeConfig(config).tenancyMode).toBe('shared')
+        expect(runtimeConfig(base(), { sessionGid: 1, daemonTokenSha256: 'b'.repeat(64) })).not.toHaveProperty('tenancyMode')
     })
 
     it('allows exactly one profile named main in release 1 (the Desktop requests profile main)', () => {
@@ -291,6 +320,62 @@ describe('system files', () => {
         const value = line.slice('HAPPY_PROJECT_SANDBOX_CONFIG='.length)
         expect(value.startsWith("'") && value.endsWith("'")).toBe(true)
         expect(JSON.parse(value.slice(1, -1))).toMatchObject({ enabled: true, workspaceRoot: '/work', sessionIsolation: 'workspace', extraWritePaths: [] })
+    })
+})
+
+describe('shared machine networks', () => {
+    const shared = (profiles: Array<[string, number]>, extra: Record<string, unknown> = {}) => ({
+        ...mergeInstallOptions(undefined, { tenancyMode: 'shared', machineId: 'machine-1', workspaceId: 'ws-1', issuers: [{ kid: 'k1', publicKeyPem: pem() }], sites: SITES, browserDns: ['10.0.0.2'] }),
+        profiles: profiles.map(([principalId, networkSlot]) => ({ profileId: sharedProfileId(principalId), principalId, assignmentId: String(networkSlot).repeat(32), networkSlot })),
+        ...extra,
+    })
+
+    it('puts the Runtime on a network of its own and each profile on the /24 of its slot, so removing one moves no other', () => {
+        const layout = stackLayout(shared([['user-1', 2], ['user-2', 0]]))
+        expect(layout.runtime).toMatchObject({ network: 'abp-runtime-net', ip: '10.249.255.2' })
+        expect(layout.runtimeNetwork).toEqual({ network: 'abp-runtime-net', subnet: '10.249.255.0/24', gateway: '10.249.255.1', bridge: 'br-abp-rt' })
+        const [one, two] = layout.browsers
+        expect(one).toMatchObject({ profileId: sharedProfileId('user-1'), network: 'abp-net-s2', bridge: 'br-abp-s2', subnet: '10.249.242.0/24', browserIp: '10.249.242.2', runtimeIp: '10.249.242.3',
+            container: `abp-browser-${sharedProfileId('user-1')}`, volume: profileVolumeName(sharedProfileId('user-1'), 'user-1') })
+        expect(two).toMatchObject({ network: 'abp-net-s0', subnet: '10.249.240.0/24' })
+        expect(layout.runtime.attach).toEqual([{ network: 'abp-net-s2', ip: '10.249.242.3' }, { network: 'abp-net-s0', ip: '10.249.240.3' }])
+        expect(stackLayout(shared([['user-2', 0]])).browsers[0]).toEqual(two)
+        expect(runtimeCreateArgs(layout, 'sha256:' + 'a'.repeat(64))).toEqual(expect.arrayContaining(['--network=abp-runtime-net', '--ip=10.249.255.2']))
+    })
+
+    it('runs with no profile at all', () => {
+        const layout = stackLayout(shared([]))
+        expect(layout.browsers).toEqual([])
+        expect(layout.runtime.attach).toEqual([])
+    })
+
+    it('writes egress rules for all 8 slots at install, so adding or removing a profile leaves the firewall as it is', () => {
+        const none = shared([])
+        const two = shared([['user-1', 2], ['user-2', 0]])
+        expect(egressRules(stackLayout(two), two)).toEqual(egressRules(stackLayout(none), none))
+        const chain = egressRules(stackLayout(none), none)[4].chains['ABP-EGRESS']
+        for (let slot = 0; slot < 8; slot++) {
+            expect(chain).toContain(`-s 10.249.${240 + slot}.3/32 -d 10.249.${240 + slot}.2/32 -j RETURN`)
+            expect(chain).toContain(`-s 10.249.${240 + slot}.2/32 -j RETURN`)
+        }
+        // Nothing lets the Runtime's own network out: the chain ends in REJECT.
+        expect(chain.some((rule: string) => rule.includes('10.249.255.'))).toBe(false)
+        expect(chain.at(-1)).toBe('-j REJECT')
+    })
+
+    it('tells the daemon it runs on a shared machine, with no fixed profile (sessions use their user\'s)', () => {
+        const env = daemonEnv(shared([['user-1', 0]])).split('\n')
+        expect(env).toContain('HAPPY_BROWSER_TASK_TENANCY=shared')
+        expect(env.some((line: string) => line.startsWith('HAPPY_BROWSER_TASK_PROFILE_ID='))).toBe(false)
+        expect(daemonEnv(base()).split('\n')).toContain('HAPPY_BROWSER_TASK_TENANCY=dedicated')
+    })
+
+    it("carries removed users' tombstones into runtime.json", () => {
+        const install = shared([['user-1', 0]], { profileTombstones: [{ principalId: 'user-2', removedAtMs: 5 }] })
+        const config = runtimeConfig(install, { sessionGid: 1, daemonTokenSha256: 'b'.repeat(64) })
+        expect(config.profileTombstones).toEqual([{ principalId: 'user-2', removedAtMs: 5 }])
+        expect(parseRuntimeConfig(config).profileTombstones.get('user-2' as never)).toBe(5)
+        expect(config.profiles).toEqual([{ profileId: sharedProfileId('user-1'), principalId: 'user-1', assignmentId: '0'.repeat(32) }])
     })
 })
 

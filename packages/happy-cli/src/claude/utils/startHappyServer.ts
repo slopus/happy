@@ -48,7 +48,8 @@ export interface HappyServerHandlers {
     protectedBashCwd?: () => string | null;
     trackProtectedBashProcess?: (child: ChildProcess) => void;
     browserTaskRuntime?: RuntimeClient;
-    browserTaskProfileId?: string;
+    /** The granted profile: fixed, or (execution machine H) the one the broker's grant names. */
+    browserTaskProfileId?: string | (() => Promise<string>);
     exitAfterFirstTurn?: boolean;
     /** The run-once host keeps the session parked while a browser task waits for the user. */
     browserHostContinues?: boolean;
@@ -435,22 +436,21 @@ function takeBrowserTaskSessionSecret(): string | undefined {
     return browserTaskSessionSecret;
 }
 
-function createBrowserTaskRuntimeClient(client: ApiSessionClient, profileId: string): RuntimeClient | undefined {
+function createBrowserTaskRuntimeClient(client: ApiSessionClient, profileId: string): { runtime: RuntimeClient; profileId: string | (() => Promise<string>) } | undefined {
     const baseUrl = process.env.HAPPY_BROWSER_TASK_RUNTIME_URL;
     if (!baseUrl) return undefined;
     const socketPath = process.env.HAPPY_BROWSER_TASK_BROKER_SOCKET;
     const sessionSecret = takeBrowserTaskSessionSecret();
     if (socketPath && sessionSecret) {
-        // Execution machine H: the Runtime broker issues this session's grant (D4).
-        return new RuntimeClient({
-            baseUrl,
-            token: createBrokerGrantSource({
-                socketPath,
-                sessionSecret,
-                agentSessionId: () => client.sessionId,
-                profileId,
-            }),
+        // Execution machine H: the Runtime broker issues this session's grant (D4), for the profile it picks
+        // (on a shared machine the session user's).
+        const grants = createBrokerGrantSource({
+            socketPath,
+            sessionSecret,
+            agentSessionId: () => client.sessionId,
+            profileId,
         });
+        return { runtime: new RuntimeClient({ baseUrl, token: grants }), profileId: grants.grantedProfileId };
     }
     // Harness only: the E2E harness writes a grant file for the session.
     const grantFile = process.env.HAPPY_BROWSER_TASK_GRANT_FILE;
@@ -460,7 +460,7 @@ function createBrowserTaskRuntimeClient(client: ApiSessionClient, profileId: str
         if (!grant.trim()) throw new BrowserRuntimeError('UNAUTHORIZED', 'browser task grant is unavailable');
         return grant.trim();
     };
-    return new RuntimeClient({ baseUrl, token });
+    return { runtime: new RuntimeClient({ baseUrl, token }), profileId };
 }
 
 export async function startHappyServer(
@@ -478,8 +478,9 @@ export async function startHappyServer(
 ) {
     logger.debug(`[happyMCP] server:start sessionId=${client.sessionId}`);
 
-    const browserTaskProfileId = process.env.HAPPY_BROWSER_TASK_PROFILE_ID || 'default';
-    const browserTaskRuntime = createBrowserTaskRuntimeClient(client, browserTaskProfileId);
+    const browserTask = createBrowserTaskRuntimeClient(client, process.env.HAPPY_BROWSER_TASK_PROFILE_ID || 'default');
+    const browserTaskRuntime = browserTask?.runtime;
+    const browserTaskProfileId = browserTask?.profileId;
     if (browserTaskRuntime) {
         logger.debug('[happyMCP] legacy browser_* tools disabled by HAPPY_BROWSER_TASK_RUNTIME_URL (agent browser PoC)');
     }

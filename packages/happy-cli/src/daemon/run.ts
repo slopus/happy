@@ -141,7 +141,7 @@ import {
   type StopSessionContext,
   type StopSessionResult,
 } from './sessionIdleReaper';
-import { browserTaskLineage, createBrowserTaskSessionBroker, spawnResumedWithBrowserTaskRegistration, startBrowserTaskReconciliation, type BrowserTaskSessionBroker } from './browserTaskBroker';
+import { agentBrowserMachineCapability, browserTaskLineage, createBrowserTaskSessionBroker, spawnResumedWithBrowserTaskRegistration, startBrowserTaskReconciliation, type BrowserTaskSessionBroker } from './browserTaskBroker';
 import { createHeldBrowserAttentions, findBrowserAttentionSession, startBrowserAttentionWatcher, type HeldBrowserAttention } from './browserAttentionDelivery';
 import {
   createProcFs,
@@ -351,6 +351,7 @@ export const initialMachineMetadata: MachineMetadata = {
   additionalDirectories: ADDITIONAL_DIRECTORIES_CAPABILITY,
   channelSupport: CHANNEL_SUPPORT_CAPABILITY,
   aiAuthSelection: AI_AUTH_SELECTION_CAPABILITY,
+  ...(agentBrowserMachineCapability() ? { agentBrowser: agentBrowserMachineCapability() } : {}),
 };
 
 /**
@@ -2071,7 +2072,8 @@ export async function startDaemon(): Promise<void> {
         }
         // A fork or recovery continues an existing conversation under a new session id: say which, so the
         // Runtime refuses a conversation of an earlier profile assignment.
-        browserTaskRegistration = await browserTaskBroker?.register(browserTaskLineage(options));
+        // Studio's session-user attestation (a new chat on a shared machine) goes to the broker only.
+        browserTaskRegistration = await browserTaskBroker?.register(browserTaskLineage(options), options.browserAttestation);
         if (browserTaskRegistration) {
           // Session process only; it removes the secret from its env before spawning claude.
           extraEnv.HAPPY_BROWSER_TASK_SESSION_SECRET = browserTaskRegistration.sessionSecret;

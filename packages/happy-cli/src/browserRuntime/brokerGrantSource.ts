@@ -12,6 +12,8 @@ import { BrowserRuntimeError, type RuntimeErrorBody } from './contracts'
 
 const RENEW_BEFORE_EXPIRY_MS = 5 * 60_000
 const REQUEST_TIMEOUT_MS = 10_000
+/** Shared machines: how long a session waits while its user's profile is created, inside Codex MCP clients' 60 s tool timeout. */
+export const PROFILE_PROVISIONING_WAIT_MS = 45_000
 /** A freshly spawned session may ask before the daemon bound its id. */
 const DEFAULT_RETRY_DELAYS_MS = [250, 500, 1_000, 2_000, 4_000]
 
@@ -41,16 +43,29 @@ export interface BrokerGrantSourceOptions {
     profileId: string
     now?: () => number
     retryDelaysMs?: readonly number[]
+    /** Shared machines: how long to wait while the user's profile is created (default 45 s), polling this often (3 s). */
+    provisioningWaitMs?: number
+    provisioningPollMs?: number
 }
 
-/** Returns a token getter for RuntimeClient. */
-export function createBrokerGrantSource(options: BrokerGrantSourceOptions): () => Promise<string> {
+/** A token getter for RuntimeClient, and the profile its grants are for. */
+export interface BrokerGrantSource {
+    (): Promise<string>
+    /** The profile the broker granted: on a shared machine the session user's, whatever was requested. */
+    grantedProfileId(): Promise<string>
+}
+
+export function createBrokerGrantSource(options: BrokerGrantSourceOptions): BrokerGrantSource {
     const now = options.now ?? Date.now
     const delays = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS
     let current: { token: string; expiresAtMs: number } | undefined
+    let grantedProfileId: string | undefined
     let pending: Promise<string> | undefined
 
     const fetchGrant = async (): Promise<string> => {
+        // Set once the broker says the user's profile is being created: that takes a new browser and a new
+        // Runtime (unreachable, then unavailable for a while), so every transient answer is waited out until then.
+        let provisioningUntil: number | undefined
         for (let attempt = 0; ; attempt++) {
             let reply: BrokerReply | undefined
             try {
@@ -59,21 +74,32 @@ export function createBrokerGrantSource(options: BrokerGrantSourceOptions): () =
             } catch {
                 reply = undefined
             }
-            const result = reply?.body.result as { token?: unknown; expiresAtMs?: unknown } | undefined
+            const result = reply?.body.result as { token?: unknown; expiresAtMs?: unknown; profileId?: unknown } | undefined
             if (reply?.status === 200 && typeof result?.token === 'string' && typeof result.expiresAtMs === 'number') {
                 current = { token: result.token, expiresAtMs: result.expiresAtMs }
+                // Older Runtimes do not name it: the requested profile.
+                grantedProfileId = typeof result.profileId === 'string' ? result.profileId : options.profileId
                 return result.token
             }
             // Retry only what can resolve by itself: an unreachable broker or a not-yet-bound session.
             const retryable = !reply || reply.body.error?.retryable === true
-            if (!retryable || attempt >= delays.length) {
-                throw new BrowserRuntimeError('UNAUTHORIZED', `browser task grant is unavailable (${reply?.body.error?.code ?? 'broker unreachable'})`)
+            const code = reply?.body.error?.code
+            if (code === 'PROFILE_PROVISIONING') provisioningUntil ??= Date.now() + (options.provisioningWaitMs ?? PROFILE_PROVISIONING_WAIT_MS)
+            if (retryable && provisioningUntil !== undefined && Date.now() < provisioningUntil) {
+                await new Promise((resolve) => setTimeout(resolve, options.provisioningPollMs ?? 3_000))
+                continue
+            }
+            if (!retryable || attempt >= delays.length || provisioningUntil !== undefined) {
+                // The agent is told what the user can do: wait for the profile, or ask the operator (the reason).
+                if (code === 'PROFILE_PROVISIONING' || code === 'PROFILE_UNAVAILABLE' || code === 'SCOPE_DENIED')
+                    throw new BrowserRuntimeError(code, reply?.body.error?.message ?? 'browser profile unavailable', code === 'PROFILE_PROVISIONING')
+                throw new BrowserRuntimeError('UNAUTHORIZED', `browser task grant is unavailable (${code ?? 'broker unreachable'})`)
             }
             await new Promise((resolve) => setTimeout(resolve, delays[attempt]))
         }
     }
 
-    return async () => {
+    const token = async (): Promise<string> => {
         if (current && now() < current.expiresAtMs - RENEW_BEFORE_EXPIRY_MS) return current.token
         pending ??= fetchGrant().catch((error: unknown) => {
             // A broker hiccup during renewal keeps the still-valid grant; a refusal (revoked) never does.
@@ -84,4 +110,10 @@ export function createBrokerGrantSource(options: BrokerGrantSourceOptions): () =
         }).finally(() => { pending = undefined })
         return pending
     }
+    return Object.assign(token, {
+        grantedProfileId: async () => {
+            await token()
+            return grantedProfileId ?? options.profileId
+        },
+    })
 }

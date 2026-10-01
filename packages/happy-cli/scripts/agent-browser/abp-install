@@ -409,9 +409,9 @@ replace_happy_package() {
         rm -rf "$stage"
         die "the staged Happy package is incomplete; $prefix is unchanged"
     fi
-    if [ "$DRY_RUN" = 0 ] && ! "$NODE" -e 'const fs=require("fs"); const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(c.contractVersion!==2)process.exit(1)' "$stage/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json"; then
+    if [ "$DRY_RUN" = 0 ] && ! "$NODE" -e 'const fs=require("fs"); const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); if(!(c.contractVersion>=2))process.exit(1)' "$stage/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json"; then
         run rm -rf "$stage"
-        die "the staged Happy package lacks browser assignment contract 2; $prefix is unchanged"
+        die "the staged Happy package lacks browser assignment contract 2 or later; $prefix is unchanged"
     fi
     run touch "$stage/$HAPPY_PREFIX_MARKER"
     # Root-owned and not writable by anyone else (sandbox preflight), readable by agent, agent-sbx and abp-proxy.
@@ -433,8 +433,8 @@ install_happy() {
         [ -d "$(dirname "$HAPPY_PREFIX")" ] || ensure_dir "$(dirname "$HAPPY_PREFIX")" root root 0755
         replace_happy_package "$HAPPY_PREFIX" "$HAPPY_TARBALL"
     fi
-    if [ "$DRY_RUN" = 0 ] && ! "$NODE" -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(c.contractVersion!==2)process.exit(1)' "$HAPPY_PREFIX/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json"; then
-        die "installed Happy package requires assignment/lineage contract 2; provide the current --happy-tarball"
+    if [ "$DRY_RUN" = 0 ] && ! "$NODE" -e 'const fs=require("fs");const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));if(!(c.contractVersion>=2))process.exit(1)' "$HAPPY_PREFIX/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json"; then
+        die "installed Happy package requires assignment/lineage contract 2 or later; provide the current --happy-tarball"
     fi
     local entry=$HAPPY_PREFIX/lib/node_modules/@buzzni/happy-cli/dist/sandbox/egressProxyMain.mjs
     require_file "$HAPPY_PREFIX/bin/happy" "the Happy package (--happy-tarball)"
@@ -611,6 +611,11 @@ main_install() {
             --session-gid "$(gid_of abp-session 60003)" --daemon-token-file "$token_file"
     else
         warn "machine id unresolved: log the agent in to Happy (sudo -iu agent happy auth login) and run abp-install again"
+    fi
+    # A fresh install over an earlier one (abp-uninstall keeps /var/lib/abp, e.g. to change the tenancy): the
+    # earlier assignment identity no longer applies. The stack verifies and records the new one when it starts.
+    if [ "$DRY_RUN" = 0 ] && [ ! -f "$INSTALL_JSON" ] && [ -s "$VARLIB/stack-state.json" ]; then
+        "$NODE" -e 'const fs=require("fs");const p=process.argv[1];const s=JSON.parse(fs.readFileSync(p,"utf8"));if(s.applied===undefined)process.exit(0);delete s.applied;s.history=[...(s.history??[]),{atMs:Date.now(),action:"fresh-install",result:"previous assignment identity cleared"}].slice(-50);fs.writeFileSync(p+".tmp",JSON.stringify(s,null,2)+"\n",{mode:0o600});fs.renameSync(p+".tmp",p)' "$VARLIB/stack-state.json"
     fi
     write_file "$INSTALL_JSON" root root 0600 show < "$WORK/install.json"
     emit "$ETC/happy-daemon.env" root root 0644 show daemon-env --install "$WORK/install.json"

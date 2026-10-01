@@ -66,8 +66,11 @@ export function browserTaskLineage(options: { parentSessionId?: string; resumeCl
 }
 
 export interface BrowserTaskSessionBroker {
-    /** `lineage`: a fork or recovery (the Runtime refuses a conversation of an earlier profile assignment). */
-    register(lineage?: BrowserTaskLineage): Promise<{ registrationId: string; sessionSecret: string } | undefined>
+    /**
+     * `lineage`: a fork or recovery (the Runtime refuses a conversation of an earlier profile assignment).
+     * `attestation`: Studio's session-user attestation of a new chat (shared machines).
+     */
+    register(lineage?: BrowserTaskLineage, attestation?: string): Promise<{ registrationId: string; sessionSecret: string } | undefined>
     /**
      * True once bound, or while a transient refusal (admission held) is retried in the background, which
      * revokes the registration itself if the Runtime then denies it or the deadline passes. False: denied
@@ -157,6 +160,16 @@ function writeQueueFileDurably(file: string, data: string): void {
     }
     const dirFd = openSync(dir, 'r')
     try { fsyncSync(dirFd) } finally { closeSync(dirFd) }
+}
+
+/**
+ * Machine metadata of an execution machine (HAPPY_BROWSER_TASK_RUNTIME_URL, set by abp-install): protocol 2
+ * accepts Studio's session-user attestation at spawn; tenancyMode lets Studio refuse a machine it thinks is
+ * of the other mode. Absent elsewhere and on older daemons, which Studio sends no attestation to.
+ */
+export function agentBrowserMachineCapability(env: NodeJS.ProcessEnv = process.env): { protocol: 2; tenancyMode: 'dedicated' | 'shared' } | undefined {
+    if (!env.HAPPY_BROWSER_TASK_RUNTIME_URL) return undefined
+    return { protocol: 2, tenancyMode: env.HAPPY_BROWSER_TASK_TENANCY === 'shared' ? 'shared' : 'dedicated' }
 }
 
 export interface BrowserTaskBrokerConfig { socketPath: string; daemonToken: string }
@@ -277,10 +290,10 @@ export function createBrowserTaskSessionBroker(
     }
 
     const broker: BrowserTaskSessionBroker = {
-        async register(lineage) {
+        async register(lineage, attestation) {
             // The host boot id lets reconciliation drop this registration after a reboot even if no owner is ever bound.
             const bootId = await readBrowserTaskBootId(options.procRoot).catch(() => undefined)
-            const body = { ...bootId ? { bootId } : {}, ...lineage ? { lineage } : {} }
+            const body = { ...bootId ? { bootId } : {}, ...lineage ? { lineage } : {}, ...attestation ? { attestation } : {} }
             // Admission held (start-up cleanup, a reassignment being verified): wait a bounded time, so an
             // ordinary restart's hold does not leave the session without a browser for its whole life.
             const deadline = Date.now() + (options.registerRetryDeadlineMs ?? DEFAULT_REGISTER_RETRY_DEADLINE_MS)

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 import { BrowserRuntimeError } from './contracts'
-import { brokerRequest, createBrokerGrantSource } from './brokerGrantSource'
+import { PROFILE_PROVISIONING_WAIT_MS, brokerRequest, createBrokerGrantSource } from './brokerGrantSource'
 
 const SECRET = 'synthetic-session-secret-0123456789abcdef'
 const cleanups: Array<() => Promise<unknown>> = []
@@ -44,6 +44,35 @@ describe('broker grant source', () => {
         expect(broker.requests).toEqual([{ path: '/v1/agent-grants', secret: SECRET, body: { schemaVersion: 1, agentSessionId: 'session-1', profileId: 'profile-a' } }])
     })
 
+    it("reports the profile the broker granted (a shared machine picks the session user's), else the requested one", async () => {
+        const named = await fakeBroker(() => ({ status: 200, body: { ok: true, result: { token: 't', grantId: 'g', expiresAtMs: Date.now() + 55 * 60_000, profileId: 'u-0123456789abcdef' } } }))
+        const shared = createBrokerGrantSource({ socketPath: named.socketPath, sessionSecret: SECRET, agentSessionId: () => 'session-1', profileId: 'default' })
+        expect(await shared.grantedProfileId()).toBe('u-0123456789abcdef')
+        // An older Runtime does not name it: the requested profile.
+        const plain = await fakeBroker(() => ok('t', Date.now() + 55 * 60_000))
+        const dedicated = createBrokerGrantSource({ socketPath: plain.socketPath, sessionSecret: SECRET, agentSessionId: () => 'session-1', profileId: 'main' })
+        expect(await dedicated.grantedProfileId()).toBe('main')
+    })
+
+    it("waits up to 90 s while the user's profile is created, then gets the grant", async () => {
+        const provisioning = { status: 503, body: { ok: false, error: { code: 'PROFILE_PROVISIONING', message: 'being created', retryable: true, mayHaveSideEffects: false } } }
+        // The Runtime is recreated with the new profile meanwhile: unreachable and unavailable for a while too.
+        const unavailable = { status: 503, body: { ok: false, error: { code: 'RUNTIME_UNAVAILABLE', message: 'closed', retryable: true, mayHaveSideEffects: false } } }
+        const broker = await fakeBroker((_body, _req, count) => count < 10 ? provisioning : count < 14 ? unavailable : ok('t', Date.now() + 55 * 60_000))
+        const token = createBrokerGrantSource({ socketPath: broker.socketPath, sessionSecret: SECRET, agentSessionId: () => 'session-1', profileId: 'default', retryDelaysMs: [1], provisioningWaitMs: 5_000, provisioningPollMs: 1 })
+        expect(await token()).toBe('t')
+    })
+
+    it('gives up on a profile still not created after the wait, and passes a refusal on with its reason', async () => {
+        const broker = await fakeBroker(() => ({ status: 503, body: { ok: false, error: { code: 'PROFILE_PROVISIONING', message: 'being created', retryable: true, mayHaveSideEffects: false } } }))
+        const slow = createBrokerGrantSource({ socketPath: broker.socketPath, sessionSecret: SECRET, agentSessionId: () => 'session-1', profileId: 'default', retryDelaysMs: [1], provisioningWaitMs: 30, provisioningPollMs: 5 })
+        await expect(slow()).rejects.toMatchObject({ code: 'PROFILE_PROVISIONING' })
+        const refused = await fakeBroker(() => ({ status: 503, body: { ok: false, error: { code: 'PROFILE_UNAVAILABLE', message: 'not enough memory', retryable: false, mayHaveSideEffects: false } } }))
+        const full = createBrokerGrantSource({ socketPath: refused.socketPath, sessionSecret: SECRET, agentSessionId: () => 'session-1', profileId: 'default', retryDelaysMs: [1] })
+        await expect(full()).rejects.toMatchObject({ code: 'PROFILE_UNAVAILABLE', message: expect.stringMatching(/not enough memory/) })
+        expect(refused.requests).toHaveLength(1)
+    })
+
     it('renews five minutes before expiry, once for concurrent callers', async () => {
         let now = 1_000_000
         const broker = await fakeBroker((_body, _req, count) => ok(`t${count}`, now + 55 * 60_000))
@@ -69,6 +98,16 @@ describe('broker grant source', () => {
         expect(error).toBeInstanceOf(BrowserRuntimeError)
         expect(error).toMatchObject({ code: 'UNAUTHORIZED' })
         expect(String((error as Error).message)).not.toContain(SECRET)
+    })
+
+    it("passes the broker's reason for a refused scope on (e.g. no attested user on a shared machine)", async () => {
+        const broker = await fakeBroker(() => ({ status: 403, body: { ok: false, error: { code: 'SCOPE_DENIED', message: 'the session has no attested user; start a new chat from Studio', retryable: false, mayHaveSideEffects: false } } }))
+        const token = createBrokerGrantSource({ socketPath: broker.socketPath, sessionSecret: SECRET, agentSessionId: () => 'session-1', profileId: 'default' })
+        await expect(token()).rejects.toMatchObject({ code: 'SCOPE_DENIED', message: expect.stringMatching(/no attested user/) })
+    })
+
+    it('waits 45 s by default for a profile being created, inside the 60 s tool timeout of Codex MCP clients', () => {
+        expect(PROFILE_PROVISIONING_WAIT_MS).toBe(45_000)
     })
 
     it('reports an unreachable broker as UNAUTHORIZED grant unavailability', async () => {

@@ -1081,6 +1081,7 @@ export class ApiMachineClient {
                 initialPrompt,
                 exitAfterFirstTurn,
                 browserContinuation,
+                browserAttestation,
                 aiAuthSelection,
             } = params || {};
             logger.debug(`[API MACHINE] Spawning session: dir=${directory}, hasUserCreds=${!!(happyToken && happySecret)}`);
@@ -1145,6 +1146,9 @@ export class ApiMachineClient {
             if (browserContinuation && !exitAfterFirstTurn) {
                 throw new Error('Browser continuation is only for a run-once session');
             }
+            if (browserAttestation !== undefined && (typeof browserAttestation !== 'string' || !browserAttestation || browserAttestation.length > 4096)) {
+                throw new Error('Browser attestation must be a string of at most 4096 characters');
+            }
 
             const result = await spawnSession({
                 directory,
@@ -1174,6 +1178,7 @@ export class ApiMachineClient {
                 initialPrompt,
                 exitAfterFirstTurn,
                 ...(browserContinuation ? { browserContinuation: true } : {}),
+                ...(browserAttestation ? { browserAttestation } : {}),
                 aiAuthSelection: validAiAuthSelection,
             });
 

@@ -1,7 +1,7 @@
 import { createHash, generateKeyPairSync } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 import { createStack } from './abp-stack.mjs'
-import { mergeInstallOptions, PATHS, profileVolumeLabels, profileVolumeName } from './lib/abpPlan.mjs'
+import { mergeInstallOptions, PATHS, profileVolumeLabels, profileVolumeName, sharedProfileId } from './lib/abpPlan.mjs'
 
 const RUNTIME_OLD = 'sha256:' + 'a'.repeat(64)
 const BROWSER_OLD = 'sha256:' + 'b'.repeat(64)
@@ -25,6 +25,15 @@ interface HostOptions {
     /** abp-stack.service is active: upgrades replace only the containers whose digest changes */
     serviceActive?: boolean
     profiles?: Array<{ profileId: string; principalId: string }>
+    /** A shared machine: [user, network slot] per profile (contract 3 images and package). */
+    shared?: Array<[string, number]>
+    memory?: { totalBytes: number; availableBytes: number }
+    /** Whether the Runtime reports every browser connected for these profiles (default: yes). */
+    browsersReady?: (profiles: Array<{ profileId: string }>) => boolean
+    /** Profiles whose browser the Runtime reports not connected (per-profile readiness). */
+    brokenBrowsers?: string[]
+    /** Profile requests the Runtime's admin socket lists (first use on a shared machine). */
+    requests?: Array<{ principalId: string; requestedAtMs: number }>
 }
 
 /**
@@ -36,16 +45,21 @@ function fakeHost(options: HostOptions = {}) {
     const calls: string[] = []
     const logs: string[] = []
     const files = new Map<string, { data: string; mode: number; owner: string; group: string }>()
-    const install = {
+    const issuers = [{ kid: 'k1', publicKeyPem: generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString() }]
+    const install = options.shared ? {
+        ...mergeInstallOptions(undefined, { tenancyMode: 'shared', machineId: 'machine-1', workspaceId: 'ws-1', issuers }),
+        profiles: options.shared.map(([principalId, networkSlot], i) => ({ profileId: sharedProfileId(principalId), principalId, assignmentId: String(i + 1).repeat(32), networkSlot })),
+    } : {
         ...mergeInstallOptions(undefined, {
             machineId: 'machine-1', workspaceId: 'ws-1',
             profiles: [{ profileId: 'main', principalId: 'user-1' }],
-            issuers: [{ kid: 'k1', publicKeyPem: generateKeyPairSync('ed25519').publicKey.export({ type: 'spki', format: 'pem' }).toString() }],
+            issuers,
         }),
         // Two profiles exercise the per-profile loops; release 1 installs only main (see the set-principal test).
         profiles: (options.profiles ?? [{ profileId: 'main', principalId: 'user-1' }, { profileId: 'ops', principalId: 'user-2' }]).map((p, i) => ({ ...p, assignmentId: String(i + 1).repeat(32) })),
     }
-    files.set(`${install.happyPrefix}/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json`, { data: '{"contractVersion":2}', mode: 0o644, owner: 'root', group: 'root' })
+    const contract = options.shared ? '3' : '2'
+    files.set(`${install.happyPrefix}/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json`, { data: `{"contractVersion":${contract}}`, mode: 0o644, owner: 'root', group: 'root' })
     files.set(PATHS.installConfig, { data: JSON.stringify(install), mode: 0o600, owner: 'root', group: 'root' })
     files.set(PATHS.runtimeConfig, { data: JSON.stringify({ daemonTokenSha256: 'e'.repeat(64) }), mode: 0o600, owner: 'root', group: 'root' })
     files.set(PATHS.stackState, { data: JSON.stringify({ schemaVersion: 1, current: options.current === undefined ? { runtime: RUNTIME_OLD, browser: BROWSER_OLD } : options.current, previous: options.previous ?? null, history: [] }), mode: 0o600, owner: 'root', group: 'root' })
@@ -59,13 +73,12 @@ function fakeHost(options: HostOptions = {}) {
     ensureVolumes()
     const state = () => JSON.parse(files.get(PATHS.stackState)!.data)
     const running = [...(options.running ?? [])]
-    const names = ['abp-runtime', ...install.profiles.map((profile: { profileId: string }) => `abp-browser-${profile.profileId}`)]
     const containers = new Map<string, { running: boolean; image: string; mounts: string[] }>()
     // As start() does: every browser mounts its current owner's volume (read from install.json).
     const recreateAll = (up: boolean) => {
         const current = state().current ?? { runtime: '', browser: '' }
         const owners = new Map<string, string>(JSON.parse(files.get(PATHS.installConfig)!.data).profiles.map((p: { profileId: string; principalId: string }) => [p.profileId, p.principalId]))
-        for (const name of names) {
+        for (const name of ['abp-runtime', ...[...owners.keys()].map((profileId) => `abp-browser-${profileId}`)]) {
             const profileId = name.replace('abp-browser-', '')
             containers.set(name, { running: up, image: name === 'abp-runtime' ? current.runtime : current.browser,
                 mounts: name === 'abp-runtime' ? ['abp-state'] : [profileVolumeName(profileId, owners.get(profileId)!)] })
@@ -79,6 +92,7 @@ function fakeHost(options: HostOptions = {}) {
     let fenced = false
     let secretCount = 0
     let clock = 1_000_000
+    const refusals: Array<{ principalId: string; reason: string; retryAfterMs: number }> = []
     const deps = {
         run(cmd: string, args: string[], opts: { allowFail?: boolean } = {}): Result {
             const line = [cmd, ...args].join(' ')
@@ -87,7 +101,7 @@ function fakeHost(options: HostOptions = {}) {
                 ...options.handlers ?? [],
                 [/^iptables -w -t filter -C ABP-FENCE /, () => ({ status: fenced ? 0 : 1 })],
                 [/^systemctl is-active abp-stack\.service$/, () => (serviceActive ? { stdout: 'active' } : { status: 3, stdout: 'inactive' })],
-                [/^docker image inspect/, (a) => ({ stdout: a.includes('{{index .Config.Labels "ai.saycode.abp.contract"}}') ? '2' : a.at(-1) })],
+                [/^docker image inspect/, (a) => ({ stdout: a.includes('{{index .Config.Labels "ai.saycode.abp.contract"}}') ? contract : a.at(-1) })],
                 [/^docker volume inspect /, (a) => volumes.has(a.at(-1)!) ? { stdout: JSON.stringify([{ Name: a.at(-1), Labels: volumes.get(a.at(-1)!) }]) } : { status: 1, stderr: 'no such volume' }],
                 [/^docker volume ls -q$/, () => ({ stdout: [...volumes.keys()].join('\n') })],
                 [/^docker inspect -f \{\{json \.Mounts\}\}/, (a) => ({ stdout: JSON.stringify((containers.get(a.at(-1)!)?.mounts ?? []).map((Name) => ({ Name, Destination: '/home/browser/profile', Type: 'volume', RW: true }))) })],
@@ -137,7 +151,8 @@ function fakeHost(options: HostOptions = {}) {
         async ready() { return { status: fenced ? 0 : JSON.parse(files.get(PATHS.runtimeConfig)!.data).admissionHold ? 503 : 200, body: {} } },
         async adminReady() {
             const profiles = JSON.parse(files.get(PATHS.installConfig)!.data).profiles
-            return { admission: JSON.parse(files.get(PATHS.runtimeConfig)!.data).admissionHold ? 'hold' : 'open', checks: { browsers: true, writerLock: true, disk: true, revocations: true, principalState: true }, profiles,
+            return { admission: JSON.parse(files.get(PATHS.runtimeConfig)!.data).admissionHold ? 'hold' : 'open', checks: { browsers: options.browsersReady?.(profiles) ?? true, writerLock: true, disk: true, revocations: true, principalState: true }, profiles,
+                profileBrowsers: Object.fromEntries(profiles.map((p: any) => [p.profileId, !(options.brokenBrowsers ?? []).includes(p.profileId)])),
                 assignment: { state: 'ready', applied: Object.fromEntries(profiles.map((p: any) => [p.profileId, p.assignmentId])) } }
         },
         async openAdmission(_assignments: Record<string, string>) { return true },
@@ -147,6 +162,9 @@ function fakeHost(options: HostOptions = {}) {
         },
         async brokerProbe(token: string) { return token === JSON.parse(files.get(PATHS.runtimeConfig)!.data).probeToken ? 401 : 200 },
         async sleep(ms = 1000) { clock += ms },
+        memInfo: () => options.memory ?? { totalBytes: 16 * 2 ** 30, availableBytes: 9 * 2 ** 30 },
+        async adminProfileRequests() { return options.requests ?? [] },
+        async refuseProfileRequest(principalId: string, reason: string, retryAfterMs: number) { refusals.push({ principalId, reason, retryAfterMs }); return true },
         now: () => clock,
         log: (line: string) => { logs.push(line) },
         secret: (kind: string) => `synthetic-${kind}-${++secretCount}`.padEnd(kind === 'vnc-password' ? 0 : 40, 'x').slice(0, kind === 'vnc-password' ? 8 : 64),
@@ -156,7 +174,7 @@ function fakeHost(options: HostOptions = {}) {
             return () => { lockHeld = false }
         },
     }
-    return { deps, calls, logs, files, state, containers, volumes }
+    return { deps, calls, logs, files, state, containers, volumes, refusals }
 }
 
 const indexOf = (calls: string[], pattern: RegExp | string) => calls.findIndex((line) => (typeof pattern === 'string' ? line === pattern : pattern.test(line)))
@@ -1069,6 +1087,12 @@ describe('installed daemon compatibility', () => {
         expect([...h.containers.values()].every((c) => !c.running)).toBe(true)
     })
 
+    it('accepts a newer (contract 3) package and images on a dedicated machine', async () => {
+        const h = fakeHost({ handlers: [[/ai.saycode.abp.contract/, () => ({ stdout: '3' })]] })
+        h.files.set('/opt/abp/happy/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json', { data: '{"contractVersion":3}', mode: 0o644, owner: 'root', group: 'root' })
+        await expect(createStack(h.deps).upgrade({ ids: { runtime: RUNTIME_NEW, browser: BROWSER_NEW } })).resolves.not.toThrow()
+    })
+
     it("does not stop a running stack when a supervisor tick lands inside abp-install's package swap (marker briefly absent)", () => {
         const h = fakeHost()
         h.files.delete('/opt/abp/happy/lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json')
@@ -1094,5 +1118,335 @@ describe('startup restart intent and error classification', () => {
         delayed.deps.adminReady = async () => { throw new Error('temporarily unavailable') }
         try { await createStack(delayed.deps).start(); throw new Error('should reject') }
         catch (error: any) { expect(error.message).toMatch(/temporarily unavailable/); expect(error.exitCode).not.toBe(78) }
+    })
+})
+
+describe('shared machine profiles (add-profile, remove-profile)', () => {
+    const U1 = sharedProfileId('user-1')
+    const U2 = sharedProfileId('user-2')
+    const U3 = sharedProfileId('user-3')
+    const installed = (host: ReturnType<typeof fakeHost>) => JSON.parse(host.files.get(PATHS.installConfig)!.data)
+    const runtimeJson = (host: ReturnType<typeof fakeHost>) => JSON.parse(host.files.get(PATHS.runtimeConfig)!.data)
+    const stopsOf = (host: ReturnType<typeof fakeHost>, container: string) => host.calls.filter((line) => new RegExp(`^docker (stop|kill|rm|restart) .*${container}$`).test(line))
+
+    it("adds a user's profile in the lowest free slot: its browser, then a new Runtime, leaving the other browsers running", async () => {
+        const host = fakeHost({ shared: [['user-1', 0], ['user-2', 2]], serviceActive: true })
+        const result = await createStack(host.deps).addProfile('user-3')
+        expect(result).toMatchObject({ changed: true, profileId: U3, networkSlot: 1 })
+        const profile = installed(host).profiles.find((p: any) => p.principalId === 'user-3')
+        expect(profile).toMatchObject({ profileId: U3, networkSlot: 1, assignmentId: expect.stringMatching(/^[0-9a-f]{32}$/) })
+        const { calls } = host
+        const fence = indexOf(calls, FENCE)
+        const network = indexOf(calls, /^docker network create .*br-abp-s1 abp-net-s1$/)
+        const browser = indexOf(calls, new RegExp(`^docker create --name=abp-browser-${U3} `))
+        const runtimeGone = indexOf(calls, 'docker rm -f abp-runtime')
+        const runtime = indexOf(calls, /^docker create --name=abp-runtime /)
+        expect(fence).toBeGreaterThanOrEqual(0)
+        expect(fence).toBeLessThan(network)
+        expect(network).toBeLessThan(browser)
+        expect(browser).toBeLessThan(runtimeGone)
+        expect(runtimeGone).toBeLessThan(runtime)
+        expect(calls[runtime]).toContain('--network=abp-runtime-net')
+        expect(calls.filter((line) => /^docker network connect .* abp-runtime$/.test(line))).toHaveLength(3)
+        expect(host.volumes.has(profileVolumeName(U3, 'user-3'))).toBe(true)
+        expect(stopsOf(host, `abp-browser-${U1}`)).toEqual([])
+        expect(stopsOf(host, `abp-browser-${U2}`)).toEqual([])
+        expect(host.containers.get(`abp-browser-${U3}`)?.running).toBe(true)
+        expect(runtimeJson(host)).toMatchObject({ tenancyMode: 'shared', admissionHold: false })
+        expect(runtimeJson(host).profiles.map((p: any) => p.profileId)).toEqual([U1, U2, U3])
+        expect(host.state().profileOp).toBeUndefined()
+        expect(host.state().applied[U3]).toEqual({ principalId: 'user-3', assignmentId: profile.assignmentId })
+        expect(host.state().history.at(-1)).toMatchObject({ action: 'add-profile', result: 'ready', profileId: U3 })
+        expect(calls.at(-1)).toBe(UNFENCE)
+    })
+
+    it('leaves an existing profile as it is', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true })
+        expect(await createStack(host.deps).addProfile('user-1')).toMatchObject({ changed: false, profileId: U1 })
+        expect(host.calls.some((line) => line.startsWith('docker create'))).toBe(false)
+    })
+
+    it('refuses a ninth profile, and a profile the memory cannot hold, changing nothing', async () => {
+        const full = fakeHost({ shared: Array.from({ length: 8 }, (_, i) => [`user-${i + 10}`, i] as [string, number]), serviceActive: true, memory: { totalBytes: 64 * 2 ** 30, availableBytes: 40 * 2 ** 30 } })
+        await expect(createStack(full.deps).addProfile('user-3')).rejects.toThrow(/at most 8/)
+        const low = fakeHost({ shared: [['user-1', 0]], serviceActive: true, memory: { totalBytes: 16 * 2 ** 30, availableBytes: 2 * 2 ** 30 } })
+        await expect(createStack(low.deps).addProfile('user-3')).rejects.toThrow(/memory/)
+        // 16 GiB less the 4 GiB session reserve holds the Runtime (1 GiB) and five 2 GiB browsers, not six.
+        const budget = fakeHost({ shared: [0, 1, 2, 3, 4].map((i) => [`user-${i + 10}`, i] as [string, number]), serviceActive: true })
+        await expect(createStack(budget.deps).addProfile('user-3')).rejects.toThrow(/memory/)
+        for (const host of [full, low, budget]) {
+            expect(host.calls.some((line) => line.startsWith('docker create') || line === FENCE)).toBe(false)
+            expect(host.state().history).toEqual([])
+        }
+    })
+
+    it("removes a user's profile: a new Runtime without it, then its browser and network; the volume stays and only later attestations bring it back", async () => {
+        const host = fakeHost({ shared: [['user-1', 0], ['user-2', 2]], serviceActive: true })
+        expect(await createStack(host.deps).removeProfile('user-2')).toMatchObject({ changed: true, profileId: U2 })
+        const { calls } = host
+        const runtime = indexOf(calls, /^docker create --name=abp-runtime /)
+        const browserGone = indexOf(calls, `docker rm -f abp-browser-${U2}`)
+        expect(runtime).toBeGreaterThanOrEqual(0)
+        expect(runtime).toBeLessThan(browserGone)
+        expect(calls.slice(browserGone)).toContain('docker network rm abp-net-s2')
+        expect(host.volumes.has(profileVolumeName(U2, 'user-2'))).toBe(true)
+        expect(stopsOf(host, `abp-browser-${U1}`)).toEqual([])
+        expect(installed(host).profiles.map((p: any) => p.principalId)).toEqual(['user-1'])
+        expect(runtimeJson(host).profileTombstones).toEqual([{ principalId: 'user-2', removedAtMs: 1_000_000 }])
+        expect(host.state().history.at(-1)).toMatchObject({ action: 'remove-profile', result: 'ready', profileId: U2 })
+        // Added again: the same volume, a new assignment, the tombstone gone.
+        await createStack(host.deps).addProfile('user-2')
+        expect(installed(host).profiles.find((p: any) => p.principalId === 'user-2').assignmentId).not.toBe('2'.repeat(32))
+        expect(runtimeJson(host).profileTombstones).toEqual([{ principalId: 'user-2', removedAtMs: 1_000_000 }])
+    })
+
+    it('--block keeps a removed user from coming back on first use (only add-profile brings them back)', async () => {
+        const host = fakeHost({ shared: [['user-1', 0], ['user-2', 2]], serviceActive: true })
+        await createStack(host.deps).removeProfile('user-2', { block: true })
+        expect(runtimeJson(host).profileTombstones).toEqual([{ principalId: 'user-2', removedAtMs: Number.MAX_SAFE_INTEGER }])
+    })
+
+    it('rolls a failed addition back to the previous profiles (the new browser never comes up)', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, brokenBrowsers: [U3] })
+        await expect(createStack(host.deps).addProfile('user-3')).rejects.toThrow(/add-profile failed/)
+        expect(installed(host).profiles.map((p: any) => p.principalId)).toEqual(['user-1'])
+        expect(runtimeJson(host).profiles.map((p: any) => p.profileId)).toEqual([U1])
+        expect(host.containers.has(`abp-browser-${U3}`)).toBe(false)
+        expect(runtimeJson(host).admissionHold).toBe(false)
+        expect(host.state().profileOp).toBeUndefined()
+        expect(host.state().history.at(-1)).toMatchObject({ action: 'add-profile', result: 'rolled-back', profileId: U3 })
+    })
+
+    it("goes ahead while another user's browser is broken: only the changed profile's browser must come up", async () => {
+        const host = fakeHost({ shared: [['user-1', 0], ['user-2', 2]], serviceActive: true, brokenBrowsers: [U1] })
+        host.containers.get(`abp-browser-${U1}`)!.running = false
+        await createStack(host.deps).addProfile('user-3')
+        await createStack(host.deps).removeProfile('user-2')
+        expect(installed(host).profiles.map((p: any) => p.principalId)).toEqual(['user-1', 'user-3'])
+        expect(runtimeJson(host).admissionHold).toBe(false)
+    })
+
+    const leaveOp = (host: ReturnType<typeof fakeHost>, profileOp: Record<string, unknown>, installProfiles?: unknown[]) => {
+        const before = installed(host)
+        host.files.set(PATHS.stackState, { data: JSON.stringify({ ...host.state(), applied: { [U1]: { principalId: 'user-1', assignmentId: '1'.repeat(32) } }, profileOp: { before, ...profileOp } }), mode: 0o600, owner: 'root', group: 'root' })
+        if (installProfiles) host.files.set(PATHS.installConfig, { data: JSON.stringify({ ...before, profiles: installProfiles }), mode: 0o600, owner: 'root', group: 'root' })
+        return before
+    }
+    const U3profile = { profileId: U3, principalId: 'user-3', assignmentId: '9'.repeat(32), networkSlot: 1 }
+
+    it('holds other operations while a change is unfinished, and a service start settles it (before the commit: the previous profiles)', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, handlers: [[/^docker network inspect/, () => ({ status: 1 })]] })
+        const before = leaveOp(host, { op: 'add', principalId: 'user-3', profileId: U3, phase: 'started' })
+        host.files.set(PATHS.installConfig, { data: JSON.stringify({ ...before, profiles: [...before.profiles, U3profile] }), mode: 0o600, owner: 'root', group: 'root' })
+        await expect(createStack(host.deps).addProfile('user-4')).rejects.toThrow(/unfinished add-profile/)
+        await createStack(host.deps).start()
+        expect(installed(host).profiles.map((p: any) => p.principalId)).toEqual(['user-1'])
+        expect(host.state().profileOp).toBeUndefined()
+        expect(host.state().history.some((entry: any) => entry.action === 'settle-profile-change' && entry.adopted === 'before')).toBe(true)
+    })
+
+    it('a service start keeps a committed change (its Runtime may already serve it)', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, handlers: [[/^docker network inspect/, () => ({ status: 1 })]] })
+        const before = leaveOp(host, { op: 'add', principalId: 'user-3', profileId: U3, phase: 'committed' })
+        host.files.set(PATHS.installConfig, { data: JSON.stringify({ ...before, profiles: [...before.profiles, U3profile] }), mode: 0o600, owner: 'root', group: 'root' })
+        host.volumes.set(profileVolumeName(U3, 'user-3'), Object.fromEntries(profileVolumeLabels(U3, 'user-3').map((l: string) => l.split('='))))
+        await createStack(host.deps).start()
+        expect(installed(host).profiles.map((p: any) => p.principalId)).toEqual(['user-1', 'user-3'])
+        expect(host.state().profileOp).toBeUndefined()
+    })
+
+    it('keeps supervising the other browsers after a change that failed for good, and recover-profiles still puts the previous profiles back', async () => {
+        const supervised = fakeHost({ shared: [['user-1', 0]] })
+        leaveOp(supervised, { op: 'add', principalId: 'user-3', profileId: U3, phase: 'failed' })
+        supervised.containers.get(`abp-browser-${U1}`)!.running = false
+        createStack(supervised.deps).superviseOnce(new Map())
+        expect(supervised.calls).toContain(`docker start abp-browser-${U1}`)
+        const active = fakeHost({ shared: [['user-1', 0]] })
+        leaveOp(active, { op: 'add', principalId: 'user-3', profileId: U3, phase: 'committed' })
+        active.containers.get(`abp-browser-${U1}`)!.running = false
+        createStack(active.deps).superviseOnce(new Map())
+        expect(active.calls.some((line) => line.startsWith('docker start'))).toBe(false)
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true })
+        leaveOp(host, { op: 'add', principalId: 'user-3', profileId: U3, phase: 'failed' }, [...installed(host).profiles, U3profile])
+        await createStack(host.deps).recoverProfiles()
+        expect(installed(host).profiles.map((p: any) => p.principalId)).toEqual(['user-1'])
+        expect(host.state().history.at(-1)).toMatchObject({ action: 'recover-profiles', result: 'ready' })
+    })
+
+    it('abp-stack up --restart settles a change that failed for good (the recovery the error names)', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true })
+        leaveOp(host, { op: 'add', principalId: 'user-3', profileId: U3, phase: 'failed' }, [...installed(host).profiles, U3profile])
+        await createStack(host.deps).up({ restart: true })
+        expect(installed(host).profiles.map((p: any) => p.principalId)).toEqual(['user-1'])
+        expect(host.state().profileOp).toBeUndefined()
+        expect(runtimeJson(host).admissionHold).toBe(false)
+    })
+
+    it('still checks every browser volume and mount after a change, only not that the others are connected', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true })
+        await createStack(host.deps).addProfile('user-3')
+        expect(host.calls).toContain(`docker inspect -f {{json .Mounts}} abp-browser-${U1}`)
+    })
+
+    it('a failure before the Runtime is touched cleans up only the new browser: no Runtime restart for everyone', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, handlers: [[/^docker network create .*abp-net-s1$/, () => ({ status: 1, stderr: 'Pool overlaps' })]] })
+        await expect(createStack(host.deps).addProfile('user-3')).rejects.toThrow(/add-profile failed/)
+        expect(host.calls.some((line) => /^docker (rm -f|create --name=) ?abp-runtime/.test(line) || line === 'docker rm -f abp-runtime')).toBe(false)
+        expect(host.calls.at(-1)).toBe(UNFENCE)
+        expect(host.state().profileOp).toBeUndefined()
+        expect(host.state().history.at(-1)).toMatchObject({ action: 'add-profile', result: 'rolled-back' })
+    })
+
+    it('a removal that fails after its commit goes forward, never back to a user whose sessions already ended', async () => {
+        const host = fakeHost({ shared: [['user-1', 0], ['user-2', 2]], serviceActive: true, handlers: [[new RegExp(`^docker rm -f abp-browser-${U2}$`), () => ({ status: 1 })]] })
+        await createStack(host.deps).removeProfile('user-2')
+        expect(installed(host).profiles.map((p: any) => p.principalId)).toEqual(['user-1'])
+        expect(host.state().profileOp).toBeUndefined()
+    })
+
+    it('changes containers only while the stack service runs (not after down or emergency-stop)', async () => {
+        const stopped = fakeHost({ shared: [['user-1', 0], ['user-2', 2]], serviceActive: false })
+        await expect(createStack(stopped.deps).removeProfile('user-2')).rejects.toThrow(/abp-stack up/)
+        const emergency = fakeHost({ shared: [['user-1', 0]], serviceActive: true })
+        emergency.files.set('/run/abp-stack-emergency', { data: '1', mode: 0o600, owner: 'root', group: 'root' })
+        await expect(createStack(emergency.deps).addProfile('user-3')).rejects.toThrow(/emergency/)
+    })
+
+    it("re-adding a removed user keeps the removal time, so their chats from before stay retired (a block becomes a removal now)", async () => {
+        const host = fakeHost({ shared: [['user-1', 0], ['user-2', 2]], serviceActive: true })
+        await createStack(host.deps).removeProfile('user-2', { block: true })
+        await createStack(host.deps).addProfile('user-2')
+        expect(runtimeJson(host).profileTombstones).toEqual([{ principalId: 'user-2', removedAtMs: 1_000_000 }])
+    })
+
+    it('is for shared machines only, and a shared machine refuses set-principal', async () => {
+        const dedicated = fakeHost({ serviceActive: true })
+        await expect(createStack(dedicated.deps).addProfile('user-3')).rejects.toThrow(/shared machine/)
+        await expect(createStack(dedicated.deps).removeProfile('user-2')).rejects.toThrow(/shared machine/)
+        const shared = fakeHost({ shared: [['user-1', 0]], serviceActive: true })
+        await expect(createStack(shared.deps).setPrincipal(U1, 'user-9')).rejects.toThrow(/add-profile|remove-profile/)
+    })
+
+    it('lists the profiles with their slot, volume and container state, and the removed users', async () => {
+        const host = fakeHost({ shared: [['user-1', 0], ['user-2', 2]], serviceActive: true })
+        await createStack(host.deps).removeProfile('user-2')
+        const list = createStack(host.deps).listProfiles()
+        expect(list.profiles).toEqual([{ profileId: U1, principalId: 'user-1', networkSlot: 0, assignmentId: '1'.repeat(32), volume: profileVolumeName(U1, 'user-1'), running: true }])
+        expect(list.removed).toEqual([{ principalId: 'user-2', removedAtMs: 1_000_000, blocked: false }])
+        expect(list.capacity).toMatchObject({ max: 8 })
+    })
+})
+
+describe('first-use profile requests (the abp-stack service)', () => {
+    const U3 = sharedProfileId('user-3')
+
+    it('adds the profile a session asked for', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }] })
+        expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toEqual({ added: ['user-3'] })
+        expect(JSON.parse(host.files.get(PATHS.installConfig)!.data).profiles.map((p: any) => p.profileId)).toContain(U3)
+    })
+
+    it('refuses a request the machine cannot hold, with the reason, and does not retry it meanwhile', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], memory: { totalBytes: 16 * 2 ** 30, availableBytes: 2 ** 30 } })
+        expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toEqual({ refused: [{ principalId: 'user-3', reason: 'memory' }] })
+        expect(host.refusals).toEqual([{ principalId: 'user-3', reason: 'memory', retryAfterMs: 600_000 }])
+        const full = fakeHost({ shared: Array.from({ length: 8 }, (_, i) => [`user-${i + 10}`, i] as [string, number]), serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], memory: { totalBytes: 64 * 2 ** 30, availableBytes: 40 * 2 ** 30 } })
+        await createStack(full.deps).provisionRequestedProfiles(new Map())
+        expect(full.refusals[0]).toMatchObject({ principalId: 'user-3', reason: 'capacity' })
+    })
+
+    it('leaves requests for later while another operation holds the lock, and backs off a failed addition', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }] })
+        const release = await host.deps.opLock()
+        expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toEqual({ busy: true })
+        release()
+        const failing = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], brokenBrowsers: [sharedProfileId('user-3')] })
+        const backoff = new Map()
+        expect(await createStack(failing.deps).provisionRequestedProfiles(backoff)).toEqual({ refused: [{ principalId: 'user-3', reason: 'failed' }] })
+        const calls = failing.calls.length
+        expect(await createStack(failing.deps).provisionRequestedProfiles(backoff)).toEqual({})
+        expect(failing.calls.length).toBe(calls)
+    })
+
+    it('refuses a blocked user, and reports a failed addition to the broker instead of retrying it every minute', async () => {
+        const blocked = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }] })
+        blocked.files.set(PATHS.installConfig, { data: JSON.stringify({ ...JSON.parse(blocked.files.get(PATHS.installConfig)!.data), profileTombstones: [{ principalId: 'user-3', removedAtMs: Number.MAX_SAFE_INTEGER }] }), mode: 0o600, owner: 'root', group: 'root' })
+        expect(await createStack(blocked.deps).provisionRequestedProfiles(new Map())).toEqual({ refused: [{ principalId: 'user-3', reason: 'blocked' }] })
+        expect(blocked.calls.some((line) => line.startsWith('docker create'))).toBe(false)
+        const failing = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], brokenBrowsers: [sharedProfileId('user-3')] })
+        await createStack(failing.deps).provisionRequestedProfiles(new Map())
+        expect(failing.refusals).toEqual([{ principalId: 'user-3', reason: 'failed', retryAfterMs: 600_000 }])
+    })
+
+    it('refuses a user whose additions keep failing for longer each time (10, 30, 90 minutes)', async () => {
+        const failing = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], brokenBrowsers: [sharedProfileId('user-3')] })
+        const backoff = new Map()
+        const stack = createStack(failing.deps)
+        await stack.provisionRequestedProfiles(backoff)
+        await failing.deps.sleep(600_001)
+        await stack.provisionRequestedProfiles(backoff)
+        await failing.deps.sleep(1_800_001)
+        await stack.provisionRequestedProfiles(backoff)
+        expect(failing.refusals.map((r) => r.retryAfterMs)).toEqual([600_000, 1_800_000, 5_400_000])
+    })
+
+    it('does not refuse a request when the machine was only busy (drain timed out, nothing changed), and tries again soon', async () => {
+        const busy = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], running: Array(200).fill(1) })
+        expect(await createStack(busy.deps).provisionRequestedProfiles(new Map())).toEqual({ busy: true })
+        expect(busy.refusals).toEqual([])
+    })
+
+    it('asks the service to restart when a change failed for good, so the next start settles it and lifts the fence', async () => {
+        let runtimeCreates = 0
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], brokenBrowsers: [sharedProfileId('user-3')],
+            handlers: [[/^docker create --name=abp-runtime /, () => (++runtimeCreates > 1 ? { status: 1 } : undefined)]] })
+        expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toMatchObject({ restartToSettle: true })
+        expect(host.state().profileOp).toMatchObject({ phase: 'failed' })
+    })
+
+    it('keeps a block when the blocked user is later removed without --block (only add-profile lifts it)', async () => {
+        const host = fakeHost({ shared: [['user-1', 0], ['user-2', 2]], serviceActive: true, requests: [{ principalId: 'user-2', requestedAtMs: 1 }] })
+        await createStack(host.deps).removeProfile('user-2', { block: true })
+        await createStack(host.deps).removeProfile('user-2')
+        expect(JSON.parse(host.files.get(PATHS.installConfig)!.data).profileTombstones).toEqual([{ principalId: 'user-2', removedAtMs: Number.MAX_SAFE_INTEGER }])
+        expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toEqual({ refused: [{ principalId: 'user-2', reason: 'blocked' }] })
+    })
+
+    it('refuses a request as busy after three postponements, instead of fencing everyone every 2 minutes forever', async () => {
+        const busy = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], running: Array(1000).fill(1) })
+        const stack = createStack(busy.deps)
+        const backoff = new Map()
+        for (let i = 0; i < 3; i++) {
+            expect(await stack.provisionRequestedProfiles(backoff)).toEqual({ busy: true })
+            await busy.deps.sleep(120_001)
+        }
+        expect(await stack.provisionRequestedProfiles(backoff)).toEqual({ refused: [{ principalId: 'user-3', reason: 'busy' }] })
+        expect(busy.refusals).toEqual([{ principalId: 'user-3', reason: 'busy', retryAfterMs: 600_000 }])
+    })
+
+    it("restarts the service to settle a change whose owner died (the lock is free), refusing nobody", async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }] })
+        host.files.set(PATHS.stackState, { data: JSON.stringify({ ...host.state(), profileOp: { op: 'add', principalId: 'user-4', profileId: sharedProfileId('user-4'), phase: 'started', before: JSON.parse(host.files.get(PATHS.installConfig)!.data) } }), mode: 0o600, owner: 'root', group: 'root' })
+        expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toEqual({ restartToSettle: true })
+        expect(host.refusals).toEqual([])
+    })
+
+    it('keeps telling new chats why a user was refused while the refusal lasts', async () => {
+        const host = fakeHost({ shared: [['user-1', 0]], serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }], memory: { totalBytes: 16 * 2 ** 30, availableBytes: 2 ** 30 } })
+        const stack = createStack(host.deps)
+        const backoff = new Map()
+        await stack.provisionRequestedProfiles(backoff)
+        await host.deps.sleep(60_000)
+        // A newer chat asked again: the broker gets the same refusal for what is left of it.
+        expect(await stack.provisionRequestedProfiles(backoff)).toEqual({})
+        expect(host.refusals).toEqual([
+            { principalId: 'user-3', reason: 'memory', retryAfterMs: 600_000 },
+            { principalId: 'user-3', reason: 'memory', retryAfterMs: 540_000 },
+        ])
+    })
+
+    it('does nothing on a dedicated machine', async () => {
+        const host = fakeHost({ serviceActive: true, requests: [{ principalId: 'user-3', requestedAtMs: 1 }] })
+        expect(await createStack(host.deps).provisionRequestedProfiles(new Map())).toEqual({})
     })
 })

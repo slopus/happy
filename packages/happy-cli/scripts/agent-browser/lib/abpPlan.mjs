@@ -52,6 +52,10 @@ export const DEFAULT_BROWSER_SUBNET_POOL = "10.249.240.0/20";
 /** The only profile release 1 installs (the Desktop requests it). */
 export const RELEASE_PROFILE = "main";
 const MAX_PROFILES = 16;
+/** Profiles of a shared machine (one network slot each; the Runtime's MAX_SHARED_PROFILES). */
+export const MAX_SHARED_PROFILES = 8;
+/** Container memory limits (docker --memory), also the budget abp-stack add-profile plans with. */
+export const CONTAINER_MEMORY_GIB = { runtime: 1, browser: 2 };
 /** Container-side paths (fixed by the images). */
 const IN_CONTAINER = { secrets: "/run/secrets/abp", vncPassword: "/run/secrets/abp/vnc-password", state: "/var/lib/abp", stateDir: "/var/lib/abp/state", profile: "/home/browser/profile" };
 export const STACK_LABEL = "ai.saycode.abp=stack";
@@ -132,6 +136,11 @@ export function mergeInstallOptions(saved, flags) {
     ...Object.fromEntries(Object.entries(flags).filter(([key, value]) => value !== undefined && key !== "issuers")),
   };
   if (flags.issuers !== undefined) merged.trustedIssuers = flags.issuers;
+  // Fixed at install: the broker ledger, profiles and networks differ between the modes.
+  merged.tenancyMode ??= "dedicated";
+  if (!["dedicated", "shared"].includes(merged.tenancyMode)) fail("tenancyMode", "must be dedicated or shared");
+  if (saved && (saved.tenancyMode ?? "dedicated") !== merged.tenancyMode) fail("tenancyMode", "is fixed at install; uninstall (volumes are kept) and install again to change it");
+  if (merged.tenancyMode === "shared") return mergeSharedProfiles(merged, flags);
   if (!merged.agentProfileId || (flags.profiles && !flags.agentProfileId && !flags.profiles.some((p) => p.profileId === merged.agentProfileId))) {
     merged.agentProfileId = merged.profiles?.[0]?.profileId;
   }
@@ -159,6 +168,41 @@ export function mergeInstallOptions(saved, flags) {
   // below support several profiles; lift this check together with the Desktop when that ships.
   if (merged.profiles.length !== 1 || merged.profiles[0].profileId !== RELEASE_PROFILE) fail("profiles", `release 1 installs exactly one profile named ${RELEASE_PROFILE} (--profile ${RELEASE_PROFILE}=<studio userId>)`);
   if (!seen.has(merged.agentProfileId)) fail("agentProfileId", "must be one of the configured profiles");
+  return validateCommon(merged);
+}
+
+/** Shared machines: a profile per user, added by abp-stack add-profile (or on first use), none at install. */
+function mergeSharedProfiles(merged, flags) {
+  if (flags.profiles || flags.agentProfileId) fail("profiles", "a shared machine's profiles are managed with abp-stack add-profile/remove-profile, not --profile");
+  delete merged.agentProfileId;
+  merged.schemaVersion = 2;
+  merged.profiles ??= [];
+  if (!Array.isArray(merged.profiles)) fail("profiles", "must be a list");
+  if (merged.profiles.length > MAX_SHARED_PROFILES) fail("profiles", `at most ${MAX_SHARED_PROFILES} on a shared machine`);
+  for (const [index, profile] of merged.profiles.entries()) {
+    if (!TEXT_ID.test(profile?.principalId ?? "")) fail(`profiles[${index}].principalId`, "is required");
+    if (profile.profileId !== sharedProfileId(profile.principalId)) fail(`profiles[${index}].profileId`, "must be u-<16 hex of sha256(principalId)>");
+    if (!/^[0-9a-f]{32}$/.test(profile.assignmentId ?? "")) fail(`profiles[${index}].assignmentId`, "must be 32 lowercase hex characters");
+  }
+  if (new Set(merged.profiles.map((profile) => profile.profileId)).size !== merged.profiles.length) fail("profiles", "a user has one profile");
+  merged.profiles.forEach((profile, index) => integer(profile.networkSlot, `profiles[${index}].networkSlot`, 0, MAX_SHARED_PROFILES - 1));
+  if (new Set(merged.profiles.map((profile) => profile.networkSlot)).size !== merged.profiles.length) fail("profiles.networkSlot", "each profile needs a slot of its own");
+  merged.memoryReserveMiB ??= 4096;
+  integer(merged.memoryReserveMiB, "memoryReserveMiB", 0, 1024 * 1024);
+  merged.profileTombstones ??= [];
+  if (!Array.isArray(merged.profileTombstones) || merged.profileTombstones.length > 1024) fail("profileTombstones", "must be a list of at most 1024");
+  merged.profileTombstones.forEach((entry, index) => {
+    if (!TEXT_ID.test(entry?.principalId ?? "")) fail(`profileTombstones[${index}].principalId`, "is required");
+    integer(entry.removedAtMs, `profileTombstones[${index}].removedAtMs`, 0, Number.MAX_SAFE_INTEGER);
+  });
+  for (const field of ["machineId", "workspaceId"]) {
+    if (typeof merged[field] !== "string" || !TEXT_ID.test(merged[field])) fail(field, "is required (1-256 printable characters)");
+  }
+  return validateCommon(merged);
+}
+
+/** Checks both modes share: issuers, sites, ports, networks, the Happy prefix. */
+function validateCommon(merged) {
   if (!Array.isArray(merged.trustedIssuers) || merged.trustedIssuers.length === 0) fail("trustedIssuers", "at least one --issuer <kid>=<public-key.pem> is required");
   merged.trustedIssuers = merged.trustedIssuers.map((issuer, index) => {
     if (!TEXT_ID.test(issuer?.kid ?? "")) fail(`trustedIssuers[${index}].kid`, "is required");
@@ -219,11 +263,14 @@ export function runtimeConfig(install, { sessionGid, daemonTokenSha256 }) {
   integer(sessionGid, "abp-session gid", 1, 2 ** 31 - 1);
   return {
     schemaVersion: 2,
+    // Dedicated machines leave it out, so their runtime.json still fits a contract 2 image (rollback).
+    ...install.tenancyMode === "shared" ? { tenancyMode: "shared" } : {},
     admissionHold: install.admissionHold === true,
     authMode: "production",
     machineId: install.machineId,
     workspaceId: install.workspaceId,
     profiles: install.profiles.map(({ profileId, principalId, assignmentId }) => ({ profileId, principalId, assignmentId })),
+    ...install.tenancyMode === "shared" ? { profileTombstones: install.profileTombstones ?? [] } : {},
     trustedIssuers: install.trustedIssuers,
     sites: install.sites,
     // Inside the container; the stack publishes it on 127.0.0.1 only, same port number.
@@ -324,7 +371,11 @@ export function fenceRule(runtimePort) {
  */
 export function egressRules(layout, install) {
   const chain = [];
-  for (const browser of layout.browsers) {
+  // A shared machine's rules cover every slot from the start: adding or removing a profile leaves them alone.
+  const targets = install.tenancyMode === "shared"
+    ? Array.from({ length: MAX_SHARED_PROFILES }, (_, slot) => slotAddresses(install, slot))
+    : layout.browsers;
+  for (const browser of targets) {
     const b = `${browser.browserIp}/32`;
     const r = `${browser.runtimeIp}/32`;
     chain.push(`-s ${r} -d ${b} -j RETURN`);
@@ -407,7 +458,9 @@ export function daemonEnv(install) {
     `HAPPY_BROWSER_TASK_RUNTIME_URL=http://127.0.0.1:${install.runtimePort}`,
     `HAPPY_BROWSER_TASK_BROKER_SOCKET=${PATHS.brokerSocket}`,
     `HAPPY_BROWSER_TASK_DAEMON_TOKEN_FILE=${PATHS.daemonToken}`,
-    `HAPPY_BROWSER_TASK_PROFILE_ID=${install.agentProfileId}`,
+    `HAPPY_BROWSER_TASK_TENANCY=${install.tenancyMode ?? "dedicated"}`,
+    // A shared machine's sessions use the profile the broker grants them (their user's).
+    ...install.tenancyMode === "shared" ? [] : [`HAPPY_BROWSER_TASK_PROFILE_ID=${install.agentProfileId}`],
     // Machine RPCs (file reads, document list, bash and terminal cwd) accept paths under this root only. The
     // server addresses everything as /home/agent/workspace/..., a link to /work/agent-workspace: rooted at the
     // link, both the lexical and the realpath checks pass (a link is tolerated only as the root itself).
@@ -560,6 +613,8 @@ export function chromiumSeccompProfile(base) {
 }
 
 const principalHash = (principalId) => createHash("sha256").update(principalId).digest("hex").slice(0, 16);
+/** A shared machine's profile of a user (the Runtime's sharedProfileId). */
+export const sharedProfileId = (principalId) => `u-${principalHash(principalId)}`;
 
 /**
  * Docker volume holding a profile's browser data (cookies, logins) for one owner. Derived only from
@@ -586,6 +641,7 @@ export function profileVolumeLabels(profileId, principalId) {
  * firewall can name exact addresses and match every browser bridge with br-abp+.
  */
 export function stackLayout(install) {
+  if (install.tenancyMode === "shared") return sharedStackLayout(install);
   const [pool] = parseCidr(install.browserSubnetPool ?? DEFAULT_BROWSER_SUBNET_POOL);
   const browsers = install.profiles.map(({ profileId, principalId }, index) => {
     const base = pool + index * 256;
@@ -620,6 +676,51 @@ export function stackLayout(install) {
   };
 }
 
+/** The /24 of a shared machine's network slot: gateway .1, browser .2, Runtime .3. */
+function slotAddresses(install, slot) {
+  const [pool] = parseCidr(install.browserSubnetPool ?? DEFAULT_BROWSER_SUBNET_POOL);
+  const base = pool + slot * 256;
+  return { subnet: `${intToIp(base)}/24`, gateway: intToIp(base + 1), browserIp: intToIp(base + 2), runtimeIp: intToIp(base + 3) };
+}
+/** The last /24 of the pool, outside the profile slots: the Runtime's own network. */
+const RUNTIME_SLOT = 15;
+
+/**
+ * Shared machine layout: the Runtime lives on a network of its own (abp-runtime-net, bridge br-abp-rt, so the
+ * egress chain rejects anything it starts) and joins each profile's network. A profile's network, bridge and
+ * addresses come from its persistent slot, so adding or removing one profile moves no other.
+ */
+function sharedStackLayout(install) {
+  const runtimeSlot = slotAddresses(install, RUNTIME_SLOT);
+  const browsers = install.profiles.map(({ profileId, principalId, networkSlot }) => ({
+    profileId,
+    principalId,
+    container: `abp-browser-${profileId}`,
+    alias: `browser-${profileId}`,
+    network: `abp-net-s${networkSlot}`,
+    volume: profileVolumeName(profileId, principalId),
+    volumeLabels: profileVolumeLabels(profileId, principalId),
+    bridge: `br-abp-s${networkSlot}`,
+    ...slotAddresses(install, networkSlot),
+  }));
+  const runtimeNetwork = { network: "abp-runtime-net", subnet: runtimeSlot.subnet, gateway: runtimeSlot.gateway, bridge: "br-abp-rt" };
+  return {
+    runtimePort: install.runtimePort,
+    networks: [runtimeNetwork.network, ...browsers.map((browser) => browser.network)],
+    volumes: ["abp-state", ...browsers.map((browser) => browser.volume)],
+    browsers,
+    runtimeNetwork,
+    runtime: {
+      container: "abp-runtime",
+      alias: "runtime",
+      network: runtimeNetwork.network,
+      ip: runtimeSlot.browserIp,
+      attach: browsers.map((browser) => ({ network: browser.network, ip: browser.runtimeIp })),
+      volume: "abp-state",
+    },
+  };
+}
+
 export function networkCreateArgs(browser) {
   return ["network", "create", "--driver=bridge", `--label=${STACK_LABEL}`, `--subnet=${browser.subnet}`, `--gateway=${browser.gateway}`,
     `--opt=com.docker.network.bridge.name=${browser.bridge}`, browser.network];
@@ -645,7 +746,7 @@ export function runtimeCreateArgs(layout, image) {
     `--network=${layout.runtime.network}`, `--ip=${layout.runtime.ip}`, `--network-alias=${layout.runtime.alias}`,
     // S2 production start: root with only SETUID/SETGID to read the root-only config and bind the sockets, then drop.
     "--user=0:0", "--cap-drop=ALL", "--cap-add=SETUID", "--cap-add=SETGID", "--security-opt=no-new-privileges",
-    "--read-only", "--tmpfs=/tmp:rw,size=64m", "--pids-limit=256", "--memory=1g", "--cpus=1", "--restart=no", ...logOpts,
+    "--read-only", "--tmpfs=/tmp:rw,size=64m", "--pids-limit=256", `--memory=${CONTAINER_MEMORY_GIB.runtime}g`, "--cpus=1", "--restart=no", ...logOpts,
     `--mount=type=volume,source=${layout.runtime.volume},target=${IN_CONTAINER.state}`,
     `--mount=type=bind,source=${PATHS.run},target=${PATHS.run}`,
     `--mount=type=bind,source=${PATHS.runtimeConfig},target=${PATHS.runtimeConfig},readonly`,
@@ -667,7 +768,7 @@ export function browserCreateArgs(layout, browser, image) {
     `--network=${browser.network}`, `--ip=${browser.browserIp}`, `--network-alias=${browser.alias}`,
     `--user=${uid}:${uid}`, "--cap-drop=ALL", "--security-opt=no-new-privileges", `--security-opt=seccomp=${PATHS.seccompProfile}`,
     "--read-only", "--tmpfs=/tmp:rw,size=128m", tmpfs("/run/abp", "1m"), tmpfs("/home/browser/.cache", "64m"), tmpfs("/home/browser/.config", "64m"), tmpfs("/home/browser/.local", "64m"),
-    "--pids-limit=512", "--memory=2g", "--cpus=2", "--shm-size=256m", "--restart=no", ...logOpts,
+    "--pids-limit=512", `--memory=${CONTAINER_MEMORY_GIB.browser}g`, "--cpus=2", "--shm-size=256m", "--restart=no", ...logOpts,
     `--mount=type=volume,source=${browser.volume},target=${IN_CONTAINER.profile}`,
     `--mount=type=bind,source=${PATHS.browserSecrets},target=${IN_CONTAINER.secrets},readonly`,
     `--env=ABP_CDP_HOST=${browser.alias}:9223`,

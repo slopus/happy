@@ -215,7 +215,7 @@ Install/runtime config schema 2, package `contract.json`, and image label
 `ai.saycode.abp.contract=2` prevent supported downgrade paths. Previous incompatible image
 pairs cannot be rolled back to; a failed upgrade with no compatible fallback stays stopped and
 fenced. These guards do not constrain an operator who manually replaces the tools as root.
-The installer disables/removes any former automatic-prune timer and `check` verifies the units are absent. Both staged and already-installed Happy packages must advertise contract 2; reusing an old daemon that omits fork lineage is refused even when no tarball was supplied.
+The installer disables/removes any former automatic-prune timer and `check` verifies the units are absent. Both staged and already-installed Happy packages must advertise contract 2 or later (images and packages of a shared machine: 3, whose runtime.json carries `tenancyMode`); reusing an old daemon that omits fork lineage is refused even when no tarball was supplied.
 For an old-image/legacy-volume installation, use `abp-install --no-start` with the current package,
 then `abp-stack upgrade --images <contract-2 images> --no-start`. This stages compatible images
 without touching legacy data or admitting traffic. Confirm ownership and migrate next. Unknown
@@ -238,6 +238,48 @@ also failed; `--abort` restores the original owner. Both refresh the generation.
 root restoration of old state is outside the supported downgrade contract. Browser cookies alone
 are not an authority backup. Resumed/forked conversations with unverifiable lineage are refused;
 use a new conversation.
+
+## Shared machines (a browser profile per user)
+
+`abp-install --tenancy shared` installs a machine several users of one company share (Saydo
+`specs/agent-browser-shared-profiles/design.md`). It is not a security boundary between those users. The mode
+is fixed at install; to change it, uninstall (volumes are kept) and install again. A shared machine starts
+with no profile: each user gets `u-<16 hex of sha256(userId)>`, with its own browser, network slot (0-7)
+and login volume.
+
+```
+abp-stack add-profile <studio userId>              # or automatically on the user's first use
+abp-stack remove-profile <studio userId> [--block] # --block: only add-profile brings them back
+abp-stack list-profiles [--json]
+abp-stack recover-profiles                         # put the previous profiles back after a failed change
+```
+
+- First use: when a user's new chat (attested by Studio) asks for a grant, the broker records a request and the
+  session waits (`PROFILE_PROVISIONING`, up to 45 s); the abp-stack service polls the admin socket every 3 s
+  and adds one profile at a time when no other operation holds the lock. A request that cannot be served is
+  refused for 10 minutes and the session is told why (`PROFILE_UNAVAILABLE`: capacity, memory, blocked, or a
+  failed addition), so a persistent failure never restarts everyone's Runtime over and over.
+- Adding or removing a profile fences the API, drains running tasks (up to 60 s, else nothing changes),
+  handles that user's browser and network, and recreates the Runtime. The other browsers keep running
+  with their pages and pending approvals; every user sees a few seconds of `RUNTIME_UNAVAILABLE` (retried).
+- At most 8 profiles, and only while `MemTotal - memoryReserveMiB (4096) >= 1 GiB + 2 GiB x profiles` and
+  3 GiB is available right now. Slots are not reclaimed automatically.
+- Only the stack service's containers are changed: after `down` or `emergency-stop`, run `up` first.
+- A change is journaled. A failure before the Runtime is touched removes only the new browser; an addition
+  that fails later is rolled back; a removal that fails after its commit goes forward. A change left behind
+  (crash, reboot) is settled by the next service start or `abp-stack up --restart`: before its commit the
+  previous profiles, after it the new ones. A first-use addition that failed for good restarts the service
+  itself, so its fence does not stay; supervision of the other browsers continues meanwhile. A user whose
+  additions keep failing is refused for 10, 30, 90 minutes...; a drain that timed out postpones (2 min) up to three
+  times, then the request is refused as busy. While a refusal lasts, newer chats of that user get its reason.
+- A block stays through a later plain `remove-profile`; only `add-profile` lifts it.
+- Verification after a change needs the Runtime and that profile's browser only: another user's broken browser
+  holds neither changes nor start-up.
+- Removal ends that user's sessions and tasks; their login volume is kept indefinitely (re-adding restores
+  their logins, with a new assignment; the removal time is kept, so their old chats need a new chat). To cut a user off: remove them
+  from the machine's access list in Studio first, then `remove-profile`.
+- `set-principal` is refused on a shared machine.
+- Images and the package of a shared machine must be contract 3 (its runtime.json carries `tenancyMode`).
 
 ## Upgrade and rollback
 
