@@ -138,7 +138,7 @@ it('registers and reads the same encrypted automation through authenticated HTTP
     expect(listed.json().automations[0].id).toBe(saved.json().automation.id);
     expect(listed.json().automations[0]).toMatchObject({ registrationKey: 'collect', ready: false, encrypted: registration.encrypted });
     const foreign = await app.inject({ method: 'GET', url: '/v1/projects/other/script-artifacts/code-1' });
-    expect(foreign.statusCode).toBe(403);
+    expect(foreign.statusCode).toBe(404);
     const id = saved.json().automation.id;
     const poll = await app.inject({ method: 'GET', url: '/v1/machines/machine/script-automations' });
     expect(poll.statusCode).toBe(200);
@@ -189,6 +189,20 @@ it('registers and reads the same encrypted automation through authenticated HTTP
     expect((await client.scriptAutomationRevision.findFirstOrThrow()).nextRunAt).toBeNull();
   } finally { await app.close(); }
 });
+it('hides missing and inaccessible projects behind the same NOT_FOUND on script read routes', async () => {
+  const app = fastify().withTypeProvider<ZodTypeProvider>();
+  app.setValidatorCompiler(validatorCompiler); app.setSerializerCompiler(serializerCompiler);
+  app.decorate('authenticate', async (request: { userId: string }) => { request.userId = 'viewer'; });
+  scriptAutomationRoutes(app, { transaction: (action) => client.$transaction(action), enabled: () => true });
+  try {
+    for (const projectId of ['missing', 'p1']) {
+      const listed = await app.inject({ method: 'GET', url: `/v1/projects/${projectId}/script-automations` });
+      expect(listed.statusCode).toBe(404);
+      expect(listed.json()).toEqual({ error: 'NOT_FOUND' });
+    }
+  } finally { await app.close(); }
+});
+
 it('keeps script records out of legacy list, sync, update, run-now and claim paths', async () => {
   const row = await client.$transaction((tx) => saveScriptAutomation(tx, 'owner', 'p1', registration));
   expect(await client.$transaction((tx) => listAutomations(tx, 'owner', 'p1'))).toEqual({ ok: true, value: [] });
