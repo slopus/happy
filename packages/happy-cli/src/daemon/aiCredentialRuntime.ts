@@ -330,6 +330,21 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     await writeAtomicFile(deps, trialMarkerPath(), JSON.stringify(marker))
   }
 
+  function warnCodexCaptureReadFailure(
+    fileName: 'openai-codex-accounts.json' | 'settings.json',
+    error: unknown,
+  ): void {
+    const errorCode = (error as NodeJS.ErrnoException | undefined)?.code
+    const reason = error instanceof SyntaxError
+      ? 'INVALID_JSON'
+      : ['EACCES', 'EPERM', 'EIO', 'ENOTDIR', 'EBUSY', 'EAGAIN'].includes(errorCode ?? '')
+        ? errorCode
+        : 'READ_FAILED'
+    try {
+      deps.warn?.(`Codex credential capture could not read ${fileName} (${reason})`)
+    } catch {}
+  }
+
   async function capture(input: { provider: AiCredentialProvider }) {
     const selected = provider(input?.provider)
     return serialize(() => withSafeErrors(`${selected.toUpperCase()}_CAPTURE_FAILED`, async () => {
@@ -342,19 +357,32 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         payload = result.stdout
       } else {
         const packageVersion = await assertSupportedCodexMultiAuthInstalled()
+        let accounts: unknown
         try {
-          const accounts = JSON.parse(await deps.readFile(join(codexMultiAuthDir(), 'openai-codex-accounts.json')))
-          const settings = JSON.parse(await deps.readFile(join(codexMultiAuthDir(), 'settings.json')))
-          payload = JSON.stringify({
-            version: 1,
-            kind: 'codex-multi-auth',
-            packageVersion,
-            accounts,
-            settings,
-          })
-        } catch {
+          accounts = JSON.parse(await deps.readFile(join(codexMultiAuthDir(), 'openai-codex-accounts.json')))
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            warnCodexCaptureReadFailure('openai-codex-accounts.json', error)
+            throw error
+          }
           throw new AiCredentialRuntimeError('CODEX_FILE_STORE_REQUIRED')
         }
+        let settings: unknown = { version: 1, pluginConfig: {} }
+        try {
+          settings = JSON.parse(await deps.readFile(join(codexMultiAuthDir(), 'settings.json')))
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            warnCodexCaptureReadFailure('settings.json', error)
+            throw error
+          }
+        }
+        payload = JSON.stringify({
+          version: 1,
+          kind: 'codex-multi-auth',
+          packageVersion,
+          accounts,
+          settings,
+        })
       }
       assertPayloadSize(payload)
       return { provider: selected, payload }

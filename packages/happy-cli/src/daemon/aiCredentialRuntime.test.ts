@@ -1044,6 +1044,28 @@ describe('AI credential machine runtime', () => {
     await expect(runtime.capture({ provider: '../etc/passwd' as never })).rejects.toThrow(/provider/i)
   })
 
+  it.each(['2.16.0', '2.17.0'])('captures a Codex %s account pool with default settings when settings.json is absent without writing source files', async (packageVersion) => {
+    const execFile = vi.fn(async (command: string, args: string[]) => ({
+      stdout: command === 'npm' ? '/global/node_modules\n' : `${packageVersion}\n`, stderr: '',
+    }))
+    const warn = vi.fn()
+    const { runtime, files } = setup({ env: { CODEX_HOME: '/fixed/codex' }, execFile, warn })
+    const bundle = codexMultiAuthBundle()
+    bundle.packageVersion = packageVersion
+    files.set('/global/node_modules/codex-multi-auth/package.json', JSON.stringify({ version: packageVersion }))
+    files.set('/fixed/codex/multi-auth/openai-codex-accounts.json', JSON.stringify(bundle.accounts))
+    files.set('/fixed/codex/auth.json', '{"OPENAI_API_KEY":"unrelated-secret"}')
+    const beforeCapture = new Map(files)
+
+    const captured = await runtime.capture({ provider: 'codex' })
+
+    expect(JSON.parse(captured.payload)).toEqual(bundle)
+    expect(captured.provider).toBe('codex')
+    expect(files).toEqual(beforeCapture)
+    expect(execFile.mock.calls.some(([command, args]) => command === 'npm' && args[0] === 'install')).toBe(false)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
   it('captures the fixed Codex multi-auth account pool and settings as one versioned bundle', async () => {
     const { runtime, files } = setup({ env: { CODEX_HOME: '/fixed/codex' } })
     const bundle = codexMultiAuthBundle()
@@ -1054,6 +1076,72 @@ describe('AI credential machine runtime', () => {
 
     expect(captured.provider).toBe('codex')
     expect(JSON.parse(captured.payload)).toEqual(bundle)
+  })
+
+  it.each(['openai-codex-accounts.json', 'settings.json'])('fails closed on malformed Codex %s without leaking its contents', async (fileName) => {
+    const warn = vi.fn()
+    const { runtime, files } = setup({ warn })
+    const bundle = codexMultiAuthBundle()
+    files.set('/home/operator/.codex/multi-auth/openai-codex-accounts.json', JSON.stringify(bundle.accounts))
+    files.set('/home/operator/.codex/multi-auth/settings.json', JSON.stringify(bundle.settings))
+    files.set(`/home/operator/.codex/multi-auth/${fileName}`, '{"token":"fixture-secret",')
+    const beforeCapture = new Map(files)
+
+    await expect(runtime.capture({ provider: 'codex' })).rejects.toMatchObject({
+      kind: 'CODEX_CAPTURE_FAILED', message: 'AI credential operation failed (CODEX_CAPTURE_FAILED)',
+    })
+    expect(files).toEqual(beforeCapture)
+    expect(warn).toHaveBeenCalledExactlyOnceWith(`Codex credential capture could not read ${fileName} (INVALID_JSON)`)
+  })
+
+  it.each([
+    ['openai-codex-accounts.json', 'EACCES'],
+    ['openai-codex-accounts.json', 'EIO'],
+    ['settings.json', 'EACCES'],
+    ['settings.json', 'EPERM'],
+    ['settings.json', 'EIO'],
+  ])('fails closed on %s read error %s instead of using default settings', async (fileName, code) => {
+    const readFile = vi.fn(async (filePath: string) => {
+      if (filePath === join('/home/operator', '.codex', 'multi-auth', fileName)) {
+        throw Object.assign(new Error('/private/path fixture-secret'), { code })
+      }
+      if (filePath.endsWith('package.json')) return JSON.stringify({ version: '2.16.0' })
+      return JSON.stringify(codexMultiAuthBundle().accounts)
+    })
+    const warn = vi.fn()
+    const { runtime } = setup({ readFile, warn })
+
+    await expect(runtime.capture({ provider: 'codex' })).rejects.toMatchObject({
+      kind: 'CODEX_CAPTURE_FAILED', message: 'AI credential operation failed (CODEX_CAPTURE_FAILED)',
+    })
+    expect(readFile).toHaveBeenCalledWith(join('/home/operator', '.codex', 'multi-auth', fileName))
+    expect(warn).toHaveBeenCalledExactlyOnceWith(`Codex credential capture could not read ${fileName} (${code})`)
+  })
+
+  it('redacts unexpected filesystem codes in Codex capture diagnostics', async () => {
+    const warn = vi.fn()
+    const readFile = vi.fn(async (filePath: string) => {
+      if (filePath.endsWith('settings.json')) {
+        throw Object.assign(new Error('/private/path fixture-secret'), { code: 'fixture-secret' })
+      }
+      if (filePath.endsWith('package.json')) return JSON.stringify({ version: '2.16.0' })
+      return JSON.stringify(codexMultiAuthBundle().accounts)
+    })
+    const { runtime } = setup({ readFile, warn })
+
+    await expect(runtime.capture({ provider: 'codex' })).rejects.toMatchObject({ kind: 'CODEX_CAPTURE_FAILED' })
+    expect(warn).toHaveBeenCalledExactlyOnceWith('Codex credential capture could not read settings.json (READ_FAILED)')
+  })
+
+  it('preserves the Codex capture failure when the diagnostic callback throws', async () => {
+    const warn = vi.fn(() => { throw new AiCredentialRuntimeError('DIAGNOSTIC_CALLBACK_FAILED') })
+    const { runtime, files } = setup({ warn })
+    files.set('/home/operator/.codex/multi-auth/openai-codex-accounts.json', '{"token":"fixture-secret",')
+
+    await expect(runtime.capture({ provider: 'codex' })).rejects.toMatchObject({
+      kind: 'CODEX_CAPTURE_FAILED', message: 'AI credential operation failed (CODEX_CAPTURE_FAILED)',
+    })
+    expect(warn).toHaveBeenCalledExactlyOnceWith('Codex credential capture could not read openai-codex-accounts.json (INVALID_JSON)')
   })
 
   it.each(['2.16.0', '2.17.0'])('captures and reapplies the actual supported runtime %s without installing', async (version) => {
