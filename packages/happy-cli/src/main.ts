@@ -623,15 +623,15 @@ Conversation history is preserved on the server, but in-flight tool calls are in
         stdio: captureSpawnOutputStdio('daemon-start-sync.log', `daemon start from pid ${process.pid}`),
         env: daemonEnv
       });
-      let childExited = false;
-      child.once('exit', () => { childExited = true });
+      let childExit: number | null | undefined;
+      child.once('exit', code => { childExit = code });
       child.unref();
 
-      // Wait until the daemon is up or start-sync has exited. A fixed 5s failed a slow Windows PC
+      // Wait until the daemon is up or start-sync has failed. A fixed 5s failed a slow Windows PC
       // whose daemon wrote its state at 6.9s; 25s stays inside startDetachedHappyCLI's 30s.
       const started = await waitForDaemonStart({
         isRunning: checkIfDaemonRunningAndCleanupStaleState,
-        childExited: () => childExited,
+        childExit: () => childExit,
         now: () => Date.now(),
         sleep: ms => new Promise(resolve => setTimeout(resolve, ms)),
       }, { timeoutMs: 25_000, pollMs: 100 }) === 'started';
