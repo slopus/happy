@@ -463,6 +463,86 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     }
   }
 
+  async function prepareClaudeRepair(payload: string) {
+    if (!claudeImportedAccountIdentities(payload)) throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
+    await ensureClaudeSwap(true)
+    const before = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
+      maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
+    })).stdout)
+    const envelope = JSON.parse(payload)
+    const requested: Array<{ email: string; organizationUuid: string }> = envelope.accounts.map((account: { email: string; organizationUuid?: string }) => ({
+      email: account.email, organizationUuid: account.organizationUuid ?? '',
+    }))
+    // The explicit repair may replace a matching personal identity, as approved
+    // by the user. Other identities and locally disabled slots stay untouched.
+    const candidates = envelope.accounts.filter((account: { email: string }) =>
+      before.accounts.some(existing => claudeListAccountIdentity(existing) === claudeListAccountIdentity(account)))
+      .map((account: { email: string }) => ({ ...account, disabled: before.accounts.find(existing =>
+        claudeListAccountIdentity(existing) === claudeListAccountIdentity(account))?.disabled === true }))
+    const verification = await verifyLocalAiAccounts(deps, 'claude', requested, candidates)
+    const accepted = envelope.accounts.filter((_account: unknown, index: number) => verification.accounts[index]?.ok)
+    if (accepted.length === 0) throw new AiCredentialRuntimeError('CLAUDE_APPLY_RELOGIN_REQUIRED')
+    return { before, envelope: { ...envelope, accounts: accepted }, requested, verification }
+  }
+
+  async function applyClaudeRepair(prepared: Awaited<ReturnType<typeof prepareClaudeRepair>>) {
+    const list = async () => parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
+      maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
+    })).stdout)
+    const { before, envelope, requested, verification } = prepared
+    const restoreRotation = deps.supervisor.status().state !== 'stopped'
+    let rotationStopped = false
+    const tempDir = await deps.makeTempDir()
+    let after: ClaudeListDetails
+    let installed: Awaited<ReturnType<typeof verifyLocalAiAccounts>>
+    let accounts = verification.accounts
+    try {
+      if (restoreRotation) {
+        await deps.supervisor.stop()
+        rotationStopped = true
+      }
+      const current = await list()
+      if (current.activeAccountNumber !== before.activeAccountNumber || before.accounts.some(account => {
+        const retained = current.accounts.find(candidate => claudeListAccountIdentity(candidate) === claudeListAccountIdentity(account))
+        return retained?.number !== account.number || retained?.disabled !== account.disabled
+      })) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      const file = join(tempDir, 'claude-swap.json')
+      await deps.writeFile(file, JSON.stringify(envelope), { mode: 0o600 })
+      await deps.chmod(file, 0o600)
+      await deps.execFile('cswap', ['import', file, '--force'])
+      const repairedIdentities = new Set(envelope.accounts.map(claudeListAccountIdentity))
+      const active = before.accounts.find(account => account.number === before.activeAccountNumber)
+      if (active && repairedIdentities.has(claudeListAccountIdentity(active))) {
+        // Import repairs the backup only. The selected slot's live credential
+        // must be restored without backing its broken login over that backup.
+        await deps.execFile('cswap', ['switch', String(active.number), '--force', '--json'], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })
+      }
+      after = await list()
+      if (after.activeAccountNumber !== before.activeAccountNumber || before.accounts.some(account => {
+        const retained = after.accounts.find(candidate => claudeListAccountIdentity(candidate) === claudeListAccountIdentity(account))
+        return retained?.number !== account.number || retained?.disabled !== account.disabled
+      })) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      const exported = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
+      if (exported.version !== 1 || exported.encrypted === true || !Array.isArray(exported.accounts)) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      const acceptedIndices = requested.flatMap((_identity, index) => verification.accounts[index]?.ok ? [index] : [])
+      installed = await verifyLocalAiAccounts(deps, 'claude', acceptedIndices.map(index => requested[index]!), exported.accounts.map((account: { email: string }) => ({
+        ...account, disabled: after.accounts.find(existing => claudeListAccountIdentity(existing) === claudeListAccountIdentity(account))?.disabled === true,
+      })))
+      accounts = verification.accounts.map((account, index) => account.ok
+        ? { ...installed.accounts[acceptedIndices.indexOf(index)]!, account: index + 1 } : account)
+      if (!accounts.some(account => account.ok)) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+    } finally {
+      try { await deps.rm(tempDir, { recursive: true, force: true }) }
+      finally { if (rotationStopped) await deps.supervisor.enable() }
+    }
+    return {
+      result: { provider: 'claude' as const, configured: true, accountCount: after.accounts.length,
+        verification: { checkedAt: installed.checkedAt, accounts }, rotation: deps.supervisor.status() },
+      verifiedAccounts: after.accounts.filter(account => requested.some((identity, index) => accounts[index]?.ok
+        && claudeListAccountIdentity(account) === claudeListAccountIdentity(identity))),
+    }
+  }
+
   async function applyClaude(payload: string) {
     await purgeManagedProvider('zai')
     const apiKeyTargetEmail = claudeApiKeyTargetEmail(payload)
@@ -960,7 +1040,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     provider: AiCredentialProvider
     payload: string
     trialLease?: TrialAiCredentialLeaseMarker
-    applyMode?: 'merge' | 'replace'
+    applyMode?: 'merge' | 'replace' | 'repair'
     /** Sent only by the org deployment: which company bundle this is. */
     provenance?: unknown
   }) {
@@ -970,19 +1050,25 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     }
     assertPayloadSize(input.payload)
     const applyMode = input.applyMode ?? 'replace'
-    if (applyMode !== 'merge' && applyMode !== 'replace') throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
+    if (applyMode !== 'merge' && applyMode !== 'replace' && applyMode !== 'repair') throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
+    if (applyMode === 'repair' && (selected !== 'claude' || input.trialLease !== undefined || !parseClaudeProvenanceInput(input.provenance))) {
+      throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
+    }
     if (applyMode === 'merge' && (input.trialLease !== undefined || selected === 'zai')) {
       throw new AiCredentialRuntimeError('AI_CREDENTIAL_MERGE_UNSUPPORTED')
     }
     return serialize(() => withSafeErrors(
       `${selected.toUpperCase()}_APPLY_FAILED`,
       async () => {
-        if (applyMode === 'merge') {
+        if (applyMode === 'merge' || applyMode === 'repair') {
           const marker = await readTrialMarker()
           if (marker.leases[selected] || (selected === 'claude' && marker.leases.zai)) {
             throw new AiCredentialRuntimeError('AI_CREDENTIAL_MERGE_UNSUPPORTED')
           }
         }
+        // Verify incoming repair material before advancing the apply fence:
+        // rejected source credentials never invalidate the installed provenance.
+        const repair = applyMode === 'repair' ? await prepareClaudeRepair(input.payload) : null
         const previousProvenance = selected === 'claude' && applyMode === 'merge'
           ? await readActiveClaudeProvenance({ homeDir: deps.homeDir, readFile: deps.readFile })
           : null
@@ -1025,13 +1111,13 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
             markerChanged = true
           }
           const claudeApplied = selected === 'claude'
-            ? await (applyMode === 'merge' ? applyClaudeAdditive(input.payload, knownCompanyIdentities) : applyClaude(input.payload))
+            ? await (repair ? applyClaudeRepair(repair) : applyMode === 'merge' ? applyClaudeAdditive(input.payload, knownCompanyIdentities) : applyClaude(input.payload))
             : null
           const result = claudeApplied
             ? claudeApplied.result
             : selected === 'zai'
               ? await applyZai(input.payload)
-              : await applyCodex(input.payload, applyMode)
+              : await applyCodex(input.payload, applyMode === 'merge' ? 'merge' : 'replace')
           if (!requestedLease) {
             const nonTrialMarker = await readTrialMarker()
             const providersToClear: AiCredentialProvider[] = selected === 'claude'
@@ -1312,7 +1398,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
-  return { capture, apply, purge, status, verify, rotation, sessionEnvironment, capabilities: () => ({ version: 1, verificationVersion: 1, applyModes: ['merge', 'replace'] }) }
+  return { capture, apply, purge, status, verify, rotation, sessionEnvironment, capabilities: () => ({ version: 1, verificationVersion: 1, applyModes: ['merge', 'replace', 'repair'] }) }
 }
 
 type ClaudeListDetails = {

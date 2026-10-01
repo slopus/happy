@@ -134,6 +134,108 @@ function setup(
 }
 
 describe('AI credential machine runtime', () => {
+  it.each([[7, false], [9, false], [7, true]] as const)('repairs matching shared or personal credentials while preserving selected slot %i and enabled rotation %s', async (active, rotating) => {
+    const { runtime, files, calls, execFile, supervisor } = setup()
+    supervisor.status.mockReturnValue({ state: rotating ? 'running' : 'stopped' as never, lastErrorKind: null })
+    supervisor.stop.mockImplementation(async () => { supervisor.status.mockReturnValue({ state: 'stopped' as never, lastErrorKind: null }) })
+    supervisor.enable.mockImplementation(async () => { supervisor.status.mockReturnValue({ state: 'running', lastErrorKind: null }) })
+    const accounts = [
+      { number: 7, email: 'shared@example.com', organizationUuid: 'shared-org', usageStatus: 'relogin_required' },
+      { number: 9, email: 'personal@example.com', organizationUuid: 'private-org', usageStatus: 'ok' },
+      { number: 10, email: 'disabled@example.com', organizationUuid: '', usageStatus: 'relogin_required', disabled: true },
+    ]
+    const payload = claudeOauthPayload([
+      { email: 'shared@example.com', organizationUuid: 'shared-org' },
+      { email: 'disabled@example.com' },
+    ])
+    let imported = false
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: active, accounts }), stderr: '' }
+      if (command === 'claude') return { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 }
+      if (command === 'cswap' && args[0] === 'export') return { stdout: payload, stderr: '' }
+      if (command === 'cswap' && args[0] === 'import') {
+        const envelope = JSON.parse(files.get(args[1]!)!)
+        expect(envelope.accounts.map((a: { email: string }) => a.email)).toEqual(['shared@example.com'])
+        expect(args).toContain('--force')
+        accounts[0]!.usageStatus = 'ok'
+        imported = true
+        calls.push({ command, args })
+        return { stdout: '', stderr: '' }
+      }
+      return original(command, args, options)
+    })
+    const result = await runtime.apply({ provider: 'claude', applyMode: 'repair', payload,
+      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 } } as never)
+    expect(imported).toBe(true)
+    expect(result).toMatchObject({ applyMode: 'repair', verification: { accounts: [
+      { account: 1, ok: true, model: 'haiku' }, { account: 2, ok: false, errorKind: 'ACCOUNT_DISABLED' },
+    ] } })
+    expect(accounts[1]).toMatchObject({ number: 9, usageStatus: 'ok' })
+    expect(accounts[2]).toMatchObject({ number: 10, disabled: true })
+    expect(calls.filter(c => c.args[0] === 'switch')).toEqual(active === 7
+      ? [{ command: 'cswap', args: ['switch', '7', '--force', '--json'] }] : [])
+    expect(supervisor.stop).toHaveBeenCalledTimes(rotating ? 1 : 0)
+    expect(supervisor.enable).toHaveBeenCalledTimes(rotating ? 1 : 0)
+    expect(result).toMatchObject({ rotation: { state: rotating ? 'running' : 'stopped' } })
+    const provenance = JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!)
+    expect(provenance.claude.identities).toEqual([['shared@example.com', 'shared-org', '']])
+  })
+
+  it('does not repair the same email under a different organization', async () => {
+    const { runtime, execFile } = setup()
+    await expect(runtime.apply({ provider: 'claude', applyMode: 'repair',
+      payload: claudeOauthPayload([{ email: 'owner@example.com', organizationUuid: 'another-org' }]),
+      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 },
+    })).rejects.toMatchObject({ kind: 'CLAUDE_APPLY_RELOGIN_REQUIRED' })
+    expect(execFile.mock.calls.some(([command, args]) => command === 'claude' || args[0] === 'import' || args[0] === 'switch')).toBe(false)
+  })
+
+  it('rejects repair success if the imported credential fails its installed request and restores rotation', async () => {
+    const { runtime, execFile, supervisor, files } = setup()
+    const payload = claudeOauthPayload([{ email: 'owner@example.com' }])
+    const original = execFile.getMockImplementation()!
+    let requests = 0
+    execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'claude') {
+        requests += 1
+        const isolated = JSON.parse(files.get(`${options?.environment?.HOME}/.claude/.credentials.json`)!)
+        expect(isolated.claudeAiOauth.accessToken).toBe('oauth-1')
+        expect(isolated.claudeAiOauth.refreshToken).toBeUndefined()
+        return requests === 1 ? { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 }
+          : { stdout: '', stderr: '401 authentication_error', exitCode: 1 }
+      }
+      if (command === 'cswap' && args[0] === 'export') return { stdout: payload, stderr: '' }
+      return original(command, args, options)
+    })
+    await expect(runtime.apply({ provider: 'claude', applyMode: 'repair', payload,
+      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 },
+    })).rejects.toMatchObject({ kind: 'CLAUDE_APPLY_VERIFICATION_FAILED' })
+    expect(requests).toBe(2)
+    expect(supervisor.stop).toHaveBeenCalledTimes(1)
+    expect(supervisor.enable).toHaveBeenCalledTimes(1)
+    expect(JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!).claude).toEqual({ state: 'applying', generation: 1 })
+  })
+
+  it('does not import rejected repair credentials or claim a newer bundle was applied', async () => {
+    const { runtime, files, execFile } = setup()
+    const prior = JSON.stringify({ version: 1, claude: { state: 'applied', generation: 1,
+      companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 1, identities: [['shared@example.com', '', '']] } })
+    files.set('/home/operator/.happy/ai-credential-apply-generations.json', JSON.stringify({ version: 1, generations: { claude: 1 } }))
+    files.set('/home/operator/.happy/ai-credential-provenance.json', prior)
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => command === 'claude'
+      ? { stdout: '', stderr: '401 authentication_error', exitCode: 1 }
+      : command === 'cswap' && args[0] === 'list'
+        ? { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: 1, accounts: [{ number: 1, email: 'shared@example.com', usageStatus: 'relogin_required' }] }), stderr: '' }
+        : original(command, args, options))
+    await expect(runtime.apply({ provider: 'claude', applyMode: 'repair',
+      payload: claudeOauthPayload([{ email: 'shared@example.com' }]),
+      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 } } as never)).rejects.toMatchObject({ kind: 'CLAUDE_APPLY_RELOGIN_REQUIRED' })
+    expect(execFile.mock.calls.some(([, args]) => args[0] === 'import' || args[0] === 'switch')).toBe(false)
+    expect(files.get('/home/operator/.happy/ai-credential-provenance.json')).toBe(prior)
+  })
+
   it('verifies only requested local Claude identities without importing, switching or restarting rotation', async () => {
     const { runtime, execFile, supervisor, calls } = setup()
     const original = execFile.getMockImplementation()!
