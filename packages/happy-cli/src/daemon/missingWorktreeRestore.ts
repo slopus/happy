@@ -26,9 +26,11 @@ export type MissingWorktreeRestoreResult =
         kind: 'recreated';
         worktreePath: string;
         branch: string | null;
-        source: 'existing-branch' | 'new-branch' | 'detached';
+        source: 'existing-branch' | 'remote-branch' | 'new-branch' | 'detached';
     }
     | { kind: 'failed'; reason: string };
+
+type Recreated = Extract<MissingWorktreeRestoreResult, { kind: 'recreated' }>;
 
 const execFileAsync = promisify(execFile);
 
@@ -47,8 +49,13 @@ async function git(cwd: string, args: string[]): Promise<{ ok: true; stdout: str
 
 const exists = (path: string) => access(path).then(() => true, () => false);
 
-async function localBranchExists(root: string, branch: string): Promise<boolean> {
-    return (await git(root, ['rev-parse', '--verify', '--quiet', `refs/heads/${branch}`])).ok;
+async function refExists(root: string, ref: string): Promise<boolean> {
+    return (await git(root, ['rev-parse', '--verify', '--quiet', ref])).ok;
+}
+
+/** Rejects anything git would not accept as a branch name — including `-`-prefixed option look-alikes. */
+async function isBranchName(root: string, name: string): Promise<boolean> {
+    return !name.startsWith('-') && (await git(root, ['check-ref-format', '--branch', name])).ok;
 }
 
 /** The shallowest missing directory below the managed root is the removed worktree itself. */
@@ -63,8 +70,8 @@ async function removedWorktreePath(managedRoot: string, cwd: string): Promise<st
 
 export async function restoreMissingManagedWorktree(input: {
     cwd: string;
-    /** The branch the agent last worked on, from its own transcript. */
-    branchHint: string | null;
+    /** The branch the agent last worked on, from its own transcript. Only read when the directory is missing. */
+    readBranchHint: () => Promise<string | null>;
 }): Promise<MissingWorktreeRestoreResult> {
     const cwd = resolve(input.cwd);
     if (await exists(cwd)) return { kind: 'present' };
@@ -88,32 +95,48 @@ export async function restoreMissingManagedWorktree(input: {
     // blocks `add`. Pruning only drops entries whose directory is gone.
     await git(root, ['worktree', 'prune']);
 
-    const hint = input.branchHint?.trim() || null;
-    const existing = [hint, basename(worktreePath)]
-        .filter((branch): branch is string => Boolean(branch));
-    let added: Awaited<ReturnType<typeof git>> | null = null;
-    let result: Extract<MissingWorktreeRestoreResult, { kind: 'recreated' }> | null = null;
-    for (const branch of existing) {
-        if (!await localBranchExists(root, branch)) continue;
-        added = await git(root, ['worktree', 'add', worktreePath, branch]);
-        result = { kind: 'recreated', worktreePath, branch, source: 'existing-branch' };
-        break;
-    }
-    if (!added && hint && (await git(root, ['check-ref-format', '--branch', hint])).ok) {
-        added = await git(root, ['worktree', 'add', '-b', hint, worktreePath, 'HEAD']);
-        result = { kind: 'recreated', worktreePath, branch: hint, source: 'new-branch' };
-    }
-    if (!added) {
-        added = await git(root, ['worktree', 'add', '--detach', worktreePath, 'HEAD']);
-        result = { kind: 'recreated', worktreePath, branch: null, source: 'detached' };
-    }
-    if (!added.ok || !result) return { kind: 'failed', reason: `worktree add failed: ${added.ok ? 'unknown' : added.error}` };
+    const rawHint = (await input.readBranchHint().catch(() => null))?.trim() || null;
+    const hint = rawHint && await isBranchName(root, rawHint) ? rawHint : null;
+    const folderBranch = basename(worktreePath);
+    const plan = await chooseCheckout(root, worktreePath, hint,
+        await isBranchName(root, folderBranch) ? folderBranch : null);
+
+    const added = await git(root, ['worktree', 'add', ...plan.args]);
+    if (!added.ok) return { kind: 'failed', reason: `worktree add failed: ${added.error}` };
 
     if (!await exists(cwd)) {
-        await git(root, ['worktree', 'remove', '--force', worktreePath]);
+        await git(root, ['worktree', 'remove', '--force', '--', worktreePath]);
+        if (plan.result.source !== 'existing-branch' && plan.result.branch) {
+            await git(root, ['branch', '-D', '--', plan.result.branch]);
+        }
         return { kind: 'failed', reason: 'session directory is not part of the recreated worktree' };
     }
-    return result;
+    return plan.result;
+}
+
+async function chooseCheckout(
+    root: string,
+    worktreePath: string,
+    hint: string | null,
+    folderBranch: string | null,
+): Promise<{ args: string[]; result: Recreated }> {
+    const recreated = (branch: string | null, source: Recreated['source']): Recreated =>
+        ({ kind: 'recreated', worktreePath, branch, source });
+    for (const branch of [hint, folderBranch]) {
+        if (branch && await refExists(root, `refs/heads/${branch}`)) {
+            return { args: ['--', worktreePath, branch], result: recreated(branch, 'existing-branch') };
+        }
+    }
+    if (hint) {
+        // Desktop's sweep keeps branches so pushed work can come back; a local
+        // branch deleted after push still has its commits on origin.
+        const remote = `refs/remotes/origin/${hint}`;
+        if (await refExists(root, remote)) {
+            return { args: ['-b', hint, '--', worktreePath, remote], result: recreated(hint, 'remote-branch') };
+        }
+        return { args: ['-b', hint, '--', worktreePath, 'HEAD'], result: recreated(hint, 'new-branch') };
+    }
+    return { args: ['--detach', '--', worktreePath, 'HEAD'], result: recreated(null, 'detached') };
 }
 
 /** The last `gitBranch` a Claude transcript recorded, or null. Reads only the tail. */
@@ -125,8 +148,9 @@ export async function readClaudeTranscriptBranch(transcriptPath: string): Promis
         const length = Math.min(size, TRANSCRIPT_TAIL_BYTES);
         const buffer = Buffer.alloc(length);
         await handle.read(buffer, 0, length, size - length);
-        const matches = [...buffer.toString('utf8').matchAll(/"gitBranch":"((?:[^"\\]|\\.)*)"/g)];
-        const branch = matches.at(-1)?.[1];
+        const matches = [...buffer.toString('utf8').matchAll(/"gitBranch":("(?:[^"\\]|\\.)*")/g)];
+        const encoded = matches.at(-1)?.[1];
+        const branch = encoded ? JSON.parse(encoded) as string : null;
         return branch && branch !== 'HEAD' ? branch : null;
     } catch {
         return null;

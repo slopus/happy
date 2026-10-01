@@ -46,7 +46,7 @@ describe('restoreMissingManagedWorktree', () => {
         await git(worktree, 'commit', '-m', 'work');
         await git(root, 'worktree', 'remove', worktree);
 
-        const result = await restoreMissingManagedWorktree({ cwd: worktree, branchHint: 'feature/kept' });
+        const result = await restoreMissingManagedWorktree({ cwd: worktree, readBranchHint: async () => 'feature/kept' });
 
         expect(result).toEqual({ kind: 'recreated', worktreePath: worktree, branch: 'feature/kept', source: 'existing-branch' });
         expect(await git(worktree, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('feature/kept');
@@ -60,7 +60,7 @@ describe('restoreMissingManagedWorktree', () => {
         await git(root, 'worktree', 'remove', worktree);
         await git(root, 'branch', '-D', 'eager-lynx');
 
-        const result = await restoreMissingManagedWorktree({ cwd: worktree, branchHint: 'eager-lynx' });
+        const result = await restoreMissingManagedWorktree({ cwd: worktree, readBranchHint: async () => 'eager-lynx' });
 
         expect(result).toEqual({ kind: 'recreated', worktreePath: worktree, branch: 'eager-lynx', source: 'new-branch' });
         expect(await git(worktree, 'rev-parse', 'HEAD')).toBe(await git(root, 'rev-parse', 'HEAD'));
@@ -72,7 +72,7 @@ describe('restoreMissingManagedWorktree', () => {
         await git(root, 'worktree', 'add', '-b', 'proud-tiger', worktree);
         await git(root, 'worktree', 'remove', worktree);
 
-        const result = await restoreMissingManagedWorktree({ cwd: worktree, branchHint: null });
+        const result = await restoreMissingManagedWorktree({ cwd: worktree, readBranchHint: async () => null });
 
         expect(result).toMatchObject({ kind: 'recreated', branch: 'proud-tiger', source: 'existing-branch' });
     });
@@ -84,7 +84,7 @@ describe('restoreMissingManagedWorktree', () => {
         await git(root, 'worktree', 'remove', worktree);
         const cwd = join(worktree, 'packages/web');
 
-        const result = await restoreMissingManagedWorktree({ cwd, branchHint: 'sub' });
+        const result = await restoreMissingManagedWorktree({ cwd, readBranchHint: async () => 'sub' });
 
         expect(result).toMatchObject({ kind: 'recreated', worktreePath: worktree });
         expect(await exists(cwd)).toBe(true);
@@ -94,23 +94,70 @@ describe('restoreMissingManagedWorktree', () => {
         const { root } = await fixture();
         const cwd = join(root, 'deleted-elsewhere');
 
-        expect(await restoreMissingManagedWorktree({ cwd, branchHint: 'main' })).toEqual({ kind: 'not-managed' });
+        expect(await restoreMissingManagedWorktree({ cwd, readBranchHint: async () => 'main' })).toEqual({ kind: 'not-managed' });
         expect(await exists(cwd)).toBe(false);
     });
 
-    it('does nothing when the directory still exists', async () => {
+    it('does nothing, and reads no transcript, when the directory still exists', async () => {
         const { root } = await fixture();
-        expect(await restoreMissingManagedWorktree({ cwd: root, branchHint: null })).toEqual({ kind: 'present' });
+        let read = false;
+        const readBranchHint = async () => { read = true; return null; };
+
+        expect(await restoreMissingManagedWorktree({ cwd: root, readBranchHint })).toEqual({ kind: 'present' });
+        expect(read).toBe(false);
     });
 
-    it('fails without touching git when the preserved branch is checked out elsewhere', async () => {
+    it('recreates a pushed branch from origin when only the local branch was deleted', async () => {
+        const { root } = await fixture();
+        const remote = join(root, '..', 'remote.git');
+        await exec('git', ['init', '--bare', '-b', 'main', remote], { env: gitEnv });
+        await git(root, 'remote', 'add', 'origin', remote);
+        const worktree = join(root, '.aplus/worktrees/pushed');
+        await git(root, 'worktree', 'add', '-b', 'pushed', worktree);
+        await writeFile(join(worktree, 'pushed.txt'), 'pushed work\n');
+        await git(worktree, 'add', 'pushed.txt');
+        await git(worktree, 'commit', '-m', 'pushed');
+        await git(worktree, 'push', 'origin', 'pushed');
+        await git(root, 'worktree', 'remove', worktree);
+        await git(root, 'branch', '-D', 'pushed');
+
+        const result = await restoreMissingManagedWorktree({ cwd: worktree, readBranchHint: async () => 'pushed' });
+
+        expect(result).toEqual({ kind: 'recreated', worktreePath: worktree, branch: 'pushed', source: 'remote-branch' });
+        expect(await exists(join(worktree, 'pushed.txt'))).toBe(true);
+    });
+
+    it('never passes a transcript branch that git would read as an option', async () => {
+        const { root } = await fixture();
+        const worktree = join(root, '.aplus/worktrees/option-like');
+        await git(root, 'worktree', 'add', '--detach', worktree);
+        await git(root, 'worktree', 'remove', worktree);
+
+        const result = await restoreMissingManagedWorktree({ cwd: worktree, readBranchHint: async () => '--orphan' });
+
+        expect(result).toEqual({ kind: 'recreated', worktreePath: worktree, branch: null, source: 'detached' });
+    });
+
+    it('rolls back the worktree and the branch it created when the session directory is still missing', async () => {
+        const { root } = await fixture();
+        const worktree = join(root, '.aplus/worktrees/rollback');
+        const cwd = join(worktree, 'not-in-repo');
+
+        const result = await restoreMissingManagedWorktree({ cwd, readBranchHint: async () => 'rollback-branch' });
+
+        expect(result.kind).toBe('failed');
+        expect(await exists(worktree)).toBe(false);
+        expect(await git(root, 'branch', '--list', 'rollback-branch')).toBe('');
+    });
+
+    it('fails instead of stealing a preserved branch checked out elsewhere', async () => {
         const { root } = await fixture();
         const worktree = join(root, '.aplus/worktrees/taken');
         await git(root, 'worktree', 'add', '-b', 'taken', worktree);
         await git(root, 'worktree', 'remove', worktree);
         await git(root, 'worktree', 'add', join(root, '.aplus/worktrees/other'), 'taken');
 
-        const result = await restoreMissingManagedWorktree({ cwd: worktree, branchHint: 'taken' });
+        const result = await restoreMissingManagedWorktree({ cwd: worktree, readBranchHint: async () => 'taken' });
 
         expect(result.kind).toBe('failed');
         expect(await exists(worktree)).toBe(false);
@@ -129,6 +176,15 @@ describe('readClaudeTranscriptBranch', () => {
         ].join('\n'));
 
         expect(await readClaudeTranscriptBranch(file)).toBe('renamed-branch');
+    });
+
+    it('decodes JSON escapes in the recorded branch', async () => {
+        const dir = await realpath(await mkdtemp(join(tmpdir(), 'transcript-branch-')));
+        garbage.push(dir);
+        const file = join(dir, 'session.jsonl');
+        await writeFile(file, '{"gitBranch":"feat\\/\\u00e9t\\u00e9"}\n');
+
+        expect(await readClaudeTranscriptBranch(file)).toBe('feat/été');
     });
 
     it('ignores detached HEAD and missing transcripts', async () => {

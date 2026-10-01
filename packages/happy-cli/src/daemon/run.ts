@@ -2639,14 +2639,18 @@ export async function startDaemon(): Promise<void> {
         // The managed worktree this session ran in may have been cleaned up
         // while it was idle; put it back at the same path so the agent's
         // transcript (keyed by that path) resumes intact.
+        const claudeSessionId = metadata.claudeSessionId;
         const restoredWorktree = await restoreMissingManagedWorktree({
           cwd: launch.cwd,
-          branchHint: metadata.claudeSessionId
-            ? await readClaudeTranscriptBranch(join(getProjectPath(launch.cwd), `${metadata.claudeSessionId}.jsonl`))
+          readBranchHint: async () => claudeSessionId
+            ? readClaudeTranscriptBranch(join(getProjectPath(launch.cwd), `${claudeSessionId}.jsonl`))
             : null,
         });
         if (restoredWorktree.kind === 'recreated' || restoredWorktree.kind === 'failed') {
           logger.debug(`[DAEMON RUN] Missing worktree for resumed session ${happySessionId}`, restoredWorktree);
+        }
+        if (restoredWorktree.kind === 'failed') {
+          throw new Error(`session directory ${launch.cwd} was removed and could not be recreated (${restoredWorktree.reason})`);
         }
 
         if (options?.model) {
