@@ -972,6 +972,9 @@ importers:
       ai:
         specifier: ^5.0.107
         version: 5.0.123(zod@4.4.3)
+      ajv:
+        specifier: ^8.17.1
+        version: 8.17.1
       axios:
         specifier: ^1.13.2
         version: 1.13.4

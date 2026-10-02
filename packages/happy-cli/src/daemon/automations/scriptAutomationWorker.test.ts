@@ -278,3 +278,44 @@ it('refuses code sealed by a sender it does not trust, even in compat', async ()
   expect(execute).not.toHaveBeenCalled();
   expect(log).toHaveBeenCalledWith('Script revision validation failed: automation@1 (PAYLOAD_SENDER_UNTRUSTED)');
 });
+
+/*
+ * aplus-dev-studio specs/e2ee-machine-control-boundary R16 — the run input is sealed by
+ * the server, so it is held to the input schema in the settings the customer sealed.
+ */
+function withInput(inputSchema: Record<string, unknown>, value: unknown) {
+  const signed = { ...payload, inputSchema };
+  const signedAdmission = { ...admission, inputSchema };
+  const encrypted = encryptScriptValue({ value: signed, context: { projectId: 'project', resourceId: 'collect', purpose: 'configuration' },
+    viewerPublicKey: pair.publicKey, machinePublicKey: pair.publicKey, sender: company });
+  const artifact = { ...record.artifact, encrypted: encryptScriptValue({ value: { source }, context: { projectId: 'project', resourceId: 'artifact', purpose: 'artifact' },
+    viewerPublicKey: pair.publicKey, machinePublicKey: pair.publicKey, sender: company }) };
+  const runClaim = { ...claim, run: { ...claim.run, inputCiphertext: JSON.stringify(seal(value, 'run', 'input')),
+    snapshot: { ...claim.run.snapshot, ...signedAdmission, admission: signedAdmission, payloadCiphertext: JSON.stringify(encrypted) } } };
+  let claimed = false;
+  return vi.fn(async (method: string, path: string, _body?: unknown): Promise<unknown> => {
+    if (method === 'GET' && path.endsWith('/artifact')) return { encrypted, admission: signedAdmission, artifact };
+    if (method === 'GET') return { automations: [metadata], nextCursor: null };
+    if (path.endsWith('/claim')) {
+      if (claimed) return { claim: null, artifact: null };
+      claimed = true; return { claim: runClaim, artifact };
+    }
+    return { ok: true };
+  });
+}
+const countSchema = { type: 'object', properties: { count: { type: 'integer' } }, required: ['count'], additionalProperties: false };
+
+it('runs an input the signed input schema admits', async () => {
+  const { worker, execute } = setup({ request: withInput(countSchema, { count: 2 }), trust: trust('strict') });
+  await worker.tick();
+  expect(execute).toHaveBeenCalledOnce();
+  expect(execute.mock.calls[0][0]).toMatchObject({ input: { count: 2 } });
+});
+
+it('refuses an input the signed input schema does not admit, and never runs it', async () => {
+  const request = withInput(countSchema, { count: 'two', extra: true });
+  const { worker, execute } = setup({ request, trust: trust('strict') });
+  await worker.tick();
+  expect(execute).not.toHaveBeenCalled();
+  expect(request).toHaveBeenCalledWith('POST', '/v1/machines/machine/script-runs/run/fail', { failureCode: 'INPUT_SCHEMA_INVALID', token: 'token' });
+});

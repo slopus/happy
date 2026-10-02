@@ -7,6 +7,7 @@ import { decryptScriptValue, encryptScriptValue, openScriptValueForMachine, scri
   scriptEncryptedValueSchema } from '@slopus/happy-wire';
 import { runManagedScript, type ManagedScriptInput, type ManagedScriptResult } from './managedScriptRunner';
 import { judgePayload, type PayloadTrust } from './payloadTrust';
+import { assertScriptInputAdmitted } from './scriptInputSchema';
 
 const artifactSchema = z.object({ id: z.string(), projectId: z.string(), digest: z.string(), encrypted: scriptEncryptedValueSchema });
 const recordSchema = z.object({ id: z.string(), projectId: z.string(), registrationKey: z.string(), revision: z.number().int(),
@@ -137,6 +138,7 @@ export function createScriptAutomationWorker(options: {
       const { payload, source } = verify(record, JSON.parse(run.snapshot.payloadCiphertext), artifact, run.snapshot.admission);
       const input = z.record(z.string(), z.json()).parse(decryptScriptValue({ encrypted: JSON.parse(run.inputCiphertext),
         context: { projectId: record.projectId, resourceId: run.id, purpose: 'input' }, recipient: 'machine', secretKey: options.machineSecretKey }));
+      assertScriptInputAdmitted(payload.inputSchema, input);
       let binding: { secrets: { [name: string]: string }; approvedPrivateOrigins: string[] } = { secrets: {}, approvedPrivateOrigins: [] };
       if (Object.keys(payload.action.secretRefs).length) {
         if (!options.resolveSecrets) throw new Error('SCRIPT_SECRET_RESOLVER_UNAVAILABLE');
