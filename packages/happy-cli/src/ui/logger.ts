@@ -48,12 +48,17 @@ function getSessionLogPath(): string {
 
 class Logger {
   private dangerouslyUnencryptedServerLoggingUrl: string | undefined
+  private readonly jsonAuthManagement: boolean
 
   constructor(
     public readonly logFilePath = getSessionLogPath()
   ) {
     // Remote logging enabled only when explicitly set with server URL
-    if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING 
+    const args = process.argv.slice(2);
+    const jsonAuthManagement = args[0] === 'auth' && args[1] === 'desktop'
+      && args.some(arg => arg === '--status-json' || arg === '--reset-json');
+    this.jsonAuthManagement = jsonAuthManagement;
+    if (!jsonAuthManagement && process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING
       && process.env.HAPPY_SERVER_URL) {
       this.dangerouslyUnencryptedServerLoggingUrl = process.env.HAPPY_SERVER_URL
       console.log(chalk.yellow('[REMOTE LOGGING] Sending logs to server for AI debugging'))
@@ -150,6 +155,7 @@ class Logger {
   }
   
   private logToConsole(level: 'debug' | 'error' | 'info' | 'warn', prefix: string, message: string, ...args: unknown[]): void {
+    if (this.jsonAuthManagement) return;
     switch (level) {
       case 'debug': {
         console.log(chalk.gray(prefix), message, ...args)

@@ -13,6 +13,7 @@ import { render } from 'ink';
 import React from 'react';
 import { randomUUID } from 'node:crypto';
 import { logger } from './logger';
+import { withCliAuthLock } from '@/utils/authLock';
 
 export async function doAuth(): Promise<Credentials | null> {
     console.clear();
@@ -274,14 +275,20 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
 
     // Make sure we have a machine ID
     // Server machine entity will be created either by the daemon or by the CLI
-    const settings = await updateSettings(async s => {
-        if (newAuth || !s.machineId) {
-            return {
-                ...s,
-                machineId: randomUUID()
-            };
-        }
-        return s;
+    const settings = await withCliAuthLock(async () => {
+      const currentCredentials = await readCredentials();
+      if (!currentCredentials || JSON.stringify(currentCredentials) !== JSON.stringify(credentials)) {
+        throw new Error('CLI authentication changed. Try again.');
+      }
+      return updateSettings(async s => {
+          if (newAuth || !s.machineId) {
+              return {
+                  ...s,
+                  machineId: randomUUID()
+              };
+          }
+          return s;
+      });
     });
 
     logger.debug(`[AUTH] Machine ID: ${settings.machineId}`);

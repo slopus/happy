@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   spawn: vi.fn(),
   status: vi.fn(),
   stopDaemon: vi.fn(),
+  confirmLogout: vi.fn(),
 }));
 vi.mock('@/configuration', () => ({ configuration: mocks.configuration }));
 vi.mock('node:fs/promises', async importOriginal => {
@@ -25,7 +26,7 @@ vi.mock('@/daemon/controlClient', () => ({
 }));
 vi.mock('@/ui/auth', () => ({ authAndSetupMachineIfNeeded: vi.fn(() => { throw new Error('Must not prompt'); }) }));
 vi.mock('@/ui/logger', () => ({ logger: { debug: vi.fn(), warn: vi.fn() } }));
-vi.mock('node:readline', () => ({ createInterface: () => ({ question: (_: string, answer: (value: string) => void) => answer('yes'), close: vi.fn() }) }));
+vi.mock('node:readline', () => ({ createInterface: () => ({ question: (_: string, answer: (value: string) => void) => mocks.confirmLogout(answer), close: vi.fn() }) }));
 
 import { handleDesktopAuth, importDesktopCredentials } from './desktopAuth';
 
@@ -56,6 +57,7 @@ beforeEach(async () => {
   await writeJson(join(agentHome, 'access.key'), source);
   await writeJson(join(agentHome, 'settings.json'), { serverUrl });
   mocks.spawn.mockReturnValue(Object.assign(new EventEmitter(), { unref: vi.fn() }));
+  mocks.confirmLogout.mockImplementation((answer: (value: string) => void) => answer('yes'));
 });
 
 afterEach(async () => {
@@ -222,4 +224,19 @@ it('CLI logout removes only CLI authentication and machine ID, preserving Agent 
   expect(JSON.parse(await readFile(join(agentHome, 'access.key'), 'utf8'))).toEqual(source);
   expect(await readFile(join(directory, 'sessions.json'), 'utf8')).toBe('synthetic-session-history');
   expect(await readFile(join(directory, 'agent.key'), 'utf8')).toBe('synthetic-remote-controller-key');
+});
+
+it('CLI logout refuses a new login published while the old login was being confirmed', async () => {
+  const { handleAuthCommand } = await import('./auth');
+  await writeJson(mocks.configuration.privateKeyFile, source);
+  await writeJson(mocks.configuration.settingsFile, { machineId: 'cli-machine', serverUrl });
+  const newer = { ...source, token: 'new-login' };
+  mocks.confirmLogout.mockImplementation(async (answer: (value: string) => void) => {
+    await writeJson(mocks.configuration.privateKeyFile, newer);
+    answer('yes');
+  });
+  vi.spyOn(console, 'log').mockImplementation(() => {});
+  await expect(handleAuthCommand(['logout'])).rejects.toThrow('authentication changed');
+  expect(JSON.parse(await readFile(mocks.configuration.privateKeyFile, 'utf8'))).toEqual(newer);
+  expect(mocks.stopDaemon).not.toHaveBeenCalled();
 });

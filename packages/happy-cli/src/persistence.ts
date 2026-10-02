@@ -14,6 +14,7 @@ import * as z from 'zod';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Metadata } from '@/api/types';
 import { logger } from '@/ui/logger';
+import { withCliAuthLock } from '@/utils/authLock';
 
 export const SandboxConfigSchema = z.object({
   enabled: z.boolean().default(false),
@@ -184,22 +185,33 @@ export async function updateSettings(
   }
 
   try {
-    // Read current settings with defaults
-    const current = await readSettings() || { ...defaultSettings };
+    // Async updaters can include bounded network work. Keep the held lock fresh so
+    // another process cannot mistake a live operation for a stale lock.
+    const heartbeat = setInterval(() => {
+      const now = new Date();
+      void fileHandle!.utimes(now, now).catch(() => {});
+    }, 2000);
+    heartbeat.unref();
+    try {
+      // Read current settings with defaults
+      const current = await readSettings() || { ...defaultSettings };
 
-    // Apply update
-    const updated = await updater(current);
+      // Apply update
+      const updated = await updater(current);
 
-    // Ensure directory exists
-    if (!existsSync(configuration.happyHomeDir)) {
-      await mkdir(configuration.happyHomeDir, { recursive: true });
+      // Ensure directory exists
+      if (!existsSync(configuration.happyHomeDir)) {
+        await mkdir(configuration.happyHomeDir, { recursive: true });
+      }
+
+      // Write atomically using rename
+      await writeFile(tmpFile, JSON.stringify(updated, null, 2));
+      await rename(tmpFile, configuration.settingsFile); // Atomic on POSIX
+
+      return updated;
+    } finally {
+      clearInterval(heartbeat);
     }
-
-    // Write atomically using rename
-    await writeFile(tmpFile, JSON.stringify(updated, null, 2));
-    await rename(tmpFile, configuration.settingsFile); // Atomic on POSIX
-
-    return updated;
   } finally {
     // Release lock
     await fileHandle.close();
@@ -261,36 +273,37 @@ export async function readCredentials(): Promise<Credentials | null> {
 }
 
 export async function writeCredentialsLegacy(credentials: { secret: Uint8Array, token: string }): Promise<void> {
-  if (!existsSync(configuration.happyHomeDir)) {
-    await mkdir(configuration.happyHomeDir, { recursive: true })
-  }
-  await writeFile(configuration.privateKeyFile, JSON.stringify({
-    secret: encodeBase64(credentials.secret),
-    token: credentials.token
-  }, null, 2));
+  return withCliAuthLock(async () => {
+    await writeFile(configuration.privateKeyFile, JSON.stringify({
+      secret: encodeBase64(credentials.secret),
+      token: credentials.token
+    }, null, 2), { mode: 0o600 });
+  });
 }
 
 export async function writeCredentialsDataKey(credentials: { publicKey: Uint8Array, machineKey: Uint8Array, token: string }): Promise<void> {
-  if (!existsSync(configuration.happyHomeDir)) {
-    await mkdir(configuration.happyHomeDir, { recursive: true })
-  }
-  await writeFile(configuration.privateKeyFile, JSON.stringify({
-    encryption: { publicKey: encodeBase64(credentials.publicKey), machineKey: encodeBase64(credentials.machineKey) },
-    token: credentials.token
-  }, null, 2));
+  return withCliAuthLock(async () => {
+    await writeFile(configuration.privateKeyFile, JSON.stringify({
+      encryption: { publicKey: encodeBase64(credentials.publicKey), machineKey: encodeBase64(credentials.machineKey) },
+      token: credentials.token
+    }, null, 2), { mode: 0o600 });
+  });
 }
 
 export async function clearCredentials(): Promise<void> {
-  if (existsSync(configuration.privateKeyFile)) {
-    await unlink(configuration.privateKeyFile);
-  }
+  return withCliAuthLock(async () => {
+    if (existsSync(configuration.privateKeyFile)) {
+      await unlink(configuration.privateKeyFile);
+    }
+  });
 }
 
 export async function clearMachineId(): Promise<void> {
-  await updateSettings(settings => ({
+  await withCliAuthLock(() => updateSettings(settings => ({
     ...settings,
-    machineId: undefined
-  }));
+    machineId: undefined,
+    machineIdConfirmedByServer: undefined,
+  })));
 }
 
 /**

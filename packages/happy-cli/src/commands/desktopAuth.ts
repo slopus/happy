@@ -8,6 +8,8 @@ import { updateSettings } from '@/persistence';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { getDaemonConnectionStatus } from '@/daemon/controlClient';
 import { sanitizeSessionEnvironment } from '@/daemon/sessionEnvironment';
+import { withCliAuthLock } from '@/utils/authLock';
+import { handleDesktopAuthManagement } from './desktopAuthManagement';
 
 const MAX_FILE_BYTES = 64 * 1024;
 const DEFAULT_SERVER_URL = 'https://api.cluster-fluster.com';
@@ -83,6 +85,10 @@ function assertSameAccount(existing: unknown, source: DesktopCredentials): void 
 
 /** Reuses the desktop's V2 pairing; never prompts, replaces a login, or exports credentials. */
 export async function importDesktopCredentials(): Promise<{ serverUrl: string; machineId: string }> {
+  return withCliAuthLock(importDesktopCredentialsLocked);
+}
+
+async function importDesktopCredentialsLocked(): Promise<{ serverUrl: string; machineId: string }> {
   const agentHome = join(configuration.happyHomeDir, 'agent', 'happy');
   const source = parseCredentials(await readJson(join(agentHome, 'access.key')));
   const sourceServer = await readServerUrl(join(agentHome, 'settings.json'));
@@ -143,6 +149,10 @@ export async function importDesktopCredentials(): Promise<{ serverUrl: string; m
 }
 
 export async function handleDesktopAuth(args: string[]): Promise<void> {
+  if (args.some(arg => arg === '--status-json' || arg === '--reset-json')) {
+    await handleDesktopAuthManagement(args);
+    return;
+  }
   if (args.length === 1 && args[0] === '--check') {
     console.log('happy-desktop-link-v1');
     return;

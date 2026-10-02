@@ -32,6 +32,8 @@ class Configuration {
   constructor() {
     // Check if we're running as daemon based on process args
     const args = process.argv.slice(2)
+    const jsonAuthManagement = args[0] === 'auth' && args[1] === 'desktop'
+      && args.some(arg => arg === '--status-json' || arg === '--reset-json');
     this.isDaemonProcess = args.length >= 2 && args[0] === 'daemon' && (args[1] === 'start-sync')
 
     // Directory configuration - Priority: HAPPY_HOME_DIR env > default home dir
@@ -54,13 +56,14 @@ class Configuration {
     // Settings are read sync here (avoid circular import with persistence.ts).
     // webappUrl must follow the same chain as serverUrl, otherwise `happy server`
     // self-host points the API at localhost but auth still opens the prod webapp.
+    // JSON auth management validates settings later with bounded, no-follow reads.
     this.serverUrl =
       process.env.HAPPY_SERVER_URL ||
-      readSettingsStringSync(this.settingsFile, 'serverUrl') ||
+      (!jsonAuthManagement && readSettingsStringSync(this.settingsFile, 'serverUrl')) ||
       'https://api.cluster-fluster.com'
     this.webappUrl =
       process.env.HAPPY_WEBAPP_URL ||
-      readSettingsStringSync(this.settingsFile, 'webappUrl') ||
+      (!jsonAuthManagement && readSettingsStringSync(this.settingsFile, 'webappUrl')) ||
       'https://app.happy.engineering'
 
     this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.HAPPY_EXPERIMENTAL?.toLowerCase() || '');
@@ -76,7 +79,7 @@ class Configuration {
 
     // Visual indicator on CLI startup (only if not daemon process to avoid log clutter)
     const variant = process.env.HAPPY_VARIANT || 'stable'
-    if (!this.isDaemonProcess && variant === 'dev') {
+    if (!this.isDaemonProcess && variant === 'dev' && !jsonAuthManagement) {
       console.log('\x1b[33m🔧 DEV MODE\x1b[0m - Data: ' + this.happyHomeDir)
     }
 

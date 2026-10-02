@@ -7,6 +7,7 @@ import { createInterface } from 'node:readline';
 import { stopDaemon, checkIfDaemonRunningAndCleanupStaleState } from '@/daemon/controlClient';
 import { logger } from '@/ui/logger';
 import os from 'node:os';
+import { withCliAuthLock } from '@/utils/authLock';
 
 export async function handleAuthCommand(args: string[]): Promise<void> {
   const subcommand = args[0];
@@ -77,11 +78,11 @@ async function handleAuthLogin(args: string[]): Promise<void> {
     }
 
     // Clear credentials
-    await clearCredentials();
+    await withCliAuthLock(async () => {
+      await clearCredentials();
+      await clearMachineId();
+    });
     console.log(chalk.gray('✓ Cleared credentials'));
-
-    // Clear machine ID
-    await clearMachineId();
     console.log(chalk.gray('✓ Cleared machine ID'));
 
     console.log('');
@@ -125,6 +126,7 @@ async function handleAuthLogout(): Promise<void> {
     console.log(chalk.yellow('Not currently authenticated'));
     return;
   }
+  const expectedSettings = await readSettings();
 
   console.log(chalk.blue('This will log you out of Happy'));
   console.log(chalk.yellow('⚠️  You will need to re-authenticate to use Happy again'));
@@ -143,16 +145,23 @@ async function handleAuthLogout(): Promise<void> {
 
   if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
     try {
-      // Stop daemon if running
-      try {
-        await stopDaemon();
-        console.log(chalk.gray('Stopped daemon'));
-      } catch { }
-
       // The home is shared with Happy Agent. Logout owns only CLI authentication,
       // never the Agent runtime/database or the local history used for resume.
-      await clearCredentials();
-      await clearMachineId();
+      await withCliAuthLock(async () => {
+        const currentCredentials = await readCredentials();
+        const currentSettings = await readSettings();
+        if (JSON.stringify(currentCredentials) !== JSON.stringify(credentials)
+          || currentSettings.machineId !== expectedSettings.machineId
+          || currentSettings.serverUrl !== expectedSettings.serverUrl) {
+          throw new Error('CLI authentication changed while logout was being confirmed. Run logout again.');
+        }
+        try {
+          await stopDaemon();
+          console.log(chalk.gray('Stopped daemon'));
+        } catch { }
+        await clearCredentials();
+        await clearMachineId();
+      });
 
       console.log(chalk.green('✓ Successfully logged out'));
       console.log(chalk.gray('  Run "happy auth login" to authenticate again'));
