@@ -21,7 +21,7 @@ import {
 import { resolveDaemonAllowedRoot } from '../modules/common/resolveAllowedRoot';
 import { REMOTE_TERMINAL_DISABLED_ERROR, resolveMachineLockdownPolicy } from '../daemon/machineLockdownPolicy';
 import { homedir } from 'node:os';
-import { encodeBase64, decodeBase64, encrypt, decrypt } from './encryption';
+import { encodeBase64, decodeBase64, encrypt, decrypt, tryDecrypt } from './encryption';
 import { createTerminalOutputCoalescer } from '@/daemon/terminalOutputCoalescer';
 import {
     MACHINE_RESOURCE_METRICS_RPC,
@@ -3583,16 +3583,17 @@ export class ApiMachineClient {
                     ack({ ok: false, error: REMOTE_TERMINAL_DISABLED_ERROR });
                     return;
                 }
-                let opts: any = null;
-                if (params && typeof params === 'string') {
-                    try {
-                        opts = decrypt(machineKey, machineVariant, decodeBase64(params));
-                    } catch (e) {
-                        logger.debug(`[API MACHINE] terminal-open-fwd decrypt failed: ${(e as Error).message}`);
-                        ack({ ok: false, error: 'Failed to decrypt open params' });
-                        return;
-                    }
+                // The open params are the caller's only proof of holding the
+                // machine key: a shell is never opened without params it opens.
+                const opened = typeof params === 'string' && params.length > 0
+                    ? tryDecrypt(machineKey, machineVariant, decodeBase64(params))
+                    : { ok: false as const };
+                if (!opened.ok || !opened.value || typeof opened.value !== 'object') {
+                    logger.debug('[API MACHINE] terminal-open-fwd refused: params were not sealed with the machine key');
+                    ack({ ok: false, error: 'Failed to decrypt open params' });
+                    return;
                 }
+                const opts: any = opened.value;
                 const auditUserId = typeof opts?.userId === 'string' ? opts.userId : 'remote-client';
                 // specs/remote-terminal-cwd-fallback/ — never let
                 // pty.spawn() chdir into a path that may not exist on
