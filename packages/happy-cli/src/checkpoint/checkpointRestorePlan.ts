@@ -29,12 +29,37 @@ export type CheckpointRestorePlanRequest = CheckpointLedgerBinding & {
     checkpointId: string;
     excludedPaths?: string[];
     excludedPatterns?: string[];
+    /** specs/checkpoint-local-history R4 — files changed after the last record the user chose to restore. */
+    includePaths?: string[];
 };
 
 export type CheckpointRestorePlan = {
     checkpointId: string;
     entries: CheckpointRestorePlanEntry[];
 };
+
+/**
+ * Why a local-history entry is skipped. Kept beside the plan, not in its entries: a Desktop that
+ * does not know these values echoes the entries back, and the plan must still match.
+ */
+export type CheckpointRestoreSkipDetail = {
+    path: string;
+    detail: 'changed-after-record' | 'not-recorded';
+};
+
+type PlanContext = {
+    records: Map<string, CheckpointLedgerRecord>;
+    coverage: ((path: string) => boolean) | null;
+    currentExcludes: (path: string) => boolean;
+    /**
+     * When the target was made by local history: the binding's latest record, and the paths that
+     * changed outside this conversation's turns after the target (first seen in a `before` or
+     * `safety` record).
+     */
+    localHistory: { latestId: string; includePaths: Set<string>; changedOutsideTurns: () => Promise<Set<string>> } | null;
+};
+
+const LOCAL_HISTORY_MARKER = 'saycode-local-history-v1';
 
 type CurrentFileState =
     | { kind: 'missing' }
@@ -59,48 +84,39 @@ export class CheckpointRestorePlanner {
     }
 
     plan(request: CheckpointRestorePlanRequest): Promise<CheckpointRestorePlan> {
+        return this.planWithDetails(request).then(({ plan }) => plan);
+    }
+
+    planWithDetails(
+        request: CheckpointRestorePlanRequest,
+    ): Promise<{ plan: CheckpointRestorePlan; details: CheckpointRestoreSkipDetail[] }> {
         return observeCheckpointOperation(
             'plan',
             () => this.createPlan(request),
-            summarizePlan,
+            ({ plan }) => summarizePlan(plan),
             { observer: this.observer },
         );
     }
 
-    private async createPlan(request: CheckpointRestorePlanRequest): Promise<CheckpointRestorePlan> {
+    private async createPlan(
+        request: CheckpointRestorePlanRequest,
+    ): Promise<{ plan: CheckpointRestorePlan; details: CheckpointRestoreSkipDetail[] }> {
         validateCheckpointId(request.checkpointId);
         const projectPath = await realpath(request.projectPath);
-        const records = await new CheckpointLedger(this.checkpointRoot).readRecords({
-            ...request,
-            projectPath,
-        });
-        await this.assertCheckpointOwnedByBinding(request, projectPath);
-        const latestByPath = new Map(records.map((record) => [record.path, record]));
+        const context = await this.planContext(request, projectPath);
         const changedPaths = await this.listChangedPaths(request, projectPath);
-        for (const path of latestByPath.keys()) changedPaths.add(path);
+        for (const path of context.records.keys()) changedPaths.add(path);
         const entries: CheckpointRestorePlanEntry[] = [];
-        const coverage = checkpointCoverageMatcher(await this.readCoverage(request, projectPath));
-        const currentExcludes = checkpointExclusionMatcher(request);
+        const details: CheckpointRestoreSkipDetail[] = [];
 
         for (const path of [...changedPaths].sort()) {
-            const record = latestByPath.get(path);
-            const current = await readCurrentFileState(projectPath, path);
-            let targetHash: string | null;
-            try { targetHash = current.kind === 'unsupported' ? null : await this.readCheckpointFileHash(request, path, projectPath); }
-            catch (error) {
-                if (!(error instanceof UnsupportedCheckpointTargetError)) throw error;
-                entries.push({ path, action: 'conflict', reason: 'unsafe-path' });
-                continue;
-            }
-            const excluded = coverage?.(path) ?? null;
-            const entry: CheckpointRestorePlanEntry | null = excluded === true || (excluded === null && targetHash === null)
-                || currentExcludes(path)
-                ? { path, action: 'skip', reason: 'provenance-unknown' }
-                : createPlanEntry(path, record, current, targetHash);
-            if (entry) entries.push(entry);
+            const planned = await this.entryFor(request, projectPath, path, context);
+            if (!planned) continue;
+            entries.push(planned.entry);
+            if (planned.detail) details.push({ path, detail: planned.detail });
         }
 
-        return { checkpointId: request.checkpointId, entries };
+        return { plan: { checkpointId: request.checkpointId, entries }, details };
     }
 
     async matchesCurrentEntry(
@@ -109,27 +125,98 @@ export class CheckpointRestorePlanner {
     ): Promise<boolean> {
         validateCheckpointId(request.checkpointId);
         const projectPath = await realpath(request.projectPath);
-        const records = await new CheckpointLedger(this.checkpointRoot).readRecords({
-            ...request,
-            projectPath,
-        });
+        const context = await this.planContext(request, projectPath);
+        const planned = await this.entryFor(request, projectPath, expected.path, context);
+        if (!planned || planned.entry.action === 'skip' || planned.entry.action === 'conflict') return false;
+        return JSON.stringify(planned.entry) === JSON.stringify(expected);
+    }
+
+    private async planContext(request: CheckpointRestorePlanRequest, projectPath: string): Promise<PlanContext> {
+        const records = await new CheckpointLedger(this.checkpointRoot).readRecords({ ...request, projectPath });
         await this.assertCheckpointOwnedByBinding(request, projectPath);
-        let record: CheckpointLedgerRecord | undefined;
-        for (let index = records.length - 1; index >= 0; index -= 1) {
-            if (records[index]?.path === expected.path) {
-                record = records[index];
-                break;
-            }
+        const body = await this.readCoverage(request, projectPath);
+        const layout = resolveCheckpointStoreLayout({ checkpointRoot: this.checkpointRoot, ...request });
+        return {
+            records: new Map(records.map((record) => [record.path, record])),
+            coverage: checkpointCoverageMatcher(body),
+            currentExcludes: checkpointExclusionMatcher(request),
+            localHistory: body.split('\n').includes(LOCAL_HISTORY_MARKER)
+                ? {
+                    latestId: (await runGit(['rev-parse', '--verify', `${layout.refName}^{commit}`], projectPath,
+                        checkpointGitEnvironment(layout.gitDirectory))).toString('utf8').trim(),
+                    includePaths: new Set(request.includePaths ?? []),
+                    changedOutsideTurns: once(() => this.changedOutsideTurns(request, projectPath)),
+                }
+                : null,
+        };
+    }
+
+    /**
+     * Records are independent commits; the binding's operation refs and their record times give
+     * their order. Walking from the target, a change that first shows up in a `before` or `safety`
+     * record happened between turns, so it is someone else's.
+     */
+    private async changedOutsideTurns(request: CheckpointRestorePlanRequest, projectPath: string): Promise<Set<string>> {
+        const layout = resolveCheckpointStoreLayout({ checkpointRoot: this.checkpointRoot, ...request });
+        const environment = checkpointGitEnvironment(layout.gitDirectory);
+        const ids = [...new Set((await runGit(['for-each-ref', '--format=%(objectname)', checkpointOperationRefPrefix(layout)],
+            projectPath, environment)).toString('utf8').split('\n').filter(Boolean))];
+        if (ids.length === 0) return new Set();
+        const records = (await runGit(['log', '--no-walk=unsorted', '--format=%H%x00%s%x00%b%x01', ...ids], projectPath, environment))
+            .toString('utf8').split('\x01').map((chunk) => chunk.trim()).filter(Boolean).map((chunk) => {
+                const [id, subject, body] = chunk.split('\0');
+                return {
+                    id: id!,
+                    createdAt: Number(subject?.match(/^saycode-checkpoint-v1 (\d+)$/)?.[1] ?? Number.NaN),
+                    kind: body?.match(/^saycode-record (\w+)$/m)?.[1] ?? null,
+                };
+            })
+            .filter((record) => Number.isFinite(record.createdAt))
+            .sort((left, right) => left.createdAt - right.createdAt);
+        const start = records.findIndex((record) => record.id === request.checkpointId);
+        const changed = new Set<string>();
+        if (start < 0) return changed;
+        for (let index = start + 1; index < records.length; index += 1) {
+            const record = records[index]!;
+            if (record.kind === 'after' || record.kind === 'restored') continue;
+            const diff = await runGit(['diff', '--name-only', '-z', records[index - 1]!.id, record.id], projectPath, environment);
+            for (const path of parseNullTerminatedPaths(diff)) changed.add(path);
         }
-        const current = await readCurrentFileState(projectPath, expected.path);
-        const targetHash = current.kind === 'unsupported'
-            ? null
-            : await this.readCheckpointFileHash(request, expected.path, projectPath);
-        const excluded = checkpointCoverageMatcher(await this.readCoverage(request, projectPath))?.(expected.path) ?? null;
-        if (excluded === true || (excluded === null && targetHash === null)
-            || checkpointExclusionMatcher(request)(expected.path)) return false;
-        return JSON.stringify(createPlanEntry(expected.path, record, current, targetHash))
-            === JSON.stringify(expected);
+        return changed;
+    }
+
+    private async entryFor(
+        request: CheckpointRestorePlanRequest,
+        projectPath: string,
+        path: string,
+        context: PlanContext,
+    ): Promise<{ entry: CheckpointRestorePlanEntry; detail?: CheckpointRestoreSkipDetail['detail'] } | null> {
+        const current = await readCurrentFileState(projectPath, path);
+        let targetHash: string | null;
+        let latestHash: string | null = null;
+        try {
+            targetHash = current.kind === 'unsupported' ? null : await this.readCheckpointFileHash(request, path, projectPath);
+            if (context.localHistory && current.kind !== 'unsupported') {
+                latestHash = await this.readCheckpointFileHash({ ...request, checkpointId: context.localHistory.latestId }, path, projectPath);
+            }
+        } catch (error) {
+            if (!(error instanceof UnsupportedCheckpointTargetError)) throw error;
+            return { entry: { path, action: 'conflict', reason: 'unsafe-path' } };
+        }
+        const excluded = context.coverage?.(path) ?? null;
+        if (excluded === true || (excluded === null && targetHash === null) || context.currentExcludes(path)) {
+            return { entry: { path, action: 'skip', reason: 'provenance-unknown' }, ...(context.localHistory ? { detail: 'not-recorded' as const } : {}) };
+        }
+        if (!context.localHistory) {
+            const entry = createPlanEntry(path, context.records.get(path), current, targetHash);
+            return entry ? { entry } : null;
+        }
+        const included = context.localHistory.includePaths.has(path);
+        // Only a file this conversation's turns could have left needs the record walk.
+        const unchangedSinceRecord = current.kind === 'missing' ? latestHash === null
+            : current.kind === 'regular' && current.contentHash === latestHash;
+        const outside = unchangedSinceRecord && !included && (await context.localHistory.changedOutsideTurns()).has(path);
+        return localHistoryEntry(path, current, targetHash, latestHash, included, outside);
     }
 
     async matchesTargetHash(projectPath: string, path: string, expectedHash: string | null): Promise<boolean> {
@@ -237,10 +324,42 @@ export class CheckpointRestorePlanner {
     }
 }
 
+function once<T>(load: () => Promise<T>): () => Promise<T> {
+    let value: Promise<T> | null = null;
+    return () => (value ??= load());
+}
+
 function summarizePlan(plan: CheckpointRestorePlan) {
     const counts = { restore: 0, delete: 0, skip: 0, conflict: 0 };
     for (const entry of plan.entries) counts[entry.action] += 1;
     return { files: plan.entries.length, ...counts };
+}
+
+/**
+ * specs/checkpoint-local-history R4 — a file that still matches this binding's latest record was
+ * left by its turns and is restored; one changed since is kept unless the user included it.
+ */
+function localHistoryEntry(
+    path: string,
+    current: CurrentFileState,
+    targetHash: string | null,
+    latestHash: string | null,
+    included: boolean,
+    changedOutsideTurns: boolean,
+): { entry: CheckpointRestorePlanEntry; detail?: CheckpointRestoreSkipDetail['detail'] } | null {
+    if (current.kind === 'regular' && current.contentHash === targetHash) return null;
+    if (current.kind === 'missing' && targetHash === null) return null;
+    if (current.kind === 'unsupported') return { entry: { path, action: 'conflict', reason: current.reason } };
+    const unchangedSinceRecord = current.kind === 'missing'
+        ? latestHash === null
+        : current.contentHash === latestHash;
+    if ((!unchangedSinceRecord || changedOutsideTurns) && !included) {
+        return { entry: { path, action: 'skip', reason: 'user-modified' }, detail: 'changed-after-record' };
+    }
+    if (targetHash === null) return { entry: { path, action: 'delete', reason: 'agent-created' } };
+    return current.kind === 'missing'
+        ? { entry: { path, action: 'restore', reason: 'agent-deleted' } }
+        : { entry: { path, action: 'restore', reason: 'agent-modified' } };
 }
 
 function createPlanEntry(

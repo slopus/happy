@@ -1,11 +1,12 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
 const LOCK_REF = 'refs/saycode-checkpoint-store-lock';
 const LOCK_RETRY_MS = 100;
 const LOCK_ATTEMPTS = 3_000;
+const STAGING_DIRECTORY = 'checkpoint-staging';
 
 type GitResult = {
     stdout: string;
@@ -51,6 +52,62 @@ export async function withCheckpointStoreLock<T>(
         if (attempt + 1 < LOCK_ATTEMPTS) await delay(LOCK_RETRY_MS);
     }
     throw new Error('checkpoint store lock timeout');
+}
+
+/**
+ * Marks work that writes objects into the store without holding its lock (a whole-folder record
+ * hashing for minutes), so a collection meanwhile keeps every object newer than the work's start.
+ * The marker is registered under the lock: a running collection either sees it or has finished.
+ */
+export async function withCheckpointStaging<T>(
+    checkpointRoot: string,
+    action: () => Promise<T>,
+): Promise<T> {
+    const stagingDirectory = join(resolve(checkpointRoot), 'store', STAGING_DIRECTORY);
+    const marker = join(stagingDirectory, `${randomUUID()}.json`);
+    await withCheckpointStoreLock(checkpointRoot, async () => {
+        await mkdir(stagingDirectory, { recursive: true, mode: 0o700 });
+        await writeFile(marker, JSON.stringify({ pid: process.pid, startedAt: Date.now() }), { flag: 'wx', mode: 0o600 });
+    });
+    try {
+        return await action();
+    } finally {
+        await rm(marker, { force: true });
+    }
+}
+
+/** The start of the oldest staging still running; call it holding the store lock. */
+export async function oldestCheckpointStagingStart(gitDirectory: string): Promise<number | null> {
+    const stagingDirectory = join(gitDirectory, STAGING_DIRECTORY);
+    const names = await readdir(stagingDirectory).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return [];
+        throw error;
+    });
+    let oldest: number | null = null;
+    for (const name of names) {
+        const file = join(stagingDirectory, name);
+        const marker = parseStagingMarker(await readFile(file, 'utf8').catch(() => ''));
+        if (marker && !isProcessRunning(marker.pid)) {
+            await rm(file, { force: true });
+            continue;
+        }
+        // An unreadable marker may be one being written: keep everything rather than guess.
+        const startedAt = marker?.startedAt ?? 0;
+        oldest = oldest === null ? startedAt : Math.min(oldest, startedAt);
+    }
+    return oldest;
+}
+
+function parseStagingMarker(value: string): { pid: number; startedAt: number } | null {
+    try {
+        const marker = JSON.parse(value) as { pid?: unknown; startedAt?: unknown };
+        if (Number.isSafeInteger(marker.pid) && (marker.pid as number) > 0 && Number.isSafeInteger(marker.startedAt)) {
+            return { pid: marker.pid as number, startedAt: marker.startedAt as number };
+        }
+    } catch {
+        // Treated as live below.
+    }
+    return null;
 }
 
 async function objectExists(gitDirectory: string, objectId: string): Promise<boolean> {

@@ -89,6 +89,37 @@ afterEach(() => {
     }
     fixture.requestIds = undefined; vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.clearAllMocks(); fixture.submit = null; fixture.onSend = null; fixture.onSteer = null; fixture.steerText = ''; fixture.statusProbeFails = false; });
 
+// specs/checkpoint-local-history — Codex keeps its process across turns and records the folder
+// before dispatch and after the turn, including a turn the provider failed.
+describe('Codex local history wiring', () => {
+    it.each([['completes', false], ['fails', true]])('records around a turn that %s', async (_label, fails) => {
+        for (const key of Object.keys(process.env)) {
+            if (/^(HAPPY_RECONNECT_|HAPPY_INITIAL_|HAPPY_FORK|HAPPY_MANAGED_|SAYCODE_PROVIDER_|HAPPY_AUTOMATION_)/.test(key)) vi.stubEnv(key, undefined);
+        }
+        fixture.aborted = false;
+        vi.stubEnv('HAPPY_AUTOMATION_RUN_ONCE', '1');
+        vi.stubEnv('HAPPY_INITIAL_PROMPT', 'Edit b.html');
+        const calls: string[] = [];
+        const { createCheckpointSessionComposition } = await import('@/checkpoint/checkpointSessionComposition');
+        vi.mocked(createCheckpointSessionComposition).mockResolvedValueOnce({
+            sandboxConfig: undefined,
+            localHistory: {
+                beforeTurn: async () => { calls.push('before'); return { operationId: 'turn-1', checkpointId: 'a'.repeat(40), providerPath: process.cwd() }; },
+                afterTurn: async () => { calls.push('after'); },
+            },
+        });
+        fixture.onSend = async () => {
+            calls.push('send');
+            if (fails) throw new Error('provider unavailable');
+        };
+        const review = { prepareReviewTurn: vi.fn(async () => ({ revision: 9 })), reviewFinishedTurn: vi.fn(async () => 'reviewed' as const) };
+        const { runCodex } = await import('./runCodex');
+        await runCodex({ principal: { kind: 'account', credentials: { token: 'test-token' } as never },
+            noSandbox: true, lessons: { turn: null, review, sessionKind: 'foreground' } });
+        expect(calls).toEqual(['before', 'send', 'after']);
+    });
+});
+
 describe('Codex foreground lesson proposal wiring', () => {
     it('preserves durable local-auto request ids through a merged Codex batch', async () => {
         for (const key of Object.keys(process.env)) {

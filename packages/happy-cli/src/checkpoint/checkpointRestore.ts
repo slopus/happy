@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, mkdtemp, realpath, rm, unlink } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { CheckpointLedger, type CheckpointLedgerBinding } from './checkpointLedger';
@@ -18,7 +18,7 @@ import {
     type CheckpointRestorePlan,
     type CheckpointRestorePlanEntry,
 } from './checkpointRestorePlan';
-import { resolveCheckpointStoreLayout } from './checkpointStore';
+import { CheckpointStore, resolveCheckpointStoreLayout } from './checkpointStore';
 import { checkpointExclusionMatcher } from './checkpointCoverage';
 
 export type CheckpointRestoreExecuteRequest = CheckpointLedgerBinding & {
@@ -27,6 +27,12 @@ export type CheckpointRestoreExecuteRequest = CheckpointLedgerBinding & {
     confirmed: boolean;
     excludedPaths?: string[];
     excludedPatterns?: string[];
+    includePaths?: string[];
+    /**
+     * specs/checkpoint-local-history R4 — the safety checkpoint and a record after the restore are
+     * taken the way turns are recorded, so restoring the safety checkpoint undoes this restore.
+     */
+    localHistory?: { maxFileBytes: number };
 };
 
 type CheckpointRestoreEntryResult = {
@@ -143,6 +149,7 @@ export class CheckpointRestoreExecutor {
                 checkpointId: request.plan.checkpointId,
                 excludedPaths: request.excludedPaths,
                 excludedPatterns: request.excludedPatterns,
+                includePaths: request.includePaths,
             });
             if (JSON.stringify(currentPlan) !== JSON.stringify(request.plan)) {
                 return { status: 'stale-plan' };
@@ -155,6 +162,7 @@ export class CheckpointRestoreExecutor {
                 projectPath,
                 excludedPaths: request.excludedPaths,
                 excludedPatterns: request.excludedPatterns,
+                ...(request.localHistory ? { workTree: { ...request.localHistory, record: 'safety' as const } } : {}),
             });
             journal = createCheckpointRestoreJournal(
                 requestFingerprint,
@@ -171,6 +179,17 @@ export class CheckpointRestoreExecutor {
             journalFile,
             journal,
         );
+        if (request.localHistory) {
+            await new CheckpointStore(this.checkpointRoot).snapshotTurn({
+                sessionId: request.sessionId,
+                projectId: request.projectId,
+                worktreeId: request.worktreeId,
+                projectPath,
+                operationId: `${safetyOperationId(request.operationId)}:after:${randomUUID()}`,
+                excludedPatterns: request.excludedPatterns,
+                workTree: { ...request.localHistory, record: 'restored' },
+            });
+        }
         return {
             status: entries.some((entry) => entry.outcome === 'failed')
                 ? 'partial'
@@ -243,6 +262,7 @@ export class CheckpointRestoreExecutor {
                                 checkpointId: request.plan.checkpointId,
                                 excludedPaths: request.excludedPaths,
                                 excludedPatterns: request.excludedPatterns,
+                                includePaths: request.includePaths,
                             }, entry);
                             if (!current && !await new CheckpointRestorePlanner(this.checkpointRoot)
                                 .matchesTargetHash(projectPath, entry.path, expectedContentHash)) {

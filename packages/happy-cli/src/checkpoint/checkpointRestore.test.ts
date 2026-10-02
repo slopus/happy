@@ -4,7 +4,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createCheckpointRuntime } from './checkpointRuntime';
 import { CheckpointLedger } from './checkpointLedger';
 import { CheckpointGarbageCollector } from './checkpointGarbageCollector';
 import {
@@ -117,16 +116,16 @@ describe('CheckpointRestoreExecutor', () => {
     it('does not treat a file omitted by a shifted capture limit as agent-created', async () => {
         await createAgentModifiedPlan();
         await writeFile(join(projectPath, 'aaa.txt'), 'user added');
-        const runtime = await createCheckpointRuntime({ provider: 'codex', platform: 'darwin', projectPath,
-            checkpointRoot, binding, protection: { secretPatterns: [], maxFiles: 1, maxFileBytes: 1024, maxTotalBytes: 4096 } });
-        if (runtime.status !== 'protected') throw new Error('expected protected runtime');
-        const target = await runtime.beforeTurn('shifted-limit');
+        // A coverage-v1 checkpoint whose capture limit left tracked.txt out.
+        const omitted = ['tracked.txt'];
+        const target = await new CheckpointStore(checkpointRoot).snapshotTurn({ ...binding, projectPath,
+            operationId: 'shifted-limit', excludedPaths: omitted });
         const plan = await new CheckpointRestorePlanner(checkpointRoot).plan({ ...binding, projectPath,
             checkpointId: target.checkpointId });
         expect(plan.entries).toContainEqual({ path: 'tracked.txt', action: 'skip', reason: 'provenance-unknown' });
         expect(plan.entries.some(entry => entry.path === 'tracked.txt' && entry.action === 'delete')).toBe(false);
         await new CheckpointRestoreExecutor(checkpointRoot).execute({ ...binding, projectPath, plan,
-            operationId: 'rewind-shifted-limit', confirmed: true, excludedPaths: runtime.excludedPaths });
+            operationId: 'rewind-shifted-limit', confirmed: true, excludedPaths: omitted });
         expect(await readFile(join(projectPath, 'tracked.txt'), 'utf8')).toBe('agent version\n');
     });
 

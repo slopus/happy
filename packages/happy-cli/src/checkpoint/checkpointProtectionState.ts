@@ -124,6 +124,12 @@ export class CheckpointProtectionStateStore {
         return status;
     }
 
+    /** specs/checkpoint-local-history R5 — drops a decision an older runtime left; protection is kept. */
+    async clearPending(binding: Binding): Promise<CheckpointProtectionDecisionStatus> {
+        const canonical = await canonicalBinding(binding);
+        return this.update(canonical, (current) => ({ ...current, pendingDecision: null }));
+    }
+
     async resolveDecision(request: ResolveDecisionRequest): Promise<CheckpointProtectionDecisionStatus> {
         identifierSchema.parse(request.operationId);
         z.enum(['cancel', 'disable-protection']).parse(request.decision);

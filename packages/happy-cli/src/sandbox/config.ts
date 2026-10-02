@@ -276,7 +276,7 @@ export function buildSandboxRuntimeConfig(
         enableWeakerNetworkIsolation,
         network,
         filesystem: {
-            allowGitConfig: sandboxConfig.allowGitConfig === true && !sandboxConfig.checkpointProtection,
+            allowGitConfig: sandboxConfig.allowGitConfig === true,
             denyRead: uniquePaths([...resolvePaths(sandboxConfig.denyReadPaths, sessionPath), ...floor]),
             allowWrite,
             denyWrite: uniquePaths([...resolvePaths(sandboxConfig.denyWritePaths, sessionPath), ...floor]),

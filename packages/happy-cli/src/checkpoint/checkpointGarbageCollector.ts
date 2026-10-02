@@ -9,7 +9,7 @@ import {
     resolveCheckpointStoreLayout,
     type CheckpointStoreBinding,
 } from './checkpointStore';
-import { withCheckpointStoreLock } from './checkpointStoreLock';
+import { oldestCheckpointStagingStart, withCheckpointStoreLock } from './checkpointStoreLock';
 
 type RetentionPolicy = {
     maxCheckpointsPerBinding?: number;
@@ -291,7 +291,13 @@ function groupByBinding(refs: CheckpointRef[]): Map<string, CheckpointRef[]> {
 async function reclaimObjects(gitDirectory: string): Promise<void> {
     const environment = gitEnvironment(gitDirectory);
     await runGit(['reflog', 'expire', '--expire=now', '--all'], gitDirectory, environment);
-    await runGit(['gc', '--prune=now', '--quiet'], gitDirectory, environment);
+    // A record staging outside the lock has written objects no ref reaches yet; keep anything
+    // newer than its start (with a minute of slack for coarse file times).
+    const stagingStart = await oldestCheckpointStagingStart(gitDirectory);
+    const prune = stagingStart === null
+        ? 'now'
+        : `${Math.ceil(Math.max(0, Date.now() - stagingStart) / 1000) + 60}.seconds.ago`;
+    await runGit(['gc', `--prune=${prune}`, '--quiet'], gitDirectory, environment);
 }
 
 async function directorySize(path: string): Promise<number> {

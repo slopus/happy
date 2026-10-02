@@ -680,7 +680,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         sessionPath: session.path,
                         policyMode: session.sandboxPolicyMode ?? 'owner-choice',
                     }),
-                    beforeTurn: session.checkpointComposition?.beforeTurn,
+                    beforeTurn: session.checkpointComposition?.beforeTurn
+                        ?? session.checkpointComposition?.localHistory?.beforeTurn,
+                    afterTurn: session.checkpointComposition?.localHistory?.afterTurn,
                     prepareChannelExecution: session.prepareChannelExecution,
                     beginChannelExecution: session.beginChannelExecution,
                     completeTurn: session.checkpointComposition?.completeTurn,

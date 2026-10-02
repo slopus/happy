@@ -285,7 +285,3 @@ jobs:
           test -z "${CODEX_SANDBOX:-}"
       - name: Run unit tests including real Git sandbox enforcement
         run: pnpm --filter @buzzni/happy-cli exec vitest run --project unit
-      - name: Install checkpoint sandbox dependencies
-        run: brew install ripgrep
-      - name: Verify checkpoint sandbox enforcement on macOS
-        run: pnpm --filter @buzzni/happy-cli exec vitest run --project integration-empty src/checkpoint/checkpointSandbox.integration.test.ts

@@ -59,13 +59,15 @@ describe('buildSandboxRuntimeConfig', () => {
         expect(config.filesystem?.denyWrite).toContain(resolve(sessionPath, '.git/config'));
     });
 
-    it('does not grant Git configuration by default or in a protected checkpoint session', () => {
+    // specs/checkpoint-local-history — a checkpoint session works in the real repository, so it keeps
+    // the project's Git configuration access like any other session.
+    it('does not grant Git configuration by default, and a checkpoint session keeps the project choice', () => {
         expect(buildSandboxRuntimeConfig(createConfig(), sessionPath).filesystem?.allowGitConfig).toBe(false);
         const config = buildSandboxRuntimeConfig(createConfig({
             allowGitConfig: true,
             checkpointProtection: { secretPatterns: ['.env*'], maxFileBytes: 100, maxFiles: 10, maxTotalBytes: 1000 },
         }), sessionPath);
-        expect(config.filesystem?.allowGitConfig).toBe(false);
+        expect(config.filesystem?.allowGitConfig).toBe(true);
     });
 
     it.runIf(process.platform === 'darwin')('maps the approved macOS temporary directory to its real path', () => {

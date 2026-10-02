@@ -205,6 +205,8 @@ export async function claudeRemote(opts: {
         latency?: ClaudeTurnLatencyInput,
     } | null>,
     beforeTurn?: () => Promise<CheckpointTurnPreparation | void>,
+    /** specs/checkpoint-local-history — records the folder a finished turn left behind. */
+    afterTurn?: () => Promise<void>,
     prepareChannelExecution?: (requestId: string) => Promise<boolean>,
     beginChannelExecution?: (requestId: string) => boolean,
     completeTurn?: CheckpointSessionComposition['completeTurn'],
@@ -1070,6 +1072,12 @@ function readTurnText(content: unknown): string {
 
                 // Without checkpoint protection, the provider result is the
                 // completion boundary. Protected turns must apply first.
+                if (opts.afterTurn) {
+                    // A missing record only makes a later restore more cautious; never fail the turn.
+                    await opts.afterTurn().catch((error) => {
+                        logger.debug('[claudeRemote] local history record after turn failed', error);
+                    });
+                }
                 finishLessonReview();
                 // Send ready event
                 opts.onReady();

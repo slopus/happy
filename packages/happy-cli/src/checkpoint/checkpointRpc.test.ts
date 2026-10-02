@@ -7,6 +7,7 @@ import { createCheckpointRpcHandlers } from './checkpointRpc';
 import { CheckpointProtectionStateStore } from './checkpointProtectionState';
 import { CheckpointRestoreExecutor, type CheckpointRestoreMutation } from './checkpointRestore';
 import { CheckpointStore } from './checkpointStore';
+import { createCheckpointLocalHistory } from './checkpointLocalHistory';
 
 const operationId = (sequence: number): string => (
     `123e4567-e89b-42d3-a456-${sequence.toString().padStart(12, '0')}`
@@ -388,6 +389,43 @@ describe('checkpoint daemon RPC', () => {
         await expect(readFile(join(projectPath, 'tracked.txt'), 'utf8'))
             .resolves.toBe('user version\n');
         await expect(access(checkpointRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+
+    // specs/checkpoint-local-history R4·R5 — skip details travel beside the plan, and a file changed
+    // after the last record is restored only when the request includes it.
+    it('previews local-history skip details and restores an included file', async () => {
+        const recorder = createCheckpointLocalHistory({
+            binding: authority, checkpointRoot, projectPath, secretPatterns: ['.env*'],
+            checkpointEvents: { snapshot: async () => ({ id: 'event', seq: 1, createdAt: Date.now(), idempotent: false }) },
+        });
+        const { checkpointId } = await recorder.beforeTurn();
+        await writeFile(join(projectPath, 'tracked.txt'), 'agent version\n');
+        await recorder.afterTurn();
+        await writeFile(join(projectPath, 'tracked.txt'), 'user after record\n');
+        const protectionState = new CheckpointProtectionStateStore(checkpointRoot);
+        const handlers = createCheckpointRpcHandlers({
+            checkpointRoot,
+            resolveEventPublisher: async () => ({ rewind: vi.fn(async () => ({ id: 'event-1', seq: 1, createdAt: Date.now(), idempotent: false })) }),
+            restartSession: vi.fn(async () => {}),
+            resolveAuthority: async () => ({
+                ...authority, projectPath, ...await protectionState.read({ ...authority, projectPath }),
+                mode: 'local-history' as const, excludedPaths: [], excludedPatterns: ['.env*', '.aplus/worktrees/'],
+            }),
+        });
+
+        const preview = await handlers.preview({ schemaVersion: 1, ...authority, checkpointId });
+        expect(preview).toMatchObject({
+            entries: [{ path: 'tracked.txt', action: 'skip', reason: 'user-modified' }],
+            skipDetails: [{ path: 'tracked.txt', detail: 'changed-after-record' }],
+        });
+        const included = await handlers.preview({ schemaVersion: 1, ...authority, checkpointId, includePaths: ['tracked.txt'] });
+        expect(included).toMatchObject({ entries: [{ path: 'tracked.txt', action: 'restore', reason: 'agent-modified' }] });
+
+        await expect(handlers.execute({
+            schemaVersion: 1, ...authority, operationId: operationId(31), confirmed: true,
+            includePaths: ['tracked.txt'], plan: included,
+        })).resolves.toMatchObject({ status: 'completed' });
+        expect(await readFile(join(projectPath, 'tracked.txt'), 'utf8')).toBe('user version\n');
     });
 
     it('rejects execute without explicit confirmation before filesystem mutation', async () => {

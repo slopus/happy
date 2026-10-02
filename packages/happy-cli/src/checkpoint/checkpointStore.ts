@@ -1,10 +1,10 @@
 import { execFile, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { observeCheckpointOperation, type CheckpointOperationObserver } from './checkpointObservability';
-import { withCheckpointStoreLock } from './checkpointStoreLock';
+import { withCheckpointStaging, withCheckpointStoreLock } from './checkpointStoreLock';
 import { CheckpointPolicyDriftError, type CheckpointExclusionManifest } from './checkpointExclusionPolicy';
 import { checkpointCoverageTrailer } from './checkpointCoverage';
 
@@ -30,7 +30,24 @@ export type CheckpointSnapshotRequest = Omit<CheckpointStoreBinding, 'checkpoint
     excludedPatterns?: string[];
     capturedFiles?: CheckpointExclusionManifest['capturedFiles'];
     validateCapture?: () => Promise<void>;
+    /**
+     * specs/checkpoint-local-history R2 — record the whole folder (ignore rules and excluded patterns
+     * applied) through a per-binding index, so a later turn only rehashes what changed. Files over
+     * `maxFileBytes` stay unrecorded and are listed in the coverage trailer.
+     */
+    workTree?: {
+        maxFileBytes: number;
+        /**
+         * What the record marks: a turn's start (`before`) or end (`after`), or a restore's safety
+         * point (`safety`) and result (`restored`). Restore planning treats changes that first
+         * appear in a `before`/`safety` record as made outside this conversation's turns.
+         */
+        record?: 'before' | 'after' | 'safety' | 'restored';
+    };
 };
+
+const LOCAL_HISTORY_MARKER = 'saycode-local-history-v1';
+const WORK_TREE_ADD_TIMEOUT_MS = 10 * 60_000;
 
 export type CheckpointSnapshotResult = {
     checkpointId: string;
@@ -175,6 +192,7 @@ export class CheckpointStore {
             userHomePath,
         });
         await this.ensureInitialized(layout.gitDirectory);
+        if (request.workTree) return this.createWorkTreeSnapshot(request, layout, projectPath);
         return withCheckpointStoreLock(this.checkpointRoot, () => this.createSnapshotLocked(
             request,
             layout,
@@ -182,115 +200,51 @@ export class CheckpointStore {
         ));
     }
 
+    /**
+     * A whole-folder record can hash for minutes the first time; it stages outside the store lock
+     * and takes it only for the tree, commit and refs. Its index never reads the parent record.
+     */
+    private async createWorkTreeSnapshot(
+        request: CheckpointSnapshotRequest,
+        layout: CheckpointStoreLayout,
+        projectPath: string,
+    ): Promise<CheckpointSnapshotResult> {
+        await bindSnapshotFiles(request, layout, projectPath);
+        const snapshotLayout = { ...layout, indexFile: `${layout.indexFile}.${randomUUID()}` };
+        const environment = this.gitEnvironment(snapshotLayout, projectPath);
+        try {
+            const completed = await completedSnapshot(request, snapshotLayout, projectPath, environment);
+            if (completed) return completed;
+            return await withCheckpointStaging(this.checkpointRoot, async () => {
+                const staged = await stageSnapshotIndex(request, layout, snapshotLayout, projectPath, environment, null);
+                return withCheckpointStoreLock(this.checkpointRoot, async () => {
+                    const raced = await completedSnapshot(request, snapshotLayout, projectPath, environment);
+                    if (raced) return raced;
+                    const parentId = await latestCheckpointId(layout, projectPath, environment);
+                    return commitStagedSnapshot(request, layout, snapshotLayout, projectPath, environment, parentId, staged);
+                });
+            });
+        } finally {
+            await removeSnapshotFiles(snapshotLayout);
+        }
+    }
+
     private async createSnapshotLocked(
         request: CheckpointSnapshotRequest,
         layout: CheckpointStoreLayout,
         projectPath: string,
     ): Promise<CheckpointSnapshotResult> {
-        await mkdir(dirname(layout.indexFile), { recursive: true });
-        await mkdir(dirname(layout.metadataFile), { recursive: true });
-        await bindProjectPath(layout.metadataFile, request, projectPath);
-
-        const snapshotLayout = {
-            ...layout,
-            indexFile: `${layout.indexFile}.${randomUUID()}`,
-        };
+        await bindSnapshotFiles(request, layout, projectPath);
+        const snapshotLayout = { ...layout, indexFile: `${layout.indexFile}.${randomUUID()}` };
         const environment = this.gitEnvironment(snapshotLayout, projectPath);
-        const operationRef = checkpointOperationRef(snapshotLayout, request.operationId);
         try {
-            const completedOperation = await runGit(
-                ['rev-parse', '--verify', `${operationRef}^{commit}`],
-                projectPath,
-                environment,
-                new Set([0, 128]),
-            );
-            if (completedOperation.exitCode === 0) {
-                await validateCapturedTree(completedOperation.stdout.trim(), request, projectPath, environment);
-                return { checkpointId: completedOperation.stdout.trim(), created: false };
-            }
-            const parent = await runGit(
-                ['rev-parse', '--verify', `${layout.refName}^{commit}`],
-                projectPath,
-                environment,
-                new Set([0, 128]),
-            );
-            const parentId = parent.exitCode === 0 ? parent.stdout.trim() : null;
-
-            if (request.capturedFiles) {
-                await runGit(['read-tree', '--empty'], projectPath, environment);
-            } else if (parentId) {
-                await runGit(['read-tree', parentId], projectPath, environment);
-            }
-
-            const excludedPaths = normalizeExcludedPaths(request.excludedPaths ?? []);
-            const excludedPatterns = normalizeExcludedPatterns(request.excludedPatterns ?? []);
-            const capturePathspec = `${snapshotLayout.indexFile}.paths`;
-            if (request.capturedFiles) {
-                const paths = normalizeExcludedPaths(request.capturedFiles.map((file) => file.path));
-                if (paths.length > 0) {
-                    await writeFile(capturePathspec, paths.map((path) => `:(top,literal)${path}\0`).join(''), { mode: 0o600 });
-                    await runGit(['add', '-A', `--pathspec-from-file=${capturePathspec}`, '--pathspec-file-nul'], projectPath, environment);
-                }
-            } else await runGit([
-                'add',
-                '-A',
-                '--',
-                '.',
-                ...excludedPaths.map((path) => `:(exclude,top,literal)${path}`),
-                ...excludedPatterns.map((pattern) => `:(exclude,top,glob)${pattern}`),
-            ], projectPath, environment);
-            if (excludedPaths.length > 0 || excludedPatterns.length > 0) {
-                await runGit([
-                    'rm',
-                    '-r',
-                    '-f',
-                    '--cached',
-                    '--ignore-unmatch',
-                    '--',
-                    ...excludedPaths.map((path) => `:(top,literal)${path}`),
-                    ...excludedPatterns.map((pattern) => `:(top,glob)${pattern}`),
-                ], projectPath, environment);
-            }
-            const tree = (await runGit(['write-tree'], projectPath, environment)).stdout.trim();
-            await validateCapturedTree(tree, request, projectPath, environment);
-            if (parentId) {
-                const parentTree = (await runGit(
-                    ['rev-parse', `${parentId}^{tree}`],
-                    projectPath,
-                    environment,
-                )).stdout.trim();
-                const parentBody = (await runGit(['show', '-s', '--format=%b', parentId], projectPath, environment)).stdout;
-                if (tree === parentTree && parentBody.trim() === checkpointCoverageTrailer(request)) {
-                    return completeCheckpointRefs({
-                        layout: snapshotLayout,
-                        operationRef,
-                        checkpointId: parentId,
-                        parentId,
-                        updateLatest: false,
-                        projectPath,
-                        environment,
-                    });
-                }
-            }
-
-            const createdAt = await nextCheckpointTimestamp(parentId, projectPath, environment);
-            const messageFile = `${snapshotLayout.indexFile}.message`;
-            await writeFile(messageFile, `saycode-checkpoint-v1 ${createdAt}\n\n${checkpointCoverageTrailer(request)}`, { mode: 0o600 });
-            const commitArgs = ['commit-tree', tree, '-F', messageFile, '--no-gpg-sign'];
-            const checkpointId = (await runGit(commitArgs, projectPath, environment)).stdout.trim();
-            return completeCheckpointRefs({
-                layout: snapshotLayout,
-                operationRef,
-                checkpointId,
-                parentId,
-                updateLatest: true,
-                projectPath,
-                environment,
-            });
+            const completed = await completedSnapshot(request, snapshotLayout, projectPath, environment);
+            if (completed) return completed;
+            const parentId = await latestCheckpointId(layout, projectPath, environment);
+            const staged = await stageSnapshotIndex(request, layout, snapshotLayout, projectPath, environment, parentId);
+            return await commitStagedSnapshot(request, layout, snapshotLayout, projectPath, environment, parentId, staged);
         } finally {
-            await rm(snapshotLayout.indexFile, { force: true });
-            await rm(`${snapshotLayout.indexFile}.paths`, { force: true });
-            await rm(`${snapshotLayout.indexFile}.message`, { force: true });
+            await removeSnapshotFiles(snapshotLayout);
         }
     }
 
@@ -322,6 +276,171 @@ export class CheckpointStore {
         delete environment.GIT_ALTERNATE_OBJECT_DIRECTORIES;
         return environment;
     }
+}
+
+type StagedSnapshot = { excludedPaths: string[] };
+
+async function bindSnapshotFiles(
+    request: CheckpointSnapshotRequest,
+    layout: CheckpointStoreLayout,
+    projectPath: string,
+): Promise<void> {
+    await mkdir(dirname(layout.indexFile), { recursive: true });
+    await mkdir(dirname(layout.metadataFile), { recursive: true });
+    await bindProjectPath(layout.metadataFile, request, projectPath);
+}
+
+async function completedSnapshot(
+    request: CheckpointSnapshotRequest,
+    snapshotLayout: CheckpointStoreLayout,
+    projectPath: string,
+    environment: NodeJS.ProcessEnv,
+): Promise<CheckpointSnapshotResult | null> {
+    const completedOperation = await runGit(
+        ['rev-parse', '--verify', `${checkpointOperationRef(snapshotLayout, request.operationId)}^{commit}`],
+        projectPath,
+        environment,
+        new Set([0, 128]),
+    );
+    if (completedOperation.exitCode !== 0) return null;
+    await validateCapturedTree(completedOperation.stdout.trim(), request, projectPath, environment);
+    return { checkpointId: completedOperation.stdout.trim(), created: false };
+}
+
+async function latestCheckpointId(
+    layout: CheckpointStoreLayout,
+    projectPath: string,
+    environment: NodeJS.ProcessEnv,
+): Promise<string | null> {
+    const parent = await runGit(
+        ['rev-parse', '--verify', `${layout.refName}^{commit}`],
+        projectPath,
+        environment,
+        new Set([0, 128]),
+    );
+    return parent.exitCode === 0 ? parent.stdout.trim() : null;
+}
+
+/** Fills the snapshot's private index; writes objects but no tree, commit or ref. */
+async function stageSnapshotIndex(
+    request: CheckpointSnapshotRequest,
+    layout: CheckpointStoreLayout,
+    snapshotLayout: CheckpointStoreLayout,
+    projectPath: string,
+    environment: NodeJS.ProcessEnv,
+    parentId: string | null,
+): Promise<StagedSnapshot> {
+    const workTreeIndex = request.workTree
+        ? await copyIndexKeepingTimes(layout.indexFile, snapshotLayout.indexFile)
+        : false;
+    if (request.capturedFiles || (request.workTree && !workTreeIndex)) {
+        await runGit(['read-tree', '--empty'], projectPath, environment);
+    } else if (parentId && !request.workTree) {
+        await runGit(['read-tree', parentId], projectPath, environment);
+    }
+
+    const excludedPatterns = normalizeExcludedPatterns(request.excludedPatterns ?? []);
+    // A work tree takes its patterns as an ignore file: a glob exclude pathspec under an
+    // ignored directory (`.aplus/worktrees/**`) makes `git add` fail on the ignored parent.
+    const excludesFile = `${snapshotLayout.indexFile}.exclude`;
+    const workTreeConfig = request.workTree ? ['-c', `core.excludesFile=${excludesFile}`] : [];
+    if (request.workTree) await writeFile(excludesFile, excludedPatterns.map((pattern) => `${pattern}\n`).join(''), { mode: 0o600 });
+    const excludedPaths = normalizeExcludedPaths([
+        ...(request.excludedPaths ?? []),
+        ...(request.workTree
+            ? await unrecordedWorkTreePaths(request.workTree.maxFileBytes, workTreeConfig, projectPath, environment)
+            : []),
+    ]);
+    const capturePathspec = `${snapshotLayout.indexFile}.paths`;
+    if (request.capturedFiles) {
+        const paths = normalizeExcludedPaths(request.capturedFiles.map((file) => file.path));
+        if (paths.length > 0) {
+            await writeFile(capturePathspec, paths.map((path) => `:(top,literal)${path}\0`).join(''), { mode: 0o600 });
+            await runGit(['add', '-A', `--pathspec-from-file=${capturePathspec}`, '--pathspec-file-nul'], projectPath, environment);
+        }
+    } else await runGit([
+        ...workTreeConfig,
+        'add',
+        '-A',
+        '--',
+        '.',
+        ...excludedPaths.map((path) => `:(exclude,top,literal)${path}`),
+        ...(request.workTree ? [] : excludedPatterns.map((pattern) => `:(exclude,top,glob)${pattern}`)),
+    ], projectPath, environment, new Set([0]), request.workTree ? WORK_TREE_ADD_TIMEOUT_MS : undefined);
+    if (excludedPaths.length > 0 || excludedPatterns.length > 0) {
+        await runGit([
+            'rm',
+            '-r',
+            '-f',
+            '--cached',
+            '--ignore-unmatch',
+            '--',
+            ...excludedPaths.map((path) => `:(top,literal)${path}`),
+            ...excludedPatterns.map((pattern) => `:(top,glob)${pattern}`),
+        ], projectPath, environment);
+    }
+    return { excludedPaths };
+}
+
+/** Turns a staged index into the checkpoint commit and its refs. Runs under the store lock. */
+async function commitStagedSnapshot(
+    request: CheckpointSnapshotRequest,
+    layout: CheckpointStoreLayout,
+    snapshotLayout: CheckpointStoreLayout,
+    projectPath: string,
+    environment: NodeJS.ProcessEnv,
+    parentId: string | null,
+    staged: StagedSnapshot,
+): Promise<CheckpointSnapshotResult> {
+    const operationRef = checkpointOperationRef(snapshotLayout, request.operationId);
+    const tree = (await runGit(['write-tree'], projectPath, environment)).stdout.trim();
+    await validateCapturedTree(tree, request, projectPath, environment);
+    const body = checkpointBody({ ...request, excludedPaths: staged.excludedPaths });
+    const keepIndex = async <T>(result: T): Promise<T> => {
+        if (request.workTree) await rename(snapshotLayout.indexFile, layout.indexFile);
+        return result;
+    };
+    if (parentId) {
+        const parentTree = (await runGit(
+            ['rev-parse', `${parentId}^{tree}`],
+            projectPath,
+            environment,
+        )).stdout.trim();
+        const parentBody = (await runGit(['show', '-s', '--format=%b', parentId], projectPath, environment)).stdout;
+        if (tree === parentTree && parentBody.trim() === body) {
+            return keepIndex(await completeCheckpointRefs({
+                layout: snapshotLayout,
+                operationRef,
+                checkpointId: parentId,
+                parentId,
+                updateLatest: false,
+                projectPath,
+                environment,
+            }));
+        }
+    }
+
+    const createdAt = await nextCheckpointTimestamp(parentId, projectPath, environment);
+    const messageFile = `${snapshotLayout.indexFile}.message`;
+    await writeFile(messageFile, `saycode-checkpoint-v1 ${createdAt}\n\n${body}`, { mode: 0o600 });
+    const commitArgs = ['commit-tree', tree, '-F', messageFile, '--no-gpg-sign'];
+    const checkpointId = (await runGit(commitArgs, projectPath, environment)).stdout.trim();
+    return keepIndex(await completeCheckpointRefs({
+        layout: snapshotLayout,
+        operationRef,
+        checkpointId,
+        parentId,
+        updateLatest: true,
+        projectPath,
+        environment,
+    }));
+}
+
+async function removeSnapshotFiles(snapshotLayout: CheckpointStoreLayout): Promise<void> {
+    await rm(snapshotLayout.indexFile, { force: true });
+    await rm(`${snapshotLayout.indexFile}.paths`, { force: true });
+    await rm(`${snapshotLayout.indexFile}.message`, { force: true });
+    await rm(`${snapshotLayout.indexFile}.exclude`, { force: true });
 }
 
 async function validateCapturedTree(
@@ -363,6 +482,55 @@ async function nextCheckpointTimestamp(
     return Number.isSafeInteger(nextTimestamp)
         ? Math.max(currentTime, nextTimestamp)
         : currentTime;
+}
+
+/**
+ * Git decides whether an entry written in the same second as its index needs a content re-check
+ * from the index file's mtime, so a copy keeps the original times.
+ */
+async function copyIndexKeepingTimes(source: string, target: string): Promise<boolean> {
+    try {
+        await copyFile(source, target);
+        const times = await stat(source);
+        await utimes(target, times.atime, times.mtime);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function checkpointBody(request: CheckpointSnapshotRequest): string {
+    const trailer = checkpointCoverageTrailer(request);
+    if (!request.workTree) return trailer;
+    const record = request.workTree.record ? `saycode-record ${request.workTree.record}\n` : '';
+    return `${LOCAL_HISTORY_MARKER}\n${record}${trailer}`;
+}
+
+/**
+ * Paths a local-history record leaves out, found through the index's stat cache: nested
+ * repositories (git lists them as `dir/`, and one without a commit fails `git add`) and changed or
+ * new regular files over the cap.
+ */
+async function unrecordedWorkTreePaths(
+    maxFileBytes: number,
+    workTreeConfig: string[],
+    projectPath: string,
+    environment: NodeJS.ProcessEnv,
+): Promise<string[]> {
+    const listing = await runGit([
+        ...workTreeConfig,
+        'ls-files', '-z', '--modified', '--others', '--exclude-standard',
+    ], projectPath, environment, new Set([0]), WORK_TREE_ADD_TIMEOUT_MS);
+    const oversized: string[] = [];
+    for (const path of new Set(listing.stdout.split('\0').filter(Boolean))) {
+        if (path.endsWith('/')) {
+            oversized.push(path.slice(0, -1));
+            continue;
+        }
+        const entry = await lstat(join(projectPath, path)).catch(() => null);
+        if (entry?.isFile() && entry.size > maxFileBytes) oversized.push(path);
+    }
+    return oversized;
 }
 
 function checkpointOperationRef(layout: CheckpointStoreLayout, operationId: string): string {
@@ -539,10 +707,22 @@ async function initializeGitStore(gitDirectory: string): Promise<void> {
     environment.GIT_CONFIG_SYSTEM = process.platform === 'win32' ? 'NUL' : '/dev/null';
     environment.GIT_CONFIG_NOSYSTEM = '1';
 
-    await runGit(['init', '--bare', gitDirectory], dirname(gitDirectory), environment);
-    await mkdir(join(gitDirectory, 'indexes'), { recursive: true });
-    await mkdir(join(gitDirectory, 'bindings'), { recursive: true });
-    await writeFile(join(gitDirectory, 'info', 'exclude'), '.git/\n');
+    // Sessions that record for the first time at once race on one shared store; git init copies
+    // its templates non-atomically. Build the store aside and install it with one rename, so a loser
+    // finds a complete store instead of a half-written one.
+    const staging = await mkdtemp(join(dirname(gitDirectory), '.store-init-'));
+    try {
+        await runGit(['init', '--bare', staging], dirname(gitDirectory), environment);
+        await mkdir(join(staging, 'indexes'), { recursive: true });
+        await mkdir(join(staging, 'bindings'), { recursive: true });
+        await writeFile(join(staging, 'info', 'exclude'), '.git/\n');
+        await rename(staging, gitDirectory).catch(async (error) => {
+            if (!(error instanceof Error && 'code' in error && (error.code === 'ENOTEMPTY' || error.code === 'EEXIST'))) throw error;
+            await readFile(join(gitDirectory, 'HEAD'));
+        });
+    } finally {
+        await rm(staging, { recursive: true, force: true });
+    }
 }
 
 function runGit(
@@ -550,14 +730,15 @@ function runGit(
     cwd: string,
     environment: NodeJS.ProcessEnv,
     allowedExitCodes = new Set([0]),
+    timeout = 60_000,
 ): Promise<GitResult> {
     return new Promise((resolvePromise, rejectPromise) => {
         execFile('git', args, {
             cwd,
             env: environment,
             encoding: 'utf8',
-            maxBuffer: 10 * 1024 * 1024,
-            timeout: 60_000,
+            maxBuffer: 256 * 1024 * 1024,
+            timeout,
         }, (error, stdout, stderr) => {
             const exitCode = typeof error?.code === 'number' ? error.code : error ? -1 : 0;
             if (error && !allowedExitCodes.has(exitCode)) {
