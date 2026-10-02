@@ -439,8 +439,10 @@ export class ApiClient {
     const serverPublicKey = opts.serverPublicKey
       ? decodeBase64(opts.serverPublicKey)
       : null;
+    // A strict process never escrows, whichever mode a caller asks for.
+    const strict = opts.machineControl === 'strict' || configuration.machineControl === 'strict';
     const { dataEncryptionKey, serverDataEncryptionKey, serverRpcKeyEnvelope } =
-      buildMachineKeyEnvelopes(wrapMaterial, serverPublicKey, { escrowMachineKey: opts.machineControl !== 'strict' });
+      buildMachineKeyEnvelopes(wrapMaterial, serverPublicKey, { escrowMachineKey: !strict });
 
     // Helper to create minimal machine object for offline mode (DRY)
     const createMinimalMachine = (): Machine => this.buildOfflineMachine(opts);

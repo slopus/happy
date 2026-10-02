@@ -336,6 +336,27 @@ describe('Api server error handling', () => {
             expect(vi.mocked(buildMachineKeyEnvelopes).mock.calls.at(-1)![2]).toEqual({ escrowMachineKey: false });
         });
 
+        it('asks for no machine-key escrow from a strict process whatever the caller passes', async () => {
+            const { buildMachineKeyEnvelopes } = await import('./encryption');
+            const { configuration } = await import('@/configuration');
+            const mode = configuration as { machineControl: 'compat' | 'strict' };
+            const previous = mode.machineControl;
+            mode.machineControl = 'strict';
+            try {
+                mockPost.mockResolvedValue({ data: { machine: { id: 'test-machine', metadata: testMachineMetadata, metadataVersion: 1, daemonState: null, daemonStateVersion: 0 } } });
+
+                await api.getOrCreateMachine({ machineId: 'test-machine', metadata: testMachineMetadata });
+                await api.getOrCreateMachine({ machineId: 'test-machine', metadata: testMachineMetadata, machineControl: 'compat' });
+
+                expect(vi.mocked(buildMachineKeyEnvelopes).mock.calls.slice(-2).map((call) => call[2])).toEqual([
+                    { escrowMachineKey: false },
+                    { escrowMachineKey: false },
+                ]);
+            } finally {
+                mode.machineControl = previous;
+            }
+        });
+
         it('should retain the current daemon startup state when the server returns an existing machine', async () => {
             mockPost.mockResolvedValue({
                 data: {

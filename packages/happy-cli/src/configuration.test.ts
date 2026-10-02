@@ -73,3 +73,22 @@ describe('configuration URL fallback', () => {
     cleanup();
   });
 });
+
+/*
+ * aplus-dev-studio specs/e2ee-machine-control-boundary — the machine control
+ * mode is read once per process; anything but an explicit strict is compat.
+ */
+describe('configuration machine control mode', () => {
+  it.each([
+    [{ machineControl: 'strict' }, 'strict'],
+    [{ machineControl: 'compat' }, 'compat'],
+    [{ machineControl: 'STRICT' }, 'compat'],
+    [{}, 'compat'],
+    [undefined, 'compat'],
+  ])('reads %j as %s', async (settings, expected) => {
+    const { configuration, cleanup } = await loadConfiguration({}, settings);
+
+    expect(configuration.machineControl).toBe(expected);
+    cleanup();
+  });
+});
