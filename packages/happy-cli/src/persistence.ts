@@ -72,6 +72,12 @@ interface Settings {
    * wrap 한다(이중 수신자). 구버전 CLI 는 이 필드를 몰라도 무해하게 보존.
    */
   serverPublicKey?: string
+  /**
+   * aplus-dev-studio specs/e2ee-machine-control-boundary — 'strict' keeps the
+   * machine key from the server (`happy datakey harden`). Absent is compat.
+   * Read through configuration.machineControl.
+   */
+  machineControl?: 'compat' | 'strict'
 }
 
 const defaultSettings: Settings = {
@@ -342,7 +348,9 @@ const credentialsSchema = z.object({
   secret: z.string().base64().nullish(), // Legacy
   encryption: z.object({
     publicKey: z.string().base64(),
-    machineKey: z.string().base64()
+    machineKey: z.string().base64(),
+    // Read leniently: an unexpected value must not cost the whole credential.
+    neverEscrowed: z.boolean().optional()
   }).nullish()
 })
 
@@ -358,7 +366,13 @@ export type Credentials = {
      */
     provisioned?: { publicKey: Uint8Array, machineKey: Uint8Array }
   } | {
-    type: 'dataKey', publicKey: Uint8Array, machineKey: Uint8Array
+    type: 'dataKey', publicKey: Uint8Array, machineKey: Uint8Array,
+    /**
+     * aplus-dev-studio specs/e2ee-machine-control-boundary R4 — set only on a
+     * key generated under strict machine control, which the server has never
+     * been sent. Absent means the server may hold a copy.
+     */
+    neverEscrowed?: true
   }
 }
 
@@ -391,7 +405,8 @@ export function parseCredentials(raw: unknown): Credentials | null {
         encryption: {
           type: 'dataKey',
           publicKey: new Uint8Array(Buffer.from(credentials.encryption.publicKey, 'base64')),
-          machineKey: new Uint8Array(Buffer.from(credentials.encryption.machineKey, 'base64'))
+          machineKey: new Uint8Array(Buffer.from(credentials.encryption.machineKey, 'base64')),
+          ...(credentials.encryption.neverEscrowed === true ? { neverEscrowed: true as const } : {})
         }
       }
     }
@@ -449,6 +464,28 @@ export async function writeCredentialsDataKey(credentials: { publicKey: Uint8Arr
     encryption: { publicKey: encodeBase64(credentials.publicKey), machineKey: encodeBase64(credentials.machineKey) },
     token: credentials.token
   }, null, 2));
+}
+
+/**
+ * Replaces access.key with dataKey credentials in one rename, so a crash leaves
+ * the old file or the new one and never half of either.
+ */
+export async function replaceCredentialsDataKey(credentials: {
+  publicKey: Uint8Array, machineKey: Uint8Array, token: string, neverEscrowed?: boolean
+}): Promise<void> {
+  if (!existsSync(configuration.happyHomeDir)) {
+    await mkdir(configuration.happyHomeDir, { recursive: true, mode: PRIVATE_DIR_MODE })
+  }
+  const tmp = `${configuration.privateKeyFile}.tmp`
+  await writePrivateFile(tmp, JSON.stringify({
+    encryption: {
+      publicKey: encodeBase64(credentials.publicKey),
+      machineKey: encodeBase64(credentials.machineKey),
+      ...(credentials.neverEscrowed ? { neverEscrowed: true } : {})
+    },
+    token: credentials.token
+  }, null, 2));
+  await rename(tmp, configuration.privateKeyFile);
 }
 
 /**

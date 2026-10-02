@@ -345,6 +345,44 @@ describe('parseCredentials', () => {
         expect(parseCredentials({ token: 't' })).toBeNull();
         expect(parseCredentials('nonsense')).toBeNull();
     });
+
+    /*
+     * aplus-dev-studio specs/e2ee-machine-control-boundary R4 — only a key
+     * recorded as never escrowed is spared a strict-mode rotation; a file that
+     * says nothing counts as escrowed.
+     */
+    it('keeps the never-escrowed mark of a dataKey file and assumes nothing without it', async () => {
+        const { parseCredentials } = await import('./persistence');
+        const encryption = {
+            publicKey: Buffer.alloc(32, 2).toString('base64'),
+            machineKey: Buffer.alloc(32, 3).toString('base64'),
+        };
+        const marked = parseCredentials({ token: 't', encryption: { ...encryption, neverEscrowed: true } });
+        const unmarked = parseCredentials({ token: 't', encryption });
+
+        const contradicted = parseCredentials({ token: 't', encryption: { ...encryption, neverEscrowed: false } });
+
+        expect(marked!.encryption).toMatchObject({ type: 'dataKey', neverEscrowed: true });
+        expect(unmarked!.encryption).not.toHaveProperty('neverEscrowed');
+        expect(contradicted!.encryption).not.toHaveProperty('neverEscrowed');
+    });
+});
+
+describe('replaceCredentialsDataKey', () => {
+    it('replaces access.key owner-only, carrying the never-escrowed mark only when set', async () => {
+        const { readCredentials, replaceCredentialsDataKey } = await import('./persistence');
+        const machineKey = new Uint8Array(Buffer.alloc(32, 4));
+        const publicKey = new Uint8Array(Buffer.alloc(32, 5));
+
+        await replaceCredentialsDataKey({ token: 't', publicKey, machineKey, neverEscrowed: true });
+        expect((await readCredentials())!.encryption).toEqual({ type: 'dataKey', publicKey, machineKey, neverEscrowed: true });
+        if (process.platform !== 'win32') {
+            expect(statSync(configuration.privateKeyFile).mode & 0o777).toBe(0o600);
+        }
+
+        await replaceCredentialsDataKey({ token: 't', publicKey, machineKey });
+        expect(JSON.parse(readFileSync(configuration.privateKeyFile, 'utf8')).encryption).not.toHaveProperty('neverEscrowed');
+    });
 });
 
 describe('serializeProvisionedLegacyCredentials', () => {
