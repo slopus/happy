@@ -110,7 +110,7 @@ import {
 import { PreviewWsProxy } from '@/daemon/previewWsProxy';
 import { startServerProcess, StartServerError } from '@/daemon/startServer';
 import packageJson from '../../package.json';
-import { AUTOMATION_PROTOCOL_VERSION } from '@slopus/happy-wire';
+import { AUTOMATION_PROTOCOL_VERSION, type AuthenticatedEnvelopesCapability } from '@slopus/happy-wire';
 import { stopServerProcess, StopServerError } from '@/daemon/stopServer';
 import { createPtySession } from '@/daemon/remoteTerminal';
 import { decideTerminalCwd, formatCwdFallbackBanner } from '@/daemon/decideTerminalCwd';
@@ -704,6 +704,7 @@ export class ApiMachineClient {
     private autonomousQualityGateRpcAvailable = false;
     private lastKnownAutonomousQualityGateRpcAvailable: boolean | null = null;
     private automationKey: MachineAutomationKey | null = null;
+    private authenticatedEnvelopeSender: Uint8Array | null = null;
     /** Set once the daemon can resolve projects to workspaces. */
     private lessonHosts: LessonHostSupervisor | null = null;
     private automationProtocolVersion: number = AUTOMATION_PROTOCOL_VERSION;
@@ -2258,6 +2259,28 @@ export class ApiMachineClient {
         this.persistAutomationKeyVersion = persistVersion;
     }
 
+    /**
+     * aplus-dev-studio specs/e2ee-machine-control-boundary R12/R15 — the sender this daemon
+     * trusts for automations, follow-ups and scripts, or null when it has none (legacy
+     * credentials). With one, the machine metadata tells clients to seal with it, and to
+     * which automation key; the metadata is encrypted with the machine key, so a server
+     * without that key can neither read nor forge the advertisement.
+     */
+    setAuthenticatedEnvelopeSender(publicKey: Uint8Array | null): void {
+        this.authenticatedEnvelopeSender = publicKey;
+    }
+
+    private authenticatedEnvelopesField(): { authenticatedEnvelopes?: AuthenticatedEnvelopesCapability } {
+        if (!this.automationKey || !this.authenticatedEnvelopeSender) return {};
+        return {
+            authenticatedEnvelopes: {
+                version: 1,
+                automationPublicKey: Buffer.from(this.automationKey.publicKey).toString('base64'),
+                trustedSenderPublicKey: Buffer.from(this.authenticatedEnvelopeSender).toString('base64'),
+            },
+        };
+    }
+
     setServerAutomationCache(cache: ServerAutomationCache): void {
         this.serverAutomationCache = cache;
     }
@@ -3083,6 +3106,7 @@ export class ApiMachineClient {
                 sessionFollowup: true,
                 protocolVersion: this.automationProtocolVersion,
                 ...this.automationHostCommandsField(),
+                ...this.authenticatedEnvelopesField(),
             },
         }));
     }
@@ -3948,6 +3972,7 @@ export class ApiMachineClient {
                         sessionFollowup: true,
                         protocolVersion: this.automationProtocolVersion,
                         ...this.automationHostCommandsField(),
+                        ...this.authenticatedEnvelopesField(),
                     },
                     autonomousQualityGateSupport: {
                         apiVersion: 1,

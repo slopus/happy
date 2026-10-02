@@ -1315,6 +1315,40 @@ describe('ApiMachineClient socket reconnection', () => {
         client.shutdown();
     });
 
+    // aplus-dev-studio specs/e2ee-machine-control-boundary R12/R15 — a client seals for this
+    // daemon with a sender only when it says so, and only to the automation key it publishes.
+    it.each([
+        { sender: true },
+        { sender: false },
+    ])('publishes the authenticated-envelope capability only with a trusted sender (sender=$sender)', async ({ sender }) => {
+        mockSocket.emitWithAck.mockImplementation(async (event: string, data: any) => {
+            if (event === 'automation-key-register') return { ok: true, value: { keyVersion: 4 } };
+            if (event === 'machine-update-metadata') {
+                return { result: 'success', version: 1, metadata: data.metadata };
+            }
+            return { result: 'success' };
+        });
+        const machine = makeMachine();
+        const client = new ApiMachineClient('fake-token', machine);
+        (client as any).setAutomationKey({
+            version: 1,
+            publicKey: new Uint8Array(32).fill(7),
+            secretKey: new Uint8Array(32).fill(8),
+            registeredKeyVersion: 3,
+        }, vi.fn());
+        if (sender) client.setAuthenticatedEnvelopeSender(new Uint8Array(32).fill(9));
+        client.connect();
+
+        socketHandlers.connect![0]!();
+        await vi.waitFor(() => expect(machine.metadata?.automationSupport?.serverBacked).toBe(true));
+        expect(machine.metadata?.automationSupport?.authenticatedEnvelopes).toEqual(sender ? {
+            version: 1,
+            automationPublicKey: Buffer.from(new Uint8Array(32).fill(7)).toString('base64'),
+            trustedSenderPublicKey: Buffer.from(new Uint8Array(32).fill(9)).toString('base64'),
+        } : undefined);
+        client.shutdown();
+    });
+
     it('opens the legacy scheduler only after an explicit feature-disabled response', async () => {
         mockSocket.emitWithAck.mockImplementation(async (event: string) => {
             if (event === 'automation-key-register') return { ok: false, error: 'feature-disabled' };
