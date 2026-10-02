@@ -231,6 +231,7 @@ export const MachineMetadataSchema = z.object({
         keyVersion: z.number().int().min(1).optional(),
         sessionFollowup: z.literal(true).optional(),
         protocolVersion: z.number().int().min(1).optional(),
+        hostCommands: z.boolean().optional(),
     }).optional(),
 });
 

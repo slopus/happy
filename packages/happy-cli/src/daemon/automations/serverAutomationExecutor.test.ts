@@ -4059,3 +4059,60 @@ describe('runServerAutomationTick', () => {
     expect(store.state().githubTriggers?.[0]?.state.pending).toHaveLength(1)
   })
 })
+
+// Windows 정식 빌드의 데몬은 세션만 Job 런처로 묶을 수 있다. 스크립트 조건과
+// GitHub 트리거는 Job 밖에서 cmd·gh·git 을 띄우므로 실행 대신 사유를 남긴다.
+describe('host commands disallowed (Windows standalone runtime)', () => {
+  const claimed = { claim: { ok: true, value: { runId: 'run-1', claimToken: 'claim-token' } } }
+
+  it('still spawns a prompt-only scheduled session', async () => {
+    const fixture = setup(claimed)
+    fixture.input.hostCommandsAllowed = false
+
+    await expect(runServerAutomationTick(fixture.input)).resolves.toEqual([
+      { automationId: 'automation-1', outcome: 'WOKE' },
+    ])
+    expect(fixture.spawnSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports a script-gated automation as unsupported without running the script', async () => {
+    const fixture = setup(claimed)
+    fixture.input.hostCommandsAllowed = false
+    fixture.input.decryptPayload = vi.fn(() => ({
+      name: 'name', schedule: { kind: 'interval' as const, minutes: 15 }, prompt: 'prompt',
+      directory: '/repo', scriptCommand: 'check-if-needed', suppressSilent: false, agent: 'claude' as const,
+    }))
+
+    await runServerAutomationTick(fixture.input)
+
+    expect(fixture.runScript).not.toHaveBeenCalled()
+    expect(fixture.spawnSession).not.toHaveBeenCalled()
+    expect(fixture.transport.report).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'FAILED', outcome: 'ERROR', sessionId: null, failureCode: 'HOST_COMMANDS_UNSUPPORTED',
+    }))
+  })
+
+  it('reports a GitHub trigger as unsupported without querying GitHub or preparing a worktree', async () => {
+    const fixture = setup(claimed)
+    fixture.input.hostCommandsAllowed = false
+    fixture.input.decryptPayload = vi.fn(() => ({
+      name: 'PR review', schedule: { kind: 'github' as const, minutes: 15 as const }, prompt: 'Review',
+      directory: '/repo', scriptCommand: null, suppressSilent: false, agent: 'claude' as const,
+      githubTrigger: {
+        event: 'opened' as const,
+        filter: { baseBranch: null, label: null, excludeDraft: false, authors: [], paths: [] },
+        action: 'start-session' as const,
+        githubCredentialId: null,
+      },
+    }))
+
+    await runServerAutomationTick(fixture.input)
+
+    expect(fixture.queryGithubPullRequests).not.toHaveBeenCalled()
+    expect(fixture.prepareGithubWorktree).not.toHaveBeenCalled()
+    expect(fixture.spawnSession).not.toHaveBeenCalled()
+    expect(fixture.transport.report).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'FAILED', outcome: 'ERROR', sessionId: null, failureCode: 'HOST_COMMANDS_UNSUPPORTED',
+    }))
+  })
+})

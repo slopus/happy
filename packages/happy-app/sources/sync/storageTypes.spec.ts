@@ -64,6 +64,19 @@ describe('MachineMetadataSchema', () => {
             protocolVersion: 4,
         });
     });
+
+    it('keeps the Windows session-only automation flag instead of stripping it', () => {
+        const metadata = MachineMetadataSchema.parse({
+            host: 'win-host',
+            platform: 'win32',
+            happyCliVersion: '1.2.3',
+            happyHomeDir: 'C:\\Users\\u\\.happy',
+            homeDir: 'C:\\Users\\u',
+            automationSupport: { rpcAvailable: false, serverBacked: true, keyVersion: 1, hostCommands: false },
+        });
+
+        expect(metadata.automationSupport?.hostCommands).toBe(false);
+    });
 });
 
 describe('AgentGoalStatusSchema', () => {

@@ -1213,6 +1213,36 @@ describe('ApiMachineClient socket reconnection', () => {
         client.shutdown();
     });
 
+    // Windows 정식 빌드는 세션만 Job 런처로 묶는다. Desktop 이 스크립트·GitHub 트리거를
+    // 막을 수 있도록 서버 자동화 광고에 hostCommands:false 를 싣는다.
+    it.each([
+        { trial: true, expected: false },
+        { trial: false, expected: undefined },
+    ])('advertises hostCommands=$expected with server-backed automations (trial=$trial)', async ({ trial, expected }) => {
+        mockSocket.emitWithAck.mockImplementation(async (event: string, data: any) => {
+            if (event === 'automation-key-register') return { ok: true, value: { keyVersion: 4 } };
+            if (event === 'machine-update-metadata') {
+                return { result: 'success', version: 1, metadata: data.metadata };
+            }
+            return { result: 'success' };
+        });
+        const machine = makeMachine();
+        const client = new ApiMachineClient('fake-token', machine);
+        if (trial) client.setWindowsStandaloneTrial();
+        (client as any).setAutomationKey({
+            version: 1,
+            publicKey: new Uint8Array(32).fill(7),
+            secretKey: new Uint8Array(32).fill(8),
+            registeredKeyVersion: 3,
+        }, vi.fn());
+        client.connect();
+
+        socketHandlers.connect![0]!();
+        await vi.waitFor(() => expect(machine.metadata?.automationSupport?.serverBacked).toBe(true));
+        expect(machine.metadata?.automationSupport?.hostCommands).toBe(expected);
+        client.shutdown();
+    });
+
     it('opens the legacy scheduler only after an explicit feature-disabled response', async () => {
         mockSocket.emitWithAck.mockImplementation(async (event: string) => {
             if (event === 'automation-key-register') return { ok: false, error: 'feature-disabled' };

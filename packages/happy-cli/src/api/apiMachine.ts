@@ -3043,6 +3043,11 @@ export class ApiMachineClient {
         this.serverAutomationSyncInFlight = sync;
     }
 
+    /** The Windows standalone runtime fences sessions only; script gates and GitHub triggers run outside its Job. */
+    private automationHostCommandsField(): { hostCommands?: false } {
+        return this.windowsStandaloneTrial ? { hostCommands: false } : {};
+    }
+
     private async registerAutomationKey(): Promise<void> {
         this.automationLegacyFallbackEnabled = false;
         const key = this.automationKey;
@@ -3075,6 +3080,7 @@ export class ApiMachineClient {
                 keyVersion,
                 sessionFollowup: true,
                 protocolVersion: this.automationProtocolVersion,
+                ...this.automationHostCommandsField(),
             },
         }));
     }
@@ -3938,6 +3944,7 @@ export class ApiMachineClient {
                         ...(this.automationServerKeyVersion !== null ? { keyVersion: this.automationServerKeyVersion } : {}),
                         sessionFollowup: true,
                         protocolVersion: this.automationProtocolVersion,
+                        ...this.automationHostCommandsField(),
                     },
                     autonomousQualityGateSupport: {
                         apiVersion: 1,

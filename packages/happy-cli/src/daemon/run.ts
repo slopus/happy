@@ -4216,7 +4216,10 @@ export async function startDaemon(): Promise<void> {
     if (!standaloneWindows) await apiMachine.setLessonHosts(lessonHosts);
     apiMachine.setServerAutomationCache(serverAutomationCache);
     const serverAutomationTickRunner = createAutomationTickRunner({
-      runTick: () => standaloneWindows ? Promise.resolve() : runServerAutomationTick({
+      // Windows standalone: sessions launch through the verified Job owner, so scheduled
+      // sessions run; script gates and GitHub triggers would spawn unfenced cmd/gh/git.
+      runTick: () => runServerAutomationTick({
+        hostCommandsAllowed: !standaloneWindows,
         cache: serverAutomationCache,
         runtimeStore: serverAutomationRuntimeStore,
         machineSecretKey: machineAutomationKey.secretKey,

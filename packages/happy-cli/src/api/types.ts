@@ -163,6 +163,8 @@ export const MachineMetadataSchema = z.object({
     keyVersion: z.number().int().min(1).optional(),
     sessionFollowup: z.literal(true).optional(),
     protocolVersion: z.number().int().min(1).optional(),
+    /** false: 스크립트 조건·GitHub 트리거처럼 Job 밖 명령이 필요한 자동화는 실행하지 않는다(Windows 정식 빌드). */
+    hostCommands: z.boolean().optional(),
   }).optional(),
   /**
    * External messenger channel support (Saycode specs/desktop-messenger-channels).
