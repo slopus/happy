@@ -13,6 +13,7 @@ import type { AiAuthSelection } from '@/daemon/sessionEnv';
 import type { ReconnectSessionEnvironment } from '@/daemon/reconnectSessionEnv';
 import type { AiAuthSource } from '@/usage/aiAuthSource';
 import { validatePath } from './pathSecurity';
+import { isStrictlyGuardedPath } from './happyHomeGuard';
 import { ensureDirectory } from './ensureDirectory';
 import { createIgnoreMatcher } from './ignorePresets';
 import {
@@ -652,6 +653,15 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, wor
     // silently ignore workspaceRoot and execute a machine-wide read.
     for (const operation of ['listWorkspaceDirectory', 'readWorkspaceFile'] as const) {
         rpcHandlerManager.registerHandler<{ workspaceRoot: string; path: string }, object>(operation, async (data) => {
+            // aplus-dev-studio specs/e2ee-machine-control-boundary R11. Checked here
+            // rather than in workspaceFileBoundary, which also runs outside the CLI.
+            if ([data?.workspaceRoot, data?.path].some((path) => typeof path === 'string' && isStrictlyGuardedPath(path))) {
+                return {
+                    success: false,
+                    error: 'Workspace path is in the happy home directory, which strict machine control keeps out of reach',
+                    errorCode: 'WORKSPACE_PATH_DENIED',
+                };
+            }
             try {
                 if (operation === 'listWorkspaceDirectory') {
                     return { success: true, entries: await listWorkspaceDirectory(workingDirectory, data.workspaceRoot, data.path) };
