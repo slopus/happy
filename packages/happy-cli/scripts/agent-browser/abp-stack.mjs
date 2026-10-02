@@ -828,9 +828,12 @@ export function createStack(deps) {
         profiles: options.profiles.map(({ profileId, principalId, networkSlot, assignmentId }) => {
           let running = false;
           try { running = containerState(plan.browsers.find((b) => b.profileId === profileId).container) === "running"; } catch {}
-          return { profileId, principalId, networkSlot, assignmentId, volume: profileVolumeName(profileId, principalId), running };
+          // A re-added user keeps their removal time (their chats from before stay retired): shown here, not as removed.
+          const removal = (options.profileTombstones ?? []).find((entry) => entry.principalId === principalId);
+          return { profileId, principalId, networkSlot, assignmentId, volume: profileVolumeName(profileId, principalId), running, ...removal ? { removedAtMs: removal.removedAtMs } : {} };
         }),
-        removed: (options.profileTombstones ?? []).map(({ principalId, removedAtMs }) => ({ principalId, removedAtMs, blocked: removedAtMs === Number.MAX_SAFE_INTEGER })),
+        removed: (options.profileTombstones ?? []).filter(({ principalId }) => !options.profiles.some((profile) => profile.principalId === principalId))
+          .map(({ principalId, removedAtMs }) => ({ principalId, removedAtMs, blocked: removedAtMs === Number.MAX_SAFE_INTEGER })),
         capacity: { max: MAX_SHARED_PROFILES, used: options.profiles.length },
       };
     },
@@ -1420,7 +1423,7 @@ export async function main(argv, deps = systemDeps()) {
       const list = stack.listProfiles();
       if (args.includes("--json")) console.log(JSON.stringify(list, null, 2));
       else {
-        for (const p of list.profiles) console.log(`${p.profileId}  ${p.principalId}  slot ${p.networkSlot}  ${p.running ? "running" : "stopped"}  ${p.volume}`);
+        for (const p of list.profiles) console.log(`${p.profileId}  ${p.principalId}  slot ${p.networkSlot}  ${p.running ? "running" : "stopped"}  ${p.volume}${p.removedAtMs ? `  (re-added; chats before ${new Date(p.removedAtMs).toISOString()} need a new chat)` : ""}`);
         for (const r of list.removed) console.log(`removed  ${r.principalId}${r.blocked ? "  (blocked)" : ""}`);
         console.log(`${list.capacity.used}/${list.capacity.max} profiles`);
       }

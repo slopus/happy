@@ -1335,6 +1335,15 @@ describe('shared machine profiles (add-profile, remove-profile)', () => {
         expect(list.removed).toEqual([{ principalId: 'user-2', removedAtMs: 1_000_000, blocked: false }])
         expect(list.capacity).toMatchObject({ max: 8 })
     })
+
+    it('shows a re-added user as active with their earlier removal, not as removed', async () => {
+        const host = fakeHost({ shared: [['user-1', 0], ['user-2', 2]], serviceActive: true })
+        await createStack(host.deps).removeProfile('user-2')
+        await createStack(host.deps).addProfile('user-2')
+        const list = createStack(host.deps).listProfiles()
+        expect(list.removed).toEqual([])
+        expect(list.profiles.find((p: any) => p.principalId === 'user-2')).toMatchObject({ removedAtMs: 1_000_000 })
+    })
 })
 
 describe('first-use profile requests (the abp-stack service)', () => {
