@@ -4159,7 +4159,9 @@ export async function startDaemon(): Promise<void> {
             approvedPrivateOrigins: z.array(z.string()) }).parse(response);
         };
         const worker = createScriptAutomationWorker({ machineId, accountId: profile.id,
-          machineSecretKey: machineAutomationKey.secretKey, image, directory: join(directory, 'outbox'), request,
+          machineSecretKey: machineAutomationKey.secretKey, trust: payloadTrust,
+          onUnauthenticated: (what) => recordUnauthenticated(what),
+          image, directory: join(directory, 'outbox'), request,
           recoverContainers: () => recoverManagedScriptContainers({ ownerId, directory: temporaryRoot }),
           execute: (input) => runManagedScript({ ...input, ownerId, temporaryRoot }),
           authorizeStart: async (_record, runId, token) => (await authorize(runId, token)).executionProof,

@@ -7,9 +7,12 @@ import nacl from 'tweetnacl';
 import { decryptScriptValue, encryptScriptValue, type ScriptAutomationPayload } from '@slopus/happy-wire';
 import { createScriptAutomationWorker, ScriptRequestError } from './scriptAutomationWorker';
 import type { ManagedScriptInput, ManagedScriptResult } from './managedScriptRunner';
+import type { PayloadTrust } from './payloadTrust';
 
 let directory: string;
 const pair = nacl.box.keyPair();
+const company = nacl.box.keyPair();
+const trust = (mode: 'compat' | 'strict'): PayloadTrust => ({ mode, customerPublicKey: company.publicKey, machineAutomationPublicKey: pair.publicKey });
 const source = 'console.log("collected")';
 const payload: ScriptAutomationPayload = { version: 3, name: 'Collect', schedule: null, externalEnabled: false, inputSchema: {},
   action: { kind: 'script', runtime: 'node', artifactId: 'artifact', digest: createHash('sha256').update(source).digest('hex'),
@@ -48,7 +51,7 @@ function setup(options: Partial<Parameters<typeof createScriptAutomationWorker>[
   const recoverContainers = vi.fn(async () => {});
   const log = vi.fn();
   const worker = createScriptAutomationWorker({ machineId: 'machine', accountId: 'account', machineSecretKey: pair.secretKey,
-    image: 'sha256:' + 'a'.repeat(64), directory, request, execute, recoverContainers, log, ...options });
+    trust: trust('compat'), image: 'sha256:' + 'a'.repeat(64), directory, request, execute, recoverContainers, log, ...options });
   return { worker, request, execute, recoverContainers, log };
 }
 it('verifies encrypted code, starts the claimed snapshot and reports encrypted logs without creating an agent', async () => {
@@ -220,4 +223,58 @@ it('surfaces transient validation-report failures instead of silently discarding
   });
   await expect(worker.tick()).rejects.toThrow('SCRIPT_STORAGE_UNAVAILABLE');
   expect(execute).not.toHaveBeenCalled();
+});
+
+/*
+ * aplus-dev-studio specs/e2ee-machine-control-boundary R13/R14 — whose code the
+ * worker runs. The run input is sealed by the server itself and is checked
+ * against the signed input schema instead (R16).
+ */
+function sealedBy(sender?: nacl.BoxKeyPair) {
+  const sealWith = (value: unknown, resourceId: string, purpose: 'configuration' | 'artifact') => encryptScriptValue({ value,
+    context: { projectId: 'project', resourceId, purpose }, viewerPublicKey: pair.publicKey, machinePublicKey: pair.publicKey,
+    ...(sender ? { sender } : {}) });
+  const encrypted = sealWith(payload, 'collect', 'configuration');
+  const artifact = { ...record.artifact, encrypted: sealWith({ source }, 'artifact', 'artifact') };
+  const runClaim = { ...claim, run: { ...claim.run, snapshot: { ...claim.run.snapshot, payloadCiphertext: JSON.stringify(encrypted) } } };
+  let claimed = false;
+  return vi.fn(async (method: string, path: string, _body?: unknown): Promise<unknown> => {
+    if (method === 'GET' && path.endsWith('/artifact')) return { encrypted, admission, artifact };
+    if (method === 'GET') return { automations: [metadata], nextCursor: null };
+    if (path.endsWith('/claim')) {
+      if (claimed) return { claim: null, artifact: null };
+      claimed = true; return { claim: runClaim, artifact };
+    }
+    return { ok: true };
+  });
+}
+
+it('runs code the customer key sealed under strict machine control', async () => {
+  const { worker, execute } = setup({ request: sealedBy(company), trust: trust('strict') });
+  await worker.tick();
+  expect(execute).toHaveBeenCalledOnce();
+});
+
+it('runs code the agent tool sealed with this machine\'s own automation key', async () => {
+  const { worker, execute } = setup({ request: sealedBy(pair), trust: trust('strict') });
+  await worker.tick();
+  expect(execute).toHaveBeenCalledOnce();
+});
+
+it('refuses anonymously sealed code under strict machine control and never claims it', async () => {
+  const request = sealedBy();
+  const { worker, execute, log } = setup({ request, trust: trust('strict') });
+  await worker.tick();
+  expect(request).toHaveBeenCalledWith('POST', '/v1/machines/machine/script-automations/automation/validation-failed', { revision: 1 });
+  expect(request.mock.calls.some((call) => String(call[1]).endsWith('/claim'))).toBe(false);
+  expect(execute).not.toHaveBeenCalled();
+  expect(log).toHaveBeenCalledWith('Script revision validation failed: automation@1 (PAYLOAD_SENDER_ANONYMOUS)');
+});
+
+it('refuses code sealed by a sender it does not trust, even in compat', async () => {
+  const request = sealedBy(nacl.box.keyPair());
+  const { worker, execute, log } = setup({ request });
+  await worker.tick();
+  expect(execute).not.toHaveBeenCalled();
+  expect(log).toHaveBeenCalledWith('Script revision validation failed: automation@1 (PAYLOAD_SENDER_UNTRUSTED)');
 });
