@@ -5,6 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { z } from 'zod';
 import { resolveExcludedPathDecision } from './checkpointProtection';
 import { resolveCheckpointStoreLayout } from './checkpointStore';
+import { CheckpointRefreshRejectedError, checkpointRecoveryRevision, checkpointRecoveryDetailSchema, type CheckpointRecoveryDetail } from './checkpointRecovery';
 
 const identifierSchema = z.string().min(1).max(128).refine(
     (value) => value.trim() === value && !/[\u0000-\u001F\u007F]/.test(value),
@@ -46,6 +47,7 @@ const persistedStateSchema = z.object({
 }).strict();
 
 export type CheckpointPendingDecision = z.infer<typeof pendingDecisionSchema> & {
+    diagnostic?: CheckpointRecoveryDetail;
     warnings: {
         partialExecutionPossible: true;
         externalSideEffectsMayRepeat: true;
@@ -66,7 +68,7 @@ type Binding = {
     projectPath: string;
 };
 
-type ReportPendingRequest = Binding & z.infer<typeof pendingDecisionSchema>;
+type ReportPendingRequest = Binding & z.infer<typeof pendingDecisionSchema> & { diagnostic?: CheckpointRecoveryDetail };
 type ResolveDecisionRequest = Binding & {
     operationId: string;
     decision: 'cancel' | 'disable-protection';
@@ -83,7 +85,16 @@ export class CheckpointProtectionStateStore {
     async read(binding: Binding): Promise<CheckpointProtectionDecisionStatus> {
         const canonical = await canonicalBinding(binding);
         const persisted = await readPersisted(this.stateFile(canonical), canonical);
-        return publicStatus(persisted);
+        const result = publicStatus(persisted);
+        if (result.pendingDecision) {
+            try {
+                const detail = JSON.parse(await readFile(`${this.stateFile(canonical)}.diagnostic`, 'utf8'));
+                if (detail.revision === checkpointRecoveryRevision(result.pendingDecision)) {
+                    result.pendingDecision.diagnostic = checkpointRecoveryDetailSchema.parse(detail.diagnostic);
+                }
+            } catch {}
+        }
+        return result;
     }
 
     async reportPending(request: ReportPendingRequest): Promise<CheckpointProtectionDecisionStatus> {
@@ -94,7 +105,7 @@ export class CheckpointProtectionStateStore {
             excluded: request.excluded,
         });
         assertUniquePaths(pendingDecision.excluded);
-        return this.update(canonical, (current) => current.protection.status === 'unavailable'
+        const status = await this.update(canonical, (current) => current.protection.status === 'unavailable'
             ? current
             : {
                 ...current,
@@ -104,6 +115,13 @@ export class CheckpointProtectionStateStore {
                         .sort((left, right) => left.path.localeCompare(right.path)),
                 },
             });
+        if (request.diagnostic && status.pendingDecision?.operationId === request.operationId) {
+            await writeAtomic(`${this.stateFile(canonical)}.diagnostic`, {
+                revision: checkpointRecoveryRevision(status.pendingDecision),
+                diagnostic: checkpointRecoveryDetailSchema.parse(request.diagnostic),
+            });
+        }
+        return status;
     }
 
     async resolveDecision(request: ResolveDecisionRequest): Promise<CheckpointProtectionDecisionStatus> {
@@ -120,6 +138,76 @@ export class CheckpointProtectionStateStore {
                 protection: resolved.protection,
                 pendingDecision: null,
             };
+        });
+    }
+
+    async refreshPending(
+        request: Binding & { operationId: string; revision: string; requestId: string },
+        restart: () => Promise<void>,
+    ): Promise<'refreshed' | 'outcome-unknown'> {
+        identifierSchema.parse(request.requestId);
+        const canonical = await canonicalBinding(request);
+        const stateFile = this.stateFile(canonical);
+        const journalFile = `${stateFile}.refresh`;
+        const journalSchema = z.object({
+                schemaVersion: z.literal(1), operationId: identifierSchema,
+                requestId: identifierSchema, revision: z.string().regex(/^[a-f0-9]{64}$/),
+                status: z.enum(['prepared', 'completed', 'failed']),
+                ownerPid: z.number().int().positive().optional(), restartSettled: z.boolean().optional(),
+            }).strict();
+        const prepared = { schemaVersion: 1, operationId: request.operationId, revision: request.revision,
+            requestId: request.requestId, status: 'prepared', ownerPid: process.pid, restartSettled: false };
+        const outcome = await withFileLock<'refreshed' | 'outcome-unknown' | 'start'>(`${stateFile}.lock`, async () => {
+            let journal: z.infer<typeof journalSchema> | null = null;
+            try {
+                journal = journalSchema.parse(JSON.parse(await readFile(journalFile, 'utf8')));
+            } catch (error) {
+                if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+            }
+            const current = await readPersisted(stateFile, canonical);
+            if (journal?.requestId === request.requestId) {
+                if (journal.operationId !== request.operationId || journal.revision !== request.revision) {
+                    throw new Error('checkpoint refresh request mismatch');
+                }
+                if (journal.status === 'prepared') return 'outcome-unknown';
+                if (journal.status === 'completed') {
+                    if (current.pendingDecision?.operationId === request.operationId
+                        && checkpointRecoveryRevision({ ...current.pendingDecision, warnings: WARNINGS }) === request.revision) {
+                        await writeAtomic(stateFile, { ...current, pendingDecision: null });
+                    }
+                    return 'refreshed';
+                }
+            }
+            const pending = current.pendingDecision;
+            if (current.protection.status !== 'protected' || !pending
+                || pending.operationId !== request.operationId
+                || checkpointRecoveryRevision({ ...pending, warnings: WARNINGS }) !== request.revision) {
+                throw new Error('checkpoint recovery revision mismatch');
+            }
+            if (pending.source !== 'policy-drift') throw new Error('checkpoint excluded write requires explicit cancellation');
+            if (journal?.status === 'prepared' && (journal.operationId === request.operationId
+                || (!journal.restartSettled && (journal.ownerPid === undefined || isProcessAlive(journal.ownerPid))))) {
+                return 'outcome-unknown';
+            }
+            await writeAtomic(journalFile, prepared);
+            return 'start';
+        });
+        if (outcome !== 'start') return outcome;
+        try {
+            await restart();
+        } catch (error) {
+            await withFileLock(`${stateFile}.lock`, () => writeAtomic(journalFile, { ...prepared,
+                status: error instanceof CheckpointRefreshRejectedError ? 'failed' : 'prepared', restartSettled: true }));
+            throw error;
+        }
+        return withFileLock<'refreshed'>(`${stateFile}.lock`, async () => {
+            const current = await readPersisted(stateFile, canonical);
+            await writeAtomic(journalFile, { ...prepared, status: 'completed', restartSettled: true });
+            if (current.pendingDecision?.operationId === request.operationId
+                && checkpointRecoveryRevision({ ...current.pendingDecision, warnings: WARNINGS }) === request.revision) {
+                await writeAtomic(stateFile, { ...current, pendingDecision: null });
+            }
+            return 'refreshed';
         });
     }
 
@@ -206,7 +294,7 @@ function assertUniquePaths(excluded: Array<{ path: string }>): void {
 
 async function writeAtomic(
     stateFile: string,
-    state: z.infer<typeof persistedStateSchema>,
+    state: unknown,
 ): Promise<void> {
     await mkdir(dirname(stateFile), { recursive: true, mode: 0o700 });
     const temporaryFile = `${stateFile}.${randomUUID()}.tmp`;
@@ -231,6 +319,11 @@ async function writeAtomic(
     }
 }
 
+function isProcessAlive(pid: number): boolean {
+    try { process.kill(pid, 0); return true; }
+    catch (error) { return !(error instanceof Error && 'code' in error && error.code === 'ESRCH'); }
+}
+
 async function withFileLock<T>(lockFile: string, action: () => Promise<T>): Promise<T> {
     await mkdir(dirname(lockFile), { recursive: true, mode: 0o700 });
     const token = randomUUID();
@@ -239,7 +332,7 @@ async function withFileLock<T>(lockFile: string, action: () => Promise<T>): Prom
         try {
             const candidate = await open(lockFile, 'wx', 0o600);
             try {
-                await candidate.writeFile(token);
+                await candidate.writeFile(JSON.stringify({ token, pid: process.pid }));
                 await candidate.sync();
                 lock = candidate;
             } catch (error) {
@@ -255,8 +348,14 @@ async function withFileLock<T>(lockFile: string, action: () => Promise<T>): Prom
                 throw statError;
             });
             if (!lockStat) continue;
-            const age = Date.now() - lockStat.mtimeMs;
-            if (age > 30_000) await unlink(lockFile).catch(() => undefined);
+            let ownerAlive = true;
+            try {
+                const owner = JSON.parse(await readFile(lockFile, 'utf8')) as { pid?: unknown };
+                if (typeof owner.pid === 'number' && owner.pid > 0 && Number.isSafeInteger(owner.pid)) {
+                    ownerAlive = isProcessAlive(owner.pid);
+                }
+            } catch { ownerAlive = Date.now() - lockStat.mtimeMs <= 30_000; }
+            if (!ownerAlive) await unlink(lockFile).catch(() => undefined);
             else await delay(10);
         }
     }
@@ -266,6 +365,6 @@ async function withFileLock<T>(lockFile: string, action: () => Promise<T>): Prom
     } finally {
         await lock.close();
         const currentToken = await readFile(lockFile, 'utf8').catch(() => null);
-        if (currentToken === token) await unlink(lockFile).catch(() => undefined);
+        if (currentToken === JSON.stringify({ token, pid: process.pid })) await unlink(lockFile).catch(() => undefined);
     }
 }

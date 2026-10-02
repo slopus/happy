@@ -1,5 +1,6 @@
 import {
     CheckpointExclusionGuard,
+    CheckpointPolicyDriftError,
     resolveCheckpointProtectionCapability,
     type CheckpointExclusionPolicy,
     type CheckpointProvider,
@@ -60,10 +61,13 @@ export async function createCheckpointRuntime(
         return { status: 'unavailable', reason: capability.reason };
     }
 
-    const guard = await CheckpointExclusionGuard.create({
+    const policy = {
         projectPath: input.projectPath,
         ...input.protection,
-    });
+        secretPatterns: [...input.protection.secretPatterns],
+        readOnlyPassthroughPaths: [...(input.protection.readOnlyPassthroughPaths ?? [])],
+    };
+    let guard = await CheckpointExclusionGuard.create(policy);
     const store = new CheckpointStore(input.checkpointRoot);
     const ledger = new CheckpointLedger(input.checkpointRoot);
     const binding = {
@@ -73,19 +77,31 @@ export async function createCheckpointRuntime(
 
     return {
         status: 'protected',
-        denyWritePaths: guard.manifest.denyWritePaths,
-        excludedPaths: guard.manifest.excluded.map((entry) => entry.path),
-        excludedPatterns: guard.secretPatterns,
-        readOnlyPassthroughPaths: guard.manifest.readOnlyPassthroughPaths,
+        get denyWritePaths() { return guard.manifest.denyWritePaths; },
+        get excludedPaths() { return guard.manifest.excluded.map((entry) => entry.path); },
+        get excludedPatterns() { return guard.secretPatterns; },
+        get readOnlyPassthroughPaths() { return guard.manifest.readOnlyPassthroughPaths; },
         excludedReason: (path) => guard.excludedReason(path),
-        beforeTurn: (operationId) => guard.dispatchAfterPolicyCheck(() => store.snapshotTurn({
-            ...binding,
-            operationId,
-            excludedPaths: guard.manifest.excluded
-                .filter((entry) => entry.reason !== 'ignored')
-                .map((entry) => entry.path),
-            excludedPatterns: guard.secretPatterns,
-        })),
+        beforeTurn: async (operationId) => {
+            for (let attempt = 0; attempt < 2; attempt += 1) {
+                try {
+                    const candidate = await CheckpointExclusionGuard.create(policy);
+                    const snapshot = await candidate.dispatchAfterPolicyCheck(() => store.snapshotTurn({
+                        ...binding,
+                        operationId,
+                        excludedPaths: candidate.manifest.excluded.map((entry) => entry.path),
+                        excludedPatterns: candidate.secretPatterns,
+                        capturedFiles: candidate.manifest.capturedFiles,
+                        validateCapture: () => candidate.dispatchAfterPolicyCheck(async () => {}),
+                    }));
+                    guard = candidate;
+                    return snapshot;
+                } catch (error) {
+                    if (!(error instanceof CheckpointPolicyDriftError) || attempt === 1) throw error;
+                }
+            }
+            throw new CheckpointPolicyDriftError();
+        },
         recordMutation: (mutation) => ledger.recordMutation({
             ...binding,
             ...mutation,

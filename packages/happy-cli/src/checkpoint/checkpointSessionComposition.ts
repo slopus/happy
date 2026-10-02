@@ -11,11 +11,13 @@ import { readCheckpointSpawnContext } from './checkpointSpawnContext';
 import { checkpointAttachmentPassthroughCandidates } from './checkpointAttachmentPassthrough';
 import {
     CheckpointPolicyDriftError,
+    CheckpointExclusionGuard,
     resolveCheckpointProtectionCapability,
     type CheckpointProvider,
 } from './checkpointExclusionPolicy';
 import type { CheckpointEventPublisher } from './checkpointEventPublisher';
 import { CheckpointProtectionStateStore } from './checkpointProtectionState';
+import { checkpointExclusionChanges } from './checkpointRecovery';
 import { CheckpointTurnWorkspace } from './checkpointTurnWorkspace';
 import { CheckpointTurnApplier, type CheckpointTurnApplyResult } from './checkpointTurnApply';
 import { CheckpointWriterProcessTree } from './checkpointWriterProcessTree';
@@ -224,10 +226,13 @@ export async function createCheckpointSessionComposition(input: {
                     operationId,
                     source: 'policy-drift',
                     excluded: error.excluded,
+                    diagnostic: error.diagnostic,
                 });
             }
             throw error;
         }
+        Object.assign(sandboxConfig, sandboxConfigFor(providerPath));
+        if (claudeSandbox) Object.assign(claudeSandbox, claudeSandboxFor(sandboxConfig, providerPath));
         await checkpointEvents.snapshot({
             operationId,
             checkpointId: snapshot.checkpointId,
@@ -272,28 +277,64 @@ export async function createCheckpointSessionComposition(input: {
                 operationId: completedTurn.operationId,
             })).path;
         }
+        const candidateGuard = await CheckpointExclusionGuard.create({
+            ...protection,
+            projectPath: frozenWorkspacePath,
+            readOnlyPassthroughPaths: [],
+            omittedPaths: runtime.readOnlyPassthroughPaths,
+            captureContent: false,
+        });
+        const currentGuard = await CheckpointExclusionGuard.create({
+            ...protection,
+            projectPath: canonicalProjectPath,
+            readOnlyPassthroughPaths: [],
+            captureContent: false,
+        });
+        const applyExclusions = new Map([
+            ...currentGuard.manifest.excluded,
+            ...candidateGuard.manifest.excluded,
+            ...runtime.excludedPaths.map((path) => ({ path, reason: excludedReasonFor(runtime, path) })),
+        ].map((entry) => [entry.path, entry]));
         const result = await new CheckpointTurnApplier(canonicalCheckpointRoot).execute({
             ...workspaceBinding,
             operationId: completedTurn.operationId,
             checkpointId: completedTurn.checkpointId,
             projectPath: canonicalProjectPath,
             workspacePath: frozenWorkspacePath,
-            excludedPaths: runtime.excludedPaths,
+            excludedPaths: [...applyExclusions.keys()],
             excludedPatterns: runtime.excludedPatterns,
             readOnlyPassthroughPaths: runtime.readOnlyPassthroughPaths,
         });
-        const excluded = result.entries.flatMap((entry) => (
-            entry.action === 'conflict' && runtime.excludedReason(entry.path)
-                ? [{ path: entry.path, reason: excludedReasonFor(runtime, entry.path) }]
-                : []
-        ));
+        const excluded = result.entries.flatMap((entry) => {
+            if (entry.action !== 'conflict') return [];
+            const reason = [...applyExclusions.values()].find((item) => (
+                item.path === entry.path || entry.path.startsWith(`${item.path}/`)
+            ))?.reason ?? runtime.excludedReason(entry.path);
+            return reason ? [{ path: entry.path, reason }] : [];
+        });
         if (excluded.length > 0) {
+            const summarized = new Map(excluded.map(entry => {
+                const parent = excluded.length > 100 && entry.reason === 'ignored'
+                    ? [...applyExclusions.values()].find(item => item.reason === 'ignored' && entry.path.startsWith(`${item.path}/`))
+                    : undefined;
+                const item = parent ?? entry;
+                return [item.path, item];
+            }));
+            const displayed = [...summarized.values()].sort((left, right) => left.path.localeCompare(right.path)).slice(0, 10_000);
             await protectionState.reportPending({
                 ...workspaceBinding,
                 projectPath: canonicalProjectPath,
                 operationId: completedTurn.operationId,
                 source: 'turn-apply',
-                excluded,
+                excluded: displayed,
+                diagnostic: { changes: checkpointExclusionChanges(
+                    runtime.excludedPaths.map(path => ({ path, reason: excludedReasonFor(runtime, path) })),
+                    [...applyExclusions.values()], displayed.map(entry => entry.path),
+                ).slice(0, 100), counts: {
+                    capturedFiles: candidateGuard.manifest.capturedFiles.length,
+                    capturedBytes: candidateGuard.manifest.capturedFiles.reduce((sum, file) => sum + file.size, 0),
+                    excludedFiles: applyExclusions.size, totalChanges: excluded.length,
+                } },
             });
         }
         if (result.status === 'completed') {

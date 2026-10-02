@@ -42,6 +42,7 @@ export type CheckpointLedgerMutationRequest = CheckpointLedgerBinding & {
     mutationId: string;
     path: string;
     action: 'written' | 'deleted';
+    expectedContentHash?: string | null;
 };
 
 const ledgerWriteQueues = new Map<string, Promise<void>>();
@@ -101,6 +102,9 @@ export class CheckpointLedger {
         const contentHash = request.action === 'written'
             ? await hashRegularFile(resolve(projectPath, path))
             : await assertFileDeleted(resolve(projectPath, path));
+        if (request.expectedContentHash !== undefined && contentHash !== request.expectedContentHash) {
+            throw new Error('checkpoint ledger mutation changed before recording');
+        }
         const record = ledgerRecordSchema.parse({
             schemaVersion: 1,
             operationId: request.operationId,

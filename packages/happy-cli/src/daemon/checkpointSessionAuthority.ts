@@ -14,6 +14,7 @@ export async function resolveCheckpointSessionAuthority(input: {
     trackedSession: TrackedSession | undefined;
     checkpointRoot: string;
     platform: NodeJS.Platform;
+    isProcessAlive?: (pid: number) => boolean;
 }): Promise<CheckpointRpcSessionAuthority | null> {
     const tracked = input.trackedSession;
     if (
@@ -40,6 +41,7 @@ export async function resolveCheckpointSessionAuthority(input: {
             pendingDecision: null,
             excludedPaths: [],
             excludedPatterns: [],
+            canRestoreHistory: false,
         };
     }
 
@@ -73,6 +75,7 @@ export async function resolveCheckpointSessionAuthority(input: {
         const guard = await CheckpointExclusionGuard.create({
             projectPath,
             ...checkpointProtection,
+            captureContent: false,
         });
         return {
             ...base,
@@ -80,6 +83,8 @@ export async function resolveCheckpointSessionAuthority(input: {
             pendingDecision: persisted.pendingDecision,
             excludedPaths: guard.manifest.excluded.map((entry) => entry.path),
             excludedPatterns: guard.secretPatterns,
+            limits: { maxFileBytes: checkpointProtection.maxFileBytes, maxFiles: checkpointProtection.maxFiles,
+                maxTotalBytes: checkpointProtection.maxTotalBytes },
         };
     } catch {
         return {

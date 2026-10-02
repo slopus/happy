@@ -300,4 +300,27 @@ describe('CheckpointExclusionGuard', () => {
         });
         expect(dispatch).not.toHaveBeenCalled();
     });
+
+    // Desktop parseCheckpointRecovery rejects a change whose path is not in `excluded`, so a removed
+    // exclusion must stay listed with its previous reason or the whole recovery diagnostic is dropped.
+    it('keeps every changed path, including removed exclusions, in the drift excluded list', async () => {
+        await writeFile(join(projectPath, '.env'), 'secret');
+        const guard = await CheckpointExclusionGuard.create({
+            projectPath,
+            secretPatterns: ['.env*'],
+            maxFileBytes: 1024,
+            maxFiles: 100,
+            maxTotalBytes: 4096,
+        });
+        await rm(join(projectPath, '.env'));
+        await writeFile(join(projectPath, '.env.local'), 'secret');
+
+        const error = await guard.dispatchAfterPolicyCheck(async () => undefined).catch((caught) => caught);
+        expect(error.excluded).toEqual([
+            { path: '.env', reason: 'secret' },
+            { path: '.env.local', reason: 'secret' },
+        ]);
+        expect(error.diagnostic.changes.map((change: { path: string; change: string }) => [change.path, change.change]))
+            .toEqual([['.env', 'removed'], ['.env.local', 'added']]);
+    });
 });

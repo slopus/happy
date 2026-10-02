@@ -5,6 +5,8 @@ import { homedir } from 'node:os';
 import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { observeCheckpointOperation, type CheckpointOperationObserver } from './checkpointObservability';
 import { withCheckpointStoreLock } from './checkpointStoreLock';
+import { CheckpointPolicyDriftError, type CheckpointExclusionManifest } from './checkpointExclusionPolicy';
+import { checkpointCoverageTrailer } from './checkpointCoverage';
 
 export type CheckpointStoreBinding = {
     checkpointRoot: string;
@@ -26,6 +28,8 @@ export type CheckpointSnapshotRequest = Omit<CheckpointStoreBinding, 'checkpoint
     projectPath: string;
     excludedPaths?: string[];
     excludedPatterns?: string[];
+    capturedFiles?: CheckpointExclusionManifest['capturedFiles'];
+    validateCapture?: () => Promise<void>;
 };
 
 export type CheckpointSnapshotResult = {
@@ -201,6 +205,7 @@ export class CheckpointStore {
                 new Set([0, 128]),
             );
             if (completedOperation.exitCode === 0) {
+                await validateCapturedTree(completedOperation.stdout.trim(), request, projectPath, environment);
                 return { checkpointId: completedOperation.stdout.trim(), created: false };
             }
             const parent = await runGit(
@@ -211,13 +216,22 @@ export class CheckpointStore {
             );
             const parentId = parent.exitCode === 0 ? parent.stdout.trim() : null;
 
-            if (parentId) {
+            if (request.capturedFiles) {
+                await runGit(['read-tree', '--empty'], projectPath, environment);
+            } else if (parentId) {
                 await runGit(['read-tree', parentId], projectPath, environment);
             }
 
             const excludedPaths = normalizeExcludedPaths(request.excludedPaths ?? []);
             const excludedPatterns = normalizeExcludedPatterns(request.excludedPatterns ?? []);
-            await runGit([
+            const capturePathspec = `${snapshotLayout.indexFile}.paths`;
+            if (request.capturedFiles) {
+                const paths = normalizeExcludedPaths(request.capturedFiles.map((file) => file.path));
+                if (paths.length > 0) {
+                    await writeFile(capturePathspec, paths.map((path) => `:(top,literal)${path}\0`).join(''), { mode: 0o600 });
+                    await runGit(['add', '-A', `--pathspec-from-file=${capturePathspec}`, '--pathspec-file-nul'], projectPath, environment);
+                }
+            } else await runGit([
                 'add',
                 '-A',
                 '--',
@@ -238,13 +252,15 @@ export class CheckpointStore {
                 ], projectPath, environment);
             }
             const tree = (await runGit(['write-tree'], projectPath, environment)).stdout.trim();
+            await validateCapturedTree(tree, request, projectPath, environment);
             if (parentId) {
                 const parentTree = (await runGit(
                     ['rev-parse', `${parentId}^{tree}`],
                     projectPath,
                     environment,
                 )).stdout.trim();
-                if (tree === parentTree) {
+                const parentBody = (await runGit(['show', '-s', '--format=%b', parentId], projectPath, environment)).stdout;
+                if (tree === parentTree && parentBody.trim() === checkpointCoverageTrailer(request)) {
                     return completeCheckpointRefs({
                         layout: snapshotLayout,
                         operationRef,
@@ -258,7 +274,9 @@ export class CheckpointStore {
             }
 
             const createdAt = await nextCheckpointTimestamp(parentId, projectPath, environment);
-            const commitArgs = ['commit-tree', tree, '-m', `saycode-checkpoint-v1 ${createdAt}`, '--no-gpg-sign'];
+            const messageFile = `${snapshotLayout.indexFile}.message`;
+            await writeFile(messageFile, `saycode-checkpoint-v1 ${createdAt}\n\n${checkpointCoverageTrailer(request)}`, { mode: 0o600 });
+            const commitArgs = ['commit-tree', tree, '-F', messageFile, '--no-gpg-sign'];
             const checkpointId = (await runGit(commitArgs, projectPath, environment)).stdout.trim();
             return completeCheckpointRefs({
                 layout: snapshotLayout,
@@ -271,6 +289,8 @@ export class CheckpointStore {
             });
         } finally {
             await rm(snapshotLayout.indexFile, { force: true });
+            await rm(`${snapshotLayout.indexFile}.paths`, { force: true });
+            await rm(`${snapshotLayout.indexFile}.message`, { force: true });
         }
     }
 
@@ -302,6 +322,27 @@ export class CheckpointStore {
         delete environment.GIT_ALTERNATE_OBJECT_DIRECTORIES;
         return environment;
     }
+}
+
+async function validateCapturedTree(
+    tree: string,
+    request: CheckpointSnapshotRequest,
+    projectPath: string,
+    environment: NodeJS.ProcessEnv,
+): Promise<void> {
+    if (!request.capturedFiles) return;
+    const listing = await runGit(['ls-tree', '-rlz', tree], projectPath, environment);
+    const expected = new Map(request.capturedFiles.map((file) => [file.path, file]));
+    const entries = listing.stdout.split('\0').filter(Boolean);
+    if (entries.length !== expected.size) throw new CheckpointPolicyDriftError();
+    for (const entry of entries) {
+        const match = entry.match(/^\d{6} blob ([a-f0-9]+)\s+(\d+)\t([\s\S]+)$/);
+        const file = match ? expected.get(match[3]!) : undefined;
+        if (!file || match![1] !== (match![1]!.length === 64 ? file.objectIdSha256 : file.objectId) || Number(match![2]) !== file.size) {
+            throw new CheckpointPolicyDriftError();
+        }
+    }
+    await request.validateCapture?.();
 }
 
 async function nextCheckpointTimestamp(

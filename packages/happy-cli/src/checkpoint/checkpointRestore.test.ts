@@ -1,16 +1,17 @@
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createCheckpointRuntime } from './checkpointRuntime';
 import { CheckpointLedger } from './checkpointLedger';
 import { CheckpointGarbageCollector } from './checkpointGarbageCollector';
 import {
     CheckpointRestoreExecutor,
     type CheckpointRestoreMutation,
 } from './checkpointRestore';
-import { checkpointRestoreJournalPath } from './checkpointRestoreJournal';
+import { checkpointRestoreJournalPath, checkpointRestoreRequestFingerprint } from './checkpointRestoreJournal';
 import { CheckpointRestorePlanner, type CheckpointRestorePlan } from './checkpointRestorePlan';
 import {
     checkpointOperationRefPrefix,
@@ -38,6 +39,7 @@ describe('CheckpointRestoreExecutor', () => {
     });
 
     afterEach(async () => {
+        vi.restoreAllMocks();
         await rm(fixtureRoot, { recursive: true, force: true });
     });
 
@@ -96,6 +98,55 @@ describe('CheckpointRestoreExecutor', () => {
             checkpointId: snapshot.checkpointId,
         });
     }
+
+    it('restores a checkpoint and then its safety checkpoint without claiming later user edits', async () => {
+        const plan = await createAgentModifiedPlan();
+        const executor = new CheckpointRestoreExecutor(checkpointRoot);
+        const restored = await executor.execute({ ...binding, operationId: 'rewind-first', projectPath, plan, confirmed: true });
+        if (restored.status !== 'completed') throw new Error('restore did not complete');
+        const planner = new CheckpointRestorePlanner(checkpointRoot);
+        const undo = await planner.plan({ ...binding, projectPath, checkpointId: restored.safetyCheckpointId });
+        expect(undo.entries).toEqual([{ path: 'tracked.txt', action: 'restore', reason: 'agent-modified' }]);
+        expect((await executor.execute({ ...binding, operationId: 'rewind-undo', projectPath, plan: undo, confirmed: true })).status).toBe('completed');
+        expect(await readFile(join(projectPath, 'tracked.txt'), 'utf8')).toBe('agent version\n');
+        await writeFile(join(projectPath, 'tracked.txt'), 'user edit\n');
+        expect((await planner.plan({ ...binding, projectPath, checkpointId: plan.checkpointId })).entries)
+            .toEqual([{ path: 'tracked.txt', action: 'skip', reason: 'user-modified' }]);
+    });
+
+    it('does not treat a file omitted by a shifted capture limit as agent-created', async () => {
+        await createAgentModifiedPlan();
+        await writeFile(join(projectPath, 'aaa.txt'), 'user added');
+        const runtime = await createCheckpointRuntime({ provider: 'codex', platform: 'darwin', projectPath,
+            checkpointRoot, binding, protection: { secretPatterns: [], maxFiles: 1, maxFileBytes: 1024, maxTotalBytes: 4096 } });
+        if (runtime.status !== 'protected') throw new Error('expected protected runtime');
+        const target = await runtime.beforeTurn('shifted-limit');
+        const plan = await new CheckpointRestorePlanner(checkpointRoot).plan({ ...binding, projectPath,
+            checkpointId: target.checkpointId });
+        expect(plan.entries).toContainEqual({ path: 'tracked.txt', action: 'skip', reason: 'provenance-unknown' });
+        expect(plan.entries.some(entry => entry.path === 'tracked.txt' && entry.action === 'delete')).toBe(false);
+        await new CheckpointRestoreExecutor(checkpointRoot).execute({ ...binding, projectPath, plan,
+            operationId: 'rewind-shifted-limit', confirmed: true, excludedPaths: runtime.excludedPaths });
+        expect(await readFile(join(projectPath, 'tracked.txt'), 'utf8')).toBe('agent version\n');
+    });
+
+    it('reconciles a successful mutation after a ledger failure without mutating it twice', async () => {
+        const plan = await createAgentModifiedPlan();
+        vi.spyOn(CheckpointLedger.prototype, 'recordMutation').mockRejectedValueOnce(new Error('fixture ledger failure'));
+        const mutate = vi.fn(async (mutation: CheckpointRestoreMutation) => mutation.apply());
+        const executor = new CheckpointRestoreExecutor(checkpointRoot, { mutate });
+        const request = { ...binding, projectPath, plan, operationId: 'rewind-ledger-retry', confirmed: true };
+        const partial = await executor.execute(request);
+        expect(partial.status).toBe('partial');
+        expect(await readFile(join(projectPath, 'tracked.txt'), 'utf8')).toBe('before\n');
+        const recovered = await executor.execute(request);
+        if (recovered.status !== 'completed') throw new Error('retry did not reconcile');
+        const undo = await new CheckpointRestorePlanner(checkpointRoot).plan({ ...binding, projectPath,
+            checkpointId: recovered.safetyCheckpointId });
+        expect(undo.entries[0].action).toBe('restore');
+        await executor.execute({ ...request, operationId: 'undo-ledger-retry', plan: undo });
+        expect(await readFile(join(projectPath, 'tracked.txt'), 'utf8')).toBe('agent version\n');
+    });
 
     it('cancels before creating a safety checkpoint or mutating files', async () => {
         const plan = await createAgentModifiedPlan();
@@ -236,6 +287,39 @@ describe('CheckpointRestoreExecutor', () => {
         ])).resolves.toBeDefined();
     });
 
+    it('migrates a legacy journal only with its matching current-policy fingerprint', async () => {
+        const plan = await createAgentModifiedPlan();
+        const request = { ...binding, projectPath, plan, operationId: 'legacy-policy-journal', confirmed: true };
+        const executor = new CheckpointRestoreExecutor(checkpointRoot);
+        await executor.execute(request);
+        const layout = resolveCheckpointStoreLayout({ checkpointRoot, ...binding });
+        const journalFile = checkpointRestoreJournalPath(layout, request.operationId);
+        const journal = JSON.parse(await readFile(journalFile, 'utf8'));
+        const fingerprintInput = { ...binding, operationId: request.operationId, projectPath: await realpath(projectPath), plan };
+        journal.requestFingerprint = checkpointRestoreRequestFingerprint({ ...fingerprintInput,
+            excludedPaths: [], excludedPatterns: [] });
+        await writeFile(journalFile, JSON.stringify(journal));
+        await expect(executor.execute({ ...request, excludedPaths: ['changed-policy'] }))
+            .rejects.toThrow('idempotency key conflict');
+        await expect(executor.execute(request)).resolves.toMatchObject({ status: 'completed' });
+        expect(JSON.parse(await readFile(journalFile, 'utf8')).requestFingerprint)
+            .toBe(checkpointRestoreRequestFingerprint(fingerprintInput));
+        await expect(executor.execute({ ...request, excludedPaths: ['changed-policy'] }))
+            .resolves.toMatchObject({ status: 'completed' });
+    });
+
+    it('rechecks a newly excluded path on partial retry without losing its journal', async () => {
+        const plan = await createAgentModifiedPlan();
+        const request = { ...binding, projectPath, plan, operationId: 'retry-current-exclusion', confirmed: true };
+        const failed = new CheckpointRestoreExecutor(checkpointRoot, { mutate: async () => { throw new Error('fail'); } });
+        await expect(failed.execute(request)).resolves.toMatchObject({ status: 'partial' });
+        const executor = new CheckpointRestoreExecutor(checkpointRoot);
+        await expect(executor.execute({ ...request, excludedPaths: ['tracked.txt'] }))
+            .resolves.toMatchObject({ status: 'partial' });
+        expect(await readFile(join(projectPath, 'tracked.txt'), 'utf8')).toBe('agent version\n');
+        await expect(executor.execute(request)).resolves.toMatchObject({ status: 'completed' });
+    });
+
     it('journals partial failure and retries only failed entries with the same operation id', async () => {
         const plan = await createTwoFileAgentModifiedPlan();
         const attempts: string[] = [];
@@ -279,7 +363,7 @@ describe('CheckpointRestoreExecutor', () => {
                 attempts.push(mutation.entry.path);
                 await mutation.apply();
             },
-        }).execute(request);
+        }).execute({ ...request, excludedPaths: ['unrelated-new-secret.txt'] });
 
         expect(retry).toMatchObject({
             status: 'completed',

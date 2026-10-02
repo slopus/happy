@@ -4,6 +4,7 @@ import { createReadStream, type Stats } from 'node:fs';
 import { lstat, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { observeCheckpointOperation, type CheckpointOperationObserver } from './checkpointObservability';
+import { checkpointCoverageMatcher, checkpointExclusionMatcher } from './checkpointCoverage';
 import {
     CheckpointLedger,
     type CheckpointLedgerBinding,
@@ -26,6 +27,8 @@ export type CheckpointRestorePlanEntry =
 
 export type CheckpointRestorePlanRequest = CheckpointLedgerBinding & {
     checkpointId: string;
+    excludedPaths?: string[];
+    excludedPatterns?: string[];
 };
 
 export type CheckpointRestorePlan = {
@@ -37,6 +40,8 @@ type CurrentFileState =
     | { kind: 'missing' }
     | { kind: 'regular'; contentHash: string }
     | { kind: 'unsupported'; reason: 'unsupported-file-type' | 'unsafe-path' };
+
+class UnsupportedCheckpointTargetError extends Error {}
 
 export class CheckpointRestorePlanner {
     private readonly checkpointRoot: string;
@@ -74,14 +79,24 @@ export class CheckpointRestorePlanner {
         const changedPaths = await this.listChangedPaths(request, projectPath);
         for (const path of latestByPath.keys()) changedPaths.add(path);
         const entries: CheckpointRestorePlanEntry[] = [];
+        const coverage = checkpointCoverageMatcher(await this.readCoverage(request, projectPath));
+        const currentExcludes = checkpointExclusionMatcher(request);
 
         for (const path of [...changedPaths].sort()) {
             const record = latestByPath.get(path);
             const current = await readCurrentFileState(projectPath, path);
-            const targetHash = current.kind === 'unsupported'
-                ? null
-                : await this.readCheckpointFileHash(request, path, projectPath);
-            const entry = createPlanEntry(path, record, current, targetHash);
+            let targetHash: string | null;
+            try { targetHash = current.kind === 'unsupported' ? null : await this.readCheckpointFileHash(request, path, projectPath); }
+            catch (error) {
+                if (!(error instanceof UnsupportedCheckpointTargetError)) throw error;
+                entries.push({ path, action: 'conflict', reason: 'unsafe-path' });
+                continue;
+            }
+            const excluded = coverage?.(path) ?? null;
+            const entry: CheckpointRestorePlanEntry | null = excluded === true || (excluded === null && targetHash === null)
+                || currentExcludes(path)
+                ? { path, action: 'skip', reason: 'provenance-unknown' }
+                : createPlanEntry(path, record, current, targetHash);
             if (entry) entries.push(entry);
         }
 
@@ -110,8 +125,23 @@ export class CheckpointRestorePlanner {
         const targetHash = current.kind === 'unsupported'
             ? null
             : await this.readCheckpointFileHash(request, expected.path, projectPath);
+        const excluded = checkpointCoverageMatcher(await this.readCoverage(request, projectPath))?.(expected.path) ?? null;
+        if (excluded === true || (excluded === null && targetHash === null)
+            || checkpointExclusionMatcher(request)(expected.path)) return false;
         return JSON.stringify(createPlanEntry(expected.path, record, current, targetHash))
             === JSON.stringify(expected);
+    }
+
+    async matchesTargetHash(projectPath: string, path: string, expectedHash: string | null): Promise<boolean> {
+        const current = await readCurrentFileState(projectPath, path);
+        return expectedHash === null ? current.kind === 'missing'
+            : current.kind === 'regular' && current.contentHash === expectedHash;
+    }
+
+    private async readCoverage(request: CheckpointRestorePlanRequest, projectPath: string): Promise<string> {
+        const layout = resolveCheckpointStoreLayout({ checkpointRoot: this.checkpointRoot, ...request });
+        return (await runGit(['show', '-s', '--format=%b', request.checkpointId], projectPath,
+            checkpointGitEnvironment(layout.gitDirectory))).toString('utf8');
     }
 
     private async assertCheckpointOwnedByBinding(
@@ -173,7 +203,7 @@ export class CheckpointRestorePlanner {
         }
     }
 
-    private async readCheckpointFileHash(
+    async readCheckpointFileHash(
         request: CheckpointRestorePlanRequest,
         path: string,
         projectPath: string,
@@ -201,6 +231,7 @@ export class CheckpointRestorePlanner {
         if (header.length !== 3 || header[1] !== 'blob') {
             throw new Error('checkpoint restore target contains an unsupported entry');
         }
+        if (header[0] !== '100644' && header[0] !== '100755') throw new UnsupportedCheckpointTargetError();
         const contents = await runGit(['cat-file', 'blob', header[2]], projectPath, environment);
         return createHash('sha256').update(contents).digest('hex');
     }

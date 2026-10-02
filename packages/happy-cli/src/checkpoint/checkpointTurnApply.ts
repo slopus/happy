@@ -277,7 +277,6 @@ export class CheckpointTurnApplier {
                 runGit([
                     'ls-files',
                     '--others',
-                    '--exclude-standard',
                     ...((request.readOnlyPassthroughPaths ?? []).map((path) => `--exclude=${path}`)),
                     '-z',
                 ], workspacePath, environment),

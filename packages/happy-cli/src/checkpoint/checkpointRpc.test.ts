@@ -40,6 +40,8 @@ describe('checkpoint daemon RPC', () => {
             id: 'event-1', seq: 1, createdAt: Date.now(), idempotent: false,
         })),
         restartSession = vi.fn(async () => {}),
+        refreshSession?: () => Promise<void>,
+        exclusions: { excludedPaths: string[]; excludedPatterns: string[] } = { excludedPaths: [], excludedPatterns: [] },
     ) {
         const protectionState = new CheckpointProtectionStateStore(checkpointRoot);
         return createCheckpointRpcHandlers({
@@ -47,6 +49,7 @@ describe('checkpoint daemon RPC', () => {
             ...(restoreExecutor ? { restoreExecutor } : {}),
             resolveEventPublisher: async () => ({ rewind }),
             restartSession,
+            ...(refreshSession ? { refreshSession } : {}),
             resolveAuthority: async (sessionId) => {
                 if (sessionId !== authority.sessionId) return null;
                 const state = await protectionState.read({ ...authority, projectPath });
@@ -54,12 +57,55 @@ describe('checkpoint daemon RPC', () => {
                     ...authority,
                     projectPath,
                     ...state,
-                    excludedPaths: [],
-                    excludedPatterns: [],
+                    ...exclusions,
                 };
             },
         });
     }
+
+    it('advertises phase-aware recovery and refreshes a pending preparation only once', async () => {
+        const state = new CheckpointProtectionStateStore(checkpointRoot);
+        await state.reportPending({ ...authority, projectPath, operationId: operationId(11),
+            source: 'policy-drift', excluded: [{ path: 'large.bin', reason: 'too-large' }] });
+        const restart = vi.fn(async () => {
+            expect((await state.read({ ...authority, projectPath })).pendingDecision).not.toBeNull();
+        });
+        const handlers = createHandlers(undefined, undefined, undefined, restart);
+        const status = await handlers.status({ schemaVersion: 1, ...authority }) as {
+            recovery: { diagnostic: { phase: string; revision: string } };
+        };
+        expect(status.recovery.diagnostic.phase).toBe('before-dispatch');
+        const request = { schemaVersion: 1, ...authority, operationId: operationId(11),
+            requestId: operationId(12), revision: status.recovery.diagnostic.revision, timeout: 70_000 };
+        await expect(handlers.refresh!({ ...request, revision: '0'.repeat(64) })).rejects.toThrow('revision mismatch');
+        await expect(handlers.refresh!({ ...request, projectId: 'other-project' })).rejects.toThrow('binding mismatch');
+        await expect(handlers.refresh!(request)).resolves.toMatchObject({ status: 'refreshed' });
+        await expect(handlers.refresh!(request)).resolves.toMatchObject({ status: 'refreshed' });
+        expect(restart).toHaveBeenCalledOnce();
+        expect((await state.read({ ...authority, projectPath })).pendingDecision).toBeNull();
+    });
+
+    it('does not replay an uncertain protected refresh or refresh an already dispatched write', async () => {
+        const state = new CheckpointProtectionStateStore(checkpointRoot);
+        await state.reportPending({ ...authority, projectPath, operationId: operationId(13), source: 'policy-drift', excluded: [] });
+        const restart = vi.fn(async () => { throw new Error('replacement outcome unknown'); });
+        const handlers = createHandlers(undefined, undefined, undefined, restart);
+        const status = await handlers.status({ schemaVersion: 1, ...authority }) as {
+            recovery: { diagnostic: { revision: string } };
+        };
+        const request = { schemaVersion: 1, ...authority, operationId: operationId(13),
+            requestId: operationId(14), revision: status.recovery.diagnostic.revision, timeout: 70_000 };
+        await expect(handlers.refresh!(request)).rejects.toThrow('outcome unknown');
+        await expect(handlers.refresh!(request)).resolves.toMatchObject({ status: 'outcome-unknown' });
+        expect(restart).toHaveBeenCalledOnce();
+        expect((await state.read({ ...authority, projectPath })).protection.status).toBe('protected');
+        await state.reportPending({ ...authority, projectPath, operationId: operationId(15),
+            source: 'turn-apply', excluded: [{ path: '.env', reason: 'secret' }] });
+        const next = await handlers.status({ schemaVersion: 1, ...authority }) as typeof status;
+        await expect(handlers.refresh!({ ...request, operationId: operationId(15), requestId: operationId(16),
+            revision: next.recovery.diagnostic.revision })).rejects.toThrow('explicit cancellation');
+        expect(restart).toHaveBeenCalledOnce();
+    });
 
     function createUnavailableHandlers() {
         return createCheckpointRpcHandlers({
@@ -124,6 +170,18 @@ describe('checkpoint daemon RPC', () => {
         });
         return snapshot.checkpointId;
     }
+
+    it('previews current exclusions instead of offering a restore that execute rejects', async () => {
+        const checkpointId = await createAgentModifiedCheckpoint();
+        const handlers = createHandlers(undefined, undefined, undefined, undefined, {
+            excludedPaths: ['tracked.txt'], excludedPatterns: [],
+        });
+        const preview = await handlers.preview({ schemaVersion: 1, ...authority, checkpointId });
+        expect(preview).toMatchObject({ entries: [{ path: 'tracked.txt', action: 'skip' }] });
+        expect(await handlers.execute({ schemaVersion: 1, ...authority, operationId: operationId(18),
+            confirmed: true, plan: { schemaVersion: 1, checkpointId, entries: (preview as { entries: unknown[] }).entries } }))
+            .toMatchObject({ status: 'completed' });
+    });
 
     it('rejects a preview whose requested project binding differs from daemon authority', async () => {
         const handlers = createHandlers();

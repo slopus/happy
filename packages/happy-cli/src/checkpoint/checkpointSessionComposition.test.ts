@@ -6,6 +6,9 @@ import { SandboxConfigSchema } from '@/persistence';
 import { CHECKPOINT_SPAWN_CONTEXT_ENV_KEY } from './checkpointSpawnContext';
 import { CheckpointProtectionStateStore } from './checkpointProtectionState';
 import { createCheckpointSessionComposition } from './checkpointSessionComposition';
+import { CheckpointExclusionGuard, CheckpointPolicyDriftError } from './checkpointExclusionPolicy';
+import { CheckpointRestorePlanner } from './checkpointRestorePlan';
+import { CheckpointRestoreExecutor } from './checkpointRestore';
 
 vi.mock('@/sandbox/dependencyPreflight', () => ({
     cachedLinuxSandboxDependencyStatus: vi.fn(() => ({ ok: true })),
@@ -25,6 +28,7 @@ describe('createCheckpointSessionComposition', () => {
     });
 
     afterEach(async () => {
+        vi.restoreAllMocks();
         await rm(fixtureRoot, { recursive: true, force: true });
     });
 
@@ -50,6 +54,55 @@ describe('createCheckpointSessionComposition', () => {
             }),
         };
     }
+
+    it.each(['claude-remote', 'codex'] as const)('keeps %s create/edit/restore/undo within the protected boundary', async (provider) => {
+        const composition = await createCheckpointSessionComposition({ provider, platform: 'darwin', projectPath,
+            sessionId: 'session-1', sandboxConfig: SandboxConfigSchema.parse({ checkpointProtection: protection }),
+            env: contextEnv(), checkpointEvents });
+        const checkpoints: string[] = [];
+        for (const version of ['created', 'edited once', 'edited twice']) {
+            const prepared = await composition.beforeTurn!();
+            checkpoints.push(prepared.checkpointId);
+            await writeFile(join(prepared.providerPath, 'a.html'), version);
+            composition.markTurnDispatched!();
+            expect((await composition.completeTurn!(async () => {})).status).toBe('completed');
+        }
+        const binding = { sessionId: 'session-1', projectId: 'project-1', worktreeId: null, projectPath };
+        const planner = new CheckpointRestorePlanner(checkpointRoot);
+        const executor = new CheckpointRestoreExecutor(checkpointRoot);
+        let safetyCheckpointId = '';
+        for (const [index, checkpointId] of [checkpoints[2], checkpoints[1]].entries()) {
+            const plan = await planner.plan({ ...binding, checkpointId });
+            const restored = await executor.execute({ ...binding, operationId: `restore-${index}`, plan, confirmed: true });
+            if (restored.status !== 'completed') throw new Error('restore did not complete');
+            if (index === 0) safetyCheckpointId = restored.safetyCheckpointId;
+        }
+        expect(await readFile(join(projectPath, 'a.html'), 'utf8')).toBe('created');
+        const undo = await planner.plan({ ...binding, checkpointId: safetyCheckpointId });
+        expect((await executor.execute({ ...binding, operationId: 'restore-undo', plan: undo, confirmed: true })).status).toBe('completed');
+        expect(await readFile(join(projectPath, 'a.html'), 'utf8')).toBe('edited twice');
+        expect((await new CheckpointProtectionStateStore(checkpointRoot).read(binding)).protection.status).toBe('protected');
+        await composition.dispose!();
+    }, 15_000);
+
+    it('diagnoses newly written children of an ignored directory', async () => {
+        await mkdir(join(projectPath, 'cache'));
+        await writeFile(join(projectPath, '.gitignore'), 'cache/\n');
+        await writeFile(join(projectPath, 'cache', 'existing.txt'), 'untouched');
+        const composition = await createCheckpointSessionComposition({ provider: 'codex', platform: 'darwin', projectPath,
+            sessionId: 'session-1', sandboxConfig: SandboxConfigSchema.parse({ checkpointProtection: protection }),
+            env: contextEnv(), checkpointEvents });
+        const prepared = await composition.beforeTurn!();
+        await mkdir(join(prepared.providerPath, 'cache'), { recursive: true });
+        await writeFile(join(prepared.providerPath, 'cache', 'new.txt'), 'denied');
+        composition.markTurnDispatched!();
+        await composition.completeTurn!(async () => {});
+        const status = await new CheckpointProtectionStateStore(checkpointRoot).read({ sessionId: 'session-1',
+            projectId: 'project-1', worktreeId: null, projectPath });
+        expect(status.pendingDecision?.excluded).toContainEqual({ path: 'cache/new.txt', reason: 'ignored' });
+        expect(status.pendingDecision?.diagnostic?.changes[0]).toMatchObject({ path: 'cache/new.txt', currentReason: 'ignored' });
+        await expect(readFile(join(projectPath, 'cache', 'new.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
+    });
 
     it('does not create a gate when checkpoint protection was not explicitly configured', async () => {
         const sandboxConfig = SandboxConfigSchema.parse({});
@@ -256,6 +309,58 @@ describe('createCheckpointSessionComposition', () => {
         expect(second.checkpointId).not.toBe(first.checkpointId);
         await expect(readFile(join(second.providerPath, 'source.txt'), 'utf8')).resolves.toBe('first turn');
         await result.completeTurn(async () => {});
+    });
+
+    it.each(['claude-remote', 'codex'] as const)(
+        'keeps %s protected across repeated edits and unrelated exclusion changes',
+        async (provider) => {
+            const events = { snapshot: vi.fn(checkpointEvents.snapshot) };
+            const result = await createCheckpointSessionComposition({
+                provider, platform: 'darwin', projectPath, sessionId: 'session-1',
+                sandboxConfig: SandboxConfigSchema.parse({ checkpointProtection: protection }),
+                env: contextEnv(), checkpointEvents: events,
+            });
+            if (!result.beforeTurn || !result.completeTurn) throw new Error('expected protected composition');
+            const checkpoints: string[] = [];
+            for (const content of ['hello world', 'hello hmall', 'hello hmall22']) {
+                const turn = await result.beforeTurn();
+                checkpoints.push(turn.checkpointId);
+                await writeFile(join(turn.providerPath, 'a.html'), content);
+                result.markTurnDispatched?.();
+                await result.completeTurn(async () => {});
+                expect(await readFile(join(projectPath, 'a.html'), 'utf8')).toBe(content);
+                if (content === 'hello world') {
+                    await writeFile(join(projectPath, '.env.production'), 'excluded secret');
+                } else if (content === 'hello hmall') {
+                    await rm(join(projectPath, '.env.production'));
+                }
+            }
+            expect(new Set(checkpoints).size).toBe(3);
+            expect(events.snapshot).toHaveBeenCalledTimes(3);
+            expect(result.sandboxConfig?.checkpointProtection).toEqual(protection);
+            expect((await new CheckpointProtectionStateStore(checkpointRoot).read({
+                sessionId: 'session-1', projectId: 'project-1', worktreeId: null, projectPath,
+            })).pendingDecision).toBeNull();
+            await result.dispose?.();
+        },
+    );
+
+    it('refreshes new literal exclusions in the workspace sandbox before dispatch', async () => {
+        const result = await createCheckpointSessionComposition({
+            provider: 'claude-remote', platform: 'darwin', projectPath, sessionId: 'session-1',
+            sandboxConfig: SandboxConfigSchema.parse({ checkpointProtection: protection }),
+            env: contextEnv(), checkpointEvents,
+        });
+        if (!result.beforeTurn || !result.completeTurn) throw new Error('expected protected composition');
+        await result.beforeTurn();
+        await result.completeTurn(async () => {});
+        await writeFile(join(projectPath, 'large.bin'), 'x'.repeat(protection.maxFileBytes + 1));
+        const turn = await result.beforeTurn();
+        expect(turn.sandboxConfig?.denyWritePaths).toContain(join(turn.providerPath, 'large.bin'));
+        expect(turn.claudeSandbox?.filesystem?.denyWrite).toContain(join(turn.providerPath, 'large.bin'));
+        await expect(readFile(join(turn.providerPath, 'large.bin'))).rejects.toThrow();
+        await result.completeTurn(async () => {});
+        await result.dispose?.();
     });
 
     it('reserves the provider workspace directory before the first turn and after each rotation', async () => {
@@ -536,7 +641,7 @@ describe('createCheckpointSessionComposition', () => {
             .not.toContain(configuration.daemonHappyHomeDir);
     });
 
-    it('records a daemon-readable pending decision when policy drift blocks dispatch', async () => {
+    it('records a daemon-readable pending decision when two preparations remain unstable', async () => {
         const result = await createCheckpointSessionComposition({
             provider: 'codex',
             platform: 'darwin',
@@ -547,6 +652,8 @@ describe('createCheckpointSessionComposition', () => {
             checkpointEvents,
         });
         await writeFile(join(projectPath, '.env.production'), 'secret');
+        const check = vi.spyOn(CheckpointExclusionGuard.prototype, 'dispatchAfterPolicyCheck')
+            .mockRejectedValue(new CheckpointPolicyDriftError([{ path: '.env.production', reason: 'secret' }]));
 
         await expect(result.beforeTurn?.()).rejects.toMatchObject({
             name: 'CheckpointPolicyDriftError',
@@ -564,7 +671,51 @@ describe('createCheckpointSessionComposition', () => {
                 excluded: [{ path: '.env.production', reason: 'secret' }],
             },
         });
+        expect(check).toHaveBeenCalledTimes(2);
+        await result.dispose?.();
     });
+
+    it('does not apply a newly created oversized file and reports the actual write target', async () => {
+        const result = await createCheckpointSessionComposition({
+            provider: 'codex', platform: 'darwin', projectPath, sessionId: 'session-1',
+            sandboxConfig: SandboxConfigSchema.parse({ checkpointProtection: protection }),
+            env: contextEnv(), checkpointEvents,
+        });
+        if (!result.beforeTurn || !result.completeTurn) throw new Error('expected protected composition');
+        const turn = await result.beforeTurn();
+        await writeFile(join(turn.providerPath, 'large.bin'), 'x'.repeat(protection.maxFileBytes + 1));
+        const applied = await result.completeTurn(async () => {});
+        expect(applied.entries).toContainEqual({ path: 'large.bin', action: 'conflict', outcome: 'conflict' });
+        await expect(readFile(join(projectPath, 'large.bin'))).rejects.toThrow();
+        expect((await new CheckpointProtectionStateStore(checkpointRoot).read({
+            sessionId: 'session-1', projectId: 'project-1', worktreeId: null, projectPath,
+        })).pendingDecision).toMatchObject({ source: 'turn-apply', excluded: [{ path: 'large.bin', reason: 'too-large' }] });
+        await result.dispose?.();
+    });
+
+    it('bounds pending state for twenty thousand ignored outputs without losing the total', async () => {
+        await writeFile(join(projectPath, '.gitignore'), 'dist/\n');
+        const result = await createCheckpointSessionComposition({
+            provider: 'codex', platform: 'darwin', projectPath,
+            sessionId: 'session-many-outputs', env: contextEnv(), checkpointEvents,
+            sandboxConfig: SandboxConfigSchema.parse({ checkpointProtection: protection }),
+        });
+        if (!result.beforeTurn || !result.completeTurn) throw new Error('expected protected turn');
+        const turn = await result.beforeTurn();
+        await mkdir(join(turn.providerPath, 'dist'), { recursive: true });
+        for (let batch = 0; batch < 200; batch += 1) {
+            await Promise.all(Array.from({ length: 100 }, (_, offset) => writeFile(
+                join(turn.providerPath, 'dist', `${batch * 100 + offset}.txt`), 'generated')));
+        }
+        await result.completeTurn(async () => {});
+        const state = await new CheckpointProtectionStateStore(checkpointRoot).read({
+            sessionId: 'session-many-outputs', projectId: 'project-1', worktreeId: null, projectPath,
+        });
+        expect(state.pendingDecision?.excluded).toEqual([{ path: 'dist', reason: 'ignored' }]);
+        expect(state.pendingDecision?.diagnostic?.counts.totalChanges).toBe(20_000);
+        await expect(readFile(join(projectPath, 'dist', '0.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
+        await result.dispose?.();
+    }, 120_000);
 
     it('records an excluded-path conflict discovered by the turn applier', async () => {
         const result = await createCheckpointSessionComposition({

@@ -289,7 +289,7 @@ import {
 } from '@/checkpoint/checkpointRpc';
 import { createCheckpointEventPublisher } from '@/checkpoint/checkpointEventPublisher';
 import { resolveCheckpointSessionAuthority } from './checkpointSessionAuthority';
-import { restartCheckpointProtectedSession } from './checkpointProtectedRestart';
+import { createCheckpointRestartQueue, restartCheckpointProtectedSession } from './checkpointProtectedRestart';
 import { stopServerProcess } from './stopServer';
 import { AutonomousQualityGateRunStore } from './autonomousQualityGateStore';
 import { AutonomousQualityGateDaemonRegistry } from './autonomousQualityGateRegistry';
@@ -2837,9 +2837,9 @@ export async function startDaemon(): Promise<void> {
     const resumeSession = (happySessionId: string, options?: ResumeSessionOptions): Promise<ResumeSessionResult> =>
       shareInFlight(resumeInFlight, happySessionId, () => spawnResumedSession(happySessionId, options));
 
-    const checkpointRestartInFlight = new Map<string, Promise<void>>();
-    const restartCheckpointSession = (authority: CheckpointRpcSessionAuthority): Promise<void> =>
-      shareInFlight(checkpointRestartInFlight, authority.sessionId, async () => {
+    const queueCheckpointRestart = createCheckpointRestartQueue();
+    const restartCheckpointSession = (authority: CheckpointRpcSessionAuthority, preserveProtection = false): Promise<void> =>
+      queueCheckpointRestart(authority.sessionId, preserveProtection, async () => {
         await restartCheckpointProtectedSession(authority, {
           resolveTarget: async (sessionId) => {
             const tracked = findTrackedSessionById(sessionId);
@@ -2860,7 +2860,7 @@ export async function startDaemon(): Promise<void> {
                 if (pidToTrackedSession.get(tracked.pid) !== tracked) {
                   throw new Error('checkpoint protected restart target changed before termination');
                 }
-                if (!preserveSessionForResume(tracked, 'checkpoint-protection-disabled')) {
+                if (!preserveSessionForResume(tracked, preserveProtection ? 'checkpoint-protection-refresh' : 'checkpoint-protection-disabled')) {
                   throw new Error('checkpoint protected restart cannot preserve the session');
                 }
                 await stopServerProcess({ pid: tracked.pid });
@@ -2880,7 +2880,7 @@ export async function startDaemon(): Promise<void> {
             environmentVariables,
             checkpointRestart: true,
           }),
-        });
+        }, { preserveProtection });
       });
 
     const verifyRecoveryNativeSession = async (session: ReconnectableHappySession): Promise<boolean> => {
@@ -4561,6 +4561,7 @@ export async function startDaemon(): Promise<void> {
           });
         },
         restartSession: restartCheckpointSession,
+        refreshSession: (authority) => restartCheckpointSession(authority, true),
       }),
       // specs/daemon-spawn-project-link — a session created by `agent spawn` has no way to
       // register itself with A+ (its credential does not authenticate /api/*), so the daemon
