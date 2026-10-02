@@ -172,6 +172,17 @@ export function agentBrowserMachineCapability(env: NodeJS.ProcessEnv = process.e
     return { protocol: 2, tenancyMode: env.HAPPY_BROWSER_TASK_TENANCY === 'shared' ? 'shared' : 'dedicated' }
 }
 
+/**
+ * The stored machine metadata with this daemon's agent browser capability, or undefined when it already has it.
+ * The server keeps an existing machine's metadata from its first registration, so a capability added later (or a
+ * reinstall in the other tenancy) reaches Studio only through this update.
+ */
+export function agentBrowserMetadataUpdate<M extends { agentBrowser?: unknown }>(stored: M | null, capability: ReturnType<typeof agentBrowserMachineCapability>): M | undefined {
+    if (!stored || JSON.stringify(stored.agentBrowser) === JSON.stringify(capability)) return undefined
+    const { agentBrowser: _previous, ...rest } = stored
+    return (capability ? { ...rest, agentBrowser: capability } : rest) as M
+}
+
 export interface BrowserTaskBrokerConfig { socketPath: string; daemonToken: string }
 
 export function readBrowserTaskBrokerConfig(env: NodeJS.ProcessEnv = process.env): BrowserTaskBrokerConfig | undefined {

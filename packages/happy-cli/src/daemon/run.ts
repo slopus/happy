@@ -141,7 +141,7 @@ import {
   type StopSessionContext,
   type StopSessionResult,
 } from './sessionIdleReaper';
-import { agentBrowserMachineCapability, browserTaskLineage, createBrowserTaskSessionBroker, spawnResumedWithBrowserTaskRegistration, startBrowserTaskReconciliation, type BrowserTaskSessionBroker } from './browserTaskBroker';
+import { agentBrowserMachineCapability, agentBrowserMetadataUpdate, browserTaskLineage, createBrowserTaskSessionBroker, spawnResumedWithBrowserTaskRegistration, startBrowserTaskReconciliation, type BrowserTaskSessionBroker } from './browserTaskBroker';
 import { createHeldBrowserAttentions, findBrowserAttentionSession, startBrowserAttentionWatcher, type HeldBrowserAttention } from './browserAttentionDelivery';
 import {
   createProcFs,
@@ -3674,6 +3674,12 @@ export async function startDaemon(): Promise<void> {
       host: difficultyRoutingHost,
       baseMetadata: difficultyRoutingMachineMetadata,
     });
+    // An existing machine keeps the metadata it first registered with: publish the agent browser capability
+    // (Studio sends session-user attestations only to machines that report it).
+    if (agentBrowserMetadataUpdate(machine.metadata, agentBrowserMachineCapability())) {
+      void apiMachine.updateMachineMetadata((metadata) => agentBrowserMetadataUpdate(metadata, agentBrowserMachineCapability()) ?? metadata!)
+        .catch((error) => logger.debug('[DAEMON RUN] agent browser capability not published', error));
+    }
     /** Set only for a managed runtime; the beat below keeps it current. */
     let managedCredentialState: {
       stateDir: string;
