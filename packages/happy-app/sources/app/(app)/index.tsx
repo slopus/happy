@@ -154,18 +154,14 @@ function NotAuthenticated() {
     );
 
     return (
-        <View style={styles.root}>
+        <>
             <HomeHeaderNotAuth />
             {isLandscape ? landscapeLayout : portraitLayout}
-        </View>
+        </>
     )
 }
 
 const styles = StyleSheet.create((theme) => ({
-    root: {
-        flex: 1,
-        backgroundColor: theme.colors.header.background,
-    },
     // NotAuthenticated styles
     portraitContainer: {
         flex: 1,

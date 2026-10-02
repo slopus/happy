@@ -247,7 +247,7 @@ export const LinkComputerChecklist = React.memo(function LinkComputerChecklist({
     }
 
     return (
-        <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: SCROLL_BOTTOM_PADDING + bottomInset }]} keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerStyle={[styles.scroll, styles.scrollCentered, { paddingBottom: SCROLL_BOTTOM_PADDING + bottomInset }]} keyboardShouldPersistTaps="handled">
             <View style={styles.content}>
                 <ChecklistRow
                     checked={!!ticked.install}
@@ -342,7 +342,7 @@ export const OnboardingLinkComputer = React.memo(function OnboardingLinkComputer
 const styles = StyleSheet.create((theme) => ({
     root: {
         flex: 1,
-        backgroundColor: theme.colors.header.background,
+        backgroundColor: theme.colors.groupped.background,
     },
     headerButton: {
         width: 32,
@@ -353,6 +353,12 @@ const styles = StyleSheet.create((theme) => ({
     scroll: {
         alignItems: 'center',
         paddingTop: 16,
+    },
+    // The checklist and its actions sit together mid-screen; when they
+    // outgrow the screen the list scrolls from the top as usual.
+    scrollCentered: {
+        flexGrow: 1,
+        justifyContent: 'center',
     },
     // Sits over the checklist rather than under it, so a short list keeps the
     // button at the bottom of the screen instead of floating mid-page.
