@@ -1,5 +1,13 @@
 import * as z from 'zod';
 import type { AutomationCryptoAdapter } from './automation';
+import {
+  AUTHENTICATED_ENVELOPE_BYTES,
+  AUTHENTICATED_ENVELOPE_VERSION,
+  authenticatedEnvelopeBinding,
+  openMachineDataKey,
+  sealAuthenticatedEnvelope,
+  type MachinePayloadOpening,
+} from './authenticatedEnvelope';
 
 export const SESSION_FOLLOWUP_WIRE_VERSION = 1;
 export const SESSION_FOLLOWUP_MIN_ROUNDS = 2;
@@ -32,11 +40,30 @@ function base64Schema(maxBytes: number, options: { exactBytes?: number; minBytes
 
 const payloadCiphertextSchema = base64Schema(MAX_CIPHERTEXT_BYTES, { minBytes: 41, version: 1 });
 const envelopeSchema = base64Schema(ENVELOPE_BYTES, { exactBytes: ENVELOPE_BYTES, version: 1 });
+/** The machine's copy may also be sender-authenticated (v3); a viewer's never is. */
+const machineEnvelopeSchema = z.union([
+  envelopeSchema,
+  base64Schema(AUTHENTICATED_ENVELOPE_BYTES, { exactBytes: AUTHENTICATED_ENVELOPE_BYTES, version: AUTHENTICATED_ENVELOPE_VERSION }),
+]);
 const sessionCiphertextSchema = base64Schema(MAX_CIPHERTEXT_BYTES, { minBytes: 1 });
 
 // The outer action is generic to an existing session. Evaluation policy is a
 // versioned discriminator so future follow-up actions do not depend on Desktop
 // component or IPC types.
+/**
+ * aplus-dev-studio specs/e2ee-machine-control-boundary R12 — the session a
+ * sender meant the prompt for. Inside the ciphertext, which a v3 machine
+ * envelope binds; older daemons pass over it.
+ */
+export const sessionFollowupSealSchema = z.object({
+  version: z.literal(1),
+  machineId: z.string().min(1).max(200),
+  projectId: z.string().min(1).max(200),
+  sessionId: z.string().min(1).max(200),
+  sealedAt: timestamp,
+});
+export type SessionFollowupSeal = z.infer<typeof sessionFollowupSealSchema>;
+
 export const sessionFollowupPayloadSchema = z.object({
   kind: z.literal('existing-session-prompt'),
   directory: z.string().trim().min(1).max(1_000),
@@ -44,6 +71,7 @@ export const sessionFollowupPayloadSchema = z.object({
   evaluator: z.discriminatedUnion('kind', [
     z.object({ kind: z.literal('review-findings-v1') }),
   ]),
+  seal: sessionFollowupSealSchema.optional(),
 });
 export type SessionFollowupPayload = z.infer<typeof sessionFollowupPayloadSchema>;
 
@@ -54,7 +82,7 @@ export const sessionFollowupEncryptedFieldsSchema = z.object({
   viewerKeyVersion: positiveInteger,
   viewerKeyEnvelope: envelopeSchema,
   machineKeyVersion: positiveInteger,
-  machineKeyEnvelope: envelopeSchema,
+  machineKeyEnvelope: machineEnvelopeSchema,
 });
 export type SessionFollowupEncryptedFields = z.infer<typeof sessionFollowupEncryptedFieldsSchema>;
 
@@ -160,7 +188,7 @@ export const sessionFollowupDaemonSchema = z.object({
   payloadVersion: z.literal(1),
   payloadCiphertext: payloadCiphertextSchema,
   machineKeyVersion: positiveInteger,
-  machineKeyEnvelope: envelopeSchema,
+  machineKeyEnvelope: machineEnvelopeSchema,
 });
 export type SessionFollowupDaemon = z.infer<typeof sessionFollowupDaemonSchema>;
 
@@ -246,28 +274,95 @@ function openVersioned(value: string, crypto: AutomationCryptoAdapter, exactLeng
   return decoded.slice(1);
 }
 
+/**
+ * With `sender`, the machine's envelope is a v3 one sealed by that key
+ * (aplus-dev-studio specs/e2ee-machine-control-boundary R12), and the payload
+ * must carry the `seal` naming its session. Without it, both envelopes are
+ * anonymous as before.
+ */
 export async function encryptSessionFollowupPayload(input: {
   payload: SessionFollowupPayload;
   viewer: { publicKey: Uint8Array; keyVersion: number };
   machine: { publicKey: Uint8Array; keyVersion: number };
+  sender?: { publicKey: Uint8Array; secretKey: Uint8Array };
   crypto: AutomationCryptoAdapter;
 }): Promise<SessionFollowupEncryptedFields> {
   const payload = sessionFollowupPayloadSchema.parse(input.payload);
-  if (input.viewer.publicKey.length !== 32 || input.machine.publicKey.length !== 32) {
+  if (input.viewer.publicKey.length !== 32 || input.machine.publicKey.length !== 32
+    || (input.sender && !payload.seal)) {
     throw new Error('session-followup-encrypt-failed');
   }
   const dek = input.crypto.randomBytes(32);
   if (dek.length !== 32) throw new Error('session-followup-encrypt-failed');
   const plaintext = new TextEncoder().encode(JSON.stringify(payload));
+  const ciphertext = versioned(input.crypto.secretBoxSeal(plaintext, dek));
+  let machineKeyEnvelope: Uint8Array;
+  try {
+    machineKeyEnvelope = input.sender
+      ? sealAuthenticatedEnvelope({
+        key: dek,
+        binding: authenticatedEnvelopeBinding({ kind: 'session-followup', ciphertext }),
+        recipientPublicKey: input.machine.publicKey,
+        sender: input.sender,
+      })
+      : versioned(input.crypto.boxSeal(dek, input.machine.publicKey));
+  } catch {
+    throw new Error('session-followup-encrypt-failed');
+  }
   return sessionFollowupEncryptedFieldsSchema.parse({
     payloadVersion: 1,
-    payloadCiphertext: input.crypto.encodeBase64(versioned(input.crypto.secretBoxSeal(plaintext, dek))),
+    payloadCiphertext: input.crypto.encodeBase64(ciphertext),
     viewerKeyId: input.crypto.encodeBase64(await input.crypto.sha256(input.viewer.publicKey), true),
     viewerKeyVersion: input.viewer.keyVersion,
     viewerKeyEnvelope: input.crypto.encodeBase64(versioned(input.crypto.boxSeal(dek, input.viewer.publicKey))),
     machineKeyVersion: input.machine.keyVersion,
-    machineKeyEnvelope: input.crypto.encodeBase64(versioned(input.crypto.boxSeal(dek, input.machine.publicKey))),
+    machineKeyEnvelope: input.crypto.encodeBase64(machineKeyEnvelope),
   });
+}
+
+/**
+ * The daemon's side: opens the machine's copy, anonymous or v3, and says which.
+ * Whether to trust the sender, and checking `seal` against the follow-up, is
+ * the caller's.
+ */
+export async function openSessionFollowupPayloadForMachine(input: {
+  payloadVersion: 1;
+  payloadCiphertext: string;
+  machineKeyEnvelope: string;
+  recipientSecretKey: Uint8Array;
+  crypto: AutomationCryptoAdapter;
+}): Promise<MachinePayloadOpening<SessionFollowupPayload>> {
+  let ciphertext: Uint8Array;
+  let envelope: Uint8Array;
+  try {
+    if (input.payloadVersion !== 1 || input.recipientSecretKey.length !== 32) return { ok: false, reason: 'malformed' };
+    ciphertext = input.crypto.decodeBase64(input.payloadCiphertext);
+    envelope = input.crypto.decodeBase64(input.machineKeyEnvelope);
+  } catch {
+    return { ok: false, reason: 'malformed' };
+  }
+  const opened = openMachineDataKey({
+    kind: 'session-followup',
+    envelope,
+    ciphertext,
+    recipientSecretKey: input.recipientSecretKey,
+    openAnonymous: (bytes) => bytes.length === ENVELOPE_BYTES && bytes[0] === 1
+      ? input.crypto.boxOpen(bytes.slice(1), input.recipientSecretKey)
+      : null,
+  });
+  if (!opened.ok) return opened;
+  try {
+    if (ciphertext[0] !== 1) return { ok: false, reason: 'malformed' };
+    const plaintext = input.crypto.secretBoxOpen(ciphertext.slice(1), opened.key);
+    if (!plaintext) return { ok: false, reason: 'malformed' };
+    const payload = sessionFollowupPayloadSchema.safeParse(JSON.parse(new TextDecoder().decode(plaintext)));
+    if (!payload.success) return { ok: false, reason: 'malformed' };
+    return { ok: true, payload: payload.data, authentication: opened.authentication };
+  } catch {
+    return { ok: false, reason: 'malformed' };
+  } finally {
+    opened.key.fill(0);
+  }
 }
 
 export async function decryptSessionFollowupPayload(input: {
