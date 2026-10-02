@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
@@ -79,6 +79,7 @@ function formatPushTimestamp(timestamp: number): string {
 
 function buildPushTokenSubtitle(pushToken: PushToken, options: {
     isCurrentDevice: boolean;
+    currentDeviceIdentified: boolean;
     currentDeviceLabel: string;
     currentAppLabel: string | null;
 }): string {
@@ -89,7 +90,7 @@ function buildPushTokenSubtitle(pushToken: PushToken, options: {
         if (options.currentAppLabel) {
             lines.push(options.currentAppLabel);
         }
-    } else {
+    } else if (options.currentDeviceIdentified) {
         lines.push(t('pushNotifications.otherDevice'));
     }
 
@@ -116,6 +117,9 @@ export default React.memo(() => {
     const [pushPermission, setPushPermission] = useState<PushPermissionInfo | null>(null);
     const [currentPushToken, setCurrentPushToken] = useState<string | null>(null);
     const [loadingPushSettings, setLoadingPushSettings] = useState(false);
+    const pushSettingsLoadId = useRef(0);
+    const lastAppliedPushSettingsLoadId = useRef(0);
+    const pushSettingsMutationId = useRef(0);
     const [requestingPushPermission, setRequestingPushPermission] = useState(false);
     const [refreshingPushToken, setRefreshingPushToken] = useState(false);
     const [deletingPushToken, setDeletingPushToken] = useState<string | null>(null);
@@ -137,29 +141,43 @@ export default React.memo(() => {
             return;
         }
 
+        const loadId = ++pushSettingsLoadId.current;
+        const mutationId = pushSettingsMutationId.current;
         setLoadingPushSettings(true);
+        setCurrentPushToken(null);
+        // Obtaining an Expo token may wait on the phone's push service or network.
+        // It is only needed to label this device, so it must not block the token
+        // list or the controls that can repair registration.
+        void getCurrentExpoPushToken().then(token => {
+            if (pushSettingsLoadId.current === loadId && pushSettingsMutationId.current === mutationId) {
+                setCurrentPushToken(token);
+            }
+        }).catch(error => {
+            console.error('Failed to identify the current push token:', error);
+        });
+        let applied = false;
         try {
-            const [tokens, permission, liveToken] = await Promise.all([
+            const [tokens, permission] = await Promise.all([
                 fetchPushTokens(auth.credentials),
                 getPushPermissionInfo(),
-                getCurrentExpoPushToken(),
             ]);
-            setPushTokens(tokens);
-            setPushPermission(permission);
-            setCurrentPushToken(liveToken);
+            if (pushSettingsMutationId.current === mutationId && loadId > lastAppliedPushSettingsLoadId.current) {
+                lastAppliedPushSettingsLoadId.current = loadId;
+                setPushTokens(tokens);
+                setPushPermission(permission);
+                applied = true;
+            }
         } catch (error) {
             console.error('Failed to load push notification settings:', error);
-            if (showError) {
+            if (showError && pushSettingsMutationId.current === mutationId) {
                 Modal.alert(t('common.error'), t('pushNotifications.loadFailed'));
             }
         } finally {
-            setLoadingPushSettings(false);
+            if (pushSettingsMutationId.current === mutationId && (applied || pushSettingsLoadId.current === loadId)) {
+                setLoadingPushSettings(false);
+            }
         }
     }, [auth.credentials]);
-
-    useEffect(() => {
-        void loadPushSettings();
-    }, [loadPushSettings]);
 
     useFocusEffect(
         useCallback(() => {
@@ -235,11 +253,17 @@ export default React.memo(() => {
         setRequestingPushPermission(true);
         try {
             const result = await requestPushPermissionOrOpenSettings();
+            pushSettingsMutationId.current += 1;
             setPushPermission(result.permission);
+            void loadPushSettings();
 
             if (result.granted) {
                 const syncResult = await syncCurrentPushToken(auth.credentials);
-                await loadPushSettings();
+                pushSettingsMutationId.current += 1;
+                void loadPushSettings();
+                if (syncResult.registered) {
+                    setCurrentPushToken(syncResult.token);
+                }
                 if (!syncResult.registered) {
                     Modal.alert(t('common.error'), buildPushRefreshFailureMessage(syncResult.error));
                     return;
@@ -247,8 +271,6 @@ export default React.memo(() => {
                 Modal.alert(t('common.success'), t('pushNotifications.enabledForDevice'));
                 return;
             }
-
-            await loadPushSettings();
 
             if (result.openedSettings) {
                 Modal.alert(t('pushNotifications.openSettingsTitle'), t('pushNotifications.openSettingsMessage'));
@@ -272,8 +294,12 @@ export default React.memo(() => {
         setRefreshingPushToken(true);
         try {
             const result = await syncCurrentPushToken(auth.credentials);
+            pushSettingsMutationId.current += 1;
             setPushPermission(result.permission);
-            await loadPushSettings();
+            void loadPushSettings();
+            if (result.registered) {
+                setCurrentPushToken(result.token);
+            }
 
             if (!result.permission.granted) {
                 Modal.alert(t('common.error'), t('pushNotifications.notEnabledYet'));
@@ -312,6 +338,7 @@ export default React.memo(() => {
         setDeletingPushToken(pushToken.token);
         try {
             await removePushToken(auth.credentials, pushToken.token);
+            pushSettingsMutationId.current += 1;
             await loadPushSettings();
         } catch (error) {
             console.error('Failed to delete push token:', error);
@@ -533,7 +560,7 @@ export default React.memo(() => {
                         icon={<Ionicons name="shield-checkmark-outline" size={29} color="#34C759" />}
                         onPress={handlePushPermissionRequest}
                         loading={requestingPushPermission}
-                        disabled={requestingPushPermission || loadingPushSettings || pushNotificationsUnsupported || !auth.credentials}
+                        disabled={requestingPushPermission || pushNotificationsUnsupported || !auth.credentials}
                         showChevron={false}
                     />
                     <Item
@@ -546,7 +573,7 @@ export default React.memo(() => {
                         icon={<Ionicons name="refresh-outline" size={29} color="#FF9500" />}
                         onPress={handleRefreshCurrentPushToken}
                         loading={refreshingPushToken}
-                        disabled={refreshingPushToken || loadingPushSettings || pushNotificationsUnsupported || !auth.credentials}
+                        disabled={refreshingPushToken || pushNotificationsUnsupported || !auth.credentials}
                         showChevron={false}
                     />
                 </ItemGroup>
@@ -565,6 +592,7 @@ export default React.memo(() => {
                         <>
                             {pushTokens.map((pushToken) => {
                                 const isCurrentDevice = currentPushToken === pushToken.token;
+                                const canDelete = currentPushToken !== null && !isCurrentDevice;
                                 return (
                                     <Item
                                         key={pushToken.id}
@@ -572,20 +600,21 @@ export default React.memo(() => {
                                         detail={isCurrentDevice ? t('pushNotifications.thisDevice') : undefined}
                                         subtitle={buildPushTokenSubtitle(pushToken, {
                                             isCurrentDevice,
+                                            currentDeviceIdentified: currentPushToken !== null,
                                             currentDeviceLabel: currentPushDevice.deviceLabel,
                                             currentAppLabel: currentPushDevice.appLabel,
                                         })}
                                         subtitleLines={0}
                                         icon={(
                                             <Ionicons
-                                                name={isCurrentDevice ? 'phone-portrait-outline' : 'trash-outline'}
+                                                name={isCurrentDevice ? 'phone-portrait-outline' : canDelete ? 'trash-outline' : 'help-circle-outline'}
                                                 size={29}
-                                                color={isCurrentDevice ? theme.colors.textSecondary : '#FF3B30'}
+                                                color={canDelete ? '#FF3B30' : theme.colors.textSecondary}
                                             />
                                         )}
-                                        onPress={isCurrentDevice ? undefined : () => handleDeletePushToken(pushToken)}
+                                        onPress={canDelete ? () => handleDeletePushToken(pushToken) : undefined}
                                         loading={deletingPushToken === pushToken.token}
-                                        disabled={deletingPushToken !== null}
+                                        disabled={deletingPushToken !== null || !canDelete}
                                         showChevron={false}
                                         copy={isCurrentDevice ? pushToken.token : false}
                                     />
