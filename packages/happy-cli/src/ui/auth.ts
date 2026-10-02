@@ -5,10 +5,10 @@ import tweetnacl from 'tweetnacl';
 import axios from 'axios';
 import { displayQRCode } from "./qrcode";
 import { delay } from "@/utils/time";
-import { writeCredentialsLegacy, readCredentials, updateSettings, Credentials, writeCredentialsDataKey, provisionLegacyMachineKey, readPersistedSessions, readMachineIdentity, writeMachineIdentity } from "@/persistence";
+import { writeCredentialsLegacy, readCredentials, updateSettings, Credentials, writeCredentialsDataKey, provisionLegacyMachineKey, readPersistedSessions, readMachineIdentity, writeMachineIdentity, writePrivateFileSync } from "@/persistence";
 import { buildMachineIdentity, reusableDataKeyMachineKey, reusableMachineId } from "@/machineIdentity";
 import { planDataKeyOnboarding } from "@/datakey/onboarding";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { generateWebAuthUrl } from "@/api/webAuth";
 import { openBrowser } from "@/utils/browser";
 import { AuthSelector, AuthMethod } from "./ink/AuthSelector";
@@ -330,9 +330,9 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
         if (plan.ok) {
             const backupPath = `${configuration.privateKeyFile}.legacy-backup`;
             if (!existsSync(backupPath)) {
-                writeFileSync(backupPath, JSON.stringify(plan.backup, null, 2));
+                writePrivateFileSync(backupPath, JSON.stringify(plan.backup, null, 2));
             }
-            writeFileSync(configuration.privateKeyFile, JSON.stringify(plan.serialized, null, 2));
+            writePrivateFileSync(configuration.privateKeyFile, JSON.stringify(plan.serialized, null, 2));
             credentials = (await readCredentials())!;
             logger.debug('[AUTH] Onboarded fresh machine to dataKey-active');
         } else {
