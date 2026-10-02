@@ -3,15 +3,10 @@ import { chmod, lstat } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
-type Row = Record<string, any>;
-type Database = {
-  exec(sql: string): void;
-  prepare(sql: string): { all(...args: any[]): Row[]; get(...args: any[]): Row | undefined; run(...args: any[]): unknown };
-  close(): void;
-};
+import { planHistorySchemaMerge, quoteHistoryIdentifier as quote, type HistoryDatabase as Database, type HistoryRow as Row, type HistorySchemaEntry } from './codexHistorySchema';
+
 const filename = 'thread_history_1.sqlite';
 const tables = new Set(['_sqlx_migrations', 'thread_turns', 'thread_items', 'thread_history_projection_state', 'thread_realtime_items']);
-const quote = (name: string) => '"' + name.replaceAll('"', '""') + '"';
 function database(path: string, readOnly: boolean, timeout = 5_000): Database {
   // Like Codex attach discovery, the managed Node runtime supplies node:sqlite.
   const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite');
@@ -32,7 +27,7 @@ export async function snapshotCodexHistoryIndex(home: string) {
   }
   try {
     source.exec('BEGIN');
-    const schema = source.prepare("SELECT type, name, tbl_name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END").all();
+    const schema = source.prepare("SELECT type, name, tbl_name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END").all() as HistorySchemaEntry[];
     if (schema.some(row => !tables.has(row.tbl_name))) throw new Error('Unsupported Codex history index schema');
     const tableNames = schema.filter(row => row.type === 'table').map(row => row.name as string);
     let retained = new Map<string, Row>();
@@ -42,21 +37,20 @@ export async function snapshotCodexHistoryIndex(home: string) {
         const info = await lstat(targetPath).catch(() => null);
         if (!info) return;
         if (!info.isFile()) throw new Error('Invalid Codex history index destination');
-        const target = database(targetPath, true);
+        const target = database(targetPath, false);
         try {
-          for (const entry of schema) {
-            const current = target.prepare('SELECT sql FROM sqlite_master WHERE name = ?').get(entry.name);
-            if (current && current.sql !== entry.sql) throw new Error('Incompatible Codex history index schema');
-          }
-          if (tableNames.includes('_sqlx_migrations') && target.prepare("SELECT name FROM sqlite_master WHERE name='_sqlx_migrations'").get()) {
-            for (const row of source.prepare('SELECT * FROM _sqlx_migrations').all()) {
-              const current = target.prepare('SELECT * FROM _sqlx_migrations WHERE version = ?').get(row.version);
-              if (current && Buffer.from(current.checksum).compare(Buffer.from(row.checksum)) !== 0) throw new Error('Incompatible Codex history migrations');
-            }
-          }
+          // Migrate atomically before any rollout is replaced. A rejected schema
+          // leaves both the previous index and its rollout bytes untouched.
+          target.exec('BEGIN IMMEDIATE');
+          for (const statement of planHistorySchemaMerge(source, target, schema, () => database(':memory:', false)).statements) target.exec(statement);
+          mergeMigrations(source, target, tableNames);
+          target.exec('COMMIT');
           if (target.prepare("SELECT name FROM sqlite_master WHERE name='thread_history_projection_state'").get()) {
             retained = new Map(target.prepare('SELECT * FROM thread_history_projection_state').all().map(row => [row.thread_id, row]));
           }
+        } catch (error) {
+          try { target.exec('ROLLBACK'); } catch { /* Transaction may already have committed. */ }
+          throw error;
         } finally { target.close(); }
       },
       projection(threadId: string) {
@@ -79,20 +73,9 @@ export async function snapshotCodexHistoryIndex(home: string) {
         try {
           await chmod(targetPath, 0o600);
           target.exec('BEGIN IMMEDIATE');
-          for (const entry of schema) {
-            const current = target.prepare('SELECT sql FROM sqlite_master WHERE name = ?').get(entry.name);
-            if (!current) target.exec(entry.sql);
-            else if (current.sql !== entry.sql) throw new Error('Incompatible Codex history index schema');
-          }
-          for (const table of tableNames) {
-            if (table !== '_sqlx_migrations') continue;
-            const rows = source.prepare(`SELECT * FROM ${quote(table)}`).all();
-            for (const row of rows) {
-              const current = target.prepare('SELECT * FROM _sqlx_migrations WHERE version = ?').get(row.version);
-              if (current && Buffer.from(current.checksum).compare(Buffer.from(row.checksum)) !== 0) throw new Error('Incompatible Codex history migrations');
-              if (!current) insertRow(target, table, row);
-            }
-          }
+          const plan = planHistorySchemaMerge(source, target, schema, () => database(':memory:', false));
+          for (const statement of plan.statements) target.exec(statement);
+          mergeMigrations(source, target, tableNames);
           for (const [threadId, size] of rollouts) {
             const projected = tableNames.includes('thread_history_projection_state')
               ? source.prepare('SELECT * FROM thread_history_projection_state WHERE thread_id = ?').get(threadId)
@@ -101,11 +84,31 @@ export async function snapshotCodexHistoryIndex(home: string) {
             if (projected.next_rollout_byte_offset > size) throw new Error('Codex history index is ahead of its rollout');
             const retained = target.prepare('SELECT * FROM thread_history_projection_state WHERE thread_id = ?').get(threadId);
             // A home restored earlier must not rewind a shared account cache.
-            if (retained && retained.next_rollout_ordinal > projected.next_rollout_ordinal) continue;
+            if (retained && (retained.next_rollout_ordinal > projected.next_rollout_ordinal
+              || (plan.sourceIsOlder && retained.next_rollout_ordinal === projected.next_rollout_ordinal))) continue;
             for (const table of tableNames) {
               if (table === '_sqlx_migrations') continue;
+              const rows = source.prepare(`SELECT * FROM ${quote(table)} WHERE thread_id = ?`).all(threadId);
+              if (plan.sourceIsOlder) {
+                // A still-running old Codex can append after another home has
+                // upgraded the cache. Preserve fields it does not know about
+                // on existing items, rather than resetting them to defaults.
+                const sourceColumns = new Set(source.prepare(`PRAGMA table_xinfo(${quote(table)})`).all().map(column => column.name));
+                const columns = target.prepare(`PRAGMA table_xinfo(${quote(table)})`).all();
+                const extras = columns.filter(column => !sourceColumns.has(column.name));
+                if (extras.length) {
+                  const keys = columns.filter(column => column.pk).sort((a, b) => a.pk - b.pk).map(column => column.name);
+                  if (!keys.length) throw new Error('Cannot preserve newer Codex history fields without a primary key');
+                  const key = (row: Row) => JSON.stringify(keys.map(name => row[name]));
+                  const previous = new Map(target.prepare(`SELECT * FROM ${quote(table)} WHERE thread_id = ?`).all(threadId).map(row => [key(row), row]));
+                  for (const row of rows) {
+                    const existing = previous.get(key(row));
+                    if (existing) for (const column of extras) row[column.name] = existing[column.name];
+                  }
+                }
+              }
               target.prepare(`DELETE FROM ${quote(table)} WHERE thread_id = ?`).run(threadId);
-              for (const row of source.prepare(`SELECT * FROM ${quote(table)} WHERE thread_id = ?`).all(threadId)) insertRow(target, table, row);
+              for (const row of rows) insertRow(target, table, row);
             }
           }
           target.exec('COMMIT');
@@ -148,4 +151,11 @@ export async function withCodexHistoryCacheLock<T>(home: string, action: () => P
     try { return await action(); }
     finally { lock.exec('ROLLBACK'); }
   } finally { lock.close(); }
+}
+
+function mergeMigrations(source: Database, target: Database, tableNames: string[]): void {
+  if (!tableNames.includes('_sqlx_migrations')) return;
+  for (const row of source.prepare('SELECT * FROM _sqlx_migrations').all()) {
+    if (!target.prepare('SELECT version FROM _sqlx_migrations WHERE version = ?').get(row.version)) insertRow(target, '_sqlx_migrations', row);
+  }
 }

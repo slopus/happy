@@ -5,6 +5,7 @@ import { basename, join } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { createInterface } from 'node:readline';
 import { snapshotCodexHistoryIndex, withCodexHistoryCacheLock } from './codexHistoryIndex';
+import { CodexHistorySchemaError } from './codexHistorySchema';
 import { AsyncLock } from '@/utils/lock';
 import { collectCodexUsageSnapshot, type CodexUsageSnapshot } from './codexUsage';
 
@@ -214,7 +215,7 @@ export async function copyCodexSourceThread(root: string, sourceSessionId: strin
         return audit.profileId;
       });
     } catch (error) {
-      if (error instanceof CodexSourceAccountMismatchError) throw error;
+      if (error instanceof CodexSourceAccountMismatchError || error instanceof CodexHistorySchemaError) throw error;
       throw new CodexSourceHistoryUnavailableError();
     }
   });

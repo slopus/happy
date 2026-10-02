@@ -350,6 +350,21 @@ async function machineStartSession(
     }
 }
 
+function normalizeSessionHistoryResult<T extends { type: string }>(result: T): T | { type: 'error'; errorMessage: string } {
+    // RpcHandlerManager returns { error } inside a successful encrypted RPC
+    // envelope when the daemon handler throws. Preserve that diagnostic.
+    const envelope = result as unknown as { error?: unknown; type?: unknown; errorMessage?: unknown } | null;
+    if (envelope && typeof envelope.error === 'string' && envelope.error.trim()) {
+        return { type: 'error', errorMessage: envelope.error };
+    }
+    if (envelope?.type === 'success') return result;
+    return {
+        type: 'error',
+        errorMessage: typeof envelope?.errorMessage === 'string' && envelope.errorMessage.trim()
+            ? envelope.errorMessage : 'Invalid session history response from the machine',
+    };
+}
+
 /**
  * Copy the source session's Claude JSONL on the daemon machine and return
  * the new Claude session UUID. Caller then spawns a fresh Happy session
@@ -368,7 +383,7 @@ export async function claudeForkSession(options: ClaudeForkSessionOptions): Prom
             'claude-fork-session',
             { directory, targetDirectory, claudeSessionId },
         );
-        return result;
+        return normalizeSessionHistoryResult(result);
     } catch (error) {
         return {
             type: 'error',
@@ -397,7 +412,7 @@ export async function claudeListRewindPoints(
             'claude-list-rewind-points',
             { directory, claudeSessionId },
         );
-        return result;
+        return normalizeSessionHistoryResult(result);
     } catch (error) {
         return {
             type: 'error',
@@ -426,7 +441,7 @@ export async function claudeDuplicateSession(
             'claude-duplicate-session',
             { directory, claudeSessionId, cutAfterUuid },
         );
-        return result;
+        return normalizeSessionHistoryResult(result);
     } catch (error) {
         return {
             type: 'error',
@@ -447,7 +462,7 @@ export async function codexForkThread(options: CodexForkThreadOptions): Promise<
             'codex-fork-thread',
             { directory, sourceSessionId, codexThreadId },
         );
-        return result;
+        return normalizeSessionHistoryResult(result);
     } catch (error) {
         return {
             type: 'error',
@@ -481,7 +496,7 @@ export async function codexDuplicateThread(
                 ...(retainSelectedTurn ? { retainSelectedTurn: true } : {}),
             },
         );
-        return result;
+        return normalizeSessionHistoryResult(result);
     } catch (error) {
         return {
             type: 'error',
@@ -504,7 +519,7 @@ export async function codexListRewindPoints(
             'codex-list-rewind-points',
             { directory, sourceSessionId, codexThreadId },
         );
-        return result;
+        return normalizeSessionHistoryResult(result);
     } catch (error) {
         return {
             type: 'error',

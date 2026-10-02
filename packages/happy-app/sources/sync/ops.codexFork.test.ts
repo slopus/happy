@@ -139,6 +139,26 @@ describe('codex fork ops', () => {
         });
     });
 
+    it.each(['codex', 'claude'] as const)('preserves daemon errors for %s full and message forks without spawning', async kind => {
+        machineRPC.mockResolvedValue({ error: 'Codex history cache needs a compatible migration' });
+        const { forkAndSpawn } = await import('./ops');
+        const source = { kind, sessionId: 'source', machineId: 'machine', directory: '/repo', codexThreadId: 'thread', claudeSessionId: 'claude' };
+        for (const options of [{}, kind === 'codex' ? { cutBeforeItemId: 'item' } : { cutAfterUuid: 'item' }]) {
+            await expect(forkAndSpawn(source, options)).resolves.toEqual({ type: 'error', errorMessage: 'Codex history cache needs a compatible migration' });
+        }
+        expect(machineRPC).toHaveBeenCalledTimes(2);
+        expect(ensureSessionHydrated).not.toHaveBeenCalled();
+    });
+
+    it('preserves native history diagnostics while resolving a message fork point', async () => {
+        machineRPC.mockResolvedValue({ error: 'Codex source history unavailable' });
+        const { codexListRewindPoints, claudeListRewindPoints } = await import('./ops');
+        const source = { sourceSessionId: 'source', machineId: 'machine', directory: '/repo', codexThreadId: 'thread', claudeSessionId: 'claude' };
+        for (const read of [codexListRewindPoints, claudeListRewindPoints]) {
+            await expect(read(source)).resolves.toEqual({ type: 'error', errorMessage: 'Codex source history unavailable' });
+        }
+    });
+
     it('forks a full Codex thread and spawns a Codex session resumed to the new thread', async () => {
         machineRPC.mockImplementation(async (_machineId: string, method: string) => {
             if (method === 'codex-fork-thread') {

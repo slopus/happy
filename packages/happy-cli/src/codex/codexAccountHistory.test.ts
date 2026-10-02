@@ -202,3 +202,92 @@ it('fails closed when a retained paginated thread has lost its history index', a
   await rememberCodexAccountSession(cache, 'session', 'a');
   await expect(copyCodexSourceThread(cache, 'session', 'thread', await temp(), 'a')).rejects.toThrow('unavailable');
 });
+
+it.skipIf(!DatabaseSync)('migrates additive history schemas, preserving old threads and newer fields across old running homes', async () => {
+  const cache = await temp(); const old = await temp(); const upgraded = await temp(); const output = await temp();
+  await rollout(old, 'old');
+  const original = historyDb(old);
+  original.exec("INSERT INTO thread_items VALUES ('old', 'item', 'old context'); INSERT INTO thread_history_projection_state VALUES ('old', 0, 1)");
+  original.close();
+  await retainCodexAccountHistory(cache, 'a', old);
+  await restoreCodexAccountHistory(cache, 'a', upgraded);
+  const newer = historyDb(upgraded);
+  newer.exec(`ALTER TABLE thread_items ADD COLUMN started_at_ms INTEGER;
+    ALTER TABLE thread_items ADD COLUMN completed_at_ms INTEGER;
+    ALTER TABLE thread_items ADD COLUMN future_field TEXT NOT NULL DEFAULT 'a b';
+    INSERT INTO _sqlx_migrations VALUES (2, X'5678');
+    UPDATE thread_items SET started_at_ms=10, completed_at_ms=20`);
+  await rollout(upgraded, 'new');
+  newer.exec("INSERT INTO thread_items VALUES ('new', 'item', 'new context', 30, 40, 'new value'); INSERT INTO thread_history_projection_state VALUES ('new', 0, 1)");
+  newer.close();
+  await retainCodexAccountHistory(cache, 'a', upgraded);
+  // An unchanged pre-upgrade home cannot erase fields populated by the new one.
+  await retainCodexAccountHistory(cache, 'a', old);
+  // The old process can also append new work after the cache was upgraded.
+  const advancing = historyDb(old);
+  advancing.exec("UPDATE thread_items SET item_json='continued context'; UPDATE thread_history_projection_state SET next_rollout_ordinal=2");
+  advancing.close();
+  await writeFile(join(old, 'sessions', 'rollout-old.jsonl'), (await readFile(join(old, 'sessions', 'rollout-old.jsonl'), 'utf8')) + '{}\n');
+  await retainCodexAccountHistory(cache, 'a', old);
+  await restoreCodexAccountHistory(cache, 'a', output);
+  const restored = new DatabaseSync(join(output, 'thread_history_1.sqlite'), {readOnly:true});
+  try {
+    expect(restored.prepare('SELECT * FROM thread_items ORDER BY thread_id').all()).toEqual([
+      {thread_id:'new', item_id:'item', item_json:'new context', started_at_ms:30, completed_at_ms:40, future_field:'new value'},
+      {thread_id:'old', item_id:'item', item_json:'continued context', started_at_ms:10, completed_at_ms:20, future_field:'a b'},
+    ]);
+    expect(restored.prepare('SELECT version FROM _sqlx_migrations ORDER BY version').all()).toEqual([{version:1},{version:2}]);
+  } finally { restored.close(); }
+  await rememberCodexAccountSession(cache, 'session', 'a');
+  await copyCodexSourceThread(cache, 'session', 'new', await temp());
+});
+
+it.skipIf(!DatabaseSync).each([
+  "ALTER TABLE thread_items ADD COLUMN invalid TEXT CHECK(length(invalid) > 1)",
+  "ALTER TABLE thread_items RENAME COLUMN item_json TO renamed_json",
+  "UPDATE _sqlx_migrations SET checksum=X'FFFF'",
+  "ALTER TABLE thread_items DROP COLUMN item_json; INSERT INTO _sqlx_migrations VALUES (2, X'5678')",
+  "DROP INDEX thread_items_lookup; INSERT INTO _sqlx_migrations VALUES (2, X'5678')",
+  "DROP INDEX thread_items_lookup; CREATE UNIQUE INDEX thread_items_lookup ON thread_items(thread_id)",
+])('rejects incompatible schema changes before replacing cached rollout bytes: %s', async (change) => {
+  const cache = await temp(); const source = await temp();
+  await rollout(source, 'thread');
+  const db = historyDb(source);
+  db.exec("INSERT INTO thread_items VALUES ('thread','item','original'); INSERT INTO thread_history_projection_state VALUES ('thread',0,1)");
+  await retainCodexAccountHistory(cache, 'a', source);
+  const target = join(cache, createHash('sha256').update('a').digest('hex'));
+  const beforeIndex = await readFile(join(target, 'thread_history_1.sqlite'));
+  const beforeRollout = await readFile(join(target, 'sessions', 'rollout-thread.jsonl'));
+  try {
+    db.exec(change);
+    await writeFile(join(source, 'sessions', 'rollout-thread.jsonl'), Buffer.concat([beforeRollout, Buffer.from('{}\n')]));
+    await expect(retainCodexAccountHistory(cache, 'a', source)).rejects.toThrow('compatible migration');
+    expect(await readFile(join(target, 'thread_history_1.sqlite'))).toEqual(beforeIndex);
+    expect(await readFile(join(target, 'sessions', 'rollout-thread.jsonl'))).toEqual(beforeRollout);
+  } finally { db.close(); }
+});
+
+it.skipIf(!DatabaseSync)('rejects an unfinished native migration even when creating a fresh cache', async () => {
+  const source = await temp();
+  await rollout(source, 'thread');
+  const db = historyDb(source);
+  db.exec("ALTER TABLE _sqlx_migrations ADD COLUMN success BOOLEAN DEFAULT 0");
+  db.close();
+  await expect(retainCodexAccountHistory(await temp(), 'a', source)).rejects.toThrow('unfinished native migration');
+});
+
+it.skipIf(!DatabaseSync)('does not resurrect schema objects removed by a newer cache migration', async () => {
+  const cache = await temp(); const source = await temp();
+  await rollout(source, 'thread');
+  const db = historyDb(source);
+  db.exec("INSERT INTO thread_history_projection_state VALUES ('thread',0,1)");
+  db.close();
+  await retainCodexAccountHistory(cache, 'a', source);
+  const target = join(cache, createHash('sha256').update('a').digest('hex'), 'thread_history_1.sqlite');
+  const upgraded = new DatabaseSync(target);
+  upgraded.exec("DROP INDEX thread_items_lookup; INSERT INTO _sqlx_migrations VALUES (2, X'5678')");
+  upgraded.close();
+  const before = await readFile(target);
+  await expect(retainCodexAccountHistory(cache, 'a', source)).rejects.toThrow('removed index');
+  expect(await readFile(target)).toEqual(before);
+});
