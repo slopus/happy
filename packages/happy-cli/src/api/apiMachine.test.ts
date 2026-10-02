@@ -2,10 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AUTOMATION_PROTOCOL_VERSION } from '@slopus/happy-wire';
 import { ApiMachineClient } from './apiMachine';
 import { addDaemonTerminalSession, getDaemonTerminalSession, removeDaemonTerminalSession } from '@/daemon/daemonTerminalSessions';
-import { encodeBase64, encrypt } from './encryption';
+import { deriveServerRpcKey, encodeBase64, encrypt } from './encryption';
 import { RECONNECT_DIAL_TIMEOUT_MS, RECONNECT_MAX_DELAY_MS, RECONNECT_NOT_READY_POLL_MS } from './reconnectCadence';
 import { logger } from '@/ui/logger';
 import type { Machine } from './types';
+import type { RpcHandlerConfig } from './rpc/types';
 import { CHANNEL_SUPPORT_CAPABILITY } from '@/channel/channelSupportCapability';
 import { AI_AUTH_SELECTION_CAPABILITY } from '@/daemon/sessionEnv';
 import { createAiCredentialRuntime } from '@/daemon/aiCredentialRuntime';
@@ -13,10 +14,12 @@ import { join } from 'node:path';
 
 const {
     mockIo,
-    mockShouldReconnect
+    mockShouldReconnect,
+    rpcManagerConfigs
 } = vi.hoisted(() => ({
     mockIo: vi.fn(),
-    mockShouldReconnect: vi.fn(() => true)
+    mockShouldReconnect: vi.fn(() => true),
+    rpcManagerConfigs: [] as RpcHandlerConfig[]
 }));
 
 vi.mock('socket.io-client', () => ({
@@ -44,6 +47,9 @@ vi.mock('@/modules/common/registerCommonHandlers', () => ({
 
 vi.mock('@/api/rpc/RpcHandlerManager', () => ({
     RpcHandlerManager: class {
+        constructor(config: RpcHandlerConfig) {
+            rpcManagerConfigs.push(config);
+        }
         onSocketConnect = vi.fn();
         onSocketDisconnect = vi.fn();
         handleRequest = vi.fn(async () => '');
@@ -100,6 +106,33 @@ function makeMachine(): Machine {
         encryptionVariant: 'legacy'
     };
 }
+
+/*
+ * aplus-dev-studio specs/e2ee-machine-control-boundary R2/R3 — the machine scope
+ * also answers the server's own key, for the server lane methods only.
+ */
+describe('ApiMachineClient machine RPC server lane', () => {
+    beforeEach(() => {
+        rpcManagerConfigs.length = 0;
+    });
+
+    it('keys a dataKey machine server lane with the key derived from its machine key', () => {
+        const machine: Machine = { ...makeMachine(), encryptionKey: new Uint8Array(32).fill(7), encryptionVariant: 'dataKey' };
+        new ApiMachineClient('fake-token', machine);
+
+        const lane = rpcManagerConfigs.at(-1)?.serverLane;
+        expect(lane?.encryptionKey).toEqual(deriveServerRpcKey(machine.encryptionKey));
+        expect(lane?.allows('daemon-session-state')).toBe(true);
+        expect(lane?.allows('bash')).toBe(false);
+    });
+
+    it('gives a legacy machine no server lane', () => {
+        new ApiMachineClient('fake-token', makeMachine());
+
+        expect(rpcManagerConfigs.at(-1)).toBeDefined();
+        expect(rpcManagerConfigs.at(-1)?.serverLane).toBeUndefined();
+    });
+});
 
 describe('ApiMachineClient socket reconnection', () => {
     let socketHandlers: SocketHandlers;

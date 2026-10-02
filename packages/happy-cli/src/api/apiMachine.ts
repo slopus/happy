@@ -33,6 +33,7 @@ import { applyManagedRpcRestrictions, registerManagedRpcHandlers, type ManagedRp
 import type { ByosOfflineRpcHandlers } from '@/daemon/byosOfflineReceive';
 import type { DifficultyRoutingClassifierHost } from '@/daemon/difficultyRoutingClassifierHost';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
+import { machineServerLane } from './rpc/serverLane';
 import { createRpcRequestListener } from './rpc/rpcRequestListener';
 import { detectCLIAvailability, CLIAvailability } from '@/utils/detectCLI';
 import { detectResumeSupport, type ResumeSupport } from '@/resume/localHappyAgentAuth';
@@ -860,6 +861,7 @@ export class ApiMachineClient {
             scopePrefix: this.machine.id,
             encryptionKey: this.machine.encryptionKey,
             encryptionVariant: this.machine.encryptionVariant,
+            serverLane: machineServerLane(this.machine),
             logger: (msg, data) => logger.debug(msg, data)
         });
 
