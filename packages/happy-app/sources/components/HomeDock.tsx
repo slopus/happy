@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, Keyboard, LayoutChangeEvent, Modal as RNModal, Platform, Pressable, ScrollView, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Keyboard, LayoutChangeEvent, Modal as RNModal, Platform, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import type { StyleProp, ViewStyle } from 'react-native';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
@@ -22,6 +22,8 @@ import { MobileGlassSurface } from './MobileGlass';
 import { BubblePressable } from './BubblePressable';
 import { NativeOptionsPicker, type NativeOptionsPickerOption, type NativeOptionsPickerSection } from './NativeOptionsPicker';
 import { NativeSettingsMenu, type NativeSettingsMenuGroup, type NativeSettingsMenuProps } from './NativeSettingsMenu';
+import { PickerSheetOption, PickerSheetPanel, PickerSheetSection } from './PickerSheet';
+import { ProviderIcon } from './ProviderIcon';
 import { NativeSegmentedControl } from './NativeSegmentedControl';
 import { BotFacePicker } from './BotFacePicker';
 import { BOT_NAME_MAX_LENGTH, isValidBotName, sanitizeBotName } from '@/utils/botName';
@@ -120,13 +122,11 @@ const BOT_LEDE = 'Bots are virtual colleagues great for recurring work like '
     + 'releases, competitor analysis, or to own a large feature across several '
     + 'projects and worktrees';
 
-// The in-app sheet's check column. Half the width the native menu's image
-// column took, so choosing a row moves nothing: the gutter is always there,
-// every label and heading starts past it, and the check is drawn inside it.
-const SHEET_CHECK_GUTTER = 12;
-const SHEET_CHECK_GAP = 6;
-const SHEET_CHECK_SIZE = 12;
-const SHEET_ROW_INSET = 8;
+/** The Android picker panel's share of the window with the keyboard down. */
+const SETTINGS_SHEET_HEIGHT_FRACTION = 0.5;
+const SETTINGS_SHEET_MIN_HEIGHT = 168;
+/** The focused dock's header and composer, which the panel must leave room for. */
+const SETTINGS_SHEET_RESERVED_HEIGHT = 320;
 
 const MOBILE_MODEL_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('model');
 const MOBILE_EFFORT_MENU_GEOMETRY = resolveMobileComposerMenuGeometry('effort');
@@ -541,99 +541,6 @@ const styles = StyleSheet.create((theme) => ({
         alignSelf: 'center',
         gap: 10,
     },
-    settingsSurface: {
-        width: '100%',
-        maxHeight: 270,
-        borderRadius: 24,
-        overflow: 'hidden',
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.glass.border,
-        backgroundColor: Platform.select({
-            ios: theme.colors.glass.overlay,
-            default: theme.colors.glass.backgroundStrong,
-        }),
-        paddingVertical: 10,
-        paddingHorizontal: 12,
-    },
-    settingsHeader: {
-        minHeight: 40,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingBottom: 4,
-    },
-    backButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    settingsTitle: {
-        flex: 1,
-        minWidth: 0,
-        color: theme.colors.text,
-        fontSize: 14,
-        ...Typography.default('semiBold'),
-    },
-    optionList: {
-        flexGrow: 0,
-    },
-    // Starts where the option labels start, past the check gutter, so the
-    // heading and its rows share one left edge the way the native menu's do.
-    optionSectionTitle: {
-        color: theme.colors.textSecondary,
-        fontSize: 12,
-        paddingLeft: SHEET_ROW_INSET + SHEET_CHECK_GUTTER + SHEET_CHECK_GAP,
-        paddingRight: SHEET_ROW_INSET,
-        paddingTop: 8,
-        paddingBottom: 4,
-        ...Typography.default('semiBold'),
-    },
-    // The line the native menu draws between its sections.
-    optionSectionSeparator: {
-        height: StyleSheet.hairlineWidth,
-        marginHorizontal: SHEET_ROW_INSET,
-        marginVertical: 6,
-        backgroundColor: theme.colors.glass.divider,
-    },
-    option: {
-        minHeight: 48,
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: SHEET_CHECK_GAP,
-        paddingHorizontal: SHEET_ROW_INSET,
-        paddingVertical: 8,
-        borderRadius: 14,
-    },
-    optionPressed: {
-        backgroundColor: theme.colors.surfacePressedOverlay,
-    },
-    optionDisabled: {
-        opacity: 0.45,
-    },
-    optionCheck: {
-        width: SHEET_CHECK_GUTTER,
-        alignItems: 'center',
-        justifyContent: 'center',
-        flexGrow: 0,
-        flexShrink: 0,
-    },
-    optionCopy: {
-        flex: 1,
-        minWidth: 0,
-    },
-    optionValue: {
-        color: theme.colors.text,
-        fontSize: 15,
-        ...Typography.default(),
-    },
-    optionDescription: {
-        color: theme.colors.textSecondary,
-        fontSize: 12,
-        marginTop: 2,
-        ...Typography.default(),
-    },
 }));
 
 function resolveOption(options: ModeOption[], preferred: Array<string | null | undefined>): ModeOption | null {
@@ -777,6 +684,7 @@ export const HomeDock = React.memo(({
 }) => {
     const { theme } = useUnistyles();
     const safeArea = useSafeAreaInsets();
+    const { height: windowHeight } = useWindowDimensions();
     const keyboard = useReanimatedKeyboardAnimation();
     const inputRef = React.useRef<TextInput>(null);
     const focusedInputRef = React.useRef<TextInput>(null);
@@ -1076,7 +984,10 @@ export const HomeDock = React.memo(({
         ?? availableAgents[0]
         ?? { key: agentType, name: getHarnessName(agentType) };
     const permissionLabel = getPermissionModeShortLabel(currentPermission);
-    const modelChipLabel = truncateModelLabel(currentModel?.name ?? currentAgent.name);
+    const modelChipName = (currentModel?.name ?? currentAgent.name).trim();
+    // Cut ahead of time only for the native iOS trigger, which draws a fixed
+    // string; the React Native chip ellipsises against its real width.
+    const modelChipLabel = useNativeMenus ? truncateModelLabel(modelChipName) : modelChipName;
     const focusedPromptPlaceholder = createsBot
         ? 'Name your bot'
         : resolveHomeDockPromptPlaceholder(currentAgent.key, currentAgent.name);
@@ -1166,6 +1077,18 @@ export const HomeDock = React.memo(({
             currentHeight === nextHeight ? currentHeight : nextHeight
         ));
     }, []);
+    // The Android picker sits between the header and the composer: it gives up
+    // whatever the keyboard takes, and never goes below a few rows.
+    const settingsSheetHeightStyle = useAnimatedStyle(() => ({
+        maxHeight: Math.max(
+            SETTINGS_SHEET_MIN_HEIGHT,
+            Math.min(
+                windowHeight * SETTINGS_SHEET_HEIGHT_FRACTION,
+                // keyboard.height is negative while the keyboard is up.
+                windowHeight - safeArea.top - SETTINGS_SHEET_RESERVED_HEIGHT + keyboard.height.value,
+            ),
+        ),
+    }), [safeArea.top, windowHeight]);
     const keyboardStyle = useAnimatedStyle(() => ({
         // Keyboard height includes the bottom safe area on iOS. The resting
         // dock keeps that inset, then gives it back while the keyboard opens
@@ -1406,6 +1329,8 @@ export const HomeDock = React.memo(({
     type PickerSection = {
         key: string;
         title?: string;
+        /** The provider whose icon heads a group of models. */
+        providerKind?: string;
         options: PickerOption[];
     };
     type PickerConfig = {
@@ -1522,6 +1447,7 @@ export const HomeDock = React.memo(({
                 sections: groupModelModesByProvider(modelOptions).map((providerGroup) => ({
                     key: providerGroup.key,
                     title: providerGroup.title ?? title,
+                    ...(providerGroup.title ? { providerKind: providerGroup.models[0]?.providerKind ?? '' } : {}),
                     options: providerGroup.models,
                 })),
                 selectedKey: currentModel?.key,
@@ -1774,80 +1700,50 @@ export const HomeDock = React.memo(({
     // Only reached with a page selected: `sheetVisible` gates the whole sheet.
     const renderSettingsSheet = (page: PickerPage) => {
         const config = getPickerConfig(page);
+        // Android only (`sheetVisible`). Drawn inline rather than as a second
+        // modal so the focused composer keeps its keyboard; the panel shrinks
+        // with the keyboard so its list always scrolls inside the space left.
         return (
-            <View style={styles.settingsStack}>
-                <MobileGlassSurface
-                    nativeEffect
-                    intensity={78}
-                    glassEffectStyle="regular"
-                    style={styles.settingsSurface}
-                >
-                    <View style={styles.settingsHeader}>
-                        <Pressable
-                            onPress={closePicker}
-                            style={styles.backButton}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('common.cancel')}
-                        >
-                            <Ionicons name="close" size={20} color={theme.colors.text} />
-                        </Pressable>
-                        <Text style={styles.settingsTitle} numberOfLines={1}>
-                            {config.title}
-                        </Text>
-                    </View>
-                    <ScrollView style={styles.optionList} keyboardShouldPersistTaps="always">
-                        {config.sections.map((section, sectionIndex) => (
-                            <React.Fragment key={section.key}>
-                                {sectionIndex > 0 && <View style={styles.optionSectionSeparator} />}
-                                {/* The sheet already names the choice in its
-                                    header, so a group named the same is left
-                                    bare; providers and "Projects" are shown. */}
-                                {section.title && section.title !== config.title ? (
-                                    <Text style={styles.optionSectionTitle}>{section.title}</Text>
-                                ) : null}
-                                {section.options.map((option) => {
-                                    const selectable = isHomeDockOptionSelectable(option.disabled);
-                                    const selected = !option.action && option.key === config.selectedKey;
-                                    return (
-                                <Pressable
+            <PickerSheetPanel
+                title={config.title}
+                onClose={closePicker}
+                style={[styles.settingsStack, settingsSheetHeightStyle]}
+            >
+                {config.sections.map((section, sectionIndex) => (
+                    <React.Fragment key={section.key}>
+                        {/* The sheet already names the choice in its header,
+                            so a group named the same is left bare; providers
+                            and "Projects" are shown. */}
+                        <PickerSheetSection
+                            separated={sectionIndex > 0}
+                            title={section.title && section.title !== config.title ? section.title : null}
+                            icon={section.providerKind !== undefined
+                                ? <ProviderIcon kind={section.providerKind} size={16} />
+                                : undefined}
+                        />
+                        {section.options.map((option) => {
+                            const selectable = isHomeDockOptionSelectable(option.disabled);
+                            return (
+                                <PickerSheetOption
                                     key={option.key}
+                                    label={option.name}
+                                    // A second line that only repeats its
+                                    // group's heading says nothing new.
+                                    description={option.description === section.title ? null : option.description}
+                                    selected={!option.action && option.key === config.selectedKey}
+                                    action={option.action}
                                     disabled={!selectable}
                                     onPress={() => {
                                         if (!selectable) return;
                                         config.onSelect(option.key);
                                         closePicker();
                                     }}
-                                    style={({ pressed }) => [
-                                        styles.option,
-                                        !selectable && styles.optionDisabled,
-                                        pressed && selectable && styles.optionPressed,
-                                    ]}
-                                    accessibilityRole="button"
-                                    accessibilityState={{ disabled: !selectable, selected }}
-                                >
-                                    {/* Always laid out, chosen or not, so the
-                                        labels never move when the choice does. */}
-                                    <View style={styles.optionCheck}>
-                                        {selected && (
-                                            <Ionicons name="checkmark" size={SHEET_CHECK_SIZE} color={theme.colors.text} />
-                                        )}
-                                    </View>
-                                    <View style={styles.optionCopy}>
-                                        <Text style={styles.optionValue} numberOfLines={1}>{option.name}</Text>
-                                        {!!option.description && (
-                                            <Text style={styles.optionDescription} numberOfLines={2}>
-                                                {option.description}
-                                            </Text>
-                                        )}
-                                    </View>
-                                </Pressable>
-                                    );
-                                })}
-                            </React.Fragment>
-                        ))}
-                    </ScrollView>
-                </MobileGlassSurface>
-            </View>
+                                />
+                            );
+                        })}
+                    </React.Fragment>
+                ))}
+            </PickerSheetPanel>
         );
     };
 
