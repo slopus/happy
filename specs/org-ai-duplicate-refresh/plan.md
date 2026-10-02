@@ -14,3 +14,7 @@ Core: 기존 daemon의 자격증명 custody와 인증 원자성을 소유하는 
 ## 검증 결과
 
 관련 3파일 366건, TypeScript·번들 build·diff check 통과. 시간 예산은 각 단계 60초로 제한하고 기존 verifier 기본값은 보존한다. 사용자 후속 지시로 Desktop 연결은 다음 작업까지 보류한다.
+
+## 후속 범위
+
+사용자의 후속 구현 요청으로 개인 로컬 자동 등록·Codex 중복 갱신·선택 활성화를 추가했다. Core의 기존 merge 내부와 호환 optional DTO/capability만 확장한다. 새 DB·의존성·권한 확대 없음. 비밀은 머신 내부에 머무른다. 구버전 서버는 필드를 생략하며 구버전 CLI에는 서버가 강제 전환을 거부한다. rollback은 선택 필드 생략/이전 공식 CLI 사용이다. 후속 관련 4파일 435건·TypeScript·pkgroll build 통과. 외부 릴리스는 미승인.
