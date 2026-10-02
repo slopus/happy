@@ -124,6 +124,13 @@ export class AiCredentialRuntimeError extends Error {
   }
 }
 
+/** An additive Claude apply that imported shared slots but could not activate one: the slots stay, so they keep their provenance. */
+class ClaudeActivationError extends AiCredentialRuntimeError {
+  constructor(kind: string, readonly importedAccounts: ClaudeListDetails['accounts']) {
+    super(kind)
+  }
+}
+
 const PROBE_STDERR_TAIL_MAX = 200
 
 function lastLine(text: string): string {
@@ -468,6 +475,9 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       }
     }
     let after = await list()
+    // Only newly imported slots are proven organizational material. Matching
+    // personal credentials were deliberately not overwritten by this import.
+    const sharedAccounts = (details: ClaudeListDetails) => details.accounts.filter(account => incoming.has(claudeListAccountIdentity(account)) && (!existing.has(claudeListAccountIdentity(account)) || knownCompanyIdentities.has(JSON.stringify([account.email, account.organizationUuid ?? '', account.organizationName ?? '']))))
     const present = new Set(after.accounts.map(claudeListAccountIdentity))
     if ([...existing, ...incoming].some(identity => !present.has(identity))
       || before.accounts.some(account => {
@@ -478,16 +488,26 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       if (after.activeAccountNumber !== before.activeAccountNumber) {
         throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
       }
-    } else if (after.activeAccountNumber !== null) {
-      await deps.execFile('cswap', ['switch', String(after.activeAccountNumber), '--force', '--json'], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })
-      after = await list()
-      if (!after.activeUsable && after.activeCredentialKind !== 'api_key') throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+    } else {
+      // Nothing personal is active to keep. Like a replace, activate a usable account rather than report
+      // "configured" while Claude Code stays signed out (a fresh Windows PC, 2026-10-02).
+      const imported = sharedAccounts(after)
+      try {
+        const target = after.activeAccountNumber !== null && (after.activeUsable || after.activeCredentialKind === 'api_key')
+          ? after.activeAccountNumber
+          : after.usableAccountNumber
+        if (target === null) throw new AiCredentialRuntimeError(claudeNoUsableAccountKind(after))
+        await deps.execFile('cswap', ['switch', String(target), '--force', '--json'], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })
+        after = await list()
+        if (!after.activeUsable && after.activeCredentialKind !== 'api_key') throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      } catch (error) {
+        // The imported slots stay on the machine, so a failed activation must not leave them unattributed.
+        throw new ClaudeActivationError(error instanceof AiCredentialRuntimeError ? error.kind : 'CLAUDE_APPLY_FAILED', imported)
+      }
     }
     return {
       result: { provider: 'claude' as const, configured: true, accountCount: after.accounts.length, rotation: deps.supervisor.status() },
-      // Only newly imported slots are proven organizational material. Matching
-      // personal credentials were deliberately not overwritten by this import.
-      verifiedAccounts: after.accounts.filter(account => incoming.has(claudeListAccountIdentity(account)) && (!existing.has(claudeListAccountIdentity(account)) || knownCompanyIdentities.has(JSON.stringify([account.email, account.organizationUuid ?? '', account.organizationName ?? ''])))),
+      verifiedAccounts: sharedAccounts(after),
     }
   }
 
@@ -1171,6 +1191,10 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
           if (claudeApplied) await recordClaudeProvenance(input, applyGeneration, claudeApplied.verifiedAccounts)
           return { ...result, applyGeneration, ...(input.applyMode ? { applyMode } : {}) }
         } catch (error) {
+          if (error instanceof ClaudeActivationError) {
+            await recordClaudeProvenance(input, applyGeneration, error.importedAccounts)
+              .catch(() => deps.warn?.('Claude provenance could not be recorded after a failed activation'))
+          }
           if (requestedLease && marker && markerChanged) {
             if (previousLease) marker.leases[selected] = previousLease
             else delete marker.leases[selected]
@@ -1514,6 +1538,14 @@ function claudeListAccountIdentity(
     account.email,
     typeof account.organizationUuid === 'string' ? account.organizationUuid : '',
   ])
+}
+
+/** Why no Claude account can be made active: every enabled account needs re-login, or the list is not as expected. */
+function claudeNoUsableAccountKind(details: ClaudeListDetails): 'CLAUDE_APPLY_RELOGIN_REQUIRED' | 'CLAUDE_APPLY_VERIFICATION_FAILED' {
+  const enabled = details.accounts.filter((account) => account.disabled !== true)
+  return enabled.length > 0 && enabled.every((account) => account.usageStatus === 'relogin_required')
+    ? 'CLAUDE_APPLY_RELOGIN_REQUIRED'
+    : 'CLAUDE_APPLY_VERIFICATION_FAILED'
 }
 
 function parseClaudeListDetails(stdout: string): ClaudeListDetails {

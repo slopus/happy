@@ -336,6 +336,59 @@ describe('AI credential machine runtime', () => {
     expect(provenance.claude.identities).toEqual([['shared@example.com', '', '']])
   })
 
+  function freshMachineAdding(added: Array<Record<string, unknown>>) {
+    const setupResult = setup()
+    const state: { active: number | null; accounts: Array<Record<string, unknown>> } = { active: null, accounts: [] }
+    const original = setupResult.execFile.getMockImplementation()!
+    setupResult.execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: state.active, accounts: state.accounts }), stderr: '' }
+      if (command === 'cswap' && args[0] === 'import') state.accounts = added
+      if (command === 'cswap' && args[0] === 'switch') state.active = Number(args[1])
+      return original(command, args, options)
+    })
+    const input = { provider: 'claude' as const, applyMode: 'merge' as const,
+      payload: claudeOauthPayload(added.map(account => ({ email: String(account.email) }))),
+      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 } }
+    return { ...setupResult, state, input }
+  }
+
+  it('activates a usable shared Claude account on a machine that had none, instead of reporting success without one', async () => {
+    // A fresh Windows PC (2026-10-02): seven shared accounts were added, none became active, so Claude Code stayed
+    // signed out ("사용 가능한 agent가 없습니다") while the deploy reported configured: true.
+    const { runtime, calls, supervisor, state, input } = freshMachineAdding([
+      { number: 1, email: 'expired@example.com', organizationUuid: '', usageStatus: 'relogin_required' },
+      { number: 2, email: 'shared@example.com', organizationUuid: '', usageStatus: 'ok' },
+    ])
+    expect(await runtime.apply(input)).toMatchObject({ configured: true })
+    expect(state.active).toBe(2)
+    expect(calls.filter(call => call.command === 'cswap' && call.args[0] === 'switch').map(call => call.args.slice(0, 2))).toEqual([['switch', '2']])
+    expect(supervisor.enable).not.toHaveBeenCalled()
+  })
+
+  it('fails an additive Claude apply that leaves a machine without an active account because every account needs re-login', async () => {
+    const { runtime, calls, files, state, input } = freshMachineAdding([
+      { number: 1, email: 'expired@example.com', organizationUuid: '', usageStatus: 'relogin_required' },
+    ])
+    await expect(runtime.apply(input)).rejects.toMatchObject({ kind: 'CLAUDE_APPLY_RELOGIN_REQUIRED' })
+    expect(state.active).toBeNull()
+    expect(calls.some(call => call.command === 'cswap' && call.args[0] === 'switch')).toBe(false)
+    // The imported slots stay on the machine, so they stay attributed to the organization (a later merge sees them as existing).
+    expect(JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!).claude.identities).toEqual([['expired@example.com', '', '']])
+  })
+
+  it('keeps the imported shared Claude slots attributed when the switch to one of them does not take', async () => {
+    const { runtime, execFile, files, state, input } = freshMachineAdding([
+      { number: 2, email: 'shared@example.com', organizationUuid: '', usageStatus: 'ok' },
+    ])
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => command === 'cswap' && args[0] === 'switch'
+      ? { stdout: '', stderr: '' } // the switch reports nothing and leaves no active account
+      : original(command, args, options))
+    await expect(runtime.apply(input)).rejects.toMatchObject({ kind: 'CLAUDE_APPLY_VERIFICATION_FAILED' })
+    expect(state.active).toBeNull()
+    expect(JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!).claude.identities).toEqual([['shared@example.com', '', '']])
+  })
+
   it('rolls back both Codex files if an additive write fails without touching live auth', async () => {
     const { runtime, files, writeFile } = setup()
     const path = '/home/operator/.codex/multi-auth/openai-codex-accounts.json'
