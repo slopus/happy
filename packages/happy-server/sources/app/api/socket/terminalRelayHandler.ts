@@ -185,6 +185,17 @@ export function terminalRelayHandler(userId: string, socket: Socket): void {
             }
 
             const sessionId = randomUUID();
+            // Registered before the daemon is asked: it spawns the PTY and the shell prints its prompt at
+            // once, often before its ack reaches this replica. On the daemon's replica that frame must already
+            // find the session (shared through Redis), or it is dropped and a web terminal stays blank.
+            await addTerminalSession({
+                id: sessionId,
+                userId,
+                machineId,
+                clientSocketId: socket.id,
+                daemonSocketId: daemonSocket.id,
+                createdAt: Date.now(),
+            });
             let daemonAck: unknown;
             try {
                 daemonAck = await daemonSocket
@@ -194,6 +205,7 @@ export function terminalRelayHandler(userId: string, socket: Socket): void {
                         params: data?.params ?? null,
                     });
             } catch (err) {
+                await removeTerminalSession(sessionId);
                 log({ module: 'terminal-relay', level: 'error' }, `terminal-open-fwd timeout: ${(err as Error).message}`);
                 reply({ ok: false, error: 'Daemon did not acknowledge terminal-open in time' });
                 return;
@@ -201,18 +213,10 @@ export function terminalRelayHandler(userId: string, socket: Socket): void {
 
             const ackResp = daemonAck as { ok?: boolean; error?: string; caps?: unknown } | null | undefined;
             if (!ackResp || ackResp.ok !== true) {
+                await removeTerminalSession(sessionId);
                 reply({ ok: false, error: ackResp?.error ?? 'Daemon failed to open terminal' });
                 return;
             }
-
-            await addTerminalSession({
-                id: sessionId,
-                userId,
-                machineId,
-                clientSocketId: socket.id,
-                daemonSocketId: daemonSocket.id,
-                createdAt: Date.now(),
-            });
             log({ module: 'terminal-relay' }, `[REMOTE-TERMINAL] open user=${userId} machine=${machineId} session=${sessionId}`);
             /*
              * specs/desktop-terminal-reliability/ Phase 3 — capability

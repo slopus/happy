@@ -42,7 +42,7 @@ vi.mock('@/app/events/eventRouter', () => ({
 }));
 
 import { CLIENT_REATTACH_GRACE_MS, terminalRelayHandler } from './terminalRelayHandler';
-import { _resetTerminalSessionsForTest } from './terminalSessions';
+import { _resetTerminalSessionsForTest, getTerminalSession } from './terminalSessions';
 
 class FakeSocket {
     connected = true;
@@ -63,10 +63,14 @@ class FakeSocket {
     /** Extra fields the daemon returns in its terminal-open-fwd ack. */
     ackExtras: Record<string, unknown> = {};
 
+    /** Runs when the daemon receives a forward, before it acks (it may already emit output then). */
+    onForward?: (event: string, payload: any) => Promise<void> | void;
+
     timeout(_ms: number) {
         return {
             emitWithAck: async (event: string, payload: any) => {
                 this.forwards.push({ event, payload });
+                await this.onForward?.(event, payload);
                 if (!this.respondsToAck) throw new Error('operation has timed out');
                 return { ok: true, ...this.ackExtras };
             },
@@ -122,6 +126,35 @@ describe('terminalRelayHandler machine socket selection', () => {
         expect(live.forwards.map(f => f.event)).toEqual(['terminal-open-fwd']);
         expect(stale.forwards).toHaveLength(0);
         expect(ack).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+    });
+
+    it('registers the session before the daemon is asked to open it, so output it emits at once is routed', async () => {
+        // The daemon spawns the PTY and the shell prints its prompt right away, often before its ack has
+        // reached this replica; on another replica that frame must already find the session (it is dropped
+        // otherwise and a web terminal stays blank).
+        const daemon = new FakeSocket('daemon');
+        let seenByDaemon: unknown = 'not checked';
+        daemon.onForward = async (_event, payload) => { seenByDaemon = await getTerminalSession(payload.sessionId); };
+        registerMachineSocket('m1', daemon);
+        const client = new FakeSocket('client');
+        terminalRelayHandler('u1', client as any);
+        const ack = vi.fn();
+        await client.trigger('terminal-open', { machineId: 'm1', params: 'enc' }, ack);
+        expect(seenByDaemon).toMatchObject({ userId: 'u1', machineId: 'm1', clientSocketId: 'client', daemonSocketId: 'daemon' });
+        expect(ack).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
+    });
+
+    it('forgets the session again when the daemon does not open it', async () => {
+        const daemon = new FakeSocket('daemon');
+        daemon.respondsToAck = false;
+        registerMachineSocket('m1', daemon);
+        const client = new FakeSocket('client');
+        terminalRelayHandler('u1', client as any);
+        const ack = vi.fn();
+        await client.trigger('terminal-open', { machineId: 'm1', params: 'enc' }, ack);
+        const sessionId = daemon.forwards[0].payload.sessionId;
+        expect(await getTerminalSession(sessionId)).toBeNull();
+        expect(ack).toHaveBeenCalledWith(expect.objectContaining({ ok: false }));
     });
 
     it('skips machine sockets that are already disconnected', async () => {
