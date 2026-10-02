@@ -78,6 +78,18 @@ describe('authenticatedEnvelopeBinding', () => {
     expect(authenticatedEnvelopeBinding({ kind: 'automation', ciphertext: changed })).not.toEqual(binding);
   });
 
+  // A wire contract: web and desktop mirror this function and pin the same vectors.
+  it('matches the published vectors', () => {
+    const vector = Uint8Array.from({ length: 40 }, (_, index) => index);
+    const hex = (kind: Parameters<typeof authenticatedEnvelopeBinding>[0]['kind']) => (
+      Buffer.from(authenticatedEnvelopeBinding({ kind, ciphertext: vector })).toString('hex')
+    );
+    expect(hex('automation')).toBe('0202c961ff20c8eadec9603986251c586a43d33a25d41fa235681b5aee652422');
+    expect(hex('session-followup')).toBe('b2f841363adf8fcc70af6b95a63aeb6c2740c3f02ac85ff60eb9ca35422228cc');
+    expect(hex('script-configuration')).toBe('6b5a689addb042fbbd96ffc30bfb26021fbc0b41c7a9857fc6003dde0cd24eb1');
+    expect(hex('script-artifact')).toBe('65efca813263a355a04e93cd3c3680c908b57b7ead14bb544ce92e21fcde9057');
+  });
+
   it('accepts only known kinds', () => {
     expect(() => authenticatedEnvelopeBinding({ kind: 'anything' as never, ciphertext })).toThrow();
   });
