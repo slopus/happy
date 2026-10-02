@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createAttachmentDiagnosticError } from '@/sync/attachmentDiagnostics';
 
 const mocks = vi.hoisted(() => ({
     machines: [] as Array<{
@@ -651,11 +652,75 @@ describe('useStartSessionFromDraft', () => {
         await expect(startSession()).resolves.toBe(true);
 
         expect(mocks.alert).toHaveBeenCalledWith(
-            'Bot created without a face',
-            expect.stringContaining('Happy Agent could not read that picture.'),
+            'Picture not set',
+            'Release Captain is ready, but its picture couldn\'t be set. Try again.',
+            expect.any(Array),
         );
         expect(mocks.navigateToSession).toHaveBeenCalledWith('session-1');
         expect(mocks.machineStopSession).not.toHaveBeenCalled();
+    });
+
+    it('keeps transport errors out of the alert and retries the picture on the same bot', async () => {
+        mocks.machines = [createRigMachine({
+            capabilities: { newSession: true, resume: false, worktrees: false, bots: true },
+        })];
+        mocks.draft = createBotDraft();
+        mocks.uploadSessionBlob.mockRejectedValueOnce(createAttachmentDiagnosticError(
+            'Blob upload (POST) network error: Network request failed',
+            {
+                leg: 'blob-upload', method: 'POST',
+                url: 'https://files.cluster-fluster.com/happy?policy=secret-policy',
+                serverUrl: 'https://api.cluster-fluster.com',
+                message: 'Network request failed',
+            },
+        ));
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        try {
+            const { startSession } = useStartSessionFromDraft();
+            await expect(startSession()).resolves.toBe(true);
+
+            const [title, message, buttons] = mocks.alert.mock.calls.at(-1)!;
+            expect(title).toBe('Picture not set');
+            expect(message).toBe('Release Captain is ready, but its picture couldn’t be uploaded. You can try again without creating another bot.');
+            expect(consoleError).toHaveBeenCalledWith(
+                '[bot] The face could not be put on the bot:',
+                'uploading the face: Blob upload (POST) network error: Network request failed',
+                {
+                    leg: 'blob-upload', method: 'POST', host: 'files.cluster-fluster.com',
+                    target: 'external-storage', message: 'Network request failed',
+                },
+            );
+            expect(JSON.stringify(consoleError.mock.calls)).not.toContain('secret-policy');
+
+            buttons.find((button: { text: string }) => button.text === 'Try again').onPress();
+            await vi.waitFor(() => expect(mocks.sessionSetAvatar).toHaveBeenCalledWith('session-1', expect.anything()));
+            expect(mocks.uploadSessionBlob).toHaveBeenCalledTimes(2);
+            expect(mocks.paintBotFace).toHaveBeenNthCalledWith(2, 'seed2222');
+            expect(mocks.machineSpawnNewSession).toHaveBeenCalledTimes(1);
+            expect(mocks.machineStopSession).not.toHaveBeenCalled();
+        } finally {
+            consoleError.mockRestore();
+        }
+    });
+
+    it('offers another picture retry if storage is still unavailable, without recreating the bot', async () => {
+        mocks.machines = [createRigMachine({
+            capabilities: { newSession: true, resume: false, worktrees: false, bots: true },
+        })];
+        mocks.draft = createBotDraft();
+        mocks.uploadSessionBlob.mockRejectedValue(new Error('Network request failed'));
+        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            await expect(useStartSessionFromDraft().startSession()).resolves.toBe(true);
+            const buttons = mocks.alert.mock.calls.at(-1)![2];
+            buttons.find((button: { text: string }) => button.text === 'Try again').onPress();
+            await vi.waitFor(() => expect(mocks.alert).toHaveBeenCalledTimes(2));
+            expect(mocks.sessionSetAvatar).not.toHaveBeenCalled();
+            expect(mocks.machineSpawnNewSession).toHaveBeenCalledTimes(1);
+        } finally {
+            consoleError.mockRestore();
+        }
     });
 
     it('refuses to make a bot on a Happy Agent that does not offer bots', async () => {

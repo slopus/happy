@@ -54,6 +54,11 @@ import { collectSessionPlaces, collectSessionWorkspaces, projectPlaceKey } from 
 import { resolveHappyAgentSpawnTarget, type HappyAgentSpawnTarget } from '@/sync/happyAgentSpawn';
 import { paintBotFace } from '@/utils/botFacePaint';
 import { describeBotNameProblem } from '@/utils/botName';
+import {
+    getAttachmentDiagnostic,
+    formatAttachmentDiagnosticForLog,
+    type AttachmentDiagnostic,
+} from '@/sync/attachmentDiagnostics';
 
 const MAX_RIG_PENDING_RESULTS = 3;
 
@@ -143,17 +148,29 @@ function beginRun(): StartRun {
  * already open on this phone. Reported rather than thrown: the bot exists by
  * now, and the caller decides what a missing face means.
  */
+type BotFaceLeg = 'painting the face' | 'uploading the face' | 'asking the bot to wear it';
+type BotFaceFailure = {
+    ok: false;
+    leg: BotFaceLeg | null;
+    error: string;
+    diagnostic: AttachmentDiagnostic | null;
+};
+
 async function wearBotFace(
     sessionId: string,
     seed: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true } | BotFaceFailure> {
     // Each leg is caught under its own name. The three do quite different
     // things — draw, upload, ask — and a bare message like "undefined is not an
     // object" says nothing about which of them was running when it was thrown.
-    const leg = async <T,>(name: string, step: () => Promise<T>): Promise<T> => {
+    let failedLeg: BotFaceLeg | null = null;
+    let diagnostic: AttachmentDiagnostic | null = null;
+    const leg = async <T,>(name: BotFaceLeg, step: () => Promise<T>): Promise<T> => {
         try {
             return await step();
         } catch (error) {
+            failedLeg = name;
+            diagnostic = getAttachmentDiagnostic(error);
             const message = error instanceof Error ? error.message : String(error);
             throw new Error(`${name}: ${message}`);
         }
@@ -170,8 +187,40 @@ async function wearBotFace(
         }));
         return { ok: true };
     } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        return { ok: false, leg: failedLeg, diagnostic, error: error instanceof Error ? error.message : String(error) };
     }
+}
+
+/** Retry only the picture on the existing bot, keeping transport details in the log. */
+function offerBotFaceRetry(
+    sessionId: string,
+    seed: string,
+    botName: string,
+    failure: BotFaceFailure,
+): void {
+    if (failure.diagnostic) {
+        console.error('[bot] The face could not be put on the bot:', failure.error,
+            formatAttachmentDiagnosticForLog(failure.diagnostic));
+    } else {
+        console.error('[bot] The face could not be put on the bot:', failure.error);
+    }
+    Modal.alert(
+        'Picture not set',
+        failure.leg === 'uploading the face'
+            ? `${botName} is ready, but its picture couldn’t be uploaded. You can try again without creating another bot.`
+            : `${botName} is ready, but its picture couldn't be set. Try again.`,
+        [
+            { text: 'Not now', style: 'cancel' },
+            {
+                text: 'Try again',
+                onPress: () => {
+                    void wearBotFace(sessionId, seed).then((worn) => {
+                        if (!worn.ok) offerBotFaceRetry(sessionId, seed, botName, worn);
+                    });
+                },
+            },
+        ],
+    );
 }
 
 function resolveOption<T extends { key: string }>(
@@ -651,11 +700,7 @@ export function useStartSessionFromDraft() {
                     return false;
                 }
                 if (!worn.ok) {
-                    console.error('[bot] The face could not be put on the bot:', worn.error);
-                    Modal.alert(
-                        'Bot created without a face',
-                        `${botName} is ready, but its picture could not be set: ${worn.error}`,
-                    );
+                    offerBotFaceRetry(sessionId, botFaceSeed, botName, worn);
                 }
             }
 
