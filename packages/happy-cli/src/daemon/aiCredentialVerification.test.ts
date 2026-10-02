@@ -34,6 +34,34 @@ describe('shared account one-shot verification', () => {
     expect(JSON.stringify(args)).not.toContain('shared-token')
     expect(deps.rm).toHaveBeenCalledWith('/tmp/probe', { recursive: true, force: true })
   })
+  it('caps each request by the remaining stage budget and skips accounts after it expires', async () => {
+    const { deps } = setup()
+    let now = 1000
+    deps.now = () => now
+    vi.mocked(deps.execFile).mockImplementation(async (_command, _args, options) => {
+      expect(options?.timeoutMs).toBe(5000)
+      now += 5000
+      return { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 }
+    })
+    const second = { ...account, email: 'second@example.com' }
+    const result = await verifyLocalAiAccounts(deps, 'claude', [account, second], [account, second], { budgetMs: 5000 })
+    expect(result.accounts).toMatchObject([{ ok: true }, { ok: false, errorKind: 'VERIFICATION_TIMEOUT' }])
+    expect(deps.execFile).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not start a fallback model request once the stage budget is exhausted', async () => {
+    const { deps } = setup()
+    let now = 1000
+    deps.now = () => now
+    vi.mocked(deps.execFile).mockImplementation(async () => {
+      now += 5000
+      return { stdout: '', stderr: 'model haiku is not available', exitCode: 1 }
+    })
+    const result = await verifyLocalAiAccounts(deps, 'claude', [account], [account], { budgetMs: 5000 })
+    expect(result.accounts[0]).toMatchObject({ ok: false, errorKind: 'VERIFICATION_TIMEOUT' })
+    expect(deps.execFile).toHaveBeenCalledTimes(1)
+  })
+
   it('does not validate the personal account when the shared identity is missing', async () => {
     const { deps } = setup()
     const result = await verifyLocalAiAccounts(deps, 'claude', [{ email: 'missing@example.com' }], [account])
