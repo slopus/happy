@@ -336,6 +336,82 @@ describe('AI credential machine runtime', () => {
     expect(provenance.claude.identities).toEqual([['shared@example.com', '', '']])
   })
 
+  it.each([
+    ['ok', 'ok', 7, false, false],
+    ['auth', 'ok', 7, true, false],
+    ['auth', 'ok', 9, true, false],
+    ['network', 'ok', 7, false, false],
+    ['quota', 'ok', 7, false, false],
+    ['timeout', 'ok', 7, false, false],
+    ['auth', 'auth', 7, false, false],
+    ['auth', 'network', 7, false, false],
+    ['auth', 'ok', null, true, false],
+    ['changed', 'ok', 7, false, false],
+    ['auth', 'ok', 7, true, true],
+    ['auth', 'auth', 7, false, true],
+  ] as const)('merge keeps or refreshes duplicate credentials for local %s / shared %s with active %i, refreshed %s and new account %s', async (localResult, sharedResult, active, refreshed, withNew) => {
+    const { runtime, files, calls, execFile, supervisor } = setup()
+    const incoming = JSON.parse(claudeOauthPayload([{ email: 'shared@example.com', organizationUuid: 'company-org' }, ...(withNew ? [{ email: 'new@example.com', organizationUuid: 'company-org' }] : [])]))
+    let stored = { ...incoming.accounts[0], number: 7, credentials: { claudeAiOauth: { accessToken: 'local-token' } } }
+    const accounts = [
+      { number: 7, email: 'shared@example.com', organizationUuid: 'company-org', usageStatus: 'ok' },
+      { number: 9, email: 'personal@example.com', organizationUuid: 'private-org', usageStatus: 'ok' },
+    ]
+    const probes: string[] = []
+    let activeNumber: number | null = active
+    let exports = 0
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: activeNumber, accounts }), stderr: '' }
+      if (command === 'cswap' && args[0] === 'export') {
+        exports += 1
+        if (localResult === 'changed' && exports > 1) stored = { ...stored, credentials: { claudeAiOauth: { accessToken: 'rotated-local' } } }
+        return { stdout: JSON.stringify({ version: 1, encrypted: false, accounts: [stored] }), stderr: '' }
+      }
+      if (command === 'cswap' && args[0] === 'switch') activeNumber = Number(args[1])
+      if (command === 'claude') {
+        const token = JSON.parse(files.get(`${options?.environment?.HOME}/.claude/.credentials.json`)!).claudeAiOauth.accessToken
+        probes.push(token)
+        const result = token === 'local-token' ? localResult : sharedResult
+        if (result === 'timeout') throw Object.assign(new Error('timeout'), { kind: 'COMMAND_TIMED_OUT' })
+        return result === 'ok'
+          ? { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 }
+          : { stdout: '', stderr: result === 'auth' || result === 'changed' ? 'authentication_error 401' : result === 'quota' ? 'rate_limit 429' : 'network error ECONNRESET', exitCode: 1 }
+      }
+      if (command === 'cswap' && args[0] === 'import') {
+        calls.push({ command, args })
+        const imported = JSON.parse(files.get(args[1]!)!).accounts
+        expect(imported).toHaveLength(1)
+        if (imported[0].email === 'new@example.com') {
+          expect(args).not.toContain('--force')
+          expect(imported[0].credentials.claudeAiOauth.accessToken).toBe('oauth-2')
+          accounts.push({ number: 10, email: 'new@example.com', organizationUuid: 'company-org', usageStatus: 'ok' })
+          return { stdout: '', stderr: '' }
+        }
+        expect(imported[0].credentials.claudeAiOauth.accessToken).toBe('oauth-1')
+        expect(args).toContain('--force')
+        stored = { ...imported[0], number: 7 }
+        return { stdout: '', stderr: '' }
+      }
+      return original(command, args, options)
+    })
+    await runtime.apply({ provider: 'claude', applyMode: 'merge', payload: JSON.stringify(incoming),
+      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 } })
+    expect(probes).toEqual(localResult === 'auth' || localResult === 'changed'
+      ? refreshed ? ['local-token', 'oauth-1', 'oauth-1'] : ['local-token', 'oauth-1']
+      : ['local-token'])
+    expect(stored.credentials.claudeAiOauth.accessToken).toBe(localResult === 'changed' ? 'rotated-local' : refreshed ? 'oauth-1' : 'local-token')
+    expect(calls.filter(call => call.command === 'cswap' && call.args[0] === 'import')).toHaveLength((refreshed ? 1 : 0) + (withNew ? 1 : 0))
+    expect(calls.filter(call => call.command === 'cswap' && call.args[0] === 'switch')).toEqual(refreshed && (active === 7 || active === null)
+      ? [{ command: 'cswap', args: ['switch', '7', '--force', '--json'] }] : [])
+    expect(accounts[1]).toMatchObject({ number: 9, organizationUuid: 'private-org', usageStatus: 'ok' })
+    expect(activeNumber).toBe(active ?? 7)
+    expect(supervisor.stop).toHaveBeenCalledTimes(refreshed ? 1 : 0)
+    expect(supervisor.enable).toHaveBeenCalledTimes(refreshed ? 1 : 0)
+    if (refreshed) expect(JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!).claude.identities).toContainEqual(['shared@example.com', 'company-org', ''])
+    if (withNew) expect(JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!).claude.identities).toContainEqual(['new@example.com', 'company-org', ''])
+  })
+
   function freshMachineAdding(added: Array<Record<string, unknown>>) {
     const setupResult = setup()
     const state: { active: number | null; accounts: Array<Record<string, unknown>> } = { active: null, accounts: [] }

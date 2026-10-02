@@ -460,8 +460,43 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     const before = await list()
     const existing = new Set(before.accounts.map(claudeListAccountIdentity))
     const envelope = JSON.parse(payload)
-    // Never send existing slots to import: even a plain import may auto-heal
-    // their dead-token status and clear disabled metadata.
+    const duplicates: Array<Record<string, unknown> & { email: string }> = envelope.accounts.filter((account: { email: string }) =>
+      before.accounts.some(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account) && local.disabled !== true))
+    if (duplicates.length > 0) {
+      const exported = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
+      if (exported.version !== 1 || exported.encrypted === true || !Array.isArray(exported.accounts)) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      const identities = (accounts: Array<Record<string, unknown> & { email: string }>) => accounts.map(account => ({
+        email: account.email, organizationUuid: typeof account.organizationUuid === 'string' ? account.organizationUuid : '',
+      }))
+      // Authentication failure is the only proof that permits replacing a duplicate.
+      // Quota, transport, missing credentials and exhausted budgets keep it untouched.
+      const localVerification = await verifyLocalAiAccounts(deps, 'claude', identities(duplicates), exported.accounts, { budgetMs: 60_000 })
+      const invalid = duplicates.filter((_account, index) => localVerification.accounts[index]?.errorKind === 'AUTHENTICATION_FAILED')
+      if (invalid.length > 0) {
+        const requested = identities(invalid)
+        const verification = await verifyLocalAiAccounts(deps, 'claude', requested, invalid, { budgetMs: 60_000 })
+        let accepted = invalid.filter((_account, index) => verification.accounts[index]?.ok)
+        if (accepted.length > 0) {
+          const current = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
+          if (current.version !== 1 || current.encrypted === true || !Array.isArray(current.accounts)) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+          // A login or refresh during the probes wins over the older failed snapshot.
+          for (const [index, account] of invalid.entries()) {
+            const find = (accounts: Array<{ email: string; credentials?: unknown; config?: unknown }>) => accounts.find(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account))
+            const original = find(exported.accounts), latest = find(current.accounts)
+            if (!original || !latest || JSON.stringify([original.credentials, original.config]) !== JSON.stringify([latest.credentials, latest.config])) {
+              verification.accounts[index] = { account: index + 1, ok: false, errorKind: 'LOCAL_ACCOUNT_CHANGED' }
+            }
+          }
+          accepted = invalid.filter((_account, index) => verification.accounts[index]?.ok)
+        }
+        if (accepted.length > 0) {
+          const repaired = await applyClaudeRepair({ before, envelope: { ...envelope, accounts: accepted }, requested, verification }, { budgetMs: 60_000 })
+          for (const account of repaired.verifiedAccounts) knownCompanyIdentities.add(JSON.stringify([account.email, account.organizationUuid ?? '', account.organizationName ?? '']))
+        }
+      }
+    }
+    // Existing slots that were not proven invalid remain outside the import,
+    // which also preserves their local disabled metadata.
     envelope.accounts = envelope.accounts.filter((account: { email: string }) => !existing.has(claudeListAccountIdentity(account)))
     if (envelope.accounts.length > 0) {
       const tempDir = await deps.makeTempDir()
@@ -533,7 +568,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     return { before, envelope: { ...envelope, accounts: accepted }, requested, verification }
   }
 
-  async function applyClaudeRepair(prepared: Awaited<ReturnType<typeof prepareClaudeRepair>>) {
+  async function applyClaudeRepair(prepared: Awaited<ReturnType<typeof prepareClaudeRepair>>, verificationOptions?: { budgetMs: number }) {
     const list = async () => parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
       maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
     })).stdout)
@@ -575,7 +610,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       const acceptedIndices = requested.flatMap((_identity, index) => verification.accounts[index]?.ok ? [index] : [])
       installed = await verifyLocalAiAccounts(deps, 'claude', acceptedIndices.map(index => requested[index]!), exported.accounts.map((account: { email: string }) => ({
         ...account, disabled: after.accounts.find(existing => claudeListAccountIdentity(existing) === claudeListAccountIdentity(account))?.disabled === true,
-      })))
+      })), verificationOptions)
       accounts = verification.accounts.map((account, index) => account.ok
         ? { ...installed.accounts[acceptedIndices.indexOf(index)]!, account: index + 1 } : account)
       if (!accounts.some(account => account.ok)) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
