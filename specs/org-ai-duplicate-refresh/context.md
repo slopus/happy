@@ -34,3 +34,7 @@ Claude merge에서 이메일·조직 UUID가 일치하는 enabled 로컬 계정�
 ## 2026-10-02 후속 구현
 
 개인 인증을 먼저 로컬 풀에 보관해 미등록 때문에 차단되던 merge를 해소했다. Claude의 live 미등록 identity를 add하고 Codex는 auth.json OAuth를 로컬 풀에 보관한다. 사용자 요청으로 Codex 무효 중복 갱신 및 optional activeAccountIndex를 구현했다. 해당 공용·설치 인증이 유효할 때만 강제 전환한다. Codex 도구는 auth sync 실패여도 exit 0을 반환하므로 pool index뿐 아니라 실제 auth.json을 검사하고 실패 시 이전 live 파일·pool 복구를 시도한다. 기본 mode는 유효 active를 유지하며 enabled/disabled·pin·family index를 보존한다. 관련 4파일 435건·TypeScript·pkgroll build·diff check 통과. 운영/provider 실요청은 미실행. 웹 UI/API는 별도 codex/org-ai-account-apply 브랜치에 구현했다. 릴리스·push·태그·원본 vendor pointer 변경은 실행하지 않았다.
+
+## 릴리스 준비
+
+사용자가 전체 배포를 요청했다. 후보 버전 1.1.10-aplus.276으로 package.json을 갱신하고 build 통과 후 배포용 artifact를 준비했다. main PR/CI와 install-smoke 검증 뒤 정확한 태그 push 승인 체크포인트를 따른다.
