@@ -23,12 +23,18 @@ const DESKTOP_URL = 'https://happy.engineering';
  * Where somebody stuck on this screen can turn, and to whom. The same list
  * the desktop app offers during its own setup.
  */
-const HELP_LINKS: readonly { label: () => string; url: string }[] = [
-    { label: () => t('onboarding.helpDiscord'), url: 'https://discord.gg/fX9WBAhyfD' },
-    { label: () => t('onboarding.helpBra1nDump'), url: 'https://x.com/bra1n_dump' },
-    { label: () => t('onboarding.helpEx3ndr'), url: 'https://x.com/Ex3NDR' },
-    { label: () => t('onboarding.helpIssues'), url: 'https://github.com/slopus/happy/issues' },
-];
+const HELP_ISSUES = { label: () => t('onboarding.helpIssues'), url: 'https://github.com/slopus/happy/issues' };
+const HELP_DISCORD = { label: () => t('onboarding.helpDiscord'), url: 'https://discord.gg/fX9WBAhyfD' };
+const HELP_LINKS: readonly { label: () => string; url: string }[] = Platform.OS === 'android'
+    // Android's native alert shows at most three buttons and drops the rest,
+    // Cancel included, so it gets the two public places plus Cancel.
+    ? [HELP_DISCORD, HELP_ISSUES]
+    : [
+        HELP_DISCORD,
+        { label: () => t('onboarding.helpBra1nDump'), url: 'https://x.com/bra1n_dump' },
+        { label: () => t('onboarding.helpEx3ndr'), url: 'https://x.com/Ex3NDR' },
+        HELP_ISSUES,
+    ];
 
 /**
  * How long to keep saying "connected" after a successful scan while the linked
@@ -158,16 +164,14 @@ export const LinkComputerChecklist = React.memo(function LinkComputerChecklist({
         void Linking.openURL(DESKTOP_URL);
     }, []);
 
-    const downloadTitle = (
-        <>
+    const downloadLine = (
+        <Text style={styles.body}>
             {t('onboarding.installBodyPrefix')}
-            <Text style={styles.link} accessibilityRole="link" onPress={(event) => {
-                event.stopPropagation();
-                openDesktopSite();
-            }}>
+            <Text style={styles.link} accessibilityRole="link" onPress={openDesktopSite}>
                 {t('onboarding.installBodyLink')}
             </Text>
-        </>
+            {t('onboarding.installBodySuffix')}
+        </Text>
     );
 
     const scanActions = (
@@ -251,14 +255,18 @@ export const LinkComputerChecklist = React.memo(function LinkComputerChecklist({
             <View style={styles.content}>
                 <ChecklistRow
                     checked={!!ticked.install}
-                    title={downloadTitle}
+                    title={t('onboarding.installStep')}
                     onToggle={() => toggle('install')}
-                />
+                >
+                    {downloadLine}
+                </ChecklistRow>
                 <ChecklistRow
                     checked={!!ticked.open}
                     title={t('onboarding.openStep')}
                     onToggle={() => toggle('open')}
-                />
+                >
+                    <Text style={styles.body}>{t('onboarding.openBody')}</Text>
+                </ChecklistRow>
                 {scanActions}
                 {approved ? (
                     <Text style={[styles.body, styles.connected]}>{t('onboarding.connected')}</Text>
@@ -277,16 +285,17 @@ export const GetHelpButton = React.memo(function GetHelpButton() {
     const { theme } = useUnistyles();
 
     const openHelp = React.useCallback(() => {
+        const links = HELP_LINKS.map((link) => ({
+            text: link.label(),
+            onPress: () => { void openExternalUrl(link.url); },
+        }));
+        const cancel = { text: t('common.cancel'), style: 'cancel' as const };
         Modal.alert(
             t('onboarding.getHelp'),
             t('onboarding.helpMessage'),
-            [
-                ...HELP_LINKS.map((link) => ({
-                    text: link.label(),
-                    onPress: () => { void openExternalUrl(link.url); },
-                })),
-                { text: t('common.cancel'), style: 'cancel' as const },
-            ],
+            // Android fills its slots by position (neutral, negative,
+            // positive), so Cancel goes in the middle to land on negative.
+            Platform.OS === 'android' ? [links[0], cancel, links[1]] : [...links, cancel],
         );
     }, []);
 
@@ -429,7 +438,8 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
     },
     link: {
-        color: theme.colors.textLink,
+        color: theme.colors.text,
+        textDecorationLine: 'underline',
     },
     terminal: {
         marginTop: 12,
