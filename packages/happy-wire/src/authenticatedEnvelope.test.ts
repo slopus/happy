@@ -6,6 +6,7 @@ import nacl from 'tweetnacl';
 import { describe, expect, it } from 'vitest';
 import {
   AUTHENTICATED_ENVELOPE_BYTES,
+  authenticatedEnvelopesCapabilitySchema,
   authenticatedEnvelopeBinding,
   openAuthenticatedEnvelope,
   sealAuthenticatedEnvelope,
@@ -79,5 +80,19 @@ describe('authenticatedEnvelopeBinding', () => {
 
   it('accepts only known kinds', () => {
     expect(() => authenticatedEnvelopeBinding({ kind: 'anything' as never, ciphertext })).toThrow();
+  });
+});
+
+describe('authenticatedEnvelopesCapabilitySchema', () => {
+  const key = (fill: number) => Buffer.alloc(32, fill).toString('base64');
+
+  it('carries the automation key to seal to and the sender the daemon trusts', () => {
+    const capability = { version: 1, automationPublicKey: key(1), trustedSenderPublicKey: key(2) };
+    expect(authenticatedEnvelopesCapabilitySchema.parse(capability)).toEqual(capability);
+  });
+
+  it('rejects keys that are not 32 bytes and unknown versions', () => {
+    expect(authenticatedEnvelopesCapabilitySchema.safeParse({ version: 1, automationPublicKey: Buffer.alloc(31).toString('base64'), trustedSenderPublicKey: key(2) }).success).toBe(false);
+    expect(authenticatedEnvelopesCapabilitySchema.safeParse({ version: 2, automationPublicKey: key(1), trustedSenderPublicKey: key(2) }).success).toBe(false);
   });
 });

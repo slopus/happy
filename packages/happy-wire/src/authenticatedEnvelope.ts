@@ -1,4 +1,5 @@
 import nacl from 'tweetnacl';
+import * as z from 'zod';
 
 /**
  * aplus-dev-studio specs/e2ee-machine-control-boundary R12 — a data key boxed
@@ -96,6 +97,23 @@ export function openAuthenticatedEnvelope(input: {
     opened.fill(0);
   }
 }
+
+const publicKey32 = z.string().regex(/^[A-Za-z0-9+/]{43}=$/);
+
+/**
+ * What a daemon publishes in its machine metadata, which is encrypted with the
+ * machine key, so a server without that key can neither read nor forge it.
+ * A client seals with a sender only when this is present, only to
+ * `automationPublicKey` (a different target key from the server is refused,
+ * R15), and only with the secret key of `trustedSenderPublicKey`.
+ */
+export const authenticatedEnvelopesCapabilitySchema = z.object({
+  version: z.literal(1),
+  automationPublicKey: publicKey32,
+  /** The account or company key the daemon's machine key is wrapped to. */
+  trustedSenderPublicKey: publicKey32,
+});
+export type AuthenticatedEnvelopesCapability = z.infer<typeof authenticatedEnvelopesCapabilitySchema>;
 
 /** How a daemon's copy of a payload was sealed: by a sender it can name, or by anyone. */
 export type MachinePayloadAuthentication =
