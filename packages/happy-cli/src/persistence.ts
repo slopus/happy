@@ -5,7 +5,7 @@
  */
 
 import { FileHandle } from 'node:fs/promises'
-import { readFile, writeFile, mkdir, open, unlink, rename, stat, chmod } from 'node:fs/promises'
+import { readFile, writeFile, mkdir, open, unlink, rename, stat, chmod, rm } from 'node:fs/promises'
 import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync, chmodSync, statSync, lstatSync, openSync, closeSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { constants } from 'node:fs'
@@ -307,10 +307,16 @@ export async function writePrivateFile(path: string, content: string): Promise<v
   await chmod(path, PRIVATE_FILE_MODE);
 }
 
-/** Writes `content` beside `path` owner-only, then renames it over `path`. */
+/**
+ * Writes `content` to a new owner-only file beside `path` and renames it over
+ * `path`. The content never enters a file someone may hold open: not the
+ * target, and not a temp file left by a crash, which is removed first and
+ * then created exclusively.
+ */
 export async function replacePrivateFile(path: string, content: string): Promise<void> {
   const tmp = `${path}.tmp`;
-  await writePrivateFile(tmp, content);
+  await rm(tmp, { force: true });
+  await writeFile(tmp, content, { encoding: 'utf-8', mode: PRIVATE_FILE_MODE, flag: 'wx' });
   await rename(tmp, path);
 }
 

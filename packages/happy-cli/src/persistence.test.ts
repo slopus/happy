@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { configuration } from './configuration';
@@ -365,6 +365,35 @@ describe('parseCredentials', () => {
         expect(marked!.encryption).toMatchObject({ type: 'dataKey', neverEscrowed: true });
         expect(unmarked!.encryption).not.toHaveProperty('neverEscrowed');
         expect(contradicted!.encryption).not.toHaveProperty('neverEscrowed');
+    });
+});
+
+/*
+ * A key written in place reaches every descriptor opened on that file before,
+ * including one opened while it was still world-readable (buzzni/happy#651
+ * review). A replacement lands in a file no one has open.
+ */
+describe('replacePrivateFile', () => {
+    it.skipIf(process.platform === 'win32')('lands in a new owner-only file that no earlier descriptor reads', async () => {
+        const { replacePrivateFile } = await import('./persistence');
+        const dir = mkdtempSync(join(tmpdir(), 'happy-replace-'));
+        const target = join(dir, 'access.key');
+        writeFileSync(target, 'old', { mode: 0o644 });
+        writeFileSync(`${target}.tmp`, 'left by a crash', { mode: 0o644 });
+        const heldTarget = openSync(target, 'r');
+        const heldTemp = openSync(`${target}.tmp`, 'r');
+        try {
+            await replacePrivateFile(target, 'new');
+
+            expect(readFileSync(target, 'utf8')).toBe('new');
+            expect(statSync(target).mode & 0o777).toBe(0o600);
+            expect(readFileSync(heldTarget, 'utf8')).toBe('old');
+            expect(readFileSync(heldTemp, 'utf8')).toBe('left by a crash');
+        } finally {
+            closeSync(heldTarget);
+            closeSync(heldTemp);
+            rmSync(dir, { recursive: true, force: true });
+        }
     });
 });
 
