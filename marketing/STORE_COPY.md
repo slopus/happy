@@ -45,13 +45,21 @@ For the App Store slot asking for 1242 × 2688 or 1284 × 2778, use only
 | Current Happy logo | 1024 × 1024 | [logo.png](logo.png) |
 | App Store app icon — supplied by the native build | 1024 × 1024 | [app-icon-1024x1024.png](app-store/app-icon-1024x1024.png) |
 | Google Play → Main store listing → Graphics → App icon | 512 × 512 | [app-icon-512x512.png](google-play/app-icon-512x512.png) |
+| Google Play → Main store listing → Graphics → Feature graphic | 1024 × 500 | [feature-graphic-1024x500.png](google-play/feature-graphic-1024x500.png) |
 
-These opaque RGB/sRGB exports use the current H logo and galaxy background from
-the mobile app's configured `icon.png`. Apple gets its app icon from the build;
-there is no separate screenshot-slot upload for it.
+The logo and Apple icon use opaque RGB/sRGB. The Google Play icon is a **32-bit
+RGBA PNG**, 512 × 512 and below 1024 KB, with opaque pixels and no baked-in
+rounded outer corners or shadow. All use the current H logo and galaxy
+background from the mobile app's configured `icon.png`. Apple gets its app icon
+from the build; there is no separate screenshot-slot upload for it.
 
-Google Play's Feature graphic is a separate 1024 × 500 field. No replacement
-feature graphic is prepared here; retain the existing Console asset.
+The Google Play feature graphic is a **24-bit RGB PNG with no alpha**, exactly
+1024 × 500. It uses the Android session screenshot and puts the key copy inside
+the image margins. It is a separate upload from the square icon: use each file
+only in its matching field, without cropping.
+
+Requirements checked against [Google Play's current preview asset specifications](https://support.google.com/googleplay/android-developer/answer/9866151?hl=en)
+and [icon design specifications](https://developer.android.com/distribute/google-play/resources/icon-design-specifications).
 
 Positioning follows the live https://happy.engineering/desktop page ("Any Model.
 Your Team. Happy Harness."). The page credits multi-provider sessions,
