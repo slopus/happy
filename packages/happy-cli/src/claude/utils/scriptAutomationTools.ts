@@ -8,6 +8,8 @@ import { decryptScriptValue, encryptScriptValue, scriptAdmissionSchema, scriptAu
   scriptEncryptedValueSchema, scriptScheduleSchema, type ScriptAutomationPayload, type ScriptManagementRequest } from '@slopus/happy-wire';
 import { readLocalHappyAgentCredentials } from '@/resume/localHappyAgentAuth';
 import { readSettings } from '@/persistence';
+import { configuration } from '@/configuration';
+import { readMachineAutomationKey } from '@/daemon/automations/machineAutomationKey';
 import { refreshMcpCallerGrantIfExpiring } from '@/aplus/refreshMcpCallerGrant';
 
 const id = z.string().min(1).max(200);
@@ -29,6 +31,12 @@ const rowSchema = z.object({ id, projectId: id, registrationKey: id, revision: z
 type Row = z.infer<typeof rowSchema>;
 export function createScriptAutomationTools(options: {
   projectId: string; directory: string; viewerKeyPair: nacl.BoxKeyPair;
+  /**
+   * The automation key of the daemon on this machine, if readable. Code registered for that
+   * daemon is sealed by it (aplus-dev-studio specs/e2ee-machine-control-boundary R13); the
+   * agent holds no customer key to seal with.
+   */
+  localAutomationKey?: { publicKey: Uint8Array; secretKey: Uint8Array } | null;
   request(input: ScriptManagementRequest): Promise<unknown>;
 }) {
   const context = (resourceId: string, purpose: 'configuration' | 'artifact' | 'log') => ({ projectId: options.projectId, resourceId, purpose });
@@ -90,7 +98,10 @@ export function createScriptAutomationTools(options: {
           if (existing.revision === input.expectedRevision + 1 && existing.paused === input.paused && isDeepStrictEqual(payload(existing), value)) return summary(existing);
           throw new Error('REVISION_CONFLICT');
         }
-        const recipients = { viewerPublicKey: options.viewerKeyPair.publicKey, machinePublicKey: keys.machinePublicKey };
+        const ownMachine = !!options.localAutomationKey
+          && Buffer.from(options.localAutomationKey.publicKey).equals(Buffer.from(keys.machinePublicKey));
+        const recipients = { viewerPublicKey: options.viewerKeyPair.publicKey, machinePublicKey: keys.machinePublicKey,
+          ...(ownMachine ? { sender: options.localAutomationKey! } : {}) };
         const encrypted = encryptScriptValue({ value, context: context(input.registrationKey, 'configuration'), ...recipients });
         const artifact = encryptScriptValue({ value: { source: file.source }, context: context(artifactId, 'artifact'), ...recipients });
         const response = z.object({ automation: rowSchema }).parse(await options.request({ operation: 'upsert', registration: {
@@ -128,6 +139,7 @@ export async function runScriptAutomationTool(raw: unknown, session: { directory
   const callerGrant = process.env.HAPPY_APLUS_MCP_CALLER_GRANT;
   if (!callerGrant) throw new Error('SCRIPT_AGENT_CONTEXT_REQUIRED');
   const client = createScriptAutomationTools({ projectId, directory: session.directory, viewerKeyPair: credentials.contentKeyPair,
+    localAutomationKey: readMachineAutomationKey(configuration.automationKeyFile),
     request: async (request) => {
       const response = await fetch(new URL('/api/automation/script-management', url), { method: 'POST',
         headers: { Authorization: `Bearer ${credentials.token}`, 'X-Aplus-Caller-Grant': callerGrant, 'Content-Type': 'application/json' },

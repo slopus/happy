@@ -5,6 +5,7 @@ import path from 'node:path'
 
 import {
   loadOrCreateMachineAutomationKey,
+  readMachineAutomationKey,
   updateMachineAutomationKeyRegistration,
 } from './machineAutomationKey'
 
@@ -54,5 +55,17 @@ describe('machineAutomationKey', () => {
     writeFileSync(file, JSON.stringify({ version: 1, publicKey: 'bad', secretKey: 'bad', registeredKeyVersion: 0 }))
     expect(() => loadOrCreateMachineAutomationKey(file)).toThrow('automation-key-invalid')
     expect(readFileSync(file, 'utf8')).toContain('"publicKey":"bad"')
+  })
+
+  // A session process reads the daemon's key to seal scripts its agent registers; it never makes one.
+  it('reads the daemon key without creating one where there is none or it is unusable', () => {
+    expect(readMachineAutomationKey(file)).toBeNull()
+    expect(readdirSync(dir)).toEqual([])
+
+    const created = loadOrCreateMachineAutomationKey(file)
+    expect(readMachineAutomationKey(file)).toEqual(created)
+
+    writeFileSync(file, '{ corrupt')
+    expect(readMachineAutomationKey(file)).toBeNull()
   })
 })

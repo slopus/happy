@@ -69,6 +69,18 @@ export function loadOrCreateMachineAutomationKey(filePath: string): MachineAutom
   return key
 }
 
+/**
+ * The daemon's key as it is on disk, or null when there is none or it cannot
+ * be read. For processes that use the key but must never create one.
+ */
+export function readMachineAutomationKey(filePath: string): MachineAutomationKey | null {
+  try {
+    return parse(readFileSync(filePath, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
 export function updateMachineAutomationKeyRegistration(
   filePath: string,
   key: MachineAutomationKey,
