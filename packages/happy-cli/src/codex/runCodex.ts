@@ -1779,21 +1779,32 @@ export async function runCodex(opts: {
 
     try {
         logger.debug('[codex]: client.connect begin');
-        await client.connect();
-        logger.debug('[codex]: client.connect done');
+        try {
+            await client.connect();
+            logger.debug('[codex]: client.connect done');
 
-        if (opts.resumeThreadId) {
-            await resumeExistingThread({
-                client,
-                session,
-                messageBuffer,
-                threadId: opts.resumeThreadId,
-                cwd: process.cwd(),
-                mcpServers: mcpConfigSynchronizer.mcpServers,
-                developerInstructions: currentDeveloperInstructions,
-            });
-            await reportMcpStatuses();
-            appendSystemPromptInjected = true;
+            if (opts.resumeThreadId) {
+                await resumeExistingThread({
+                    client,
+                    session,
+                    messageBuffer,
+                    threadId: opts.resumeThreadId,
+                    cwd: process.cwd(),
+                    mcpServers: mcpConfigSynchronizer.mcpServers,
+                    developerInstructions: currentDeveloperInstructions,
+                });
+                await reportMcpStatuses();
+                appendSystemPromptInjected = true;
+            }
+        } catch (error) {
+            // The daemon spawns this process with stdio ignored, so the caller's
+            // stderr report reaches no one. Record the reason here; the finally
+            // below flushes it before the session is closed.
+            logger.warn('[codex]: Codex failed to start', error);
+            const failureMessage = `Codex failed to start: ${error instanceof Error ? error.message : String(error)}`;
+            messageBuffer.addMessage(failureMessage, 'status');
+            session.sendSessionEvent({ type: 'message', message: failureMessage });
+            throw error;
         }
 
         const forkCodexThreadId = process.env.HAPPY_FORK_CODEX_THREAD_ID;

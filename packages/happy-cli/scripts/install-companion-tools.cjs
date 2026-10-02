@@ -42,7 +42,7 @@ const IS_WINDOWS = process.platform === 'win32';
 
 // Codex policy matches src/utils/codexMultiAuthVersions.ts; Claude matches aiCredentialRuntime.ts.
 const CODEX_MULTI_AUTH_VERSION = '2.16.0';
-const SUPPORTED_CODEX_MULTI_AUTH_VERSIONS = ['2.16.0', '2.17.0'];
+const MINIMUM_CODEX_MULTI_AUTH_VERSION = '2.16.0';
 const CLAUDE_SWAP_VERSION = '0.25.0';
 
 // An unbounded child here would hang `npm install -g happy` itself. Matches the
@@ -110,12 +110,24 @@ function installTool(name, command, args) {
     }
 }
 
+// The minimum and every newer plain release; an existing newer install is kept.
+function isSupportedCodexMultiAuthVersion(version) {
+    const pattern = /^(\d{1,6})\.(\d{1,6})\.(\d{1,6})$/;
+    const parsed = typeof version === 'string' ? pattern.exec(version) : null;
+    if (!parsed) return false;
+    const minimum = pattern.exec(MINIMUM_CODEX_MULTI_AUTH_VERSION);
+    for (let i = 1; i <= 3; i++) {
+        if (Number(parsed[i]) !== Number(minimum[i])) return Number(parsed[i]) > Number(minimum[i]);
+    }
+    return true;
+}
+
 function hasSupportedCodexMultiAuth(run = spawnSync, read = readFileSync) {
     try {
         const options = { encoding: 'utf8', shell: IS_WINDOWS, timeout: 10_000 };
         const cli = run('codex-multi-auth', ['--version'], options);
         const version = cli.stdout?.trim();
-        if (cli.status !== 0 || !SUPPORTED_CODEX_MULTI_AUTH_VERSIONS.includes(version)) return false;
+        if (cli.status !== 0 || !isSupportedCodexMultiAuthVersion(version)) return false;
         const root = run('npm', ['root', '--global'], options);
         if (root.status !== 0 || !root.stdout?.trim()) return false;
         return JSON.parse(read(join(root.stdout.trim(), 'codex-multi-auth', 'package.json'), 'utf8')).version === version;
@@ -147,7 +159,8 @@ function main() {
 
 module.exports = {
     hasSupportedCodexMultiAuth,
-    SUPPORTED_CODEX_MULTI_AUTH_VERSIONS,
+    isSupportedCodexMultiAuthVersion,
+    MINIMUM_CODEX_MULTI_AUTH_VERSION,
     shouldInstallCompanionTools,
     shouldInstallUvTools,
     shellQuote,

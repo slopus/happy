@@ -1,4 +1,4 @@
-import { isSupportedCodexMultiAuthVersion, SUPPORTED_CODEX_MULTI_AUTH_VERSIONS } from '../utils/codexMultiAuthVersions'
+import { isSupportedCodexMultiAuthVersion, SUPPORTED_CODEX_MULTI_AUTH_VERSION_RANGE } from '../utils/codexMultiAuthVersions'
 import { randomBytes } from 'node:crypto'
 import { execFile as execFileCallback } from 'node:child_process'
 import { readFile } from 'node:fs/promises'
@@ -101,7 +101,7 @@ async function startSupportedRuntimeRotationProxy(options: {
   const packageRoot = join(globalRoot, 'codex-multi-auth')
   const packageJson = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8')) as unknown
   if (!isObject(packageJson) || !isSupportedCodexMultiAuthVersion(packageJson.version)) {
-    throw new Error(`Unsupported codex-multi-auth version ${isObject(packageJson) && typeof packageJson.version === 'string' && /^\d+\.\d+\.\d+$/.test(packageJson.version) ? packageJson.version : 'unknown'}; supported: ${SUPPORTED_CODEX_MULTI_AUTH_VERSIONS.join(', ')}`)
+    throw new Error(`Unsupported codex-multi-auth version ${isObject(packageJson) && typeof packageJson.version === 'string' && /^\d+\.\d+\.\d+$/.test(packageJson.version) ? packageJson.version : 'unknown'}; supported: ${SUPPORTED_CODEX_MULTI_AUTH_VERSION_RANGE}`)
   }
   const moduleUrl = pathToFileURL(join(
     packageRoot,

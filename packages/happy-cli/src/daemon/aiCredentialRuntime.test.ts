@@ -1393,7 +1393,7 @@ describe('AI credential machine runtime', () => {
     expect(warn).toHaveBeenCalledExactlyOnceWith('Codex credential capture could not read openai-codex-accounts.json (INVALID_JSON)')
   })
 
-  it.each(['2.16.0', '2.17.0'])('captures and reapplies the actual supported runtime %s without installing', async (version) => {
+  it.each(['2.16.0', '2.17.0', '2.19.0'])('captures and reapplies the actual supported runtime %s without installing', async (version) => {
     const execFile = vi.fn(async (command: string, args: string[]) => ({
       stdout: command === 'codex-multi-auth' && args[0] === '--version' ? version
         : command === 'npm' && args[0] === 'root' ? '/global/node_modules' : '',
@@ -1415,7 +1415,7 @@ describe('AI credential machine runtime', () => {
       stdout: command === 'npm' ? '/global/node_modules' : '2.17.0', stderr: '',
     })) })
     files.set('/global/node_modules/codex-multi-auth/package.json', JSON.stringify({ version }))
-    await expect(runtime.capture({ provider: 'codex' })).rejects.toMatchObject({ kind: 'CODEX_MULTI_AUTH_VERSION_MISMATCH', message: expect.stringContaining(`installed=2.17.0 global=${version} supported=2.16.0,2.17.0`) })
+    await expect(runtime.capture({ provider: 'codex' })).rejects.toMatchObject({ kind: 'CODEX_MULTI_AUTH_VERSION_MISMATCH', message: expect.stringContaining(`installed=2.17.0 global=${version} supported=>=2.16.0`) })
   })
 
   it('rejects Codex capture when the installed multi-auth package is not the pinned version', async () => {
@@ -1496,7 +1496,7 @@ describe('AI credential machine runtime', () => {
     expect(JSON.stringify(execFile.mock.calls)).not.toContain('refresh-a')
   })
 
-  it.each(['2.15.0', '2.17.0'])('applies a compatible bundle from %s on runtime 2.16.0', async (packageVersion) => {
+  it.each(['2.15.0', '2.17.0', '2.19.0'])('applies a compatible bundle from %s on runtime 2.16.0', async (packageVersion) => {
     const execFile = vi.fn(async (command: string, args: string[]) => {
       if (command === 'codex-multi-auth' && args[0] === '--version') {
         return { stdout: '2.16.0\n', stderr: '' }

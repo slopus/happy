@@ -52,7 +52,7 @@ export function buildResumeLaunch(session: ResumableHappySession, options: Resum
 
     if (flavor === 'codex') {
         if (!metadata.codexThreadId) {
-            throw new Error(`Happy session ${session.id} is missing its Codex thread ID.`);
+            throw new Error(`Happy session ${session.id} has no Codex thread to resume (Codex never started a thread in it, or its context was reset). Start a new conversation.`);
         }
         const args = ['codex', '--resume', metadata.codexThreadId];
         if (options.startedBy) {

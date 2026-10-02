@@ -1,5 +1,5 @@
 import { runInNewContext } from 'node:vm'
-import { SUPPORTED_CODEX_MULTI_AUTH_VERSIONS } from '../../src/utils/codexMultiAuthVersions'
+import { isSupportedCodexMultiAuthVersion } from '../../src/utils/codexMultiAuthVersions'
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,7 +10,8 @@ const SCRIPT = join(__dirname, '..', 'install-companion-tools.cjs');
 const {
     shouldInstallCompanionTools,
     hasSupportedCodexMultiAuth,
-    SUPPORTED_CODEX_MULTI_AUTH_VERSIONS: scriptVersions,
+    MINIMUM_CODEX_MULTI_AUTH_VERSION,
+    isSupportedCodexMultiAuthVersion: scriptAccepts,
     shouldInstallUvTools,
     shellQuote,
     CODEX_MULTI_AUTH_VERSION,
@@ -106,8 +107,12 @@ describe('CODEX_MULTI_AUTH_VERSION', () => {
         expect(CODEX_MULTI_AUTH_VERSION).toBe(pinnedVersionIn('utils/codexMultiAuthVersions.ts', 'CODEX_MULTI_AUTH_VERSION'));
     });
 
-    it('matches the supported runtime versions', () => {
-        expect(scriptVersions).toEqual(SUPPORTED_CODEX_MULTI_AUTH_VERSIONS);
+    it('matches the runtime minimum version', () => {
+        expect(MINIMUM_CODEX_MULTI_AUTH_VERSION).toBe(pinnedVersionIn('utils/codexMultiAuthVersions.ts', 'MINIMUM_CODEX_MULTI_AUTH_VERSION'));
+    });
+
+    it.each(['2.15.0', '2.16.0', '2.17.0', '2.19.0', '2.100.0', '3.0.0', '2.19.0-beta.1', 'unknown'])('accepts %s exactly when the runtime does', (version) => {
+        expect(scriptAccepts(version)).toBe(isSupportedCodexMultiAuthVersion(version));
     });
 });
 
@@ -163,11 +168,11 @@ describe('COMPANION_INSTALL_TIMEOUT_MS', () => {
 });
 
 describe('preserving a compatible companion installation', () => {
-    it.each(['2.16.0', '2.17.0'])('keeps matching CLI/global package %s', (version) => {
+    it.each(['2.16.0', '2.17.0', '2.19.0'])('keeps matching CLI/global package %s', (version) => {
         const run = vi.fn((command: string) => ({ status: 0, stdout: command === 'npm' ? '/global' : version }));
         expect(hasSupportedCodexMultiAuth(run, () => JSON.stringify({ version }))).toBe(true);
     });
-    it.each(['2.18.0', '2.15.0'])('does not accept unverified runtime %s', (version) => {
+    it.each(['2.15.0', '2.8.4'])('does not accept a runtime older than the minimum: %s', (version) => {
         expect(hasSupportedCodexMultiAuth(() => ({ status: 0, stdout: version }), () => JSON.stringify({ version }))).toBe(false);
     });
     it('does not keep conflicting executable and global package versions', () => {
@@ -178,7 +183,7 @@ describe('preserving a compatible companion installation', () => {
     });
 });
 
-it.each(['2.17.0', '2.18.0'])('postinstall keeps only compatible existing runtime %s', (version) => {
+it.each(['2.17.0', '2.19.0', '2.15.0'])('postinstall keeps only compatible existing runtime %s', (version) => {
     const run = vi.fn((command: string, args: string[]) => ({
         status: 0, stdout: command === 'npm' && args[0] === 'root' ? '/global' : version,
     }));
@@ -191,5 +196,5 @@ it.each(['2.17.0', '2.18.0'])('postinstall keeps only compatible existing runtim
         process: { platform: 'linux', env: { npm_config_global: 'true' } },
         console: { log() {}, warn() {} },
     });
-    expect(run.mock.calls.some(([command, args]) => command === 'npm' && args[0] === 'install')).toBe(version === '2.18.0');
+    expect(run.mock.calls.some(([command, args]) => command === 'npm' && args[0] === 'install')).toBe(version === '2.15.0');
 });

@@ -1,7 +1,7 @@
 import { spawn as crossSpawn } from 'cross-spawn'
 import { verifyLocalAiAccounts, type VerificationIdentity } from './aiCredentialVerification'
 import { mergeCodexAccounts } from './aiCredentialAdditive'
-import { CODEX_MULTI_AUTH_VERSION, isSupportedCodexMultiAuthVersion, SUPPORTED_CODEX_MULTI_AUTH_VERSIONS } from '../utils/codexMultiAuthVersions'
+import { CODEX_MULTI_AUTH_VERSION, isSupportedCodexMultiAuthVersion, SUPPORTED_CODEX_MULTI_AUTH_VERSION_RANGE } from '../utils/codexMultiAuthVersions'
 import { stagingParent } from './stagedCredentialRoot'
 import { spawn } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
@@ -31,11 +31,12 @@ const MAX_PAYLOAD_BYTES = 1024 * 1024
 const CLAUDE_SWAP_VERSION = '0.25.0'
 const CLAUDE_STATUS_TIMEOUT_MS = 120_000
 // Keep readable historical bundles separate from supported installed runtimes.
-// 2.17.0 retains the OAuth account v3 / settings v1 contract (verified by package smoke).
-const READABLE_CODEX_MULTI_AUTH_BUNDLE_VERSIONS: ReadonlySet<string> = new Set([
-  '2.15.0',
-  ...SUPPORTED_CODEX_MULTI_AUTH_VERSIONS,
-])
+// Bundles from supported runtimes are readable; parseCodexMultiAuthBundle still
+// requires the OAuth account v3 / settings v1 contract.
+const READABLE_HISTORICAL_CODEX_MULTI_AUTH_BUNDLE_VERSIONS: ReadonlySet<string> = new Set(['2.15.0'])
+function isReadableCodexMultiAuthBundleVersion(version: string): boolean {
+  return READABLE_HISTORICAL_CODEX_MULTI_AUTH_BUNDLE_VERSIONS.has(version) || isSupportedCodexMultiAuthVersion(version)
+}
 const CODEX_MULTI_AUTH_THRESHOLD = 5
 
 export type AiCredentialProvider = 'claude' | 'codex' | 'zai'
@@ -886,7 +887,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     const installed = await inspectCodexMultiAuthInstallation()
     if (isSupportedCodexMultiAuthVersion(installed.cli) && installed.cli === installed.global) return installed.cli
     const error = new AiCredentialRuntimeError('CODEX_MULTI_AUTH_VERSION_MISMATCH')
-    error.message += ` [codex-multi-auth installed=${installed.cli} global=${installed.global} supported=${SUPPORTED_CODEX_MULTI_AUTH_VERSIONS.join(',')}]`
+    error.message += ` [codex-multi-auth installed=${installed.cli} global=${installed.global} supported=${SUPPORTED_CODEX_MULTI_AUTH_VERSION_RANGE}]`
     throw error
   }
 
@@ -1847,7 +1848,7 @@ function parseCodexMultiAuthBundle(payload: string): CodexMultiAuthBundle | null
   if (!isObject(parsed) || parsed.kind !== 'codex-multi-auth') return null
   if (parsed.version !== 1
     || typeof parsed.packageVersion !== 'string'
-    || !READABLE_CODEX_MULTI_AUTH_BUNDLE_VERSIONS.has(parsed.packageVersion)
+    || !isReadableCodexMultiAuthBundleVersion(parsed.packageVersion)
     || !isObject(parsed.accounts)
     || parsed.accounts.version !== 3
     || !Array.isArray(parsed.accounts.accounts)
