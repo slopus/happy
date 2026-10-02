@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
@@ -116,6 +116,7 @@ export default React.memo(() => {
     const [pushPermission, setPushPermission] = useState<PushPermissionInfo | null>(null);
     const [currentPushToken, setCurrentPushToken] = useState<string | null>(null);
     const [loadingPushSettings, setLoadingPushSettings] = useState(false);
+    const pushSettingsLoadId = useRef(0);
     const [requestingPushPermission, setRequestingPushPermission] = useState(false);
     const [refreshingPushToken, setRefreshingPushToken] = useState(false);
     const [deletingPushToken, setDeletingPushToken] = useState<string | null>(null);
@@ -137,23 +138,36 @@ export default React.memo(() => {
             return;
         }
 
+        const loadId = ++pushSettingsLoadId.current;
         setLoadingPushSettings(true);
+        // Obtaining an Expo token may wait on the phone's push service or network.
+        // It is only needed to label this device, so it must not block the token
+        // list or the controls that can repair registration.
+        void getCurrentExpoPushToken().then(token => {
+            if (pushSettingsLoadId.current === loadId) {
+                setCurrentPushToken(token);
+            }
+        }).catch(error => {
+            console.error('Failed to identify the current push token:', error);
+        });
         try {
-            const [tokens, permission, liveToken] = await Promise.all([
+            const [tokens, permission] = await Promise.all([
                 fetchPushTokens(auth.credentials),
                 getPushPermissionInfo(),
-                getCurrentExpoPushToken(),
             ]);
-            setPushTokens(tokens);
-            setPushPermission(permission);
-            setCurrentPushToken(liveToken);
+            if (pushSettingsLoadId.current === loadId) {
+                setPushTokens(tokens);
+                setPushPermission(permission);
+            }
         } catch (error) {
             console.error('Failed to load push notification settings:', error);
             if (showError) {
                 Modal.alert(t('common.error'), t('pushNotifications.loadFailed'));
             }
         } finally {
-            setLoadingPushSettings(false);
+            if (pushSettingsLoadId.current === loadId) {
+                setLoadingPushSettings(false);
+            }
         }
     }, [auth.credentials]);
 
@@ -239,7 +253,7 @@ export default React.memo(() => {
 
             if (result.granted) {
                 const syncResult = await syncCurrentPushToken(auth.credentials);
-                await loadPushSettings();
+                void loadPushSettings();
                 if (!syncResult.registered) {
                     Modal.alert(t('common.error'), buildPushRefreshFailureMessage(syncResult.error));
                     return;
@@ -248,7 +262,7 @@ export default React.memo(() => {
                 return;
             }
 
-            await loadPushSettings();
+            void loadPushSettings();
 
             if (result.openedSettings) {
                 Modal.alert(t('pushNotifications.openSettingsTitle'), t('pushNotifications.openSettingsMessage'));
@@ -273,7 +287,10 @@ export default React.memo(() => {
         try {
             const result = await syncCurrentPushToken(auth.credentials);
             setPushPermission(result.permission);
-            await loadPushSettings();
+            if (result.registered) {
+                setCurrentPushToken(result.token);
+            }
+            void loadPushSettings();
 
             if (!result.permission.granted) {
                 Modal.alert(t('common.error'), t('pushNotifications.notEnabledYet'));
@@ -533,7 +550,7 @@ export default React.memo(() => {
                         icon={<Ionicons name="shield-checkmark-outline" size={29} color="#34C759" />}
                         onPress={handlePushPermissionRequest}
                         loading={requestingPushPermission}
-                        disabled={requestingPushPermission || loadingPushSettings || pushNotificationsUnsupported || !auth.credentials}
+                        disabled={requestingPushPermission || pushNotificationsUnsupported || !auth.credentials}
                         showChevron={false}
                     />
                     <Item
@@ -546,7 +563,7 @@ export default React.memo(() => {
                         icon={<Ionicons name="refresh-outline" size={29} color="#FF9500" />}
                         onPress={handleRefreshCurrentPushToken}
                         loading={refreshingPushToken}
-                        disabled={refreshingPushToken || loadingPushSettings || pushNotificationsUnsupported || !auth.credentials}
+                        disabled={refreshingPushToken || pushNotificationsUnsupported || !auth.credentials}
                         showChevron={false}
                     />
                 </ItemGroup>

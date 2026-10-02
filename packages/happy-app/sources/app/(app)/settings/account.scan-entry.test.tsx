@@ -5,6 +5,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer does not publish declarations used by this narrow test.
 import TestRenderer from 'react-test-renderer';
 
+const authState = vi.hoisted(() => ({
+    credentials: null as null | { token: string; secret: string },
+}));
+
 vi.mock('react-native', () => ({
     Platform: { OS: 'ios' },
     Pressable: 'Pressable',
@@ -17,7 +21,7 @@ vi.mock('expo-clipboard', () => ({ setStringAsync: vi.fn() }));
 vi.mock('@react-navigation/native', () => ({ useFocusEffect: vi.fn() }));
 vi.mock('@/auth/AuthContext', () => ({
     useAuth: () => ({
-        credentials: null,
+        credentials: authState.credentials,
         isAuthenticated: true,
         logout: vi.fn(),
     }),
@@ -36,7 +40,7 @@ vi.mock('@/sync/apiPush', () => ({ fetchPushTokens: vi.fn() }));
 vi.mock('@/sync/profile', () => ({ getDisplayName: () => null }));
 vi.mock('@/sync/pushRegistration', () => ({
     getCurrentExpoPushToken: vi.fn(),
-    getCurrentPushDeviceMetadata: () => ({ deviceId: 'test-device' }),
+    getCurrentPushDeviceMetadata: () => ({ deviceLabel: 'test-device', appLabel: 'Paws' }),
     getPushPermissionInfo: vi.fn(),
     requestPushPermissionOrOpenSettings: vi.fn(),
     removePushToken: vi.fn(),
@@ -65,6 +69,9 @@ vi.mock('react-native-unistyles', () => ({
 }));
 
 import AccountSettingsScreen from './account';
+import { fetchPushTokens } from '@/sync/apiPush';
+import { getCurrentExpoPushToken, getPushPermissionInfo, syncCurrentPushToken } from '@/sync/pushRegistration';
+import { Modal } from '@/modal';
 
 describe('AccountSettingsScreen scan entry', () => {
     let renderer: any;
@@ -80,6 +87,8 @@ describe('AccountSettingsScreen scan entry', () => {
 
     afterEach(() => {
         act(() => renderer.unmount());
+        authState.credentials = null;
+        vi.clearAllMocks();
         consoleErrorSpy.mockRestore();
     });
 
@@ -88,5 +97,39 @@ describe('AccountSettingsScreen scan entry', () => {
 
         expect(itemTitles).toContain('settingsAccount.status');
         expect(itemTitles).not.toContain('settingsAccount.linkNewDevice');
+    });
+
+    it('keeps push repair available and reports its result while Expo token lookup or list refresh stalls', async () => {
+        act(() => renderer.unmount());
+        authState.credentials = { token: 'test-token', secret: 'test-secret' };
+        vi.mocked(fetchPushTokens)
+            .mockResolvedValueOnce([{ id: 'stored-token', token: 'ExpoPushToken[stored]', createdAt: 1, updatedAt: 1 }])
+            .mockImplementationOnce(() => new Promise(() => {}));
+        vi.mocked(getPushPermissionInfo).mockResolvedValue({ status: 'granted', granted: true, canAskAgain: false });
+        vi.mocked(getCurrentExpoPushToken).mockImplementation(() => new Promise(() => {}));
+        vi.mocked(syncCurrentPushToken).mockResolvedValue({
+            registered: true,
+            token: 'ExpoPushToken[fresh]',
+            permission: { status: 'granted', granted: true, canAskAgain: false },
+        });
+
+        await act(async () => {
+            renderer = TestRenderer.create(<AccountSettingsScreen />);
+        });
+
+        const items = renderer.root.findAllByType('Item');
+        expect(items.find((item: any) => item.props.title === 'pushNotifications.permission')?.props.detail)
+            .toBe('pushNotifications.permissionAllowed');
+        expect(items.some((item: any) => String(item.props.title).includes('stored'))).toBe(true);
+        expect(renderer.root.findAllByType('ItemGroup').map((group: any) => group.props.title))
+            .toContain('pushNotifications.registeredTokensTitle');
+        const reRegister = items.find((item: any) => item.props.title === 'pushNotifications.reRegister');
+        expect(reRegister?.props.disabled).toBe(false);
+
+        await act(async () => {
+            await reRegister.props.onPress();
+        });
+
+        expect(Modal.alert).toHaveBeenCalledWith('common.success', 'pushNotifications.tokenRefreshed');
     });
 });
