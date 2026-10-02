@@ -1,0 +1,143 @@
+/** Bounded leased worker for application-owned chats; independent of unrestricted RPC. */
+import { access, readFile, mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { isAbsolute, join } from 'node:path';
+import { createHash } from 'node:crypto';
+import { z } from 'zod';
+import { acquireMachineLock, processAlive } from './workerLock';
+import { configuration } from '@/configuration';
+import { logger } from '@/ui/logger';
+import type { Machine } from '@/api/types';
+import { decodeBase64, decrypt, decryptLegacy, encodeBase64, encryptLegacy } from '@/api/encryption';
+import { readCodexAccountLaunchState } from '@/codex/codexAccountLaunchState';
+import { CodexAccountLaunch, type AccountApi } from '@/daemon/codexAccountLaunch';
+import { runRestrictedCodex, verifyRestrictedCodex } from './restrictedCodex';
+
+interface Job { id: string; conversationId: string; grantId: string; appId: string; machineId: string; expiresAt: string; envelope: string; input: string; lease: string }
+const messageSchema = z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(500_000), images: z.array(z.string().max(3_000_000).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/)).max(4).optional() }).strict();
+
+const activeHomes = new Set<string>();
+
+export function startAppChatWorker(token: string, machine: Machine): () => void {
+    const lifetime = new AbortController();
+    let active: AbortController | null = null;
+    let recoveryWarning = false;
+    const configuredBinary = process.env.HAPPY_CODEX_PATH?.trim();
+    const binary = configuredBinary && isAbsolute(configuredBinary) ? configuredBinary : 'codex';
+    const request = async <T>(path: string, body: unknown, method = 'POST', cleanup = false): Promise<T> => {
+        const response = await fetch(`${configuration.serverUrl}/v1/${path}`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: cleanup ? AbortSignal.timeout(7000) : AbortSignal.any([lifetime.signal, AbortSignal.timeout(7000)]), redirect: 'error' });
+        const data = await response.json() as any;
+        if (!response.ok) throw new Error(response.status === 409 && data.error === 'codex-account-unbound' ? 'codex-account-unbound' : 'authorization-unavailable');
+        return data as T;
+    };
+    const recoveryRoot = join(configuration.happyHomeDir, 'app-chat-credentials', createHash('sha256').update(machine.id).digest('hex'));
+    const api: AccountApi = {
+        redeemCodexSessionGrant: data => request('codex-session-grants/redeem', data),
+        attachCodexSession: (id, data) => request(`codex-session-grants/${id}/session`, data),
+        updateCodexAccountCredential: (id, data) => request(`codex-accounts/${id}/credential`, data, 'PUT', true),
+        reportCodexAccountQuota: (id, data) => request(`codex-accounts/${id}/quota-snapshot`, data, 'PUT', true),
+        reportCodexAccountStatus: (id, data) => request(`codex-accounts/${id}/status`, data, 'PUT', true),
+    };
+    const recoverCredentials = async (): Promise<boolean> => {
+        if ([...activeHomes].some(home => home.startsWith(recoveryRoot))) return false;
+        await mkdir(recoveryRoot, { recursive: true, mode: 0o700 });
+        for (const entry of await readdir(recoveryRoot, { withFileTypes: true })) {
+            if (!entry.isDirectory() || !entry.name.startsWith('job-')) continue;
+            const root = join(recoveryRoot, entry.name), home = join(root, 'codex');
+            try {
+                const state = await readCodexAccountLaunchState(home);
+                if (state.machineId !== machine.id) return false;
+                if (state.daemonPid !== process.pid && processAlive(state.daemonPid)) return false;
+                const started = await access(join(root, '.runtime-started')).then(() => true, () => false);
+                if (started) {
+                    const runtimePid = Number(await readFile(join(root, '.runtime-pid'), 'utf8'));
+                    if (processAlive(runtimePid)) return false;
+                }
+                await CodexAccountLaunch.recover(api, home, state).syncProbeCredential();
+                await rm(root, { recursive: true, force: true });
+            } catch (error) {
+                const started = await access(join(root, '.runtime-started')).then(() => true, () => false);
+                if (!started && (error as NodeJS.ErrnoException)?.code === 'ENOENT') { await rm(root, { recursive: true, force: true }); continue; }
+                return false;
+            } // Never discard an unsaved refresh or start another refresh.
+        }
+        return true;
+    };
+    const execute = async (job: Job) => {
+        const control = new AbortController(); active = control;
+        const stop = () => control.abort(); lifetime.signal.addEventListener('abort', stop, { once: true });
+        let root: string | undefined;
+        let launch: CodexAccountLaunch | undefined;
+        let heartbeat: NodeJS.Timeout | undefined;
+        let flushing: Promise<unknown> = Promise.resolve();
+        let latest = ''; let sent = ''; let sequence = 0;
+        const publish = (data: object) => request(`app-worker/${encodeURIComponent(machine.id)}/turns/${job.id}`, { lease: job.lease, ...data });
+        try {
+            const envelope = decrypt(machine.encryptionKey, machine.encryptionVariant, decodeBase64(job.envelope));
+            if (!envelope || envelope.v !== 1 || envelope.grantId !== job.grantId || envelope.appId !== job.appId || job.appId !== 'relationship-advisor' || envelope.machineId !== machine.id || job.machineId !== machine.id || envelope.expiresAt !== job.expiresAt || Date.parse(job.expiresAt) <= Date.now() || envelope.scope !== 'codex:chat' || typeof envelope.key !== 'string') throw new Error('invalid-grant-binding');
+            const key = decodeBase64(envelope.key); if (key.length !== 32) throw new Error('invalid-key');
+            const payload = decryptLegacy(decodeBase64(job.input), key);
+            if (!payload || payload.v !== 1 || payload.grantId !== job.grantId || payload.conversationId !== job.conversationId || payload.turnId !== job.id || payload.direction !== 'input' || payload.sequence !== 0) throw new Error('invalid-message-binding');
+            const messages = z.array(messageSchema).min(1).max(100).parse(payload.messages);
+            if (messages.at(-1)?.role !== 'user') throw new Error('invalid-turn');
+            const encode = () => encodeBase64(encryptLegacy({ v: 1, grantId: job.grantId, conversationId: job.conversationId, turnId: job.id, direction: 'output', sequence: ++sequence, text: latest }, key));
+            heartbeat = setInterval(() => {
+                flushing = flushing.then(async () => {
+                    if (control.signal.aborted) return;
+                    if (latest !== sent) { const snapshot = latest; const output = encode(); await publish({ output, sequence }); sent = snapshot; }
+                    else await publish({});
+                }).catch(() => control.abort());
+            }, 3000);
+            root = await mkdtemp(join(recoveryRoot, 'job-')); activeHomes.add(root);
+            const cwd = join(root, 'empty'); await mkdir(cwd, { mode: 0o700 });
+            let home = join(root, 'codex'); await mkdir(home, { mode: 0o700 });
+            const grant = await request<{ grant: string }>('codex-session-grants', { machineId: machine.id });
+            launch = await CodexAccountLaunch.prepare(api, machine.id, grant.grant, { sourceHome: cwd, createTempDir: () => home, skipHistory: true });
+            // Permission may have changed while preparing the selected account.
+            await publish({}); control.signal.throwIfAborted();
+            await writeFile(join(root, '.runtime-started'), '1', { mode: 0o600 });
+            latest = await runRestrictedCodex(binary, home, cwd, messages, control.signal, text => { latest = text; }, async pid => { await writeFile(join(root!, '.runtime-pid'), String(pid), { mode: 0o600 }); });
+            clearInterval(heartbeat); heartbeat = undefined; await flushing;
+            control.signal.throwIfAborted();
+            const output = encode(); await publish({ output, sequence, state: 'completed' });
+        } catch {
+            control.abort();
+            await publish({ state: 'failed' }).catch(() => undefined);
+        } finally {
+            if (heartbeat) clearInterval(heartbeat);
+            await flushing;
+            let saved = !launch;
+            if (launch) { try { await launch.syncProbeCredential(); saved = true; } catch { /* Keep private auth/checkpoint for retry. */ } }
+            if (root && saved) await rm(root, { recursive: true, force: true });
+            if (root) activeHomes.delete(root);
+            lifetime.signal.removeEventListener('abort', stop); active = null;
+        }
+    };
+    void (async () => {
+        if (configuredBinary && !isAbsolute(configuredBinary)) return;
+        if (!await verifyRestrictedCodex(binary)) return;
+        let release: (() => Promise<void>) | null = null;
+        while (!lifetime.signal.aborted && !release) {
+            release = await acquireMachineLock(machine.id, () => lifetime.abort());
+            if (!release) await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+        if (!release) return;
+        try { while (!lifetime.signal.aborted) {
+            try {
+                if (!await recoverCredentials()) {
+                    if (!recoveryWarning) logger.debug('[APP CHAT] Credential recovery pending: retained private job directory; check old daemon/runtime before manual recovery.');
+                    recoveryWarning = true;
+                    throw new Error('credential-recovery-pending');
+                }
+                recoveryWarning = false;
+                const { job } = await request<{ job: Job | null }>(`app-worker/${encodeURIComponent(machine.id)}/claim`, { protocol: 1 });
+                if (job) await execute(job);
+            } catch { /* Failed claim leaves no running turn; retry after bounded delay. */ }
+            if (!lifetime.signal.aborted) await new Promise<void>(resolve => {
+                const timer = setTimeout(done, 5000);
+                function done() { clearTimeout(timer); lifetime.signal.removeEventListener('abort', done); resolve(); }
+                lifetime.signal.addEventListener('abort', done, { once: true });
+            });
+        } } finally { await release(); }
+    })();
+    return () => { lifetime.abort(); active?.abort(); };
+}

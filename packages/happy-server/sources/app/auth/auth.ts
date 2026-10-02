@@ -87,6 +87,8 @@ class AuthModule {
     }
     
     async verifyToken(token: string): Promise<{ userId: string; extras?: any } | null> {
+        // Application credentials belong exclusively to the delegated chat data plane.
+        if (token.startsWith('paws_app.')) return null;
         // Check cache first (with TTL)
         const cached = this.tokenCache.get(token);
         if (cached) {

@@ -66,6 +66,8 @@ model Account {
     VoiceConversation   VoiceConversation[]
     PublicSessionShare  PublicSessionShare[]
     InteractivePreview InteractivePreview[]
+    AppDelegation AppDelegation[]
+    AppChatWorker AppChatWorker[]
 }
 
 model TerminalAuthRequest {
@@ -593,4 +595,59 @@ model VoiceConversation {
     createdAt                  DateTime @default(now())
 
     @@index([accountId, createdAt(sort: Desc)])
+}
+
+// Separate authorization/data plane: never contains an account secret or token.
+model AppDelegation {
+    id String @id
+    appId String
+    storedBytes Int @default(0)
+    challengeHash String
+    publicKey String
+    state String @default("pending")
+    requestExpiresAt DateTime
+    accountId String?
+    account Account? @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    machineId String?
+    expiresAt DateTime?
+    credentialHash String?
+    appEnvelope String?
+    machineEnvelope String?
+    createdAt DateTime @default(now())
+    conversations AppChatConversation[]
+    @@index([accountId, createdAt])
+    @@index([requestExpiresAt])
+}
+
+model AppChatWorker {
+    machineId String @id
+    accountId String
+    account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    protocol Int
+    activeUntil DateTime
+}
+
+model AppChatConversation {
+    id String @id
+    grantId String
+    grant AppDelegation @relation(fields: [grantId], references: [id], onDelete: Cascade)
+    createdAt DateTime @default(now())
+    turns AppChatTurn[]
+    @@index([grantId, createdAt])
+}
+
+model AppChatTurn {
+    id String @id
+    conversationId String
+    conversation AppChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+    input String
+    output String?
+    sequence Int @default(0)
+    state String @default("queued")
+    lease String?
+    leaseUntil DateTime?
+    deadline DateTime
+    createdAt DateTime @default(now())
+    @@index([conversationId, createdAt])
+    @@index([state, createdAt])
 }

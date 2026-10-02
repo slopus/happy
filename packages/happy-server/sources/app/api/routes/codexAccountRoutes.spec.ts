@@ -2,7 +2,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PGlite } from '@electric-sql/pglite';
 import { PrismaClient } from '@prisma/client';
-import { PrismaPGlite } from 'pglite-prisma-adapter';
+import { Prisma6PGlite as PrismaPGlite } from '@/storage/pgliteAdapter';
 import fastify from 'fastify';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';

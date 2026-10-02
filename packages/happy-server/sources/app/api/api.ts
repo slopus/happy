@@ -1,4 +1,5 @@
 import fastify from "fastify";
+import { appDelegationRoutes } from "./routes/appDelegationRoutes";
 import type { FastifyBaseLogger } from 'fastify';
 import { log, logger } from "@/utils/log";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
@@ -149,6 +150,7 @@ export async function createApiApp(opts: StartApiOptions = {}): Promise<Fastify>
 
     // Routes
     authRoutes(typed);
+    appDelegationRoutes(typed);
     pushRoutes(typed);
     sessionRoutes(typed);
     accountRoutes(typed);

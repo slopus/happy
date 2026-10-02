@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 
 const mocks = vi.hoisted(() => ({
+    push: vi.fn(),
     accountAuth: vi.fn(async () => true),
     accountLoading: false,
     alert: vi.fn(),
@@ -34,6 +35,7 @@ vi.mock('expo-camera', () => ({
         },
     },
 }));
+vi.mock('expo-router', () => ({ router: { push: mocks.push } }));
 vi.mock('@/hooks/useCheckCameraPermissions', () => ({
     useCheckScannerPermissions: () => mocks.checkPermissions,
 }));
@@ -65,6 +67,7 @@ describe('useUnifiedAuthQrCode', () => {
         (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
         consoleWarnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        mocks.push.mockClear();
         mocks.accountAuth.mockClear();
         mocks.accountLoading = false;
         mocks.alert.mockClear();
@@ -94,6 +97,14 @@ describe('useUnifiedAuthQrCode', () => {
         act(() => renderer.unmount());
         consoleErrorSpy.mockRestore();
         consoleWarnSpy.mockRestore();
+    });
+
+    it('routes an app QR to scoped consent without granting full account or terminal access', async () => {
+        const id = '35153cdc-8da3-4cfd-9460-93fe952e481d';
+        await act(async () => { expect(await current.connectWithUrl(`paws:///apps/authorize?id=${id}`)).toBe(true); });
+        expect(mocks.push).toHaveBeenCalledWith(`/apps/authorize?id=${id}`);
+        expect(mocks.accountAuth).not.toHaveBeenCalled();
+        expect(mocks.terminalAuth).not.toHaveBeenCalled();
     });
 
     it('opens the native QR scanner after permission is granted', async () => {

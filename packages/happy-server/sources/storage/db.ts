@@ -1,6 +1,6 @@
 import { PrismaClient } from "@prisma/client";
 import { PGlite } from "@electric-sql/pglite";
-import { PrismaPGlite } from "pglite-prisma-adapter";
+import { Prisma6PGlite } from "./pgliteAdapter";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -47,7 +47,7 @@ function createClient(): PrismaClient {
         } else {
             pgliteInstance = new PGlite(pgliteDir);
         }
-        const adapter = new PrismaPGlite(pgliteInstance);
+        const adapter = new Prisma6PGlite(pgliteInstance);
         return new PrismaClient({ adapter } as any);
     }
 

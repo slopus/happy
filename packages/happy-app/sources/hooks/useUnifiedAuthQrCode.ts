@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { router } from 'expo-router';
 import { Platform } from 'react-native';
 import { CameraView } from 'expo-camera';
 import { getAuthQrCodeKind } from '@/auth/authQrCodeKind';
@@ -54,6 +55,8 @@ export function UnifiedAuthQrCodeProvider({ children }: { children: React.ReactN
     const [isStartingScanner, setIsStartingScanner] = React.useState(false);
 
     const processAuthUrl = React.useCallback(async (url: string) => {
+        const appRequest = /^paws:\/\/\/apps\/authorize\?id=([0-9a-f-]{36})$/.exec(url);
+        if (appRequest) { router.push(`/apps/authorize?id=${appRequest[1]}` as never); return true; }
         const kind = getAuthQrCodeKind(url);
         if (!kind) {
             Modal.alert(t('common.error'), t('modals.invalidAuthUrl'), [

@@ -8,3 +8,5 @@ export type {
     BrowserAccountLinkSession,
     WaitForBrowserAccountLinkOptions,
 } from './auth/browserAccountLink';
+export { startBrowserAppAuthorization, createDelegatedChat } from './delegation/browserDelegation';
+export type { DelegatedConnection, DelegatedMessage, DelegatedTurn } from './delegation/browserDelegation';
