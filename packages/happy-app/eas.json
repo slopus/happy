@@ -77,6 +77,13 @@
         "ascAppId": "6748571505",
         "appleTeamId": "466DQWDR8C"
       }
+    },
+    "production-google-play": {
+      "android": {
+        "track": "production",
+        "releaseStatus": "completed",
+        "changesNotSentForReview": false
+      }
     }
   }
 }
