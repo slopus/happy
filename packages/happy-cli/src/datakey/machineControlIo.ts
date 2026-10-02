@@ -6,14 +6,14 @@
  */
 import axios from 'axios'
 import { randomBytes } from 'node:crypto'
-import { readFile, rename, rm } from 'node:fs/promises'
+import { readFile, rm } from 'node:fs/promises'
 import { configuration } from '@/configuration'
 import { buildMachineIdentity } from '@/machineIdentity'
 import {
   readMachineIdentity,
   replaceCredentialsDataKey,
+  replacePrivateFile,
   writeMachineIdentity,
-  writePrivateFile,
 } from '@/persistence'
 import { logger } from '@/ui/logger'
 import { MachineKeyRotationConflict, type MachineControlIo } from './machineControl'
@@ -43,11 +43,7 @@ export function createMachineControlIo(input: { token: string; machineId: string
         return {}
       }
     },
-    writePending: async (pending) => {
-      const tmp = `${file}.tmp`
-      await writePrivateFile(tmp, JSON.stringify(pending, null, 2))
-      await rename(tmp, file)
-    },
+    writePending: (pending) => replacePrivateFile(file, JSON.stringify(pending, null, 2)),
     deletePending: () => rm(file, { force: true }),
     writeCredentials: async (credentials) => {
       if (credentials.encryption.type !== 'dataKey') throw new Error('only dataKey credentials are replaced here')

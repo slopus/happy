@@ -307,6 +307,13 @@ export async function writePrivateFile(path: string, content: string): Promise<v
   await chmod(path, PRIVATE_FILE_MODE);
 }
 
+/** Writes `content` beside `path` owner-only, then renames it over `path`. */
+export async function replacePrivateFile(path: string, content: string): Promise<void> {
+  const tmp = `${path}.tmp`;
+  await writePrivateFile(tmp, content);
+  await rename(tmp, path);
+}
+
 export function writePrivateFileSync(path: string, content: string): void {
   writeFileSync(path, content, { encoding: 'utf-8', mode: PRIVATE_FILE_MODE });
   chmodSync(path, PRIVATE_FILE_MODE);
@@ -476,8 +483,7 @@ export async function replaceCredentialsDataKey(credentials: {
   if (!existsSync(configuration.happyHomeDir)) {
     await mkdir(configuration.happyHomeDir, { recursive: true, mode: PRIVATE_DIR_MODE })
   }
-  const tmp = `${configuration.privateKeyFile}.tmp`
-  await writePrivateFile(tmp, JSON.stringify({
+  await replacePrivateFile(configuration.privateKeyFile, JSON.stringify({
     encryption: {
       publicKey: encodeBase64(credentials.publicKey),
       machineKey: encodeBase64(credentials.machineKey),
@@ -485,7 +491,6 @@ export async function replaceCredentialsDataKey(credentials: {
     },
     token: credentials.token
   }, null, 2));
-  await rename(tmp, configuration.privateKeyFile);
 }
 
 /**
