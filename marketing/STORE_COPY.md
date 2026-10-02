@@ -12,11 +12,11 @@ notes at the bottom are not for upload. Locale: English (United States).
 | App Store Connect → App Information | Name | [Shared app name](#shared) |
 | App Store Connect → App Information | Subtitle | [App Store subtitle](#app-store-connect--ios-and-ipados) |
 | App Store Connect → iOS App → 1.8.0 | Promotional Text, Keywords, Support URL, Marketing URL | [App Store fields](#app-store-connect--ios-and-ipados) |
-| App Store Connect → iOS App → 1.8.0 | Description | [Shared full description](#shared-description--app-store-description-and-google-play-full-description) |
+| App Store Connect → iOS App → 1.8.0 | Description | [App Store description](#app-store-description) |
 | App Store Connect → iOS App → 1.8.0 | What's New in This Version | [Shared release notes](#shared-release-notes--whats-new-in-this-version-and-release-notes) |
 | Play Console → Store presence → Main store listing | App name | [Shared app name](#shared) |
 | Play Console → Store presence → Main store listing | Short description | [Google Play fields](#google-play-console--android) |
-| Play Console → Store presence → Main store listing | Full description | [Shared full description](#shared-description--app-store-description-and-google-play-full-description) |
+| Play Console → Store presence → Main store listing | Full description | [Google Play full description](#google-play-console--android) (paste from [full-description.txt](google-play/full-description.txt)) |
 | Play Console → Store presence → Main store listing | Graphics → Phone / 7-inch tablet / 10-inch tablet screenshots | [Screenshot folders](#screenshots--drag-and-drop-folders) |
 | Play Console → Store settings | App category and contact website | [Google Play fields](#google-play-console--android) |
 | Play Console → App content → Privacy policy | Privacy policy URL | [Shared privacy policy](#shared) |
@@ -67,7 +67,7 @@ multiplayer and the Happy Harness to Desktop. This copy only claims what the
 phone app does: it shows and steers sessions that run on your computer.
 
 ---
-
+or th
 ## Upload copy
 
 ### Shared
@@ -116,7 +116,7 @@ Start, steer and approve Claude Code and Codex sessions from your phone. They ke
 ai,agent,coding,developer,terminal,cli,remote,programming,git,diff,llm,assistant,gpt,grok,mac,ssh
 ```
 
-**Description**: paste the [shared full description](#shared-description--app-store-description-and-google-play-full-description).
+**Description**: paste the [App Store description](#app-store-description).
 
 **What's New in This Version**: paste the [shared release notes](#shared-release-notes--whats-new-in-this-version-and-release-notes).
 
@@ -142,7 +142,53 @@ https://github.com/slopus/happy/issues
 Run Claude Code and Codex on your computer. Steer and approve from your phone.
 ```
 
-**Main store listing → Full description**: paste the [shared full description](#shared-description--app-store-description-and-google-play-full-description).
+**Main store listing → Full description** (1,801 / 4,000): Google Play has its
+own copy, shorter than the App Store description. Open
+[full-description.txt](google-play/full-description.txt) in a text editor and
+copy all of it into the field. It is the same text as the block below, kept as a
+plain file so the blank lines between paragraphs survive the paste. Copying from
+a rendered Markdown view can merge the lines into one paragraph.
+
+It is plain text on purpose. Play Console keeps line breaks, but Google doesn't
+document which HTML tags it renders, so the copy uses no tags, Markdown or
+emoji. Headings are short lines of their own, followed by `•` bullets or
+numbered steps.
+
+```
+Keep your coding agents within reach.
+
+Happy connects your phone to Claude Code and Codex running on your own computer. Start a task, follow its progress, answer questions and review changes from wherever you are.
+
+When an agent stops to ask for permission or a decision, you can answer from your phone. It carries on in the same session, with the same repository, tools and context.
+
+What you can do from your phone
+• Start new sessions or continue ones you began at your desk
+• Get notified when an agent needs input or finishes
+• Approve permission requests and choose how your agent runs
+• Pick models and reasoning effort from the providers set up on your computer
+• Review changed files and colored diffs
+• Attach screenshots and photos to your prompts
+• Browse sessions by project and keep drafts in sync across devices
+
+How to connect
+1. Install Happy Desktop from happy.engineering.
+2. Create an account in this app. No email address or password needed.
+3. On your computer, choose Connect phone and scan the QR code it shows.
+
+Prefer the terminal? Install the CLI with npm install -g happy, start an agent with happy claude or happy codex, and scan the QR code it shows.
+
+What you need
+• A computer running Happy Desktop or the Happy CLI
+• Access to the coding agents you use, through your existing subscription or API key
+
+Private by design
+Sessions are end-to-end encrypted, and your encryption keys stay on your devices. Happy's servers relay encrypted session data and can't read your prompts, responses or code.
+
+Open source
+Happy is MIT-licensed. Read the source, build your own version or host your own server.
+
+Happy is an independent project, not affiliated with or endorsed by Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic. Codex is a trademark of OpenAI.
+```
 
 **Main store listing → Graphics**: upload the corresponding Phone, 7-inch tablet,
 and 10-inch tablet folders above. Google Play has no App Store-style Subtitle,
@@ -188,9 +234,10 @@ including the language tags:
 </en-US>
 ```
 
-### Shared description — App Store Description and Google Play Full description
+### App Store description
 
-2,474 / 4,000 characters. Use the same block in both stores.
+2,474 / 4,000 characters. App Store only: Google Play uses its own
+[shorter description](#google-play-console--android).
 
 ```
 Your coding agent shouldn't wait for you to get back to your desk.
@@ -262,7 +309,8 @@ Google Play's complete language-tagged block is included in its section above.
 | Promotional text       | 168   | 170   |
 | Keywords               | 97    | 100   |
 | Play short description | 78    | 80    |
-| Full description       | 2,474 | 4,000 |
+| App Store description  | 2,474 | 4,000 |
+| Play full description  | 1,801 | 4,000 |
 | What's New             | 490   | 4,000 (Play: 500) |
 
 Recount after any edit. Use `node -e` with `.length`, not `wc -c`: the `•` and
@@ -274,6 +322,18 @@ curly quotes take several bytes each.
   `packages/happy-app/sources/text/translations/en.ts`, in the `onboarding`
   block (`tagline`, `installStep`, `terminalInstall`, `scanStep`). The live
   /desktop page also says "No Desktop app required" for the CLI path.
+- **Google Play description:** the setup steps match the mobile onboarding
+  checklist (install from happy.engineering, then choose Connect phone and scan
+  the QR code it shows). The CLI line (`npm install -g happy`, `happy claude`,
+  `happy codex`) matches the live /desktop page, checked 2026-10-02. "Needs
+  input or finishes" comes from the CLI's push kinds `permission`, `question`
+  and `done` in `packages/happy-cli/src/api/pushNotifications.ts`. The copy
+  doesn't include the store ratings or the "Free" label from the live site: Play's
+  [Metadata policy](https://support.google.com/googleplay/android-developer/answer/9898842?hl=en)
+  rules out ranking and pricing claims, and voice usage is paid.
+  Limits (title 30, short 80, full 4,000) were checked against
+  [Create and set up your app](https://support.google.com/googleplay/android-developer/answer/9859152?hl=en)
+  and [best practices for your store listing](https://support.google.com/googleplay/android-developer/answer/13393723?hl=en).
 - **Notifications:** `sources/sync/pushRegistration.ts`. The live site says
   "Happy tells you when input is needed".
 - **Permissions and Auto mode, model and effort pickers, diffs, side chats,
