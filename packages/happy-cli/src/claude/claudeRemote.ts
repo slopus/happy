@@ -67,7 +67,7 @@ export type ClaudeTurnLatencyInput = {
 };
 
 type PreparationSpan = {
-    stage: 'mcp-sync' | 'before-turn' | 'mcp-recovery' | 'lesson-recall' | 'lesson-proposal';
+    stage: 'mcp-grant' | 'mcp-fetch' | 'mcp-compare' | 'mcp-apply' | 'mcp-sync' | 'before-turn' | 'mcp-recovery' | 'lesson-recall' | 'lesson-proposal';
     durationMs: number | null;
     outcome: 'resolved' | 'rejected';
 };
@@ -1115,7 +1115,7 @@ function readTurnText(content: unknown): string {
                     } else {
                         preemptReview();
                         const preparation = preparationFor(next.latency);
-                        if (mcpConfigSynchronizer) await measurePreparation(preparation, 'mcp-sync', () => mcpConfigSynchronizer.sync());
+                        if (mcpConfigSynchronizer) await measurePreparation(preparation, 'mcp-sync', () => mcpConfigSynchronizer.sync(preparation ? (stage, action) => measurePreparation(preparation, stage, action) : undefined));
                         try {
                             const nextTurn = opts.beforeTurn ? await measurePreparation(preparation, 'before-turn', opts.beforeTurn) : undefined;
                             if (nextTurn?.providerPath && nextTurn.providerPath !== providerPath) {

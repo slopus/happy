@@ -3,6 +3,21 @@ import { describe, expect, it, vi } from 'vitest';
 import { enqueueCodexUserText, shouldHandleCodexClear } from './codexClearCommand';
 
 describe('enqueueCodexUserText', () => {
+    it('preserves the opt-in trace beside routing ids and attachments', () => {
+        const queue = { push: vi.fn(), pushIsolateAndClear: vi.fn() };
+        const latencyTrace = { id: 'trace', receivedAt: 10 };
+        const input = { text: 'OK', mode: 'mode', queue, requestIds: ['route'], latencyTrace };
+        enqueueCodexUserText(input);
+        expect(queue.push).toHaveBeenCalledWith('OK', 'mode', undefined, ['route'], latencyTrace);
+    });
+
+    it('preserves the trace when an isolated clear command is queued', () => {
+        const queue = { push: vi.fn(), pushIsolateAndClear: vi.fn() };
+        const latencyTrace = { id: 'trace', receivedAt: 10 };
+        enqueueCodexUserText({ text: '/clear', mode: 'mode', queue, ...{ latencyTrace } });
+        expect(queue.pushIsolateAndClear).toHaveBeenCalledWith('/clear', 'mode', undefined, latencyTrace);
+    });
+
     it('queues /clear in isolation instead of batching it into a model prompt', () => {
         const mode = { permissionMode: 'default' as const };
         const queue = {

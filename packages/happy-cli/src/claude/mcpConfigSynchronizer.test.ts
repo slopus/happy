@@ -1,5 +1,22 @@
 import { describe, expect, it, vi } from 'vitest';
 import { McpConfigSynchronizer } from './mcpConfigSynchronizer';
+import type { McpConfigMeasure } from './mcpConfigSynchronizer';
+
+it('measures fetch substeps and changed apply without changing identical-config skip', async () => {
+    const stages: string[] = [];
+    const measure: McpConfigMeasure = async (stage, action) => { stages.push(stage); return action(); };
+    const setMcpServers = vi.fn().mockResolvedValue({ added: [], removed: [], errors: {} });
+    const synchronizer = new McpConfigSynchronizer({ setMcpServers }, {
+        baseServers: {}, initialAplusServers: {},
+        fetchAplusServers: async (observe) => {
+            await observe!('mcp-grant', async () => undefined);
+            return observe!('mcp-fetch', async () => ({ ok: true as const, servers: { svc: { type: 'http' as const, url: 'https://example.com/mcp' } } }));
+        },
+    });
+    await synchronizer.sync(measure); await synchronizer.sync(measure);
+    expect(stages).toEqual(['mcp-grant', 'mcp-fetch', 'mcp-compare', 'mcp-apply', 'mcp-grant', 'mcp-fetch', 'mcp-compare']);
+    expect(setMcpServers).toHaveBeenCalledTimes(1);
+});
 
 const { loggerDebug } = vi.hoisted(() => ({ loggerDebug: vi.fn() }));
 

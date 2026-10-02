@@ -5,6 +5,7 @@ import { AgentState, ClientToServerEvents, FileEventMessage, FileEventMessageSch
 import { decodeBase64, decryptBlob, decrypt, encodeBase64, encrypt, encryptBlob } from './encryption';
 import type { StreamDeltaFrame } from '@/claude/streamDeltaRelay';
 import type { ClaudeTurnLatencyDiagnostic } from '@/claude/claudeRemote';
+import type { CodexTurnLatencyProgress } from '@/codex/codexTurnLatency';
 import { backoff, delay, isSessionGoneError } from '@/utils/time';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
@@ -1776,7 +1777,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /** A bounded, opt-in daemon duration record sent through the existing opaque stream relay. */
-    sendTurnLatency(diagnostic: ClaudeTurnLatencyDiagnostic) {
+    sendTurnLatency(diagnostic: ClaudeTurnLatencyDiagnostic | CodexTurnLatencyProgress) {
         this.socket.volatile.emit('session-stream', {
             sid: this.sessionId,
             time: Date.now(),
