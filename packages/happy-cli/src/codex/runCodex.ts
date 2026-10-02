@@ -78,6 +78,7 @@ import type { WorkerSessionStartupLifecycle } from '@/api/sessionStartupTrace';
 import { startCodexAccountWorkerObserver, codexAccountSessionMetadata } from './codexAccountWorker';
 import { CodexSessionCredentialRecovery } from './codexSessionCredentialRecovery';
 import { CodexAuthTurnRecovery, runTurnWithCredentialRecovery } from './codexAuthTurnRecovery';
+import { createCodexMessageQueueStatus } from './codexMessageQueueStatus';
 
 /**
  * Extracts a human-readable error from a codex task_complete/turn_aborted event.
@@ -473,9 +474,7 @@ export async function runCodex(opts: {
     const mcpAppBindingRegistry = new McpAppBindingRegistry();
     let mcpAppRpcHandlers: ReturnType<typeof registerMcpAppRpcHandlers> | null = null;
     const messageQueue = new MessageQueue2<EnhancedMode>(hashCodexEnhancedMode);
-    const syncQueuedMessageCount = (targetSession: ApiSessionClient): Promise<void> => (
-        updateQueuedMessageCount(targetSession, messageQueue.size())
-    );
+    const queuedMessageStatus = createCodexMessageQueueStatus(() => messageQueue.size(), () => session);
     const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
         api,
         sessionTag,
@@ -484,7 +483,7 @@ export async function runCodex(opts: {
         response,
         onSessionSwap: (newSession) => {
             session = newSession;
-            void syncQueuedMessageCount(newSession);
+            void queuedMessageStatus.sync();
             // Update permission handler with new session to avoid stale reference
             if (permissionHandler) {
                 permissionHandler.updateSession(newSession);
@@ -495,7 +494,7 @@ export async function runCodex(opts: {
     });
     session = initialSession;
     let codexCursorSync: Promise<void> = Promise.resolve();
-    void syncQueuedMessageCount(session);
+    void queuedMessageStatus.sync();
 
     // On reconnect, un-archive the session and skip replaying old messages.
     // Keep the metadata write awaitable: a version mismatch hydrates the
@@ -718,7 +717,7 @@ export async function runCodex(opts: {
                 attachments: attachmentsForThisMessage,
                 queue: messageQueue,
             });
-            void syncQueuedMessageCount(session);
+            void queuedMessageStatus.sync();
             await cleanupMediaAttachments(enqueueResult.displacedAttachments.filter(isMediaAttachment));
             if (enqueueResult.status !== 'queued') {
                 logger.debug(`[Codex] /${enqueueResult.status} command pushed to isolated queue`);
@@ -1134,6 +1133,9 @@ export async function runCodex(opts: {
             codexProviderSubagentToSessionSubagent = mapped.providerSubagentToSessionSubagent;
             for (const envelope of mapped.envelopes) {
                 session.sendSessionProtocolMessage(envelope);
+                if (!envelope.subagent && envelope.ev.t === 'turn-start') {
+                    void queuedMessageStatus.release();
+                }
             }
         }
         if (msg.type === 'task_complete') {
@@ -1683,7 +1685,6 @@ export async function runCodex(opts: {
                     break;
                 }
                 message = batch;
-                void syncQueuedMessageCount(session);
             }
 
             // Defensive check for TS narrowing
@@ -1691,174 +1692,179 @@ export async function runCodex(opts: {
                 break;
             }
 
-            const specialCommand = parseSpecialCommand(message.message);
-            if (specialCommand.type && specialCommand.type !== 'plan') {
-                await cleanupMediaAttachments((message.attachments ?? []).filter(isMediaAttachment));
-            }
-
-            if (specialCommand.type === 'skills') {
-                const skills = session.getMetadata()?.skills ?? [];
-                const responseText = skills.length > 0
-                    ? '**Available Skills**\n\n' + skills.map((skill) => `- /${skill}`).join('\n')
-                    : 'No skills available. Try again after the session finishes initializing.';
-
-                sendImmediateCommandResponse(responseText);
-                continue;
-            }
-
-            if (specialCommand.type === 'usage' && specialCommand.usage) {
-                let responseText: string;
-                try {
-                    responseText = await respondToUsageCommand(specialCommand.usage.range);
-                } catch (error) {
-                    logger.debug('[Codex] Failed to handle /usage command', error);
-                    responseText = `Failed to read usage: ${goalErrorMessage(error)}`;
+            void queuedMessageStatus.begin();
+            try {
+                const specialCommand = parseSpecialCommand(message.message);
+                if (specialCommand.type && specialCommand.type !== 'plan') {
+                    await cleanupMediaAttachments((message.attachments ?? []).filter(isMediaAttachment));
                 }
 
-                sendImmediateCommandResponse(responseText);
-                continue;
-            }
+                if (specialCommand.type === 'skills') {
+                    const skills = session.getMetadata()?.skills ?? [];
+                    const responseText = skills.length > 0
+                        ? '**Available Skills**\n\n' + skills.map((skill) => `- /${skill}`).join('\n')
+                        : 'No skills available. Try again after the session finishes initializing.';
 
-            if (specialCommand.type === 'mcp' && specialCommand.mcp) {
-                let responseText: string;
-                try {
-                    responseText = await respondToMcpCommand(specialCommand.mcp.verbose, message.mode);
-                } catch (error) {
-                    logger.debug('[Codex] Failed to handle /mcp command', error);
-                    responseText = `Failed to read MCP server status: ${goalErrorMessage(error)}`;
+                    sendImmediateCommandResponse(responseText);
+                    continue;
                 }
 
-                sendImmediateCommandResponse(responseText);
-                continue;
-            }
-
-            if (specialCommand.type === 'status') {
-                sendImmediateCommandResponse(formatCodexStatus(message.mode));
-                continue;
-            }
-
-            if (specialCommand.type === 'diff') {
-                sendImmediateCommandResponse(formatGitDiffSummary());
-                continue;
-            }
-
-            if (specialCommand.type === 'fork') {
-                let responseText: string;
-                try {
-                    responseText = await respondToForkCommand(message.mode);
-                } catch (error) {
-                    logger.debug('[Codex] Failed to handle /fork command', error);
-                    responseText = `Failed to fork Codex thread: ${goalErrorMessage(error)}`;
-                }
-
-                sendImmediateCommandResponse(responseText);
-                continue;
-            }
-
-            if (specialCommand.type === 'goal' && specialCommand.goal) {
-                let responseText: string;
-                try {
-                    responseText = await respondToGoalCommand(specialCommand.goal, message.mode);
-                } catch (error) {
-                    logger.debug('[Codex] Failed to handle /goal command', error);
-                    responseText = `Failed to update goal: ${goalErrorMessage(error)}`;
-                }
-
-                sendImmediateCommandResponse(responseText);
-                continue;
-            }
-
-            if (specialCommand.type === 'new') {
-                logger.debug('[Codex] Handling /new command - starting a fresh Codex thread on next prompt');
-                resetCodexThreadState({ resetFirst: true });
-                sendImmediateCommandResponse('Started a fresh Codex thread. Send your next message to begin.');
-                continue;
-            }
-
-            if (specialCommand.type === 'clear') {
-                logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
-                resetCodexThreadState();
-                sendImmediateCommandResponse('Context was reset');
-                continue;
-            }
-
-            if (specialCommand.type === 'compact') {
-                try {
-                    const existing = await ensureExistingCodexThread(message.mode);
-                    if (!existing) {
-                        sendImmediateCommandResponse('No active Codex thread is available to compact.');
-                        continue;
+                if (specialCommand.type === 'usage' && specialCommand.usage) {
+                    let responseText: string;
+                    try {
+                        responseText = await respondToUsageCommand(specialCommand.usage.range);
+                    } catch (error) {
+                        logger.debug('[Codex] Failed to handle /usage command', error);
+                        responseText = `Failed to read usage: ${goalErrorMessage(error)}`;
                     }
 
-                    await runServerStartedTurn('Compacting Codex context...', () => client.startCompactAndWait({
-                        threadId: existing.threadId,
-                    }));
-                } catch (error) {
-                    logger.debug('[Codex] Failed to handle /compact command', error);
-                    sendImmediateCommandResponse(`Failed to compact Codex context: ${goalErrorMessage(error)}`);
+                    sendImmediateCommandResponse(responseText);
+                    continue;
                 }
-                continue;
-            }
 
-            if (specialCommand.type === 'review' && specialCommand.review) {
-                try {
-                    const { threadId } = await ensureCodexThread(message.mode);
-                    const target = specialCommand.review.instructions
-                        ? { type: 'custom' as const, instructions: specialCommand.review.instructions }
-                        : { type: 'uncommittedChanges' as const };
+                if (specialCommand.type === 'mcp' && specialCommand.mcp) {
+                    let responseText: string;
+                    try {
+                        responseText = await respondToMcpCommand(specialCommand.mcp.verbose, message.mode);
+                    } catch (error) {
+                        logger.debug('[Codex] Failed to handle /mcp command', error);
+                        responseText = `Failed to read MCP server status: ${goalErrorMessage(error)}`;
+                    }
 
-                    await runServerStartedTurn('Reviewing current changes...', () => client.startReviewAndWait({
-                        threadId,
-                        target,
-                        delivery: 'inline',
-                    }));
-                } catch (error) {
-                    logger.debug('[Codex] Failed to handle /review command', error);
-                    sendImmediateCommandResponse(`Failed to start Codex review: ${goalErrorMessage(error)}`);
+                    sendImmediateCommandResponse(responseText);
+                    continue;
                 }
-                continue;
-            }
 
-            if (specialCommand.type === 'plan' && specialCommand.plan) {
+                if (specialCommand.type === 'status') {
+                    sendImmediateCommandResponse(formatCodexStatus(message.mode));
+                    continue;
+                }
+
+                if (specialCommand.type === 'diff') {
+                    sendImmediateCommandResponse(formatGitDiffSummary());
+                    continue;
+                }
+
+                if (specialCommand.type === 'fork') {
+                    let responseText: string;
+                    try {
+                        responseText = await respondToForkCommand(message.mode);
+                    } catch (error) {
+                        logger.debug('[Codex] Failed to handle /fork command', error);
+                        responseText = `Failed to fork Codex thread: ${goalErrorMessage(error)}`;
+                    }
+
+                    sendImmediateCommandResponse(responseText);
+                    continue;
+                }
+
+                if (specialCommand.type === 'goal' && specialCommand.goal) {
+                    let responseText: string;
+                    try {
+                        responseText = await respondToGoalCommand(specialCommand.goal, message.mode);
+                    } catch (error) {
+                        logger.debug('[Codex] Failed to handle /goal command', error);
+                        responseText = `Failed to update goal: ${goalErrorMessage(error)}`;
+                    }
+
+                    sendImmediateCommandResponse(responseText);
+                    continue;
+                }
+
+                if (specialCommand.type === 'new') {
+                    logger.debug('[Codex] Handling /new command - starting a fresh Codex thread on next prompt');
+                    resetCodexThreadState({ resetFirst: true });
+                    sendImmediateCommandResponse('Started a fresh Codex thread. Send your next message to begin.');
+                    continue;
+                }
+
+                if (specialCommand.type === 'clear') {
+                    logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
+                    resetCodexThreadState();
+                    sendImmediateCommandResponse('Context was reset');
+                    continue;
+                }
+
+                if (specialCommand.type === 'compact') {
+                    try {
+                        const existing = await ensureExistingCodexThread(message.mode);
+                        if (!existing) {
+                            sendImmediateCommandResponse('No active Codex thread is available to compact.');
+                            continue;
+                        }
+
+                        await runServerStartedTurn('Compacting Codex context...', () => client.startCompactAndWait({
+                            threadId: existing.threadId,
+                        }));
+                    } catch (error) {
+                        logger.debug('[Codex] Failed to handle /compact command', error);
+                        sendImmediateCommandResponse(`Failed to compact Codex context: ${goalErrorMessage(error)}`);
+                    }
+                    continue;
+                }
+
+                if (specialCommand.type === 'review' && specialCommand.review) {
+                    try {
+                        const { threadId } = await ensureCodexThread(message.mode);
+                        const target = specialCommand.review.instructions
+                            ? { type: 'custom' as const, instructions: specialCommand.review.instructions }
+                            : { type: 'uncommittedChanges' as const };
+
+                        await runServerStartedTurn('Reviewing current changes...', () => client.startReviewAndWait({
+                            threadId,
+                            target,
+                            delivery: 'inline',
+                        }));
+                    } catch (error) {
+                        logger.debug('[Codex] Failed to handle /review command', error);
+                        sendImmediateCommandResponse(`Failed to start Codex review: ${goalErrorMessage(error)}`);
+                    }
+                    continue;
+                }
+
+                if (specialCommand.type === 'plan' && specialCommand.plan) {
+                    messageBuffer.addMessage(message.message, 'user');
+                    const prompt = specialCommand.plan.prompt
+                        ?? 'Propose a concise implementation plan for the current task. Do not modify files, run write operations, publish, deploy, or make commits.';
+                    const planMode: EnhancedMode = {
+                        ...message.mode,
+                        permissionMode: 'plan',
+                    };
+
+                    try {
+                        await runCodexPromptTurn({
+                            prompt,
+                            mode: planMode,
+                            attachments: message.attachments,
+                        });
+                    } catch (error) {
+                        logger.warn('Error in codex session:', error);
+                        sendStatusMessage('Process exited unexpectedly');
+                    } finally {
+                        finalizeCodexTurn();
+                    }
+                    continue;
+                }
+
+                // Display user messages in the UI
                 messageBuffer.addMessage(message.message, 'user');
-                const prompt = specialCommand.plan.prompt
-                    ?? 'Propose a concise implementation plan for the current task. Do not modify files, run write operations, publish, deploy, or make commits.';
-                const planMode: EnhancedMode = {
-                    ...message.mode,
-                    permissionMode: 'plan',
-                };
 
                 try {
                     await runCodexPromptTurn({
-                        prompt,
-                        mode: planMode,
+                        prompt: message.message,
+                        mode: message.mode,
                         attachments: message.attachments,
                     });
                 } catch (error) {
+                    // Only actual errors reach here (process crash, connection failure, etc.)
                     logger.warn('Error in codex session:', error);
                     sendStatusMessage('Process exited unexpectedly');
                 } finally {
+                    // Reset permission handler, reasoning processor, and diff processor
                     finalizeCodexTurn();
                 }
-                continue;
-            }
-
-            // Display user messages in the UI
-            messageBuffer.addMessage(message.message, 'user');
-
-            try {
-                await runCodexPromptTurn({
-                    prompt: message.message,
-                    mode: message.mode,
-                    attachments: message.attachments,
-                });
-            } catch (error) {
-                // Only actual errors reach here (process crash, connection failure, etc.)
-                logger.warn('Error in codex session:', error);
-                sendStatusMessage('Process exited unexpectedly');
             } finally {
-                // Reset permission handler, reasoning processor, and diff processor
-                finalizeCodexTurn();
+                void queuedMessageStatus.release();
             }
         }
 

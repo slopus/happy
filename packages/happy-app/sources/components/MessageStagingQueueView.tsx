@@ -3,17 +3,19 @@ import { View, Text, Pressable, ScrollView, ActivityIndicator } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
-import type { StagedMessage, StagingSnapshot } from '@/sync/messageStagingQueue';
+import { canSendStagedMessageNow, type StagedMessage, type StagingSnapshot, type StagingSession } from '@/sync/messageStagingQueue';
 
 export function MessageStagingQueueView(props: {
     messages: StagingSnapshot['messages'];
-    connected: boolean;
+    session: StagingSession;
     onSteer: (id: string) => void;
     onRemove: (id: string) => void;
     onEdit: (message: StagedMessage) => void;
 }) {
     const { theme } = useUnistyles();
     if (!props.messages.length) return null;
+    const busy = props.session.state === 'running' || props.session.state === 'permission_required';
+    const unavailableHint = busy && !props.session.supportsSteer ? t('messageQueue.steerUnavailable') : t('messageQueue.steerHint');
     const sending = props.messages.some(m => m.status === 'sending');
     return <View style={styles.container} testID="message-staging-queue">
         <Text style={styles.heading}>{t('messageQueue.title')} · {props.messages.length}</Text>
@@ -25,9 +27,9 @@ export function MessageStagingQueueView(props: {
                     {message.status === 'failed' && <Text style={styles.secondary}>{t('messageQueue.failed')}</Text>}
                 </View>
                 {message.status === 'sending' ? <ActivityIndicator accessibilityLabel={t('messageQueue.sending')} color={theme.colors.textSecondary} /> : <>
-                    <Pressable accessibilityRole="button" accessibilityLabel={t('messageQueue.steer')} accessibilityHint={t('messageQueue.steerHint')}
-                        disabled={sending || !props.connected || message.text.trimStart().startsWith('/')} onPress={() => props.onSteer(message.id)}
-                        style={({ pressed }) => [styles.action, pressed && styles.pressed, (sending || !props.connected || message.text.trimStart().startsWith('/')) && styles.disabled]}>
+                    <Pressable accessibilityRole="button" accessibilityLabel={t('messageQueue.steer')} accessibilityHint={unavailableHint}
+                        disabled={sending || !canSendStagedMessageNow(message, props.session)} onPress={() => props.onSteer(message.id)}
+                        style={({ pressed }) => [styles.action, pressed && styles.pressed, (sending || !canSendStagedMessageNow(message, props.session)) && styles.disabled]}>
                         <Ionicons name="return-down-forward-outline" size={18} color={theme.colors.textSecondary} />
                         <Text style={styles.secondary}>{t('messageQueue.steer')}</Text>
                     </Pressable>
@@ -40,6 +42,7 @@ export function MessageStagingQueueView(props: {
                 </>}
             </View>)}
         </ScrollView>
+        {busy && !props.session.supportsSteer && <Text style={styles.hint}>{t('messageQueue.steerUnavailable')}</Text>}
         <Text style={styles.hint}>{t('messageQueue.hint')}</Text>
     </View>;
 }

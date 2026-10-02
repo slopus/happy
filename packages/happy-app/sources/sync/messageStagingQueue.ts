@@ -18,6 +18,13 @@ export type StagingSession = {
     supportsSteer?: boolean;
 };
 
+/** Keep unavailable actions out of both the view and the dispatcher. */
+export function canSendStagedMessageNow(message: Pick<StagedMessage, 'text'>, session?: StagingSession): boolean {
+    if (!session?.connected) return false;
+    const busy = session.state === 'running' || session.state === 'permission_required';
+    return !busy || (session.supportsSteer === true && !!session.turnId && !message.text.trimStart().startsWith('/'));
+}
+
 type TurnBarrier = { turnId?: string; sawRunning: boolean };
 export type StagingSnapshot = {
     messages: StagedMessage[];
@@ -55,6 +62,7 @@ export function createMessageStagingQueue(deps: {
     async function dispatch(message: StagedMessage, guide: boolean) {
         const sid = message.sessionId;
         if (locks.has(sid) || !deps.session(sid)?.connected) return;
+        if (guide && !canSendStagedMessageNow(message, deps.session(sid))) return;
         locks.add(sid);
         const owner = generation;
         let submitted = false;
@@ -98,7 +106,12 @@ export function createMessageStagingQueue(deps: {
                 if (session.state === 'running' || session.state === 'permission_required') {
                     // A delayed running update for the previous turn does
                     // not prove the newly submitted turn has started.
-                    if (!barrier.sawRunning && (!session.turnId || session.turnId !== barrier.turnId)) {
+                    // Codex reports pending input as busy before turn/start.
+                    // That is not proof that this submission's turn started.
+                    const started = session.turnId
+                        ? session.turnId !== barrier.turnId
+                        : !session.supportsSteer;
+                    if (!barrier.sawRunning && started) {
                         commit({ ...snapshot, barriers: { ...snapshot.barriers, [sid]: { ...barrier, sawRunning: true } } });
                     }
                     continue;

@@ -54,7 +54,7 @@ interface MessageComposerProps {
     onChangeText?: (text: string) => void;
     sessionId?: string;
     onSend: () => void;
-    /** Codex Tab queues a message while Enter guides the current turn. */
+    /** Explicit queue shortcut; session Enter also stages ordinary submissions. */
     onQueue?: () => void;
     sendIcon?: React.ReactNode;
     sendLabel?: string;

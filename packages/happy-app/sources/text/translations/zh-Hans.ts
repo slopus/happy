@@ -17,7 +17,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHans: TranslationStructure = {
-    messageQueue: { title: '待发送', hint: '当前任务结束后逐条发送；请保持本机 Paws 打开。', enqueue: '加入待发送队列（Tab）', steer: '现在发送', steerHint: '插入当前 Codex 任务，不中断；使用当前任务的模型与权限设置', sending: '发送中…', failed: '发送失败或结果待确认，请先检查聊天记录再重试。', attachments: '附件', edit: '取回编辑', occupied: '请先发送或清空输入框中的草稿，再取回排队消息。' },
+    messageQueue: { title: '待发送', hint: '当前任务结束后逐条发送；请保持本机 Paws 打开。', enqueue: '加入待发送队列（Tab）', enqueueSend: '加入待发送队列', steer: '现在发送', steerUnavailable: '当前会话不支持执行中插话。请更新 Paws CLI 并新建会话；待发送消息仍可在当前任务结束后发送。', steerHint: '插入当前 Codex 任务，不中断；使用当前任务的模型与权限设置', sending: '发送中…', failed: '发送失败或结果待确认，请先检查聊天记录再重试。', attachments: '附件', edit: '取回编辑', occupied: '请先发送或清空输入框中的草稿，再取回排队消息。' },
     accounts: {
         attachmentWarning: "切换账号会重新加载。文字草稿将保留，但尚未发送的附件需要重新选择。是否继续？",
         title: "Paws 账号",

@@ -1688,9 +1688,7 @@ function SessionViewLoaded({
     const failedHistoryBehind = !isAtLatest || hasMoreNewer;
     // 历史窗口已加载时提示查看最新，避免把有意保留的阅读位置显示成永久加载。
     const failedHistoryLoading = !isLoaded || (!failedHistoryBehind && verifiedRouteOwnerEpoch === null);
-    const canSteerCurrentTurn = session.metadata?.capabilities?.codexSteer === true
-        && (sessionStatus.state === 'running' || sessionStatus.state === 'permission_required')
-        && !!session.agentState?.turnStatus?.turnId;
+    const isTaskRunning = sessionStatus.state === 'running' || sessionStatus.state === 'permission_required';
     const submitComposer = React.useCallback((delivery: 'queue' | 'steer') => {
         if (sendInFlight.current) return;
         const composer = composerHandleRef.current;
@@ -1713,7 +1711,9 @@ function SessionViewLoaded({
             })();
         }
     }, [composerHandleRef, sessionId, selectedImages, removeImage]);
-    const handleSend = React.useCallback(() => submitComposer(canSteerCurrentTurn ? 'steer' : 'queue'), [submitComposer, canSteerCurrentTurn]);
+    // Keep ordinary submissions staged on every turn, including after Send now.
+    // Only the explicit queue-row action inserts guidance into the active turn.
+    const handleSend = React.useCallback(() => submitComposer('queue'), [submitComposer]);
     const handleQueue = React.useCallback(() => submitComposer('queue'), [submitComposer]);
 
     const handleContinueFailedTurn = React.useCallback(() => {
@@ -1844,8 +1844,8 @@ function SessionViewLoaded({
             connectionStatus={connectionStatus}
             blockSend={false}
             onSend={handleSend}
-            onQueue={canSteerCurrentTurn ? handleQueue : undefined}
-            sendLabel={canSteerCurrentTurn ? t('messageQueue.steer') : undefined}
+            onQueue={isTaskRunning ? handleQueue : undefined}
+            sendLabel={isTaskRunning ? t('messageQueue.enqueueSend') : undefined}
             onAbort={isDisconnected ? undefined : handleAbort}
             showAbortButton={sessionStatus.state === 'running'}
             onFileViewerPress={experiments && !isTablet ? handleFileViewerPress : undefined}
@@ -1915,7 +1915,9 @@ function SessionViewLoaded({
             <CenteredInputWidth horizontalPadding={sessionInputHorizontalPadding}>
                 <MessageStagingQueueView
                     messages={stagedSnapshot.messages.filter(m => m.sessionId === sessionId)}
-                    connected={!isDisconnected}
+                    session={{ connected: !isDisconnected, state: sessionStatus.state,
+                        supportsSteer: session.metadata?.capabilities?.codexSteer === true,
+                        turnId: session.agentState?.turnStatus?.turnId }}
                     onSteer={id => { void messageStagingQueue.steer(id); }}
                     onRemove={messageStagingQueue.remove}
                     onEdit={message => {

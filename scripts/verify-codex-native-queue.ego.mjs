@@ -55,11 +55,23 @@ await enqueue('仅回复 EGO_QUEUED_DONE。');
 await page.fill(input, '插话：保留等待任务，在最终答复追加 EGO_STEER_DONE。');
 await page.press(input, 'Enter');
 await waitEmpty();
-const guidedTurn = await nativeTurn();
-if (guidedTurn?.turnId !== originalTurn.turnId) throw new Error('Guidance replaced the native turn');
-await page.reload();
+await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid^="queued-message-"]').length === 3,
+    undefined, { timeout: 10_000 },
+);
+await page.click('loc=css:[data-testid^="queued-message-"] button[aria-label="现在发送"] >> nth=2');
 await page.waitForFunction(
     () => document.querySelectorAll('[data-testid^="queued-message-"]').length === 2,
+    undefined, { timeout: 15_000 },
+);
+const guidedTurn = await nativeTurn();
+if (guidedTurn?.turnId !== originalTurn.turnId) throw new Error('Guidance replaced the native turn');
+await page.fill(input, '后续消息保持暂存：仅回复 EGO_FOLLOWUP_DONE。');
+await page.press(input, 'Enter');
+await waitEmpty();
+await page.reload();
+await page.waitForFunction(
+    () => document.querySelectorAll('[data-testid^="queued-message-"]').length === 3,
     undefined, { timeout: 25_000 },
 );
 await page.waitForFunction(() => {
@@ -67,6 +79,7 @@ await page.waitForFunction(() => {
     return !document.querySelector('[data-testid="message-staging-queue"]')
         && text.includes('EGO_ORIGINAL_DONE\nEGO_STEER_DONE')
         && text.includes('EGO_QUEUED_DONE\n')
+        && text.includes('EGO_FOLLOWUP_DONE\n')
         && !document.querySelector('button[aria-label="停止正在运行的 Agent"]');
 }, undefined, { timeout: 60_000 });
 const { captureVerifiedBrowserStep } = await import(required('EGO_CAPTURE_HELPER_PATH'));

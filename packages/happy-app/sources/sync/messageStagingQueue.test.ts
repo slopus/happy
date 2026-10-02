@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createMessageStagingQueue, type StagingSession, type StagingSnapshot } from './messageStagingQueue';
+import { canSendStagedMessageNow, createMessageStagingQueue, type StagingSession, type StagingSnapshot } from './messageStagingQueue';
 
 function setup(initial?: StagingSnapshot) {
     let session: StagingSession = { connected: true, state: 'running', turnId: 'old', supportsSteer: true };
@@ -18,6 +18,35 @@ function setup(initial?: StagingSnapshot) {
 const tick = () => new Promise<void>(resolve => setTimeout(resolve, 0));
 
 describe('message staging queue', () => {
+    it('does not advance during the cold-start queued-to-running handoff', async () => {
+        const t = setup();
+        t.update({ state: 'idle', turnId: undefined });
+        t.add('1'); t.add('2'); t.add('3');
+        await tick();
+        t.update({ state: 'running' }); // CLI queue accepted 1, no native turn yet
+        t.update({ state: 'idle' }); // old CLI briefly clears queuedMessages
+        await tick();
+        expect(t.send).toHaveBeenCalledTimes(1);
+        expect(t.queue.getSnapshot().messages.map(m => m.id)).toEqual(['2', '3']);
+
+        t.update({ state: 'running', turnId: 'turn-1' });
+        t.add('8');
+        await t.queue.steer('8');
+        expect(t.steer).toHaveBeenCalledWith(expect.objectContaining({ id: '8' }), 'turn-1');
+        expect(t.send).toHaveBeenCalledTimes(1);
+        t.update({ state: 'completed' });
+        await tick();
+        expect(t.send).toHaveBeenCalledTimes(2);
+        t.update({ state: 'running' }); // pending 2 still carries completed turn-1
+        t.update({ state: 'completed' });
+        await tick();
+        expect(t.send).toHaveBeenCalledTimes(2);
+        t.update({ state: 'running', turnId: 'turn-2' });
+        t.update({ state: 'completed' });
+        await tick();
+        expect(t.send).toHaveBeenCalledTimes(3);
+    });
+
     it('allows a new user submission to retry a failed turn', async () => {
         const t = setup();
         t.update({ state: 'failed' });
@@ -120,14 +149,41 @@ describe('message staging queue', () => {
         expect(t.send).toHaveBeenCalledTimes(2);
     });
 
-    it('retains guidance when an old CLI cannot steer', async () => {
+    it('keeps messages queued when an old CLI cannot steer, then sends after completion', async () => {
         const t = setup();
         t.update({ supportsSteer: false });
         t.add('a');
         await t.queue.steer('a');
         expect(t.steer).not.toHaveBeenCalled();
         expect(t.send).not.toHaveBeenCalled();
+        expect(t.queue.getSnapshot().messages[0].status).toBe('queued');
+        t.update({ state: 'completed' });
+        await tick();
+        expect(t.send).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps guidance queued until a native turn ID arrives', async () => {
+        const t = setup();
+        t.update({ state: 'permission_required', turnId: undefined });
+        t.add('a');
+        await t.queue.steer('a');
+        expect(t.queue.getSnapshot()).toEqual(expect.objectContaining({ barriers: {}, messages: [expect.objectContaining({ status: 'queued' })] }));
+        expect(t.steer).not.toHaveBeenCalled();
+        t.update({ turnId: 'active' });
+        await t.queue.steer('a');
+        expect(t.steer).toHaveBeenCalledWith(expect.objectContaining({ id: 'a' }), 'active');
+    });
+
+    it('allows an old CLI failed message to be retried after the task finishes', async () => {
+        const t = setup({ messages: [{ id: 'a', sessionId: 's', text: 'a', modeMeta: {}, status: 'failed' }], barriers: {} });
+        t.update({ supportsSteer: false });
+        await t.queue.steer('a');
         expect(t.queue.getSnapshot().messages[0].status).toBe('failed');
+        expect(t.send).not.toHaveBeenCalled();
+        t.update({ state: 'completed' });
+        await t.queue.steer('a');
+        expect(t.send).toHaveBeenCalledTimes(1);
+        expect(t.queue.getSnapshot().messages).toEqual([]);
     });
 
     it('retains failed messages and blocks later messages until manual action', async () => {
@@ -173,5 +229,18 @@ describe('message staging queue', () => {
         t.update({ state: 'completed' });
         accepted(); await tick();
         expect(t.send).toHaveBeenCalledTimes(2);
+    });
+});
+
+// Availability is shared with the queue-row button, including manual recovery.
+describe('send-now availability', () => {
+    it('requires an active native turn while busy, but allows idle slash commands', () => {
+        const busy: StagingSession = { connected: true, state: 'running', supportsSteer: true };
+        expect(canSendStagedMessageNow({ text: 'a' }, busy)).toBe(false);
+        expect(canSendStagedMessageNow({ text: 'a' }, { ...busy, turnId: 't' })).toBe(true);
+        expect(canSendStagedMessageNow({ text: '/skills' }, { ...busy, turnId: 't' })).toBe(false);
+        expect(canSendStagedMessageNow({ text: '/skills' }, { ...busy, state: 'idle', supportsSteer: false })).toBe(true);
+        expect(canSendStagedMessageNow({ text: 'retry' }, { ...busy, state: 'failed', supportsSteer: false })).toBe(true);
+        expect(canSendStagedMessageNow({ text: 'retry' }, { ...busy, state: 'idle', connected: false })).toBe(false);
     });
 });

@@ -13,6 +13,7 @@ import {
     PERSISTENT_NAVIGATION_DESKTOP_CONTROLS_WIDTH,
 } from '@/utils/desktopNavigationLayout';
 import { SessionView } from './SessionView';
+import { MessageStagingQueueView } from '@/components/MessageStagingQueueView';
 
 // react-test-renderer does not publish TypeScript declarations with the package.
 // @ts-expect-error The test only needs the small create/unmount surface typed below.
@@ -60,6 +61,9 @@ const mocks = vi.hoisted(() => ({
     renameSessionToTitle: vi.fn(),
     sessionAbort: vi.fn(),
     sendMessage: vi.fn(),
+    stageSessionMessage: vi.fn(),
+    steerStagedMessage: vi.fn(),
+    stagingSnapshot: { messages: [], barriers: {} },
     resumeSession: vi.fn(),
     hasPendingOutboxMessagesForSession: vi.fn(() => false),
     canResume: false,
@@ -97,9 +101,10 @@ const mocks = vi.hoisted(() => ({
             host: 'mac',
             name: 'Mac mini',
             flavor: 'codex',
+            capabilities: undefined as undefined | { codexSteer: boolean },
         },
         metadataVersion: 1,
-        agentState: null as null | { turnStatus: { status: 'failed'; updatedAt: number; turnId: string } },
+        agentState: null as null | { turnStatus: { status: 'failed' | 'running' | 'completed'; updatedAt: number; turnId: string } },
         agentStateVersion: 1,
         thinking: false,
         thinkingAt: 1,
@@ -212,6 +217,16 @@ vi.mock('@/components/AgentContentView', async () => {
     };
 });
 vi.mock('@/components/MessageComposer', () => ({ MessageComposer: 'MessageComposer' }));
+vi.mock('@/sync/messageStagingQueueRuntime', () => ({
+    stageSessionMessage: mocks.stageSessionMessage,
+    messageStagingQueue: {
+        getSnapshot: () => mocks.stagingSnapshot,
+        subscribe: () => () => {},
+        steer: mocks.steerStagedMessage,
+        remove: vi.fn(),
+        take: vi.fn(),
+    },
+}));
 vi.mock('@/components/layout', () => ({ layout: { maxWidth: 800, headerMaxWidth: 800 } }));
 vi.mock('@/components/autocomplete/suggestions', () => ({ getSuggestions: () => [] }));
 vi.mock('@/components/ChatHeaderView', async () => {
@@ -490,6 +505,8 @@ describe('SessionView Agent-space boundary', () => {
         mocks.verifiedOwnerEpoch = 1;
         mocks.newerError = null;
         mocks.session.agentState = null;
+        mocks.session.metadata.capabilities = undefined;
+        mocks.stageSessionMessage.mockResolvedValue(undefined);
         mocks.sendMessage.mockResolvedValue(undefined);
         mocks.hasPendingOutboxMessagesForSession.mockReturnValue(false);
         mocks.useSpaceAgentForSession.mockImplementation(() => mocks.spaceAgent);
@@ -502,6 +519,38 @@ describe('SessionView Agent-space boundary', () => {
     });
 
     afterEach(() => consoleErrorSpy.mockRestore());
+
+    it('keeps composer submissions queued after Send now and across later native turns', async () => {
+        mocks.isDataReady = true;
+        mocks.statusState = 'running';
+        mocks.session.metadata.capabilities = { codexSteer: true };
+        let draft = '';
+        let renderer: any;
+        await act(async () => {
+            renderer = TestRenderer.create(<SessionView id="session-1" />, {
+                createNodeMock: (element: any) => element.type === 'MessageComposer' ? {
+                    getText: () => draft,
+                    setTextAndSelection: (value: string) => { draft = value; },
+                } : null,
+            });
+        });
+        for (const [index, turnId] of ['first-turn', 'first-turn', 'second-turn'].entries()) {
+            mocks.session.agentState = { turnStatus: { status: 'running', turnId, updatedAt: index + 1 } };
+            await act(async () => renderer.update(<SessionView id="session-1" />));
+            const composer = renderer.root.findByType('MessageComposer');
+            expect(composer.props.sendLabel).toBe('messageQueue.enqueueSend');
+            draft = `queued-${index}`;
+            await act(async () => composer.props.onSend());
+            expect(mocks.stageSessionMessage).toHaveBeenLastCalledWith('session-1', `queued-${index}`, undefined, 'queue');
+            expect(draft).toBe('');
+            if (index === 0) {
+                act(() => renderer.root.findByType(MessageStagingQueueView).props.onSteer('queued-0'));
+                expect(mocks.steerStagedMessage).toHaveBeenCalledExactlyOnceWith('queued-0');
+            }
+        }
+        expect(mocks.stageSessionMessage).toHaveBeenCalledTimes(3);
+        act(() => renderer.unmount());
+    });
 
     it('continues a failed task on its connected worker without restarting it', async () => {
         mocks.isDataReady = true;
