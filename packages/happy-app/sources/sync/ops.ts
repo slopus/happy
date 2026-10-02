@@ -627,11 +627,18 @@ export async function machineStopSession(
     sessionId: string,
 ): Promise<{ success: boolean; message?: string }> {
     try {
-        const result = await apiSocket.machineRPC<{ message: string }, { sessionId: string }>(
+        const result = await apiSocket.machineRPC<{ message: string } | { error: string }, { sessionId: string }>(
             machineId,
             'stop-session',
             { sessionId },
         );
+        // A handler that throws comes back as an ordinary reply carrying
+        // `error`, not as a failed call — so a daemon that does not know the
+        // session ("Session not found or failed to stop") would otherwise read
+        // as a stop, and every caller's fallback would be skipped.
+        if (result && 'error' in result) {
+            return { success: false, message: result.error };
+        }
         return { success: true, message: result?.message };
     } catch (error) {
         return {
