@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes, createHash, createHmac } from 'node:crypto';
 import tweetnacl from 'tweetnacl';
 
 /**
@@ -109,14 +109,29 @@ export function wrapDataEncryptionKey(machineKey: Uint8Array, recipientPublicKey
 export function buildMachineKeyEnvelopes(
   material: { machineKey: Uint8Array, accountPublicKey: Uint8Array } | null,
   serverPublicKey: Uint8Array | null,
-): { dataEncryptionKey: Uint8Array | null, serverDataEncryptionKey: Uint8Array | null } {
-  if (!material) return { dataEncryptionKey: null, serverDataEncryptionKey: null };
+  options: { escrowMachineKey: boolean } = { escrowMachineKey: true },
+): { dataEncryptionKey: Uint8Array | null, serverDataEncryptionKey: Uint8Array | null, serverRpcKeyEnvelope: Uint8Array | null } {
+  if (!material) return { dataEncryptionKey: null, serverDataEncryptionKey: null, serverRpcKeyEnvelope: null };
   return {
     dataEncryptionKey: wrapDataEncryptionKey(material.machineKey, material.accountPublicKey),
-    serverDataEncryptionKey: serverPublicKey
+    serverDataEncryptionKey: serverPublicKey && options.escrowMachineKey
       ? wrapDataEncryptionKey(material.machineKey, serverPublicKey)
       : null,
+    serverRpcKeyEnvelope: serverPublicKey
+      ? wrapDataEncryptionKey(deriveServerRpcKey(material.machineKey), serverPublicKey)
+      : null,
   };
+}
+
+/**
+ * The key the server uses for the daemon's server lane (aplus-dev-studio
+ * specs/e2ee-machine-control-boundary R1). Derived one-way from the machine
+ * key, so the server can hold it without learning the machine key, and a
+ * machine key rotation rotates it too. Only the daemon derives it; the server
+ * receives it wrapped in serverRpcKeyEnvelope.
+ */
+export function deriveServerRpcKey(machineKey: Uint8Array): Uint8Array {
+  return new Uint8Array(createHmac('sha256', machineKey).update('happy server lane rpc key v1').digest());
 }
 
 export function encryptLegacy(data: any, secret: Uint8Array): Uint8Array {

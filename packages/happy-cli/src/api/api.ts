@@ -414,6 +414,11 @@ export class ApiClient {
     /** aplus §6-1 B1 — 서버 서비스 공개키(base64). 있으면 machineKey 를
      *  서버 몫으로도 wrap 해 serverDataEncryptionKey 로 등록한다. */
     serverPublicKey?: string | null,
+    /**
+     * aplus-dev-studio specs/e2ee-machine-control-boundary — in strict mode the
+     * server receives only the server-lane key, never the machine key.
+     */
+    machineControl?: 'compat' | 'strict',
   }): Promise<Machine> {
     if (this.principal.kind === 'managed-session') {
       // A managed child has no machine identity of its own; the runtime it
@@ -434,8 +439,8 @@ export class ApiClient {
     const serverPublicKey = opts.serverPublicKey
       ? decodeBase64(opts.serverPublicKey)
       : null;
-    const { dataEncryptionKey, serverDataEncryptionKey } =
-      buildMachineKeyEnvelopes(wrapMaterial, serverPublicKey);
+    const { dataEncryptionKey, serverDataEncryptionKey, serverRpcKeyEnvelope } =
+      buildMachineKeyEnvelopes(wrapMaterial, serverPublicKey, { escrowMachineKey: opts.machineControl !== 'strict' });
 
     // Helper to create minimal machine object for offline mode (DRY)
     const createMinimalMachine = (): Machine => this.buildOfflineMachine(opts);
@@ -449,7 +454,8 @@ export class ApiClient {
           metadata: encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.metadata)),
           daemonState: opts.daemonState ? encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.daemonState)) : undefined,
           dataEncryptionKey: dataEncryptionKey ? encodeBase64(dataEncryptionKey) : undefined,
-          serverDataEncryptionKey: serverDataEncryptionKey ? encodeBase64(serverDataEncryptionKey) : undefined
+          serverDataEncryptionKey: serverDataEncryptionKey ? encodeBase64(serverDataEncryptionKey) : undefined,
+          serverRpcKeyEnvelope: serverRpcKeyEnvelope ? encodeBase64(serverRpcKeyEnvelope) : undefined
         },
         {
           headers: {

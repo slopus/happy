@@ -32,7 +32,7 @@ vi.mock('./encryption', () => ({
     // 부분 mock 함정 방지: getOrCreateMachine 이 무조건 호출하는 조립 함수.
     // 이 스위트의 자격증명은 wrap 재료가 없는 plain legacy — 실물과 동일하게
     // 봉투 없음을 돌려준다.
-    buildMachineKeyEnvelopes: vi.fn(() => ({ dataEncryptionKey: null, serverDataEncryptionKey: null }))
+    buildMachineKeyEnvelopes: vi.fn(() => ({ dataEncryptionKey: null, serverDataEncryptionKey: null, serverRpcKeyEnvelope: null }))
 }));
 
 // Mock configuration
@@ -305,6 +305,37 @@ describe('Api server error handling', () => {
     });
 
     describe('getOrCreateMachine', () => {
+        // aplus-dev-studio specs/e2ee-machine-control-boundary R1 — the server
+        // lane envelope goes up with every registration; strict mode stops
+        // escrowing the machine key itself.
+        it('registers the server-lane envelope next to the account envelope', async () => {
+            const { buildMachineKeyEnvelopes } = await import('./encryption');
+            vi.mocked(buildMachineKeyEnvelopes).mockReturnValueOnce({
+                dataEncryptionKey: 'account-envelope' as never,
+                serverDataEncryptionKey: 'machine-key-escrow' as never,
+                serverRpcKeyEnvelope: 'server-lane-envelope' as never,
+            });
+            mockPost.mockResolvedValue({ data: { machine: { id: 'test-machine', metadata: testMachineMetadata, metadataVersion: 1, daemonState: null, daemonStateVersion: 0 } } });
+
+            await api.getOrCreateMachine({ machineId: 'test-machine', metadata: testMachineMetadata });
+
+            expect(mockPost.mock.calls[0][1]).toMatchObject({
+                dataEncryptionKey: 'account-envelope',
+                serverDataEncryptionKey: 'machine-key-escrow',
+                serverRpcKeyEnvelope: 'server-lane-envelope',
+            });
+            expect(vi.mocked(buildMachineKeyEnvelopes).mock.calls.at(-1)![2]).toEqual({ escrowMachineKey: true });
+        });
+
+        it('asks for no machine-key escrow in strict mode', async () => {
+            const { buildMachineKeyEnvelopes } = await import('./encryption');
+            mockPost.mockResolvedValue({ data: { machine: { id: 'test-machine', metadata: testMachineMetadata, metadataVersion: 1, daemonState: null, daemonStateVersion: 0 } } });
+
+            await api.getOrCreateMachine({ machineId: 'test-machine', metadata: testMachineMetadata, machineControl: 'strict' });
+
+            expect(vi.mocked(buildMachineKeyEnvelopes).mock.calls.at(-1)![2]).toEqual({ escrowMachineKey: false });
+        });
+
         it('should retain the current daemon startup state when the server returns an existing machine', async () => {
             mockPost.mockResolvedValue({
                 data: {
