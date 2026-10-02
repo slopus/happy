@@ -40,6 +40,18 @@ export interface RpcHandlerConfig {
     encryptionKey: Uint8Array;
     encryptionVariant: 'legacy' | 'dataKey';
     logger?: (message: string, data?: any) => void;
+    /**
+     * aplus-dev-studio specs/e2ee-machine-control-boundary R2/R3 — a second
+     * key (AES-256-GCM) the server holds instead of the machine key. Requests
+     * it opens run only methods `allows` accepts, and are answered with it.
+     */
+    serverLane?: ServerLaneConfig;
+}
+
+export interface ServerLaneConfig {
+    encryptionKey: Uint8Array;
+    /** Receives the method name without the scope prefix. */
+    allows: (method: string) => boolean;
 }
 
 /**

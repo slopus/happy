@@ -10,6 +10,7 @@ import {
     RpcHandlerMap,
     RpcRequest,
     RpcHandlerConfig,
+    ServerLaneConfig,
 } from './types';
 import { Socket } from 'socket.io-client';
 import { createRpcLatency, parseRpcLatencyRequest } from '@slopus/happy-wire';
@@ -19,6 +20,7 @@ export class RpcHandlerManager {
     private readonly scopePrefix: string;
     private readonly encryptionKey: Uint8Array;
     private readonly encryptionVariant: 'legacy' | 'dataKey';
+    private readonly serverLane: ServerLaneConfig | null;
     private readonly logger: (message: string, data?: any) => void;
     private socket: Socket | null = null;
     /**
@@ -34,6 +36,7 @@ export class RpcHandlerManager {
         this.scopePrefix = config.scopePrefix;
         this.encryptionKey = config.encryptionKey;
         this.encryptionVariant = config.encryptionVariant;
+        this.serverLane = config.serverLane ?? null;
         this.logger = config.logger || ((msg, data) => defaultLogger.debug(msg, data));
     }
 
@@ -135,27 +138,37 @@ export class RpcHandlerManager {
                 return encryptedError;
             }
 
-            // Decrypt the incoming params
-            const decode = () => tryDecrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(request.params));
+            // Decrypt the incoming params. The key that opens them is the
+            // caller's only credential and decides its lane: the scope key
+            // reaches every handler, the server lane key only its allowlist.
+            const decode = () => this.openParams(request.params);
             const opened = trace ? trace.measureSync('daemon-decrypt', decode) : decode();
-            // The scope key is the caller's only credential: a request it
-            // cannot open is not a call, however harmless the method looks.
-            if (!opened.ok) {
+            if (!opened) {
                 this.logger('[RPC] [ERROR] Request was not sealed with this scope key', { method: request.method });
                 return encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, {
                     error: 'Request could not be decrypted',
                     code: 'RPC_DECRYPT_FAILED',
                 }));
             }
-            const decryptedParams = opened.value;
+            const seal = (value: unknown) => encodeBase64(encrypt(opened.key, opened.variant, value));
+            if (opened.lane === 'server' && !this.serverLane!.allows(bareMethod)) {
+                this.logger('[RPC] Server lane method refused', { method: request.method });
+                return seal({ error: `${bareMethod} is not available to the server lane`, code: 'SERVER_LANE_METHOD_NOT_ALLOWED' });
+            }
 
             // Call the handler
-            this.logger('[RPC] Calling handler', { method: request.method });
-            const result = await (trace ? trace.measure('daemon-handler', () => Promise.resolve(handler(decryptedParams))) : handler(decryptedParams));
+            this.logger('[RPC] Calling handler', { method: request.method, lane: opened.lane });
+            let result: unknown;
+            try {
+                result = await (trace ? trace.measure('daemon-handler', () => Promise.resolve(handler(opened.value))) : handler(opened.value));
+            } catch (error) {
+                this.logger('[RPC] [ERROR] Error handling request', { error });
+                return seal({ error: error instanceof Error ? error.message : 'Unknown error' });
+            }
             this.logger('[RPC] Handler returned', { method: request.method, hasResult: result !== undefined });
 
-            // Encrypt and return the response
-            const encode = () => encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, result));
+            // Encrypt and return the response with the key the request used
+            const encode = () => seal(result);
             const encryptedResponse = trace ? trace.measureSync('daemon-encrypt', encode) : encode();
             this.logger('[RPC] Sending encrypted response', { method: request.method, responseLength: encryptedResponse.length });
             return encryptedResponse;
@@ -166,6 +179,20 @@ export class RpcHandlerManager {
             };
             return encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, errorResponse));
         }
+    }
+
+    /** Opens params with the scope key, then the server lane key; null when neither does. */
+    private openParams(params: string): { value: any; lane: 'customer' | 'server'; key: Uint8Array; variant: 'legacy' | 'dataKey' } | null {
+        const bytes = decodeBase64(params);
+        const asCustomer = tryDecrypt(this.encryptionKey, this.encryptionVariant, bytes);
+        if (asCustomer.ok) {
+            return { value: asCustomer.value, lane: 'customer', key: this.encryptionKey, variant: this.encryptionVariant };
+        }
+        if (!this.serverLane) return null;
+        const asServer = tryDecrypt(this.serverLane.encryptionKey, 'dataKey', bytes);
+        return asServer.ok
+            ? { value: asServer.value, lane: 'server', key: this.serverLane.encryptionKey, variant: 'dataKey' }
+            : null;
     }
 
     onSocketConnect(socket: Socket): void {
