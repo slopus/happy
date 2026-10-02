@@ -97,6 +97,44 @@ export function openAuthenticatedEnvelope(input: {
   }
 }
 
+/** How a daemon's copy of a payload was sealed: by a sender it can name, or by anyone. */
+export type MachinePayloadAuthentication =
+  | { kind: 'authenticated'; senderPublicKey: Uint8Array }
+  | { kind: 'anonymous' };
+
+export type MachinePayloadOpening<T> =
+  | { ok: true; payload: T; authentication: MachinePayloadAuthentication }
+  /** binding-mismatch: a genuine envelope presented with a ciphertext it was not sealed for. */
+  | { ok: false; reason: 'malformed' | 'unauthenticated' | 'binding-mismatch' };
+
+/**
+ * Opens the data key of a machine envelope of either kind: a v3 one, whose
+ * binding must match `ciphertext`, or the anonymous envelope of the payload's
+ * family, which `openAnonymous` opens (version byte included).
+ */
+export function openMachineDataKey(input: {
+  kind: AuthenticatedEnvelopeKind;
+  envelope: Uint8Array;
+  ciphertext: Uint8Array;
+  recipientSecretKey: Uint8Array;
+  openAnonymous: (envelope: Uint8Array) => Uint8Array | null;
+}):
+  | { ok: true; key: Uint8Array; authentication: MachinePayloadAuthentication }
+  | { ok: false; reason: 'malformed' | 'unauthenticated' | 'binding-mismatch' } {
+  if (input.envelope[0] === AUTHENTICATED_ENVELOPE_VERSION) {
+    const opened = openAuthenticatedEnvelope({ envelope: input.envelope, recipientSecretKey: input.recipientSecretKey });
+    if (!opened.ok) return opened;
+    if (!sameBytes(opened.binding, authenticatedEnvelopeBinding({ kind: input.kind, ciphertext: input.ciphertext }))) {
+      opened.key.fill(0);
+      return { ok: false, reason: 'binding-mismatch' };
+    }
+    return { ok: true, key: opened.key, authentication: { kind: 'authenticated', senderPublicKey: opened.senderPublicKey } };
+  }
+  const key = input.openAnonymous(input.envelope);
+  if (!key || key.length !== 32) return { ok: false, reason: 'malformed' };
+  return { ok: true, key, authentication: { kind: 'anonymous' } };
+}
+
 function sameBytes(a: Uint8Array, b: Uint8Array): boolean {
   if (a.length !== b.length) return false;
   let difference = 0;
