@@ -35,6 +35,47 @@ export interface SyncCurrentPushTokenResult {
 }
 
 const BUNDLED_EXPO_PROJECT_ID = expoProject.projectId;
+const ANDROID_PUSH_TOKEN_STAGE_TIMEOUT_MS = 25_000;
+
+async function waitForAndroidPushTokenStage<T>(operation: Promise<T>, stage: 'FCM device token' | 'Expo push token'): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        return await Promise.race([
+            operation,
+            new Promise<T>((_, reject) => {
+                timer = setTimeout(() => {
+                    reject(new Error(`${stage} request timed out after 25 seconds. Check Google Play services and the phone's network, then restart Paws and retry.`));
+                }, ANDROID_PUSH_TOKEN_STAGE_TIMEOUT_MS);
+            }),
+        ]);
+    } finally {
+        if (timer) {
+            clearTimeout(timer);
+        }
+    }
+}
+
+async function fetchCurrentExpoPushToken(): Promise<string> {
+    const projectId = getExpoProjectId();
+    if (Platform.OS !== 'android') {
+        return (await Notifications.getExpoPushTokenAsync({ projectId })).data;
+    }
+
+    // Expo normally fetches the FCM token inside getExpoPushTokenAsync. Split
+    // the stages so a stalled native request can be distinguished from an
+    // unreachable Expo registration endpoint without logging either token.
+    console.log('Push token registration: requesting FCM device token');
+    const devicePushToken = await waitForAndroidPushTokenStage(
+        Notifications.getDevicePushTokenAsync(),
+        'FCM device token',
+    );
+    console.log('Push token registration: requesting Expo push token');
+    const expoPushToken = await waitForAndroidPushTokenStage(
+        Notifications.getExpoPushTokenAsync({ projectId, devicePushToken }),
+        'Expo push token',
+    );
+    return expoPushToken.data;
+}
 
 function normalizePushPermission(result: {
     status: string;
@@ -144,8 +185,7 @@ export async function getCurrentExpoPushToken(): Promise<string | null> {
     }
 
     try {
-        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId: getExpoProjectId() });
-        return tokenData.data ?? loadRegisteredPushToken();
+        return await fetchCurrentExpoPushToken() ?? loadRegisteredPushToken();
     } catch (error) {
         console.log('Failed to get Expo push token:', error);
         return loadRegisteredPushToken();
@@ -186,8 +226,7 @@ export async function syncCurrentPushToken(credentials: AuthCredentials): Promis
     }
 
     try {
-        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId: getExpoProjectId() });
-        const currentToken = tokenData.data;
+        const currentToken = await fetchCurrentExpoPushToken();
         const previousToken = loadRegisteredPushToken();
 
         if (!currentToken) {
@@ -199,15 +238,17 @@ export async function syncCurrentPushToken(credentials: AuthCredentials): Promis
             };
         }
 
+        console.log('Push token registration: submitting to Paws server');
         await registerPushToken(credentials, currentToken);
+        console.log('Push token registration: accepted by Paws server');
         saveRegisteredPushToken(currentToken);
 
         if (previousToken && previousToken !== currentToken) {
-            try {
-                await unregisterPushToken(credentials, previousToken);
-            } catch (error) {
+            // The new registration is already active. Cleaning up a stale
+            // token must not keep the manual action spinning or report failure.
+            void unregisterPushToken(credentials, previousToken).catch(error => {
                 console.log('Failed to unregister previous push token:', error);
-            }
+            });
         }
 
         return {

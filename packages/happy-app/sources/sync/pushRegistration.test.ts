@@ -8,6 +8,7 @@ const constantsMock = vi.hoisted(() => ({
 const notificationsMock = vi.hoisted(() => ({
     getPermissionsAsync: vi.fn(),
     requestPermissionsAsync: vi.fn(),
+    getDevicePushTokenAsync: vi.fn(),
     getExpoPushTokenAsync: vi.fn(),
 }));
 
@@ -64,13 +65,19 @@ describe('pushRegistration', () => {
             granted: true,
             canAskAgain: false,
         });
+        notificationsMock.getDevicePushTokenAsync.mockResolvedValue({
+            type: 'android',
+            data: 'fcm-current-device',
+        });
         notificationsMock.getExpoPushTokenAsync.mockResolvedValue({
             data: 'ExponentPushToken[current-device]',
         });
         apiPushMock.registerPushToken.mockResolvedValue(undefined);
+        apiPushMock.unregisterPushToken.mockResolvedValue(undefined);
     });
 
     afterEach(() => {
+        vi.useRealTimers();
         vi.restoreAllMocks();
     });
 
@@ -82,6 +89,7 @@ describe('pushRegistration', () => {
 
         expect(notificationsMock.getExpoPushTokenAsync).toHaveBeenCalledWith({
             projectId: '16941d72-39af-4e7e-8b91-9b0c11c46a56',
+            devicePushToken: { type: 'android', data: 'fcm-current-device' },
         });
         expect(apiPushMock.registerPushToken).toHaveBeenCalledWith(
             { token: 'auth-token', secret: 'auth-secret' },
@@ -109,7 +117,55 @@ describe('pushRegistration', () => {
 
         expect(notificationsMock.getExpoPushTokenAsync).toHaveBeenCalledWith({
             projectId: 'runtime-project-id',
+            devicePushToken: { type: 'android', data: 'fcm-current-device' },
         });
+    });
+
+    it('ends a stalled FCM request with a stage-specific error and does not register an old token', async () => {
+        vi.useFakeTimers();
+        notificationsMock.getDevicePushTokenAsync.mockImplementation(() => new Promise(() => {}));
+        persistenceMock.loadRegisteredPushToken.mockReturnValue('ExponentPushToken[old-device]');
+
+        const resultPromise = syncCurrentPushToken({ token: 'auth-token', secret: 'auth-secret' });
+        await vi.waitFor(() => expect(notificationsMock.getDevicePushTokenAsync).toHaveBeenCalledOnce());
+        await vi.advanceTimersByTimeAsync(25_000);
+
+        expect(await resultPromise).toMatchObject({
+            registered: false,
+            token: 'ExponentPushToken[old-device]',
+            error: expect.stringContaining('FCM device token request timed out'),
+        });
+        expect(notificationsMock.getExpoPushTokenAsync).not.toHaveBeenCalled();
+        expect(apiPushMock.registerPushToken).not.toHaveBeenCalled();
+    });
+
+    it('ends a stalled Expo exchange after obtaining the FCM token', async () => {
+        vi.useFakeTimers();
+        notificationsMock.getExpoPushTokenAsync.mockImplementation(() => new Promise(() => {}));
+
+        const resultPromise = syncCurrentPushToken({ token: 'auth-token', secret: 'auth-secret' });
+        await vi.waitFor(() => expect(notificationsMock.getExpoPushTokenAsync).toHaveBeenCalledOnce());
+        await vi.advanceTimersByTimeAsync(25_000);
+
+        expect(await resultPromise).toMatchObject({
+            registered: false,
+            error: expect.stringContaining('Expo push token request timed out'),
+        });
+        expect(apiPushMock.registerPushToken).not.toHaveBeenCalled();
+    });
+
+    it('reports registration success without waiting for old-token cleanup', async () => {
+        persistenceMock.loadRegisteredPushToken.mockReturnValue('ExponentPushToken[old-device]');
+        apiPushMock.unregisterPushToken.mockImplementation(() => new Promise(() => {}));
+
+        const result = await syncCurrentPushToken({ token: 'auth-token', secret: 'auth-secret' });
+
+        expect(result).toMatchObject({ registered: true, token: 'ExponentPushToken[current-device]' });
+        expect(persistenceMock.saveRegisteredPushToken).toHaveBeenCalledWith('ExponentPushToken[current-device]');
+        expect(apiPushMock.unregisterPushToken).toHaveBeenCalledWith(
+            { token: 'auth-token', secret: 'auth-secret' },
+            'ExponentPushToken[old-device]',
+        );
     });
 
     it('returns the token lookup error without registering a stale token', async () => {
