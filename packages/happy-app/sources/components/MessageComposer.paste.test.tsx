@@ -43,9 +43,15 @@ vi.mock('./MultiTextInput', async () => {
     const ReactModule = await import('react');
     return {
         MultiTextInput: ReactModule.forwardRef<any, any>((props, ref) => {
+            const text = ReactModule.useRef(props.defaultValue ?? '');
             ReactModule.useImperativeHandle(ref, () => ({
-                getText: () => '',
-                setTextAndSelection: vi.fn(),
+                getText: () => text.current,
+                setTextAndSelection: (value: string) => {
+                    text.current = value;
+                    props.onChangeText?.(value);
+                },
+                focus: vi.fn(),
+                blur: vi.fn(),
             }));
             return ReactModule.createElement('MultiTextInput', props);
         }),
@@ -160,6 +166,25 @@ describe('MessageComposer web image paste', () => {
         input.dispatchEvent(event);
         return event;
     }
+
+    it('restores queue text through the current input callbacks after a composer update', () => {
+        const ref = React.createRef<any>();
+        const previousChange = vi.fn();
+        const currentChange = vi.fn();
+        const onSend = vi.fn();
+        let renderer: any;
+        act(() => {
+            renderer = TestRenderer.create(<MessageComposer ref={ref} mode="session"
+                initialValue="" placeholder="Message" onSend={onSend} onChangeText={previousChange} />);
+            renderers.push(renderer);
+        });
+        act(() => renderer.update(<MessageComposer ref={ref} mode="session"
+            initialValue="" placeholder="Message" onSend={onSend} onChangeText={currentChange} />));
+        act(() => ref.current.setTextAndSelection('Recovered queued message', { start: 24, end: 24 }));
+        expect(ref.current.getText()).toBe('Recovered queued message');
+        expect(currentChange).toHaveBeenCalledExactlyOnceWith('Recovered queued message');
+        expect(previousChange).not.toHaveBeenCalled();
+    });
 
     it('adds one image once when two mounted composers share a draft', async () => {
         const added: unknown[] = [];

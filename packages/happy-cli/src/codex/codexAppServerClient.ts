@@ -383,6 +383,9 @@ export class CodexAppServerClient {
             turnId: string | null;
         }>;
     } | null = null;
+    private pendingPawsSteers = new Set<{ text: string; turnId: string; items: Array<{ content: unknown; itemId: unknown; turnId: string | null }> }>();
+    private acceptedPawsSteers: Array<{ text: string; turnId: string }> = [];
+    private pawsSteerItemIds = new Set<string>();
     private rawFileChangesByItemId = new Map<string, LegacyPatchChanges>();
 
     // Handlers set by the consumer (runCodex.ts)
@@ -515,6 +518,21 @@ export class CodexAppServerClient {
         if (this.pawsStartedTurnIds.size > 256 && typeof oldest === 'string') {
             this.pawsStartedTurnIds.delete(oldest);
         }
+    }
+
+    private suppressPawsSteerEcho(item: { content: unknown; itemId: unknown; turnId: string | null }): boolean {
+        if (typeof item.itemId === 'string' && this.pawsSteerItemIds.has(item.itemId)) return true;
+        const text = this.userMessageText(item.content);
+        const pending = [...this.pendingPawsSteers].find((steer) => steer.turnId === item.turnId && steer.text === text);
+        if (pending) {
+            pending.items.push(item);
+            return true;
+        }
+        const acceptedIndex = this.acceptedPawsSteers.findIndex((steer) => steer.turnId === item.turnId && steer.text === text);
+        if (acceptedIndex < 0) return false;
+        this.acceptedPawsSteers.splice(acceptedIndex, 1);
+        if (typeof item.itemId === 'string') this.pawsSteerItemIds.add(item.itemId);
+        return true;
     }
 
     private emitExternalUserItem(item: { content: unknown; itemId: unknown; turnId: string | null }): void {
@@ -752,6 +770,7 @@ export class CodexAppServerClient {
                 itemId: item.id,
                 turnId: this.extractTurnId(params),
             };
+            if (this.suppressPawsSteerEcho(userItem)) return true;
             if (userItem.turnId && this.pawsStartedTurnIds.has(userItem.turnId)) {
                 return true;
             }
@@ -1245,6 +1264,9 @@ export class CodexAppServerClient {
             this._threadId = null;
             this.threadDefaults = null;
             this.pawsStartedTurnIds.clear();
+            this.pendingPawsSteers.clear();
+            this.acceptedPawsSteers = [];
+            this.pawsSteerItemIds.clear();
         }
 
         // Fail in-flight requests from this process generation.
@@ -1769,6 +1791,40 @@ export class CodexAppServerClient {
         return { hadActiveTurn: true, aborted: true, forcedRestart: true, resumedThread };
     }
 
+    /** Append input to the exact active turn, preserving its completion lifecycle. */
+    async steerTurn(text: string, expectedTurnId: string,
+        images?: Array<{ type: 'localImage'; path: string }>,
+        clientUserMessageId?: string,
+    ): Promise<{ turnId: string }> {
+        if (!this._threadId || !expectedTurnId || this._turnId !== expectedTurnId) {
+            throw new Error('The active Codex turn changed. Keep this message queued and try again.');
+        }
+        if (!text.trim() && !images?.length) throw new Error('Steering input must not be empty.');
+        const pending = { text, turnId: expectedTurnId, items: [] as Array<{ content: unknown; itemId: unknown; turnId: string | null }> };
+        this.pendingPawsSteers.add(pending);
+        try {
+            const result = await this.request('turn/steer', {
+                threadId: this._threadId,
+                expectedTurnId,
+                ...(clientUserMessageId ? { clientUserMessageId } : {}),
+                input: [...(images ?? []), { type: 'text', text, text_elements: [] }],
+            }) as { turnId?: string };
+            if (result?.turnId !== expectedTurnId) throw new Error('Codex did not confirm the expected steering turn.');
+            if (pending.items.length === 0) this.acceptedPawsSteers.push({ text, turnId: expectedTurnId });
+            for (const item of pending.items) {
+                if (typeof item.itemId === 'string') this.pawsSteerItemIds.add(item.itemId);
+            }
+            this.acceptedPawsSteers = this.acceptedPawsSteers.slice(-256);
+            while (this.pawsSteerItemIds.size > 256) this.pawsSteerItemIds.delete(this.pawsSteerItemIds.values().next().value!);
+            return { turnId: expectedTurnId };
+        } catch (error) {
+            for (const item of pending.items) this.emitExternalUserItem(item);
+            throw error;
+        } finally {
+            this.pendingPawsSteers.delete(pending);
+        }
+    }
+
     /**
      * Send a user turn and wait for it to complete.
      * Returns when task_complete or turn_aborted is received.
@@ -1994,6 +2050,9 @@ export class CodexAppServerClient {
         this.startedTurnIds.clear();
         this.completedTurnIds.clear();
         this.pawsStartedTurnIds.clear();
+        this.pendingPawsSteers.clear();
+        this.acceptedPawsSteers = [];
+        this.pawsSteerItemIds.clear();
         this.settlePawsTurnStart(null, false);
         this.rawFileChangesByItemId.clear();
     }
@@ -2307,6 +2366,11 @@ export class CodexAppServerClient {
             this.notificationProtocol = 'legacy';
             const msg = params?.msg;
             if (msg) {
+                if (msg.type === 'user_message' && this.suppressPawsSteerEcho({
+                    content: msg.content,
+                    itemId: msg.item_id ?? msg.itemId,
+                    turnId: msg.turn_id ?? msg.turnId ?? this._turnId,
+                })) return;
                 if (msg.type !== 'task_complete' && msg.type !== 'turn_aborted') {
                     this.markPendingTurnActivity(msg.turn_id ?? msg.turnId ?? null);
                 }

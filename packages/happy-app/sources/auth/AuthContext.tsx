@@ -16,6 +16,7 @@ import { t } from '@/text';
 import { AccountTransitionScreen } from '@/components/accounts/AccountTransitionScreen';
 import { trackLogout } from '@/track';
 import { clearPublicSessionShareJobs } from '@/sync/publicSessionShareQueueRuntime';
+import { clearMessageStagingQueue } from '@/sync/messageStagingQueueRuntime';
 import { clearSessionWarmCache } from '@/sync/sessionWarmCache';
 import { clearLocalHistoryCaches } from '@/sync/localHistoryStore';
 import { clearFirstSubmissionScope } from '@/sync/firstSubmissionScope';
@@ -143,6 +144,7 @@ export function AuthProvider({ children, initialCredentials }: { children: React
                     const clearingHistory = clearLocalHistoryCaches();
                     trackLogout();
                     clearPublicSessionShareJobs();
+                    await clearMessageStagingQueue();
                     clearPersistence();
                     clearSessionWarmCache();
                     await clearingHistory;

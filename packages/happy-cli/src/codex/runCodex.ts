@@ -1,3 +1,5 @@
+import { immediateCodexCommandEnvelopes } from './codexImmediateCommand';
+import { createCodexSteerHandler, type CodexSteerRequest, type CodexSteerResponse } from './codexSteerRpc';
 import { render } from "ink";
 import React from "react";
 import { ApiClient } from '@/api/api';
@@ -435,7 +437,7 @@ export async function runCodex(opts: {
     const metadata = {
         ...hydratedMetadata,
         ...codexAccountSessionMetadata(),
-        capabilities: { ...hydratedMetadata.capabilities, codexCredentialRecovery: Boolean(process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID && process.env.CODEX_HOME
+        capabilities: { ...hydratedMetadata.capabilities, codexSteer: true, codexCredentialRecovery: Boolean(process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID && process.env.CODEX_HOME
             && basename(process.env.CODEX_HOME).startsWith('happy-codex-home-')) },
         codexPawsOriginToken,
         ...(!hydratedMetadata.summary?.text?.trim() && importedSessionTitle
@@ -488,6 +490,7 @@ export async function runCodex(opts: {
                 permissionHandler.updateSession(newSession);
             }
             rebindMcpAppRpcHandlersOnSessionSwap(mcpAppRpcHandlers, newSession);
+            if (client) newSession.rpcHandlerManager.registerHandler<CodexSteerRequest, CodexSteerResponse>('steer', steerHandler);
         }
     });
     session = initialSession;
@@ -936,6 +939,16 @@ export async function runCodex(opts: {
 
     session.processorStarting?.();
     client = new CodexAppServerClient(sandboxConfig, resolveCodexAppServerConnection());
+    const steerHandler = createCodexSteerHandler({
+        client: {
+            steerTurn: (text, expectedTurnId, images, clientUserMessageId) => client.steerTurn(
+                markPawsTurnOrigin(text, codexPawsOriginToken), expectedTurnId, images, clientUserMessageId,
+            ),
+        },
+        sendMessage: (envelope) => session.sendSessionProtocolMessage(envelope),
+        uploadImageAttachment: (path) => session.uploadImageAttachment(path),
+    });
+    session.rpcHandlerManager.registerHandler<CodexSteerRequest, CodexSteerResponse>('steer', steerHandler);
 
     permissionHandler = new CodexPermissionHandler(session, (notification) => {
         api.push().sendSessionNotification(notification);
@@ -1519,11 +1532,12 @@ export async function runCodex(opts: {
         let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = null;
 
         const sendImmediateCommandResponse = (responseText: string) => {
+            // Local slash commands have their own Paws lifecycle, independent of
+            // the native client's active turn. Complete it so staging can advance.
             messageBuffer.addMessage(responseText, 'assistant');
-            session.sendAgentMessage('codex', {
-                type: 'message',
-                message: responseText,
-            });
+            for (const envelope of immediateCodexCommandEnvelopes(responseText)) {
+                session.sendSessionProtocolMessage(envelope);
+            }
             emitReadyIfIdle({
                 pending,
                 queueSize: () => messageQueue.size(),
@@ -1764,13 +1778,7 @@ export async function runCodex(opts: {
             if (specialCommand.type === 'clear') {
                 logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
                 resetCodexThreadState();
-                sendStatusMessage('Context was reset');
-                emitReadyIfIdle({
-                    pending,
-                    queueSize: () => messageQueue.size(),
-                    shouldExit,
-                    sendReady,
-                });
+                sendImmediateCommandResponse('Context was reset');
                 continue;
             }
 

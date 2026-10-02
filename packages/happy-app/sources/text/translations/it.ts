@@ -15,6 +15,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const it: TranslationStructure = {
+    messageQueue: en.messageQueue,
     accounts: {
         attachmentWarning: "Il cambio di account ricaricherà Paws. Le bozze di testo verranno conservate, ma gli allegati non inviati dovranno essere selezionati di nuovo. Continuare?",
         title: "Account Paws",

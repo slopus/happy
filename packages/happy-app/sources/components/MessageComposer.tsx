@@ -54,7 +54,10 @@ interface MessageComposerProps {
     onChangeText?: (text: string) => void;
     sessionId?: string;
     onSend: () => void;
+    /** Codex Tab queues a message while Enter guides the current turn. */
+    onQueue?: () => void;
     sendIcon?: React.ReactNode;
+    sendLabel?: string;
     onAbort?: () => void | Promise<void>;
     showAbortButton?: boolean;
     connectionStatus?: {
@@ -502,8 +505,15 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
     const inputRef = React.useRef<MultiTextInputHandle>(null);
     const composerContentRef = React.useRef<View>(null);
 
-    // Forward ref to the MultiTextInput
-    React.useImperativeHandle(ref, () => inputRef.current!, []);
+    // The input refreshes its imperative handle whenever its callbacks change.
+    // Forward each operation to the live handle rather than retaining the first
+    // render's callbacks (or a handle whose input has since been replaced).
+    React.useImperativeHandle(ref, () => ({
+        getText: () => inputRef.current?.getText() ?? '',
+        setTextAndSelection: (text, selection) => inputRef.current?.setTextAndSelection(text, selection),
+        focus: () => inputRef.current?.focus(),
+        blur: () => inputRef.current?.blur(),
+    }), []);
 
     // Web paste/drag — intercept image pastes and file drops for the
     // attachment feature. Both handlers funnel through props.onAddImages.
@@ -734,6 +744,11 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             // Use pointer:coarse media query instead of ontouchstart/maxTouchPoints
             // to avoid false positives on Windows touch-screen laptops with keyboards.
             const isTouchDevice = typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+            if (event.key === 'Tab' && !event.shiftKey && props.onQueue && !isTouchDevice
+                && (inputRef.current?.getText().trim() || hasImages)) {
+                if (!isSendBlocked && !props.isSendDisabled && !props.isSending) props.onQueue();
+                return true;
+            }
             if (agentInputEnterToSend && event.key === 'Enter' && !event.shiftKey && !isTouchDevice) {
                 // Read live text from the textarea — `hasText` is debounced via
                 // startTransition and would lag behind a quick type-then-Enter.
@@ -749,7 +764,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
             }
         }
         return false; // Key was not handled
-    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortEscape, handleAbortPress, agentInputEnterToSend, props.onSend, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
+    }, [suggestions, moveUp, moveDown, selected, handleSuggestionSelect, props.showAbortButton, props.onAbort, isAborting, handleAbortEscape, handleAbortPress, agentInputEnterToSend, props.onSend, props.onQueue, props.isSending, hasImages, isSendBlocked, handleBlockedSendAttempt, props.isSendDisabled]);
 
 
 
@@ -939,6 +954,15 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     <SessionComposerModeSelector {...props.modeSelector} />
                                 ) : null}
 
+                                {props.onQueue && <Pressable
+                                    accessibilityRole="button" accessibilityLabel={t('messageQueue.enqueue')}
+                                    disabled={!canPressSendButton}
+                                    onPress={props.onQueue}
+                                    style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: 8, justifyContent: 'center', borderRadius: 8,
+                                        backgroundColor: pressed ? theme.colors.surfacePressed : theme.colors.surface,
+                                        opacity: canPressSendButton ? 1 : 0.4 })}>
+                                    <Ionicons name="list-outline" size={20} color={theme.colors.textSecondary} />
+                                </Pressable>}
                                 {/* Primary action: stop while running and empty, send when there is a payload. */}
                                 <Shaker
                                     ref={shakerRef}
@@ -956,7 +980,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                         accessibilityRole="button"
                                         accessibilityLabel={(isAbortAction || isAbortConfirmationArmed)
                                             ? t('keyboardShortcuts.stopRunningAgent')
-                                            : t('keyboardShortcuts.sendMessage')}
+                                            : (props.sendLabel ?? t('keyboardShortcuts.sendMessage'))}
                                         style={(p) => ({
                                             width: '100%',
                                             height: '100%',

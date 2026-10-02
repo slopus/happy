@@ -26,6 +26,7 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const pl: TranslationStructure = {
+    messageQueue: en.messageQueue,
     accounts: {
         attachmentWarning: "Zmiana konta przeładuje Paws. Wersje robocze tekstu zostaną zachowane, ale niewysłane załączniki trzeba będzie wybrać ponownie. Kontynuować?",
         title: "Konta Paws",

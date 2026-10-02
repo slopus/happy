@@ -705,6 +705,18 @@ export async function sessionAbort(sessionId: string): Promise<void> {
     });
 }
 
+/** Append guidance to the active Codex turn, retaining its turn identity. */
+export async function sessionSteer(sessionId: string, request: {
+    text: string; expectedTurnId: string; clientMessageId: string;
+    images?: Array<{ data: string; mimeType?: string; name?: string }>;
+}): Promise<{ accepted: true; turnId: string; clientMessageId: string }> {
+    const result = await apiSocket.sessionRPC<{ accepted: true; turnId: string; clientMessageId: string }, typeof request>(sessionId, 'steer', request);
+    if (result?.accepted !== true || result.turnId !== request.expectedTurnId || result.clientMessageId !== request.clientMessageId) {
+        throw new Error('Codex steering was not acknowledged');
+    }
+    return result;
+}
+
 /**
  * Allow a permission request
  */

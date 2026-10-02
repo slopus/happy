@@ -67,6 +67,7 @@ vi.mock('@/sync/localHistoryStore', () => ({ clearLocalHistoryCaches: mocks.clea
 vi.mock('@/sync/apiPush', () => ({ unregisterPushToken: vi.fn() }));
 vi.mock('@/track', () => ({ trackLogout: vi.fn() }));
 vi.mock('@/sync/publicSessionShareQueueRuntime', () => ({ clearPublicSessionShareJobs: vi.fn() }));
+vi.mock('@/sync/messageStagingQueueRuntime', () => ({ clearMessageStagingQueue: vi.fn() }));
 
 import { AuthProvider, getCurrentAuth } from './AuthContext';
 

@@ -144,6 +144,7 @@ vi.mock('@/sync/appConfig', () => ({ loadAppConfig: () => ({ otaChannel: 'produc
 vi.mock('@/utils/otaFloatingSwitcher', () => ({ shouldShowOtaFloatingSwitcher: () => false }));
 vi.mock('./appRootFonts', () => ({ loadAppRootFonts: vi.fn().mockResolvedValue(undefined) }));
 vi.mock('@/components/PublicSessionShareJobResumer', () => ({ PublicSessionShareJobResumer: () => null }));
+vi.mock('@/components/MessageStagingQueueResumer', () => ({ MessageStagingQueueResumer: () => null }));
 vi.mock('@/sync/publicSessionShareQueueRuntime', () => ({ retryPublicSessionShareJob: vi.fn() }));
 vi.mock('@/hooks/useCheckCameraPermissions', () => ({ useCheckScannerPermissions: () => async () => true }));
 vi.mock('@/hooks/useConnectAccount', () => ({

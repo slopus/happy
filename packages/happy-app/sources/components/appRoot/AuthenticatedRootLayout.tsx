@@ -48,6 +48,7 @@ import { shouldShowOtaFloatingSwitcher } from '@/utils/otaFloatingSwitcher';
 import { loadAppRootFonts } from './appRootFonts';
 import { shouldPresentNotification } from '@/utils/notificationPresentation';
 import { PublicSessionShareJobResumer } from '@/components/PublicSessionShareJobResumer';
+import { MessageStagingQueueResumer } from '@/components/MessageStagingQueueResumer';
 import { retryPublicSessionShareJob } from '@/sync/publicSessionShareQueueRuntime';
 import { UnifiedAuthQrCodeProvider } from '@/hooks/useUnifiedAuthQrCode';
 import { markSessionCriticalPathAppStage } from '@/sync/sessionCriticalPathProbeBridge';
@@ -280,6 +281,7 @@ export default function AuthenticatedRootLayout() {
                                             <CommandPaletteProvider>
                                                 <RealtimeProvider>
                                                     <PublicSessionShareJobResumer />
+                                                    <MessageStagingQueueResumer />
                                                     <HorizontalSafeAreaWrapper>
                                                         <SidebarNavigator />
                                                     </HorizontalSafeAreaWrapper>

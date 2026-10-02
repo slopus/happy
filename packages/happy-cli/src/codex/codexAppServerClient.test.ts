@@ -3093,3 +3093,63 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 });
+
+describe('native turn steering', () => {
+    async function makeSteerClient() {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        Object.assign(client, { _threadId: 'thread-1', _turnId: 'turn-1' });
+        const rpc = vi.spyOn(client as any, 'request');
+        return { client, rpc };
+    }
+
+    it('uses native steer and preserves the current turn without start or interrupt', async () => {
+        const { client, rpc } = await makeSteerClient();
+        rpc.mockResolvedValue({ turnId: 'turn-1' });
+        await expect(client.steerTurn('A correction', 'turn-1', [{ type: 'localImage', path: '/tmp/image.png' }], 'message-1')).resolves.toEqual({ turnId: 'turn-1' });
+        expect(rpc).toHaveBeenCalledExactlyOnceWith('turn/steer', {
+            threadId: 'thread-1', expectedTurnId: 'turn-1', clientUserMessageId: 'message-1',
+            input: [{ type: 'localImage', path: '/tmp/image.png' }, { type: 'text', text: 'A correction', text_elements: [] }],
+        });
+        expect(client.turnId).toBe('turn-1');
+    });
+
+    it('rejects a stale or missing turn before sending and does not fall back after rejection', async () => {
+        const { client, rpc } = await makeSteerClient();
+        await expect(client.steerTurn('A correction', 'stale')).rejects.toThrow('changed');
+        await expect(client.steerTurn('A correction', '')).rejects.toThrow('changed');
+        expect(rpc).not.toHaveBeenCalled();
+        rpc.mockRejectedValue(new Error('no active turn to steer'));
+        await expect(client.steerTurn('A correction', 'turn-1')).rejects.toThrow('no active turn');
+        expect(rpc).toHaveBeenCalledTimes(1);
+        expect(client.turnId).toBe('turn-1');
+    });
+
+    it('does not overwrite a newer turn when an old steering acknowledgement arrives', async () => {
+        const { client, rpc } = await makeSteerClient();
+        let accept!: (value: unknown) => void;
+        rpc.mockImplementation(() => new Promise((resolve) => { accept = resolve; }));
+        const submitted = client.steerTurn('A correction', 'turn-1');
+        Object.assign(client, { _turnId: 'turn-2' });
+        accept({ turnId: 'turn-1' });
+        await expect(submitted).resolves.toEqual({ turnId: 'turn-1' });
+        expect(client.turnId).toBe('turn-2');
+    });
+
+    it('suppresses one native steering user echo and duplicate item notifications even on an externally started turn', async () => {
+        const { client, rpc } = await makeSteerClient();
+        const events: any[] = [];
+        client.setEventHandler((event) => events.push(event));
+        const notification = { threadId: 'thread-1', turnId: 'turn-1', item: {
+            id: 'steer-item', type: 'userMessage', content: [{ type: 'text', text: 'A correction' }],
+        } };
+        rpc.mockImplementation(async () => {
+            (client as any).handleRawNotification('item/completed', notification);
+            return { turnId: 'turn-1' };
+        });
+        await client.steerTurn('A correction', 'turn-1');
+        (client as any).handleRawNotification('item/completed', notification);
+        expect(events.filter((event) => event.type === 'user_message')).toHaveLength(0);
+        expect(events.filter((event) => event.type === 'task_started')).toHaveLength(0);
+    });
+});

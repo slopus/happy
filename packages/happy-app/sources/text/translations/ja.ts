@@ -18,6 +18,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
+    messageQueue: en.messageQueue,
     accounts: {
         attachmentWarning: "アカウントを切り替えると Paws が再読み込みされます。テキストの下書きは保持されますが、未送信の添付ファイルは選び直す必要があります。続行しますか？",
         title: "Paws アカウント",
