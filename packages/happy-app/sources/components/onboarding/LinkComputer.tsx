@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -44,32 +44,24 @@ const SCROLL_BOTTOM_PADDING = 48;
 
 type ChecklistRowProps = {
     checked: boolean;
-    title: string;
+    title: React.ReactNode;
     /** Tapping the row toggles it. Rows without this are read-only. */
     onToggle?: () => void;
-    /** Shown under the title while the row is unchecked. */
+    /** Stays visible when the completion checkbox changes. */
     children?: React.ReactNode;
-    busy?: boolean;
-    dimmed?: boolean;
 };
 
 /**
- * One box on the list. A checked row folds its body away so the list gets
- * shorter as the person works down it; the unchecked rows are the ones with
- * something left to read.
+ * Completion changes only the checkbox; instructions and layout stay put.
  */
 const ChecklistRow = React.memo(function ChecklistRow({
     checked,
     title,
     onToggle,
     children,
-    busy,
-    dimmed,
 }: ChecklistRowProps) {
     const { theme } = useUnistyles();
-    const box = busy ? (
-        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-    ) : (
+    const box = (
         <Ionicons
             name={checked ? 'checkmark-circle' : 'ellipse-outline'}
             size={26}
@@ -84,12 +76,12 @@ const ChecklistRow = React.memo(function ChecklistRow({
                 accessibilityRole={onToggle ? 'checkbox' : undefined}
                 accessibilityState={onToggle ? { checked } : undefined}
                 hitSlop={8}
-                style={({ pressed }) => [styles.rowHead, pressed && onToggle && styles.rowHeadPressed]}
+                style={styles.rowHead}
             >
                 <View style={styles.box}>{box}</View>
-                <Text style={[styles.rowTitle, (checked || dimmed) && styles.rowTitleDone]}>{title}</Text>
+                <Text style={styles.rowTitle}>{title}</Text>
             </Pressable>
-            {!checked && children ? (
+            {children ? (
                 <View style={styles.rowBody}>{children}</View>
             ) : null}
         </View>
@@ -125,9 +117,9 @@ function useScanActions(onSuccess: () => void) {
 
 /**
  * The link-your-computer checklist. `link` is the first run: nothing is
- * linked yet, three boxes to tick. `offline` is the same list once a computer
- * is linked but none can be reached: the install box is already ticked and
- * the job is to get Happy running again.
+ * linked yet, two preparation boxes and the pairing actions. `offline` is
+ * the list once a computer is linked but none can be reached: the install
+ * box is already ticked and the job is to get Happy running again.
  */
 export const LinkComputerChecklist = React.memo(function LinkComputerChecklist({
     variant,
@@ -166,18 +158,20 @@ export const LinkComputerChecklist = React.memo(function LinkComputerChecklist({
         void Linking.openURL(DESKTOP_URL);
     }, []);
 
-    const downloadLine = (
-        <Text style={styles.body}>
+    const downloadTitle = (
+        <>
             {t('onboarding.installBodyPrefix')}
-            <Text style={styles.link} accessibilityRole="link" onPress={openDesktopSite}>
+            <Text style={styles.link} accessibilityRole="link" onPress={(event) => {
+                event.stopPropagation();
+                openDesktopSite();
+            }}>
                 {t('onboarding.installBodyLink')}
             </Text>
-            {t('onboarding.installBodySuffix')}
-        </Text>
+        </>
     );
 
     const scanActions = (
-        <View style={styles.actions}>
+        <View style={[styles.actions, styles.scanActions]}>
             {canScan ? (
                 <View style={styles.button}>
                     <RoundButton
@@ -257,33 +251,15 @@ export const LinkComputerChecklist = React.memo(function LinkComputerChecklist({
             <View style={styles.content}>
                 <ChecklistRow
                     checked={!!ticked.install}
-                    title={t('onboarding.installStep')}
+                    title={downloadTitle}
                     onToggle={() => toggle('install')}
-                >
-                    {downloadLine}
-                    <TerminalBlock
-                        style={styles.terminal}
-                        lines={[
-                            { kind: 'comment', text: t('onboarding.terminalComment') },
-                            { kind: 'command', text: t('onboarding.terminalInstall') },
-                            { kind: 'command', text: t('onboarding.terminalRun') },
-                        ]}
-                    />
-                </ChecklistRow>
+                />
                 <ChecklistRow
                     checked={!!ticked.open}
                     title={t('onboarding.openStep')}
                     onToggle={() => toggle('open')}
-                >
-                    <Text style={styles.body}>{t('onboarding.openBody')}</Text>
-                </ChecklistRow>
-                <ChecklistRow
-                    checked={approved}
-                    title={t('onboarding.scanStep')}
-                    busy={isLoading}
-                >
-                    {scanActions}
-                </ChecklistRow>
+                />
+                {scanActions}
                 {approved ? (
                     <Text style={[styles.body, styles.connected]}>{t('onboarding.connected')}</Text>
                 ) : null}
@@ -366,7 +342,7 @@ export const OnboardingLinkComputer = React.memo(function OnboardingLinkComputer
 const styles = StyleSheet.create((theme) => ({
     root: {
         flex: 1,
-        backgroundColor: theme.colors.groupped.background,
+        backgroundColor: theme.colors.header.background,
     },
     headerButton: {
         width: 32,
@@ -423,9 +399,6 @@ const styles = StyleSheet.create((theme) => ({
         gap: 12,
         minHeight: 32,
     },
-    rowHeadPressed: {
-        opacity: 0.6,
-    },
     box: {
         width: 26,
         height: 26,
@@ -439,9 +412,6 @@ const styles = StyleSheet.create((theme) => ({
         lineHeight: 22,
         color: theme.colors.text,
     },
-    rowTitleDone: {
-        color: theme.colors.textSecondary,
-    },
     rowBody: {
         paddingLeft: 38,
         paddingTop: 6,
@@ -453,8 +423,7 @@ const styles = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
     },
     link: {
-        color: theme.colors.text,
-        textDecorationLine: 'underline',
+        color: theme.colors.textLink,
     },
     terminal: {
         marginTop: 12,
@@ -463,13 +432,17 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'flex-start',
         marginTop: 6,
     },
+    scanActions: {
+        alignItems: 'center',
+        marginTop: 36,
+    },
     button: {
         width: 260,
         maxWidth: '100%',
         marginBottom: 8,
     },
     connected: {
-        paddingLeft: 38,
+        textAlign: 'center',
         color: theme.colors.success,
     },
 }));

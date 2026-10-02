@@ -47,7 +47,7 @@ export const OnboardingHeader = React.memo(function OnboardingHeader({
             title={<OnboardingTitle title={title} subtitle={subtitle} />}
             headerRight={headerRight}
             headerShadowVisible={false}
-            headerBackgroundColor={theme.colors.groupped.background}
+            headerBackgroundColor={theme.colors.header.background}
             mobileTitleSurface="plain"
             mobileTitleAlignment="center"
         />
