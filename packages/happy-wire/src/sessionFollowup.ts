@@ -325,13 +325,13 @@ export async function encryptSessionFollowupPayload(input: {
  * Whether to trust the sender, and checking `seal` against the follow-up, is
  * the caller's.
  */
-export async function openSessionFollowupPayloadForMachine(input: {
+export function openSessionFollowupPayloadForMachine(input: {
   payloadVersion: 1;
   payloadCiphertext: string;
   machineKeyEnvelope: string;
   recipientSecretKey: Uint8Array;
   crypto: AutomationCryptoAdapter;
-}): Promise<MachinePayloadOpening<SessionFollowupPayload>> {
+}): MachinePayloadOpening<SessionFollowupPayload> {
   let ciphertext: Uint8Array;
   let envelope: Uint8Array;
   try {

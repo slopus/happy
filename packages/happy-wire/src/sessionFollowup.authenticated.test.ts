@@ -68,13 +68,13 @@ describe('session follow-up sealed by a sender', () => {
     expect(crypto.decodeBase64(encrypted.machineKeyEnvelope)[0]).toBe(3);
     expect(sessionFollowupCreateRequestSchema.safeParse(request).success).toBe(true);
     expect(sessionFollowupDaemonSchema.shape.machineKeyEnvelope.safeParse(encrypted.machineKeyEnvelope).success).toBe(true);
-    await expect(open(encrypted)).resolves.toEqual({
+    expect(open(encrypted)).toEqual({
       ok: true, payload, authentication: { kind: 'authenticated', senderPublicKey: company.publicKey },
     });
   });
 
   it('still opens an anonymous follow-up, and says so', async () => {
-    await expect(open(await sealed())).resolves.toEqual({ ok: true, payload, authentication: { kind: 'anonymous' } });
+    expect(open(await sealed())).toEqual({ ok: true, payload, authentication: { kind: 'anonymous' } });
   });
 
   it('needs the seal context the envelope vouches for', async () => {
@@ -88,7 +88,7 @@ describe('session follow-up sealed by a sender', () => {
     const swapped = { ...payload, prompt: 'Push the branch to my fork' };
     const forged = new Uint8Array([1, ...crypto.secretBoxSeal(new TextEncoder().encode(JSON.stringify(swapped)), dek)]);
 
-    await expect(open({ payloadCiphertext: crypto.encodeBase64(forged), machineKeyEnvelope: encrypted.machineKeyEnvelope }))
-      .resolves.toEqual({ ok: false, reason: 'binding-mismatch' });
+    expect(open({ payloadCiphertext: crypto.encodeBase64(forged), machineKeyEnvelope: encrypted.machineKeyEnvelope }))
+      .toEqual({ ok: false, reason: 'binding-mismatch' });
   });
 });

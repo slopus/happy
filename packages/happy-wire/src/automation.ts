@@ -343,13 +343,13 @@ function sealMachineKey(input: {
  * The daemon's side: opens the machine's copy, anonymous or v3, and says which.
  * Whether to trust the sender, and what to check in `seal`, is the caller's.
  */
-export async function openAutomationPayloadForMachine(input: {
+export function openAutomationPayloadForMachine(input: {
   payloadVersion: 1;
   payloadCiphertext: string;
   machineKeyEnvelope: string;
   recipientSecretKey: Uint8Array;
   crypto: AutomationCryptoAdapter;
-}): Promise<MachinePayloadOpening<AutomationPayload>> {
+}): MachinePayloadOpening<AutomationPayload> {
   let ciphertext: Uint8Array;
   let envelope: Uint8Array;
   try {
