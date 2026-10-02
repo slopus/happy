@@ -12,13 +12,15 @@ import { existsSync } from 'node:fs'
 import { readFile, rename } from 'node:fs/promises'
 import { join } from 'node:path'
 import { configuration } from '@/configuration'
-import { readSettings, writePrivateFile } from '@/persistence'
+import { readSettings, updateSettings, writePrivateFile } from '@/persistence'
 import {
   planDataKeyActivation,
   planDataKeyDeactivation,
   describeDataKeyStatus,
   type ActivationGateFailure,
 } from '@/datakey/activation'
+import { describeMachineControl, planHarden } from '@/datakey/machineControlStatus'
+import { pendingMachineKeyRotationFile } from '@/datakey/machineControlIo'
 
 const backupFile = () => join(configuration.happyHomeDir, 'access.key.legacy-backup')
 
@@ -38,12 +40,22 @@ async function writeJsonAtomic(path: string, value: unknown): Promise<void> {
   await rename(tmp, path)
 }
 
-async function fetchServerEnvelope(machineId: string, token: string): Promise<string | null> {
-  const response = await axios.get<{ machine?: { dataEncryptionKey?: string | null } }>(
+type ServerMachineEnvelopes = {
+  dataEncryptionKey?: string | null
+  serverDataEncryptionKey?: string | null
+  serverRpcKeyEnvelope?: string | null
+}
+
+async function fetchServerMachine(machineId: string, token: string): Promise<ServerMachineEnvelopes | null> {
+  const response = await axios.get<{ machine?: ServerMachineEnvelopes }>(
     `${configuration.serverUrl}/v1/machines/${encodeURIComponent(machineId)}`,
     { headers: { Authorization: `Bearer ${token}` }, timeout: 15000 },
   )
-  return response.data.machine?.dataEncryptionKey ?? null
+  return response.data.machine ?? null
+}
+
+async function fetchServerEnvelope(machineId: string, token: string): Promise<string | null> {
+  return (await fetchServerMachine(machineId, token))?.dataEncryptionKey ?? null
 }
 
 const GATE_MESSAGES: Record<ActivationGateFailure, string> = {
@@ -67,6 +79,12 @@ export async function handleDataKeyCommand(args: string[]): Promise<void> {
     case 'deactivate':
       await handleDeactivate()
       return
+    case 'harden':
+      await handleHarden()
+      return
+    case 'compat':
+      await handleCompat()
+      return
     default:
       showHelp()
       if (subcommand && subcommand !== 'help' && subcommand !== '--help' && subcommand !== '-h') {
@@ -80,9 +98,11 @@ function showHelp(): void {
 ${chalk.bold('happy datakey')} - dataKey-활성 전환 관리 (aplus §6-1)
 
 ${chalk.bold('Usage:')}
-  happy datakey status       현재 활성 variant 와 백업 상태 표시
+  happy datakey status       현재 활성 variant, 백업, 머신 제어 모드 표시
   happy datakey activate     legacy(+병기 재료) → dataKey-활성 전환
   happy datakey deactivate   백업으로 legacy-활성 복원
+  happy datakey harden       strict 머신 제어: 서버가 머신 키를 갖지 못하게 함
+  happy datakey compat       compat 머신 제어로 복귀(서버가 머신 키 사본을 다시 받음)
 
 ${chalk.gray('activate 는 (1) 병기 재료 존재 (2) machineId 존재 (3) 서버 machine')}
 ${chalk.gray('레코드의 dataEncryptionKey 봉투 존재를 전부 확인한 뒤에만 전환하며,')}
@@ -105,6 +125,86 @@ async function handleStatus(): Promise<void> {
   }[status.variant]
   console.log(`variant: ${variantLabel}`)
   console.log(`backup:  ${status.hasBackup ? chalk.green('있음') : chalk.gray('없음')} (${backupFile()})`)
+  await printMachineControlStatus()
+}
+
+/** aplus-dev-studio specs/e2ee-machine-control-boundary R17. */
+async function printMachineControlStatus(): Promise<void> {
+  const settings = await readSettings()
+  const rawCredentials = await readRawJson(configuration.privateKeyFile)
+  const control = describeMachineControl({
+    mode: settings.machineControl === 'strict' ? 'strict' : 'compat',
+    rawCredentials,
+    rawPending: await readRawJsonOrUnreadable(pendingMachineKeyRotationFile()),
+  })
+  const modeLabel = control.mode === 'compat'
+    ? chalk.yellow('compat (서버가 머신 키 사본을 받을 수 있음)')
+    : control.inForce
+      ? chalk.green('strict (적용됨)')
+      : chalk.red('strict (아직 적용 안 됨 — daemon 을 재시작하면 머신 키를 교체합니다)')
+  const keyLabel = {
+    none: chalk.red('없음'),
+    'account-secret': chalk.yellow('계정 비밀(legacy) — 서버가 알고 있음'),
+    'may-be-escrowed': chalk.yellow('서버가 사본을 가졌을 수 있는 키'),
+    'never-escrowed': chalk.green('서버에 보낸 적 없는 키'),
+  }[control.key]
+  console.log(`machine control: ${modeLabel}`)
+  console.log(`machine key:     ${keyLabel}`)
+  if (control.pending) {
+    const when = control.pending.lastAttemptAt ? ` (${new Date(control.pending.lastAttemptAt).toLocaleString()})` : ''
+    const why = control.pending.lastError ? ` — 마지막 실패: ${control.pending.lastError}${when}` : ''
+    console.log(`key rotation:    ${chalk.yellow(`진행 중${why}`)}`)
+  }
+
+  const token = (rawCredentials as { token?: string } | null)?.token
+  if (!settings.machineId || !token) return
+  let machine: ServerMachineEnvelopes | null
+  try {
+    machine = await fetchServerMachine(settings.machineId, token)
+  } catch (error) {
+    const missing = axios.isAxiosError(error) && error.response?.status === 404
+    console.log(`server:          ${chalk.gray(missing ? '등록된 머신 레코드 없음' : '확인하지 못함(네트워크/서버 오류)')}`)
+    return
+  }
+  if (!machine) {
+    console.log(`server:          ${chalk.gray('등록된 머신 레코드 없음')}`)
+    return
+  }
+  console.log(`server:          머신 키 서버 봉투 ${machine.serverDataEncryptionKey ? chalk.yellow('있음') : chalk.green('없음')}, `
+    + `서버 레인 키 봉투 ${machine.serverRpcKeyEnvelope ? '있음' : '없음'}`)
+}
+
+async function readRawJsonOrUnreadable(path: string): Promise<unknown | null> {
+  if (!existsSync(path)) return null
+  return (await readRawJson(path)) ?? {}
+}
+
+async function handleHarden(): Promise<void> {
+  const plan = planHarden({ rawCredentials: await readRawJson(configuration.privateKeyFile) })
+  if (!plan.ok) {
+    const message = {
+      'no-credentials': 'credentials(access.key)가 없거나 파싱할 수 없습니다. `happy auth login` 먼저 실행하세요.',
+      'not-datakey': 'legacy credential 의 머신 키는 서버가 아는 계정 비밀입니다. 먼저 `happy datakey activate` 로 dataKey-활성 전환하세요.',
+    }[plan.reason]
+    console.error(chalk.red(`전환하지 않음: ${message}`))
+    process.exit(1)
+  }
+  await updateSettings((settings) => ({ ...settings, machineControl: 'strict' }))
+  console.log(chalk.green('strict 머신 제어로 설정했습니다.'))
+  console.log(chalk.bold('daemon 재시작이 필요합니다:'))
+  console.log('  happy daemon stop && happy daemon start')
+  console.log(chalk.gray('다음 시작에서 daemon 이 머신 키를 새로 만들고 서버의 머신 키 사본을 지웁니다.'))
+  console.log(chalk.gray('서버에 닿지 못하면 daemon 은 시작하지 않습니다(이전 키로 동작하지 않음).'))
+  console.log(chalk.gray('적용 여부는 `happy datakey status` 의 machine control 줄로 확인하세요.'))
+  console.log(chalk.gray('strict 에서는 서버가 파일·명령·세션 시작 같은 머신 기능을 대신 실행하지 못합니다.'))
+}
+
+async function handleCompat(): Promise<void> {
+  await updateSettings((settings) => ({ ...settings, machineControl: 'compat' }))
+  console.log(chalk.yellow('compat 머신 제어로 설정했습니다.'))
+  console.log(chalk.bold('daemon 재시작이 필요합니다:'))
+  console.log('  happy daemon stop && happy daemon start')
+  console.log(chalk.gray('다음 시작에서 서버가 머신 키 사본을 다시 받아 이 머신의 모든 원격 기능을 호출할 수 있게 됩니다.'))
 }
 
 async function handleActivate(): Promise<void> {
