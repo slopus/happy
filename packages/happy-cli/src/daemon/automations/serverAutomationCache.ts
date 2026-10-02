@@ -1,13 +1,19 @@
+import { createHash } from 'node:crypto'
 import { chmodSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
 import tweetnacl from 'tweetnacl'
 import {
-  automationPayloadSchema,
-  sessionFollowupPayloadSchema,
+  AUTHENTICATED_ENVELOPE_BYTES,
+  AUTHENTICATED_ENVELOPE_VERSION,
+  openAutomationPayloadForMachine,
+  openSessionFollowupPayloadForMachine,
+  type AutomationCryptoAdapter,
   type AutomationPayload,
+  type MachinePayloadOpening,
   type SessionFollowupDaemon,
   type SessionFollowupPayload,
 } from '@slopus/happy-wire'
+import { judgePayload, type PayloadTrust } from './payloadTrust'
 
 const PAYLOAD_MAX_BYTES = 128 * 1024
 const ENVELOPE_BYTES = 1 + tweetnacl.box.publicKeyLength + tweetnacl.box.nonceLength
@@ -83,8 +89,11 @@ function base64(value: unknown, maxBytes: number, exactBytes?: number): string {
 function parseUpsert(row: Record<string, unknown>): EncryptedServerAutomation {
   if (row.kind !== 'UPSERT' || row.payloadVersion !== 1 || typeof row.paused !== 'boolean') fail()
   const payloadCiphertext = base64(row.payloadCiphertext, PAYLOAD_MAX_BYTES)
-  const machineKeyEnvelope = base64(row.machineKeyEnvelope, ENVELOPE_BYTES, ENVELOPE_BYTES)
-  if (Buffer.from(payloadCiphertext, 'base64')[0] !== 1 || Buffer.from(machineKeyEnvelope, 'base64')[0] !== 1) fail()
+  const machineKeyEnvelope = base64(row.machineKeyEnvelope, AUTHENTICATED_ENVELOPE_BYTES)
+  const envelope = Buffer.from(machineKeyEnvelope, 'base64')
+  const anonymous = envelope.length === ENVELOPE_BYTES && envelope[0] === 1
+  const authenticated = envelope.length === AUTHENTICATED_ENVELOPE_BYTES && envelope[0] === AUTHENTICATED_ENVELOPE_VERSION
+  if (Buffer.from(payloadCiphertext, 'base64')[0] !== 1 || !(anonymous || authenticated)) fail()
   return {
     automationId: nonEmptyString(row.automationId),
     revision: positiveInteger(row.revision),
@@ -205,58 +214,98 @@ export function createServerAutomationCache(options: { filePath: string; now?: (
   }
 }
 
-export function decryptServerAutomationPayload(
-  automation: EncryptedServerAutomation,
-  machineSecretKey: Uint8Array,
-): ServerAutomationPayload {
-  if (machineSecretKey.length !== tweetnacl.box.secretKeyLength) throw new Error('automation-decrypt-failed')
-  const envelope = new Uint8Array(Buffer.from(automation.machineKeyEnvelope, 'base64'))
-  if (envelope.length !== ENVELOPE_BYTES || envelope[0] !== 1) throw new Error('automation-decrypt-failed')
-  const ephemeralPublicKey = envelope.slice(1, 1 + tweetnacl.box.publicKeyLength)
-  const envelopeNonce = envelope.slice(1 + tweetnacl.box.publicKeyLength, ENVELOPE_BYTES - tweetnacl.box.overheadLength - tweetnacl.secretbox.keyLength)
-  const encryptedDek = envelope.slice(1 + tweetnacl.box.publicKeyLength + tweetnacl.box.nonceLength)
-  const dek = tweetnacl.box.open(encryptedDek, envelopeNonce, ephemeralPublicKey, machineSecretKey)
-  if (!dek || dek.length !== tweetnacl.secretbox.keyLength) throw new Error('automation-decrypt-failed')
-
-  const payload = new Uint8Array(Buffer.from(automation.payloadCiphertext, 'base64'))
-  if (payload.length < 1 + tweetnacl.secretbox.nonceLength + tweetnacl.secretbox.overheadLength
-    || payload[0] !== 1) throw new Error('automation-decrypt-failed')
-  const nonce = payload.slice(1, 1 + tweetnacl.secretbox.nonceLength)
-  const ciphertext = payload.slice(1 + tweetnacl.secretbox.nonceLength)
-  const plaintext = tweetnacl.secretbox.open(ciphertext, nonce, dek)
-  if (!plaintext) throw new Error('automation-decrypt-failed')
-  try {
-    return automationPayloadSchema.parse(JSON.parse(new TextDecoder().decode(plaintext)))
-  } catch {
-    throw new Error('automation-decrypt-failed')
-  }
+/** tweetnacl behind the wire's adapter; the daemon only ever opens with it. */
+const machineCrypto: AutomationCryptoAdapter = {
+  randomBytes: (length) => tweetnacl.randomBytes(length),
+  secretBoxSeal: (plaintext, key) => {
+    const nonce = tweetnacl.randomBytes(tweetnacl.secretbox.nonceLength)
+    return new Uint8Array([...nonce, ...tweetnacl.secretbox(plaintext, nonce, key)])
+  },
+  secretBoxOpen: (bundle, key) => tweetnacl.secretbox.open(
+    bundle.subarray(tweetnacl.secretbox.nonceLength), bundle.subarray(0, tweetnacl.secretbox.nonceLength), key,
+  ),
+  boxSeal: (plaintext, publicKey) => {
+    const ephemeral = tweetnacl.box.keyPair()
+    const nonce = tweetnacl.randomBytes(tweetnacl.box.nonceLength)
+    return new Uint8Array([...ephemeral.publicKey, ...nonce, ...tweetnacl.box(plaintext, nonce, publicKey, ephemeral.secretKey)])
+  },
+  boxOpen: (bundle, secretKey) => tweetnacl.box.open(
+    bundle.subarray(tweetnacl.box.publicKeyLength + tweetnacl.box.nonceLength),
+    bundle.subarray(tweetnacl.box.publicKeyLength, tweetnacl.box.publicKeyLength + tweetnacl.box.nonceLength),
+    bundle.subarray(0, tweetnacl.box.publicKeyLength),
+    secretKey,
+  ),
+  sha256: async (value) => new Uint8Array(createHash('sha256').update(value).digest()),
+  encodeBase64: (value) => Buffer.from(value).toString('base64'),
+  decodeBase64: (value) => new Uint8Array(Buffer.from(value, 'base64')),
 }
 
-export function decryptSessionFollowupDaemonPayload(
+export function openServerAutomationPayload(
+  automation: EncryptedServerAutomation,
+  machineSecretKey: Uint8Array,
+): MachinePayloadOpening<ServerAutomationPayload> {
+  return openAutomationPayloadForMachine({
+    payloadVersion: 1,
+    payloadCiphertext: automation.payloadCiphertext,
+    machineKeyEnvelope: automation.machineKeyEnvelope,
+    recipientSecretKey: machineSecretKey,
+    crypto: machineCrypto,
+  })
+}
+
+export function openSessionFollowupDaemonPayload(
   followup: SessionFollowupDaemon,
   machineSecretKey: Uint8Array,
+): MachinePayloadOpening<SessionFollowupPayload> {
+  return openSessionFollowupPayloadForMachine({
+    payloadVersion: 1,
+    payloadCiphertext: followup.payloadCiphertext,
+    machineKeyEnvelope: followup.machineKeyEnvelope,
+    recipientSecretKey: machineSecretKey,
+    crypto: machineCrypto,
+  })
+}
+
+interface TrustedPayloadInput {
+  machineSecretKey: Uint8Array
+  trust: PayloadTrust
+  machineId: string
+  /** Called when compat runs an anonymous payload, so it can be recorded (R14). */
+  onUnauthenticated?: () => void
+}
+
+/**
+ * aplus-dev-studio specs/e2ee-machine-control-boundary R13/R14 — the payload
+ * this daemon may run, or an Error named by the refusal code. A sender-sealed
+ * automation must have been sealed for this machine.
+ */
+export function trustedServerAutomationPayload(
+  automation: EncryptedServerAutomation,
+  input: TrustedPayloadInput,
+): ServerAutomationPayload {
+  const verdict = judgePayload({
+    trust: input.trust,
+    opening: openServerAutomationPayload(automation, input.machineSecretKey),
+    contextMatches: (payload) => payload.seal?.machineId === input.machineId,
+  })
+  if (!verdict.run) throw new Error(verdict.code)
+  if (!verdict.authenticated) input.onUnauthenticated?.()
+  return verdict.payload
+}
+
+/** As trustedServerAutomationPayload; a sender-sealed follow-up must name this machine, its project and its session. */
+export function trustedSessionFollowupPayload(
+  followup: SessionFollowupDaemon,
+  input: TrustedPayloadInput,
 ): SessionFollowupPayload {
-  if (machineSecretKey.length !== tweetnacl.box.secretKeyLength) throw new Error('session-followup-decrypt-failed')
-  const envelope = new Uint8Array(Buffer.from(followup.machineKeyEnvelope, 'base64'))
-  if (envelope.length !== ENVELOPE_BYTES || envelope[0] !== 1) throw new Error('session-followup-decrypt-failed')
-  const ephemeralPublicKey = envelope.slice(1, 1 + tweetnacl.box.publicKeyLength)
-  const envelopeNonce = envelope.slice(
-    1 + tweetnacl.box.publicKeyLength,
-    ENVELOPE_BYTES - tweetnacl.box.overheadLength - tweetnacl.secretbox.keyLength,
-  )
-  const encryptedDek = envelope.slice(1 + tweetnacl.box.publicKeyLength + tweetnacl.box.nonceLength)
-  const dek = tweetnacl.box.open(encryptedDek, envelopeNonce, ephemeralPublicKey, machineSecretKey)
-  if (!dek || dek.length !== tweetnacl.secretbox.keyLength) throw new Error('session-followup-decrypt-failed')
-  const payload = new Uint8Array(Buffer.from(followup.payloadCiphertext, 'base64'))
-  if (payload.length < 1 + tweetnacl.secretbox.nonceLength + tweetnacl.secretbox.overheadLength
-    || payload[0] !== 1) throw new Error('session-followup-decrypt-failed')
-  const nonce = payload.slice(1, 1 + tweetnacl.secretbox.nonceLength)
-  const ciphertext = payload.slice(1 + tweetnacl.secretbox.nonceLength)
-  const plaintext = tweetnacl.secretbox.open(ciphertext, nonce, dek)
-  if (!plaintext) throw new Error('session-followup-decrypt-failed')
-  try {
-    return sessionFollowupPayloadSchema.parse(JSON.parse(new TextDecoder().decode(plaintext)))
-  } catch {
-    throw new Error('session-followup-decrypt-failed')
-  }
+  const verdict = judgePayload({
+    trust: input.trust,
+    opening: openSessionFollowupDaemonPayload(followup, input.machineSecretKey),
+    contextMatches: (payload) => payload.seal?.machineId === input.machineId
+      && payload.seal.projectId === followup.projectId
+      && payload.seal.sessionId === followup.sessionId,
+  })
+  if (!verdict.run) throw new Error(verdict.code)
+  if (!verdict.authenticated) input.onUnauthenticated?.()
+  return verdict.payload
 }

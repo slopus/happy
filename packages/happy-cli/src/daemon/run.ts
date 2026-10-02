@@ -27,6 +27,7 @@ import {
 import { logger } from '@/ui/logger';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { settleMachineControl } from '@/datakey/machineControl';
+import type { PayloadTrust } from '@/daemon/automations/payloadTrust';
 import { createMachineControlIo } from '@/datakey/machineControlIo';
 import { configuration } from '@/configuration';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
@@ -224,8 +225,8 @@ import {
 } from './automations/machineAutomationKey';
 import {
   createServerAutomationCache,
-  decryptSessionFollowupDaemonPayload,
-  decryptServerAutomationPayload,
+  trustedSessionFollowupPayload,
+  trustedServerAutomationPayload,
 } from './automations/serverAutomationCache';
 import { createServerAutomationRuntimeStore } from './automations/serverAutomationRuntimeStore';
 import { fetchAutomationProjectEnvironment } from './automations/automationProjectEnvironment';
@@ -992,6 +993,20 @@ export async function startDaemon(): Promise<void> {
       logger.debug(`[managed] runtime ${managedIdentity.identity.runtimeId} admitted`);
     }
     let machineAutomationKey = loadOrCreateMachineAutomationKey(configuration.automationKeyFile);
+    // aplus-dev-studio specs/e2ee-machine-control-boundary R13/R14 — which client-sealed
+    // automations, follow-ups and scripts this daemon acts on.
+    const payloadTrust: PayloadTrust = {
+      mode: configuration.machineControl,
+      customerPublicKey: credentials.encryption.type === 'dataKey' ? credentials.encryption.publicKey : null,
+      machineAutomationPublicKey: machineAutomationKey.publicKey,
+    };
+    // Each unauthenticated payload is recorded once per revision rather than on every tick.
+    const recordedUnauthenticated = new Set<string>();
+    const recordUnauthenticated = (what: string) => {
+      if (recordedUnauthenticated.has(what)) return;
+      recordedUnauthenticated.add(what);
+      logger.debug(`[DAEMON RUN] Running ${what} sealed anonymously (unauthenticated sender; refused under strict machine control)`);
+    };
     const mcpCallerGrantKeyPair = tweetnacl.box.keyPair();
     const difficultyRoutingHostKey = createDifficultyRoutingHostKey();
     const difficultyRoutingHost = new DifficultyRoutingClassifierHost(difficultyRoutingHostKey, {
@@ -4255,7 +4270,12 @@ export async function startDaemon(): Promise<void> {
         machineSecretKey: machineAutomationKey.secretKey,
         now: Date.now(),
         transport: apiMachine.serverAutomationTransport(),
-        decryptPayload: decryptServerAutomationPayload,
+        decryptPayload: (automation, machineSecretKey) => trustedServerAutomationPayload(automation, {
+          machineSecretKey,
+          trust: payloadTrust,
+          machineId,
+          onUnauthenticated: () => recordUnauthenticated(`automation ${automation.automationId}@${automation.revision}`),
+        }),
         runScript: (input) => runAutomationScript({ ...input, allowedRoot: automationAllowedRoot }),
         queryGithubPullRequests: (input) => queryGithubPullRequests({
           ...input,
@@ -4359,10 +4379,20 @@ export async function startDaemon(): Promise<void> {
     const sessionFollowupTickRunner = createAutomationTickRunner({
       runTick: () => runSessionFollowupTick({
         transport: apiMachine.sessionFollowupTransport(),
-        decryptPayload: (followup) => decryptSessionFollowupDaemonPayload(
-          followup,
-          machineAutomationKey.secretKey,
-        ),
+        decryptPayload: (followup) => {
+          try {
+            return trustedSessionFollowupPayload(followup, {
+              machineSecretKey: machineAutomationKey.secretKey,
+              trust: payloadTrust,
+              machineId,
+              onUnauthenticated: () => recordUnauthenticated(`session follow-up ${followup.id}@${followup.revision}`),
+            });
+          } catch (error) {
+            // The runner reports DECRYPT_FAILED, the only code the server accepts for this; the cause is kept here.
+            logger.debug(`[DAEMON RUN] Session follow-up ${followup.id} refused: ${error instanceof Error ? error.message : error}`);
+            throw error;
+          }
+        },
         resolveSession: (sessionId) => {
           const tracked = findTrackedSessionById(sessionId);
           const directory = tracked?.happySessionMetadataFromLocalWebhook?.path ?? tracked?.directory;
