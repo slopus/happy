@@ -1,9 +1,57 @@
-# Store copy: Happy mobile app
+# Happy 1.8.0 — App Store and Google Play marketing
 
-Draft for the next native release (app version `1.8.0`). Nothing here has been
-uploaded. The copy blocks are ready to paste. Reviewer notes are at the bottom.
-They explain the claims and the deliberate omissions, and they are not for
-upload.
+All store copy is in this document, directly inside `marketing/`. Copy only the
+text inside the fenced blocks into the indicated store fields. Screenshot
+folders below contain the images to drag into each upload section. Reviewer
+notes at the bottom are not for upload. Locale: English (United States).
+
+## Where each field goes
+
+| Console section | Field | Copy in this document |
+| --- | --- | --- |
+| App Store Connect → App Information | Name | [Shared app name](#shared) |
+| App Store Connect → App Information | Subtitle | [App Store subtitle](#app-store-connect--ios-and-ipados) |
+| App Store Connect → iOS App → 1.8.0 | Promotional Text, Keywords, Support URL, Marketing URL | [App Store fields](#app-store-connect--ios-and-ipados) |
+| App Store Connect → iOS App → 1.8.0 | Description | [Shared full description](#shared-description--app-store-description-and-google-play-full-description) |
+| App Store Connect → iOS App → 1.8.0 | What's New in This Version | [Shared release notes](#shared-release-notes--whats-new-in-this-version-and-release-notes) |
+| Play Console → Store presence → Main store listing | App name | [Shared app name](#shared) |
+| Play Console → Store presence → Main store listing | Short description | [Google Play fields](#google-play-console--android) |
+| Play Console → Store presence → Main store listing | Full description | [Shared full description](#shared-description--app-store-description-and-google-play-full-description) |
+| Play Console → Store presence → Main store listing | Graphics → Phone / 7-inch tablet / 10-inch tablet screenshots | [Screenshot folders](#screenshots--drag-and-drop-folders) |
+| Play Console → Store settings | App category and contact website | [Google Play fields](#google-play-console--android) |
+| Play Console → App content → Privacy policy | Privacy policy URL | [Shared privacy policy](#shared) |
+| Play Console → Test and release → selected track → Edit release | Release name and Release notes | [Google Play fields](#google-play-console--android) |
+
+## Screenshots — drag-and-drop folders
+
+Select the five PNG files inside the folder for the specific upload section.
+
+| Store upload section | Exact image dimensions | Folder |
+| --- | --- | --- |
+| **App Store: iPhone 6.5-inch Display** | **1284 × 2778** | [iphone-6.5-inch-1284x2778](app-store/en-US/iphone-6.5-inch-1284x2778/) |
+| App Store: iPhone 6.9-inch Display | 1320 × 2868 | [iphone](app-store/en-US/iphone/) |
+| App Store: iPad 13-inch Display | 2064 × 2752 | [ipad](app-store/en-US/ipad/) |
+| Google Play: Phone screenshots | 1080 × 1920 | [phone](google-play/en-US/phone/) |
+| Google Play: 7-inch tablet screenshots | 1920 × 1080 | [tablet-7](google-play/en-US/tablet-7/) |
+| Google Play: 10-inch tablet screenshots | 1920 × 1080 | [tablet-10](google-play/en-US/tablet-10/) |
+
+For the App Store slot asking for 1242 × 2688 or 1284 × 2778, use only
+`iphone-6.5-inch-1284x2778`. The folder named `iphone` is the 6.9-inch set.
+
+## Logo and store icons
+
+| Use / store section | Exact dimensions | File |
+| --- | --- | --- |
+| Current Happy logo | 1024 × 1024 | [logo.png](logo.png) |
+| App Store app icon — supplied by the native build | 1024 × 1024 | [app-icon-1024x1024.png](app-store/app-icon-1024x1024.png) |
+| Google Play → Main store listing → Graphics → App icon | 512 × 512 | [app-icon-512x512.png](google-play/app-icon-512x512.png) |
+
+These opaque RGB/sRGB exports use the current H logo and galaxy background from
+the mobile app's configured `icon.png`. Apple gets its app icon from the build;
+there is no separate screenshot-slot upload for it.
+
+Google Play's Feature graphic is a separate 1024 × 500 field. No replacement
+feature graphic is prepared here; retain the existing Console asset.
 
 Positioning follows the live https://happy.engineering/desktop page ("Any Model.
 Your Team. Happy Harness."). The page credits multi-provider sessions,
@@ -28,13 +76,19 @@ Happy: Codex & Claude Code App
 https://happy.engineering
 ```
 
-**Privacy policy URL** (live page "Privacy Policy — Happy"; tracked source [`PRIVACY.md`](../../PRIVACY.md))
+**Privacy policy URL** (live page "Privacy Policy — Happy"; tracked source [`PRIVACY.md`](../PRIVACY.md))
 
 ```
 https://happy.engineering/privacy
 ```
 
-### App Store (iOS / iPadOS)
+### App Store Connect — iOS and iPadOS
+
+App Information → **Name**: use the shared app name above.
+App Information → **Primary Category**: Developer Tools.
+App Information → **Secondary Category**: Productivity.
+The following copy goes in the **1.8.0 version** fields, except Subtitle, which
+is under App Information.
 
 **Subtitle** (28 / 30)
 
@@ -54,7 +108,25 @@ Start, steer and approve Claude Code and Codex sessions from your phone. They ke
 ai,agent,coding,developer,terminal,cli,remote,programming,git,diff,llm,assistant,gpt,grok,mac,ssh
 ```
 
-### Google Play
+**Description**: paste the [shared full description](#shared-description--app-store-description-and-google-play-full-description).
+
+**What's New in This Version**: paste the [shared release notes](#shared-release-notes--whats-new-in-this-version-and-release-notes).
+
+**Support URL**
+
+```
+https://github.com/slopus/happy/issues
+```
+
+**Marketing URL**: `https://happy.engineering`.
+
+**Privacy Policy URL**: `https://happy.engineering/privacy`, under App Privacy.
+
+**App Previews and Screenshots**: use the App Store folders in the table above.
+
+### Google Play Console — Android
+
+**Main store listing → App name**: use the shared app name above.
 
 **Short description** (78 / 80)
 
@@ -62,7 +134,55 @@ ai,agent,coding,developer,terminal,cli,remote,programming,git,diff,llm,assistant
 Run Claude Code and Codex on your computer. Steer and approve from your phone.
 ```
 
-### Full description (App Store and Google Play; 2,474 / 4,000)
+**Main store listing → Full description**: paste the [shared full description](#shared-description--app-store-description-and-google-play-full-description).
+
+**Main store listing → Graphics**: upload the corresponding Phone, 7-inch tablet,
+and 10-inch tablet folders above. Google Play has no App Store-style Subtitle,
+Promotional Text, or Keywords field.
+
+**Store settings → App or game**: App.
+
+**Store settings → App category**: Productivity.
+
+**Store settings → Store listing contact details → Website**
+
+```
+https://happy.engineering
+```
+
+**Store listing contact details → Email address**: keep the existing verified
+support email in Play Console; no replacement email is supplied in this draft.
+
+**App content → Privacy policy**
+
+```
+https://happy.engineering/privacy
+```
+
+**Selected track → Edit release → Release name** (internal Console label)
+
+```
+1.8.0
+```
+
+**Selected track → Edit release → Release notes**: paste this complete block,
+including the language tags:
+
+```
+<en-US>
+• Easier setup: link your computer from one checklist, with troubleshooting and a Get help button
+• Bots: create one from your phone, give it a face and a name, and start talking
+• Drafts sync between your phone and desktop, and you can see when the agent picks up a sent message
+• Colored diffs, including a workspace's full branch changes
+• Projects: group checkouts, with their chats as tabs
+• Paste a picture straight from your clipboard
+• Faster chats and more reliable history loading
+</en-US>
+```
+
+### Shared description — App Store Description and Google Play Full description
+
+2,474 / 4,000 characters. Use the same block in both stores.
 
 ```
 Your coding agent shouldn't wait for you to get back to your desk.
@@ -106,7 +226,10 @@ Happy Desktop adds a harness that works across providers and lets you switch mod
 Happy is an independent project. It is not affiliated with or endorsed by Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic. Codex and ChatGPT are trademarks of OpenAI.
 ```
 
-### What's New in 1.8.0 (App Store and Google Play; 490 / 4,000; Play limit 500)
+### Shared release notes — What's New in This Version and Release notes
+
+490 characters. App Store limit: 4,000. Google Play limit: 500 per language.
+Google Play's complete language-tagged block is included in its section above.
 
 ```
 • Easier setup: link your computer from one checklist, with troubleshooting and a Get help button
