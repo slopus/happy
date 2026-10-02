@@ -57,7 +57,7 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RawJSONLinesSchema, type RawJSONLines } from './types';
 import { installBroadKillShims } from '@/utils/broadKillShims';
-import { readReconnectSessionEnvironment } from '@/daemon/reconnectSessionEnv';
+import { consumeReconnectSessionEnvironment } from '@/daemon/reconnectSessionEnv';
 import {
     assertClaudeConfirmedDeliveryPossible,
     deliverPreparedClaudeSessionStart,
@@ -325,7 +325,7 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
     // Resume-in-place must use the latest server document as its metadata
     // base. A fresh local document paired with the latest server version can
     // otherwise pass CAS while deleting the existing summary/title.
-    const reconnectSession = readReconnectSessionEnvironment(process.env);
+    const reconnectSession = consumeReconnectSessionEnvironment(process.env);
     const reconnectSessionId = reconnectSession?.id;
     const metadata = mergeReconnectSessionMetadata(reconnectSession?.metadata, freshMetadata);
     const allowAutomationReconnectPrompt = process.env.HAPPY_AUTOMATION_RESUME_PROMPT === '1';
