@@ -4,7 +4,7 @@
  */
 
 import { logger as defaultLogger } from '@/ui/logger';
-import { decodeBase64, encodeBase64, encrypt, decrypt } from '@/api/encryption';
+import { decodeBase64, encodeBase64, encrypt, tryDecrypt } from '@/api/encryption';
 import {
     RpcHandler,
     RpcHandlerMap,
@@ -136,8 +136,18 @@ export class RpcHandlerManager {
             }
 
             // Decrypt the incoming params
-            const decode = () => decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(request.params));
-            const decryptedParams = trace ? trace.measureSync('daemon-decrypt', decode) : decode();
+            const decode = () => tryDecrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(request.params));
+            const opened = trace ? trace.measureSync('daemon-decrypt', decode) : decode();
+            // The scope key is the caller's only credential: a request it
+            // cannot open is not a call, however harmless the method looks.
+            if (!opened.ok) {
+                this.logger('[RPC] [ERROR] Request was not sealed with this scope key', { method: request.method });
+                return encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, {
+                    error: 'Request could not be decrypted',
+                    code: 'RPC_DECRYPT_FAILED',
+                }));
+            }
+            const decryptedParams = opened.value;
 
             // Call the handler
             this.logger('[RPC] Calling handler', { method: request.method });

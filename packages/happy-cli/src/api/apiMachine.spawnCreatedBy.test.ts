@@ -48,7 +48,7 @@ describe('ApiMachineClient spawn/resume RPC passthrough', () => {
         }
     );
 
-    it('rejects empty dataKey params after decrypt returns null without spawning a session', async () => {
+    it('refuses empty dataKey params before dispatch without spawning a session', async () => {
         const spawnSession = vi.fn();
         const { ApiMachineClient } = await import('./apiMachine');
         const { decodeBase64, decrypt } = await import('./encryption');
@@ -59,6 +59,25 @@ describe('ApiMachineClient spawn/resume RPC passthrough', () => {
         const encryptedResponse = await (client as any).rpcHandlerManager.handleRequest({
             method: 'machine-1:spawn-happy-session',
             params: '',
+        });
+
+        expect(decrypt(machine.encryptionKey, 'dataKey', decodeBase64(encryptedResponse))).toMatchObject({
+            code: 'RPC_DECRYPT_FAILED',
+        });
+        expect(spawnSession).not.toHaveBeenCalled();
+    });
+
+    it('rejects authenticated null dataKey params without spawning a session', async () => {
+        const spawnSession = vi.fn();
+        const { ApiMachineClient } = await import('./apiMachine');
+        const { decodeBase64, decrypt, encodeBase64, encrypt } = await import('./encryption');
+        const machine = machineClient('dataKey');
+        const client = new ApiMachineClient('token', machine);
+        client.setRPCHandlers(rpcHandlers({ spawnSession }));
+
+        const encryptedResponse = await (client as any).rpcHandlerManager.handleRequest({
+            method: 'machine-1:spawn-happy-session',
+            params: encodeBase64(encrypt(machine.encryptionKey, 'dataKey', null)),
         });
 
         expect(decrypt(machine.encryptionKey, 'dataKey', decodeBase64(encryptedResponse))).toEqual({
