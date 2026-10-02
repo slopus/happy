@@ -4092,6 +4092,26 @@ describe('host commands disallowed (Windows standalone runtime)', () => {
     }))
   })
 
+  // tick 단위 worktree 정리도 git 을 Job 밖에서 띄운다. 기록은 남겨 두고 정리만 건너뛴다.
+  it.each([
+    { hostCommandsAllowed: undefined, discards: true },
+    { hostCommandsAllowed: false, discards: false },
+  ])('discards a finished journaled worktree only when host commands are allowed ($hostCommandsAllowed)', async ({ hostCommandsAllowed, discards }) => {
+    const fixture = setup()
+    if (hostCommandsAllowed !== undefined) fixture.input.hostCommandsAllowed = hostCommandsAllowed
+    const journaled = {
+      automationId: 'automation-1', generation: 2, runId: 'run-done',
+      repositoryRoot: '/repo', worktreePath: '/isolated/run-done', directory: '/isolated/run-done',
+      sessionId: 'done-session', createdAt: fixture.now - 60_000,
+    }
+    fixture.store.write({ ...fixture.store.read(), githubWorktrees: [journaled] })
+
+    await runServerAutomationTick(fixture.input)
+
+    expect(fixture.discardGithubWorktree).toHaveBeenCalledTimes(discards ? 1 : 0)
+    if (!discards) expect(fixture.store.state().githubWorktrees).toEqual([journaled])
+  })
+
   it('reports a GitHub trigger as unsupported without querying GitHub or preparing a worktree', async () => {
     const fixture = setup(claimed)
     fixture.input.hostCommandsAllowed = false

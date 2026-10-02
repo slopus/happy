@@ -1713,7 +1713,8 @@ export async function runServerAutomationTick(
   input: ServerAutomationExecutorInput,
 ): Promise<Array<{ automationId: string; outcome: ServerAutomationReportOutcome }>> {
   await flushPendingReports(input)
-  await cleanupInactiveGithubWorktrees(input)
+  // Cleanup runs git outside the Windows Job; keep the journal until a runtime that may run it.
+  if (input.hostCommandsAllowed !== false) await cleanupInactiveGithubWorktrees(input)
   const cache = input.cache.read()
   if (cache.cursor === 0n) return []
   const now = serverNow(cache, input.now)
