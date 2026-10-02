@@ -1,0 +1,4 @@
+interface:
+  display_name: "升级 Codex CLI"
+  short_description: "检查并升级本机 Codex CLI 到最新稳定版"
+  default_prompt: "使用 $codex-upgrade 升级本机 Codex CLI，并核对版本和运行状态。"
