@@ -5,6 +5,7 @@ const fixture = vi.hoisted(() => ({
     aborted: false,
     token: '',
     requestIds: undefined as string[] | undefined,
+    channelRequestId: undefined as string | undefined,
     steerText: '',
     emit: null as null | ((event: unknown) => void),
     closeQueue: null as null | (() => void),
@@ -13,6 +14,7 @@ const fixture = vi.hoisted(() => ({
     proposal: { name: 'Verified recovery' },
     statusProbeFails: false,
     send: vi.fn(),
+    startThread: vi.fn(),
     session: {
         sessionId: 'lesson-session', getMetadata: () => ({ path: '/tmp/lesson-test' }),
         drainAttachmentsForUserMessage: vi.fn(async () => []),
@@ -32,7 +34,10 @@ vi.mock('@/utils/MessageQueue2', async (original) => {
         constructor(hash: (mode: T) => string) { super(hash); fixture.closeQueue = () => this.close(); }
         async waitForMessagesAndGetAsString(signal?: AbortSignal) {
             const batch = await super.waitForMessagesAndGetAsString(signal);
-            return batch && fixture.requestIds ? { ...batch, requestIds: fixture.requestIds } : batch;
+            return batch ? { ...batch,
+                ...(fixture.requestIds ? { requestIds: fixture.requestIds } : {}),
+                ...(fixture.channelRequestId ? { channelRequestId: fixture.channelRequestId } : {}),
+            } : batch;
         }
     } };
 });
@@ -67,13 +72,14 @@ vi.mock('@/codex/codexAppServerClient', () => ({ CodexAppServerClient: class {
     setEventHandler = (handler: (event: unknown) => void) => { fixture.emit = handler; };
     supportsGoalActions = () => false;
     hasActiveThread = () => Boolean(this.threadId);
-    startThread = async () => { this.threadId = 'thread'; return { threadId: 'thread', model: 'test' }; };
+    startThread = async (options: unknown) => { fixture.startThread(options); this.threadId = 'thread'; return { threadId: 'thread', model: 'test' }; };
     abortPreparedTurn = vi.fn();
     abortTurnWithFallback = async () => ({ forcedRestart: false });
     sendTurnAndWait = async (prompt: string, options: unknown) => {
         fixture.send(prompt, options);
         fixture.token = prompt.match(/token="([^"]+)"/)![1];
         expect(fixture.submit?.({ token: fixture.token, proposal: fixture.proposal })).toEqual({ accepted: true });
+        (options as { onSubmitted?: () => void })?.onSubmitted?.();
         await fixture.onSend?.();
         return { aborted: fixture.aborted };
     };
@@ -89,7 +95,7 @@ afterEach(() => {
             if (!signalListeners.get(signal)?.has(listener)) process.removeListener(signal, listener);
         }
     }
-    fixture.requestIds = undefined; vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.clearAllMocks(); fixture.submit = null; fixture.onSend = null; fixture.onSteer = null; fixture.steerText = ''; fixture.statusProbeFails = false; fixture.session.sendTurnLatency.mockReset(); });
+    fixture.requestIds = undefined; fixture.channelRequestId = undefined; vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.clearAllMocks(); fixture.submit = null; fixture.onSend = null; fixture.onSteer = null; fixture.steerText = ''; fixture.statusProbeFails = false; fixture.session.sendTurnLatency.mockReset(); });
 
 // specs/checkpoint-local-history — Codex keeps its process across turns and records the folder
 // before dispatch and after the turn, including a turn the provider failed.
@@ -140,8 +146,10 @@ describe('Codex local history wiring', () => {
         vi.stubEnv('HAPPY_INITIAL_PROMPT', 'Edit b.html');
         const calls: string[] = [];
         const { createCheckpointSessionComposition } = await import('@/checkpoint/checkpointSessionComposition');
+        const agentReader = { guidance: vi.fn(async () => 'checkpoint test guidance'), status: vi.fn(), query: vi.fn() } as never;
         vi.mocked(createCheckpointSessionComposition).mockResolvedValueOnce({
             sandboxConfig: undefined,
+            agentReader,
             localHistory: {
                 beforeTurn: async () => { calls.push('before'); return { operationId: 'turn-1', checkpointId: 'a'.repeat(40), providerPath: process.cwd() }; },
                 afterTurn: async () => { calls.push('after'); },
@@ -155,11 +163,106 @@ describe('Codex local history wiring', () => {
         const { runCodex } = await import('./runCodex');
         await runCodex({ principal: { kind: 'account', credentials: { token: 'test-token' } as never },
             noSandbox: true, lessons: { turn: null, review, sessionKind: 'foreground' } });
+        const { startHappyServer } = await import('@/claude/utils/startHappyServer');
+        expect(startHappyServer).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ checkpointReader: agentReader }));
+        expect(fixture.startThread).toHaveBeenCalledWith(expect.objectContaining({ developerInstructions: expect.stringContaining('checkpoint test guidance') }));
         expect(calls).toEqual(['before', 'send', 'after']);
     });
 });
 
 describe('Codex foreground lesson proposal wiring', () => {
+    it.each(['prepare_rejected', 'late_channel_cancel', 'abort_during_permit', 'accepted', 'abort_during_recall'] as const)(
+        'starts stateful host memory only after channel execution admission (%s)', async (scenario) => {
+            for (const key of Object.keys(process.env)) {
+                if (/^(HAPPY_RECONNECT_|HAPPY_INITIAL_|HAPPY_FORK|HAPPY_MANAGED_|SAYCODE_PROVIDER_|HAPPY_AUTOMATION_)/.test(key)) vi.stubEnv(key, undefined);
+            }
+            fixture.aborted = false;
+            fixture.channelRequestId = 'channel-request';
+            vi.stubEnv('HAPPY_AUTOMATION_RUN_ONCE', '1');
+            vi.stubEnv('HAPPY_INITIAL_PROMPT', 'Channel foreground request');
+            const abortCurrent = async () => {
+                const abort = fixture.session.rpcHandlerManager.registerHandler.mock.calls.find(([name]) => name === 'abort')![1] as () => Promise<unknown>;
+                await abort();
+                fixture.closeQueue?.();
+            };
+            const { ChannelPromptAcceptance } = await import('@/channel/channelPromptAcceptance');
+            const prepare = vi.spyOn(ChannelPromptAcceptance.prototype, 'prepareExecution').mockImplementation(async () => {
+                if (scenario === 'abort_during_permit') {
+                    // Keep the permit pending across an explicit foreground abort, then grant it.
+                    await Promise.resolve();
+                    await abortCurrent();
+                }
+                if (scenario === 'prepare_rejected') { fixture.closeQueue?.(); return false; }
+                return true;
+            });
+            const begin = vi.spyOn(ChannelPromptAcceptance.prototype, 'beginExecution').mockImplementation(() => {
+                if (scenario === 'late_channel_cancel') { fixture.closeQueue?.(); return false; }
+                return true;
+            });
+            const memory = await import('@/memory/codexRecallHost');
+            const recall = vi.fn(async ({ signal }: { signal: AbortSignal }) => {
+                if (scenario === 'abort_during_recall') {
+                    await abortCurrent();
+                    expect(signal.aborted).toBe(true);
+                    return { reason: 'cancelled' as const, context: '' };
+                }
+                return { reason: 'context_returned' as const, context: 'Historical memory reference', startupIncluded: true as const };
+            });
+            const markSubmitted = vi.fn();
+            vi.spyOn(memory, 'prepareCodexRecallHost').mockResolvedValue({ recall, markSubmitted });
+            const review = { prepareReviewTurn: vi.fn(async () => ({ revision: 9 })), reviewFinishedTurn: vi.fn(async () => 'reviewed' as const) };
+            const { runCodex } = await import('./runCodex');
+            await runCodex({ principal: { kind: 'account', credentials: { token: 'test-token' } as never },
+                noSandbox: true, lessons: { turn: null, review, sessionKind: 'foreground' } });
+            expect(prepare).toHaveBeenCalledWith('channel-request');
+            if (scenario === 'prepare_rejected' || scenario === 'abort_during_permit' || scenario === 'abort_during_recall') expect(begin).not.toHaveBeenCalled();
+            else expect(begin).toHaveBeenCalledWith('channel-request');
+            if (scenario === 'accepted' || scenario === 'abort_during_recall' || scenario === 'late_channel_cancel') {
+                expect(recall).toHaveBeenCalledOnce();
+                expect(prepare.mock.invocationCallOrder[0]).toBeLessThan(recall.mock.invocationCallOrder[0]);
+                if (scenario !== 'abort_during_recall') expect(recall.mock.invocationCallOrder[0]).toBeLessThan(begin.mock.invocationCallOrder[0]);
+            } else expect(recall).not.toHaveBeenCalled();
+            if (scenario === 'accepted') {
+                expect(fixture.send).toHaveBeenCalledOnce();
+                expect(recall.mock.invocationCallOrder[0]).toBeLessThan(fixture.send.mock.invocationCallOrder[0]);
+                expect(begin.mock.invocationCallOrder[0]).toBeLessThan(fixture.send.mock.invocationCallOrder[0]);
+                expect(markSubmitted).toHaveBeenCalledWith('thread', true);
+            } else {
+                expect(fixture.send).not.toHaveBeenCalled();
+                expect(markSubmitted).not.toHaveBeenCalled();
+                expect(review.reviewFinishedTurn).not.toHaveBeenCalled();
+            }
+        },
+    );
+
+    it.each(['context_returned', 'hook_diagnostic'] as const)('assembles only successful host memory and commits it at provider acceptance (%s)', async (reason) => {
+        for (const key of Object.keys(process.env)) {
+            if (/^(HAPPY_RECONNECT_|HAPPY_INITIAL_|HAPPY_FORK|HAPPY_MANAGED_|SAYCODE_PROVIDER_|HAPPY_AUTOMATION_)/.test(key)) vi.stubEnv(key, undefined);
+        }
+        fixture.aborted = false;
+        vi.stubEnv('HAPPY_AUTOMATION_RUN_ONCE', '1');
+        vi.stubEnv('HAPPY_INITIAL_PROMPT', 'Original foreground request');
+        const memory = await import('@/memory/codexRecallHost');
+        const recall = vi.fn(async () => ({ reason, context: 'Historical memory reference', startupIncluded: true as const }));
+        const markSubmitted = vi.fn();
+        const prepare = vi.spyOn(memory, 'prepareCodexRecallHost').mockResolvedValue({ recall, markSubmitted });
+        const review = { prepareReviewTurn: vi.fn(async () => ({ revision: 9 })), reviewFinishedTurn: vi.fn(async () => 'reviewed' as const) };
+        const { runCodex } = await import('./runCodex');
+        await runCodex({ principal: { kind: 'account', credentials: { token: 'test-token' } as never },
+            noSandbox: true, lessons: { turn: null, review, sessionKind: 'foreground' } });
+        expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ accountOwned: true, projectPath: process.cwd() }));
+        expect(recall).toHaveBeenCalledWith(expect.objectContaining({ threadId: 'thread', prompt: 'Original foreground request', resumed: false }));
+        expect(fixture.startThread.mock.invocationCallOrder[0]).toBeLessThan(recall.mock.invocationCallOrder[0]);
+        if (reason === 'context_returned') {
+            const sent = fixture.send.mock.calls[0][0] as string;
+            expect(sent.indexOf('Historical memory reference')).toBeLessThan(sent.indexOf('Original foreground request'));
+            expect(markSubmitted).toHaveBeenCalledWith('thread', true);
+        } else {
+            expect(fixture.send.mock.calls[0][0]).not.toContain('Historical memory reference');
+            expect(markSubmitted).not.toHaveBeenCalled();
+        }
+    });
+
     it('preserves durable local-auto request ids through a merged Codex batch', async () => {
         for (const key of Object.keys(process.env)) {
             if (/^(HAPPY_RECONNECT_|HAPPY_INITIAL_|HAPPY_FORK|HAPPY_MANAGED_|SAYCODE_PROVIDER_|HAPPY_AUTOMATION_)/.test(key)) vi.stubEnv(key, undefined);
@@ -331,6 +434,10 @@ describe('Codex foreground lesson proposal wiring', () => {
     it('does not dispatch a cancelled prompt when explicit abort arrives during lesson preparation', async () => {
         const { DifficultyRoutingCommitter } = await import('@/difficultyRoutingCommit');
         const discard = vi.spyOn(DifficultyRoutingCommitter.prototype, 'discardPending');
+        const memory = await import('@/memory/codexRecallHost');
+        const recall = vi.fn(async () => ({ reason: 'context_returned' as const, context: 'Historical memory reference', startupIncluded: true as const }));
+        const markSubmitted = vi.fn();
+        vi.spyOn(memory, 'prepareCodexRecallHost').mockResolvedValue({ recall, markSubmitted });
         fixture.requestIds = ['cancelled-request', 'merged-request'];
         fixture.aborted = false;
         for (const key of Object.keys(process.env)) {
@@ -352,6 +459,8 @@ describe('Codex foreground lesson proposal wiring', () => {
         expect(discard).toHaveBeenCalledWith(['cancelled-request', 'merged-request'], 'cancelled');
         expect(review.prepareReviewTurn).toHaveBeenCalledOnce();
         expect(fixture.send).not.toHaveBeenCalled();
+        expect(recall).not.toHaveBeenCalled();
+        expect(markSubmitted).not.toHaveBeenCalled();
         expect(review.reviewFinishedTurn).not.toHaveBeenCalled();
     });
 

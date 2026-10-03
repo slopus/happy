@@ -16,7 +16,8 @@ const {
     mockBackoff,
     mockDelay,
     mockShouldReconnect,
-    mockNotifyDaemonSessionRuntime
+    mockNotifyDaemonSessionRuntime,
+    sessionRpcConfigs
 } = vi.hoisted(() => ({
     mockIo: vi.fn(),
     mockAxiosGet: vi.fn(),
@@ -35,7 +36,8 @@ const {
     }),
     mockDelay: vi.fn(async () => undefined),
     mockShouldReconnect: vi.fn(() => true),
-    mockNotifyDaemonSessionRuntime: vi.fn(async () => ({ status: 'ok' }))
+    mockNotifyDaemonSessionRuntime: vi.fn(async () => ({ status: 'ok' })),
+    sessionRpcConfigs: [] as Array<{ requireBoundRequests?: boolean }>
 }));
 
 vi.mock('socket.io-client', () => ({
@@ -66,6 +68,9 @@ vi.mock('@/ui/logger', () => ({
 
 vi.mock('@/api/rpc/RpcHandlerManager', () => ({
     RpcHandlerManager: class {
+        constructor(config: { requireBoundRequests?: boolean }) {
+            sessionRpcConfigs.push(config);
+        }
         onSocketConnect = vi.fn();
         onSocketDisconnect = vi.fn();
         handleRequest = vi.fn(async () => '');
@@ -206,6 +211,24 @@ describe('ApiSessionClient v3 messages API migration', () => {
     // 'disconnect' 핸들러가 startSmartReconnect() 를 걸어, 1초 뒤 소켓이 다시
     // 붙는다. 살아있는 소켓이 이벤트 루프를 붙잡아 run-once 세션이 끝나지 못했고,
     // 그 프로세스가 worktree 를 점유해 그 저장소의 리뷰 큐가 통째로 멈췄다.
+    // aplus-dev-studio specs/e2ee-machine-control-boundary R19 — the session scope answers
+    // customer RPCs with its own key, so strict requires them bound there too.
+    it('requires bound session RPCs under strict machine control only', async () => {
+        const { configuration } = await import('@/configuration');
+        const mode = configuration as { machineControl?: 'compat' | 'strict' };
+        try {
+            mode.machineControl = 'strict';
+            await new ApiSessionClient('fake-token', session).close();
+            expect(sessionRpcConfigs.at(-1)?.requireBoundRequests).toBe(true);
+
+            mode.machineControl = 'compat';
+            await new ApiSessionClient('fake-token', session).close();
+            expect(sessionRpcConfigs.at(-1)?.requireBoundRequests).toBe(false);
+        } finally {
+            delete mode.machineControl;
+        }
+    });
+
     it('never reconnects after the session was deliberately closed', async () => {
         vi.useFakeTimers();
         const client = new ApiSessionClient('fake-token', session);

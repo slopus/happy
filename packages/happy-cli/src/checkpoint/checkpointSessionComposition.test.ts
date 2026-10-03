@@ -86,7 +86,8 @@ describe('createCheckpointSessionComposition', () => {
             env: {},
         });
 
-        expect(result).toEqual({ sandboxConfig });
+        expect(result.sandboxConfig).toBe(sandboxConfig);
+        expect(await result.agentReader?.status()).toMatchObject({ enabled: false, reason: 'session-context-unavailable' });
     });
 
     it('fails closed without a daemon-owned binding or on an unsupported platform', async () => {

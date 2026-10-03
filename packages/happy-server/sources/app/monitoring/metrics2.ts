@@ -184,6 +184,21 @@ export const redisStreamWriteFailuresCounter = new Counter({
     registers: [register]
 });
 
+export const redisStreamReadFailuresCounter = new Counter({
+    name: 'redis_stream_read_failures_total',
+    help: 'Failed XREAD commands on the Socket.IO cluster bus',
+    labelNames: ['bus', 'code'] as const,
+    registers: [register]
+});
+
+export const redisStreamReadDuration = new Histogram({
+    name: 'redis_stream_read_duration_seconds',
+    help: 'XREAD elapsed time including BLOCK wait, network and event-loop delay',
+    labelNames: ['bus', 'result'] as const,
+    buckets: [0.01, 0.1, 0.25, 0.5, 1, 2, 5, 10],
+    registers: [register]
+});
+
 export const redisStreamInfoFailuresCounter = new Counter({
     name: 'redis_stream_info_failures_total',
     help: 'Failed XINFO reads of the Socket.IO cluster stream (lag gauge goes stale while this climbs)',

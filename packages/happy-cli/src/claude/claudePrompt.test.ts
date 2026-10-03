@@ -97,3 +97,12 @@ describe('Saycode API gateway system guidance', () => {
     }).appendSystemPrompt).toBe('PROJECT API CONTRACT');
   });
 });
+
+
+it('includes active checkpoint facts with client instructions and leaves inactive guidance absent', () => {
+  const active = buildClaudeSystemPromptOptions({ saycodeSystemPrompt: '', appendSystemPrompt: 'USER CONTEXT', checkpointGuidance: 'ACTIVE CHECKPOINT FACTS' });
+  expect(active.appendSystemPrompt).toContain('ACTIVE CHECKPOINT FACTS'); expect(active.appendSystemPrompt).toContain('USER CONTEXT');
+  const custom = buildClaudeSystemPromptOptions({ saycodeSystemPrompt: '', customSystemPrompt: 'USER CUSTOM', checkpointGuidance: 'ACTIVE CHECKPOINT FACTS' });
+  expect(custom.customSystemPrompt).toBe('USER CUSTOM\n\nACTIVE CHECKPOINT FACTS');
+  expect(buildClaudeSystemPromptOptions({ saycodeSystemPrompt: '', checkpointGuidance: '' }).appendSystemPrompt).not.toContain('CHECKPOINT');
+});

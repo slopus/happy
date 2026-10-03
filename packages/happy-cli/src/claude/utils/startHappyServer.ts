@@ -28,6 +28,8 @@ import { join } from 'node:path';
 import { projectPath } from '@/projectPath';
 import { MandatorySandboxError } from '@/sandbox/sandboxPolicy';
 import { registerBrowserTaskTools, BROWSER_TASK_TOOL_NAMES } from '@/browserRuntime/agentTools';
+import { registerCheckpointAgentTools } from '@/checkpoint/checkpointAgentTools';
+import type { CheckpointAgentReader } from '@/checkpoint/checkpointAgentReader';
 import { RuntimeClient } from '@/browserRuntime/runtimeClient';
 import { createBrokerGrantSource } from '@/browserRuntime/brokerGrantSource';
 import { BrowserRuntimeError } from '@/browserRuntime/contracts';
@@ -41,6 +43,7 @@ import { runScriptAutomationTool, scriptAutomationToolRequestSchema } from './sc
 export const BASH_STREAM_AGENT_TOOL_NAME = 'mcp__happy__bash_stream';
 
 export interface HappyServerHandlers {
+    checkpointReader?: CheckpointAgentReader;
     admitTool?: <T>(work: () => Promise<T>) => Promise<T>;
     changeTitle: (title: string, branchSlug?: string) => Promise<{ success: boolean; error?: string }>;
     client: ApiSessionClient;
@@ -119,6 +122,8 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
         name: "Happy MCP",
         version: "1.0.0",
     });
+
+    if (handlers.checkpointReader) registerCheckpointAgentTools(mcp, handlers.checkpointReader, runTool);
 
     if (handlers.proposeLesson && !handlers.mandatorySandbox) {
         mcp.registerTool('propose_lesson', {
@@ -466,6 +471,7 @@ function createBrowserTaskRuntimeClient(client: ApiSessionClient, profileId: str
 export async function startHappyServer(
     client: ApiSessionClient,
     options: {
+        checkpointReader?: CheckpointAgentReader;
         exitAfterFirstTurn?: boolean;
         /** Set by the daemon for a Studio Chat(beta) session (HAPPY_AUTOMATION_BROWSER_CONTINUATION). */
         browserHostContinues?: boolean;
@@ -518,6 +524,7 @@ export async function startHappyServer(
         }
         const mcp = createMcpServer({
             changeTitle,
+            checkpointReader: options.checkpointReader,
             admitTool: options.admitTool,
             client,
             mandatorySandbox: options.mandatorySandbox,
@@ -582,9 +589,9 @@ export async function startHappyServer(
         url: baseUrl.toString(),
         socketPath,
         mcpConfig,
-        toolNames: options.mandatorySandbox
+        toolNames: [...(options.checkpointReader ? ['checkpoint_status', 'checkpoint_list', 'checkpoint_preview', 'checkpoint_diff'] : []), ...(options.mandatorySandbox
             ? ['change_title', ...(browserTaskRuntime ? BROWSER_TASK_TOOL_NAMES : [])]
-            : [...(options.proposeLesson ? ['propose_lesson'] : []), 'change_title', 'bash_stream', 'script_automations', ...(browserTaskRuntime ? BROWSER_TASK_TOOL_NAMES : BROWSER_TOOL_NAMES)],
+            : [...(options.proposeLesson ? ['propose_lesson'] : []), 'change_title', 'bash_stream', 'script_automations', ...(browserTaskRuntime ? BROWSER_TASK_TOOL_NAMES : BROWSER_TOOL_NAMES)])],
         stop: () => {
             logger.debug(`[happyMCP] server:stop sessionId=${client.sessionId}`);
             server.close(() => { if (privateDir) rmSync(privateDir, { recursive: true, force: true }); });

@@ -91,4 +91,17 @@ describe('configuration machine control mode', () => {
     expect(configuration.machineControl).toBe(expected);
     cleanup();
   });
+
+  // HAPPY_MACHINE_CONTROL=strict runs a process strict even from a happy home without
+  // settings.json. The variable never lowers strict.
+  it.each([
+    [{ HAPPY_MACHINE_CONTROL: 'strict' }, undefined, 'strict'],
+    [{ HAPPY_MACHINE_CONTROL: 'compat' }, { machineControl: 'strict' }, 'strict'],
+    [{ HAPPY_MACHINE_CONTROL: 'anything' }, undefined, 'compat'],
+  ])('reads env %j with settings %j as %s', async (env, settings, expected) => {
+    const { configuration, cleanup } = await loadConfiguration(env, settings);
+
+    expect(configuration.machineControl).toBe(expected);
+    cleanup();
+  });
 });

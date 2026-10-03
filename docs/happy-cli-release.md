@@ -99,6 +99,24 @@ then pushed, the workflow correctly attempts the same version a second time and 
 with E403. Do not re-run that job. Check the published version and publish a new version
 through CI only when a correction is required.
 
+## Verification Recovery Without Republishing
+
+If npm accepted a publication but registry propagation exceeded the CI wait window,
+do not rerun the publisher. Once the matching release tag exists, dispatch the
+verification-only path from `main`:
+
+```sh
+gh workflow run publish-happy-cli.yml --repo buzzni/happy --ref main -f version=1.1.10-aplus.274
+```
+
+`workflow_dispatch` skips the publish job entirely and has no npm publication token
+or provenance permission. The verifier validates the exact version against its
+existing tag, waits up to 60 propagation checks at 30-second intervals, packs only
+that registry version, verifies its identity, and runs the artifact guard with a
+fresh install, CLI version, agent facade, daemon preflight, and daemon status smoke.
+It never moves `latest` or other dist-tags. Keep the original run's failure visible
+and record the separate successful verification run before consuming the release.
+
 ## Required User Approval Checkpoint
 
 Local implementation, tests, build, package preparation, `npm pack`, and artifact

@@ -24,10 +24,44 @@ export function redisErrorCode(error: unknown): string {
     if (typeof code === 'string' && code.length > 0) return code;
     const message = (error as { message?: unknown }).message;
     if (typeof message === 'string') {
+        if (message === 'Command timed out') return 'TIMEOUT';
         const prefix = KNOWN_REPLY_PREFIXES.find((candidate) => message.startsWith(candidate));
         if (prefix) return prefix;
     }
     return 'UNKNOWN';
+}
+
+/** Observe XREAD before the adapter swallows failures, without changing polling. */
+export function instrumentStreamReads(
+    client: { xread: (...args: any[]) => Promise<any> },
+    observe: (result: 'success' | 'failure', seconds: number, error?: unknown) => void,
+): void {
+    const read = client.xread.bind(client);
+    client.xread = async (...args: any[]) => {
+        let started: number;
+        try {
+            started = performance.now();
+        } catch {
+            // Missing diagnostics must not prevent the Redis command itself.
+            return read(...args);
+        }
+        const report = (result: 'success' | 'failure', error?: unknown) => {
+            try {
+                const seconds = Math.max(0, performance.now() - started) / 1000;
+                if (result === 'failure') observe(result, seconds, error);
+                else observe(result, seconds);
+            } catch { /* Observation must not stop the stream reader. */ }
+        };
+        let value: any;
+        try {
+            value = await read(...args);
+        } catch (error) {
+            report('failure', error);
+            throw error;
+        }
+        report('success');
+        return value;
+    };
 }
 
 /**

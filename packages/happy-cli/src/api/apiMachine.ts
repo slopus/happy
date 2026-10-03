@@ -110,7 +110,7 @@ import {
 import { PreviewWsProxy } from '@/daemon/previewWsProxy';
 import { startServerProcess, StartServerError } from '@/daemon/startServer';
 import packageJson from '../../package.json';
-import { AUTOMATION_PROTOCOL_VERSION, type AuthenticatedEnvelopesCapability } from '@slopus/happy-wire';
+import { AUTOMATION_PROTOCOL_VERSION, RPC_BINDING_CAPABILITY, type AuthenticatedEnvelopesCapability } from '@slopus/happy-wire';
 import { stopServerProcess, StopServerError } from '@/daemon/stopServer';
 import { createPtySession } from '@/daemon/remoteTerminal';
 import { decideTerminalCwd, formatCwdFallbackBanner } from '@/daemon/decideTerminalCwd';
@@ -864,6 +864,8 @@ export class ApiMachineClient {
             encryptionKey: this.machine.encryptionKey,
             encryptionVariant: this.machine.encryptionVariant,
             serverLane: machineServerLane(this.machine),
+            // aplus-dev-studio specs/e2ee-machine-control-boundary R19.
+            requireBoundRequests: configuration.machineControl === 'strict',
             logger: (msg, data) => logger.debug(msg, data)
         });
 
@@ -1012,6 +1014,8 @@ export class ApiMachineClient {
             this.rpcHandlerManager.registerHandler('checkpoint:status', checkpoint.status);
             this.rpcHandlerManager.registerHandler('checkpoint:list', checkpoint.list);
             this.rpcHandlerManager.registerHandler('checkpoint:preview', checkpoint.preview);
+            if (checkpoint.retireWorktree) this.rpcHandlerManager.registerHandler('checkpoint:retire-worktree', checkpoint.retireWorktree);
+            if (checkpoint.diff) this.rpcHandlerManager.registerHandler('checkpoint:diff', checkpoint.diff);
             this.rpcHandlerManager.registerHandler('checkpoint:execute', checkpoint.execute);
             this.rpcHandlerManager.registerHandler('checkpoint:cancel', checkpoint.cancel);
             this.rpcHandlerManager.registerHandler('checkpoint:retry', checkpoint.retry);
@@ -3948,6 +3952,9 @@ export class ApiMachineClient {
             const advertisedChannelHost = this.managedHandlers ? undefined : this.channelHostAdvertisement;
             const channelHostStale = JSON.stringify(this.machine.metadata?.channelHost)
                 !== JSON.stringify(advertisedChannelHost);
+            const advertisedRpcBinding = this.managedHandlers ? undefined : RPC_BINDING_CAPABILITY;
+            const rpcBindingStale = JSON.stringify(this.machine.metadata?.rpcBinding)
+                !== JSON.stringify(advertisedRpcBinding);
 
             this.syncResumeSessionRpcRegistration();
 
@@ -3958,7 +3965,7 @@ export class ApiMachineClient {
             // Bounded: an acknowledgement that never comes must not block every later change.
             const awaitingServer = this.capabilityUpdateInFlight !== null
                 && Date.now() - this.capabilityUpdateInFlight.startedAt < CAPABILITY_UPDATE_WAIT_MS;
-            if (!awaitingServer && (cliAvailabilityChanged || resumeSupportChanged || cliVersionChanged || automationSupportChanged || autonomousQualityGateSupportChanged || automationServerKeyChanged || daemonSessionStateChanged || channelSupportStale || aiAuthSelectionStale || channelHostStale)) {
+            if (!awaitingServer && (cliAvailabilityChanged || resumeSupportChanged || cliVersionChanged || automationSupportChanged || autonomousQualityGateSupportChanged || automationServerKeyChanged || daemonSessionStateChanged || channelSupportStale || aiAuthSelectionStale || channelHostStale || rpcBindingStale)) {
                 this.lastKnownCLIAvailability = newAvailability;
                 this.lastKnownResumeSupport = newResumeSupport;
                 this.lastKnownCliVersion = newCliVersion;
@@ -3987,6 +3994,7 @@ export class ApiMachineClient {
                     channelSupport: advertisedChannelSupport,
                     aiAuthSelection: advertisedAiAuthSelection,
                     channelHost: advertisedChannelHost,
+                    rpcBinding: advertisedRpcBinding,
                     daemonSessionState: daemonSessionStateAvailable ? { version: 1 } : undefined,
                     happyCliVersion: newCliVersion,
                 })).catch((err) => {

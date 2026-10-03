@@ -161,6 +161,61 @@ describe('CodexAppServerClient sandbox integration', () => {
         process.env.RUST_LOG = originalRustLog;
     });
 
+    it('retains host recall ownership on reconnect without mutating the parent environment', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const original = process.env.CLAUDE_MEMORY_RECALL_OWNER;
+        delete process.env.CLAUDE_MEMORY_RECALL_OWNER;
+        const client = new CodexAppServerClient(sandboxConfig, undefined, undefined, 'owner-choice', undefined, undefined, true);
+        try {
+            await client.connect();
+            expect(mockSpawn.mock.calls[0][2].env.CLAUDE_MEMORY_RECALL_OWNER).toBe('host');
+            expect(process.env.CLAUDE_MEMORY_RECALL_OWNER).toBeUndefined();
+            await client.disconnect();
+            await client.connect();
+            expect(mockSpawn.mock.calls[1][2].env.CLAUDE_MEMORY_RECALL_OWNER).toBe('host');
+        } finally {
+            await client.disconnect();
+            if (original === undefined) delete process.env.CLAUDE_MEMORY_RECALL_OWNER;
+            else process.env.CLAUDE_MEMORY_RECALL_OWNER = original;
+        }
+    });
+
+    it('marks memory submission only after turn/start acceptance, preserving pending startup on preparation failure', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const onSubmitted = vi.fn();
+        try {
+            await client.connect();
+            (client as any)._threadId = 'thread';
+            await expect(client.sendTurnAndWait('memory context', { onSubmitted, beforeTurn: async () => { throw new Error('preparation failed'); } })).rejects.toThrow('preparation failed');
+            expect(onSubmitted).not.toHaveBeenCalled();
+            const request = vi.spyOn(client as any, 'request').mockResolvedValue({ turn: { id: 'submitted-turn' } });
+            await client.sendTurn('memory context', { onSubmitted });
+            expect(request).toHaveBeenCalledWith('turn/start', expect.anything());
+            expect(onSubmitted).toHaveBeenCalledOnce();
+        } finally { await client.disconnect(); }
+    });
+
+    it.each([
+        [false, 'owner-choice', undefined],
+        [true, 'mandatory', undefined],
+        [true, 'owner-choice', ['-c', 'managed-provider']],
+    ] as const)('clears inherited ownership for unavailable, shared or managed hosts', async (prepared, policy, managedArgs) => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const original = process.env.CLAUDE_MEMORY_RECALL_OWNER;
+        process.env.CLAUDE_MEMORY_RECALL_OWNER = 'host';
+        const client = new CodexAppServerClient(sandboxConfig, undefined, undefined, policy, managedArgs ? [...managedArgs] : undefined, undefined, prepared);
+        try {
+            await client.connect();
+            expect(mockSpawn.mock.calls[0][2].env.CLAUDE_MEMORY_RECALL_OWNER).toBeUndefined();
+            expect(process.env.CLAUDE_MEMORY_RECALL_OWNER).toBe('host');
+        } finally {
+            await client.disconnect();
+            if (original === undefined) delete process.env.CLAUDE_MEMORY_RECALL_OWNER;
+            else process.env.CLAUDE_MEMORY_RECALL_OWNER = original;
+        }
+    });
+
     it('marks runtime dispatch once at the actual request, after both checkpoint hooks', async () => {
         const { RuntimeProducerGate } = await import('../sessionDrain/runtimeProducerGate');
         const gate = new RuntimeProducerGate({ hasUndeliveredInput: () => false,

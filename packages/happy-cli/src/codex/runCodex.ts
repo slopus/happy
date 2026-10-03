@@ -101,6 +101,7 @@ import {
 import { buildCodexThreadBackfillEnvelopes } from './utils/threadImageBackfill';
 import type { LessonReviewWorker } from '@/memory/lessonReviewWorker';
 import { createLazyLessonSessionHost } from '@/memory/lessonSessionHost';
+import { prepareCodexRecallHost, buildCodexMemoryReferenceBlock } from '@/memory/codexRecallHost';
 import { readLessonOwner } from '@/memory/lessonOwnerMarker';
 import type { LessonTurnKind } from '@/memory/lessonTurnEvidence';
 import { createLessonTurnObservations } from '@/memory/lessonTurnObservations';
@@ -206,6 +207,9 @@ export async function runCodex(opts: {
     // Shield killall/pkill against broad kills before anything is spawned —
     // Codex has no PreToolUse hook system, so the PATH shim is its only guard.
     const managedStartup = opts.principal?.kind === 'managed' ? opts.principal.startup : null;
+    // Capture before checkpoint preparation changes provider cwd; not from turn metadata.
+    const recallProjectPath = process.cwd();
+    const recallHostEnvironment = { ...process.env };
     if (opts.standaloneLaunch && (managedStartup || opts.startedBy !== 'daemon')) throw new Error('Standalone launch requires an unmanaged daemon session');
     const launchControl = opts.standaloneLaunch ? await SessionLaunchControl.connect(opts.standaloneLaunch) : undefined;
     try {
@@ -1180,6 +1184,16 @@ export async function runCodex(opts: {
     // Start Context 
     //
 
+    const recallHost = await prepareCodexRecallHost({
+        accountOwned: opts.principal.kind === 'account',
+        sandboxEnabled: checkpointComposition.sandboxConfig?.enabled === true,
+        sandboxPolicyMode,
+        projectPath: recallProjectPath,
+        env: recallHostEnvironment,
+        report: ({ event, reason, contextChars }) => logger.debug('[CodexMemoryHost]', { event, reason, contextChars }),
+    });
+    logger.debug('[CodexMemoryHost]', { status: recallHost ? 'prepared' : sandboxPolicyMode === 'mandatory' ? 'policy_requires_binding' : 'unsupported' });
+
     client = new CodexAppServerClient(
         checkpointComposition.sandboxConfig,
         checkpointComposition.beforeTurn,
@@ -1198,6 +1212,7 @@ export async function runCodex(opts: {
             base: managedStartup ? managedCodexProviderArguments(managedStartup.envelope) : null,
         }),
         checkpointComposition.markTurnDispatched,
+        recallHost !== null,
     );
 
     if (runtimeGate) client.setTurnDispatchHandler(() => runtimeGate.markDispatched());
@@ -1669,6 +1684,7 @@ export async function runCodex(opts: {
         browserHostContinues: process.env.HAPPY_AUTOMATION_BROWSER_CONTINUATION === '1',
         ...(runtimeGate ? { admitTool: <T,>(work: () => Promise<T>) => runtimeGate.admit(work, 'writer') } : {}),
         ...(accountToken !== null ? { proposeLesson: lessonProposalTurn.submit } : {}),
+        checkpointReader: checkpointComposition.agentReader,
         protectedBashCwd: checkpointComposition.protectedBashCwd,
         trackProtectedBashProcess: checkpointComposition.trackProtectedWriter,
     });
@@ -2057,12 +2073,14 @@ export async function runCodex(opts: {
                         continue;
                     }
 
+                    const checkpointGuidance = await checkpointComposition.agentReader?.guidance();
                     const mcpSync = await measure('mcp-sync', () => mcpConfigSynchronizer.sync({
                         threadId: client.threadId,
                         resumeThread: client.threadId
                             ? async ({ threadId, mcpServers }) => {
                                 const nextDeveloperInstructions = buildCodexDeveloperInstructions({
                                     connectorGuidance: buildConnectorGuidance(mcpServers),
+                                    checkpointGuidance,
                                     agentOrchestrationPrompt: AGENT_ORCHESTRATION_SYSTEM_PROMPT,
                                     mode: message.mode,
                                 });
@@ -2080,6 +2098,7 @@ export async function runCodex(opts: {
 
                     const nextDeveloperInstructions = buildCodexDeveloperInstructions({
                         connectorGuidance: buildConnectorGuidance(mcpSync.mcpServers),
+                        checkpointGuidance,
                         agentOrchestrationPrompt: AGENT_ORCHESTRATION_SYSTEM_PROMPT,
                         mode: message.mode,
                     });
@@ -2096,6 +2115,7 @@ export async function runCodex(opts: {
 
                     // Start thread on first turn (thread persists across mode changes)
                     let activeThreadId = client.threadId;
+                    const recallResumedThread = Boolean(activeThreadId);
                     if (!client.hasActiveThread() || !activeThreadId) {
                         const startedThread = await measure('thread-start', () => client.startThread({
                             model: message.mode.model,
@@ -2193,19 +2213,41 @@ export async function runCodex(opts: {
                         ? await measure('lesson-proposal', () => lessonProposalTurn.prepare(codexTurnId!, () => lessonReview.prepareReviewTurn!())) : '';
                     if (owningForegroundSignal.aborted) { lessonProposalTurn.cancel(); continue; }
                     if (owningReviewSignal.aborted) { lessonProposalTurn.cancel(); reviewInstruction = ''; }
+                    // Resolve the channel permit before running stateful event-memory hooks.
+                    // Requests rejected here must not advance adherence or record recall.
+                    if (message.channelRequestId !== undefined
+                        && !await channelAcceptance.prepareExecution(message.channelRequestId)) {
+                        codexPendingRequestId = null;
+                        lessonProposalTurn.cancel();
+                        continue;
+                    }
+                    // Approval awaited: foreground cancellation must be checked again before
+                    // running the host worker.
+                    if (owningForegroundSignal.aborted) { lessonProposalTurn.cancel(); continue; }
+                    const memoryRecall = recallHost
+                        ? await recallHost.recall({
+                            threadId: activeThreadId,
+                            prompt: message.message,
+                            resumed: recallResumedThread,
+                            signal: owningForegroundSignal,
+                        })
+                        : null;
+                    // A dispatched host worker can still be aborted. Do not send the provider
+                    // a cancelled turn or consume its pending startup context in that case.
+                    if (owningForegroundSignal.aborted) { lessonProposalTurn.cancel(); continue; }
+                    if (owningReviewSignal.aborted) { lessonProposalTurn.cancel(); reviewInstruction = ''; }
                     const turnPrompt = (reviewInstruction ? `${reviewInstruction}\n\n` : '') + buildCodexTurnPrompt({
                         message: message.message,
                         mode: message.mode,
                         includeAppendSystemPrompt,
                         hasTitle: session.hasTitle(),
                         ...(lessonRecall?.outcome === 'selected' ? { lessonBlock: lessonRecall.block } : {}),
+                        ...(memoryRecall?.reason === 'context_returned' ? { memoryBlock: buildCodexMemoryReferenceBlock(memoryRecall.context) } : {}),
                     });
-
-                    // Prepared images/thread/checkpoint may have awaited since dequeue. Cancellation
-                    // must still win here; once this synchronous boundary is crossed the turn runs.
+                    // The worker awaited after the permit was granted. Keep consumption at
+                    // the synchronous dispatch boundary so channel cancellation still wins.
                     if (message.channelRequestId !== undefined
-                        && (!await channelAcceptance.prepareExecution(message.channelRequestId)
-                        || !channelAcceptance.beginExecution(message.channelRequestId))) {
+                        && !channelAcceptance.beginExecution(message.channelRequestId)) {
                         codexPendingRequestId = null;
                         lessonProposalTurn.cancel();
                         continue;
@@ -2226,6 +2268,7 @@ export async function runCodex(opts: {
                     routingApplied = true;
                     latency?.submitted();
                     const result = await client.sendTurnAndWait(turnPrompt, {
+                        ...(memoryRecall?.reason === 'context_returned' ? { onSubmitted: () => recallHost?.markSubmitted(activeThreadId, memoryRecall.startupIncluded === true) } : {}),
                         model: appliedRoute ? appliedRoute.model : message.mode.model,
                         approvalPolicy: executionPolicy.approvalPolicy,
                         sandbox: executionPolicy.sandbox,

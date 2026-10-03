@@ -16,14 +16,26 @@ on:
     push:
         tags:
             - 'happy-cli-v*'
+    workflow_dispatch:
+        inputs:
+            version:
+                description: 'Already published exact A+ CLI version to verify (no publication)'
+                required: true
+                type: string
+
+permissions:
+    contents: read
 
 jobs:
     publish:
+        if: github.event_name == 'push'
         runs-on: ubuntu-latest
         timeout-minutes: 20
         permissions:
             contents: read
             id-token: write  # enables npm provenance
+        outputs:
+            version: ${{ steps.release_version.outputs.version }}
         steps:
             - name: Checkout
               uses: actions/checkout@v4
@@ -44,6 +56,7 @@ jobs:
               run: pnpm install --frozen-lockfile
 
             - name: Verify tag matches package version
+              id: release_version
               run: |
                   VERSION=$(node -p "require('./packages/happy-cli/package.json').version")
                   TAG="${GITHUB_REF#refs/tags/happy-cli-v}"
@@ -52,6 +65,7 @@ jobs:
                       exit 1
                   fi
                   echo "OK — publishing $VERSION from tag happy-cli-v$TAG"
+                  echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
             - name: Build happy-cli
               run: |
@@ -87,32 +101,31 @@ jobs:
                   NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
                   NPM_CONFIG_PROVENANCE: 'true'
 
-            - name: Verify published package
+    verify:
+        needs: publish
+        if: always() && (needs.publish.result == 'success' || github.event_name == 'workflow_dispatch')
+        runs-on: ubuntu-latest
+        timeout-minutes: 45
+        env:
+            RELEASE_VERSION: ${{ inputs.version || needs.publish.outputs.version }}
+        steps:
+            - name: Checkout verifier
+              uses: actions/checkout@v4
+
+            - name: Setup Node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 20
+
+            - name: Validate existing release tag
               run: |
-                  PACKAGE_NAME="$(node -p "require('./packages/happy-cli/package.json').name")"
-                  VERSION="$(node -p "require('./packages/happy-cli/package.json').version")"
-                  TARBALL_URL=""
-                  for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-                      TARBALL_URL="$(npm view "$PACKAGE_NAME@$VERSION" dist.tarball 2>/dev/null || true)"
-                      if [ -n "$TARBALL_URL" ] && curl -fsI "$TARBALL_URL" >/dev/null; then
-                          break
-                      fi
-                      echo "Waiting for npm tarball propagation ($attempt/20): ${TARBALL_URL:-metadata unavailable}"
-                      sleep 30
-                  done
-                  if [ -z "$TARBALL_URL" ] || ! curl -fsI "$TARBALL_URL" >/dev/null; then
-                      echo "::error::published tarball is not available yet for $PACKAGE_NAME@$VERSION"
+                  if [[ ! "$RELEASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+-aplus\.[0-9]+$ ]]; then
+                      echo 'Expected an exact A+ CLI release version' >&2
                       exit 1
                   fi
+                  git fetch --no-tags origin "refs/tags/happy-cli-v$RELEASE_VERSION"
+                  TAG_VERSION="$(git show FETCH_HEAD:packages/happy-cli/package.json | node -e 'let text="";process.stdin.on("data",chunk=>text+=chunk);process.stdin.on("end",()=>console.log(JSON.parse(text).version))')"
+                  test "$TAG_VERSION" = "$RELEASE_VERSION"
 
-                  PREFIX="$(mktemp -d)"
-                  CACHE="$(mktemp -d)"
-                  HAPPY_HOME="$(mktemp -d)"
-                  for attempt in 1 2 3 4 5 6; do
-                      if npm install --prefix "$PREFIX" -g "$PACKAGE_NAME@$VERSION" --prefer-online --cache "$CACHE"; then
-                          HAPPY_HOME_DIR="$HAPPY_HOME" node "$PREFIX/lib/node_modules/$PACKAGE_NAME/bin/happy.mjs" daemon status
-                          exit 0
-                      fi
-                      sleep 20
-                  done
-                  exit 1
+            - name: Guard registry package and fresh install
+              run: bash packages/happy-cli/scripts/verify-published-package.sh "$RELEASE_VERSION"

@@ -1,3 +1,4 @@
+import { readCheckpointRetentionBoundary } from './checkpointRetentionBoundary';
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createReadStream, type Stats } from 'node:fs';
@@ -176,6 +177,14 @@ export class CheckpointRestorePlanner {
         const start = records.findIndex((record) => record.id === request.checkpointId);
         const changed = new Set<string>();
         if (start < 0) return changed;
+        const key = layout.refName.slice(layout.refName.lastIndexOf('/') + 1);
+        const boundary = await readCheckpointRetentionBoundary(layout.gitDirectory, key);
+        if (boundary !== null && records[start]!.createdAt < boundary) {
+            // Without the intervening records we cannot attribute changes to this conversation.
+            const latest = records[records.length - 1]!;
+            const diff = await runGit(['diff', '--name-only', '-z', request.checkpointId, latest.id], projectPath, environment);
+            return new Set(parseNullTerminatedPaths(diff));
+        }
         for (let index = start + 1; index < records.length; index += 1) {
             const record = records[index]!;
             if (record.kind === 'after' || record.kind === 'restored') continue;

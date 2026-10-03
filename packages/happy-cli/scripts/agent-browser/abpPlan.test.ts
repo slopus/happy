@@ -315,6 +315,13 @@ describe('system files', () => {
         expect(PATHS.agentWorkspaceLink).toBe('/home/agent/workspace')
     })
 
+    it("points the daemon at its server's Aplus MCP config, which automation runs and connectors need", () => {
+        // Without it, every server automation run failed before spawning (GRANT_EXCHANGE_FAILED).
+        expect(daemonEnv({ ...base(), serverUrl: 'https://dev-studio.example' }).split('\n'))
+            .toContain('HAPPY_APLUS_MCP_CONFIG_URL=https://dev-studio.example/api/me/mcp-config')
+        expect(daemonEnv(base()).split('\n')).toContain('HAPPY_APLUS_MCP_CONFIG_URL=https://saycode.ai/api/me/mcp-config')
+    })
+
     it('gives every daemon session an enabled sandbox config bounded to /work (mandatory machine)', () => {
         const line = daemonEnv(base()).split('\n').find((entry: string) => entry.startsWith('HAPPY_PROJECT_SANDBOX_CONFIG='))!
         const value = line.slice('HAPPY_PROJECT_SANDBOX_CONFIG='.length)

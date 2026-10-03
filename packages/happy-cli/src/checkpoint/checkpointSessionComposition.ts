@@ -1,3 +1,4 @@
+import { createCheckpointAgentReader, type CheckpointAgentReader } from './checkpointAgentReader';
 import type { ChildProcess } from 'node:child_process';
 import { mkdir, realpath } from 'node:fs/promises';
 import type { SandboxConfig } from '@/persistence';
@@ -25,6 +26,7 @@ export type CheckpointTurnPreparation = {
 };
 
 export type CheckpointSessionComposition = {
+    agentReader?: CheckpointAgentReader;
     sandboxConfig: SandboxConfig | undefined;
     /** specs/checkpoint-local-history — turn-boundary records of the original folder. */
     localHistory?: CheckpointLocalHistory;
@@ -56,9 +58,10 @@ export async function createCheckpointSessionComposition(input: {
      */
     sandboxPolicyMode?: SandboxPolicyMode;
 }): Promise<CheckpointSessionComposition> {
+    const agentReader = createCheckpointAgentReader(input);
     const inputSandboxConfig = input.sandboxConfig;
     const protection = inputSandboxConfig?.checkpointProtection;
-    if (!protection) return { sandboxConfig: input.sandboxConfig };
+    if (!protection) return { sandboxConfig: input.sandboxConfig, agentReader };
     const context = readCheckpointSpawnContext(input.env);
     if (!context) {
         throw new Error('checkpoint protection requires authoritative checkpoint spawn context');
@@ -79,7 +82,7 @@ export async function createCheckpointSessionComposition(input: {
     const persisted = await protectionState.read({ ...binding, projectPath: canonicalProjectPath });
     if (persisted.protection.status === 'unavailable') {
         const { checkpointProtection: _checkpointProtection, ...unprotectedSandbox } = inputSandboxConfig;
-        return { sandboxConfig: unprotectedSandbox };
+        return { sandboxConfig: unprotectedSandbox, agentReader };
     }
     const checkpointEvents = input.checkpointEvents;
     if (!checkpointEvents) {
@@ -90,6 +93,7 @@ export async function createCheckpointSessionComposition(input: {
         await protectionState.clearPending({ ...binding, projectPath: canonicalProjectPath });
     }
     return {
+        agentReader,
         sandboxConfig: inputSandboxConfig,
         localHistory: createCheckpointLocalHistory({
             binding,

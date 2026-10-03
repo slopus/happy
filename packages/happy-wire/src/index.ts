@@ -11,4 +11,5 @@ export * from './sessionFollowup';
 export * from './promptProvenance';
 export * from './usage';
 export * from './rpcLatency';
+export * from './rpcBinding';
 export * from './machineKeyAttestation';
