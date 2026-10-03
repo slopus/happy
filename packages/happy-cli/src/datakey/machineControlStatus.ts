@@ -35,12 +35,28 @@ export function describeMachineControl(input: {
   return { mode: input.mode, key, pending, inForce: input.mode === 'strict' && key === 'never-escrowed' }
 }
 
-export type HardenPlan = { ok: true } | { ok: false; reason: 'no-credentials' | 'not-datakey' }
+export type HardenPlan =
+  | { ok: true; alreadyStrict: true }
+  | { ok: true; alreadyStrict: false; dropNeverEscrowed: boolean; discardPending: boolean }
+  | { ok: false; reason: 'no-credentials' | 'not-datakey' }
 
-/** Strict needs a machine key of its own; a legacy machine's key is the account secret the server holds. */
-export function planHarden(input: { rawCredentials: unknown | null }): HardenPlan {
+/**
+ * Strict needs a machine key of its own; a legacy machine's key is the account
+ * secret the server holds. Switching from compat drops the never-escrowed mark
+ * and any pending rotation: while compat ran, whoever held the machine key
+ * (the server included) could write them through the file RPCs, and the first
+ * strict start would trust them instead of making its own key. A machine that
+ * is already strict keeps them, since only a strict daemon could write them.
+ */
+export function planHarden(input: { mode: MachineControlMode; rawCredentials: unknown | null; pendingExists: boolean }): HardenPlan {
   const credentials = input.rawCredentials === null ? null : parseCredentials(input.rawCredentials)
   if (!credentials) return { ok: false, reason: 'no-credentials' }
   if (credentials.encryption.type !== 'dataKey') return { ok: false, reason: 'not-datakey' }
-  return { ok: true }
+  if (input.mode === 'strict') return { ok: true, alreadyStrict: true }
+  return {
+    ok: true,
+    alreadyStrict: false,
+    dropNeverEscrowed: credentials.encryption.neverEscrowed === true,
+    discardPending: input.pendingExists,
+  }
 }

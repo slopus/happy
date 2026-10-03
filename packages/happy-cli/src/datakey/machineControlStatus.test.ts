@@ -46,16 +46,28 @@ describe('describeMachineControl', () => {
 });
 
 describe('planHarden', () => {
-    it('switches dataKey credentials', () => {
-        expect(planHarden({ rawCredentials: dataKey() })).toEqual({ ok: true });
+    it('switches dataKey credentials from compat', () => {
+        expect(planHarden({ mode: 'compat', rawCredentials: dataKey(), pendingExists: false }))
+            .toEqual({ ok: true, alreadyStrict: false, dropNeverEscrowed: false, discardPending: false });
+    });
+
+    it('distrusts the marks compat left, which whoever held the machine key could have written', () => {
+        expect(planHarden({ mode: 'compat', rawCredentials: dataKey({ neverEscrowed: true }), pendingExists: true }))
+            .toEqual({ ok: true, alreadyStrict: false, dropNeverEscrowed: true, discardPending: true });
+    });
+
+    it('keeps what a strict daemon wrote when the machine is already strict', () => {
+        expect(planHarden({ mode: 'strict', rawCredentials: dataKey({ neverEscrowed: true }), pendingExists: true }))
+            .toEqual({ ok: true, alreadyStrict: true });
     });
 
     it('refuses credentials whose machine key is the account secret', () => {
-        expect(planHarden({ rawCredentials: legacy })).toEqual({ ok: false, reason: 'not-datakey' });
-        expect(planHarden({ rawCredentials: { ...legacy, encryption: dataKey().encryption } })).toEqual({ ok: false, reason: 'not-datakey' });
+        expect(planHarden({ mode: 'compat', rawCredentials: legacy, pendingExists: false })).toEqual({ ok: false, reason: 'not-datakey' });
+        expect(planHarden({ mode: 'compat', rawCredentials: { ...legacy, encryption: dataKey().encryption }, pendingExists: false }))
+            .toEqual({ ok: false, reason: 'not-datakey' });
     });
 
     it('refuses missing credentials', () => {
-        expect(planHarden({ rawCredentials: null })).toEqual({ ok: false, reason: 'no-credentials' });
+        expect(planHarden({ mode: 'compat', rawCredentials: null, pendingExists: false })).toEqual({ ok: false, reason: 'no-credentials' });
     });
 });
