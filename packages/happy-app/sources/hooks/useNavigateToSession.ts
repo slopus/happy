@@ -41,7 +41,7 @@ export function navigateToSession(router: Router, sessionId: string) {
     perfMark(`session-open:${sessionId}`);
     const session = storage.getState().sessions[sessionId];
     if (session) {
-        trackSessionSwitched(session);
+        trackSessionSwitched();
     }
 
     if (Platform.OS === 'web') {
