@@ -23,3 +23,10 @@ Implementation authorized by the user. Before treatment measurement, accept only
 Parent recovery and child spans overlap; never sum them. This increment measures cost, not a speedup.
 
 Implementation and parser regression checks complete. Runtime-loop baseline failures reproduced and preserved. Ready PR review is next, followed by companion Web deployment, CI-only CLI release with explicit exact-tag approval, and terminal-verified same-condition Web measurement.
+
+## Recovery instrumentation release — 2026-10-04
+
+1. Confirm merged #677/#4635, exact merged Happy CI and deployed Web parser — Done.
+2. Prepare .285 on merged main; related195 tests/build/prepared install guard — Done.
+3. Ready version PR; after merge request exact-tag approval, CI publish/registry verify — Pending.
+4. Consume only released vendor and verify ethan runtime before collecting recovery substages — Pending.
