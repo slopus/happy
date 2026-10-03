@@ -51,6 +51,7 @@ export type RpcBindingRefusalCode =
 /** A daemon or session that reads bound requests says so in metadata only the scope key opens. */
 export const rpcBindingCapabilitySchema = z.object({ version: z.literal(RPC_BINDING_VERSION) });
 export type RpcBindingCapability = z.infer<typeof rpcBindingCapabilitySchema>;
+export const RPC_BINDING_CAPABILITY: RpcBindingCapability = { version: RPC_BINDING_VERSION };
 
 /** `method` is the bare method, without the scope prefix the server routes on. */
 export function bindRpcRequest(input: {

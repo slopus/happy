@@ -30,6 +30,13 @@ describe('createSessionMetadata', () => {
             saycodeSystemPromptPreference: true,
         });
     });
+
+    // aplus-dev-studio specs/e2ee-machine-control-boundary R18 — sealed with the session key.
+    it('advertises bound session RPCs', () => {
+        const { metadata } = createSessionMetadata({ flavor: 'claude', machineId: 'machine-1' });
+
+        expect(metadata.rpcBinding).toEqual({ version: 1 });
+    });
     it('sets metadata.sandbox to the config when enabled', () => {
         const sandbox = createSandboxConfig();
         const { metadata } = createSessionMetadata({

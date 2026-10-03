@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { AUTOMATION_PROTOCOL_VERSION } from '@slopus/happy-wire';
+import { AUTOMATION_PROTOCOL_VERSION, RPC_BINDING_CAPABILITY } from '@slopus/happy-wire';
+import { configuration } from '@/configuration';
 import { ApiMachineClient } from './apiMachine';
 import { addDaemonTerminalSession, getDaemonTerminalSession, removeDaemonTerminalSession } from '@/daemon/daemonTerminalSessions';
 import { deriveServerRpcKey, encodeBase64, encrypt } from './encryption';
@@ -131,6 +132,22 @@ describe('ApiMachineClient machine RPC server lane', () => {
 
         expect(rpcManagerConfigs.at(-1)).toBeDefined();
         expect(rpcManagerConfigs.at(-1)?.serverLane).toBeUndefined();
+    });
+
+    // aplus-dev-studio specs/e2ee-machine-control-boundary R19
+    it('requires bound customer-lane requests under strict machine control only', () => {
+        const mode = configuration as { machineControl?: 'compat' | 'strict' };
+        try {
+            mode.machineControl = 'strict';
+            new ApiMachineClient('fake-token', makeMachine());
+            expect(rpcManagerConfigs.at(-1)?.requireBoundRequests).toBe(true);
+
+            mode.machineControl = 'compat';
+            new ApiMachineClient('fake-token', makeMachine());
+            expect(rpcManagerConfigs.at(-1)?.requireBoundRequests).toBe(false);
+        } finally {
+            delete mode.machineControl;
+        }
     });
 });
 
@@ -1055,6 +1072,30 @@ describe('ApiMachineClient socket reconnection', () => {
 
         socketHandlers.connect![0]!();
         await vi.waitFor(() => expect(machine.metadata?.aiAuthSelection).toEqual(AI_AUTH_SELECTION_CAPABILITY));
+
+        client.shutdown();
+    });
+
+    // aplus-dev-studio specs/e2ee-machine-control-boundary R18 — clients bind requests only for
+    // a daemon that says it reads them, in metadata only the machine key opens.
+    it('advertises bound requests on a machine registered before the advertisement existed', async () => {
+        vi.useFakeTimers();
+        mockSocket.emitWithAck.mockImplementation(async (event: string, data: any) => {
+            if (event === 'machine-update-metadata') {
+                return { result: 'success', version: 1, metadata: data.metadata };
+            }
+            if (event === 'machine-update-state') {
+                return { result: 'success', version: 1, daemonState: data.daemonState };
+            }
+            return { result: 'success' };
+        });
+        const machine = makeMachine();
+        expect(machine.metadata?.rpcBinding).toBeUndefined();
+        const client = new ApiMachineClient('fake-token', machine);
+        client.connect();
+
+        socketHandlers.connect![0]!();
+        await vi.waitFor(() => expect(machine.metadata?.rpcBinding).toEqual(RPC_BINDING_CAPABILITY));
 
         client.shutdown();
     });
