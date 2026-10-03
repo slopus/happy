@@ -187,6 +187,14 @@ export interface ServerAutomationExecutorInput {
     { ok: true; sessionId: string }
     | { ok: false; error: string; shouldFallback: boolean }
   >
+  /**
+   * Whether review_apply may resume the session the AgentTask server names. The
+   * client sealed the review automation, not that session, so strict machine
+   * control (aplus-dev-studio specs/e2ee-machine-control-boundary R13) passes
+   * false and the findings are applied by a new worker in the automation's own
+   * directory. Omitted means true.
+   */
+  resumeServerChosenSession?: boolean
   spawnSession: (input: {
     directory: string
     initialPrompt: string
@@ -1610,21 +1618,30 @@ async function executeStartedRun(
   }
   let spawned: { ok: true; sessionId: string } | { ok: false; error: string }
   let associateSpawnedSession = true
-  if (agentTaskDispatch?.type === 'review_apply.v1'
+  const resumeTarget = agentTaskDispatch?.type === 'review_apply.v1'
       && agentTaskDispatch.targetSessionId
       && environmentVariables
       // worktree 를 준비했다면 사용자 디렉터리가 리뷰 대상 head 가 아니라는 뜻이다.
-      && !githubWorktree) {
+      && !githubWorktree
+    ? { taskId: agentTaskDispatch.taskId, sessionId: agentTaskDispatch.targetSessionId, environmentVariables }
+    : null
+  if (resumeTarget && input.resumeServerChosenSession === false) {
+    input.logDebug?.(
+      `[server-automation] strict machine control: not resuming server-named session ${resumeTarget.sessionId}`
+      + ` for review_apply task ${resumeTarget.taskId}; using a new apply worker`,
+    )
+  }
+  if (resumeTarget && input.resumeServerChosenSession !== false) {
     const resumed = await input.resumeSession({
-      sessionId: agentTaskDispatch.targetSessionId,
+      sessionId: resumeTarget.sessionId,
       directory: payload.directory,
       initialPrompt,
-      environmentVariables,
+      environmentVariables: resumeTarget.environmentVariables,
       exitAfterFirstTurn: true,
     })
     if (resumed.ok) {
       input.logDebug?.(
-        `[server-automation] resumed original requester session ${resumed.sessionId} for review_apply task ${agentTaskDispatch.taskId}`,
+        `[server-automation] resumed original requester session ${resumed.sessionId} for review_apply task ${resumeTarget.taskId}`,
       )
       spawned = resumed
       // This is the user's existing session, not a child owned by this

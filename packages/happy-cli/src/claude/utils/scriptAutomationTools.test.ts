@@ -3,13 +3,13 @@ import { mkdtemp, writeFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import nacl from 'tweetnacl';
-import { decryptScriptValue, encryptScriptValue } from '@slopus/happy-wire';
+import { decryptScriptValue, encryptScriptValue, openScriptValueForMachine } from '@slopus/happy-wire';
 import { createScriptAutomationTools } from './scriptAutomationTools';
 let directory: string;
 const pair = nacl.box.keyPair();
 beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), 'script-agent-')); });
 afterEach(async () => { await rm(directory, { recursive: true, force: true }); });
-function setup() {
+function setup(localAutomationKey?: nacl.BoxKeyPair) {
   const rows: any[] = [];
   const request = vi.fn(async (body: any): Promise<any> => {
     if (body.operation === 'target') return { machineId: 'machine', automationProtocolVersion: 5, machineKeyVersion: 1, viewerKeyVersion: 1,
@@ -23,7 +23,8 @@ function setup() {
     }
     throw new Error('unexpected request');
   });
-  const tools = createScriptAutomationTools({ projectId: 'project', directory, viewerKeyPair: pair, request });
+  const tools = createScriptAutomationTools({ projectId: 'project', directory, viewerKeyPair: pair, request,
+    ...(localAutomationKey ? { localAutomationKey } : {}) });
   return { tools, request, rows };
 }
 it('encrypts the local bundle and preserves the same admin ID when the registration is retried', async () => {
@@ -74,3 +75,28 @@ it('fetches encrypted logs only when one run is explicitly requested', async () 
   ]);
   expect(request).toHaveBeenLastCalledWith({ operation: 'runs', automationId: 'automation', runId: 'run-1' });
 })
+
+/*
+ * aplus-dev-studio specs/e2ee-machine-control-boundary R13 — the agent cannot sign as
+ * the customer, but code it registers for its own machine is sealed by that machine's
+ * automation key, which the daemon trusts for scripts.
+ */
+async function registered(localAutomationKey: nacl.BoxKeyPair) {
+  await writeFile(join(directory, 'collect.mjs'), 'console.log(1)');
+  const { tools, request } = setup(localAutomationKey);
+  await tools.execute({ operation: 'upsert', registrationKey: 'collect', expectedRevision: 0, sourcePath: 'collect.mjs', name: 'Collect', schedule: null });
+  const registration = request.mock.calls.find(([body]) => body.operation === 'upsert')![0].registration;
+  const open = (encrypted: unknown, resourceId: string, purpose: 'configuration' | 'artifact') => openScriptValueForMachine({
+    encrypted: encrypted as never, context: { projectId: 'project', resourceId, purpose }, secretKey: pair.secretKey });
+  return [open(registration.encrypted, 'collect', 'configuration'), open(registration.artifact, registration.admission.artifactId, 'artifact')];
+}
+it('seals the settings and code for its own machine with that machine\'s automation key', async () => {
+  for (const opened of await registered(pair)) {
+    expect(opened).toMatchObject({ ok: true, authentication: { kind: 'authenticated', senderPublicKey: pair.publicKey } });
+  }
+});
+it('seals anonymously when the target is another machine, whose key it does not hold', async () => {
+  for (const opened of await registered(nacl.box.keyPair())) {
+    expect(opened).toMatchObject({ ok: true, authentication: { kind: 'anonymous' } });
+  }
+});

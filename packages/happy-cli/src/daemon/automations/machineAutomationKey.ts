@@ -69,6 +69,45 @@ export function loadOrCreateMachineAutomationKey(filePath: string): MachineAutom
   return key
 }
 
+/**
+ * The daemon's key as it is on disk, or null when there is none or it cannot
+ * be read. For processes that use the key but must never create one.
+ */
+export function readMachineAutomationKey(filePath: string): MachineAutomationKey | null {
+  try {
+    return parse(readFileSync(filePath, 'utf8'))
+  } catch {
+    return null
+  }
+}
+
+/**
+ * aplus-dev-studio specs/e2ee-machine-control-boundary R17 — replaces the
+ * keypair for `happy datakey harden`. A key compat left on disk may have been
+ * read by whoever held the machine key, and its holder can open what clients
+ * seal for this machine and make envelopes that open as sent by the customer.
+ * The new key keeps the version the server has for the old one, so the next
+ * registration is accepted as its successor. 'absent' when the daemon has not
+ * made a key yet; a corrupt key throws, as it does for the daemon.
+ */
+export function rotateMachineAutomationKey(filePath: string): 'rotated' | 'absent' {
+  let current: MachineAutomationKey
+  try {
+    current = parse(readFileSync(filePath, 'utf8'))
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return 'absent'
+    throw error
+  }
+  const generated = tweetnacl.box.keyPair()
+  persist(filePath, {
+    version: 1,
+    publicKey: generated.publicKey,
+    secretKey: generated.secretKey,
+    registeredKeyVersion: current.registeredKeyVersion,
+  })
+  return 'rotated'
+}
+
 export function updateMachineAutomationKeyRegistration(
   filePath: string,
   key: MachineAutomationKey,

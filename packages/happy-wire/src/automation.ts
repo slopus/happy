@@ -1,4 +1,12 @@
 import * as z from 'zod';
+import {
+  AUTHENTICATED_ENVELOPE_BYTES,
+  AUTHENTICATED_ENVELOPE_VERSION,
+  authenticatedEnvelopeBinding,
+  openMachineDataKey,
+  sealAuthenticatedEnvelope,
+  type MachinePayloadOpening,
+} from './authenticatedEnvelope';
 
 export const AUTOMATION_RUN_NOW_PROTOCOL_VERSION = 2;
 export const AUTOMATION_ISSUE_TRIGGER_PROTOCOL_VERSION = 3;
@@ -36,6 +44,11 @@ const timestamp = z.number().int().min(0);
 const publicKeySchema = base64Schema(32, { exactBytes: 32 });
 const payloadCiphertextSchema = base64Schema(PAYLOAD_MAX_BYTES, { minBytes: 41, version: 1 });
 const envelopeSchema = base64Schema(ENVELOPE_BYTES, { exactBytes: ENVELOPE_BYTES, version: 1 });
+/** The machine's copy may also be sender-authenticated (v3); a viewer's never is. */
+const machineEnvelopeSchema = z.union([
+  envelopeSchema,
+  base64Schema(AUTHENTICATED_ENVELOPE_BYTES, { exactBytes: AUTHENTICATED_ENVELOPE_BYTES, version: AUTHENTICATED_ENVELOPE_VERSION }),
+]);
 
 export const automationAgentSchema = z.enum(['claude', 'codex', 'gemini', 'openclaw', 'opencode']);
 export type AutomationAgent = z.infer<typeof automationAgentSchema>;
@@ -82,6 +95,22 @@ export const githubTriggerSchema = z.object({
 });
 export type GithubTrigger = z.infer<typeof githubTriggerSchema>;
 
+/**
+ * aplus-dev-studio specs/e2ee-machine-control-boundary R12 — what a sender
+ * vouches for besides the content. It travels inside the ciphertext, which a
+ * v3 machine envelope binds, so it is as authentic as the envelope; older
+ * daemons and every viewer pass over it.
+ */
+export const automationSealSchema = z.object({
+  version: z.literal(1),
+  machineId: z.string().min(1).max(200),
+  projectId: z.string().min(1).max(200),
+  /** Chosen by the client at creation and kept across edits: the server id does not exist yet when it is first sealed. */
+  automationKey: z.string().min(16).max(128),
+  sealedAt: timestamp,
+});
+export type AutomationSeal = z.infer<typeof automationSealSchema>;
+
 export const automationPayloadSchema = z.object({
   name: z.string().trim().min(1).max(200),
   schedule: automationScheduleSchema,
@@ -95,6 +124,7 @@ export const automationPayloadSchema = z.object({
   model: z.string().nullable().optional(),
   effort: z.string().nullable().optional(),
   githubTrigger: githubTriggerSchema.optional(),
+  seal: automationSealSchema.optional(),
 }).superRefine((payload, context) => {
   const isGithubSchedule = payload.schedule.kind === 'github';
   if (isGithubSchedule !== (payload.githubTrigger !== undefined)) {
@@ -177,7 +207,7 @@ export const automationEncryptedFieldsSchema = z.object({
   viewerKeyVersion: positiveInteger,
   viewerKeyEnvelope: envelopeSchema,
   machineKeyVersion: positiveInteger,
-  machineKeyEnvelope: envelopeSchema,
+  machineKeyEnvelope: machineEnvelopeSchema,
 });
 export type AutomationEncryptedFields = z.infer<typeof automationEncryptedFieldsSchema>;
 
@@ -206,7 +236,7 @@ export const automationUpdateRequestSchema = z.object({
   viewerKeyVersion: positiveInteger.optional(),
   viewerKeyEnvelope: envelopeSchema.optional(),
   machineKeyVersion: positiveInteger.optional(),
-  machineKeyEnvelope: envelopeSchema.optional(),
+  machineKeyEnvelope: machineEnvelopeSchema.optional(),
 }).superRefine((value, ctx) => {
   const encryptedKeys = [
     'payloadVersion', 'payloadCiphertext', 'viewerKeyId', 'viewerKeyVersion',
@@ -255,29 +285,102 @@ function openVersioned(value: string, crypto: AutomationCryptoAdapter, exactLeng
   return decoded.slice(1);
 }
 
+/**
+ * With `sender`, the machine's envelope is a v3 one sealed by that key
+ * (aplus-dev-studio specs/e2ee-machine-control-boundary R12), and the payload
+ * must carry the `seal` the sender vouches for. Without it, both envelopes are
+ * anonymous as before.
+ */
 export async function encryptAutomationPayload(input: {
   payload: AutomationPayload;
   viewer: { publicKey: Uint8Array; keyVersion: number };
   machine: { publicKey: Uint8Array; keyVersion: number };
+  sender?: { publicKey: Uint8Array; secretKey: Uint8Array };
   crypto: AutomationCryptoAdapter;
 }): Promise<AutomationEncryptedFields> {
   const payload = automationPayloadSchema.parse(input.payload);
-  if (input.viewer.publicKey.length !== 32 || input.machine.publicKey.length !== 32) {
+  if (input.viewer.publicKey.length !== 32 || input.machine.publicKey.length !== 32
+    || (input.sender && !payload.seal)) {
     throw new Error('automation-encrypt-failed');
   }
   const dek = input.crypto.randomBytes(32);
   if (dek.length !== 32) throw new Error('automation-encrypt-failed');
   const plaintext = new TextEncoder().encode(JSON.stringify(payload));
+  const ciphertext = versioned(input.crypto.secretBoxSeal(plaintext, dek));
   const result = {
     payloadVersion: 1 as const,
-    payloadCiphertext: input.crypto.encodeBase64(versioned(input.crypto.secretBoxSeal(plaintext, dek))),
+    payloadCiphertext: input.crypto.encodeBase64(ciphertext),
     viewerKeyId: input.crypto.encodeBase64(await input.crypto.sha256(input.viewer.publicKey), true),
     viewerKeyVersion: input.viewer.keyVersion,
     viewerKeyEnvelope: input.crypto.encodeBase64(versioned(input.crypto.boxSeal(dek, input.viewer.publicKey))),
     machineKeyVersion: input.machine.keyVersion,
-    machineKeyEnvelope: input.crypto.encodeBase64(versioned(input.crypto.boxSeal(dek, input.machine.publicKey))),
+    machineKeyEnvelope: input.crypto.encodeBase64(input.sender
+      ? sealMachineKey({ dek, ciphertext, recipientPublicKey: input.machine.publicKey, sender: input.sender })
+      : versioned(input.crypto.boxSeal(dek, input.machine.publicKey))),
   };
   return automationEncryptedFieldsSchema.parse(result);
+}
+
+function sealMachineKey(input: {
+  dek: Uint8Array;
+  ciphertext: Uint8Array;
+  recipientPublicKey: Uint8Array;
+  sender: { publicKey: Uint8Array; secretKey: Uint8Array };
+}): Uint8Array {
+  try {
+    return sealAuthenticatedEnvelope({
+      key: input.dek,
+      binding: authenticatedEnvelopeBinding({ kind: 'automation', ciphertext: input.ciphertext }),
+      recipientPublicKey: input.recipientPublicKey,
+      sender: input.sender,
+    });
+  } catch {
+    throw new Error('automation-encrypt-failed');
+  }
+}
+
+/**
+ * The daemon's side: opens the machine's copy, anonymous or v3, and says which.
+ * Whether to trust the sender, and what to check in `seal`, is the caller's.
+ */
+export function openAutomationPayloadForMachine(input: {
+  payloadVersion: 1;
+  payloadCiphertext: string;
+  machineKeyEnvelope: string;
+  recipientSecretKey: Uint8Array;
+  crypto: AutomationCryptoAdapter;
+}): MachinePayloadOpening<AutomationPayload> {
+  let ciphertext: Uint8Array;
+  let envelope: Uint8Array;
+  try {
+    if (input.payloadVersion !== 1 || input.recipientSecretKey.length !== 32) return { ok: false, reason: 'malformed' };
+    ciphertext = input.crypto.decodeBase64(input.payloadCiphertext);
+    envelope = input.crypto.decodeBase64(input.machineKeyEnvelope);
+  } catch {
+    return { ok: false, reason: 'malformed' };
+  }
+  const opened = openMachineDataKey({
+    kind: 'automation',
+    envelope,
+    ciphertext,
+    recipientSecretKey: input.recipientSecretKey,
+    openAnonymous: (bytes) => bytes.length === ENVELOPE_BYTES && bytes[0] === 1
+      ? input.crypto.boxOpen(bytes.slice(1), input.recipientSecretKey)
+      : null,
+  });
+  if (!opened.ok) return opened;
+  try {
+    if (ciphertext[0] !== 1) return { ok: false, reason: 'malformed' };
+    const plaintext = input.crypto.secretBoxOpen(ciphertext.slice(1), opened.key);
+    if (!plaintext) return { ok: false, reason: 'malformed' };
+    const payload = automationPayloadSchema.safeParse(JSON.parse(new TextDecoder().decode(plaintext)));
+    if (!payload.success) return { ok: false, reason: 'malformed' };
+    return { ok: true, payload: payload.data, authentication: opened.authentication };
+  } catch {
+    return { ok: false, reason: 'malformed' };
+  } finally {
+    opened.key.fill(0);
+  }
 }
 
 export async function decryptAutomationPayload(input: {

@@ -6,6 +6,7 @@ export * from './automation';
 export * from './scriptAutomation';
 export * from './scriptSchedule';
 export * from './scriptCrypto';
+export * from './authenticatedEnvelope';
 export * from './sessionFollowup';
 export * from './promptProvenance';
 export * from './usage';

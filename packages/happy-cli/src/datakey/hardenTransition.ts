@@ -8,7 +8,9 @@
  * start takes: no compat daemon runs to write them again, and the first strict
  * start makes its own key. The files are judged again under the lock, since
  * they could change until no daemon could run. A machine already marked strict
- * is reset the same way, since the mark is a file compat could write too.
+ * is reset the same way, since the mark is a file compat could write too. The
+ * automation key is replaced for the same reason: compat left it readable, and
+ * its holder could make envelopes that open as sent by the customer.
  */
 import { planHarden } from './machineControlStatus'
 import type { MachineControlMode } from './machineControl'
@@ -23,11 +25,13 @@ export type HardenIo = {
   liveSessions(): Promise<Array<{ pid: number; command: string }>>
   dropNeverEscrowed(): Promise<void>
   discardPendingRotation(): Promise<void>
+  /** 'absent' when the daemon has not made an automation key yet. */
+  rotateAutomationKey(): Promise<'rotated' | 'absent'>
   setStrict(): Promise<void>
 }
 
 export type HardenOutcome =
-  | { ok: true; markedStrict: boolean; reset: { neverEscrowed: boolean; pending: boolean } }
+  | { ok: true; markedStrict: boolean; reset: { neverEscrowed: boolean; pending: boolean; automationKey: boolean } }
   | { ok: false; reason: 'no-credentials' | 'not-datakey' | 'daemon-running' }
   | { ok: false; reason: 'sessions-running'; sessions: Array<{ pid: number; command: string }> }
 
@@ -45,8 +49,13 @@ export async function runHarden(io: HardenIo): Promise<HardenOutcome> {
     if (!plan.ok) return plan
     if (plan.dropNeverEscrowed) await io.dropNeverEscrowed()
     if (plan.discardPending) await io.discardPendingRotation()
+    const automationKey = await io.rotateAutomationKey()
     await io.setStrict()
-    return { ok: true, markedStrict: plan.markedStrict, reset: { neverEscrowed: plan.dropNeverEscrowed, pending: plan.discardPending } }
+    return {
+      ok: true,
+      markedStrict: plan.markedStrict,
+      reset: { neverEscrowed: plan.dropNeverEscrowed, pending: plan.discardPending, automationKey: automationKey === 'rotated' },
+    }
   } finally {
     await release()
   }

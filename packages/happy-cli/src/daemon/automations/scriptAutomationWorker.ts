@@ -3,9 +3,11 @@ import { mkdir, open, readdir, readFile, rename, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import * as z from 'zod';
-import { decryptScriptValue, encryptScriptValue, scriptAdmissionSchema, scriptAutomationPayloadSchema,
+import { decryptScriptValue, encryptScriptValue, openScriptValueForMachine, scriptAdmissionSchema, scriptAutomationPayloadSchema,
   scriptEncryptedValueSchema } from '@slopus/happy-wire';
 import { runManagedScript, type ManagedScriptInput, type ManagedScriptResult } from './managedScriptRunner';
+import { judgePayload, type PayloadTrust } from './payloadTrust';
+import { assertScriptInputAdmitted } from './scriptInputSchema';
 
 const artifactSchema = z.object({ id: z.string(), projectId: z.string(), digest: z.string(), encrypted: scriptEncryptedValueSchema });
 const recordSchema = z.object({ id: z.string(), projectId: z.string(), registrationKey: z.string(), revision: z.number().int(),
@@ -42,6 +44,8 @@ function boundedLogValue(result: ManagedScriptResult, context: { projectId: stri
 
 export function createScriptAutomationWorker(options: {
   machineId: string; accountId: string; machineSecretKey: Uint8Array; image: string; directory: string;
+  /** Whose settings and code this worker runs (aplus-dev-studio specs/e2ee-machine-control-boundary R13/R14). */
+  trust: PayloadTrust; onUnauthenticated?: (what: string) => void;
   request: Request; recoverContainers: () => Promise<void>; log: (message: string) => void;
   execute?: (input: ManagedScriptInput) => Promise<ManagedScriptResult>;
   authorizeStart?: (record: Record, runId: string, token: string) => Promise<string>;
@@ -93,16 +97,27 @@ export function createScriptAutomationWorker(options: {
       await deliver(journal);
     }
   }
+  /**
+   * A setting or artifact only from a sender this daemon trusts: the customer
+   * key, or its own automation key for scripts the agent tool registered.
+   * Anonymous values run only in compat. Throws the refusal code.
+   */
+  function openTrusted(encrypted: unknown, context: { projectId: string; resourceId: string; purpose: 'configuration' | 'artifact' }): unknown {
+    const verdict = judgePayload({ trust: options.trust, allowMachineSender: true,
+      opening: openScriptValueForMachine({ encrypted: scriptEncryptedValueSchema.parse(encrypted), context, secretKey: options.machineSecretKey }) });
+    if (!verdict.run) throw new Error(verdict.code === 'PAYLOAD_UNREADABLE' ? 'SCRIPT_DECRYPT_FAILED' : verdict.code);
+    if (!verdict.authenticated) options.onUnauthenticated?.(`script ${context.purpose} ${context.resourceId}`);
+    return verdict.payload;
+  }
   function verify(record: Record, encrypted: unknown, artifact: z.infer<typeof artifactSchema>, admission: z.infer<typeof scriptAdmissionSchema>) {
-    const payload = scriptAutomationPayloadSchema.parse(decryptScriptValue({ encrypted: scriptEncryptedValueSchema.parse(encrypted),
-      context: { projectId: record.projectId, resourceId: record.registrationKey, purpose: 'configuration' },
-      recipient: 'machine', secretKey: options.machineSecretKey }));
+    const payload = scriptAutomationPayloadSchema.parse(openTrusted(encrypted,
+      { projectId: record.projectId, resourceId: record.registrationKey, purpose: 'configuration' }));
     const expected = { artifactId: payload.action.artifactId, digest: payload.action.digest,
       schedule: payload.schedule, externalEnabled: payload.externalEnabled, inputSchema: payload.inputSchema };
     if (!isDeepStrictEqual(expected, admission) || artifact.id !== admission.artifactId || artifact.projectId !== record.projectId
       || artifact.digest !== admission.digest) throw new Error('SCRIPT_ADMISSION_MISMATCH');
-    const { source } = z.strictObject({ source: z.string() }).parse(decryptScriptValue({ encrypted: artifact.encrypted,
-      context: { projectId: record.projectId, resourceId: artifact.id, purpose: 'artifact' }, recipient: 'machine', secretKey: options.machineSecretKey }));
+    const { source } = z.strictObject({ source: z.string() }).parse(openTrusted(artifact.encrypted,
+      { projectId: record.projectId, resourceId: artifact.id, purpose: 'artifact' }));
     if (createHash('sha256').update(source).digest('hex') !== admission.digest) throw new Error('ARTIFACT_DIGEST_MISMATCH');
     return { payload, source };
   }
@@ -123,6 +138,7 @@ export function createScriptAutomationWorker(options: {
       const { payload, source } = verify(record, JSON.parse(run.snapshot.payloadCiphertext), artifact, run.snapshot.admission);
       const input = z.record(z.string(), z.json()).parse(decryptScriptValue({ encrypted: JSON.parse(run.inputCiphertext),
         context: { projectId: record.projectId, resourceId: run.id, purpose: 'input' }, recipient: 'machine', secretKey: options.machineSecretKey }));
+      assertScriptInputAdmitted(payload.inputSchema, input);
       let binding: { secrets: { [name: string]: string }; approvedPrivateOrigins: string[] } = { secrets: {}, approvedPrivateOrigins: [] };
       if (Object.keys(payload.action.secretRefs).length) {
         if (!options.resolveSecrets) throw new Error('SCRIPT_SECRET_RESOLVER_UNAVAILABLE');
@@ -190,8 +206,9 @@ export function createScriptAutomationWorker(options: {
                 `${prefix}/script-automations/${encodeURIComponent(record.id)}/artifact`));
               try {
                 verify(record, revision.encrypted, revision.artifact, revision.admission);
-              } catch {
-                options.log(`Script revision validation failed: ${record.id}@${record.revision}`);
+              } catch (error) {
+                const reason = error instanceof Error && /^[A-Z0-9_]{1,100}$/.test(error.message) ? error.message : 'SCRIPT_REVISION_INVALID';
+                options.log(`Script revision validation failed: ${record.id}@${record.revision} (${reason})`);
                 try { await post(`/script-automations/${encodeURIComponent(record.id)}/validation-failed`, { revision: record.revision }); }
                 catch (error) {
                   if (!(error instanceof ScriptRequestError) || ![403, 404, 409].includes(error.status)) throw error;

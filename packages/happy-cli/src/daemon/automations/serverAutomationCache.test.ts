@@ -3,11 +3,21 @@ import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import tweetnacl from 'tweetnacl'
+import { createHash } from 'node:crypto'
+import {
+  encryptAutomationPayload,
+  encryptSessionFollowupPayload,
+  type AutomationCryptoAdapter,
+  type SessionFollowupDaemon,
+} from '@slopus/happy-wire'
 
 import {
   createServerAutomationCache,
-  decryptServerAutomationPayload,
+  openServerAutomationPayload,
+  trustedServerAutomationPayload,
+  trustedSessionFollowupPayload,
 } from './serverAutomationCache'
+import type { PayloadTrust } from './payloadTrust'
 
 function bundle(payload: object, recipientPublicKey: Uint8Array) {
   const dek = tweetnacl.randomBytes(tweetnacl.secretbox.keyLength)
@@ -69,9 +79,13 @@ describe('serverAutomationCache', () => {
     expect(raw).not.toContain('/repo/project')
     if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600)
 
-    expect(decryptServerAutomationPayload(cache.read().automations[0]!, keyPair.secretKey)).toEqual({
-      name: 'secret name', schedule: { kind: 'interval', minutes: 30 }, prompt: 'secret prompt',
-      directory: '/repo/project', scriptCommand: null, suppressSilent: true, agent: 'codex',
+    expect(openServerAutomationPayload(cache.read().automations[0]!, keyPair.secretKey)).toEqual({
+      ok: true,
+      payload: {
+        name: 'secret name', schedule: { kind: 'interval', minutes: 30 }, prompt: 'secret prompt',
+        directory: '/repo/project', scriptCommand: null, suppressSilent: true, agent: 'codex',
+      },
+      authentication: { kind: 'anonymous' },
     })
   })
 
@@ -116,5 +130,134 @@ describe('serverAutomationCache', () => {
     expect(() => cache.applySync({ serverTime: 1, nextSeq: '1', changes: [] }))
       .toThrow('automation-cache-invalid')
     expect(readFileSync(file, 'utf8')).toBe('{ corrupt')
+  })
+})
+
+/*
+ * aplus-dev-studio specs/e2ee-machine-control-boundary R12-R14 — automations and
+ * follow-ups a customer key sealed, as the daemon receives and judges them.
+ */
+const naclCrypto: AutomationCryptoAdapter = {
+  randomBytes: (length) => tweetnacl.randomBytes(length),
+  secretBoxSeal: (plaintext, key) => {
+    const nonce = tweetnacl.randomBytes(24)
+    return new Uint8Array([...nonce, ...tweetnacl.secretbox(plaintext, nonce, key)])
+  },
+  secretBoxOpen: (bundle, key) => tweetnacl.secretbox.open(bundle.subarray(24), bundle.subarray(0, 24), key),
+  boxSeal: (plaintext, publicKey) => {
+    const ephemeral = tweetnacl.box.keyPair()
+    const nonce = tweetnacl.randomBytes(24)
+    return new Uint8Array([...ephemeral.publicKey, ...nonce, ...tweetnacl.box(plaintext, nonce, publicKey, ephemeral.secretKey)])
+  },
+  boxOpen: (bundle, secretKey) => tweetnacl.box.open(bundle.subarray(56), bundle.subarray(32, 56), bundle.subarray(0, 32), secretKey),
+  sha256: async (value) => new Uint8Array(createHash('sha256').update(value).digest()),
+  encodeBase64: (value) => Buffer.from(value).toString('base64'),
+  decodeBase64: (value) => new Uint8Array(Buffer.from(value, 'base64')),
+}
+
+describe('client-sealed payloads on the daemon', () => {
+  const machine = tweetnacl.box.keyPair()
+  const company = tweetnacl.box.keyPair()
+  const viewer = tweetnacl.box.keyPair()
+  const trust = (mode: 'compat' | 'strict'): PayloadTrust => ({
+    mode, customerPublicKey: company.publicKey, machineAutomationPublicKey: machine.publicKey,
+  })
+  const automationPayload = {
+    name: 'n', schedule: { kind: 'interval' as const, minutes: 30 }, prompt: 'p', directory: '/repo',
+    scriptCommand: 'make', suppressSilent: false, agent: 'codex' as const,
+  }
+  const automationSeal = { version: 1 as const, machineId: 'machine-1', projectId: 'project-1', automationKey: 'automation-key-0001', sealedAt: 1 }
+
+  async function automation(options: { sender?: typeof company; seal?: typeof automationSeal } = {}) {
+    const encrypted = await encryptAutomationPayload({
+      payload: { ...automationPayload, ...(options.seal ? { seal: options.seal } : {}) },
+      viewer: { publicKey: viewer.publicKey, keyVersion: 1 },
+      machine: { publicKey: machine.publicKey, keyVersion: 1 },
+      ...(options.sender ? { sender: options.sender } : {}),
+      crypto: naclCrypto,
+    })
+    let dir = ''
+    try {
+      dir = mkdtempSync(path.join(tmpdir(), 'server-automation-v3-'))
+      const cache = createServerAutomationCache({ filePath: path.join(dir, 'cache.json') })
+      cache.applySync({ serverTime: 1, nextSeq: '1', changes: [{
+        seq: '1', automationId: 'automation-1', revision: 1, generation: 1, kind: 'UPSERT',
+        payloadVersion: 1, payloadCiphertext: encrypted.payloadCiphertext, machineKeyEnvelope: encrypted.machineKeyEnvelope,
+        machineKeyVersion: 1, paused: false, enabledAt: 1,
+      }] })
+      return cache.read().automations[0]!
+    } finally {
+      if (dir) rmSync(dir, { recursive: true, force: true })
+    }
+  }
+
+  const judgeAutomation = async (mode: 'compat' | 'strict', options: Parameters<typeof automation>[0]) => {
+    const synced = await automation(options)
+    try {
+      return trustedServerAutomationPayload(synced, { machineSecretKey: machine.secretKey, trust: trust(mode), machineId: 'machine-1' })
+    } catch (error) {
+      return (error as Error).message
+    }
+  }
+
+  it('syncs a v3 automation and runs it in strict when the customer sealed it for this machine', async () => {
+    await expect(judgeAutomation('strict', { sender: company, seal: automationSeal }))
+      .resolves.toEqual({ ...automationPayload, seal: automationSeal })
+  })
+
+  it('refuses one sealed for another machine', async () => {
+    await expect(judgeAutomation('strict', { sender: company, seal: { ...automationSeal, machineId: 'machine-2' } }))
+      .resolves.toBe('PAYLOAD_CONTEXT_MISMATCH')
+  })
+
+  it('runs an anonymous automation only in compat', async () => {
+    await expect(judgeAutomation('compat', {})).resolves.toEqual(automationPayload)
+    await expect(judgeAutomation('strict', {})).resolves.toBe('PAYLOAD_SENDER_ANONYMOUS')
+  })
+
+  it('refuses a sender that is not the customer key', async () => {
+    await expect(judgeAutomation('compat', { sender: tweetnacl.box.keyPair(), seal: automationSeal }))
+      .resolves.toBe('PAYLOAD_SENDER_UNTRUSTED')
+  })
+
+  describe('session follow-ups', () => {
+    const followupPayload = {
+      kind: 'existing-session-prompt' as const, directory: '/repo', prompt: 'review', evaluator: { kind: 'review-findings-v1' as const },
+    }
+    const followupSeal = { version: 1 as const, machineId: 'machine-1', projectId: 'project-1', sessionId: 'session-1', sealedAt: 1 }
+
+    async function judgeFollowup(mode: 'compat' | 'strict', options: { sender?: typeof company; seal?: typeof followupSeal }, record: Partial<SessionFollowupDaemon> = {}) {
+      const encrypted = await encryptSessionFollowupPayload({
+        payload: { ...followupPayload, ...(options.seal ? { seal: options.seal } : {}) },
+        viewer: { publicKey: viewer.publicKey, keyVersion: 1 },
+        machine: { publicKey: machine.publicKey, keyVersion: 1 },
+        ...(options.sender ? { sender: options.sender } : {}),
+        crypto: naclCrypto,
+      })
+      const followup = {
+        id: 'followup-1', projectId: 'project-1', sessionId: 'session-1',
+        payloadVersion: 1, payloadCiphertext: encrypted.payloadCiphertext, machineKeyEnvelope: encrypted.machineKeyEnvelope,
+        ...record,
+      } as SessionFollowupDaemon
+      try {
+        return trustedSessionFollowupPayload(followup, { machineSecretKey: machine.secretKey, trust: trust(mode), machineId: 'machine-1' })
+      } catch (error) {
+        return (error as Error).message
+      }
+    }
+
+    it('runs one the customer sealed for this session', async () => {
+      await expect(judgeFollowup('strict', { sender: company, seal: followupSeal })).resolves.toEqual({ ...followupPayload, seal: followupSeal })
+    })
+
+    it('refuses one moved to another session or project', async () => {
+      await expect(judgeFollowup('strict', { sender: company, seal: followupSeal }, { sessionId: 'session-2' })).resolves.toBe('PAYLOAD_CONTEXT_MISMATCH')
+      await expect(judgeFollowup('strict', { sender: company, seal: followupSeal }, { projectId: 'project-2' })).resolves.toBe('PAYLOAD_CONTEXT_MISMATCH')
+    })
+
+    it('runs an anonymous one only in compat', async () => {
+      await expect(judgeFollowup('compat', {})).resolves.toEqual(followupPayload)
+      await expect(judgeFollowup('strict', {})).resolves.toBe('PAYLOAD_SENDER_ANONYMOUS')
+    })
   })
 })

@@ -2407,6 +2407,60 @@ describe('runServerAutomationTick', () => {
     )
   })
 
+  // aplus-dev-studio specs/e2ee-machine-control-boundary R13 — the client sealed the review
+  // automation, not the session the server names; under strict that session is not resumed.
+  it('runs review_apply in a new worker instead of resuming the session the server names, under strict', async () => {
+    const {
+      input, store, queryGithubPullRequests, dispatchAgentTask, resumeSession, spawnSession, logDebug,
+    } = setup({ claim: { ok: true, value: { runId: 'run-1', claimToken: 'claim-token' } } })
+    input.resumeServerChosenSession = false
+    input.decryptPayload = vi.fn(() => ({
+      name: 'AgentTask review', schedule: { kind: 'github' as const, minutes: 15 as const },
+      prompt: 'Apply verified findings', directory: '/repo', scriptCommand: null,
+      suppressSilent: false, agent: 'codex' as const,
+      githubTrigger: {
+        event: 'opened' as const,
+        filter: { baseBranch: null, label: null, excludeDraft: true, authors: [], paths: [] },
+        action: 'agent-task-review' as const,
+        githubCredentialId: 'credential-1',
+      },
+    }))
+    store.write({
+      ...store.read(),
+      githubTriggers: [{
+        automationId: 'automation-1', generation: 2,
+        state: { snapshot: [], highestPrNumber: 0, processed: [], pending: [] },
+      }],
+    })
+    queryGithubPullRequests.mockResolvedValue({
+      ok: true,
+      githubEnvironment: { GH_TOKEN: 'github-secret', GH_REPO: 'acme/app' },
+      pullRequests: [],
+    })
+    dispatchAgentTask.mockResolvedValue({
+      ok: true,
+      dispatch: {
+        taskId: 'apply-1', type: 'review_apply.v1', agentRunId: 'automation:run-1',
+        claimToken: 'claim-secret', completeToken: 'complete-secret',
+        targetSessionId: 'unrelated-session', controlUrl: 'https://studio.test/api/agent-tasks',
+        input: { reviewedHeadSha: 'a'.repeat(40) },
+        context: [{ kind: 'review', body: { findings: [] } }],
+      },
+    })
+
+    await runServerAutomationTick(input)
+
+    expect(resumeSession).not.toHaveBeenCalled()
+    expect(spawnSession).toHaveBeenCalledWith(expect.objectContaining({
+      directory: '/repo',
+      initialPrompt: expect.stringContaining('Task ID: apply-1'),
+    }))
+    expect(logDebug).toHaveBeenCalledWith(
+      '[server-automation] strict machine control: not resuming server-named session unrelated-session'
+      + ' for review_apply task apply-1; using a new apply worker',
+    )
+  })
+
   it('runs review_apply in a worktree at the reviewed head when the project directory has moved on', async () => {
     const {
       input, store, queryGithubPullRequests, dispatchAgentTask, resumeSession, spawnSession,

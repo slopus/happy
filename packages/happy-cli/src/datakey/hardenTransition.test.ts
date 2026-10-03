@@ -8,7 +8,10 @@ import { hardenBlockingSessions, runHarden, type HardenIo, type HardenState } fr
 const key = (fill: number) => Buffer.alloc(32, fill).toString('base64');
 const dataKey = (extra: Record<string, unknown> = {}) => ({ token: 't', encryption: { publicKey: key(2), machineKey: key(3), ...extra } });
 
-function fakeIo(states: HardenState[], options: { locked?: boolean; failSetStrict?: boolean; sessions?: Array<{ pid: number; command: string }> } = {}) {
+function fakeIo(
+    states: HardenState[],
+    options: { locked?: boolean; failSetStrict?: boolean; noAutomationKey?: boolean; sessions?: Array<{ pid: number; command: string }> } = {},
+) {
     const calls: string[] = [];
     let reads = 0;
     const io: HardenIo = {
@@ -26,6 +29,10 @@ function fakeIo(states: HardenState[], options: { locked?: boolean; failSetStric
         },
         dropNeverEscrowed: async () => { calls.push('drop-never-escrowed'); },
         discardPendingRotation: async () => { calls.push('discard-pending'); },
+        rotateAutomationKey: async () => {
+            calls.push('rotate-automation-key');
+            return options.noAutomationKey ? 'absent' : 'rotated';
+        },
         setStrict: async () => {
             calls.push('set-strict');
             if (options.failSetStrict) throw new Error('settings are not writable');
@@ -40,15 +47,24 @@ describe('runHarden', () => {
     it('drops the marks compat left and switches to strict while no daemon can start', async () => {
         const { io, calls } = fakeIo([compat(dataKey({ neverEscrowed: true }), true)]);
 
-        expect(await runHarden(io)).toEqual({ ok: true, markedStrict: false, reset: { neverEscrowed: true, pending: true } });
-        expect(calls).toEqual(['read', 'lock', 'sessions', 'read', 'drop-never-escrowed', 'discard-pending', 'set-strict', 'release']);
+        expect(await runHarden(io)).toEqual({ ok: true, markedStrict: false, reset: { neverEscrowed: true, pending: true, automationKey: true } });
+        expect(calls).toEqual(['read', 'lock', 'sessions', 'read', 'drop-never-escrowed', 'discard-pending', 'rotate-automation-key', 'set-strict', 'release']);
     });
 
     it('judges the files again once no daemon can write them', async () => {
         const { io, calls } = fakeIo([compat(dataKey()), compat(dataKey({ neverEscrowed: true }))]);
 
-        expect(await runHarden(io)).toEqual({ ok: true, markedStrict: false, reset: { neverEscrowed: true, pending: false } });
+        expect(await runHarden(io)).toEqual({ ok: true, markedStrict: false, reset: { neverEscrowed: true, pending: false, automationKey: true } });
         expect(calls).toContain('drop-never-escrowed');
+    });
+
+    // The automation key decrypts what clients seal for this machine and, as a recipient key,
+    // lets its holder make envelopes that open as sent by the customer.
+    it('replaces the automation key compat left readable, unless the daemon has not made one', async () => {
+        const { io, calls } = fakeIo([compat(dataKey())], { noAutomationKey: true });
+
+        expect(await runHarden(io)).toEqual({ ok: true, markedStrict: false, reset: { neverEscrowed: false, pending: false, automationKey: false } });
+        expect(calls).toEqual(['read', 'lock', 'sessions', 'read', 'rotate-automation-key', 'set-strict', 'release']);
     });
 
     it('refuses while a daemon holds the start lock, and changes nothing', async () => {
@@ -71,8 +87,8 @@ describe('runHarden', () => {
     it('resets a machine already marked strict, under the lock', async () => {
         const { io, calls } = fakeIo([{ mode: 'strict', rawCredentials: dataKey({ neverEscrowed: true }), pendingExists: true }]);
 
-        expect(await runHarden(io)).toEqual({ ok: true, markedStrict: true, reset: { neverEscrowed: true, pending: true } });
-        expect(calls).toEqual(['read', 'lock', 'sessions', 'read', 'drop-never-escrowed', 'discard-pending', 'set-strict', 'release']);
+        expect(await runHarden(io)).toEqual({ ok: true, markedStrict: true, reset: { neverEscrowed: true, pending: true, automationKey: true } });
+        expect(calls).toEqual(['read', 'lock', 'sessions', 'read', 'drop-never-escrowed', 'discard-pending', 'rotate-automation-key', 'set-strict', 'release']);
     });
 
     // A session is a detached process that outlives `happy daemon stop`. One started under compat
