@@ -65,6 +65,7 @@ export type AiCredentialCommandResult = {
 export type AiCredentialRotationStatus = {
   state: 'stopped' | 'starting' | 'running' | 'needs-reauth' | 'blocked' | 'quota-unknown' | 'not-routed' | 'not-applicable'
   lastErrorKind: string | null
+  warningKinds?: Array<'ACCOUNT_NEEDS_REAUTH' | 'NO_COMPARISON'>
   lastSwitchAt?: string
   activeAccount?: string
   strategy?: 'sequential'
@@ -422,11 +423,19 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     const list = async () => parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
       maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
     })).stdout)
-    const before = await list()
+    let before = await list()
+    const prepared = await prepareClaudeRepair(payload, before)
+    const repaired = prepared.envelope.accounts.length > 0 ? await applyClaudeRepair(prepared) : null
+    // Verification may span rotation ticks or a user's selection/disable action.
+    // New identities must preserve the latest destination state in either case.
+    if (prepared.requested.length > 0) before = await list()
+    const repairedIdentities = new Set(repaired?.verifiedAccounts.map(claudeListAccountIdentity) ?? [])
+    const repairedAccountCount = repairedIdentities.size
+    const credentialRepairFailedAccountCount = prepared.requested.length - repairedAccountCount
     const existing = new Set(before.accounts.map(claudeListAccountIdentity))
     const envelope = JSON.parse(payload)
-    // Never send existing slots to import: even a plain import may auto-heal
-    // their dead-token status and clear disabled metadata.
+    // Existing slots are handled only by the verified repair path above: plain
+    // import may auto-heal dead-token status and clear disabled metadata.
     envelope.accounts = envelope.accounts.filter((account: { email: string }) => !existing.has(claudeListAccountIdentity(account)))
     if (envelope.accounts.length > 0) {
       const tempDir = await deps.makeTempDir()
@@ -456,20 +465,26 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       if (!after.activeUsable && after.activeCredentialKind !== 'api_key') throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
     }
     return {
-      result: { provider: 'claude' as const, configured: true, accountCount: after.accounts.length, rotation: deps.supervisor.status() },
-      // Only newly imported slots are proven organizational material. Matching
-      // personal credentials were deliberately not overwritten by this import.
-      verifiedAccounts: after.accounts.filter(account => incoming.has(claudeListAccountIdentity(account)) && (!existing.has(claudeListAccountIdentity(account)) || knownCompanyIdentities.has(JSON.stringify([account.email, account.organizationUuid ?? '', account.organizationName ?? ''])))),
+      result: { provider: 'claude' as const, configured: true, ...claudeAccountHealth(after),
+        repairedAccountCount, credentialRepairFailedAccountCount, rotation: deps.supervisor.status() },
+      // New or verified repaired slots contain organizational credentials.
+      // Unchanged personal identities are not attributed to the company.
+      verifiedAccounts: after.accounts.filter(account => incoming.has(claudeListAccountIdentity(account)) && (!existing.has(claudeListAccountIdentity(account)) || repairedIdentities.has(claudeListAccountIdentity(account)) || knownCompanyIdentities.has(JSON.stringify([account.email, account.organizationUuid ?? '', account.organizationName ?? ''])))),
     }
   }
 
-  async function prepareClaudeRepair(payload: string) {
+  async function prepareClaudeRepair(payload: string, expiredSnapshot?: ClaudeListDetails) {
     if (!claudeImportedAccountIdentities(payload)) throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
-    await ensureClaudeSwap(true)
-    const before = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
+    if (!expiredSnapshot) await ensureClaudeSwap(true)
+    const before = expiredSnapshot ?? parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
       maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
     })).stdout)
     const envelope = JSON.parse(payload)
+    if (expiredSnapshot) {
+      envelope.accounts = envelope.accounts.filter((account: { email: string }) => before.accounts.some(existing =>
+        claudeListAccountIdentity(existing) === claudeListAccountIdentity(account)
+        && existing.usageStatus === 'relogin_required' && existing.disabled !== true))
+    }
     const requested: Array<{ email: string; organizationUuid: string }> = envelope.accounts.map((account: { email: string; organizationUuid?: string }) => ({
       email: account.email, organizationUuid: account.organizationUuid ?? '',
     }))
@@ -481,8 +496,10 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         claudeListAccountIdentity(existing) === claudeListAccountIdentity(account))?.disabled === true }))
     const verification = await verifyLocalAiAccounts(deps, 'claude', requested, candidates)
     const accepted = envelope.accounts.filter((_account: unknown, index: number) => verification.accounts[index]?.ok)
-    if (accepted.length === 0) throw new AiCredentialRuntimeError('CLAUDE_APPLY_RELOGIN_REQUIRED')
-    return { before, envelope: { ...envelope, accounts: accepted }, requested, verification }
+      .map((account: { email: string }) => ({ ...account, disabled: before.accounts.find(existing =>
+        claudeListAccountIdentity(existing) === claudeListAccountIdentity(account))?.disabled }))
+    if (accepted.length === 0 && !expiredSnapshot) throw new AiCredentialRuntimeError('CLAUDE_APPLY_RELOGIN_REQUIRED')
+    return { before, envelope: { ...envelope, accounts: accepted }, requested, verification, expiredOnly: !!expiredSnapshot }
   }
 
   async function applyClaudeRepair(prepared: Awaited<ReturnType<typeof prepareClaudeRepair>>) {
@@ -502,10 +519,17 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         rotationStopped = true
       }
       const current = await list()
-      if (current.activeAccountNumber !== before.activeAccountNumber || before.accounts.some(account => {
+      const changed = current.activeAccountNumber !== before.activeAccountNumber || before.accounts.some(account => {
         const retained = current.accounts.find(candidate => claudeListAccountIdentity(candidate) === claudeListAccountIdentity(account))
         return retained?.number !== account.number || retained?.disabled !== account.disabled
-      })) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      }) || (prepared.expiredOnly && envelope.accounts.some((account: { email: string }) => current.accounts.find(candidate =>
+        claudeListAccountIdentity(candidate) === claudeListAccountIdentity(account))?.usageStatus !== 'relogin_required'))
+      if (changed) {
+        // No credentials have been written. The additive caller counts this as
+        // a skipped repair and can safely continue adding new identities.
+        if (prepared.expiredOnly) return null
+        throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      }
       const file = join(tempDir, 'claude-swap.json')
       await deps.writeFile(file, JSON.stringify(envelope), { mode: 0o600 })
       await deps.chmod(file, 0o600)
@@ -536,7 +560,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       finally { if (rotationStopped) await deps.supervisor.enable() }
     }
     return {
-      result: { provider: 'claude' as const, configured: true, accountCount: after.accounts.length,
+      result: { provider: 'claude' as const, configured: true, ...claudeAccountHealth(after),
         verification: { checkedAt: installed.checkedAt, accounts }, rotation: deps.supervisor.status() },
       verifiedAccounts: after.accounts.filter(account => requested.some((identity, index) => accounts[index]?.ok
         && claudeListAccountIdentity(account) === claudeListAccountIdentity(identity))),
@@ -1554,15 +1578,30 @@ function apiKeyRotationStatus(): AiCredentialRotationStatus {
   return { state: 'not-applicable', lastErrorKind: null }
 }
 
-function parseClaudeList(stdout: string): {
-  configured: boolean
-  activeAccount: string | null
-  credentialKind?: 'oauth' | 'api_key'
-} {
-  const { configured, activeAccount, activeCredentialKind } = parseClaudeListDetails(stdout)
+function claudeAccountHealth(details: ClaudeListDetails) {
+  const active = details.accounts.find(account => account.number === details.activeAccountNumber)
+  const activeAccountStatus = !active ? 'not-selected' as const
+    : active.disabled === true ? 'disabled' as const
+    : active.usageStatus === 'ok' ? 'usage-readable' as const
+    : active.usageStatus === 'api_key' ? 'api-key' as const
+    : active.usageStatus === 'relogin_required' ? 'relogin-required' as const
+    : 'unknown' as const
+  return {
+    accountCount: details.accounts.length,
+    activeAccountStatus,
+    usableAccountCount: details.accounts.filter(account => account.disabled !== true
+      && (account.usageStatus === 'ok' || account.usageStatus === 'api_key')).length,
+    reloginRequiredAccountCount: details.accounts.filter(account => account.disabled !== true && account.usageStatus === 'relogin_required').length,
+  }
+}
+
+function parseClaudeList(stdout: string) {
+  const details = parseClaudeListDetails(stdout)
+  const { configured, activeAccount, activeCredentialKind } = details
   return {
     configured,
     activeAccount,
+    ...claudeAccountHealth(details),
     ...(activeCredentialKind ? { credentialKind: activeCredentialKind } : {}),
   }
 }
