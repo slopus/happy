@@ -229,7 +229,14 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
 
     const [collapsed, setCollapsed] = React.useState<Set<string>>(() => new Set());
 
+    // This list feeds the Changes panel and the all-files diff overlay opened
+    // from it, so it is kept fresh only while the Changes tab exists in the
+    // sidebar. The sidebar is mounted with just the picker or other panels
+    // too, and every daemon git-status update used to refetch the whole file
+    // list for a panel nobody had open.
+    const changesPanelOpen = openPanels.includes('changes');
     React.useEffect(() => {
+        if (!changesPanelOpen) return;
         let cancelled = false;
         const pathKey = storage.getState().getSessionPathKey(sessionId);
         if (!pathKey) return;
@@ -240,7 +247,7 @@ export const FilesSidebar = React.memo<FilesSidebarProps>(({
             }
         })();
         return () => { cancelled = true; };
-    }, [sessionId, gitStatus?.lastUpdatedAt]);
+    }, [sessionId, changesPanelOpen, gitStatus?.lastUpdatedAt]);
 
     const handleFilePress = React.useCallback((file: GitFileStatus) => {
         if (file.status === 'deleted') return;
