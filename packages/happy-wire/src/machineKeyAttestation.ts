@@ -128,22 +128,34 @@ export function checkMachineKeyAttestation(input: {
   return { status: 'verified', attesterPublicKey, attestedAt: statement.attestedAt };
 }
 
+/** What a client remembers of a machine key it verified: its digest (base64) and when it was attested. */
+export type MachineKeyPin = { digest: string; attestedAt: number };
+
 /**
  * R22 — whether a client uses the machine key, and what it remembers. A client
- * pins the digest of a key it verified. It keeps using that key when the
- * attestation later disappears, and refuses any other key for the machine
- * until a new attestation verifies it. A never-verified key is used but
- * reported as unverified.
+ * pins the digest of a key it verified, with the time it was attested. It keeps
+ * using that key when the attestation later disappears, and refuses any other
+ * key for the machine until an attestation made after the pinned one verifies
+ * it. An older attestation of another key does not count: it is what a server
+ * replays to roll the machine back to a key it knew, such as the compat key
+ * before harden. A never-verified key is used but reported as unverified.
  */
 export function machineKeyTrust(input: {
   check: MachineKeyAttestationCheck;
   /** `machineKeyDigest` of the key the envelope opened to, base64. */
   digest: string;
-  pinnedDigest: string | null;
-}): { use: boolean; state: 'verified' | 'unverified' | 'changed' | 'mismatch'; pin: string | null } {
-  if (input.check.status === 'verified') return { use: true, state: 'verified', pin: input.digest };
-  if (input.check.status === 'mismatch') return { use: false, state: 'mismatch', pin: input.pinnedDigest };
-  if (input.pinnedDigest === input.digest) return { use: true, state: 'verified', pin: input.digest };
-  if (input.pinnedDigest) return { use: false, state: 'changed', pin: input.pinnedDigest };
+  pinned: MachineKeyPin | null;
+}): { use: boolean; state: 'verified' | 'unverified' | 'changed' | 'mismatch'; pin: MachineKeyPin | null } {
+  const { check, digest, pinned } = input;
+  if (check.status === 'verified') {
+    if (!pinned || pinned.digest === digest) {
+      return { use: true, state: 'verified', pin: { digest, attestedAt: Math.max(check.attestedAt, pinned?.attestedAt ?? 0) } };
+    }
+    if (check.attestedAt > pinned.attestedAt) return { use: true, state: 'verified', pin: { digest, attestedAt: check.attestedAt } };
+    return { use: false, state: 'changed', pin: pinned };
+  }
+  if (check.status === 'mismatch') return { use: false, state: 'mismatch', pin: pinned };
+  if (pinned?.digest === digest) return { use: true, state: 'verified', pin: pinned };
+  if (pinned) return { use: false, state: 'changed', pin: pinned };
   return { use: true, state: 'unverified', pin: null };
 }

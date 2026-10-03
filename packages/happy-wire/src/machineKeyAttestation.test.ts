@@ -79,29 +79,47 @@ describe('sealMachineKeyAttestation / checkMachineKeyAttestation', () => {
 
 describe('machineKeyTrust', () => {
   const digest = 'current-digest';
-  const verified = { status: 'verified', attesterPublicKey: company.publicKey, attestedAt: 1 } as const;
+  const verified = (attestedAt: number) => ({ status: 'verified', attesterPublicKey: company.publicKey, attestedAt } as const);
 
-  it('uses and pins a verified key', () => {
-    expect(machineKeyTrust({ check: verified, digest, pinnedDigest: null })).toEqual({ use: true, state: 'verified', pin: digest });
+  it('uses and pins a verified key with the time it was attested', () => {
+    expect(machineKeyTrust({ check: verified(100), digest, pinned: null })).toEqual({ use: true, state: 'verified', pin: { digest, attestedAt: 100 } });
   });
 
   it('never uses a key whose attestation does not match', () => {
-    expect(machineKeyTrust({ check: { status: 'mismatch' }, digest, pinnedDigest: digest })).toEqual({ use: false, state: 'mismatch', pin: digest });
+    const pinned = { digest, attestedAt: 100 };
+    expect(machineKeyTrust({ check: { status: 'mismatch' }, digest, pinned })).toEqual({ use: false, state: 'mismatch', pin: pinned });
   });
 
   it('keeps using the key this client verified before when the attestation is gone', () => {
-    expect(machineKeyTrust({ check: { status: 'unverified' }, digest, pinnedDigest: digest })).toEqual({ use: true, state: 'verified', pin: digest });
+    const pinned = { digest, attestedAt: 100 };
+    expect(machineKeyTrust({ check: { status: 'unverified' }, digest, pinned })).toEqual({ use: true, state: 'verified', pin: pinned });
   });
 
-  it('refuses another key for a machine this client verified before', () => {
-    expect(machineKeyTrust({ check: { status: 'unverified' }, digest, pinnedDigest: 'earlier-digest' }))
-      .toEqual({ use: false, state: 'changed', pin: 'earlier-digest' });
-    expect(machineKeyTrust({ check: { status: 'unverifiable', attesterPublicKey: company.publicKey }, digest, pinnedDigest: 'earlier-digest' }))
-      .toEqual({ use: false, state: 'changed', pin: 'earlier-digest' });
+  it('refuses another key for a machine this client verified before, unless a newer attestation vouches for it', () => {
+    const pinned = { digest: 'earlier-digest', attestedAt: 100 };
+    expect(machineKeyTrust({ check: { status: 'unverified' }, digest, pinned })).toEqual({ use: false, state: 'changed', pin: pinned });
+    expect(machineKeyTrust({ check: { status: 'unverifiable', attesterPublicKey: company.publicKey }, digest, pinned }))
+      .toEqual({ use: false, state: 'changed', pin: pinned });
+    expect(machineKeyTrust({ check: verified(200), digest, pinned })).toEqual({ use: true, state: 'verified', pin: { digest, attestedAt: 200 } });
+  });
+
+  // The server keeps a key it knew under compat together with that key's genuine attestation.
+  // After harden and a fresh attestation it serves the old pair again to roll the machine back.
+  it('refuses an attestation no newer than the pinned one for another key', () => {
+    const pinned = { digest: 'new-digest', attestedAt: 200 };
+    for (const attestedAt of [100, 200]) {
+      expect(machineKeyTrust({ check: verified(attestedAt), digest: 'old-digest', pinned }))
+        .toEqual({ use: false, state: 'changed', pin: pinned });
+    }
+  });
+
+  it('keeps the latest attestation time for the key it verified', () => {
+    expect(machineKeyTrust({ check: verified(100), digest, pinned: { digest, attestedAt: 200 } }))
+      .toEqual({ use: true, state: 'verified', pin: { digest, attestedAt: 200 } });
   });
 
   it('uses a never-verified key but says so', () => {
-    expect(machineKeyTrust({ check: { status: 'unverified' }, digest, pinnedDigest: null })).toEqual({ use: true, state: 'unverified', pin: null });
+    expect(machineKeyTrust({ check: { status: 'unverified' }, digest, pinned: null })).toEqual({ use: true, state: 'unverified', pin: null });
   });
 });
 
