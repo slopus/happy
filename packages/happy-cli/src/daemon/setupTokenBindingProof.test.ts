@@ -75,10 +75,8 @@ describe('readTrustedStudioOrigin', () => {
     for (const bad of [undefined, '', 'http://studio.example.test', 'https://u:p@studio.example.test', 'https://studio.example.test/api', 'ftp://x']) {
       expect(readTrustedStudioOrigin({ HAPPY_APLUS_STUDIO_ORIGIN: bad })).toBeNull()
     }
-    // Without an explicit origin, the same daemon-configured Studio origin the org collector trusts.
-    expect(readTrustedStudioOrigin({ HAPPY_APLUS_MCP_CONFIG_URL: 'https://studio.example.test/api/mcp/config' })).toBe('https://studio.example.test')
-    expect(readTrustedStudioOrigin({ HAPPY_APLUS_STUDIO_ORIGIN: 'https://a.example.test', HAPPY_APLUS_MCP_CONFIG_URL: 'https://b.example.test/x' })).toBe('https://a.example.test')
-    expect(readTrustedStudioOrigin({ HAPPY_APLUS_MCP_CONFIG_URL: 'http://studio.example.test/api' })).toBeNull()
+    // Explicit only, like the org collector: the MCP config URL is not a trust source for binding proofs.
+    expect(readTrustedStudioOrigin({ HAPPY_APLUS_MCP_CONFIG_URL: 'https://studio.example.test/api/mcp/config' })).toBeNull()
   })
 })
 

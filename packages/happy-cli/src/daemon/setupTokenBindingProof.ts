@@ -32,9 +32,8 @@ export type StudioPublicKey = { keyId: string; publicKeyBase64: string }
 
 /** The daemon's own configuration; a bare https origin, or http on loopback for local development. */
 export function readTrustedStudioOrigin(env: Record<string, string | undefined>): string | null {
-  const explicit = env.HAPPY_APLUS_STUDIO_ORIGIN
-  // Fallback: the origin of the daemon's own MCP config URL, the source the org collector already trusts.
-  const raw = explicit ?? (() => { try { return env.HAPPY_APLUS_MCP_CONFIG_URL ? new URL(env.HAPPY_APLUS_MCP_CONFIG_URL).origin : undefined } catch { return undefined } })()
+  // Explicit only: the same single trust source the org collector uses. No fallback to other URLs.
+  const raw = env.HAPPY_APLUS_STUDIO_ORIGIN
   if (!raw) return null
   try {
     const url = new URL(raw)

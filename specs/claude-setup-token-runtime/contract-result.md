@@ -83,8 +83,8 @@ Public key: the daemon fetches `GET <origin>/api/claude-collector/public-key` (n
 and `keyId == sha256(SPKI)`. It ignores the response's collector `type` and `audience` and computes the binding audience itself. The key is cached for 5 minutes and
 refetched once when a grant names a different `keyId` (rotation).
 
-Trusted origin: `HAPPY_APLUS_STUDIO_ORIGIN`, or else the origin of the daemon's `HAPPY_APLUS_MCP_CONFIG_URL`, which is the same source the
-org collector trusts. Both are daemon process configuration, never renderer input.
+Trusted origin: only the daemon's `HAPPY_APLUS_STUDIO_ORIGIN` (the same single source as the org collector). It is never derived from
+another URL and never comes from renderer input.
 
 ### Daemon checks, new spawn (all must pass)
 
