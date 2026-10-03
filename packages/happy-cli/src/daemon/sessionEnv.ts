@@ -482,6 +482,11 @@ export function parseAiAuthSelection(value: unknown): AiAuthSelection | undefine
  * applies last and would otherwise always win. Without a selection nothing
  * changes.
  */
+/*
+ * Not the unbound-default guard: an explicit `machine-personal` selection is a deliberate escape
+ * from managed credentials (and is then held to the applied-source proof). The setup-token guard
+ * in the AI credential runtime only applies to launches that name no selection.
+ */
 export function honorsManagedAiCredentials(selection: AiAuthSelection | undefined): boolean {
     return selection?.kind !== 'machine-personal'
 }

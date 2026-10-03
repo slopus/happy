@@ -212,6 +212,18 @@ function restrictiveRemainingPercent(entry: CodexQuotaEntry): number | null {
   return Math.min(...used.map((value) => Math.max(0, Math.min(100, 100 - value))))
 }
 
+/**
+ * Outer process bounds for collector cswap calls. `collect-org` keeps the provider's own
+ * 10 s signed HTTP deadline inside, then persists and returns; 30 s lets a valid completion
+ * reach Core before the signed publication grace, and a hung run is killed as a tree.
+ * Metadata reads stay at 10 s.
+ */
+export function cswapCollectorCommandOptions(args: string[]): { timeoutMs: number; maxOutputBytes: number; terminateProcessTree?: true } {
+  return args[0] === 'token-runtime' && args[1] === 'collect-org'
+    ? { timeoutMs: 30_000, maxOutputBytes: 65536, terminateProcessTree: true }
+    : { timeoutMs: 10_000, maxOutputBytes: 65536 }
+}
+
 export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies) {
   let operationTail: Promise<void> = Promise.resolve()
 
@@ -1866,7 +1878,14 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         || !Number.isSafeInteger(slot.credentialGeneration) || slot.credentialGeneration < 1) throw unavailable()
       // Exactly the signed generation: a replaced token is a different credential.
       if (slot.credentialGeneration !== credentialGeneration) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_STALE')
-      if (consume) await consumeBindingNonce(consume.nonce, consume.expiresAt)
+      if (consume) {
+        // A fresh grant must still be live when it is spent and when its token env is handed out;
+        // the slot reads and the durable write can cross the 60 s lifetime. A recorded resume has no fresh grant.
+        const expired = () => new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_EXPIRED')
+        if (deps.now() >= consume.expiresAt) throw expired()
+        await consumeBindingNonce(consume.nonce, consume.expiresAt)
+        if (deps.now() >= consume.expiresAt) throw expired()
+      }
       const cleared = Object.fromEntries(CLAUDE_AUTH_OVERRIDE_ENV_KEYS.map(key => [key, '']))
       return { ...cleared, CLAUDE_CODE_OAUTH_TOKEN: token, [HAPPY_AI_AUTH_SOURCE_ENV]: 'org-bundle',
         [SETUP_TOKEN_BINDING_ENV]: formatSetupTokenBinding(binding) }
@@ -2013,7 +2032,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         authorize: r => groups.authorize(r.companyId, r.userId, setupTokenGroupIdentity(r.managedAccountId)),
         consume: (id, expiresAt) => consumeCollectorPermit(join(deps.homeDir, '.happy', 'claude-collector'), id, expiresAt, deps.now()),
         invoke: async (args, input) => (await deps.execFile('cswap', args, {
-          input, timeoutMs: 10_000, maxOutputBytes: 65536, environment: deps.env,
+          input, ...cswapCollectorCommandOptions(args), environment: deps.env,
         })).stdout,
       })(input)
     })

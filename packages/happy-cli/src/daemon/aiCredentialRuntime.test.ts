@@ -3363,3 +3363,20 @@ it.each(['OFF','offline'])('fences manual collection queued behind organization 
   expect(invoke.mock.calls.map(([,args])=>args[1])).toEqual(action==='OFF'?['capabilities','status','consent','status']:[])
  }finally{release?.();fetcher.mockRestore();runtime.stopPersonalScheduler()}
 })
+
+describe('cswap collector command options', () => {
+  it('gives collect-org a 30 s outer bound with process-tree termination; metadata reads keep 10 s', async () => {
+    const { cswapCollectorCommandOptions } = await import('./aiCredentialRuntime')
+    expect(cswapCollectorCommandOptions(['token-runtime', 'collect-org'])).toMatchObject({ timeoutMs: 30_000, terminateProcessTree: true })
+    for (const read of [['token-runtime', 'capabilities'], ['token-runtime', 'status']]) {
+      const options = cswapCollectorCommandOptions(read)
+      expect(options.timeoutMs).toBe(10_000)
+      expect(options.terminateProcessTree).toBeUndefined()
+    }
+  })
+
+  it('is what the collector adapter uses for every cswap call', async () => {
+    const source = await readTestFile(join(__dirname, 'aiCredentialRuntime.ts'), 'utf8')
+    expect(source).toMatch(/invoke: async \(args, input\) => \(await deps\.execFile\('cswap', args, \{\s*input, \.\.\.cswapCollectorCommandOptions\(args\), environment: deps\.env,/)
+  })
+})

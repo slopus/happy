@@ -94,7 +94,11 @@ another URL and never comes from renderer input.
 4. The cswap slot is enabled, holds managed metadata for that ID and a setup-token, and has **exactly** that generation (`…_STALE` otherwise).
 5. The nonce is consumed one-use in `~/.happy/setup-token-binding-nonces.json` (durable across restarts; `…_REPLAYED`).
 
-Failures: `CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE | _STALE | _REPLAYED | CLAUDE_SETUP_TOKEN_UNSUPPORTED`, surfaced as "Failed to spawn session: …". There is no substitute credential.
+A fresh grant is re-checked against its `expiresAt` on the daemon clock right before the nonce is consumed and again after the durable
+write. Expiry in either place gives `CLAUDE_SETUP_TOKEN_BINDING_EXPIRED` and no token env (after the write the nonce stays burned). A resume
+from a record has no fresh grant and no lifetime check.
+
+Failures: `CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE | _STALE | _REPLAYED | _EXPIRED | CLAUDE_SETUP_TOKEN_UNSUPPORTED`, surfaced as "Failed to spawn session: …". There is no substitute credential.
 
 ### Child env and resume
 
@@ -123,7 +127,7 @@ Both sites call `sessionEnvironment`:
 | same, but no managed setup-token is desired (no assignment, revoked/empty assignment, ordinary OAuth group) | unchanged (machine default) |
 | Z.AI lease active | unchanged (lease env) |
 | non-Claude agents | unchanged |
-| `machine-personal` selection | unchanged (still refused by the existing applied-source proof) |
+| explicit `machine-personal` selection | deliberate escape: managed resolution is skipped (`honorsManagedAiCredentials` false), so the unbound-default guard does not apply; the spawn is still held to the existing applied-source proof |
 
 The decision uses the group journal alone. Each entry now records `managed`, the desired identities that are setup-tokens, projected from
 the payload at sync. There is no cswap call per launch. Journals written before this field existed (no `managed` key) are resolved at the next unbound Claude launch or resume:
@@ -191,6 +195,9 @@ Happy neither discovers assignments nor schedules probes. Server debit is author
 provider machine/token ledger is an additional bound. No inference/network support
 is inferred from synthetic tests. Automatic rotation and prepared-profile binding
 remain separate pending work.
+
+Process bound (integration): `cswap token-runtime collect-org` runs with a 30 s outer timeout and process-tree termination,
+so a valid completion within the provider's 10 s signed HTTP deadline plus persistence reaches Core. Metadata reads keep 10 s.
 
 Capability `collectorProbeVersion:1` appears only after marked provider org capability
 and trusted-origin key validation; Desktop MUST preflight before reserve.

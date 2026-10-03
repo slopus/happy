@@ -45,7 +45,7 @@ type Slot = { number: number; email: string; organizationUuid?: string; usageSta
 
 // A stateful stand-in for cswap. `marked` keeps managed metadata like the token runtime; an
 // unmarked build drops it, as upstream does.
-function fakeMachine(initial: Slot[], activeAccountNumber: number | null, options: { runtime?: 'marked' | 'unmarked' | 'missing'; ignoreForce?: boolean; tokenRuntimeStatus?: string; files?: Map<string, string>; binding?: false; env?: Record<string, string>; capabilities?: Record<string, unknown>; listFails?: boolean } = {}) {
+function fakeMachine(initial: Slot[], activeAccountNumber: number | null, options: { runtime?: 'marked' | 'unmarked' | 'missing'; ignoreForce?: boolean; tokenRuntimeStatus?: string; files?: Map<string, string>; binding?: false; env?: Record<string, string>; capabilities?: Record<string, unknown>; listFails?: boolean; clock?: { now: number }; advanceOnExport?: number; advanceOnNonceWrite?: number } = {}) {
   const kind = options.runtime ?? 'marked'
   const state = { slots: [...initial], active: activeAccountNumber }
   const calls: Array<{ command: string; args: string[] }> = []
@@ -62,6 +62,7 @@ function fakeMachine(initial: Slot[], activeAccountNumber: number | null, option
     if (command === 'cswap' && args[0] === 'list' && options.listFails) throw Object.assign(new Error('list failed'), { kind: 'COMMAND_FAILED' })
     if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: state.active,
       accounts: state.slots.map(({ credentials: _c, config: _f, ...row }) => ({ ...row, active: row.number === state.active })) }), stderr: '' }
+    if (command === 'cswap' && args[0] === 'export' && options.clock && options.advanceOnExport) options.clock.now += options.advanceOnExport
     if (command === 'cswap' && args[0] === 'export') return { stdout: JSON.stringify({ version: 1, encrypted: false, accounts: state.slots }), stderr: '' }
     if (command === 'cswap' && args[0] === 'import') {
       const envelope = JSON.parse(files.get(args[1]!)!)
@@ -85,10 +86,13 @@ function fakeMachine(initial: Slot[], activeAccountNumber: number | null, option
     return { stdout: '', stderr: '' }
   })
   const runtime = createAiCredentialRuntime({
-    homeDir: '/home/operator', now: () => NOW, env: options.env ?? {}, execFile,
+    homeDir: '/home/operator', now: () => options.clock?.now ?? NOW, env: options.env ?? {}, execFile,
     ...(options.binding === false ? {} : { setupTokenBinding: studioVerifier() }),
     readFile: vi.fn(async (path: string) => files.get(path) ?? Promise.reject(Object.assign(new Error('missing'), { code: 'ENOENT' }))),
-    writeFile: vi.fn(async (path: string, content: string) => { files.set(path, content) }),
+    writeFile: vi.fn(async (path: string, content: string) => {
+      if (path.includes('setup-token-binding-nonces') && options.clock && options.advanceOnNonceWrite) options.clock.now += options.advanceOnNonceWrite
+      files.set(path, content)
+    }),
     readdir: vi.fn(async () => []), mkdir: vi.fn(async () => undefined),
     rename: vi.fn(async (from: string, to: string) => { files.set(to, files.get(from)!); files.delete(from) }),
     chmod: vi.fn(async () => undefined), rm: vi.fn(async (path: string) => { files.delete(path) }),
@@ -242,6 +246,32 @@ describe('managed Claude setup-token runtime', () => {
       expect(String((results.find(result => result.status === 'rejected') as PromiseRejectedResult).reason)).toContain('CLAUDE_SETUP_TOKEN_BINDING_REPLAYED')
       const both = await Promise.all([runtime.sessionEnvironment('claude', selection()), runtime.sessionEnvironment('claude', selection())])
       expect(new Set(both.map(env => JSON.parse(env.HAPPY_AI_AUTH_SETUP_TOKEN_BINDING!).nonce)).size).toBe(2)
+    })
+
+    it('rejects a grant that expires while the slot is read, before burning its nonce', async () => {
+      const clock = { now: NOW }
+      const { runtime, files } = await assigned({ clock, advanceOnExport: 60_000 })
+      const chosen = selection()
+      await expect(runtime.sessionEnvironment('claude', chosen)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_EXPIRED')
+      expect(files.has('/home/operator/.happy/setup-token-binding-nonces.json')).toBe(false)
+    })
+
+    it('rejects a grant that expires during the nonce write: the nonce is burned and no token env is returned', async () => {
+      const clock = { now: NOW }
+      const { runtime } = await assigned({ clock, advanceOnNonceWrite: 60_000 })
+      const chosen = selection()
+      await expect(runtime.sessionEnvironment('claude', chosen)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_EXPIRED')
+      clock.now = NOW
+      await expect(runtime.sessionEnvironment('claude', chosen)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_REPLAYED')
+    })
+
+    it('resumes from a record without any fresh-grant lifetime check', async () => {
+      const clock = { now: NOW }
+      const { runtime } = await assigned({ clock })
+      const env = await runtime.sessionEnvironment('claude', selection())
+      const resume = readSetupTokenResumeSelection(captureSaycodeAgentEnvironment(env))!
+      clock.now = NOW + 24 * 3600_000
+      expect((await runtime.sessionEnvironment('claude', resume.selection, resume.binding)).CLAUDE_CODE_OAUTH_TOKEN).toBe(fakeToken('a'))
     })
 
     it('makes each grant one-use, durably across a daemon restart', async () => {
