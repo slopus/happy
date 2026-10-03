@@ -100,9 +100,8 @@ class Configuration {
       this.serverUrl ||
       'https://saycode.ai'
 
-    // A strict daemon passes strict to the sessions it starts in HAPPY_MACHINE_CONTROL,
-    // since a session with staged credentials gets a happy home without settings.json.
-    // The variable can only raise compat to strict, never lower it.
+    // HAPPY_MACHINE_CONTROL=strict runs a process strict whatever its settings say, for a happy
+    // home without settings.json. The variable can only raise compat to strict, never lower it.
     this.machineControl = readSettingsStringSync(this.settingsFile, 'machineControl') === 'strict'
       || process.env.HAPPY_MACHINE_CONTROL === 'strict'
       ? 'strict'

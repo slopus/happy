@@ -92,8 +92,8 @@ describe('configuration machine control mode', () => {
     cleanup();
   });
 
-  // A session the daemon starts with staged credentials gets a happy home without settings.json;
-  // the daemon passes strict down in HAPPY_MACHINE_CONTROL. The variable never lowers strict.
+  // HAPPY_MACHINE_CONTROL=strict runs a process strict even from a happy home without
+  // settings.json. The variable never lowers strict.
   it.each([
     [{ HAPPY_MACHINE_CONTROL: 'strict' }, undefined, 'strict'],
     [{ HAPPY_MACHINE_CONTROL: 'compat' }, { machineControl: 'strict' }, 'strict'],
