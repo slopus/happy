@@ -61,7 +61,13 @@ type SaycodeAgentEnvironmentKey = typeof SAYCODE_AGENT_ENV_KEYS[number]
 const CHECKPOINT_CONTEXT_KEY = CHECKPOINT_SPAWN_CONTEXT_ENV_KEY
 /** Set from the spawn option `browserContinuation` only (request environment cannot carry HAPPY_AUTOMATION_*). */
 export const BROWSER_CONTINUATION_ENV = 'HAPPY_AUTOMATION_BROWSER_CONTINUATION'
-type SessionScopedEnvironmentKey = SaycodeAgentEnvironmentKey | typeof CHECKPOINT_CONTEXT_KEY | 'HAPPY_WRITE_SCOPE_SESSION' | 'HAPPY_SANDBOX_POLICY_MODE' | 'HAPPY_PROJECT_SANDBOX_CONFIG' | typeof ADDITIONAL_DIRECTORIES_ENV | typeof BROWSER_CONTINUATION_ENV
+/**
+ * Secret-free record of which managed setup-token generation a session was started on.
+ * Daemon-written only: the HAPPY_AI_AUTH_ prefix is scrubbed from inherited and
+ * requested environments, so neither can forge or carry it to another session.
+ */
+export const SETUP_TOKEN_BINDING_ENV = 'HAPPY_AI_AUTH_SETUP_TOKEN_BINDING'
+type SessionScopedEnvironmentKey = SaycodeAgentEnvironmentKey | typeof CHECKPOINT_CONTEXT_KEY | typeof SETUP_TOKEN_BINDING_ENV | 'HAPPY_WRITE_SCOPE_SESSION' | 'HAPPY_SANDBOX_POLICY_MODE' | 'HAPPY_PROJECT_SANDBOX_CONFIG' | typeof ADDITIONAL_DIRECTORIES_ENV | typeof BROWSER_CONTINUATION_ENV
 
 export type SaycodeAgentEnvironment = Partial<Record<SessionScopedEnvironmentKey, string>>
 
@@ -248,11 +254,51 @@ export function captureSaycodeAgentEnvironment(
     }
     // A Studio Chat(beta) session keeps being parked across the resumes an Agent Browser attention causes.
     if (env[BROWSER_CONTINUATION_ENV] === '1') captured[BROWSER_CONTINUATION_ENV] = '1'
+    const binding = env[SETUP_TOKEN_BINDING_ENV]
+    if (binding !== undefined && parseSetupTokenBinding(binding)) captured[SETUP_TOKEN_BINDING_ENV] = binding
     const encodedCheckpointContext = env[CHECKPOINT_CONTEXT_KEY]
     if (encodedCheckpointContext && readCheckpointSpawnContext(env)) {
         captured[CHECKPOINT_CONTEXT_KEY] = encodedCheckpointContext
     }
     return Object.keys(captured).length > 0 ? captured : undefined
+}
+
+const MANAGED_ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+const GROUP_SCOPE = /^[^\s]{1,128}$/
+
+type SetupTokenBinding = { managedAccountId: string; credentialGeneration: number; groupScope: string; userId: string }
+
+export function formatSetupTokenBinding(binding: SetupTokenBinding): string {
+    const { managedAccountId, credentialGeneration, groupScope, userId } = binding
+    return JSON.stringify({ version: 1, managedAccountId, credentialGeneration, groupScope, userId })
+}
+
+function parseSetupTokenBinding(value: string): SetupTokenBinding | null {
+    try {
+        const parsed = JSON.parse(value)
+        if (parsed?.version !== 1 || typeof parsed.managedAccountId !== 'string' || !MANAGED_ACCOUNT_ID.test(parsed.managedAccountId)
+            || !Number.isSafeInteger(parsed.credentialGeneration) || parsed.credentialGeneration < 1
+            || typeof parsed.groupScope !== 'string' || !GROUP_SCOPE.test(parsed.groupScope)
+            || typeof parsed.userId !== 'string' || !GROUP_SCOPE.test(parsed.userId)) return null
+        return { managedAccountId: parsed.managedAccountId, credentialGeneration: parsed.credentialGeneration, groupScope: parsed.groupScope, userId: parsed.userId }
+    } catch { return null }
+}
+
+/**
+ * The selection a resume must use: the exact managed slot and generation the session
+ * started on. A session without a binding resumes as before; a corrupt one fails
+ * closed instead of silently falling back to the machine default.
+ */
+export function readSetupTokenResumeSelection(agentEnvironment: SaycodeAgentEnvironment | undefined):
+    { selection: AiAuthSelection; caller: { userId: string } } | undefined {
+    const raw = agentEnvironment?.[SETUP_TOKEN_BINDING_ENV]
+    if (raw === undefined) return undefined
+    const binding = parseSetupTokenBinding(raw)
+    if (!binding) throw new Error('Recorded setup-token binding is invalid; the session is not resumed with another credential')
+    const { managedAccountId, credentialGeneration, groupScope, userId } = binding
+    // The recorded owner is re-checked against the journal; a resume never adopts a new caller.
+    return { selection: { kind: 'claude-setup-token', managedAccountId, groupScope, credentialGeneration }, caller: { userId } }
 }
 
 function isValidAdditionalDirectories(value: string): boolean {
@@ -370,7 +416,7 @@ export type AiAuthSelectionKind = (typeof AI_AUTH_SELECTION_KINDS)[number]
  */
 export type AiAuthSelection =
     | { kind: 'machine-personal' | 'org-bundle' }
-    | { kind: 'claude-setup-token'; managedAccountId: string }
+    | { kind: 'claude-setup-token'; managedAccountId: string; groupScope: string; credentialGeneration?: number }
 
 /**
  * Advertised in `MachineMetadataSchema` so a client can tell this daemon
@@ -396,10 +442,20 @@ export function parseAiAuthSelection(value: unknown): AiAuthSelection | undefine
     if (kind === 'claude-setup-token') {
         const managedAccountId = (value as { managedAccountId?: unknown }).managedAccountId
         if (typeof managedAccountId !== 'string'
-            || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(managedAccountId)) {
+            || !MANAGED_ACCOUNT_ID.test(managedAccountId)) {
             throw new Error('AI auth selection claude-setup-token requires a managedAccountId')
         }
-        return { kind, managedAccountId }
+        // The group-sync scope (company) whose daemon journal must own the slot.
+        const groupScope = (value as { groupScope?: unknown }).groupScope
+        if (typeof groupScope !== 'string' || !GROUP_SCOPE.test(groupScope)) {
+            throw new Error('AI auth selection claude-setup-token requires a groupScope')
+        }
+        const credentialGeneration = (value as { credentialGeneration?: unknown }).credentialGeneration
+        if (credentialGeneration === undefined) return { kind, managedAccountId, groupScope }
+        if (!Number.isSafeInteger(credentialGeneration) || Number(credentialGeneration) < 1) {
+            throw new Error('AI auth selection credentialGeneration must be a positive integer')
+        }
+        return { kind, managedAccountId, groupScope, credentialGeneration: Number(credentialGeneration) }
     }
     return { kind: kind as 'machine-personal' | 'org-bundle' }
 }

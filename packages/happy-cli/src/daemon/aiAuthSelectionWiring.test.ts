@@ -53,11 +53,14 @@ describe('배선 가드: spawn 이 선택을 존중하고 검증하는가', () =
     )
   })
 
-  it('새 spawn 만 선택을 관리 자격 해석에 넘기고 resume 은 넘기지 않는다', async () => {
+  it('새 spawn 은 요청 선택을, resume 은 기록된 setup-token 결합을 관리 자격 해석에 넘긴다', async () => {
     const text = await runSource()
-    expect(text).toMatch(/await resolveManagedAiCredentialEnvironment\(options\.agent, options\.aiAuthSelection\)/)
-    expect(text).toMatch(/await resolveManagedAiCredentialEnvironment\(resumeAgent\)/)
-    expect(text).toMatch(/aiCredentialRuntime\.sessionEnvironment\(agent, selection\)/)
+    // Resume re-binds exactly the session's own recorded setup-token, never the machine default.
+    expect(text).toMatch(/const resumeBinding = readSetupTokenResumeSelection\(tracked\.agentEnvironment\);/)
+    expect(text).toMatch(/await resolveManagedAiCredentialEnvironment\(\s*resumeAgent,\s*resumeBinding\?\.selection,\s*resumeBinding\?\.caller,?\s*\)/)
+    // A new spawn names its caller from the consumed MCP grant, never from the selection itself.
+    expect(text).toMatch(/resolveManagedAiCredentialEnvironment\(options\.agent, options\.aiAuthSelection, mcpCallerGrantCaller\(mcpCallerGrant\)\)/)
+    expect(text).toMatch(/aiCredentialRuntime\.sessionEnvironment\(agent, selection, caller\)/)
   })
 
   it('두 spawn 경로가 자식에게 건네는 바로 그 env 를 검증한다', async () => {

@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
 import { createAiCredentialRuntime, type AiCredentialCommandResult } from './aiCredentialRuntime'
 import { groupAccountIdentity } from './aiCredentialGroupAdapters'
+import {
+  applyAppliedAiAuthSourceEnv, buildManagedSessionSpawnEnvironment, buildResumedSessionSpawnEnvironment, buildSpawnRequestEnvironment,
+  captureSaycodeAgentEnvironment, overlayManagedCredentialEnvironment, readSetupTokenResumeSelection, verifyAiAuthSelection,
+} from './sessionEnv'
 import { managedSetupTokenEmail, managedSetupTokenId, setupTokenGroupIdentity, setupTokenRuntimeStatus } from './claudeSetupToken'
 
 const A = '0b6f2c1e-1111-4a2b-8c3d-000000000001'
@@ -21,7 +25,7 @@ type Slot = { number: number; email: string; organizationUuid?: string; usageSta
 
 // A stateful stand-in for cswap. `marked` keeps managed metadata like the token runtime; an
 // unmarked build drops it, as upstream does.
-function fakeMachine(initial: Slot[], activeAccountNumber: number | null, options: { runtime?: 'marked' | 'unmarked' | 'missing'; ignoreForce?: boolean } = {}) {
+function fakeMachine(initial: Slot[], activeAccountNumber: number | null, options: { runtime?: 'marked' | 'unmarked' | 'missing'; ignoreForce?: boolean; tokenRuntimeStatus?: string } = {}) {
   const kind = options.runtime ?? 'marked'
   const state = { slots: [...initial], active: activeAccountNumber }
   const calls: Array<{ command: string; args: string[] }> = []
@@ -32,6 +36,7 @@ function fakeMachine(initial: Slot[], activeAccountNumber: number | null, option
     if (command === 'cswap' && args[0] === '--version') return { stdout: 'cswap 0.27.0b1', stderr: '' }
     if (command === 'cswap' && args[0] === 'token-runtime') {
       if (kind !== 'marked') throw Object.assign(new Error('unknown command'), { kind: 'COMMAND_FAILED' })
+      if (args[1] === 'status') return { stdout: options.tokenRuntimeStatus ?? JSON.stringify({ version: 1, artifact: 'saycode-setup-token-runtime-v1', accounts: [] }), stderr: '' }
       return { stdout: MARKER, stderr: '' }
     }
     if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: state.active,
@@ -47,6 +52,11 @@ function fakeMachine(initial: Slot[], activeAccountNumber: number | null, option
         // Like cswap, --force rewrites the account record and so drops its disabled flag.
         if (index < 0) state.slots.push(slot); else if (args.includes('--force') && !options.ignoreForce) state.slots[index] = slot
       }
+      return { stdout: '', stderr: '' }
+    }
+    if (command === 'cswap' && args[0] === 'remove') {
+      state.slots = state.slots.filter(slot => slot.number !== Number(args[1]))
+      if (state.active === Number(args[1])) state.active = null
       return { stdout: '', stderr: '' }
     }
     if (command === 'cswap' && args[0] === 'disable') { state.slots.find(slot => slot.number === Number(args[1]))!.disabled = true; return { stdout: '', stderr: '' } }
@@ -155,38 +165,151 @@ describe('managed Claude setup-token runtime', () => {
   })
 
   describe('new-session binding', () => {
-    const selection = { kind: 'claude-setup-token' as const, managedAccountId: A }
+    const selection = { kind: 'claude-setup-token' as const, managedAccountId: A, groupScope: 'company-1' }
+    const caller = { userId: 'user-1' }
+    // The slot is installed by this scope's group-sync, so the journal proves ownership.
+    async function assigned(options: Parameters<typeof fakeMachine>[2] = {}, initial: Slot[] = [], active: number | null = null) {
+      const machine = fakeMachine(initial, active, options)
+      await machine.runtime.groupSync(sync(1, payload(managed(A, 1, fakeToken('a')))))
+      return machine
+    }
 
     it('returns only the bound token with every other Claude auth override cleared', async () => {
       const personal: Slot = { number: 1, email: 'me@example.com', usageStatus: 'ok', credentials: { claudeAiOauth: { accessToken: 'personal' } } }
-      const { runtime, state, calls } = fakeMachine([personal, stored(A, 1, fakeToken('a'))], 1)
-      const env = await runtime.sessionEnvironment('claude', selection)
+      const { runtime, state, calls } = await assigned({}, [personal], 1)
+      const env = await runtime.sessionEnvironment('claude', selection, caller)
       expect(env).toMatchObject({ CLAUDE_CODE_OAUTH_TOKEN: fakeToken('a'), HAPPY_AI_AUTH_SOURCE: 'org-bundle', ANTHROPIC_API_KEY: '', ANTHROPIC_BASE_URL: '' })
+      // The secret-free binding the daemon records for resume names the generation actually applied.
+      expect(JSON.parse(env.HAPPY_AI_AUTH_SETUP_TOKEN_BINDING!)).toEqual({ version: 1, managedAccountId: A, credentialGeneration: 1, groupScope: 'company-1', userId: 'user-1' })
+      expect(env.HAPPY_AI_AUTH_SETUP_TOKEN_BINDING).not.toContain('sk-ant')
       // Binding never switches the machine's active account or runs inference.
       expect(state.active).toBe(1)
       expect(calls.some(call => call.args[0] === 'switch')).toBe(false)
       expect(inference(calls)).toEqual([])
     })
 
+    it('refuses a slot the caller scope does not own: personal, another company, another user, or no caller', async () => {
+      const personal = fakeMachine([stored(A, 1, fakeToken('a'))], null)
+      await expect(personal.runtime.sessionEnvironment('claude', selection, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      const { runtime } = await assigned()
+      await expect(runtime.sessionEnvironment('claude', { ...selection, groupScope: 'company-2' }, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      await expect(runtime.sessionEnvironment('claude', selection, { userId: 'user-2' })).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      await expect(runtime.sessionEnvironment('claude', selection)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+    })
+
+    it('refuses once the assignment is revoked or still pending', async () => {
+      const revoked = await assigned()
+      await revoked.runtime.groupSync({ ...sync(2, null as never), payload: null })
+      await expect(revoked.runtime.sessionEnvironment('claude', selection, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      const pending = await assigned({ ignoreForce: true })
+      await expect(pending.runtime.groupSync(sync(2, payload(managed(A, 2, fakeToken('b')))))).rejects.toThrow()
+      await expect(pending.runtime.sessionEnvironment('claude', selection, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+    })
+
     it.each([
-      ['a disabled slot', [stored(A, 1, fakeToken('a'), { disabled: true })], 'marked'],
-      ['a slot without managed metadata', [{ ...stored(A, 1, fakeToken('a')), managedAccountId: undefined }], 'marked'],
-      ['a missing slot', [stored(B, 1, fakeToken('b'))], 'marked'],
-      ['an unmarked runtime', [stored(A, 1, fakeToken('a'))], 'unmarked'],
-    ] as const)('fails closed for %s', async (_label, slots, runtimeKind) => {
-      const { runtime } = fakeMachine([...slots] as Slot[], null, { runtime: runtimeKind })
-      await expect(runtime.sessionEnvironment('claude', selection)).rejects.toThrow(/CLAUDE_SETUP_TOKEN_(BINDING_UNAVAILABLE|UNSUPPORTED)/)
+      ['a disabled slot', (state: { slots: Slot[] }) => { state.slots[0]!.disabled = true }],
+      ['a slot without managed metadata', (state: { slots: Slot[] }) => { delete state.slots[0]!.managedAccountId }],
+      ['a removed slot', (state: { slots: Slot[]; active: number | null }) => { state.slots.length = 0; state.active = null }],
+    ] as const)('fails closed for %s', async (_label, mutate) => {
+      const { runtime, state } = await assigned()
+      mutate(state)
+      await expect(runtime.sessionEnvironment('claude', selection, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+    })
+
+    it('fails closed on an unmarked runtime', async () => {
+      const { runtime } = fakeMachine([stored(A, 1, fakeToken('a'))], null, { runtime: 'unmarked' })
+      await expect(runtime.sessionEnvironment('claude', selection, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
+    })
+
+    it('resumes only on the exact recorded generation, never a replaced token or the machine default', async () => {
+      const { runtime } = await assigned()
+      await runtime.groupSync(sync(2, payload(managed(A, 2, fakeToken('replaced')))))
+      await expect(runtime.sessionEnvironment('claude', { ...selection, credentialGeneration: 1 }, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_STALE')
+      expect(await runtime.sessionEnvironment('claude', { ...selection, credentialGeneration: 2 }, caller)).toMatchObject({ CLAUDE_CODE_OAUTH_TOKEN: fakeToken('replaced') })
+    })
+
+    it('wins over inherited and requested credentials on spawn (plain and tmux) and on resume after a restart', async () => {
+      const { runtime } = await assigned()
+      const managedEnv = await runtime.sessionEnvironment('claude', selection, caller)
+      const inherited = { ANTHROPIC_API_KEY: 'sk-ant-api-INHERITED', CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-INHERITED', ANTHROPIC_MODEL: 'opus',
+        HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '{"forged":true}', HAPPY_AI_AUTH_SOURCE: 'personal-subscription' }
+      const requested = buildSpawnRequestEnvironment({}, { ANTHROPIC_BASE_URL: 'https://proxy.invalid', ANTHROPIC_AUTH_TOKEN: 'x', HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '{}' })
+      // Both run.ts spawn paths build exactly this env (tmux passes every key with -e, so '' overwrites server values).
+      const child = applyAppliedAiAuthSourceEnv(buildManagedSessionSpawnEnvironment(inherited, requested, managedEnv), true)
+      expect(child).toMatchObject({ CLAUDE_CODE_OAUTH_TOKEN: fakeToken('a'), ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '', ANTHROPIC_BASE_URL: '',
+        ANTHROPIC_MODEL: 'opus', HAPPY_AI_AUTH_SOURCE: 'org-bundle' })
+      expect(verifyAiAuthSelection(selection, child).rejection).toBeUndefined()
+      // The daemon persists only the captured secret-free binding; a restart rehydrates it the same way.
+      const persisted = captureSaycodeAgentEnvironment(child)!
+      expect(JSON.stringify(persisted)).not.toContain('sk-ant')
+      const restored = captureSaycodeAgentEnvironment(JSON.parse(JSON.stringify(persisted)))
+      const binding = readSetupTokenResumeSelection(restored)!
+      const resumedManaged = await runtime.sessionEnvironment('claude', binding.selection, binding.caller)
+      const resumed = overlayManagedCredentialEnvironment(buildResumedSessionSpawnEnvironment({ inherited, explicit: {},
+        runtime: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-REQUESTED', ANTHROPIC_API_KEY: 'k' }, agentEnvironment: restored, sessionId: 's1' }), resumedManaged)
+      expect(resumed).toMatchObject({ CLAUDE_CODE_OAUTH_TOKEN: fakeToken('a'), ANTHROPIC_API_KEY: '', HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: persisted.HAPPY_AI_AUTH_SETUP_TOKEN_BINDING })
+      // After a replacement the same resume fails closed rather than using the new or default credential.
+      await runtime.groupSync(sync(2, payload(managed(A, 2, fakeToken('replaced')))))
+      await expect(runtime.sessionEnvironment('claude', binding.selection, binding.caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_STALE')
     })
 
     it('refuses a non-Claude agent and leaves unselected spawns unchanged', async () => {
-      const { runtime } = fakeMachine([stored(A, 1, fakeToken('a'))], null)
-      await expect(runtime.sessionEnvironment('codex', selection)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      const { runtime } = await assigned()
+      await expect(runtime.sessionEnvironment('codex', selection, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
       expect(await runtime.sessionEnvironment('claude')).toEqual({})
     })
 
-    it('advertises binding only with the marked runtime', async () => {
-      expect(await fakeMachine([], null).runtime.capabilities()).toMatchObject({ newSessionProfileBinding: true, setupTokenSessionBindingVersion: 1 })
-      expect(await fakeMachine([], null, { runtime: 'unmarked' }).runtime.capabilities()).toMatchObject({ newSessionProfileBinding: false })
+    it('does not advertise binding while the caller claim is unverified on the daemon', async () => {
+      const capabilities = await fakeMachine([], null).runtime.capabilities()
+      expect(capabilities).toMatchObject({ newSessionProfileBinding: false, setupTokenVersion: 1 })
+      expect(capabilities).not.toHaveProperty('setupTokenSessionBindingVersion')
+    })
+  })
+
+  it('keeps ownership per group scope: another scope cannot replace or revoke a slot it did not install', async () => {
+    const { runtime, state } = fakeMachine([], null)
+    await runtime.groupSync(sync(1, payload(managed(A, 1, fakeToken('a')))))
+    const other = { ...sync(1, payload(managed(A, 2, fakeToken('b')))), scope: 'company-2' }
+    await expect(runtime.groupSync(other)).rejects.toThrow('AI_GROUP_CREDENTIAL_CONFLICT')
+    // Unassigning the second scope leaves the first scope's slot in place.
+    await runtime.groupSync({ ...sync(2, null as never), scope: 'company-2', payload: null })
+    expect(state.slots.map(slot => slot.managedAccountId)).toEqual([A])
+    expect(state.slots[0]!.credentials).toEqual(managed(A, 1, fakeToken('a')).credentials)
+  })
+
+  describe('token-runtime observation status', () => {
+    const row = { accountRef: '5d1d6a1e-0000-4000-8000-000000000001', number: 1, roster: 'x', credentialGeneration: 1, label: 'team-1',
+      identityConfidence: 'saved-metadata', credentialType: 'setup_token', managedAccountId: A, authState: 'unverified', usageStatus: 'stale',
+      decisionEligible: false, reasonCodes: ['coverage_unknown'], probeEnabled: false, disabled: false, pinned: false,
+      fingerprint: 'private', accessToken: fakeToken('leak'),
+      observation: { version: 1, source: 'inference_probe', accountRef: '5d1d6a1e-0000-4000-8000-000000000001', credentialGeneration: 1,
+        observedAt: '2026-10-04T00:00:00Z', coverage: 'unknown', reason: 'coverage_unknown', retryAt: null, raw: 'body',
+        windows: [{ kind: 'unified5h', pct: 42, resetsAt: '2026-10-04T05:00:00Z', status: 'allowed' }, { kind: 'unified7d', pct: null, resetsAt: null, status: null }] } }
+    const statusOf = async (tokenRuntimeStatus: string, runtimeKind: 'marked' | 'unmarked' = 'marked') =>
+      await fakeMachine([stored(A, 1, fakeToken('a'), { number: 1 })], 1, { runtime: runtimeKind, tokenRuntimeStatus }).runtime.status({ provider: 'claude' }) as Record<string, unknown>
+
+    it('adds whitelisted secret-free rows and observations only', async () => {
+      const status = await statusOf(JSON.stringify({ version: 1, artifact: 'saycode-setup-token-runtime-v1', accounts: [row] }))
+      expect(status.tokenRuntime).toEqual({ version: 1, state: 'available', accounts: [{
+        accountRef: row.accountRef, number: 1, credentialGeneration: 1, label: 'team-1', identityConfidence: 'saved-metadata',
+        credentialType: 'setup_token', managedAccountId: A, authState: 'unverified', usageStatus: 'stale', decisionEligible: false,
+        reasonCodes: ['coverage_unknown'], probeEnabled: false, disabled: false, pinned: false,
+        observation: { version: 1, source: 'inference_probe', accountRef: row.accountRef, credentialGeneration: 1, observedAt: '2026-10-04T00:00:00Z',
+          coverage: 'unknown', reason: 'coverage_unknown', retryAt: null, windows: row.observation.windows } }] })
+      expect(JSON.stringify(status)).not.toMatch(/sk-ant|private|"raw"/)
+    })
+
+    it('keeps unknown values unknown and never claims decision eligibility', async () => {
+      const bad = { ...row, decisionEligible: true, observation: { ...row.observation, windows: [{ kind: 'unified5h', pct: Number.NaN, resetsAt: 'x', status: 1 }, { kind: 'model-weekly', pct: 1 }] } }
+      const status = await statusOf(JSON.stringify({ version: 1, artifact: 'saycode-setup-token-runtime-v1', accounts: [bad] }))
+      const account = (status.tokenRuntime as { accounts: Array<Record<string, any>> }).accounts[0]!
+      expect(account.decisionEligible).toBe(false)
+      expect(account.observation.windows).toEqual([{ kind: 'unified5h', pct: null, resetsAt: null, status: null }])
+    })
+
+    it('reports unavailable on an invalid envelope and stays absent on legacy runtimes', async () => {
+      expect((await statusOf('{"version":2}')).tokenRuntime).toEqual({ version: 1, state: 'unavailable', accounts: [] })
+      expect(await statusOf('{}', 'unmarked')).not.toHaveProperty('tokenRuntime')
     })
   })
 })

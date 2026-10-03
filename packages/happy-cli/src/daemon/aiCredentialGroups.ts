@@ -75,5 +75,7 @@ export function createCredentialGroupSync(deps:CredentialGroupDeps) {
     for(const entry of journal.entries.filter(e=>e.provider===provider)){entry.pending=true;entry.owned=touched===null?[]:entry.owned.filter(id=>!touched.includes(id));changed=true}
     if(changed)await deps.write(JSON.stringify(journal))
   }
-  return {sync,invalidate,receipt:async(scope:string,provider:GroupProvider)=>{const entry=await readReceipt(scope,provider);return entry?receipt(entry):null}}
+  /** Who a scope's applied assignment belongs to and what it installed: the local ownership proof. */
+  async function assignment(scope:string,provider:GroupProvider){const entry=await readReceipt(scope,provider);return entry?{userId:entry.userId,desired:[...entry.desired],reconciled:!entry.pending}:null}
+  return {sync,invalidate,assignment,receipt:async(scope:string,provider:GroupProvider)=>{const entry=await readReceipt(scope,provider);return entry?receipt(entry):null}}
 }

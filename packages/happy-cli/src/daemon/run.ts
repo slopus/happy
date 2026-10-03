@@ -88,6 +88,7 @@ import {
   stripManagedCredentialConflicts,
   verifyAiAuthSelection,
   type AiAuthSelection,
+  readSetupTokenResumeSelection,
 } from './sessionEnv';
 import type { AiAuthSource } from '@/usage/aiAuthSource';
 import { detectCLIAvailability } from '@/utils/detectCLI';
@@ -260,6 +261,7 @@ import {
   injectMcpCallerGrant,
   McpCallerGrantEnvelopeConsumer,
   prepareMcpChildEnvironment,
+  mcpCallerGrantCaller,
 } from './mcpCallerGrantEnvelope';
 import { createClaudeSwapSupervisor } from './claudeSwapSupervisor';
 import { createNodeAiCredentialRuntime } from './aiCredentialRuntime';
@@ -1695,6 +1697,7 @@ export async function startDaemon(): Promise<void> {
     let resolveManagedAiCredentialEnvironment = async (
       _agent: string | undefined,
       _selection?: AiAuthSelection,
+      _caller?: { userId: string },
     ): Promise<Record<string, string>> => ({});
 
     const launchReadiness = createLaunchReadinessGate();
@@ -1915,7 +1918,7 @@ export async function startDaemon(): Promise<void> {
         // 해석해 두면 overlayManagedCredentialEnvironment 가 마지막에 덮어 항상
         // 이긴다 — 그래서 해석 자체를 하지 않는다.
         const managedAiCredentialEnvironment = honorsManagedAiCredentials(options.aiAuthSelection)
-          ? await resolveManagedAiCredentialEnvironment(options.agent, options.aiAuthSelection)
+          ? await resolveManagedAiCredentialEnvironment(options.agent, options.aiAuthSelection, mcpCallerGrantCaller(mcpCallerGrant))
           : {};
         let extraEnv: Record<string, string> = injectMcpCallerGrant(
           stripManagedCredentialConflicts(
@@ -2756,7 +2759,13 @@ export async function startDaemon(): Promise<void> {
           filterCredentials: options?.automation !== undefined,
         });
         const priorCheckpointContext = readCheckpointSpawnContext(tracked.agentEnvironment ?? {});
-        const managedAiCredentialEnvironment = await resolveManagedAiCredentialEnvironment(resumeAgent);
+        // A setup-token-bound session resumes on exactly its recorded generation or not at all.
+        const resumeBinding = readSetupTokenResumeSelection(tracked.agentEnvironment);
+        const managedAiCredentialEnvironment = await resolveManagedAiCredentialEnvironment(
+          resumeAgent,
+          resumeBinding?.selection,
+          resumeBinding?.caller,
+        );
         const mcpEnvironment = prepareMcpChildEnvironment({
           environmentVariables: overlayManagedCredentialEnvironment(buildResumedSessionSpawnEnvironment({
             inherited: inheritedResumeEnvironment,
@@ -4163,7 +4172,7 @@ export async function startDaemon(): Promise<void> {
     stopClaudeSwapSupervisor = () => claudeSwapSupervisor.shutdown();
     if (!standaloneWindows) await claudeSwapSupervisor.restore();
     const aiCredentialRuntime = createNodeAiCredentialRuntime(claudeSwapSupervisor);
-    resolveManagedAiCredentialEnvironment = (agent, selection) => aiCredentialRuntime.sessionEnvironment(agent, selection);
+    resolveManagedAiCredentialEnvironment = (agent, selection, caller) => aiCredentialRuntime.sessionEnvironment(agent, selection, caller);
     let activeServerAutomationLeaseCount = 0;
     let scriptWorker: ReturnType<typeof createScriptAutomationWorker> | null = null;
     if (!standaloneWindows && shouldRunScriptAutomations({

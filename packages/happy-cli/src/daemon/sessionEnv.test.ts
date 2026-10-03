@@ -14,6 +14,9 @@ import {
     parseAiAuthSelection,
     honorsManagedAiCredentials,
     verifyAiAuthSelection,
+    captureSaycodeAgentEnvironment as captureSetupTokenEnvironment,
+    readSetupTokenResumeSelection,
+    scrubSessionLineageEnv as scrubSetupTokenLineage,
 } from './sessionEnv'
 import { readAiAuthConnectionVersion } from '../usage/aiAuthSource'
 import { expandEnvironmentVariables } from '../utils/expandEnvVars'
@@ -544,15 +547,15 @@ describe('parseAiAuthSelection', () => {
 
     it('claude-setup-token 은 managedAccountId 와 함께만 받는다', () => {
         const managedAccountId = '0b6f2c1e-1111-4a2b-8c3d-000000000001'
-        expect(parseAiAuthSelection({ kind: 'claude-setup-token', managedAccountId, extra: 1 }))
-            .toEqual({ kind: 'claude-setup-token', managedAccountId })
+        expect(parseAiAuthSelection({ kind: 'claude-setup-token', managedAccountId, groupScope: 'company-1', extra: 1 }))
+            .toEqual({ kind: 'claude-setup-token', managedAccountId, groupScope: 'company-1' })
         for (const bad of [undefined, '', 'not-a-uuid', managedAccountId.toUpperCase()]) {
-            expect(() => parseAiAuthSelection({ kind: 'claude-setup-token', managedAccountId: bad })).toThrow(/managedAccountId/)
+            expect(() => parseAiAuthSelection({ kind: 'claude-setup-token', managedAccountId: bad, groupScope: 'company-1' })).toThrow(/managedAccountId/)
         }
     })
 
     it('claude-setup-token 은 daemon 이 org-bundle 로 적용했다고 증명할 때만 통과한다', () => {
-        const selection = { kind: 'claude-setup-token' as const, managedAccountId: '0b6f2c1e-1111-4a2b-8c3d-000000000001' }
+        const selection = { kind: 'claude-setup-token' as const, managedAccountId: '0b6f2c1e-1111-4a2b-8c3d-000000000001', groupScope: 'company-1' }
         expect(verifyAiAuthSelection(selection, { HAPPY_AI_AUTH_SOURCE: 'org-bundle' }).rejection).toBeUndefined()
         expect(verifyAiAuthSelection(selection, {}).rejection).toMatch(/claude-setup-token/)
     })
@@ -764,3 +767,40 @@ describe('request-supplied environment cannot run code outside the agent sandbox
     })
 })
 
+
+describe('setup-token resume binding', () => {
+    const managedAccountId = '0b6f2c1e-1111-4a2b-8c3d-000000000001'
+    const binding = JSON.stringify({ version: 1, managedAccountId, credentialGeneration: 3, groupScope: 'company-1', userId: 'user-1' })
+
+    it('captures the daemon-written binding from the final child env so resume can reuse it', () => {
+        expect(captureSetupTokenEnvironment({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding, CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-FAKE' }))
+            .toEqual({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding })
+    })
+
+    it('never inherits a binding from the daemon process environment', () => {
+        expect(scrubSetupTokenLineage({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding })).toEqual({})
+    })
+
+    it('drops a binding a client puts in the spawn request so it cannot pick a credential', () => {
+        expect(buildManagedSessionSpawnEnvironment({}, buildSpawnRequestEnvironment({}, { HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding }), {}))
+            .not.toHaveProperty('HAPPY_AI_AUTH_SETUP_TOKEN_BINDING')
+    })
+
+    it('turns the binding into an exact-generation selection and fails closed on a malformed one', () => {
+        // The recorded owner, not the resuming caller, is what the journal is checked against.
+        expect(readSetupTokenResumeSelection({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding })).toEqual({
+            selection: { kind: 'claude-setup-token', managedAccountId, credentialGeneration: 3, groupScope: 'company-1' },
+            caller: { userId: 'user-1' } })
+        expect(readSetupTokenResumeSelection({})).toBeUndefined()
+        expect(readSetupTokenResumeSelection(undefined)).toBeUndefined()
+        expect(() => readSetupTokenResumeSelection({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '{"version":1}' })).toThrow(/binding/)
+        expect(captureSetupTokenEnvironment({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '{"version":1}' })).toBeUndefined()
+    })
+
+    it('accepts an optional pinned generation on the spawn selection', () => {
+        expect(parseAiAuthSelection({ kind: 'claude-setup-token', managedAccountId, groupScope: 'company-1', credentialGeneration: 2 }))
+            .toEqual({ kind: 'claude-setup-token', managedAccountId, groupScope: 'company-1', credentialGeneration: 2 })
+        expect(() => parseAiAuthSelection({ kind: 'claude-setup-token', managedAccountId, groupScope: 'company-1', credentialGeneration: 0 })).toThrow(/credentialGeneration/)
+        expect(() => parseAiAuthSelection({ kind: 'claude-setup-token', managedAccountId })).toThrow(/groupScope/)
+    })
+})

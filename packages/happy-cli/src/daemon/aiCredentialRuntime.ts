@@ -27,7 +27,8 @@ import {
   serializeAppliedClaudeProvenance,
   serializeInvalidatedClaudeProvenance,
 } from './aiCredentialProvenance'
-import { overlayManagedCredentialEnvironment, type AiAuthSelection } from './sessionEnv'
+import { SETUP_TOKEN_BINDING_ENV, formatSetupTokenBinding, overlayManagedCredentialEnvironment, type AiAuthSelection } from './sessionEnv'
+import { parseTokenRuntimeStatus } from './claudeSetupToken'
 import { CLAUDE_AUTH_OVERRIDE_ENV_KEYS } from '@/claude/utils/claudeAuthOverrideEnv'
 import { HAPPY_AI_AUTH_SOURCE_ENV } from '@/usage/aiAuthSource'
 import {
@@ -1680,9 +1681,18 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
       })
       const claudeStatus = parseClaudeList(result.stdout)
+      // Additive and secret-free: only a marked token runtime contributes observations.
+      let tokenRuntime: ReturnType<typeof parseTokenRuntimeStatus> | undefined
+      if (await setupTokenRuntimeSupported()) {
+        try {
+          tokenRuntime = parseTokenRuntimeStatus((await deps.execFile('cswap', ['token-runtime', 'status'], {
+            maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout)
+        } catch { tokenRuntime = parseTokenRuntimeStatus('') }
+      }
       return {
         provider: selected,
         ...claudeStatus,
+        ...(tokenRuntime ? { tokenRuntime } : {}),
         rotation: claudeStatus.credentialKind === 'api_key'
           ? apiKeyRotationStatus()
           : deps.supervisor.status(),
@@ -1784,10 +1794,16 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
    * is written empty so neither inherited nor tmux-server values can win. Fails
    * closed: no substitute credential is ever returned.
    */
-  async function setupTokenSessionEnvironment(agent: string | undefined, managedAccountId: string) {
+  async function setupTokenSessionEnvironment(agent: string | undefined, selection: Extract<AiAuthSelection, { kind: 'claude-setup-token' }>, caller: { userId: string } | undefined) {
+    const { managedAccountId, credentialGeneration, groupScope } = selection
     if (agent !== undefined && agent !== 'claude') throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
     return serialize(() => withSafeErrors('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE', async () => {
       if (!await setupTokenRuntimeSupported()) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
+      // Any enabled managed slot is not enough: this scope's applied assignment, for this
+      // caller, must have installed it. Personal, other-company and other-user slots fail.
+      const assignment = await groups.assignment(groupScope, 'claude')
+      if (!caller || !assignment || !assignment.reconciled || assignment.userId !== caller.userId
+        || !assignment.desired.includes(setupTokenGroupIdentity(managedAccountId))) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
       const email = managedSetupTokenEmail(managedAccountId)
       const listed = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
         maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout).accounts.find(account => account.email === email)
@@ -1795,14 +1811,18 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       const slot = Array.isArray(exported?.accounts) ? exported.accounts.find((account: Record<string, unknown>) => account?.email === email) : undefined
       const token = slot?.credentials?.claudeAiOauth?.accessToken
       if (!listed || listed.disabled === true || slot?.credentialType !== 'setup_token' || slot.managedAccountId !== managedAccountId
-        || typeof token !== 'string' || !token.startsWith('sk-ant-oat01-')) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+        || typeof token !== 'string' || !token.startsWith('sk-ant-oat01-')
+        || !Number.isSafeInteger(slot.credentialGeneration) || slot.credentialGeneration < 1) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      // A resume names the generation it started on; a replaced token is a different credential.
+      if (credentialGeneration !== undefined && slot.credentialGeneration !== credentialGeneration) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_STALE')
       const cleared = Object.fromEntries(CLAUDE_AUTH_OVERRIDE_ENV_KEYS.map(key => [key, '']))
-      return { ...cleared, CLAUDE_CODE_OAUTH_TOKEN: token, [HAPPY_AI_AUTH_SOURCE_ENV]: 'org-bundle' }
+      return { ...cleared, CLAUDE_CODE_OAUTH_TOKEN: token, [HAPPY_AI_AUTH_SOURCE_ENV]: 'org-bundle',
+        [SETUP_TOKEN_BINDING_ENV]: formatSetupTokenBinding({ managedAccountId, credentialGeneration: slot.credentialGeneration, groupScope, userId: caller.userId }) }
     }))
   }
 
-  async function sessionEnvironment(agent: string | undefined, selection?: AiAuthSelection): Promise<Record<string, string>> {
-    if (selection?.kind === 'claude-setup-token') return setupTokenSessionEnvironment(agent, selection.managedAccountId)
+  async function sessionEnvironment(agent: string | undefined, selection?: AiAuthSelection, caller?: { userId: string }): Promise<Record<string, string>> {
+    if (selection?.kind === 'claude-setup-token') return setupTokenSessionEnvironment(agent, selection, caller)
     if (agent !== undefined && agent !== 'claude') return {}
     return serialize(async () => {
       const marker = await readTrialMarker()
@@ -1814,8 +1834,9 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
   return { capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: async () => { const setupToken = await setupTokenRuntimeSupported(); return { version: 1, groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
     // Managed setup-token import with metadata verification, only on the marked cswap token runtime.
     ...(setupToken ? { setupTokenVersion: 1, setupTokenStatusVersion: 1 } : {}),
-    // New spawns can be pinned with aiAuthSelection {kind:'claude-setup-token'} on the same runtime.
-    newSessionProfileBinding: setupToken, ...(setupToken ? { setupTokenSessionBindingVersion: 1 } : {}) } } }
+    // Binding is implemented but not advertised: the caller claim comes from an MCP grant whose
+    // HMAC only the server verifies. Flip this once the server issues a daemon-verifiable caller proof.
+    newSessionProfileBinding: false } } }
 }
 
 type ClaudeListDetails = {

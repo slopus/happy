@@ -22,7 +22,13 @@ export function managedSetupTokenId(email: unknown): string | null {
   return typeof email === 'string' ? SYNTHETIC.exec(email)?.[1] ?? null : null
 }
 
-/** Same as the server's group ref identity, so daemon receipts and server refs agree. */
+/**
+ * The daemon's local slot identity for a managed account. It is not the server's
+ * ref identity (the server also binds companyId); the two are separate authorities.
+ * Scope safety here comes from the group journal: ownership and revocation are kept
+ * per (scope, provider) entry, so one company's apply can neither replace nor
+ * remove a slot another scope or the user installed, even for the same ID.
+ */
 export function setupTokenGroupIdentity(managedAccountId: string): string {
   return createHash('sha256').update(JSON.stringify(['claude-setup-token', managedAccountId])).digest('hex')
 }
@@ -99,4 +105,54 @@ export function setupTokenRuntimeStatus(accounts: Array<Record<string, unknown>>
       authState: 'unverified', usageState: status === 'ok' ? 'fresh' : 'unavailable', usageReason: status === 'ok' ? null : status ?? 'unknown' })
   }
   return { version: 1 as const, accounts: rows }
+}
+
+const STRING = (value: unknown, max = 200) => typeof value === 'string' && value.length <= max ? value : null
+const UTC = (value: unknown) => typeof value === 'string' && value.length <= 40 && !Number.isNaN(Date.parse(value)) ? value : null
+const INT = (value: unknown) => Number.isSafeInteger(value) && Number(value) >= 1 ? Number(value) : null
+const BOOL = (value: unknown) => value === true
+
+function observationWindows(value: unknown) {
+  if (!Array.isArray(value)) return []
+  return value.slice(0, 8).flatMap((window: Record<string, unknown>) => {
+    if (window?.kind !== 'unified5h' && window?.kind !== 'unified7d') return []
+    const pct = typeof window.pct === 'number' && Number.isFinite(window.pct) && window.pct >= 0 ? window.pct : null
+    return [{ kind: window.kind, pct, resetsAt: UTC(window.resetsAt), status: STRING(window.status, 40) }]
+  })
+}
+
+function observation(value: unknown) {
+  if (typeof value !== 'object' || value === null) return undefined
+  const obs = value as Record<string, unknown>
+  if (obs.version !== 1 || obs.source !== 'inference_probe') return undefined
+  return { version: 1 as const, source: 'inference_probe' as const, accountRef: STRING(obs.accountRef, 64), credentialGeneration: INT(obs.credentialGeneration),
+    observedAt: UTC(obs.observedAt), coverage: STRING(obs.coverage, 40) ?? 'unknown', reason: STRING(obs.reason, 64), retryAt: UTC(obs.retryAt),
+    windows: observationWindows(obs.windows) }
+}
+
+/**
+ * Whitelists `cswap token-runtime status` into a secret-free DTO. Unknown or
+ * invalid values stay null; a window kind outside unified5h/unified7d is dropped
+ * (unified headers never prove model coverage), and nothing is decision-eligible
+ * until rotation ownership exists.
+ */
+export function parseTokenRuntimeStatus(stdout: string) {
+  let value: Record<string, unknown> | null = null
+  try { value = JSON.parse(stdout) } catch { value = null }
+  if (value?.version !== 1 || value.artifact !== SETUP_TOKEN_RUNTIME_ARTIFACT || !Array.isArray(value.accounts)) {
+    return { version: 1 as const, state: 'unavailable' as const, accounts: [] }
+  }
+  const accounts = (value.accounts as Array<Record<string, unknown>>).slice(0, 500).flatMap(row => {
+    const accountRef = STRING(row?.accountRef, 64)
+    if (!accountRef) return []
+    const obs = observation(row.observation)
+    return [{ accountRef, number: INT(row.number), credentialGeneration: INT(row.credentialGeneration), label: STRING(row.label, 120),
+      identityConfidence: STRING(row.identityConfidence, 40), credentialType: STRING(row.credentialType, 40),
+      ...(typeof row.managedAccountId === 'string' && managedSetupTokenId(`managed-${row.managedAccountId}@setup-token.local`) ? { managedAccountId: row.managedAccountId } : {}),
+      authState: STRING(row.authState, 40), usageStatus: STRING(row.usageStatus, 40), decisionEligible: false,
+      reasonCodes: Array.isArray(row.reasonCodes) ? row.reasonCodes.slice(0, 16).flatMap(code => STRING(code, 64) ?? []) : [],
+      probeEnabled: BOOL(row.probeEnabled), disabled: BOOL(row.disabled), pinned: BOOL(row.pinned),
+      ...(obs ? { observation: obs } : {}) }]
+  })
+  return { version: 1 as const, state: 'available' as const, accounts }
 }

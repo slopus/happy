@@ -71,6 +71,12 @@ describe('hydrateTrackedSessionFromPersisted', () => {
       .toEqual(agentEnvironment);
   });
 
+  it('shouldRestoreAnImmutableSetupTokenBindingAcrossDaemonRestarts', () => {
+    const binding = JSON.stringify({ version: 1, managedAccountId: '0b6f2c1e-1111-4a2b-8c3d-000000000001', credentialGeneration: 3, groupScope: 'company-1', userId: 'user-1' });
+    expect(hydrateTrackedSessionFromPersisted(persisted({ agentEnvironment: { HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding } as never })).agentEnvironment)
+      .toEqual({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding });
+  });
+
   it('shouldValidatePersistedAgentCapabilityBeforeAddingItToTheChildEnvironment', () => {
     const agentEnvironment = {
       SAYCODE_AGENT_ENV: '1',
