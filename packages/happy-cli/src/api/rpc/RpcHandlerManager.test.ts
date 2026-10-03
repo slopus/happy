@@ -399,6 +399,16 @@ describe('bound customer-lane requests', () => {
         expect(calls).toBe(1);
     });
 
+    it('does not evict protected nonces under compat when the policy guard is full', async () => {
+        const { manager } = makeBound(false, undefined, 1);
+        let calls = 0;
+        manager.registerHandler('personal', () => { calls++; return {}; }, { customerBound: true });
+        await send(manager, 'personal', bound('personal', {}, { nonce: nonce(80) }));
+        expect(await send(manager, 'personal', bound('personal', {}, { nonce: nonce(81) }))).toMatchObject({ result: { code: 'RPC_TOO_MANY_REQUESTS' } });
+        expect(await send(manager, 'personal', bound('personal', {}, { nonce: nonce(80) }))).toMatchObject({ result: { code: 'RPC_REQUEST_REPLAYED' } });
+        expect(calls).toBe(1);
+    });
+
     it('runs the handler with the bound params and binds the reply to the nonce', async () => {
         const { manager, calls } = makeBound();
         expect(await send(manager, 'readFile', bound('readFile', { path: '/w/a' }, { nonce: nonce(2) })))

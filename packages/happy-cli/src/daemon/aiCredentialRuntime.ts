@@ -1,3 +1,4 @@
+import { createTokenProbe, personalProbeSupported, readTokenRuntime } from './tokenProbe'
 import { createClaudeCollector, consumeCollectorPermit, collectorVerificationReady } from './claudeCollector'
 import { createCredentialGroupSync, type CredentialGroupRequest } from './aiCredentialGroups'
 import { createGroupProviderAdapters, groupPayloadIdentities } from './aiCredentialGroupAdapters'
@@ -30,7 +31,6 @@ import {
 } from './aiCredentialProvenance'
 import { SETUP_TOKEN_BINDING_ENV, formatSetupTokenBinding, overlayManagedCredentialEnvironment, type AiAuthSelection, type SetupTokenBinding } from './sessionEnv'
 import type { SetupTokenBindingVerifier } from './setupTokenBindingProof'
-import { parseTokenRuntimeStatus } from './claudeSetupToken'
 import { CLAUDE_AUTH_OVERRIDE_ENV_KEYS } from '@/claude/utils/claudeAuthOverrideEnv'
 import { HAPPY_AI_AUTH_SOURCE_ENV } from '@/usage/aiAuthSource'
 import {
@@ -1688,14 +1688,9 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
       })
       const claudeStatus = parseClaudeList(result.stdout)
-      // Additive and secret-free: only a marked token runtime contributes observations.
-      let tokenRuntime: ReturnType<typeof parseTokenRuntimeStatus> | undefined
-      if (await setupTokenRuntimeSupported()) {
-        try {
-          tokenRuntime = parseTokenRuntimeStatus((await deps.execFile('cswap', ['token-runtime', 'status'], {
-            maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout)
-        } catch { tokenRuntime = parseTokenRuntimeStatus('') }
-      }
+      const tokenRuntime = await readTokenRuntime({ invoke: async args => (await deps.execFile('cswap', args, {
+        timeoutMs: 5000, maxOutputBytes: 65536, environment: deps.env,
+      })).stdout })
       return {
         provider: selected,
         ...claudeStatus,
@@ -1896,6 +1891,16 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
+  async function tokenProbe(input: unknown) {
+    return serialize(() => createTokenProbe({
+      invoke: async args => (await deps.execFile('cswap', args, {
+        timeoutMs: 10_000, maxOutputBytes: 65536, environment: deps.env,
+      })).stdout,
+    })(input))
+  }
+  async function tokenProbeCapability() {
+    try { return personalProbeSupported(JSON.parse((await deps.execFile('cswap', ['token-runtime', 'capabilities'], { timeoutMs: 5000, maxOutputBytes: 8192 })).stdout)) } catch { return false }
+  }
   function collectorOrigin() {
     try { return deps.env.HAPPY_APLUS_MCP_CONFIG_URL ? new URL(deps.env.HAPPY_APLUS_MCP_CONFIG_URL).origin : null } catch { return null }
   }
@@ -1920,7 +1925,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
-  return { collectorProbe, capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: async (machineId?: string) => { const setupToken = await setupTokenRuntimeSupported(); const collector = Boolean(machineId) && await collectorCapability(); return { version: 1, ...(collector ? { collectorProbeVersion: 1 } : {}), groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
+  return { tokenProbe, collectorProbe, capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: async (machineId?: string) => { const setupToken = await setupTokenRuntimeSupported(); const collector = Boolean(machineId) && await collectorCapability(); const personal = await tokenProbeCapability(); return { version: 1, ...(personal ? { tokenProbeVersion: 1 } : {}), ...(collector ? { collectorProbeVersion: 1 } : {}), groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
     // Managed setup-token import with metadata verification, only on the marked cswap token runtime.
     ...(setupToken ? { setupTokenVersion: 1, setupTokenStatusVersion: 1 } : {}),
     // Advertised only when a server-signed binding proof can actually be verified here.

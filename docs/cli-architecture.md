@@ -679,3 +679,15 @@ or credential enters the RPC DTO. Server-lane dispatch is forbidden even when it
 allowlist changes. A corrupt replay ledger or orphaned consume lock fails closed;
 explicit operator recovery must preserve the ledger. Desktop consumes only epoch-ms
 whitelisted observations. See `specs/claude-setup-token-runtime/contract-result.md`.
+
+Personal setup-token status/consent/manual refresh uses customer-bound
+`ai-credential:token-probe`; every action binds a stable local ref and generation.
+Core rejects organization rows, acknowledges cost before enabling, and passes a
+provider generation CAS flag on consent/collect. Budgets/singleflight/backoff remain
+provider-owned and shared with organization collection. No renderer probe loop or
+resident personal scheduler is introduced. A marked artifact alone never enables
+new-session setup-token binding; a true prepared-profile receipt remains pending.
+Existing Claude status additionally exposes a validated local `tokenRuntime` roster
+for stable-ref discovery, retaining all legacy status fields. It cannot own normal
+OAuth usage: number plus exact roster metadata joins display rows, while ref and
+generation authorize probe actions. No global stored selection implies session activity.

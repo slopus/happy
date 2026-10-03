@@ -31,6 +31,7 @@ export class RpcHandlerManager {
     private readonly serverLane: ServerLaneConfig | null;
     private readonly requireBoundRequests: boolean;
     private readonly nonceGuard: RpcNonceGuard;
+    private readonly customerBoundNonceGuard: RpcNonceGuard;
     private readonly logger: (message: string, data?: any) => void;
     private socket: Socket | null = null;
     /**
@@ -52,6 +53,11 @@ export class RpcHandlerManager {
             windowMs: RPC_BINDING_WINDOW_MS,
             maxEntries: config.maxBoundRequestsInWindow ?? 10_000,
             whenFull: this.requireBoundRequests ? 'refuse' : 'evict-oldest',
+        });
+        this.customerBoundNonceGuard = new RpcNonceGuard({
+            windowMs: RPC_BINDING_WINDOW_MS,
+            maxEntries: config.maxBoundRequestsInWindow ?? 10_000,
+            whenFull: 'refuse',
         });
         this.logger = config.logger || ((msg, data) => defaultLogger.debug(msg, data));
     }
@@ -192,7 +198,8 @@ export class RpcHandlerManager {
                     }
                     // A stale request is remembered from when it arrived. Its own issue time
                     // would forget it at once, or hold the guard's oldest slot for hours.
-                    const admission = this.nonceGuard.admit(binding.nonce, binding.stale ? now : binding.issuedAt, now);
+                    const guard = this.customerBound.has(request.method) ? this.customerBoundNonceGuard : this.nonceGuard;
+                    const admission = guard.admit(binding.nonce, binding.stale ? now : binding.issuedAt, now);
                     if (admission === 'full') {
                         this.logger('[RPC] Bound request refused: the time window holds as many as it can remember', { method: request.method });
                         return sealWithScopeKey(bindRpcResponse(binding.nonce, {

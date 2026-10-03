@@ -45,7 +45,7 @@ type Slot = { number: number; email: string; organizationUuid?: string; usageSta
 
 // A stateful stand-in for cswap. `marked` keeps managed metadata like the token runtime; an
 // unmarked build drops it, as upstream does.
-function fakeMachine(initial: Slot[], activeAccountNumber: number | null, options: { runtime?: 'marked' | 'unmarked' | 'missing'; ignoreForce?: boolean; tokenRuntimeStatus?: string; files?: Map<string, string>; binding?: false } = {}) {
+function fakeMachine(initial: Slot[], activeAccountNumber: number | null, options: { runtime?: 'marked' | 'unmarked' | 'missing'; ignoreForce?: boolean; tokenRuntimeStatus?: string; files?: Map<string, string>; binding?: false; env?: Record<string, string>; capabilities?: Record<string, unknown> } = {}) {
   const kind = options.runtime ?? 'marked'
   const state = { slots: [...initial], active: activeAccountNumber }
   const calls: Array<{ command: string; args: string[] }> = []
@@ -57,7 +57,7 @@ function fakeMachine(initial: Slot[], activeAccountNumber: number | null, option
     if (command === 'cswap' && args[0] === 'token-runtime') {
       if (kind !== 'marked') throw Object.assign(new Error('unknown command'), { kind: 'COMMAND_FAILED' })
       if (args[1] === 'status') return { stdout: options.tokenRuntimeStatus ?? JSON.stringify({ version: 1, artifact: 'saycode-setup-token-runtime-v1', accounts: [] }), stderr: '' }
-      return { stdout: MARKER, stderr: '' }
+      return { stdout: options.capabilities ? JSON.stringify(options.capabilities) : MARKER, stderr: '' }
     }
     if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: state.active,
       accounts: state.slots.map(({ credentials: _c, config: _f, ...row }) => ({ ...row, active: row.number === state.active })) }), stderr: '' }
@@ -84,7 +84,7 @@ function fakeMachine(initial: Slot[], activeAccountNumber: number | null, option
     return { stdout: '', stderr: '' }
   })
   const runtime = createAiCredentialRuntime({
-    homeDir: '/home/operator', now: () => NOW, env: {}, execFile,
+    homeDir: '/home/operator', now: () => NOW, env: options.env ?? {}, execFile,
     ...(options.binding === false ? {} : { setupTokenBinding: studioVerifier() }),
     readFile: vi.fn(async (path: string) => files.get(path) ?? Promise.reject(Object.assign(new Error('missing'), { code: 'ENOENT' }))),
     writeFile: vi.fn(async (path: string, content: string) => { files.set(path, content) }),
@@ -183,6 +183,27 @@ describe('managed Claude setup-token runtime', () => {
     expect(status.setupToken).toEqual(setupTokenRuntimeStatus([{ number: 1, email: managedSetupTokenEmail(A), usageStatus: 'relogin_required' }], 1))
     expect(status).toMatchObject({ activeAccountStatus: 'unknown', reloginRequiredAccountCount: 0 })
     expect(JSON.stringify(status)).not.toContain('sk-ant-oat01')
+  })
+
+  it('gates personal CAS and signed collector capabilities on the actual provider and trusted context', async () => {
+    const capabilities={version:1,artifact:'saycode-setup-token-runtime-v1',managedAccountMetadata:true,setupTokenObservation:true,durableProbeBudget:true,personalProbeVersion:1,organizationCollectorVersion:1}
+    const env={HAPPY_APLUS_MCP_CONFIG_URL:'https://studio.test/api/mcp'}
+    const der=generateKeyPairSync('ed25519').publicKey.export({type:'spki',format:'der'}) as Buffer
+    const key={version:1,type:'claude-collector-v1',algorithm:'Ed25519',keyId:createHash('sha256').update(der).digest('hex'),publicKeyBase64:der.toString('base64'),audience:'claude-collector-v1@https://studio.test'}
+    const fetcher=vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(JSON.stringify(key)))
+    try {
+      const supported=await fakeMachine([],null,{env,capabilities,binding:false}).runtime.capabilities('machine')
+      expect(supported).toMatchObject({tokenProbeVersion:1,collectorProbeVersion:1,newSessionProfileBinding:false})
+      expect(String(fetcher.mock.calls[0][0])).toBe('https://studio.test/api/claude-collector/public-key')
+      expect(fetcher.mock.calls[0][1]).not.toHaveProperty('headers')
+      const noConfig=await fakeMachine([],null,{capabilities}).runtime.capabilities('machine')
+      expect(noConfig).toHaveProperty('tokenProbeVersion',1)
+      expect(noConfig).not.toHaveProperty('collectorProbeVersion')
+      const old=await fakeMachine([],null).runtime.capabilities('machine')
+      expect(old).not.toHaveProperty('tokenProbeVersion')
+      fetcher.mockResolvedValue(new Response('{}',{status:503}))
+      expect(await fakeMachine([],null,{env,capabilities}).runtime.capabilities('machine')).not.toHaveProperty('collectorProbeVersion')
+    }finally{fetcher.mockRestore()}
   })
 
   describe('new-session binding', () => {
@@ -380,41 +401,5 @@ describe('managed Claude setup-token runtime', () => {
     await runtime.groupSync({ ...sync(2, null as never), scope: 'company-2', payload: null })
     expect(state.slots.map(slot => slot.managedAccountId)).toEqual([A])
     expect(state.slots[0]!.credentials).toEqual(managed(A, 1, fakeToken('a')).credentials)
-  })
-
-  describe('token-runtime observation status', () => {
-    const row = { accountRef: '5d1d6a1e-0000-4000-8000-000000000001', number: 1, roster: 'x', credentialGeneration: 1, label: 'team-1',
-      identityConfidence: 'saved-metadata', credentialType: 'setup_token', managedAccountId: A, authState: 'unverified', usageStatus: 'stale',
-      decisionEligible: false, reasonCodes: ['coverage_unknown'], probeEnabled: false, disabled: false, pinned: false,
-      fingerprint: 'private', accessToken: fakeToken('leak'),
-      observation: { version: 1, source: 'inference_probe', accountRef: '5d1d6a1e-0000-4000-8000-000000000001', credentialGeneration: 1,
-        observedAt: '2026-10-04T00:00:00Z', coverage: 'unknown', reason: 'coverage_unknown', retryAt: null, raw: 'body',
-        windows: [{ kind: 'unified5h', pct: 42, resetsAt: '2026-10-04T05:00:00Z', status: 'allowed' }, { kind: 'unified7d', pct: null, resetsAt: null, status: null }] } }
-    const statusOf = async (tokenRuntimeStatus: string, runtimeKind: 'marked' | 'unmarked' = 'marked') =>
-      await fakeMachine([stored(A, 1, fakeToken('a'), { number: 1 })], 1, { runtime: runtimeKind, tokenRuntimeStatus }).runtime.status({ provider: 'claude' }) as Record<string, unknown>
-
-    it('adds whitelisted secret-free rows and observations only', async () => {
-      const status = await statusOf(JSON.stringify({ version: 1, artifact: 'saycode-setup-token-runtime-v1', accounts: [row] }))
-      expect(status.tokenRuntime).toEqual({ version: 1, state: 'available', accounts: [{
-        accountRef: row.accountRef, number: 1, credentialGeneration: 1, label: 'team-1', identityConfidence: 'saved-metadata',
-        credentialType: 'setup_token', managedAccountId: A, authState: 'unverified', usageStatus: 'stale', decisionEligible: false,
-        reasonCodes: ['coverage_unknown'], probeEnabled: false, disabled: false, pinned: false,
-        observation: { version: 1, source: 'inference_probe', accountRef: row.accountRef, credentialGeneration: 1, observedAt: '2026-10-04T00:00:00Z',
-          coverage: 'unknown', reason: 'coverage_unknown', retryAt: null, windows: row.observation.windows } }] })
-      expect(JSON.stringify(status)).not.toMatch(/sk-ant|private|"raw"/)
-    })
-
-    it('keeps unknown values unknown and never claims decision eligibility', async () => {
-      const bad = { ...row, decisionEligible: true, observation: { ...row.observation, windows: [{ kind: 'unified5h', pct: Number.NaN, resetsAt: 'x', status: 1 }, { kind: 'model-weekly', pct: 1 }] } }
-      const status = await statusOf(JSON.stringify({ version: 1, artifact: 'saycode-setup-token-runtime-v1', accounts: [bad] }))
-      const account = (status.tokenRuntime as { accounts: Array<Record<string, any>> }).accounts[0]!
-      expect(account.decisionEligible).toBe(false)
-      expect(account.observation.windows).toEqual([{ kind: 'unified5h', pct: null, resetsAt: null, status: null }])
-    })
-
-    it('reports unavailable on an invalid envelope and stays absent on legacy runtimes', async () => {
-      expect((await statusOf('{"version":2}')).tokenRuntime).toEqual({ version: 1, state: 'unavailable', accounts: [] })
-      expect(await statusOf('{}', 'unmarked')).not.toHaveProperty('tokenRuntime')
-    })
   })
 })

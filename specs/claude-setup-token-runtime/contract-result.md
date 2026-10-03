@@ -3,7 +3,7 @@
 Sources: Desktop `specs/claude-setup-token-usage-rotation/contract.md`, Studio server
 `specs/claude-setup-token-implementation/contract-result.md`, and cswap provider `specs/token-runtime-contract.md`
 (marker `saycode-setup-token-runtime-v1`). Base `origin/main` 33c688bb9 (.284).
-Status 2026-10-04: implemented locally and verified with a fake-subprocess harness only. No live token, inference, daemon change or publish.
+Status 2026-10-04: implemented locally; fake-subprocess boundary tests and an isolated installed-wheel fake-HTTP roundtrip verified. No live token, inference, daemon change or publish.
 
 ## Accepted payload (`ai-credential:group-sync`, and merge `ai-credential:apply`)
 
@@ -135,9 +135,13 @@ Not covered: a `happy` CLI started by hand in a terminal, which is outside the d
   (e.g. `ANTHROPIC_BASE_URL=''`) count as unset. The token is visible to the child's tool subprocesses (same as the Z.AI lease). `cswap run` profile
   isolation is a separate, unproven mechanism and is not used.
 - The nonce ledger keeps at most 4096 unexpired nonces. When it is full, binding is refused until entries expire.
-- No real marked cswap artifact was run (it would touch the macOS Keychain). The fakes mirror provider `transfer.py`/`token_runtime.py`.
-- Happy makes no probe transport, consent, collect or org-collector calls. The status adapter only reads `token-runtime status`.
-
+- The real marked artifact is exercised offline (file backend, isolated home, intercepted network) by the opt-in `aiCredentialSetupToken.artifact.test.ts`; no live provider call.
+- Probe transport, consent and collect run only through the Sol RPCs below (personal manual probe, signed org collector); status reads `token-runtime status` through Sol's strict `readTokenRuntime`.
+- Automatic rotation is disabled pending every writer's ownership/lease/CAS.
+- No live provider/model/header/authentication fixture or deployed artifact was verified.
+- Desktop owns organization scheduler/discovery/reserve/publish and receiver observations.
+  Its integration and Studio's actual HTTP auth gate are parent-owned checks.
+- Resident personal scheduling is not implemented; only explicit manual refresh invokes inference.
 
 ## Happy organization collector bridge v1
 
@@ -204,3 +208,69 @@ Use `COLLECTOR_PACK_PYTHON` and `COLLECTOR_PACK_INSTALL` to opt into that artifa
 without these explicit local paths only that test is skipped. No home/Keychain/live
 inference/daemon change/Studio bearer/publish was used. Existing pkgroll bin/empty-chunk
 warnings remain; no TypeScript diagnostics. Provider commit: `6e9e43c`.
+
+## Personal probe Core RPC v1 (UI contract)
+
+Freshly nonce-bound customer-key `ai-credential:token-probe` request:
+```ts
+{version:1,operation:'status'|'consent'|'collect',accountRef:string,
+ credentialGeneration:number,enabled?:boolean,ackCost?:boolean}
+```
+accountRef/generation are required for every operation. `consent` requires enabled;
+enable additionally requires `ackCost:true`. Other operations reject enabled/ackCost.
+Managed rows reject consent AND collect regardless of retained local consent. Status
+is local/no-network and does not change consent. collect means explicit manual caller
+action; no renderer poller/script schedules inference. Provider/Core shared machine/token
+budgets, backoff and singleflight apply. No resident personal scheduler is implemented.
+
+Success `{version:1,operation,accountRef,credentialGeneration,account:<whitelist>,budget}`.
+Account whitelist: accountRef,credentialGeneration,credentialType,probeEnabled,
+authState,usageStatus,decisionEligible:false,reasonCodes,observation? (provider ISO UTC;
+source,observedAt,windows[{kind,pct,resetsAt}],coverage:'unknown',reason,retryAt),
+managedAccountId? for display-only status. No active/session binding claim or credential.
+Errors `{version:1,status:'unavailable',error:'TOKEN_PROBE_...'}`:
+INVALID_INPUT/GENERATION_CHANGED/ACCOUNT_NOT_FOUND/ORGANIZATION_COLLECTOR_REQUIRED/
+COST_ACK_REQUIRED/RUNTIME_UNSUPPORTED/REQUEST_FAILED; provider stopped attempts use
+BACKING_OFF/BUDGET_EXHAUSTED/COLLECTOR_BUSY/PROBE_DISABLED/ACCOUNT_DISABLED.
+`tokenProbeVersion:1` requires marked runtime with setupTokenObservation,
+durableProbeBudget and personalProbeVersion:1 (generation CAS). Desktop gates controls on this capability, not numeric version.
+
+Prepared-profile note: Sol's interim refusal of binding (`a70da2d10`) is superseded and omitted in integration; binding is governed by the signed-grant gate above. Personal CAS provider
+capability is `personalProbeVersion:1`, commit `6397291`; old marked artifacts without
+this feature do not enable the new personal RPC.
+
+Reproduction commands (Happy worktree):
+```sh
+pnpm -C packages/happy-wire build
+pnpm -C packages/happy-cli typecheck
+COLLECTOR_PACK_PYTHON=<provider-worktree>/.venv/bin/python3 COLLECTOR_PACK_INSTALL=<provider-worktree>/dist/pack-smoke/install pnpm -C packages/happy-cli exec vitest run --project unit src/daemon/tokenProbe.test.ts src/daemon/claudeCollector.test.ts src/daemon/aiCredentialSetupToken.test.ts src/daemon/aiCredentialRuntime.test.ts src/api/rpc/RpcHandlerManager.test.ts src/api/rpc/serverLane.test.ts src/daemon/aiCredentialGroups.test.ts
+```
+`pnpm install --frozen-lockfile --ignore-scripts --filter @buzzni/happy-cli... --store-dir .pnpm-store`
+was local dependency preparation only; lockfiles unchanged and the generated store
+is excluded from scoped commits. The required test build emits existing pkgroll bin
+and empty-chunk warnings; these are not new TypeScript diagnostics.
+
+Stable-ref discovery: existing `ai-credential:status {provider:'claude'}` adds
+`tokenRuntime:{version:1,state:'available',accounts:[<personal account whitelist plus
+number,roster:{email,organizationUuid,uuid},legacyUsageOwned:false>]}` only when the
+marked observation artifact returns a valid local roster. No network, inference,
+active-selection claim, or change to existing normal OAuth/API status fields.
+`number` is a local selector only. Join by number AND exact roster metadata;
+accountRef/generation are the mutation identity. Failed/unsupported roster reads
+omit the additive field. Desktop's existing collector preflight reads this field.
+
+The per-handler customer-bound policy uses a refusing nonce guard even under compat:
+a full window never evicts protected consent/probe nonces. Its latest RPC manager and
+server-lane suites passed 46+4 tests. Organization+personal installed-wheel roundtrip
+passed; combined provider machine spending was 2, and no credential reached stdout.
+The final focused collector/personal/capability suites passed 16+7+18 tests before
+the additive roster discovery change. Discovery and legacy status regression results
+are recorded below after their final run. The actual Studio public HTTP gate remains
+unverified by this worktree; no bearer workaround is used.
+Final additive roster/personal regression: tokenProbe 8, aiCredentialSetupToken 18,
+aiCredentialRuntime 193 = 219 passed; required build/typecheck passed. No normal
+OAuth/API status was replaced. Final relevant suite counts across the implementation:
+claudeCollector 16 (including explicitly enabled installed-wheel org+personal smoke),
+aiCredentialGroups 7, RpcHandlerManager 46, serverLane 4, tokenProbe 8,
+aiCredentialSetupToken 18, aiCredentialRuntime 193. The final focused runs above
+cover each changed behavior; these counts are not a claim of a repository-wide run.
