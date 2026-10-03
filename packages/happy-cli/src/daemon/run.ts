@@ -1,3 +1,5 @@
+import { CheckpointRetention } from '@/checkpoint/checkpointRetention';
+import { CheckpointRetentionSchedule } from '@/checkpoint/checkpointRetentionSchedule';
 /** Happy daemon lifecycle, child-session spawning and resumption, and browser attention delivery. */
 import { configureWindowsTerminalHost } from './remoteTerminal';
 import { inspectStandaloneCandidatePresence, assertStandaloneCandidateIdentity, readStandaloneCandidateId, createStandaloneWindowsRuntime, acceptsStandaloneWindowsProvider, acceptsStandaloneWindowsLaunch } from './standaloneWindowsRuntime';
@@ -3462,6 +3464,8 @@ export async function startDaemon(): Promise<void> {
         filterInheritedCredentials: input.filterInheritedCredentials,
         environmentVariables: input.environmentVariables,
         expectedConnectors: input.expectedConnectors,
+        // specs/agent-browser-shared-profiles — binds the run to its principal's browser profile on a shared machine.
+        ...(input.mcpSpawnContext?.browserAttestation ? { browserAttestation: input.mcpSpawnContext.browserAttestation } : {}),
       }, input.mcpSpawnContext);
       if (result.type === 'success') {
         return { ok: true, sessionId: result.sessionId };
@@ -4612,7 +4616,9 @@ export async function startDaemon(): Promise<void> {
         browserSessionWaiting: async (sessionId: string) => heldBrowserAttentions.answerWaiting(sessionId) || browserTaskBroker!.waiting(sessionId),
       } : {}),
       autonomousQualityGate: createAutonomousQualityGateRpcHandlers(autonomousQualityGateRegistry),
-      checkpoint: createCheckpointRpcHandlers({
+      checkpoint: {
+        retireWorktree: (params) => new CheckpointRetention(join(configuration.happyHomeDir, 'checkpoints')).retireWorktree(params),
+        ...createCheckpointRpcHandlers({
         checkpointRoot: join(configuration.happyHomeDir, 'checkpoints'),
         resolveAuthority: (sessionId) => resolveCheckpointSessionAuthority({
           sessionId,
@@ -4631,7 +4637,7 @@ export async function startDaemon(): Promise<void> {
         },
         restartSession: restartCheckpointSession,
         refreshSession: (authority) => restartCheckpointSession(authority, true),
-      }),
+      }) },
       // specs/daemon-spawn-project-link — a session created by `agent spawn` has no way to
       // register itself with A+ (its credential does not authenticate /api/*), so the daemon
       // reports it here. The request is bounded inside linkSpawnedProjectSession and
@@ -4662,6 +4668,16 @@ export async function startDaemon(): Promise<void> {
         + activeServerAutomationLeaseCount,
     });
     apiMachine.setRuntimeActivityProvider(getRuntimeActivity);
+    const checkpointRetention = new CheckpointRetention(join(configuration.happyHomeDir, 'checkpoints'));
+    const checkpointRetentionSchedule = new CheckpointRetentionSchedule({
+      collect: (now) => checkpointRetention.collect(now),
+      isIdle: () => {
+        const activity = getRuntimeActivity();
+        return activity.activeSessionCount === 0 && activity.activeAutomationCount === 0;
+      },
+      onError: (error) => logger.debug(`[checkpoint-retention] ${String(error)}`),
+    });
+    void checkpointRetentionSchedule.tick();
 
     // All launch dependencies and RPC handlers now exist; early HTTP requests were refused.
     launchReadiness.markReady();
@@ -4701,6 +4717,7 @@ export async function startDaemon(): Promise<void> {
         return;
       }
       heartbeatRunning = true;
+      void checkpointRetentionSchedule.tick();
 
       if (process.env.DEBUG) {
         logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
@@ -4852,6 +4869,7 @@ export async function startDaemon(): Promise<void> {
           },
           teardownCurrentDaemon: async () => {
             clearInterval(restartOnStaleVersionAndHeartbeat);
+            await checkpointRetentionSchedule.stop();
 
             // Release ownership BEFORE spawning the new daemon. Otherwise the spawned
             // `happy daemon start` reads our still-present daemon.state.json, sees
@@ -4985,6 +5003,7 @@ export async function startDaemon(): Promise<void> {
     // Setup signal handlers
     const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => {
       logger.debug(`[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
+      await checkpointRetentionSchedule.stop();
 
       stopBrowserTaskReconciliation();
       await stopBrowserAttention();

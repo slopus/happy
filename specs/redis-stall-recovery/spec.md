@@ -51,6 +51,16 @@
    명령 시한이 있으므로, 끊긴 연결의 명령이 영원히 pending 으로 남지 않는다.
 6. 멈춤 감지로 인한 재연결은 `redis_client_errors_total{code="STALL"}` 로 센다.
 
+## Desktop #1326 후속: 스트림 reader 관측
+
+기존 수정이 포함된 배포에서도 peer 응답 누락이 관측됐다. XREAD 실패는 upstream
+poll loop가 debug로만 삼키므로 읽기 실패·소요시간을 account/managed bus별로 센다.
+소요시간은 Redis BLOCK 대기·네트워크·event-loop 지연을 포함하며 순수 Redis 실행
+시간으로 부르지 않는다. 오류 로그는 bus/오류 코드만 담아 1분에 1번 제한한다.
+`Command timed out`은 TIMEOUT으로 분류한다. shutdown disconnect와 관측 실패는
+버스 장애를 만들지 않아야 하고, 원래 XREAD 인자·결과·예외·poll 재시도를 보존한다.
+조회 시한·최신 머신 선택·권한·원격 replica 수집 계약은 변경하지 않는다.
+
 ## 트레이드오프
 
 - Sentinel failover 중에 나간 명령은 예전에는 기다렸다가 성공했지만, 이제는 5초에
@@ -66,4 +76,3 @@
   `main.ts` 는 처리되지 않은 거절에서 `process.exit(1)` 하므로, 그런 경로마다
   처리자를 달아야 한다 (streams adapter 의 `persistSession` 쓰기,
   터미널 세션 정리).
-

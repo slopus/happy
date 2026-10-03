@@ -18,3 +18,11 @@ Core: 기존 daemon의 자격증명 custody와 인증 원자성을 소유하는 
 ## 후속 범위
 
 사용자의 후속 구현 요청으로 개인 로컬 자동 등록·Codex 중복 갱신·선택 활성화를 추가했다. Core의 기존 merge 내부와 호환 optional DTO/capability만 확장한다. 새 DB·의존성·권한 확대 없음. 비밀은 머신 내부에 머무른다. 구버전 서버는 필드를 생략하며 구버전 CLI에는 서버가 강제 전환을 거부한다. rollback은 선택 필드 생략/이전 공식 CLI 사용이다. 후속 관련 4파일 435건·TypeScript·pkgroll build 통과. 외부 릴리스는 미승인.
+
+## 리뷰 후속 계획과 완료
+
+1. 최신 main의 중복 실제 요청 검증·개인 로그인 등록·선택 활성화 경로를 보존하고 중복된 만료 복구 구현을 합친다.
+2. 적용 전 경합/실패 집계 및 적용 후 실패 전파를 실패 테스트로 재현해 수정한다.
+3. supervisor/runtime/verification/provenance/RPC/API 관련 검증과 타입·build·diff 확인 후 소스 PR로 전달한다. 릴리스/tag/운영 반영은 포함하지 않는다.
+
+1~3단계 로컬 구현·검증 Done. 관련 6파일 496건과 CLI 공식 타입/production build 통과. source disabled 보존 경계의 관련 matrix 12건도 추가 실행하여 통과했다.

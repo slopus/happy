@@ -96,7 +96,9 @@ describe('Claude model changes across provider restarts', () => {
         queue.push('turn-0', queuedMode(0), undefined, ['req-0']);
         const lessonReviewLifecycle = { controller: new AbortController(), completedAssistantTurns: 0 };
         const cancelLessonReview = vi.fn(() => lessonReviewLifecycle.controller.abort());
+        const guidance = vi.fn(async () => 'checkpoint test guidance');
         const session = {
+            checkpointComposition: { agentReader: { guidance } },
             lessonReviewLifecycle, cancelLessonReview,
             sessionId: null, path: process.cwd(), queue, client, mcpServers: {},
             api: { push: () => ({ sendSessionNotification: vi.fn() }) },
@@ -105,6 +107,8 @@ describe('Claude model changes across provider restarts', () => {
         await claudeRemoteLauncher(session);
         expect(received).toEqual(modes.map((mode, index) => ({ text: `turn-${index}`, model: mode.model, effort: mode.effort })));
         expect(launches).toHaveLength(3);
+        expect(guidance).toHaveBeenCalledTimes(3);
+        for (const launch of launches) expect(launch.systemPrompt).toMatchObject({ append: expect.stringContaining('checkpoint test guidance') });
         expect(onModeApplied.mock.calls.map(([ids]) => ids)).toEqual(modes.map((_, i) => [`req-${i}`]));
         expect(new Set(onModeApplied.mock.calls.map(([, id]) => id)).size).toBe(modes.length);
         expect(snapshots.filter(s => s.tasks === null && s.available).length).toBeGreaterThanOrEqual(3);

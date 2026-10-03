@@ -1014,6 +1014,8 @@ export class ApiMachineClient {
             this.rpcHandlerManager.registerHandler('checkpoint:status', checkpoint.status);
             this.rpcHandlerManager.registerHandler('checkpoint:list', checkpoint.list);
             this.rpcHandlerManager.registerHandler('checkpoint:preview', checkpoint.preview);
+            if (checkpoint.retireWorktree) this.rpcHandlerManager.registerHandler('checkpoint:retire-worktree', checkpoint.retireWorktree);
+            if (checkpoint.diff) this.rpcHandlerManager.registerHandler('checkpoint:diff', checkpoint.diff);
             this.rpcHandlerManager.registerHandler('checkpoint:execute', checkpoint.execute);
             this.rpcHandlerManager.registerHandler('checkpoint:cancel', checkpoint.cancel);
             this.rpcHandlerManager.registerHandler('checkpoint:retry', checkpoint.retry);

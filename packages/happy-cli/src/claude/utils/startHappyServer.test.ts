@@ -76,9 +76,11 @@ describe('Happy MCP shutdown admission', () => {
     it('refuses every advertised tool before its callback runs', async () => {
         const admitTool = vi.fn(async () => { throw new Error('closed'); });
         const proposal = vi.fn(() => ({ accepted: true }));
-        const server = await startHappyServer(makeFakeClient(false), { admitTool, proposeLesson: proposal });
+        const server = await startHappyServer(makeFakeClient(false), { admitTool, proposeLesson: proposal, checkpointReader: { query: proposal } as never });
         const args: Record<string, Record<string, unknown>> = {
             propose_lesson: { token: '00000000-0000-4000-8000-000000000001', proposal: {} },
+            checkpoint_status: {}, checkpoint_list: {}, checkpoint_preview: { checkpointId: 'a'.repeat(40) },
+            checkpoint_diff: { checkpointId: 'a'.repeat(40), path: 'file.txt' },
             change_title: { title: 'no-write' }, bash_stream: { command: 'no-execution' },
             script_automations: { request: { operation: 'list' } },
             browser_click: { ref: '@e1' }, browser_fill: { ref: '@e1', value: 'x' },
@@ -455,5 +457,46 @@ describe('browser task runtime PoC flag', () => {
             server.stop();
             vi.unstubAllEnvs();
         }
+    });
+});
+
+describe('session-bound checkpoint MCP tools', () => {
+    it('advertises only read tools and routes bounded requests through session admission', async () => {
+        const reader = {
+            status: vi.fn(async () => ({ schemaVersion: 1, supported: true, enabled: true, mode: 'local-history' as const, restoreRequiresUserConfirmation: true as const })),
+            guidance: vi.fn(async () => ''),
+            query: vi.fn(async () => ({ schemaVersion: 1, checkpoints: [], total: 0, nextOffset: null })),
+        };
+        const admit = vi.fn(async work => work());
+        const server = await startHappyServer(makeFakeClient(false), { checkpointReader: reader as never, admitTool: admit });
+        try {
+            const response = await fetch(server.url, { method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }) });
+            const text = await response.text();
+            const tools = JSON.parse(text.startsWith('event:') ? text.slice(text.indexOf('data: ') + 6) : text).result.tools;
+            const checkpoints = tools.filter((tool: { name: string }) => tool.name.startsWith('checkpoint_'));
+            expect(checkpoints.map((tool: { name: string }) => tool.name).sort()).toEqual(['checkpoint_diff', 'checkpoint_list', 'checkpoint_preview', 'checkpoint_status']);
+            expect(server.toolNames.filter(name => name.startsWith('checkpoint_')).sort()).toEqual(checkpoints.map((tool: { name: string }) => tool.name).sort());
+            for (const tool of checkpoints) expect(tool.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false });
+            const result = await callTool(server.url, 2, 'checkpoint_list', { limit: 2 });
+            expect(JSON.parse(result.result.content[0].text)).toMatchObject({ total: 0 });
+            expect(reader.query).toHaveBeenCalledWith('list', { limit: 2 }); expect(admit).toHaveBeenCalledOnce();
+            reader.query.mockClear();
+            const invalid = await callTool(server.url, 3, 'checkpoint_list', { sessionId: 'other' });
+            expect(invalid.result?.isError ?? Boolean(invalid.error)).toBe(true); expect(reader.query).not.toHaveBeenCalled();
+        } finally { server.stop(); }
+    });
+    it('sanitizes read failures and never runs reads after drain admission closes', async () => {
+        const query = vi.fn(async () => { throw new Error('/private/store secret failure'); });
+        let closed = false;
+        const server = await startHappyServer(makeFakeClient(false), { checkpointReader: { query } as never,
+            admitTool: async work => { if (closed) throw new Error('closed'); return work(); } });
+        try {
+            const failed = await callTool(server.url, 1, 'checkpoint_list', {});
+            expect(failed.result.isError).toBe(true); expect(failed.result.content[0].text).toBe('CHECKPOINT_READ_FAILED');
+            closed = true;
+            const refused = await callTool(server.url, 2, 'checkpoint_status', {});
+            expect(refused.result.content[0].text).toBe('Tool unavailable during session shutdown'); expect(query).toHaveBeenCalledOnce();
+        } finally { server.stop(); }
     });
 });

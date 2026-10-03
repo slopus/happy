@@ -2,6 +2,10 @@ import { describe, expect, it, vi } from 'vitest';
 import { Server } from 'socket.io';
 import type { Redis } from 'ioredis';
 import { createIsolatedRedisAdapter, RESTORE_SESSION_TIMEOUT_MS } from './createIsolatedRedisAdapter';
+import { redisStreamReadDuration, register } from '@/app/monitoring/metrics2';
+import { log } from '@/utils/log';
+
+vi.mock('@/utils/log', () => ({ log: vi.fn() }));
 
 function redisConnection(restore: { exec: () => Promise<unknown>; xrange: () => Promise<unknown> } = {
     exec: () => new Promise(() => {}),
@@ -35,6 +39,71 @@ function redisConnection(restore: { exec: () => Promise<unknown>; xrange: () => 
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 
 describe('createIsolatedRedisAdapter', () => {
+    it.each(['socket.io', 'socket.io.managed'])('exposes a %s read failure swallowed by the adapter and continues polling', async (streamName) => {
+        const writer = redisConnection();
+        const reader = redisConnection();
+        const bus = streamName === 'socket.io.managed' ? 'managed' : 'account';
+        const failure = new Error('Command timed out');
+        const metric = () => register.getSingleMetric('redis_stream_read_failures_total');
+        const count = async () => (await metric()?.get())?.values.find(value => value.labels.bus === bus && value.labels.code === 'TIMEOUT')?.value ?? 0;
+        const before = await count();
+        vi.mocked(log).mockClear();
+        reader.xread.mockRejectedValueOnce(failure);
+        const io = new Server({ adapter: createIsolatedRedisAdapter(writer.client, reader.client, { streamName }) });
+        try {
+            await flush();
+            expect(reader.xread).toHaveBeenCalledTimes(2);
+            expect(await count()).toBe(before + 1);
+            expect(log).toHaveBeenCalledWith({ module: 'websocket', level: 'warn' },
+                expect.stringContaining(`cluster stream read failed (${bus}, TIMEOUT`));
+        } finally {
+            io.of('/').adapter.close();
+            writer.client.disconnect();
+        }
+    });
+
+    it('counts every failed read, throttles its log and records the next successful read', async () => {
+        const writer = redisConnection();
+        const reader = redisConnection();
+        const readMetrics = async () => (await redisStreamReadDuration.get()).values
+            .filter(value => value.metricName === 'redis_stream_read_duration_seconds_count' && value.labels.bus === 'account');
+        const before = await readMetrics();
+        const count = (values: typeof before, result: string) => values.find(value => value.labels.result === result)?.value ?? 0;
+        reader.xread.mockRejectedValueOnce(new Error('Command timed out'))
+            .mockRejectedValueOnce(new Error('Command timed out')).mockResolvedValueOnce(null);
+        vi.mocked(log).mockClear();
+        const io = new Server({ adapter: createIsolatedRedisAdapter(writer.client, reader.client, {}) });
+        try {
+            await flush();
+            const after = await readMetrics();
+            expect(reader.xread).toHaveBeenCalledTimes(4);
+            expect(count(after, 'failure') - count(before, 'failure')).toBe(2);
+            expect(count(after, 'success') - count(before, 'success')).toBe(1);
+            expect(vi.mocked(log).mock.calls.filter(([, message]) => String(message).includes('cluster stream read failed'))).toHaveLength(1);
+        } finally {
+            io.of('/').adapter.close();
+            writer.client.disconnect();
+        }
+    });
+
+    it('does not count the intentional shutdown rejection as a read failure', async () => {
+        const writer = redisConnection();
+        const reader = redisConnection();
+        let rejectRead!: (error: Error) => void;
+        reader.xread.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRead = reject; }));
+        const metrics = async () => (await register.getSingleMetric('redis_stream_read_failures_total')!.get()).values;
+        const before = await metrics();
+        vi.mocked(log).mockClear();
+        const io = new Server({ adapter: createIsolatedRedisAdapter(writer.client, reader.client, {}) });
+        io.of('/').adapter.close();
+        rejectRead(new Error('Connection is closed.'));
+        await flush();
+        expect(await metrics()).toEqual(before);
+        expect(reader.xread).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(log).mock.calls.filter(([, message]) => String(message).includes('cluster stream read failed'))).toEqual([]);
+        writer.client.disconnect();
+    });
+
     it.each(['socket.io', 'socket.io.managed'])('publishes %s requests while the stream reader is blocked', async (streamName) => {
         const writer = redisConnection();
         const reader = redisConnection();

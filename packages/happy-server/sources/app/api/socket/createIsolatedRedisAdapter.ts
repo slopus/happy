@@ -1,6 +1,7 @@
 import { installRpcPeerDiagnostics } from './rpcPeerDiagnostics';
 import { log } from '@/utils/log';
-import { createLogThrottle } from '@/app/monitoring/redisHealth';
+import { createLogThrottle, instrumentStreamReads, redisErrorCode } from '@/app/monitoring/redisHealth';
+import { redisStreamReadDuration, redisStreamReadFailuresCounter } from '@/app/monitoring/metrics2';
 import { createAdapter } from '@socket.io/redis-streams-adapter';
 import type { Redis } from 'ioredis';
 
@@ -19,6 +20,22 @@ export function createIsolatedRedisAdapter(
     reader: Redis,
     options: Parameters<typeof createAdapter>[1],
 ): ReturnType<typeof createAdapter> {
+    const active = new Set<ReturnType<ReturnType<typeof createAdapter>>>();
+    const bus = options?.streamName === 'socket.io.managed' ? 'managed' : 'account';
+    const shouldLogReadFailure = createLogThrottle(60_000);
+    instrumentStreamReads(reader, (result, seconds, error) => {
+        // Closing the last namespace intentionally disconnects its pending read.
+        if (active.size === 0) return;
+        redisStreamReadDuration.observe({ bus, result }, seconds);
+        if (result === 'failure') {
+            const code = redisErrorCode(error);
+            redisStreamReadFailuresCounter.inc({ bus, code });
+            if (shouldLogReadFailure(code)) {
+                log({ module: 'websocket', level: 'warn' },
+                    `cluster stream read failed (${bus}, ${code}, throttled to 1/min) — cross-replica routing is degraded`);
+            }
+        }
+    });
     // The 0.2.x adapter runs ioredis XREAD BLOCK 100 on its publishing client.
     // Redis queues XADD behind that read, on both the requesting and replying
     // replicas. These dedicated clients share configuration, not a connection.
@@ -49,7 +66,6 @@ export function createIsolatedRedisAdapter(
         return written;
     }) as unknown as Redis['set'];
     const create = createAdapter(writer, options);
-    const active = new Set<ReturnType<typeof create>>();
     const shouldLogRestoreTimeout = createLogThrottle(60_000);
     return function (namespace) {
         const adapter = create(namespace);

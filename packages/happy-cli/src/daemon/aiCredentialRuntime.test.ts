@@ -134,6 +134,37 @@ function setup(
 }
 
 describe('AI credential machine runtime', () => {
+  it.each([
+    ['ok', 'usage-readable', 1, 1],
+    ['relogin_required', 'relogin-required', 0, 2],
+    [undefined, 'unknown', 0, 1],
+  ] as const)('returns active status and per-account relogin counts for %s without changing credentials', async (usageStatus, activeAccountStatus, usableAccountCount, reloginRequiredAccountCount) => {
+    const { runtime, execFile, calls, supervisor } = setup()
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => command === 'cswap' && args[0] === 'list'
+      ? { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: 1, accounts: [
+        { number: 1, email: 'shared@example.com', usageStatus },
+        { number: 2, email: 'dead@example.com', usageStatus: 'relogin_required' },
+      ] }), stderr: '' } : original(command, args, options))
+    const result = await runtime.apply({ provider: 'claude', applyMode: 'merge', payload: claudeOauthPayload([{ email: 'shared@example.com' }, { email: 'dead@example.com' }]) })
+    expect(result).toMatchObject({ activeAccountStatus, usableAccountCount, reloginRequiredAccountCount, accountCount: 2 })
+    expect(await runtime.status({ provider: 'claude' })).toMatchObject({ activeAccountStatus, usableAccountCount, reloginRequiredAccountCount })
+    expect(calls.some(call => call.command === 'cswap' && ['import', 'switch', 'remove', 'config'].includes(call.args[0]!))).toBe(false)
+    expect(supervisor.enable).not.toHaveBeenCalled()
+    expect(supervisor.stop).not.toHaveBeenCalled()
+  })
+
+  it.each([null, 1] as const)('does not claim disabled or unselected active credentials are usable (active=%s)', async activeAccountNumber => {
+    const { runtime, execFile } = setup()
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => command === 'cswap' && args[0] === 'list'
+      ? { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber, accounts: [
+        { number: 1, email: 'disabled@example.com', usageStatus: 'ok', disabled: true },
+        { number: 2, email: 'ready@example.com', usageStatus: 'ok' },
+      ] }), stderr: '' } : original(command, args, options))
+    expect(await runtime.status({ provider: 'claude' })).toMatchObject({ activeAccountStatus: activeAccountNumber === null ? 'not-selected' : 'disabled', usableAccountCount: 1, reloginRequiredAccountCount: 0 })
+  })
+
   it.each(['claude', 'codex'] as const)('verifies only the active %s account without changing selection', async (provider) => {
     const { runtime, execFile, files, supervisor } = setup()
     const original = execFile.getMockImplementation()!
@@ -244,30 +275,92 @@ describe('AI credential machine runtime', () => {
     expect(execFile.mock.calls.some(([command, args]) => command === 'claude' || args[0] === 'import' || args[0] === 'switch')).toBe(false)
   })
 
-  it('rejects repair success if the imported credential fails its installed request and restores rotation', async () => {
+  it.each(['repair', 'merge'] as const)('rejects %s success if the imported credential fails its installed request and restores rotation', async applyMode => {
     const { runtime, execFile, supervisor, files } = setup()
-    const payload = claudeOauthPayload([{ email: 'owner@example.com' }])
+    const payload = claudeOauthPayload([{ email: 'owner@example.com' }, { email: 'new@example.com' }])
     const original = execFile.getMockImplementation()!
     let requests = 0
+    let imported = false
     execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: 1,
+        accounts: [{ number: 1, email: 'owner@example.com', usageStatus: 'relogin_required' }] }), stderr: '' }
       if (command === 'claude') {
         requests += 1
         const isolated = JSON.parse(files.get(`${options?.environment?.HOME}/.claude/.credentials.json`)!)
+        if (isolated.claudeAiOauth.accessToken === 'local-token') {
+          requests -= 1
+          return { stdout: '', stderr: '401 authentication_error', exitCode: 1 }
+        }
         expect(isolated.claudeAiOauth.accessToken).toBe('oauth-1')
         expect(isolated.claudeAiOauth.refreshToken).toBeUndefined()
         return requests === 1 ? { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 }
           : { stdout: '', stderr: '401 authentication_error', exitCode: 1 }
       }
-      if (command === 'cswap' && args[0] === 'export') return { stdout: payload, stderr: '' }
+      if (command === 'cswap' && args[0] === 'export') return { stdout: imported ? payload : payload.replace('oauth-1', 'local-token'), stderr: '' }
+      if (command === 'cswap' && args[0] === 'import') imported = true
       return original(command, args, options)
     })
-    await expect(runtime.apply({ provider: 'claude', applyMode: 'repair', payload,
+    await expect(runtime.apply({ provider: 'claude', applyMode, payload,
       provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 },
     })).rejects.toMatchObject({ kind: 'CLAUDE_APPLY_VERIFICATION_FAILED' })
     expect(requests).toBe(2)
+    const imports = execFile.mock.calls.filter(([command, args]) => command === 'cswap' && args[0] === 'import')
+    expect(imports).toHaveLength(1)
+    expect(imports[0]![1]).toContain('--force')
     expect(supervisor.stop).toHaveBeenCalledTimes(1)
     expect(supervisor.enable).toHaveBeenCalledTimes(1)
     expect(JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!).claude).toEqual({ state: 'applying', generation: 1 })
+  })
+
+  it.each(['healthy', 'disabled', 'selected', 'slot'] as const)('skips automatic repair and adds new identities if destination becomes %s during verification', async change => {
+    const { runtime, execFile, supervisor, files } = setup()
+    const original = execFile.getMockImplementation()!
+    let probed = false
+    let added = false
+    execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1,
+        activeAccountNumber: probed && change === 'selected' ? 2 : probed && change === 'slot' ? 3 : 1, accounts: [
+          { number: probed && change === 'slot' ? 3 : 1, email: 'owner@example.com', usageStatus: probed && change === 'healthy' ? 'ok' : 'relogin_required', disabled: probed && change === 'disabled' },
+          { number: 2, email: 'personal@example.com', usageStatus: 'ok' },
+          ...(added ? [{ number: 4, email: 'new@example.com', usageStatus: 'ok' }] : []),
+        ] }), stderr: '' }
+      if (command === 'cswap' && args[0] === 'export') return { stdout: claudeOauthPayload([{ email: 'owner@example.com' }]).replace('oauth-1', 'local-token'), stderr: '' }
+      if (command === 'claude') {
+        const token = JSON.parse(files.get(`${options?.environment?.HOME}/.claude/.credentials.json`)!).claudeAiOauth.accessToken
+        if (token === 'local-token') return { stdout: '', stderr: '401 authentication_error', exitCode: 1 }
+        probed = true
+        return { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 }
+      }
+      if (command === 'cswap' && args[0] === 'import') {
+        expect(args).not.toContain('--force')
+        expect(JSON.parse(files.get(args[1]!)!).accounts.map((a: { email: string }) => a.email)).toEqual(['new@example.com'])
+        added = true
+      }
+      return original(command, args, options)
+    })
+    const result = await runtime.apply({ provider: 'claude', applyMode: 'merge', payload: claudeOauthPayload([{ email: 'owner@example.com' }, { email: 'new@example.com' }]),
+      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 } })
+    expect(result).toMatchObject({ repairedAccountCount: 0, credentialRepairFailedAccountCount: 1, accountCount: 3 })
+    expect(probed).toBe(true)
+    expect(added).toBe(true)
+    expect(execFile.mock.calls.some(([, args]) => args.includes('--force') || args[0] === 'switch')).toBe(false)
+    expect(JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!).claude.identities).toEqual([['new@example.com', '', '']])
+    expect(supervisor.stop).toHaveBeenCalledTimes(1)
+    expect(supervisor.enable).toHaveBeenCalledTimes(1)
+  })
+
+  it('excludes disabled dead credentials from relogin counts on status and merge', async () => {
+    const { runtime, execFile } = setup()
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => command === 'cswap' && args[0] === 'list'
+      ? { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: 1, accounts: [
+        { number: 1, email: 'owner@example.com', usageStatus: 'ok' },
+        { number: 2, email: 'disabled@example.com', usageStatus: 'relogin_required', disabled: true },
+      ] }), stderr: '' } : original(command, args, options))
+    expect(await runtime.status({ provider: 'claude' })).toMatchObject({ reloginRequiredAccountCount: 0 })
+    expect(await runtime.apply({ provider: 'claude', applyMode: 'merge', payload: claudeOauthPayload([{ email: 'disabled@example.com' }]) }))
+      .toMatchObject({ reloginRequiredAccountCount: 0, credentialRepairFailedAccountCount: 0 })
+    expect(execFile.mock.calls.some(([command, args]) => command === 'claude' || args[0] === 'import')).toBe(false)
   })
 
   it('does not import rejected repair credentials or claim a newer bundle was applied', async () => {
@@ -357,6 +450,8 @@ describe('AI credential machine runtime', () => {
       { number: 7, email: 'shared@example.com', organizationUuid: 'company-org', usageStatus: 'ok' },
       { number: 9, email: 'personal@example.com', organizationUuid: 'private-org', usageStatus: 'ok' },
     ]
+    // Source metadata must not disable an enabled local slot or prevent its repair.
+    incoming.accounts[0].disabled = true
     const probes: string[] = []
     let activeNumber: number | null = active
     let exports = 0
@@ -395,8 +490,12 @@ describe('AI credential machine runtime', () => {
       }
       return original(command, args, options)
     })
-    await runtime.apply({ provider: 'claude', applyMode: 'merge', payload: JSON.stringify(incoming),
+    const result = await runtime.apply({ provider: 'claude', applyMode: 'merge', payload: JSON.stringify(incoming),
       provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 } })
+    expect(result).toMatchObject({
+      repairedAccountCount: refreshed ? 1 : 0,
+      credentialRepairFailedAccountCount: !refreshed && (localResult === 'auth' || localResult === 'changed') ? 1 : 0,
+    })
     expect(probes).toEqual(localResult === 'auth' || localResult === 'changed'
       ? refreshed ? ['local-token', 'oauth-1', 'oauth-1'] : ['local-token', 'oauth-1']
       : ['local-token'])
@@ -404,6 +503,7 @@ describe('AI credential machine runtime', () => {
     expect(calls.filter(call => call.command === 'cswap' && call.args[0] === 'import')).toHaveLength((refreshed ? 1 : 0) + (withNew ? 1 : 0))
     expect(calls.filter(call => call.command === 'cswap' && call.args[0] === 'switch')).toEqual(refreshed && (active === 7 || active === null)
       ? [{ command: 'cswap', args: ['switch', '7', '--force', '--json'] }] : [])
+    if (refreshed) expect(stored.disabled).not.toBe(true)
     expect(accounts[1]).toMatchObject({ number: 9, organizationUuid: 'private-org', usageStatus: 'ok' })
     expect(activeNumber).toBe(active ?? 7)
     expect(supervisor.stop).toHaveBeenCalledTimes(refreshed ? 1 : 0)
@@ -2519,6 +2619,7 @@ describe('AI credential machine runtime', () => {
     await expect(runtime.status({ provider: 'claude' })).resolves.toEqual({
       provider: 'claude',
       configured: true,
+      accountCount: 1, activeAccountStatus: 'unknown', usableAccountCount: 0, reloginRequiredAccountCount: 0,
       credentialKind: 'oauth',
       activeAccount: 'o***@example.com',
       rotation: { state: 'running', lastErrorKind: null },
@@ -2544,6 +2645,7 @@ describe('AI credential machine runtime', () => {
     await expect(runtime.status({ provider: 'claude' })).resolves.toEqual({
       provider: 'claude',
       configured: true,
+      accountCount: 1, activeAccountStatus: 'api-key', usableAccountCount: 1, reloginRequiredAccountCount: 0,
       credentialKind: 'api_key',
       activeAccount: 'a***@token.local',
       rotation: { state: 'not-applicable', lastErrorKind: null },

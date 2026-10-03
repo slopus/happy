@@ -449,8 +449,10 @@ describe('runClaude remote JSONL scanner', () => {
             failIfUnavailable: true,
             allowUnsandboxedCommands: false,
         };
+        const agentReader = { guidance: vi.fn(async () => 'checkpoint test guidance'), status: vi.fn(), query: vi.fn() } as never;
         mockCreateCheckpointSessionComposition.mockResolvedValue({
             sandboxConfig: { checkpointProtection, enabled: true },
+            agentReader,
             beforeTurn,
             claudeSandbox,
         });
@@ -472,7 +474,9 @@ describe('runClaude remote JSONL scanner', () => {
             env: process.env,
             checkpointEvents,
         }));
+        expect(mockStartHappyServer).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ checkpointReader: agentReader }));
         expect(harness.loopOptions.checkpointComposition).toMatchObject({
+            agentReader,
             beforeTurn,
             claudeSandbox,
         });

@@ -15,6 +15,7 @@ export function buildClaudeSystemPromptOptions({
   orchestratorPrompt,
   workerDelegationPrompt,
   connectorGuidance,
+  checkpointGuidance,
   saycodeSystemPromptEnabled,
   saycodePromptBlocks,
 }: {
@@ -36,6 +37,7 @@ export function buildClaudeSystemPromptOptions({
   /** Gated per-block as 'workerDelegation'. */
   workerDelegationPrompt?: string;
   connectorGuidance?: string;
+  checkpointGuidance?: string;
   saycodeSystemPromptEnabled?: boolean;
   /** Per-block overrides; default-on blocks do not inherit saycodeSystemPromptEnabled. */
   saycodePromptBlocks?: SaycodePromptBlockOverrides;
@@ -51,7 +53,7 @@ export function buildClaudeSystemPromptOptions({
   );
   return {
     customSystemPrompt: customSystemPrompt
-      ? joinPromptBlocks([customSystemPrompt, chatTitlePrompt, isCoAuthoredCreditEnabled ? saycodeSystemPrompt : undefined])
+      ? joinPromptBlocks([customSystemPrompt, chatTitlePrompt, isCoAuthoredCreditEnabled ? saycodeSystemPrompt : undefined, checkpointGuidance])
       : undefined,
     appendSystemPrompt: joinPromptBlocks([
       appendSystemPrompt,
@@ -61,6 +63,7 @@ export function buildClaudeSystemPromptOptions({
       orchestratorPrompt,
       isWorkerDelegationEnabled ? workerDelegationPrompt : undefined,
       connectorGuidance,
+      checkpointGuidance,
       saycodeSystemPromptEnabled !== false ? SAYCODE_API_GATEWAY_PROMPT : undefined,
     ]),
   };

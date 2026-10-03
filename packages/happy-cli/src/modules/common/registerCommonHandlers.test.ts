@@ -150,7 +150,11 @@ describe('file RPCs under strict machine control', () => {
         });
 
         await expect(handlers.get('readFile')?.({ path: join(project, 'notes.md') })).resolves.toMatchObject({ success: true });
-        await expect(handlers.get('readWorkspaceFile')?.({ workspaceRoot: project, path: join(project, 'notes.md') })).resolves.toMatchObject({ success: true });
+        // A workspace read re-checks every directory from its allowed root down and refuses
+        // when one changed. The shared temp root changes under parallel tests, so this read
+        // is rooted at the project.
+        const { handlers: projectHandlers } = await createHandlers(project);
+        await expect(projectHandlers.get('readWorkspaceFile')?.({ workspaceRoot: project, path: join(project, 'notes.md') })).resolves.toMatchObject({ success: true });
     });
 
     it('leaves the happy home where it was in compat', async () => {

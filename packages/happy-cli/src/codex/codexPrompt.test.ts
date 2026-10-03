@@ -79,6 +79,13 @@ describe('buildCodexDeveloperInstructions', () => {
 });
 
 describe('buildCodexTurnPrompt', () => {
+    it('includes independent host event memory and lessons before the original request', () => {
+        expect(buildCodexTurnPrompt({
+            message: 'original request', mode: { appendSystemPrompt: 'system context' },
+            includeAppendSystemPrompt: true, hasTitle: true,
+            lessonBlock: 'lesson references', memoryBlock: 'event memory references',
+        })).toBe('system context\n\nlesson references\n\nevent memory references\n\noriginal request');
+    });
     it('prepends Happy append system prompt before the first Codex user message', () => {
         const prompt = buildCodexTurnPrompt({
             message: 'pick an option',
@@ -224,4 +231,11 @@ describe('Saycode API gateway developer guidance', () => {
     it('omits the guidance when master is off', () => {
         expect(buildCodexDeveloperInstructions({ mode: { saycodeSystemPromptEnabled: false } })).toBeUndefined();
     });
+});
+
+
+it('adds active checkpoint facts to Codex developer instructions without changing client context', () => {
+    const active = buildCodexDeveloperInstructions({ checkpointGuidance: 'ACTIVE CHECKPOINT FACTS', mode: { saycodeSystemPromptEnabled: true, appendSystemPrompt: 'USER CONTEXT' } });
+    expect(active).toContain('ACTIVE CHECKPOINT FACTS'); expect(active).toContain('USER CONTEXT');
+    expect(buildCodexDeveloperInstructions({ checkpointGuidance: '', mode: {} })).not.toContain('CHECKPOINT');
 });

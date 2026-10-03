@@ -1,7 +1,12 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createLogThrottle, instrumentStreamWrites, readClusterPeerCount, redisErrorCode } from './redisHealth';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createLogThrottle, instrumentStreamReads, instrumentStreamWrites, readClusterPeerCount, redisErrorCode } from './redisHealth';
+
+afterEach(() => vi.restoreAllMocks());
 
 describe('redisErrorCode', () => {
+    it('shouldLabelIoredisCommandTimeoutsSeparatelyFromUnknownErrors', () => {
+        expect(redisErrorCode(new Error('Command timed out'))).toBe('TIMEOUT');
+    });
     it('shouldLabelReadonlyReplyAsReadonly', () => {
         // The failure mode that silently killed the cluster bus: after a
         // Sentinel failover the client stays pinned to the demoted replica and
@@ -21,6 +26,58 @@ describe('redisErrorCode', () => {
     it('shouldFallBackToUnknownForUnrecognizedErrors', () => {
         expect(redisErrorCode(new Error('something else entirely'))).toBe('UNKNOWN');
         expect(redisErrorCode('not an error')).toBe('UNKNOWN');
+    });
+});
+
+describe('instrumentStreamReads', () => {
+    it.each(['success', 'failure'])('preserves the read %s when the diagnostic clock throws before it starts', async (outcome) => {
+        const failure = new Error('read failed');
+        const result = [['socket.io', []]];
+        const read = vi.fn(async (..._args: any[]) => {
+            if (outcome === 'failure') throw failure;
+            return result;
+        });
+        const client = { xread: read };
+        const observe = vi.fn();
+        instrumentStreamReads(client, observe);
+        vi.spyOn(performance, 'now').mockImplementationOnce(() => { throw new Error('clock failed'); });
+        const pending = client.xread('BLOCK', 100, 'STREAMS', 'socket.io', '1-0');
+        if (outcome === 'failure') await expect(pending).rejects.toBe(failure);
+        else expect(await pending).toBe(result);
+        expect(read).toHaveBeenCalledExactlyOnceWith('BLOCK', 100, 'STREAMS', 'socket.io', '1-0');
+        expect(observe).not.toHaveBeenCalled();
+    });
+
+    it('preserves read arguments, receiver and result and observes elapsed time', async () => {
+        vi.spyOn(performance, 'now').mockReturnValueOnce(100).mockReturnValueOnce(850);
+        const result = [['socket.io', []]];
+        const observe = vi.fn();
+        const client = { xread: vi.fn(async function (this: unknown, ..._args: any[]) {
+            expect(this).toBe(client);
+            return result;
+        }) };
+        const read = client.xread;
+        instrumentStreamReads(client, observe);
+        expect(await client.xread('BLOCK', 100, 'STREAMS', 'socket.io', '1-0')).toBe(result);
+        expect(read).toHaveBeenCalledExactlyOnceWith('BLOCK', 100, 'STREAMS', 'socket.io', '1-0');
+        expect(observe).toHaveBeenCalledExactlyOnceWith('success', 0.75);
+    });
+
+    it('preserves the read error even when its observer throws', async () => {
+        const failure = new Error('Command timed out');
+        const observe = vi.fn(() => { throw new Error('observer failed'); });
+        const client = { xread: vi.fn(async (..._args: any[]) => { throw failure; }) };
+        instrumentStreamReads(client, observe);
+        await expect(client.xread()).rejects.toBe(failure);
+        expect(observe).toHaveBeenCalledExactlyOnceWith('failure', expect.any(Number), failure);
+    });
+
+    it('does not turn a successful read into a failure when observation throws', async () => {
+        const client = { xread: async (..._args: any[]) => null };
+        const observe = vi.fn(() => { throw new Error('observer failed'); });
+        instrumentStreamReads(client, observe);
+        await expect(client.xread()).resolves.toBeNull();
+        expect(observe).toHaveBeenCalledTimes(1);
     });
 });
 
