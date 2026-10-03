@@ -70,6 +70,8 @@ export interface SessionHookData {
     cwd?: string;
     hook_event_name?: string;
     source?: string;
+    /** Title Claude Code already assigned to the session, if any. */
+    session_title?: string;
     [key: string]: unknown;
 }
 
