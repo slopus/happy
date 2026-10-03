@@ -434,8 +434,8 @@ artifact fixtures remain ready for a separately configured installed-provider ru
 New P2 finding: hydration sanitized a malformed saved setup-token binding away before
 `readSetupTokenResumeSelection` could reject it. That made a previously bound session
 look unbound; if its managed assignment was revoked and a machine default became
-available, resume could choose a different credential. Hydration now retains a bounded
-empty invalid marker when a present saved binding fails sanitization, so the existing
+available, resume could choose a different credential. Generic environment capture now
+retains a bounded empty invalid marker when a present binding fails sanitization, so the existing
 resume guard rejects it. Valid bindings and genuinely absent bindings are unchanged.
 Five boundary regressions (partial JSON, non-JSON, empty string, null and number) failed
 before the fix. Production runtime construction already supplies both nonce fsync hooks;
@@ -446,3 +446,16 @@ Round 1 validation: 381 tests passed across seven focused suites (hydration, ses
 environment, setup-token runtime, general credential runtime, auth wiring, personal
 scheduler and token probe). CLI build, separate typecheck and `git diff --check`
 passed; pre-existing pkgroll warnings only. No live runtime or external mutation.
+
+Follow-on caller audit broadened this same P2 fix to `captureSaycodeAgentEnvironment`,
+which serves both final-spawn tracking and persisted hydration. A hydration-only marker
+could be dropped by another capture. Five new capture/re-capture cases and the updated
+existing capture assertion failed before moving the marker to this shared boundary.
+The redundant hydration special case was removed. Corrupt bytes are never retained;
+valid binding, request scrub and absent-binding behavior remain unchanged.
+
+Shared-capture follow-on validation: 180 tests passed across seven suites covering
+capture/session environment, hydration, setup-token binding, auth wiring and the
+checkpoint/write-scope consumers of capture. Separate typecheck, mandatory CLI build
+and `git diff --check` passed; existing pkgroll warnings only. This is the same medium
+severity finding, not an additional issue or authority change.

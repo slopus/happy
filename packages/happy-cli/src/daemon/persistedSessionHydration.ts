@@ -17,7 +17,7 @@
 import { decodeBase64 } from '@/api/encryption';
 import type { Metadata } from '@/api/types';
 import type { PersistedSession } from '@/persistence';
-import { captureSaycodeAgentEnvironment, SETUP_TOKEN_BINDING_ENV } from './sessionEnv';
+import { captureSaycodeAgentEnvironment } from './sessionEnv';
 import type { SessionEncryptionData, TrackedSession } from './types';
 
 type HydratedFields = Pick<
@@ -38,15 +38,9 @@ type HydratedFields = Pick<
  */
 export function hydrateTrackedSessionFromPersisted(persisted: PersistedSession | undefined): HydratedFields {
   if (!persisted) return {};
-  const capturedEnvironment = persisted.agentEnvironment
+  const agentEnvironment = persisted.agentEnvironment
     ? captureSaycodeAgentEnvironment(persisted.agentEnvironment as NodeJS.ProcessEnv)
     : undefined;
-  // A corrupt saved binding is not an unbound session. Preserve a bounded invalid
-  // marker so the resume guard rejects it instead of falling back to machine auth.
-  const agentEnvironment = persisted.agentEnvironment?.[SETUP_TOKEN_BINDING_ENV] !== undefined
-    && capturedEnvironment?.[SETUP_TOKEN_BINDING_ENV] === undefined
-    ? { ...capturedEnvironment, [SETUP_TOKEN_BINDING_ENV]: '' }
-    : capturedEnvironment;
 
   return {
     happySessionMetadataFromLocalWebhook: persisted.metadata,

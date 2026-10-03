@@ -797,7 +797,15 @@ describe('setup-token resume binding', () => {
         expect(readSetupTokenResumeSelection({})).toBeUndefined()
         expect(readSetupTokenResumeSelection(undefined)).toBeUndefined()
         expect(() => readSetupTokenResumeSelection({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '{"version":1}' })).toThrow(/binding/)
-        expect(captureSetupTokenEnvironment({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '{"version":1}' })).toBeUndefined()
+        expect(captureSetupTokenEnvironment({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '{"version":1}' }))
+            .toEqual({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '' })
+    })
+
+    it.each(['{"version":1}', 'not-json', '', null, 7])('retains an invalid sentinel across capture and re-capture so resume rejects corruption: %j', (binding) => {
+        const captured = captureSetupTokenEnvironment({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding } as NodeJS.ProcessEnv)
+        expect(captured).toEqual({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '' })
+        const recovered = captureSetupTokenEnvironment(JSON.parse(JSON.stringify(captured)))
+        expect(() => readSetupTokenResumeSelection(recovered)).toThrow(/binding/)
     })
 
     it('requires an exact generation and a signed binding grant on the spawn selection', () => {

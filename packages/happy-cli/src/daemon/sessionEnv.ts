@@ -255,7 +255,9 @@ export function captureSaycodeAgentEnvironment(
     // A Studio Chat(beta) session keeps being parked across the resumes an Agent Browser attention causes.
     if (env[BROWSER_CONTINUATION_ENV] === '1') captured[BROWSER_CONTINUATION_ENV] = '1'
     const binding = env[SETUP_TOKEN_BINDING_ENV]
-    if (binding !== undefined && parseSetupTokenBinding(binding)) captured[SETUP_TOKEN_BINDING_ENV] = binding
+    // A malformed record must stay bound-but-invalid through every capture/persistence
+    // path. Keep no corrupt bytes; the resume guard rejects this bounded marker.
+    if (binding !== undefined) captured[SETUP_TOKEN_BINDING_ENV] = parseSetupTokenBinding(binding) ? binding : ''
     const encodedCheckpointContext = env[CHECKPOINT_CONTEXT_KEY]
     if (encodedCheckpointContext && readCheckpointSpawnContext(env)) {
         captured[CHECKPOINT_CONTEXT_KEY] = encodedCheckpointContext
