@@ -126,12 +126,15 @@ Both sites call `sessionEnvironment`:
 | `machine-personal` selection | unchanged (still refused by the existing applied-source proof) |
 
 The decision uses the group journal alone. Each entry now records `managed`, the desired identities that are setup-tokens, projected from
-the payload at sync. There is no cswap call per launch. Journals written before this field existed (no `managed` key) are migrated at the next unbound Claude launch or resume:
-the daemon reads the `cswap` roster once and intersects the managed slots' identities with each old entry's desired identities.
-Both formats a journal may hold count: `sha256(['claude-setup-token', id])` and the older `sha256(['claude', email, ''])`. This is
-independent of which login is active. The result is written into the entry and the launch is decided on it; later launches use the journal only.
-If the roster cannot be read, the launch is refused only when the live Claude login is itself a managed slot, and migration is retried later.
-Ordinary OAuth groups are never blocked.
+the payload at sync. There is no cswap call per launch. Journals written before this field existed (no `managed` key) are resolved at the next unbound Claude launch or resume:
+- An empty (revoked) entry is recorded as `managed: []` without reading the roster.
+- A non-empty entry is classified from the `cswap` roster and the live login once. Identities of managed slots count in both formats a
+  journal may hold: `sha256(['claude-setup-token', id])` and the older `sha256(['claude', email, ''])`. Every other installed account
+  classifies its identity as not managed. This does not depend on which login is active.
+- If every desired identity is classified, the managed subset is recorded and the launch is decided on it (refused if non-empty).
+- If the roster cannot be read, or any desired identity cannot be classified (for example a pending assignment not installed yet), the launch
+  is refused with `CLAUDE_SETUP_TOKEN_ASSIGNMENT_UNRESOLVED` and the entry stays unrecorded, so it is retried later. It is never marked unmanaged.
+Ordinary OAuth groups whose accounts are installed are classified and stay allowed.
 Not covered: a `happy` CLI started by hand in a terminal, which is outside the daemon.
 
 ## Remaining scope / limitations

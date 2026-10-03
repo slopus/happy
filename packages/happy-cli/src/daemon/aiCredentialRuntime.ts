@@ -3,7 +3,7 @@ import { createPersonalProbeScheduler } from './personalProbeScheduler'
 import { createTokenProbe, personalProbeSupported, readTokenRuntime } from './tokenProbe'
 import { createClaudeCollector, consumeCollectorPermit, collectorVerificationReady } from './claudeCollector'
 import { createCredentialGroupSync, type CredentialGroupRequest } from './aiCredentialGroups'
-import { createGroupProviderAdapters, groupPayloadIdentities } from './aiCredentialGroupAdapters'
+import { createGroupProviderAdapters, groupAccountIdentity, groupPayloadIdentities } from './aiCredentialGroupAdapters'
 import { spawn as crossSpawn } from 'cross-spawn'
 import { verifyLocalAiAccounts, type VerificationIdentity } from './aiCredentialVerification'
 import { mergeCodexAccounts } from './aiCredentialAdditive'
@@ -1886,32 +1886,48 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     const required = () => new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
     if (await groups.hasManagedDesired('claude')) throw required()
     // Journals from before the projection cannot say whether they desire a managed slot.
-    // Read the roster once, record the answer, and decide; later launches use the journal only.
+    // An empty (revoked) one desires nothing. A non-empty one is classified from the roster
+    // once and recorded; until every desired identity is classified it is refused, never
+    // treated as unmanaged. Later launches then use the journal only.
     const legacy = await groups.unprojected('claude')
-    if (legacy.length === 0) return
-    let accounts: ClaudeListDetails['accounts']
+    for (const entry of legacy.filter(entry => entry.desired.length === 0)) await groups.recordManaged('claude', entry.scope, [])
+    const unknown = legacy.filter(entry => entry.desired.length > 0)
+    if (unknown.length === 0) return
+    const unresolved = () => new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_ASSIGNMENT_UNRESOLVED')
+    let accounts: Array<Record<string, unknown>>
     try {
       accounts = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
         maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout).accounts
-    } catch {
-      // No roster: refuse only on positive evidence that the live login is org material; retry migration later.
-      let live: Record<string, unknown> | null = null
-      try { live = await readOptionalJson(deps.env.CLAUDE_CONFIG_DIR ? join(deps.env.CLAUDE_CONFIG_DIR, '.claude.json') : join(deps.homeDir, '.claude.json')) } catch { live = null }
-      if (managedSetupTokenId((live?.oauthAccount as { emailAddress?: unknown } | undefined)?.emailAddress) !== null) throw required()
-      return
-    }
-    // Both identity formats a journal may hold for a managed slot: the managed-ID hash and the older email hash.
-    const managedIdentities = new Set(accounts.flatMap(account => {
+      const live = await readOptionalJson(deps.env.CLAUDE_CONFIG_DIR ? join(deps.env.CLAUDE_CONFIG_DIR, '.claude.json') : join(deps.homeDir, '.claude.json'))
+      const liveAccount = live?.oauthAccount as { emailAddress?: unknown; organizationUuid?: unknown } | undefined
+      if (typeof liveAccount?.emailAddress === 'string' && liveAccount.emailAddress) {
+        accounts = [...accounts, { email: liveAccount.emailAddress, organizationUuid: typeof liveAccount.organizationUuid === 'string' ? liveAccount.organizationUuid : '' }]
+      }
+    } catch { throw unresolved() }
+    // Both identity formats a journal may hold for a managed slot (managed-ID and older email
+    // hash); every other installed account classifies its identity as not managed.
+    const managedIdentities = new Set<string>()
+    const classified = new Set<string>()
+    for (const account of accounts) {
       const id = managedSetupTokenId(account.email)
-      return id === null ? [] : [setupTokenGroupIdentity(id), createHash('sha256').update(JSON.stringify(['claude', account.email, ''])).digest('hex')]
-    }))
+      if (id !== null) {
+        for (const identity of [setupTokenGroupIdentity(id), createHash('sha256').update(JSON.stringify(['claude', String(account.email).trim().toLowerCase(), ''])).digest('hex')]) {
+          managedIdentities.add(identity); classified.add(identity)
+        }
+      } else {
+        try { classified.add(groupAccountIdentity('claude', account)) } catch { /* no identity, cannot classify anything */ }
+      }
+    }
     let managed = false
-    for (const entry of legacy) {
+    let pending = false
+    for (const entry of unknown) {
+      if (entry.desired.some(identity => !classified.has(identity))) { pending = true; continue }
       const desiredManaged = entry.desired.filter(identity => managedIdentities.has(identity))
       await groups.recordManaged('claude', entry.scope, desiredManaged)
       if (desiredManaged.length > 0) managed = true
     }
     if (managed) throw required()
+    if (pending) throw unresolved()
   }
 
   async function sessionEnvironment(agent: string | undefined, selection?: AiAuthSelection, recorded?: SetupTokenBinding): Promise<Record<string, string>> {

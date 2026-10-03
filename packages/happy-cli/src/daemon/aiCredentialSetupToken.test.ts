@@ -388,8 +388,8 @@ describe('managed Claude setup-token runtime', () => {
 
     // A journal written before the `managed` projection existed.
     const JOURNAL = '/home/operator/.happy/ai-credential-groups.json'
-    const legacyJournal = (desired: string[]) => new Map([[JOURNAL, JSON.stringify({ version: 1, entries: [{ scope: 'company-1', userId: 'user-1',
-      provider: 'claude', generation: 1, fingerprint: '1'.padStart(64, '0'), desired, owned: desired, pending: false, payloadDigest: null }] })]])
+    const legacyJournal = (desired: string[], pending = false) => new Map([[JOURNAL, JSON.stringify({ version: 1, entries: [{ scope: 'company-1', userId: 'user-1',
+      provider: 'claude', generation: 1, fingerprint: '1'.padStart(64, '0'), desired, owned: pending ? [] : desired, pending, payloadDigest: null }] })]])
     const legacyHash = (email: string) => createHash('sha256').update(JSON.stringify(['claude', email, ''])).digest('hex')
     const personalSlot: Slot = { number: 1, email: 'me@example.com', usageStatus: 'ok', credentials: { claudeAiOauth: { accessToken: 'personal', refreshToken: 'r' } } }
 
@@ -417,14 +417,27 @@ describe('managed Claude setup-token runtime', () => {
       expect(calls.slice(before)).toEqual([])
     })
 
-    it('with an unreadable roster, refuses only when the live login is a managed slot and does not migrate', async () => {
-      const managedLive = legacyJournal([setupTokenGroupIdentity(A)])
-      managedLive.set('/home/operator/.claude.json', JSON.stringify({ oauthAccount: { emailAddress: managedSetupTokenEmail(A) } }))
-      await expect(fakeMachine([], null, { files: managedLive, listFails: true }).runtime.sessionEnvironment('claude')).rejects.toThrow('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
-      expect(JSON.parse(managedLive.get(JOURNAL)!).entries[0]).not.toHaveProperty('managed')
-      const personalLive = legacyJournal([legacyHash('shared@example.com')])
-      personalLive.set('/home/operator/.claude.json', JSON.stringify({ oauthAccount: { emailAddress: 'me@example.com' } }))
-      expect(await fakeMachine([], null, { files: personalLive, listFails: true }).runtime.sessionEnvironment('claude')).toEqual({})
+    it('refuses an unknown old assignment when the roster cannot be read, even with a personal login, and does not migrate', async () => {
+      const files = legacyJournal([legacyHash('shared@example.com')])
+      files.set('/home/operator/.claude.json', JSON.stringify({ oauthAccount: { emailAddress: 'me@example.com' } }))
+      const { runtime } = fakeMachine([personalSlot], 1, { files, listFails: true })
+      await expect(runtime.sessionEnvironment('claude')).rejects.toThrow('CLAUDE_SETUP_TOKEN_ASSIGNMENT_UNRESOLVED')
+      expect(JSON.parse(files.get(JOURNAL)!).entries[0]).not.toHaveProperty('managed')
+    })
+
+    it('refuses a pending old assignment whose desired slots are not installed yet, and does not mark it unmanaged', async () => {
+      const files = legacyJournal([setupTokenGroupIdentity(A)], true)
+      const { runtime } = fakeMachine([personalSlot], 1, { files })
+      await expect(runtime.sessionEnvironment('claude')).rejects.toThrow('CLAUDE_SETUP_TOKEN_ASSIGNMENT_UNRESOLVED')
+      expect(JSON.parse(files.get(JOURNAL)!).entries[0]).not.toHaveProperty('managed')
+    })
+
+    it('projects an empty or revoked old assignment without the roster and keeps the personal default', async () => {
+      const files = legacyJournal([])
+      const { runtime, calls } = fakeMachine([personalSlot], 1, { files, listFails: true })
+      expect(await runtime.sessionEnvironment('claude')).toEqual({})
+      expect(JSON.parse(files.get(JOURNAL)!).entries[0].managed).toEqual([])
+      expect(calls.filter(call => call.args[0] === 'list')).toEqual([])
     })
 
     it('does not consult cswap at all on a machine without group assignments', async () => {
