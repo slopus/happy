@@ -662,7 +662,8 @@ describe('ApiMachineClient socket reconnection', () => {
         const handler = (client as any).rpcHandlerManager.registerHandler.mock.calls
             .find(([method]: [string]) => method === 'ai-credential:capabilities')?.[1];
         expect(handler({})).toEqual({ version: 1, applyModes: ['merge', 'replace'] });
-        expect(capabilities).toHaveBeenCalledWith();
+        // The handler passes this machine's id so collector capability can be machine-scoped.
+        expect(capabilities).toHaveBeenCalledWith(expect.any(String));
     });
 
     it('rejects malformed additional directories before spawning', async () => {
