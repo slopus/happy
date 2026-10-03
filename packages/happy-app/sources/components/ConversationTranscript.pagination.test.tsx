@@ -197,6 +197,47 @@ describe('ConversationTranscript older history pagination', () => {
         act(() => renderer.unmount());
     });
 
+    it.each(['older', 'newer'] as const)('continues a capacity-limited %s window on fresh scroll intent without a button', async direction => {
+        const node = document.createElement('div');
+        Object.defineProperties(node, { scrollHeight: { value: 1200 }, clientHeight: { value: 400 } });
+        node.scrollTop = direction === 'older' ? 0 : 800;
+        const load = vi.fn();
+        const render = (error = 'history-window-capacity', loading = false, more = true) =>
+            <ConversationTranscript metadata={null} sessionId="capacity-scroll" messages={[userMessage('20')]}
+                isAtLatest={false} hasMoreOlder={more} hasMoreNewer={more}
+                olderError={direction === 'older' ? error : undefined} newerError={direction === 'newer' ? error : undefined}
+                isLoadingOlder={loading} isLoadingNewer={loading}
+                onLoadOlder={direction === 'older' ? load : undefined} onLoadNewer={direction === 'newer' ? load : undefined} />;
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(render(), {
+            createNodeMock: (element: any) => element.type === 'FlatList' ? { getScrollableNode: () => node } : null,
+        }); });
+        const wheel = async (reverse = false) => act(async () => {
+            node.dispatchEvent(new WheelEvent('wheel', { deltaY: (direction === 'older' ? -1 : 1) * (reverse ? -1 : 1) }));
+        });
+        await flushFrame(); await flushFrame();
+        expect(load).not.toHaveBeenCalled();
+        await wheel(true);
+        expect(load).not.toHaveBeenCalled();
+        await wheel();
+        expect(load).toHaveBeenCalledExactlyOnceWith(undefined);
+        // Layout/observer callbacks must not keep abandoning the viewport.
+        act(() => direction === 'older' ? byId(renderer, 'conversation-transcript-list').props.onStartReached()
+            : byId(renderer, 'conversation-transcript-list').props.onEndReached());
+        await flushFrame(); await flushFrame();
+        expect(load).toHaveBeenCalledTimes(1);
+        await act(async () => renderer.update(render('history-window-capacity', true)));
+        await wheel();
+        expect(load).toHaveBeenCalledTimes(1);
+        await act(async () => renderer.update(render('Network unavailable')));
+        await wheel();
+        expect(load).toHaveBeenCalledTimes(1);
+        await act(async () => renderer.update(render('history-window-capacity', false, false)));
+        await wheel();
+        expect(load).toHaveBeenCalledTimes(1);
+        act(() => renderer.unmount());
+    });
+
     it('keeps an overlapping folded group mounted when paging changes both boundary members', async () => {
         const adapter = { key: 'group-window', read: async () => null, save: () => {},
             wireId: (id: string) => id, wireSeq: (id: string) => Number(id), blockKey: () => 'text:0' };

@@ -174,18 +174,25 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         const error = direction === 'older' ? props.olderError : props.newerError;
         const load = direction === 'older' ? props.onLoadOlder : props.onLoadNewer;
         const key = boundaryAttemptKey(direction);
+        // Continuing to scroll is explicit navigation, just like the Continue
+        // button. Release viewport retention (not the memory cap) for this one
+        // request. Passive layout/refill events must never advance it for us.
+        const continueCapacity = Platform.OS === 'web' && !refill
+            && error === 'history-window-capacity' && userScrollStarted.current
+            && userScrollDirection.current === direction;
+        const explicitRetry = retry || continueCapacity;
         if (Platform.OS === 'web' && !retry && ((!userScrollStarted.current && !refill)
             || (userScrollDirection.current === undefined && userScrollOffset.current !== null)
             || (userScrollDirection.current !== undefined && userScrollDirection.current !== direction))) return;
-        if (!load || more === false || loading || (!retry && (error || attempted.current.has(key)))) return;
-        const transaction = coordinator?.beginHistory(key, direction, retry || refill);
+        if (!load || more === false || loading || (!explicitRetry && (error || attempted.current.has(key)))) return;
+        const transaction = coordinator?.beginHistory(key, direction, explicitRetry || refill);
         if (coordinator && transaction === null) return;
         attempted.current.add(key);
         const fill = { direction, key };
         boundaryFill.current = fill;
         if (attempted.current.size > 8) attempted.current.delete(attempted.current.values().next().value!);
         if (Platform.OS === 'web') userScrollStarted.current = false;
-        load(retry && error === 'history-window-capacity' ? undefined : () => viewportRange.current());
+        load(explicitRetry && error === 'history-window-capacity' ? undefined : () => viewportRange.current());
     }, [boundaryAttemptKey, props.hasMoreOlder, props.hasMoreNewer, props.isLoadingOlder, props.isLoadingNewer,
         props.onLoadOlder, props.onLoadNewer, props.olderError, props.newerError, coordinator]);
     const loadBoundaryRef = React.useRef(loadBoundary);
