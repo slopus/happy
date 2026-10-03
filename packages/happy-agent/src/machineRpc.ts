@@ -1,7 +1,8 @@
 import { io, Socket } from 'socket.io-client';
 import type { Config } from './config';
 import type { DecryptedMachine } from './api';
-import { decodeBase64, encodeBase64, encrypt, decrypt } from './encryption';
+import { bindRpcRequest, readBoundRpcResponse, rpcBindingCapabilitySchema } from '@slopus/happy-wire';
+import { decodeBase64, encodeBase64, encrypt, decrypt, getRandomBytes } from './encryption';
 
 export type SupportedAgent = 'claude' | 'codex' | 'gemini' | 'openclaw';
 
@@ -56,11 +57,31 @@ function normalizeRpcError(error: string | undefined, machineId: string): string
     return error;
 }
 
-/** Sends one machine-scope RPC sealed with the machine's key and opens its reply. */
+/**
+ * aplus-dev-studio specs/e2ee-machine-control-boundary R18 — a dataKey machine
+ * whose metadata, opened with its machine key, says it reads bound requests.
+ * A legacy machine's key is the account secret the server holds, so binding
+ * there proves nothing.
+ */
+function readsBoundRequests(machine: DecryptedMachine): boolean {
+    if (machine.encryption.variant !== 'dataKey') return false;
+    const advertised = (machine.metadata as { rpcBinding?: unknown } | null)?.rpcBinding;
+    return rpcBindingCapabilitySchema.safeParse(advertised).success;
+}
+
+/**
+ * Sends one machine-scope RPC sealed with the machine's key and opens its
+ * reply. For a machine that reads bound requests, the request names its
+ * method, scope, issue time and nonce, and only the reply with that nonce counts.
+ */
 async function callMachine(socket: Socket, machine: DecryptedMachine, method: string, params: unknown): Promise<unknown> {
+    const nonce = readsBoundRequests(machine) ? encodeBase64(getRandomBytes(16)) : null;
+    const plaintext = nonce
+        ? bindRpcRequest({ method, scope: machine.id, params, issuedAt: Date.now(), nonce })
+        : params;
     const response = await socket.timeout(30_000).emitWithAck('rpc-call', {
         method: `${machine.id}:${method}`,
-        params: encodeBase64(encrypt(machine.encryption.key, machine.encryption.variant, params)),
+        params: encodeBase64(encrypt(machine.encryption.key, machine.encryption.variant, plaintext)),
     }) as RpcAck;
 
     if (!response.ok) {
@@ -70,11 +91,15 @@ async function callMachine(socket: Socket, machine: DecryptedMachine, method: st
         throw new Error('RPC call returned no result');
     }
 
-    return decrypt(
+    const decrypted = decrypt(
         machine.encryption.key,
         machine.encryption.variant,
         decodeBase64(response.result),
     );
+    if (!nonce) return decrypted;
+    const bound = readBoundRpcResponse(decrypted, nonce);
+    if (!bound.ok) throw new Error(`RPC reply refused: ${bound.code}`);
+    return bound.result;
 }
 
 function readSpawnResult(decrypted: unknown): SpawnMachineSessionResult {

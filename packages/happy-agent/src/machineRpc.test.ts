@@ -72,3 +72,38 @@ describe('resumeSessionOnMachine', () => {
         await expect(resumeSessionOnMachine(config, machine('legacy'), 'token', 'session-1')).rejects.toThrow('RPC call returned unexpected data');
     });
 });
+
+// aplus-dev-studio specs/e2ee-machine-control-boundary R18/R19 — a strict machine refuses
+// unbound requests, so the agent binds for a dataKey machine that says it reads them.
+describe('bound machine requests', () => {
+    const advertising = machine('dataKey', { host: 'h', rpcBinding: { version: 1 } });
+
+    it('binds spawn to its method and machine and reads only the reply to it', async () => {
+        calls.length = 0;
+        daemon = (call) => {
+            const request = opened(call, 'dataKey') as { nonce: string };
+            return sealed({ rpcBinding: 1, nonce: request.nonce, result: { type: 'success', sessionId: 'session-2' } }, 'dataKey');
+        };
+
+        expect(await spawnSessionOnMachine(config, advertising, 'token', { directory: '/w' })).toEqual({ type: 'success', sessionId: 'session-2' });
+        expect(opened(calls[0]!, 'dataKey')).toMatchObject({
+            rpcBinding: 1, method: 'spawn-happy-session', scope: 'machine-1',
+            params: { type: 'spawn-in-directory', directory: '/w', approvedNewDirectoryCreation: false },
+        });
+    });
+
+    it('refuses a reply recorded for another request or not bound', async () => {
+        daemon = () => sealed({ rpcBinding: 1, nonce: Buffer.alloc(16, 9).toString('base64'), result: { type: 'success', sessionId: 'old' } }, 'dataKey');
+        await expect(resumeSessionOnMachine(config, advertising, 'token', 'session-1')).rejects.toThrow('RPC_RESPONSE_MISMATCH');
+
+        daemon = () => sealed({ type: 'success', sessionId: 'unbound' }, 'dataKey');
+        await expect(resumeSessionOnMachine(config, advertising, 'token', 'session-1')).rejects.toThrow('RPC_RESPONSE_UNBOUND');
+    });
+
+    it('does not bind for a legacy machine, whose key the server holds', async () => {
+        calls.length = 0;
+        daemon = () => sealed({ type: 'success', sessionId: 'session-3' }, 'legacy');
+        await resumeSessionOnMachine(config, machine('legacy', { rpcBinding: { version: 1 } }), 'token', 'session-3');
+        expect(opened(calls[0]!, 'legacy')).toEqual({ sessionId: 'session-3' });
+    });
+});
