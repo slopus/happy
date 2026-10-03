@@ -2984,6 +2984,22 @@ describe('ApiSessionClient v3 messages API migration', () => {
             mockSocket.emit.mockImplementation((event: string, callback: () => void) => { if(event==='ping')callback(); });
             await client.flush();expect(mockAxiosPost).toHaveBeenCalledTimes(2);await client.close();
         });
+        it('requires a frozen cursor and waits for daemon confirmation before releasing scope preservation', async () => {
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            expect(await client.confirmShutdownCursor()).toBe(false);
+            client.skipExistingMessages(34);
+            expect(client.freezeInboundMessagesForShutdown()).toBe(true);
+            let acknowledge!: (value: { status: string }) => void;
+            mockNotifyDaemonSessionRuntime.mockImplementationOnce(() => new Promise(resolve => { acknowledge = resolve; }));
+            let confirmed = false;
+            const confirmation = client.confirmShutdownCursor().then(value => { confirmed = value; return value; });
+            await Promise.resolve(); expect(confirmed).toBe(false);
+            expect(mockNotifyDaemonSessionRuntime).toHaveBeenLastCalledWith(session.id, expect.objectContaining({ lastProcessedSeq: 34 }));
+            acknowledge({ status: 'ok' }); expect(await confirmation).toBe(true);
+            mockNotifyDaemonSessionRuntime.mockImplementationOnce(async () => ({ error: 'lost ACK' }) as any);
+            expect(await client.confirmShutdownCursor()).toBe(false);
+            await client.close();
+        });
         it('does not advertise storage confirmation for an ordinary legacy client', async () => {
             const client = new ApiSessionClient('fake-token', session);
             await expect(client.flushForShutdown(100)).resolves.toEqual({ stored: false, reason: 'unsupported' });

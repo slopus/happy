@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { WebSocket } from 'ws';
+import type { Socket } from 'node:net';
 import { SessionDrain, type DrainReceipt, type DrainProvider } from './sessionDrain';
 import type { RuntimeProducerGate } from './runtimeProducerGate';
 import { launchAuthProof, equalLaunchProof, launchAuthenticationSchema, launchBootstrapSchema, launchCommandSchema, type StandaloneLaunchBootstrap } from '../daemon/standaloneLaunchProtocol';
@@ -12,7 +13,8 @@ export class SessionLaunchControl {
   private readonly launchId: string;
   private readonly connected: Promise<void>;
   private current: { nonce: string; receipt?: DrainReceipt; controller: AbortController; intent: boolean } | null = null;
-  private closed = false;
+    private closed = false;
+    private transport: Socket | undefined;
   static async connect(bootstrap: StandaloneLaunchBootstrap): Promise<SessionLaunchControl> {
     const control = new SessionLaunchControl(bootstrap);
     try { await control.ready(); return control; }
@@ -34,8 +36,9 @@ export class SessionLaunchControl {
     this.socket = new WebSocket(`ws://127.0.0.1:${config.port}/launch-control/v1`, { maxPayload: 4096,
       handshakeTimeout: 5000, followRedirects: false, headers: { 'x-launch-proof': launchAuthProof(config, 'client', clientNonce), 'x-launch-nonce': clientNonce,
         'x-launch-id': config.launchId, 'x-instance-id': config.instanceId } });
-    // The authenticated transport alone must not keep failed early startup alive.
-    this.socket.once('upgrade', response => response.socket.unref());
+    // Keep authentication/binding alive; otherwise a new parent can exit before readiness.
+    // Once bound, the provider/runtime owns liveness. Failed startup closes this channel.
+    this.socket.once('upgrade', response => { this.transport = response.socket; });
     this.connected = new Promise((resolve, reject) => {
       readyResolve = resolve; readyReject = reject;
       this.socket.once('error', () => reject(new Error('Standalone launch control unavailable')));
@@ -100,7 +103,8 @@ export class SessionLaunchControl {
   bind(provider: DrainProvider, storage: ConstructorParameters<typeof SessionDrain>[2], runtime: RuntimeProducerGate): void {
     if (this.drain || this.closed || this.socket.readyState !== WebSocket.OPEN) throw new Error('Standalone launch binding unavailable');
     this.runtime = runtime;
-    this.drain = new SessionDrain(this.launchId, provider, storage, async () => {}, runtime);
+        this.drain = new SessionDrain(this.launchId, provider, storage, async () => {}, runtime);
+        this.transport?.unref();
   }
   ready(): Promise<void> { return this.connected; }
   private async begin(current: NonNullable<SessionLaunchControl['current']>, budgetMs: number, releaseBudgetMs: number) {

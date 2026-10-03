@@ -1,3 +1,4 @@
+import type { ScopeClaudeSandbox } from '@/daemon/sessionWriteScopeClaude';
 import type { ClaudeStandaloneDrain } from './claudeStandaloneDrain';
 import type { LessonProposalTurn } from '@/utils/lessonProposalTurn';
 import { ApiClient, ApiSessionClient } from "@/lib";
@@ -20,6 +21,7 @@ export interface ClaudeLessonReviewLifecycle {
 }
 
 export class Session {
+    readonly scopeProcessSandbox?: ScopeClaudeSandbox;
     prepareChannelExecution?: (requestId: string) => Promise<boolean>;
     beginChannelExecution?: (requestId: string) => boolean;
     readonly path: string;
@@ -83,6 +85,7 @@ export class Session {
     private keepAliveInterval: NodeJS.Timeout;
 
     constructor(opts: {
+        scopeProcessSandbox?: ScopeClaudeSandbox,
         api: ApiClient,
         client: ApiSessionClient,
         path: string,
@@ -118,6 +121,7 @@ export class Session {
         startingMode?: 'local' | 'remote',
         exitAfterFirstTurn?: boolean,
     }) {
+        this.scopeProcessSandbox = opts.scopeProcessSandbox;
         this.path = opts.path;
         this.api = opts.api;
         this.client = opts.client;

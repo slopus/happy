@@ -20,6 +20,7 @@ import { startServerProcess, StartServerError } from './startServer';
 import { stopServerProcess, StopServerError } from './stopServer';
 import { BrowserBridge, BridgeRequestError } from './browserBridge';
 import { attachTerminalWsRoute, type MachineEncryption as TerminalMachineEncryption } from './controlServerTerminalWs';
+import type { SessionWriteScopeRuntime } from './sessionWriteScopeRuntime';
 
 /**
  * The only control-server paths a managed runtime may serve, and even these
@@ -100,7 +101,9 @@ export function startDaemonControlServer({
   managedRuntime = false,
   verifyManagedReport,
   standaloneDrain,
+  writeScopeRuntime,
 }: {
+  writeScopeRuntime?: SessionWriteScopeRuntime | null;
   standaloneDrain?: StandaloneDrain;
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string, context?: StopSessionContext) => StopSessionResult;
@@ -150,6 +153,9 @@ export function startDaemonControlServer({
     const refuseUnverifiedManagedReport = async (
       claim: ManagedReportClaim,
     ): Promise<{ error: string; code: string } | null> => {
+      if (writeScopeRuntime && !writeScopeRuntime.verifyReport(claim)) return {
+        error: 'Protected session report rejected', code: 'SCOPE_REPORT_AUTH_REQUIRED',
+      };
       if (!managedRuntime) return null;
       const verified = verifyManagedReport
         ? await verifyManagedReport(claim)
@@ -224,6 +230,40 @@ export function startDaemonControlServer({
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
     const typed = app.withTypeProvider<ZodTypeProvider>();
+
+    typed.post('/session-write-scope', { schema: { body: z.discriminatedUnion('action', [
+      z.object({ action: z.literal('list'), sessionId: z.string().min(1).max(128) }).strict(),
+      z.object({ action: z.literal('request'), sessionId: z.string().min(1).max(128), path: z.string().max(2048),
+        description: z.string().max(240), kind: z.enum(['grant', 'revoke']).default('grant') }).strict(),
+      z.object({ action: z.literal('cancel'), sessionId: z.string().min(1).max(128), requestId: z.string().uuid() }).strict(),
+    ]) } }, async (request, reply) => {
+      if (!writeScopeRuntime) return { supported: false, requests: [], reason: 'SESSION_WRITE_SCOPE_UNSUPPORTED' };
+      try {
+        const body = request.body;
+        const broker = writeScopeRuntime.broker;
+        const result = body.action === 'request' ? await broker.request(body.sessionId, body.path, body.description, body.kind)
+          : body.action === 'cancel' ? await broker.cancel(body.sessionId, body.requestId) : undefined;
+        return { supported: true, capabilities: writeScopeRuntime.capabilities, requests: writeScopeRuntime.list(body.sessionId), result };
+      } catch (error) {
+        return reply.code(409).send({ code: error instanceof Error && /^[A-Z_]+$/.test(error.message) ? error.message : 'WRITE_SCOPE_REQUEST_FAILED' });
+      }
+    });
+    typed.post('/session-write-scope/decide', { schema: { body: z.object({
+      decision: z.object({ version: z.literal(1), requestId: z.string().uuid(), digest: z.string().length(64),
+        incarnation: z.string().max(128), accountId: z.string().max(128), machineId: z.string().max(128),
+        sessionId: z.string().max(128), action: z.enum(['allow', 'project', 'cancel']) }).strict(),
+      signature: z.string().max(128),
+    }).strict() } }, async (request, reply) => {
+      if (!writeScopeRuntime) return reply.code(409).send({ code: 'SESSION_WRITE_SCOPE_UNSUPPORTED' });
+      try { return { result: await writeScopeRuntime.broker.decide(request.body) }; }
+      catch { return reply.code(409).send({ code: 'WRITE_SCOPE_DECISION_REJECTED' }); }
+    });
+    typed.post('/session-write-scope/confirm', { schema: { body: z.object({
+      token: z.string().uuid(), sessionId: z.string().max(128), digest: z.string().length(64), pid: z.number().int().positive(),
+    }).strict() } }, async (request, reply) => {
+      if (!writeScopeRuntime?.confirm(request.body)) return reply.code(403).send({ code: 'SCOPE_CONFIRMATION_REJECTED' });
+      return { confirmed: true };
+    });
 
     // Session reports itself after creation
     typed.post('/session-started', {

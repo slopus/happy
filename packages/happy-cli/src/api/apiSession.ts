@@ -2230,6 +2230,16 @@ export class ApiSessionClient extends EventEmitter {
 
     get tracksShutdownStorage(): boolean { return this.options.trackShutdownStorage === true; }
 
+    /** Confirm the frozen resume cursor before a launch coordinator releases this runtime. */
+    async confirmShutdownCursor(): Promise<boolean> {
+        if (!this.tracksShutdownStorage || this.shutdownReceiveSeq === null) return false;
+        const result = await notifyDaemonSessionRuntime(this.sessionId, {
+            reportSeq: ++this.daemonRuntimeReportSeq, thinking: false, hasOpenToolCall: false, pendingUserInput: false,
+            lastProcessedSeq: Math.min(this.runtimeProcessedSeqCap ?? this.lastSeq, this.shutdownReceiveSeq),
+        });
+        return result?.status === 'ok';
+    }
+
     /** High-water flow control, not a reservation or a hard bound for uncooperative producers. */
     waitForStorageCapacity(signal?: AbortSignal): Promise<void> {
         if (!this.tracksShutdownStorage) return Promise.resolve();

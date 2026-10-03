@@ -78,6 +78,7 @@ describe('Happy MCP shutdown admission', () => {
         const proposal = vi.fn(() => ({ accepted: true }));
         const server = await startHappyServer(makeFakeClient(false), { admitTool, proposeLesson: proposal, checkpointReader: { query: proposal } as never });
         const args: Record<string, Record<string, unknown>> = {
+            session_write_scope: { action: 'list' },
             propose_lesson: { token: '00000000-0000-4000-8000-000000000001', proposal: {} },
             checkpoint_status: {}, checkpoint_list: {}, checkpoint_preview: { checkpointId: 'a'.repeat(40) },
             checkpoint_diff: { checkpointId: 'a'.repeat(40), path: 'file.txt' },
@@ -498,5 +499,26 @@ describe('session-bound checkpoint MCP tools', () => {
             const refused = await callTool(server.url, 2, 'checkpoint_status', {});
             expect(refused.result.content[0].text).toBe('Tool unavailable during session shutdown'); expect(query).toHaveBeenCalledOnce();
         } finally { server.stop(); }
+    });
+});
+
+
+describe('session write scope protected tool surface', () => {
+    it('offers requests but excludes privileged parent execution tools', async () => {
+        const previous = process.env.HAPPY_WRITE_SCOPE_SESSION;
+        process.env.HAPPY_WRITE_SCOPE_SESSION = '1';
+        const server = await startHappyServer(makeFakeClient(false));
+        try {
+            const response = await fetch(server.url, { method: 'POST',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }) });
+            const raw = await response.text();
+            const body = JSON.parse(raw.startsWith('event:') ? raw.slice(raw.indexOf('data: ') + 6) : raw);
+            const names = body.result.tools.map((tool: { name: string }) => tool.name);
+            expect(names).toContain('session_write_scope');
+            expect(names).not.toContain('bash_stream');
+            expect(names).not.toContain('script_automations');
+            expect(names).not.toContain('browser_open_tab');
+        } finally { server.stop(); if (previous === undefined) delete process.env.HAPPY_WRITE_SCOPE_SESSION; else process.env.HAPPY_WRITE_SCOPE_SESSION = previous; }
     });
 });

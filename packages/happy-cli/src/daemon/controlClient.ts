@@ -7,6 +7,7 @@ import { logger } from '@/ui/logger';
 import { clearDaemonState, readDaemonState, readDaemonStateSnapshot, writeDaemonStateIfUnchanged } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { configuration } from '@/configuration';
+import { initializeScopeReportSigner, SCOPE_REPORT_HEADER } from './sessionWriteScopeReports';
 import {
     MANAGED_REPORT_CAPABILITY_HEADER,
     type ManagedReportKind,
@@ -173,6 +174,7 @@ async function daemonPost(
         // absent on a state file from before the auth rollout, in which case
         // the server's 401 surfaces through the existing `!response.ok` path.
         ...(state.controlSecret ? { Authorization: `Bearer ${state.controlSecret}` } : {}),
+        ...(reportKind ? await scopeReportHeaders(reportKind, body || {}) : {}),
       },
       body: JSON.stringify(body || {}),
       // Mostly increased for stress test
@@ -198,6 +200,10 @@ async function daemonPost(
 }
 
 const SESSION_STARTED_RETRY_TIMEOUT_MS = 3000;
+async function scopeReportHeaders(kind: ManagedReportKind, body: unknown): Promise<Record<string, string>> {
+  const signer = await initializeScopeReportSigner();
+  return signer ? { [SCOPE_REPORT_HEADER]: signer(kind, body) } : {};
+}
 const SESSION_STARTED_RETRY_INTERVAL_MS = 100;
 
 export async function notifyDaemonSessionStarted(

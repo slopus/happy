@@ -1,3 +1,6 @@
+import { initializeScopeReportSigner, takeScopeLaunchBootstrap } from '@/daemon/sessionWriteScopeReports';
+import { takeScopeConfirmation } from '@/daemon/sessionWriteScopeConfirmation';
+import { prepareSessionWriteScopeClaude } from '@/daemon/sessionWriteScopeClaude';
 /** Orchestrates Claude sessions, initial prompts, MCP tools and session lifecycle. */
 import { createLessonProposalTurn } from '@/utils/lessonProposalTurn';
 import { randomUUID } from 'node:crypto';
@@ -188,6 +191,11 @@ export type RunnerPrincipal =
     | { kind: 'managed'; startup: ManagedStartup };
 
 export async function runClaude(principal: RunnerPrincipal, options: StartOptions = {}): Promise<void> {
+    await initializeScopeReportSigner();
+    const scopeLaunch = takeScopeLaunchBootstrap();
+    const scopeConfirmation = takeScopeConfirmation();
+    const standaloneLaunch = options.standaloneLaunch ?? scopeLaunch;
+    if (scopeLaunch && options.startingMode !== 'remote') throw new Error('Scope approval supports Claude remote mode only');
     const managedStartup = principal.kind === 'managed' ? principal.startup : null;
     const accountToken = principal.kind === 'account' ? principal.credentials.token : null;
     if (principal.kind === 'managed') {
@@ -225,10 +233,10 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
     installBroadKillShims();
     // Authenticated before any API client or server session exists: a launch the
     // daemon did not reserve must not create one.
-    if (options.standaloneLaunch && (managedStartup || options.startedBy !== 'daemon')) {
+    if (standaloneLaunch && (managedStartup || options.startedBy !== 'daemon')) {
         throw new Error('Standalone launch requires a daemon-started account session');
     }
-    const launchControl = options.standaloneLaunch ? await SessionLaunchControl.connect(options.standaloneLaunch) : undefined;
+    const launchControl = standaloneLaunch ? await SessionLaunchControl.connect(standaloneLaunch) : undefined;
     const automationRunOnceRequested = consumeAutomationRunOnce(process.env);
     const deferredContinuation = createDeferredContinuationContextConsumer(process.env);
 
@@ -799,7 +807,21 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
         });
         runtimeGate = gate;
         standaloneDrain = new ClaudeStandaloneDrain(gate);
-        launchControl.bind(createClaudeDrainProvider(standaloneDrain.providerDeps()), session, gate);
+        const provider = createClaudeDrainProvider(standaloneDrain.providerDeps());
+        const guardedProvider = scopeLaunch ? { ...provider,
+            freezeInputForShutdown: () => !currentSession?.thinking && messageQueue.size() === 0
+                && !standaloneDrain!.hasHeldBackInput() && provider.freezeInputForShutdown(),
+        } : provider;
+        const storage = scopeLaunch ? {
+            tracksShutdownStorage: session.tracksShutdownStorage,
+            flushForShutdown: async (budget: number, signal?: AbortSignal) => {
+                const proof = await session.flushForShutdown(budget, signal);
+                return proof.stored && !await session.confirmShutdownCursor()
+                    ? { stored: false as const, reason: 'unconfirmed-write' as const } : proof;
+            },
+            isStorageConfirmationCurrent: (proof: Parameters<typeof session.isStorageConfirmationCurrent>[0]) => session.isStorageConfirmationCurrent(proof),
+        } : session;
+        launchControl.bind(guardedProvider, storage, gate);
     }
     const admitRpc = <T,>(work: () => Promise<T>): Promise<T> => runtimeGate ? runtimeGate.admit(work) : work();
 
@@ -1852,9 +1874,13 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
         return { model, effort };
     };
 
+    const scopeProcessSandbox = scopeLaunch ? await prepareSessionWriteScopeClaude({
+        path: workingDirectory, config: sandboxConfig, confirmation: scopeConfirmation,
+    }) : undefined;
     let exitCode: number;
     try {
         exitCode = await loop({
+        scopeProcessSandbox,
         path: workingDirectory,
         ...(lessons ? { lessons } : {}),
         lessonProposalTurn,
@@ -1910,7 +1936,7 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
         },
         session,
         claudeEnvVars: options.claudeEnvVars,
-        managedSettingsLockdown: managedStartup !== null,
+        managedSettingsLockdown: managedStartup !== null || Boolean(scopeLaunch),
         managedRun: managedStartup !== null,
         ...(standaloneDrain ? { standaloneDrain } : {}),
         claudeArgs: options.claudeArgs,
@@ -1923,6 +1949,7 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
         getSaycodePromptBlocks: () => currentSaycodePromptBlocks,
     });
     } finally {
+        await scopeProcessSandbox?.close();
         process.removeListener('SIGTERM', closeLessonsOnSignal);
         process.removeListener('SIGINT', closeLessonsOnSignal);
         await closeLessons();

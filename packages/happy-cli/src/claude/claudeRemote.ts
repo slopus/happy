@@ -1,3 +1,4 @@
+import type { ScopeClaudeSandbox } from '@/daemon/sessionWriteScopeClaude';
 import { prepareClaudeProcessSandbox, type ClaudeProcessSandbox } from '@/sandbox/claudeProcessSandbox';
 import type { SandboxConfig } from '@/persistence';
 import type { SandboxPolicyMode } from '@/sandbox/sandboxPolicy';
@@ -187,6 +188,7 @@ export async function claudeRemote(opts: {
     orchestratorMcpServers?: Record<string, unknown>,
     mcpConfig?: McpConfigSource,
     sandbox?: QueryOptions['sandbox'],
+    scopeProcessSandbox?: ScopeClaudeSandbox,
     sandboxConfig?: SandboxConfig,
     sandboxPolicyMode?: SandboxPolicyMode,
     permissionsDeny?: string[],
@@ -407,7 +409,9 @@ async function runClaudeRemote(
     const providerPath = initialTurn?.providerPath ?? opts.path;
     const providerSandbox = initialTurn?.claudeSandbox ?? opts.sandbox;
 
-    const processSandbox = opts.sandboxPolicyMode === 'mandatory'
+    const processSandbox = opts.scopeProcessSandbox
+        ? { claudeConfigDir: process.env.CLAUDE_CONFIG_DIR, spawn: opts.scopeProcessSandbox.spawn }
+        : opts.sandboxPolicyMode === 'mandatory'
         ? await prepareSandbox({
             sandboxConfig: opts.sandboxConfig,
             sessionPath: providerPath,

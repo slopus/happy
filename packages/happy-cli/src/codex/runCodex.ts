@@ -63,6 +63,7 @@ import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
+import { initializeScopeReportSigner, takeScopeLaunchBootstrap } from '@/daemon/sessionWriteScopeReports';
 import { encodeBase64 } from '@/api/encryption';
 import type { Session as ApiSession, UserMessage } from '@/api/types';
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
@@ -204,14 +205,17 @@ export async function runCodex(opts: {
         sessionKind: LessonTurnKind;
     };
 }): Promise<void> {
+    await initializeScopeReportSigner();
+    const scopeLaunch = takeScopeLaunchBootstrap();
+    const standaloneLaunch = opts.standaloneLaunch ?? scopeLaunch;
     // Shield killall/pkill against broad kills before anything is spawned —
     // Codex has no PreToolUse hook system, so the PATH shim is its only guard.
     const managedStartup = opts.principal?.kind === 'managed' ? opts.principal.startup : null;
     // Capture before checkpoint preparation changes provider cwd; not from turn metadata.
     const recallProjectPath = process.cwd();
     const recallHostEnvironment = { ...process.env };
-    if (opts.standaloneLaunch && (managedStartup || opts.startedBy !== 'daemon')) throw new Error('Standalone launch requires an unmanaged daemon session');
-    const launchControl = opts.standaloneLaunch ? await SessionLaunchControl.connect(opts.standaloneLaunch) : undefined;
+    if (standaloneLaunch && (managedStartup || opts.startedBy !== 'daemon')) throw new Error('Standalone launch requires an unmanaged daemon session');
+    const launchControl = standaloneLaunch ? await SessionLaunchControl.connect(standaloneLaunch) : undefined;
     try {
     const accountToken = opts.principal?.kind === 'account' ? opts.principal.credentials.token : null;
     if (managedStartup) {
@@ -364,7 +368,7 @@ export async function runCodex(opts: {
         serverAvailable: response !== null,
         prepared: preparedInitialPrompt,
     });
-    if (opts.standaloneLaunch && (!response || sandboxConfig?.checkpointProtection)) throw new Error('Standalone drain requires an online standard session');
+    if (standaloneLaunch && (!response || sandboxConfig?.checkpointProtection)) throw new Error('Standalone drain requires an online standard session');
     if (!response && sandboxConfig?.checkpointProtection) {
         throw new Error('checkpoint protection requires an authoritative server session');
     }
@@ -407,7 +411,7 @@ export async function runCodex(opts: {
         metadata,
         state,
         response,
-        sessionOptions: opts.standaloneLaunch ? { trackShutdownStorage: true } : undefined,
+        sessionOptions: standaloneLaunch ? { trackShutdownStorage: true } : undefined,
         onSessionSwap: (newSession) => {
             session = newSession;
             // Update permission handler with new session to avoid stale reference
@@ -1904,9 +1908,25 @@ export async function runCodex(opts: {
             );
         };
 
-        if (opts.standaloneLaunch) {
+        if (standaloneLaunch) {
             if (!runtimeGate) throw new Error('Standalone runtime storage gate unavailable');
-            launchControl!.bind(client, session, runtimeGate);
+            const provider = scopeLaunch ? {
+                freezeInputForShutdown: () => !thinking && !pending && messageQueue.size() === 0 && client.freezeInputForShutdown(),
+                interruptTurn: () => client.interruptTurn(),
+                endInputAndAwaitExit: (budget: number, signal?: AbortSignal) => client.endInputAndAwaitExit(budget, signal),
+                waitForOutputDrain: () => client.waitForOutputDrain(), cancelOutputDrain: () => client.cancelOutputDrain(),
+                finishShutdownObservation: () => client.finishShutdownObservation(),
+            } : client;
+            const storage = scopeLaunch ? {
+                tracksShutdownStorage: session.tracksShutdownStorage,
+                flushForShutdown: async (budget: number, signal?: AbortSignal) => {
+                    const proof = await session.flushForShutdown(budget, signal);
+                    return proof.stored && !await session.confirmShutdownCursor()
+                        ? { stored: false as const, reason: 'unconfirmed-write' as const } : proof;
+                },
+                isStorageConfirmationCurrent: (proof: Parameters<typeof session.isStorageConfirmationCurrent>[0]) => session.isStorageConfirmationCurrent(proof),
+            } : session;
+            launchControl!.bind(provider, storage, runtimeGate);
         }
 
         while (!shouldExit) {

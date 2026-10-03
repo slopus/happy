@@ -672,6 +672,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     permissionsDeny: buildMandatoryRemoteDenyRules(
                         session.sandboxPolicyMode ?? 'owner-choice',
                     ),
+                    scopeProcessSandbox: session.scopeProcessSandbox,
                     sandboxConfig: session.sandboxConfig,
                     sandboxPolicyMode: session.sandboxPolicyMode,
                     sandbox: resolveClaudeRemoteSandbox({

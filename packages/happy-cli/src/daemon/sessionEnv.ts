@@ -44,7 +44,7 @@ import { ADDITIONAL_DIRECTORIES_ENV, readAdditionalDirectoriesEnvironment } from
 // child inherits that child's environment, and an un-scrubbed value would make
 // every later session on the machine meter its tokens against somebody else's
 // credential.
-export const SESSION_LINEAGE_ENV_PREFIXES = ['HAPPY_RECONNECT_', 'HAPPY_FORK', 'HAPPY_CREATED_BY', 'HAPPY_INITIAL_', 'HAPPY_DEFERRED_CONTINUATION_', 'HAPPY_AUTOMATION_', 'HAPPY_ADDITIONAL_DIRECTORIES', 'HAPPY_CHECKPOINT_', 'HAPPY_AI_AUTH_', 'APLUS_SESSION_', 'SAYCODE_AGENT_'] as const
+export const SESSION_LINEAGE_ENV_PREFIXES = ['HAPPY_SCOPE_REPORT_', 'HAPPY_WRITE_SCOPE_', 'HAPPY_RECONNECT_', 'HAPPY_FORK', 'HAPPY_CREATED_BY', 'HAPPY_INITIAL_', 'HAPPY_DEFERRED_CONTINUATION_', 'HAPPY_AUTOMATION_', 'HAPPY_ADDITIONAL_DIRECTORIES', 'HAPPY_CHECKPOINT_', 'HAPPY_AI_AUTH_', 'APLUS_SESSION_', 'SAYCODE_AGENT_'] as const
 
 const SAYCODE_AGENT_ENV_KEYS = [
     'SAYCODE_AGENT_ENV',
@@ -61,7 +61,7 @@ type SaycodeAgentEnvironmentKey = typeof SAYCODE_AGENT_ENV_KEYS[number]
 const CHECKPOINT_CONTEXT_KEY = CHECKPOINT_SPAWN_CONTEXT_ENV_KEY
 /** Set from the spawn option `browserContinuation` only (request environment cannot carry HAPPY_AUTOMATION_*). */
 export const BROWSER_CONTINUATION_ENV = 'HAPPY_AUTOMATION_BROWSER_CONTINUATION'
-type SessionScopedEnvironmentKey = SaycodeAgentEnvironmentKey | typeof CHECKPOINT_CONTEXT_KEY | 'HAPPY_PROJECT_SANDBOX_CONFIG' | typeof ADDITIONAL_DIRECTORIES_ENV | typeof BROWSER_CONTINUATION_ENV
+type SessionScopedEnvironmentKey = SaycodeAgentEnvironmentKey | typeof CHECKPOINT_CONTEXT_KEY | 'HAPPY_WRITE_SCOPE_SESSION' | 'HAPPY_SANDBOX_POLICY_MODE' | 'HAPPY_PROJECT_SANDBOX_CONFIG' | typeof ADDITIONAL_DIRECTORIES_ENV | typeof BROWSER_CONTINUATION_ENV
 
 export type SaycodeAgentEnvironment = Partial<Record<SessionScopedEnvironmentKey, string>>
 
@@ -232,7 +232,10 @@ export function captureSaycodeAgentEnvironment(
     }
     // Sandbox policy belongs to every session, including sessions without agent control.
     if (env.HAPPY_PROJECT_SANDBOX_CONFIG !== undefined) {
-        captured.HAPPY_PROJECT_SANDBOX_CONFIG = env.HAPPY_PROJECT_SANDBOX_CONFIG
+        captured.HAPPY_PROJECT_SANDBOX_CONFIG = env.HAPPY_WRITE_SCOPE_BASE_CONFIG ?? env.HAPPY_PROJECT_SANDBOX_CONFIG
+    }
+    if (env.HAPPY_WRITE_SCOPE_SESSION === '1') {
+        captured.HAPPY_WRITE_SCOPE_SESSION = '1'; captured.HAPPY_SANDBOX_POLICY_MODE = 'mandatory';
     }
     // Which sandbox roots were user-granted, so a resume can keep or replace exactly those.
     const additionalDirectories = env[ADDITIONAL_DIRECTORIES_ENV]

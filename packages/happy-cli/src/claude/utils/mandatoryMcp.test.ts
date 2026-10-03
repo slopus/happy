@@ -17,9 +17,12 @@ function rpc(socketPath: string, token: string, method: string, params: unknown 
     });
 }
 
-it('authenticates the Unix MCP endpoint and exposes exactly the mandatory browser tools', async () => {
+it.each([false, true])('authenticates the Unix MCP endpoint and preserves the mandatory boundary (scoped=%s)', async scoped => {
     const client = { sessionId: 'synthetic-session', hasTitle: () => true } as ApiSessionClient;
     const previous = process.env.HAPPY_BROWSER_TASK_RUNTIME_URL;
+    const previousScope = process.env.HAPPY_WRITE_SCOPE_SESSION;
+    if (scoped) process.env.HAPPY_WRITE_SCOPE_SESSION = '1';
+    else delete process.env.HAPPY_WRITE_SCOPE_SESSION;
     process.env.HAPPY_BROWSER_TASK_RUNTIME_URL = 'http://127.0.0.1:1';
     // Linux group permissions are exercised in the privileged container; the unit
     // transport test uses an isolated current-user socket on every developer OS.
@@ -32,8 +35,9 @@ it('authenticates the Unix MCP endpoint and exposes exactly the mandatory browse
         const response = await rpc(server.socketPath!, token, 'tools/list');
         expect(response.status).toBe(200);
         const payload = JSON.parse(response.body.slice(response.body.indexOf('data: ') + 6));
-        expect(payload.result.tools.map((tool: { name: string }) => tool.name).sort()).toEqual(['change_title', ...BROWSER_TASK_TOOL_NAMES].sort());
-        for (const name of ['bash_stream', 'script_automations', 'browser_tabs', 'propose_lesson']) {
+        expect(payload.result.tools.map((tool: { name: string }) => tool.name).sort()).toEqual(['change_title', ...BROWSER_TASK_TOOL_NAMES,
+            ...(scoped ? ['session_write_scope'] : [])].sort());
+        for (const name of ['bash_stream', 'script_automations', 'browser_tabs', 'propose_lesson', ...(!scoped ? ['session_write_scope'] : [])]) {
             const result = await rpc(server.socketPath!, token, 'tools/call', { name, arguments: {} });
             expect(result.body).toMatch(/not found|Unknown tool/i);
         }
@@ -42,5 +46,7 @@ it('authenticates the Unix MCP endpoint and exposes exactly the mandatory browse
         vi.unstubAllGlobals();
         if (previous === undefined) delete process.env.HAPPY_BROWSER_TASK_RUNTIME_URL;
         else process.env.HAPPY_BROWSER_TASK_RUNTIME_URL = previous;
+        if (previousScope === undefined) delete process.env.HAPPY_WRITE_SCOPE_SESSION;
+        else process.env.HAPPY_WRITE_SCOPE_SESSION = previousScope;
     }
 });

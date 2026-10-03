@@ -1,3 +1,4 @@
+import { createSessionWriteScopeRuntime, isSessionWriteScopeLaunch, type SessionWriteScopeRuntime } from './sessionWriteScopeRuntime';
 import { CheckpointRetention } from '@/checkpoint/checkpointRetention';
 import { CheckpointRetentionSchedule } from '@/checkpoint/checkpointRetentionSchedule';
 /** Happy daemon lifecycle, child-session spawning and resumption, and browser attention delivery. */
@@ -570,6 +571,9 @@ export function shouldRunScriptAutomations(input: {
 }
 
 export async function startDaemon(): Promise<void> {
+  // Host bootstrap belongs to this incarnation, never to spawned agent children.
+  const writeScopeHostEnvironment = Object.fromEntries(Object.entries(process.env)
+    .filter(([key]) => key.startsWith('HAPPY_WRITE_SCOPE_HOST_')));
   // Direct `daemon start-sync` must not retain a disposable caller worktree.
   process.chdir(os.homedir());
 
@@ -1049,6 +1053,7 @@ export async function startDaemon(): Promise<void> {
 
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
+    let writeScopeRuntime: SessionWriteScopeRuntime | null = null;
     /**
      * Generations this daemon launched through the supervisor, by pid.
      *
@@ -2307,6 +2312,11 @@ export async function startDaemon(): Promise<void> {
             }));
           }
 
+          if (writeScopeRuntime && isSessionWriteScopeLaunch({ provider: agentCommand, userHomeDir: stagedUserHomeDir,
+            sandboxConfig: spawnEnvironment.HAPPY_PROJECT_SANDBOX_CONFIG })) {
+            spawnEnvironment.HAPPY_WRITE_SCOPE_SESSION = '1';
+            spawnEnvironment.HAPPY_SANDBOX_POLICY_MODE = 'mandatory';
+          }
           return finishSpawn(spawnTrackedHappyProcess({
             args,
             cwd: directory,
@@ -2360,7 +2370,11 @@ export async function startDaemon(): Promise<void> {
         return { type: 'error', errorMessage: 'Windows trial launch is closed or this provider is unsupported' };
       }
       const prepared = standaloneWindows ? await standaloneWindows.owner.prepare({ args, cwd, env }) : undefined;
-      const happyProcess = prepared?.childProcess ?? spawnHappyCLI(args, { cwd, detached: true, stdio: 'ignore', env });
+      const scopeReports = env.HAPPY_WRITE_SCOPE_SESSION === '1' ? writeScopeRuntime?.prepareReports(resumeTargetSessionId) : undefined;
+      const happyProcess = prepared?.childProcess ?? spawnHappyCLI(args, { cwd, detached: true,
+        stdio: scopeReports ? ['ignore', 'ignore', 'ignore', 'pipe'] : 'ignore',
+        env: { ...env, ...scopeReports?.environment } });
+      scopeReports?.attach(happyProcess);
       const rootPid = prepared?.pid ?? happyProcess.pid;
       if (!rootPid) return { type: 'error', errorMessage: 'Failed to spawn Happy process - no PID returned' };
       logger.debug(`[DAEMON RUN] Spawned session root PID ${rootPid}`);
@@ -2536,6 +2550,9 @@ export async function startDaemon(): Promise<void> {
       /** Present = replace the roots granted at spawn (a live child is left untouched). */
       additionalDirectories?: string[];
       checkpointRestart?: true;
+      /** Daemon-internal only; never deserialized from a machine RPC. */
+      writeScopeEnvironment?: Record<string, string>;
+      writeScopeValidate?: () => Promise<void>;
       automation?: {
         directory: string;
         initialPrompt: string;
@@ -2545,10 +2562,12 @@ export async function startDaemon(): Promise<void> {
     };
 
     const spawnResumedSession = async (happySessionId: string, options?: ResumeSessionOptions): Promise<ResumeSessionResult> => {
+      if (writeScopeRuntime?.isApplying(happySessionId) && !options?.writeScopeEnvironment) return { type: 'error', code: 'SESSION_RESUME_FAILED', errorMessage: 'Session folder permissions are being replaced' };
+
       if (!launchReadiness.isReady()) return { type: 'error', code: 'SESSION_RESUME_FAILED', errorMessage: 'Daemon is initializing; retry the resume shortly' };
       try {
         if (hasLiveDaemonChild(happySessionId, pidToTrackedSession.values(), isPidAlive, ownsUnresolvedJob)) {
-          if (options?.automation) {
+          if (options?.automation || options?.writeScopeEnvironment) {
             return {
               type: 'error',
               code: 'SESSION_LIVE',
@@ -2846,15 +2865,21 @@ export async function startDaemon(): Promise<void> {
           broker: browserTaskBroker,
           agentSessionId: happySessionId,
           env: resumedEnvironment,
-          spawn: (env) => spawnTrackedHappyProcess({
-            args: launch.args,
-            cwd: launch.cwd,
-            // resume 는 이 spawn 하나에 한해 lineage 를 명시적으로 부여한다 —
-            // 상속분은 scrub 하고 이 세션의 값만 아래에서 다시 넣는다.
-            env,
-            userHomeDir: credentialDecision.kind === 'user-staged' ? credentialDecision.homeDir : undefined,
-            resumeTargetSessionId: happySessionId,
-          }),
+          spawn: async (env) => {
+            if (options?.writeScopeEnvironment) {
+              if (!options.writeScopeValidate) throw new Error('WRITE_SCOPE_VALIDATION_REQUIRED');
+              await options.writeScopeValidate();
+              env = { ...env, ...options.writeScopeEnvironment };
+            }
+            return spawnTrackedHappyProcess({
+              args: launch.args,
+              cwd: launch.cwd,
+              // This launch alone receives the validated reconnect lineage.
+              env,
+              userHomeDir: credentialDecision.kind === 'user-staged' ? credentialDecision.homeDir : undefined,
+              resumeTargetSessionId: happySessionId,
+            });
+          },
           ownerPid: () => Array.from(pidToTrackedSession.values()).find((session) => session.happySessionId === happySessionId)?.pid,
           onRevokeFailure: reportBrowserTaskRevokeFailure,
         });
@@ -3353,6 +3378,8 @@ export async function startDaemon(): Promise<void> {
     };
 
     const onChildExited = (pid: number) => {
+      const scopeSessionId = pidToTrackedSession.get(pid)?.happySessionId;
+      if (scopeSessionId) writeScopeRuntime?.sessionEnded(scopeSessionId);
       const tracked = pidToTrackedSession.get(pid);
       // A managed attempt's child is gone: its receipt records the exit (L1b).
       // An exit that cannot be recorded yet is the handlers' own obligation
@@ -3556,6 +3583,16 @@ export async function startDaemon(): Promise<void> {
     // reads lazily, rather than reordering daemon startup around it.
     let machineEncryptionForTerminalWs: { encryptionKey: Uint8Array; encryptionVariant: 'legacy' | 'dataKey' } | null = null;
 
+    writeScopeRuntime = await createSessionWriteScopeRuntime({
+      machineId, env: writeScopeHostEnvironment, managed: managedIdentity.status === 'active' || Boolean(standaloneWindows),
+      findSession: findTrackedSessionById,
+      preserve: session => preserveSessionForResume(session, 'session-write-scope'),
+      resume: (id, environment, validate) => spawnResumedSession(id, { writeScopeEnvironment: environment, writeScopeValidate: validate }),
+    }).catch(() => {
+      logger.warn('[session-write-scope] Approval broker unavailable; support disabled');
+      return null;
+    });
+
     // Start control server
     const { port: controlPort, stop: stopControlServer, controlSecret } = await startDaemonControlServer({
       getChildren: getCurrentChildren,
@@ -3569,6 +3606,7 @@ export async function startDaemon(): Promise<void> {
       // 제어 서버의 파일 접근도 같은 잠금 정책을 따른다(HAPPY_RPC_ALLOWED_ROOT).
       allowedRoot: resolveDaemonAllowedRoot(process.env, os.homedir()),
       standaloneDrain: standaloneWindows?.drain,
+      writeScopeRuntime,
       managedRuntime: managedIdentity.status === 'active',
       /*
        * Without this the control server refuses every managed report with
@@ -4881,6 +4919,7 @@ export async function startDaemon(): Promise<void> {
             await channelHost?.stop();
             apiMachine.shutdown();
             await stopControlServer();
+            await writeScopeRuntime?.close();
             await standaloneWindows?.owner.close();
             await stopBrowserBridge();
             await cleanupDaemonState();
@@ -5037,6 +5076,7 @@ export async function startDaemon(): Promise<void> {
       await channelHost?.stop();
       apiMachine.shutdown();
       await stopControlServer();
+      await writeScopeRuntime?.close();
       await standaloneWindows?.owner.close();
       await stopBrowserBridge();
 

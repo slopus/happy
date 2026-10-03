@@ -1,3 +1,4 @@
+import { registerSessionWriteScopeTools } from '@/daemon/sessionWriteScopeAgentTools';
 /**
  * Happy MCP server
  * Provides Happy CLI specific tools including chat session title management
@@ -118,10 +119,13 @@ function createToolRunner(admitTool: HappyServerHandlers['admitTool']) {
 
 function createMcpServer(handlers: HappyServerHandlers): McpServer {
     const runTool = createToolRunner(handlers.admitTool);
+    const scopedSession = process.env.HAPPY_WRITE_SCOPE_SESSION === '1';
     const mcp = new McpServer({
         name: "Happy MCP",
         version: "1.0.0",
     });
+
+    if (!handlers.mandatorySandbox || scopedSession) registerSessionWriteScopeTools(mcp, handlers.client.sessionId, runTool);
 
     if (handlers.checkpointReader) registerCheckpointAgentTools(mcp, handlers.checkpointReader, runTool);
 
@@ -133,7 +137,7 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
         }, async (input) => runTool(async () => ({ content: [{ type: 'text' as const, text: JSON.stringify(handlers.proposeLesson!(input)) }] })));
     }
 
-    if (!handlers.mandatorySandbox) mcp.registerTool('script_automations', {
+    if (!handlers.mandatorySandbox && !scopedSession) mcp.registerTool('script_automations', {
         title: 'Manage Project Script Automations',
         description: 'Manage Node bundle scripts in the project Execution > Automations admin without an LLM session. List before registering scheduled collection or batch work. Supports list/get/upsert/run/list_runs/set_enabled; use registrationKey and expectedRevision for safe retries. upsert reads sourcePath relative to this project, encrypts the bundle, and supports schedule=null or at/interval/daily/weekly, externalEnabled, JSON inputSchema, allowlisted origins and env:<mountedGroupId>:<KEY> secret references. No API keys are issued by this tool. Return and use the same admin ID; do not install OS cron or hidden background timers.',
         inputSchema: { request: scriptAutomationToolRequestSchema },
@@ -190,7 +194,7 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
     // chat can tail the output. MVP scope: single-line shell commands (no
     // heredoc, timeouts, cancellation). The system prompt steers the agent
     // to fall back to Claude's built-in Bash for everything outside that.
-    if (!handlers.mandatorySandbox) mcp.registerTool('bash_stream', {
+    if (!handlers.mandatorySandbox && !scopedSession) mcp.registerTool('bash_stream', {
         description:
             'Run a shell command via `bash -c` and stream stdout/stderr live to the chat UI. Use this for long-running batch commands (npm install, pytest, build, etc.) so the user sees output as it happens. For short read-only commands or anything with heredocs/multiline scripts, prefer the built-in Bash tool.',
         title: 'Bash (streamed)',
@@ -269,7 +273,7 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
     // which fall back to the active tab and would bypass the task lease.
     if (handlers.browserTaskRuntime) {
         registerBrowserTaskTools(mcp, handlers.browserTaskRuntime, { agentSessionId: handlers.client.sessionId, profileId: handlers.browserTaskProfileId ?? 'default', exitAfterFirstTurn: handlers.exitAfterFirstTurn, hostContinues: handlers.browserHostContinues });
-    } else if (!handlers.mandatorySandbox) {
+    } else if (!handlers.mandatorySandbox && !scopedSession) {
         registerBrowserTools(mcp, runTool);
     }
 

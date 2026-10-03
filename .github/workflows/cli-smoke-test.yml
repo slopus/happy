@@ -283,5 +283,9 @@ jobs:
         run: |
           test "$(uname -s)" = Darwin
           test -z "${CODEX_SANDBOX:-}"
+      - name: Install sandbox test dependency
+        run: |
+          brew list ripgrep >/dev/null 2>&1 || brew install ripgrep
+          rg --version
       - name: Run unit tests including real Git sandbox enforcement
         run: pnpm --filter @buzzni/happy-cli exec vitest run --project unit

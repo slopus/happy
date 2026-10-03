@@ -1,3 +1,4 @@
+import type { ScopeClaudeSandbox } from '@/daemon/sessionWriteScopeClaude';
 import type { ClaudeStandaloneDrain } from './claudeStandaloneDrain';
 import type { LessonProposalTurn } from '@/utils/lessonProposalTurn';
 import { ApiSessionClient } from "@/api/apiSession"
@@ -38,6 +39,7 @@ export interface EnhancedMode {
 }
 
 interface LoopOptions {
+    scopeProcessSandbox?: ScopeClaudeSandbox
     path: string
     model?: string
     permissionMode?: PermissionMode
@@ -105,6 +107,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
         managedSettingsLockdown: opts.managedSettingsLockdown,
         managedRun: opts.managedRun,
         standaloneDrain: opts.standaloneDrain,
+        scopeProcessSandbox: opts.scopeProcessSandbox,
         mcpServers: opts.mcpServers,
         mcpConfig: opts.mcpConfig,
         logPath: logPath,
@@ -137,6 +140,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
             throw new Error('checkpoint protection supports Claude remote mode only');
         }
 
+        if (opts.scopeProcessSandbox && mode !== 'remote') throw new Error('Scope approval supports Claude remote mode only');
         switch (mode) {
             case 'local': {
                 const result = await claudeLocalLauncher(session, {

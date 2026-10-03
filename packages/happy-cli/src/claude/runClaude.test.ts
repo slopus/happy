@@ -14,6 +14,8 @@ const {
     mockRegisterKillSessionHandler,
     mockCreateCheckpointSessionComposition,
     mockCreateCheckpointEventPublisher,
+    mockScopeBootstrap,
+    mockPrepareScopeClaude,
 } = vi.hoisted(() => ({
     mockApiClientCreate: vi.fn(),
     mockCreateSessionScanner: vi.fn(),
@@ -25,7 +27,12 @@ const {
     mockRegisterKillSessionHandler: vi.fn(),
     mockCreateCheckpointSessionComposition: vi.fn(),
     mockCreateCheckpointEventPublisher: vi.fn(),
+    mockScopeBootstrap: vi.fn(),
+    mockPrepareScopeClaude: vi.fn(),
 }));
+
+vi.mock('@/daemon/sessionWriteScopeReports', () => ({ initializeScopeReportSigner: vi.fn(async () => null), takeScopeLaunchBootstrap: mockScopeBootstrap }));
+vi.mock('@/daemon/sessionWriteScopeClaude', () => ({ prepareSessionWriteScopeClaude: mockPrepareScopeClaude }));
 
 vi.mock('@/api/api', () => ({
     ApiClient: {
@@ -148,6 +155,8 @@ async function startRemoteRunClaudeHarness(opts: {
     const registerHandler = opts.registerHandler ?? vi.fn();
     const sessionClient = {
         sessionId: 'happy-session-1',
+        tracksShutdownStorage: true,
+        confirmShutdownCursor: vi.fn(async () => true),
         suppressNextArchiveSignal: vi.fn(),
         skipExistingMessages: vi.fn(),
         capRuntimeProcessedSeq: vi.fn(),
@@ -328,6 +337,8 @@ describe('runClaude remote JSONL scanner', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mockScopeBootstrap.mockReturnValue(undefined);
+        mockPrepareScopeClaude.mockResolvedValue({ spawn: vi.fn(), close: vi.fn(async () => {}) });
         /*
          * A snapshot, because the list below is a **denylist** and a denylist
          * only covers what somebody remembered to add. Two of the variables
@@ -2112,12 +2123,17 @@ describe('runClaude remote JSONL scanner', () => {
             } finally { await parent.close(); }
         });
 
-        it('drains through the real launch channel: freeze, loop end, storage proof, daemon ACK, then cleanup', async () => {
+        it.each([false, true])('drains through the real launch channel and confirms the frozen cursor for scoped=%s', async (scoped) => {
             const { StandaloneLaunchControl } = await import('@/daemon/standaloneLaunchControl');
             const parent = await StandaloneLaunchControl.open('claude-drain-instance');
             const bootstrap = parent.reserve('claude-drain-launch');
             const order: string[] = [];
-            const harness = await startRemoteRunClaudeHarness({ runOptions: { startedBy: 'daemon', standaloneLaunch: bootstrap } });
+            if (scoped) {
+                mockScopeBootstrap.mockReturnValueOnce(bootstrap);
+                process.env.HAPPY_WRITE_SCOPE_SESSION = '1';
+                process.env.HAPPY_PROJECT_SANDBOX_CONFIG = JSON.stringify({ enabled: true });
+            }
+            const harness = await startRemoteRunClaudeHarness({ runOptions: { startedBy: 'daemon', ...(scoped ? {} : { standaloneLaunch: bootstrap }) } });
             const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit'); }) as never);
             try {
                 const client = harness.sessionClient as Record<string, unknown>;
@@ -2128,7 +2144,13 @@ describe('runClaude remote JSONL scanner', () => {
                     flushForShutdown: vi.fn(async () => { order.push('storage-flushed'); return { stored: true as const, revision: 1 }; }),
                     isStorageConfirmationCurrent: () => true,
                 });
+                harness.sessionClient.confirmShutdownCursor.mockImplementation(async () => { order.push('cursor-confirmed'); return true; });
                 harness.sessionClient.close.mockImplementation(async () => { order.push('session-closed'); });
+                if (scoped) {
+                    expect(mockPrepareScopeClaude).toHaveBeenCalledWith(expect.objectContaining({ config: expect.objectContaining({ enabled: true }) }));
+                    expect(harness.loopOptions.scopeProcessSandbox).toBeDefined();
+                    expect(harness.loopOptions.managedSettingsLockdown).toBe(true);
+                }
                 expect(harness.api.sessionSyncClient).toHaveBeenCalledWith(expect.anything(), { trackShutdownStorage: true });
                 const drain = harness.loopOptions.standaloneDrain;
                 expect(drain).toBeDefined();
@@ -2145,7 +2167,7 @@ describe('runClaude remote JSONL scanner', () => {
                 const proof = await parent.drain(bootstrap.launchId, new AbortController().signal, { remainingMs: () => 30_000 });
                 expect(proof).toEqual({ stored: true, releaseAcknowledged: true });
                 await expect(harness.runPromise).rejects.toThrow('process.exit');
-                expect(order).toEqual(['permissions-cancelled', 'inbound-frozen', 'input-ended', 'storage-flushed', 'session-closed']);
+                expect(order).toEqual(['permissions-cancelled', 'inbound-frozen', 'input-ended', 'storage-flushed', ...(scoped ? ['cursor-confirmed'] : []), 'session-closed']);
             } finally {
                 exitSpy.mockRestore();
                 await parent.close();

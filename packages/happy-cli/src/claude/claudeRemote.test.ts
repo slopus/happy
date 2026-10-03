@@ -55,6 +55,28 @@ describe('claudeRemote', () => {
         } finally { prepare.mockRestore(); }
     });
 
+    it('uses the prepared owned-session boundary for the real SDK spawn without selecting the shared UID launcher', async () => {
+        const prepare = vi.spyOn(sandbox, 'prepareClaudeProcessSandbox');
+        const spawn = vi.fn(), close = vi.fn();
+        vi.mocked(query).mockReturnValue({ async *[Symbol.asyncIterator]() { yield { type: 'result', subtype: 'success' }; } } as any);
+        let count = 0;
+        try {
+            await claudeRemote({ sessionId: 'retained-session', path: process.cwd(), allowedTools: [], sandboxPolicyMode: 'mandatory',
+                scopeProcessSandbox: { spawn, close }, hookSettingsPath: '/tmp/synthetic-settings.json',
+                nextMessage: async () => count++ === 0 ? { message: 'synthetic', mode } : null,
+                onReady: vi.fn(), canCallTool: async () => ({ behavior: 'allow' }) as any, isAborted: () => false,
+                onSessionFound: vi.fn(), onThinkingChange: vi.fn(), onMessage: vi.fn() });
+            const options = vi.mocked(query).mock.calls[0][0].options!;
+            expect(options.resume).toBe('retained-session');
+            expect(options.sandbox).toEqual({ enabled: false });
+            expect(prepare).not.toHaveBeenCalled();
+            const launch = { command: '/native/claude', args: [], cwd: process.cwd(), env: {}, signal: new AbortController().signal };
+            options.spawnClaudeCodeProcess!(launch);
+            expect(spawn).toHaveBeenCalledWith(launch);
+            expect(close).not.toHaveBeenCalled(); // The parent, after all generations, owns this boundary.
+        } finally { prepare.mockRestore(); }
+    });
+
     it('reports that the provider never started when mode switching aborts before the first message', async () => {
         const result = await claudeRemote({
             sessionId: null,
