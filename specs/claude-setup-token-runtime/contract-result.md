@@ -361,3 +361,26 @@ and release pin remain unverified; source/fake transport tests are not deploymen
 or provider-authorization evidence. Existing pkgroll bin/empty-chunk warnings remain.
 Final additional account-disable cancellation regression: scheduler suite10 passed
 with required build/typecheck. Provider reservation/backoff remains spent on abort.
+
+Queued cancellation fence: every collect captures per-ref and global cancellation
+epochs at entry, before shared serialization. OFF increments the ref epoch immediately;
+replacement/apply/group-sync/purge, offline/inactivity and shutdown increment the
+shared cancellation epoch. A queued collect with changed epoch or aborted scheduler
+signal returns TOKEN_PROBE_CANCELLED before ANY provider invocation, including
+capability/status. Ref revocation returns status disabled/reason probe_disabled;
+other cancellation returns unavailable/cancelled. No budget/consent acknowledgment
+is invented; OFF's own RPC still commits durable consent separately. Active process
+abort is unchanged. Epoch compaction is bounded and advances the global fence so an
+old queued epoch cannot become valid again. Internal epochs are not public grants.
+
+Final queue-fence verification (2026-10-04):
+```sh
+pnpm -C packages/happy-cli exec vitest run --project unit src/daemon/aiCredentialRuntime.test.ts src/daemon/personalProbeScheduler.test.ts src/daemon/tokenProbe.test.ts
+```
+216 passed: runtime197, scheduler10, personal9. Both deferred organization-lock
+regressions (manual collect → OFF and manual collect → offline) verify zero provider
+commands from the cancelled job. Existing active-process abort regression passes.
+Required CLI build/typecheck passed; existing pkgroll bin/empty-chunk warnings only.
+`git diff --check` passed. This final patch changes queue admission only; installed-wheel
+fake-HTTP evidence for the preceding scheduler/DTO implementation is recorded above,
+not repeated as live evidence. Generated `.pnpm-store/` remains unstaged.

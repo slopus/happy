@@ -3338,3 +3338,28 @@ describe('resident personal runtime wiring',()=>{
   await expect(pending).rejects.toMatchObject({kind:'COMMAND_CANCELLED'})
  })
 })
+
+it.each(['OFF','offline'])('fences manual collection queued behind organization work when %s arrives before execution',async(action)=>{
+ const ref='11111111-1111-4111-8111-111111111111';let enabled=true;let entered=false;let release!:()=>void
+ const fetcher=vi.spyOn(globalThis,'fetch').mockImplementation(async()=>new Promise<Response>(resolve=>{entered=true;release=()=>resolve(new Response('{}',{status:503}))}))
+ const invoke=vi.fn(async(_command:string,args:string[])=>{
+  if(args[1]==='capabilities')return {stdout:JSON.stringify({artifact:'saycode-setup-token-runtime-v1',setupTokenObservation:true,durableProbeBudget:true,personalProbeVersion:1}),stderr:''}
+  if(args[1]==='status')return {stdout:JSON.stringify({accounts:[{accountRef:ref,credentialGeneration:1,number:1,roster:{email:'personal@token.local',organizationUuid:'',uuid:''},credentialType:'setup_token',probeEnabled:enabled,authState:'usable',usageStatus:'partial',reasonCodes:['coverage_unknown'],probeBudget:{scope:'local-per-token',accountUsed24h:0,accountLimit24h:96,accountRemaining24h:96,nextProbeAt:null,failureStreak:0,minIntervalSeconds:300,recommendedIntervalSeconds:900}}],budget:{machineUsed24h:0,machineLimit24h:288,machineRemaining24h:288,machineSlotFreesAt:null,accountLimit24h:96}}),stderr:''}
+  if(args[1]==='consent')enabled=false
+  return {stdout:'{}',stderr:''}
+ })
+ const {runtime}=setup({execFile:invoke,env:{HAPPY_APLUS_STUDIO_ORIGIN:'https://studio.test'}})
+ try {
+  const org=runtime.collectorProbe({version:1,companyId:'c',userId:'u',machineId:'m',managedAccountId:ref,accountRef:ref,credentialGeneration:1,policyRevision:1,permitId:ref,grant:'a.b'},'m')
+  await vi.waitFor(()=>expect(entered).toBe(true))
+  const queued=runtime.tokenProbe({version:1,operation:'collect',accountRef:ref,credentialGeneration:1})
+  const off=action==='OFF'?runtime.tokenProbe({version:1,operation:'consent',accountRef:ref,credentialGeneration:1,enabled:false}):runtime.personalSchedulerTick({online:false,inUse:false})
+  expect(invoke).not.toHaveBeenCalled()
+  release();await org
+  expect(await queued).toMatchObject({status:action==='OFF'?'disabled':'unavailable',error:'TOKEN_PROBE_CANCELLED'})
+  if(action==='OFF')expect(await off).toMatchObject({enabled:false,status:'disabled'})
+  else await off
+  expect(invoke.mock.calls.filter(([,args])=>args[1]==='collect')).toHaveLength(0)
+  expect(invoke.mock.calls.map(([,args])=>args[1])).toEqual(action==='OFF'?['capabilities','status','consent','status']:[])
+ }finally{release?.();fetcher.mockRestore();runtime.stopPersonalScheduler()}
+})

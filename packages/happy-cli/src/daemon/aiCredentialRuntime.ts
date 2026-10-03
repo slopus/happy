@@ -1926,6 +1926,8 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
   }
 
   let personalUse = { online: false, inUse: false }
+  let personalCancelEpoch = 0
+  const personalRefEpochs = new Map<string, number>()
   let personalCommand: { ref: string; controller: AbortController } | null = null
   const personalInvoke = async (args: string[], signal?: AbortSignal) => (await deps.execFile('cswap', args, {
     timeoutMs: 10_000, maxOutputBytes: 65536, environment: deps.env, signal, terminateProcessTree: args[1] === 'collect',
@@ -1936,13 +1938,24 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     collect: (row, signal) => tokenProbe({ version: 1, operation: 'collect', accountRef: row.accountRef, credentialGeneration: row.credentialGeneration }, signal),
   })
   function cancelPersonal(ref?: string) {
+    if (ref) {
+      // Bound memory without allowing an old captured ref epoch to become current again.
+      if (!personalRefEpochs.has(ref) && personalRefEpochs.size >= 1000) { personalCancelEpoch++; personalRefEpochs.clear() }
+      personalRefEpochs.set(ref, (personalRefEpochs.get(ref) ?? 0) + 1)
+    } else personalCancelEpoch++
     personalScheduler.cancel(ref)
     if (personalCommand && (!ref || personalCommand.ref === ref)) personalCommand.controller.abort()
   }
   async function tokenProbe(input: unknown, signal?: AbortSignal) {
     const request = input as { operation?: string; enabled?: boolean; accountRef?: string }
     if (request?.operation === 'consent' && request.enabled === false) cancelPersonal(request.accountRef)
+    const queuedEpoch = personalCancelEpoch
+    const queuedRefEpoch = personalRefEpochs.get(request?.accountRef ?? '') ?? 0
     return serialize(async () => {
+      const revoked = queuedRefEpoch !== (personalRefEpochs.get(request?.accountRef ?? '') ?? 0)
+      if (request?.operation === 'collect' && (revoked || queuedEpoch !== personalCancelEpoch || signal?.aborted)) {
+        return { version: 1, status: revoked ? 'disabled' : 'unavailable', reason: revoked ? 'probe_disabled' : 'cancelled', error: 'TOKEN_PROBE_CANCELLED' }
+      }
       const controller = new AbortController()
       const abort = () => controller.abort()
       signal?.addEventListener('abort', abort, { once: true })
