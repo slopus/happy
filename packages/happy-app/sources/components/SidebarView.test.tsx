@@ -50,6 +50,8 @@ const mocks = vi.hoisted(() => ({
     } as any,
 }));
 
+vi.mock('./AppConversationsSidebar', () => ({ AppConversationsSidebar: (props: any) => React.createElement('AppConversationsSidebar', props) }));
+
 vi.mock('react-native', () => ({
     Platform: { OS: 'web' },
     Text: 'Text',
@@ -662,4 +664,18 @@ describe('SidebarView Agent space exit', () => {
 
         act(() => renderer.unmount());
     });
+});
+
+
+it('opens application conversations only in the sidebar and restores regular sessions', () => {
+    let renderer: any;
+    act(() => { renderer = TestRenderer.create(<SidebarView closeDrawerOnNavigate={false} desktopDensity desktopPrimaryNavigation desktopSecondaryVisible />); });
+    const root = renderer.root;
+    mocks.navigate.mockClear();
+    act(() => root.findAllByProps({ testID: 'sidebar-app-conversations-button' }).find((node: any) => node.type === 'Pressable').props.onPress());
+    expect(root.findAllByType('AppConversationsSidebar')).toHaveLength(1);
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    act(() => root.findAllByProps({ testID: 'sidebar-session-list-button' }).find((node: any) => node.type === 'Pressable').props.onPress());
+    expect(root.findAllByType('AppConversationsSidebar')).toHaveLength(0);
+    act(() => renderer.unmount());
 });

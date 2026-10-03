@@ -1,3 +1,4 @@
+import { t } from '@/text';
 import * as React from 'react';
 import { Stack, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
@@ -6,7 +7,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Modal } from '@/modal';
 import { useAllMachines } from '@/sync/storage';
-import { appAuthorizationRequest, type AppAuthorizationGrant } from '@/sync/apiAppDelegation';
+import { appAuthorizationRequest, type AppAuthorizationGrant, isAppGrantActive } from '@/sync/apiAppDelegation';
 
 export default function AuthorizedApps() {
     const { credentials } = useAuth();
@@ -34,9 +35,9 @@ export default function AuthorizedApps() {
         {loaded && !grants.length ? <Item title="尚未授权任何应用" subtitle="从狗头军师的“连接我的 Paws”开始。" showChevron={false} /> : null}
         {grants.map(grant => {
             const machine = machines.find(m => m.id === grant.machineId);
-            const active = ['approved', 'redeemed'].includes(grant.state) && !!grant.expiresAt && Date.parse(grant.expiresAt) > Date.now();
+            const active = isAppGrantActive(grant);
             return <ItemGroup key={grant.id} title={grant.appId === 'relationship-advisor' ? '狗头军师 · advisor.paws.rodeo' : grant.appId}>
-                <Item title={machine?.metadata?.displayName || machine?.metadata?.host || grant.machineId || '设备已移除'} subtitle={`仅文字和图片对话 · ${active ? '有效至 ' + new Date(grant.expiresAt!).toLocaleString() : grant.state === 'revoked' ? '已撤销' : '已过期'}`} showChevron={false} />
+                <Item title={machine?.metadata?.displayName || machine?.metadata?.host || grant.machineId || '设备已移除'} subtitle={`仅文字和图片对话 · ${active ? grant.expiresAt === null ? t('appConversations.permanent') : '有效至 ' + new Date(grant.expiresAt).toLocaleString() : grant.state === 'revoked' ? '已撤销' : '已过期'}`} showChevron={false} />
                 {active ? <Item title={busy ? '正在处理…' : '撤销授权'} onPress={() => void revoke(grant)} disabled={busy} /> : null}
             </ItemGroup>;
         })}

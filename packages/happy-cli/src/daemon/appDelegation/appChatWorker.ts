@@ -12,7 +12,7 @@ import { readCodexAccountLaunchState } from '@/codex/codexAccountLaunchState';
 import { CodexAccountLaunch, type AccountApi } from '@/daemon/codexAccountLaunch';
 import { runRestrictedCodex, verifyRestrictedCodex } from './restrictedCodex';
 
-interface Job { id: string; conversationId: string; grantId: string; appId: string; machineId: string; expiresAt: string; envelope: string; input: string; lease: string }
+interface Job { id: string; conversationId: string; grantId: string; appId: string; machineId: string; expiresAt: string | null; envelope: string; input: string; lease: string }
 const messageSchema = z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(500_000), images: z.array(z.string().max(3_000_000).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/)).max(4).optional() }).strict();
 
 const activeHomes = new Set<string>();
@@ -73,7 +73,7 @@ export function startAppChatWorker(token: string, machine: Machine): () => void 
         const publish = (data: object) => request(`app-worker/${encodeURIComponent(machine.id)}/turns/${job.id}`, { lease: job.lease, ...data });
         try {
             const envelope = decrypt(machine.encryptionKey, machine.encryptionVariant, decodeBase64(job.envelope));
-            if (!envelope || envelope.v !== 1 || envelope.grantId !== job.grantId || envelope.appId !== job.appId || job.appId !== 'relationship-advisor' || envelope.machineId !== machine.id || job.machineId !== machine.id || envelope.expiresAt !== job.expiresAt || Date.parse(job.expiresAt) <= Date.now() || envelope.scope !== 'codex:chat' || typeof envelope.key !== 'string') throw new Error('invalid-grant-binding');
+            if (!envelope || envelope.v !== 1 || envelope.grantId !== job.grantId || envelope.appId !== job.appId || job.appId !== 'relationship-advisor' || envelope.machineId !== machine.id || job.machineId !== machine.id || envelope.expiresAt !== job.expiresAt || (job.expiresAt !== null && (!Number.isFinite(Date.parse(job.expiresAt)) || Date.parse(job.expiresAt) <= Date.now())) || envelope.scope !== 'codex:chat' || typeof envelope.key !== 'string') throw new Error('invalid-grant-binding');
             const key = decodeBase64(envelope.key); if (key.length !== 32) throw new Error('invalid-key');
             const payload = decryptLegacy(decodeBase64(job.input), key);
             if (!payload || payload.v !== 1 || payload.grantId !== job.grantId || payload.conversationId !== job.conversationId || payload.turnId !== job.id || payload.direction !== 'input' || payload.sequence !== 0) throw new Error('invalid-message-binding');
@@ -129,7 +129,7 @@ export function startAppChatWorker(token: string, machine: Machine): () => void 
                     throw new Error('credential-recovery-pending');
                 }
                 recoveryWarning = false;
-                const { job } = await request<{ job: Job | null }>(`app-worker/${encodeURIComponent(machine.id)}/claim`, { protocol: 1 });
+                const { job } = await request<{ job: Job | null }>(`app-worker/${encodeURIComponent(machine.id)}/claim`, { protocol: 2 });
                 if (job) await execute(job);
             } catch { /* Failed claim leaves no running turn; retry after bounded delay. */ }
             if (!lifetime.signal.aborted) await new Promise<void>(resolve => {

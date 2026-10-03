@@ -8,7 +8,7 @@ export interface DelegatedConnection {
     token: string;
     key: string;
     machineId: string;
-    expiresAt: string;
+    expiresAt: string | null;
 }
 export interface DelegatedMessage { role: 'user' | 'assistant'; text: string; images?: string[] }
 export interface DelegatedTurn { id: string; input: string; output: string | null; sequence: number; state: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'; createdAt: string }
@@ -44,7 +44,7 @@ export async function startBrowserAppAuthorization(serverUrl: string, webUrl: st
     const credential = encodeBase64Url(getRandomBytes(32));
     const pair = nacl.box.keyPair.fromSecretKey(getRandomBytes(32));
     const challengeHash = Array.from(sha256(bytes.encode(verifier)), b => b.toString(16).padStart(2, '0')).join('');
-    const initial = await request<{ id: string; expiresAt: string }>(server, '/v1/apps/pairings', undefined, { appId: 'relationship-advisor', publicKey: encodeBase64(pair.publicKey), challengeHash });
+    const initial = await request<{ id: string; expiresAt: string }>(server, '/v1/apps/pairings', undefined, { appId: 'relationship-advisor', protocol: 2, publicKey: encodeBase64(pair.publicKey), challengeHash });
     return {
         id: initial.id,
         expiresAt: initial.expiresAt,
@@ -53,9 +53,9 @@ export async function startBrowserAppAuthorization(serverUrl: string, webUrl: st
         async wait(signal?: AbortSignal): Promise<DelegatedConnection> {
             while (Date.now() < Date.parse(initial.expiresAt)) {
                 signal?.throwIfAborted();
-                const result = await request<{ state: string; machineId?: string; expiresAt?: string; envelope?: string }>(server, `/v1/apps/pairings/${initial.id}/redeem`, undefined, { verifier, credential }, 'POST', signal);
+                const result = await request<{ state: string; machineId?: string; expiresAt?: string | null; envelope?: string }>(server, `/v1/apps/pairings/${initial.id}/redeem`, undefined, { verifier, credential }, 'POST', signal);
                 if (result.state === 'authorized') {
-                    if (!result.envelope || !result.machineId || !result.expiresAt) throw new Error('Incomplete authorization');
+                    if (!result.envelope || !result.machineId || (result.expiresAt !== null && (typeof result.expiresAt !== 'string' || !Number.isFinite(Date.parse(result.expiresAt)) || Date.parse(result.expiresAt) <= Date.now()))) throw new Error('Incomplete authorization');
                     const plain = decryptBoxBundle(decodeBase64(result.envelope), pair.secretKey);
                     if (!plain) throw new Error('Invalid authorization envelope');
                     const binding = JSON.parse(new TextDecoder().decode(plain));

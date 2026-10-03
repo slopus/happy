@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { Fastify } from '@/app/api/types';
 import { db } from '@/storage/db';
-import { appConversations, appTurns, deleteAppConversation, approveAppPairing, cancelAppTurn, claimAppTurn, createAppPairing, delegatedApp, DelegationError, describeAppPairing, publishAppTurn, redeemAppPairing, readAppTurn, revokeAppGrant, withAppGrant } from '@/app/appDelegation/appDelegation';
+import { appConversations, appTurns, deleteAppConversation, approveAppPairing, cancelAppTurn, claimAppTurn, createAppPairing, delegatedApp, DelegationError, describeAppPairing, publishAppTurn, redeemAppPairing, readAppTurn, revokeAppGrant, withAppGrant, ownerAppConversations, deleteOwnedAppGrant } from '@/app/appDelegation/appDelegation';
 
 const id = z.string().uuid();
 const secret = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
@@ -38,12 +38,14 @@ export function appDelegationRoutes(app: Fastify) {
             if (error && typeof error === 'object' && 'validation' in error) return reply.code(400).send({ error: 'Invalid request' });
             return reply.code(500).send({ error: 'Application service unavailable' });
         });
-        routes.post('/v1/apps/pairings', { bodyLimit: 2048, schema: { body: z.object({ appId: z.literal('relationship-advisor'), publicKey: z.string().regex(/^[A-Za-z0-9+/]{43}=$/), challengeHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict() } }, async request => createAppPairing(request.body));
+        routes.post('/v1/apps/pairings', { bodyLimit: 2048, schema: { body: z.object({ appId: z.literal('relationship-advisor'), protocol: z.union([z.literal(1), z.literal(2)]).optional(), publicKey: z.string().regex(/^[A-Za-z0-9+/]{43}=$/), challengeHash: z.string().regex(/^[a-f0-9]{64}$/) }).strict() } }, async request => createAppPairing(request.body));
         routes.post('/v1/apps/pairings/:id/redeem', { bodyLimit: 2048, schema: { params: z.object({ id }), body: z.object({ verifier: secret, credential: secret }).strict() } }, async request => redeemAppPairing(request.params.id, request.body.verifier, request.body.credential));
         routes.get('/v1/app-authorizations/requests/:id', { preHandler: app.authenticate, schema: { params: z.object({ id }) } }, async request => describeAppPairing(request.params.id));
-        routes.post('/v1/app-authorizations/requests/:id/approve', { bodyLimit: 40 * 1024, preHandler: app.authenticate, schema: { params: z.object({ id }), body: z.object({ machineId: z.string().min(1).max(200), expiresAt: z.string().datetime(), appEnvelope: envelope, machineEnvelope: envelope }).strict() } }, async request => approveAppPairing(request.userId, request.params.id, request.body));
+        routes.post('/v1/app-authorizations/requests/:id/approve', { bodyLimit: 40 * 1024, preHandler: app.authenticate, schema: { params: z.object({ id }), body: z.object({ machineId: z.string().min(1).max(200), expiresAt: z.string().datetime().nullable(), appEnvelope: envelope, machineEnvelope: envelope }).strict() } }, async request => approveAppPairing(request.userId, request.params.id, request.body));
         routes.get('/v1/app-authorizations', { preHandler: app.authenticate }, async request => ({ grants: await db.appDelegation.findMany({ where: { accountId: request.userId }, select: { id: true, appId: true, machineId: true, state: true, expiresAt: true, createdAt: true }, orderBy: { createdAt: 'desc' } }) }));
-        routes.get('/v1/app-authorizations/workers', { preHandler: app.authenticate }, async request => ({ workers: await db.appChatWorker.findMany({ where: { accountId: request.userId, activeUntil: { gt: new Date() }, protocol: 1 }, select: { machineId: true } }) }));
+        routes.get('/v1/app-authorizations/workers', { preHandler: app.authenticate }, async request => ({ workers: await db.appChatWorker.findMany({ where: { accountId: request.userId, activeUntil: { gt: new Date() }, protocol: { in: [1, 2] } }, select: { machineId: true, protocol: true } }) }));
+        routes.get('/v1/app-authorizations/conversations', { preHandler: app.authenticate, schema: { querystring: z.object({ cursor: id.optional() }) } }, async request => ownerAppConversations(request.userId, request.query.cursor));
+        routes.delete('/v1/app-authorizations/:id/history', { preHandler: app.authenticate, schema: { params: z.object({ id }) } }, async request => deleteOwnedAppGrant(request.userId, request.params.id));
         routes.delete('/v1/app-authorizations/:id', { preHandler: app.authenticate, schema: { params: z.object({ id }) } }, async request => revokeAppGrant(request.userId, request.params.id));
         routes.get('/v1/apps/connection', {}, async request => withAppGrant(bearer(request.headers.authorization), async (_tx, grant) => ({ id: grant.id, machineId: grant.machineId, expiresAt: grant.expiresAt, app: delegatedApp })));
         routes.delete('/v1/apps/connection', {}, async request => {
@@ -57,7 +59,7 @@ export function appDelegationRoutes(app: Fastify) {
         routes.post('/v1/apps/conversations/:id/turns', { bodyLimit: 9 * 1024 * 1024, schema: { params: z.object({ id }), body: z.object({ id, input: ciphertext }).strict() } }, async request => ({ turns: await appTurns(bearer(request.headers.authorization), request.params.id, request.body) }));
         routes.get('/v1/apps/turns/:id', { schema: { params: z.object({ id }) } }, async request => readAppTurn(bearer(request.headers.authorization), request.params.id));
         routes.post('/v1/apps/turns/:id/cancel', { schema: { params: z.object({ id }) } }, async request => cancelAppTurn(bearer(request.headers.authorization), request.params.id));
-        routes.post('/v1/app-worker/:machineId/claim', { preHandler: app.authenticate, schema: { params: z.object({ machineId: z.string().min(1).max(200) }), body: z.object({ protocol: z.literal(1) }).strict() } }, async request => claimAppTurn(request.userId, request.params.machineId));
+        routes.post('/v1/app-worker/:machineId/claim', { preHandler: app.authenticate, schema: { params: z.object({ machineId: z.string().min(1).max(200) }), body: z.object({ protocol: z.union([z.literal(1), z.literal(2)]) }).strict() } }, async request => claimAppTurn(request.userId, request.params.machineId, request.body.protocol));
         routes.post('/v1/app-worker/:machineId/turns/:id', { preHandler: app.authenticate, bodyLimit: 2 * 1024 * 1024, schema: { params: z.object({ machineId: z.string().min(1).max(200), id }), body: z.object({ lease: secret, sequence: z.number().int().positive().optional(), output: z.string().min(60).max(1024 * 1024).optional(), state: z.enum(['completed', 'failed']).optional() }).strict() } }, async request => publishAppTurn(request.userId, request.params.machineId, request.params.id, request.body));
     });
 }

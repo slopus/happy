@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 
 const state = vi.hoisted(() => ({ db: null as unknown as PrismaClient }));
 vi.mock('@/storage/db', () => ({ get db() { return state.db; } }));
-import { appConversations, appTurns, deleteAppConversation, approveAppPairing, cancelAppTurn, claimAppTurn, createAppPairing, hashCredential, publishAppTurn, readAppTurn, redeemAppPairing, revokeAppGrant, withAppGrant } from './appDelegation';
+import { appConversations, appTurns, deleteAppConversation, approveAppPairing, cancelAppTurn, claimAppTurn, createAppPairing, hashCredential, publishAppTurn, readAppTurn, redeemAppPairing, revokeAppGrant, withAppGrant, ownerAppConversations, deleteOwnedAppGrant } from './appDelegation';
 let engine: PGlite;
 const owner = 'test-owner';
 const machineId = 'test-machine';
@@ -113,5 +113,77 @@ describe('separate application authority using real serializable database transa
         await state.db.appDelegation.update({ where: { id: a.id }, data: { storedBytes: 100 * 1024 * 1024 } });
         await expect(appTurns(a.token, a.conversationId, { id: randomUUID(), input: 'new' })).rejects.toThrow('storage');
         expect(await appTurns(a.token, a.conversationId)).toHaveLength(1);
+    });
+});
+
+
+describe('permanent app authorization and owner conversation directory', () => {
+    it('requires a compatible worker, redeems an explicit permanent grant, and fences revocation', async () => {
+        const pairing = await createAppPairing({ protocol: 2, appId: 'relationship-advisor', publicKey: 'A'.repeat(43) + '=', challengeHash: hashCredential(secret) });
+        const approval = { machineId, expiresAt: null, appEnvelope: 'encrypted-app', machineEnvelope: 'encrypted-machine' };
+        await claimAppTurn(owner, machineId, 1);
+        await expect(approveAppPairing(owner, pairing.id, approval)).rejects.toThrow('updated');
+        await claimAppTurn(owner, machineId, 2);
+        await approveAppPairing(owner, pairing.id, approval);
+        expect((await redeemAppPairing(pairing.id, secret, credential)).expiresAt).toBeNull();
+        const token = `paws_app.${pairing.id}.${credential}`;
+        const conversationId = randomUUID();
+        await appConversations(token, conversationId);
+        const id = randomUUID();
+        await appTurns(token, conversationId, { id, input: 'private-input' });
+        expect((await claimAppTurn(owner, machineId, 1)).job).toBeNull();
+        const { job } = await claimAppTurn(owner, machineId, 2);
+        expect(job?.expiresAt).toBeNull();
+        await publishAppTurn(owner, machineId, id, { lease: job!.lease, sequence: 1, output: 'private-output' });
+        await revokeAppGrant(owner, pairing.id);
+        await expect(publishAppTurn(owner, machineId, id, { lease: job!.lease, sequence: 2, output: 'late' })).rejects.toThrow();
+        await expect(appConversations(token)).rejects.toThrow();
+        const directory = await ownerAppConversations(owner);
+        const entry = directory.conversations.find(row => row.id === conversationId)!;
+        expect(entry.turns[0].state).toBe('cancelled');
+        expect(JSON.stringify(directory)).not.toMatch(/private-input|private-output|encrypted-machine|credentialHash|appEnvelope/);
+        expect((await ownerAppConversations('other-owner')).conversations).toEqual([]);
+        await expect(deleteOwnedAppGrant('other-owner', pairing.id)).rejects.toThrow();
+        await deleteOwnedAppGrant(owner, pairing.id);
+        expect(await state.db.appChatConversation.findUnique({ where: { id: conversationId } })).toBeNull();
+    });
+    it('never upgrades an old pairing silently, and keeps QR expiry separate from granted access', async () => {
+        const old = await createAppPairing({ appId: 'relationship-advisor', publicKey: 'A'.repeat(43) + '=', challengeHash: hashCredential(secret) });
+        await claimAppTurn(owner, machineId, 2);
+        const approval = { machineId, expiresAt: null, appEnvelope: 'app', machineEnvelope: 'machine' };
+        await expect(approveAppPairing(owner, old.id, approval)).rejects.toThrow();
+        const modern = await createAppPairing({ protocol: 2, appId: 'relationship-advisor', publicKey: 'A'.repeat(43) + '=', challengeHash: hashCredential(secret) });
+        await approveAppPairing(owner, modern.id, approval);
+        await redeemAppPairing(modern.id, secret, credential);
+        await state.db.appDelegation.update({ where: { id: modern.id }, data: { requestExpiresAt: new Date(0) } });
+        await expect(redeemAppPairing(modern.id, secret, credential)).rejects.toThrow();
+        expect(await withAppGrant(`paws_app.${modern.id}.${credential}`, async () => true)).toBe(true);
+        await revokeAppGrant(owner, modern.id);
+    });
+    it('paginates metadata by activity with stable ties and reports expired leases', async () => {
+        const grant = await authorize();
+        const createdAt = new Date(Date.now() + 1000);
+        const ids = Array.from({ length: 52 }, () => randomUUID()).sort().reverse();
+        await state.db.appChatConversation.createMany({ data: ids.map(id => ({ id, grantId: grant.id, createdAt })) });
+        const first = await ownerAppConversations(owner);
+        expect(first.conversations.map(row => row.id)).toEqual(ids.slice(0, 50));
+        const next = await ownerAppConversations(owner, first.nextCursor!);
+        expect(next.conversations.slice(0, 2).map(row => row.id)).toEqual(ids.slice(50));
+        await expect(ownerAppConversations('other-owner', first.nextCursor!)).rejects.toThrow();
+        await state.db.appChatTurn.create({ data: { id: randomUUID(), conversationId: grant.conversationId, input: 'hidden', state: 'running', createdAt: new Date(Date.now() + 2000), deadline: new Date(Date.now() + 5000), leaseUntil: new Date(0) } });
+        const refreshed = await ownerAppConversations(owner);
+        expect(refreshed.conversations[0].id).toBe(grant.conversationId);
+        expect(refreshed.conversations[0].turns[0].state).toBe('failed');
+        await deleteOwnedAppGrant(owner, grant.id);
+    });
+    it('keeps expired history during new pairing cleanup and rejects malformed expiry', async () => {
+        const grant = await authorize();
+        await state.db.appDelegation.update({ where: { id: grant.id }, data: { expiresAt: new Date(0) } });
+        const pairing = await createAppPairing({ appId: 'relationship-advisor', publicKey: 'A'.repeat(43) + '=', challengeHash: hashCredential(secret) });
+        expect(await state.db.appChatConversation.findUnique({ where: { id: grant.conversationId } })).not.toBeNull();
+        await expect(appConversations(grant.token)).rejects.toThrow();
+        for (const expiresAt of ['', 'invalid', new Date(Date.now() + 8 * 86400_000).toISOString()]) {
+            await expect(approveAppPairing(owner, pairing.id, { machineId, expiresAt, appEnvelope: 'a', machineEnvelope: 'b' })).rejects.toThrow();
+        }
     });
 });

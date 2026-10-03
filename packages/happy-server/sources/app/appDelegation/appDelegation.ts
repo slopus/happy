@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { inTx, type Tx } from '@/storage/inTx';
 
@@ -9,7 +10,7 @@ export const hashCredential = (value: string): string => createHash('sha256').up
 const matches = (value: string, hash: string): boolean => /^[a-f0-9]{64}$/.test(hash) && timingSafeEqual(Buffer.from(hashCredential(value), 'hex'), Buffer.from(hash, 'hex'));
 const denied = (): never => { throw new DelegationError(403, 'Authorization unavailable or expired'); };
 const conflict = (message: string): never => { throw new DelegationError(409, message); };
-const active = (grant: { state: string; expiresAt: Date | null }): boolean => grant.state === 'redeemed' && !!grant.expiresAt && grant.expiresAt.getTime() > Date.now();
+const active = (grant: { state: string; expiresAt: Date | null }): boolean => grant.state === 'redeemed' && (grant.expiresAt === null || grant.expiresAt.getTime() > Date.now());
 
 /** All authority checks and writes share a serializable transaction with revocation. */
 export async function withAppGrant<T>(token: string, fn: (tx: Tx, grant: NonNullable<Awaited<ReturnType<Tx['appDelegation']['findUnique']>>>) => Promise<T>): Promise<T> {
@@ -22,14 +23,17 @@ export async function withAppGrant<T>(token: string, fn: (tx: Tx, grant: NonNull
     });
 }
 
-export async function createAppPairing(input: { appId: string; publicKey: string; challengeHash: string }) {
+export async function createAppPairing(input: { appId: string; publicKey: string; challengeHash: string; protocol?: 1 | 2 }) {
     if (input.appId !== delegatedApp.id) return denied();
     return inTx(async tx => {
         // Retention also bounds abandoned requests; no caller-provided TTLs.
-        await tx.appDelegation.deleteMany({ where: { state: 'pending', requestExpiresAt: { lt: new Date() } } });
-        if (await tx.appDelegation.count({ where: { state: 'pending' } }) >= 1000) throw new DelegationError(429, 'Too many pending requests');
-        await tx.appDelegation.deleteMany({ where: { expiresAt: { lt: new Date(Date.now() - 7 * 86400_000) } } });
-        const request = await tx.appDelegation.create({ data: { id: randomUUID(), ...input, requestExpiresAt: new Date(Date.now() + 600_000) } });
+        await tx.appDelegation.deleteMany({ where: { state: { in: ['pending', 'pending-v2'] }, requestExpiresAt: { lt: new Date() } } });
+        if (await tx.appDelegation.count({ where: { state: { in: ['pending', 'pending-v2'] } } }) >= 1000) throw new DelegationError(429, 'Too many pending requests');
+        // Approved history survives expiry/revocation; only abandoned requests are disposable.
+        await tx.appDelegation.deleteMany({ where: { state: 'approved', requestExpiresAt: { lt: new Date() }, conversations: { none: {} } } });
+        const { protocol = 1, ...pairing } = input;
+        // Keep the requested capability in the pending state until approval; no envelope exists yet.
+        const request = await tx.appDelegation.create({ data: { id: randomUUID(), ...pairing, state: protocol === 2 ? 'pending-v2' : 'pending', requestExpiresAt: new Date(Date.now() + 600_000) } });
         return { id: request.id, expiresAt: request.requestExpiresAt.toISOString(), app: delegatedApp };
     });
 }
@@ -37,20 +41,26 @@ export async function createAppPairing(input: { appId: string; publicKey: string
 export async function describeAppPairing(id: string) {
     return inTx(async tx => {
         const request = await tx.appDelegation.findUnique({ where: { id } });
-        if (!request || request.state !== 'pending' || request.requestExpiresAt.getTime() <= Date.now()) return denied();
-        return { id, app: delegatedApp, publicKey: request.publicKey, expiresAt: request.requestExpiresAt.toISOString() };
+        if (!request || !['pending', 'pending-v2'].includes(request.state) || request.requestExpiresAt.getTime() <= Date.now()) return denied();
+        return { id, app: delegatedApp, supportsPermanent: request.state === 'pending-v2', publicKey: request.publicKey, expiresAt: request.requestExpiresAt.toISOString() };
     });
 }
 
-export async function approveAppPairing(accountId: string, id: string, input: { machineId: string; expiresAt: string; appEnvelope: string; machineEnvelope: string }) {
+export async function approveAppPairing(accountId: string, id: string, input: { machineId: string; expiresAt: string | null; appEnvelope: string; machineEnvelope: string }) {
     return inTx(async tx => {
-        const expiresAt = new Date(input.expiresAt);
-        if (expiresAt.getTime() <= Date.now() || expiresAt.getTime() > Date.now() + 7 * 86400_000) return denied();
-        if (await tx.appDelegation.count({ where: { accountId } }) >= 20) throw new DelegationError(429, 'Active application limit reached');
+        const pairing = await tx.appDelegation.findUnique({ where: { id } });
+        if (!pairing || (input.expiresAt === null && pairing.state !== 'pending-v2')) return denied();
+        const expiresAt = input.expiresAt === null ? null : new Date(input.expiresAt);
+        if (expiresAt !== null && (!Number.isFinite(expiresAt.getTime()) || expiresAt.getTime() <= Date.now() || expiresAt.getTime() > Date.now() + 7 * 86400_000)) return denied();
+        if (await tx.appDelegation.count({ where: { accountId, AND: [
+            { OR: [{ state: 'redeemed' }, { state: 'approved', requestExpiresAt: { gt: new Date() } }] },
+            { OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] },
+        ] } }) >= 20) throw new DelegationError(429, 'Active application limit reached');
+        if (await tx.appDelegation.count({ where: { accountId } }) >= 100) throw new DelegationError(429, 'Application history limit reached; remove an old connection');
         const machine = await tx.machine.findFirst({ where: { id: input.machineId, accountId, defaultCodexAccountProfileId: { not: null } } });
-        const worker = await tx.appChatWorker.findFirst({ where: { machineId: input.machineId, accountId, protocol: 1, activeUntil: { gt: new Date() } } });
+        const worker = await tx.appChatWorker.findFirst({ where: { machineId: input.machineId, accountId, protocol: { in: expiresAt === null ? [2] : [1, 2] }, activeUntil: { gt: new Date() } } });
         if (!machine || !worker) return conflict('Selected machine is offline or needs an updated Paws daemon');
-        const result = await tx.appDelegation.updateMany({ where: { id, state: 'pending', requestExpiresAt: { gt: new Date() } },
+        const result = await tx.appDelegation.updateMany({ where: { id, state: { in: ['pending', 'pending-v2'] }, requestExpiresAt: { gt: new Date() } },
             data: { state: 'approved', accountId, ...input, expiresAt } });
         if (result.count !== 1) return denied();
         return { approved: true };
@@ -62,12 +72,12 @@ export async function redeemAppPairing(id: string, verifier: string, credential:
     return inTx(async tx => {
         const grant = await tx.appDelegation.findUnique({ where: { id } });
         if (!grant || !matches(verifier, grant.challengeHash) || grant.requestExpiresAt.getTime() <= Date.now()) return denied();
-        if (grant.state === 'pending') return { state: 'pending' as const };
+        if (['pending', 'pending-v2'].includes(grant.state)) return { state: 'pending' as const };
         // A lost response can be retried only with the exact same independent credential.
         if (grant.state === 'redeemed' && (!grant.credentialHash || !matches(credential, grant.credentialHash))) return denied();
-        if (!['approved', 'redeemed'].includes(grant.state) || !grant.expiresAt || grant.expiresAt.getTime() <= Date.now()) return denied();
+        if (!['approved', 'redeemed'].includes(grant.state) || (grant.expiresAt !== null && grant.expiresAt.getTime() <= Date.now())) return denied();
         await tx.appDelegation.update({ where: { id }, data: { state: 'redeemed', credentialHash: hashCredential(credential) } });
-        return { state: 'authorized' as const, id, app: delegatedApp, machineId: grant.machineId, expiresAt: grant.expiresAt.toISOString(), envelope: grant.appEnvelope };
+        return { state: 'authorized' as const, id, app: delegatedApp, machineId: grant.machineId, expiresAt: grant.expiresAt?.toISOString() ?? null, envelope: grant.appEnvelope };
     });
 }
 
@@ -102,7 +112,7 @@ export async function appTurns(token: string, conversationId: string, input?: { 
             const existing = await tx.appChatTurn.findUnique({ where: { id: input.id } });
             if (existing && existing.conversationId !== conversationId) return denied();
             if (!existing) {
-                const worker = await tx.appChatWorker.findFirst({ where: { machineId: grant.machineId!, accountId: grant.accountId!, activeUntil: { gt: new Date() }, protocol: 1 } });
+                const worker = await tx.appChatWorker.findFirst({ where: { machineId: grant.machineId!, accountId: grant.accountId!, activeUntil: { gt: new Date() }, protocol: { in: grant.expiresAt === null ? [2] : [1, 2] } } });
                 if (!worker) return conflict('Selected machine is unavailable');
                 await tx.appChatTurn.updateMany({ where: { conversation: { grantId: grant.id }, state: { in: ['queued', 'running'] }, deadline: { lt: new Date() } }, data: { state: 'failed', lease: null } });
                 if (await tx.appChatTurn.count({ where: { conversation: { grantId: grant.id }, state: { in: ['queued', 'running'] } } })) return conflict('A turn is already in progress');
@@ -135,27 +145,27 @@ export async function cancelAppTurn(token: string, id: string) {
 }
 
 /** The worker publishes availability only after its restricted runtime passes preflight. */
-export async function claimAppTurn(accountId: string, machineId: string) {
+export async function claimAppTurn(accountId: string, machineId: string, protocol: 1 | 2 = 1) {
     return inTx(async tx => {
         if (!await tx.machine.findFirst({ where: { id: machineId, accountId, defaultCodexAccountProfileId: { not: null } } })) return denied();
-        await tx.appChatWorker.upsert({ where: { machineId }, create: { machineId, accountId, protocol: 1, activeUntil: new Date(Date.now() + 45_000) }, update: { protocol: 1, activeUntil: new Date(Date.now() + 45_000) } });
+        await tx.appChatWorker.upsert({ where: { machineId }, create: { machineId, accountId, protocol, activeUntil: new Date(Date.now() + 45_000) }, update: { protocol, activeUntil: new Date(Date.now() + 45_000) } });
         const owned = { conversation: { grant: { accountId, machineId } } };
         await tx.appChatTurn.updateMany({ where: { ...owned, state: 'running', leaseUntil: { lt: new Date() } }, data: { state: 'failed', lease: null } });
         await tx.appChatTurn.updateMany({ where: { ...owned, state: { in: ['queued', 'running'] }, deadline: { lt: new Date() } }, data: { state: 'failed', lease: null } });
         if (await tx.appChatTurn.count({ where: { ...owned, state: 'running' } })) return { job: null };
-        const turn = await tx.appChatTurn.findFirst({ where: { state: 'queued', deadline: { gt: new Date() }, conversation: { grant: { accountId, machineId, state: 'redeemed', expiresAt: { gt: new Date() } } } }, orderBy: { createdAt: 'asc' }, include: { conversation: { include: { grant: true } } } });
+        const turn = await tx.appChatTurn.findFirst({ where: { state: 'queued', deadline: { gt: new Date() }, conversation: { grant: { accountId, machineId, state: 'redeemed', OR: protocol === 2 ? [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] : [{ expiresAt: { gt: new Date() } }] } } }, orderBy: { createdAt: 'asc' }, include: { conversation: { include: { grant: true } } } });
         if (!turn) return { job: null };
         const lease = randomBytes(32).toString('base64url');
         await tx.appChatTurn.update({ where: { id: turn.id }, data: { state: 'running', lease, leaseUntil: new Date(Date.now() + 15_000) } });
         const grant = turn.conversation.grant;
-        return { job: { id: turn.id, conversationId: turn.conversationId, grantId: grant.id, appId: grant.appId, machineId, expiresAt: grant.expiresAt!.toISOString(), envelope: grant.machineEnvelope!, input: turn.input, lease } };
+        return { job: { id: turn.id, conversationId: turn.conversationId, grantId: grant.id, appId: grant.appId, machineId, expiresAt: grant.expiresAt?.toISOString() ?? null, envelope: grant.machineEnvelope!, input: turn.input, lease } };
     });
 }
 
 /** Lease fencing and grant validity are checked on heartbeat, chunk, and completion. */
 export async function publishAppTurn(accountId: string, machineId: string, id: string, input: { lease: string; sequence?: number; output?: string; state?: 'completed' | 'failed' }) {
     return inTx(async tx => {
-        const turn = await tx.appChatTurn.findFirst({ where: { id, state: 'running', lease: input.lease, leaseUntil: { gt: new Date() }, deadline: { gt: new Date() }, conversation: { grant: { accountId, machineId, state: 'redeemed', expiresAt: { gt: new Date() } } } } });
+        const turn = await tx.appChatTurn.findFirst({ where: { id, state: 'running', lease: input.lease, leaseUntil: { gt: new Date() }, deadline: { gt: new Date() }, conversation: { grant: { accountId, machineId, state: 'redeemed', OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }] } } } });
         if (!turn) return denied();
         if (input.output && (!input.sequence || input.sequence <= turn.sequence)) return conflict('Stale output sequence');
         if (input.state === 'completed' && !input.output && !turn.output) return conflict('Missing output');
@@ -178,6 +188,48 @@ export async function deleteAppConversation(token: string, id: string) {
         const rows = await tx.$queryRaw<{ bytes: bigint }[]>`SELECT COALESCE(SUM(OCTET_LENGTH("input") + COALESCE(OCTET_LENGTH("output"), 0)), 0)::bigint AS bytes FROM "AppChatTurn" WHERE "conversationId" = ${id}`;
         await tx.appChatConversation.delete({ where: { id } });
         await tx.appDelegation.update({ where: { id: grant.id }, data: { storedBytes: { decrement: Number(rows[0].bytes) } } });
+        return { deleted: true };
+    });
+}
+
+
+/** Owner-only bounded directory. Message ciphertext and grant credentials never leave this endpoint. */
+export async function ownerAppConversations(accountId: string, cursor?: string) {
+    return inTx(async tx => {
+        const anchor = cursor ? await tx.appChatConversation.findFirst({
+            where: { id: cursor, grant: { accountId } },
+            select: { id: true, createdAt: true, turns: { take: 1, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { createdAt: true } } },
+        }) : null;
+        if (cursor && !anchor) return denied();
+        const activity = anchor?.turns[0]?.createdAt ?? anchor?.createdAt;
+        const boundary = anchor ? Prisma.sql`AND (COALESCE(t."createdAt", c."createdAt"), c."id") < (${activity}, ${anchor.id})` : Prisma.empty;
+        const rows = await tx.$queryRaw<{ id: string; grantId: string; createdAt: Date; lastActivityAt: Date; state: string | null; deadline: Date | null; leaseUntil: Date | null }[]>(Prisma.sql`
+            SELECT c."id", c."grantId", c."createdAt", COALESCE(t."createdAt", c."createdAt") AS "lastActivityAt", t."state", t."deadline", t."leaseUntil"
+            FROM "AppChatConversation" c JOIN "AppDelegation" g ON g."id" = c."grantId"
+            LEFT JOIN LATERAL (
+                SELECT "state", "createdAt", "deadline", "leaseUntil" FROM "AppChatTurn"
+                WHERE "conversationId" = c."id" ORDER BY "createdAt" DESC, "id" DESC LIMIT 1
+            ) t ON TRUE
+            WHERE g."accountId" = ${accountId} ${boundary}
+            ORDER BY "lastActivityAt" DESC, c."id" DESC LIMIT 51
+        `);
+        const conversations = rows.slice(0, 50).map(row => ({
+            id: row.id, grantId: row.grantId, createdAt: row.createdAt, lastActivityAt: row.lastActivityAt,
+            turns: row.state === null ? [] : [{
+                state: (['queued', 'running'].includes(row.state) && row.deadline!.getTime() <= Date.now()) || (row.state === 'running' && row.leaseUntil !== null && row.leaseUntil.getTime() <= Date.now()) ? 'failed' : row.state,
+                createdAt: row.lastActivityAt,
+            }],
+        }));
+        return { conversations, nextCursor: rows.length > 50 ? conversations.at(-1)!.id : null };
+    });
+}
+
+/** Explicit owner deletion releases retained history and fences any in-flight worker by cascade. */
+export async function deleteOwnedAppGrant(accountId: string, id: string) {
+    return inTx(async tx => {
+        const grant = await tx.appDelegation.findFirst({ where: { id, accountId } });
+        if (!grant) return denied();
+        await tx.appDelegation.delete({ where: { id } });
         return { deleted: true };
     });
 }
