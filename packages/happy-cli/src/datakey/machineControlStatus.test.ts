@@ -49,17 +49,19 @@ describe('describeMachineControl', () => {
 describe('planHarden', () => {
     it('switches dataKey credentials from compat', () => {
         expect(planHarden({ mode: 'compat', rawCredentials: dataKey(), pendingExists: false }))
-            .toEqual({ ok: true, alreadyStrict: false, dropNeverEscrowed: false, discardPending: false });
+            .toEqual({ ok: true, markedStrict: false, dropNeverEscrowed: false, discardPending: false });
     });
 
     it('distrusts the marks compat left, which whoever held the machine key could have written', () => {
         expect(planHarden({ mode: 'compat', rawCredentials: dataKey({ neverEscrowed: true }), pendingExists: true }))
-            .toEqual({ ok: true, alreadyStrict: false, dropNeverEscrowed: true, discardPending: true });
+            .toEqual({ ok: true, markedStrict: false, dropNeverEscrowed: true, discardPending: true });
     });
 
-    it('keeps what a strict daemon wrote when the machine is already strict', () => {
+    // The strict mark lives in settings.json, which compat leaves writable too: whoever held the
+    // machine key could set it beside a key it knows, and a harden that trusted it would do nothing.
+    it('distrusts a strict mark as well, since compat could have written it', () => {
         expect(planHarden({ mode: 'strict', rawCredentials: dataKey({ neverEscrowed: true }), pendingExists: true }))
-            .toEqual({ ok: true, alreadyStrict: true });
+            .toEqual({ ok: true, markedStrict: true, dropNeverEscrowed: true, discardPending: true });
     });
 
     it('refuses credentials whose machine key is the account secret', () => {
