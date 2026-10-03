@@ -13,6 +13,7 @@ const fixture = vi.hoisted(() => ({
     proposal: { name: 'Verified recovery' },
     statusProbeFails: false,
     send: vi.fn(),
+    startThread: vi.fn(),
     session: {
         sessionId: 'lesson-session', getMetadata: () => ({ path: '/tmp/lesson-test' }),
         drainAttachmentsForUserMessage: vi.fn(async () => []),
@@ -67,7 +68,7 @@ vi.mock('@/codex/codexAppServerClient', () => ({ CodexAppServerClient: class {
     setEventHandler = (handler: (event: unknown) => void) => { fixture.emit = handler; };
     supportsGoalActions = () => false;
     hasActiveThread = () => Boolean(this.threadId);
-    startThread = async () => { this.threadId = 'thread'; return { threadId: 'thread', model: 'test' }; };
+    startThread = async (options: unknown) => { fixture.startThread(options); this.threadId = 'thread'; return { threadId: 'thread', model: 'test' }; };
     abortPreparedTurn = vi.fn();
     abortTurnWithFallback = async () => ({ forcedRestart: false });
     sendTurnAndWait = async (prompt: string, options: unknown) => {
@@ -140,8 +141,10 @@ describe('Codex local history wiring', () => {
         vi.stubEnv('HAPPY_INITIAL_PROMPT', 'Edit b.html');
         const calls: string[] = [];
         const { createCheckpointSessionComposition } = await import('@/checkpoint/checkpointSessionComposition');
+        const agentReader = { guidance: vi.fn(async () => 'checkpoint test guidance'), status: vi.fn(), query: vi.fn() } as never;
         vi.mocked(createCheckpointSessionComposition).mockResolvedValueOnce({
             sandboxConfig: undefined,
+            agentReader,
             localHistory: {
                 beforeTurn: async () => { calls.push('before'); return { operationId: 'turn-1', checkpointId: 'a'.repeat(40), providerPath: process.cwd() }; },
                 afterTurn: async () => { calls.push('after'); },
@@ -155,6 +158,9 @@ describe('Codex local history wiring', () => {
         const { runCodex } = await import('./runCodex');
         await runCodex({ principal: { kind: 'account', credentials: { token: 'test-token' } as never },
             noSandbox: true, lessons: { turn: null, review, sessionKind: 'foreground' } });
+        const { startHappyServer } = await import('@/claude/utils/startHappyServer');
+        expect(startHappyServer).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ checkpointReader: agentReader }));
+        expect(fixture.startThread).toHaveBeenCalledWith(expect.objectContaining({ developerInstructions: expect.stringContaining('checkpoint test guidance') }));
         expect(calls).toEqual(['before', 'send', 'after']);
     });
 });

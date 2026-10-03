@@ -225,3 +225,10 @@ describe('Saycode API gateway developer guidance', () => {
         expect(buildCodexDeveloperInstructions({ mode: { saycodeSystemPromptEnabled: false } })).toBeUndefined();
     });
 });
+
+
+it('adds active checkpoint facts to Codex developer instructions without changing client context', () => {
+    const active = buildCodexDeveloperInstructions({ checkpointGuidance: 'ACTIVE CHECKPOINT FACTS', mode: { saycodeSystemPromptEnabled: true, appendSystemPrompt: 'USER CONTEXT' } });
+    expect(active).toContain('ACTIVE CHECKPOINT FACTS'); expect(active).toContain('USER CONTEXT');
+    expect(buildCodexDeveloperInstructions({ checkpointGuidance: '', mode: {} })).not.toContain('CHECKPOINT');
+});

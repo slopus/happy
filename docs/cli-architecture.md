@@ -616,3 +616,50 @@ that may be stuck on the same studio it is shutting down because of.
 
 Operator-facing configuration, rollout and rollback live in the studio
 repository (`aplus-dev-studio`) under `docs/runbooks/lesson-host-operations.md`.
+
+## Checkpoint history comparison and retention
+
+The daemon owns the shared checkpoint Git store and binding lifecycle.
+`checkpointFileDiff` serves bounded, read-only current-to-record comparisons after the
+restore planner validates binding ownership, historical coverage and current exclusions.
+It rejects unsafe paths and returns explicit binary/size outcomes; file lifecycle metadata
+keeps empty-file creation and deletion visible without sending temporary machine paths.
+
+`checkpointAgentReader` captures the launcher session/project/worktree binding and
+canonical project path, rechecks current persisted availability per call, and delegates
+to existing read RPC ownership/coverage/exclusion validation. `checkpointAgentTools`
+registers only status/list/preview/diff on the session Happy MCP with strict inputs,
+read-only annotations and the existing host admission/drain boundary. Responses are
+paginated (50 records/100 files) or truncated (500 lines/64KiB UTF-8 diff); errors never
+return raw store paths. Provider query/thread setup includes short guidance only while
+history is enabled. Claude follow-ups within one live SDK query retain its initial
+guidance, so tool status/call checks remain authoritative. Neither snapshot creation
+nor restore execution is exposed; Desktop confirmation still owns restoration. Revisit
+this read-only boundary only with a separately reviewed mutation/confirmation contract.
+
+`checkpointRetention` applies 30-day/200-record retention per binding and a 5GiB soft
+machine target through the store lock and garbage collector. It preserves latest baseline
+and safety records, pins and uncertain/incomplete work; trusted absence of a managed
+worktree starts a durable seven-day grace period. Unreadable binding metadata keeps that
+binding's history while the idle pass continues for the others. The additive retirement
+RPC resolves bindings from daemon metadata. A normal retirement only records absence under
+the store lock; immediate deletion requires explicit confirmation, fails closed while any
+binding metadata is unreadable, and drops only that worktree's refs and sidecars, leaving
+other limits and object packing to the next idle pass. The heartbeat schedule runs at
+startup and daily only with no live session/terminal or automation activity, retries a
+failed pass after an hour, and drains on shutdown/handoff. Capacity batches start only
+within a 60s pass budget because record and restore writers wait a bounded time for the
+same lock; the idle pass also removes private diff operands older than an hour. Deleted
+intermediate records write a durable provenance boundary before refs disappear so older
+restores require explicit file inclusion. Revisit the conservative idle rule if long-lived
+sessions prevent cleanup, and the capacity budget if a single packing run outlasts it and
+storage pressure persists. Runtime release and Desktop pin adoption remain separate from
+these source changes.
+
+Checkpoint pin creation acquires the non-reentrant store lock and releases it before
+running the restore action. `withManagedProducerLock` holds that same lock throughout
+its callback, so `prepareManagedVolume` must not directly use the ordinary
+`CheckpointRestoreExecutor` for that store: pin and snapshot operations would reacquire
+it. The current production boot path initializes only an empty volume with no checkpoint
+and an unwired restore port. Before wiring checkpoint boot restore, provide and verify an
+adapter that honors the already-held lock; do not weaken GC pin ownership to allow nesting.

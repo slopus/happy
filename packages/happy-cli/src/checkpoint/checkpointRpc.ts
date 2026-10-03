@@ -1,3 +1,4 @@
+import { checkpointFileDiff } from './checkpointFileDiff';
 import { execFile } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { z } from 'zod';
@@ -119,6 +120,8 @@ export type CheckpointRpcHandlers = {
     status(params: unknown): Promise<unknown>;
     list(params: unknown): Promise<unknown>;
     preview(params: unknown): Promise<unknown>;
+    retireWorktree?(params: unknown): Promise<unknown>;
+    diff?(params: unknown): Promise<unknown>;
     execute(params: unknown): Promise<unknown>;
     retry(params: unknown): Promise<unknown>;
     cancel(params: unknown): Promise<unknown>;
@@ -191,6 +194,17 @@ export function createCheckpointRpcHandlers(input: {
                 includePaths: request.includePaths,
             });
             return { schemaVersion: 1 as const, ...plan, ...(details.length > 0 ? { skipDetails: details } : {}) };
+        },
+        diff: async (params) => {
+            const request = bindingRequestSchema.extend({
+                checkpointId: z.string().regex(/^[a-f0-9]{40,64}$/),
+                path: projectRelativePathSchema,
+            }).strict().parse(params);
+            const authority = await resolveRequestAuthority(request);
+            const result = await checkpointFileDiff(input.checkpointRoot, {
+                ...authority, checkpointId: request.checkpointId, path: request.path,
+            });
+            return { ...request, ...result };
         },
         execute: async (params) => {
             const request = executeRequestSchema.parse(params);

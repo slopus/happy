@@ -1669,6 +1669,7 @@ export async function runCodex(opts: {
         browserHostContinues: process.env.HAPPY_AUTOMATION_BROWSER_CONTINUATION === '1',
         ...(runtimeGate ? { admitTool: <T,>(work: () => Promise<T>) => runtimeGate.admit(work, 'writer') } : {}),
         ...(accountToken !== null ? { proposeLesson: lessonProposalTurn.submit } : {}),
+        checkpointReader: checkpointComposition.agentReader,
         protectedBashCwd: checkpointComposition.protectedBashCwd,
         trackProtectedBashProcess: checkpointComposition.trackProtectedWriter,
     });
@@ -2057,12 +2058,14 @@ export async function runCodex(opts: {
                         continue;
                     }
 
+                    const checkpointGuidance = await checkpointComposition.agentReader?.guidance();
                     const mcpSync = await measure('mcp-sync', () => mcpConfigSynchronizer.sync({
                         threadId: client.threadId,
                         resumeThread: client.threadId
                             ? async ({ threadId, mcpServers }) => {
                                 const nextDeveloperInstructions = buildCodexDeveloperInstructions({
                                     connectorGuidance: buildConnectorGuidance(mcpServers),
+                                    checkpointGuidance,
                                     agentOrchestrationPrompt: AGENT_ORCHESTRATION_SYSTEM_PROMPT,
                                     mode: message.mode,
                                 });
@@ -2080,6 +2083,7 @@ export async function runCodex(opts: {
 
                     const nextDeveloperInstructions = buildCodexDeveloperInstructions({
                         connectorGuidance: buildConnectorGuidance(mcpSync.mcpServers),
+                        checkpointGuidance,
                         agentOrchestrationPrompt: AGENT_ORCHESTRATION_SYSTEM_PROMPT,
                         mode: message.mode,
                     });

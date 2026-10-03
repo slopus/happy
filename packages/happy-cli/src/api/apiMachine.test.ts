@@ -434,6 +434,8 @@ describe('ApiMachineClient socket reconnection', () => {
             status: vi.fn(),
             list: vi.fn(),
             preview: vi.fn(),
+            diff: vi.fn(),
+            retireWorktree: vi.fn(),
             execute: vi.fn(),
             cancel: vi.fn(),
             retry: vi.fn(),
@@ -453,7 +455,7 @@ describe('ApiMachineClient socket reconnection', () => {
 
         for (const method of Object.keys(checkpoint) as Array<keyof typeof checkpoint>) {
             expect(manager.registerHandler).toHaveBeenCalledWith(
-                `checkpoint:${method}`,
+                `checkpoint:${method === 'retireWorktree' ? 'retire-worktree' : method}`,
                 checkpoint[method],
             );
         }

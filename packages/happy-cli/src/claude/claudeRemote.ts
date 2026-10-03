@@ -204,6 +204,7 @@ export async function claudeRemote(opts: {
         channelRequestId?: string,
         latency?: ClaudeTurnLatencyInput,
     } | null>,
+    checkpointGuidance?: () => Promise<string>,
     beforeTurn?: () => Promise<CheckpointTurnPreparation | void>,
     /** specs/checkpoint-local-history — records the folder a finished turn left behind. */
     afterTurn?: () => Promise<void>,
@@ -469,6 +470,7 @@ async function runClaudeRemote(
         orchestratorPrompt,
         workerDelegationPrompt: workerAgents.delegationPrompt,
         connectorGuidance,
+        checkpointGuidance: await opts.checkpointGuidance?.(),
         saycodeSystemPromptEnabled: initial.mode.saycodeSystemPromptEnabled,
         saycodePromptBlocks: initial.mode.saycodePromptBlocks,
     });

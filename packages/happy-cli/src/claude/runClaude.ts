@@ -717,6 +717,7 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
         browserHostContinues: process.env.HAPPY_AUTOMATION_BROWSER_CONTINUATION === '1',
         mandatorySandbox: sandboxPolicyMode === 'mandatory',
         ...(principal.kind === 'account' ? { proposeLesson: lessonProposalTurn.submit } : {}),
+        checkpointReader: checkpointComposition.agentReader,
         protectedBashCwd: checkpointComposition.protectedBashCwd,
         trackProtectedBashProcess: checkpointComposition.trackProtectedWriter,
         // A tool call in flight finishes across a drain freeze; none starts after it.
