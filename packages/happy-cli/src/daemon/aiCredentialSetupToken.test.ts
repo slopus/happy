@@ -23,7 +23,7 @@ const signing = (() => {
 function bindingGrant(overrides: Record<string, unknown> = {}) {
   const claims = { v: 1, type: SETUP_TOKEN_BINDING_TYPE, aud: `${SETUP_TOKEN_BINDING_TYPE}@${STUDIO}`, keyId: signing.keyId,
     companyId: 'company-1', groupScope: 'company-1', userId: 'user-1', machineId: 'machine-1', managedAccountId: A,
-    credentialGeneration: 1, nonce: randomUUID(), issuedAt: NOW - 1_000, expiresAt: NOW + 60_000, ...overrides }
+    credentialGeneration: 1, nonce: randomUUID(), issuedAt: NOW - 1_000, expiresAt: NOW + 59_000, ...overrides }
   const encoded = Buffer.from(JSON.stringify(claims)).toString('base64url')
   return `${encoded}.${sign(null, Buffer.from(encoded), signing.privateKey).toString('base64url')}`
 }
@@ -210,6 +210,16 @@ describe('managed Claude setup-token runtime', () => {
       expect(state.active).toBe(1)
       expect(calls.some(call => call.args[0] === 'switch')).toBe(false)
       expect(inference(calls)).toEqual([])
+    })
+
+    it('lets exactly one of two concurrent spawns consume the same grant; distinct grants for one account both bind', async () => {
+      const { runtime } = await assigned()
+      const chosen = selection()
+      const results = await Promise.allSettled([runtime.sessionEnvironment('claude', chosen), runtime.sessionEnvironment('claude', chosen)])
+      expect(results.map(result => result.status).sort()).toEqual(['fulfilled', 'rejected'])
+      expect(String((results.find(result => result.status === 'rejected') as PromiseRejectedResult).reason)).toContain('CLAUDE_SETUP_TOKEN_BINDING_REPLAYED')
+      const both = await Promise.all([runtime.sessionEnvironment('claude', selection()), runtime.sessionEnvironment('claude', selection())])
+      expect(new Set(both.map(env => JSON.parse(env.HAPPY_AI_AUTH_SETUP_TOKEN_BINDING!).nonce)).size).toBe(2)
     })
 
     it('makes each grant one-use, durably across a daemon restart', async () => {

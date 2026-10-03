@@ -27,7 +27,7 @@ function claims(overrides: Record<string, unknown> = {}) {
   return { v: 1, type: SETUP_TOKEN_BINDING_TYPE, aud: `${SETUP_TOKEN_BINDING_TYPE}@${ORIGIN}`, keyId: key.keyId,
     companyId: 'company-1', groupScope: 'company-1', userId: 'user-1', machineId: 'machine-1',
     managedAccountId: '0b6f2c1e-1111-4a2b-8c3d-000000000001', credentialGeneration: 2,
-    nonce: '6a1f7d3e-2222-4b2b-8c3d-000000000009', issuedAt: NOW - 1_000, expiresAt: NOW + 60_000, ...overrides }
+    nonce: '6a1f7d3e-2222-4b2b-8c3d-000000000009', issuedAt: NOW - 1_000, expiresAt: NOW + 59_000, ...overrides }
 }
 const verify = (envelope: string, overrides: Partial<Parameters<typeof verifySetupTokenBindingGrant>[0]> = {}) =>
   verifySetupTokenBindingGrant({ envelope, publicKey: { keyId: key.keyId, publicKeyBase64: key.publicKeyBase64 }, origin: ORIGIN, machineId: 'machine-1', now: NOW, ...overrides })
@@ -44,8 +44,8 @@ describe('verifySetupTokenBindingGrant', () => {
     ['another machine', { machineId: 'machine-2' }],
     ['another key id', { keyId: 'f'.repeat(64) }],
     ['an expired grant', { expiresAt: NOW }],
-    ['a grant issued in the future', { issuedAt: NOW + 120_000, expiresAt: NOW + 180_000 }],
-    ['a lifetime above five minutes', { issuedAt: NOW - 1_000, expiresAt: NOW + 300_000 }],
+    ['a grant issued in the future', { issuedAt: NOW + 120_000, expiresAt: NOW + 150_000 }],
+    ['a lifetime above the 60 s server contract', { issuedAt: NOW - 1_000, expiresAt: NOW + 59_001 }],
     ['a non-integer generation', { credentialGeneration: 1.5 }],
     ['a non-uuid nonce', { nonce: 'n-1' }],
     ['a non-uuid account', { managedAccountId: 'acct' }],
@@ -53,6 +53,10 @@ describe('verifySetupTokenBindingGrant', () => {
     ['version 2', { v: 2 }],
   ])('rejects %s', (_label, overrides) => {
     expect(verify(mint(key.privateKey, claims(overrides)))).toBeNull()
+  })
+
+  it('accepts exactly the 60 s server lifetime', () => {
+    expect(verify(mint(key.privateKey, claims({ issuedAt: NOW - 30_000, expiresAt: NOW + 30_000 })))).not.toBeNull()
   })
 
   it('rejects a tampered payload, another signer, and malformed envelopes', () => {
@@ -114,6 +118,32 @@ describe('createSetupTokenBindingVerifier (real HTTP boundary)', () => {
     const lying = await serve(() => ({ body: JSON.stringify({ ...JSON.parse(metadata()), keyId: rotated.keyId }) }))
     const strict = createSetupTokenBindingVerifier({ origin: lying.origin, machineId: 'machine-1', now: () => NOW })
     expect(await strict.available()).toBe(false)
+  })
+
+  it('rejects an oversized or malformed envelope before parsing it or fetching any key', async () => {
+    const { origin, hits } = await serve(() => ({ body: metadata() }))
+    const verifier = createSetupTokenBindingVerifier({ origin, machineId: 'machine-1', now: () => NOW })
+    for (const bad of ['x'.repeat(4097) + '.y', 'no-dot', 'a.b.c', 'a!.b']) expect(await verifier.verify(bad)).toBeNull()
+    expect(hits).toEqual([])
+  })
+
+  it('stops reading a streamed key response past the cap instead of buffering it', async () => {
+    let written = 0
+    let aborted = false
+    server = createServer((req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' })
+      // No content-length: a chunked stream that would run to 8 MiB if fully consumed.
+      const chunk = Buffer.alloc(64 * 1024, 0x20)
+      const pump = () => { while (written < 8 * 1024 * 1024) { written += chunk.length; if (!res.write(chunk)) { res.once('drain', pump); return } } res.end() }
+      res.on('close', () => { aborted = written < 8 * 1024 * 1024 })
+      pump()
+    })
+    await new Promise<void>(resolve => server!.listen(0, '127.0.0.1', resolve))
+    const origin = `http://127.0.0.1:${(server.address() as AddressInfo).port}`
+    const verifier = createSetupTokenBindingVerifier({ origin, machineId: 'machine-1', now: () => NOW })
+    expect(await verifier.available()).toBe(false)
+    await new Promise(resolve => setTimeout(resolve, 50))
+    expect(aborted).toBe(true)
   })
 
   it.each([

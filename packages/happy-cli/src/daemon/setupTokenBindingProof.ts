@@ -12,7 +12,8 @@ import { createHash, createPublicKey, verify } from 'node:crypto'
 
 export const SETUP_TOKEN_BINDING_TYPE = 'claude-setup-token-binding-v1'
 export const STUDIO_PUBLIC_KEY_PATH = '/api/claude-collector/public-key'
-const MAX_LIFETIME_MS = 5 * 60_000
+// The Studio signer issues 60 s grants; anything longer is not one of ours.
+const MAX_LIFETIME_MS = 60_000
 const MAX_CLOCK_SKEW_MS = 60_000
 const MAX_ENVELOPE = 4096
 const MAX_KEY_RESPONSE = 16 * 1024
@@ -50,7 +51,7 @@ export function verifySetupTokenBindingGrant(input: {
 }): SetupTokenBindingClaims | null {
   try {
     const { envelope } = input
-    if (envelope.length > MAX_ENVELOPE || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(envelope)) return null
+    if (!wellFormedEnvelope(envelope)) return null
     const [encoded, signature] = envelope.split('.') as [string, string]
     const spki = Buffer.from(input.publicKey.publicKeyBase64, 'base64')
     const key = createPublicKey({ key: spki, format: 'der', type: 'spki' })
@@ -73,14 +74,34 @@ export function verifySetupTokenBindingGrant(input: {
   } catch { return null }
 }
 
+/** Reads at most `limit` bytes and cancels the stream beyond that, so a hostile body is never buffered. */
+async function readBounded(body: ReadableStream<Uint8Array>, limit: number): Promise<string | null> {
+  const reader = body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.byteLength
+      if (size > limit) { await reader.cancel().catch(() => {}); return null }
+      chunks.push(value)
+    }
+  } finally { reader.releaseLock() }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
+const wellFormedEnvelope = (envelope: unknown): envelope is string =>
+  typeof envelope === 'string' && envelope.length <= MAX_ENVELOPE && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(envelope)
+
 async function fetchStudioPublicKey(origin: string, fetcher: typeof fetch): Promise<StudioPublicKey | null> {
   try {
     const response = await fetcher(`${origin}${STUDIO_PUBLIC_KEY_PATH}`, {
       method: 'GET', redirect: 'error', signal: AbortSignal.timeout(10_000), headers: { accept: 'application/json' },
     })
-    if (response.status !== 200) return null
-    const text = await response.text()
-    if (text.length > MAX_KEY_RESPONSE) return null
+    if (response.status !== 200 || !response.body) return null
+    const text = await readBounded(response.body, MAX_KEY_RESPONSE)
+    if (text === null) return null
     const value = JSON.parse(text) as Record<string, unknown>
     if (value?.version !== 1 || value.algorithm !== 'Ed25519' || typeof value.keyId !== 'string' || typeof value.publicKeyBase64 !== 'string') return null
     const spki = Buffer.from(value.publicKeyBase64, 'base64')
@@ -103,6 +124,8 @@ export function createSetupTokenBindingVerifier(config: { origin: string; machin
   return {
     async available() { return (await key()) !== null },
     async verify(envelope: string): Promise<SetupTokenBindingClaims | null> {
+      // Size and shape first: a malformed envelope never triggers parsing or a key fetch.
+      if (!wellFormedEnvelope(envelope)) return null
       let current = await key()
       if (!current) return null
       // A rotated signing key shows up as a different keyId; refetch once, never trust the envelope's key.

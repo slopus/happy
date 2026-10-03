@@ -74,12 +74,12 @@ Claims are **exactly** these 13 keys (any extra or missing key is rejected):
 | `managedAccountId` | lowercase UUID |
 | `credentialGeneration` | the current generation of that account (positive int) |
 | `nonce` | a fresh random UUID per grant |
-| `issuedAt`, `expiresAt` | ms epoch; `0 < expiresAt − issuedAt ≤ 300000` |
+| `issuedAt`, `expiresAt` | ms epoch; `0 < expiresAt − issuedAt ≤ 60000` (the Studio signer issues 60 s) |
 
 Before minting, the server should authorize that the caller holds this account through an AI user group assignment in that company, and that the
 machine is the caller's. No probe opt-in or budget debit is involved.
 
-Public key: the daemon fetches `GET <origin>/api/claude-collector/public-key` (no redirects, 10 s, ≤ 16 KiB). It requires `version:1`, `algorithm:'Ed25519'`,
+Public key: the daemon fetches `GET <origin>/api/claude-collector/public-key` (no redirects, 10 s, body read as a stream and cancelled past 16 KiB; malformed or >4096-char envelopes are rejected before any parse or fetch). It requires `version:1`, `algorithm:'Ed25519'`,
 and `keyId == sha256(SPKI)`. It ignores the response's collector `type` and `audience` and computes the binding audience itself. The key is cached for 5 minutes and
 refetched once when a grant names a different `keyId` (rotation).
 
