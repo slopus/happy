@@ -362,10 +362,15 @@ describe('bound customer-lane requests', () => {
     const bound = (method: string, params: unknown, options: { nonce?: string; issuedAt?: number; scope?: string } = {}) => bindRpcRequest({
         method, scope: options.scope ?? 'machine-1', params, issuedAt: options.issuedAt ?? Date.now(), nonce: options.nonce ?? nonce(1),
     });
-    const makeBound = (requireBoundRequests = false, serverLane?: { encryptionKey: Uint8Array; allows: (method: string) => boolean }) => {
+    const makeBound = (
+        requireBoundRequests = false,
+        serverLane?: { encryptionKey: Uint8Array; allows: (method: string) => boolean },
+        maxBoundRequestsInWindow?: number,
+    ) => {
         const manager = new RpcHandlerManager({
             scopePrefix: 'machine-1', encryptionKey: KEY, encryptionVariant: 'dataKey', logger: () => {}, requireBoundRequests,
             ...(serverLane ? { serverLane } : {}),
+            ...(maxBoundRequestsInWindow ? { maxBoundRequestsInWindow } : {}),
         });
         const calls: Array<[string, unknown]> = [];
         manager.registerHandler('readFile', async (params: unknown) => { calls.push(['readFile', params]); return { content: 'x' }; });
@@ -411,6 +416,18 @@ describe('bound customer-lane requests', () => {
     });
 
     // The refusal names the likely cause: the caller shows it to a person whose clock is off.
+    // Forgetting the first nonce to make room would let its request run again.
+    it('refuses new requests under strict when the window holds as many as it can remember', async () => {
+        const { manager, calls } = makeBound(true, undefined, 1);
+        const first = bound('readFile', { path: '/w/a' }, { nonce: nonce(13) });
+        await send(manager, 'readFile', first);
+
+        expect(await send(manager, 'readFile', bound('readFile', { path: '/w/b' }, { nonce: nonce(14) })))
+            .toMatchObject({ nonce: nonce(14), result: { code: 'RPC_TOO_MANY_REQUESTS' } });
+        expect(await send(manager, 'readFile', first)).toMatchObject({ nonce: nonce(13), result: { code: 'RPC_REQUEST_REPLAYED' } });
+        expect(calls).toEqual([['readFile', { path: '/w/a' }]]);
+    });
+
     it('refuses a request issued outside the window under strict, naming the clocks', async () => {
         const { manager, calls } = makeBound(true);
         expect(await send(manager, 'readFile', bound('readFile', {}, { nonce: nonce(6), issuedAt: Date.now() - 10 * 60_000 })))

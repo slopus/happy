@@ -52,6 +52,11 @@ export interface RpcHandlerConfig {
      * refused before any handler runs.
      */
     requireBoundRequests?: boolean;
+    /**
+     * How many bound requests one scope remembers within the time window (default 10,000).
+     * When full, strict refuses new ones and compat forgets its oldest.
+     */
+    maxBoundRequestsInWindow?: number;
 }
 
 export interface ServerLaneConfig {
