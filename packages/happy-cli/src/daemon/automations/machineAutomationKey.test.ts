@@ -6,6 +6,7 @@ import path from 'node:path'
 import {
   loadOrCreateMachineAutomationKey,
   readMachineAutomationKey,
+  rotateMachineAutomationKey,
   updateMachineAutomationKeyRegistration,
 } from './machineAutomationKey'
 
@@ -67,5 +68,28 @@ describe('machineAutomationKey', () => {
 
     writeFileSync(file, '{ corrupt')
     expect(readMachineAutomationKey(file)).toBeNull()
+  })
+
+  // aplus-dev-studio specs/e2ee-machine-control-boundary R17 — hardening replaces a key compat left readable.
+  it('rotates to a new keypair under the version the server has, so it registers as that key\'s successor', () => {
+    const old = updateMachineAutomationKeyRegistration(file, loadOrCreateMachineAutomationKey(file), 4)
+
+    expect(rotateMachineAutomationKey(file)).toBe('rotated')
+    const rotated = loadOrCreateMachineAutomationKey(file)
+
+    expect(rotated.registeredKeyVersion).toBe(4)
+    expect(rotated.publicKey).not.toEqual(old.publicKey)
+    expect(rotated.secretKey).not.toEqual(old.secretKey)
+    expect(readdirSync(dir)).toEqual(['automation-key.v1.json'])
+    if (process.platform !== 'win32') expect(statSync(file).mode & 0o777).toBe(0o600)
+  })
+
+  it('leaves a missing key for the daemon to make and refuses to overwrite a corrupt one', () => {
+    expect(rotateMachineAutomationKey(file)).toBe('absent')
+    expect(readdirSync(dir)).toEqual([])
+
+    writeFileSync(file, '{ corrupt')
+    expect(() => rotateMachineAutomationKey(file)).toThrow('automation-key-invalid')
+    expect(readFileSync(file, 'utf8')).toBe('{ corrupt')
   })
 })

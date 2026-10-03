@@ -29,6 +29,7 @@ import {
 } from '@/datakey/activation'
 import { describeMachineControl } from '@/datakey/machineControlStatus'
 import { runHarden } from '@/datakey/hardenTransition'
+import { rotateMachineAutomationKey } from '@/daemon/automations/machineAutomationKey'
 import { pendingMachineKeyRotationFile } from '@/datakey/machineControlIo'
 
 const backupFile = () => join(configuration.happyHomeDir, 'access.key.legacy-backup')
@@ -210,6 +211,7 @@ async function handleHarden(): Promise<void> {
       })
     },
     discardPendingRotation: () => rm(pendingMachineKeyRotationFile(), { force: true }),
+    rotateAutomationKey: async () => rotateMachineAutomationKey(configuration.automationKeyFile),
     setStrict: async () => {
       await updateSettings((settings) => ({ ...settings, machineControl: 'strict' }))
     },
@@ -231,6 +233,9 @@ async function handleHarden(): Promise<void> {
   console.log(chalk.green('strict 머신 제어로 설정했습니다.'))
   if (outcome.reset.neverEscrowed || outcome.reset.pending) {
     console.log(chalk.gray('compat 동안 남은 키 표시와 교체 기록은 서버가 쓸 수 있었으므로 지웠습니다.'))
+  }
+  if (outcome.reset.automationKey) {
+    console.log(chalk.gray('자동화 키도 새로 만들었습니다. 이 머신의 기존 자동화는 다시 저장해야 실행됩니다.'))
   }
   console.log(chalk.bold('daemon 을 시작하세요:'))
   console.log('  happy daemon start')
