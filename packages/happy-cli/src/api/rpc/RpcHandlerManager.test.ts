@@ -410,10 +410,11 @@ describe('bound customer-lane requests', () => {
         expect(calls).toHaveLength(1);
     });
 
-    it('refuses a request issued outside the window under strict', async () => {
+    // The refusal names the likely cause: the caller shows it to a person whose clock is off.
+    it('refuses a request issued outside the window under strict, naming the clocks', async () => {
         const { manager, calls } = makeBound(true);
         expect(await send(manager, 'readFile', bound('readFile', {}, { nonce: nonce(6), issuedAt: Date.now() - 10 * 60_000 })))
-            .toMatchObject({ nonce: nonce(6), result: { code: 'RPC_REQUEST_STALE' } });
+            .toMatchObject({ nonce: nonce(6), result: { code: 'RPC_REQUEST_STALE', error: expect.stringMatching(/clock/) } });
         expect(calls).toEqual([]);
     });
 

@@ -157,7 +157,13 @@ export class RpcHandlerManager {
                 });
                 if (binding.kind === 'refused') {
                     this.logger('[RPC] Bound request refused', { method: request.method, code: binding.code });
-                    const refusal = { error: 'Request binding refused', code: binding.code };
+                    const refusal = {
+                        // Only strict refuses on the window, and then mostly because a clock is off.
+                        error: binding.code === 'RPC_REQUEST_STALE'
+                            ? 'Request was issued outside the allowed time window; check that the clocks of this device and the machine agree'
+                            : 'Request binding refused',
+                        code: binding.code,
+                    };
                     return sealWithScopeKey(binding.nonce ? bindRpcResponse(binding.nonce, refusal) : refusal);
                 }
                 if (binding.kind === 'unbound' && this.requireBoundRequests) {
