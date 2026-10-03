@@ -639,6 +639,18 @@ describe('ApiMachineClient socket reconnection', () => {
         expect(writeFile).not.toHaveBeenCalled();
     });
 
+    it('routes group mutation separately and retains legacy status while exposing only group receipts',async()=>{
+        const client=new ApiMachineClient('fake-token',makeMachine());
+        const runtime={groupSync:vi.fn(async value=>value),groupReceipt:vi.fn(async()=>({reconciled:true})),status:vi.fn(async()=>({installed:false}))};
+        client.setRPCHandlers({spawnSession:vi.fn(),stopSession:vi.fn(),requestShutdown:vi.fn(),portRegistry:{} as any,aiCredentialRuntime:runtime as any});
+        const handler=(method:string)=>(client as any).rpcHandlerManager.registerHandler.mock.calls.find(([name]:[string])=>name===method)[1];
+        const input={version:1,scope:'company',provider:'claude'};
+        await handler('ai-credential:group-sync')(input);expect(runtime.groupSync).toHaveBeenCalledWith(input);
+        await handler('ai-credential:status')({provider:'claude'});expect(runtime.status).toHaveBeenCalledWith({provider:'claude'});
+        expect(await handler('ai-credential:status')({provider:'claude',groupScope:'company'})).toEqual({reconciled:true});
+        expect(runtime.groupReceipt).toHaveBeenCalledWith('company','claude');
+    });
+
     it('exposes additive credential capability without receiving credentials', async () => {
         const client = new ApiMachineClient('fake-token', makeMachine());
         const capabilities = vi.fn(() => ({ version: 1, applyModes: ['merge', 'replace'] }));
