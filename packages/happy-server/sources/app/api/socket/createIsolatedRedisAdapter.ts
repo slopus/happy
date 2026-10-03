@@ -23,6 +23,7 @@ export function createIsolatedRedisAdapter(
     const active = new Set<ReturnType<ReturnType<typeof createAdapter>>>();
     const bus = options?.streamName === 'socket.io.managed' ? 'managed' : 'account';
     const shouldLogReadFailure = createLogThrottle(60_000);
+    const shouldLogSlowRead = createLogThrottle(60_000);
     instrumentStreamReads(reader, (result, seconds, error) => {
         // Closing the last namespace intentionally disconnects its pending read.
         if (active.size === 0) return;
@@ -34,6 +35,9 @@ export function createIsolatedRedisAdapter(
                 log({ module: 'websocket', level: 'warn' },
                     `cluster stream read failed (${bus}, ${code}, throttled to 1/min) — cross-replica routing is degraded`);
             }
+        } else if (seconds > 1 && shouldLogSlowRead('slow')) {
+            log({ module: 'websocket', level: 'warn' },
+                `cluster stream read slow (${bus}, ${Math.round(seconds * 1000)}ms, throttled to 1/min)`);
         }
     });
     // The 0.2.x adapter runs ioredis XREAD BLOCK 100 on its publishing client.

@@ -11,3 +11,11 @@
 3. [Done] account/managed 읽기 실패·소요시간 계측 및 TIMEOUT 분류. 원래 polling·종료·결과·예외 보존.
 4. [Done] 관련 테스트·typecheck·build 및 운영 검증 절차 기록. 로컬 검증과 운영 해결을 구분.
 5. [Done] 후속 코드 리뷰·보강: 계측 시작 시계 실패가 실제 read를 막지 않게 한다. 실패 회귀 두 건→최소 수정→관련 78테스트/typecheck/build 통과.
+
+## 단발 지연 관측 후속
+
+1. [Done] 실제 prod backend 확인 및 Claude Opus 5.5/high 조사 리뷰: ElastiCache URL 모드, Sentinel 자료 제외, 원인 미확정.
+2. [Done] 동일 window p99/max와 성공 slow-read의 bus별 throttle 회귀 Red→Green. shutdown·polling 보존.
+3. [Done] Opus 5.5/high 변경 리뷰 approve, 관련 84테스트·typecheck/runtime build와 diff check 통과. p99 인자 assertion도 보강했다.
+4. [In progress] commit/push 및 Happy PR 생성. 소비 플랫폼 PR은 Happy merge를 기다리는 Draft로 준비한다.
+5. [ ] 배포 후 replica별 timeout/slow-read/event-loop max 상관분석과 같은 조건의 24h 비교. 관측 배포만으로 #1326 해결 판정하지 않는다.

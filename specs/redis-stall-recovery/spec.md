@@ -61,6 +61,18 @@ poll loop가 debug로만 삼키므로 읽기 실패·소요시간을 account/man
 버스 장애를 만들지 않아야 하고, 원래 XREAD 인자·결과·예외·poll 재시도를 보존한다.
 조회 시한·최신 머신 선택·권한·원격 replica 수집 계약은 변경하지 않는다.
 
+### 단발 지연 관측 (2026-10-03)
+
+배포 검증에서 성공한 2초 초과 XREAD가 관측됐지만 p99만으로 단발 event-loop
+정지를 구분할 수 없었다. 동일 scrape window에서 p99와 max를 함께 노출하고
+한 번만 reset한다. 성공 XREAD가 1초를 초과하면 bus와 소요 ms만 담은 로그를
+bus별 1분에 한 번 남긴다. 빠른 읽기와 shutdown은 로그를 만들지 않는다.
+이는 근본 원인 수정이 아닌 관측 보완이며 결과·오류·polling 계약을 유지한다.
+
+현재 prod는 URL 모드 AWS ElastiCache다. IDC Sentinel 자료를 이 배포의 원인
+근거로 사용하지 않는다. 같은 시간의 timeout·slow-read·event-loop max를
+replica별로 비교한 뒤 Redis/네트워크 경로와 peer 처리 지연을 구분한다.
+
 ## 트레이드오프
 
 - Sentinel failover 중에 나간 명령은 예전에는 기다렸다가 성공했지만, 이제는 5초에

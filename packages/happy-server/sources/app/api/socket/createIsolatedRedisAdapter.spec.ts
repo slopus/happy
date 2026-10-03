@@ -39,6 +39,80 @@ function redisConnection(restore: { exec: () => Promise<unknown>; xrange: () => 
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 
 describe('createIsolatedRedisAdapter', () => {
+    it.each(['socket.io', 'socket.io.managed'])('logs only successful %s reads over one second and throttles for one minute', async (streamName) => {
+        const writer = redisConnection();
+        const reader = redisConnection();
+        const bus = streamName === 'socket.io.managed' ? 'managed' : 'account';
+        let elapsed = 0;
+        const clock = vi.spyOn(performance, 'now').mockImplementation(() => elapsed);
+        const wallClock = vi.spyOn(Date, 'now').mockReturnValue(100);
+        let resolveRead!: (value: null) => void;
+        reader.xread.mockImplementation(() => new Promise(resolve => { resolveRead = resolve; }));
+        vi.mocked(log).mockClear();
+        const io = new Server({ adapter: createIsolatedRedisAdapter(writer.client, reader.client, { streamName }) });
+        const finishRead = async (milliseconds: number) => {
+            elapsed += milliseconds;
+            resolveRead(null);
+            await flush();
+        };
+        const slowLogs = () => vi.mocked(log).mock.calls.filter(([, message]) => String(message).includes('cluster stream read slow'));
+        try {
+            await finishRead(1_000);
+            expect(slowLogs()).toHaveLength(0);
+            await finishRead(1_201);
+            expect(slowLogs()).toEqual([[{ module: 'websocket', level: 'warn' },
+                `cluster stream read slow (${bus}, 1201ms, throttled to 1/min)`]]);
+            await finishRead(2_000);
+            expect(slowLogs()).toHaveLength(1);
+            wallClock.mockReturnValue(60_100);
+            await finishRead(1_500);
+            expect(slowLogs()).toHaveLength(2);
+            expect(slowLogs()[1][1]).toBe(`cluster stream read slow (${bus}, 1500ms, throttled to 1/min)`);
+            expect(reader.xread).toHaveBeenCalledTimes(5);
+            io.of('/').adapter.close();
+            await finishRead(2_000);
+            expect(slowLogs()).toHaveLength(2);
+            expect(reader.xread).toHaveBeenCalledTimes(5);
+        } finally {
+            io.of('/').adapter.close();
+            resolveRead(null);
+            await flush();
+            writer.client.disconnect();
+            clock.mockRestore();
+            wallClock.mockRestore();
+        }
+    });
+
+    it('does not let an account slow-read log suppress the managed bus log', async () => {
+        let elapsed = 0;
+        const clock = vi.spyOn(performance, 'now').mockImplementation(() => elapsed);
+        const connections = ['socket.io', 'socket.io.managed'].map(streamName => {
+            const writer = redisConnection();
+            const reader = redisConnection();
+            let resolveRead!: (value: null) => void;
+            reader.xread.mockImplementation(() => new Promise(resolve => { resolveRead = resolve; }));
+            const io = new Server({ adapter: createIsolatedRedisAdapter(writer.client, reader.client, { streamName }) });
+            return { writer, io, resolve: () => resolveRead(null) };
+        });
+        vi.mocked(log).mockClear();
+        try {
+            elapsed = 2_000;
+            connections.forEach(connection => connection.resolve());
+            await flush();
+            expect(vi.mocked(log).mock.calls.filter(([, message]) => String(message).includes('cluster stream read slow')))
+                .toEqual(['account', 'managed'].map(bus => [{ module: 'websocket', level: 'warn' },
+                    `cluster stream read slow (${bus}, 2000ms, throttled to 1/min)`]));
+        } finally {
+            connections.forEach(connection => {
+                connection.io.of('/').adapter.close();
+                connection.resolve();
+                connection.writer.client.disconnect();
+            });
+            await flush();
+            clock.mockRestore();
+        }
+    });
+
     it.each(['socket.io', 'socket.io.managed'])('exposes a %s read failure swallowed by the adapter and continues polling', async (streamName) => {
         const writer = redisConnection();
         const reader = redisConnection();

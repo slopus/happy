@@ -49,9 +49,18 @@ export const eventLoopLagSecondsGauge = new Gauge({
     registers: [register],
     collect() {
         const p99Nanoseconds = eventLoopDelay.percentile(99);
+        const maxNanoseconds = eventLoopDelay.max;
         this.set(Number.isFinite(p99Nanoseconds) ? p99Nanoseconds / 1e9 : 0);
+        eventLoopLagMaxSecondsGauge.set(Number.isFinite(maxNanoseconds) ? maxNanoseconds / 1e9 : 0);
         eventLoopDelay.reset();
     }
+});
+
+// Register after the p99 collector, which samples both values before one reset.
+export const eventLoopLagMaxSecondsGauge = new Gauge({
+    name: 'event_loop_lag_max_seconds',
+    help: 'Maximum event loop delay in seconds since the previous metrics scrape',
+    registers: [register]
 });
 
 export const websocketConnectionsGauge = new Gauge({
