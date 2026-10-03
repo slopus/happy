@@ -177,6 +177,11 @@ export type ReducerState = {
     unmatchedAckServerIds: Map<string, string>; // local id -> server message id
     sidechains: Map<string, ReducerMessage[]>;
     tracerState: TracerState; // Tracer state for sidechain processing
+    /**
+     * The completedRequests object Phase 0 last walked. AgentState objects are
+     * cache-shared per version, so identity tells whether there is anything new.
+     */
+    lastCompletedRequests?: AgentState['completedRequests'];
     latestTodos?: {
         todos: TodoItem[];
         timestamp: number;
@@ -634,8 +639,17 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             }
         }
 
-        // Process completed permission requests
-        if (agentState.completedRequests) {
+        // Process completed permission requests.
+        //
+        // completedRequests is never pruned, and the same agentState object is
+        // fed back on every update-session tick and every applyMessages
+        // batch, so walking it each call cost O(every request ever made) per
+        // message. The walk is skipped when the object is the one already
+        // processed and no tool call is arriving: its only remaining work is
+        // storing a permission for a tool call that Phase 2 is about to join.
+        const completedRequestsWalked = agentState.completedRequests === state.lastCompletedRequests && incomingToolIds.size === 0;
+        if (agentState.completedRequests && !completedRequestsWalked) {
+            state.lastCompletedRequests = agentState.completedRequests;
             for (const [permId, completed] of Object.entries(agentState.completedRequests)) {
                 // Same join key as pending requests: raw tool-use id when scoped
                 const joinId = completed.toolUseId || permId;
