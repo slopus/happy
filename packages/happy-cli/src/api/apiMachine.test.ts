@@ -1318,9 +1318,10 @@ describe('ApiMachineClient socket reconnection', () => {
     // aplus-dev-studio specs/e2ee-machine-control-boundary R12/R15 — a client seals for this
     // daemon with a sender only when it says so, and only to the automation key it publishes.
     it.each([
-        { sender: true },
-        { sender: false },
-    ])('publishes the authenticated-envelope capability only with a trusted sender (sender=$sender)', async ({ sender }) => {
+        { sender: true, required: false },
+        { sender: true, required: true },
+        { sender: false, required: false },
+    ])('publishes the authenticated-envelope capability only with a trusted sender (sender=$sender, required=$required)', async ({ sender, required }) => {
         mockSocket.emitWithAck.mockImplementation(async (event: string, data: any) => {
             if (event === 'automation-key-register') return { ok: true, value: { keyVersion: 4 } };
             if (event === 'machine-update-metadata') {
@@ -1336,7 +1337,7 @@ describe('ApiMachineClient socket reconnection', () => {
             secretKey: new Uint8Array(32).fill(8),
             registeredKeyVersion: 3,
         }, vi.fn());
-        if (sender) client.setAuthenticatedEnvelopeSender(new Uint8Array(32).fill(9));
+        if (sender) client.setAuthenticatedEnvelopeSender(new Uint8Array(32).fill(9), { required });
         client.connect();
 
         socketHandlers.connect![0]!();
@@ -1345,6 +1346,7 @@ describe('ApiMachineClient socket reconnection', () => {
             version: 1,
             automationPublicKey: Buffer.from(new Uint8Array(32).fill(7)).toString('base64'),
             trustedSenderPublicKey: Buffer.from(new Uint8Array(32).fill(9)).toString('base64'),
+            required,
         } : undefined);
         client.shutdown();
     });

@@ -112,6 +112,12 @@ export const authenticatedEnvelopesCapabilitySchema = z.object({
   automationPublicKey: publicKey32,
   /** The account or company key the daemon's machine key is wrapped to. */
   trustedSenderPublicKey: publicKey32,
+  /**
+   * True when the daemon refuses anonymous payloads (strict machine control).
+   * A client that holds none of the trusted keys then refuses to save instead
+   * of sealing anonymously. Absent from daemons that predate it.
+   */
+  required: z.boolean().optional(),
 });
 export type AuthenticatedEnvelopesCapability = z.infer<typeof authenticatedEnvelopesCapabilitySchema>;
 

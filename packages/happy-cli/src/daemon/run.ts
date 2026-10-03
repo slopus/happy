@@ -4181,7 +4181,7 @@ export async function startDaemon(): Promise<void> {
       runTick: async () => { await scriptWorker?.tick(); },
       logDebug: (message) => logger.debug(`[script-automations] ${message}`),
     });
-    apiMachine.setAuthenticatedEnvelopeSender(payloadTrust.customerPublicKey);
+    apiMachine.setAuthenticatedEnvelopeSender(payloadTrust.customerPublicKey, { required: payloadTrust.mode === 'strict' });
     apiMachine.setAutomationKey(machineAutomationKey, (keyVersion) => {
       machineAutomationKey = updateMachineAutomationKeyRegistration(
         configuration.automationKeyFile,

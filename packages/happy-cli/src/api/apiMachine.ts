@@ -705,6 +705,7 @@ export class ApiMachineClient {
     private lastKnownAutonomousQualityGateRpcAvailable: boolean | null = null;
     private automationKey: MachineAutomationKey | null = null;
     private authenticatedEnvelopeSender: Uint8Array | null = null;
+    private authenticatedEnvelopesRequired = false;
     /** Set once the daemon can resolve projects to workspaces. */
     private lessonHosts: LessonHostSupervisor | null = null;
     private automationProtocolVersion: number = AUTOMATION_PROTOCOL_VERSION;
@@ -2262,12 +2263,15 @@ export class ApiMachineClient {
     /**
      * aplus-dev-studio specs/e2ee-machine-control-boundary R12/R15 — the sender this daemon
      * trusts for automations, follow-ups and scripts, or null when it has none (legacy
-     * credentials). With one, the machine metadata tells clients to seal with it, and to
-     * which automation key; the metadata is encrypted with the machine key, so a server
-     * without that key can neither read nor forge the advertisement.
+     * credentials). With one, the machine metadata tells clients to seal with it, to which
+     * automation key, and whether this daemon refuses anonymous payloads (`required`, under
+     * strict). The metadata is encrypted with the machine key, so a server without that key
+     * can neither read nor forge the advertisement. It is only as genuine as the machine
+     * key envelope a client unwraps, which nothing yet authenticates.
      */
-    setAuthenticatedEnvelopeSender(publicKey: Uint8Array | null): void {
+    setAuthenticatedEnvelopeSender(publicKey: Uint8Array | null, options: { required: boolean } = { required: false }): void {
         this.authenticatedEnvelopeSender = publicKey;
+        this.authenticatedEnvelopesRequired = options.required;
     }
 
     private authenticatedEnvelopesField(): { authenticatedEnvelopes?: AuthenticatedEnvelopesCapability } {
@@ -2277,6 +2281,7 @@ export class ApiMachineClient {
                 version: 1,
                 automationPublicKey: Buffer.from(this.automationKey.publicKey).toString('base64'),
                 trustedSenderPublicKey: Buffer.from(this.authenticatedEnvelopeSender).toString('base64'),
+                required: this.authenticatedEnvelopesRequired,
             },
         };
     }
