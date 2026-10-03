@@ -17,5 +17,5 @@
 1. [Done] 실제 prod backend 확인 및 Claude Opus 5.5/high 조사 리뷰: ElastiCache URL 모드, Sentinel 자료 제외, 원인 미확정.
 2. [Done] 동일 window p99/max와 성공 slow-read의 bus별 throttle 회귀 Red→Green. shutdown·polling 보존.
 3. [Done] Opus 5.5/high 변경 리뷰 approve, 관련 84테스트·typecheck/runtime build와 diff check 통과. p99 인자 assertion도 보강했다.
-4. [In progress] commit/push 및 Happy PR 생성. 소비 플랫폼 PR은 Happy merge를 기다리는 Draft로 준비한다.
+4. [Done] commit/push 및 Happy PR #672 생성. 소비 플랫폼 PR은 Happy merge를 기다리는 Draft로 준비한다.
 5. [ ] 배포 후 replica별 timeout/slow-read/event-loop max 상관분석과 같은 조건의 24h 비교. 관측 배포만으로 #1326 해결 판정하지 않는다.
