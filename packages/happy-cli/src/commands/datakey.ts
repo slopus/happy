@@ -27,7 +27,7 @@ import {
   describeDataKeyStatus,
   type ActivationGateFailure,
 } from '@/datakey/activation'
-import { describeMachineControl } from '@/datakey/machineControlStatus'
+import { describeMachineControl, describeMachineKeyFingerprint } from '@/datakey/machineControlStatus'
 import { runHarden } from '@/datakey/hardenTransition'
 import { rotateMachineAutomationKey } from '@/daemon/automations/machineAutomationKey'
 import { pendingMachineKeyRotationFile } from '@/datakey/machineControlIo'
@@ -160,6 +160,11 @@ async function printMachineControlStatus(): Promise<void> {
   }[control.key]
   console.log(`machine control: ${modeLabel}`)
   console.log(`machine key:     ${keyLabel}`)
+  const fingerprint = describeMachineKeyFingerprint({ rawCredentials, machineId: settings.machineId })
+  if (fingerprint) {
+    // aplus-dev-studio specs/e2ee-machine-control-boundary R20 — compared with the client before it attests the key.
+    console.log(`key fingerprint: ${chalk.bold(fingerprint)} ${chalk.gray('(웹·데스크톱의 머신 키 확인에서 같은 값인지 비교하세요)')}`)
+  }
   if (control.pending) {
     const when = control.pending.lastAttemptAt ? ` (${new Date(control.pending.lastAttemptAt).toLocaleString()})` : ''
     const why = control.pending.lastError ? ` — 마지막 실패: ${control.pending.lastError}${when}` : ''
