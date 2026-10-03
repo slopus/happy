@@ -109,3 +109,36 @@ export function createDelegatedChat(connection: DelegatedConnection) {
         stop: (turnId: string) => call(`/turns/${turnId}/cancel`, {}),
     };
 }
+
+export interface DelegatedHistoryAccess {
+    v: 1;
+    appId: 'relationship-advisor';
+    conversationId: string;
+    grantId: string;
+    token: string;
+    key: string;
+    expiresAt: string;
+}
+
+/** A deliberately separate capability: no chat, account or mutation methods. */
+export function createDelegatedHistoryReader(serverUrl: string, access: DelegatedHistoryAccess) {
+    return {
+        async read(signal?: AbortSignal) {
+            const result = await request<{ conversationId: string; createdAt: string; turns: DelegatedTurn[] }>(serverUrl,
+                `/v1/apps/history/${encodeURIComponent(access.conversationId)}`, access.token, undefined, 'GET', signal);
+            if (result.conversationId !== access.conversationId) throw new Error('Application conversation context mismatch');
+            return { ...result, turns: result.turns.map(turn => {
+                const decode = (ciphertext: string, direction: Binding['direction'], sequence: number) => {
+                    const data = open(ciphertext, access.key);
+                    const expected: Binding = { v: 1, grantId: access.grantId, conversationId: access.conversationId, turnId: turn.id, direction, sequence };
+                    for (const [key, value] of Object.entries(expected)) if (data[key] !== value) throw new Error('Application message context mismatch');
+                    return data;
+                };
+                const messages = decode(turn.input, 'input', 0).messages;
+                const text = turn.output ? decode(turn.output, 'output', turn.sequence).text : '';
+                if (!Array.isArray(messages) || messages.length > 100 || typeof text !== 'string' || !messages.every(message => message && ['user', 'assistant'].includes(message.role) && typeof message.text === 'string' && (message.images === undefined || (Array.isArray(message.images) && message.images.length <= 4 && message.images.every((url: unknown) => typeof url === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(url)))))) throw new Error('Invalid application history');
+                return { ...turn, messages: messages as DelegatedMessage[], text };
+            }) };
+        },
+    };
+}

@@ -19,6 +19,12 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const ja: TranslationStructure = {
     appConversations: {
+        openConversation: "会話を表示",
+        openHint: "元のアプリのページでこの会話の履歴を表示",
+        opening: "会話を開いています…",
+        openFailed: "この会話を開けませんでした。更新してからもう一度お試しください。",
+        popupBlocked: "ブラウザが新しいウィンドウをブロックしました。ポップアップを許可してからもう一度お試しください。",
+        keyUnavailable: "このデバイスの復号情報を利用できないため、会話履歴を表示できません。",
         title: "アプリの会話",
         empty: "アプリの会話はまだありません",
         emptyHint: "外部アプリの QR コードを読み取って連携を許可すると、会話がここに表示されます。",

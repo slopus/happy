@@ -9,6 +9,7 @@ import { appAuthorizationRequest, isAppGrantActive, type AppAuthorizationGrant, 
 import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import { useOpenAppConversation } from '@/hooks/useOpenAppConversation';
 import { openExternalUrl } from '@/utils/openExternalUrl';
 
 const emptyDirectory: AppConversationDirectory = { conversations: [], nextCursor: null };
@@ -35,6 +36,7 @@ export function AppConversationsSidebar({ visible = true }: { visible?: boolean 
     const { credentials } = useAuth();
     const token = credentials?.token;
     const server = getServerUrl();
+    const history = useOpenAppConversation(token);
     const machines = useAllMachines({ includeOffline: true });
     const { theme } = useUnistyles();
     const { width, height } = useWindowDimensions();
@@ -140,15 +142,16 @@ export function AppConversationsSidebar({ visible = true }: { visible?: boolean 
                     {!conversations.length ? <Text style={styles.emptyGroup}>{t('appConversations.noConversations')}</Text> : conversations.map(conversation => {
                         const grant = grants.find(value => value.id === conversation.grantId)!;
                         const state = conversation.turns[0]?.state;
-                        return <View key={conversation.id} style={styles.row} testID={`app-conversation-${conversation.id}`}>
+                        return <Pressable key={conversation.id} accessibilityRole="button" accessibilityLabel={`${t('appConversations.openConversation')} · ${new Date(conversation.createdAt).toLocaleString()}`} accessibilityHint={t('appConversations.openHint')} accessibilityState={{ busy: history.openingId === conversation.id, disabled: history.loading }} disabled={history.loading} onPress={() => history.open(conversation, grant)} style={({ pressed }) => [styles.row, pressed && styles.pressed]} testID={`app-conversation-${conversation.id}`}>
                             <Text style={styles.title} numberOfLines={1}>{t('appConversations.conversation')} · {new Date(conversation.createdAt).toLocaleString()}</Text>
                             <Text style={styles.secondary} numberOfLines={1}>{deviceName(grant.machineId)}</Text>
                             <View style={styles.statusRow}>
-                                <Text style={styles.secondary}>{turnLabel(state)}</Text>
+                                <Text style={styles.secondary}>{history.openingId === conversation.id ? t('appConversations.opening') : turnLabel(state)}</Text>
                                 <Text style={styles.secondary}>{new Date(conversation.lastActivityAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
                             </View>
                             {!isAppGrantActive(grant) ? <Text style={styles.secondary}>{grantLabel(grant)} · {t('appConversations.retained')}</Text> : null}
-                        </View>;
+                            <Text style={styles.secondary}>{t('appConversations.openConversation')} ↗</Text>
+                        </Pressable>;
                     })}
                 </View>;
             })}

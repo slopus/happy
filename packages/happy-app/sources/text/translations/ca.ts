@@ -16,6 +16,12 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  */
 export const ca: TranslationStructure = {
     appConversations: {
+        openConversation: "Mostra la conversa",
+        openHint: "Mostra l’historial d’aquesta conversa a l’aplicació d’origen",
+        opening: "S’està obrint la conversa…",
+        openFailed: "No s’ha pogut obrir aquesta conversa. Actualitza la pàgina i torna-ho a provar.",
+        popupBlocked: "El navegador ha bloquejat la finestra nova. Permet les finestres emergents i torna-ho a provar.",
+        keyUnavailable: "Les dades de desxifratge d’aquest dispositiu no estan disponibles, de manera que no es pot mostrar l’historial de la conversa.",
         title: "Converses d’aplicacions",
         empty: "Encara no hi ha converses d’aplicacions",
         emptyHint: "Les converses apareixeran aquí després d’escanejar el codi QR d’una aplicació externa i autoritzar-la.",

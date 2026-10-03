@@ -16,6 +16,12 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  */
 export const pt: TranslationStructure = {
     appConversations: {
+        openConversation: "Ver conversa",
+        openHint: "Ver o histórico desta conversa no aplicativo de origem",
+        opening: "Abrindo conversa…",
+        openFailed: "Não foi possível abrir esta conversa. Atualize a página e tente novamente.",
+        popupBlocked: "O navegador bloqueou a nova janela. Permita pop-ups e tente novamente.",
+        keyUnavailable: "Os dados de descriptografia deste dispositivo não estão disponíveis, por isso não é possível ver o histórico da conversa.",
         title: "Conversas de aplicativos",
         empty: "Ainda não há conversas de aplicativos",
         emptyHint: "As conversas aparecerão aqui depois que você escanear o código QR de um aplicativo externo e autorizar o acesso.",

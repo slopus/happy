@@ -27,6 +27,12 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  */
 export const pl: TranslationStructure = {
     appConversations: {
+        openConversation: "Wyświetl rozmowę",
+        openHint: "Wyświetl historię tej rozmowy w aplikacji źródłowej",
+        opening: "Otwieranie rozmowy…",
+        openFailed: "Nie udało się otworzyć tej rozmowy. Odśwież i spróbuj ponownie.",
+        popupBlocked: "Przeglądarka zablokowała nowe okno. Zezwól na wyskakujące okna i spróbuj ponownie.",
+        keyUnavailable: "Dane do odszyfrowania na tym urządzeniu są niedostępne, więc nie można wyświetlić historii rozmowy.",
         title: "Rozmowy aplikacji",
         empty: "Nie ma jeszcze rozmów aplikacji",
         emptyHint: "Rozmowy pojawią się tutaj po zeskanowaniu kodu QR zewnętrznej aplikacji i przyznaniu jej dostępu.",

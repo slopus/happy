@@ -18,6 +18,12 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const zhHans: TranslationStructure = {
     appConversations: {
+        openConversation: "查看会话",
+        openHint: "在应用原页面查看这条历史对话",
+        opening: "正在打开会话…",
+        openFailed: "无法打开这条会话，请刷新后重试。",
+        popupBlocked: "浏览器阻止了新窗口，请允许弹出窗口后重试。",
+        keyUnavailable: "此设备的解密信息不可用，无法查看历史对话。",
         title: "应用会话",
         empty: "尚无应用会话",
         emptyHint: "从外部应用扫码授权后，对话会显示在这里。",

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import nacl from 'tweetnacl';
-import { createDelegatedChat, startBrowserAppAuthorization } from './browserDelegation';
+import { createDelegatedChat, createDelegatedHistoryReader, startBrowserAppAuthorization } from './browserDelegation';
 import { decodeBase64, encodeBase64, getRandomBytes } from '../crypto/encryption';
 const key = getRandomBytes(32);
 const connection = { id: 'grant', serverUrl: 'https://paws.example', token: 'paws_app.grant.secret', key: encodeBase64(key), machineId: 'machine', expiresAt: new Date(Date.now() + 60000).toISOString() };
@@ -54,5 +54,30 @@ describe('authorization expiry binding', () => {
             : { state: 'authorized', machineId: 'machine', expiresAt, envelope: 'invalid' }))));
         const pending = await startBrowserAppAuthorization('https://paws.example', 'https://app.example');
         await expect(pending.wait()).rejects.toThrow('Incomplete authorization');
+    });
+});
+
+
+describe('read-only history', () => {
+    const access = { v: 1 as const, appId: 'relationship-advisor' as const, conversationId: 'conversation', grantId: 'grant', key: connection.key, token: 'paws_history.scoped', expiresAt: connection.expiresAt };
+    const binding = { v: 1, grantId: 'grant', conversationId: 'conversation', turnId: 'turn', direction: 'input', sequence: 0 };
+    const result = (input: unknown) => ({ conversationId: 'conversation', createdAt: '', turns: [{ id: 'turn', input: encrypted(input), output: null, sequence: 0, state: 'completed', createdAt: '' }] });
+    it('only offers reading, decrypts history and uses the dedicated capability endpoint', async () => {
+        const fetcher = vi.fn(async () => new Response(JSON.stringify(result({ ...binding, messages: [{ role: 'user', text: 'old conversation', images: Array(4).fill('data:image/png;base64,AA==') }] }))));
+        vi.stubGlobal('fetch', fetcher);
+        const reader = createDelegatedHistoryReader(connection.serverUrl, access);
+        expect(Object.keys(reader)).toEqual(['read']);
+        const history = await reader.read();
+        expect(history.turns[0].messages[0].text).toBe('old conversation');
+        expect(history.turns[0].messages[0].images).toHaveLength(4);
+        expect(fetcher).toHaveBeenCalledWith('https://paws.example/v1/apps/history/conversation', expect.objectContaining({ method: 'GET', credentials: 'omit', redirect: 'error', headers: { Authorization: 'Bearer paws_history.scoped' } }));
+    });
+    it.each(['grantId', 'conversationId', 'turnId', 'direction', 'sequence'])('rejects swapped encrypted history %s', async field => {
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(result({ ...binding, [field]: 'wrong', messages: [] })))));
+        await expect(createDelegatedHistoryReader(connection.serverUrl, access).read()).rejects.toThrow('context mismatch');
+    });
+    it('rejects malformed message data and remote image tracking', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(result({ ...binding, messages: [{ role: 'user', text: 'x', images: ['https://tracker.example'] }] })))));
+        await expect(createDelegatedHistoryReader(connection.serverUrl, access).read()).rejects.toThrow('Invalid application history');
     });
 });

@@ -16,6 +16,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 
 export const en = {
     appConversations: {
+        openConversation: 'View conversation',
+        openHint: 'View this conversation’s history in the original app',
+        opening: 'Opening conversation…',
+        openFailed: 'Could not open this conversation. Refresh and try again.',
+        popupBlocked: 'Your browser blocked the new window. Allow pop-ups and try again.',
+        keyUnavailable: 'Decryption details for this device are unavailable, so the conversation history cannot be viewed.',
+
         title: "App conversations",
         empty: "No app conversations yet",
         emptyHint: "Conversations will appear here after you scan an external app’s QR code and authorize it.",

@@ -187,3 +187,48 @@ describe('permanent app authorization and owner conversation directory', () => {
         }
     });
 });
+
+
+describe('owner-initiated, scoped history reading', () => {
+    it('binds owner, conversation, lifecycle and record incarnation without restoring execution', async () => {
+        process.env.HANDY_MASTER_SECRET = 'isolated-history-test-secret';
+        const { openOwnedAppConversation, readAppHistory } = await import('./appHistory');
+        const { auth } = await import('@/app/auth/auth');
+        const a = await authorize();
+        const second = randomUUID();
+        await appConversations(a.token, second);
+        await appTurns(a.token, a.conversationId, { id: randomUUID(), input: 'encrypted-history' });
+        await expect(openOwnedAppConversation('another-owner', a.conversationId)).rejects.toThrow();
+        const access = await openOwnedAppConversation(owner, a.conversationId);
+        expect(access.machineEnvelope).toBe('encrypted-machine');
+        expect((await readAppHistory(access.token, a.conversationId)).turns[0].input).toBe('encrypted-history');
+        expect(await auth.verifyToken(access.token)).toBeNull();
+        await expect(readAppHistory(access.token, second)).rejects.toThrow();
+        await expect(readAppHistory(a.token, a.conversationId)).rejects.toThrow();
+        await expect(readAppHistory(access.token + 'tampered', a.conversationId)).rejects.toThrow();
+        await expect(appConversations(access.token)).rejects.toThrow();
+        await expect(appTurns(access.token, a.conversationId, { id: randomUUID(), input: 'write' })).rejects.toThrow();
+        await state.db.appDelegation.update({ where: { id: a.id }, data: { expiresAt: new Date(0) } });
+        expect((await openOwnedAppConversation(owner, a.conversationId)).grantExpiresAt).toBe(new Date(0).toISOString());
+        await revokeAppGrant(owner, a.id);
+        await expect(readAppHistory(access.token, a.conversationId)).rejects.toThrow();
+        const revokedAccess = await openOwnedAppConversation(owner, a.conversationId);
+        expect((await readAppHistory(revokedAccess.token, a.conversationId)).turns).toHaveLength(1);
+        await expect(appConversations(a.token)).rejects.toThrow();
+        vi.spyOn(Date, 'now').mockReturnValue(Date.parse(revokedAccess.expiresAt) + 1);
+        try { await expect(readAppHistory(revokedAccess.token, a.conversationId)).rejects.toThrow(); } finally { vi.restoreAllMocks(); }
+        await deleteOwnedAppGrant(owner, a.id);
+        await expect(readAppHistory(revokedAccess.token, a.conversationId)).rejects.toThrow();
+        await expect(openOwnedAppConversation(owner, a.conversationId)).rejects.toThrow();
+    });
+    it('rejects a deleted and recreated conversation with the same ID', async () => {
+        const { openOwnedAppConversation, readAppHistory } = await import('./appHistory');
+        const a = await authorize();
+        const access = await openOwnedAppConversation(owner, a.conversationId);
+        await deleteAppConversation(a.token, a.conversationId);
+        await appConversations(a.token, a.conversationId);
+        await expect(readAppHistory(access.token, a.conversationId)).rejects.toThrow();
+        expect((await readAppHistory((await openOwnedAppConversation(owner, a.conversationId)).token, a.conversationId)).turns).toEqual([]);
+        await revokeAppGrant(owner, a.id);
+    });
+});
