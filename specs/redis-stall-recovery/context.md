@@ -1,5 +1,17 @@
 # Context
 
+## 2026-10-03 단발 지연 조사·계측 보완
+
+- 배포된 Happy 2b9f283d에서 기존 read 계측 수집을 확인했지만 후속 lookup/presence timeout이 남았다. 성공 XREAD의 2~5초 bucket tail이 한 replica에서 6건 관측됐으며 개별 RPC와 인과관계는 미확정이다.
+- 실제 prod 두 파드의 runtime 설정은 URL 모드 AWS ElastiCache였다. IDC Sentinel TILT/재시작/exporter는 다른 backend의 자료이므로 현재 원인 근거에서 제외한다.
+- 별도 프로세스 30초 read-only 대조에서 양쪽 PING p99 약13~14ms, XREAD p99 약55~56ms, max 약206/112ms, 실패·500ms초과 0이었다. 같은 창의 앱 slow-read/timeout 증가도 0이라 문제발생 순간의 대조가 아니며 원인을 배제하지 못한다.
+- Claude / claude-opus-5-5 / high 읽기 전용 조사 리뷰 완료. requester publish→peer read→peer publish→requester read가 조회 시한에 포함되고, 기존 p99만으로 단발 pause를 배제할 수 없다는 의견을 채택했다. URL READONLY 복구와 restoreSession 미취소는 현재 원인 증거가 없어 별도 후속으로 보류한다.
+- event_loop_lag_max_seconds를 기존 p99와 동일 window에서 함께 샘플링한 뒤 한 번 reset한다. 성공 XREAD 1초 초과는 bus·소요 ms만 warn으로 기록하며 bus별 1분 throttle을 적용한다. 사용자/room/stream ID/credentials는 넣지 않는다.
+- 3초 max가 누락되는 metrics 테스트와 slow-read 3개 테스트를 기존 코드에서 Red 확인했다. 최소 구현 후 metrics 3개·adapter 13개 Green, 관련 6파일 84테스트 통과. JSON/Prometheus text 모두 동일 window/reset 한번 검증. 최신 main(8839d058) 반영 시 서버 소스 차이는 없었다. stale Prisma 생성 타입을 현행 schema로 재생성한 뒤 서버 typecheck와 runtime build도 통과했다.
+- Claude Opus 5.5/high 최종 변경 리뷰 approve. Happy 후속 read/wait가 out_of_scope, 새 spawn이 RPC method not available로 실패해 local Claude CLI의 같은 모델·effort로 코드와 prom-client 구현을 직접 전달했다(도구 비활성, modelUsage 확인). 등록 순서와 동기 collect는 현재 Registry의 text/JSON 경로에서 안전하고 테스트로 고정돼 있다. p99 인자99 assertion도 보강했다. 단일 max metric 조회는 새 수집을 하지 않고, 복수 scraper는 reset window를 나눌 수 있으므로 운영 비교에 같은 scrape series를 사용한다.
+- commit/PR 이후 배포·운영 상관분석이 남는다. 재배포/운영 flag 변경/파드 재시작은 수행하지 않았다.
+- 서버 구현 d761f665를 push하고 https://github.com/buzzni/happy/pull/672 (base main)을 생성했다. 소비 플랫폼은 이 PR merge 후 main의 merge commit을 가리키도록 맞춰야 하며 배포 검증과 #1326 해결 판정은 별도다.
+
 ## 2026-10-03 Desktop #1326 후속
 
 - prod image의 Happy afad342에는 reader 분리·#528·#531이 포함돼 있지만 peer 무응답은 지속된다. 현재 관측으로 Redis 지연/reader/peer 처리의 근본 원인을 확정하지 않았다.

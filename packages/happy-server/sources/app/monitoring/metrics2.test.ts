@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { dbMock } = vi.hoisted(() => {
+const { dbMock, eventLoopHistogram } = vi.hoisted(() => {
     const dbMock = {
         account: { count: vi.fn() },
         session: { count: vi.fn() },
@@ -9,8 +9,11 @@ const { dbMock } = vi.hoisted(() => {
         $queryRaw: vi.fn()
     };
 
-    return { dbMock };
+    const eventLoopHistogram = { enable: vi.fn(), percentile: vi.fn(() => 20_000_000), max: 0, reset: vi.fn() };
+    return { dbMock, eventLoopHistogram };
 });
+
+vi.mock('node:perf_hooks', () => ({ monitorEventLoopDelay: () => eventLoopHistogram }));
 
 vi.mock("@/storage/db", () => ({
     db: dbMock
@@ -43,6 +46,36 @@ describe("updateDatabaseMetrics", () => {
 });
 
 describe("event loop lag metric", () => {
+    it('exposes a rare three-second pause alongside the same window p99 and resets once per scrape', async () => {
+        eventLoopHistogram.max = 3_000_000_000;
+        eventLoopHistogram.percentile.mockReturnValue(20_000_000);
+        eventLoopHistogram.percentile.mockClear();
+        eventLoopHistogram.reset.mockClear();
+        eventLoopHistogram.reset.mockImplementation(() => {
+            eventLoopHistogram.max = 0;
+            eventLoopHistogram.percentile.mockReturnValue(0);
+        });
+        const first = await register.getMetricsAsJSON();
+        expect(eventLoopHistogram.percentile).toHaveBeenCalledWith(99);
+        expect(first.find(metric => metric.name === 'event_loop_lag_seconds')?.values[0].value).toBe(0.02);
+        expect(first.find(metric => metric.name === 'event_loop_lag_max_seconds')?.values[0].value).toBe(3);
+        expect(eventLoopHistogram.reset).toHaveBeenCalledTimes(1);
+        const next = await register.getMetricsAsJSON();
+        expect(next.find(metric => metric.name === 'event_loop_lag_seconds')?.values[0].value).toBe(0);
+        expect(next.find(metric => metric.name === 'event_loop_lag_max_seconds')?.values[0].value).toBe(0);
+        expect(eventLoopHistogram.reset).toHaveBeenCalledTimes(2);
+        eventLoopHistogram.max = 4_000_000_000;
+        eventLoopHistogram.percentile.mockReturnValue(30_000_000);
+        const prometheus = await register.metrics();
+        expect(prometheus).toContain('event_loop_lag_seconds{app="happy-server"} 0.03');
+        expect(prometheus).toContain('event_loop_lag_max_seconds{app="happy-server"} 4');
+        expect(eventLoopHistogram.reset).toHaveBeenCalledTimes(3);
+        const nextPrometheus = await register.metrics();
+        expect(nextPrometheus).toContain('event_loop_lag_seconds{app="happy-server"} 0');
+        expect(nextPrometheus).toContain('event_loop_lag_max_seconds{app="happy-server"} 0');
+        expect(eventLoopHistogram.reset).toHaveBeenCalledTimes(4);
+    });
+
     it("is registered for prometheus scraping", async () => {
         const metrics = await register.metrics();
 
