@@ -23,7 +23,10 @@ describe.skipIf(!chromePath)('console page (real Chrome)', () => {
     const port = () => (server.address() as AddressInfo).port
     const ops: Array<{ op: string; bearer: string; body: Record<string, unknown> }> = []
     const defaultTasks = () => [{ taskId: 'task-1', status: 'awaiting-user', pauseReason: 'awaiting-user', tabs: ['tab-1'], updatedAtMs: Date.now() }]
+    /** A long poll that does not answer within the test, as a quiet task does. */
+    let holdSubscribe = false
     let listedTasks: Array<Record<string, unknown>> = defaultTasks()
+    let taskDetail: Record<string, unknown> | undefined
 
     beforeAll(async () => {
         server = http.createServer((req, res) => {
@@ -55,17 +58,23 @@ describe.skipIf(!chromePath)('console page (real Chrome)', () => {
             let raw = ''
             req.on('data', (chunk) => { raw += chunk })
             req.on('end', () => {
-                ops.push({ op: m[1], bearer: String(req.headers.authorization ?? '').replace(/^Bearer /, ''), body: JSON.parse(raw || '{}') })
+                const body = JSON.parse(raw || '{}')
+                ops.push({ op: m[1], bearer: String(req.headers.authorization ?? '').replace(/^Bearer /, ''), body })
                 const result = m[1] === 'listTasks'
                     ? { tasks: listedTasks }
                     : m[1] === 'getTask'
-                        ? { taskId: 'task-1', status: 'paused', stateVersion: 3, tabs: ['tab-1', 'tab-2'], uncertainActions: [], cancelRequested: false,
+                        ? taskDetail ?? { taskId: body.taskId || 'task-1', status: 'paused', stateVersion: 3, tabs: ['tab-1', 'tab-2'], uncertainActions: [], cancelRequested: false,
                             tabLeases: [{ tabId: 'tab-1', leaseEpoch: 7, owner: { kind: 'none' } }, { tabId: 'tab-2', leaseEpoch: 2, owner: { kind: 'none' } }] }
                         : m[1] === 'subscribe'
                             ? { kind: 'events', events: [{ seq: 1, type: 'state-changed', leaseEpoch: 11, data: {} }] }
                             : m[1] === 'viewerTicket' ? { ticket: `ticket-${ops.filter((entry) => entry.op === 'viewerTicket').length}`, expiresAtMs: Date.now() + 30_000 } : {}
-                res.writeHead(200, { 'content-type': 'application/json' })
-                res.end(JSON.stringify({ ok: true, result }))
+                // A slow task answers late, after the user may have picked another one.
+                // A screen ticket answers after a moment, so a renewal can arrive while the first one is in flight.
+                const delay = m[1] === 'getTask' && body.taskId === 'task-slow' ? 800 : m[1] === 'subscribe' && holdSubscribe ? 5_000 : m[1] === 'viewerTicket' ? 300 : 0
+                setTimeout(() => {
+                    res.writeHead(200, { 'content-type': 'application/json' })
+                    res.end(JSON.stringify({ ok: true, result }))
+                }, delay)
             })
         })
         await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve))
@@ -186,7 +195,8 @@ describe.skipIf(!chromePath)('console page (real Chrome)', () => {
         ]
         try {
             const cap = token('fold', Date.now() + 600_000)
-            const target = await harness.openFrontTab(`${origin}/console#abp-cap=${cap}&abp-exp=${Date.now() + 600_000}`)
+            // The language is explicit: the page otherwise follows the browser's.
+            const target = await harness.openFrontTab(`${origin}/console?lang=en#abp-cap=${cap}&abp-exp=${Date.now() + 600_000}`)
             await eventually(() => harness.evaluate(target, `document.querySelectorAll('#tasks button').length`), (n) => n === 6, 10_000)
             const layout = await harness.evaluate(target, `JSON.stringify({
                 top: [...document.querySelectorAll('#tasks > button')].map((b) => b.textContent.split(' ')[0]),
@@ -197,7 +207,51 @@ describe.skipIf(!chromePath)('console page (real Chrome)', () => {
                 top: ['task-approval', 'task-login', 'task-login-parked'], folded: ['task-idle', 'task-running', 'task-cancelling'], open: false, summary: '3 other open tasks',
             })
             await harness.closeTarget(target)
+            const korean = await harness.openFrontTab(`${origin}/console?lang=ko#abp-cap=${token('fold-ko', Date.now() + 600_000)}&abp-exp=${Date.now() + 600_000}`)
+            expect(await eventually(() => harness.evaluate(korean, `(document.querySelector('#tasks summary') || {}).textContent`), Boolean, 10_000)).toBe('다른 작업 3개')
+            expect(await harness.evaluate(korean, 'document.documentElement.lang')).toBe('ko')
+            await harness.closeTarget(korean)
+        } finally { listedTasks = defaultTasks(); holdSubscribe = false }
+    }, 30_000)
+
+    it("keeps the task the user picked when the automatically opened one answers late", async () => {
+        listedTasks = [{ taskId: 'task-slow', status: 'awaiting-user', tabs: ['tab-1'], updatedAtMs: Date.now() }]
+        holdSubscribe = true
+        try {
+            const cap = token('race', Date.now() + 600_000)
+            const target = await harness.openFrontTab(`${origin}/console?lang=en#abp-cap=${cap}&abp-exp=${Date.now() + 600_000}`)
+            await eventually(() => ops.some((entry) => entry.op === 'getTask' && entry.body.taskId === 'task-slow'), Boolean, 10_000)
+            await harness.evaluate(target, `document.getElementById('taskId').value = 'task-1'; document.getElementById('connect').click()`)
+            await harness.evaluate(target, `new Promise((r) => setTimeout(r, 1500))`)
+            expect(await harness.evaluate(target, `document.getElementById('detailId').textContent`)).toBe('task-1')
+            await harness.closeTarget(target)
         } finally { listedTasks = defaultTasks() }
+    }, 30_000)
+
+    it('tells the user to resume after they released control, though the wait reason stays recorded', async () => {
+        const now = Date.now()
+        // The Runtime keeps waitReason on the task after release (user-input-complete) and after the wait expired.
+        const released = { taskId: 'task-released', status: 'paused', pauseReason: 'user-input-complete', waitReason: 'login', tabs: ['tab-1'], updatedAtMs: now }
+        listedTasks = [
+            released,
+            { taskId: 'task-login-parked', status: 'paused', pauseReason: 'grant-expired', waitReason: 'login', tabs: [], updatedAtMs: now },
+            { taskId: 'task-expired', status: 'paused', pauseReason: 'user-wait-expired', waitReason: 'login', tabs: [], updatedAtMs: now },
+        ]
+        taskDetail = { ...released, stateVersion: 4, uncertainActions: [], cancelRequested: false, tabLeases: [{ tabId: 'tab-1', leaseEpoch: 2, owner: { kind: 'none' } }] }
+        try {
+            const target = await harness.openFrontTab(`${origin}/console?lang=en#abp-cap=${token('released', Date.now() + 600_000)}&abp-exp=${Date.now() + 600_000}`)
+            await eventually(() => harness.evaluate(target, `document.querySelectorAll('#tasks button').length`), (n) => n === 3, 10_000)
+            const chips = await harness.evaluate(target, `JSON.stringify(Object.fromEntries([...document.querySelectorAll('#tasks button')]
+                .map((b) => [b.getAttribute('data-task'), b.querySelector('.chip').textContent])))`)
+            expect(JSON.parse(String(chips))).toEqual({ 'task-released': 'Released', 'task-login-parked': 'Login needed', 'task-expired': 'Paused' })
+            await harness.evaluate(target, `document.querySelector('[data-task="task-released"]').click()`)
+            await eventually(() => harness.evaluate(target, `(() => { const d = document.getElementById('detail'); return !!d && !d.hidden })()`), Boolean, 10_000)
+            const detail = await harness.evaluate(target, `JSON.stringify({ title: document.getElementById('detailTitle').textContent,
+                reason: document.getElementById('detailReason').textContent, takeOver: document.getElementById('takeOver').className,
+                resume: document.getElementById('resume').className })`)
+            expect(JSON.parse(String(detail))).toEqual({ title: 'Released', reason: 'Resume to hand the page back to the agent, or wait for it to continue.', takeOver: '', resume: 'primary' })
+            await harness.closeTarget(target)
+        } finally { listedTasks = defaultTasks(); taskDetail = undefined }
     }, 30_000)
 
     it('opens the screen through a one-time viewer ticket for the capability profile', async () => {
