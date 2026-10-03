@@ -115,8 +115,8 @@ export const MermaidRenderer = React.memo((props: {
         <html>
         <head>
             <meta charset="utf-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+            <meta name="viewport" content="width=${Math.round(dimensions.width) || 'device-width'}, initial-scale=1.0">
+            <script src="https://cdn.jsdelivr.net/npm/mermaid@11.12.2/dist/mermaid.min.js"></script>
             <style>
                 body {
                     margin: 0;
@@ -144,10 +144,18 @@ export const MermaidRenderer = React.memo((props: {
             <div id="mermaid-container"></div>
             <script>
                 function reportHeight() {
-                    const height = Math.max(
-                        document.body.scrollHeight,
-                        document.documentElement.scrollHeight
-                    );
+                    // Measure the rendered SVG's own box, not document.body.scrollHeight.
+                    // A mermaid v11 flowchart lays its SVG out at width:100% with no
+                    // intrinsic height, so scrollHeight over-reports the natural
+                    // (unscaled) height — the source of the oversized empty box. The
+                    // SVG's getBoundingClientRect() height is the actual on-screen size
+                    // after max-width:100% scaling.
+                    const svg = document.querySelector('#mermaid-container svg');
+                    const measured = svg
+                        ? svg.getBoundingClientRect().height
+                        : Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+                    // + body vertical padding (16px top + 16px bottom).
+                    const height = Math.ceil(measured) + 32;
                     if (window.ReactNativeWebView) {
                         window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'dimensions', height: height }));
                     }
@@ -185,20 +193,25 @@ export const MermaidRenderer = React.memo((props: {
     return (
         <View style={style.container} onLayout={onLayout}>
             <View style={[style.innerContainer, { height: Math.min(dimensions.height, MAX_DIAGRAM_HEIGHT) }]}>
-                <WebView
-                    source={{ html }}
-                    style={{ flex: 1 }}
-                    scrollEnabled={true}
-                    onMessage={(event) => {
-                        const data = JSON.parse(event.nativeEvent.data);
-                        if (data.type === 'dimensions') {
-                            setDimensions(prev => ({
-                                ...prev,
-                                height: Math.max(prev.height, data.height)
-                            }));
-                        }
-                    }}
-                />
+                {dimensions.width > 0 && (
+                    <WebView
+                        source={{ html }}
+                        style={{ flex: 1 }}
+                        scrollEnabled={true}
+                        onMessage={(event) => {
+                            const data = JSON.parse(event.nativeEvent.data);
+                            if (data.type === 'dimensions' && typeof data.height === 'number') {
+                                // Trust the latest measurement (no Math.max latch) so the
+                                // 2-phase re-measure can shrink an initially-oversized
+                                // diagram back down instead of freezing at the larger value.
+                                setDimensions(prev => ({
+                                    ...prev,
+                                    height: Math.max(40, data.height)
+                                }));
+                            }
+                        }}
+                    />
+                )}
             </View>
         </View>
     );
