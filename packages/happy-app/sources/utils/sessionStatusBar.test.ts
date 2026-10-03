@@ -70,6 +70,26 @@ describe('usage limit helpers', () => {
         expect(chips[0].id).toBe('seven_day');
     });
 
+    it('marks backend-named windows as scoped and leaves wire-only ids alone', () => {
+        const rows = getUsageLimitRows({
+            capturedAt: 1,
+            windows: [
+                { id: 'five_hour', status: 'allowed', utilization: 52, resetsAt: 100 },
+                { id: 'seven_day', status: 'allowed', utilization: 10, resetsAt: 200 },
+                { id: 'nimbus_quill', status: 'allowed', utilization: 3, resetsAt: 200 },
+                { id: 'weekly_fable', label: 'Fable', status: 'allowed', utilization: 17, resetsAt: 200 },
+            ],
+        });
+        const scoped = rows.filter(r => r.scoped);
+        expect(scoped.map(r => r.id)).toEqual(['weekly_fable']);
+        // The popup labels the row with the display name the backend sent.
+        expect(scoped[0].label).toBe('Fable');
+        expect(scoped[0].utilization).toBe(17);
+        // Plan and provider-internal windows carry no name, so they stay out.
+        expect(rows.find(r => r.id === 'nimbus_quill')?.scoped).toBe(false);
+        expect(rows.find(r => r.id === 'seven_day')?.scoped).toBe(false);
+    });
+
     it('hides chips for windows without numeric utilization and for absent data', () => {
         expect(getUsageLimitChips({ capturedAt: 1, windows: [{ id: 'five_hour', utilization: null }] }, false)).toEqual([]);
         expect(getUsageLimitChips(undefined, false)).toEqual([]);

@@ -7,7 +7,10 @@
  *   fraction, `resetsAt` is unix seconds (derived from the
  *   anthropic-ratelimit-unified-reset header).
  * - `get_usage` (pull): all windows at once. Utilization is 0-100,
- *   `resets_at` is an ISO 8601 string, and windows carry no status.
+ *   `resets_at` is an ISO 8601 string, and windows carry no status. Newer
+ *   backends additionally report model-scoped allotments (e.g. the Fable 5
+ *   weekly cap) as `{kind, group, percent, scope}` entries in a `limits`
+ *   array, while the legacy per-model buckets (`seven_day_opus`, …) stay null.
  */
 import type { UsageLimits, UsageLimitWindow, UsageLimitWindowStatus } from '@/api/types';
 
@@ -61,6 +64,44 @@ function normalizeIsoResetsAt(iso: string | null | undefined): number | null {
 
 type GetUsageWindow = { utilization: number | null, resets_at: string | null } | null | undefined;
 
+type ScopedLimitEntry = {
+    group?: unknown,
+    percent?: unknown,
+    resets_at?: unknown,
+    scope?: { model?: { display_name?: unknown } | null, surface?: unknown } | null,
+}
+
+/**
+ * Unscoped entries (kind `session` / `weekly_all`) mirror the top-level
+ * `five_hour` / `seven_day` buckets, so only scoped entries become windows.
+ * The id is derived from group + scope name (`weekly_fable`) to stay stable
+ * across snapshots, and the scope name doubles as the display label.
+ */
+function windowsFromScopedLimits(limits: unknown): UsageLimitWindow[] {
+    if (!Array.isArray(limits)) return [];
+    const windows: UsageLimitWindow[] = [];
+    for (const entry of limits) {
+        if (!entry || typeof entry !== 'object') continue;
+        const { group, percent, resets_at, scope } = entry as ScopedLimitEntry;
+        const rawName = scope?.model?.display_name ?? scope?.surface;
+        if (typeof rawName !== 'string' || !rawName.trim()) continue;
+        const label = rawName.trim();
+        const groupKey = typeof group === 'string' && group ? group : 'scoped';
+        const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+        const utilization = typeof percent === 'number' && Number.isFinite(percent)
+            ? Math.min(100, Math.max(0, percent))
+            : null;
+        windows.push({
+            id: `${groupKey}_${slug}`,
+            label,
+            utilization,
+            resetsAt: normalizeIsoResetsAt(typeof resets_at === 'string' ? resets_at : null),
+            status: synthesizeStatus(utilization),
+        });
+    }
+    return windows;
+}
+
 export function windowsFromGetUsage(rateLimits: Record<string, unknown>): UsageLimitWindow[] {
     const windows: UsageLimitWindow[] = [];
     for (const [id, value] of Object.entries(rateLimits)) {
@@ -80,6 +121,7 @@ export function windowsFromGetUsage(rateLimits: Record<string, unknown>): UsageL
             status: synthesizeStatus(utilization),
         });
     }
+    windows.push(...windowsFromScopedLimits(rateLimits['limits']));
     return windows;
 }
 

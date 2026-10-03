@@ -140,6 +140,13 @@ export type UsageLimitRow = {
     utilization: number | null;
     resetsAt: number | null;
     status: UsageLimitStatus;
+    /**
+     * The backend named this window (a model-scoped allotment like the Fable
+     * weekly cap carries its display name); plan and provider-internal windows
+     * arrive with an id only. Callers use this to tell "worth showing a human"
+     * apart from wire noise without hardcoding ids.
+     */
+    scoped: boolean;
 };
 
 /** All windows for the detail popover, well-known ids first. */
@@ -161,6 +168,7 @@ export function getUsageLimitRows(limits: UsageLimitsLike): UsageLimitRow[] {
             : null,
         resetsAt: typeof w.resetsAt === 'number' && Number.isFinite(w.resetsAt) ? w.resetsAt : null,
         status: getUsageLimitStatus(w),
+        scoped: typeof w.label === 'string' && w.label.trim().length > 0,
     }));
 }
 
