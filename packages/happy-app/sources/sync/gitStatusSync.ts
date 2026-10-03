@@ -59,7 +59,19 @@ export class GitStatusSync {
      * to avoid duplicate RPC round-trips.
      */
     invalidate(sessionId: string): void {
-        const projectKey = this.sessionToProjectKey.get(sessionId);
+        let projectKey = this.sessionToProjectKey.get(sessionId);
+        if (!projectKey) {
+            // A sibling that was never opened has no mapping yet (getSync runs
+            // on view), but its tools mutate the same working tree. Resolve the
+            // project from its metadata and refresh only if somebody is looking
+            // at that project (a sync exists); never create one for a project
+            // nobody views. Registering the mapping also lets the RPC run
+            // through this session, which is alive since it just streamed.
+            const resolved = this.getProjectKeyForSession(sessionId);
+            if (!resolved || !this.projectSyncMap.has(resolved)) return;
+            this.sessionToProjectKey.set(sessionId, resolved);
+            projectKey = resolved;
+        }
         if (projectKey) {
             const existing = this.debounceTimers.get(projectKey);
             if (existing) clearTimeout(existing);
@@ -121,9 +133,35 @@ export class GitStatusSync {
     }
 
     /**
-     * Fetch git status for a project using any session in that project
+     * A live session of the project to run git through. The project sync's
+     * closure was created by whichever session first touched the project, and
+     * that CLI may have exited since: an RPC to a dead session waits out the
+     * 50 s ack timeout, fails, and the pending re-run repeats it — a permanent
+     * timeout loop per project while any sibling streams, with git status
+     * never updating. So the session is resolved on every run instead.
      */
-    private async fetchGitStatusForProject(sessionId: string, projectKey: string): Promise<void> {
+    private resolveActiveSessionForProject(preferredSessionId: string, projectKey: string): string | null {
+        const sessions = storage.getState().sessions;
+        if (this.sessionToProjectKey.get(preferredSessionId) === projectKey && sessions[preferredSessionId]?.active) {
+            return preferredSessionId;
+        }
+        for (const [id, key] of this.sessionToProjectKey) {
+            if (key === projectKey && sessions[id]?.active) {
+                return id;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Fetch git status for a project using any live session in that project
+     */
+    private async fetchGitStatusForProject(preferredSessionId: string, projectKey: string): Promise<void> {
+        const sessionId = this.resolveActiveSessionForProject(preferredSessionId, projectKey);
+        if (!sessionId) {
+            // No CLI to ask; the next invalidation retries once one is online.
+            return;
+        }
         try {
             // Check if we have a session with valid metadata
             const session = storage.getState().sessions[sessionId];
