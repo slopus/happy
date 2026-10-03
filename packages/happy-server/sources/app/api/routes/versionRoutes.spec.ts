@@ -15,10 +15,11 @@ const release = () => ({ tag_name: tag, draft: false, prerelease: false,
     assets: [apk('production', 24), apk('preview', 23), ...[apk('production', 24), apk('preview', 23)].map(a =>
         ({ ...a, name: a.name + '.verification.json', size: 500, browser_download_url: a.browser_download_url + '.verification.json' }))] });
 
-async function check(payload: Record<string, unknown>, releases: unknown[] = [release()], status = 200, metadataOverride = {}, failPreview = false) {
+async function check(payload: Record<string, unknown>, releases: unknown[] = [release()], status = 200, metadataOverride = {}, failPreview = false, failSidecar?: RegExp) {
     vi.stubGlobal('fetch', vi.fn(async (url: string) => {
         if (url.startsWith('https://api.github.com/')) return new Response(JSON.stringify(releases), { status });
         if (failPreview && url.includes('paws-preview-')) return new Response('unavailable', { status: 404 });
+        if (failSidecar?.test(url)) throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
         const variant = url.includes('paws-production-') ? 'production' : 'preview';
         const asset = apk(variant, variant === 'production' ? 24 : 23);
         const filename = url.split('/').pop()!.replace(/\.verification\.json$/, '');
@@ -145,6 +146,30 @@ describe('native APK upgrade contract', () => {
         expect((await check(production, [release()], 200, {}, true)).body.update_url).toBe(apk('production', 24).browser_download_url);
         const preview = { ...production, app_id: 'build.paws.preview', channel: 'preview', runtime_version: '22' };
         const result = await check(preview, [release()], 200, {}, true);
+        expect(result.status).toBe(503);
+        expect(result.body.status).toBe('unknown');
+    });
+    it.each([
+        { app_id: 'build.paws', channel: 'production', runtime_version: '24' },
+        { app_id: 'build.paws.preview', channel: 'preview', runtime_version: '23' },
+    ])('does not let an older sidecar timeout invalidate the verified current APK: %j', async identity => {
+        const older = JSON.parse(JSON.stringify(release()).replace(/runtime24/g, 'runtime22').replace(/runtime23/g, 'runtime21'));
+        const result = await check({ ...production, ...identity }, [release(), older], 200, {}, false, /runtime2[12]-/);
+        expect(result.status).toBe(200);
+        expect(result.body).toMatchObject({ status: 'up-to-date', update_required: false, update_url: null });
+    });
+    it.each([
+        { label: 'higher runtime', newer: () => JSON.parse(JSON.stringify(release()).replace(/runtime24/g, 'runtime25')), failure: /paws-production-.*runtime25-/ },
+        { label: 'higher version', newer: () => JSON.parse(JSON.stringify(release()).replace(/v1\.7\.1/g, 'v1.8.0')), failure: /paws-production-v1\.8\.0-/ },
+    ])('still reports unknown when a $label APK cannot be verified', async ({ newer, failure }) => {
+        const result = await check({ ...production, runtime_version: '24' }, [release(), newer()], 200, {}, false, failure);
+        expect(result.status).toBe(503);
+        expect(result.body).toMatchObject({ status: 'unknown', update_required: false, update_url: null });
+    });
+    it('requires the verified APK to cover both the failed runtime and version', async () => {
+        const higherRuntime = JSON.parse(JSON.stringify(release()).replace(/runtime24/g, 'runtime25'));
+        const higherVersion = JSON.parse(JSON.stringify(release()).replace(/v1\.7\.1/g, 'v1.8.0'));
+        const result = await check({ ...production, runtime_version: '25' }, [higherRuntime, higherVersion], 200, {}, false, /paws-production-v1\.8\.0-/);
         expect(result.status).toBe(503);
         expect(result.body.status).toBe('unknown');
     });

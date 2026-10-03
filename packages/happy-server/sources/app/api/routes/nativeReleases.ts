@@ -73,7 +73,7 @@ export function createNativeReleaseCatalog() {
                     || ['production', 'preview'].every(channel => releases.some(r => r.channel === channel))) break;
             }
             const verified: NativeReleaseCatalog = [];
-            const unavailableChannels = new Set<Channel>();
+            const failedCandidates: Candidate[] = [];
             // A bounded catalog of recent APKs; equal version/runtime candidates
             // must be unambiguous. Never choose by GitHub asset array order.
             const tuple = (r: Candidate) => `${r.channel}:${r.runtime}:${r.version}`;
@@ -100,8 +100,14 @@ export function createNativeReleaseCatalog() {
                         || metadata.zipValid !== true || metadata.signatureV2Valid !== true || metadata.bluetoothUncapped !== true
                         || !Array.isArray(metadata.abis) || metadata.abis.length !== 1 || metadata.abis[0] !== 'arm64-v8a') return;
                     verified.push(candidate);
-                } catch { unavailableChannels.add(candidate.channel); }
+                } catch { failedCandidates.push(candidate); }
             }));
+            // A verified APK covers failed lookups at or below both its runtime
+            // and version in the same channel. Older sidecar timeouts must not
+            // invalidate checking the current APK; potentially newer ones do.
+            const unavailableChannels = new Set(failedCandidates.filter(candidate => !verified.some(release =>
+                release.channel === candidate.channel && release.runtime >= candidate.runtime
+                && semver.gte(release.version, candidate.version))).map(candidate => candidate.channel));
             if (unavailableChannels.size && !verified.length) throw new Error('APK verification metadata unavailable');
             if (unavailableChannels.size) verified.unavailableChannels = [...unavailableChannels];
             cache = verified;

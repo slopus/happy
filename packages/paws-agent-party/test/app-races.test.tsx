@@ -187,5 +187,8 @@ it('keeps a new listen message visible when an older-page decrypt completes last
   Object.defineProperty(scroll, 'scrollTop', { configurable: true, value: 4600, writable: true }); fireEvent.scroll(scroll);
   expect(await screen.findByText('newest received message')).toBeTruthy();
   await act(async () => { oldDecode.resolve(); });
+  // Let the real virtualizer's 150ms scroll-reset callback finish while this
+  // JSDOM window still exists, before cleanup tears down its React environment.
+  await act(async () => { await new Promise<void>(resolve => window.setTimeout(resolve, 200)); });
   expect(screen.getByText('newest received message')).toBeTruthy();
 });
