@@ -45,7 +45,7 @@ type Slot = { number: number; email: string; organizationUuid?: string; usageSta
 
 // A stateful stand-in for cswap. `marked` keeps managed metadata like the token runtime; an
 // unmarked build drops it, as upstream does.
-function fakeMachine(initial: Slot[], activeAccountNumber: number | null, options: { runtime?: 'marked' | 'unmarked' | 'missing'; ignoreForce?: boolean; tokenRuntimeStatus?: string; files?: Map<string, string>; binding?: false; env?: Record<string, string>; capabilities?: Record<string, unknown> } = {}) {
+function fakeMachine(initial: Slot[], activeAccountNumber: number | null, options: { runtime?: 'marked' | 'unmarked' | 'missing'; ignoreForce?: boolean; tokenRuntimeStatus?: string; files?: Map<string, string>; binding?: false; env?: Record<string, string>; capabilities?: Record<string, unknown>; listFails?: boolean } = {}) {
   const kind = options.runtime ?? 'marked'
   const state = { slots: [...initial], active: activeAccountNumber }
   const calls: Array<{ command: string; args: string[] }> = []
@@ -59,6 +59,7 @@ function fakeMachine(initial: Slot[], activeAccountNumber: number | null, option
       if (args[1] === 'status') return { stdout: options.tokenRuntimeStatus ?? JSON.stringify({ version: 1, artifact: 'saycode-setup-token-runtime-v1', accounts: [] }), stderr: '' }
       return { stdout: options.capabilities ? JSON.stringify(options.capabilities) : MARKER, stderr: '' }
     }
+    if (command === 'cswap' && args[0] === 'list' && options.listFails) throw Object.assign(new Error('list failed'), { kind: 'COMMAND_FAILED' })
     if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: state.active,
       accounts: state.slots.map(({ credentials: _c, config: _f, ...row }) => ({ ...row, active: row.number === state.active })) }), stderr: '' }
     if (command === 'cswap' && args[0] === 'export') return { stdout: JSON.stringify({ version: 1, encrypted: false, accounts: state.slots }), stderr: '' }
@@ -383,6 +384,47 @@ describe('managed Claude setup-token runtime', () => {
       const { runtime } = fakeMachine([personal], 1)
       await runtime.groupSync(sync(1, payload({ number: 1, email: 'shared@example.com', organizationUuid: '', credentials: { claudeAiOauth: { accessToken: 'oauth', refreshToken: 'r' } }, config: {} })))
       expect(await runtime.sessionEnvironment('claude')).toEqual({})
+    })
+
+    // A journal written before the `managed` projection existed.
+    const JOURNAL = '/home/operator/.happy/ai-credential-groups.json'
+    const legacyJournal = (desired: string[]) => new Map([[JOURNAL, JSON.stringify({ version: 1, entries: [{ scope: 'company-1', userId: 'user-1',
+      provider: 'claude', generation: 1, fingerprint: '1'.padStart(64, '0'), desired, owned: desired, pending: false, payloadDigest: null }] })]])
+    const legacyHash = (email: string) => createHash('sha256').update(JSON.stringify(['claude', email, ''])).digest('hex')
+    const personalSlot: Slot = { number: 1, email: 'me@example.com', usageStatus: 'ok', credentials: { claudeAiOauth: { accessToken: 'personal', refreshToken: 'r' } } }
+
+    it.each([
+      ['the managed-ID identity', setupTokenGroupIdentity(A)],
+      ['the pre-projection email identity', legacyHash(managedSetupTokenEmail(A))],
+    ])('migrates an old journal that desires a managed slot via %s and refuses the unbound launch', async (_label, identity) => {
+      const files = legacyJournal([identity])
+      const { runtime, calls } = fakeMachine([personalSlot, stored(A, 1, fakeToken('a'))], 1, { files })
+      await expect(runtime.sessionEnvironment('claude')).rejects.toThrow('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
+      expect(JSON.parse(files.get(JOURNAL)!).entries[0].managed).toEqual([identity])
+      const before = calls.length
+      await expect(runtime.sessionEnvironment('claude')).rejects.toThrow('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
+      expect(calls.slice(before)).toEqual([])
+    })
+
+    it('migrates an old ordinary OAuth journal without blocking it, once', async () => {
+      const files = legacyJournal([legacyHash('shared@example.com')])
+      const shared: Slot = { number: 2, email: 'shared@example.com', usageStatus: 'ok', credentials: { claudeAiOauth: { accessToken: 'o', refreshToken: 'r' } } }
+      const { runtime, calls } = fakeMachine([personalSlot, shared], 1, { files })
+      expect(await runtime.sessionEnvironment('claude')).toEqual({})
+      expect(JSON.parse(files.get(JOURNAL)!).entries[0].managed).toEqual([])
+      const before = calls.length
+      expect(await runtime.sessionEnvironment('claude')).toEqual({})
+      expect(calls.slice(before)).toEqual([])
+    })
+
+    it('with an unreadable roster, refuses only when the live login is a managed slot and does not migrate', async () => {
+      const managedLive = legacyJournal([setupTokenGroupIdentity(A)])
+      managedLive.set('/home/operator/.claude.json', JSON.stringify({ oauthAccount: { emailAddress: managedSetupTokenEmail(A) } }))
+      await expect(fakeMachine([], null, { files: managedLive, listFails: true }).runtime.sessionEnvironment('claude')).rejects.toThrow('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
+      expect(JSON.parse(managedLive.get(JOURNAL)!).entries[0]).not.toHaveProperty('managed')
+      const personalLive = legacyJournal([legacyHash('shared@example.com')])
+      personalLive.set('/home/operator/.claude.json', JSON.stringify({ oauthAccount: { emailAddress: 'me@example.com' } }))
+      expect(await fakeMachine([], null, { files: personalLive, listFails: true }).runtime.sessionEnvironment('claude')).toEqual({})
     })
 
     it('does not consult cswap at all on a machine without group assignments', async () => {

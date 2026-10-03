@@ -81,8 +81,18 @@ export function createCredentialGroupSync(deps:CredentialGroupDeps) {
   /** Who a scope's applied assignment belongs to and what it installed: the local ownership proof. */
   async function assignment(scope:string,provider:GroupProvider){const entry=await readReceipt(scope,provider);return entry?{userId:entry.userId,desired:[...entry.desired],reconciled:!entry.pending}:null}
   /** Some current assignment (applied or in flight) desires an org-managed setup-token. Revoked entries desire nothing. */
+  /** Entries written before the `managed` projection existed: unknown, never assumed unmanaged. */
+  async function unprojected(provider:GroupProvider){return parse(await deps.read()).entries.filter(e=>e.provider===provider&&e.managed===undefined).map(e=>({scope:e.scope,desired:[...e.desired]}))}
+  /** One-time migration: record which desired identities of an old entry are managed. */
+  async function recordManaged(provider:GroupProvider,scope:string,managed:string[]){
+    const journal=parse(await deps.read())
+    const entry=journal.entries.find(e=>e.provider===provider&&e.scope===scope&&e.managed===undefined)
+    if(!entry)return
+    entry.managed=managed.filter(value=>entry.desired.includes(value))
+    await deps.write(JSON.stringify(journal))
+  }
   async function hasManagedDesired(provider:GroupProvider){return parse(await deps.read()).entries.some(e=>e.provider===provider&&(e.managed??[]).some(value=>e.desired.includes(value)))}
   /** Collector custody: the scope's reconciled assignment for this user both desires and installed the identity. */
   const authorize=async(scope:string,userId:string,identity:string)=>{const e=await readReceipt(scope,'claude');return Boolean(e&&!e.pending&&e.userId===userId&&e.desired.includes(identity)&&e.owned.includes(identity))}
-  return {sync,invalidate,assignment,hasManagedDesired,authorize,receipt:async(scope:string,provider:GroupProvider)=>{const entry=await readReceipt(scope,provider);return entry?receipt(entry):null}}
+  return {sync,invalidate,assignment,hasManagedDesired,unprojected,recordManaged,authorize,receipt:async(scope:string,provider:GroupProvider)=>{const entry=await readReceipt(scope,provider);return entry?receipt(entry):null}}
 }

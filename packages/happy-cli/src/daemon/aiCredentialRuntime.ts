@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { createTokenProbe, personalProbeSupported, readTokenRuntime } from './tokenProbe'
 import { createClaudeCollector, consumeCollectorPermit, collectorVerificationReady } from './claudeCollector'
 import { createCredentialGroupSync, type CredentialGroupRequest } from './aiCredentialGroups'
@@ -1877,7 +1878,35 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
    * without assignments are unchanged. Journal-only: no cswap call per launch.
    */
   async function refuseUnboundManagedDefault() {
-    if (await groups.hasManagedDesired('claude')) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
+    const required = () => new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
+    if (await groups.hasManagedDesired('claude')) throw required()
+    // Journals from before the projection cannot say whether they desire a managed slot.
+    // Read the roster once, record the answer, and decide; later launches use the journal only.
+    const legacy = await groups.unprojected('claude')
+    if (legacy.length === 0) return
+    let accounts: ClaudeListDetails['accounts']
+    try {
+      accounts = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
+        maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout).accounts
+    } catch {
+      // No roster: refuse only on positive evidence that the live login is org material; retry migration later.
+      let live: Record<string, unknown> | null = null
+      try { live = await readOptionalJson(deps.env.CLAUDE_CONFIG_DIR ? join(deps.env.CLAUDE_CONFIG_DIR, '.claude.json') : join(deps.homeDir, '.claude.json')) } catch { live = null }
+      if (managedSetupTokenId((live?.oauthAccount as { emailAddress?: unknown } | undefined)?.emailAddress) !== null) throw required()
+      return
+    }
+    // Both identity formats a journal may hold for a managed slot: the managed-ID hash and the older email hash.
+    const managedIdentities = new Set(accounts.flatMap(account => {
+      const id = managedSetupTokenId(account.email)
+      return id === null ? [] : [setupTokenGroupIdentity(id), createHash('sha256').update(JSON.stringify(['claude', account.email, ''])).digest('hex')]
+    }))
+    let managed = false
+    for (const entry of legacy) {
+      const desiredManaged = entry.desired.filter(identity => managedIdentities.has(identity))
+      await groups.recordManaged('claude', entry.scope, desiredManaged)
+      if (desiredManaged.length > 0) managed = true
+    }
+    if (managed) throw required()
   }
 
   async function sessionEnvironment(agent: string | undefined, selection?: AiAuthSelection, recorded?: SetupTokenBinding): Promise<Record<string, string>> {
