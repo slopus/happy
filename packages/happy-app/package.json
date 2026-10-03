@@ -161,7 +161,6 @@
     "lottie-react-native": "~7.3.1",
     "mermaid": "^11.12.1",
     "posthog-react-native": "~4.37.5",
-    "preact": "^10.29.1",
     "prismjs": "^1.30.0",
     "qrcode": "^1.5.4",
     "react": "19.2.0",
