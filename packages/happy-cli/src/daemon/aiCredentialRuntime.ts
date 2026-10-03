@@ -1,3 +1,4 @@
+import { createClaudeCollector, consumeCollectorPermit, collectorVerificationReady } from './claudeCollector'
 import { createCredentialGroupSync, type CredentialGroupRequest } from './aiCredentialGroups'
 import { createGroupProviderAdapters, groupPayloadIdentities } from './aiCredentialGroupAdapters'
 import { spawn as crossSpawn } from 'cross-spawn'
@@ -1895,7 +1896,31 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
-  return { capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: async () => { const setupToken = await setupTokenRuntimeSupported(); return { version: 1, groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
+  function collectorOrigin() {
+    try { return deps.env.HAPPY_APLUS_MCP_CONFIG_URL ? new URL(deps.env.HAPPY_APLUS_MCP_CONFIG_URL).origin : null } catch { return null }
+  }
+  async function collectorCapability() {
+    if (!collectorOrigin()) return false
+    try {
+      const caps = JSON.parse((await deps.execFile('cswap', ['token-runtime', 'capabilities'], { timeoutMs: 5000, maxOutputBytes: 8192 })).stdout)
+      return caps.artifact === 'saycode-setup-token-runtime-v1' && caps.organizationCollectorVersion === 1 && await collectorVerificationReady(collectorOrigin())
+    } catch { return false }
+  }
+  async function collectorProbe(input: unknown, machineId: string) {
+    return serialize(async () => {
+      const origin = collectorOrigin()
+      return createClaudeCollector({
+        studioOrigin: origin, machineId, now: deps.now,
+        authorize: r => groups.authorize(r.companyId, r.userId, setupTokenGroupIdentity(r.managedAccountId)),
+        consume: (id, expiresAt) => consumeCollectorPermit(join(deps.homeDir, '.happy', 'claude-collector'), id, expiresAt, deps.now()),
+        invoke: async (args, input) => (await deps.execFile('cswap', args, {
+          input, timeoutMs: 10_000, maxOutputBytes: 65536, environment: deps.env,
+        })).stdout,
+      })(input)
+    })
+  }
+
+  return { collectorProbe, capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: async (machineId?: string) => { const setupToken = await setupTokenRuntimeSupported(); const collector = Boolean(machineId) && await collectorCapability(); return { version: 1, ...(collector ? { collectorProbeVersion: 1 } : {}), groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
     // Managed setup-token import with metadata verification, only on the marked cswap token runtime.
     ...(setupToken ? { setupTokenVersion: 1, setupTokenStatusVersion: 1 } : {}),
     // Advertised only when a server-signed binding proof can actually be verified here.

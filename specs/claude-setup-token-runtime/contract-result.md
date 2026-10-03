@@ -137,3 +137,70 @@ Not covered: a `happy` CLI started by hand in a terminal, which is outside the d
 - The nonce ledger keeps at most 4096 unexpired nonces. When it is full, binding is refused until entries expire.
 - No real marked cswap artifact was run (it would touch the macOS Keychain). The fakes mirror provider `transfer.py`/`token_runtime.py`.
 - Happy makes no probe transport, consent, collect or org-collector calls. The status adapter only reads `token-runtime status`.
+
+
+## Happy organization collector bridge v1
+
+Customer-key, freshly nonce-bound RPC only: `ai-credential:collector-probe`.
+Request exact fields:
+```ts
+{version:1, companyId:string, userId:string, machineId:string,
+ managedAccountId:string, credentialGeneration:number,
+ policyRevision:number, permitId:string, grant:string}
+```
+`grant` is Studio's signed reserve envelope, never the plain reserve DTO. No caller
+origin/key/bearer accepted. Studio origin is daemon `HAPPY_APLUS_MCP_CONFIG_URL`
+origin. GET `/api/claude-collector/public-key` uses no Studio bearer and refuses
+redirects, unsafe non-loopback HTTP, unknown algorithms and mismatched key hash.
+Claims match every scope/request field including permitId. Local accountRef is
+resolved only from the unique current managed provider roster row and generation. Local reconciled group journal must
+independently match company/user and contain the managed identity. Journal group
+revision is not the per-account credentialGeneration.
+
+Success `{version:1, companyId, machineId, managedAccountId, credentialGeneration, policyRevision, permitId, observation}`; observation is only
+`{source:'inference_probe',observedAt:number,windows:[{kind,pct,resetsAt}],
+coverage:'unknown',reason,retryAt:number|null}`. All times epoch milliseconds.
+Reasons: ok/headers-missing/rate-limited/authentication-failed/scope-missing/
+request-failed/timeout. No credentials, account roster, authState, binding receipt
+or active selection. Desktop publishes with its existing authenticated identity.
+
+Failure `{version:1,status:'action-required'|'unavailable',error:'COLLECTOR_...'}`.
+Missing configuration/key is action-required SIGNER_UNAVAILABLE; invalid claims
+GRANT_INVALID; expired PERMIT_EXPIRED; replay PERMIT_REPLAYED; local journal
+mismatch ACCOUNT_NOT_ASSIGNED; roster mismatch GENERATION_CHANGED; unsupported
+artifact RUNTIME_UNSUPPORTED; transport/parse/durable state failure REQUEST_FAILED.
+No retry, reserve fallback, receiver consent fallback or model fallback. Durable
+local permit consumption precedes provider transport and remains spent on failure.
+Desktop owns OFF-default scheduling, online/in-use checks, reservation and publish.
+Happy neither discovers assignments nor schedules probes. Server debit is authoritative;
+provider machine/token ledger is an additional bound. No inference/network support
+is inferred from synthetic tests. Automatic rotation and prepared-profile binding
+remain separate pending work.
+
+Capability `collectorProbeVersion:1` appears only after marked provider org capability
+and trusted-origin key validation; Desktop MUST preflight before reserve.
+
+Local group identity compatibility: this Happy base journals the legacy managed-ID
+hash; collector verifies it ONLY inside the exact company/user reconciled journal
+and requires both desired and owned custody. It never trusts the caller's identity
+hash and never treats server company-scoped refs as local runtime accountRef. Parent
+company-scoped group identity migration must update all apply/snapshot/remove writers
+together; no mixed-format journal migration is claimed here. Preexisting personal
+slots without owned custody fail closed, even if present in desired assignments.
+
+A crashed local `consume.lock` keeps collection unavailable until explicit operator
+recovery preserving `permits.json`; no automatic lock deletion/replay ledger reset.
+Signatures prove the server reservation snapshot, not immediate network revocation;
+the provider and journal are checked again after transport and server publish must
+still fence OFF/reassignment/revision. No fallback or retry performs another attempt.
+
+Collector verification (2026-10-04): Happy typecheck and Vitest's required CLI build
+passed after building the local `happy-wire` dependency. Six selected suites passed
+282 tests: claudeCollector, aiCredentialGroups, RpcHandlerManager, serverLane,
+aiCredentialSetupToken and aiCredentialRuntime. The collector suite included a real
+installed-wheel subprocess roundtrip (isolated file backend, synthetic credentials,
+all provider network entry points guarded/replaced by fake HTTP) and durable replay.
+Use `COLLECTOR_PACK_PYTHON` and `COLLECTOR_PACK_INSTALL` to opt into that artifact test;
+without these explicit local paths only that test is skipped. No home/Keychain/live
+inference/daemon change/Studio bearer/publish was used. Existing pkgroll bin/empty-chunk
+warnings remain; no TypeScript diagnostics. Provider commit: `6e9e43c`.

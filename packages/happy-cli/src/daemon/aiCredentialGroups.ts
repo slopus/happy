@@ -82,5 +82,7 @@ export function createCredentialGroupSync(deps:CredentialGroupDeps) {
   async function assignment(scope:string,provider:GroupProvider){const entry=await readReceipt(scope,provider);return entry?{userId:entry.userId,desired:[...entry.desired],reconciled:!entry.pending}:null}
   /** Some current assignment (applied or in flight) desires an org-managed setup-token. Revoked entries desire nothing. */
   async function hasManagedDesired(provider:GroupProvider){return parse(await deps.read()).entries.some(e=>e.provider===provider&&(e.managed??[]).some(value=>e.desired.includes(value)))}
-  return {sync,invalidate,assignment,hasManagedDesired,receipt:async(scope:string,provider:GroupProvider)=>{const entry=await readReceipt(scope,provider);return entry?receipt(entry):null}}
+  /** Collector custody: the scope's reconciled assignment for this user both desires and installed the identity. */
+  const authorize=async(scope:string,userId:string,identity:string)=>{const e=await readReceipt(scope,'claude');return Boolean(e&&!e.pending&&e.userId===userId&&e.desired.includes(identity)&&e.owned.includes(identity))}
+  return {sync,invalidate,assignment,hasManagedDesired,authorize,receipt:async(scope:string,provider:GroupProvider)=>{const entry=await readReceipt(scope,provider);return entry?receipt(entry):null}}
 }

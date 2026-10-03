@@ -386,6 +386,19 @@ describe('bound customer-lane requests', () => {
         return decrypt(key, 'dataKey', decodeBase64(response as string));
     };
 
+    it('enforces customer-bound policy even in compat and refuses the server key', async () => {
+        const serverKey = new Uint8Array(32).fill(8);
+        const { manager } = makeBound(false, { encryptionKey: serverKey, allows: () => true });
+        let calls = 0;
+        manager.registerHandler('collector', () => { calls++; return {}; }, { customerBound: true });
+        expect(await send(manager, 'collector', {})).toMatchObject({ code: 'RPC_UNBOUND_REQUEST' });
+        expect(await send(manager, 'collector', bound('collector', {}, { issuedAt: Date.now() - 600_000 }))).toMatchObject({ result: { code: 'RPC_REQUEST_STALE' } });
+        expect(await send(manager, 'collector', {}, serverKey)).toMatchObject({ code: 'SERVER_LANE_METHOD_NOT_ALLOWED' });
+        expect(calls).toBe(0);
+        await send(manager, 'collector', bound('collector', {}, { nonce: nonce(99) }));
+        expect(calls).toBe(1);
+    });
+
     it('runs the handler with the bound params and binds the reply to the nonce', async () => {
         const { manager, calls } = makeBound();
         expect(await send(manager, 'readFile', bound('readFile', { path: '/w/a' }, { nonce: nonce(2) })))

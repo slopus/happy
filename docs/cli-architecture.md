@@ -667,3 +667,15 @@ adapter that honors the already-held lock; do not weaken GC pin ownership to all
 ## AI credential group custody
 
 The optional `ai-credential:group-sync` customer-lane RPC leaves the existing apply DTO and response unchanged. The daemon serializes group changes with legacy operations. An owner-only journal stores identity hashes, desired unions, generations and durable pending intent before provider writes. Revocation removes only introduced accounts no other assignment needs; legacy/manual apply invalidates the receipt and relinquishes touched slots. Provider adapters keep personal login and index selections. Completed receipts are readable through `ai-credential:status` and contain no credentials; server-lane mutation permissions are unchanged. A failed removal remains pending in the journal until an observed retry completes.
+
+## Organization Claude collector boundary
+
+Desktop owns authenticated Studio discovery/reserve/publish and OFF-default scheduling.
+The customer-bound `ai-credential:collector-probe` daemon RPC fetches an Ed25519 public
+key only from the configured `HAPPY_APLUS_MCP_CONFIG_URL` origin, validates signed
+reservation claims against the machine and local custody journal, durably consumes
+one permit, then invokes the marked provider's internal stdin bridge. No Studio bearer
+or credential enters the RPC DTO. Server-lane dispatch is forbidden even when its
+allowlist changes. A corrupt replay ledger or orphaned consume lock fails closed;
+explicit operator recovery must preserve the ledger. Desktop consumes only epoch-ms
+whitelisted observations. See `specs/claude-setup-token-runtime/contract-result.md`.
