@@ -1,3 +1,5 @@
+import { createCredentialGroupSync, type CredentialGroupRequest } from './aiCredentialGroups'
+import { createGroupProviderAdapters, groupPayloadIdentities } from './aiCredentialGroupAdapters'
 import { spawn as crossSpawn } from 'cross-spawn'
 import { verifyLocalAiAccounts, type VerificationIdentity } from './aiCredentialVerification'
 import { mergeCodexAccounts } from './aiCredentialAdditive'
@@ -1331,6 +1333,10 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         const knownCompanyIdentities = previousProvenance && incomingProvenance
           && previousProvenance.companyId === incomingProvenance.companyId
           ? previousProvenance.identities : new Set<string>()
+        // A manual/legacy apply can supersede managed slots. Never use an old group receipt as proof.
+        let touched: string[] | null = null
+        if (applyMode === 'merge' && selected !== 'zai') { try { touched = groupPayloadIdentities(selected, input.payload) } catch {} }
+        await groups.invalidate(selected === 'zai' ? 'claude' : selected, touched)
         const applyGeneration = await reserveApplyGeneration(selected)
         // A Claude record is only believed for the current claude generation.
         // A Claude apply just bumped it; a Z.AI apply purges the Claude login,
@@ -1423,6 +1429,23 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         }
       },
     ))
+  }
+
+  const groupAdapters = createGroupProviderAdapters(deps)
+  const groupJournalPath = join(deps.homeDir, '.happy', 'ai-credential-groups.json')
+  const groups = createCredentialGroupSync({
+    read: async () => { try { return await deps.readFile(groupJournalPath) } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error } },
+    write: async content => { await deps.mkdir(join(deps.homeDir, '.happy'), { recursive: true, mode: 0o700 }); await deps.chmod(join(deps.homeDir, '.happy'), 0o700); await writeAtomicFile(deps, groupJournalPath, content) },
+    snapshot: groupAdapters.snapshot, incoming: groupPayloadIdentities, remove: groupAdapters.remove,
+    apply: async (selected, payload) => {
+      const marker = await readTrialMarker()
+      if (marker.leases[selected] || (selected === 'claude' && marker.leases.zai)) throw new AiCredentialRuntimeError('AI_CREDENTIAL_MERGE_UNSUPPORTED')
+      if (selected === 'claude') return applyClaudeAdditive(payload, new Set())
+      return applyCodex(payload, 'merge')
+    },
+  })
+  async function groupSync(input: CredentialGroupRequest) {
+    return serialize(() => withSafeErrors('AI_GROUP_SYNC_FAILED', () => groups.sync(input)))
   }
 
   async function purgeManagedProvider(selected: AiCredentialProvider): Promise<void> {
@@ -1691,7 +1714,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
-  return { capture, apply, purge, status, verify, rotation, sessionEnvironment, capabilities: () => ({ version: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'] }) }
+  return { capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: () => ({ version: 1, groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'] }) }
 }
 
 type ClaudeListDetails = {

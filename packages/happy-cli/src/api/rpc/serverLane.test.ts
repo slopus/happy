@@ -16,7 +16,7 @@ const CONTENT_CAPABLE = [
     'spawn-happy-session', 'resume-happy-session', 'recover-happy-session', 'stop-daemon',
     'claude-session-transfer', 'codex-thread-transfer', 'claude-fork-session', 'claude-list-rewind-points',
     'claude-duplicate-session', 'codex-fork-thread', 'codex-list-rewind-points', 'codex-duplicate-thread',
-    'ai-credential:export', 'ai-credential:apply', 'ai-credential:purge', 'ai-credential:rotation', 'ai-credential:verify',
+    'ai-credential:group-sync', 'ai-credential:export', 'ai-credential:apply', 'ai-credential:purge', 'ai-credential:rotation', 'ai-credential:verify',
     'start-server', 'stop-server', 'automation-upsert', 'automation-remove', 'automation-list',
     'checkpoint:execute', 'checkpoint:restart', 'browser-setup:install-chrome', 'browser-setup:launch',
     'browser-viewer:install', 'browser-viewer:start', 'gui-display:ensure', 'lesson-host-v1', 'channel-host:call',

@@ -663,3 +663,7 @@ its callback, so `prepareManagedVolume` must not directly use the ordinary
 it. The current production boot path initializes only an empty volume with no checkpoint
 and an unwired restore port. Before wiring checkpoint boot restore, provide and verify an
 adapter that honors the already-held lock; do not weaken GC pin ownership to allow nesting.
+
+## AI credential group custody
+
+The optional `ai-credential:group-sync` customer-lane RPC leaves the existing apply DTO and response unchanged. The daemon serializes group changes with legacy operations. An owner-only journal stores identity hashes, desired unions, generations and durable pending intent before provider writes. Revocation removes only introduced accounts no other assignment needs; legacy/manual apply invalidates the receipt and relinquishes touched slots. Provider adapters keep personal login and index selections. Completed receipts are readable through `ai-credential:status` and contain no credentials; server-lane mutation permissions are unchanged. A failed removal remains pending in the journal until an observed retry completes.
