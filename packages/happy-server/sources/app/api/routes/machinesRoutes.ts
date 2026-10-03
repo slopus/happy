@@ -80,12 +80,20 @@ export function machinesRoutes(
                 daemonState: z.string().optional(), // Encrypted daemon state
                 dataEncryptionKey: z.string().nullish(),
                 // aplus §6-1 B1 — machineKey 의 서버 몫 봉투 (이중 수신자 wrap)
-                serverDataEncryptionKey: z.string().nullish()
+                serverDataEncryptionKey: z.string().nullish(),
+                // specs/e2ee-machine-control-boundary R1 — the server's own RPC key
+                serverRpcKeyEnvelope: z.string().nullish()
             })
         }
     }, async (request, reply) => {
         const userId = request.userId;
-        const { id, metadata, daemonState, dataEncryptionKey, serverDataEncryptionKey } = request.body;
+        const { id, metadata, daemonState, dataEncryptionKey, serverDataEncryptionKey, serverRpcKeyEnvelope } = request.body;
+        // Unlike the two older envelopes this one has no legacy writers, so its
+        // format is checked before anything is stored.
+        const submittedServerRpcKey = serverRpcKeyEnvelope ? decodeMachineDataKeyEnvelope(serverRpcKeyEnvelope) : null;
+        if (serverRpcKeyEnvelope && !submittedServerRpcKey) {
+            return reply.code(400).send({ error: 'invalid-server-rpc-key-envelope' });
+        }
 
         // Check if machine exists (like sessions do)
         const machine = await db.machine.findFirst({
@@ -125,6 +133,16 @@ export function machinesRoutes(
                 effectiveServerDataEncryptionKey = submitted;
                 log({ module: 'machines', machineId: id, userId }, 'Backfilled serverDataEncryptionKey for existing machine');
             }
+            let effectiveServerRpcKeyEnvelope = machine.serverRpcKeyEnvelope;
+            if (!machine.serverRpcKeyEnvelope && submittedServerRpcKey) {
+                const submitted = new Uint8Array(submittedServerRpcKey);
+                await db.machine.update({
+                    where: { id: machine.id },
+                    data: { serverRpcKeyEnvelope: submitted }
+                });
+                effectiveServerRpcKeyEnvelope = submitted;
+                log({ module: 'machines', machineId: id, userId }, 'Backfilled serverRpcKeyEnvelope for existing machine');
+            }
             log({ module: 'machines', machineId: id, userId }, 'Found existing machine');
             return reply.send({
                 machine: {
@@ -136,6 +154,7 @@ export function machinesRoutes(
                     daemonStateVersion: machine.daemonStateVersion,
                     dataEncryptionKey: effectiveDataEncryptionKey ? Buffer.from(effectiveDataEncryptionKey).toString('base64') : null,
                     serverDataEncryptionKey: effectiveServerDataEncryptionKey ? Buffer.from(effectiveServerDataEncryptionKey).toString('base64') : null,
+                    serverRpcKeyEnvelope: effectiveServerRpcKeyEnvelope ? Buffer.from(effectiveServerRpcKeyEnvelope).toString('base64') : null,
                     active: machine.active,
                     activeAt: machine.lastActiveAt.getTime(),  // Return as activeAt for API consistency
                     createdAt: machine.createdAt.getTime(),
@@ -156,6 +175,7 @@ export function machinesRoutes(
                     daemonStateVersion: daemonState ? 1 : 0,
                     dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined,
                     serverDataEncryptionKey: serverDataEncryptionKey ? new Uint8Array(Buffer.from(serverDataEncryptionKey, 'base64')) : undefined,
+                    serverRpcKeyEnvelope: submittedServerRpcKey ? new Uint8Array(submittedServerRpcKey) : undefined,
                     // Default to offline - in case the user does not start daemon
                     active: false,
                     // lastActiveAt and activeAt defaults to now() in schema
@@ -196,6 +216,7 @@ export function machinesRoutes(
                     daemonStateVersion: newMachine.daemonStateVersion,
                     dataEncryptionKey: newMachine.dataEncryptionKey ? Buffer.from(newMachine.dataEncryptionKey).toString('base64') : null,
                     serverDataEncryptionKey: newMachine.serverDataEncryptionKey ? Buffer.from(newMachine.serverDataEncryptionKey).toString('base64') : null,
+                    serverRpcKeyEnvelope: newMachine.serverRpcKeyEnvelope ? Buffer.from(newMachine.serverRpcKeyEnvelope).toString('base64') : null,
                     active: newMachine.active,
                     activeAt: newMachine.lastActiveAt.getTime(),  // Return as activeAt for API consistency
                     createdAt: newMachine.createdAt.getTime(),
@@ -256,6 +277,93 @@ export function machinesRoutes(
     });
 
 
+    /**
+     * specs/e2ee-machine-control-boundary R4 — a daemon switching to strict
+     * mode takes its machine key back from the server. It generates a new
+     * machine key and server RPC key and sends, in one compare-and-swap:
+     * the new account envelope, the new server-lane envelope (or none), and
+     * its metadata and daemon state re-encrypted under the new machine key.
+     * The machine key's server envelope is cleared in the same write.
+     *
+     * The swap only applies while the account envelope and metadata version
+     * are the ones the daemon read, so a concurrent reseed or metadata write
+     * makes it fail instead of mixing keys. Repeating a rotation that already
+     * landed is a success, so a daemon that lost the reply can retry.
+     */
+    app.post('/v1/machines/:id/key-rotation', {
+        preHandler: app.authenticate,
+        schema: {
+            params: z.object({ id: z.string() }),
+            body: z.object({
+                expectedDataEncryptionKey: z.string().max(MACHINE_DATA_KEY_ENVELOPE_BASE64_LENGTH),
+                dataEncryptionKey: z.string().max(MACHINE_DATA_KEY_ENVELOPE_BASE64_LENGTH),
+                serverRpcKeyEnvelope: z.string().max(MACHINE_DATA_KEY_ENVELOPE_BASE64_LENGTH).nullable(),
+                metadata: z.string(),
+                expectedMetadataVersion: z.number().int().min(0),
+                daemonState: z.string().nullable(),
+            })
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { id } = request.params;
+        const body = request.body;
+        const expected = decodeMachineDataKeyEnvelope(body.expectedDataEncryptionKey);
+        const replacement = decodeMachineDataKeyEnvelope(body.dataEncryptionKey);
+        const serverLane = body.serverRpcKeyEnvelope === null ? null : decodeMachineDataKeyEnvelope(body.serverRpcKeyEnvelope);
+        if (!expected || !replacement || (body.serverRpcKeyEnvelope !== null && !serverLane)) {
+            return reply.code(400).send({ error: 'invalid-data-encryption-key-envelope' });
+        }
+
+        const machine = await db.machine.findFirst({ where: { id, accountId: userId } });
+        if (!machine) {
+            return reply.code(404).send({ error: 'Machine not found' });
+        }
+
+        const sameEnvelope = (stored: Uint8Array | null, wanted: Uint8Array | null) => stored === null || wanted === null
+            ? stored === wanted
+            : machineDataKeyEnvelopesEqual(stored, wanted);
+        const alreadyRotated = !!machine.dataEncryptionKey
+            && machineDataKeyEnvelopesEqual(machine.dataEncryptionKey, replacement)
+            && machine.serverDataEncryptionKey === null
+            && sameEnvelope(machine.serverRpcKeyEnvelope, serverLane);
+        if (alreadyRotated) {
+            return reply.send({ ok: true, changed: false, metadataVersion: machine.metadataVersion, daemonStateVersion: machine.daemonStateVersion });
+        }
+
+        const metadataVersion = body.expectedMetadataVersion + 1;
+        const daemonStateVersion = machine.daemonStateVersion + 1;
+        const updated = await db.machine.updateMany({
+            where: {
+                id,
+                accountId: userId,
+                dataEncryptionKey: new Uint8Array(expected),
+                metadataVersion: body.expectedMetadataVersion,
+                daemonStateVersion: machine.daemonStateVersion,
+            },
+            data: {
+                dataEncryptionKey: new Uint8Array(replacement),
+                serverRpcKeyEnvelope: serverLane ? new Uint8Array(serverLane) : null,
+                serverDataEncryptionKey: null,
+                metadata: body.metadata,
+                metadataVersion,
+                daemonState: body.daemonState,
+                daemonStateVersion,
+            }
+        });
+        if (updated.count === 0) {
+            return reply.code(409).send({ error: 'key-rotation-conflict' });
+        }
+
+        log({ module: 'machines', machineId: id, userId }, `Rotated machine key (server lane: ${serverLane ? 'yes' : 'none'})`);
+        const updSeq = await allocateUserSeq(userId);
+        const payload = buildUpdateMachineUpdate(id, updSeq, randomKeyNaked(12),
+            { value: body.metadata, version: metadataVersion },
+            body.daemonState === null ? undefined : { value: body.daemonState, version: daemonStateVersion });
+        eventRouter.emitUpdate({ userId, payload, recipientFilter: { type: 'user-scoped-only' } });
+        eventRouter.emitUpdate({ userId, payload, recipientFilter: { type: 'machine-scoped-only', machineId: id } });
+        return reply.send({ ok: true, changed: true, metadataVersion, daemonStateVersion });
+    });
+
     // Machines API
     app.get('/v1/machines', {
         preHandler: app.authenticate,
@@ -279,6 +387,7 @@ export function machinesRoutes(
             daemonStateVersion: m.daemonStateVersion,
             dataEncryptionKey: m.dataEncryptionKey ? Buffer.from(m.dataEncryptionKey).toString('base64') : null,
             serverDataEncryptionKey: m.serverDataEncryptionKey ? Buffer.from(m.serverDataEncryptionKey).toString('base64') : null,
+            serverRpcKeyEnvelope: m.serverRpcKeyEnvelope ? Buffer.from(m.serverRpcKeyEnvelope).toString('base64') : null,
             seq: m.seq,
             active: m.active,
             activeAt: m.lastActiveAt.getTime(),
@@ -320,6 +429,7 @@ export function machinesRoutes(
                 daemonStateVersion: machine.daemonStateVersion,
                 dataEncryptionKey: machine.dataEncryptionKey ? Buffer.from(machine.dataEncryptionKey).toString('base64') : null,
                 serverDataEncryptionKey: machine.serverDataEncryptionKey ? Buffer.from(machine.serverDataEncryptionKey).toString('base64') : null,
+                serverRpcKeyEnvelope: machine.serverRpcKeyEnvelope ? Buffer.from(machine.serverRpcKeyEnvelope).toString('base64') : null,
                 seq: machine.seq,
                 active: machine.active,
                 activeAt: machine.lastActiveAt.getTime(),

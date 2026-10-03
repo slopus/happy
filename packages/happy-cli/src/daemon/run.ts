@@ -28,6 +28,8 @@ import {
 } from '@/modules/common/registerCommonHandlers';
 import { logger } from '@/ui/logger';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
+import { settleMachineControl } from '@/datakey/machineControl';
+import { createMachineControlIo } from '@/datakey/machineControlIo';
 import { configuration } from '@/configuration';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
@@ -774,7 +776,7 @@ export async function startDaemon(): Promise<void> {
     if (!managedCredential?.ok) hardenHappyHomePermissions();
 
     // Ensure auth and machine registration BEFORE anything else
-    const { credentials, machineId, serverPublicKey } = managedCredential?.ok
+    const authSetup = managedCredential?.ok
       ? {
         credentials: {
           token: managedCredential.credential.token,
@@ -788,7 +790,22 @@ export async function startDaemon(): Promise<void> {
         serverPublicKey: null,
       }
       : await authAndSetupMachineIfNeeded();
-    logger.debug('[DAEMON RUN] Auth and machine setup complete');
+    const { machineId, serverPublicKey } = authSetup;
+    // aplus-dev-studio specs/e2ee-machine-control-boundary R4 — before anything
+    // can use the machine key, strict mode replaces one the server may hold,
+    // and the daemon does not start when it cannot. A managed runtime
+    // registers nothing and keeps the key its parent provisioned.
+    const credentials = managedCredential?.ok
+      ? authSetup.credentials
+      : await settleMachineControl({
+        mode: configuration.machineControl,
+        credentials: authSetup.credentials,
+        machineId,
+        serverPublicKey,
+        metadata: initialMachineMetadata,
+        io: createMachineControlIo({ token: authSetup.credentials.token, machineId }),
+      });
+    logger.debug(`[DAEMON RUN] Auth and machine setup complete (machine control: ${managedCredential?.ok ? 'managed' : configuration.machineControl})`);
 
     // ── Managed runtime admission, decided before anything can accept work ──
     //
@@ -3654,7 +3671,8 @@ export async function startDaemon(): Promise<void> {
         machineId,
         metadata: difficultyRoutingMachineMetadata,
         daemonState: initialDaemonState,
-        serverPublicKey
+        serverPublicKey,
+        machineControl: configuration.machineControl,
       });
       logger.debug(`[DAEMON RUN] Machine registered: ${machine.id}`);
     } catch (error) {

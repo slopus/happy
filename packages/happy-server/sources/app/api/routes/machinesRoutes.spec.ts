@@ -68,6 +68,7 @@ const {
             daemonStateVersion: args.data.daemonStateVersion ?? 0,
             dataEncryptionKey: args.data.dataEncryptionKey ?? null,
             serverDataEncryptionKey: args.data.serverDataEncryptionKey ?? null,
+            serverRpcKeyEnvelope: args.data.serverRpcKeyEnvelope ?? null,
             active: false,
             lastActiveAt: now,
             createdAt: now,
@@ -89,6 +90,10 @@ const {
             && Buffer.from(machine.dataEncryptionKey).equals(Buffer.from(expected));
         if (!machine || machine.id !== args.where.id || machine.accountId !== args.where.accountId || !matchesExpected) {
             return { count: 0 };
+        }
+        // Version guards (key rotation): every other scalar in where must match.
+        for (const field of ['metadataVersion', 'daemonStateVersion'] as const) {
+            if (args.where[field] !== undefined && machine[field] !== args.where[field]) return { count: 0 };
         }
         state.existingMachine = { ...machine, ...args.data };
         return { count: 1 };
@@ -834,5 +839,186 @@ describe("machinesRoutes — GET /v1/machines/:id with the daemon's own credenti
         });
         expect(res.statusCode).toBe(401);
         expect(authorizeManagedDaemonSpy).not.toHaveBeenCalled();
+    });
+});
+
+
+// aplus-dev-studio specs/e2ee-machine-control-boundary R1 — the server gets its
+// own RPC key, not the machine key: a separate 105-byte envelope column, kept
+// write-once like the others.
+const envelope = (fill: number) => Buffer.concat([Buffer.from([0]), Buffer.alloc(104, fill)]).toString("base64");
+
+describe("machinesRoutes — serverRpcKeyEnvelope (e2ee-machine-control-boundary R1)", () => {
+    let app: Fastify;
+    beforeEach(() => { resetState(); emitUpdateSpy.mockClear(); machineUpdate.mockClear(); machineUpdateMany.mockClear(); logSpy.mockClear(); });
+    afterEach(async () => { if (app) await app.close(); });
+
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    const existingRow = (overrides: Record<string, unknown> = {}) => ({
+        id: "machine-1", accountId: "user-1", seq: 7, metadata: "m", metadataVersion: 1,
+        daemonState: null, daemonStateVersion: 0, dataEncryptionKey: null, serverDataEncryptionKey: null,
+        serverRpcKeyEnvelope: null, active: false, lastActiveAt: now, createdAt: now, updatedAt: now,
+        ...overrides,
+    });
+    const post = (payload: Record<string, unknown>) => app.inject({
+        method: "POST", url: "/v1/machines", headers: { "x-user-id": "user-1" },
+        payload: { id: "machine-1", metadata: "m", ...payload },
+    });
+
+    it("stores the server lane envelope on creation and echoes it", async () => {
+        app = await createApp();
+        const res = await post({ serverRpcKeyEnvelope: envelope(1) });
+        expect(res.statusCode).toBe(200);
+        expect(res.json().machine.serverRpcKeyEnvelope).toBe(envelope(1));
+        expect(Buffer.from(state.created[0].serverRpcKeyEnvelope).toString("base64")).toBe(envelope(1));
+    });
+
+    it("rejects a malformed server lane envelope and creates nothing", async () => {
+        app = await createApp();
+        const res = await post({ serverRpcKeyEnvelope: Buffer.from("not-an-envelope").toString("base64") });
+        expect(res.statusCode).toBe(400);
+        expect(state.created).toHaveLength(0);
+    });
+
+    it("backfills a missing server lane envelope once and never overwrites it", async () => {
+        app = await createApp();
+        state.existingMachine = existingRow();
+        const first = await post({ serverRpcKeyEnvelope: envelope(2) });
+        expect(first.json().machine.serverRpcKeyEnvelope).toBe(envelope(2));
+
+        const second = await post({ serverRpcKeyEnvelope: envelope(3) });
+        expect(second.json().machine.serverRpcKeyEnvelope).toBe(envelope(2));
+        expect(machineUpdate).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns the server lane envelope from both machine reads", async () => {
+        app = await createApp();
+        const row = existingRow({ serverRpcKeyEnvelope: new Uint8Array(Buffer.from(envelope(4), "base64")) });
+        dbMock.machine.findMany.mockResolvedValue([row]);
+        state.existingMachine = row;
+
+        const list = await app.inject({ method: "GET", url: "/v1/machines", headers: { "x-user-id": "user-1" } });
+        const one = await app.inject({ method: "GET", url: "/v1/machines/machine-1", headers: { "x-user-id": "user-1" } });
+
+        expect(list.json()[0].serverRpcKeyEnvelope).toBe(envelope(4));
+        expect(one.json().machine.serverRpcKeyEnvelope).toBe(envelope(4));
+    });
+});
+
+// aplus-dev-studio specs/e2ee-machine-control-boundary R4 — strict mode takes
+// the machine key back from the server: a new machine key and server lane key
+// replace the account envelope and the server lane envelope, the machine key's
+// server envelope is cleared, and the state re-encrypted under the new key
+// lands in the same compare-and-swap.
+describe("machinesRoutes — POST /v1/machines/:id/key-rotation (e2ee-machine-control-boundary R4)", () => {
+    let app: Fastify;
+    beforeEach(() => { resetState(); emitUpdateSpy.mockClear(); machineUpdate.mockClear(); machineUpdateMany.mockClear(); logSpy.mockClear(); });
+    afterEach(async () => { if (app) await app.close(); });
+
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    const bytes = (b64: string) => new Uint8Array(Buffer.from(b64, "base64"));
+    const escrowed = () => ({
+        id: "machine-1", accountId: "user-1", seq: 7, metadata: "old-metadata", metadataVersion: 5,
+        daemonState: "old-state", daemonStateVersion: 9,
+        dataEncryptionKey: bytes(envelope(10)), serverDataEncryptionKey: bytes(envelope(11)),
+        serverRpcKeyEnvelope: null, active: true, lastActiveAt: now, createdAt: now, updatedAt: now,
+    });
+    const rotate = (payload: Record<string, unknown>, userId = "user-1") => app.inject({
+        method: "POST", url: "/v1/machines/machine-1/key-rotation", headers: { "x-user-id": userId },
+        payload: {
+            expectedDataEncryptionKey: envelope(10),
+            dataEncryptionKey: envelope(20),
+            serverRpcKeyEnvelope: envelope(21),
+            metadata: "new-metadata",
+            expectedMetadataVersion: 5,
+            daemonState: "new-state",
+            ...payload,
+        },
+    });
+
+    it("swaps both envelopes, clears the escrowed machine key and stores the re-encrypted state", async () => {
+        app = await createApp();
+        state.existingMachine = escrowed();
+
+        const res = await rotate({});
+
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({ ok: true, changed: true, metadataVersion: 6, daemonStateVersion: 10 });
+        const row = state.existingMachine;
+        expect(Buffer.from(row.dataEncryptionKey).toString("base64")).toBe(envelope(20));
+        expect(Buffer.from(row.serverRpcKeyEnvelope).toString("base64")).toBe(envelope(21));
+        expect(row.serverDataEncryptionKey).toBeNull();
+        expect(row).toMatchObject({ metadata: "new-metadata", metadataVersion: 6, daemonState: "new-state", daemonStateVersion: 10 });
+    });
+
+    it("accepts a rotation that gives the server no lane at all", async () => {
+        app = await createApp();
+        state.existingMachine = escrowed();
+
+        const res = await rotate({ serverRpcKeyEnvelope: null });
+
+        expect(res.statusCode).toBe(200);
+        expect(state.existingMachine.serverRpcKeyEnvelope).toBeNull();
+        expect(state.existingMachine.serverDataEncryptionKey).toBeNull();
+    });
+
+    it("treats a retry of the same rotation as an idempotent success", async () => {
+        app = await createApp();
+        state.existingMachine = escrowed();
+        await rotate({});
+
+        const retry = await rotate({});
+
+        expect(retry.statusCode).toBe(200);
+        expect(retry.json()).toMatchObject({ ok: true, changed: false });
+        expect(state.existingMachine.metadataVersion).toBe(6);
+    });
+
+    it("refuses a stale expected envelope or metadata version without writing", async () => {
+        app = await createApp();
+        state.existingMachine = escrowed();
+
+        const staleKey = await rotate({ expectedDataEncryptionKey: envelope(12) });
+        const staleVersion = await rotate({ expectedMetadataVersion: 4 });
+
+        expect(staleKey.statusCode).toBe(409);
+        expect(staleVersion.statusCode).toBe(409);
+        expect(Buffer.from(state.existingMachine.dataEncryptionKey).toString("base64")).toBe(envelope(10));
+        expect(state.existingMachine.serverDataEncryptionKey).not.toBeNull();
+    });
+
+    it("does not reach another account's machine", async () => {
+        app = await createApp();
+        state.existingMachine = escrowed();
+
+        const res = await rotate({}, "user-2");
+
+        expect(res.statusCode).toBe(404);
+        expect(state.existingMachine.serverDataEncryptionKey).not.toBeNull();
+    });
+
+    it("rejects malformed envelopes", async () => {
+        app = await createApp();
+        state.existingMachine = escrowed();
+
+        const res = await rotate({ dataEncryptionKey: Buffer.from("short").toString("base64") });
+
+        expect(res.statusCode).toBe(400);
+        expect(machineUpdateMany).not.toHaveBeenCalled();
+    });
+
+    it("announces the new machine state and never puts an envelope in a log line or the reply", async () => {
+        app = await createApp();
+        state.existingMachine = escrowed();
+
+        const res = await rotate({});
+
+        const update = emitUpdateSpy.mock.calls.map(([arg]: any[]) => arg.payload.body).find((body: any) => body.t === "update-machine");
+        expect(update).toMatchObject({ machineId: "machine-1", metadata: { value: "new-metadata", version: 6 }, daemonState: { value: "new-state", version: 10 } });
+        const logged = JSON.stringify(logSpy.mock.calls);
+        for (const value of [envelope(10), envelope(20), envelope(21)]) {
+            expect(logged).not.toContain(value);
+            expect(res.body).not.toContain(value);
+        }
     });
 });

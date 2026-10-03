@@ -297,6 +297,11 @@ model Machine {
     /// wrap). 계정 몫(dataEncryptionKey)과 별개 컬럼이라 존재가 스키마에서
     /// 명시적으로 보인다. write-once — 회전은 별도 흐름.
     serverDataEncryptionKey Bytes?
+    /// aplus-dev-studio specs/e2ee-machine-control-boundary R1 — the server's own
+    /// RPC key, wrapped to the server service key. Separate from machineKey: it
+    /// opens only the daemon's server lane, which runs an allowlist of
+    /// non-content methods. Write-once on registration; key rotation replaces it.
+    serverRpcKeyEnvelope Bytes?
     seq                Int         @default(0)
     active             Boolean     @default(true)
     lastActiveAt       DateTime    @default(now())

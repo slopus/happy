@@ -129,6 +129,7 @@ describe('buildMachineKeyEnvelopes', () => {
         );
         expect(envelopes.dataEncryptionKey).not.toBeNull();
         expect(envelopes.serverDataEncryptionKey).toBeNull();
+        expect(envelopes.serverRpcKeyEnvelope).toBeNull();
     });
 
     it('returns both null when there is no machine key material (plain legacy)', async () => {
@@ -137,6 +138,56 @@ describe('buildMachineKeyEnvelopes', () => {
         const envelopes = buildMachineKeyEnvelopes(null, server.publicKey);
         expect(envelopes.dataEncryptionKey).toBeNull();
         expect(envelopes.serverDataEncryptionKey).toBeNull();
+        expect(envelopes.serverRpcKeyEnvelope).toBeNull();
+    });
+
+    // aplus-dev-studio specs/e2ee-machine-control-boundary R1 — the server gets
+    // a key of its own for the daemon's server lane, derived one-way from the
+    // machine key, and in strict mode no longer gets the machine key at all.
+    const unwrapFor = (bundle: Uint8Array, secretKey: Uint8Array) => {
+        const opened = tweetnacl.box.open(bundle.slice(33 + 24), bundle.slice(33, 33 + 24), bundle.slice(1, 33), secretKey);
+        return opened ? new Uint8Array(opened) : null;
+    };
+
+    it('wraps the derived server-lane key, not the machine key, for the server', async () => {
+        const { buildMachineKeyEnvelopes, deriveServerRpcKey } = await import('./encryption');
+        const account = tweetnacl.box.keyPair();
+        const server = tweetnacl.box.keyPair();
+        const machineKey = getRandomBytes(32);
+
+        const envelopes = buildMachineKeyEnvelopes({ machineKey, accountPublicKey: account.publicKey }, server.publicKey);
+
+        expect(envelopes.serverRpcKeyEnvelope![0]).toBe(0);
+        expect(unwrapFor(envelopes.serverRpcKeyEnvelope!, server.secretKey)).toEqual(deriveServerRpcKey(machineKey));
+        expect(unwrapFor(envelopes.serverRpcKeyEnvelope!, account.secretKey)).toBeNull();
+    });
+
+    it('stops escrowing the machine key with the server when asked', async () => {
+        const { buildMachineKeyEnvelopes, deriveServerRpcKey } = await import('./encryption');
+        const account = tweetnacl.box.keyPair();
+        const server = tweetnacl.box.keyPair();
+        const machineKey = getRandomBytes(32);
+
+        const envelopes = buildMachineKeyEnvelopes(
+            { machineKey, accountPublicKey: account.publicKey }, server.publicKey, { escrowMachineKey: false });
+
+        expect(unwrapFor(envelopes.dataEncryptionKey!, account.secretKey)).toEqual(machineKey);
+        expect(envelopes.serverDataEncryptionKey).toBeNull();
+        expect(unwrapFor(envelopes.serverRpcKeyEnvelope!, server.secretKey)).toEqual(deriveServerRpcKey(machineKey));
+    });
+});
+
+describe('deriveServerRpcKey', () => {
+    it('derives a stable 32-byte key that is neither the machine key nor shared across machines', async () => {
+        const { deriveServerRpcKey } = await import('./encryption');
+        const machineKey = getRandomBytes(32);
+
+        const key = deriveServerRpcKey(machineKey);
+
+        expect(key).toHaveLength(32);
+        expect(deriveServerRpcKey(machineKey)).toEqual(key);
+        expect(key).not.toEqual(machineKey);
+        expect(deriveServerRpcKey(getRandomBytes(32))).not.toEqual(key);
     });
 });
 

@@ -1,4 +1,5 @@
 import { resolve, sep } from 'path';
+import { isStrictlyGuardedPath } from './happyHomeGuard';
 
 export interface PathValidationResult {
     valid: boolean;
@@ -24,6 +25,15 @@ export function validatePath(targetPath: string, workingDirectory: string): Path
             valid: false,
             resolvedPath: resolvedTarget,
             error: `Access denied: Path '${targetPath}' is outside the working directory`
+        };
+    }
+
+    // aplus-dev-studio specs/e2ee-machine-control-boundary R11.
+    if (isStrictlyGuardedPath(resolvedTarget)) {
+        return {
+            valid: false,
+            resolvedPath: resolvedTarget,
+            error: `Access denied: Path '${targetPath}' is in the happy home directory, which strict machine control keeps out of reach`
         };
     }
 

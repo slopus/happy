@@ -274,3 +274,80 @@ describe('requests the scope key cannot open', () => {
         expect(decrypt(KEY, 'dataKey', decodeBase64(response.result))).toMatchObject({ code: 'RPC_DECRYPT_FAILED' });
     });
 });
+
+// aplus-dev-studio specs/e2ee-machine-control-boundary R2/R3 — the key a
+// request opens with decides its lane. The machine key (customer lane) reaches
+// every handler; the server's own key reaches only the server-lane allowlist,
+// and its answers are sealed with that key.
+describe('server lane', () => {
+    const SERVER_KEY = new Uint8Array(randomBytes(32));
+    const makeLaned = () => {
+        const manager = new RpcHandlerManager({
+            scopePrefix: 'machine-1',
+            encryptionKey: KEY,
+            encryptionVariant: 'dataKey',
+            logger: () => {},
+            serverLane: { encryptionKey: SERVER_KEY, allows: (method) => method === 'daemon-session-state' },
+        });
+        const calls: string[] = [];
+        manager.registerHandler('daemon-session-state', async () => { calls.push('state'); return { state: 'present' }; });
+        manager.registerHandler('bash', async () => { calls.push('bash'); return { stdout: 'secret' }; });
+        manager.registerHandler('explodes', async () => { throw new Error('boom'); });
+        return { manager, calls };
+    };
+    const send = (manager: RpcHandlerManager, method: string, key: Uint8Array) => manager.handleRequest({
+        method: `machine-1:${method}`,
+        params: encodeBase64(encrypt(key, 'dataKey', {})),
+    } as never);
+
+    it('runs an allowed method for the server key and answers with that key', async () => {
+        const { manager, calls } = makeLaned();
+        const response = await send(manager, 'daemon-session-state', SERVER_KEY);
+        expect(decrypt(SERVER_KEY, 'dataKey', decodeBase64(response))).toEqual({ state: 'present' });
+        expect(decrypt(KEY, 'dataKey', decodeBase64(response))).toBeNull();
+        expect(calls).toEqual(['state']);
+    });
+
+    it('refuses any other method for the server key without running it', async () => {
+        const { manager, calls } = makeLaned();
+        const response = await send(manager, 'bash', SERVER_KEY);
+        expect(decrypt(SERVER_KEY, 'dataKey', decodeBase64(response))).toMatchObject({ code: 'SERVER_LANE_METHOD_NOT_ALLOWED' });
+        expect(calls).toEqual([]);
+    });
+
+    it('still runs every method for the machine key', async () => {
+        const { manager, calls } = makeLaned();
+        const response = await send(manager, 'bash', KEY);
+        expect(decrypt(KEY, 'dataKey', decodeBase64(response))).toEqual({ stdout: 'secret' });
+        expect(calls).toEqual(['bash']);
+    });
+
+    it('seals a server-lane handler error with the server key', async () => {
+        const manager = new RpcHandlerManager({
+            scopePrefix: 'machine-1', encryptionKey: KEY, encryptionVariant: 'dataKey', logger: () => {},
+            serverLane: { encryptionKey: SERVER_KEY, allows: () => true },
+        });
+        manager.registerHandler('explodes', async () => { throw new Error('boom'); });
+        const response = await send(manager, 'explodes', SERVER_KEY);
+        expect(decrypt(SERVER_KEY, 'dataKey', decodeBase64(response))).toEqual({ error: 'boom' });
+    });
+
+    it('answers a traced server-lane call with the server key', async () => {
+        const { manager } = makeLaned();
+        const response = await manager.handleRequest({
+            method: 'machine-1:daemon-session-state',
+            params: encodeBase64(encrypt(SERVER_KEY, 'dataKey', {})),
+            rpcLatency: { version: 1, id: '33333333-3333-4333-8333-333333333333' },
+        } as never);
+        expect(decrypt(SERVER_KEY, 'dataKey', decodeBase64(response.result))).toEqual({ state: 'present' });
+    });
+
+    it('treats the server key as no key at all when the manager has no server lane', async () => {
+        const manager = new RpcHandlerManager({ scopePrefix: 'machine-1', encryptionKey: KEY, encryptionVariant: 'dataKey', logger: () => {} });
+        let called = false;
+        manager.registerHandler('daemon-session-state', async () => { called = true; return {}; });
+        const response = await send(manager, 'daemon-session-state', SERVER_KEY);
+        expect(decrypt(KEY, 'dataKey', decodeBase64(response))).toMatchObject({ code: 'RPC_DECRYPT_FAILED' });
+        expect(called).toBe(false);
+    });
+});

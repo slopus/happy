@@ -1,17 +1,20 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { RpcHandlerManager } from '@/api/rpc/RpcHandlerManager';
+import { configuration } from '@/configuration';
 import { registerCommonHandlers } from './registerCommonHandlers';
 
 type Handler = (data: Record<string, unknown>) => Promise<Record<string, unknown>>;
 
 const temporaryDirectories: string[] = [];
 
-async function createHandlers() {
-    const workingDirectory = await mkdtemp(join(tmpdir(), 'happy-read-chunk-'));
-    temporaryDirectories.push(workingDirectory);
+async function createHandlers(workingDirectory?: string) {
+    if (!workingDirectory) {
+        workingDirectory = await mkdtemp(join(tmpdir(), 'happy-read-chunk-'));
+        temporaryDirectories.push(workingDirectory);
+    }
     const handlers = new Map<string, Handler>();
     const manager = {
         registerHandler: (method: string, handler: Handler) => {
@@ -114,5 +117,53 @@ describe('project-scoped file RPCs', () => {
         await expect(handlers.get('listWorkspaceDirectory')?.({ path: workingDirectory })).resolves.toMatchObject({
             success: false, errorCode: 'WORKSPACE_PATH_DENIED',
         });
+    });
+});
+
+/*
+ * aplus-dev-studio specs/e2ee-machine-control-boundary R11 — under strict
+ * machine control no file RPC reaches the machine key, the session keys or the
+ * account secret backup, even from a working directory that contains them.
+ */
+describe('file RPCs under strict machine control', () => {
+    const mode = configuration as { machineControl: 'compat' | 'strict' };
+    const previous = mode.machineControl;
+    afterEach(() => { mode.machineControl = previous; });
+
+    it('keeps out of the happy home and nowhere else', async () => {
+        const home = configuration.happyHomeDir;
+        const { handlers, workingDirectory } = await createHandlers(dirname(home));
+        await writeFile(join(home, 'sessions.json'), '{"secret":true}');
+        const project = await mkdtemp(join(workingDirectory, 'happy-strict-project-'));
+        temporaryDirectories.push(project);
+        await writeFile(join(project, 'notes.md'), 'ok');
+        mode.machineControl = 'strict';
+
+        await expect(handlers.get('readFile')?.({ path: join(home, 'sessions.json') })).resolves.toMatchObject({ success: false });
+        await expect(handlers.get('writeFile')?.({ path: join(home, 'access.key'), content: 'eA==', expectedHash: null })).resolves.toMatchObject({ success: false });
+        await expect(handlers.get('listDirectory')?.({ path: home })).resolves.toMatchObject({ success: false });
+        await expect(handlers.get('readWorkspaceFile')?.({ workspaceRoot: home, path: join(home, 'sessions.json') })).resolves.toMatchObject({
+            success: false, errorCode: 'WORKSPACE_PATH_DENIED',
+        });
+        await expect(handlers.get('listWorkspaceDirectory')?.({ workspaceRoot: dirname(home), path: home })).resolves.toMatchObject({
+            success: false, errorCode: 'WORKSPACE_PATH_DENIED',
+        });
+
+        await expect(handlers.get('readFile')?.({ path: join(project, 'notes.md') })).resolves.toMatchObject({ success: true });
+        // A workspace read re-checks every directory from its allowed root down and refuses
+        // when one changed. The shared temp root changes under parallel tests, so this read
+        // is rooted at the project.
+        const { handlers: projectHandlers } = await createHandlers(project);
+        await expect(projectHandlers.get('readWorkspaceFile')?.({ workspaceRoot: project, path: join(project, 'notes.md') })).resolves.toMatchObject({ success: true });
+    });
+
+    it('leaves the happy home where it was in compat', async () => {
+        const home = configuration.happyHomeDir;
+        const { handlers } = await createHandlers(dirname(home));
+        await mkdir(home, { recursive: true });
+        await writeFile(join(home, 'sessions.json'), '{}');
+        mode.machineControl = 'compat';
+
+        await expect(handlers.get('readFile')?.({ path: join(home, 'sessions.json') })).resolves.toMatchObject({ success: true });
     });
 });
