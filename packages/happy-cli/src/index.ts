@@ -769,7 +769,9 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
     // Show version
     if (showVersion) {
       console.log(`happy version: ${packageJson.version}`)
-      // Don't exit - continue to pass --version to Claude Code
+      // Exit here, the same way the --help branch above does. Falling through runs
+      // auth, starts the daemon and opens a session just to answer a version query.
+      process.exit(0)
     }
 
     // Normal flow - auth and machine setup
