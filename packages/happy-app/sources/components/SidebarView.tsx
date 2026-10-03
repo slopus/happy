@@ -763,7 +763,7 @@ export const SidebarView = React.memo(({
                                 <View style={[styles.mobileContent, (advisorSidebarActive || appConversationsActive) && styles.hiddenContent]} accessibilityElementsHidden={advisorSidebarActive || appConversationsActive} importantForAccessibility={advisorSidebarActive || appConversationsActive ? 'no-hide-descendants' : 'auto'}>
                                     <DesktopSidebarSessionsNavigation />
                                 </View>
-                                {appConversationsActive ? <AppConversationsSidebar onNavigate={go} /> : advisorSidebarActive ? <PluginLeftSidebarSlot desktopDensity fillAvailableSpace onNavigate={go} /> : null}
+                                {appConversationsActive ? <AppConversationsSidebar showTitle={false} onNavigate={go} /> : advisorSidebarActive ? <PluginLeftSidebarSlot desktopDensity fillAvailableSpace onNavigate={go} /> : null}
                             </>
                         ) : appConversationsActive ? (
                             <AppConversationsSidebar visible={desktopSecondaryVisible} onNavigate={go} />

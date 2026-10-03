@@ -46,18 +46,23 @@ export const ReadOnlyChatList = React.memo((props: {
     desktopMainWidth?: number;
 }) => {
     const turnAvatar = useTurnAvatar(props.desktopMainWidth);
+    const safeArea = useSafeAreaInsets();
     const groupToolCalls = useSetting('groupToolCalls');
     return <TranscriptReadOnlyContext.Provider value={true}><TranscriptRestrictedContentContext.Provider value={true}>
         <ConversationTranscript
             key={props.scopeId}
             browserProgressScope={props.scopeId}
+            // Native keeps its normal inverted scroll/follow behavior. Align a
+            // short, read-only history to the visual top instead of the bottom.
+            contentContainerStyle={Platform.OS === 'web' ? { paddingBottom: safeArea.bottom }
+                : { flexGrow: 1, justifyContent: 'flex-end', paddingTop: safeArea.bottom }}
             metadata={null}
             messages={props.messages}
             turnAvatar={turnAvatar}
             groupToolCalls={groupToolCalls}
             currentTurnActive={props.currentTurnActive}
             showMessageActions={Platform.OS === 'web'}
-            visualTop={<ListHeader />}
+            visualTop={<View style={{ height: 16 }} />}
             visualBottom={<ChatFooter />}
         />
     </TranscriptRestrictedContentContext.Provider></TranscriptReadOnlyContext.Provider>;

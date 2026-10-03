@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, AppState, Modal as NativeModal, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, AppState, Platform, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAuth } from '@/auth/AuthContext';
@@ -11,6 +11,7 @@ import { Modal } from '@/modal';
 import { t } from '@/text';
 import { usePathname, useRouter } from 'expo-router';
 import { openExternalUrl } from '@/utils/openExternalUrl';
+import { AppConnectionsMenu } from './AppConnectionsMenu';
 
 const emptyDirectory: AppConversationDirectory = { conversations: [], nextCursor: null };
 const appInfo = (id: string) => id === 'relationship-advisor'
@@ -32,7 +33,7 @@ const grantLabel = (grant: AppAuthorizationGrant) => grant.state === 'revoked'
         : grant.expiresAt === null ? t('appConversations.permanent') : new Date(grant.expiresAt).toLocaleString();
 
 /** An owner directory only: opening this panel never starts or resumes an execution. */
-export function AppConversationsSidebar({ visible = true, onNavigate }: { visible?: boolean; onNavigate?: (path: string) => void }) {
+export function AppConversationsSidebar({ visible = true, showTitle = true, onNavigate }: { visible?: boolean; showTitle?: boolean; onNavigate?: (path: string) => void }) {
     const { credentials } = useAuth();
     const token = credentials?.token;
     const server = getServerUrl();
@@ -44,7 +45,7 @@ export function AppConversationsSidebar({ visible = true, onNavigate }: { visibl
     };
     const machines = useAllMachines({ includeOffline: true });
     const { theme } = useUnistyles();
-    const { width, height } = useWindowDimensions();
+    const { width } = useWindowDimensions();
     const [cursor, setCursor] = React.useState<string | null>(null);
     const [revision, setRevision] = React.useState(0);
     const [snapshot, setSnapshot] = React.useState<{ token: string; server: string; grants: AppAuthorizationGrant[]; directory: AppConversationDirectory } | null>(null);
@@ -54,7 +55,6 @@ export function AppConversationsSidebar({ visible = true, onNavigate }: { visibl
     const [menu, setMenu] = React.useState<{ appId: string; x: number; y: number } | null>(null);
     const trigger = React.useRef<any>(null);
     const menuTriggers = React.useRef(new Map<string, any>());
-    const firstAction = React.useRef<any>(null);
     const owner = React.useRef({ token, server });
     owner.current = { token, server };
     const data = snapshot?.token === token && snapshot?.server === server ? snapshot : null;
@@ -118,12 +118,10 @@ export function AppConversationsSidebar({ visible = true, onNavigate }: { visibl
         } catch { setError(true); }
         finally { setBusy(false); }
     };
-    const menuWidth = Math.min(340, width - 24);
-    const menuHeight = Math.min(560, height - 48);
 
     return <View style={styles.container} testID="app-conversations-sidebar">
-        <View style={styles.header}>
-            <Text style={styles.heading}>{t('appConversations.title')}</Text>
+        <View style={[styles.header, !showTitle && styles.compactHeader]}>
+            {showTitle ? <Text style={styles.heading}>{t('appConversations.title')}</Text> : null}
             <Pressable accessibilityRole="button" accessibilityLabel={t('appConversations.refresh')} onPress={refresh} style={({ pressed }) => [styles.iconButton, pressed && styles.pressed]}>
                 {loading ? <ActivityIndicator size="small" /> : <Ionicons name="refresh-outline" size={18} color={theme.colors.textSecondary} />}
             </Pressable>
@@ -162,25 +160,10 @@ export function AppConversationsSidebar({ visible = true, onNavigate }: { visibl
             {cursor ? <Pressable onPress={refresh} accessibilityRole="button" style={styles.action}><Text style={styles.title}>{t('common.back')}</Text></Pressable> : null}
             {directory.nextCursor ? <Pressable onPress={() => setCursor(directory.nextCursor)} accessibilityRole="button" style={styles.action}><Text style={styles.title}>{t('appConversations.loadMore')}</Text></Pressable> : null}
         </ScrollView>
-        {menu ? <NativeModal transparent visible animationType="none" onRequestClose={closeMenu} onShow={() => firstAction.current?.focus?.()}>
-            <View style={styles.modalRoot}>
-                <Pressable style={styles.backdrop} onPress={closeMenu} accessibilityLabel={t('sidebarLists.close')} />
-                <View style={[styles.menu, { width: menuWidth, maxHeight: menuHeight, left: Platform.OS === 'web' ? Math.max(12, Math.min(width - menuWidth - 12, menu.x - menuWidth)) : (width - menuWidth) / 2, top: Math.max(24, Math.min(height - menuHeight - 24, menu.y + 12)) }]} testID="app-conversations-group-menu">
-                    <View style={styles.header}><Text style={styles.heading}>{appInfo(menu.appId).name}</Text><Pressable accessibilityRole="button" accessibilityLabel={t('sidebarLists.close')} onPress={closeMenu} style={styles.iconButton}><Ionicons name="close" size={18} color={theme.colors.text} /></Pressable></View>
-                    <ScrollView>
-                        {appInfo(menu.appId).origin ? <Pressable ref={firstAction} accessibilityRole="button" onPress={() => { const url = appInfo(menu.appId).origin!; closeMenu(); void openExternalUrl(url); }} style={({ pressed }) => [styles.action, pressed && styles.pressed]}><Text style={styles.title}>{t('appConversations.openApp')} ↗</Text></Pressable> : null}
-                        <Text style={styles.sectionTitle}>{t('appConversations.manage')}</Text>
-                        {selectedGrants.map(grant => <View key={grant.id} style={styles.connection}>
-                            <Text style={styles.title} numberOfLines={1}>{deviceName(grant.machineId)}</Text>
-                            <Text style={styles.secondary}>{t('appConversations.connection')} · {new Date(grant.createdAt).toLocaleString()}</Text>
-                            <Text style={styles.secondary}>{grantLabel(grant)}</Text>
-                            {isAppGrantActive(grant) ? <Pressable disabled={busy} accessibilityRole="button" onPress={() => void changeGrant(grant, false)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}><Text style={styles.title}>{t('appConversations.revoke')}</Text></Pressable> : null}
-                            <Pressable disabled={busy} accessibilityRole="button" onPress={() => void changeGrant(grant, true)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}><Text style={styles.title}>{t('appConversations.remove')}</Text></Pressable>
-                        </View>)}
-                    </ScrollView>
-                </View>
-            </View>
-        </NativeModal> : null}
+        {menu ? <AppConnectionsMenu app={appInfo(menu.appId)} anchor={menu} grants={selectedGrants}
+            deviceName={deviceName} busy={busy} onClose={closeMenu}
+            onOpenApp={() => { const url = appInfo(menu.appId).origin; closeMenu(); if (url) void openExternalUrl(url); }}
+            onChangeGrant={(grant, remove) => void changeGrant(grant, remove)} /> : null}
     </View>;
 }
 
@@ -188,6 +171,7 @@ const styles = StyleSheet.create(theme => ({
     container: { flex: 1, minHeight: 0 },
     content: { padding: 12, gap: 16 },
     header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, minHeight: 48 },
+    compactHeader: { minHeight: 36, justifyContent: 'flex-end' },
     heading: { flex: 1, color: theme.colors.text, fontSize: 16, ...Typography.default('semiBold') },
     title: { color: theme.colors.text, fontSize: 14, ...Typography.default() },
     secondary: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 18, ...Typography.default() },
@@ -201,9 +185,4 @@ const styles = StyleSheet.create(theme => ({
     notice: { padding: 16, gap: 8 },
     emptyGroup: { padding: 12, color: theme.colors.textSecondary, fontSize: 13, ...Typography.default() },
     action: { minHeight: 40, padding: 10, justifyContent: 'center', borderRadius: 8 },
-    modalRoot: { flex: 1 },
-    backdrop: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
-    menu: { position: 'absolute', backgroundColor: theme.colors.surface, borderColor: theme.colors.divider, borderWidth: 1, borderRadius: 12, padding: 6, overflow: 'hidden' },
-    connection: { padding: 10, gap: 6, borderTopColor: theme.colors.divider, borderTopWidth: StyleSheet.hairlineWidth },
-    sectionTitle: { color: theme.colors.textSecondary, padding: 10, fontSize: 12, ...Typography.default('semiBold') },
 }));
