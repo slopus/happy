@@ -150,6 +150,18 @@ export const MachineMetadataSchema = z.object({
     agy: z.boolean().optional(),
     detectedAt: z.number(),
   }).optional(),
+  // What each agent on this machine says it can run. Absent for an agent that
+  // publishes no catalog, which is how the app knows to keep its own list.
+  agentModels: z.record(z.string(), z.object({
+    models: z.array(z.object({
+      id: z.string(),
+      name: z.string(),
+      description: z.string().nullable(),
+      efforts: z.array(z.string()),
+      defaultEffort: z.string().nullable(),
+    })),
+    detectedAt: z.number(),
+  })).optional(),
   resumeSupport: z.object({
     rpcAvailable: z.boolean(),
     requiresSameMachine: z.boolean(),

@@ -506,6 +506,21 @@ export const MachineMetadataSchema = z.object({
         rig: z.boolean().optional(), // Rig runs its own Happy-connected daemon
         detectedAt: z.number(),
     }).optional(),
+    // What each agent installed on this machine says it can run, keyed by agent
+    // flavor. An agent that publishes no catalog is simply absent, which is how
+    // the pickers know to keep the list Happy ships. Caught independently like
+    // the Rig blocks below: an unreadable catalog must cost the catalog, never
+    // the whole machine.
+    agentModels: z.record(z.string(), z.object({
+        models: z.array(z.object({
+            id: z.string(),
+            name: z.string(),
+            description: z.string().nullish(),
+            efforts: z.array(z.string()).optional(),
+            defaultEffort: z.string().nullish(),
+        }).passthrough()),
+        detectedAt: z.number().optional(),
+    }).passthrough()).optional().catch(undefined),
     // Rig registers as its own machine instead of being launched by happy-cli.
     // Keep its creation catalog so the new-session UI can send Rig-native
     // provider/model identifiers to the machine RPC.

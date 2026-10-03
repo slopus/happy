@@ -71,6 +71,25 @@ export type EffortLevel = ModeOption;
 export type PermissionModeKey = string;
 export type ModelModeKey = string;
 
+/**
+ * Just the part of a machine's metadata that names models.
+ *
+ * Structural rather than the whole `MachineMetadata`, so this module stays
+ * independent of the machine record's shape and a caller can hand it a Rig
+ * machine, a happy-cli machine, or nothing at all.
+ */
+export interface MachineModelCatalogSource {
+    agentModels?: Record<string, {
+        models?: {
+            id: string;
+            name: string;
+            description?: string | null;
+            efforts?: string[];
+            defaultEffort?: string | null;
+        }[];
+    } | undefined> | undefined;
+}
+
 export type AgentFlavor = 'claude' | 'codex' | 'gemini' | string | null | undefined;
 
 type Translate = (key: any) => string;
@@ -183,6 +202,63 @@ export function getCodexModelModes(): ModelMode[] {
         { key: 'gpt-5.6-terra', name: 'GPT-5.6 Terra', description: null, providerId: 'openai', providerName: 'OpenAI' },
         { key: 'gpt-5.6-luna', name: 'GPT-5.6 Luna', description: null, providerId: 'openai', providerName: 'OpenAI' },
     ];
+}
+
+/**
+ * The models an agent on a given machine reported, or null when it reported none.
+ *
+ * Null and an empty list are different answers and are kept apart all the way
+ * to the caller: a machine that has not reported a catalog must fall back to
+ * the list Happy ships, while one that reported an empty catalog has genuinely
+ * nothing to offer and must not be papered over with stale names.
+ */
+export function getMachineModelModes(
+    flavor: AgentFlavor,
+    machineMetadata: MachineModelCatalogSource | null | undefined,
+): ModelMode[] | null {
+    const catalog = typeof flavor === 'string' ? machineMetadata?.agentModels?.[flavor] : undefined;
+    if (!catalog || !Array.isArray(catalog.models)) return null;
+    return catalog.models.map((model) => ({
+        key: model.id,
+        name: model.name,
+        description: model.description ?? null,
+        modelId: model.id,
+        thinkingLevels: model.efforts ?? [],
+        defaultThinkingLevel: model.defaultEffort ?? null,
+    }));
+}
+
+/** The efforts a machine reported for one model, or null when it reported none. */
+export function getMachineEffortLevels(
+    flavor: AgentFlavor,
+    modelKey: string,
+    machineMetadata: MachineModelCatalogSource | null | undefined,
+): EffortLevel[] | null {
+    const catalog = typeof flavor === 'string' ? machineMetadata?.agentModels?.[flavor] : undefined;
+    const model = catalog?.models?.find((candidate) => candidate.id === modelKey);
+    if (!model?.efforts || model.efforts.length === 0) return null;
+    return effortLevels(model.efforts);
+}
+
+/**
+ * What a picker should offer for an agent on a machine.
+ *
+ * The machine is asked first, because it is the only thing that knows which
+ * agent is actually installed there and what that build of it can run. Happy's
+ * own list is the answer for a machine running a CLI too old to report one, and
+ * for every agent that publishes no catalog.
+ */
+export function getModelModesForMachine(
+    flavor: AgentFlavor,
+    machineMetadata: MachineModelCatalogSource | null | undefined,
+    translate: Translate,
+    selectedKey?: string | null,
+): ModelMode[] {
+    const reported = getMachineModelModes(flavor, machineMetadata);
+    if (reported && reported.length > 0) {
+        return includeConfiguredModel(flavor, reported, selectedKey);
+    }
+    return includeConfiguredModel(flavor, getHardcodedModelModes(flavor, translate), selectedKey);
 }
 
 export function includeConfiguredModel(
@@ -576,7 +652,12 @@ export function getEffortLevelsForModel(
     flavor: AgentFlavor,
     modelKey: string,
     metadata?: Metadata | null,
+    machineMetadata?: MachineModelCatalogSource | null,
 ): EffortLevel[] {
+    // A model the machine reported carries its own levels, which is the only
+    // way a model newer than this build gets anything but the fallback set.
+    const reported = getMachineEffortLevels(flavor, modelKey, machineMetadata);
+    if (reported) return reported;
     if (isRigMetadataV1(metadata)) {
         return getRigReasoningLevels(metadata, modelKey).map((level) => ({
             key: level,

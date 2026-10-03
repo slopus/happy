@@ -1,27 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import {
-    truncateModelLabel,
     filterPermissionModesForCli,
-    modeSupportedByCli,
-    permissionModeSupportedByCli,
     getAgyModelModes,
     getAgyPermissionModes,
     getAvailableModels,
     getAvailablePermissionModes,
-    getCodexModelModes,
-    getCodexPermissionModes,
     getClaudeModelModes,
     getClaudePermissionModes,
-    getGeminiPermissionModes,
+    getCodexModelModes,
+    getCodexPermissionModes,
     getDefaultEffortKey,
     getDefaultModelKey,
-    getEffortLevelsForModel,
     getDefaultPermissionModeKey,
+    getEffortLevelsForModel,
+    getGeminiPermissionModes,
+    getMachineModelModes,
+    getModelModesForMachine,
+    getOpenClawPermissionModes,
     groupModelModesByProvider,
     includeConfiguredModel,
-    getOpenClawPermissionModes,
     mapMetadataOptions,
+    modeSupportedByCli,
+    permissionModeSupportedByCli,
     resolveCurrentOption,
+    truncateModelLabel,
 } from './modelModeOptions';
 import { sortPermissionModes } from '@/utils/permissionModeLabels';
 import { rigMetadataFixture } from '@/sync/__testdata__/rigMetadata';
@@ -447,5 +449,66 @@ describe('modelModeOptions', () => {
     it('cuts mid-word only when there is no boundary to fall back on', () => {
         expect(truncateModelLabel('Supercalifragilisticexpialidocious'))
             .toBe('Supercalifragili\u2026');
+    });
+});
+
+/** A machine whose Codex is newer than the list this build of Happy ships. */
+const machineWithCodex = {
+    agentModels: {
+        codex: {
+            models: [
+                {
+                    id: 'gpt-6.1-sol',
+                    name: 'GPT-6.1-Sol',
+                    description: 'Latest workhorse.',
+                    efforts: ['low', 'medium', 'ultra'],
+                    defaultEffort: 'low',
+                },
+                { id: 'gpt-6-astra', name: 'GPT-6-Astra', description: null, efforts: ['low'], defaultEffort: 'low' },
+            ],
+        },
+    },
+};
+
+describe('models reported by a machine', () => {
+    // The failure this guards against: a model released after the app was built
+    // could not be picked at all, because the list was compiled into the binary.
+    it('offers a model this build has never heard of', () => {
+        const models = getModelModesForMachine('codex', machineWithCodex, translate);
+
+        expect(models.map((model) => model.key)).toEqual(['gpt-6.1-sol', 'gpt-6-astra']);
+    });
+
+    it('keeps the order the machine reported', () => {
+        const models = getMachineModelModes('codex', machineWithCodex);
+
+        expect(models?.[0].key).toBe('gpt-6.1-sol');
+    });
+
+    it('carries the levels that model itself accepts', () => {
+        expect(getEffortLevelsForModel('codex', 'gpt-6.1-sol', null, machineWithCodex).map((e) => e.key))
+            .toEqual(['low', 'medium', 'ultra']);
+    });
+
+    // A machine running a CLI too old to report anything must look exactly as
+    // it does today, or upgrading the app would empty everyone's picker.
+    it('falls back to the shipped list when the machine reports nothing', () => {
+        const fallback = getModelModesForMachine('codex', undefined, translate);
+
+        expect(fallback.map((model) => model.key)).toContain('gpt-6-astra');
+        expect(getMachineModelModes('codex', undefined)).toBeNull();
+        expect(getMachineModelModes('codex', { agentModels: {} })).toBeNull();
+    });
+
+    it('falls back for an agent the machine said nothing about', () => {
+        expect(getMachineModelModes('claude', machineWithCodex)).toBeNull();
+        expect(getModelModesForMachine('claude', machineWithCodex, translate).length).toBeGreaterThan(0);
+    });
+
+    // Only a model the machine named carries its own levels; anything else
+    // keeps the conservative set rather than borrowing another model's.
+    it('does not lend one model the levels of another', () => {
+        expect(getEffortLevelsForModel('codex', 'gpt-5.5', null, machineWithCodex).map((e) => e.key))
+            .toEqual(['low', 'medium', 'high', 'xhigh']);
     });
 });
