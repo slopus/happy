@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import tweetnacl from 'tweetnacl';
-import { decryptBlob, getRandomBytes } from './encryption';
+import { decryptBlob, encrypt, getRandomBytes, tryDecrypt } from './encryption';
 
 describe('decryptBlob', () => {
     it('decrypts a blob encrypted with NaCl secretbox', () => {
@@ -137,5 +137,45 @@ describe('buildMachineKeyEnvelopes', () => {
         const envelopes = buildMachineKeyEnvelopes(null, server.publicKey);
         expect(envelopes.dataEncryptionKey).toBeNull();
         expect(envelopes.serverDataEncryptionKey).toBeNull();
+    });
+});
+
+// RPC callers are authenticated only by the key that seals their params, so the
+// receiver must be able to tell "this key opened it" apart from "it opened to
+// null". `decrypt` returns null for both.
+describe('tryDecrypt', () => {
+    describe.each(['legacy', 'dataKey'] as const)('%s', (variant) => {
+        it('returns the value sealed with the same key', () => {
+            const key = getRandomBytes(32);
+            expect(tryDecrypt(key, variant, encrypt(key, variant, { cwd: '/w' }))).toEqual({ ok: true, value: { cwd: '/w' } });
+        });
+
+        it('reports a sealed null as a successful open', () => {
+            const key = getRandomBytes(32);
+            expect(tryDecrypt(key, variant, encrypt(key, variant, null))).toEqual({ ok: true, value: null });
+        });
+
+        it('treats an authenticated empty plaintext as null', () => {
+            const key = getRandomBytes(32);
+            expect(tryDecrypt(key, variant, encrypt(key, variant, undefined))).toEqual({ ok: true, value: null });
+        });
+
+        it('fails for a payload sealed with another key', () => {
+            const key = getRandomBytes(32);
+            expect(tryDecrypt(key, variant, encrypt(getRandomBytes(32), variant, {}))).toEqual({ ok: false });
+        });
+
+        it('fails for a tampered payload', () => {
+            const key = getRandomBytes(32);
+            const sealed = encrypt(key, variant, { command: 'ls' });
+            sealed[sealed.length - 1] ^= 0xff;
+            expect(tryDecrypt(key, variant, sealed)).toEqual({ ok: false });
+        });
+
+        it('fails for random and truncated bytes', () => {
+            const key = getRandomBytes(32);
+            expect(tryDecrypt(key, variant, getRandomBytes(64))).toEqual({ ok: false });
+            expect(tryDecrypt(key, variant, new Uint8Array(0))).toEqual({ ok: false });
+        });
     });
 });

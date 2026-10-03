@@ -106,7 +106,8 @@ class Configuration {
     }
 
     if (!existsSync(this.happyHomeDir)) {
-      mkdirSync(this.happyHomeDir, { recursive: true })
+      // Owner-only: the home holds key material (specs/e2ee-machine-control-boundary R9).
+      mkdirSync(this.happyHomeDir, { recursive: true, mode: 0o700 })
     }
     // Ensure directories exist
     if (!existsSync(this.logsDir)) {

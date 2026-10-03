@@ -184,3 +184,22 @@ export function readReconnectSessionEnvironment(
         ...snapshot,
     };
 }
+
+/**
+ * Reads the reconnect environment and removes the session data key from it.
+ *
+ * Agent runners call this on `process.env` before they start the agent: the key
+ * is the session's data key, and every process the agent or its tools start
+ * would otherwise inherit it. The key is removed even when the rest of the
+ * environment is refused. The other HAPPY_RECONNECT_* values stay; later code
+ * still reads them to recognise a reconnect.
+ */
+export function consumeReconnectSessionEnvironment(
+    env: NodeJS.ProcessEnv,
+): ReconnectSessionClientSnapshot | null {
+    try {
+        return readReconnectSessionEnvironment(env);
+    } finally {
+        delete env.HAPPY_RECONNECT_ENCRYPTION_KEY;
+    }
+}

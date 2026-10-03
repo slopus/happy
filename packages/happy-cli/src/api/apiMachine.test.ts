@@ -163,6 +163,45 @@ describe('ApiMachineClient socket reconnection', () => {
         }
     });
 
+    /*
+     * aplus-dev-studio specs/e2ee-machine-control-boundary R6 — the open params
+     * are the only thing that proves the caller holds the machine key. Without
+     * them, or with params sealed to another key, decrypt() used to yield null
+     * and the daemon opened a login shell with defaults for whoever routed the
+     * event. These run on Unix only because a regression spawns a real shell.
+     */
+    describeUnix('terminal-open-fwd without params the machine key opens', () => {
+        const sessionId = 'term-unauthenticated-1';
+
+        afterEach(() => {
+            const entry = getDaemonTerminalSession(sessionId);
+            if (entry) void entry.session.terminate();
+            removeDaemonTerminalSession(sessionId);
+        });
+
+        it.each([
+            ['legacy', 'missing'],
+            ['legacy', 'null'],
+            ['legacy', 'sealed with another key'],
+            ['dataKey', 'missing'],
+            ['dataKey', 'sealed with another key'],
+        ] as const)('refuses %s machines %s params without opening a shell', async (variant, kind) => {
+            const machine = { ...makeMachine(), encryptionVariant: variant } as Machine;
+            const client = new ApiMachineClient('fake-token', machine);
+            client.connect();
+            const params = kind === 'missing' ? undefined
+                : kind === 'null' ? null
+                    : encodeBase64(encrypt(new Uint8Array(32).fill(7), variant, { shell: '/bin/sh' }));
+
+            const ack = await new Promise<any>((resolve) => {
+                emitSocketEvent('terminal-open-fwd', { sessionId, params }, resolve);
+            });
+
+            expect(ack.ok).toBe(false);
+            expect(getDaemonTerminalSession(sessionId)).toBeNull();
+        });
+    });
+
     // Desktop specs/windows-build-support W0-5h: the standalone runtime roots every shell in its
     // verified pty host and closes terminals on drain, so the relay opens; the preview relay stays off.
     it('attaches the terminal relay but not the preview relay under the Windows standalone trial', () => {

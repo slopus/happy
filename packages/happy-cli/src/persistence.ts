@@ -5,8 +5,8 @@
  */
 
 import { FileHandle } from 'node:fs/promises'
-import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
-import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync, chmodSync, statSync, openSync, closeSync, mkdirSync, rmSync } from 'node:fs'
+import { readFile, writeFile, mkdir, open, unlink, rename, stat, chmod } from 'node:fs/promises'
+import { existsSync, writeFileSync, readFileSync, unlinkSync, renameSync, chmodSync, statSync, lstatSync, openSync, closeSync, mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { constants } from 'node:fs'
 import { randomBytes } from 'node:crypto'
@@ -284,6 +284,56 @@ export async function updateSettings(
 }
 
 //
+// Owner-only key material (aplus-dev-studio specs/e2ee-machine-control-boundary R9)
+//
+
+/**
+ * access.key carries the machine key, its legacy backup the account secret and
+ * sessions.json every session's data key. They are owner-only. `mode` on a write
+ * only applies when the file is created, so a rewrite of an existing file also
+ * resets its mode.
+ */
+const PRIVATE_FILE_MODE = 0o600;
+const PRIVATE_DIR_MODE = 0o700;
+
+export async function writePrivateFile(path: string, content: string): Promise<void> {
+  await writeFile(path, content, { encoding: 'utf-8', mode: PRIVATE_FILE_MODE });
+  await chmod(path, PRIVATE_FILE_MODE);
+}
+
+export function writePrivateFileSync(path: string, content: string): void {
+  writeFileSync(path, content, { encoding: 'utf-8', mode: PRIVATE_FILE_MODE });
+  chmodSync(path, PRIVATE_FILE_MODE);
+}
+
+/**
+ * Brings an existing happy home written before R9 to owner-only. Only the home
+ * and the files above, only when they belong to this user, and never through a
+ * symlink. Skipped on Windows, where these modes do not mean the same thing.
+ */
+export function hardenHappyHomePermissions(): void {
+  if (process.platform === 'win32') return;
+  const targets: Array<[string, number]> = [
+    [configuration.happyHomeDir, PRIVATE_DIR_MODE],
+    [configuration.privateKeyFile, PRIVATE_FILE_MODE],
+    [`${configuration.privateKeyFile}.legacy-backup`, PRIVATE_FILE_MODE],
+    [configuration.sessionsFile, PRIVATE_FILE_MODE],
+  ];
+  const uid = process.getuid?.();
+  for (const [path, mode] of targets) {
+    try {
+      const entry = lstatSync(path);
+      if (entry.isSymbolicLink() || entry.uid !== uid) continue;
+      if ((entry.mode & 0o777) !== mode) chmodSync(path, mode);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+        logger.debug(`[PERSISTENCE] Could not restrict ${path}:`, error);
+      }
+    }
+  }
+}
+
+//
 // Authentication
 //
 
@@ -383,9 +433,9 @@ export function serializeProvisionedLegacyCredentials(input: {
 
 export async function writeCredentialsLegacy(credentials: { secret: Uint8Array, token: string }): Promise<void> {
   if (!existsSync(configuration.happyHomeDir)) {
-    await mkdir(configuration.happyHomeDir, { recursive: true })
+    await mkdir(configuration.happyHomeDir, { recursive: true, mode: PRIVATE_DIR_MODE })
   }
-  await writeFile(configuration.privateKeyFile, JSON.stringify({
+  await writePrivateFile(configuration.privateKeyFile, JSON.stringify({
     secret: encodeBase64(credentials.secret),
     token: credentials.token
   }, null, 2));
@@ -393,9 +443,9 @@ export async function writeCredentialsLegacy(credentials: { secret: Uint8Array, 
 
 export async function writeCredentialsDataKey(credentials: { publicKey: Uint8Array, machineKey: Uint8Array, token: string }): Promise<void> {
   if (!existsSync(configuration.happyHomeDir)) {
-    await mkdir(configuration.happyHomeDir, { recursive: true })
+    await mkdir(configuration.happyHomeDir, { recursive: true, mode: PRIVATE_DIR_MODE })
   }
-  await writeFile(configuration.privateKeyFile, JSON.stringify({
+  await writePrivateFile(configuration.privateKeyFile, JSON.stringify({
     encryption: { publicKey: encodeBase64(credentials.publicKey), machineKey: encodeBase64(credentials.machineKey) },
     token: credentials.token
   }, null, 2));
@@ -455,7 +505,7 @@ export async function provisionLegacyMachineKey(
   machineKey: Uint8Array = new Uint8Array(randomBytes(32)),
 ): Promise<Credentials> {
   const { updated, serialized } = buildProvisionedLegacyCredentials(credentials, accountPublicKeyBase64, machineKey);
-  await writeFile(configuration.privateKeyFile, JSON.stringify(serialized, null, 2));
+  await writePrivateFile(configuration.privateKeyFile, JSON.stringify(serialized, null, 2));
   return updated;
 }
 
@@ -846,7 +896,7 @@ export function persistSession(sessionId: string, session: PersistedSession): vo
     const existing = readPersistedSessions();
     existing[sessionId] = session;
     const tmpFile = configuration.sessionsFile + '.tmp';
-    writeFileSync(tmpFile, JSON.stringify({ sessions: existing }, null, 2), 'utf-8');
+    writePrivateFileSync(tmpFile, JSON.stringify({ sessions: existing }, null, 2));
     renameSync(tmpFile, configuration.sessionsFile);
   } catch (error) {
     logger.debug(`[PERSISTENCE] Failed to persist session ${sessionId}:`, error);

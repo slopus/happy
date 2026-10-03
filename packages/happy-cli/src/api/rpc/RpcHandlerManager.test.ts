@@ -230,3 +230,47 @@ it('enforces a separate internal method policy before dispatch including later r
     expect(await call(manager, 'unknown-later-method', {})).toMatchObject({ code: 'TRIAL_UNAVAILABLE' });
     expect(invoked).toBe(0);
 });
+
+// The scope key is the only thing that authenticates a caller. A request it
+// cannot open must not reach a handler — not even one that ignores its params,
+// such as stop-daemon, which anyone able to route an rpc-request could
+// otherwise trigger without holding any key.
+describe('requests the scope key cannot open', () => {
+    it.each(['legacy', 'dataKey'] as const)('never reach a handler (%s)', async (variant) => {
+        const manager = new RpcHandlerManager({ scopePrefix: 'machine-1', encryptionKey: KEY, encryptionVariant: variant, logger: () => {} });
+        let calls = 0;
+        manager.registerHandler('stop-daemon', () => { calls++; return { message: 'stopping' }; });
+        const foreignKey = encodeBase64(encrypt(new Uint8Array(randomBytes(32)), variant, {}));
+        const randomBytesParams = encodeBase64(new Uint8Array(randomBytes(48)));
+        for (const params of [foreignKey, randomBytesParams]) {
+            const response = await manager.handleRequest({ method: 'machine-1:stop-daemon', params } as never);
+            expect(decrypt(KEY, variant, decodeBase64(response as string))).toMatchObject({ code: 'RPC_DECRYPT_FAILED' });
+        }
+        expect(calls).toBe(0);
+    });
+
+    it.each(['legacy', 'dataKey'] as const)('still run a parameterless call sealed with the scope key (%s)', async (variant) => {
+        const manager = new RpcHandlerManager({ scopePrefix: 'machine-1', encryptionKey: KEY, encryptionVariant: variant, logger: () => {} });
+        const received: unknown[] = [];
+        manager.registerHandler('stop-daemon', (params: unknown) => { received.push(params); return { message: 'stopping' }; });
+        const response = await manager.handleRequest({
+            method: 'machine-1:stop-daemon',
+            params: encodeBase64(encrypt(KEY, variant, undefined)),
+        } as never);
+        expect(decrypt(KEY, variant, decodeBase64(response as string))).toEqual({ message: 'stopping' });
+        expect(received).toEqual([null]);
+    });
+
+    it('never reach a handler on the traced path either', async () => {
+        const manager = new RpcHandlerManager({ scopePrefix: 'machine-1', encryptionKey: KEY, encryptionVariant: 'dataKey', logger: () => {} });
+        let calls = 0;
+        manager.registerHandler('daemon-session-state', async () => { calls++; return { version: 1, state: 'present' }; });
+        const response = await manager.handleRequest({
+            method: 'machine-1:daemon-session-state',
+            params: encodeBase64(encrypt(new Uint8Array(randomBytes(32)), 'dataKey', { sessionId: 's' })),
+            rpcLatency: { version: 1, id: '22222222-2222-4222-8222-222222222222' },
+        } as never);
+        expect(calls).toBe(0);
+        expect(decrypt(KEY, 'dataKey', decodeBase64(response.result))).toMatchObject({ code: 'RPC_DECRYPT_FAILED' });
+    });
+});

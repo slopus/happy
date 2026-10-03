@@ -246,6 +246,56 @@ export function decryptWithDataKey(bundle: Uint8Array, dataKey: Uint8Array): any
   }
 }
 
+export type DecryptResult = { ok: true, value: any } | { ok: false };
+
+function openLegacy(data: Uint8Array, secret: Uint8Array): Uint8Array | null {
+  if (data.length < tweetnacl.secretbox.nonceLength + tweetnacl.secretbox.overheadLength) {
+    return null;
+  }
+  const nonce = data.slice(0, tweetnacl.secretbox.nonceLength);
+  return tweetnacl.secretbox.open(data.slice(tweetnacl.secretbox.nonceLength), nonce, secret);
+}
+
+function openWithDataKey(bundle: Uint8Array, dataKey: Uint8Array): Uint8Array | null {
+  if (bundle.length < 1 + 12 + 16 || bundle[0] !== 0) {
+    return null;
+  }
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', dataKey, bundle.slice(1, 13));
+    decipher.setAuthTag(bundle.slice(bundle.length - 16));
+    return new Uint8Array(Buffer.concat([
+      decipher.update(bundle.slice(13, bundle.length - 16)),
+      decipher.final()
+    ]));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Decrypt and report whether the key actually opened the payload. `decrypt`
+ * returns null both for a payload that opened to JSON null and for one this
+ * key cannot open; an RPC receiver authenticates callers by the key alone, so
+ * it must not treat the second case as a call.
+ *
+ * `encrypt(key, variant, undefined)` seals an empty plaintext, which callers
+ * use for parameterless RPCs; it opens as null.
+ */
+export function tryDecrypt(key: Uint8Array, variant: 'legacy' | 'dataKey', data: Uint8Array): DecryptResult {
+  const plaintext = variant === 'legacy' ? openLegacy(data, key) : openWithDataKey(data, key);
+  if (!plaintext) {
+    return { ok: false };
+  }
+  if (plaintext.length === 0) {
+    return { ok: true, value: null };
+  }
+  try {
+    return { ok: true, value: JSON.parse(new TextDecoder().decode(plaintext)) };
+  } catch {
+    return { ok: false };
+  }
+}
+
 export function encrypt(key: Uint8Array, variant: 'legacy' | 'dataKey', data: any): Uint8Array {
   if (variant === 'legacy') {
     return encryptLegacy(data, key);

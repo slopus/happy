@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { Metadata } from '@/api/types';
 import {
     buildReconnectSessionEnvironment,
+    consumeReconnectSessionEnvironment,
     decodeReconnectSessionSnapshot,
     encodeReconnectSessionSnapshot,
     hasReliableResumeBaseline,
@@ -252,5 +253,49 @@ describe('hasReliableResumeBaseline', () => {
             reportedSeq: undefined,
             persistedSeq: 621,
         })).toBe(true);
+    });
+});
+
+// aplus-dev-studio specs/e2ee-machine-control-boundary R10 — the reconnect key is
+// the session's data key. Left in process.env, every tool the agent starts
+// inherits it, and anything that prints its environment hands it to the LLM.
+describe('consumeReconnectSessionEnvironment', () => {
+    const snapshot = () => encodeReconnectSessionSnapshot({
+        metadata: makeMetadata(),
+        seq: 1,
+        metadataVersion: 1,
+        agentStateVersion: 1,
+    });
+
+    it('returns the reconnect session and removes the data key from the environment', () => {
+        const env: NodeJS.ProcessEnv = {
+            HAPPY_RECONNECT_SESSION_ID: 'happy-session-1',
+            HAPPY_RECONNECT_ENCRYPTION_KEY: Buffer.from(new Uint8Array(32).fill(5)).toString('base64'),
+            HAPPY_RECONNECT_ENCRYPTION_VARIANT: 'dataKey',
+            HAPPY_RECONNECT_SNAPSHOT: snapshot(),
+        };
+
+        const session = consumeReconnectSessionEnvironment(env);
+
+        expect(session?.encryptionKey).toEqual(new Uint8Array(32).fill(5));
+        expect(env.HAPPY_RECONNECT_ENCRYPTION_KEY).toBeUndefined();
+        expect(env.HAPPY_RECONNECT_SESSION_ID).toBe('happy-session-1');
+    });
+
+    it('removes the data key even when the reconnect environment is refused', () => {
+        const env: NodeJS.ProcessEnv = {
+            HAPPY_RECONNECT_SESSION_ID: 'happy-session-1',
+            HAPPY_RECONNECT_ENCRYPTION_KEY: Buffer.from(new Uint8Array(32)).toString('base64'),
+            HAPPY_RECONNECT_ENCRYPTION_VARIANT: 'legacy',
+        };
+
+        expect(() => consumeReconnectSessionEnvironment(env)).toThrow(/incomplete reconnect environment/i);
+        expect(env.HAPPY_RECONNECT_ENCRYPTION_KEY).toBeUndefined();
+    });
+
+    it('leaves an environment without reconnect values untouched', () => {
+        const env: NodeJS.ProcessEnv = { PATH: '/usr/bin' };
+        expect(consumeReconnectSessionEnvironment(env)).toBeNull();
+        expect(env).toEqual({ PATH: '/usr/bin' });
     });
 });

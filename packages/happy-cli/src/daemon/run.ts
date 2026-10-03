@@ -45,6 +45,7 @@ import {
   releaseDaemonLock,
   isPidAlive,
   readPersistedSessions,
+  hardenHappyHomePermissions,
   persistSession,
   readCredentials,
 } from '@/persistence';
@@ -766,6 +767,11 @@ export async function startDaemon(): Promise<void> {
         `[managed] daemon credential unusable (${managedCredential.reason}); refusing to start`,
       );
     }
+
+    // Key material written before owner-only modes existed stays readable by
+    // other local accounts until something rewrites it. A managed runtime owns
+    // its state layout and checks its modes itself, so only BYOS is repaired.
+    if (!managedCredential?.ok) hardenHappyHomePermissions();
 
     // Ensure auth and machine registration BEFORE anything else
     const { credentials, machineId, serverPublicKey } = managedCredential?.ok
