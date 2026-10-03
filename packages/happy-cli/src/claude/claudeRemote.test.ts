@@ -260,6 +260,7 @@ describe('claudeRemote', () => {
         } as any);
 
         const result = await claudeRemote({
+            checkpointGuidance: async () => 'checkpoint test guidance',
             sessionId: null,
             path: process.cwd(),
             allowedTools: [],
@@ -276,6 +277,7 @@ describe('claudeRemote', () => {
             onMessage: vi.fn(),
         });
 
+        expect(vi.mocked(query).mock.calls.at(-1)?.[0].options?.appendSystemPrompt).toContain('checkpoint test guidance');
         expect(result).toBe('turn-complete');
         expect(calls).toEqual(['record', 'ready']);
     });

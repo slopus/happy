@@ -6,6 +6,8 @@ export type AutomationMcpSpawnContext = {
   bindingStatus: 'BOUND' | 'DIRECT_OWNER'
   connectorPolicy: 'required' | 'optional' | 'none' | 'unspecified'
   requiredConnectors: string[]
+  /** specs/agent-browser-shared-profiles — the run principal's session-user attestation (shared Agent Browser machines). */
+  browserAttestation?: string
 }
 
 export type AutomationMcpCallerGrantResult =
@@ -44,6 +46,10 @@ function parseExchangeResponse(value: unknown): { context: AutomationMcpSpawnCon
   return {
     context: {
       ...(typeof row.grant === 'string' ? { mcpCallerGrant: row.grant } : {}),
+      // A malformed one is dropped: the run still goes, only without the browser.
+      ...(typeof row.browserAttestation === 'string' && row.browserAttestation && row.browserAttestation.length <= 4096
+        ? { browserAttestation: row.browserAttestation }
+        : {}),
       mcpConfigProjectId: row.projectId,
       bindingStatus,
       connectorPolicy,

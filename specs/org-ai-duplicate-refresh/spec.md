@@ -16,3 +16,10 @@
 - Codex는 실제 auth.json 동기화까지 확인하고 실패 시 live 파일·풀 복구를 시도한다.
 - 등록 불가능한 형식·읽기/쓰기 실패·비유효 공용 인증은 성공으로 처리하지 않는다.
 - 관리자 UI/서버는 별도 저장소 specs/org-ai-account-apply가 소유한다.
+
+## 2026-10-03 회전·자동 복구 리뷰 후속
+
+- 자동 복구의 적용 전 active/slot/disabled 경합 또는 재로그인 상태가 정상으로 바뀐 경우 credential write 없이 복구를 건너뛰고 신규 identity 추가를 계속한다. 명시 repair의 실패 계약은 유지한다.
+- 원본 검증 실패·로컬 인증 변경·적용 전 경합은 복구 실패 개수에 포함하고 설치 후 성공 identity만 복구 성공으로 집계한다. import 이후 검증 실패와 관측·정리 실패는 계속 전파한다.
+- 전달 disabled 메타데이터가 enabled 로컬 slot을 비활성화하거나 검증을 막지 않게 대상 상태를 보존한다.
+- 현재 계정 사용량 관측과 재로그인 필요 enabled 계정 수를 상태/merge 결과에 제공한다. 정상 active와 비교 불가 후보가 같은 poll에서 확인되면 running + NO_COMPARISON으로 분리하고 격리 계정은 ACCOUNT_NEEDS_REAUTH 경고로 표시한다.

@@ -465,6 +465,9 @@ export function daemonEnv(install) {
     // server addresses everything as /home/agent/workspace/..., a link to /work/agent-workspace: rooted at the
     // link, both the lexical and the realpath checks pass (a link is tolerated only as the root itself).
     `HAPPY_WORKSPACE_ROOT=${PATHS.agentWorkspaceLink}`,
+    // The Aplus MCP config of the daemon's server: automation runs exchange their claim for a caller grant there
+    // (without it every run fails before spawning), and sessions read their connectors from it.
+    `HAPPY_APLUS_MCP_CONFIG_URL=${new URL("/api/me/mcp-config", install.serverUrl ?? HAPPY_DEFAULT_SERVER_URL)}`,
     // The machine policy is mandatory: a session without an enabled sandbox config refuses to
     // start. Every daemon session gets this one (writes bounded to its /work workspace).
     `HAPPY_PROJECT_SANDBOX_CONFIG='${JSON.stringify(SESSION_SANDBOX_CONFIG)}'`,

@@ -66,6 +66,12 @@ type RestoreEntryOutcome = { outcome?: string };
  * Named as a port so the boundary can be exercised without a git store, and
  * kept to the one call the producer makes — a wider surface here would be this
  * module describing an executor it does not own.
+ *
+ * execute runs inside the producer lock. Do not delegate to the ordinary
+ * CheckpointRestoreExecutor for that same store: its pin/snapshot operations
+ * reacquire the non-reentrant lock. A production adapter must explicitly
+ * support the already-held lock; the current boot path only initializes an
+ * empty volume and does not supply such an adapter.
  */
 export type ManagedRestorePort = {
     execute: (request: {

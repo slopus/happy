@@ -39,6 +39,57 @@ function setup(enabled = false) {
 }
 
 describe('Claude swap supervisor', () => {
+  it('keeps a below-threshold active account running when only peer usage is unreadable', async () => {
+    const { supervisor, children, spawn } = setup()
+    await supervisor.enable()
+    children[0].stdout.emit('data', Buffer.from(
+      '{"schemaVersion":1,"event":"poll","active":{"number":1},"headroomPct":{"1":80,"2":null},"threshold":95}\n'
+      + '{"schemaVersion":1,"event":"no-switch","reason":"no-comparison"}\n',
+    ))
+    expect(supervisor.status()).toEqual({ state: 'running', lastErrorKind: null, warningKinds: ['NO_COMPARISON'] })
+    expect(children[0].kill).not.toHaveBeenCalled()
+    expect(spawn).toHaveBeenCalledOnce()
+    children[0].stdout.emit('data', Buffer.from('{"schemaVersion":1,"event":"no-switch","reason":"below-threshold"}\n'))
+    expect(supervisor.status()).toEqual({ state: 'running', lastErrorKind: null })
+    children[0].stdout.emit('data', Buffer.from('{"schemaVersion":1,"event":"no-switch","reason":"no-comparison"}\n'))
+    expect(supervisor.status()).toMatchObject({ state: 'blocked', lastErrorKind: 'NO_VIABLE_ACCOUNT' })
+  })
+
+  it('keeps exhaustion blocked when a quarantined peer is recovered', async () => {
+    const { supervisor, children } = setup()
+    await supervisor.enable()
+    children[0].stdout.emit('data', Buffer.from(
+      '{"schemaVersion":1,"event":"all-exhausted"}\n'
+      + '{"schemaVersion":1,"event":"account-quarantined","number":"2"}\n',
+    ))
+    expect(supervisor.status()).toEqual({ state: 'blocked', lastErrorKind: 'ALL_ACCOUNTS_EXHAUSTED', warningKinds: ['ACCOUNT_NEEDS_REAUTH'] })
+    children[0].stdout.emit('data', Buffer.from('{"schemaVersion":1,"event":"account-unquarantined","number":"2"}\n'))
+    expect(supervisor.status()).toEqual({ state: 'blocked', lastErrorKind: 'ALL_ACCOUNTS_EXHAUSTED' })
+  })
+
+  it.each([null, 0, 5, -1, 101, '80'])('does not promote unreadable, exhausted, at-threshold or malformed active headroom %s', async headroom => {
+    const { supervisor, children } = setup()
+    await supervisor.enable()
+    const emit = (event: object) => children[0].stdout.emit('data', Buffer.from(JSON.stringify({ schemaVersion: 1, ...event }) + '\n'))
+    emit({ event: 'poll', active: { number: 1 }, headroomPct: { 1: headroom }, threshold: 95 })
+    emit({ event: 'no-switch', reason: 'no-comparison' })
+    expect(supervisor.status()).toMatchObject({ state: 'blocked', lastErrorKind: 'NO_VIABLE_ACCOUNT' })
+  })
+
+  it('replaces poll evidence and keeps process failures blocked through late output', async () => {
+    const { supervisor, children } = setup()
+    await supervisor.enable()
+    const emit = (event: object) => children[0].stdout.emit('data', Buffer.from(JSON.stringify({ schemaVersion: 1, ...event }) + '\n'))
+    emit({ event: 'poll', active: { number: 1 }, headroomPct: { 1: 80 }, threshold: 95 })
+    emit({ event: 'poll', active: { number: 2 }, headroomPct: { 2: null }, threshold: 95 })
+    emit({ event: 'no-switch', reason: 'no-comparison' })
+    expect(supervisor.status()).toMatchObject({ state: 'blocked', lastErrorKind: 'NO_VIABLE_ACCOUNT' })
+    emit({ event: 'poll', active: { number: 1 }, headroomPct: { 1: 80 }, threshold: 95 })
+    children[0].emit('exit', 1, null)
+    emit({ event: 'no-switch', reason: 'no-comparison' })
+    expect(supervisor.status()).toMatchObject({ state: 'blocked', lastErrorKind: 'PROCESS_EXITED' })
+  })
+
   it('persists enablement and runs exactly one consume-first auto child', async () => {
     const { supervisor, spawn, writeEnabled } = setup()
 
@@ -199,7 +250,7 @@ describe('Claude swap supervisor', () => {
     expect(supervisor.status()).toEqual({ state: 'running', lastErrorKind: null })
   })
 
-  it('reports quarantined credentials as needing reauthentication until recovery', async () => {
+  it('warns about a quarantined peer without overriding healthy rotation decisions', async () => {
     const { supervisor, children } = setup()
     await supervisor.enable()
 
@@ -207,8 +258,9 @@ describe('Claude swap supervisor', () => {
       '{"schemaVersion":1,"event":"account-quarantined","number":"2","email":"dead@example.com","reason":"invalid-grant"}\n',
     ))
     expect(supervisor.status()).toEqual({
-      state: 'needs-reauth',
-      lastErrorKind: 'ACCOUNT_NEEDS_REAUTH',
+      state: 'running',
+      lastErrorKind: null,
+      warningKinds: ['ACCOUNT_NEEDS_REAUTH'],
     })
     expect(JSON.stringify(supervisor.status())).not.toContain('dead@example.com')
 
@@ -216,8 +268,9 @@ describe('Claude swap supervisor', () => {
       '{"schemaVersion":1,"event":"no-switch","reason":"below-threshold"}\n',
     ))
     expect(supervisor.status()).toEqual({
-      state: 'needs-reauth',
-      lastErrorKind: 'ACCOUNT_NEEDS_REAUTH',
+      state: 'running',
+      lastErrorKind: null,
+      warningKinds: ['ACCOUNT_NEEDS_REAUTH'],
     })
 
     children[0].stdout.emit('data', Buffer.from(

@@ -53,6 +53,26 @@ describe('exchangeAutomationMcpCallerGrant', () => {
     )
   })
 
+  // specs/agent-browser-shared-profiles — on a shared Agent Browser machine Studio adds the session-user
+  // attestation of the run's principal, so the run uses that user's browser profile.
+  it("carries Studio's session-user attestation for the run, and drops a malformed one", async () => {
+    const respond = (extra: Record<string, unknown>) => vi.fn(async () => new Response(JSON.stringify({
+      grant: 'SIGNED-GRANT', projectId: 'P-1', expiresAt: Date.now() + 60_000,
+      bindingStatus: 'BOUND', connectorPolicy: 'unspecified', requiredConnectors: [], ...extra,
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }))
+    const exchange = () => exchangeAutomationMcpCallerGrant({
+      configUrl: 'https://saycode.ai/api/me/mcp-config', machineToken: 'machine-token', machineId: 'M-1', runId: 'R-1', claimToken: 'claim-token',
+    })
+    vi.stubGlobal('fetch', respond({ browserAttestation: 'abp2.h.p.s' }))
+    await expect(exchange()).resolves.toMatchObject({ ok: true, value: { browserAttestation: 'abp2.h.p.s' } })
+    for (const browserAttestation of [42, '', 'x'.repeat(4097)]) {
+      vi.stubGlobal('fetch', respond({ browserAttestation }))
+      const result = await exchange()
+      expect(result).toMatchObject({ ok: true, value: { mcpCallerGrant: 'SIGNED-GRANT' } })
+      expect(result.ok && result.value && 'browserAttestation' in result.value).toBe(false)
+    }
+  })
+
   // specs/automation-company-owner-identity R2 — 회사 happy 계정 소유
   // 자동화는 개인 커넥터 대상 사용자가 없어 서버가 no-grant 로 응답한다.
   // 후속 R12~R14에서는 no-grant도 정책과 함께 전달되어 executor가 fail-closed

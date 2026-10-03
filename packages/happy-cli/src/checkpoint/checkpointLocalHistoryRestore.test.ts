@@ -1,3 +1,5 @@
+import { CheckpointGarbageCollector } from './checkpointGarbageCollector';
+import { CheckpointStore } from './checkpointStore';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -103,6 +105,21 @@ describe('local history restore', { timeout: 20_000 }, () => {
         ]);
         await restore(start, 'restore-a', 'session-a');
         expect(await readFile(join(projectPath, 'b.txt'), 'utf8')).toBe('theirs');
+    });
+
+    it('keeps edits whose intervening records were pruned until explicitly included', async () => {
+        const store = new CheckpointStore(checkpointRoot);
+        const snapshot = (operationId: string, record: 'safety' | 'before' | 'after') => store.snapshotTurn({
+            ...binding(), operationId, workTree: { maxFileBytes: 1024, record },
+        });
+        await writeFile(join(projectPath, 'between.txt'), 'old');
+        const target = await snapshot('safety', 'safety');
+        await writeFile(join(projectPath, 'between.txt'), 'user edit');
+        await snapshot('before', 'before');
+        await snapshot('after', 'after');
+        await new CheckpointGarbageCollector(checkpointRoot).collect({ maxCheckpointsPerBinding: 1, preserveLatest: true });
+        expect((await preview(target.checkpointId)).plan.entries).toContainEqual({ path: 'between.txt', action: 'skip', reason: 'user-modified' });
+        expect((await preview(target.checkpointId, 'session-1', ['between.txt'])).plan.entries).toContainEqual({ path: 'between.txt', action: 'restore', reason: 'agent-modified' });
     });
 
     it('keeps an edit made between this conversation’s turns, even though the next turn recorded it', async () => {
