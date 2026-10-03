@@ -4360,6 +4360,7 @@ export async function startDaemon(): Promise<void> {
           sessionId,
         }),
         resumeSession: resumeAutomationSession,
+        resumeServerChosenSession: configuration.machineControl !== 'strict',
         spawnSession: spawnAutomationSession,
         prepareGithubWorktree: (input) => prepareGithubTriggerWorktree({
           ...input,
