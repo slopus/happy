@@ -36,14 +36,14 @@ describe('runHarden', () => {
     it('drops the marks compat left and switches to strict while no daemon can start', async () => {
         const { io, calls } = fakeIo([compat(dataKey({ neverEscrowed: true }), true)]);
 
-        expect(await runHarden(io)).toEqual({ ok: true, alreadyStrict: false, reset: { neverEscrowed: true, pending: true } });
+        expect(await runHarden(io)).toEqual({ ok: true, markedStrict: false, reset: { neverEscrowed: true, pending: true } });
         expect(calls).toEqual(['read', 'lock', 'read', 'drop-never-escrowed', 'discard-pending', 'set-strict', 'release']);
     });
 
     it('judges the files again once no daemon can write them', async () => {
         const { io, calls } = fakeIo([compat(dataKey()), compat(dataKey({ neverEscrowed: true }))]);
 
-        expect(await runHarden(io)).toEqual({ ok: true, alreadyStrict: false, reset: { neverEscrowed: true, pending: false } });
+        expect(await runHarden(io)).toEqual({ ok: true, markedStrict: false, reset: { neverEscrowed: true, pending: false } });
         expect(calls).toContain('drop-never-escrowed');
     });
 
@@ -61,11 +61,14 @@ describe('runHarden', () => {
         expect(calls.at(-1)).toBe('release');
     });
 
-    it('changes nothing on a machine that is already strict', async () => {
+    // compat could have marked the machine strict beside a key it knows (settings.json and the
+    // never-escrowed mark are both under the happy home it could write), so an explicit harden
+    // resets it all again instead of trusting the mark.
+    it('resets a machine already marked strict, under the lock', async () => {
         const { io, calls } = fakeIo([{ mode: 'strict', rawCredentials: dataKey({ neverEscrowed: true }), pendingExists: true }]);
 
-        expect(await runHarden(io)).toEqual({ ok: true, alreadyStrict: true });
-        expect(calls).toEqual(['read']);
+        expect(await runHarden(io)).toEqual({ ok: true, markedStrict: true, reset: { neverEscrowed: true, pending: true } });
+        expect(calls).toEqual(['read', 'lock', 'read', 'drop-never-escrowed', 'discard-pending', 'set-strict', 'release']);
     });
 
     it('refuses credentials it cannot harden without taking the lock', async () => {

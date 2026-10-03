@@ -223,10 +223,10 @@ async function handleHarden(): Promise<void> {
     console.error(chalk.red(`전환하지 않음: ${message}`))
     process.exit(1)
   }
-  if (outcome.alreadyStrict) {
-    console.log(chalk.green('이미 strict 머신 제어입니다.'))
-    console.log(chalk.gray('적용 여부는 `happy datakey status` 의 machine control 줄로 확인하세요.'))
-    return
+  if (outcome.markedStrict) {
+    // The strict mark is settings.json, which compat could write too, so it is not trusted.
+    console.log(chalk.yellow('이미 strict 로 표시돼 있었지만, 그 표시도 compat 동안 서버가 쓸 수 있었으므로 다시 전환합니다.'))
+    console.log(chalk.gray('다음 시작에서 머신 키를 새로 만듭니다. 이 머신의 키를 확인했던 클라이언트는 지문을 다시 확인해야 합니다.'))
   }
   console.log(chalk.green('strict 머신 제어로 설정했습니다.'))
   if (outcome.reset.neverEscrowed || outcome.reset.pending) {
