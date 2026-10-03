@@ -31,6 +31,7 @@ import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { claudeCliPath } from './claude/claudeLocal'
 import { execFileSync } from 'node:child_process'
 import { extractNoSandboxFlag } from './utils/sandboxFlags'
+import { parseHappyAgentArgs } from './utils/happyAgentArgs'
 import { handleResumeCommand } from '@/resume/handleResumeCommand'
 import { ensureDaemonRunning } from './daemon/ensureDaemonRunning'
 import { handleCodexCommand } from './commands/codexCommand'
@@ -401,6 +402,36 @@ Conversation history is preserved on the server, but in-flight tool calls are in
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'opencode') {
+    try {
+      const { runAcp, resolveAcpAgentConfig } = await import('@/agent/acp');
+
+      // Happy's own flags never reach OpenCode: it exits non-zero on an
+      // unknown one, so a daemon-added flag would break the spawn outright.
+      const { startedBy, verbose, forwarded } = parseHappyAgentArgs(args.slice(1));
+
+      // Resolve through the shared table so the command line lives in exactly
+      // one place (KNOWN_ACP_AGENTS) rather than being repeated here.
+      const resolved = resolveAcpAgentConfig(['opencode', ...forwarded]);
+      const { credentials } = await authAndSetupMachineIfNeeded();
+      await ensureDaemonRunning()
+
+      await runAcp({
+        credentials,
+        startedBy,
+        verbose,
+        agentName: resolved.agentName,
+        command: resolved.command,
+        args: resolved.args,
+      });
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'openclaw') {
     try {
       const { runOpenClaw } = await import('@/openclaw/runOpenClaw');
@@ -718,6 +749,7 @@ ${chalk.bold('Usage:')}
   happy codex             Start Codex mode
   happy gemini            Start Gemini mode (ACP) [deprecated — use agy]
   happy agy               Start agy (Antigravity CLI) mode
+  happy opencode          Start OpenCode mode (ACP)
   happy acp               Start a generic ACP-compatible agent
   happy connect           Connect AI vendor API keys
   happy sandbox           Configure and manage OS-level sandboxing
@@ -740,6 +772,7 @@ ${chalk.bold('Examples:')}
   happy acp gemini         Start Gemini via generic ACP runner
   happy acp -- opencode --acp
                            Start a custom ACP command
+  happy opencode           Start OpenCode (same as: happy acp opencode)
   happy acp opencode --verbose
                            Print raw ACP backend/envelope events
   happy auth login --force Authenticate

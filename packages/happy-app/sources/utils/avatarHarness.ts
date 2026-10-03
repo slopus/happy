@@ -6,12 +6,13 @@
  * metadata. Only the active harnesses have badges; retired and unknown
  * flavors stay badge-free.
  */
-export type AvatarHarnessIcon = 'claude' | 'codex' | 'agy' | 'rig';
+export type AvatarHarnessIcon = 'claude' | 'codex' | 'agy' | 'opencode' | 'rig';
 
 const ACTIVE_HARNESS_ICONS: ReadonlySet<string> = new Set([
     'claude',
     'codex',
     'agy',
+    'opencode',
 ]);
 
 export function resolveAvatarHarness(

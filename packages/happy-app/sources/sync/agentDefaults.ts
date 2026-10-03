@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { compareVersionsWithPrerelease, isWellFormedVersion } from '@/utils/versionUtils';
 
-export const agentKeys = ['claude', 'codex', 'gemini', 'openclaw', 'agy'] as const;
+export const agentKeys = ['claude', 'codex', 'gemini', 'opencode', 'openclaw', 'agy'] as const;
 export type AgentKey = typeof agentKeys[number];
 
 export const AgentDefaultOverrideSchema = z.object({
@@ -14,6 +14,7 @@ export const AgentDefaultOverridesSchema = z.object({
     claude: AgentDefaultOverrideSchema.optional(),
     codex: AgentDefaultOverrideSchema.optional(),
     gemini: AgentDefaultOverrideSchema.optional(),
+    opencode: AgentDefaultOverrideSchema.optional(),
     openclaw: AgentDefaultOverrideSchema.optional(),
     agy: AgentDefaultOverrideSchema.optional(),
 }).passthrough().default({});
@@ -35,6 +36,7 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     claude: { permissionMode: 'auto', modelMode: 'claude-opus-5', effortLevel: 'medium' },
     codex: { permissionMode: 'auto', modelMode: 'gpt-5.6-sol', effortLevel: 'medium' },
     gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
+    opencode: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
     openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
     agy: { permissionMode: 'default', modelMode: 'Gemini 3.8 Flash', effortLevel: 'medium' },
 };
@@ -60,7 +62,7 @@ function resolveCodeDefaultPermissionMode(
 }
 
 export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {
-    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'openclaw' || flavor === 'agy') {
+    if (flavor === 'codex' || flavor === 'gemini' || flavor === 'opencode' || flavor === 'openclaw' || flavor === 'agy') {
         return flavor;
     }
     return 'claude';

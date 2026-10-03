@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+    agentKeys,
     getCodeAgentDefaults,
+    normalizeAgentKey,
     resolveAgentDefaultConfig,
 } from './agentDefaults';
 
@@ -48,5 +50,23 @@ describe('agent defaults', () => {
         expect(resolveAgentDefaultConfig({}, 'gemini', '1.0.0').permissionMode).toBe('default');
         expect(resolveAgentDefaultConfig({}, 'openclaw', '1.0.0').permissionMode).toBe('default');
         expect(resolveAgentDefaultConfig({}, 'agy', '1.0.0').permissionMode).toBe('default');
+        expect(resolveAgentDefaultConfig({}, 'opencode', '1.0.0').permissionMode).toBe('default');
+    });
+
+    it('keeps opencode as its own agent rather than folding it into claude', () => {
+        // normalizeAgentKey falls back to claude for anything it does not
+        // list, so a missing entry here silently gives OpenCode sessions
+        // Claude's saved defaults.
+        expect(agentKeys).toContain('opencode');
+        expect(normalizeAgentKey('opencode')).toBe('opencode');
+        expect(normalizeAgentKey('openclaw')).toBe('openclaw');
+        expect(normalizeAgentKey('something-else')).toBe('claude');
+    });
+
+    it('gives opencode neutral defaults, since its catalog arrives over ACP', () => {
+        const defaults = getCodeAgentDefaults('opencode');
+
+        expect(defaults.modelMode).toBe('default');
+        expect(defaults.effortLevel).toBeNull();
     });
 });
