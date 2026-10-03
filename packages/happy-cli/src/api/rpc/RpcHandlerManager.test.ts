@@ -13,6 +13,7 @@ import { randomBytes } from 'node:crypto';
 import { RpcHandlerManager } from './RpcHandlerManager';
 import { decodeBase64, encodeBase64, decrypt, encrypt } from '@/api/encryption';
 import { ManagedRpcError, registerManagedRpcHandlers } from '@/daemon/managedRpcHandlers';
+import { bindRpcRequest } from '@slopus/happy-wire';
 
 const KEY = new Uint8Array(randomBytes(32));
 
@@ -210,7 +211,8 @@ describe('native probe RPC diagnostics', () => {
         const response = await manager.handleRequest({ method: 'machine-1:daemon-session-state', params, rpcLatency });
         expect(called).toBe(false);
         expect(decrypt(KEY, 'legacy', decodeBase64(response.result))).toMatchObject({ code: 'MANAGED_CAPABILITY_REQUIRED' });
-        expect(response.rpcLatency.spans.map((s: any) => s.stage)).toEqual(['daemon-total']);
+        // Params are opened before any refusal, so a bound request gets a bound refusal (R18).
+        expect(response.rpcLatency.spans.map((s: any) => s.stage)).toEqual(['daemon-total', 'daemon-decrypt']);
     });
 });
 
@@ -349,5 +351,145 @@ describe('server lane', () => {
         const response = await send(manager, 'daemon-session-state', SERVER_KEY);
         expect(decrypt(KEY, 'dataKey', decodeBase64(response))).toMatchObject({ code: 'RPC_DECRYPT_FAILED' });
         expect(called).toBe(false);
+    });
+});
+
+// aplus-dev-studio specs/e2ee-machine-control-boundary R18/R19 — a customer-lane request
+// names its method, scope, issue time and nonce inside the ciphertext, and the reply
+// names the nonce. The server routes the method in clear and cannot change what is sealed.
+describe('bound customer-lane requests', () => {
+    const nonce = (fill: number) => Buffer.alloc(16, fill).toString('base64');
+    const bound = (method: string, params: unknown, options: { nonce?: string; issuedAt?: number; scope?: string } = {}) => bindRpcRequest({
+        method, scope: options.scope ?? 'machine-1', params, issuedAt: options.issuedAt ?? Date.now(), nonce: options.nonce ?? nonce(1),
+    });
+    const makeBound = (
+        requireBoundRequests = false,
+        serverLane?: { encryptionKey: Uint8Array; allows: (method: string) => boolean },
+        maxBoundRequestsInWindow?: number,
+    ) => {
+        const manager = new RpcHandlerManager({
+            scopePrefix: 'machine-1', encryptionKey: KEY, encryptionVariant: 'dataKey', logger: () => {}, requireBoundRequests,
+            ...(serverLane ? { serverLane } : {}),
+            ...(maxBoundRequestsInWindow ? { maxBoundRequestsInWindow } : {}),
+        });
+        const calls: Array<[string, unknown]> = [];
+        manager.registerHandler('readFile', async (params: unknown) => { calls.push(['readFile', params]); return { content: 'x' }; });
+        manager.registerHandler('deleteFile', async (params: unknown) => { calls.push(['deleteFile', params]); return { success: true }; });
+        manager.registerHandler('stop-daemon', (params: unknown) => { calls.push(['stop-daemon', params]); return { message: 'stopping' }; });
+        return { manager, calls };
+    };
+    const send = async (manager: RpcHandlerManager, method: string, plaintext: unknown, key = KEY) => {
+        const response = await manager.handleRequest({
+            method: `machine-1:${method}`,
+            params: encodeBase64(encrypt(key, 'dataKey', plaintext as object)),
+        } as never);
+        return decrypt(key, 'dataKey', decodeBase64(response as string));
+    };
+
+    it('runs the handler with the bound params and binds the reply to the nonce', async () => {
+        const { manager, calls } = makeBound();
+        expect(await send(manager, 'readFile', bound('readFile', { path: '/w/a' }, { nonce: nonce(2) })))
+            .toEqual({ rpcBinding: 1, nonce: nonce(2), result: { content: 'x' } });
+        expect(calls).toEqual([['readFile', { path: '/w/a' }]]);
+    });
+
+    it('refuses a request sent to another method than the one it names', async () => {
+        const { manager, calls } = makeBound();
+        expect(await send(manager, 'deleteFile', bound('readFile', { path: '/w/a' }, { nonce: nonce(3) })))
+            .toEqual({ rpcBinding: 1, nonce: nonce(3), result: expect.objectContaining({ code: 'RPC_METHOD_MISMATCH' }) });
+        expect(calls).toEqual([]);
+    });
+
+    it('refuses a request bound to another scope', async () => {
+        const { manager, calls } = makeBound();
+        expect(await send(manager, 'readFile', bound('readFile', {}, { nonce: nonce(4), scope: 'machine-2' })))
+            .toMatchObject({ nonce: nonce(4), result: { code: 'RPC_SCOPE_MISMATCH' } });
+        expect(calls).toEqual([]);
+    });
+
+    it('runs a request once and refuses it when it comes again', async () => {
+        const { manager, calls } = makeBound();
+        const request = bound('readFile', { path: '/w/a' }, { nonce: nonce(5) });
+        await send(manager, 'readFile', request);
+        expect(await send(manager, 'readFile', request)).toMatchObject({ nonce: nonce(5), result: { code: 'RPC_REQUEST_REPLAYED' } });
+        expect(calls).toHaveLength(1);
+    });
+
+    // The refusal names the likely cause: the caller shows it to a person whose clock is off.
+    // Forgetting the first nonce to make room would let its request run again.
+    it('refuses new requests under strict when the window holds as many as it can remember', async () => {
+        const { manager, calls } = makeBound(true, undefined, 1);
+        const first = bound('readFile', { path: '/w/a' }, { nonce: nonce(13) });
+        await send(manager, 'readFile', first);
+
+        expect(await send(manager, 'readFile', bound('readFile', { path: '/w/b' }, { nonce: nonce(14) })))
+            .toMatchObject({ nonce: nonce(14), result: { code: 'RPC_TOO_MANY_REQUESTS' } });
+        expect(await send(manager, 'readFile', first)).toMatchObject({ nonce: nonce(13), result: { code: 'RPC_REQUEST_REPLAYED' } });
+        expect(calls).toEqual([['readFile', { path: '/w/a' }]]);
+    });
+
+    it('refuses a request issued outside the window under strict, naming the clocks', async () => {
+        const { manager, calls } = makeBound(true);
+        expect(await send(manager, 'readFile', bound('readFile', {}, { nonce: nonce(6), issuedAt: Date.now() - 10 * 60_000 })))
+            .toMatchObject({ nonce: nonce(6), result: { code: 'RPC_REQUEST_STALE', error: expect.stringMatching(/clock/) } });
+        expect(calls).toEqual([]);
+    });
+
+    // Under compat the server can already obtain the machine key, so the window would only
+    // refuse a client whose clock is off, such as a dual-boot PC nine hours out.
+    it('runs a request issued outside the window under compat, once', async () => {
+        const { manager, calls } = makeBound(false);
+        const nineHours = 9 * 60 * 60_000;
+        for (const [fill, issuedAt] of [[11, Date.now() - nineHours], [12, Date.now() + nineHours]] as const) {
+            const request = bound('readFile', { path: '/w/a' }, { nonce: nonce(fill), issuedAt });
+            expect(await send(manager, 'readFile', request)).toEqual({ rpcBinding: 1, nonce: nonce(fill), result: { content: 'x' } });
+            expect(await send(manager, 'readFile', request)).toMatchObject({ nonce: nonce(fill), result: { code: 'RPC_REQUEST_REPLAYED' } });
+        }
+        expect(calls).toHaveLength(2);
+    });
+
+    it('binds the reply to a method that does not exist and to a policy refusal', async () => {
+        const { manager } = makeBound();
+        expect(await send(manager, 'nope', bound('nope', {}, { nonce: nonce(7) })))
+            .toEqual({ rpcBinding: 1, nonce: nonce(7), result: { error: 'Method not found' } });
+        manager.setMethodPolicy((method) => method === 'readFile' ? { error: 'Unavailable', code: 'TRIAL_UNAVAILABLE' } : null);
+        expect(await send(manager, 'readFile', bound('readFile', {}, { nonce: nonce(8) })))
+            .toEqual({ rpcBinding: 1, nonce: nonce(8), result: { error: 'Unavailable', code: 'TRIAL_UNAVAILABLE' } });
+    });
+
+    it('answers a traced bound request with a bound reply', async () => {
+        const manager = new RpcHandlerManager({ scopePrefix: 'machine-1', encryptionKey: KEY, encryptionVariant: 'dataKey', logger: () => {} });
+        manager.registerHandler('daemon-session-state', async () => ({ state: 'present' }));
+        const response = await manager.handleRequest({
+            method: 'machine-1:daemon-session-state',
+            params: encodeBase64(encrypt(KEY, 'dataKey', bound('daemon-session-state', { sessionId: 's' }, { nonce: nonce(9) }))),
+            rpcLatency: { version: 1, id: '44444444-4444-4444-8444-444444444444' },
+        } as never);
+        expect(decrypt(KEY, 'dataKey', decodeBase64(response.result))).toEqual({ rpcBinding: 1, nonce: nonce(9), result: { state: 'present' } });
+    });
+
+    it('keeps running unbound requests under compat', async () => {
+        const { manager, calls } = makeBound(false);
+        expect(await send(manager, 'readFile', { path: '/w/a' })).toEqual({ content: 'x' });
+        expect(calls).toEqual([['readFile', { path: '/w/a' }]]);
+    });
+
+    // A stored metadata blob sealed with the machine key opens as a plain object, so under
+    // compat it could still be handed to a handler that ignores its params.
+    it('refuses unbound requests under strict, even for a handler that ignores its params', async () => {
+        const { manager, calls } = makeBound(true);
+        expect(await send(manager, 'stop-daemon', { host: 'h', platform: 'darwin' })).toMatchObject({ code: 'RPC_UNBOUND_REQUEST' });
+        expect(await send(manager, 'readFile', { path: '/w/a' })).toMatchObject({ code: 'RPC_UNBOUND_REQUEST' });
+        expect(calls).toEqual([]);
+        expect(await send(manager, 'stop-daemon', bound('stop-daemon', undefined, { nonce: nonce(10) })))
+            .toEqual({ rpcBinding: 1, nonce: nonce(10), result: { message: 'stopping' } });
+        expect(calls).toEqual([['stop-daemon', null]]);
+    });
+
+    it('leaves the server lane to its allowlist under strict', async () => {
+        const SERVER_KEY = new Uint8Array(randomBytes(32));
+        const { manager, calls } = makeBound(true, { encryptionKey: SERVER_KEY, allows: (method) => method === 'readFile' });
+        expect(await send(manager, 'readFile', { path: '/w/a' }, SERVER_KEY)).toEqual({ content: 'x' });
+        expect(calls).toEqual([['readFile', { path: '/w/a' }]]);
     });
 });

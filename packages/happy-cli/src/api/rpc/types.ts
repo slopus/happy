@@ -46,6 +46,17 @@ export interface RpcHandlerConfig {
      * it opens run only methods `allows` accepts, and are answered with it.
      */
     serverLane?: ServerLaneConfig;
+    /**
+     * aplus-dev-studio specs/e2ee-machine-control-boundary R19 — strict machine
+     * control: a customer-lane request must be bound (R18). An unbound one is
+     * refused before any handler runs.
+     */
+    requireBoundRequests?: boolean;
+    /**
+     * How many bound requests one scope remembers within the time window (default 10,000).
+     * When full, strict refuses new ones and compat forgets its oldest.
+     */
+    maxBoundRequestsInWindow?: number;
 }
 
 export interface ServerLaneConfig {

@@ -10,7 +10,7 @@ import os from 'os';
 import * as tmp from 'tmp';
 import axios from 'axios';
 import * as z from 'zod';
-import { AUTOMATION_PROTOCOL_VERSION, SCRIPT_AUTOMATION_PROTOCOL_VERSION } from '@slopus/happy-wire';
+import { AUTOMATION_PROTOCOL_VERSION, RPC_BINDING_CAPABILITY, SCRIPT_AUTOMATION_PROTOCOL_VERSION } from '@slopus/happy-wire';
 import { createHash, randomUUID } from 'node:crypto';
 import { createScriptAutomationWorker, ScriptRequestError } from './automations/scriptAutomationWorker';
 import { prepareManagedScriptRuntime, recoverManagedScriptContainers } from './automations/managedScriptRuntime';
@@ -357,6 +357,7 @@ export const initialMachineMetadata: MachineMetadata = {
   additionalDirectories: ADDITIONAL_DIRECTORIES_CAPABILITY,
   channelSupport: CHANNEL_SUPPORT_CAPABILITY,
   aiAuthSelection: AI_AUTH_SELECTION_CAPABILITY,
+  rpcBinding: RPC_BINDING_CAPABILITY,
   ...(agentBrowserMachineCapability() ? { agentBrowser: agentBrowserMachineCapability() } : {}),
 };
 
@@ -1896,6 +1897,7 @@ export async function startDaemon(): Promise<void> {
             options.happyToken,
             options.happySecret,
             configuration.daemonStateFile,
+            { machineControl: configuration.machineControl },
           );
           authEnv.HAPPY_HOME_DIR = homeDir;
           stagedUserHomeDir = homeDir;

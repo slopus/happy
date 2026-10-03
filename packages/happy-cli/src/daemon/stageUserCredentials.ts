@@ -11,6 +11,7 @@ import { basename, dirname, resolve } from 'node:path'
 import { join } from 'node:path'
 import * as tmp from 'tmp'
 import { tmpdir } from 'node:os'
+import type { MachineControlMode } from '@/datakey/machineControl'
 
 export interface StagedUserCredentials {
   homeDir: string
@@ -35,7 +36,15 @@ export async function stageUserCredentials(
    * see below for why this is not optional in practice.
    */
   daemonStateFile?: string,
+  options: { machineControl?: MachineControlMode } = {},
 ): Promise<StagedUserCredentials> {
+  // aplus-dev-studio specs/e2ee-machine-control-boundary R19 — the staged secret is the user's
+  // legacy secret, which the server holds. A session sealed with it is one the server can drive,
+  // bound requests and all, so strict starts none until a staged format carries a key the server
+  // never sees.
+  if (options.machineControl === 'strict') {
+    throw new Error('Strict machine control does not start sessions with staged legacy credentials: the server holds that secret')
+  }
   const userHomeDir = tmp.dirSync({ prefix: STAGED_DIR_PREFIX, tmpdir: stagingParent(), mode: 0o700 })
   await fs.mkdir(join(userHomeDir.name, 'logs'), { recursive: true })
   await fs.writeFile(

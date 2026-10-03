@@ -1,7 +1,8 @@
 import { io, Socket } from 'socket.io-client';
 import type { Config } from './config';
 import type { DecryptedMachine } from './api';
-import { decodeBase64, encodeBase64, encrypt, decrypt } from './encryption';
+import { bindRpcRequest, readBoundRpcResponse, rpcBindingCapabilitySchema } from '@slopus/happy-wire';
+import { decodeBase64, encodeBase64, encrypt, decrypt, getRandomBytes } from './encryption';
 
 export type SupportedAgent = 'claude' | 'codex' | 'gemini' | 'openclaw';
 
@@ -56,6 +57,88 @@ function normalizeRpcError(error: string | undefined, machineId: string): string
     return error;
 }
 
+/**
+ * aplus-dev-studio specs/e2ee-machine-control-boundary R18 — a dataKey machine
+ * whose metadata, opened with its machine key, says it reads bound requests.
+ * A legacy machine's key is the account secret the server holds, so binding
+ * there proves nothing.
+ */
+function readsBoundRequests(machine: DecryptedMachine): boolean {
+    if (machine.encryption.variant !== 'dataKey') return false;
+    const advertised = (machine.metadata as { rpcBinding?: unknown } | null)?.rpcBinding;
+    return rpcBindingCapabilitySchema.safeParse(advertised).success;
+}
+
+/**
+ * Sends one machine-scope RPC sealed with the machine's key and opens its
+ * reply. For a machine that reads bound requests, the request names its
+ * method, scope, issue time and nonce, and only the reply with that nonce counts.
+ */
+async function callMachine(socket: Socket, machine: DecryptedMachine, method: string, params: unknown): Promise<unknown> {
+    const nonce = readsBoundRequests(machine) ? encodeBase64(getRandomBytes(16)) : null;
+    const plaintext = nonce
+        ? bindRpcRequest({ method, scope: machine.id, params, issuedAt: Date.now(), nonce })
+        : params;
+    const response = await socket.timeout(30_000).emitWithAck('rpc-call', {
+        method: `${machine.id}:${method}`,
+        params: encodeBase64(encrypt(machine.encryption.key, machine.encryption.variant, plaintext)),
+    }) as RpcAck;
+
+    if (!response.ok) {
+        throw new Error(normalizeRpcError(response.error, machine.id));
+    }
+    if (!response.result) {
+        throw new Error('RPC call returned no result');
+    }
+
+    const decrypted = decrypt(
+        machine.encryption.key,
+        machine.encryption.variant,
+        decodeBase64(response.result),
+    );
+    if (!nonce) return decrypted;
+    const bound = readBoundRpcResponse(decrypted, nonce);
+    if (!bound.ok) throw new Error(`RPC reply refused: ${bound.code}`);
+    return bound.result;
+}
+
+function readSpawnResult(decrypted: unknown): SpawnMachineSessionResult {
+    if (decrypted == null || typeof decrypted !== 'object' || Array.isArray(decrypted)) {
+        throw new Error('RPC call returned invalid data');
+    }
+
+    if ('error' in decrypted && typeof decrypted.error === 'string') {
+        throw new Error(String(decrypted.error));
+    }
+
+    if (
+        !('type' in decrypted)
+        || (
+            decrypted.type !== 'success'
+            && decrypted.type !== 'requestToApproveDirectoryCreation'
+            && decrypted.type !== 'error'
+        )
+    ) {
+        throw new Error('RPC call returned unexpected data');
+    }
+
+    return decrypted as SpawnMachineSessionResult;
+}
+
+function openMachineSocket(config: Config, token: string): Socket {
+    const socket = io(config.serverUrl, {
+        auth: {
+            token,
+        },
+        path: '/v1/updates',
+        transports: ['websocket'],
+        autoConnect: false,
+        reconnection: false,
+    });
+    socket.connect();
+    return socket;
+}
+
 export async function spawnSessionOnMachine(
     config: Config,
     machine: DecryptedMachine,
@@ -67,69 +150,16 @@ export async function spawnSessionOnMachine(
         providerToken?: string;
     },
 ): Promise<SpawnMachineSessionResult> {
-    const socket = io(config.serverUrl, {
-        auth: {
-            token,
-        },
-        path: '/v1/updates',
-        transports: ['websocket'],
-        autoConnect: false,
-        reconnection: false,
-    });
-
-    socket.connect();
-
+    const socket = openMachineSocket(config, token);
     try {
         await waitForConnect(socket);
-
-        const params = encodeBase64(
-            encrypt(machine.encryption.key, machine.encryption.variant, {
-                type: 'spawn-in-directory',
-                directory: options.directory,
-                approvedNewDirectoryCreation: options.approvedNewDirectoryCreation ?? false,
-                token: options.providerToken,
-                agent: options.agent,
-            }),
-        );
-
-        const response = await socket.timeout(30_000).emitWithAck('rpc-call', {
-            method: `${machine.id}:spawn-happy-session`,
-            params,
-        }) as RpcAck;
-
-        if (!response.ok) {
-            throw new Error(normalizeRpcError(response.error, machine.id));
-        }
-        if (!response.result) {
-            throw new Error('RPC call returned no result');
-        }
-
-        const decrypted = decrypt(
-            machine.encryption.key,
-            machine.encryption.variant,
-            decodeBase64(response.result),
-        );
-
-        if (decrypted == null || typeof decrypted !== 'object' || Array.isArray(decrypted)) {
-            throw new Error('RPC call returned invalid data');
-        }
-
-        if ('error' in decrypted && typeof decrypted.error === 'string') {
-            throw new Error(String(decrypted.error));
-        }
-
-        if (
-            !('type' in decrypted)
-            || (
-                decrypted.type !== 'success'
-                && decrypted.type !== 'requestToApproveDirectoryCreation'
-                && decrypted.type !== 'error'
-            )
-        ) {
-            throw new Error('RPC call returned unexpected data');
-        }
-
-        return decrypted as SpawnMachineSessionResult;
+        return readSpawnResult(await callMachine(socket, machine, 'spawn-happy-session', {
+            type: 'spawn-in-directory',
+            directory: options.directory,
+            approvedNewDirectoryCreation: options.approvedNewDirectoryCreation ?? false,
+            token: options.providerToken,
+            agent: options.agent,
+        }));
     } finally {
         socket.close();
     }
@@ -141,65 +171,10 @@ export async function resumeSessionOnMachine(
     token: string,
     sessionId: string,
 ): Promise<SpawnMachineSessionResult> {
-    const socket = io(config.serverUrl, {
-        auth: {
-            token,
-        },
-        path: '/v1/updates',
-        transports: ['websocket'],
-        autoConnect: false,
-        reconnection: false,
-    });
-
-    socket.connect();
-
+    const socket = openMachineSocket(config, token);
     try {
         await waitForConnect(socket);
-
-        const params = encodeBase64(
-            encrypt(machine.encryption.key, machine.encryption.variant, {
-                sessionId,
-            }),
-        );
-
-        const response = await socket.timeout(30_000).emitWithAck('rpc-call', {
-            method: `${machine.id}:resume-happy-session`,
-            params,
-        }) as RpcAck;
-
-        if (!response.ok) {
-            throw new Error(normalizeRpcError(response.error, machine.id));
-        }
-        if (!response.result) {
-            throw new Error('RPC call returned no result');
-        }
-
-        const decrypted = decrypt(
-            machine.encryption.key,
-            machine.encryption.variant,
-            decodeBase64(response.result),
-        );
-
-        if (decrypted == null || typeof decrypted !== 'object' || Array.isArray(decrypted)) {
-            throw new Error('RPC call returned invalid data');
-        }
-
-        if ('error' in decrypted && typeof decrypted.error === 'string') {
-            throw new Error(String(decrypted.error));
-        }
-
-        if (
-            !('type' in decrypted)
-            || (
-                decrypted.type !== 'success'
-                && decrypted.type !== 'requestToApproveDirectoryCreation'
-                && decrypted.type !== 'error'
-            )
-        ) {
-            throw new Error('RPC call returned unexpected data');
-        }
-
-        return decrypted as SpawnMachineSessionResult;
+        return readSpawnResult(await callMachine(socket, machine, 'resume-happy-session', { sessionId }));
     } finally {
         socket.close();
     }

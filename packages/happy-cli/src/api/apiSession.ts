@@ -564,6 +564,8 @@ export class ApiSessionClient extends EventEmitter {
             scopePrefix: this.sessionId,
             encryptionKey: this.encryptionKey,
             encryptionVariant: this.encryptionVariant,
+            // aplus-dev-studio specs/e2ee-machine-control-boundary R19.
+            requireBoundRequests: configuration.machineControl === 'strict',
             logger: (msg, data) => logger.debug(msg, data)
         });
         registerCommonHandlers(this.rpcHandlerManager, this.metadata.path);

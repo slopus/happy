@@ -19,6 +19,14 @@ describe('stageUserCredentials', () => {
     }
   })
 
+  // aplus-dev-studio specs/e2ee-machine-control-boundary R19 — the staged secret is the user's legacy
+  // secret, which the server holds: a session sealed with it is one the server can drive, bound
+  // requests and all.
+  it('refuses legacy credentials under strict machine control', async () => {
+    await expect(stageUserCredentials('user-token-abc', 'base64secret==', undefined, { machineControl: 'strict' }))
+      .rejects.toThrow(/strict/i)
+  })
+
   it('copies the daemon state file so the child can still reach the daemon', async () => {
     // Regression: HAPPY_HOME_DIR relocates daemon.state.json too, so a staged
     // home without it made the child's startup webhook fail with "No daemon

@@ -7,6 +7,7 @@
  * @module createSessionMetadata
  */
 
+import { RPC_BINDING_CAPABILITY } from '@slopus/happy-wire';
 import os from 'node:os';
 import { resolve } from 'node:path';
 
@@ -85,6 +86,7 @@ export function createSessionMetadata(opts: CreateSessionMetadataOptions): Sessi
         runtimeCapabilities: {
             saycodeSystemPromptPreference: true,
         },
+        rpcBinding: RPC_BINDING_CAPABILITY,
         os: os.platform(),
         machineId: opts.machineId,
         homeDir: os.homedir(),
