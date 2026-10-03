@@ -22,4 +22,4 @@
 - [x] 적용 전 경합·복구 개수·disabled 메타데이터 회귀 Red→Green
 - [x] 적용 후 실패 전파·신규 추가·개인 선택/등록/활성화 회귀
 - [x] 관련 496건·타입·build 및 추가 matrix 12건 검증
-- [ ] source PR URL·원격 확인 기록
+- [x] source PR URL·원격 확인 기록
