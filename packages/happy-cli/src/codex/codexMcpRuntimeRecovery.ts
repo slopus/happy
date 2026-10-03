@@ -31,6 +31,8 @@ type CodexMcpRuntimeClient = {
 export type CodexMcpRecoveryResult = {
     status: 'ready' | 'recovered' | 'needs-auth' | 'failed';
     affectedServers: string[];
+    /** Final successful inspection, for immediate pre-turn reporting only. */
+    runtimeStatuses?: McpRuntimeServerStatus[];
     serverStatuses?: Array<{
         name: string;
         status: 'recovered' | 'needs-auth' | 'failed';
@@ -82,6 +84,7 @@ type RecoveryInput = {
     mcpServers: Record<string, unknown>;
     expectedServerNames: string[];
     developerInstructions?: string;
+    includeRuntimeStatuses?: boolean;
 };
 
 type RuntimeInspection = {
@@ -89,6 +92,7 @@ type RuntimeInspection = {
     affectedServers: string[];
     needsAuthServers: string[];
     failedServers: string[];
+    runtimeStatuses?: McpRuntimeServerStatus[];
 };
 
 const DEFAULT_MAX_ATTEMPTS = 2;
@@ -132,9 +136,6 @@ export class CodexMcpRuntimeRecovery {
         } catch {
             // Missing startup notifications are unknown, not failure.
         }
-        const startup = new Map(startupEntries
-            .filter((entry) => !entry.threadId || entry.threadId === input.threadId)
-            .map((entry) => [entry.name, entry]));
         let inventory: Map<string, CodexMcpServerInventory> | undefined;
         try {
             const result = await this.client.listMcpServerStatus({ threadId: input.threadId });
@@ -142,6 +143,17 @@ export class CodexMcpRuntimeRecovery {
         } catch {
             // No inventory is unknown, never proof of a healthy connection.
         }
+        return this.buildStatuses(input, startupEntries, inventory);
+    }
+
+    private buildStatuses(
+        input: RecoveryInput,
+        startupEntries: CodexMcpStartupStatus[],
+        inventory: Map<string, CodexMcpServerInventory> | undefined,
+    ): McpRuntimeServerStatus[] {
+        const startup = new Map(startupEntries
+            .filter((entry) => !entry.threadId || entry.threadId === input.threadId)
+            .map((entry) => [entry.name, entry]));
         const checkedAt = this.now();
         return [...new Set(input.expectedServerNames)].sort().map((name) => {
             const started = startup.get(name);
@@ -207,20 +219,20 @@ export class CodexMcpRuntimeRecovery {
             this.cooldowns.delete(input.threadId);
             this.unhealthyServers.delete(input.threadId);
             if (previouslyRecovered.length > 0) {
-                return { status: 'recovered', affectedServers: previouslyRecovered };
+                return this.withRuntimeStatuses({ status: 'recovered', affectedServers: previouslyRecovered }, initial);
             }
-            return { status: 'ready', affectedServers: [] };
+            return this.withRuntimeStatuses({ status: 'ready', affectedServers: [] }, initial);
         }
         if (initial.failedServers.length === 0) {
             this.cooldowns.delete(input.threadId);
             this.unhealthyServers.set(input.threadId, initial.affectedServers);
-            return this.toResult(initial, previouslyRecovered);
+            return this.withRuntimeStatuses(this.toResult(initial, previouslyRecovered), initial);
         }
         const failureSignature = JSON.stringify(initial.failedServers);
         const cooldown = this.cooldowns.get(input.threadId);
         if (cooldown?.failureSignature === failureSignature && cooldown.until > this.now()) {
             this.unhealthyServers.set(input.threadId, initial.affectedServers);
-            return this.toResult(initial, previouslyRecovered);
+            return this.withRuntimeStatuses(this.toResult(initial, previouslyRecovered), initial);
         }
 
         const initiallyAffected = initial.affectedServers;
@@ -243,6 +255,9 @@ export class CodexMcpRuntimeRecovery {
                 resumed = true;
             } catch {
                 // Retry below after the same bounded backoff as a status failure.
+                // Resume may have changed the runtime before failing. Do not
+                // report the earlier inventory as a post-resume observation.
+                latest.runtimeStatuses = undefined;
             }
             if (this.backoffMs > 0) {
                 await this.sleep(this.backoffMs * (attempt + 1));
@@ -252,15 +267,15 @@ export class CodexMcpRuntimeRecovery {
             if (latest.status === 'ready') {
                 this.cooldowns.delete(input.threadId);
                 this.unhealthyServers.delete(input.threadId);
-                return {
+                return this.withRuntimeStatuses({
                     status: 'recovered',
                     affectedServers: recoveredSinceInitial([]),
-                };
+                }, latest);
             }
             if (latest.failedServers.length === 0) {
                 this.cooldowns.delete(input.threadId);
                 this.unhealthyServers.set(input.threadId, latest.affectedServers);
-                return this.toResult(latest, recoveredSinceInitial(latest.affectedServers));
+                return this.withRuntimeStatuses(this.toResult(latest, recoveredSinceInitial(latest.affectedServers)), latest);
             }
         }
 
@@ -269,7 +284,13 @@ export class CodexMcpRuntimeRecovery {
             until: this.now() + this.cooldownMs,
         });
         this.unhealthyServers.set(input.threadId, latest.affectedServers);
-        return this.toResult(latest, recoveredSinceInitial(latest.affectedServers));
+        return this.withRuntimeStatuses(this.toResult(latest, recoveredSinceInitial(latest.affectedServers)), latest);
+    }
+
+    private withRuntimeStatuses(result: CodexMcpRecoveryResult, inspection: RuntimeInspection): CodexMcpRecoveryResult {
+        return inspection.runtimeStatuses === undefined
+            ? result
+            : { ...result, runtimeStatuses: inspection.runtimeStatuses };
     }
 
     private toResult(
@@ -308,6 +329,7 @@ export class CodexMcpRuntimeRecovery {
                 affectedServers: [],
                 needsAuthServers: [],
                 failedServers: [],
+                ...(input.includeRuntimeStatuses ? { runtimeStatuses: [] } : {}),
             };
         }
 
@@ -322,6 +344,18 @@ export class CodexMcpRuntimeRecovery {
             inventoryByName = new Map(inventory.data.map((entry) => [entry.name, entry]));
         } catch {
             // Startup notifications remain useful on older app-server versions.
+        }
+
+        let runtimeStatuses: McpRuntimeServerStatus[] | undefined;
+        if (input.includeRuntimeStatuses && inventoryByName) {
+            try {
+                // Capture the latest notifications after the inventory RPC;
+                // only metadata leaves this operation, not tools or credentials.
+                runtimeStatuses = this.buildStatuses(input, this.client.getMcpStartupStatuses(), inventoryByName);
+            } catch {
+                // Informational reporting must not discard the user's turn.
+                // A missing snapshot preserves the caller's fresh probe fallback.
+            }
         }
 
         const needsAuth = expected.filter((name) => {
@@ -347,6 +381,7 @@ export class CodexMcpRuntimeRecovery {
             affectedServers,
             needsAuthServers: needsAuth,
             failedServers: failed,
+            runtimeStatuses,
         };
     }
 }

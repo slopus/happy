@@ -5,6 +5,136 @@ import {
     CodexMcpRuntimeRecovery,
 } from './codexMcpRuntimeRecovery';
 
+describe('Codex MCP same-operation status reporting', () => {
+    const input = { threadId: 't', mcpServers: { notion: {} }, expectedServerNames: ['notion'], includeRuntimeStatuses: true };
+    const connected = { name: 'notion', authStatus: 'unsupported', tools: {} };
+
+    it('returns exact reportable metadata from the one healthy recovery inventory query', async () => {
+        const client = { getMcpStartupStatuses: () => [], listMcpServerStatus: vi.fn(async () => ({ data: [connected] })), resumeThread: vi.fn() };
+        const recovery = new CodexMcpRuntimeRecovery(client, { now: () => 5, connectorNames: ['notion'] });
+        expect(await recovery.recoverBeforeTurn(input)).toEqual({
+            status: 'ready', affectedServers: [], runtimeStatuses: [{ name: 'notion', status: 'connected', checkedAt: 5 }],
+        });
+        expect(client.listMcpServerStatus).toHaveBeenCalledExactlyOnceWith({ threadId: 't' });
+        expect(client.resumeThread).not.toHaveBeenCalled();
+    });
+
+    it('rechecks auth on the next turn and on a manual status request', async () => {
+        const list = vi.fn(async () => ({ data: [connected] }));
+        const client = { getMcpStartupStatuses: () => [], listMcpServerStatus: list, resumeThread: vi.fn() };
+        const recovery = new CodexMcpRuntimeRecovery(client, { now: () => 5, connectorNames: ['notion'] });
+        await recovery.recoverBeforeTurn(input);
+        list.mockResolvedValue({ data: [{ ...connected, authStatus: 'notLoggedIn' }] });
+        expect(await recovery.recoverBeforeTurn(input)).toEqual({
+            status: 'needs-auth', affectedServers: ['notion'], runtimeStatuses: [{ name: 'notion', status: 'connector-needs-auth', checkedAt: 5 }],
+        });
+        list.mockResolvedValue({ data: [] });
+        expect(await recovery.readStatuses(input)).toEqual([{ name: 'notion', status: 'connector-runtime-failed', checkedAt: 5 }]);
+        expect(list).toHaveBeenCalledTimes(3);
+        expect(client.resumeThread).not.toHaveBeenCalled();
+    });
+
+    it('uses the final post-resume inventory rather than the initial failed snapshot', async () => {
+        let status = 'failed';
+        const client = {
+            getMcpStartupStatuses: () => [{ name: 'notion', status }],
+            listMcpServerStatus: vi.fn(async () => ({ data: [connected] })),
+            resumeThread: vi.fn(async () => { status = 'ready'; return { threadId: 't', model: 'test' }; }),
+        };
+        const recovery = new CodexMcpRuntimeRecovery(client, { now: () => 5, connectorNames: ['notion'], backoffMs: 0 });
+        expect(await recovery.recoverBeforeTurn(input)).toEqual({
+            status: 'recovered', affectedServers: ['notion'], runtimeStatuses: [{ name: 'notion', status: 'connected', checkedAt: 5 }],
+        });
+        expect(client.listMcpServerStatus).toHaveBeenCalledTimes(2);
+        expect(client.resumeThread).toHaveBeenCalledOnce();
+    });
+
+    it('does not reuse a snapshot taken before a failed resume', async () => {
+        const client = {
+            getMcpStartupStatuses: () => [{ name: 'notion', status: 'failed' }],
+            listMcpServerStatus: vi.fn(async () => ({ data: [connected] })),
+            resumeThread: vi.fn(async () => { throw new Error('resume failed'); }),
+        };
+        const recovery = new CodexMcpRuntimeRecovery(client, { now: () => 5, connectorNames: ['notion'], maxAttempts: 1, backoffMs: 0 });
+        const result = await recovery.recoverBeforeTurn(input);
+        expect(result).toEqual({ status: 'failed', affectedServers: ['notion'] });
+        expect(await recovery.readStatuses(input)).toEqual([{ name: 'notion', status: 'connector-runtime-failed', checkedAt: 5 }]);
+        expect(client.listMcpServerStatus).toHaveBeenCalledTimes(2);
+    });
+
+    it('leaves reporting fallback fresh when the recovery inventory is unavailable', async () => {
+        const list = vi.fn(async () => ({ data: [connected] })).mockRejectedValueOnce(new Error('inventory unavailable'));
+        const recovery = new CodexMcpRuntimeRecovery({ getMcpStartupStatuses: () => [], listMcpServerStatus: list, resumeThread: vi.fn() }, { now: () => 5 });
+        expect(await recovery.recoverBeforeTurn(input)).toEqual({ status: 'ready', affectedServers: [] });
+        expect(await recovery.readStatuses(input)).toEqual([{ name: 'notion', status: 'connected', checkedAt: 5 }]);
+        expect(list).toHaveBeenCalledTimes(2);
+    });
+
+    it.each([
+        ['starting', 'unsupported', 'reconnecting'],
+        ['ready', 'notLoggedIn', 'connector-needs-auth'],
+        ['cancelled', 'unsupported', 'connector-runtime-failed'],
+    ] as const)('preserves %s evidence and connector qualification', async (startup, authStatus, expected) => {
+        const client = { getMcpStartupStatuses: () => [{ name: 'notion', status: startup }], listMcpServerStatus: vi.fn(async () => ({ data: [{ ...connected, authStatus }] })), resumeThread: vi.fn() };
+        const recovery = new CodexMcpRuntimeRecovery(client, { now: () => 5, connectorNames: ['notion'], maxAttempts: 0 });
+        const result = await recovery.recoverBeforeTurn(input);
+        expect(result.runtimeStatuses).toEqual([{ name: 'notion', status: expected, checkedAt: 5 }]);
+        expect(client.listMcpServerStatus).toHaveBeenCalledOnce();
+    });
+
+    it('keeps unknown auth without tools reconnecting and contains only metadata fields', async () => {
+        const recovery = new CodexMcpRuntimeRecovery({ getMcpStartupStatuses: () => [], listMcpServerStatus: async () => ({ data: [{ ...connected, authStatus: 'unknown' }] }), resumeThread: vi.fn() }, { now: () => 5 });
+        const result = await recovery.recoverBeforeTurn(input);
+        expect(result.runtimeStatuses).toEqual([{ name: 'notion', status: 'reconnecting', checkedAt: 5 }]);
+    });
+
+    it('does not query for an empty reporting scope', async () => {
+        const client = { getMcpStartupStatuses: vi.fn(() => []), listMcpServerStatus: vi.fn(async () => ({ data: [] })), resumeThread: vi.fn() };
+        expect(await new CodexMcpRuntimeRecovery(client).recoverBeforeTurn({ ...input, expectedServerNames: [] })).toEqual({ status: 'ready', affectedServers: [], runtimeStatuses: [] });
+        expect(client.listMcpServerStatus).not.toHaveBeenCalled();
+        expect(client.getMcpStartupStatuses).not.toHaveBeenCalled();
+    });
+
+    it('shares only in-flight recovery and queries fresh after it completes', async () => {
+        let release!: () => void;
+        const blocked = new Promise<void>(resolve => { release = resolve; });
+        const list = vi.fn(async () => { await blocked; return { data: [connected] }; });
+        const recovery = new CodexMcpRuntimeRecovery({ getMcpStartupStatuses: () => [], listMcpServerStatus: list, resumeThread: vi.fn() }, { now: () => 5 });
+        const first = recovery.recoverBeforeTurn(input);
+        const second = recovery.recoverBeforeTurn(input);
+        expect(second).toBe(first);
+        release();
+        await Promise.all([first, second]);
+        expect(list).toHaveBeenCalledOnce();
+        await recovery.recoverBeforeTurn({ ...input, threadId: 'other-thread', mcpServers: { notion: { revision: 2 } } });
+        expect(list.mock.calls).toEqual([[{ threadId: 't' }], [{ threadId: 'other-thread' }]]);
+        await recovery.recoverBeforeTurn({ ...input, mcpServers: { notion: { revision: 3 } } });
+        expect(list).toHaveBeenCalledTimes(3);
+    });
+
+    it('uses notifications received during the inventory query for reporting', async () => {
+        let status = 'ready';
+        const client = {
+            getMcpStartupStatuses: () => [{ name: 'notion', status }],
+            listMcpServerStatus: vi.fn(async () => { status = 'failed'; return { data: [connected] }; }),
+            resumeThread: vi.fn(),
+        };
+        const result = await new CodexMcpRuntimeRecovery(client, { now: () => 5, connectorNames: ['notion'] }).recoverBeforeTurn(input);
+        expect(result.runtimeStatuses).toEqual([{ name: 'notion', status: 'connector-runtime-failed', checkedAt: 5 }]);
+        expect(client.listMcpServerStatus).toHaveBeenCalledOnce();
+    });
+
+    it('does not discard the turn when only snapshot formatting loses startup evidence', async () => {
+        const startup = vi.fn((): Array<{ name: string; status: string }> => []);
+        startup.mockImplementationOnce(() => []).mockImplementationOnce(() => { throw new Error('notification probe failed'); });
+        const list = vi.fn(async () => ({ data: [connected] }));
+        const recovery = new CodexMcpRuntimeRecovery({ getMcpStartupStatuses: startup, listMcpServerStatus: list, resumeThread: vi.fn() }, { now: () => 5 });
+        expect(await recovery.recoverBeforeTurn(input)).toEqual({ status: 'ready', affectedServers: [] });
+        expect(await recovery.readStatuses(input)).toEqual([{ name: 'notion', status: 'connected', checkedAt: 5 }]);
+        expect(list).toHaveBeenCalledTimes(2);
+    });
+});
+
 it('does not query the entire app-server inventory when no external server needs status', async () => {
     const client = { getMcpStartupStatuses: vi.fn(() => []), listMcpServerStatus: vi.fn(async () => ({ data: [] })), resumeThread: vi.fn() };
     expect(await new CodexMcpRuntimeRecovery(client).readStatuses({ threadId: 't', mcpServers: {}, expectedServerNames: [] })).toEqual([]);

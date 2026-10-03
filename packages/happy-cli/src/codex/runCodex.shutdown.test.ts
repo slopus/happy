@@ -17,6 +17,8 @@ const fixture = vi.hoisted(() => ({
     events: [] as string[],
     markDispatched: null as null | (() => void),
     send: vi.fn(),
+    recoverMcp: vi.fn(async (_input: { includeRuntimeStatuses?: boolean }): Promise<import('./codexMcpRuntimeRecovery').CodexMcpRecoveryResult> => ({ status: 'ready', affectedServers: [] })),
+    readMcpStatuses: vi.fn(async (): Promise<import('@slopus/happy-wire').McpRuntimeServerStatus[]> => []),
     getOrCreateSession: vi.fn(async () => ({ id: 'lesson-session' })),
     disconnect: vi.fn(async () => {}),
     admitTool: undefined as undefined | (<T>(work: () => Promise<T>) => Promise<T>),
@@ -54,7 +56,7 @@ vi.mock('@/checkpoint/checkpointSessionComposition', () => ({ createCheckpointSe
 vi.mock('@/codex/codexSkills', () => ({ discoverCodexSkillCommands: vi.fn(async () => []) }));
 vi.mock('@/aplus/fetchAplusMcpServers', async (original) => ({ ...await original<typeof import('@/aplus/fetchAplusMcpServers')>(), fetchAplusMcpConfigSnapshot: vi.fn(async () => null) }));
 vi.mock('@/codex/codexMcpConfigSynchronizer', () => ({ CodexMcpConfigSynchronizer: class { mcpServers = {}; sync = async () => ({ mcpServers: this.mcpServers }); } }));
-vi.mock('@/codex/codexMcpRuntimeRecovery', () => ({ CodexMcpRuntimeRecovery: class { recoverBeforeTurn = async () => ({ status: 'ready' }); readStatuses = async () => []; } }));
+vi.mock('@/codex/codexMcpRuntimeRecovery', () => ({ CodexMcpRuntimeRecovery: class { recoverBeforeTurn = fixture.recoverMcp; readStatuses = fixture.readMcpStatuses; } }));
 vi.mock('@/claude/utils/startHappyServer', () => ({ startHappyServer: vi.fn(async (_session, options) => {
     fixture.submit = options.proposeLesson;
     fixture.admitTool = options.admitTool;
@@ -119,6 +121,7 @@ afterEach(() => {
     }
 });
 afterEach(() => { process.exitCode = originalExitCode; vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.clearAllMocks(); fixture.onSend = null; fixture.onInterrupt = null; fixture.onSteer = null; fixture.onConnect = null; fixture.onResumeThread = null; fixture.steerText = ''; fixture.gate = null; fixture.events = []; fixture.session.freezeInboundMessagesForShutdown.mockReturnValue(true); });
+afterEach(() => { fixture.recoverMcp.mockReset().mockResolvedValue({ status: 'ready', affectedServers: [] }); fixture.readMcpStatuses.mockReset().mockResolvedValue([]); });
 async function start(prompt = 'Test input', confirmed = false, review?: import('@/memory/lessonReviewWorker').LessonReviewWorker, standaloneLaunch?: StandaloneLaunchBootstrap, resumeThreadId?: string) {
     for (const key of Object.keys(process.env)) {
         if (/^(HAPPY_RECONNECT_|HAPPY_INITIAL_|HAPPY_FORK|HAPPY_MANAGED_|SAYCODE_PROVIDER_|HAPPY_AUTOMATION_)/.test(key)) vi.stubEnv(key, undefined);
@@ -137,6 +140,45 @@ async function finishFrozenFixture(running: Promise<void>) {
     await running;
 }
 describe('Codex runtime producer bookkeeping', () => {
+    it('publishes same-turn MCP recovery metadata without a second pre-turn status query', async () => {
+        const statuses = [{ name: 'notion', status: 'connected' as const, checkedAt: 5 }];
+        fixture.recoverMcp.mockResolvedValue({ status: 'ready', affectedServers: [], runtimeStatuses: statuses });
+        await start();
+        expect(fixture.recoverMcp).toHaveBeenCalledOnce();
+        expect(fixture.recoverMcp.mock.calls[0]?.[0]).toMatchObject({ includeRuntimeStatuses: true });
+        expect(fixture.readMcpStatuses).not.toHaveBeenCalled();
+        expect(fixture.send).toHaveBeenCalledOnce();
+        const updates = fixture.session.updateMetadata.mock.calls.map(([update]) => update({}));
+        expect(updates).toContainEqual({ mcpServers: statuses });
+    });
+
+    it('keeps manual MCP status requests fresh even after pre-turn metadata reuse', async () => {
+        fixture.recoverMcp.mockResolvedValue({ status: 'ready', affectedServers: [], runtimeStatuses: [{ name: 'notion', status: 'connected', checkedAt: 5 }] });
+        const fresh = [{ name: 'notion', status: 'connector-needs-auth' as const, checkedAt: 6 }];
+        fixture.readMcpStatuses.mockResolvedValue(fresh);
+        let reply: unknown;
+        let readsBeforeManualRequest = -1;
+        fixture.onSend = async () => {
+            readsBeforeManualRequest = fixture.readMcpStatuses.mock.calls.length;
+            const handler = fixture.session.rpcHandlerManager.registerHandler.mock.calls.find(([name]) => name === 'mcp-status')![1] as (params: unknown) => Promise<unknown>;
+            reply = await handler({ sessionId: 'lesson-session' });
+        };
+        await start();
+        expect(readsBeforeManualRequest).toBe(0);
+        expect(reply).toEqual({ statuses: fresh });
+        expect(fixture.readMcpStatuses).toHaveBeenCalledOnce();
+        expect(fixture.send).toHaveBeenCalledOnce();
+    });
+
+    it('falls back to fresh status reporting when recovery supplied no valid snapshot', async () => {
+        const fresh = [{ name: 'notion', status: 'reconnecting' as const, checkedAt: 5 }];
+        fixture.readMcpStatuses.mockResolvedValue(fresh);
+        await start();
+        expect(fixture.readMcpStatuses).toHaveBeenCalledOnce();
+        expect(fixture.send).toHaveBeenCalledOnce();
+        expect(fixture.session.updateMetadata.mock.calls.map(([update]) => update({}))).toContainEqual({ mcpServers: fresh });
+    });
+
     // The daemon spawns the CLI with stdio ignored, so a start failure that only
     // reaches stderr leaves no reason anywhere and the user later sees only
     // that the session has no Codex thread to resume.

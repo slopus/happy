@@ -90,7 +90,7 @@ import {
 } from './codexMcpRuntimeRecovery';
 import { emitReadyIfIdle } from './emitReadyIfIdle';
 import { enqueueCodexUserText, isCodexClearText, shouldHandleCodexClear } from './codexClearCommand';
-import { createEnvelope } from '@slopus/happy-wire';
+import { createEnvelope, type McpRuntimeServerStatus } from '@slopus/happy-wire';
 import { createManagedFollowUpHandler } from '@/managed/managedFollowUp';
 import { downloadCodexFileEventAttachment } from './utils/attachmentEvents';
 import { prepareCodexImageInputItems } from './utils/imageInput';
@@ -1771,7 +1771,7 @@ export async function runCodex(opts: {
         },
     });
     const mcpRuntimeRecovery = new CodexMcpRuntimeRecovery(client);
-    const reportMcpStatuses = async () => {
+    const reportMcpStatuses = async (inspectedStatuses?: McpRuntimeServerStatus[]) => {
         const threadId = client.threadId;
         if (!threadId) return [];
         // Reporting status is informational. It runs on the turn path, where a
@@ -1780,7 +1780,7 @@ export async function runCodex(opts: {
         // an unknown status degrades to no update, never to a lost turn.
         let runtimeStatuses;
         try {
-            runtimeStatuses = await mcpRuntimeRecovery.readStatuses({
+            runtimeStatuses = inspectedStatuses ?? await mcpRuntimeRecovery.readStatuses({
                 threadId,
                 mcpServers: mcpConfigSynchronizer.mcpServers,
                 expectedServerNames: listConfiguredExternalServices(mcpConfigSynchronizer.mcpServers),
@@ -2159,8 +2159,9 @@ export async function runCodex(opts: {
                         mcpServers: mcpSync.mcpServers,
                         expectedServerNames: listConfiguredExternalServices(mcpSync.mcpServers),
                         developerInstructions: currentDeveloperInstructions,
+                        includeRuntimeStatuses: true,
                     }));
-                    await measure('mcp-status', reportMcpStatuses);
+                    await measure('mcp-status', () => reportMcpStatuses(runtimeRecovery.runtimeStatuses));
                     if (runtimeRecovery.status !== 'ready') {
                         const metadataStatuses = buildCodexMcpRecoveryMetadataStatuses({
                             recovery: runtimeRecovery,
