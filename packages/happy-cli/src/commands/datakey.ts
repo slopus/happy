@@ -9,17 +9,26 @@
 import chalk from 'chalk'
 import axios from 'axios'
 import { existsSync } from 'node:fs'
-import { readFile, rename } from 'node:fs/promises'
+import { readFile, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 import { configuration } from '@/configuration'
-import { readSettings, updateSettings, writePrivateFile } from '@/persistence'
+import {
+  acquireDaemonLock,
+  parseCredentials,
+  readSettings,
+  releaseDaemonLock,
+  replaceCredentialsDataKey,
+  updateSettings,
+  writePrivateFile,
+} from '@/persistence'
 import {
   planDataKeyActivation,
   planDataKeyDeactivation,
   describeDataKeyStatus,
   type ActivationGateFailure,
 } from '@/datakey/activation'
-import { describeMachineControl, planHarden } from '@/datakey/machineControlStatus'
+import { describeMachineControl } from '@/datakey/machineControlStatus'
+import { runHarden } from '@/datakey/hardenTransition'
 import { pendingMachineKeyRotationFile } from '@/datakey/machineControlIo'
 
 const backupFile = () => join(configuration.happyHomeDir, 'access.key.legacy-backup')
@@ -101,7 +110,7 @@ ${chalk.bold('Usage:')}
   happy datakey status       현재 활성 variant, 백업, 머신 제어 모드 표시
   happy datakey activate     legacy(+병기 재료) → dataKey-활성 전환
   happy datakey deactivate   백업으로 legacy-활성 복원
-  happy datakey harden       strict 머신 제어: 서버가 머신 키를 갖지 못하게 함
+  happy datakey harden       strict 머신 제어: 서버가 머신 키를 갖지 못하게 함(daemon 을 멈춘 뒤 실행)
   happy datakey compat       compat 머신 제어로 복귀(서버가 머신 키 사본을 다시 받음)
 
 ${chalk.gray('activate 는 (1) 병기 재료 존재 (2) machineId 존재 (3) 서버 machine')}
@@ -180,23 +189,55 @@ async function readRawJsonOrUnreadable(path: string): Promise<unknown | null> {
 }
 
 async function handleHarden(): Promise<void> {
-  const plan = planHarden({ rawCredentials: await readRawJson(configuration.privateKeyFile) })
-  if (!plan.ok) {
+  const outcome = await runHarden({
+    readState: async () => ({
+      mode: (await readSettings()).machineControl === 'strict' ? 'strict' : 'compat',
+      rawCredentials: await readRawJson(configuration.privateKeyFile),
+      pendingExists: existsSync(pendingMachineKeyRotationFile()),
+    }),
+    lockDaemonStart: async () => {
+      // Two attempts: the first may only clear a lock its dead holder left.
+      const handle = await acquireDaemonLock(2, 0)
+      return handle ? () => releaseDaemonLock(handle) : null
+    },
+    dropNeverEscrowed: async () => {
+      const credentials = parseCredentials(await readRawJson(configuration.privateKeyFile))
+      if (credentials?.encryption.type !== 'dataKey') return
+      await replaceCredentialsDataKey({
+        token: credentials.token,
+        publicKey: credentials.encryption.publicKey,
+        machineKey: credentials.encryption.machineKey,
+      })
+    },
+    discardPendingRotation: () => rm(pendingMachineKeyRotationFile(), { force: true }),
+    setStrict: async () => {
+      await updateSettings((settings) => ({ ...settings, machineControl: 'strict' }))
+    },
+  })
+  if (!outcome.ok) {
     const message = {
       'no-credentials': 'credentials(access.key)가 없거나 파싱할 수 없습니다. `happy auth login` 먼저 실행하세요.',
       'not-datakey': 'legacy credential 의 머신 키는 서버가 아는 계정 비밀입니다. 먼저 `happy datakey activate` 로 dataKey-활성 전환하세요.',
-    }[plan.reason]
+      'daemon-running': 'daemon 이 실행 중이거나 시작하는 중입니다. compat daemon 이 도는 동안에는 서버가 머신 키로 이 머신의 파일을 쓸 수 있습니다. `happy daemon stop` 으로 멈춘 뒤 다시 실행하세요.',
+    }[outcome.reason]
     console.error(chalk.red(`전환하지 않음: ${message}`))
     process.exit(1)
   }
-  await updateSettings((settings) => ({ ...settings, machineControl: 'strict' }))
+  if (outcome.alreadyStrict) {
+    console.log(chalk.green('이미 strict 머신 제어입니다.'))
+    console.log(chalk.gray('적용 여부는 `happy datakey status` 의 machine control 줄로 확인하세요.'))
+    return
+  }
   console.log(chalk.green('strict 머신 제어로 설정했습니다.'))
-  console.log(chalk.bold('daemon 재시작이 필요합니다:'))
-  console.log('  happy daemon stop && happy daemon start')
-  console.log(chalk.gray('다음 시작에서 daemon 이 머신 키를 새로 만들고 서버의 머신 키 사본을 지웁니다.'))
+  if (outcome.reset.neverEscrowed || outcome.reset.pending) {
+    console.log(chalk.gray('compat 동안 남은 키 표시와 교체 기록은 서버가 쓸 수 있었으므로 지웠습니다.'))
+  }
+  console.log(chalk.bold('daemon 을 시작하세요:'))
+  console.log('  happy daemon start')
+  console.log(chalk.gray('시작할 때 daemon 이 머신 키를 새로 만들고 서버의 머신 키 사본을 지웁니다.'))
   console.log(chalk.gray('서버에 닿지 못하면 daemon 은 시작하지 않습니다(이전 키로 동작하지 않음).'))
   console.log(chalk.gray('적용 여부는 `happy datakey status` 의 machine control 줄로 확인하세요.'))
-  console.log(chalk.gray('strict 에서는 서버가 파일·명령·세션 시작 같은 머신 기능을 대신 실행하지 못합니다.'))
+  console.log(chalk.gray('strict 에서는 서버가 머신 키로 새 요청을 만들 수 없어, 파일·명령·세션 시작을 직접 실행하지 못합니다.'))
 }
 
 async function handleCompat(): Promise<void> {
