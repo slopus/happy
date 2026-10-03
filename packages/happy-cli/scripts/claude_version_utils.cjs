@@ -158,8 +158,12 @@ function findClaudeInPath() {
                 if (entrypoint) {
                     return { path: entrypoint, source: 'npm' };
                 }
-                // Shim found but no resolvable entrypoint — skip and let other finders handle it
-                return null;
+                // Windows shims cannot be spawned directly; let other finders handle them.
+                // On Unix `which` only returns executables, so a wrapper script or native
+                // binary (Nix makeWrapper, native installer) is spawned as-is.
+                if (process.platform === 'win32') {
+                    return null;
+                }
             }
 
             // Detect source from BOTH original PATH entry and resolved path
