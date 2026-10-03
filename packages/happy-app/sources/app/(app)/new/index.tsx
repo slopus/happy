@@ -40,6 +40,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession, machineStopSession, sessionArchive, sessionKill, sessionSetAgentModes } from '@/sync/ops';
 import { createWorktree } from '@/utils/worktree';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { useDirSuggestions } from '@/hooks/useDirSuggestions';
 import { formatPathRelativeToHome, formatLastSeen } from '@/utils/sessionUtils';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useNewSessionDraft } from '@/hooks/useNewSessionDraft';
@@ -519,6 +520,7 @@ function PathPickerContent({
     value,
     selectedProjectKey,
     homeDir,
+    machineId,
     onChangeValue,
     onSelectProject,
     onDone,
@@ -533,6 +535,7 @@ function PathPickerContent({
      */
     selectedProjectKey: string | null;
     homeDir?: string;
+    machineId?: string | null;
     onChangeValue: (value: string) => void;
     onSelectProject: (projectId: string) => void;
     onDone?: () => void;
@@ -542,6 +545,8 @@ function PathPickerContent({
     const inputRef = React.useRef<TextInput>(null);
     const currentValue = value ?? '';
     const [selection, setSelection] = React.useState<{ start: number; end: number } | undefined>(undefined);
+
+    const dirSuggestions = useDirSuggestions(machineId, currentValue, homeDir);
 
     React.useEffect(() => {
         // Embedded mobile pickers are positioned next to their trigger. Opening
@@ -677,6 +682,37 @@ function PathPickerContent({
                 <Text style={[pickerStyles.pathMetaText, { color: theme.colors.textSecondary }]}>
                     using custom path above
                 </Text>
+            )}
+
+            {dirSuggestions.length > 0 && (
+                <>
+                    <Text style={[pickerStyles.sectionLabel, { color: theme.colors.textSecondary }]}>
+                        Suggestions
+                    </Text>
+                    <ScrollView style={pickerStyles.optionList} keyboardShouldPersistTaps="handled">
+                        {dirSuggestions.map((suggestion) => (
+                            <Pressable
+                                key={suggestion.fullPath}
+                                style={(p) => [pickerStyles.option, p.pressed && pickerStyles.optionPressed]}
+                                onPress={() => {
+                                    const nextValue = suggestion.fullPath + '/';
+                                    onChangeValue(nextValue);
+                                    setSelection({ start: nextValue.length, end: nextValue.length });
+                                    setTimeout(() => inputRef.current?.focus(), 0);
+                                }}
+                            >
+                                <Ionicons
+                                    name="folder-outline"
+                                    size={16}
+                                    color={theme.colors.textSecondary}
+                                />
+                                <Text style={[pickerStyles.optionText, { color: theme.colors.text }]}>
+                                    {suggestion.fullPath}
+                                </Text>
+                            </Pressable>
+                        ))}
+                    </ScrollView>
+                </>
             )}
 
             <Text style={[pickerStyles.sectionLabel, { color: theme.colors.textSecondary }]}>
@@ -1805,6 +1841,7 @@ function NewSessionScreen() {
                 value={selectedPath}
                 selectedProjectKey={selectedProjectKey}
                 homeDir={selectedHomeDir}
+                machineId={selectedMachineId}
                 onChangeValue={setSelectedPath}
                 onSelectProject={selectProjectPlace}
                 onDone={closePicker}
@@ -1837,6 +1874,7 @@ function NewSessionScreen() {
         selectProjectPlace,
         selectedProjectKey,
         selectedHomeDir,
+        selectedMachineId,
         selectedPath,
         setSelectedPath,
         sidebarLayout.showSidebar,
@@ -1869,6 +1907,7 @@ function NewSessionScreen() {
             value={selectedPath}
             selectedProjectKey={selectedProjectKey}
             homeDir={selectedHomeDir}
+            machineId={selectedMachineId}
             onChangeValue={setSelectedPath}
             onSelectProject={selectProjectPlace}
             onDone={closePicker}
@@ -2512,6 +2551,7 @@ function NewSessionScreen() {
                             value={selectedPath}
                             selectedProjectKey={selectedProjectKey}
                             homeDir={selectedHomeDir}
+                            machineId={selectedMachineId}
                             onChangeValue={setSelectedPath}
                             onSelectProject={selectProjectPlace}
                             onDone={closePicker}
