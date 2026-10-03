@@ -2,12 +2,14 @@ import { createHash } from 'node:crypto'
 /** Group custody journal: hashes only, durable intent before changing credentials. */
 export type GroupProvider = 'claude' | 'codex'
 export type CredentialGroupRequest = { version:1; scope:string; userId:string; provider:GroupProvider; generation:number; fingerprint:string; payload:string|null }
-type Entry = Omit<CredentialGroupRequest,'version'|'payload'> & { desired:string[]; owned:string[]; pending:boolean; payloadDigest:string|null }
+/** `managed`: the desired identities that are org-managed setup-tokens (absent in older journals). */
+type Entry = Omit<CredentialGroupRequest,'version'|'payload'> & { desired:string[]; owned:string[]; pending:boolean; payloadDigest:string|null; managed?:string[] }
 type Journal = { version:1; entries:Entry[] }
 export type CredentialGroupDeps = {
   read():Promise<string|null>; write(value:string):Promise<void>
   snapshot(provider:GroupProvider):Promise<string[]>
   incoming(provider:GroupProvider,payload:string):string[]
+  managedIdentities?(provider:GroupProvider,payload:string):string[]
   /** `owned` are identities this scope installed earlier: the only slots it may replace. */
   apply(provider:GroupProvider,payload:string,owned:string[]):Promise<unknown>
   remove(provider:GroupProvider,identities:string[]):Promise<void>
@@ -27,7 +29,7 @@ function parse(raw:string|null):Journal {
     if(value.version!==1||!Array.isArray(value.entries)||value.entries.length>1000)fail('AI_GROUP_JOURNAL_INVALID')
     for(const entry of value.entries){
       request({...entry,version:1,payload:null})
-      if(!(entry.payloadDigest===null||typeof entry.payloadDigest==='string'&&/^[a-f0-9]{64}$/.test(entry.payloadDigest))||typeof entry.pending!=='boolean'||![entry.desired,entry.owned].every(items=>Array.isArray(items)&&items.length<=1000&&items.every(id)))fail('AI_GROUP_JOURNAL_INVALID')
+      if(!(entry.payloadDigest===null||typeof entry.payloadDigest==='string'&&/^[a-f0-9]{64}$/.test(entry.payloadDigest))||typeof entry.pending!=='boolean'||![entry.desired,entry.owned,entry.managed??[]].every(items=>Array.isArray(items)&&items.length<=1000&&items.every(id)))fail('AI_GROUP_JOURNAL_INVALID')
     }
     if(new Set(value.entries.map(e=>JSON.stringify([e.scope,e.provider]))).size!==value.entries.length)fail('AI_GROUP_JOURNAL_INVALID')
     return value
@@ -51,7 +53,8 @@ export function createCredentialGroupSync(deps:CredentialGroupDeps) {
     const before=new Set(await deps.snapshot(input.provider))
     const desired=input.payload===null?[]:[...new Set(deps.incoming(input.provider,input.payload))]
     if(desired.length>500||desired.some(value=>!id(value)))fail('AI_GROUP_INVALID_INPUT')
-    const entry:Entry={scope:input.scope,userId:input.userId,provider:input.provider,generation:input.generation,fingerprint:input.fingerprint,payloadDigest,desired,
+    const managed=input.payload===null?[]:(deps.managedIdentities?.(input.provider,input.payload)??[]).filter(value=>desired.includes(value))
+    const entry:Entry={scope:input.scope,userId:input.userId,provider:input.provider,generation:input.generation,fingerprint:input.fingerprint,payloadDigest,desired,managed,
       owned:[...new Set([...(prior?.owned??[]),...desired.filter(value=>!before.has(value))])],pending:true}
     journal.entries=journal.entries.filter(e=>!(e.scope===input.scope&&e.provider===input.provider))
     journal.entries.push(entry)
@@ -77,5 +80,7 @@ export function createCredentialGroupSync(deps:CredentialGroupDeps) {
   }
   /** Who a scope's applied assignment belongs to and what it installed: the local ownership proof. */
   async function assignment(scope:string,provider:GroupProvider){const entry=await readReceipt(scope,provider);return entry?{userId:entry.userId,desired:[...entry.desired],reconciled:!entry.pending}:null}
-  return {sync,invalidate,assignment,receipt:async(scope:string,provider:GroupProvider)=>{const entry=await readReceipt(scope,provider);return entry?receipt(entry):null}}
+  /** Some current assignment (applied or in flight) desires an org-managed setup-token. Revoked entries desire nothing. */
+  async function hasManagedDesired(provider:GroupProvider){return parse(await deps.read()).entries.some(e=>e.provider===provider&&(e.managed??[]).some(value=>e.desired.includes(value)))}
+  return {sync,invalidate,assignment,hasManagedDesired,receipt:async(scope:string,provider:GroupProvider)=>{const entry=await readReceipt(scope,provider);return entry?receipt(entry):null}}
 }

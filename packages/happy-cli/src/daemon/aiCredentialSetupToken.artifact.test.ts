@@ -141,6 +141,9 @@ if sys.argv[1:3] == ['auth', 'logout']:
     expect(status.tokenRuntime.accounts.filter((row: { managedAccountId?: string }) => row.managedAccountId).length).toBe(2)
     expect(JSON.stringify(status)).not.toContain('sk-ant-oat01')
 
+    // The empty machine now defaults to a managed slot, so an unbound launch is refused, not run on org material.
+    await expect(runtime.sessionEnvironment('claude')).rejects.toThrow('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
+
     // A signed grant binds a new session to exactly that slot, once.
     const selection = { kind: 'claude-setup-token' as const, managedAccountId: A, groupScope: 'company-1', credentialGeneration: 1, bindingGrant: grant(A, 1) }
     const env = await runtime.sessionEnvironment('claude', selection)

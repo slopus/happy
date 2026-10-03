@@ -98,7 +98,7 @@ function fakeMachine(initial: Slot[], activeAccountNumber: number | null, option
 }
 const inference = (calls: Array<{ command: string; args: string[] }>) => calls.filter(call => call.command === 'claude')
 const installs = (calls: Array<{ command: string; args: string[] }>) => calls.filter(call => call.command === 'uv' && call.args[0] === 'tool')
-const sync = (generation: number, body: string) => ({ version: 1 as const, scope: 'company-1', userId: 'user-1', provider: 'claude' as const,
+const sync = (generation: number, body: string | null) => ({ version: 1 as const, scope: 'company-1', userId: 'user-1', provider: 'claude' as const,
   generation, fingerprint: String(generation).padStart(64, '0'), payload: body })
 const stored = (id: string, generation: number, token: string, extra: Partial<Slot> = {}): Slot => {
   const { number: _n, ...account } = managed(id, generation, token)
@@ -273,13 +273,13 @@ describe('managed Claude setup-token runtime', () => {
       await expect(runtime.sessionEnvironment('claude', selection())).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
     })
 
-    it('fails closed on an unmarked runtime and for a non-Claude agent; unselected spawns are unchanged', async () => {
+    it('fails closed on an unmarked runtime and for a non-Claude agent', async () => {
       const { runtime } = fakeMachine([stored(A, 1, fakeToken('a'))], null, { runtime: 'unmarked' })
       await expect(runtime.sessionEnvironment('claude', selection())).rejects.toThrow('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
       const marked = await assigned()
       await expect(marked.runtime.sessionEnvironment('codex', selection())).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
-      expect(await marked.runtime.sessionEnvironment('claude')).toEqual({})
     })
+
 
     it('wins over inherited and requested credentials on spawn (plain and tmux) and resumes from the record after a restart', async () => {
       const { runtime, state, files } = await assigned()
@@ -327,6 +327,47 @@ describe('managed Claude setup-token runtime', () => {
         expect(capabilities).toMatchObject({ newSessionProfileBinding: false })
         expect(capabilities).not.toHaveProperty('setupTokenSessionBindingVersion')
       }
+    })
+  })
+
+  describe('unbound Claude launches and resumes on an org-managed default', () => {
+    it('refuses a launch or resume without a binding when the active default is a managed setup-token slot', async () => {
+      // An empty machine activates the first managed slot, so the machine default is org material.
+      const { runtime, state } = fakeMachine([], null)
+      await runtime.groupSync(sync(1, payload(managed(A, 1, fakeToken('a')))))
+      expect(state.active).toBe(1)
+      // A new launch (Desktop, agent facade, automation, fork) and a resume without a record share this path.
+      await expect(runtime.sessionEnvironment('claude')).rejects.toThrow('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
+      await expect(runtime.sessionEnvironment(undefined)).rejects.toThrow('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
+      // Other agents are unaffected.
+      expect(await runtime.sessionEnvironment('codex')).toEqual({})
+    })
+
+    it('refuses an unbound launch while a personal account is active if an assignment desires a managed setup-token', async () => {
+      const personal: Slot = { number: 1, email: 'me@example.com', usageStatus: 'ok', credentials: { claudeAiOauth: { accessToken: 'personal', refreshToken: 'r' } } }
+      const { runtime, state, calls } = fakeMachine([personal], 1)
+      await runtime.groupSync(sync(1, payload(managed(A, 1, fakeToken('a')))))
+      expect(state.active).toBe(1)
+      const before = calls.length
+      await expect(runtime.sessionEnvironment('claude')).rejects.toThrow('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
+      // The decision comes from the journal alone: no cswap call (and no usage fetch) per launch.
+      expect(calls.slice(before)).toEqual([])
+      // Revoking the assignment restores the personal default.
+      await runtime.groupSync(sync(2, null))
+      expect(await runtime.sessionEnvironment('claude')).toEqual({})
+    })
+
+    it('leaves ordinary OAuth group assignments and personal defaults unchanged', async () => {
+      const personal: Slot = { number: 1, email: 'me@example.com', usageStatus: 'ok', credentials: { claudeAiOauth: { accessToken: 'personal', refreshToken: 'r' } } }
+      const { runtime } = fakeMachine([personal], 1)
+      await runtime.groupSync(sync(1, payload({ number: 1, email: 'shared@example.com', organizationUuid: '', credentials: { claudeAiOauth: { accessToken: 'oauth', refreshToken: 'r' } }, config: {} })))
+      expect(await runtime.sessionEnvironment('claude')).toEqual({})
+    })
+
+    it('does not consult cswap at all on a machine without group assignments', async () => {
+      const { runtime, calls } = fakeMachine([stored(A, 1, fakeToken('a'), { number: 1 })], 1)
+      expect(await runtime.sessionEnvironment('claude')).toEqual({})
+      expect(calls.filter(call => call.command === 'cswap')).toEqual([])
     })
   })
 

@@ -105,6 +105,27 @@ daemon restart. A resume uses `readSetupTokenResumeSelection(tracked.agentEnviro
 recorded `userId` and generation. A replaced generation gives `…_STALE`; a revoked assignment, another owner or a removed slot gives `…_UNAVAILABLE`; a corrupt record
 refuses the resume. The machine default is never used. Binding never runs `cswap switch`.
 
+## Unbound launches and resumes (spawn-path audit)
+
+Every daemon Claude launch goes through `spawnSession`, which resolves the managed environment at one site. That includes Desktop RPC
+`spawn-happy-session`, the `happy agent` facade, automation and Chat(beta) runs, and forks with `parentSessionId`/`resumeClaudeSessionId`.
+Every resume goes through `resumeSession`, which resolves at one site, including attention and automation resumes after a restart.
+Both sites call `sessionEnvironment`:
+
+| path | behaviour |
+|---|---|
+| new launch with a `claude-setup-token` selection | signed grant verified, consumed and bound (above) |
+| true resume with a recorded binding | rebinds from the record and re-checks journal, owner and generation; corrupt → refused |
+| new launch or resume with no binding, while any current group assignment **desires an org-managed setup-token** | **refused**: `CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED`, even with a personal login active. This applies to forks/children too, since `parentSessionId` is lineage only and each child needs a fresh grant |
+| same, but no managed setup-token is desired (no assignment, revoked/empty assignment, ordinary OAuth group) | unchanged (machine default) |
+| Z.AI lease active | unchanged (lease env) |
+| non-Claude agents | unchanged |
+| `machine-personal` selection | unchanged (still refused by the existing applied-source proof) |
+
+The decision uses the group journal alone. Each entry now records `managed`, the desired identities that are setup-tokens, projected from
+the payload at sync. There is no cswap call per launch. Journals written before this field existed count as having no managed identities.
+Not covered: a `happy` CLI started by hand in a terminal, which is outside the daemon.
+
 ## Remaining scope / limitations
 
 - Deployment requirement: the Studio signing key (`CLAUDE_COLLECTOR_SIGNING_KEY` and `APLUS_PUBLIC_BASE_URL`) and the daemon's `HAPPY_APLUS_STUDIO_ORIGIN`

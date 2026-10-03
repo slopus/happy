@@ -1509,6 +1509,9 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     read: async () => { try { return await deps.readFile(groupJournalPath) } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error } },
     write: async content => { await deps.mkdir(join(deps.homeDir, '.happy'), { recursive: true, mode: 0o700 }); await deps.chmod(join(deps.homeDir, '.happy'), 0o700); await writeAtomicFile(deps, groupJournalPath, content) },
     snapshot: groupAdapters.snapshot, incoming: groupPayloadIdentities, remove: groupAdapters.remove,
+    managedIdentities: (selected, payload) => selected !== 'claude' ? [] : (JSON.parse(payload).accounts as Array<Record<string, unknown>>)
+      .filter(account => account?.credentialType === 'setup_token' && typeof account.managedAccountId === 'string')
+      .map(account => setupTokenGroupIdentity(account.managedAccountId as string)),
     apply: async (selected, payload, owned) => {
       const marker = await readTrialMarker()
       if (marker.leases[selected] || (selected === 'claude' && marker.leases.zai)) throw new AiCredentialRuntimeError('AI_CREDENTIAL_MERGE_UNSUPPORTED')
@@ -1868,13 +1871,27 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     }))
   }
 
+  /**
+   * A launch or resume without a setup-token binding runs on the machine default.
+   * While any current assignment desires an org-managed setup-token, that is
+   * refused with an actionable code, even with a personal login active: group-sync
+   * keeps the personal login, so an unbound launch (agent facade, automation, fork,
+   * unrecorded resume) would otherwise silently decide the credential. Revoked
+   * assignments, ordinary OAuth groups, Z.AI leases, other agents and machines
+   * without assignments are unchanged. Journal-only: no cswap call per launch.
+   */
+  async function refuseUnboundManagedDefault() {
+    if (await groups.hasManagedDesired('claude')) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
+  }
+
   async function sessionEnvironment(agent: string | undefined, selection?: AiAuthSelection, recorded?: SetupTokenBinding): Promise<Record<string, string>> {
     if (selection?.kind === 'claude-setup-token') return setupTokenSessionEnvironment(agent, selection, recorded)
     if (agent !== undefined && agent !== 'claude') return {}
     return serialize(async () => {
       const marker = await readTrialMarker()
-      if (!marker.leases.zai) return {}
-      return parseZaiEnvironment(await deps.readFile(zaiEnvironmentPath()))
+      if (marker.leases.zai) return parseZaiEnvironment(await deps.readFile(zaiEnvironmentPath()))
+      await refuseUnboundManagedDefault()
+      return {}
     })
   }
 
