@@ -3,6 +3,7 @@
  * behind `happy datakey status`, `harden` and `compat`. Pure, like
  * activation.ts: the command reads the files and prints.
  */
+import { machineKeyFingerprint } from '@slopus/happy-wire'
 import { parseCredentials } from '@/persistence'
 import { parsePendingMachineKeyRotation, type MachineControlMode } from './machineControl'
 
@@ -33,6 +34,18 @@ export function describeMachineControl(input: {
     ...(rotation?.lastAttemptAt !== undefined ? { lastAttemptAt: rotation.lastAttemptAt } : {}),
   }
   return { mode: input.mode, key, pending, inForce: input.mode === 'strict' && key === 'never-escrowed' }
+}
+
+/**
+ * R20 — the fingerprint a person compares with the one a client shows before
+ * the client attests this machine's key. Only a dataKey machine key has one;
+ * a legacy machine's key is the account secret the server already holds.
+ */
+export function describeMachineKeyFingerprint(input: { rawCredentials: unknown | null; machineId: string | undefined }): string | null {
+  if (!input.machineId) return null
+  const credentials = input.rawCredentials === null ? null : parseCredentials(input.rawCredentials)
+  if (!credentials || credentials.encryption.type !== 'dataKey') return null
+  return machineKeyFingerprint(input.machineId, credentials.encryption.machineKey)
 }
 
 export type HardenPlan =

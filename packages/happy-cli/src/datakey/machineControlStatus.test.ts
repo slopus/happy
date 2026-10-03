@@ -3,7 +3,8 @@
  * `happy datakey status` reports and when `happy datakey harden` may switch.
  */
 import { describe, expect, it } from 'vitest';
-import { describeMachineControl, planHarden } from './machineControlStatus';
+import { describeMachineControl, describeMachineKeyFingerprint, planHarden } from './machineControlStatus';
+import { machineKeyFingerprint } from '@slopus/happy-wire';
 
 const key = (fill: number) => Buffer.alloc(32, fill).toString('base64');
 const dataKey = (extra: Record<string, unknown> = {}) => ({ token: 't', encryption: { publicKey: key(2), machineKey: key(3), ...extra } });
@@ -71,5 +72,20 @@ describe('planHarden', () => {
 
     it('refuses missing credentials', () => {
         expect(planHarden({ mode: 'compat', rawCredentials: null, pendingExists: false })).toEqual({ ok: false, reason: 'no-credentials' });
+    });
+});
+
+// aplus-dev-studio specs/e2ee-machine-control-boundary R20 — what a person compares with the
+// fingerprint a client shows before attesting the key.
+describe('describeMachineKeyFingerprint', () => {
+    it('fingerprints the dataKey machine key for this machine', () => {
+        expect(describeMachineKeyFingerprint({ rawCredentials: dataKey(), machineId: 'machine-1' }))
+            .toBe(machineKeyFingerprint('machine-1', Buffer.alloc(32, 3)));
+    });
+
+    it('has nothing to show without a dataKey machine key or a machine id', () => {
+        expect(describeMachineKeyFingerprint({ rawCredentials: legacy, machineId: 'machine-1' })).toBeNull();
+        expect(describeMachineKeyFingerprint({ rawCredentials: null, machineId: 'machine-1' })).toBeNull();
+        expect(describeMachineKeyFingerprint({ rawCredentials: dataKey(), machineId: undefined })).toBeNull();
     });
 });

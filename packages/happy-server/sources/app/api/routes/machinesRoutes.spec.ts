@@ -1022,3 +1022,102 @@ describe("machinesRoutes — POST /v1/machines/:id/key-rotation (e2ee-machine-co
         }
     });
 });
+
+// aplus-dev-studio specs/e2ee-machine-control-boundary R21 — a customer client stores its
+// attestation of the machine key. The server cannot make one; it stores it against the
+// account envelope the client attested, and a key rotation clears it.
+describe("machinesRoutes — PUT /v1/machines/:id/data-key-attestation (e2ee-machine-control-boundary R21)", () => {
+    let app: Fastify;
+    beforeEach(() => { resetState(); emitUpdateSpy.mockClear(); machineUpdate.mockClear(); machineUpdateMany.mockClear(); logSpy.mockClear(); });
+    afterEach(async () => { if (app) await app.close(); });
+
+    const now = new Date("2026-01-01T00:00:00.000Z");
+    const bytes = (b64: string) => new Uint8Array(Buffer.from(b64, "base64"));
+    const attestation = (fill = 7) => Buffer.concat([Buffer.from([1]), Buffer.alloc(32 + 24 + 120, fill)]).toString("base64");
+    const owned = (overrides: Record<string, unknown> = {}) => ({
+        id: "machine-1", accountId: "user-1", seq: 7, metadata: "m", metadataVersion: 5,
+        daemonState: "s", daemonStateVersion: 9, dataEncryptionKey: bytes(envelope(10)), serverDataEncryptionKey: null,
+        serverRpcKeyEnvelope: null, dataKeyAttestation: null, active: true, lastActiveAt: now, createdAt: now, updatedAt: now,
+        ...overrides,
+    });
+    const put = (payload: Record<string, unknown>, userId = "user-1") => app.inject({
+        method: "PUT", url: "/v1/machines/machine-1/data-key-attestation", headers: { "x-user-id": userId },
+        payload: { expectedDataEncryptionKey: envelope(10), attestation: attestation(), ...payload },
+    });
+
+    it("stores the attestation against the attested envelope and returns it from both reads", async () => {
+        app = await createApp();
+        state.existingMachine = owned();
+        dbMock.machine.findMany.mockResolvedValue([state.existingMachine]);
+
+        const res = await put({});
+
+        expect(res.statusCode).toBe(200);
+        expect(res.json()).toEqual({ ok: true });
+        expect(Buffer.from(state.existingMachine.dataKeyAttestation).toString("base64")).toBe(attestation());
+        dbMock.machine.findMany.mockResolvedValue([state.existingMachine]);
+        const list = await app.inject({ method: "GET", url: "/v1/machines", headers: { "x-user-id": "user-1" } });
+        const one = await app.inject({ method: "GET", url: "/v1/machines/machine-1", headers: { "x-user-id": "user-1" } });
+        expect(list.json()[0].dataKeyAttestation).toBe(attestation());
+        expect(one.json().machine.dataKeyAttestation).toBe(attestation());
+    });
+
+    it("clears the attestation when given none", async () => {
+        app = await createApp();
+        state.existingMachine = owned({ dataKeyAttestation: bytes(attestation()) });
+
+        const res = await put({ attestation: null });
+
+        expect(res.statusCode).toBe(200);
+        expect(state.existingMachine.dataKeyAttestation).toBeNull();
+    });
+
+    it("refuses an attestation made for an envelope the machine no longer has", async () => {
+        app = await createApp();
+        state.existingMachine = owned();
+
+        const res = await put({ expectedDataEncryptionKey: envelope(11) });
+
+        expect(res.statusCode).toBe(409);
+        expect(state.existingMachine.dataKeyAttestation).toBeNull();
+    });
+
+    it("does not reach another account's machine", async () => {
+        app = await createApp();
+        state.existingMachine = owned();
+
+        const res = await put({}, "user-2");
+
+        expect(res.statusCode).toBe(404);
+        expect(state.existingMachine.dataKeyAttestation).toBeNull();
+    });
+
+    it("rejects an attestation of the wrong version or size", async () => {
+        app = await createApp();
+        state.existingMachine = owned();
+        const wrongVersion = Buffer.concat([Buffer.from([2]), Buffer.alloc(176, 7)]).toString("base64");
+        const tooShort = Buffer.concat([Buffer.from([1]), Buffer.alloc(40, 7)]).toString("base64");
+        const tooLong = Buffer.concat([Buffer.from([1]), Buffer.alloc(2048, 7)]).toString("base64");
+
+        for (const value of [wrongVersion, tooShort, tooLong, "not base64!"]) {
+            expect((await put({ attestation: value })).statusCode).toBe(400);
+        }
+        expect(state.existingMachine.dataKeyAttestation).toBeNull();
+    });
+
+    it("is cleared by a key rotation, since it vouched for the old key", async () => {
+        app = await createApp();
+        state.existingMachine = owned({ dataKeyAttestation: bytes(attestation()) });
+
+        const res = await app.inject({
+            method: "POST", url: "/v1/machines/machine-1/key-rotation", headers: { "x-user-id": "user-1" },
+            payload: {
+                expectedDataEncryptionKey: envelope(10), dataEncryptionKey: envelope(20), serverRpcKeyEnvelope: null,
+                metadata: "new-metadata", expectedMetadataVersion: 5, daemonState: "new-state",
+            },
+        });
+
+        expect(res.statusCode).toBe(200);
+        expect(state.existingMachine.dataKeyAttestation).toBeNull();
+    });
+});
