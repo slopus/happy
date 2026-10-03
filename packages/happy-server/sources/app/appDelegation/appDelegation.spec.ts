@@ -260,3 +260,24 @@ describe('multi-engine protocol compatibility', () => {
         await cancelAppTurn(a.token, id);
     });
 });
+
+
+describe('Paws inline account-owned history', () => {
+    it('reads only owned ciphertext, retains revoked history, and denies deleted history without issuing capabilities', async () => {
+        const { readOwnedAppConversation } = await import('./appHistory');
+        const a = await authorize();
+        await appTurns(a.token, a.conversationId, { id: randomUUID(), input: 'inline-encrypted-history' });
+        const result = await readOwnedAppConversation(owner, a.conversationId);
+        expect(result.machineEnvelope).toBe('encrypted-machine');
+        expect(result.turns[0].input).toBe('inline-encrypted-history');
+        expect(result).not.toHaveProperty('token');
+        await expect(readOwnedAppConversation('another-owner', a.conversationId)).rejects.toThrow();
+        await state.db.appDelegation.update({ where: { id: a.id }, data: { expiresAt: new Date(0) } });
+        expect((await readOwnedAppConversation(owner, a.conversationId)).turns).toHaveLength(1);
+        await revokeAppGrant(owner, a.id);
+        expect((await readOwnedAppConversation(owner, a.conversationId)).turns).toHaveLength(1);
+        await expect(appConversations(a.token)).rejects.toThrow();
+        await deleteOwnedAppGrant(owner, a.id);
+        await expect(readOwnedAppConversation(owner, a.conversationId)).rejects.toThrow();
+    });
+});

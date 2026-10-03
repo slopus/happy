@@ -9,7 +9,7 @@ import { appAuthorizationRequest, isAppGrantActive, type AppAuthorizationGrant, 
 import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { useOpenAppConversation } from '@/hooks/useOpenAppConversation';
+import { usePathname, useRouter } from 'expo-router';
 import { openExternalUrl } from '@/utils/openExternalUrl';
 
 const emptyDirectory: AppConversationDirectory = { conversations: [], nextCursor: null };
@@ -32,11 +32,16 @@ const grantLabel = (grant: AppAuthorizationGrant) => grant.state === 'revoked'
         : grant.expiresAt === null ? t('appConversations.permanent') : new Date(grant.expiresAt).toLocaleString();
 
 /** An owner directory only: opening this panel never starts or resumes an execution. */
-export function AppConversationsSidebar({ visible = true }: { visible?: boolean }) {
+export function AppConversationsSidebar({ visible = true, onNavigate }: { visible?: boolean; onNavigate?: (path: string) => void }) {
     const { credentials } = useAuth();
     const token = credentials?.token;
     const server = getServerUrl();
-    const history = useOpenAppConversation(token);
+    const router = useRouter();
+    const pathname = usePathname();
+    const openConversation = (id: string) => {
+        const path = `/apps/conversations/${encodeURIComponent(id)}`;
+        if (onNavigate) onNavigate(path); else router.navigate(path as any);
+    };
     const machines = useAllMachines({ includeOffline: true });
     const { theme } = useUnistyles();
     const { width, height } = useWindowDimensions();
@@ -142,15 +147,14 @@ export function AppConversationsSidebar({ visible = true }: { visible?: boolean 
                     {!conversations.length ? <Text style={styles.emptyGroup}>{t('appConversations.noConversations')}</Text> : conversations.map(conversation => {
                         const grant = grants.find(value => value.id === conversation.grantId)!;
                         const state = conversation.turns[0]?.state;
-                        return <Pressable key={conversation.id} accessibilityRole="button" accessibilityLabel={`${t('appConversations.openConversation')} · ${new Date(conversation.createdAt).toLocaleString()}`} accessibilityHint={t('appConversations.openHint')} accessibilityState={{ busy: history.openingId === conversation.id, disabled: history.loading }} disabled={history.loading} onPress={() => history.open(conversation, grant)} style={({ pressed }) => [styles.row, pressed && styles.pressed]} testID={`app-conversation-${conversation.id}`}>
+                        return <Pressable key={conversation.id} accessibilityRole="button" accessibilityLabel={`${t('appConversations.openConversation')} · ${new Date(conversation.createdAt).toLocaleString()}`} accessibilityHint={t('appConversations.openHint')} aria-pressed={pathname === `/apps/conversations/${conversation.id}`} accessibilityState={{ selected: pathname === `/apps/conversations/${conversation.id}` }} onPress={() => openConversation(conversation.id)} style={({ pressed }) => [styles.row, pathname === `/apps/conversations/${conversation.id}` && styles.selected, pressed && styles.pressed]} testID={`app-conversation-${conversation.id}`}>
                             <Text style={styles.title} numberOfLines={1}>{t('appConversations.conversation')} · {new Date(conversation.createdAt).toLocaleString()}</Text>
                             <Text style={styles.secondary} numberOfLines={1}>{deviceName(grant.machineId)}</Text>
                             <View style={styles.statusRow}>
-                                <Text style={styles.secondary}>{history.openingId === conversation.id ? t('appConversations.opening') : turnLabel(state)}</Text>
+                                <Text style={styles.secondary}>{turnLabel(state)}</Text>
                                 <Text style={styles.secondary}>{new Date(conversation.lastActivityAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</Text>
                             </View>
                             {!isAppGrantActive(grant) ? <Text style={styles.secondary}>{grantLabel(grant)} · {t('appConversations.retained')}</Text> : null}
-                            <Text style={styles.secondary}>{t('appConversations.openConversation')} ↗</Text>
                         </Pressable>;
                     })}
                 </View>;
@@ -189,6 +193,7 @@ const styles = StyleSheet.create(theme => ({
     secondary: { color: theme.colors.textSecondary, fontSize: 12, lineHeight: 18, ...Typography.default() },
     iconButton: { minWidth: 36, minHeight: 36, justifyContent: 'center', alignItems: 'center', borderRadius: 8 },
     pressed: { backgroundColor: theme.colors.surfacePressed },
+    selected: { backgroundColor: theme.colors.surfaceSelected },
     groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingLeft: 8 },
     groupTitle: { color: theme.colors.textSecondary, flex: 1, fontSize: 13, ...Typography.default('semiBold') },
     row: { padding: 10, gap: 4, borderRadius: 10, marginBottom: 4, backgroundColor: theme.colors.surface },

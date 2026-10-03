@@ -1,4 +1,4 @@
-import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
+import { MarkdownSpan, parseMarkdown, parseReadOnlyMarkdown } from './parseMarkdown';
 import * as React from 'react';
 import { Image, Pressable, View, Platform, TextInput } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -58,8 +58,9 @@ export const MarkdownView = React.memo((props: {
     sessionId?: string;
     typography?: MarkdownTypographyMode;
     variant?: MarkdownViewVariant;
+    readOnly?: boolean;
 }) => {
-    const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
+    const blocks = React.useMemo(() => props.readOnly ? parseReadOnlyMarkdown(props.markdown) : parseMarkdown(props.markdown), [props.markdown, props.readOnly]);
     const variant = props.variant ?? 'default';
     
     // Backwards compatibility: The original version just returned the view, wrapping the list of blocks.

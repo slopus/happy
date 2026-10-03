@@ -17,10 +17,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 export const it: TranslationStructure = {
     appConversations: {
         openConversation: "Visualizza conversazione",
-        openHint: "Visualizza la cronologia di questa conversazione nell’app di origine",
-        opening: "Apertura della conversazione…",
-        openFailed: "Impossibile aprire questa conversazione. Aggiorna e riprova.",
-        popupBlocked: "Il browser ha bloccato la nuova finestra. Consenti i popup e riprova.",
+        openHint: "Visualizza questa conversazione in Paws",
+        opening: "Caricamento della conversazione…",
+        openFailed: "La cronologia della conversazione è temporaneamente non disponibile. Riprova.",
+        selectConversation: "Seleziona una conversazione per visualizzarne il contenuto",
+        readOnly: "Cronologia della conversazione · Sola lettura",
+        noMessages: "Questa conversazione non ha ancora messaggi",
+        historyRemoved: "Questa conversazione è stata eliminata o non hai il permesso di visualizzarla.",
         keyUnavailable: "I dati di decrittazione di questo dispositivo non sono disponibili, quindi non è possibile visualizzare la cronologia della conversazione.",
         title: "Conversazioni delle app",
         empty: "Nessuna conversazione delle app",

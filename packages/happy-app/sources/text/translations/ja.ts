@@ -20,10 +20,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 export const ja: TranslationStructure = {
     appConversations: {
         openConversation: "会話を表示",
-        openHint: "元のアプリのページでこの会話の履歴を表示",
-        opening: "会話を開いています…",
-        openFailed: "この会話を開けませんでした。更新してからもう一度お試しください。",
-        popupBlocked: "ブラウザが新しいウィンドウをブロックしました。ポップアップを許可してからもう一度お試しください。",
+        openHint: "この会話を Paws で表示",
+        opening: "会話を読み込んでいます…",
+        openFailed: "会話履歴を一時的に読み込めません。もう一度お試しください。",
+        selectConversation: "会話を選択すると内容が表示されます",
+        readOnly: "会話履歴 · 閲覧専用",
+        noMessages: "この会話にはまだメッセージがありません",
+        historyRemoved: "この会話は削除されたか、閲覧する権限がありません。",
         keyUnavailable: "このデバイスの復号情報を利用できないため、会話履歴を表示できません。",
         title: "アプリの会話",
         empty: "アプリの会話はまだありません",

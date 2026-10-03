@@ -385,8 +385,8 @@ export const SidebarView = React.memo(({
     const pathname = usePathname();
     const mobileNavigation = !desktopDensity;
     const railNavigation = desktopPrimaryNavigation || mobileNavigation;
-    const [appConversationsActive, setAppConversationsActive] = React.useState(false);
-    React.useEffect(() => { setAppConversationsActive(false); }, [pathname]);
+    const [appConversationsActive, setAppConversationsActive] = React.useState(pathname.startsWith('/apps/conversations'));
+    React.useEffect(() => { setAppConversationsActive(pathname.startsWith('/apps/conversations')); }, [pathname]);
     const [mobilePanel, setMobilePanel] = React.useState<'sessions' | 'advisor'>(pathname === '/relationship-advisor' ? 'advisor' : 'sessions');
     React.useEffect(() => {
         setMobilePanel(pathname === '/relationship-advisor' ? 'advisor' : 'sessions');
@@ -425,7 +425,7 @@ export const SidebarView = React.memo(({
     // that would otherwise stay open on top of the pushed screen; on desktop the
     // drawer is permanent, so SidebarNavigator disables the close action.
     const go = React.useCallback((path: string) => {
-        setAppConversationsActive(false);
+        setAppConversationsActive(path.startsWith('/apps/conversations'));
         closeDrawer();
         router.navigate(path as any);
     }, [closeDrawer, router]);
@@ -434,13 +434,14 @@ export const SidebarView = React.memo(({
         setAppConversationsActive(false);
         setDesktopSidebarMode(desktopSidebarListMode);
         if (mobileNavigation) setMobilePanel('sessions');
-        else if (advisorSidebarActive) go('/');
+        else if (advisorSidebarActive || pathname.startsWith('/apps/conversations')) go('/');
     };
 
     const openArchive = () => {
         setAppConversationsActive(false);
         setDesktopSidebarMode('archive');
         if (mobileNavigation) setMobilePanel('sessions');
+        else if (pathname.startsWith('/apps/conversations')) go('/');
     };
 
     const openSettingsFromSidebar = React.useCallback(() => {
@@ -621,7 +622,7 @@ export const SidebarView = React.memo(({
             <DesktopRailItem
                 icon="browsers-outline"
                 label={t('appConversations.title')}
-                onPress={() => setAppConversationsActive(true)}
+                onPress={() => mobileNavigation ? setAppConversationsActive(true) : go('/apps/conversations')}
                 selected={appConversationsActive}
                 testID="sidebar-app-conversations-button"
             />
@@ -762,10 +763,10 @@ export const SidebarView = React.memo(({
                                 <View style={[styles.mobileContent, (advisorSidebarActive || appConversationsActive) && styles.hiddenContent]} accessibilityElementsHidden={advisorSidebarActive || appConversationsActive} importantForAccessibility={advisorSidebarActive || appConversationsActive ? 'no-hide-descendants' : 'auto'}>
                                     <DesktopSidebarSessionsNavigation />
                                 </View>
-                                {appConversationsActive ? <AppConversationsSidebar /> : advisorSidebarActive ? <PluginLeftSidebarSlot desktopDensity fillAvailableSpace onNavigate={go} /> : null}
+                                {appConversationsActive ? <AppConversationsSidebar onNavigate={go} /> : advisorSidebarActive ? <PluginLeftSidebarSlot desktopDensity fillAvailableSpace onNavigate={go} /> : null}
                             </>
                         ) : appConversationsActive ? (
-                            <AppConversationsSidebar visible={desktopSecondaryVisible} />
+                            <AppConversationsSidebar visible={desktopSecondaryVisible} onNavigate={go} />
                         ) : advisorSidebarActive ? (
                             <PluginLeftSidebarSlot desktopDensity={desktopDensity} fillAvailableSpace onNavigate={go} />
                         ) : (

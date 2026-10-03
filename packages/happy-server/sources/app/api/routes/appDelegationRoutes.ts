@@ -4,7 +4,7 @@ import type { Fastify } from '@/app/api/types';
 import { db } from '@/storage/db';
 import { appConversations, appTurns, deleteAppConversation, approveAppPairing, cancelAppTurn, claimAppTurn, createAppPairing, delegatedApp, DelegationError, describeAppPairing, publishAppTurn, redeemAppPairing, readAppTurn, revokeAppGrant, withAppGrant, ownerAppConversations, deleteOwnedAppGrant } from '@/app/appDelegation/appDelegation';
 
-import { openOwnedAppConversation, readAppHistory } from '@/app/appDelegation/appHistory';
+import { openOwnedAppConversation, readAppHistory, readOwnedAppConversation } from '@/app/appDelegation/appHistory';
 
 const id = z.string().uuid();
 const secret = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
@@ -48,6 +48,7 @@ export function appDelegationRoutes(app: Fastify) {
         routes.get('/v1/app-authorizations/workers', { preHandler: app.authenticate }, async request => ({ workers: await db.appChatWorker.findMany({ where: { accountId: request.userId, activeUntil: { gt: new Date() }, protocol: { in: [1, 2, 3] } }, select: { machineId: true, protocol: true } }) }));
         routes.get('/v1/app-authorizations/conversations', { preHandler: app.authenticate, schema: { querystring: z.object({ cursor: id.optional() }) } }, async request => ownerAppConversations(request.userId, request.query.cursor));
         routes.post('/v1/app-authorizations/conversations/:id/open', { preHandler: app.authenticate, schema: { params: z.object({ id }), body: z.object({}).strict() } }, async request => openOwnedAppConversation(request.userId, request.params.id));
+        routes.get('/v1/app-authorizations/conversations/:id/history', { preHandler: app.authenticate, schema: { params: z.object({ id }) } }, async request => readOwnedAppConversation(request.userId, request.params.id));
         routes.get('/v1/apps/history/:id', { schema: { params: z.object({ id }) } }, async request => readAppHistory(bearer(request.headers.authorization), request.params.id));
         routes.delete('/v1/app-authorizations/:id/history', { preHandler: app.authenticate, schema: { params: z.object({ id }) } }, async request => deleteOwnedAppGrant(request.userId, request.params.id));
         routes.delete('/v1/app-authorizations/:id', { preHandler: app.authenticate, schema: { params: z.object({ id }) } }, async request => revokeAppGrant(request.userId, request.params.id));

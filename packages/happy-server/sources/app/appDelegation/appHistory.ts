@@ -1,6 +1,6 @@
 import * as privacyKit from 'privacy-kit';
 import { z } from 'zod';
-import { inTx } from '@/storage/inTx';
+import { inTx, type Tx } from '@/storage/inTx';
 import { delegatedApp, DelegationError } from '@/app/appDelegation/appDelegation';
 
 const prefix = 'paws_history.';
@@ -21,6 +21,26 @@ function historyTokens() {
     })();
 }
 const denied = (): never => { throw new DelegationError(403, 'History access unavailable; reopen the conversation from Paws'); };
+
+async function historyTurns(tx: Tx, conversationId: string) {
+    const turns = await tx.appChatTurn.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 1,
+        select: { id: true, input: true, output: true, sequence: true, state: true, createdAt: true, deadline: true, leaseUntil: true } });
+    return turns.map(({ deadline, leaseUntil, ...turn }) => ({ ...turn,
+        state: ['queued', 'running'].includes(turn.state) && (deadline.getTime() <= Date.now() || (turn.state === 'running' && (!leaseUntil || leaseUntil.getTime() <= Date.now()))) ? 'failed' : turn.state,
+    }));
+}
+
+/** Account-owned reading for Paws itself; no execution or external capability is issued. */
+export async function readOwnedAppConversation(accountId: string, conversationId: string) {
+    return inTx(async tx => {
+        const conversation = await tx.appChatConversation.findUnique({ where: { id: conversationId }, include: { grant: true } });
+        const grant = conversation?.grant;
+        if (!conversation || !grant || grant.accountId !== accountId || grant.appId !== delegatedApp.id || !['redeemed', 'revoked'].includes(grant.state) || !grant.machineId || !grant.machineEnvelope) return denied();
+        return { app: delegatedApp, conversationId, grantId: grant.id, machineId: grant.machineId,
+            grantProtocol: grant.protocol, grantExpiresAt: grant.expiresAt?.toISOString() ?? null, machineEnvelope: grant.machineEnvelope,
+            createdAt: conversation.createdAt, turns: await historyTurns(tx, conversationId) };
+    });
+}
 
 /** Owner explicitly grants short-lived reading even after the execution grant has expired/revoked. */
 export async function openOwnedAppConversation(accountId: string, conversationId: string) {
@@ -49,10 +69,6 @@ export async function readAppHistory(token: string, conversationId: string) {
     return inTx(async tx => {
         const conversation = await tx.appChatConversation.findUnique({ where: { id: conversationId }, include: { grant: true } });
         if (!conversation || conversation.grantId !== access.grantId || conversation.createdAt.toISOString() !== access.createdAt || conversation.grant.accountId !== verified.user || conversation.grant.appId !== delegatedApp.id || conversation.grant.state !== access.state) return denied();
-        const turns = await tx.appChatTurn.findMany({ where: { conversationId }, orderBy: { createdAt: 'desc' }, take: 1,
-            select: { id: true, input: true, output: true, sequence: true, state: true, createdAt: true, deadline: true, leaseUntil: true } });
-        return { conversationId, createdAt: conversation.createdAt, turns: turns.map(({ deadline, leaseUntil, ...turn }) => ({
-            ...turn, state: ['queued', 'running'].includes(turn.state) && (deadline.getTime() <= Date.now() || (turn.state === 'running' && (!leaseUntil || leaseUntil.getTime() <= Date.now()))) ? 'failed' : turn.state,
-        })) };
+        return { conversationId, createdAt: conversation.createdAt, turns: await historyTurns(tx, conversationId) };
     });
 }

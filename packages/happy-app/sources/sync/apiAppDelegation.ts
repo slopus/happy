@@ -12,7 +12,7 @@ export async function appAuthorizationRequest<T>(token: string, path: string, bo
     const timeout = setTimeout(abort, 15_000);
     try {
         const response = await fetch(`${server}/v1/app-authorizations${path}`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: body === undefined ? undefined : JSON.stringify(body), signal: controller.signal });
-        if (!response.ok) throw new Error(response.status === 409 ? '该设备暂不支持应用对话，请更新并启动 Paws 后重试' : '授权请求不可用、已过期或已处理，请重新连接');
+        if (!response.ok) throw Object.assign(new Error(response.status === 409 ? '该设备暂不支持应用对话，请更新并启动 Paws 后重试' : '授权请求不可用、已过期或已处理，请重新连接'), { status: response.status });
         return await response.json();
     } finally {
         clearTimeout(timeout);

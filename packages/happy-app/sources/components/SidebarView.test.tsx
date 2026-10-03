@@ -667,14 +667,17 @@ describe('SidebarView Agent space exit', () => {
 });
 
 
-it('opens application conversations only in the sidebar and restores regular sessions', () => {
+it('opens application conversations inside Paws and keeps the sidebar for selecting history', () => {
     let renderer: any;
     act(() => { renderer = TestRenderer.create(<SidebarView closeDrawerOnNavigate={false} desktopDensity desktopPrimaryNavigation desktopSecondaryVisible />); });
     const root = renderer.root;
     mocks.navigate.mockClear();
     act(() => root.findAllByProps({ testID: 'sidebar-app-conversations-button' }).find((node: any) => node.type === 'Pressable').props.onPress());
     expect(root.findAllByType('AppConversationsSidebar')).toHaveLength(1);
-    expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(mocks.navigate).toHaveBeenCalledWith('/apps/conversations');
+    act(() => root.findByType('AppConversationsSidebar').props.onNavigate('/apps/conversations/selected'));
+    expect(mocks.navigate).toHaveBeenLastCalledWith('/apps/conversations/selected');
+    expect(root.findAllByType('AppConversationsSidebar')).toHaveLength(1);
     act(() => root.findAllByProps({ testID: 'sidebar-session-list-button' }).find((node: any) => node.type === 'Pressable').props.onPress());
     expect(root.findAllByType('AppConversationsSidebar')).toHaveLength(0);
     act(() => renderer.unmount());

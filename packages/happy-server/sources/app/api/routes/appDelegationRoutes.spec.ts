@@ -30,3 +30,9 @@ it('rate limits anonymous pairing creation using request IP', async () => {
     for (let i = 0; i < 11; i++) result = await server.inject({ method: 'POST', url: '/v1/apps/pairings', payload, remoteAddress: '192.0.2.20' });
     expect(result!.statusCode).toBe(429);
 });
+
+it('requires owner authentication for inline history, including requests from Paws Web', async () => {
+    const result = await server.inject({ method: 'GET', url: '/v1/app-authorizations/conversations/00000000-0000-4000-8000-000000000001/history', headers: { origin: 'https://paws.example', authorization: 'Bearer paws_history.not-an-account-token' } });
+    expect(result.statusCode).toBe(401);
+    expect(result.headers['cache-control']).toBe('no-store');
+});

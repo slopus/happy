@@ -28,10 +28,13 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
 export const pl: TranslationStructure = {
     appConversations: {
         openConversation: "Wyświetl rozmowę",
-        openHint: "Wyświetl historię tej rozmowy w aplikacji źródłowej",
-        opening: "Otwieranie rozmowy…",
-        openFailed: "Nie udało się otworzyć tej rozmowy. Odśwież i spróbuj ponownie.",
-        popupBlocked: "Przeglądarka zablokowała nowe okno. Zezwól na wyskakujące okna i spróbuj ponownie.",
+        openHint: "Wyświetl tę rozmowę w Paws",
+        opening: "Wczytywanie rozmowy…",
+        openFailed: "Historia rozmowy jest chwilowo niedostępna. Spróbuj ponownie.",
+        selectConversation: "Wybierz rozmowę, aby wyświetlić jej treść",
+        readOnly: "Historia rozmowy · Tylko do odczytu",
+        noMessages: "W tej rozmowie nie ma jeszcze wiadomości",
+        historyRemoved: "Ta rozmowa została usunięta lub nie masz uprawnień, aby ją wyświetlić.",
         keyUnavailable: "Dane do odszyfrowania na tym urządzeniu są niedostępne, więc nie można wyświetlić historii rozmowy.",
         title: "Rozmowy aplikacji",
         empty: "Nie ma jeszcze rozmów aplikacji",

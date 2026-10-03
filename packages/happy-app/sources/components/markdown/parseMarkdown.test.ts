@@ -89,3 +89,12 @@ describe('parseMarkdown', () => {
         ]);
     });
 });
+
+it('keeps external history inert while retaining ordinary formatting', async () => {
+    const { parseReadOnlyMarkdown } = await import('./parseMarkdown');
+    const blocks = parseReadOnlyMarkdown('# Heading\n\n**bold**\n\n![external](https://tracking.example/image.png)\n\n```mermaid\ngraph TD\nA-->B\n```\n\n<options>\n<option>Run an action</option>\n</options>\n\n<happy-ota-preview>\ntitle: External update\nchannel: preview\nplatform: android\nruntimeVersion: 24\nupdateId: 11111111-1111-4111-8111-111111111111\nmanifestUrl: https://example.com/update.json\n</happy-ota-preview>');
+    expect(blocks.some(block => block.type === 'header')).toBe(true);
+    expect(blocks.every(block => !['image', 'mermaid', 'options', 'ota-preview', 'finance-chart'].includes(block.type))).toBe(true);
+    expect(JSON.stringify(blocks)).toContain('tracking.example');
+    expect(JSON.stringify(blocks)).toContain('External update');
+});

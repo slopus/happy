@@ -17,10 +17,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 export const en = {
     appConversations: {
         openConversation: 'View conversation',
-        openHint: 'View this conversation’s history in the original app',
-        opening: 'Opening conversation…',
-        openFailed: 'Could not open this conversation. Refresh and try again.',
-        popupBlocked: 'Your browser blocked the new window. Allow pop-ups and try again.',
+        openHint: "View this conversation in Paws",
+        opening: "Loading conversation…",
+        openFailed: "Conversation history is temporarily unavailable. Please try again.",
+        selectConversation: "Select a conversation to view its contents",
+        readOnly: "Conversation history · Read-only",
+        noMessages: "This conversation has no messages yet",
+        historyRemoved: "This conversation has been deleted or you do not have permission to view it.",
         keyUnavailable: 'Decryption details for this device are unavailable, so the conversation history cannot be viewed.',
 
         title: "App conversations",

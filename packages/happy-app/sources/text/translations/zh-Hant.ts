@@ -19,10 +19,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 export const zhHant: TranslationStructure = {
     appConversations: {
         openConversation: "查看會話",
-        openHint: "在應用程式原頁面查看這則歷史對話",
-        opening: "正在開啟會話…",
-        openFailed: "無法開啟這則會話，請重新整理後再試。",
-        popupBlocked: "瀏覽器已封鎖新視窗，請允許彈出式視窗後再試。",
+        openHint: "在 Paws 中查看這則會話",
+        opening: "正在載入會話…",
+        openFailed: "目前無法載入會話記錄，請再試一次。",
+        selectConversation: "選擇一則會話以查看內容",
+        readOnly: "會話記錄 · 唯讀",
+        noMessages: "這則會話還沒有訊息",
+        historyRemoved: "這則會話已刪除，或你沒有權限查看。",
         keyUnavailable: "此裝置的解密資訊無法使用，因此無法查看歷史對話。",
         title: "應用程式會話",
         empty: "尚無應用程式會話",

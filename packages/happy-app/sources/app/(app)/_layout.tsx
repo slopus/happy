@@ -72,6 +72,8 @@ export default function RootLayout() {
                     headerBackTitle: t('common.home'),
                 }}
             />
+            <Stack.Screen name="apps/conversations/index" options={{ headerTitle: t('appConversations.title') }} />
+            <Stack.Screen name="apps/conversations/[id]" options={{ headerTitle: t('appConversations.openConversation') }} />
             <Stack.Screen name="settings/account" options={{ headerTitle: t('settings.account') }} />
             <Stack.Screen name="accounts" options={{ headerTitle: t('accounts.title') }} />
             <Stack.Screen name="agent-party-access" options={{ headerTitle: "连接群聊网站" }} />

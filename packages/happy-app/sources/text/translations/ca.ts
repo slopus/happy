@@ -17,10 +17,13 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 export const ca: TranslationStructure = {
     appConversations: {
         openConversation: "Mostra la conversa",
-        openHint: "Mostra l’historial d’aquesta conversa a l’aplicació d’origen",
-        opening: "S’està obrint la conversa…",
-        openFailed: "No s’ha pogut obrir aquesta conversa. Actualitza la pàgina i torna-ho a provar.",
-        popupBlocked: "El navegador ha bloquejat la finestra nova. Permet les finestres emergents i torna-ho a provar.",
+        openHint: "Mostra aquesta conversa a Paws",
+        opening: "S’està carregant la conversa…",
+        openFailed: "L’historial de la conversa no està disponible temporalment. Torna-ho a provar.",
+        selectConversation: "Selecciona una conversa per veure’n el contingut",
+        readOnly: "Historial de la conversa · Només lectura",
+        noMessages: "Aquesta conversa encara no té missatges",
+        historyRemoved: "Aquesta conversa s’ha eliminat o no tens permís per veure-la.",
         keyUnavailable: "Les dades de desxifratge d’aquest dispositiu no estan disponibles, de manera que no es pot mostrar l’historial de la conversa.",
         title: "Converses d’aplicacions",
         empty: "Encara no hi ha converses d’aplicacions",

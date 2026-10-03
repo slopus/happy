@@ -1,28 +1,77 @@
+import { z } from 'zod';
 import { decodeBase64 } from '@/encryption/base64';
+import { decryptSecretBox } from '@/encryption/libsodium';
 
-export interface AppConversationAccess {
-    app: { id: string; origin: string };
+const selectionSchema = z.object({ engine: z.enum(['codex', 'claude']), model: z.string().min(1).max(100) });
+const messageSchema = z.object({
+    role: z.enum(['user', 'assistant']), text: z.string(),
+    images: z.array(z.string().regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+=*$/)).max(4).optional(),
+    selection: selectionSchema.optional(), actualModel: z.string().optional(),
+});
+const historySchema = z.object({
+    app: z.object({ id: z.literal('relationship-advisor'), origin: z.literal('https://advisor.paws.rodeo') }),
+    conversationId: z.string(), grantId: z.string(), machineId: z.string(), grantProtocol: z.number().optional(),
+    grantExpiresAt: z.string().nullable(), machineEnvelope: z.string(), createdAt: z.string().datetime(),
+    turns: z.array(z.object({
+        id: z.string(), input: z.string(), output: z.string().nullable(), sequence: z.number().int().nonnegative(),
+        state: z.enum(['queued', 'running', 'completed', 'failed', 'cancelled']), createdAt: z.string().datetime(),
+    })).max(1),
+});
+export type AppConversationHistory = z.infer<typeof historySchema>;
+export type AppHistoryMessage = z.infer<typeof messageSchema>;
+export interface AppHistoryContent {
+    appId: string;
     conversationId: string;
     grantId: string;
     machineId: string;
-    grantProtocol?: number;
-    grantExpiresAt: string | null;
-    machineEnvelope: string;
-    token: string;
-    expiresAt: string;
+    createdAt: string;
+    messages: AppHistoryMessage[];
+    state: 'idle' | AppConversationHistory['turns'][number]['state'];
 }
 
-/** Bind the locally decrypted envelope before handing only its app key to the registered origin. */
-export function appConversationHistoryUrl(access: AppConversationAccess, envelope: unknown, expected: { conversationId: string; grantId: string; machineId: string | null }) {
-    if (!envelope || typeof envelope !== 'object') throw new Error('Invalid application envelope');
-    const data = envelope as Record<string, unknown>;
-    if (access.app.id !== 'relationship-advisor' || access.app.origin !== 'https://advisor.paws.rodeo'
-        || access.conversationId !== expected.conversationId || access.grantId !== expected.grantId || access.machineId !== expected.machineId
-        || data.v !== 1 || data.grantId !== access.grantId || data.appId !== access.app.id || data.machineId !== access.machineId
-        || ((access.grantProtocol ?? 1) >= 3 ? data.scope !== 'agent:chat' || data.protocol !== 3 : data.scope !== 'codex:chat') || data.expiresAt !== access.grantExpiresAt || typeof data.key !== 'string'
-        || !/^[A-Za-z0-9+/]{43}=$/.test(data.key) || decodeBase64(data.key).length !== 32
-        || !access.token.startsWith('paws_history.') || access.token.length > 4096
-        || !Number.isFinite(Date.parse(access.expiresAt)) || Date.parse(access.expiresAt) <= Date.now()) throw new Error('Application history binding mismatch');
-    const payload = { v: 1, appId: access.app.id, conversationId: access.conversationId, grantId: access.grantId, key: data.key, token: access.token, expiresAt: access.expiresAt };
-    return `${access.app.origin}/?pawsConversation=${encodeURIComponent(access.conversationId)}#paws-history=${encodeURIComponent(JSON.stringify(payload))}`;
+/** Validate account-owned ciphertext before resolving its device key. */
+export function parseAppConversationHistory(raw: unknown, conversationId: string): AppConversationHistory {
+    const history = historySchema.parse(raw);
+    if (history.conversationId !== conversationId) throw new Error('Application conversation context mismatch');
+    return history;
+}
+
+/** Decrypt in Paws memory only, binding every message to its grant, conversation and turn. */
+export function decryptAppConversationHistory(history: AppConversationHistory, envelope: unknown): AppHistoryContent {
+    const data = z.object({ v: z.literal(1), grantId: z.string(), appId: z.string(), machineId: z.string(),
+        scope: z.string(), protocol: z.number().optional(), expiresAt: z.string().nullable(),
+        key: z.string().regex(/^[A-Za-z0-9+/]{43}=$/),
+    }).parse(envelope);
+    if (data.grantId !== history.grantId || data.appId !== history.app.id || data.machineId !== history.machineId
+        || data.expiresAt !== history.grantExpiresAt
+        || ((history.grantProtocol ?? 1) >= 3 ? data.scope !== 'agent:chat' || data.protocol !== 3 : data.scope !== 'codex:chat')) {
+        throw new Error('Application history binding mismatch');
+    }
+    const key = decodeBase64(data.key);
+    if (key.length !== 32) throw new Error('Invalid application key');
+    const turn = history.turns[0];
+    const messages: AppHistoryMessage[] = [];
+    if (turn) {
+        const decode = (ciphertext: string, direction: 'input' | 'output', sequence: number) => {
+            const value = z.object({ v: z.union([z.literal(1), z.literal(2)]), grantId: z.string(), conversationId: z.string(),
+                turnId: z.string(), direction: z.string(), sequence: z.number(), selection: selectionSchema.optional(),
+            }).passthrough().parse(decryptSecretBox(decodeBase64(ciphertext), key));
+            if (value.grantId !== history.grantId || value.conversationId !== history.conversationId || value.turnId !== turn.id
+                || value.direction !== direction || value.sequence !== sequence) throw new Error('Application message context mismatch');
+            return value;
+        };
+        const input = decode(turn.input, 'input', 0);
+        if (input.v === 2 && !input.selection) throw new Error('Missing model selection');
+        messages.push(...z.array(messageSchema).max(100).parse(input.messages));
+        if (turn.output) {
+            const output = decode(turn.output, 'output', turn.sequence);
+            if (input.v !== output.v || input.selection?.engine !== output.selection?.engine || input.selection?.model !== output.selection?.model) {
+                throw new Error('Application model context mismatch');
+            }
+            const text = z.string().parse(output.text ?? '');
+            if (text) messages.push(messageSchema.parse({ role: 'assistant', text, selection: input.selection, actualModel: output.actualModel }));
+        }
+    }
+    return { appId: history.app.id, conversationId: history.conversationId, grantId: history.grantId,
+        machineId: history.machineId, createdAt: history.createdAt, messages, state: turn?.state ?? 'idle' };
 }
