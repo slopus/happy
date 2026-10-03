@@ -78,6 +78,13 @@
         "appleTeamId": "466DQWDR8C"
       }
     },
+    "production-google-play-draft": {
+      "android": {
+        "track": "production",
+        "releaseStatus": "draft",
+        "changesNotSentForReview": true
+      }
+    },
     "production-google-play": {
       "android": {
         "track": "production",
