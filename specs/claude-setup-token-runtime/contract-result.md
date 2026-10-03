@@ -428,3 +428,21 @@ After the nonce flush correction: 462 passed, 2 explicitly environment-gated art
 tests skipped across 11 selected suites (the prior ten plus the binding artifact
 fixture). CLI build and separate typecheck passed; `git diff --check` passed. Both
 artifact fixtures remain ready for a separately configured installed-provider run.
+
+## Repeated self-review round 1 (2026-10-04)
+
+New P2 finding: hydration sanitized a malformed saved setup-token binding away before
+`readSetupTokenResumeSelection` could reject it. That made a previously bound session
+look unbound; if its managed assignment was revoked and a machine default became
+available, resume could choose a different credential. Hydration now retains a bounded
+empty invalid marker when a present saved binding fails sanitization, so the existing
+resume guard rejects it. Valid bindings and genuinely absent bindings are unchanged.
+Five boundary regressions (partial JSON, non-JSON, empty string, null and number) failed
+before the fix. Production runtime construction already supplies both nonce fsync hooks;
+remaining hook-less fixtures never request a setup-token binding. Owner/generation and
+OFF/queued-collection paths yielded no additional concrete finding in this round.
+
+Round 1 validation: 381 tests passed across seven focused suites (hydration, session
+environment, setup-token runtime, general credential runtime, auth wiring, personal
+scheduler and token probe). CLI build, separate typecheck and `git diff --check`
+passed; pre-existing pkgroll warnings only. No live runtime or external mutation.
