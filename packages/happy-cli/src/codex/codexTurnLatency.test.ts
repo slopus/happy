@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createCodexTurnLatency, captureCodexLatencyTrace } from './codexTurnLatency';
+import { createCodexTurnLatency, captureCodexLatencyTrace, type CodexLatencyStage } from './codexTurnLatency';
 
 describe('Codex opt-in turn latency', () => {
     it('lets the normal text preview send before emitting the first-text diagnostic', async () => {
@@ -26,20 +26,20 @@ describe('Codex opt-in turn latency', () => {
         expect(clock).not.toHaveBeenCalled();
     });
 
-    it('reports the pending preparation stage before a stalled operation finishes', async () => {
+    it.each(['mcp-sync', 'mcp-inventory', 'mcp-reconnect', 'mcp-backoff', 'mcp-verification'] as CodexLatencyStage[])('reports pending %s before a stalled operation finishes', async stage => {
         let clock = 10;
         const emit = vi.fn();
         const trace = createCodexTurnLatency({ inputCount: 1, latencyTraces: [{ id: 'trace', receivedAt: 0 }] }, emit, () => clock)!;
         let release!: () => void;
         clock = 20;
-        const pending = trace.measure('mcp-sync', () => new Promise<void>(resolve => { release = resolve; }));
+        const pending = trace.measure(stage, () => new Promise<void>(resolve => { release = resolve; }));
         expect(emit).toHaveBeenLastCalledWith(expect.objectContaining({
             type: 'turn-latency-progress', phase: 'preparing', queueMs: 10,
-            preparation: [{ stage: 'mcp-sync', startedMs: 20, durationMs: null, outcome: 'pending' }],
+            preparation: [{ stage, startedMs: 20, durationMs: null, outcome: 'pending' }],
         }));
         clock = 45; release(); await pending;
         expect(emit).toHaveBeenLastCalledWith(expect.objectContaining({
-            preparation: [{ stage: 'mcp-sync', startedMs: 20, durationMs: 25, outcome: 'resolved' }],
+            preparation: [{ stage, startedMs: 20, durationMs: 25, outcome: 'resolved' }],
         }));
     });
 

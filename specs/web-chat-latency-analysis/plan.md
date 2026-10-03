@@ -13,3 +13,13 @@
 4. Consume released vendor pointer and apply to ethan; independently confirm runtime metadata/terminal before Web20/A-B — Pending. Shared runtime is unchanged.
 
 Implementation authorized by the user. Before treatment measurement, accept only query count2→1, matching bounded metadata and a paired preparation reduction exceeding max(10ms,2×baseline MAD); this is an exploratory threshold, not a statistical guarantee.
+
+## Recovery cost decomposition — 2026-10-03
+
+1. Add failing tests for separate initial inventory, resume, backoff and verification spans, diagnostic failure isolation and in-flight ownership.
+2. Add optional operation-scoped measurement; preserve retries, authorization, inventory reuse and diagnostic-off behavior.
+3. Accept bounded new stage names in Web; run scoped regression/type/build checks and open Ready PRs. No runtime or release change.
+
+Parent recovery and child spans overlap; never sum them. This increment measures cost, not a speedup.
+
+Implementation and parser regression checks complete. Runtime-loop baseline failures reproduced and preserved. Ready PR review is next, followed by companion Web deployment, CI-only CLI release with explicit exact-tag approval, and terminal-verified same-condition Web measurement.

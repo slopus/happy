@@ -1,6 +1,6 @@
 import type { CollectedBatch, QueueLatencyTrace } from '@/utils/MessageQueue2';
 
-export type CodexLatencyStage = 'auth' | 'checkpoint' | 'mcp-sync' | 'thread-resume' | 'thread-start' | 'mcp-recovery' | 'mcp-status' | 'images' | 'lesson-recall' | 'lesson-proposal';
+export type CodexLatencyStage = 'auth' | 'checkpoint' | 'mcp-sync' | 'thread-resume' | 'thread-start' | 'mcp-recovery' | 'mcp-inventory' | 'mcp-reconnect' | 'mcp-backoff' | 'mcp-verification' | 'mcp-status' | 'images' | 'lesson-recall' | 'lesson-proposal';
 export type CodexLatencyPhase = 'received' | 'preparing' | 'submitted' | 'text' | 'completed' | 'failed' | 'cancelled' | 'control';
 export type CodexTurnLatencyProgress = {
     version: 1; type: 'turn-latency-progress'; id: string;

@@ -12,3 +12,7 @@ Scope this increment to duplicate inventory queries: normal `recoverBeforeTurn` 
 - Do not publish locally or consume an unreleased vendor pointer. Release is a later explicit action.
 
 Full prior Web measurements remain in the platform repository's `specs/web-chat-latency-analysis/`.
+
+## Recovery cost decomposition
+
+After the .284 Web followup observations, instrument the initial inventory RPC, reconnect RPC, existing retry backoff and verification RPC independently using the opt-in turn recorder. Preserve retry/auth/cooldown, same-operation inventory reuse and in-flight ownership. Diagnostic failures must neither skip nor repeat operations or replace their results. No recovery timeout change. Fixed stage names only; no server/thread/config/error data. Parent and child spans overlap and must not be summed. Web must accept these names before the new CLI is used for measurement.

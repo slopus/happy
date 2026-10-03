@@ -2160,6 +2160,7 @@ export async function runCodex(opts: {
                         expectedServerNames: listConfiguredExternalServices(mcpSync.mcpServers),
                         developerInstructions: currentDeveloperInstructions,
                         includeRuntimeStatuses: true,
+                        measure: latency ? measure : undefined,
                     }));
                     await measure('mcp-status', () => reportMcpStatuses(runtimeRecovery.runtimeStatuses));
                     if (runtimeRecovery.status !== 'ready') {

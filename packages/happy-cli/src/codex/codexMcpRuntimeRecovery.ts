@@ -79,12 +79,15 @@ type RecoveryOptions = {
     connectorNames?: readonly string[];
 };
 
+export type CodexMcpRecoveryStage = 'mcp-inventory' | 'mcp-reconnect' | 'mcp-backoff' | 'mcp-verification';
+
 type RecoveryInput = {
     threadId: string;
     mcpServers: Record<string, unknown>;
     expectedServerNames: string[];
     developerInstructions?: string;
     includeRuntimeStatuses?: boolean;
+    measure?: <T>(stage: CodexMcpRecoveryStage, action: () => T | Promise<T>) => T | Promise<T>;
 };
 
 type RuntimeInspection = {
@@ -247,11 +250,11 @@ export class CodexMcpRuntimeRecovery {
         for (let attempt = 0; attempt < this.maxAttempts; attempt++) {
             let resumed = false;
             try {
-                await this.client.resumeThread({
+                await this.measure(input, 'mcp-reconnect', () => this.client.resumeThread({
                     threadId: input.threadId,
                     mcpServers: input.mcpServers,
                     developerInstructions: input.developerInstructions,
-                });
+                }));
                 resumed = true;
             } catch {
                 // Retry below after the same bounded backoff as a status failure.
@@ -260,10 +263,10 @@ export class CodexMcpRuntimeRecovery {
                 latest.runtimeStatuses = undefined;
             }
             if (this.backoffMs > 0) {
-                await this.sleep(this.backoffMs * (attempt + 1));
+                await this.measure(input, 'mcp-backoff', () => this.sleep(this.backoffMs * (attempt + 1)));
             }
             if (!resumed) continue;
-            latest = await this.inspect(input);
+            latest = await this.inspect(input, 'mcp-verification');
             if (latest.status === 'ready') {
                 this.cooldowns.delete(input.threadId);
                 this.unhealthyServers.delete(input.threadId);
@@ -321,7 +324,17 @@ export class CodexMcpRuntimeRecovery {
         return result;
     }
 
-    private async inspect(input: RecoveryInput): Promise<RuntimeInspection> {
+    private async measure<T>(input: RecoveryInput, stage: CodexMcpRecoveryStage, action: () => T | Promise<T>): Promise<T> {
+        if (!input.measure) return action();
+        // Diagnostics cannot skip, repeat, replace or swallow the actual operation.
+        let operation: Promise<T> | undefined;
+        const once = () => operation ??= Promise.resolve().then(action);
+        try { await input.measure(stage, once); }
+        catch { /* The operation's own result/exception is authoritative below. */ }
+        return once();
+    }
+
+    private async inspect(input: RecoveryInput, stage: CodexMcpRecoveryStage = 'mcp-inventory'): Promise<RuntimeInspection> {
         const expected = [...new Set(input.expectedServerNames)].sort();
         if (expected.length === 0) {
             return {
@@ -340,7 +353,7 @@ export class CodexMcpRuntimeRecovery {
         );
         let inventoryByName: Map<string, CodexMcpServerInventory> | null = null;
         try {
-            const inventory = await this.client.listMcpServerStatus({ threadId: input.threadId });
+            const inventory = await this.measure(input, stage, () => this.client.listMcpServerStatus({ threadId: input.threadId }));
             inventoryByName = new Map(inventory.data.map((entry) => [entry.name, entry]));
         } catch {
             // Startup notifications remain useful on older app-server versions.
