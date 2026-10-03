@@ -489,12 +489,12 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       // Quota, transport, missing credentials and exhausted budgets keep it untouched.
       const localVerification = await verifyLocalAiAccounts(deps, 'claude', identities(duplicates), exported.accounts, { budgetMs: 60_000 })
       const invalid = duplicates.filter((_account, index) => localVerification.accounts[index]?.errorKind === 'AUTHENTICATION_FAILED')
+        .map(account => ({ ...account, disabled: before.accounts.find(local =>
+          claudeListAccountIdentity(local) === claudeListAccountIdentity(account))?.disabled }))
       if (invalid.length > 0) {
         repairRequestedAccountCount = invalid.length
         const requested = identities(invalid)
-        const verification = await verifyLocalAiAccounts(deps, 'claude', requested, invalid.map(account => ({
-          ...account, disabled: before.accounts.find(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account))?.disabled,
-        })), { budgetMs: 60_000 })
+        const verification = await verifyLocalAiAccounts(deps, 'claude', requested, invalid, { budgetMs: 60_000 })
         let accepted = invalid.filter((_account, index) => verification.accounts[index]?.ok)
         if (accepted.length > 0) {
           const current = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
@@ -510,9 +510,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
           accepted = invalid.filter((_account, index) => verification.accounts[index]?.ok)
         }
         if (accepted.length > 0) {
-          const repaired = await applyClaudeRepair({ before, envelope: { ...envelope, accounts: accepted.map(account => ({
-            ...account, disabled: before.accounts.find(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account))?.disabled,
-          })) }, requested, verification, automatic: true }, { budgetMs: 60_000 })
+          const repaired = await applyClaudeRepair({ before, envelope: { ...envelope, accounts: accepted }, requested, verification, automatic: true }, { budgetMs: 60_000 })
           for (const account of repaired?.verifiedAccounts ?? []) {
             repairedIdentities.add(claudeListAccountIdentity(account))
             knownCompanyIdentities.add(JSON.stringify([account.email, account.organizationUuid ?? '', account.organizationName ?? '']))
