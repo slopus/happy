@@ -100,7 +100,13 @@ class Configuration {
       this.serverUrl ||
       'https://saycode.ai'
 
-    this.machineControl = readSettingsStringSync(this.settingsFile, 'machineControl') === 'strict' ? 'strict' : 'compat'
+    // A strict daemon passes strict to the sessions it starts in HAPPY_MACHINE_CONTROL,
+    // since a session with staged credentials gets a happy home without settings.json.
+    // The variable can only raise compat to strict, never lower it.
+    this.machineControl = readSettingsStringSync(this.settingsFile, 'machineControl') === 'strict'
+      || process.env.HAPPY_MACHINE_CONTROL === 'strict'
+      ? 'strict'
+      : 'compat'
 
     this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.HAPPY_EXPERIMENTAL?.toLowerCase() || '');
     this.disableCaffeinate = ['true', '1', 'yes'].includes(process.env.HAPPY_DISABLE_CAFFEINATE?.toLowerCase() || '');

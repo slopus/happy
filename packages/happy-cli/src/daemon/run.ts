@@ -1896,6 +1896,8 @@ export async function startDaemon(): Promise<void> {
             configuration.daemonStateFile,
           );
           authEnv.HAPPY_HOME_DIR = homeDir;
+          // The staged home has no settings.json, so the child would read compat.
+          if (configuration.machineControl === 'strict') authEnv.HAPPY_MACHINE_CONTROL = 'strict';
           stagedUserHomeDir = homeDir;
           logger.debug(`[DAEMON RUN] User credentials staged at ${homeDir}/access.key`);
         }
