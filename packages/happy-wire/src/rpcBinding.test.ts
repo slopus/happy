@@ -45,6 +45,21 @@ describe('bound RPC requests', () => {
       .toEqual({ kind: 'refused', code: 'RPC_REQUEST_STALE', nonce });
   });
 
+  // A compat receiver: the server can already obtain its scope key, so the window would only
+  // refuse a client whose clock is off. It still checks the method and scope.
+  it('reports a request outside the window instead of refusing it when the receiver allows stale ones', () => {
+    for (const now of [issuedAt + RPC_BINDING_WINDOW_MS + 1, issuedAt - RPC_BINDING_WINDOW_MS - 1]) {
+      expect(readBoundRpcRequest(request, { ...expected, now, allowStale: true }))
+        .toEqual({ kind: 'bound', params: { path: '/w/a.txt' }, nonce, issuedAt, stale: true });
+    }
+    expect(readBoundRpcRequest(request, { ...expected, allowStale: true }))
+      .toEqual({ kind: 'bound', params: { path: '/w/a.txt' }, nonce, issuedAt });
+    expect(readBoundRpcRequest(request, { ...expected, method: 'deleteFile', allowStale: true }))
+      .toEqual({ kind: 'refused', code: 'RPC_METHOD_MISMATCH', nonce });
+    expect(readBoundRpcRequest(request, { ...expected, scope: 'machine-2', allowStale: true }))
+      .toEqual({ kind: 'refused', code: 'RPC_SCOPE_MISMATCH', nonce });
+  });
+
   it('refuses a malformed bound request', () => {
     for (const broken of [
       { ...request, rpcBinding: 2 },

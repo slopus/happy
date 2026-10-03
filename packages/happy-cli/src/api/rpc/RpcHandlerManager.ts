@@ -146,7 +146,15 @@ export class RpcHandlerManager {
             let replyNonce: string | null = null;
             if (opened.lane === 'customer') {
                 const now = Date.now();
-                const binding = readBoundRpcRequest(opened.value, { method: bareMethod, scope: this.scopePrefix, now });
+                const binding = readBoundRpcRequest(opened.value, {
+                    method: bareMethod,
+                    scope: this.scopePrefix,
+                    now,
+                    // Under compat the server can already obtain the scope key, so the
+                    // window would protect nothing and only refuse a client whose clock
+                    // is off. Strict keeps it.
+                    allowStale: !this.requireBoundRequests,
+                });
                 if (binding.kind === 'refused') {
                     this.logger('[RPC] Bound request refused', { method: request.method, code: binding.code });
                     const refusal = { error: 'Request binding refused', code: binding.code };
@@ -160,7 +168,15 @@ export class RpcHandlerManager {
                     });
                 }
                 if (binding.kind === 'bound') {
-                    if (!this.nonceGuard.admit(binding.nonce, binding.issuedAt, now)) {
+                    if (binding.stale) {
+                        this.logger('[RPC] Bound request outside the time window accepted under compat', {
+                            method: request.method,
+                            skewMs: now - binding.issuedAt,
+                        });
+                    }
+                    // A stale request is remembered from when it arrived. Its own issue time
+                    // would forget it at once, or hold the guard's oldest slot for hours.
+                    if (!this.nonceGuard.admit(binding.nonce, binding.stale ? now : binding.issuedAt, now)) {
                         this.logger('[RPC] Replayed request refused', { method: request.method });
                         return sealWithScopeKey(bindRpcResponse(binding.nonce, {
                             error: 'Request was already received',

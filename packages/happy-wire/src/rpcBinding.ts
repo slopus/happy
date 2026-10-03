@@ -10,8 +10,9 @@ import * as z from 'zod';
  * into `deleteFile {path}`, or a stored metadata blob handed to a handler that
  * ignores its params. A bound request names its method and scope, when it was
  * issued and a nonce inside the ciphertext. The daemon runs it only for that
- * method and scope, within the window, once. The reply carries the nonce back,
- * so a client takes no reply recorded for another request.
+ * method and scope, once; under strict machine control also only within the
+ * window. The reply carries the nonce back, so a client takes no reply
+ * recorded for another request.
  *
  * Plaintext of a bound request: `{ rpcBinding: 1, method, scope, issuedAt, nonce, params }`.
  * Plaintext of its reply: `{ rpcBinding: 1, nonce, result }`.
@@ -76,13 +77,18 @@ export function bindRpcRequest(input: {
  * How the receiver reads opened params. `unbound` is a request in the format
  * before binding; whether to run it is the caller's policy. A refusal keeps
  * the nonce when it has one, so the reply can still be bound to it.
+ *
+ * `allowStale` reports a request outside the window as `stale` instead of
+ * refusing it. A compat receiver uses it: the server can already obtain its
+ * scope key there, so the window would protect nothing and only refuse a
+ * client whose clock is off. The method and scope are checked either way.
  */
 export function readBoundRpcRequest(
   value: unknown,
-  expected: { method: string; scope: string; now: number },
+  expected: { method: string; scope: string; now: number; allowStale?: boolean },
 ):
   | { kind: 'unbound' }
-  | { kind: 'bound'; params: unknown; nonce: string; issuedAt: number }
+  | { kind: 'bound'; params: unknown; nonce: string; issuedAt: number; stale?: true }
   | { kind: 'refused'; code: RpcBindingRefusalCode; nonce?: string } {
   if (!value || typeof value !== 'object' || Array.isArray(value) || !('rpcBinding' in value)) {
     return { kind: 'unbound' };
@@ -95,10 +101,15 @@ export function readBoundRpcRequest(
   const request = parsed.data;
   if (request.method !== expected.method) return { kind: 'refused', code: 'RPC_METHOD_MISMATCH', nonce: request.nonce };
   if (request.scope !== expected.scope) return { kind: 'refused', code: 'RPC_SCOPE_MISMATCH', nonce: request.nonce };
-  if (Math.abs(expected.now - request.issuedAt) > RPC_BINDING_WINDOW_MS) {
-    return { kind: 'refused', code: 'RPC_REQUEST_STALE', nonce: request.nonce };
-  }
-  return { kind: 'bound', params: request.params ?? null, nonce: request.nonce, issuedAt: request.issuedAt };
+  const stale = Math.abs(expected.now - request.issuedAt) > RPC_BINDING_WINDOW_MS;
+  if (stale && !expected.allowStale) return { kind: 'refused', code: 'RPC_REQUEST_STALE', nonce: request.nonce };
+  return {
+    kind: 'bound',
+    params: request.params ?? null,
+    nonce: request.nonce,
+    issuedAt: request.issuedAt,
+    ...(stale ? { stale: true as const } : {}),
+  };
 }
 
 export function bindRpcResponse(nonce: string, result: unknown): BoundRpcResponse {

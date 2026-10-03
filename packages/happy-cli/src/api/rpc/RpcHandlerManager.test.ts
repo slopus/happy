@@ -410,11 +410,24 @@ describe('bound customer-lane requests', () => {
         expect(calls).toHaveLength(1);
     });
 
-    it('refuses a request issued outside the window', async () => {
-        const { manager, calls } = makeBound();
+    it('refuses a request issued outside the window under strict', async () => {
+        const { manager, calls } = makeBound(true);
         expect(await send(manager, 'readFile', bound('readFile', {}, { nonce: nonce(6), issuedAt: Date.now() - 10 * 60_000 })))
             .toMatchObject({ nonce: nonce(6), result: { code: 'RPC_REQUEST_STALE' } });
         expect(calls).toEqual([]);
+    });
+
+    // Under compat the server can already obtain the machine key, so the window would only
+    // refuse a client whose clock is off, such as a dual-boot PC nine hours out.
+    it('runs a request issued outside the window under compat, once', async () => {
+        const { manager, calls } = makeBound(false);
+        const nineHours = 9 * 60 * 60_000;
+        for (const [fill, issuedAt] of [[11, Date.now() - nineHours], [12, Date.now() + nineHours]] as const) {
+            const request = bound('readFile', { path: '/w/a' }, { nonce: nonce(fill), issuedAt });
+            expect(await send(manager, 'readFile', request)).toEqual({ rpcBinding: 1, nonce: nonce(fill), result: { content: 'x' } });
+            expect(await send(manager, 'readFile', request)).toMatchObject({ nonce: nonce(fill), result: { code: 'RPC_REQUEST_REPLAYED' } });
+        }
+        expect(calls).toHaveLength(2);
     });
 
     it('binds the reply to a method that does not exist and to a policy refusal', async () => {
