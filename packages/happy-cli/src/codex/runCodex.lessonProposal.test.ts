@@ -75,6 +75,7 @@ vi.mock('@/codex/codexAppServerClient', () => ({ CodexAppServerClient: class {
         fixture.send(prompt, options);
         fixture.token = prompt.match(/token="([^"]+)"/)![1];
         expect(fixture.submit?.({ token: fixture.token, proposal: fixture.proposal })).toEqual({ accepted: true });
+        (options as { onSubmitted?: () => void })?.onSubmitted?.();
         await fixture.onSend?.();
         return { aborted: fixture.aborted };
     };
@@ -166,6 +167,34 @@ describe('Codex local history wiring', () => {
 });
 
 describe('Codex foreground lesson proposal wiring', () => {
+    it.each(['context_returned', 'hook_diagnostic'] as const)('assembles only successful host memory and commits it at provider acceptance (%s)', async (reason) => {
+        for (const key of Object.keys(process.env)) {
+            if (/^(HAPPY_RECONNECT_|HAPPY_INITIAL_|HAPPY_FORK|HAPPY_MANAGED_|SAYCODE_PROVIDER_|HAPPY_AUTOMATION_)/.test(key)) vi.stubEnv(key, undefined);
+        }
+        fixture.aborted = false;
+        vi.stubEnv('HAPPY_AUTOMATION_RUN_ONCE', '1');
+        vi.stubEnv('HAPPY_INITIAL_PROMPT', 'Original foreground request');
+        const memory = await import('@/memory/codexRecallHost');
+        const recall = vi.fn(async () => ({ reason, context: 'Historical memory reference', startupIncluded: true as const }));
+        const markSubmitted = vi.fn();
+        const prepare = vi.spyOn(memory, 'prepareCodexRecallHost').mockResolvedValue({ recall, markSubmitted });
+        const review = { prepareReviewTurn: vi.fn(async () => ({ revision: 9 })), reviewFinishedTurn: vi.fn(async () => 'reviewed' as const) };
+        const { runCodex } = await import('./runCodex');
+        await runCodex({ principal: { kind: 'account', credentials: { token: 'test-token' } as never },
+            noSandbox: true, lessons: { turn: null, review, sessionKind: 'foreground' } });
+        expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ accountOwned: true, projectPath: process.cwd() }));
+        expect(recall).toHaveBeenCalledWith(expect.objectContaining({ threadId: 'thread', prompt: 'Original foreground request', resumed: false }));
+        expect(fixture.startThread.mock.invocationCallOrder[0]).toBeLessThan(recall.mock.invocationCallOrder[0]);
+        if (reason === 'context_returned') {
+            const sent = fixture.send.mock.calls[0][0] as string;
+            expect(sent.indexOf('Historical memory reference')).toBeLessThan(sent.indexOf('Original foreground request'));
+            expect(markSubmitted).toHaveBeenCalledWith('thread', true);
+        } else {
+            expect(fixture.send.mock.calls[0][0]).not.toContain('Historical memory reference');
+            expect(markSubmitted).not.toHaveBeenCalled();
+        }
+    });
+
     it('preserves durable local-auto request ids through a merged Codex batch', async () => {
         for (const key of Object.keys(process.env)) {
             if (/^(HAPPY_RECONNECT_|HAPPY_INITIAL_|HAPPY_FORK|HAPPY_MANAGED_|SAYCODE_PROVIDER_|HAPPY_AUTOMATION_)/.test(key)) vi.stubEnv(key, undefined);

@@ -101,6 +101,7 @@ import {
 import { buildCodexThreadBackfillEnvelopes } from './utils/threadImageBackfill';
 import type { LessonReviewWorker } from '@/memory/lessonReviewWorker';
 import { createLazyLessonSessionHost } from '@/memory/lessonSessionHost';
+import { prepareCodexRecallHost, buildCodexMemoryReferenceBlock } from '@/memory/codexRecallHost';
 import { readLessonOwner } from '@/memory/lessonOwnerMarker';
 import type { LessonTurnKind } from '@/memory/lessonTurnEvidence';
 import { createLessonTurnObservations } from '@/memory/lessonTurnObservations';
@@ -206,6 +207,9 @@ export async function runCodex(opts: {
     // Shield killall/pkill against broad kills before anything is spawned —
     // Codex has no PreToolUse hook system, so the PATH shim is its only guard.
     const managedStartup = opts.principal?.kind === 'managed' ? opts.principal.startup : null;
+    // Capture before checkpoint preparation changes provider cwd; not from turn metadata.
+    const recallProjectPath = process.cwd();
+    const recallHostEnvironment = { ...process.env };
     if (opts.standaloneLaunch && (managedStartup || opts.startedBy !== 'daemon')) throw new Error('Standalone launch requires an unmanaged daemon session');
     const launchControl = opts.standaloneLaunch ? await SessionLaunchControl.connect(opts.standaloneLaunch) : undefined;
     try {
@@ -1180,6 +1184,16 @@ export async function runCodex(opts: {
     // Start Context 
     //
 
+    const recallHost = await prepareCodexRecallHost({
+        accountOwned: opts.principal.kind === 'account',
+        sandboxEnabled: checkpointComposition.sandboxConfig?.enabled === true,
+        sandboxPolicyMode,
+        projectPath: recallProjectPath,
+        env: recallHostEnvironment,
+        report: ({ event, reason, contextChars }) => logger.debug('[CodexMemoryHost]', { event, reason, contextChars }),
+    });
+    logger.debug('[CodexMemoryHost]', { status: recallHost ? 'prepared' : sandboxPolicyMode === 'mandatory' ? 'policy_requires_binding' : 'unsupported' });
+
     client = new CodexAppServerClient(
         checkpointComposition.sandboxConfig,
         checkpointComposition.beforeTurn,
@@ -1198,6 +1212,7 @@ export async function runCodex(opts: {
             base: managedStartup ? managedCodexProviderArguments(managedStartup.envelope) : null,
         }),
         checkpointComposition.markTurnDispatched,
+        recallHost !== null,
     );
 
     if (runtimeGate) client.setTurnDispatchHandler(() => runtimeGate.markDispatched());
@@ -2100,6 +2115,7 @@ export async function runCodex(opts: {
 
                     // Start thread on first turn (thread persists across mode changes)
                     let activeThreadId = client.threadId;
+                    const recallResumedThread = Boolean(activeThreadId);
                     if (!client.hasActiveThread() || !activeThreadId) {
                         const startedThread = await measure('thread-start', () => client.startThread({
                             model: message.mode.model,
@@ -2186,6 +2202,14 @@ export async function runCodex(opts: {
                         controller: lessonReviewAbort, acceptingSteer: false, pendingSteer: false,
                     };
                     activeLessonTurn = lessonFrame;
+                    const memoryRecall = recallHost
+                        ? await recallHost.recall({
+                            threadId: activeThreadId,
+                            prompt: message.message,
+                            resumed: recallResumedThread,
+                            signal: owningForegroundSignal,
+                        })
+                        : null;
                     const lessonRecall = lessonTurn
                         ? await measure('lesson-recall', () => lessonTurn.recall({
                             turnId: codexTurnId,
@@ -2203,6 +2227,7 @@ export async function runCodex(opts: {
                         includeAppendSystemPrompt,
                         hasTitle: session.hasTitle(),
                         ...(lessonRecall?.outcome === 'selected' ? { lessonBlock: lessonRecall.block } : {}),
+                        ...(memoryRecall?.reason === 'context_returned' ? { memoryBlock: buildCodexMemoryReferenceBlock(memoryRecall.context) } : {}),
                     });
 
                     // Prepared images/thread/checkpoint may have awaited since dequeue. Cancellation
@@ -2230,6 +2255,7 @@ export async function runCodex(opts: {
                     routingApplied = true;
                     latency?.submitted();
                     const result = await client.sendTurnAndWait(turnPrompt, {
+                        ...(memoryRecall?.reason === 'context_returned' ? { onSubmitted: () => recallHost?.markSubmitted(activeThreadId, memoryRecall.startupIncluded === true) } : {}),
                         model: appliedRoute ? appliedRoute.model : message.mode.model,
                         approvalPolicy: executionPolicy.approvalPolicy,
                         sandbox: executionPolicy.sandbox,

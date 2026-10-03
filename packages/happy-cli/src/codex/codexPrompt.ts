@@ -95,6 +95,8 @@ export function buildCodexTurnPrompt(opts: {
      * its own, and the block says so in its own words.
      */
     lessonBlock?: string;
+    /** Host-scoped event memories, bounded before prompt assembly. */
+    memoryBlock?: string;
 }): string {
     const parts: string[] = [];
 
@@ -103,6 +105,9 @@ export function buildCodexTurnPrompt(opts: {
     }
     if (opts.lessonBlock) {
         parts.push(opts.lessonBlock);
+    }
+    if (opts.memoryBlock) {
+        parts.push(opts.memoryBlock);
     }
     parts.push(opts.message);
 

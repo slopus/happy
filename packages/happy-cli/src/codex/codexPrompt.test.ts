@@ -79,6 +79,13 @@ describe('buildCodexDeveloperInstructions', () => {
 });
 
 describe('buildCodexTurnPrompt', () => {
+    it('includes independent host event memory and lessons before the original request', () => {
+        expect(buildCodexTurnPrompt({
+            message: 'original request', mode: { appendSystemPrompt: 'system context' },
+            includeAppendSystemPrompt: true, hasTitle: true,
+            lessonBlock: 'lesson references', memoryBlock: 'event memory references',
+        })).toBe('system context\n\nlesson references\n\nevent memory references\n\noriginal request');
+    });
     it('prepends Happy append system prompt before the first Codex user message', () => {
         const prompt = buildCodexTurnPrompt({
             message: 'pick an option',
