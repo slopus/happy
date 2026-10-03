@@ -1,4 +1,6 @@
+import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
+import { SETUP_TOKEN_BINDING_TYPE, createSetupTokenBindingVerifier } from './setupTokenBindingProof'
 import { createAiCredentialRuntime, type AiCredentialCommandResult } from './aiCredentialRuntime'
 import { groupAccountIdentity } from './aiCredentialGroupAdapters'
 import {
@@ -10,6 +12,24 @@ import { managedSetupTokenEmail, managedSetupTokenId, setupTokenGroupIdentity, s
 const A = '0b6f2c1e-1111-4a2b-8c3d-000000000001'
 const B = '0b6f2c1e-1111-4a2b-8c3d-000000000002'
 const fakeToken = (n: string) => `sk-ant-oat01-FAKE-${n}`
+// Synthetic Studio signing key; the envelope format mirrors the Studio collector signer.
+const STUDIO = 'https://studio.example.test'
+const NOW = 1_800_000_000_000
+const signing = (() => {
+  const { privateKey, publicKey } = generateKeyPairSync('ed25519')
+  const spki = publicKey.export({ format: 'der', type: 'spki' })
+  return { privateKey, publicKeyBase64: spki.toString('base64'), keyId: createHash('sha256').update(spki).digest('hex') }
+})()
+function bindingGrant(overrides: Record<string, unknown> = {}) {
+  const claims = { v: 1, type: SETUP_TOKEN_BINDING_TYPE, aud: `${SETUP_TOKEN_BINDING_TYPE}@${STUDIO}`, keyId: signing.keyId,
+    companyId: 'company-1', groupScope: 'company-1', userId: 'user-1', machineId: 'machine-1', managedAccountId: A,
+    credentialGeneration: 1, nonce: randomUUID(), issuedAt: NOW - 1_000, expiresAt: NOW + 60_000, ...overrides }
+  const encoded = Buffer.from(JSON.stringify(claims)).toString('base64url')
+  return `${encoded}.${sign(null, Buffer.from(encoded), signing.privateKey).toString('base64url')}`
+}
+const studioVerifier = () => createSetupTokenBindingVerifier({ origin: STUDIO, machineId: 'machine-1', now: () => NOW,
+  fetch: (async () => new Response(JSON.stringify({ version: 1, type: 'claude-collector-v1', algorithm: 'Ed25519',
+    keyId: signing.keyId, publicKeyBase64: signing.publicKeyBase64, audience: 'n/a' }), { status: 200 })) as typeof fetch })
 const MARKER = JSON.stringify({ version: 1, artifact: 'saycode-setup-token-runtime-v1', managedAccountMetadata: true })
 
 // The Studio server's vault row shape (contract-result v1).
@@ -25,11 +45,11 @@ type Slot = { number: number; email: string; organizationUuid?: string; usageSta
 
 // A stateful stand-in for cswap. `marked` keeps managed metadata like the token runtime; an
 // unmarked build drops it, as upstream does.
-function fakeMachine(initial: Slot[], activeAccountNumber: number | null, options: { runtime?: 'marked' | 'unmarked' | 'missing'; ignoreForce?: boolean; tokenRuntimeStatus?: string } = {}) {
+function fakeMachine(initial: Slot[], activeAccountNumber: number | null, options: { runtime?: 'marked' | 'unmarked' | 'missing'; ignoreForce?: boolean; tokenRuntimeStatus?: string; files?: Map<string, string>; binding?: false } = {}) {
   const kind = options.runtime ?? 'marked'
   const state = { slots: [...initial], active: activeAccountNumber }
   const calls: Array<{ command: string; args: string[] }> = []
-  const files = new Map<string, string>()
+  const files = options.files ?? new Map<string, string>()
   const execFile = vi.fn(async (command: string, args: string[]): Promise<AiCredentialCommandResult> => {
     calls.push({ command, args })
     if (command === 'cswap' && kind === 'missing') throw Object.assign(new Error('not found'), { kind: 'COMMAND_NOT_AVAILABLE' })
@@ -64,7 +84,8 @@ function fakeMachine(initial: Slot[], activeAccountNumber: number | null, option
     return { stdout: '', stderr: '' }
   })
   const runtime = createAiCredentialRuntime({
-    homeDir: '/home/operator', now: () => 0, env: {}, execFile,
+    homeDir: '/home/operator', now: () => NOW, env: {}, execFile,
+    ...(options.binding === false ? {} : { setupTokenBinding: studioVerifier() }),
     readFile: vi.fn(async (path: string) => files.get(path) ?? Promise.reject(Object.assign(new Error('missing'), { code: 'ENOENT' }))),
     writeFile: vi.fn(async (path: string, content: string) => { files.set(path, content) }),
     readdir: vi.fn(async () => []), mkdir: vi.fn(async () => undefined),
@@ -165,72 +186,95 @@ describe('managed Claude setup-token runtime', () => {
   })
 
   describe('new-session binding', () => {
-    const selection = { kind: 'claude-setup-token' as const, managedAccountId: A, groupScope: 'company-1' }
-    const caller = { userId: 'user-1' }
-    // The slot is installed by this scope's group-sync, so the journal proves ownership.
+    const selection = (overrides: Record<string, unknown> = {}) => ({ kind: 'claude-setup-token' as const, managedAccountId: A,
+      groupScope: 'company-1', credentialGeneration: 1, bindingGrant: bindingGrant(overrides) })
+    // The slot is installed by this scope's group-sync for user-1, so the journal proves ownership.
     async function assigned(options: Parameters<typeof fakeMachine>[2] = {}, initial: Slot[] = [], active: number | null = null) {
       const machine = fakeMachine(initial, active, options)
       await machine.runtime.groupSync(sync(1, payload(managed(A, 1, fakeToken('a')))))
       return machine
     }
 
-    it('returns only the bound token with every other Claude auth override cleared', async () => {
+    it('binds a verified grant to only that token, records signed provenance without secrets, and never switches', async () => {
       const personal: Slot = { number: 1, email: 'me@example.com', usageStatus: 'ok', credentials: { claudeAiOauth: { accessToken: 'personal' } } }
-      const { runtime, state, calls } = await assigned({}, [personal], 1)
-      const env = await runtime.sessionEnvironment('claude', selection, caller)
+      const { runtime, state, calls, files } = await assigned({}, [personal], 1)
+      const chosen = selection()
+      const env = await runtime.sessionEnvironment('claude', chosen)
       expect(env).toMatchObject({ CLAUDE_CODE_OAUTH_TOKEN: fakeToken('a'), HAPPY_AI_AUTH_SOURCE: 'org-bundle', ANTHROPIC_API_KEY: '', ANTHROPIC_BASE_URL: '' })
-      // The secret-free binding the daemon records for resume names the generation actually applied.
-      expect(JSON.parse(env.HAPPY_AI_AUTH_SETUP_TOKEN_BINDING!)).toEqual({ version: 1, managedAccountId: A, credentialGeneration: 1, groupScope: 'company-1', userId: 'user-1' })
-      expect(env.HAPPY_AI_AUTH_SETUP_TOKEN_BINDING).not.toContain('sk-ant')
-      // Binding never switches the machine's active account or runs inference.
+      const record = JSON.parse(env.HAPPY_AI_AUTH_SETUP_TOKEN_BINDING!)
+      expect(record).toMatchObject({ version: 1, managedAccountId: A, credentialGeneration: 1, groupScope: 'company-1', companyId: 'company-1',
+        userId: 'user-1', machineId: 'machine-1', keyId: signing.keyId })
+      expect(env.HAPPY_AI_AUTH_SETUP_TOKEN_BINDING).not.toMatch(/sk-ant|\./)
+      expect(env.HAPPY_AI_AUTH_SETUP_TOKEN_BINDING).not.toContain(chosen.bindingGrant.split('.')[1]!)
+      expect([...files.values()].join('\n')).not.toContain(chosen.bindingGrant)
       expect(state.active).toBe(1)
       expect(calls.some(call => call.args[0] === 'switch')).toBe(false)
       expect(inference(calls)).toEqual([])
     })
 
-    it('refuses a slot the caller scope does not own: personal, another company, another user, or no caller', async () => {
-      const personal = fakeMachine([stored(A, 1, fakeToken('a'))], null)
-      await expect(personal.runtime.sessionEnvironment('claude', selection, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+    it('makes each grant one-use, durably across a daemon restart', async () => {
+      const { runtime, files, state } = await assigned()
+      const chosen = selection()
+      await runtime.sessionEnvironment('claude', chosen)
+      await expect(runtime.sessionEnvironment('claude', chosen)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_REPLAYED')
+      const restarted = fakeMachine(state.slots, state.active, { files })
+      await expect(restarted.runtime.sessionEnvironment('claude', chosen)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_REPLAYED')
+    })
+
+    it.each([
+      ['no grant', { bindingGrant: undefined }, {}],
+      ['a grant for another user than the assignment', {}, { userId: 'user-2' }],
+      ['a grant for another machine', {}, { machineId: 'machine-2' }],
+      ['a grant for another account', {}, { managedAccountId: B }],
+      ['a grant for another scope', {}, { groupScope: 'company-2' }],
+      ['a grant for another generation', {}, { credentialGeneration: 2 }],
+      ['an expired grant', {}, { expiresAt: NOW }],
+      ['a collector grant type', {}, { type: 'claude-collector-v1' }],
+    ] as const)('refuses %s', async (_label, selectionOverrides, claimOverrides) => {
       const { runtime } = await assigned()
-      await expect(runtime.sessionEnvironment('claude', { ...selection, groupScope: 'company-2' }, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
-      await expect(runtime.sessionEnvironment('claude', selection, { userId: 'user-2' })).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
-      await expect(runtime.sessionEnvironment('claude', selection)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      await expect(runtime.sessionEnvironment('claude', { ...selection(claimOverrides), ...selectionOverrides })).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+    })
+
+    it('refuses without a configured trusted origin, for a personal slot, and for another scope', async () => {
+      const unconfigured = await assigned({ binding: false })
+      await expect(unconfigured.runtime.sessionEnvironment('claude', selection())).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      const personal = fakeMachine([stored(A, 1, fakeToken('a'))], null)
+      await expect(personal.runtime.sessionEnvironment('claude', selection())).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      const { runtime } = await assigned()
+      await expect(runtime.sessionEnvironment('claude', { ...selection({ groupScope: 'company-2' }), groupScope: 'company-2' })).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
     })
 
     it('refuses once the assignment is revoked or still pending', async () => {
       const revoked = await assigned()
       await revoked.runtime.groupSync({ ...sync(2, null as never), payload: null })
-      await expect(revoked.runtime.sessionEnvironment('claude', selection, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      await expect(revoked.runtime.sessionEnvironment('claude', selection())).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
       const pending = await assigned({ ignoreForce: true })
       await expect(pending.runtime.groupSync(sync(2, payload(managed(A, 2, fakeToken('b')))))).rejects.toThrow()
-      await expect(pending.runtime.sessionEnvironment('claude', selection, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      await expect(pending.runtime.sessionEnvironment('claude', selection())).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
     })
 
     it.each([
-      ['a disabled slot', (state: { slots: Slot[] }) => { state.slots[0]!.disabled = true }],
-      ['a slot without managed metadata', (state: { slots: Slot[] }) => { delete state.slots[0]!.managedAccountId }],
+      ['a disabled slot', (state: { slots: Slot[]; active: number | null }) => { state.slots[0]!.disabled = true }],
+      ['a slot without managed metadata', (state: { slots: Slot[]; active: number | null }) => { delete state.slots[0]!.managedAccountId }],
       ['a removed slot', (state: { slots: Slot[]; active: number | null }) => { state.slots.length = 0; state.active = null }],
     ] as const)('fails closed for %s', async (_label, mutate) => {
       const { runtime, state } = await assigned()
       mutate(state)
-      await expect(runtime.sessionEnvironment('claude', selection, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      await expect(runtime.sessionEnvironment('claude', selection())).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
     })
 
-    it('fails closed on an unmarked runtime', async () => {
+    it('fails closed on an unmarked runtime and for a non-Claude agent; unselected spawns are unchanged', async () => {
       const { runtime } = fakeMachine([stored(A, 1, fakeToken('a'))], null, { runtime: 'unmarked' })
-      await expect(runtime.sessionEnvironment('claude', selection, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
+      await expect(runtime.sessionEnvironment('claude', selection())).rejects.toThrow('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
+      const marked = await assigned()
+      await expect(marked.runtime.sessionEnvironment('codex', selection())).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      expect(await marked.runtime.sessionEnvironment('claude')).toEqual({})
     })
 
-    it('resumes only on the exact recorded generation, never a replaced token or the machine default', async () => {
-      const { runtime } = await assigned()
-      await runtime.groupSync(sync(2, payload(managed(A, 2, fakeToken('replaced')))))
-      await expect(runtime.sessionEnvironment('claude', { ...selection, credentialGeneration: 1 }, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_STALE')
-      expect(await runtime.sessionEnvironment('claude', { ...selection, credentialGeneration: 2 }, caller)).toMatchObject({ CLAUDE_CODE_OAUTH_TOKEN: fakeToken('replaced') })
-    })
-
-    it('wins over inherited and requested credentials on spawn (plain and tmux) and on resume after a restart', async () => {
-      const { runtime } = await assigned()
-      const managedEnv = await runtime.sessionEnvironment('claude', selection, caller)
+    it('wins over inherited and requested credentials on spawn (plain and tmux) and resumes from the record after a restart', async () => {
+      const { runtime, state, files } = await assigned()
+      const chosen = selection()
+      const managedEnv = await runtime.sessionEnvironment('claude', chosen)
       const inherited = { ANTHROPIC_API_KEY: 'sk-ant-api-INHERITED', CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-INHERITED', ANTHROPIC_MODEL: 'opus',
         HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '{"forged":true}', HAPPY_AI_AUTH_SOURCE: 'personal-subscription' }
       const requested = buildSpawnRequestEnvironment({}, { ANTHROPIC_BASE_URL: 'https://proxy.invalid', ANTHROPIC_AUTH_TOKEN: 'x', HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '{}' })
@@ -238,31 +282,41 @@ describe('managed Claude setup-token runtime', () => {
       const child = applyAppliedAiAuthSourceEnv(buildManagedSessionSpawnEnvironment(inherited, requested, managedEnv), true)
       expect(child).toMatchObject({ CLAUDE_CODE_OAUTH_TOKEN: fakeToken('a'), ANTHROPIC_API_KEY: '', ANTHROPIC_AUTH_TOKEN: '', ANTHROPIC_BASE_URL: '',
         ANTHROPIC_MODEL: 'opus', HAPPY_AI_AUTH_SOURCE: 'org-bundle' })
-      expect(verifyAiAuthSelection(selection, child).rejection).toBeUndefined()
-      // The daemon persists only the captured secret-free binding; a restart rehydrates it the same way.
+      expect(verifyAiAuthSelection(chosen, child).rejection).toBeUndefined()
+      // sessions.json keeps only the captured record; a restarted daemon rehydrates and resumes from it, no grant needed.
       const persisted = captureSaycodeAgentEnvironment(child)!
-      expect(JSON.stringify(persisted)).not.toContain('sk-ant')
+      expect(JSON.stringify(persisted)).not.toMatch(/sk-ant/)
+      expect(JSON.stringify(persisted)).not.toContain(chosen.bindingGrant)
       const restored = captureSaycodeAgentEnvironment(JSON.parse(JSON.stringify(persisted)))
-      const binding = readSetupTokenResumeSelection(restored)!
-      const resumedManaged = await runtime.sessionEnvironment('claude', binding.selection, binding.caller)
+      const resume = readSetupTokenResumeSelection(restored)!
+      expect(resume.selection).not.toHaveProperty('bindingGrant')
+      const restarted = fakeMachine(state.slots, state.active, { files })
+      const resumedManaged = await restarted.runtime.sessionEnvironment('claude', resume.selection, resume.binding)
       const resumed = overlayManagedCredentialEnvironment(buildResumedSessionSpawnEnvironment({ inherited, explicit: {},
         runtime: { CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-REQUESTED', ANTHROPIC_API_KEY: 'k' }, agentEnvironment: restored, sessionId: 's1' }), resumedManaged)
       expect(resumed).toMatchObject({ CLAUDE_CODE_OAUTH_TOKEN: fakeToken('a'), ANTHROPIC_API_KEY: '', HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: persisted.HAPPY_AI_AUTH_SETUP_TOKEN_BINDING })
-      // After a replacement the same resume fails closed rather than using the new or default credential.
-      await runtime.groupSync(sync(2, payload(managed(A, 2, fakeToken('replaced')))))
-      await expect(runtime.sessionEnvironment('claude', binding.selection, binding.caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_STALE')
+      // A token replacement makes the same resume stale; a revocation makes it unavailable. Never the default.
+      await restarted.runtime.groupSync(sync(2, payload(managed(A, 2, fakeToken('replaced')))))
+      await expect(restarted.runtime.sessionEnvironment('claude', resume.selection, resume.binding)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_STALE')
+      await restarted.runtime.groupSync({ ...sync(3, null as never), payload: null })
+      await expect(restarted.runtime.sessionEnvironment('claude', resume.selection, resume.binding)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
     })
 
-    it('refuses a non-Claude agent and leaves unselected spawns unchanged', async () => {
+    it('refuses a resume whose recorded owner no longer holds the assignment', async () => {
       const { runtime } = await assigned()
-      await expect(runtime.sessionEnvironment('codex', selection, caller)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
-      expect(await runtime.sessionEnvironment('claude')).toEqual({})
+      const env = await runtime.sessionEnvironment('claude', selection())
+      const resume = readSetupTokenResumeSelection(captureSaycodeAgentEnvironment(env))!
+      await expect(runtime.sessionEnvironment('claude', resume.selection, { ...resume.binding, userId: 'user-2' })).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      await expect(runtime.sessionEnvironment('claude', resume.selection, { ...resume.binding, credentialGeneration: 2 })).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
     })
 
-    it('does not advertise binding while the caller claim is unverified on the daemon', async () => {
-      const capabilities = await fakeMachine([], null).runtime.capabilities()
-      expect(capabilities).toMatchObject({ newSessionProfileBinding: false, setupTokenVersion: 1 })
-      expect(capabilities).not.toHaveProperty('setupTokenSessionBindingVersion')
+    it('advertises binding only with the marked runtime and a verifiable Studio key', async () => {
+      expect(await fakeMachine([], null).runtime.capabilities()).toMatchObject({ newSessionProfileBinding: true, setupTokenSessionBindingVersion: 1 })
+      for (const machine of [fakeMachine([], null, { binding: false }), fakeMachine([], null, { runtime: 'unmarked' })]) {
+        const capabilities = await machine.runtime.capabilities()
+        expect(capabilities).toMatchObject({ newSessionProfileBinding: false })
+        expect(capabilities).not.toHaveProperty('setupTokenSessionBindingVersion')
+      }
     })
   })
 

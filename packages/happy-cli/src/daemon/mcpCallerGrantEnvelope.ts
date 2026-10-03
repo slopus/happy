@@ -131,21 +131,6 @@ function parseGrant(value: string): ParsedGrant | null {
 }
 
 /**
- * The caller named by an already consumed grant. The daemon cannot verify the
- * server HMAC, so this is the envelope's claim: it gates local selection only
- * and is not proof of identity on its own.
- */
-export function mcpCallerGrantCaller(grant: string | undefined): { userId: string } | undefined {
-    if (!grant) return undefined;
-    try {
-        const payload = JSON.parse(Buffer.from(grant.split('.')[0] ?? '', 'base64url').toString('utf8')) as Record<string, unknown>;
-        return typeof payload.userId === 'string' && payload.userId && payload.userId.length <= 128 ? { userId: payload.userId } : undefined;
-    } catch {
-        return undefined;
-    }
-}
-
-/**
  * Decrypts browser-minted caller grants and prevents an observed shared RPC
  * payload from being replayed into a second child process. The server remains
  * the authority for the HMAC; this layer validates only the safe envelope and

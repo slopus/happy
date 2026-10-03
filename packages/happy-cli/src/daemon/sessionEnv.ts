@@ -265,40 +265,49 @@ export function captureSaycodeAgentEnvironment(
 
 const MANAGED_ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 
-const GROUP_SCOPE = /^[^\s]{1,128}$/
+const GROUP_SCOPE = /^[A-Za-z0-9_-]{1,128}$/
+const BINDING_KEYS = ['version', 'managedAccountId', 'credentialGeneration', 'groupScope', 'companyId', 'userId', 'machineId', 'keyId', 'nonce', 'issuedAt'] as const
 
-type SetupTokenBinding = { managedAccountId: string; credentialGeneration: number; groupScope: string; userId: string }
+/**
+ * The immutable, signed facts a bound session keeps: who the server said may bind
+ * which managed account at which generation. No token and no grant envelope.
+ */
+export type SetupTokenBinding = {
+    managedAccountId: string; credentialGeneration: number; groupScope: string; companyId: string
+    userId: string; machineId: string; keyId: string; nonce: string; issuedAt: number
+}
 
 export function formatSetupTokenBinding(binding: SetupTokenBinding): string {
-    const { managedAccountId, credentialGeneration, groupScope, userId } = binding
-    return JSON.stringify({ version: 1, managedAccountId, credentialGeneration, groupScope, userId })
+    return JSON.stringify(Object.fromEntries(BINDING_KEYS.map((key) => [key, key === 'version' ? 1 : binding[key]])))
 }
 
 function parseSetupTokenBinding(value: string): SetupTokenBinding | null {
     try {
         const parsed = JSON.parse(value)
-        if (parsed?.version !== 1 || typeof parsed.managedAccountId !== 'string' || !MANAGED_ACCOUNT_ID.test(parsed.managedAccountId)
-            || !Number.isSafeInteger(parsed.credentialGeneration) || parsed.credentialGeneration < 1
-            || typeof parsed.groupScope !== 'string' || !GROUP_SCOPE.test(parsed.groupScope)
-            || typeof parsed.userId !== 'string' || !GROUP_SCOPE.test(parsed.userId)) return null
-        return { managedAccountId: parsed.managedAccountId, credentialGeneration: parsed.credentialGeneration, groupScope: parsed.groupScope, userId: parsed.userId }
+        if (parsed?.version !== 1 || Object.keys(parsed).length !== BINDING_KEYS.length
+            || typeof parsed.managedAccountId !== 'string' || !MANAGED_ACCOUNT_ID.test(parsed.managedAccountId)
+            || typeof parsed.nonce !== 'string' || !MANAGED_ACCOUNT_ID.test(parsed.nonce)
+            || ![parsed.groupScope, parsed.companyId, parsed.userId, parsed.machineId].every((id) => typeof id === 'string' && GROUP_SCOPE.test(id))
+            || typeof parsed.keyId !== 'string' || !/^[a-f0-9]{64}$/.test(parsed.keyId)
+            || ![parsed.credentialGeneration, parsed.issuedAt].every((n) => Number.isSafeInteger(n) && n >= 1)) return null
+        const { version: _version, ...binding } = parsed
+        return binding as SetupTokenBinding
     } catch { return null }
 }
 
 /**
- * The selection a resume must use: the exact managed slot and generation the session
- * started on. A session without a binding resumes as before; a corrupt one fails
- * closed instead of silently falling back to the machine default.
+ * What a resume must bind: exactly the recorded account, generation and owner. No
+ * new grant is needed (the original one was verified and consumed); the journal and
+ * storage are re-checked instead. A corrupt record refuses the resume.
  */
 export function readSetupTokenResumeSelection(agentEnvironment: SaycodeAgentEnvironment | undefined):
-    { selection: AiAuthSelection; caller: { userId: string } } | undefined {
+    { selection: AiAuthSelection; binding: SetupTokenBinding } | undefined {
     const raw = agentEnvironment?.[SETUP_TOKEN_BINDING_ENV]
     if (raw === undefined) return undefined
     const binding = parseSetupTokenBinding(raw)
     if (!binding) throw new Error('Recorded setup-token binding is invalid; the session is not resumed with another credential')
-    const { managedAccountId, credentialGeneration, groupScope, userId } = binding
-    // The recorded owner is re-checked against the journal; a resume never adopts a new caller.
-    return { selection: { kind: 'claude-setup-token', managedAccountId, groupScope, credentialGeneration }, caller: { userId } }
+    const { managedAccountId, credentialGeneration, groupScope } = binding
+    return { selection: { kind: 'claude-setup-token', managedAccountId, groupScope, credentialGeneration }, binding }
 }
 
 function isValidAdditionalDirectories(value: string): boolean {
@@ -416,7 +425,8 @@ export type AiAuthSelectionKind = (typeof AI_AUTH_SELECTION_KINDS)[number]
  */
 export type AiAuthSelection =
     | { kind: 'machine-personal' | 'org-bundle' }
-    | { kind: 'claude-setup-token'; managedAccountId: string; groupScope: string; credentialGeneration?: number }
+    /** `bindingGrant` is required on a new spawn; a resume rebuilds the selection from the recorded binding. */
+    | { kind: 'claude-setup-token'; managedAccountId: string; groupScope: string; credentialGeneration: number; bindingGrant?: string }
 
 /**
  * Advertised in `MachineMetadataSchema` so a client can tell this daemon
@@ -451,11 +461,15 @@ export function parseAiAuthSelection(value: unknown): AiAuthSelection | undefine
             throw new Error('AI auth selection claude-setup-token requires a groupScope')
         }
         const credentialGeneration = (value as { credentialGeneration?: unknown }).credentialGeneration
-        if (credentialGeneration === undefined) return { kind, managedAccountId, groupScope }
         if (!Number.isSafeInteger(credentialGeneration) || Number(credentialGeneration) < 1) {
             throw new Error('AI auth selection credentialGeneration must be a positive integer')
         }
-        return { kind, managedAccountId, groupScope, credentialGeneration: Number(credentialGeneration) }
+        // The server-signed proof; verified, matched and consumed by the daemon, never persisted.
+        const bindingGrant = (value as { bindingGrant?: unknown }).bindingGrant
+        if (typeof bindingGrant !== 'string' || bindingGrant.length > 4096 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(bindingGrant)) {
+            throw new Error('AI auth selection claude-setup-token requires a bindingGrant')
+        }
+        return { kind, managedAccountId, groupScope, credentialGeneration: Number(credentialGeneration), bindingGrant }
     }
     return { kind: kind as 'machine-personal' | 'org-bundle' }
 }

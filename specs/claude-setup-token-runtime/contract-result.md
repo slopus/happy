@@ -20,9 +20,10 @@ nor revoke a slot it did not install, even for the same managed ID (tested).
 ## Capability (`ai-credential:capabilities`, now async, additive)
 
 `cswap token-runtime capabilities` must return `{version:1, artifact:'saycode-setup-token-runtime-v1', managedAccountMetadata:true}`.
-Only then does the daemon add `setupTokenVersion:1` and `setupTokenStatusVersion:1`. `newSessionProfileBinding` is **always `false`** for now, and
-`setupTokenSessionBindingVersion` is not advertised (see the binding section). Numeric versions are not evidence. (The server proposed
-`claudeSetupTokenVersion`, and Happy uses `setupTokenVersion`. One name must be agreed.)
+Only then does the daemon add `setupTokenVersion:1` and `setupTokenStatusVersion:1`.
+`newSessionProfileBinding:true` and `setupTokenSessionBindingVersion:1` are added only when the marked runtime is present, the daemon has
+`HAPPY_APLUS_STUDIO_ORIGIN`, **and** the Studio public key at that origin can be fetched and checked. Otherwise the daemon reports `newSessionProfileBinding:false`.
+Numeric versions are not evidence. (The server proposed `claudeSetupTokenVersion`, and Happy uses `setupTokenVersion`. One name must be agreed.)
 
 On an unmarked, failing or missing cswap, a managed payload fails with `CLAUDE_SETUP_TOKEN_UNSUPPORTED` before the journal snapshot and before
 `ensureClaudeSwap`. Nothing is installed or written. `ensureClaudeSwap` never downgrades an installed build ≥ 0.25.0.
@@ -50,37 +51,68 @@ usageState:'fresh'|'unavailable', usageReason}]}`. It is present only when manag
 `reloginRequiredAccountCount`. An active managed slot reports `activeAccountStatus:'unknown'`. Probe observations
 (`cswap token-runtime status`) are not merged here yet.
 
-## New-session binding (spawn + resume) — implemented, NOT advertised
+## New-session binding (spawn + resume)
 
-Selection DTO (`spawn-happy-session.aiAuthSelection`):
-`{ kind:'claude-setup-token', managedAccountId:<lowercase uuid>, groupScope:<the group-sync scope, i.e. the company scope string>, credentialGeneration?:<int ≥1> }`.
-Older daemons reject the kind. Ownership is checked against the daemon journal, not the renderer. The `groupScope` entry must exist, be
-reconciled, list `sha256(['claude-setup-token', id])` in `desired`, and have `userId` equal to the caller. Personal, other-company,
-other-user, pending and revoked slots fail. The caller is the `userId` from the consumed MCP caller grant (`mcpCallerGrantCaller`), never from
-the selection. No grant → fail. The slot must also be enabled in `cswap list`, and `cswap export` must hold `credentialType:setup_token`, the same ID,
-an integer generation and an `sk-ant-oat01-` token. If `credentialGeneration` is given, it must match exactly (`CLAUDE_SETUP_TOKEN_BINDING_STALE`).
+### Selection DTO (`spawn-happy-session.aiAuthSelection`)
 
-The child env is `CLAUDE_CODE_OAUTH_TOKEN`, `HAPPY_AI_AUTH_SOURCE=org-bundle`, every other Claude auth override set to `''`
-(which also overwrites tmux-server values), and the secret-free record
-`HAPPY_AI_AUTH_SETUP_TOKEN_BINDING={version:1, managedAccountId, credentialGeneration, groupScope, userId}`. That record uses the `HAPPY_AI_AUTH_`
-prefix, so it is scrubbed from inherited and requested envs and is daemon-written only. Inherited and requested auth overrides are stripped, and the model
-choice is kept. `verifyAiAuthSelection` requires `org-bundle` in the final env on both the plain and the tmux path.
+`{ kind:'claude-setup-token', managedAccountId:<lowercase uuid>, groupScope:<group-sync scope id>, credentialGeneration:<int ≥1, exact>, bindingGrant:<envelope> }`.
+All fields are required. Older daemons reject the kind. The renderer supplies the envelope only. Key, origin, user, company and machine never come from it.
 
-Resume and restart: `captureSaycodeAgentEnvironment` keeps the validated record in the tracked session's `agentEnvironment`, which
-`sessions.json` persists and `hydrateTrackedSessionFromPersisted` restores. Resume calls
-`readSetupTokenResumeSelection(tracked.agentEnvironment)`: the recorded ID, generation and scope, with the recorded `userId` as caller. That is re-checked
-against the journal and storage. A replaced generation → `CLAUDE_SETUP_TOKEN_BINDING_STALE`; revoked or removed → `…_UNAVAILABLE`; a corrupt
-record → resume refused. Never the machine default. A session without a record resumes as before. Binding never runs `cswap switch`.
+### Binding grant — what Studio must mint (Astra)
+
+Reuse the collector Ed25519 signer key, with its own type and audience:
+`bindingGrant = base64url(JSON claims) + "." + base64url(Ed25519(signature over the first part))`, ≤ 4096 chars.
+Claims are **exactly** these 13 keys (any extra or missing key is rejected):
+
+| claim | value |
+|---|---|
+| `v` | `1` |
+| `type` | `'claude-setup-token-binding-v1'` |
+| `aud` | `'claude-setup-token-binding-v1@' + <Studio public origin>` (this must equal the daemon's `HAPPY_APLUS_STUDIO_ORIGIN` origin) |
+| `keyId` | sha256 hex of the SPKI DER of the signing public key |
+| `companyId`, `groupScope`, `userId`, `machineId` | `[A-Za-z0-9_-]{1,128}`. `userId` = the Studio `auth.userId` that group-sync used. `groupScope` = the scope string sent in `ai-credential:group-sync`. `machineId` = the **Happy machine id** of the target daemon |
+| `managedAccountId` | lowercase UUID |
+| `credentialGeneration` | the current generation of that account (positive int) |
+| `nonce` | a fresh random UUID per grant |
+| `issuedAt`, `expiresAt` | ms epoch; `0 < expiresAt − issuedAt ≤ 300000` |
+
+Before minting, the server should authorize that the caller holds this account through an AI user group assignment in that company, and that the
+machine is the caller's. No probe opt-in or budget debit is involved.
+
+Public key: the daemon fetches `GET <origin>/api/claude-collector/public-key` (no redirects, 10 s, ≤ 16 KiB). It requires `version:1`, `algorithm:'Ed25519'`,
+and `keyId == sha256(SPKI)`. It ignores the response's collector `type` and `audience` and computes the binding audience itself. The key is cached for 5 minutes and
+refetched once when a grant names a different `keyId` (rotation).
+
+### Daemon checks, new spawn (all must pass)
+
+1. Signature, all claims, type, audience, keyId, `machineId == this daemon`, and TTL (60 s skew on `issuedAt`).
+2. `managedAccountId/groupScope/credentialGeneration` in the claims equal the selection.
+3. The journal entry for `groupScope` is reconciled, lists the account as installed by that scope, and its `userId == claims.userId`.
+4. The cswap slot is enabled, holds managed metadata for that ID and a setup-token, and has **exactly** that generation (`…_STALE` otherwise).
+5. The nonce is consumed one-use in `~/.happy/setup-token-binding-nonces.json` (durable across restarts; `…_REPLAYED`).
+
+Failures: `CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE | _STALE | _REPLAYED | CLAUDE_SETUP_TOKEN_UNSUPPORTED`, surfaced as "Failed to spawn session: …". There is no substitute credential.
+
+### Child env and resume
+
+The child env is `CLAUDE_CODE_OAUTH_TOKEN`, `HAPPY_AI_AUTH_SOURCE=org-bundle`, every other Claude auth override set to `''` (this overwrites tmux-server values),
+and the record `HAPPY_AI_AUTH_SETUP_TOKEN_BINDING = {version:1, managedAccountId, credentialGeneration, groupScope, companyId, userId, machineId,
+keyId, nonce, issuedAt}`. The record holds the signed facts only, with **no token and no grant**. It is daemon-written: the `HAPPY_AI_AUTH_` prefix is scrubbed
+from inherited and requested envs. `verifyAiAuthSelection` requires `org-bundle` in the final env on both the plain and the tmux path.
+
+`captureSaycodeAgentEnvironment` keeps only a valid record. `sessions.json` persists it, and `hydrateTrackedSessionFromPersisted` restores it after a
+daemon restart. A resume uses `readSetupTokenResumeSelection(tracked.agentEnvironment)`. It needs no grant, but it re-checks steps 3–4 with the
+recorded `userId` and generation. A replaced generation gives `…_STALE`; a revoked assignment, another owner or a removed slot gives `…_UNAVAILABLE`; a corrupt record
+refuses the resume. The machine default is never used. Binding never runs `cswap switch`.
 
 ## Remaining scope / limitations
 
-- **Why binding is not advertised:** the caller `userId` comes from the MCP grant envelope. The daemon checks that it is encrypted to this machine,
-  bound to the project, not expired and not replayed, but only the server verifies its HMAC. Flipping `newSessionProfileBinding` needs a decision: accept
-  that claim (Desktop already mints grants per caller), or have the server add a daemon-verifiable caller/company proof. It also needs Desktop to send the
-  selection.
-- Journal `userId` vs grant `userId` are assumed to be the same Studio user ID. This must be confirmed with the Desktop group-sync writer.
+- Deployment requirement: the Studio signing key (`CLAUDE_COLLECTOR_SIGNING_KEY` and `APLUS_PUBLIC_BASE_URL`) and the daemon's `HAPPY_APLUS_STUDIO_ORIGIN`
+  must name the same public origin. Without them, binding stays unadvertised and refused. Tests use synthetic keys only, and no operating key was changed.
+- Astra's mint route and the Desktop selection sender are not in this change. The claim table above is the contract they must match.
 - Not checked against a real Claude CLI: that `CLAUDE_CODE_OAUTH_TOKEN` authenticates a setup-token, and that empty-string overrides
   (e.g. `ANTHROPIC_BASE_URL=''`) count as unset. The token is visible to the child's tool subprocesses (same as the Z.AI lease). `cswap run` profile
   isolation is a separate, unproven mechanism and is not used.
+- The nonce ledger keeps at most 4096 unexpired nonces. When it is full, binding is refused until entries expire.
 - No real marked cswap artifact was run (it would touch the macOS Keychain). The fakes mirror provider `transfer.py`/`token_runtime.py`.
-- No probe transport, consent, collect or org-collector calls are made by Happy. The status adapter only reads `token-runtime status`.
+- Happy makes no probe transport, consent, collect or org-collector calls. The status adapter only reads `token-runtime status`.

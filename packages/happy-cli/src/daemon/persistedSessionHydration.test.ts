@@ -72,7 +72,7 @@ describe('hydrateTrackedSessionFromPersisted', () => {
   });
 
   it('shouldRestoreAnImmutableSetupTokenBindingAcrossDaemonRestarts', () => {
-    const binding = JSON.stringify({ version: 1, managedAccountId: '0b6f2c1e-1111-4a2b-8c3d-000000000001', credentialGeneration: 3, groupScope: 'company-1', userId: 'user-1' });
+    const binding = JSON.stringify({ version: 1, managedAccountId: '0b6f2c1e-1111-4a2b-8c3d-000000000001', credentialGeneration: 3, groupScope: 'company-1', companyId: 'company-1', userId: 'user-1', machineId: 'machine-1', keyId: 'a'.repeat(64), nonce: '6a1f7d3e-2222-4b2b-8c3d-000000000009', issuedAt: 1_800_000_000_000 });
     expect(hydrateTrackedSessionFromPersisted(persisted({ agentEnvironment: { HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding } as never })).agentEnvironment)
       .toEqual({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding });
   });

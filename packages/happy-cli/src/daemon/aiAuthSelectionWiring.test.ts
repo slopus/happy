@@ -57,10 +57,13 @@ describe('배선 가드: spawn 이 선택을 존중하고 검증하는가', () =
     const text = await runSource()
     // Resume re-binds exactly the session's own recorded setup-token, never the machine default.
     expect(text).toMatch(/const resumeBinding = readSetupTokenResumeSelection\(tracked\.agentEnvironment\);/)
-    expect(text).toMatch(/await resolveManagedAiCredentialEnvironment\(\s*resumeAgent,\s*resumeBinding\?\.selection,\s*resumeBinding\?\.caller,?\s*\)/)
-    // A new spawn names its caller from the consumed MCP grant, never from the selection itself.
-    expect(text).toMatch(/resolveManagedAiCredentialEnvironment\(options\.agent, options\.aiAuthSelection, mcpCallerGrantCaller\(mcpCallerGrant\)\)/)
-    expect(text).toMatch(/aiCredentialRuntime\.sessionEnvironment\(agent, selection, caller\)/)
+    expect(text).toMatch(/await resolveManagedAiCredentialEnvironment\(\s*resumeAgent,\s*resumeBinding\?\.selection,\s*resumeBinding\?\.binding,?\s*\)/)
+    // A new spawn carries only the selection; the caller comes from the signed grant inside it.
+    expect(text).toMatch(/await resolveManagedAiCredentialEnvironment\(options\.agent, options\.aiAuthSelection\)/)
+    expect(text).toMatch(/aiCredentialRuntime\.sessionEnvironment\(agent, selection, recorded\)/)
+    // The verifier exists only with the daemon's own trusted origin and this machine's id.
+    expect(text).toMatch(/readTrustedStudioOrigin\(process\.env\)/)
+    expect(text).toMatch(/createSetupTokenBindingVerifier\(\{ origin: trustedStudioOrigin, machineId \}\)/)
   })
 
   it('두 spawn 경로가 자식에게 건네는 바로 그 env 를 검증한다', async () => {
