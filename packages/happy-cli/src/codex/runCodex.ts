@@ -2202,14 +2202,6 @@ export async function runCodex(opts: {
                         controller: lessonReviewAbort, acceptingSteer: false, pendingSteer: false,
                     };
                     activeLessonTurn = lessonFrame;
-                    const memoryRecall = recallHost
-                        ? await recallHost.recall({
-                            threadId: activeThreadId,
-                            prompt: message.message,
-                            resumed: recallResumedThread,
-                            signal: owningForegroundSignal,
-                        })
-                        : null;
                     const lessonRecall = lessonTurn
                         ? await measure('lesson-recall', () => lessonTurn.recall({
                             turnId: codexTurnId,
@@ -2221,6 +2213,29 @@ export async function runCodex(opts: {
                         ? await measure('lesson-proposal', () => lessonProposalTurn.prepare(codexTurnId!, () => lessonReview.prepareReviewTurn!())) : '';
                     if (owningForegroundSignal.aborted) { lessonProposalTurn.cancel(); continue; }
                     if (owningReviewSignal.aborted) { lessonProposalTurn.cancel(); reviewInstruction = ''; }
+                    // Resolve the channel permit before running stateful event-memory hooks.
+                    // Requests rejected here must not advance adherence or record recall.
+                    if (message.channelRequestId !== undefined
+                        && !await channelAcceptance.prepareExecution(message.channelRequestId)) {
+                        codexPendingRequestId = null;
+                        lessonProposalTurn.cancel();
+                        continue;
+                    }
+                    // Approval awaited: foreground cancellation must be checked again before
+                    // running the host worker.
+                    if (owningForegroundSignal.aborted) { lessonProposalTurn.cancel(); continue; }
+                    const memoryRecall = recallHost
+                        ? await recallHost.recall({
+                            threadId: activeThreadId,
+                            prompt: message.message,
+                            resumed: recallResumedThread,
+                            signal: owningForegroundSignal,
+                        })
+                        : null;
+                    // A dispatched host worker can still be aborted. Do not send the provider
+                    // a cancelled turn or consume its pending startup context in that case.
+                    if (owningForegroundSignal.aborted) { lessonProposalTurn.cancel(); continue; }
+                    if (owningReviewSignal.aborted) { lessonProposalTurn.cancel(); reviewInstruction = ''; }
                     const turnPrompt = (reviewInstruction ? `${reviewInstruction}\n\n` : '') + buildCodexTurnPrompt({
                         message: message.message,
                         mode: message.mode,
@@ -2229,12 +2244,10 @@ export async function runCodex(opts: {
                         ...(lessonRecall?.outcome === 'selected' ? { lessonBlock: lessonRecall.block } : {}),
                         ...(memoryRecall?.reason === 'context_returned' ? { memoryBlock: buildCodexMemoryReferenceBlock(memoryRecall.context) } : {}),
                     });
-
-                    // Prepared images/thread/checkpoint may have awaited since dequeue. Cancellation
-                    // must still win here; once this synchronous boundary is crossed the turn runs.
+                    // The worker awaited after the permit was granted. Keep consumption at
+                    // the synchronous dispatch boundary so channel cancellation still wins.
                     if (message.channelRequestId !== undefined
-                        && (!await channelAcceptance.prepareExecution(message.channelRequestId)
-                        || !channelAcceptance.beginExecution(message.channelRequestId))) {
+                        && !channelAcceptance.beginExecution(message.channelRequestId)) {
                         codexPendingRequestId = null;
                         lessonProposalTurn.cancel();
                         continue;
