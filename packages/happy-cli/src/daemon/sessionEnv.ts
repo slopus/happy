@@ -206,6 +206,10 @@ export function stripManagedCredentialConflicts(
         delete effectiveRequested.ANTHROPIC_MODEL
         delete effectiveRequested.ANTHROPIC_SMALL_FAST_MODEL
     }
+    // A bound setup-token session spends only that token; the model choice stays the user's.
+    if (managed.CLAUDE_CODE_OAUTH_TOKEN) {
+        for (const key of CLAUDE_AUTH_OVERRIDE_ENV_KEYS) delete effectiveRequested[key]
+    }
     return effectiveRequested
 }
 
@@ -355,11 +359,18 @@ export function applyConfirmedPromptDeliveryFlag(
  * machine would have used anyway, which is the outcome the person was trying
  * to avoid by choosing.
  */
-export const AI_AUTH_SELECTION_KINDS = ['machine-personal', 'org-bundle'] as const
+export const AI_AUTH_SELECTION_KINDS = ['machine-personal', 'org-bundle', 'claude-setup-token'] as const
 
 export type AiAuthSelectionKind = (typeof AI_AUTH_SELECTION_KINDS)[number]
 
-export type AiAuthSelection = { kind: AiAuthSelectionKind }
+/**
+ * `claude-setup-token` pins one new Claude session to an organisation-managed
+ * setup-token slot. Older daemons reject the kind, so a client gates it on
+ * `ai-credential:capabilities.newSessionProfileBinding`.
+ */
+export type AiAuthSelection =
+    | { kind: 'machine-personal' | 'org-bundle' }
+    | { kind: 'claude-setup-token'; managedAccountId: string }
 
 /**
  * Advertised in `MachineMetadataSchema` so a client can tell this daemon
@@ -382,7 +393,15 @@ export function parseAiAuthSelection(value: unknown): AiAuthSelection | undefine
             `AI auth selection kind must be one of: ${AI_AUTH_SELECTION_KINDS.join(', ')}`,
         )
     }
-    return { kind: kind as AiAuthSelectionKind }
+    if (kind === 'claude-setup-token') {
+        const managedAccountId = (value as { managedAccountId?: unknown }).managedAccountId
+        if (typeof managedAccountId !== 'string'
+            || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(managedAccountId)) {
+            throw new Error('AI auth selection claude-setup-token requires a managedAccountId')
+        }
+        return { kind, managedAccountId }
+    }
+    return { kind: kind as 'machine-personal' | 'org-bundle' }
 }
 
 /**
@@ -457,5 +476,5 @@ export function verifyAiAuthSelection(
 
 /** The applied source that would prove a selection was honoured. */
 function selectionAppliedSource(kind: AiAuthSelectionKind): AiAuthSource {
-    return kind === 'org-bundle' ? 'org-bundle' : 'personal-subscription'
+    return kind === 'org-bundle' || kind === 'claude-setup-token' ? 'org-bundle' : 'personal-subscription'
 }

@@ -538,8 +538,32 @@ describe('parseAiAuthSelection', () => {
         expect(parseAiAuthSelection(undefined)).toBeUndefined()
     })
 
-    it.each(AI_AUTH_SELECTION_KINDS)('닫힌 집합의 %s 를 받는다', (kind) => {
+    it.each(AI_AUTH_SELECTION_KINDS.filter((kind) => kind !== 'claude-setup-token'))('닫힌 집합의 %s 를 받는다', (kind) => {
         expect(parseAiAuthSelection({ kind })).toEqual({ kind })
+    })
+
+    it('claude-setup-token 은 managedAccountId 와 함께만 받는다', () => {
+        const managedAccountId = '0b6f2c1e-1111-4a2b-8c3d-000000000001'
+        expect(parseAiAuthSelection({ kind: 'claude-setup-token', managedAccountId, extra: 1 }))
+            .toEqual({ kind: 'claude-setup-token', managedAccountId })
+        for (const bad of [undefined, '', 'not-a-uuid', managedAccountId.toUpperCase()]) {
+            expect(() => parseAiAuthSelection({ kind: 'claude-setup-token', managedAccountId: bad })).toThrow(/managedAccountId/)
+        }
+    })
+
+    it('claude-setup-token 은 daemon 이 org-bundle 로 적용했다고 증명할 때만 통과한다', () => {
+        const selection = { kind: 'claude-setup-token' as const, managedAccountId: '0b6f2c1e-1111-4a2b-8c3d-000000000001' }
+        expect(verifyAiAuthSelection(selection, { HAPPY_AI_AUTH_SOURCE: 'org-bundle' }).rejection).toBeUndefined()
+        expect(verifyAiAuthSelection(selection, {}).rejection).toMatch(/claude-setup-token/)
+    })
+
+    it('setup-token 결합은 상속·요청된 Claude 인증 override 를 지우고 모델 선택은 남긴다', () => {
+        const env = buildManagedSessionSpawnEnvironment(
+            { ANTHROPIC_API_KEY: 'inherited', ANTHROPIC_MODEL: 'opus' },
+            { ANTHROPIC_BASE_URL: 'https://example.invalid', CLAUDE_CODE_USE_BEDROCK: '1' },
+            { CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-FAKE' },
+        )
+        expect(env).toEqual({ ANTHROPIC_MODEL: 'opus', CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-FAKE' })
     })
 
     it.each([

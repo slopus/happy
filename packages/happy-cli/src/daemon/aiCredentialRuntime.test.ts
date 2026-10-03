@@ -2277,7 +2277,7 @@ describe('AI credential machine runtime', () => {
         return { stdout: 'Python 3.12.13', stderr: '' }
       }
       if (command === 'cswap' && args[0] === '--version') {
-        return { stdout: 'cswap 0.26.0', stderr: '' }
+        return { stdout: 'cswap 0.24.0', stderr: '' }
       }
       if (command === 'cswap' && args[0] === 'list') {
         return { stdout: configuredClaudeList, stderr: '' }
@@ -2295,6 +2295,15 @@ describe('AI credential machine runtime', () => {
     expect(execFile).toHaveBeenCalledWith('uv', [
       'tool', 'install', 'claude-swap==0.25.0', '--python', physical, '--force',
     ], expect.anything())
+  })
+
+  it.each(['cswap 0.25.0', 'cswap 0.26.0', 'claude-swap 0.27.0b1'])('keeps installed %s instead of downgrading to the pin', async version => {
+    const base = setup().execFile
+    const execFile = vi.fn(async (command: string, args: string[], options?: object) => (
+      command === 'cswap' && args[0] === '--version' ? { stdout: version, stderr: '' } : base(command, args, options)))
+    const { runtime } = setup({ execFile })
+    await runtime.apply({ provider: 'claude', payload: '{}' })
+    expect(execFile.mock.calls.some(([command, args]) => command === 'uv' && args[0] === 'tool')).toBe(false)
   })
 
   it('keeps the uv Python failure when no physical Python 3.12+ installation runs', async () => {

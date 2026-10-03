@@ -87,6 +87,7 @@ import {
   SESSION_LINEAGE_ENV_PREFIXES,
   stripManagedCredentialConflicts,
   verifyAiAuthSelection,
+  type AiAuthSelection,
 } from './sessionEnv';
 import type { AiAuthSource } from '@/usage/aiAuthSource';
 import { detectCLIAvailability } from '@/utils/detectCLI';
@@ -1693,6 +1694,7 @@ export async function startDaemon(): Promise<void> {
 
     let resolveManagedAiCredentialEnvironment = async (
       _agent: string | undefined,
+      _selection?: AiAuthSelection,
     ): Promise<Record<string, string>> => ({});
 
     const launchReadiness = createLaunchReadinessGate();
@@ -1913,7 +1915,7 @@ export async function startDaemon(): Promise<void> {
         // 해석해 두면 overlayManagedCredentialEnvironment 가 마지막에 덮어 항상
         // 이긴다 — 그래서 해석 자체를 하지 않는다.
         const managedAiCredentialEnvironment = honorsManagedAiCredentials(options.aiAuthSelection)
-          ? await resolveManagedAiCredentialEnvironment(options.agent)
+          ? await resolveManagedAiCredentialEnvironment(options.agent, options.aiAuthSelection)
           : {};
         let extraEnv: Record<string, string> = injectMcpCallerGrant(
           stripManagedCredentialConflicts(
@@ -4161,7 +4163,7 @@ export async function startDaemon(): Promise<void> {
     stopClaudeSwapSupervisor = () => claudeSwapSupervisor.shutdown();
     if (!standaloneWindows) await claudeSwapSupervisor.restore();
     const aiCredentialRuntime = createNodeAiCredentialRuntime(claudeSwapSupervisor);
-    resolveManagedAiCredentialEnvironment = (agent) => aiCredentialRuntime.sessionEnvironment(agent);
+    resolveManagedAiCredentialEnvironment = (agent, selection) => aiCredentialRuntime.sessionEnvironment(agent, selection);
     let activeServerAutomationLeaseCount = 0;
     let scriptWorker: ReturnType<typeof createScriptAutomationWorker> | null = null;
     if (!standaloneWindows && shouldRunScriptAutomations({

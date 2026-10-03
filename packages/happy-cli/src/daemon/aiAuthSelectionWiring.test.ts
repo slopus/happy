@@ -53,6 +53,13 @@ describe('배선 가드: spawn 이 선택을 존중하고 검증하는가', () =
     )
   })
 
+  it('새 spawn 만 선택을 관리 자격 해석에 넘기고 resume 은 넘기지 않는다', async () => {
+    const text = await runSource()
+    expect(text).toMatch(/await resolveManagedAiCredentialEnvironment\(options\.agent, options\.aiAuthSelection\)/)
+    expect(text).toMatch(/await resolveManagedAiCredentialEnvironment\(resumeAgent\)/)
+    expect(text).toMatch(/aiCredentialRuntime\.sessionEnvironment\(agent, selection\)/)
+  })
+
   it('두 spawn 경로가 자식에게 건네는 바로 그 env 를 검증한다', async () => {
     const text = await runSource()
     const checks = [...text.matchAll(/verifyAiAuthSelection\(options\.aiAuthSelection, (\w+)\)/g)]

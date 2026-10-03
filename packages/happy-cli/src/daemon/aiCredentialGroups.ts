@@ -8,7 +8,8 @@ export type CredentialGroupDeps = {
   read():Promise<string|null>; write(value:string):Promise<void>
   snapshot(provider:GroupProvider):Promise<string[]>
   incoming(provider:GroupProvider,payload:string):string[]
-  apply(provider:GroupProvider,payload:string):Promise<unknown>
+  /** `owned` are identities this scope installed earlier: the only slots it may replace. */
+  apply(provider:GroupProvider,payload:string,owned:string[]):Promise<unknown>
   remove(provider:GroupProvider,identities:string[]):Promise<void>
 }
 const fail=(code:string):never=>{throw new Error(code)}
@@ -55,7 +56,7 @@ export function createCredentialGroupSync(deps:CredentialGroupDeps) {
     journal.entries=journal.entries.filter(e=>!(e.scope===input.scope&&e.provider===input.provider))
     journal.entries.push(entry)
     await deps.write(JSON.stringify(journal))
-    if(input.payload!==null)await deps.apply(input.provider,input.payload)
+    if(input.payload!==null)await deps.apply(input.provider,input.payload,prior?.owned??[])
     const after=new Set(await deps.snapshot(input.provider))
     if(desired.some(identity=>!after.has(identity)))fail('AI_GROUP_INSTALL_INCOMPLETE')
     const related=journal.entries.filter(e=>e.provider===input.provider)

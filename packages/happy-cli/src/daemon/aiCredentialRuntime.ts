@@ -27,7 +27,13 @@ import {
   serializeAppliedClaudeProvenance,
   serializeInvalidatedClaudeProvenance,
 } from './aiCredentialProvenance'
-import { overlayManagedCredentialEnvironment } from './sessionEnv'
+import { overlayManagedCredentialEnvironment, type AiAuthSelection } from './sessionEnv'
+import { CLAUDE_AUTH_OVERRIDE_ENV_KEYS } from '@/claude/utils/claudeAuthOverrideEnv'
+import { HAPPY_AI_AUTH_SOURCE_ENV } from '@/usage/aiAuthSource'
+import {
+  cswapAtLeastPinned, isManagedSetupTokenAccount, managedSetupTokenEmail, managedSetupTokenId, parseCswapVersion, sameManagedSetupToken,
+  setupTokenGroupIdentity, setupTokenRuntimeStatus, supportsManagedSetupTokens,
+} from './claudeSetupToken'
 
 const MAX_PAYLOAD_BYTES = 1024 * 1024
 const CLAUDE_SWAP_VERSION = '0.25.0'
@@ -433,17 +439,15 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     return null
   }
 
+  async function installedClaudeSwapVersion(): Promise<string | null> {
+    try { return parseCswapVersion((await deps.execFile('cswap', ['--version'])).stdout) } catch { return null }
+  }
+
   async function ensureClaudeSwap(preserveSettings = false): Promise<void> {
     await deps.execFile('uv', ['--version'])
     const python = await claudeSwapPython()
-    let installed = false
-    try {
-      const version = await deps.execFile('cswap', ['--version'])
-      installed = /^(?:cswap|claude-swap) 0\.25\.0\s*$/.test(version.stdout)
-    } catch {
-      installed = false
-    }
-    if (!installed) {
+    // A newer installed build is kept: replacing it with the pin would be a silent downgrade.
+    if (!cswapAtLeastPinned(await installedClaudeSwapVersion())) {
       await deps.execFile('uv', [
         'tool', 'install', `claude-swap==${CLAUDE_SWAP_VERSION}`,
         '--python', python, '--force',
@@ -454,9 +458,20 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     await deps.execFile('cswap', ['config', 'set', 'autoswitch.strategy', 'consume-first'])
   }
 
-  async function applyClaudeAdditive(payload: string, knownCompanyIdentities: Set<string>) {
+  async function setupTokenRuntimeSupported(): Promise<boolean> {
+    try {
+      return supportsManagedSetupTokens((await deps.execFile('cswap', ['token-runtime', 'capabilities'], {
+        maxOutputBytes: 64 * 1024, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout)
+    } catch { return false }
+  }
+
+  async function applyClaudeAdditive(payload: string, knownCompanyIdentities: Set<string>, groupOwned: ReadonlySet<string> = new Set()) {
     const incoming = claudeImportedAccountIdentities(payload)
     if (!incoming) throw new AiCredentialRuntimeError('AI_CREDENTIAL_MERGE_UNSUPPORTED')
+    let managed: Array<Record<string, unknown> & { email: string }>
+    try { managed = JSON.parse(payload).accounts.filter(isManagedSetupTokenAccount) } catch { throw new AiCredentialRuntimeError('INVALID_PAYLOAD') }
+    // Unsupported or missing runtimes need action before anything installs or changes.
+    if (managed.length > 0 && !await setupTokenRuntimeSupported()) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
     await ensureClaudeSwap(true)
     const list = async () => parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
       maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
@@ -479,8 +494,9 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     const envelope = JSON.parse(payload)
     let repairRequestedAccountCount = 0
     const repairedIdentities = new Set<string>()
+    // Managed setup-token slots are replaced by generation below; they never take the inference repair path.
     const duplicates: Array<Record<string, unknown> & { email: string }> = envelope.accounts.filter((account: { email: string }) =>
-      before.accounts.some(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account) && local.disabled !== true))
+      managedSetupTokenId(account.email) === null && before.accounts.some(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account) && local.disabled !== true))
     if (duplicates.length > 0) {
       const exported = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
       if (exported.version !== 1 || exported.encrypted === true || !Array.isArray(exported.accounts)) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
@@ -538,7 +554,55 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         await deps.rm(tempDir, { recursive: true, force: true })
       }
     }
+    // cswap storage is authoritative for managed metadata. A managed slot is replaced only
+    // when this deployment proves it owns the slot; a personal import of the same synthetic
+    // email is a conflict, never a silent takeover. --force drops `disabled`, so restore it.
+    const exportedAccounts = async () => {
+      const exported = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
+      if (exported.version !== 1 || exported.encrypted === true || !Array.isArray(exported.accounts)) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      return exported.accounts as Array<Record<string, unknown>>
+    }
+    const owns = (account: Record<string, unknown> & { email: string }) => groupOwned.has(setupTokenGroupIdentity(account.managedAccountId as string))
+      || [...knownCompanyIdentities].some(identity => JSON.parse(identity)[0] === account.email)
+    const managedExisting = managed.filter(account => existing.has(claudeListAccountIdentity(account)))
+    if (managedExisting.length > 0) {
+      const local = await exportedAccounts()
+      const changed = managedExisting.filter(account => !sameManagedSetupToken(local.find(slot => slot.email === account.email), account))
+      for (const account of changed) {
+        const stored = local.find(slot => slot.email === account.email)
+        if (!owns(account) || !stored || stored.managedAccountId !== account.managedAccountId) throw new AiCredentialRuntimeError('AI_GROUP_CREDENTIAL_CONFLICT')
+        const storedGeneration = Number(stored.credentialGeneration)
+        if (storedGeneration > Number(account.credentialGeneration)) throw new AiCredentialRuntimeError('AI_GROUP_GENERATION_STALE')
+        if (storedGeneration === account.credentialGeneration) throw new AiCredentialRuntimeError('AI_GROUP_GENERATION_CONFLICT')
+      }
+      if (changed.length > 0) {
+        const tempDir = await deps.makeTempDir()
+        const file = join(tempDir, 'claude-swap.json')
+        try {
+          await deps.writeFile(file, JSON.stringify({ ...envelope, accounts: changed }), { mode: 0o600 })
+          await deps.chmod(file, 0o600)
+          await deps.execFile('cswap', ['import', file, '--force'])
+        } finally {
+          await deps.rm(tempDir, { recursive: true, force: true })
+        }
+        const current = await list()
+        for (const account of changed) {
+          const prior = before.accounts.find(slot => claudeListAccountIdentity(slot) === claudeListAccountIdentity(account))
+          if (prior?.disabled === true && current.accounts.find(slot => slot.number === prior.number)?.disabled !== true) {
+            await deps.execFile('cswap', ['disable', String(prior.number)], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })
+          }
+        }
+      }
+      for (const account of managedExisting.filter(owns)) knownCompanyIdentities.add(JSON.stringify([account.email, '', '']))
+    }
     let after = await list()
+    if (managed.length > 0) {
+      // Presence is not enough: ID, generation, label and credential must all be this payload's.
+      const local = await exportedAccounts()
+      if (managed.some(account => !sameManagedSetupToken(local.find(slot => slot.email === account.email), account))) {
+        throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      }
+    }
     // Only newly imported slots are proven organizational material. Matching
     // personal credentials were deliberately not overwritten by this import.
     const sharedAccounts = (details: ClaudeListDetails) => details.accounts.filter(account => incoming.has(claudeListAccountIdentity(account)) && (!existing.has(claudeListAccountIdentity(account)) || knownCompanyIdentities.has(JSON.stringify([account.email, account.organizationUuid ?? '', account.organizationName ?? '']))))
@@ -557,13 +621,17 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       // "configured" while Claude Code stays signed out (a fresh Windows PC, 2026-10-02).
       const imported = sharedAccounts(after)
       try {
-        const target = after.activeAccountNumber !== null && (after.activeUsable || after.activeCredentialKind === 'api_key')
+        // A stored setup-token is activatable without readable usage; its usage scope is a separate state.
+        const setupToken = (details: ClaudeListDetails) => details.accounts.find(account => account.number === details.activeAccountNumber
+          && account.disabled !== true && managed.some(incomingAccount => incomingAccount.email === account.email))
+        const target = after.activeAccountNumber !== null && (after.activeUsable || after.activeCredentialKind === 'api_key' || setupToken(after))
           ? after.activeAccountNumber
-          : after.usableAccountNumber
+          : after.usableAccountNumber ?? after.accounts.find(account => account.disabled !== true
+            && managed.some(incomingAccount => incomingAccount.email === account.email))?.number ?? null
         if (target === null) throw new AiCredentialRuntimeError(claudeNoUsableAccountKind(after))
         await deps.execFile('cswap', ['switch', String(target), '--force', '--json'], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })
         after = await list()
-        if (!after.activeUsable && after.activeCredentialKind !== 'api_key') throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+        if (!after.activeUsable && after.activeCredentialKind !== 'api_key' && !setupToken(after)) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
       } catch (error) {
         // The imported slots stay on the machine, so a failed activation must not leave them unattributed.
         throw new ClaudeActivationError(error instanceof AiCredentialRuntimeError ? error.kind : 'CLAUDE_APPLY_FAILED', imported)
@@ -1437,15 +1505,20 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     read: async () => { try { return await deps.readFile(groupJournalPath) } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error } },
     write: async content => { await deps.mkdir(join(deps.homeDir, '.happy'), { recursive: true, mode: 0o700 }); await deps.chmod(join(deps.homeDir, '.happy'), 0o700); await writeAtomicFile(deps, groupJournalPath, content) },
     snapshot: groupAdapters.snapshot, incoming: groupPayloadIdentities, remove: groupAdapters.remove,
-    apply: async (selected, payload) => {
+    apply: async (selected, payload, owned) => {
       const marker = await readTrialMarker()
       if (marker.leases[selected] || (selected === 'claude' && marker.leases.zai)) throw new AiCredentialRuntimeError('AI_CREDENTIAL_MERGE_UNSUPPORTED')
-      if (selected === 'claude') return applyClaudeAdditive(payload, new Set())
+      if (selected === 'claude') return applyClaudeAdditive(payload, new Set(), new Set(owned))
       return applyCodex(payload, 'merge')
     },
   })
   async function groupSync(input: CredentialGroupRequest) {
-    return serialize(() => withSafeErrors('AI_GROUP_SYNC_FAILED', () => groups.sync(input)))
+    return serialize(() => withSafeErrors('AI_GROUP_SYNC_FAILED', async () => {
+      // The journal snapshots cswap before applying, so the runtime gate must come first.
+      if (input?.provider === 'claude' && typeof input.payload === 'string' && containsManagedSetupTokens(input.payload)
+        && !await setupTokenRuntimeSupported()) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
+      return groups.sync(input)
+    }))
   }
 
   async function purgeManagedProvider(selected: AiCredentialProvider): Promise<void> {
@@ -1705,7 +1778,31 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     }))
   }
 
-  async function sessionEnvironment(agent: string | undefined): Promise<Record<string, string>> {
+  /**
+   * Binds one new Claude spawn to a managed setup-token slot. The token reaches only
+   * that child's environment (as with a Z.AI lease); every other Claude auth override
+   * is written empty so neither inherited nor tmux-server values can win. Fails
+   * closed: no substitute credential is ever returned.
+   */
+  async function setupTokenSessionEnvironment(agent: string | undefined, managedAccountId: string) {
+    if (agent !== undefined && agent !== 'claude') throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+    return serialize(() => withSafeErrors('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE', async () => {
+      if (!await setupTokenRuntimeSupported()) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
+      const email = managedSetupTokenEmail(managedAccountId)
+      const listed = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
+        maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout).accounts.find(account => account.email === email)
+      const exported = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
+      const slot = Array.isArray(exported?.accounts) ? exported.accounts.find((account: Record<string, unknown>) => account?.email === email) : undefined
+      const token = slot?.credentials?.claudeAiOauth?.accessToken
+      if (!listed || listed.disabled === true || slot?.credentialType !== 'setup_token' || slot.managedAccountId !== managedAccountId
+        || typeof token !== 'string' || !token.startsWith('sk-ant-oat01-')) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      const cleared = Object.fromEntries(CLAUDE_AUTH_OVERRIDE_ENV_KEYS.map(key => [key, '']))
+      return { ...cleared, CLAUDE_CODE_OAUTH_TOKEN: token, [HAPPY_AI_AUTH_SOURCE_ENV]: 'org-bundle' }
+    }))
+  }
+
+  async function sessionEnvironment(agent: string | undefined, selection?: AiAuthSelection): Promise<Record<string, string>> {
+    if (selection?.kind === 'claude-setup-token') return setupTokenSessionEnvironment(agent, selection.managedAccountId)
     if (agent !== undefined && agent !== 'claude') return {}
     return serialize(async () => {
       const marker = await readTrialMarker()
@@ -1714,7 +1811,11 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
-  return { capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: () => ({ version: 1, groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'] }) }
+  return { capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: async () => { const setupToken = await setupTokenRuntimeSupported(); return { version: 1, groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
+    // Managed setup-token import with metadata verification, only on the marked cswap token runtime.
+    ...(setupToken ? { setupTokenVersion: 1, setupTokenStatusVersion: 1 } : {}),
+    // New spawns can be pinned with aiAuthSelection {kind:'claude-setup-token'} on the same runtime.
+    newSessionProfileBinding: setupToken, ...(setupToken ? { setupTokenSessionBindingVersion: 1 } : {}) } } }
 }
 
 type ClaudeListDetails = {
@@ -1741,6 +1842,10 @@ function claudeApiKeyTargetEmail(payload: string): string | null {
   } catch {
     return null
   }
+}
+
+function containsManagedSetupTokens(payload: string): boolean {
+  try { return JSON.parse(payload)?.accounts?.some((account: Record<string, unknown>) => account?.credentialType === 'setup_token') === true } catch { return false }
 }
 
 function claudeImportedAccountIdentities(payload: string): Set<string> | null {
@@ -1851,6 +1956,7 @@ function claudeAccountHealth(details: ClaudeListDetails) {
     : active.disabled === true ? 'disabled' as const
     : active.usageStatus === 'ok' ? 'usage-readable' as const
     : active.usageStatus === 'api_key' ? 'api-key' as const
+    : managedSetupTokenId(active.email) !== null ? 'unknown' as const
     : active.usageStatus === 'relogin_required' ? 'relogin-required' as const
     : 'unknown' as const
   return {
@@ -1858,17 +1964,21 @@ function claudeAccountHealth(details: ClaudeListDetails) {
     activeAccountStatus,
     usableAccountCount: details.accounts.filter(account => account.disabled !== true
       && (account.usageStatus === 'ok' || account.usageStatus === 'api_key')).length,
-    reloginRequiredAccountCount: details.accounts.filter(account => account.disabled !== true && account.usageStatus === 'relogin_required').length,
+    // A setup-token has no refresh token; cswap's relogin verdict is not an authentication result for it.
+    reloginRequiredAccountCount: details.accounts.filter(account => account.disabled !== true && account.usageStatus === 'relogin_required'
+      && managedSetupTokenId(account.email) === null).length,
   }
 }
 
 function parseClaudeList(stdout: string) {
   const details = parseClaudeListDetails(stdout)
   const { configured, activeAccount, activeCredentialKind } = details
+  const setupToken = setupTokenRuntimeStatus(details.accounts, details.activeAccountNumber)
   return {
     configured,
     activeAccount,
     ...claudeAccountHealth(details),
+    ...(setupToken.accounts.length > 0 ? { setupToken } : {}),
     ...(activeCredentialKind ? { credentialKind: activeCredentialKind } : {}),
   }
 }
