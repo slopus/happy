@@ -28,7 +28,8 @@ import {
   type ActivationGateFailure,
 } from '@/datakey/activation'
 import { describeMachineControl } from '@/datakey/machineControlStatus'
-import { runHarden } from '@/datakey/hardenTransition'
+import { hardenBlockingSessions, runHarden } from '@/datakey/hardenTransition'
+import { findAllHappyProcesses } from '@/daemon/doctor'
 import { pendingMachineKeyRotationFile } from '@/datakey/machineControlIo'
 
 const backupFile = () => join(configuration.happyHomeDir, 'access.key.legacy-backup')
@@ -200,6 +201,7 @@ async function handleHarden(): Promise<void> {
       const handle = await acquireDaemonLock(2, 0)
       return handle ? () => releaseDaemonLock(handle) : null
     },
+    liveSessions: async () => hardenBlockingSessions(await findAllHappyProcesses()),
     dropNeverEscrowed: async () => {
       const credentials = parseCredentials(await readRawJson(configuration.privateKeyFile))
       if (credentials?.encryption.type !== 'dataKey') return
@@ -214,6 +216,13 @@ async function handleHarden(): Promise<void> {
       await updateSettings((settings) => ({ ...settings, machineControl: 'strict' }))
     },
   })
+  if (!outcome.ok && outcome.reason === 'sessions-running') {
+    console.error(chalk.red('전환하지 않음: 실행 중인 happy 세션이 있습니다.'))
+    console.error(chalk.gray('세션은 daemon 을 멈춰도 남습니다. compat 때 시작한 세션은 strict 로 바꾼 뒤에도 compat 설정과, 서버가 읽을 수 있었던 세션 키로 계속 동작합니다.'))
+    for (const session of outcome.sessions) console.error(`  PID ${session.pid}  ${session.command.slice(0, 120)}`)
+    console.error(chalk.gray('세션을 모두 끝낸 뒤 다시 실행하세요. daemon 이 띄운 세션은 `happy doctor clean` 으로 정리할 수 있습니다.'))
+    process.exit(1)
+  }
   if (!outcome.ok) {
     const message = {
       'no-credentials': 'credentials(access.key)가 없거나 파싱할 수 없습니다. `happy auth login` 먼저 실행하세요.',
