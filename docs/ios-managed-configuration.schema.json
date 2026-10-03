@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Happy iOS managed app configuration",
+  "description": "Optional keys in com.apple.configuration.managed; applied at app restart. This documents the dictionary and is not an Intune schema import format.",
+  "type": "object",
+  "properties": {
+    "server_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "HTTPS relay origin, optionally with a port or trailing slash. No credentials, path, query or fragment. Overrides local server selection. Whitespace is trimmed by the app."
+    },
+    "analytics_enabled": {
+      "type": "boolean",
+      "description": "False disables PostHog initialization. True or omission respects user opt-out and build disable controls."
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "server_url": "https://happy.example.com",
+      "analytics_enabled": false
+    }
+  ]
+}

@@ -40,6 +40,7 @@ export const ja: TranslationStructure = {
     },
 
     common: {
+        managedByOrganization: "組織によって管理されています",
         // Simple string constants
         cancel: 'キャンセル',
         authenticate: '認証',

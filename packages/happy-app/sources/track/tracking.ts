@@ -1,7 +1,9 @@
 import { config } from '@/config';
 import PostHog from 'posthog-react-native';
+import { managedConfiguration } from '@/sync/managedConfiguration';
 
 const analyticsDisabled =
+    managedConfiguration.analyticsEnabled === false ||
     process.env.EXPO_PUBLIC_DISABLE_ANALYTICS === '1' ||
     process.env.EXPO_PUBLIC_DISABLE_ANALYTICS === 'true' ||
     (globalThis as any).__HAPPY_CONFIG__?.disableAnalytics === true;
