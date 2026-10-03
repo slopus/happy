@@ -180,6 +180,79 @@ describe('CodexAppServerClient sandbox integration', () => {
         }
     });
 
+    it('forwards ownership to native MCP at start, resume, fork, and reconnect with the resolved cwd', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, undefined, undefined, 'owner-choice', undefined, undefined, true);
+        const native = { alias: { command: 'claude-memory-layer-mcp', enabled: true, env: { KEEP: 'native' } } };
+        const runtime = { happy: { command: 'happy-mcp' } };
+        await client.connect();
+        const request = vi.spyOn(client as any, 'request').mockImplementation(async (method: any) => {
+            if (method === 'config/read') return { config: { mcp_servers: native } };
+            return { thread: { id: 'thread' }, model: 'test' };
+        });
+        try {
+            await client.startThread({ cwd: '/start', mcpServers: runtime });
+            await client.resumeThread({ cwd: '/resume' });
+            await client.forkThread({ threadId: 'thread' });
+            for (const cwd of ['/start', '/resume']) {
+                expect(request).toHaveBeenCalledWith('config/read', { cwd, includeLayers: false }, 3000);
+            }
+            for (const method of ['thread/start', 'thread/resume', 'thread/fork']) {
+                expect(request).toHaveBeenCalledWith(method, expect.objectContaining({ config: { mcp_servers: {
+                    ...runtime, alias: { ...native.alias, env: { KEEP: 'native', CLAUDE_MEMORY_RECALL_OWNER: 'host' } },
+                } } }));
+            }
+            await client.disconnect();
+            // Reconnect uses the real mocked transport for initialize, then the
+            // same config discovery path with fresh native configuration.
+            request.mockRestore();
+            await client.connect();
+            const reconnected = vi.spyOn(client as any, 'request').mockImplementation(async (method: any) => {
+                if (method === 'config/read') return { config: { mcp_servers: { renamed: native.alias } } };
+                return { thread: { id: 'thread' }, model: 'test' };
+            });
+            await client.resumeThread({ threadId: 'thread', cwd: '/resume', mcpServers: runtime });
+            expect(reconnected).toHaveBeenCalledWith('config/read', { cwd: '/resume', includeLayers: false }, 3000);
+            expect(reconnected).toHaveBeenCalledWith('thread/resume', expect.objectContaining({
+                config: { mcp_servers: { ...runtime, renamed: { ...native.alias, env: { KEEP: 'native', CLAUDE_MEMORY_RECALL_OWNER: 'host' } } } },
+            }));
+        } finally { await client.disconnect(); }
+        expect(native.alias.env).toEqual({ KEEP: 'native' });
+        expect(runtime).toEqual({ happy: { command: 'happy-mcp' } });
+    });
+
+    it.each([
+        [false, 'owner-choice', undefined],
+        [true, 'mandatory', undefined],
+        [true, 'owner-choice', ['-c', 'managed-provider']],
+    ] as const)('leaves native MCP configuration untouched for ineligible hosts', async (prepared, policy, managedArgs) => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, undefined, undefined, policy, managedArgs ? [...managedArgs] : undefined, undefined, prepared);
+        const request = vi.spyOn(client as any, 'request').mockResolvedValue({ thread: { id: 'thread' }, model: 'test' });
+        await client.startThread({ mcpServers: { memory: { command: 'claude-memory-layer-mcp' } } });
+        expect(request).not.toHaveBeenCalledWith('config/read', expect.anything(), expect.anything());
+        expect(request).toHaveBeenCalledWith('thread/start', expect.objectContaining({ config: { mcp_servers: {
+            memory: { command: 'claude-memory-layer-mcp' },
+        } } }));
+    });
+
+    it('preserves MCP and sandbox configuration if native config discovery fails without logging secrets', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const { logger } = await import('@/ui/logger');
+        const client = new CodexAppServerClient(undefined, undefined, undefined, 'owner-choice', undefined, undefined, true);
+        const runtime = { happy: { command: 'happy-mcp' } };
+        const request = vi.spyOn(client as any, 'request').mockImplementation(async (method: any) => {
+            if (method === 'config/read') throw new Error('private config response');
+            return { thread: { id: 'thread' }, model: 'test' };
+        });
+        await client.startThread({ mcpServers: runtime, writableRoots: ['/workspace'] });
+        expect(request).toHaveBeenCalledWith('thread/start', expect.objectContaining({ config: {
+            mcp_servers: runtime, sandbox_workspace_write: { writable_roots: ['/workspace'] },
+        } }));
+        expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining('direct memory reads may fail'));
+        expect(JSON.stringify(vi.mocked(logger.warn).mock.calls)).not.toContain('private config response');
+    });
+
     it('marks memory submission only after turn/start acceptance, preserving pending startup on preparation failure', async () => {
         const { CodexAppServerClient } = await import('./codexAppServerClient');
         const client = new CodexAppServerClient();

@@ -101,6 +101,7 @@
     "build": "shx rm -rf dist && tsc --noEmit && pkgroll && node scripts/copy-browser-extension.cjs",
     "test": "pnpm run build && vitest run --project unit",
     "test:integration": "pnpm run build && vitest run --project integration-empty --project integration-plan-mode --project integration-authenticated",
+    "test:integration:write-scope": "cross-env HAPPY_SCOPE_SERVER_INTEGRATION=1 vitest run --project integration-write-scope",
     "cli:install": "node scripts/install-local.cjs",
     "cli:install:isolated": "node scripts/install-isolated.cjs",
     "prepare:publish": "node scripts/prepare-publish-package.cjs",

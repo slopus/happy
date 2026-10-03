@@ -19,6 +19,7 @@ import { spawn as crossSpawn } from 'cross-spawn';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
 import { logger } from '@/ui/logger';
 import { withCodexRecallOwnership } from '@/memory/recallOwnerMarker';
+import { nativeCodexRecallOwnershipOverrides } from '@/memory/nativeCodexRecallOwnership';
 import { CodexBackgroundTasks, type CodexBackgroundTask } from './codexBackgroundTasks';
 import { readCodexOutput } from './codexOutputReader';
 import type {
@@ -1554,12 +1555,28 @@ export class CodexAppServerClient {
         return cleanup;
     }
 
-    private buildThreadConfig(
+    private async buildThreadConfig(
         mcpServers?: Record<string, unknown>,
         writableRoots?: readonly string[],
-    ): Record<string, unknown> | null {
+        cwd = process.cwd(),
+    ): Promise<Record<string, unknown> | null> {
         const config: Record<string, unknown> = {};
         if (mcpServers) config.mcp_servers = mcpServers;
+        if (this.recallHostPrepared && !this.managedProviderArgs && this.sandboxPolicyMode === 'owner-choice') {
+            let nativeServers: unknown;
+            try {
+                // MCP stdio children filter their environment. Mark the existing native
+                // CML entry explicitly rather than relying on app-server inheritance.
+                // Never log this response: native config can contain credentials.
+                const effective = await this.request('config/read', { cwd, includeLayers: false }, 3000) as {
+                    config?: { mcp_servers?: unknown };
+                };
+                nativeServers = effective.config?.mcp_servers;
+            } catch {
+                logger.warn('[CodexAppServer] Native memory MCP ownership configuration unavailable; direct memory reads may fail.');
+            }
+            Object.assign(config, nativeCodexRecallOwnershipOverrides(nativeServers, mcpServers));
+        }
         if (writableRoots?.length) {
             config.sandbox_workspace_write = { writable_roots: [...writableRoots] };
         }
@@ -1604,7 +1621,7 @@ export class CodexAppServerClient {
             cwd: opts.cwd ?? process.cwd(),
             approvalPolicy: opts.approvalPolicy ?? null,
             sandbox: opts.sandbox ?? null,
-            config: this.buildThreadConfig(opts.mcpServers, opts.writableRoots),
+            config: await this.buildThreadConfig(opts.mcpServers, opts.writableRoots, opts.cwd ?? process.cwd()),
             baseInstructions: null,
             developerInstructions: opts.developerInstructions ?? null,
             compactPrompt: null,
@@ -1648,9 +1665,10 @@ export class CodexAppServerClient {
             cwd: opts?.cwd ?? defaults.cwd ?? process.cwd(),
             approvalPolicy: opts?.approvalPolicy ?? defaults.approvalPolicy ?? null,
             sandbox: opts?.sandbox ?? defaults.sandbox ?? null,
-            config: this.buildThreadConfig(
+            config: await this.buildThreadConfig(
                 opts?.mcpServers ?? defaults.mcpServers,
                 opts?.writableRoots ?? defaults.writableRoots,
+                opts?.cwd ?? defaults.cwd ?? process.cwd(),
             ),
             baseInstructions: null,
             developerInstructions,
@@ -1697,9 +1715,10 @@ export class CodexAppServerClient {
             cwd: opts.cwd ?? defaults.cwd ?? process.cwd(),
             approvalPolicy: opts.approvalPolicy ?? defaults.approvalPolicy ?? null,
             sandbox: opts.sandbox ?? defaults.sandbox ?? null,
-            config: this.buildThreadConfig(
+            config: await this.buildThreadConfig(
                 opts.mcpServers ?? defaults.mcpServers,
                 opts.writableRoots ?? defaults.writableRoots,
+                opts.cwd ?? defaults.cwd ?? process.cwd(),
             ),
             baseInstructions: null,
             developerInstructions,

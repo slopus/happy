@@ -6,7 +6,7 @@ import { decodeBase64, decryptBlob, decrypt, encodeBase64, encrypt, encryptBlob 
 import type { StreamDeltaFrame } from '@/claude/streamDeltaRelay';
 import type { ClaudeTurnLatencyDiagnostic } from '@/claude/claudeRemote';
 import type { CodexTurnLatencyProgress } from '@/codex/codexTurnLatency';
-import { backoff, delay, isSessionGoneError } from '@/utils/time';
+import { backoff, isSessionGoneError } from '@/utils/time';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
 import { randomUUID } from 'node:crypto';
@@ -2175,20 +2175,22 @@ export class ApiSessionClient extends EventEmitter {
             this.stateRetryDelayMs = 1000;
             this.resumeStateWrites();
         }
-        await Promise.race([
-            this.sendSync.invalidateAndAwait(),
-            delay(10000)
-        ]);
+        let flushTimer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            await Promise.race([
+                this.sendSync.invalidateAndAwait(),
+                new Promise<void>(resolve => { flushTimer = setTimeout(resolve, 10000); })
+            ]);
+        } finally { clearTimeout(flushTimer); }
         if (!this.socket.connected) {
             return;
         }
-        return new Promise((resolve) => {
-            this.socket.emit('ping', () => {
-                resolve();
-            });
-            setTimeout(() => {
-                resolve();
-            }, 10000);
+        return new Promise<void>((resolve, reject) => {
+            // Reserve before emit: a synchronous ACK must clear the same timer.
+            const timer = setTimeout(resolve, 10000);
+            try {
+                this.socket.emit('ping', () => { clearTimeout(timer); resolve(); });
+            } catch (error) { clearTimeout(timer); reject(error); }
         });
     }
 
