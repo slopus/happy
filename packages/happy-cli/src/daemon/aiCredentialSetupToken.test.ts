@@ -45,11 +45,12 @@ type Slot = { number: number; email: string; organizationUuid?: string; usageSta
 
 // A stateful stand-in for cswap. `marked` keeps managed metadata like the token runtime; an
 // unmarked build drops it, as upstream does.
-function fakeMachine(initial: Slot[], activeAccountNumber: number | null, options: { runtime?: 'marked' | 'unmarked' | 'missing'; ignoreForce?: boolean; tokenRuntimeStatus?: string; files?: Map<string, string>; binding?: false; env?: Record<string, string>; capabilities?: Record<string, unknown>; listFails?: boolean; clock?: { now: number }; advanceOnExport?: number; advanceOnNonceWrite?: number } = {}) {
+function fakeMachine(initial: Slot[], activeAccountNumber: number | null, options: { runtime?: 'marked' | 'unmarked' | 'missing'; ignoreForce?: boolean; tokenRuntimeStatus?: string; files?: Map<string, string>; binding?: false; env?: Record<string, string>; capabilities?: Record<string, unknown>; listFails?: boolean; clock?: { now: number }; advanceOnExport?: number; advanceOnNonceWrite?: number; durability?: 'missing' | 'file-fails' | 'directory-fails' } = {}) {
   const kind = options.runtime ?? 'marked'
   const state = { slots: [...initial], active: activeAccountNumber }
   const calls: Array<{ command: string; args: string[] }> = []
   const files = options.files ?? new Map<string, string>()
+  const syncEvents: string[] = []
   const execFile = vi.fn(async (command: string, args: string[]): Promise<AiCredentialCommandResult> => {
     calls.push({ command, args })
     if (command === 'cswap' && kind === 'missing') throw Object.assign(new Error('not found'), { kind: 'COMMAND_NOT_AVAILABLE' })
@@ -88,18 +89,22 @@ function fakeMachine(initial: Slot[], activeAccountNumber: number | null, option
   const runtime = createAiCredentialRuntime({
     homeDir: '/home/operator', now: () => options.clock?.now ?? NOW, env: options.env ?? {}, execFile,
     ...(options.binding === false ? {} : { setupTokenBinding: studioVerifier() }),
+    ...(options.durability === 'missing' ? {} : {
+      syncFile: async (path: string) => { syncEvents.push('file:' + path); if (options.durability === 'file-fails') throw new Error('sync failed') },
+      syncDirectory: async (path: string) => { syncEvents.push('directory:' + path); if (options.durability === 'directory-fails') throw new Error('sync failed') },
+    }),
     readFile: vi.fn(async (path: string) => files.get(path) ?? Promise.reject(Object.assign(new Error('missing'), { code: 'ENOENT' }))),
     writeFile: vi.fn(async (path: string, content: string) => {
       if (path.includes('setup-token-binding-nonces') && options.clock && options.advanceOnNonceWrite) options.clock.now += options.advanceOnNonceWrite
       files.set(path, content)
     }),
     readdir: vi.fn(async () => []), mkdir: vi.fn(async () => undefined),
-    rename: vi.fn(async (from: string, to: string) => { files.set(to, files.get(from)!); files.delete(from) }),
+    rename: vi.fn(async (from: string, to: string) => { if (to.includes('setup-token-binding-nonces')) syncEvents.push('rename:' + to); files.set(to, files.get(from)!); files.delete(from) }),
     chmod: vi.fn(async () => undefined), rm: vi.fn(async (path: string) => { files.delete(path) }),
     makeTempDir: vi.fn(async () => '/tmp/happy-setup-token-fixed'),
     supervisor: { enable: vi.fn(async () => undefined), stop: vi.fn(async () => undefined), status: vi.fn(() => ({ state: 'running' as const, lastErrorKind: null })) },
   })
-  return { runtime, calls, state, files }
+  return { runtime, calls, state, files, syncEvents }
 }
 const inference = (calls: Array<{ command: string; args: string[] }>) => calls.filter(call => call.command === 'claude')
 const installs = (calls: Array<{ command: string; args: string[] }>) => calls.filter(call => call.command === 'uv' && call.args[0] === 'tool')
@@ -211,6 +216,18 @@ describe('managed Claude setup-token runtime', () => {
     }finally{fetcher.mockRestore()}
   })
 
+  it.each(['https://user:pass@studio.test', 'https://studio.test/path', 'https://studio.test?tenant=other', 'https://studio.test#fragment'])(
+    'refuses malformed configured collector origin %s before fetching keys', async (origin) => {
+      const fetcher = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('unexpected key request'))
+      try {
+        const capabilities = { version: 1, artifact: 'saycode-setup-token-runtime-v1', organizationCollectorVersion: 1 }
+        const { runtime } = fakeMachine([], null, { env: { HAPPY_APLUS_STUDIO_ORIGIN: origin }, capabilities, binding: false })
+        expect(await runtime.capabilities('machine')).not.toHaveProperty('collectorProbeVersion')
+        expect(fetcher).not.toHaveBeenCalled()
+      } finally { fetcher.mockRestore() }
+    },
+  )
+
   describe('new-session binding', () => {
     const selection = (overrides: Record<string, unknown> = {}) => ({ kind: 'claude-setup-token' as const, managedAccountId: A,
       groupScope: 'company-1', credentialGeneration: 1, bindingGrant: bindingGrant(overrides) })
@@ -246,6 +263,39 @@ describe('managed Claude setup-token runtime', () => {
       expect(String((results.find(result => result.status === 'rejected') as PromiseRejectedResult).reason)).toContain('CLAUDE_SETUP_TOKEN_BINDING_REPLAYED')
       const both = await Promise.all([runtime.sessionEnvironment('claude', selection()), runtime.sessionEnvironment('claude', selection())])
       expect(new Set(both.map(env => JSON.parse(env.HAPPY_AI_AUTH_SETUP_TOKEN_BINDING!).nonce)).size).toBe(2)
+    })
+
+    it.each([[], { unexpected: NOW + 60_000 }, { [A]: -1 }])('refuses malformed nonce ledger entries: %j', async (nonces) => {
+      const { runtime, files } = await assigned()
+      const path = '/home/operator/.happy/setup-token-binding-nonces.json'
+      const corrupt = JSON.stringify({ version: 1, nonces })
+      files.set(path, corrupt)
+      await expect(runtime.sessionEnvironment('claude', selection())).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_LEDGER_INVALID')
+      expect(files.get(path)).toBe(corrupt)
+    })
+
+    it('flushes the nonce file before rename and its directory before returning the token', async () => {
+      const { runtime, syncEvents } = await assigned()
+      await runtime.sessionEnvironment('claude', selection())
+      expect(syncEvents).toEqual([
+        'file:/home/operator/.happy/setup-token-binding-nonces.json.happy-tmp',
+        'rename:/home/operator/.happy/setup-token-binding-nonces.json',
+        'directory:/home/operator/.happy', 'directory:/home/operator',
+      ])
+    })
+
+    it.each(['missing', 'file-fails', 'directory-fails'] as const)('returns no token when nonce durability is %s', async (durability) => {
+      const { runtime, files, state } = await assigned({ durability })
+      const chosen = selection()
+      await expect(runtime.sessionEnvironment('claude', chosen)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      expect(files.has('/home/operator/.happy/setup-token-binding-nonces.json.happy-tmp')).toBe(false)
+      const restarted = fakeMachine(state.slots, state.active, { files })
+      if (durability === 'directory-fails') {
+        await expect(restarted.runtime.sessionEnvironment('claude', chosen)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_REPLAYED')
+      } else {
+        expect(files.has('/home/operator/.happy/setup-token-binding-nonces.json')).toBe(false)
+        await expect(restarted.runtime.sessionEnvironment('claude', chosen)).resolves.toHaveProperty('CLAUDE_CODE_OAUTH_TOKEN')
+      }
     })
 
     it('rejects a grant that expires while the slot is read, before burning its nonce', async () => {

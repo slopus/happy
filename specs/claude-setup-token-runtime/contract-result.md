@@ -394,3 +394,37 @@ Required CLI build/typecheck passed; existing pkgroll bin/empty-chunk warnings o
 `git diff --check` passed. This final patch changes queue admission only; installed-wheel
 fake-HTTP evidence for the preceding scheduler/DTO implementation is recorded above,
 not repeated as live evidence. Generated `.pnpm-store/` remains unstaged.
+
+## Fresh Happy self-review (2026-10-04)
+
+Initial fail-closed gaps were reproduced before correction (7 failing regressions,
+45 existing setup-token tests passing). Collector configuration previously reduced
+an arbitrary URL to its origin before validation, accepting userinfo, paths, query
+and fragments that the binding verifier refused. Collector capability and probe now
+reuse `readTrustedStudioOrigin` against the sole `HAPPY_APLUS_STUDIO_ORIGIN` input.
+Malformed configuration performs no public-key request. Binding nonce ledger reads
+now reject arrays, non-lowercase-UUID keys and nonpositive/unsafe expiries before
+pruning or writing; corrupt state stays intact and cannot return a token environment.
+
+Fresh focused verification: 10 suites, 458 passed and 1 skipped (installed-provider
+collector artifact test requires explicit artifact environment). Suites cover runtime,
+setup-token bindings/proofs, group custody, session environment/hydration, personal
+scheduler/probe, collector and RPC authorization. `pnpm -C packages/happy-cli typecheck`
+and the test global setup's CLI build passed. Existing pkgroll bin/empty-chunk warnings
+remain; no CLI lint script/config is defined. `git diff --check` passed.
+
+This review did not use live credentials/inference, replace the operating daemon,
+change release pins or perform publish/push/merge. The existing single-daemon nonce serialization and direct-terminal scope limitations
+remain unchanged. A further review found the binding nonce writer used rename without
+fsync. Four additional failing regressions reproduced missing flush ordering and
+unsafe success when durability hooks were absent or failed. Only the nonce writer now
+flushes the temporary file before rename, then the ledger directory and its parent
+before returning a token environment. Missing hooks or any flush failure return no
+credential; a renamed ledger is never rolled back, retaining the consumed nonce.
+Unsupported directory fsync fails closed rather than silently skipping durability.
+Injected order/failure tests verify the protocol, not actual power-loss simulation.
+
+After the nonce flush correction: 462 passed, 2 explicitly environment-gated artifact
+tests skipped across 11 selected suites (the prior ten plus the binding artifact
+fixture). CLI build and separate typecheck passed; `git diff --check` passed. Both
+artifact fixtures remain ready for a separately configured installed-provider run.

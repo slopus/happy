@@ -10,7 +10,7 @@ import { mergeCodexAccounts } from './aiCredentialAdditive'
 import { CODEX_MULTI_AUTH_VERSION, isSupportedCodexMultiAuthVersion, SUPPORTED_CODEX_MULTI_AUTH_VERSION_RANGE } from '../utils/codexMultiAuthVersions'
 import { stagingParent } from './stagedCredentialRoot'
 import { spawn } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { logger } from '@/ui/logger'
@@ -32,7 +32,7 @@ import {
   serializeInvalidatedClaudeProvenance,
 } from './aiCredentialProvenance'
 import { SETUP_TOKEN_BINDING_ENV, formatSetupTokenBinding, overlayManagedCredentialEnvironment, type AiAuthSelection, type SetupTokenBinding } from './sessionEnv'
-import type { SetupTokenBindingVerifier } from './setupTokenBindingProof'
+import { readTrustedStudioOrigin, type SetupTokenBindingVerifier } from './setupTokenBindingProof'
 import { CLAUDE_AUTH_OVERRIDE_ENV_KEYS } from '@/claude/utils/claudeAuthOverrideEnv'
 import { HAPPY_AI_AUTH_SOURCE_ENV } from '@/usage/aiAuthSource'
 import {
@@ -117,6 +117,9 @@ export type AiCredentialRuntimeDependencies = {
   chmod(path: string, mode: number): Promise<void>
   rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void>
   makeTempDir(): Promise<string>
+  /** Required only for one-use setup-token binding nonce persistence; missing support fails closed. */
+  syncFile?(path: string): Promise<void>
+  syncDirectory?(path: string): Promise<void>
   /** Unexpected but non-fatal conditions, e.g. a provenance record that could not be written. */
   warn?(message: string): void
   supervisor: Supervisor
@@ -1821,8 +1824,9 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     try {
       const raw = await deps.readFile(bindingNoncePath).catch(error => { if (error?.code === 'ENOENT') return null; throw error })
       ledger = raw === null ? { version: 1, nonces: {} } : JSON.parse(raw)
-      if (ledger?.version !== 1 || typeof ledger.nonces !== 'object' || ledger.nonces === null
-        || Object.values(ledger.nonces).some(value => !Number.isSafeInteger(value))) throw new Error('invalid')
+      if (ledger?.version !== 1 || typeof ledger.nonces !== 'object' || ledger.nonces === null || Array.isArray(ledger.nonces)
+        || Object.entries(ledger.nonces).some(([nonce, expiry]) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(nonce)
+          || !Number.isSafeInteger(expiry) || expiry < 1)) throw new Error('invalid')
     } catch { throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_LEDGER_INVALID') }
     const now = deps.now()
     // Entries are kept until well past their grant's validity, so pruning cannot reopen a replay.
@@ -1830,8 +1834,23 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     if (nonce in nonces) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_REPLAYED')
     if (Object.keys(nonces).length >= 4096) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
     nonces[nonce] = expiresAt
-    await deps.mkdir(join(deps.homeDir, '.happy'), { recursive: true, mode: 0o700 })
-    await writeAtomicFile(deps, bindingNoncePath, JSON.stringify({ version: 1, nonces }))
+    if (!deps.syncFile || !deps.syncDirectory) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+    const directory = join(deps.homeDir, '.happy')
+    await deps.mkdir(directory, { recursive: true, mode: 0o700 })
+    const tempPath = `${bindingNoncePath}.happy-tmp`
+    try {
+      await deps.writeFile(tempPath, JSON.stringify({ version: 1, nonces }), { mode: 0o600 })
+      await deps.chmod(tempPath, 0o600)
+      await deps.syncFile(tempPath)
+      await deps.rename(tempPath, bindingNoncePath)
+      await deps.syncDirectory(directory)
+      // Also persist .happy itself when this was the first creation of that directory.
+      await deps.syncDirectory(deps.homeDir)
+    } catch (error) {
+      // Never roll back a renamed ledger: its nonce may already be durable.
+      await deps.rm(tempPath, { force: true }).catch(() => undefined)
+      throw error
+    }
   }
 
   /**
@@ -2015,7 +2034,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     try { return personalProbeSupported(JSON.parse((await deps.execFile('cswap', ['token-runtime', 'capabilities'], { timeoutMs: 5000, maxOutputBytes: 8192 })).stdout)) } catch { return false }
   }
   function collectorOrigin() {
-    try { return deps.env.HAPPY_APLUS_STUDIO_ORIGIN ? new URL(deps.env.HAPPY_APLUS_STUDIO_ORIGIN).origin : null } catch { return null }
+    return readTrustedStudioOrigin(deps.env)
   }
   async function collectorCapability() {
     if (!collectorOrigin()) return false
@@ -2457,6 +2476,8 @@ export function createNodeAiCredentialRuntime(
     execFile: (command, args, options) => runAiCredentialCommand(command, args, options, options?.terminateProcessTree ? crossSpawn as typeof spawn : spawn),
     readFile: (path) => readFile(path, 'utf8'),
     readdir: (path) => readdir(path),
+    syncFile: async (path) => { const file = await open(path, 'r+'); try { await file.sync() } finally { await file.close() } },
+    syncDirectory: async (path) => { const directory = await open(path, 'r'); try { await directory.sync() } finally { await directory.close() } },
     writeFile: async (path, content, options) => { await writeFile(path, content, options) },
     mkdir,
     rename,

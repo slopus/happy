@@ -13,7 +13,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, open, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { spawn } from 'node:child_process'
 import { createAiCredentialRuntime, runAiCredentialCommand } from './aiCredentialRuntime'
 import { managedSetupTokenEmail } from './claudeSetupToken'
@@ -122,6 +122,8 @@ if sys.argv[1:3] == ['auth', 'logout']:
         catch (error) { failures.push(`${command} ${args[0] ?? ''} ${(error as { kind?: string }).kind ?? ''}`); throw error }
       },
       readFile: path => readFile(path, 'utf8'), readdir: path => readdir(path),
+      syncFile: async path => { const file = await open(path, 'r+'); try { await file.sync() } finally { await file.close() } },
+      syncDirectory: async path => { const directory = await open(path, 'r'); try { await directory.sync() } finally { await directory.close() } },
       writeFile: async (path, content, options) => { await writeFile(path, content, options) },
       mkdir, rename, chmod, rm, makeTempDir: () => mkdtemp(join(root, 'stage-')),
     })
