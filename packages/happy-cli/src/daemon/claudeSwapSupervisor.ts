@@ -29,6 +29,7 @@ export class ClaudeSwapSupervisor {
   private restartAttempts = 0
   private stdoutBuffer = ''
   private quarantinedAccounts = new Set<string>()
+  private activeBelowThreshold = false
   private currentStatus: AiCredentialRotationStatus = {
     state: 'stopped',
     lastErrorKind: null,
@@ -79,6 +80,7 @@ export class ClaudeSwapSupervisor {
     this.child = null
     this.restartAttempts = 0
     this.stdoutBuffer = ''
+    this.activeBelowThreshold = false
     this.currentStatus = { state: 'stopped', lastErrorKind: null }
     return running
   }
@@ -123,7 +125,8 @@ export class ClaudeSwapSupervisor {
   }
 
   status(): AiCredentialRotationStatus {
-    return { ...this.currentStatus }
+    const { warningKinds, ...status } = this.currentStatus
+    return { ...status, ...(warningKinds?.length ? { warningKinds: [...warningKinds] } : {}) }
   }
 
   private start(): void {
@@ -136,11 +139,15 @@ export class ClaudeSwapSupervisor {
     // Drain both streams without logging their contents. Future claude-swap
     // versions may add account or credential fields to JSON events.
     this.stdoutBuffer = ''
-    child.stdout?.on('data', (data) => this.consumeStdout(data))
+    this.activeBelowThreshold = false
+    child.stdout?.on('data', (data) => {
+      if (this.child === child) this.consumeStdout(data)
+    })
     child.stderr?.on('data', () => undefined)
     const scheduleRestart = (lastErrorKind: string) => {
       if (this.child !== child) return
       this.child = null
+      this.activeBelowThreshold = false
       if (!this.enabled) {
         this.currentStatus = { state: 'stopped', lastErrorKind: null }
         return
@@ -163,6 +170,7 @@ export class ClaudeSwapSupervisor {
         return
       }
       if (this.child !== child) return
+      this.activeBelowThreshold = false
       this.currentStatus = {
         ...this.currentStatus,
         state: 'blocked',
@@ -184,6 +192,9 @@ export class ClaudeSwapSupervisor {
       try {
         const event = JSON.parse(line) as unknown
         if (!isObject(event) || event.schemaVersion !== 1) continue
+        const activeBelowThreshold = this.activeBelowThreshold
+        // A decision may only use evidence from the immediately preceding poll.
+        this.activeBelowThreshold = false
         if (event.event === 'all-exhausted') {
           this.currentStatus = {
             ...this.currentStatus,
@@ -202,17 +213,22 @@ export class ClaudeSwapSupervisor {
           this.quarantinedAccounts.add(event.number)
           this.currentStatus = {
             ...this.currentStatus,
-            state: 'needs-reauth',
-            lastErrorKind: 'ACCOUNT_NEEDS_REAUTH',
+            warningKinds: ['ACCOUNT_NEEDS_REAUTH'],
           }
         } else if (event.event === 'account-unquarantined'
           && typeof event.number === 'string') {
           this.quarantinedAccounts.delete(event.number)
-          if (this.currentStatus.state === 'needs-reauth') {
-            this.currentStatus = { ...this.currentStatus, ...this.healthyStatus() }
-          }
-        } else if (event.event === 'poll' && isObject(event.active)) {
-          this.restartAttempts = 0
+          this.currentStatus = { ...this.currentStatus, warningKinds: this.healthyStatus().warningKinds }
+        } else if (event.event === 'poll') {
+          if (isObject(event.active)) this.restartAttempts = 0
+          const headroom = isObject(event.active) && Number.isSafeInteger(event.active.number)
+            && Number(event.active.number) > 0 && isObject(event.headroomPct)
+            ? event.headroomPct[String(event.active.number)] : null
+          this.activeBelowThreshold = typeof headroom === 'number' && Number.isFinite(headroom)
+            && headroom > 0 && headroom <= 100
+            && typeof event.threshold === 'number' && Number.isFinite(event.threshold)
+            && event.threshold > 0 && event.threshold <= 100
+            && 100 - headroom < event.threshold
         } else if (event.event === 'no-switch'
           && typeof event.reason === 'string'
           && HEALTHY_NO_SWITCH_REASONS.has(event.reason)) {
@@ -220,7 +236,12 @@ export class ClaudeSwapSupervisor {
         } else if (event.event === 'no-switch'
           && typeof event.reason === 'string'
           && BLOCKED_NO_SWITCH_REASONS.has(event.reason)) {
-          this.currentStatus = {
+          this.currentStatus = event.reason === 'no-comparison' && activeBelowThreshold
+            ? {
+              ...this.currentStatus,
+              ...this.healthyStatus(),
+              warningKinds: [...(this.healthyStatus().warningKinds ?? []), 'NO_COMPARISON'],
+            } : {
             ...this.currentStatus,
             state: 'blocked',
             lastErrorKind: 'NO_VIABLE_ACCOUNT',
@@ -245,10 +266,11 @@ export class ClaudeSwapSupervisor {
     }
   }
 
-  private healthyStatus(): Pick<AiCredentialRotationStatus, 'state' | 'lastErrorKind'> {
-    return this.quarantinedAccounts.size > 0
-      ? { state: 'needs-reauth', lastErrorKind: 'ACCOUNT_NEEDS_REAUTH' }
-      : { state: 'running', lastErrorKind: null }
+  private healthyStatus(): Pick<AiCredentialRotationStatus, 'state' | 'lastErrorKind' | 'warningKinds'> {
+    return {
+      state: 'running', lastErrorKind: null,
+      warningKinds: this.quarantinedAccounts.size > 0 ? ['ACCOUNT_NEEDS_REAUTH'] : undefined,
+    }
   }
 }
 

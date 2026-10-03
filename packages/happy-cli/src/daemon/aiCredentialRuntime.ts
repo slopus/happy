@@ -66,6 +66,7 @@ export type AiCredentialCommandResult = {
 export type AiCredentialRotationStatus = {
   state: 'stopped' | 'starting' | 'running' | 'needs-reauth' | 'blocked' | 'quota-unknown' | 'not-routed' | 'not-applicable'
   lastErrorKind: string | null
+  warningKinds?: Array<'ACCOUNT_NEEDS_REAUTH' | 'NO_COMPARISON'>
   lastSwitchAt?: string
   activeAccount?: string
   strategy?: 'sequential'
@@ -473,8 +474,9 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         if (before.activeAccountNumber === null) throw new AiCredentialRuntimeError('AI_CREDENTIAL_PERSONAL_CAPTURE_REQUIRED')
       }
     }
-    const existing = new Set(before.accounts.map(claudeListAccountIdentity))
     const envelope = JSON.parse(payload)
+    let repairRequestedAccountCount = 0
+    const repairedIdentities = new Set<string>()
     const duplicates: Array<Record<string, unknown> & { email: string }> = envelope.accounts.filter((account: { email: string }) =>
       before.accounts.some(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account) && local.disabled !== true))
     if (duplicates.length > 0) {
@@ -487,7 +489,10 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       // Quota, transport, missing credentials and exhausted budgets keep it untouched.
       const localVerification = await verifyLocalAiAccounts(deps, 'claude', identities(duplicates), exported.accounts, { budgetMs: 60_000 })
       const invalid = duplicates.filter((_account, index) => localVerification.accounts[index]?.errorKind === 'AUTHENTICATION_FAILED')
+        .map(account => ({ ...account, disabled: before.accounts.find(local =>
+          claudeListAccountIdentity(local) === claudeListAccountIdentity(account))?.disabled }))
       if (invalid.length > 0) {
+        repairRequestedAccountCount = invalid.length
         const requested = identities(invalid)
         const verification = await verifyLocalAiAccounts(deps, 'claude', requested, invalid, { budgetMs: 60_000 })
         let accepted = invalid.filter((_account, index) => verification.accounts[index]?.ok)
@@ -505,11 +510,18 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
           accepted = invalid.filter((_account, index) => verification.accounts[index]?.ok)
         }
         if (accepted.length > 0) {
-          const repaired = await applyClaudeRepair({ before, envelope: { ...envelope, accounts: accepted }, requested, verification }, { budgetMs: 60_000 })
-          for (const account of repaired.verifiedAccounts) knownCompanyIdentities.add(JSON.stringify([account.email, account.organizationUuid ?? '', account.organizationName ?? '']))
+          const repaired = await applyClaudeRepair({ before, envelope: { ...envelope, accounts: accepted }, requested, verification, automatic: true }, { budgetMs: 60_000 })
+          for (const account of repaired?.verifiedAccounts ?? []) {
+            repairedIdentities.add(claudeListAccountIdentity(account))
+            knownCompanyIdentities.add(JSON.stringify([account.email, account.organizationUuid ?? '', account.organizationName ?? '']))
+          }
         }
       }
     }
+    // Probes can span rotation ticks and user changes; preserve the latest state
+    // even when an automatic repair was skipped before any credential write.
+    if (duplicates.length > 0) before = await list()
+    const existing = new Set(before.accounts.map(claudeListAccountIdentity))
     // Existing slots that were not proven invalid remain outside the import,
     // which also preserves their local disabled metadata.
     envelope.accounts = envelope.accounts.filter((account: { email: string }) => !existing.has(claudeListAccountIdentity(account)))
@@ -556,7 +568,10 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       }
     }
     return {
-      result: { provider: 'claude' as const, configured: true, accountCount: after.accounts.length, rotation: deps.supervisor.status() },
+      result: { provider: 'claude' as const, configured: true, ...claudeAccountHealth(after),
+        repairedAccountCount: repairedIdentities.size,
+        credentialRepairFailedAccountCount: repairRequestedAccountCount - repairedIdentities.size,
+        rotation: deps.supervisor.status() },
       verifiedAccounts: sharedAccounts(after),
     }
   }
@@ -579,11 +594,13 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         claudeListAccountIdentity(existing) === claudeListAccountIdentity(account))?.disabled === true }))
     const verification = await verifyLocalAiAccounts(deps, 'claude', requested, candidates)
     const accepted = envelope.accounts.filter((_account: unknown, index: number) => verification.accounts[index]?.ok)
+      .map((account: { email: string }) => ({ ...account, disabled: before.accounts.find(existing =>
+        claudeListAccountIdentity(existing) === claudeListAccountIdentity(account))?.disabled }))
     if (accepted.length === 0) throw new AiCredentialRuntimeError('CLAUDE_APPLY_RELOGIN_REQUIRED')
     return { before, envelope: { ...envelope, accounts: accepted }, requested, verification }
   }
 
-  async function applyClaudeRepair(prepared: Awaited<ReturnType<typeof prepareClaudeRepair>>, verificationOptions?: { budgetMs: number }) {
+  async function applyClaudeRepair(prepared: Awaited<ReturnType<typeof prepareClaudeRepair>> & { automatic?: boolean }, verificationOptions?: { budgetMs: number }) {
     const list = async () => parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
       maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
     })).stdout)
@@ -600,10 +617,16 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         rotationStopped = true
       }
       const current = await list()
-      if (current.activeAccountNumber !== before.activeAccountNumber || before.accounts.some(account => {
+      const changed = current.activeAccountNumber !== before.activeAccountNumber || before.accounts.some(account => {
         const retained = current.accounts.find(candidate => claudeListAccountIdentity(candidate) === claudeListAccountIdentity(account))
         return retained?.number !== account.number || retained?.disabled !== account.disabled
-      })) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      }) || (prepared.automatic && envelope.accounts.some((account: { email: string }) =>
+        before.accounts.find(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account))?.usageStatus === 'relogin_required'
+        && current.accounts.find(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account))?.usageStatus !== 'relogin_required'))
+      if (changed) {
+        if (prepared.automatic) return null
+        throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      }
       const file = join(tempDir, 'claude-swap.json')
       await deps.writeFile(file, JSON.stringify(envelope), { mode: 0o600 })
       await deps.chmod(file, 0o600)
@@ -634,7 +657,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       finally { if (rotationStopped) await deps.supervisor.enable() }
     }
     return {
-      result: { provider: 'claude' as const, configured: true, accountCount: after.accounts.length,
+      result: { provider: 'claude' as const, configured: true, ...claudeAccountHealth(after),
         verification: { checkedAt: installed.checkedAt, accounts }, rotation: deps.supervisor.status() },
       verifiedAccounts: after.accounts.filter(account => requested.some((identity, index) => accounts[index]?.ok
         && claudeListAccountIdentity(account) === claudeListAccountIdentity(identity))),
@@ -1799,15 +1822,30 @@ function apiKeyRotationStatus(): AiCredentialRotationStatus {
   return { state: 'not-applicable', lastErrorKind: null }
 }
 
-function parseClaudeList(stdout: string): {
-  configured: boolean
-  activeAccount: string | null
-  credentialKind?: 'oauth' | 'api_key'
-} {
-  const { configured, activeAccount, activeCredentialKind } = parseClaudeListDetails(stdout)
+function claudeAccountHealth(details: ClaudeListDetails) {
+  const active = details.accounts.find(account => account.number === details.activeAccountNumber)
+  const activeAccountStatus = !active ? 'not-selected' as const
+    : active.disabled === true ? 'disabled' as const
+    : active.usageStatus === 'ok' ? 'usage-readable' as const
+    : active.usageStatus === 'api_key' ? 'api-key' as const
+    : active.usageStatus === 'relogin_required' ? 'relogin-required' as const
+    : 'unknown' as const
+  return {
+    accountCount: details.accounts.length,
+    activeAccountStatus,
+    usableAccountCount: details.accounts.filter(account => account.disabled !== true
+      && (account.usageStatus === 'ok' || account.usageStatus === 'api_key')).length,
+    reloginRequiredAccountCount: details.accounts.filter(account => account.disabled !== true && account.usageStatus === 'relogin_required').length,
+  }
+}
+
+function parseClaudeList(stdout: string) {
+  const details = parseClaudeListDetails(stdout)
+  const { configured, activeAccount, activeCredentialKind } = details
   return {
     configured,
     activeAccount,
+    ...claudeAccountHealth(details),
     ...(activeCredentialKind ? { credentialKind: activeCredentialKind } : {}),
   }
 }

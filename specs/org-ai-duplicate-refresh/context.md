@@ -38,3 +38,14 @@ Claude merge에서 이메일·조직 UUID가 일치하는 enabled 로컬 계정�
 ## 릴리스 준비
 
 사용자가 전체 배포를 요청했다. 후보 버전 1.1.10-aplus.276으로 package.json을 갱신하고 build 통과 후 배포용 artifact를 준비했다. main PR/CI와 install-smoke 검증 뒤 정확한 태그 push 승인 체크포인트를 따른다.
+
+## 2026-10-03 변경 리뷰·PR 준비
+
+- original Studio worktree의 vendor/happy에서 fix-cswap-expired-auth를 만들고 최신 origin/main(a8b236d06)을 merge했다. 최신 main에 이미 실제 로컬 AUTHENTICATION_FAILED에 한정한 중복 복구가 있어, 이전 usageStatus 기반 별도 복구 경로를 이 경로에 통합했다. 개인 로그인 자동 등록·선택 활성화·네트워크/한도/timeout 보존은 유지한다.
+- source 검증 중 active/slot/disabled/재로그인 상태가 바뀌면 write 전에 null로 건너뛰고 복구 실패로 집계한다. 신규 identity는 최신 목록을 기준으로 추가한다. 원본 검증 실패와 로컬 인증 refresh 경합도 실패 집계하며 설치 후 성공 identity만 provenance와 성공 개수에 포함한다. 명시 repair와 import 이후 실패를 넓은 catch로 숨기지 않는다.
+- 전달 disabled 메타데이터는 local 상태로 덮어 검증/설치 양쪽에 보존한다. disabled 만료 slot은 재로그인 필요 개수에서 제외된다. supervisor는 active 사용량 여유와 비교 불가 후보/격리 경고를 분리하며 실요청 성공으로 설명하지 않는다.
+- 경합/개수 테스트 16건 Red 확인 후 통합했다. 관련 6파일 496건(runtime 190, supervisor 27, provenance 21, verification 9, managed RPC 190, API 59) 및 공식 global setup의 타입/production build 통과. 이후 source disabled 경계의 matrix 12건을 직접 재검증했다. 기존 bin/empty-chunk 경고는 유지된다.
+- 소스 PR만 전달한다. package version은 main의 .278을 유지하며 tag/npm 게시/daemon 업데이트/실계정 요청은 수행하지 않는다. Studio는 공식 .278 gitlink를 유지하고 이 source PR의 후속 릴리스에서 소비한다.
+
+- source PR: https://github.com/buzzni/happy/pull/660. 복구 후보의 로컬 disabled 정규화를 한 번만 수행하도록 [구조] 커밋으로 중복을 제거한 뒤 runtime 190건과 공식 타입/build를 다시 통과했다.
+- Desktop 소비 PR: https://github.com/buzzni/aplus-dev-studio-desktop/pull/1335. Studio 소비 PR URL은 해당 저장소에서 기록한다. CI 결과와 실기/운영 인수는 로컬 단위 검증과 구분한다.
