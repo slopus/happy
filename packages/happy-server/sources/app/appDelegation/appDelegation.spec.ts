@@ -30,6 +30,7 @@ beforeAll(async () => {
         await engine.exec(`CREATE TABLE "${model.dbName ?? name}" (${fields.join(',')})`);
     }
     await engine.exec(await readFile(resolve('prisma/migrations/20261003010000_app_delegation/migration.sql'), 'utf8'));
+    await engine.exec(await readFile(resolve('prisma/migrations/20261003080000_app_chat_models/migration.sql'), 'utf8'));
     state.db = new PrismaClient({ adapter: new PrismaPGlite(engine) });
     await state.db.account.create({ data: { id: owner, publicKey: 'test' } });
     await state.db.machine.create({ data: { id: machineId, accountId: owner, metadata: 'encrypted', defaultCodexAccountProfileId: 'managed-test-profile' } });
@@ -230,5 +231,32 @@ describe('owner-initiated, scoped history reading', () => {
         await expect(readAppHistory(access.token, a.conversationId)).rejects.toThrow();
         expect((await readAppHistory((await openOwnedAppConversation(owner, a.conversationId)).token, a.conversationId)).turns).toEqual([]);
         await revokeAppGrant(owner, a.id);
+    });
+});
+
+describe('multi-engine protocol compatibility', () => {
+    it('requires new consent and fences old workers from new grants and model selections', async () => {
+        const request = await createAppPairing({ appId: 'relationship-advisor', publicKey: 'A'.repeat(43) + '=', challengeHash: hashCredential(secret), protocol: 3 });
+        await claimAppTurn(owner, machineId, 3, ['codex', 'claude']);
+        const approval = { machineId, expiresAt: null, appEnvelope: 'encrypted-app', machineEnvelope: 'encrypted-machine' };
+        await expect(approveAppPairing(owner, request.id, approval)).rejects.toThrow('Update Paws');
+        await approveAppPairing(owner, request.id, { ...approval, protocol: 3 });
+        await redeemAppPairing(request.id, secret, credential);
+        const token = `paws_app.${request.id}.${credential}`, conversationId = randomUUID(), id = randomUUID();
+        await appConversations(token, conversationId);
+        await appTurns(token, conversationId, { id, input: 'sealed-settings', minimumProtocol: 3 });
+        expect((await claimAppTurn(owner, machineId, 2)).job).toBeNull();
+        const { job } = await claimAppTurn(owner, machineId, 3, ['codex', 'claude']);
+        expect(job).toMatchObject({ id, protocol: 3 });
+        await cancelAppTurn(token, id);
+    });
+    it('allows model selection on legacy Codex grants only on a protocol 3 worker', async () => {
+        const a = await authorize(), id = randomUUID();
+        await expect(appTurns(a.token, a.conversationId, { id, input: 'sealed', minimumProtocol: 3 })).rejects.toThrow('unavailable');
+        await claimAppTurn(owner, machineId, 3, ['codex']);
+        await appTurns(a.token, a.conversationId, { id, input: 'sealed', minimumProtocol: 3 });
+        expect((await claimAppTurn(owner, machineId, 1)).job).toBeNull();
+        expect((await claimAppTurn(owner, machineId, 3, ['codex'])).job?.id).toBe(id);
+        await cancelAppTurn(a.token, id);
     });
 });

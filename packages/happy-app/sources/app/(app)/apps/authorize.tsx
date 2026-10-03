@@ -39,9 +39,9 @@ export default function AuthorizeApp() {
         ]).then(([data, available]) => { if (!disposed) { setRequest(data); setWorkers(available.workers); } }).catch(e => { if (!disposed) setError(e.message); });
         return () => { disposed = true; };
     }, [id, credentials]);
-    const availableMachines = machines.filter(machine => workers.some(worker => worker.machineId === machine.id));
+    const availableMachines = machines.filter(machine => workers.some(worker => worker.machineId === machine.id && (worker.protocol ?? 1) >= (request?.app.protocol ?? 1)));
     const selectedMachine = availableMachines.find(machine => machine.id === selected);
-    const permanentAvailable = request?.supportsPermanent === true && workers.some(worker => worker.machineId === selected && worker.protocol === 2);
+    const permanentAvailable = request?.supportsPermanent === true && workers.some(worker => worker.machineId === selected && (worker.protocol ?? 1) >= 2);
     const canApprove = !!selectedMachine && (days !== null || permanentAvailable);
     const approve = async () => {
         if (!request || request.id !== id || !credentials || !canApprove || lock.current) return;
@@ -50,10 +50,10 @@ export default function AuthorizeApp() {
             const encryption = sync.encryption.getMachineEncryption(selected);
             if (!encryption) throw new Error(t('appAuthorization.encryptionUnavailable'));
             const expiresAt = days === null ? null : new Date(Date.now() + days * 86400_000 - 30_000).toISOString();
-            const envelope = { v: 1, grantId: request.id, appId: request.app.id, machineId: selected, scope: 'codex:chat', expiresAt, key: encodeBase64(getRandomBytes(32)) };
+            const envelope = { v: 1, grantId: request.id, appId: request.app.id, machineId: selected, scope: request.app.scope, ...(request.app.protocol >= 3 ? { protocol: 3 } : {}), expiresAt, key: encodeBase64(getRandomBytes(32)) };
             const appEnvelope = encodeBase64(encryptBox(new TextEncoder().encode(JSON.stringify(envelope)), decodeBase64(request.publicKey)));
             const machineEnvelope = await encryption.encryptRaw(envelope);
-            await appAuthorizationRequest(credentials.token, `/requests/${request.id}/approve`, { machineId: selected, expiresAt, appEnvelope, machineEnvelope });
+            await appAuthorizationRequest(credentials.token, `/requests/${request.id}/approve`, { machineId: selected, expiresAt, appEnvelope, machineEnvelope, ...(request.app.protocol >= 3 ? { protocol: 3 } : {}) });
             setApproved(true);
         } catch (e) { setError(e instanceof Error ? e.message : t('appAuthorization.authorizationFailed')); }
         finally { lock.current = false; setBusy(false); }
@@ -78,7 +78,7 @@ export default function AuthorizeApp() {
                 <View style={styles.divider} />
                 <View style={{ gap: 5 }}>
                     <Text style={styles.title}>{t('appAuthorization.scopeTitle')}</Text>
-                    <Text style={styles.body}>{t('appAuthorization.scopeDescription')}</Text>
+                    <Text style={styles.body}>{request.app.scope === 'agent:chat' ? t('appAuthorization.multiEngineScopeDescription') : t('appAuthorization.scopeDescription')}</Text>
                 </View>
                 <Text style={styles.small}>{t('appAuthorization.scanHint', { origin: request.app.origin })}</Text>
             </View>

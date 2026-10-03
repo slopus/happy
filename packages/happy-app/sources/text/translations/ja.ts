@@ -63,6 +63,7 @@ export const ja: TranslationStructure = {
         advisorName: "恋愛アドバイザー",
         scanHint: ({ origin }: { origin: string }) => `${origin} で自分が開いた QR コードだけを読み取ってください。`,
         scopeTitle: "テキストと画像の会話のみ許可",
+        multiEngineScopeDescription: "選択したデバイスで Codex と Claude Code による会話を許可し、設定済みアカウントまたは API の利用枠を消費します。他の会話やファイルの読み取り、コマンド実行はできません。",
         scopeDescription: "選択したデバイスに紐づく Codex アカウントを使用します。このアプリは他の Paws の会話、復元キー、ローカルファイルを読み取れず、コマンドも実行できません。",
         chooseDevice: "デバイスを選択",
         chooseDeviceHint: "デバイスのカードを押して選択してください。",

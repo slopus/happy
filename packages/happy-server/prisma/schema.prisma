@@ -599,6 +599,7 @@ model VoiceConversation {
 
 // Separate authorization/data plane: never contains an account secret or token.
 model AppDelegation {
+    protocol Int @default(1)
     id String @id
     appId String
     storedBytes Int @default(0)
@@ -620,6 +621,7 @@ model AppDelegation {
 }
 
 model AppChatWorker {
+    engines Json @default("[]")
     machineId String @id
     accountId String
     account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -637,6 +639,7 @@ model AppChatConversation {
 }
 
 model AppChatTurn {
+    minimumProtocol Int @default(1)
     id String @id
     conversationId String
     conversation AppChatConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)

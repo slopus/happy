@@ -9,3 +9,4 @@ export * from './environment';
 export * from './interactivePreview';
 export * from './interactivePreviewPrompt';
 export * from './toolFailure';
+export * from './appChat';

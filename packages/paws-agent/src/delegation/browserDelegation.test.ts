@@ -33,13 +33,13 @@ describe('authorization expiry binding', () => {
         const fetcher = vi.fn(async (_url: string, init: RequestInit) => {
             const body = JSON.parse(init.body as string);
             if (body.appId) {
-                expect(body.protocol).toBe(2);
+                expect(body.protocol).toBe(3);
                 recipient = decodeBase64(body.publicKey);
                 return new Response(JSON.stringify({ id: 'grant', expiresAt: new Date(Date.now() + 600_000).toISOString() }));
             }
             const sender = nacl.box.keyPair();
             const nonce = getRandomBytes(24);
-            const binding = { v: 1, grantId: 'grant', appId: 'relationship-advisor', machineId: 'machine', expiresAt, scope: 'codex:chat', key: connection.key };
+            const binding = { v: 1, grantId: 'grant', appId: 'relationship-advisor', machineId: 'machine', expiresAt, scope: 'agent:chat', protocol: 3, key: connection.key };
             const ciphertext = nacl.box(new TextEncoder().encode(JSON.stringify(binding)), nonce, recipient!, sender.secretKey);
             return new Response(JSON.stringify({ state: 'authorized', machineId: 'machine', expiresAt, envelope: encodeBase64(new Uint8Array([...sender.publicKey, ...nonce, ...ciphertext])) }));
         });
@@ -80,4 +80,56 @@ describe('read-only history', () => {
         vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(result({ ...binding, messages: [{ role: 'user', text: 'x', images: ['https://tracker.example'] }] })))));
         await expect(createDelegatedHistoryReader(connection.serverUrl, access).read()).rejects.toThrow('Invalid application history');
     });
+});
+describe('model selection binding', () => {
+    it('keeps a legacy grant restricted to Codex and sends no network request for Claude', async () => {
+        const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+        await expect(createDelegatedChat(connection).send('conversation', [{ role: 'user', text: 'hi' }], 'turn', { engine: 'claude', model: 'sonnet' })).rejects.toThrow('授权');
+        expect(fetcher).not.toHaveBeenCalled();
+    });
+    it('seals settings and requires a new worker; old workers reject wire v2', async () => {
+        const fetcher = vi.fn(async () => new Response('{}')); vi.stubGlobal('fetch', fetcher);
+        await createDelegatedChat(connection).send('conversation', [{ role: 'user', text: 'hi' }], 'turn', { engine: 'codex', model: 'gpt-6-luna' });
+        const body = JSON.parse((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+        expect(body.minimumProtocol).toBe(3);
+        expect(body).not.toHaveProperty('selection');
+        const cipher = decodeBase64(body.input);
+        const input = JSON.parse(new TextDecoder().decode(nacl.secretbox.open(cipher.subarray(24), cipher.subarray(0, 24), key)!));
+        expect(input).toMatchObject({ v: 2, selection: { engine: 'codex', model: 'gpt-6-luna' } });
+    });
+    it('rejects output for a different model while reading history', async () => {
+        const binding = { v: 2, grantId: 'grant', conversationId: 'conversation', turnId: 'turn' };
+        const input = encrypted({ ...binding, direction: 'input', sequence: 0, messages: [], selection: { engine: 'codex', model: 'gpt-6-luna' } });
+        const output = encrypted({ ...binding, direction: 'output', sequence: 1, text: 'wrong', selection: { engine: 'codex', model: 'gpt-6-astra' } });
+        vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ turns: [{ id: 'turn', input, output, sequence: 1 }] }))));
+        await expect(createDelegatedChat(connection).turns('conversation')).rejects.toThrow('model context mismatch');
+    });
+});
+
+
+it('projects legacy second-turn history to the strict v1 worker schema', async () => {
+    const fetcher = vi.fn(async () => new Response('{}')); vi.stubGlobal('fetch', fetcher);
+    await createDelegatedChat(connection).send('conversation', [
+        { role: 'user', text: 'first' },
+        { role: 'assistant', text: 'answer', selection: { engine: 'codex', model: 'gpt-6-astra' }, actualModel: 'gpt-6-astra' },
+        { role: 'user', text: 'second' },
+    ], 'second-turn');
+    const body = JSON.parse((fetcher.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(body).not.toHaveProperty('minimumProtocol');
+    const cipher = decodeBase64(body.input);
+    const input = JSON.parse(new TextDecoder().decode(nacl.secretbox.open(cipher.subarray(24), cipher.subarray(0, 24), key)!));
+    expect(input.v).toBe(1);
+    expect(input.messages[1]).toEqual({ role: 'assistant', text: 'answer' });
+});
+
+it('reads v2 model-bound history through the read-only reader', async () => {
+    const access = { v: 1 as const, appId: 'relationship-advisor' as const, conversationId: 'conversation', grantId: 'grant', key: connection.key, token: 'paws_history.scoped', expiresAt: connection.expiresAt };
+    const binding = { v: 2, grantId: 'grant', conversationId: 'conversation', turnId: 'turn', selection: { engine: 'claude', model: 'opus' } };
+    const input = encrypted({ ...binding, direction: 'input', sequence: 0, messages: [{ role: 'user', text: 'hello' }] });
+    const output = encrypted({ ...binding, direction: 'output', sequence: 1, text: 'answer', actualModel: 'resolved-opus' });
+    const payload = { conversationId: 'conversation', turns: [{ id: 'turn', input, output, sequence: 1 }] };
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(payload))));
+    expect((await createDelegatedHistoryReader(connection.serverUrl, access).read()).turns[0]).toMatchObject({ text: 'answer', selection: { engine: 'claude', model: 'opus' }, actualModel: 'resolved-opus' });
+    payload.turns[0].output = encrypted({ ...binding, direction: 'output', sequence: 1, text: 'wrong', selection: { engine: 'codex', model: 'gpt-6-astra' } });
+    await expect(createDelegatedHistoryReader(connection.serverUrl, access).read()).rejects.toThrow('model context mismatch');
 });

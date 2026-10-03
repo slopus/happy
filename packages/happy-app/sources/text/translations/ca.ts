@@ -60,6 +60,7 @@ export const ca: TranslationStructure = {
         advisorName: "Assessor de relacions",
         scanHint: ({ origin }: { origin: string }) => `Escaneja només un codi QR que hagis obert tu a ${origin}.`,
         scopeTitle: "Només converses amb text i imatges",
+        multiEngineScopeDescription: "Permet conversar amb Codex i Claude Code al dispositiu triat, consumint la quota del compte o de l’API configurats. L’aplicació no pot llegir altres converses ni fitxers ni executar ordres.",
         scopeDescription: "Fa servir el compte de Codex vinculat al dispositiu triat. Aquesta aplicació no pot llegir altres converses de Paws, la clau de recuperació ni fitxers locals, ni executar ordres.",
         chooseDevice: "Tria un dispositiu",
         chooseDeviceHint: "Prem la targeta d’un dispositiu per seleccionar-lo.",

@@ -62,6 +62,7 @@ export const zhHans: TranslationStructure = {
         advisorName: "狗头军师",
         scanHint: ({ origin }: { origin: string }) => `只扫描你自己在 ${origin} 打开的二维码。`,
         scopeTitle: "仅允许文字和图片对话",
+        multiEngineScopeDescription: "允许使用所选设备的 Codex 和 Claude Code 进行对话，消耗该设备所配置账号或 API 的额度。应用不能读取其他对话、本机文件，也不能执行命令。",
         scopeDescription: "使用所选设备绑定的 Codex 账号。应用无法读取其他 Paws 对话、恢复码、本机文件，也不能执行命令。",
         chooseDevice: "选择一台设备",
         chooseDeviceHint: "点击设备卡片进行选择",

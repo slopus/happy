@@ -60,6 +60,7 @@ export const pt: TranslationStructure = {
         advisorName: "Conselheiro de relacionamentos",
         scanHint: ({ origin }: { origin: string }) => `Escaneie apenas um código QR que você mesmo abriu em ${origin}.`,
         scopeTitle: "Apenas conversas com texto e imagens",
+        multiEngineScopeDescription: "Permite conversar com Codex e Claude Code no dispositivo escolhido, consumindo a cota da conta ou API configurada. O aplicativo não pode ler outras conversas ou arquivos nem executar comandos.",
         scopeDescription: "Usa a conta Codex vinculada ao dispositivo escolhido. O aplicativo não pode ler outras conversas do Paws, sua chave de recuperação ou arquivos locais, nem executar comandos.",
         chooseDevice: "Escolha um dispositivo",
         chooseDeviceHint: "Toque no cartão de um dispositivo para selecioná-lo.",

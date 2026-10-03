@@ -5,6 +5,7 @@ export interface AppConversationAccess {
     conversationId: string;
     grantId: string;
     machineId: string;
+    grantProtocol?: number;
     grantExpiresAt: string | null;
     machineEnvelope: string;
     token: string;
@@ -18,7 +19,7 @@ export function appConversationHistoryUrl(access: AppConversationAccess, envelop
     if (access.app.id !== 'relationship-advisor' || access.app.origin !== 'https://advisor.paws.rodeo'
         || access.conversationId !== expected.conversationId || access.grantId !== expected.grantId || access.machineId !== expected.machineId
         || data.v !== 1 || data.grantId !== access.grantId || data.appId !== access.app.id || data.machineId !== access.machineId
-        || data.scope !== 'codex:chat' || data.expiresAt !== access.grantExpiresAt || typeof data.key !== 'string'
+        || ((access.grantProtocol ?? 1) >= 3 ? data.scope !== 'agent:chat' || data.protocol !== 3 : data.scope !== 'codex:chat') || data.expiresAt !== access.grantExpiresAt || typeof data.key !== 'string'
         || !/^[A-Za-z0-9+/]{43}=$/.test(data.key) || decodeBase64(data.key).length !== 32
         || !access.token.startsWith('paws_history.') || access.token.length > 4096
         || !Number.isFinite(Date.parse(access.expiresAt)) || Date.parse(access.expiresAt) <= Date.now()) throw new Error('Application history binding mismatch');

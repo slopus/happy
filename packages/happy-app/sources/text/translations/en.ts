@@ -75,6 +75,7 @@ export const en: TranslationStructure = {
         advisorName: "Relationship Advisor",
         scanHint: ({ origin }: { origin: string }) => `Only scan a QR code you opened yourself at ${origin}.`,
         scopeTitle: "Text and image conversations only",
+        multiEngineScopeDescription: "Allows chat using Codex and Claude Code on the chosen device, consuming its configured account or API quota. The app cannot read other chats or files, or run commands.",
         scopeDescription: "Uses the Codex account linked to your chosen device. This app cannot read other Paws conversations, your recovery secret, or local files, and cannot run commands.",
         chooseDevice: "Choose a device",
         chooseDeviceHint: "Select a device card to continue.",

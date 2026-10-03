@@ -9,9 +9,12 @@ export interface DelegatedConnection {
     key: string;
     machineId: string;
     expiresAt: string | null;
+    scope?: 'codex:chat' | 'agent:chat';
 }
-export interface DelegatedMessage { role: 'user' | 'assistant'; text: string; images?: string[] }
+export interface DelegatedMessage { role: 'user' | 'assistant'; text: string; images?: string[]; selection?: DelegatedSelection; actualModel?: string }
 export interface DelegatedTurn { id: string; input: string; output: string | null; sequence: number; state: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'; createdAt: string }
+export interface DelegatedSelection { engine: 'codex' | 'claude'; model: string }
+const defaultSelection: DelegatedSelection = { engine: 'codex', model: 'gpt-6-astra' };
 interface Binding { v: 1; grantId: string; conversationId: string; turnId: string; direction: 'input' | 'output'; sequence: number }
 const bytes = new TextEncoder();
 function seal(value: unknown, key: string): string {
@@ -44,7 +47,7 @@ export async function startBrowserAppAuthorization(serverUrl: string, webUrl: st
     const credential = encodeBase64Url(getRandomBytes(32));
     const pair = nacl.box.keyPair.fromSecretKey(getRandomBytes(32));
     const challengeHash = Array.from(sha256(bytes.encode(verifier)), b => b.toString(16).padStart(2, '0')).join('');
-    const initial = await request<{ id: string; expiresAt: string }>(server, '/v1/apps/pairings', undefined, { appId: 'relationship-advisor', protocol: 2, publicKey: encodeBase64(pair.publicKey), challengeHash });
+    const initial = await request<{ id: string; expiresAt: string }>(server, '/v1/apps/pairings', undefined, { appId: 'relationship-advisor', protocol: 3, publicKey: encodeBase64(pair.publicKey), challengeHash });
     return {
         id: initial.id,
         expiresAt: initial.expiresAt,
@@ -59,8 +62,8 @@ export async function startBrowserAppAuthorization(serverUrl: string, webUrl: st
                     const plain = decryptBoxBundle(decodeBase64(result.envelope), pair.secretKey);
                     if (!plain) throw new Error('Invalid authorization envelope');
                     const binding = JSON.parse(new TextDecoder().decode(plain));
-                    if (binding.v !== 1 || binding.grantId !== initial.id || binding.appId !== 'relationship-advisor' || binding.machineId !== result.machineId || binding.expiresAt !== result.expiresAt || binding.scope !== 'codex:chat' || typeof binding.key !== 'string' || decodeBase64(binding.key).length !== 32) throw new Error('Authorization binding mismatch');
-                    return { id: initial.id, serverUrl: server, token: `paws_app.${initial.id}.${credential}`, key: binding.key, machineId: result.machineId, expiresAt: result.expiresAt };
+                    if (binding.v !== 1 || binding.grantId !== initial.id || binding.appId !== 'relationship-advisor' || binding.machineId !== result.machineId || binding.expiresAt !== result.expiresAt || (binding.scope !== 'agent:chat' || binding.protocol !== 3) || typeof binding.key !== 'string' || decodeBase64(binding.key).length !== 32) throw new Error('Authorization binding mismatch');
+                    return { id: initial.id, serverUrl: server, token: `paws_app.${initial.id}.${credential}`, key: binding.key, scope: binding.scope, machineId: result.machineId, expiresAt: result.expiresAt };
                 }
                 await new Promise<void>((resolve, reject) => {
                     const abort = () => { clearTimeout(timer); reject(new Error('Authorization cancelled')); };
@@ -79,31 +82,39 @@ export function createDelegatedChat(connection: DelegatedConnection) {
     const binding = (conversationId: string, turnId: string, direction: 'input' | 'output', sequence: number): Binding => ({ v: 1, grantId: connection.id, conversationId, turnId, direction, sequence });
     const decode = (ciphertext: string, expected: Binding) => {
         const data = open(ciphertext, connection.key);
-        for (const [key, value] of Object.entries(expected)) if (data[key] !== value) throw new Error('Application message context mismatch');
+        for (const [key, value] of Object.entries(expected)) if (key === 'v' ? data.v !== 1 && data.v !== 2 : data[key] !== value) throw new Error('Application message context mismatch');
         return data;
+    };
+    const decodeTurn = (conversationId: string, turn: DelegatedTurn) => {
+        const input = decode(turn.input, binding(conversationId, turn.id, 'input', 0));
+        const output = turn.output ? decode(turn.output, binding(conversationId, turn.id, 'output', turn.sequence)) : null;
+        const selection = (input.selection ?? defaultSelection) as DelegatedSelection;
+        if (input.v === 2 && !input.selection) throw new Error('Missing model selection');
+        if (input.selection && output && (output.v !== input.v || (output.selection as DelegatedSelection)?.engine !== selection.engine || (output.selection as DelegatedSelection)?.model !== selection.model)) throw new Error('Application model context mismatch');
+        return { ...turn, messages: input.messages as DelegatedMessage[], selection, text: output?.text as string || '', actualModel: output?.actualModel as string | undefined, error: output?.error as string | undefined };
     };
     return {
         check: () => call('/connection'),
         disconnect: () => call('/connection', undefined, 'DELETE'),
         conversations: () => call<{ conversations: { id: string; createdAt: string }[] }>('/conversations'),
         deleteConversation: (id: string) => call(`/conversations/${id}`, undefined, 'DELETE'),
-        async createConversation(id = globalThis.crypto.randomUUID()) { await call('/conversations', { id }); return id; },
-        async send(conversationId: string, messages: DelegatedMessage[], id = globalThis.crypto.randomUUID()) {
+        async createConversation(id: string = globalThis.crypto.randomUUID()) { await call('/conversations', { id }); return id; },
+        async send(conversationId: string, messages: DelegatedMessage[], id: string = globalThis.crypto.randomUUID(), selection?: DelegatedSelection) {
+            if (selection && (selection.engine !== 'codex' && selection.engine !== 'claude' || typeof selection.model !== 'string' || selection.model.length > 100)) throw new Error('Invalid model selection');
+            if (selection?.engine === 'claude' && connection.scope !== 'agent:chat') throw new Error('请重新连接 Paws，授权使用 Claude Code');
             if (messages.length > 100 || JSON.stringify(messages).length > 5 * 1024 * 1024) throw new Error('Conversation is too large');
-            const input = seal({ ...binding(conversationId, id, 'input', 0), messages }, connection.key);
+            const input = seal({ ...binding(conversationId, id, 'input', 0), messages: selection ? messages : messages.map(({ role, text, images }) => ({ role, text, ...(images ? { images } : {}) })), ...(selection ? { v: 2, selection } : {}) }, connection.key);
             if (input.length > 8 * 1024 * 1024) throw new Error('Encrypted conversation is too large');
-            await call(`/conversations/${conversationId}/turns`, { id, input });
+            await call(`/conversations/${conversationId}/turns`, { id, input, ...(selection ? { minimumProtocol: 3 } : {}) });
             return id;
         },
         async turns(conversationId: string, before?: string) {
             const result = await call<{ turns: DelegatedTurn[] }>(`/conversations/${conversationId}/turns${before ? `?before=${encodeURIComponent(before)}` : ''}`);
-            return result.turns.map(turn => ({ ...turn,
-                messages: decode(turn.input, binding(conversationId, turn.id, 'input', 0)).messages as DelegatedMessage[],
-                text: turn.output ? decode(turn.output, binding(conversationId, turn.id, 'output', turn.sequence)).text as string : '',
-            }));
+            return result.turns.map(turn => decodeTurn(conversationId, turn));
         },
         async turn(conversationId: string, turnId: string) {
-            const turn = await call<Omit<DelegatedTurn, 'input' | 'createdAt'>>(`/turns/${turnId}`);
+            const turn = await call<DelegatedTurn>(`/turns/${turnId}`);
+            if (turn.input) return decodeTurn(conversationId, turn);
             return { ...turn, text: turn.output ? decode(turn.output, binding(conversationId, turn.id, 'output', turn.sequence)).text as string : '' };
         },
         stop: (turnId: string) => call(`/turns/${turnId}/cancel`, {}),
@@ -131,13 +142,17 @@ export function createDelegatedHistoryReader(serverUrl: string, access: Delegate
                 const decode = (ciphertext: string, direction: Binding['direction'], sequence: number) => {
                     const data = open(ciphertext, access.key);
                     const expected: Binding = { v: 1, grantId: access.grantId, conversationId: access.conversationId, turnId: turn.id, direction, sequence };
-                    for (const [key, value] of Object.entries(expected)) if (data[key] !== value) throw new Error('Application message context mismatch');
+                    for (const [key, value] of Object.entries(expected)) if (key === 'v' ? data.v !== 1 && data.v !== 2 : data[key] !== value) throw new Error('Application message context mismatch');
                     return data;
                 };
-                const messages = decode(turn.input, 'input', 0).messages;
-                const text = turn.output ? decode(turn.output, 'output', turn.sequence).text : '';
+                const input = decode(turn.input, 'input', 0);
+                const output = turn.output ? decode(turn.output, 'output', turn.sequence) : null;
+                const selection = (input.selection ?? defaultSelection) as DelegatedSelection;
+                if (input.v === 2 && !input.selection) throw new Error('Missing model selection');
+                if (input.selection && output && (input.v !== output.v || selection.engine !== (output.selection as DelegatedSelection)?.engine || selection.model !== (output.selection as DelegatedSelection)?.model)) throw new Error('Application model context mismatch');
+                const messages = input.messages, text = output?.text ?? '';
                 if (!Array.isArray(messages) || messages.length > 100 || typeof text !== 'string' || !messages.every(message => message && ['user', 'assistant'].includes(message.role) && typeof message.text === 'string' && (message.images === undefined || (Array.isArray(message.images) && message.images.length <= 4 && message.images.every((url: unknown) => typeof url === 'string' && /^data:image\/(png|jpeg|webp);base64,/.test(url)))))) throw new Error('Invalid application history');
-                return { ...turn, messages: messages as DelegatedMessage[], text };
+                return { ...turn, messages: messages as DelegatedMessage[], text, selection, actualModel: output?.actualModel as string | undefined };
             }) };
         },
     };

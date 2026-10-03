@@ -62,6 +62,7 @@ export const zhHant: TranslationStructure = {
         advisorName: "狗頭軍師",
         scanHint: ({ origin }: { origin: string }) => `只掃描你自己在 ${origin} 開啟的 QR 碼。`,
         scopeTitle: "僅允許文字和圖片對話",
+        multiEngineScopeDescription: "允許使用所選裝置的 Codex 和 Claude Code 進行對話，消耗該裝置所設定帳號或 API 的額度。應用程式不能讀取其他對話、本機檔案，也不能執行指令。",
         scopeDescription: "使用所選裝置綁定的 Codex 帳號。應用程式無法讀取其他 Paws 對話、復原密鑰、本機檔案，也不能執行指令。",
         chooseDevice: "選擇一台裝置",
         chooseDeviceHint: "點選裝置卡片進行選擇",

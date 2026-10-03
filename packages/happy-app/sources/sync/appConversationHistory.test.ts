@@ -20,3 +20,10 @@ it('refuses other application origins and conversations, even with a valid envel
     expect(() => appConversationHistoryUrl({ ...access, conversationId: 'another' }, envelope, expected)).toThrow();
     expect(() => appConversationHistoryUrl({ ...access, expiresAt: new Date(0).toISOString() }, envelope, expected)).toThrow();
 });
+
+it('reads protocol 3 history without granting execution or accepting mismatched scope', () => {
+    const modern = { ...access, grantProtocol: 3 };
+    expect(appConversationHistoryUrl(modern, { ...envelope, scope: 'agent:chat', protocol: 3 }, expected)).toContain('#paws-history=');
+    expect(() => appConversationHistoryUrl(modern, envelope, expected)).toThrow();
+    expect(() => appConversationHistoryUrl(access, { ...envelope, scope: 'agent:chat', protocol: 3 }, expected)).toThrow();
+});

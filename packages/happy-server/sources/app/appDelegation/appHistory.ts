@@ -34,7 +34,7 @@ export async function openOwnedAppConversation(accountId: string, conversationId
             purpose: 'app-history', grantId: grant.id, conversationId, createdAt: conversation.createdAt.toISOString(), state: grant.state, expiresAt,
         } });
         return { app: delegatedApp, conversationId, grantId: grant.id, machineId: grant.machineId,
-            grantExpiresAt: grant.expiresAt?.toISOString() ?? null, machineEnvelope: grant.machineEnvelope,
+            grantProtocol: grant.protocol, grantExpiresAt: grant.expiresAt?.toISOString() ?? null, machineEnvelope: grant.machineEnvelope,
             token, expiresAt: new Date(expiresAt).toISOString() };
     });
 }
