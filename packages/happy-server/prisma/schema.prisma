@@ -302,6 +302,10 @@ model Machine {
     /// opens only the daemon's server lane, which runs an allowlist of
     /// non-content methods. Write-once on registration; key rotation replaces it.
     serverRpcKeyEnvelope Bytes?
+    /// aplus-dev-studio specs/e2ee-machine-control-boundary R21 — a customer client's attestation
+    /// of the machine key (a box from its account or company key to itself). The server stores it
+    /// but cannot make one; a key rotation clears it.
+    dataKeyAttestation   Bytes?
     seq                Int         @default(0)
     active             Boolean     @default(true)
     lastActiveAt       DateTime    @default(now())
