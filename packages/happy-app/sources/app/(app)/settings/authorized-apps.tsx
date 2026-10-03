@@ -1,45 +1,73 @@
-import { t } from '@/text';
 import * as React from 'react';
 import { Stack, useFocusEffect } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { Item } from '@/components/Item';
-import { ItemGroup } from '@/components/ItemGroup';
-import { ItemList } from '@/components/ItemList';
+import { Text, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useUnistyles } from 'react-native-unistyles';
+import { t } from '@/text';
+import { AppAuthorizationLayout, AuthorizationNotice, authorizationStyles } from '@/components/appAuthorization/AppAuthorizationLayout';
 import { Modal } from '@/modal';
 import { useAllMachines } from '@/sync/storage';
 import { appAuthorizationRequest, type AppAuthorizationGrant, isAppGrantActive } from '@/sync/apiAppDelegation';
 
 export default function AuthorizedApps() {
     const { credentials } = useAuth();
+    const { theme } = useUnistyles();
+    const styles = authorizationStyles;
     const machines = useAllMachines({ includeOffline: true });
     const [grants, setGrants] = React.useState<AppAuthorizationGrant[]>([]);
     const [error, setError] = React.useState('');
     const [loaded, setLoaded] = React.useState(false);
-    const [busy, setBusy] = React.useState(false);
+    const [revokingId, setRevokingId] = React.useState<string | null>(null);
+    const revokeLock = React.useRef(false);
     const refresh = React.useCallback(async () => {
         if (!credentials) return;
         try { const result = await appAuthorizationRequest<{ grants: AppAuthorizationGrant[] }>(credentials.token, ''); setGrants(result.grants); setError(''); setLoaded(true); }
-        catch (e) { setError(e instanceof Error ? e.message : '加载失败'); }
+        catch (e) { setError(e instanceof Error ? e.message : t('appAuthorization.loadFailed')); }
     }, [credentials]);
     useFocusEffect(React.useCallback(() => { void refresh(); }, [refresh]));
     const revoke = async (grant: AppAuthorizationGrant) => {
-        if (!credentials || busy || !await Modal.confirm('撤销应用授权', '这将停止该连接正在运行的回答，并阻止它继续访问对话。', { confirmText: '撤销', destructive: true })) return;
-        setBusy(true);
-        try { await appAuthorizationRequest(credentials.token, `/${grant.id}`, undefined, 'DELETE'); await refresh(); }
-        catch (e) { setError(e instanceof Error ? e.message : '撤销失败'); }
-        finally { setBusy(false); }
+        if (!credentials || revokeLock.current) return;
+        revokeLock.current = true;
+        try {
+            if (!await Modal.confirm(t('appAuthorization.revokeConfirmTitle'), t('appAuthorization.revokeConfirmMessage'), { confirmText: t('appAuthorization.revoke'), destructive: true })) return;
+            setRevokingId(grant.id);
+            await appAuthorizationRequest(credentials.token, `/${grant.id}`, undefined, 'DELETE');
+            await refresh();
+        } catch (e) { setError(e instanceof Error ? e.message : t('appAuthorization.revokeFailed')); }
+        finally { revokeLock.current = false; setRevokingId(null); }
     };
-    return <ItemList><Stack.Screen options={{ title: '已授权应用' }} />
-        {error ? <Item title="加载或操作失败，点此重试" subtitle={error} onPress={() => void refresh()} /> : null}
-        {!loaded && !error ? <Item title="正在加载已授权应用…" showChevron={false} /> : null}
-        {loaded && !grants.length ? <Item title="尚未授权任何应用" subtitle="从狗头军师的“连接我的 Paws”开始。" showChevron={false} /> : null}
+    return <AppAuthorizationLayout><Stack.Screen options={{ title: t('appAuthorization.listTitle') }} />
+        <Text style={styles.body}>{t('appAuthorization.listDescription')}</Text>
+        {error ? <Item title={t('appAuthorization.retryHint')} subtitle={error} onPress={() => void refresh()} /> : null}
+        {!loaded && !error ? <AuthorizationNotice title={t('appAuthorization.loading')} /> : null}
+        {loaded && !grants.length ? <AuthorizationNotice title={t('appAuthorization.emptyTitle')} message={t('appAuthorization.emptyHint')} /> : null}
         {grants.map(grant => {
             const machine = machines.find(m => m.id === grant.machineId);
             const active = isAppGrantActive(grant);
-            return <ItemGroup key={grant.id} title={grant.appId === 'relationship-advisor' ? '狗头军师 · advisor.paws.rodeo' : grant.appId}>
-                <Item title={machine?.metadata?.displayName || machine?.metadata?.host || grant.machineId || '设备已移除'} subtitle={`仅文字和图片对话 · ${active ? grant.expiresAt === null ? t('appConversations.permanent') : '有效至 ' + new Date(grant.expiresAt).toLocaleString() : grant.state === 'revoked' ? '已撤销' : '已过期'}`} showChevron={false} />
-                {active ? <Item title={busy ? '正在处理…' : '撤销授权'} onPress={() => void revoke(grant)} disabled={busy} /> : null}
-            </ItemGroup>;
+            const isRevoking = revokingId === grant.id;
+            return <View key={grant.id} style={styles.card} testID={`authorization-grant-${grant.id}`}>
+                <View style={styles.row}>
+                    <View style={styles.textColumn}>
+                        <Text style={styles.title}>{grant.appId === 'relationship-advisor' ? t('appAuthorization.advisorName') : grant.appId}</Text>
+                        {grant.appId === 'relationship-advisor' ? <Text style={styles.small}>advisor.paws.rodeo</Text> : null}
+                    </View>
+                    <Text style={[styles.status, active && styles.activeStatus]}>{t(active ? 'appAuthorization.active' : grant.state === 'revoked' ? 'appAuthorization.revoked' : 'appAuthorization.expired')}</Text>
+                </View>
+                <View style={styles.row}>
+                    <Ionicons name="desktop-outline" size={20} color={theme.colors.textSecondary} />
+                    <View style={styles.textColumn}>
+                        <Text style={styles.body}>{machine?.metadata?.displayName || machine?.metadata?.host || grant.machineId || t('appAuthorization.deviceRemoved')}</Text>
+                        <Text style={styles.small}>{t('appAuthorization.chatOnly')}</Text>
+                        {active ? <Text style={styles.small}>{grant.expiresAt === null ? t('appConversations.permanent') : t('appAuthorization.expiresAt', { date: new Date(grant.expiresAt).toLocaleString() })}</Text> : null}
+                    </View>
+                </View>
+                {active ? <><View style={styles.divider} /><Item title={t(isRevoking ? 'appAuthorization.revoking' : 'appAuthorization.revoke')}
+                    onPress={() => void revoke(grant)} disabled={revokingId !== null} loading={isRevoking} destructive showChevron={false}
+                    icon={<Ionicons name="unlink-outline" size={18} color={theme.colors.textDestructive} />}
+                    style={{ paddingHorizontal: 0, paddingVertical: 6, minHeight: 40 }} /></> : null}
+            </View>;
         })}
-    </ItemList>;
+    </AppAuthorizationLayout>;
 }

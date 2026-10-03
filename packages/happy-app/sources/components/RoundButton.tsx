@@ -81,6 +81,9 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
     return (
         <Pressable
             accessibilityRole="button"
+            accessibilityState={{ disabled: !!(doLoading || props.disabled), busy: doLoading }}
+            aria-busy={doLoading}
+            accessibilityLabel={typeof props.title === 'string' ? props.title : undefined}
             disabled={doLoading || props.disabled}
             hitSlop={size.hitSlop}
             style={(p) => ([
@@ -89,11 +92,8 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
                     borderRadius: size.height / 2,
                     backgroundColor: display.backgroundColor,
                     borderColor: display.borderColor,
-                    opacity: props.disabled ? 0.5 : 1,
+                    opacity: props.disabled && !doLoading ? 0.45 : p.pressed ? 0.9 : 1,
                     overflow: 'hidden',
-                },
-                {
-                    opacity: p.pressed ? 0.9 : 1
                 },
                 props.style])}
             onPress={doAction}
