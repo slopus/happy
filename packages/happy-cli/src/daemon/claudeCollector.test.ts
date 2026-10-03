@@ -8,7 +8,7 @@ const now = 2000000000000
 const pair = generateKeyPairSync('ed25519')
 const der = pair.publicKey.export({type:'spki',format:'der'}) as Buffer
 const keyId = createHash('sha256').update(der).digest('hex')
-const request = {version:1,companyId:'c',userId:'u',machineId:'m',managedAccountId:'11111111-1111-4111-8111-111111111111',permitId:'33333333-3333-4333-8333-333333333333',credentialGeneration:4,policyRevision:2,grant:''}
+const request = {version:1,companyId:'c',userId:'u',machineId:'m',managedAccountId:'11111111-1111-4111-8111-111111111111',accountRef:'22222222-2222-4222-8222-222222222222',permitId:'33333333-3333-4333-8333-333333333333',credentialGeneration:4,policyRevision:2,grant:''}
 function envelope(extra = {}) {
  const claims = {v:1,type:'claude-collector-v1',aud:'claude-collector-v1@https://studio.test',keyId,companyId:'c',userId:'u',machineId:'m',managedAccountId:request.managedAccountId,credentialGeneration:4,policyRevision:2,permitId:'33333333-3333-4333-8333-333333333333',reservedAt:now,transportDeadline:now+10000,expiresAt:now+30000,...extra}
  const payload = Buffer.from(JSON.stringify(claims)).toString('base64url')
@@ -43,6 +43,15 @@ describe('signed collector boundary',()=>{
   deps.authorize.mockResolvedValue(true);invoke.mockResolvedValue('{}')
   expect(await collector({...request,grant:envelope()})).toMatchObject({error:'COLLECTOR_RUNTIME_UNSUPPORTED'})
  })
+})
+
+it.each([[10001,true],[30000,false]])('uses publish grace only for captured observation delivery at %sms',async(elapsed,accepted)=>{
+ const {deps}=setup();let clock=now
+ const original=deps.invoke.getMockImplementation()!
+ deps.now=()=>clock
+ deps.invoke.mockImplementation(async(args,input)=>{const result=await original(args,input);if(args.includes('collect-org'))clock=now+Number(elapsed);return result})
+ const result=await createClaudeCollector(deps)({...request,grant:envelope()})
+ expect(result).toMatchObject(accepted?{status:'observed',observation:{observedAt:now}}:{error:'COLLECTOR_PERMIT_EXPIRED'})
 })
 
 describe('durable consume',()=>{
@@ -115,17 +124,26 @@ command(sys.argv[2:])
   const collector=createClaudeCollector({...deps,now:Date.now,invoke,consume:(id,expires)=>consumeCollectorPermit(join(dir,'receipts'),id,expires,Date.now())})
   const grant=envelope({reservedAt:current,transportDeadline:current+10000,expiresAt:current+30000})
   try {
-   const result=await collector({...request,grant})
+   const rosterBefore=JSON.parse(await invoke(['token-runtime','status']))
+   const bound={...request,accountRef:rosterBefore.accounts.find((a:any)=>a.managedAccountId===request.managedAccountId).accountRef,grant}
+   const result=await collector(bound)
    expect(result).toMatchObject({companyId:'c',permitId:request.permitId,observation:{source:'inference_probe',reason:'ok',coverage:'unknown'}})
    expect(JSON.stringify(result)).not.toContain('sk-ant-oat01-')
-   expect(await collector({...request,grant})).toMatchObject({error:'COLLECTOR_PERMIT_REPLAYED'})
+   expect(await collector(bound)).toMatchObject({error:'COLLECTOR_PERMIT_REPLAYED'})
    const {createTokenProbe}=await import('./tokenProbe')
    const roster=JSON.parse(await invoke(['token-runtime','status']))
    const personal=roster.accounts.find((a:any)=>!a.managedAccountId)
    const handle=createTokenProbe({invoke})
    const action={version:1,accountRef:personal.accountRef,credentialGeneration:personal.credentialGeneration}
    expect(await handle({...action,operation:'consent',enabled:true,ackCost:true})).toMatchObject({account:{probeEnabled:true}})
-   const probe=await handle({...action,operation:'collect'})
+   const {createPersonalProbeScheduler}=await import('./personalProbeScheduler')
+   const {readTokenRuntime}=await import('./tokenProbe')
+   let online=false;let active=true;let probe:unknown
+   const resident=createPersonalProbeScheduler({now:Date.now,online:()=>online,inUse:()=>active,roster:async()=>(await readTokenRuntime({invoke}))?.accounts??[],collect:async()=>{probe=await handle({...action,operation:'collect'})}})
+   await resident.tick();expect(probe).toBeUndefined()
+   online=true;active=false;await resident.tick();expect(probe).toBeUndefined()
+   active=true;await resident.tick();await vi.waitFor(()=>expect(probe).toBeDefined(),{timeout:10000})
+   resident.close()
    expect(probe).toMatchObject({account:{observation:{source:'inference_probe',coverage:'unknown'}},budget:{machineUsed24h:2}})
    expect(JSON.stringify(probe)).not.toContain('sk-ant-oat01-')
   }finally{await rm(dir,{recursive:true,force:true})}

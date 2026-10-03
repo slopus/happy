@@ -266,6 +266,7 @@ import {
 import { createSetupTokenBindingVerifier, readTrustedStudioOrigin } from './setupTokenBindingProof';
 import { createClaudeSwapSupervisor } from './claudeSwapSupervisor';
 import { createNodeAiCredentialRuntime } from './aiCredentialRuntime';
+import { hasActiveClaudeUse } from './personalProbeScheduler';
 import { resolveReconnectableSession, type ReconnectableHappySession } from '@/resume/resolveHappySession';
 import { claudeCheckSession } from '@/claude/utils/claudeCheckSession';
 import { CodexAppServerClient } from '@/codex/codexAppServerClient';
@@ -4177,6 +4178,16 @@ export async function startDaemon(): Promise<void> {
     const aiCredentialRuntime = createNodeAiCredentialRuntime(claudeSwapSupervisor, process.env, os.homedir(), {
       setupTokenBinding: trustedStudioOrigin ? createSetupTokenBindingVerifier({ origin: trustedStudioOrigin, machineId }) : undefined,
     });
+    const personalProbeTimer = setInterval(() => {
+      void aiCredentialRuntime.personalSchedulerTick({
+        online: apiMachine.getConnectionHealth().connected,
+        inUse: !managedRuntimeActive && hasActiveClaudeUse(getCurrentChildren(), Date.now(), isPidAlive),
+      }).catch(() => undefined);
+    }, 5_000);
+    personalProbeTimer.unref();
+    const stopPersonalProbes = () => { clearInterval(personalProbeTimer); aiCredentialRuntime.stopPersonalScheduler(); };
+    stopClaudeSwapSupervisor = () => { stopPersonalProbes(); claudeSwapSupervisor.shutdown(); };
+
     resolveManagedAiCredentialEnvironment = (agent, selection, recorded) => aiCredentialRuntime.sessionEnvironment(agent, selection, recorded);
     let activeServerAutomationLeaseCount = 0;
     let scriptWorker: ReturnType<typeof createScriptAutomationWorker> | null = null;
@@ -4929,6 +4940,7 @@ export async function startDaemon(): Promise<void> {
             // `happy daemon start` reads our still-present daemon.state.json, sees
             // isDaemonRunningCurrentlyInstalledHappyVersion() === true, and exits —
             // leaving nothing running once we also exit.
+            stopPersonalProbes();
             claudeSwapSupervisor.shutdown();
             // Before the replacement exists: it starts its own host, and two hosts must never
             // overlap. stop() returns only once the child has exited (SIGKILL after its grace).
@@ -5069,6 +5081,7 @@ export async function startDaemon(): Promise<void> {
         logger.debug('[DAEMON RUN] Health check interval cleared');
       }
       stopLogHousekeeping();
+      stopPersonalProbes();
       claudeSwapSupervisor.shutdown();
       scriptAutomationTickRunner.pause();
       await stopScriptWorker();

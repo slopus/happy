@@ -2,7 +2,7 @@
 import { createHash, createPublicKey, verify } from 'node:crypto'
 import { mkdir, open, readFile, rename, rm } from 'node:fs/promises'
 import { join } from 'node:path'
-export type CollectorRequest = {version:1;companyId:string;userId:string;machineId:string;managedAccountId:string;permitId:string;credentialGeneration:number;policyRevision:number;grant:string}
+export type CollectorRequest = {version:1;companyId:string;userId:string;machineId:string;managedAccountId:string;accountRef:string;permitId:string;credentialGeneration:number;policyRevision:number;grant:string}
 type Deps = {studioOrigin:string|null;machineId:string;now():number;fetchImpl?:typeof fetch;authorize(request:CollectorRequest):Promise<boolean>;consume(id:string,expiresAt:number):Promise<boolean>;invoke(args:string[],input?:string):Promise<string>}
 const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i
 const exact = (value:any,keys:string[]) => value && typeof value==='object' && !Array.isArray(value) && Object.keys(value).sort().join('|')===keys.sort().join('|')
@@ -51,9 +51,9 @@ function observation(raw:any,claims:any) {
 export function createClaudeCollector(deps:Deps) {
  return async (input:unknown) => {
   try {
-   if(!exact(input,['version','companyId','userId','machineId','managedAccountId','permitId','credentialGeneration','policyRevision','grant']))return failure('GRANT_INVALID')
+   if(!exact(input,['version','companyId','userId','machineId','managedAccountId','accountRef','permitId','credentialGeneration','policyRevision','grant']))return failure('GRANT_INVALID')
    const r=input as CollectorRequest
-   if(r.version!==1||r.machineId!==deps.machineId||![r.companyId,r.userId,r.machineId].every(v=>typeof v==='string'&&v.length>0&&v.length<=128)||!uuid.test(r.managedAccountId)||!uuid.test(r.permitId)||!integer(r.credentialGeneration)||r.credentialGeneration<1||!integer(r.policyRevision)||r.policyRevision<1||typeof r.grant!=='string'||Buffer.byteLength(r.grant)>8192)return failure('GRANT_INVALID')
+   if(r.version!==1||r.machineId!==deps.machineId||![r.companyId,r.userId,r.machineId].every(v=>typeof v==='string'&&v.length>0&&v.length<=128)||!uuid.test(r.managedAccountId)||!uuid.test(r.accountRef)||!uuid.test(r.permitId)||!integer(r.credentialGeneration)||r.credentialGeneration<1||!integer(r.policyRevision)||r.policyRevision<1||typeof r.grant!=='string'||Buffer.byteLength(r.grant)>8192)return failure('GRANT_INVALID')
    const trust=await publicKey(deps);if(!trust)return failure('SIGNER_UNAVAILABLE',true)
    const segments=r.grant.split('.')
    if(segments.length!==2||segments.some(s=>!s||!/^[A-Za-z0-9_-]+$/.test(s)))return failure('GRANT_INVALID')
@@ -69,7 +69,7 @@ export function createClaudeCollector(deps:Deps) {
    const roster=JSON.parse(await deps.invoke(['token-runtime','status']))
    const rows=roster.accounts?.filter((a:any)=>a.managedAccountId===r.managedAccountId)
    const a=rows?.length===1?rows[0]:null
-   if(!a||!uuid.test(a.accountRef)||a.managedAccountId!==r.managedAccountId||a.credentialGeneration!==r.credentialGeneration||a.credentialType!=='setup_token'||a.disabled)return failure('GENERATION_CHANGED')
+   if(!a||a.accountRef!==r.accountRef||!uuid.test(a.accountRef)||a.managedAccountId!==r.managedAccountId||a.credentialGeneration!==r.credentialGeneration||a.credentialType!=='setup_token'||a.disabled)return failure('GENERATION_CHANGED')
    // Fresh local ownership and time check after key/provider reads.
    if(!await deps.authorize(r))return failure('ACCOUNT_NOT_ASSIGNED')
    if(deps.now()>=c.transportDeadline)return failure('PERMIT_EXPIRED')
@@ -78,10 +78,10 @@ export function createClaudeCollector(deps:Deps) {
    const context={companyId:r.companyId,machineId:r.machineId,managedAccountId:r.managedAccountId,credentialGeneration:r.credentialGeneration,policyRevision:r.policyRevision,accountRef:a.accountRef}
    const result=JSON.parse(await deps.invoke(['token-runtime','collect-org'],JSON.stringify({version:1,context,permit,inUse:true,online:true})))
    if(!await deps.authorize(r))return failure('ACCOUNT_NOT_ASSIGNED')
-   if(deps.now()>c.transportDeadline)return failure('PERMIT_EXPIRED')
+   if(deps.now()>=c.expiresAt)return failure('PERMIT_EXPIRED')
    if(!result.observation)return failure('REQUEST_FAILED')
    if(result.observation.accountRef!==a.accountRef||result.observation.credentialGeneration!==r.credentialGeneration)return failure('GENERATION_CHANGED')
-   return {version:1,companyId:r.companyId,machineId:r.machineId,managedAccountId:r.managedAccountId,credentialGeneration:r.credentialGeneration,policyRevision:r.policyRevision,permitId:c.permitId,observation:observation(result.observation,c)}
+   return {version:1,status:'observed',companyId:r.companyId,machineId:r.machineId,managedAccountId:r.managedAccountId,credentialGeneration:r.credentialGeneration,policyRevision:r.policyRevision,permitId:c.permitId,observation:observation(result.observation,c)}
   }catch{return failure('REQUEST_FAILED')}
  }
 }

@@ -188,7 +188,7 @@ describe('managed Claude setup-token runtime', () => {
 
   it('gates personal CAS and signed collector capabilities on the actual provider and trusted context', async () => {
     const capabilities={version:1,artifact:'saycode-setup-token-runtime-v1',managedAccountMetadata:true,setupTokenObservation:true,durableProbeBudget:true,personalProbeVersion:1,organizationCollectorVersion:1}
-    const env={HAPPY_APLUS_MCP_CONFIG_URL:'https://studio.test/api/mcp'}
+    const env={HAPPY_APLUS_STUDIO_ORIGIN:'https://studio.test'}
     const der=generateKeyPairSync('ed25519').publicKey.export({type:'spki',format:'der'}) as Buffer
     const key={version:1,type:'claude-collector-v1',algorithm:'Ed25519',keyId:createHash('sha256').update(der).digest('hex'),publicKeyBase64:der.toString('base64'),audience:'claude-collector-v1@https://studio.test'}
     const fetcher=vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(JSON.stringify(key)))

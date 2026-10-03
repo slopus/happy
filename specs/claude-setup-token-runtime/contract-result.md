@@ -149,7 +149,7 @@ Not covered: a `happy` CLI started by hand in a terminal, which is outside the d
 - No live provider/model/header/authentication fixture or deployed artifact was verified.
 - Desktop owns organization scheduler/discovery/reserve/publish and receiver observations.
   Its integration and Studio's actual HTTP auth gate are parent-owned checks.
-- Resident personal scheduling is not implemented; only explicit manual refresh invokes inference.
+- Resident scheduling is default OFF and gated by durable personal consent and daemon Claude activity.
 
 ## Happy organization collector bridge v1
 
@@ -157,19 +157,19 @@ Customer-key, freshly nonce-bound RPC only: `ai-credential:collector-probe`.
 Request exact fields:
 ```ts
 {version:1, companyId:string, userId:string, machineId:string,
- managedAccountId:string, credentialGeneration:number,
+ managedAccountId:string, accountRef:string, credentialGeneration:number,
  policyRevision:number, permitId:string, grant:string}
 ```
 `grant` is Studio's signed reserve envelope, never the plain reserve DTO. No caller
-origin/key/bearer accepted. Studio origin is daemon `HAPPY_APLUS_MCP_CONFIG_URL`
+origin/key/bearer accepted. Studio origin is daemon `HAPPY_APLUS_STUDIO_ORIGIN`
 origin. GET `/api/claude-collector/public-key` uses no Studio bearer and refuses
 redirects, unsafe non-loopback HTTP, unknown algorithms and mismatched key hash.
-Claims match every scope/request field including permitId. Local accountRef is
-resolved only from the unique current managed provider roster row and generation. Local reconciled group journal must
+Claims match every scope/request field including permitId. Request accountRef must match
+the unique current managed provider roster row and generation. Local reconciled group journal must
 independently match company/user and contain the managed identity. Journal group
 revision is not the per-account credentialGeneration.
 
-Success `{version:1, companyId, machineId, managedAccountId, credentialGeneration, policyRevision, permitId, observation}`; observation is only
+Success `{version:1,status:'observed',companyId,machineId,managedAccountId,credentialGeneration,policyRevision,permitId,observation}`; observation is only
 `{source:'inference_probe',observedAt:number,windows:[{kind,pct,resetsAt}],
 coverage:'unknown',reason,retryAt:number|null}`. All times epoch milliseconds.
 Reasons: ok/headers-missing/rate-limited/authentication-failed/scope-missing/
@@ -229,9 +229,12 @@ enable additionally requires `ackCost:true`. Other operations reject enabled/ack
 Managed rows reject consent AND collect regardless of retained local consent. Status
 is local/no-network and does not change consent. collect means explicit manual caller
 action; no renderer poller/script schedules inference. Provider/Core shared machine/token
-budgets, backoff and singleflight apply. No resident personal scheduler is implemented.
+budgets, backoff and singleflight apply. Resident scheduling is implemented in Core as described below.
 
-Success `{version:1,operation,accountRef,credentialGeneration,account:<whitelist>,budget}`.
+Success `{version:1,operation,accountRef,credentialGeneration,scope,enabled,ackCost,
+status:'ready'|'disabled'|'backing-off'|'budget-exhausted'|'unavailable',reason,eligibility,
+account:<whitelist>,budget:{minIntervalMs:300000,dailyLimit:96,remaining,retryAt,
+machineRemaining,machineUsed24h,machineLimit24h:288,accountLimit24h:96}}`.
 Account whitelist: accountRef,credentialGeneration,credentialType,probeEnabled,
 authState,usageStatus,decisionEligible:false,reasonCodes,observation? (provider ISO UTC;
 source,observedAt,windows[{kind,pct,resetsAt}],coverage:'unknown',reason,retryAt),
@@ -282,3 +285,79 @@ claudeCollector 16 (including explicitly enabled installed-wheel org+personal sm
 aiCredentialGroups 7, RpcHandlerManager 46, serverLane 4, tokenProbe 8,
 aiCredentialSetupToken 18, aiCredentialRuntime 193. The final focused runs above
 cover each changed behavior; these counts are not a claim of a repository-wide run.
+
+## Resident personal scheduler and DTO alignment (current)
+
+Core trust origin is `HAPPY_APLUS_STUDIO_ORIGIN`, matching prepared-profile verifier
+configuration. No MCP-config URL fallback or caller origin/key is trusted. Missing
+config/key omits collectorProbeVersion before Desktop reserves. No Studio bearer.
+
+Collector request exact fields now include BOTH accountRef and permitId:
+`{version:1,companyId,userId,machineId,managedAccountId,accountRef,
+credentialGeneration,policyRevision,permitId,grant}`. The signed permitId matches;
+accountRef must equal the unique local roster row for that managed ID/generation.
+Success adds `status:'observed'` to the scoped epoch-ms observation response.
+Before invoke now < transportDeadline; after invoke observedAt must be within the
+transport deadline and result delivery now < expiresAt. The publication grace
+never authorizes an additional inference attempt.
+
+Personal success adds top-level `{scope:'personal',enabled,ackCost,status,eligibility,
+budget:{minIntervalMs:300000,dailyLimit:96,remaining,retryAt,machineRemaining,
+machineUsed24h,machineLimit24h,accountLimit24h}}`, preserving operation/account/ref/
+generation for compatibility. Status is the five-value normalized probe eligibility mapping, never usageStatus; eligibility is eligible/disabled/managed/account-disabled/
+scope-missing/backing-off/budget-exhausted. Managed read-only status says organization;
+consent/collect reject it. retryAt is epoch-ms|null, not a credential or local digest.
+
+These values derive ONLY from provider integration6a930c9's probeBudget scope
+local-per-token/accountUsed24h/accountLimit24h/accountRemaining24h/nextProbeAt/
+failureStreak/minIntervalSeconds/recommendedIntervalSeconds plus status.budget
+machineRemaining24h/machineSlotFreesAt. Missing/invalid budget metadata fails closed;
+no competing provider budget DTO. Account slot-frees time is not exported, so exhausted
+account retryAt is unknown(null) and eligibility remains budget-exhausted. Machine
+exhaustion uses the actual machineSlotFreesAt. No guessed remaining or reset time.
+
+Daemon resident scheduler polls local metadata every5s ONLY online and during actual
+live/fresh Claude session use. Default OFF uses provider durable consent; enable
+still requires ackCost:true. Collection starts no more often than15min/ref and
+respects durable token retry and account/machine budgets. It checks current ref/gen
+and generation CAS; one shared runtime operation queue and provider collector lock
+serialize organization/personal/manual work. No renderer inference loop.
+
+Revoke cancels before consent waits in the queue. Group-sync/apply/purge cancel
+before replacement waits. Offline/inactivity/observed generation replacement abort
+at the next5s daemon tick; transport processes are killed and late results discarded.
+Cancellation after reservation never refunds/reset spending. Shutdown/update/startup
+failure closes the scheduler. Stale/recovered/missing runtime reports and managed
+runtime sessions never count as personal in-use. Actual use is thinking/open tool/
+pending user input or user interaction within15min, with live PID and <=120s runtime
+report. Injected fake clocks/gates test these decisions; no live daemon was replaced.
+
+UI normalization (authoritative current mapping): top status is exactly
+ready|disabled|backing-off|budget-exhausted|unavailable, from probe eligibility,
+not cached usageStatus. reason is a bounded fixed or validated observation reason:
+not_observed/probe_disabled/backing_off/budget_exhausted/organization_collector_required/
+account_disabled/authentication_failed/inference_scope_required or safe provider reason.
+Nested account keeps authState and usageStatus separate. Disabled manual collect
+returns status disabled without a transport call. Machine remaining is validated0..288;
+UI canCollect must require both budget.remaining>0 and budget.machineRemaining>0.
+Duplicate stable refs fence discovery/scheduling and cancel pending work.
+
+Final scheduler/DTO verification (2026-10-04):
+```sh
+pnpm -C packages/happy-cli typecheck
+COLLECTOR_PACK_PYTHON=<provider-worktree>/.venv/bin/python3 COLLECTOR_PACK_INSTALL=<provider-worktree>/dist/pack-smoke/install pnpm -C packages/happy-cli exec vitest run --project unit src/daemon/personalProbeScheduler.test.ts src/daemon/tokenProbe.test.ts src/daemon/aiCredentialRuntime.test.ts src/daemon/claudeCollector.test.ts src/daemon/aiCredentialSetupToken.test.ts
+```
+249 passed (scheduler9, personal9, runtime195, collector18, setup-token18), no
+artifact skip in this explicitly configured run. Actual installed marked wheel,
+isolated file backend/fake HTTP exercised org+personal spending, default-OFF and
+online/in-use scheduler admission, generation CAS and response whitelisting. Grace
+regressions accepted captured observation delivery at10.001s and rejected30s expiry.
+Provider budget commit `3d2d6c3` passed68 focused tests, lint and wheel/sdist smoke;
+its budget schema duplicates integration6a930c9, so retain the integrated equivalent.
+
+No live inference, home/Keychain, daemon replacement, server/public-key live request,
+release pin, publish/push/merge or operating migration. Parent combined integration
+and release pin remain unverified; source/fake transport tests are not deployment
+or provider-authorization evidence. Existing pkgroll bin/empty-chunk warnings remain.
+Final additional account-disable cancellation regression: scheduler suite10 passed
+with required build/typecheck. Provider reservation/backoff remains spent on abort.

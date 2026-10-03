@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { createPersonalProbeScheduler } from './personalProbeScheduler'
 import { createTokenProbe, personalProbeSupported, readTokenRuntime } from './tokenProbe'
 import { createClaudeCollector, consumeCollectorPermit, collectorVerificationReady } from './claudeCollector'
 import { createCredentialGroupSync, type CredentialGroupRequest } from './aiCredentialGroups'
@@ -94,6 +95,7 @@ type CommandOptions = {
   acceptNonZeroExit?: boolean
   environment?: NodeJS.ProcessEnv
   input?: string
+  signal?: AbortSignal
 }
 
 type Supervisor = {
@@ -1373,6 +1375,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     /** Sent only by the org deployment: which company bundle this is. */
     provenance?: unknown
   }) {
+    if (input?.provider === 'claude') cancelPersonal()
     const selected = provider(input?.provider)
     if (typeof input?.payload !== 'string') {
       throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
@@ -1522,6 +1525,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     },
   })
   async function groupSync(input: CredentialGroupRequest) {
+    if (input?.provider === 'claude') cancelPersonal()
     return serialize(() => withSafeErrors('AI_GROUP_SYNC_FAILED', async () => {
       // The journal snapshots cswap before applying, so the runtime gate must come first.
       if (input?.provider === 'claude' && typeof input.payload === 'string' && containsManagedSetupTokens(input.payload)
@@ -1551,6 +1555,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
   }
 
   async function purge(input: { provider: AiCredentialProvider; leaseId: string }) {
+    if (input?.provider === 'claude') cancelPersonal()
     const selected = provider(input?.provider)
     if (typeof input?.leaseId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(input.leaseId)) {
       throw new AiCredentialRuntimeError('TRIAL_MARKER_INVALID')
@@ -1920,18 +1925,49 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
-  async function tokenProbe(input: unknown) {
-    return serialize(() => createTokenProbe({
-      invoke: async args => (await deps.execFile('cswap', args, {
-        timeoutMs: 10_000, maxOutputBytes: 65536, environment: deps.env,
-      })).stdout,
-    })(input))
+  let personalUse = { online: false, inUse: false }
+  let personalCommand: { ref: string; controller: AbortController } | null = null
+  const personalInvoke = async (args: string[], signal?: AbortSignal) => (await deps.execFile('cswap', args, {
+    timeoutMs: 10_000, maxOutputBytes: 65536, environment: deps.env, signal, terminateProcessTree: args[1] === 'collect',
+  })).stdout
+  const personalScheduler = createPersonalProbeScheduler({
+    now: deps.now, online: () => personalUse.online, inUse: () => personalUse.inUse,
+    roster: async () => (await readTokenRuntime({ invoke: args => personalInvoke(args), now: deps.now }))?.accounts ?? [],
+    collect: (row, signal) => tokenProbe({ version: 1, operation: 'collect', accountRef: row.accountRef, credentialGeneration: row.credentialGeneration }, signal),
+  })
+  function cancelPersonal(ref?: string) {
+    personalScheduler.cancel(ref)
+    if (personalCommand && (!ref || personalCommand.ref === ref)) personalCommand.controller.abort()
   }
+  async function tokenProbe(input: unknown, signal?: AbortSignal) {
+    const request = input as { operation?: string; enabled?: boolean; accountRef?: string }
+    if (request?.operation === 'consent' && request.enabled === false) cancelPersonal(request.accountRef)
+    return serialize(async () => {
+      const controller = new AbortController()
+      const abort = () => controller.abort()
+      signal?.addEventListener('abort', abort, { once: true })
+      if (signal?.aborted) controller.abort()
+      const flight = request?.operation === 'collect' ? { ref: request.accountRef ?? '', controller } : null
+      if (flight) personalCommand = flight
+      try {
+        return await createTokenProbe({ invoke: args => personalInvoke(args, controller.signal), now: deps.now })(input)
+      } finally {
+        signal?.removeEventListener('abort', abort)
+        if (personalCommand === flight) personalCommand = null
+      }
+    })
+  }
+  function personalSchedulerTick(context: { online: boolean; inUse: boolean }) {
+    personalUse = context
+    if (!context.online || !context.inUse) cancelPersonal()
+    return personalScheduler.tick()
+  }
+  function stopPersonalScheduler() { personalUse = { online: false, inUse: false }; personalScheduler.close(); cancelPersonal() }
   async function tokenProbeCapability() {
     try { return personalProbeSupported(JSON.parse((await deps.execFile('cswap', ['token-runtime', 'capabilities'], { timeoutMs: 5000, maxOutputBytes: 8192 })).stdout)) } catch { return false }
   }
   function collectorOrigin() {
-    try { return deps.env.HAPPY_APLUS_MCP_CONFIG_URL ? new URL(deps.env.HAPPY_APLUS_MCP_CONFIG_URL).origin : null } catch { return null }
+    try { return deps.env.HAPPY_APLUS_STUDIO_ORIGIN ? new URL(deps.env.HAPPY_APLUS_STUDIO_ORIGIN).origin : null } catch { return null }
   }
   async function collectorCapability() {
     if (!collectorOrigin()) return false
@@ -1954,7 +1990,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
-  return { tokenProbe, collectorProbe, capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: async (machineId?: string) => { const setupToken = await setupTokenRuntimeSupported(); const collector = Boolean(machineId) && await collectorCapability(); const personal = await tokenProbeCapability(); return { version: 1, ...(personal ? { tokenProbeVersion: 1 } : {}), ...(collector ? { collectorProbeVersion: 1 } : {}), groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
+  return { personalSchedulerTick, stopPersonalScheduler, tokenProbe, collectorProbe, capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: async (machineId?: string) => { const setupToken = await setupTokenRuntimeSupported(); const collector = Boolean(machineId) && await collectorCapability(); const personal = await tokenProbeCapability(); return { version: 1, ...(personal ? { tokenProbeVersion: 1 } : {}), ...(collector ? { collectorProbeVersion: 1 } : {}), groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
     // Managed setup-token import with metadata verification, only on the marked cswap token runtime.
     ...(setupToken ? { setupTokenVersion: 1, setupTokenStatusVersion: 1 } : {}),
     // Advertised only when a server-signed binding proof can actually be verified here.
@@ -2391,6 +2427,7 @@ export function runAiCredentialCommand(
   spawnCommand: typeof spawn = spawn,
 ): Promise<AiCredentialCommandResult> {
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) { reject(new AiCredentialRuntimeError('COMMAND_CANCELLED')); return }
     const environment = options.environment ?? process.env
     const child = spawnCommand(command, args, {
       env: command === 'uv' || command === 'cswap'
@@ -2408,6 +2445,7 @@ export function runAiCredentialCommand(
     const fail = (kind: string) => {
       if (settled) return
       settled = true
+      options.signal?.removeEventListener('abort', abort)
       if (timeout) clearTimeout(timeout)
       if (options.terminateProcessTree && child.pid) {
         if (process.platform === 'win32') {
@@ -2423,6 +2461,7 @@ export function runAiCredentialCommand(
       }
       reject(new AiCredentialRuntimeError(kind))
     }
+    const abort = () => fail('COMMAND_CANCELLED')
     const collect = (target: Buffer[]) => {
       let outputBytes = 0
       return (chunk: Buffer) => {
@@ -2443,6 +2482,7 @@ export function runAiCredentialCommand(
     child.on('close', (code) => {
       if (settled) return
       settled = true
+      options.signal?.removeEventListener('abort', abort)
       if (timeout) clearTimeout(timeout)
       if (code !== 0) {
         if (!options.acceptNonZeroExit) {
@@ -2456,6 +2496,8 @@ export function runAiCredentialCommand(
         ...(options.acceptNonZeroExit && { exitCode: code ?? -1 }),
       })
     })
+    options.signal?.addEventListener('abort', abort, { once: true })
+    if (options.signal?.aborted) { abort(); return }
     timeout = setTimeout(() => fail('COMMAND_TIMED_OUT'), options.timeoutMs ?? 30_000)
     if (options.input !== undefined) {
       child.stdin?.on('error', () => fail('COMMAND_FAILED'))
