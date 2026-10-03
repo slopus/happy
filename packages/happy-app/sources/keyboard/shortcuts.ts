@@ -24,6 +24,7 @@ export interface NavigatorPlatformLike {
 export type SessionActionShortcutId =
     | 'details'
     | 'resume'
+    | 'restart'
     | 'fork'
     | 'duplicate'
     | 'copy-metadata'
@@ -43,6 +44,7 @@ export interface ShortcutChord {
 export const SESSION_ACTION_SHORTCUTS: Readonly<Record<SessionActionShortcutId, ShortcutChord>> = {
     details: { key: 'o', code: 'KeyO', keyLabel: 'O', altKey: true },
     resume: { key: 'r', code: 'KeyR', keyLabel: 'R', altKey: true },
+    restart: { key: 'r', code: 'KeyR', keyLabel: 'R', altKey: true, shiftKey: true },
     fork: { key: 'f', code: 'KeyF', keyLabel: 'F', altKey: true },
     duplicate: { key: 'd', code: 'KeyD', keyLabel: 'D', altKey: true, shiftKey: true },
     'copy-metadata': { key: 'm', code: 'KeyM', keyLabel: 'M', altKey: true },
