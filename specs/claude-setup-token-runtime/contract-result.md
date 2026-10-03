@@ -23,7 +23,7 @@ nor revoke a slot it did not install, even for the same managed ID (tested).
 Only then does the daemon add `setupTokenVersion:1` and `setupTokenStatusVersion:1`.
 `newSessionProfileBinding:true` and `setupTokenSessionBindingVersion:1` are added only when the marked runtime is present, the daemon has
 `HAPPY_APLUS_STUDIO_ORIGIN`, **and** the Studio public key at that origin can be fetched and checked. Otherwise the daemon reports `newSessionProfileBinding:false`.
-Numeric versions are not evidence. (The server proposed `claudeSetupTokenVersion`, and Happy uses `setupTokenVersion`. One name must be agreed.)
+Numeric versions are not evidence. The name `setupTokenVersion` is confirmed across Studio, Desktop and Happy.
 
 On an unmarked, failing or missing cswap, a managed payload fails with `CLAUDE_SETUP_TOKEN_UNSUPPORTED` before the journal snapshot and before
 `ensureClaudeSwap`. Nothing is installed or written. `ensureClaudeSwap` never downgrades an installed build ≥ 0.25.0.
@@ -83,6 +83,9 @@ Public key: the daemon fetches `GET <origin>/api/claude-collector/public-key` (n
 and `keyId == sha256(SPKI)`. It ignores the response's collector `type` and `audience` and computes the binding audience itself. The key is cached for 5 minutes and
 refetched once when a grant names a different `keyId` (rotation).
 
+Trusted origin: `HAPPY_APLUS_STUDIO_ORIGIN`, or else the origin of the daemon's `HAPPY_APLUS_MCP_CONFIG_URL`, which is the same source the
+org collector trusts. Both are daemon process configuration, never renderer input.
+
 ### Daemon checks, new spawn (all must pass)
 
 1. Signature, all claims, type, audience, keyId, `machineId == this daemon`, and TTL (60 s skew on `issuedAt`).
@@ -123,7 +126,12 @@ Both sites call `sessionEnvironment`:
 | `machine-personal` selection | unchanged (still refused by the existing applied-source proof) |
 
 The decision uses the group journal alone. Each entry now records `managed`, the desired identities that are setup-tokens, projected from
-the payload at sync. There is no cswap call per launch. Journals written before this field existed count as having no managed identities.
+the payload at sync. There is no cswap call per launch. Journals written before this field existed (no `managed` key) are migrated at the next unbound Claude launch or resume:
+the daemon reads the `cswap` roster once and intersects the managed slots' identities with each old entry's desired identities.
+Both formats a journal may hold count: `sha256(['claude-setup-token', id])` and the older `sha256(['claude', email, ''])`. This is
+independent of which login is active. The result is written into the entry and the launch is decided on it; later launches use the journal only.
+If the roster cannot be read, the launch is refused only when the live Claude login is itself a managed slot, and migration is retried later.
+Ordinary OAuth groups are never blocked.
 Not covered: a `happy` CLI started by hand in a terminal, which is outside the daemon.
 
 ## Remaining scope / limitations
