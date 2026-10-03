@@ -335,6 +335,17 @@ describe('ApiSessionClient v3 messages API migration', () => {
             version: 1, type: 'turn-latency', id: 'trace-1', attribution: 'exclusive', inputCount: 1,
             queueMs: 4, sdkSubmitMs: 9, firstSdkTextMs: 20, outcome: 'text',
         });
+        const progress = {
+            version: 1 as const, type: 'turn-latency-progress' as const, id: 'trace-1',
+            attribution: 'exclusive' as const, inputCount: 1, phase: 'preparing' as const,
+            queueMs: 4, sdkSubmitMs: null, firstSdkTextMs: null, firstActivityMs: null,
+            elapsedMs: 9, preparation: [], droppedSpans: 0, clockFailures: 0, sequence: 1,
+        };
+        client.sendTurnLatency(progress);
+        const [progressEvent, progressPayload] = mockSocket.volatile.emit.mock.calls[1];
+        expect(progressEvent).toBe('session-stream');
+        expect(mockSocket.emit).not.toHaveBeenCalledWith('session-stream', expect.anything());
+        expect(decrypt(session.encryptionKey, session.encryptionVariant, decodeBase64(progressPayload.data))).toEqual(progress);
     });
 
     it('reapplies a metadata patch to the newest server document after a version mismatch', async () => {

@@ -11,7 +11,7 @@ FROM ${DEBIAN_IMAGE} AS novnc
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends novnc=1:1.3.0-1 && rm -rf /var/lib/apt/lists/*
 
 FROM ${NODE_IMAGE}
-LABEL ai.saycode.abp.contract="2"
+LABEL ai.saycode.abp.contract="3"
 # uid/gid 10870: host account abp-runtime reserves it, so no login user owns the state files.
 # Production starts the container as root with only SETUID/SETGID; node reads the
 # root-only config, binds the /run/abp sockets and drops to ABP_RUNTIME_UID/GID.

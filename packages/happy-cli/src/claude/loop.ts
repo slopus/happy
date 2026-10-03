@@ -132,7 +132,8 @@ export async function loop(opts: LoopOptions): Promise<number> {
     let mode: 'local' | 'remote' = opts.startingMode ?? 'local';
     while (true) {
         logger.debug(`[loop] Iteration with mode: ${mode}`);
-        if (opts.checkpointComposition?.beforeTurn && mode !== 'remote') {
+        // A local (terminal) session has no observable turn boundary to record at.
+        if ((opts.checkpointComposition?.beforeTurn || opts.checkpointComposition?.localHistory) && mode !== 'remote') {
             throw new Error('checkpoint protection supports Claude remote mode only');
         }
 

@@ -4059,3 +4059,80 @@ describe('runServerAutomationTick', () => {
     expect(store.state().githubTriggers?.[0]?.state.pending).toHaveLength(1)
   })
 })
+
+// Windows 정식 빌드의 데몬은 세션만 Job 런처로 묶을 수 있다. 스크립트 조건과
+// GitHub 트리거는 Job 밖에서 cmd·gh·git 을 띄우므로 실행 대신 사유를 남긴다.
+describe('host commands disallowed (Windows standalone runtime)', () => {
+  const claimed = { claim: { ok: true, value: { runId: 'run-1', claimToken: 'claim-token' } } }
+
+  it('still spawns a prompt-only scheduled session', async () => {
+    const fixture = setup(claimed)
+    fixture.input.hostCommandsAllowed = false
+
+    await expect(runServerAutomationTick(fixture.input)).resolves.toEqual([
+      { automationId: 'automation-1', outcome: 'WOKE' },
+    ])
+    expect(fixture.spawnSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('reports a script-gated automation as unsupported without running the script', async () => {
+    const fixture = setup(claimed)
+    fixture.input.hostCommandsAllowed = false
+    fixture.input.decryptPayload = vi.fn(() => ({
+      name: 'name', schedule: { kind: 'interval' as const, minutes: 15 }, prompt: 'prompt',
+      directory: '/repo', scriptCommand: 'check-if-needed', suppressSilent: false, agent: 'claude' as const,
+    }))
+
+    await runServerAutomationTick(fixture.input)
+
+    expect(fixture.runScript).not.toHaveBeenCalled()
+    expect(fixture.spawnSession).not.toHaveBeenCalled()
+    expect(fixture.transport.report).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'FAILED', outcome: 'ERROR', sessionId: null, failureCode: 'HOST_COMMANDS_UNSUPPORTED',
+    }))
+  })
+
+  // tick 단위 worktree 정리도 git 을 Job 밖에서 띄운다. 기록은 남겨 두고 정리만 건너뛴다.
+  it.each([
+    { hostCommandsAllowed: undefined, discards: true },
+    { hostCommandsAllowed: false, discards: false },
+  ])('discards a finished journaled worktree only when host commands are allowed ($hostCommandsAllowed)', async ({ hostCommandsAllowed, discards }) => {
+    const fixture = setup()
+    if (hostCommandsAllowed !== undefined) fixture.input.hostCommandsAllowed = hostCommandsAllowed
+    const journaled = {
+      automationId: 'automation-1', generation: 2, runId: 'run-done',
+      repositoryRoot: '/repo', worktreePath: '/isolated/run-done', directory: '/isolated/run-done',
+      sessionId: 'done-session', createdAt: fixture.now - 60_000,
+    }
+    fixture.store.write({ ...fixture.store.read(), githubWorktrees: [journaled] })
+
+    await runServerAutomationTick(fixture.input)
+
+    expect(fixture.discardGithubWorktree).toHaveBeenCalledTimes(discards ? 1 : 0)
+    if (!discards) expect(fixture.store.state().githubWorktrees).toEqual([journaled])
+  })
+
+  it('reports a GitHub trigger as unsupported without querying GitHub or preparing a worktree', async () => {
+    const fixture = setup(claimed)
+    fixture.input.hostCommandsAllowed = false
+    fixture.input.decryptPayload = vi.fn(() => ({
+      name: 'PR review', schedule: { kind: 'github' as const, minutes: 15 as const }, prompt: 'Review',
+      directory: '/repo', scriptCommand: null, suppressSilent: false, agent: 'claude' as const,
+      githubTrigger: {
+        event: 'opened' as const,
+        filter: { baseBranch: null, label: null, excludeDraft: false, authors: [], paths: [] },
+        action: 'start-session' as const,
+        githubCredentialId: null,
+      },
+    }))
+
+    await runServerAutomationTick(fixture.input)
+
+    expect(fixture.queryGithubPullRequests).not.toHaveBeenCalled()
+    expect(fixture.prepareGithubWorktree).not.toHaveBeenCalled()
+    expect(fixture.spawnSession).not.toHaveBeenCalled()
+    expect(fixture.transport.report).toHaveBeenCalledWith(expect.objectContaining({
+      status: 'FAILED', outcome: 'ERROR', sessionId: null, failureCode: 'HOST_COMMANDS_UNSUPPORTED',
+    }))
+  })
+})

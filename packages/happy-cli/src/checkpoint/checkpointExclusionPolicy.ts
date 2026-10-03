@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, open, readFile, readdir, readlink, realpath } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import ignore, { type Ignore } from 'ignore';
 import {
@@ -7,6 +8,7 @@ import {
     type LinuxSandboxDependencyStatus,
 } from '@/sandbox/dependencyPreflight';
 import type { CheckpointEventDetail } from './checkpointContract';
+import { checkpointExclusionChanges, type CheckpointRecoveryDetail } from './checkpointRecovery';
 
 export type CheckpointProvider = 'claude-remote' | 'codex' | string;
 
@@ -24,6 +26,8 @@ export type CheckpointExclusionPolicy = {
     maxFiles: number;
     maxTotalBytes: number;
     readOnlyPassthroughPaths?: string[];
+    omittedPaths?: string[];
+    captureContent?: boolean;
 };
 
 type CheckpointExcludedPath = CheckpointEventDetail['summary']['excluded'][number];
@@ -33,12 +37,14 @@ export type CheckpointExclusionManifest = {
     denyWritePaths: string[];
     readOnlyPassthroughPaths: string[];
     fingerprint: string;
+    capturedFiles: Array<{ path: string; size: number; objectId: string; objectIdSha256?: string }>;
+    captureFingerprint: string;
 };
 
 export class CheckpointPolicyDriftError extends Error {
     readonly action = 'restart-sandbox-or-disable-protection' as const;
 
-    constructor(readonly excluded: CheckpointExcludedPath[] = []) {
+    constructor(readonly excluded: CheckpointExcludedPath[] = [], readonly diagnostic?: CheckpointRecoveryDetail) {
         super('checkpoint exclusion policy changed; restart sandbox or disable protection');
         this.name = 'CheckpointPolicyDriftError';
     }
@@ -89,7 +95,7 @@ export class CheckpointExclusionGuard {
     }
 
     excludedReason(path: string): CheckpointExcludedPath['reason'] | null {
-        const manifestEntry = this.manifest.excluded.find((entry) => entry.path === path);
+        const manifestEntry = this.manifest.excluded.find((entry) => entry.path === path || path.startsWith(`${entry.path}/`));
         if (manifestEntry) return manifestEntry.reason;
         return ignore().add(this.policy.secretPatterns).ignores(path) ? 'secret' : null;
     }
@@ -109,11 +115,16 @@ export class CheckpointExclusionGuard {
 
     async dispatchAfterPolicyCheck<T>(dispatch: () => Promise<T>): Promise<T> {
         const current = await buildCheckpointExclusionManifest(this.policy);
-        if (current.fingerprint !== this.manifest.fingerprint) {
+        if (current.captureFingerprint !== this.manifest.captureFingerprint) {
+            const changes = checkpointExclusionChanges(this.manifest.excluded, current.excluded);
             throw new CheckpointPolicyDriftError(changedExclusions(
                 this.manifest.excluded,
                 current.excluded,
-            ));
+            ), { changes: changes.slice(0, 100), counts: {
+                capturedFiles: current.capturedFiles.length,
+                capturedBytes: current.capturedFiles.reduce((sum, file) => sum + file.size, 0),
+                excludedFiles: current.excluded.length, totalChanges: changes.length,
+            } });
         }
         return dispatch();
     }
@@ -142,7 +153,9 @@ async function buildCheckpointExclusionManifest(
     const candidates: Array<{ path: string; size: number }> = [];
 
     for (const file of files) {
-        if (secretMatcher.ignores(file.path)) {
+        if (policy.omittedPaths?.some((path) => file.path === path || file.path.startsWith(`${path}/`))) {
+            excluded.push({ path: file.path, reason: 'ignored' });
+        } else if (secretMatcher.ignores(file.path)) {
             excluded.push({ path: file.path, reason: 'secret' });
         } else if (file.ignored) {
             excluded.push({ path: file.path, reason: 'ignored' });
@@ -155,6 +168,7 @@ async function buildCheckpointExclusionManifest(
 
     let totalBytes = 0;
     let includedFiles = 0;
+    const capturedFiles: CheckpointExclusionManifest['capturedFiles'] = [];
     for (const file of candidates) {
         if (includedFiles >= policy.maxFiles) {
             excluded.push({ path: file.path, reason: 'file-limit' });
@@ -163,6 +177,22 @@ async function buildCheckpointExclusionManifest(
         } else {
             includedFiles += 1;
             totalBytes += file.size;
+            const absolutePath = join(projectPath, file.path);
+            if (policy.captureContent === false) {
+                capturedFiles.push({ path: file.path, size: file.size, objectId: '' });
+                continue;
+            }
+            const content = await readCapturedFile(absolutePath, file.size, projectPath);
+            if (content.length !== file.size) throw new CheckpointPolicyDriftError();
+            capturedFiles.push({
+                path: file.path,
+                size: content.length,
+                objectId: createHash('sha1')
+                    .update(`blob ${content.length}\0`)
+                    .update(content)
+                    .digest('hex'),
+                objectIdSha256: createHash('sha256').update(`blob ${content.length}\0`).update(content).digest('hex'),
+            });
         }
     }
 
@@ -210,7 +240,43 @@ async function buildCheckpointExclusionManifest(
         }))
         .digest('hex');
 
-    return { excluded, denyWritePaths, readOnlyPassthroughPaths, fingerprint };
+    const captureFingerprint = createHash('sha256')
+        .update(JSON.stringify({ fingerprint, capturedFiles }))
+        .digest('hex');
+    return { excluded, denyWritePaths, readOnlyPassthroughPaths, fingerprint, capturedFiles, captureFingerprint };
+}
+
+async function readCapturedFile(path: string, size: number, projectPath: string): Promise<Buffer> {
+    try {
+        const stats = await lstat(path);
+        if (stats.isSymbolicLink()) return await readlink(path, { encoding: 'buffer' });
+        if (!stats.isFile()) throw new CheckpointPolicyDriftError();
+        const location = relative(projectPath, await realpath(path));
+        if (location === '..' || location.startsWith(`..${sep}`) || isAbsolute(location)) throw new CheckpointPolicyDriftError();
+        const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+        try {
+            const opened = await handle.stat();
+            if (!opened.isFile() || opened.size !== size || opened.ino !== stats.ino || opened.dev !== stats.dev) {
+                throw new CheckpointPolicyDriftError();
+            }
+            const content = Buffer.alloc(size + 1);
+            let position = 0;
+            while (position < content.length) {
+                const { bytesRead } = await handle.read(content, position, content.length - position, position);
+                if (bytesRead === 0) break;
+                position += bytesRead;
+            }
+            if (position !== size) throw new CheckpointPolicyDriftError();
+            return content.subarray(0, position);
+        } finally {
+            await handle.close();
+        }
+    } catch (error) {
+        if (error instanceof Error && 'code' in error && ['ENOENT', 'ELOOP', 'ENOTDIR'].includes(String(error.code))) {
+            throw new CheckpointPolicyDriftError();
+        }
+        throw error;
+    }
 }
 
 function normalizeReadOnlyPassthroughPaths(paths: string[]): string[] {
@@ -281,15 +347,18 @@ async function scanDirectory(
     const entries = await readdir(directory, { withFileTypes: true });
 
     for (const entry of entries) {
-        if (directory === projectPath && entry.name === '.git') continue;
+        if (entry.name === '.git') continue;
         const absolutePath = join(directory, entry.name);
         const filePath = relative(projectPath, absolutePath).split(sep).join('/');
-        const ignored = entry.name !== '.gitignore'
-            && isIgnored(filePath, entry.isDirectory(), localScopes);
+        const ignored = isIgnored(filePath, entry.isDirectory(), localScopes);
         if (ignored) {
             files.push({ path: filePath, size: 0, ignored: true });
         } else if (entry.isDirectory()) {
-            await scanDirectory(projectPath, absolutePath, localScopes, files);
+            const nestedGit = await lstat(join(absolutePath, '.git')).catch(() => null);
+            if (nestedGit) files.push({ path: filePath, size: 0, ignored: true });
+            else await scanDirectory(projectPath, absolutePath, localScopes, files);
+        } else if (!entry.isFile() && !entry.isSymbolicLink()) {
+            files.push({ path: filePath, size: 0, ignored: true });
         } else {
             files.push({ path: filePath, size: (await lstat(absolutePath)).size, ignored: false });
         }

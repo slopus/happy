@@ -45,9 +45,14 @@ describe('browser image Chromium policy', () => {
 
 
 describe('image assignment contract', () => {
+    it('matches the package contract marker', () => {
+        expect(JSON.parse(readFileSync(join(here, 'contract.json'), 'utf8'))).toEqual({ contractVersion: 3 })
+    })
+
     it.each(['runtime', 'browser'])('labels the final %s image stage', (role) => {
         const dockerfile = readFileSync(join(here, `images/${role}.Dockerfile`), 'utf8')
         const stages = dockerfile.split(/^FROM /m)
-        expect(stages.at(-1)).toMatch(/^LABEL ai\.saycode\.abp\.contract="2"$/m)
+        // 3: runtime.json may carry tenancyMode (shared machines).
+        expect(stages.at(-1)).toMatch(/^LABEL ai\.saycode\.abp\.contract="3"$/m)
     })
 })

@@ -35,6 +35,7 @@ export function parseOptionFlags(argv) {
     if (value === undefined) throw new Error(`${name} needs a value`);
     switch (name) {
       case "--machine-id": flags.machineId = value; break;
+      case "--tenancy": flags.tenancyMode = value; break;
       case "--workspace-id": flags.workspaceId = value; break;
       case "--profile": { const [profileId, principalId] = pair(value, name); list("profiles", { profileId, principalId }); break; }
       case "--agent-profile": flags.agentProfileId = value; break;

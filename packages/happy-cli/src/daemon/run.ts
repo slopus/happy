@@ -1,3 +1,5 @@
+import { CheckpointRetention } from '@/checkpoint/checkpointRetention';
+import { CheckpointRetentionSchedule } from '@/checkpoint/checkpointRetentionSchedule';
 /** Happy daemon lifecycle, child-session spawning and resumption, and browser attention delivery. */
 import { configureWindowsTerminalHost } from './remoteTerminal';
 import { inspectStandaloneCandidatePresence, assertStandaloneCandidateIdentity, readStandaloneCandidateId, createStandaloneWindowsRuntime, acceptsStandaloneWindowsProvider, acceptsStandaloneWindowsLaunch } from './standaloneWindowsRuntime';
@@ -141,7 +143,7 @@ import {
   type StopSessionContext,
   type StopSessionResult,
 } from './sessionIdleReaper';
-import { browserTaskLineage, createBrowserTaskSessionBroker, spawnResumedWithBrowserTaskRegistration, startBrowserTaskReconciliation, type BrowserTaskSessionBroker } from './browserTaskBroker';
+import { agentBrowserMachineCapability, agentBrowserMetadataUpdate, browserTaskLineage, createBrowserTaskSessionBroker, spawnResumedWithBrowserTaskRegistration, startBrowserTaskReconciliation, type BrowserTaskSessionBroker } from './browserTaskBroker';
 import { createHeldBrowserAttentions, findBrowserAttentionSession, startBrowserAttentionWatcher, type HeldBrowserAttention } from './browserAttentionDelivery';
 import {
   createProcFs,
@@ -289,7 +291,7 @@ import {
 } from '@/checkpoint/checkpointRpc';
 import { createCheckpointEventPublisher } from '@/checkpoint/checkpointEventPublisher';
 import { resolveCheckpointSessionAuthority } from './checkpointSessionAuthority';
-import { restartCheckpointProtectedSession } from './checkpointProtectedRestart';
+import { createCheckpointRestartQueue, restartCheckpointProtectedSession } from './checkpointProtectedRestart';
 import { stopServerProcess } from './stopServer';
 import { AutonomousQualityGateRunStore } from './autonomousQualityGateStore';
 import { AutonomousQualityGateDaemonRegistry } from './autonomousQualityGateRegistry';
@@ -351,6 +353,7 @@ export const initialMachineMetadata: MachineMetadata = {
   additionalDirectories: ADDITIONAL_DIRECTORIES_CAPABILITY,
   channelSupport: CHANNEL_SUPPORT_CAPABILITY,
   aiAuthSelection: AI_AUTH_SELECTION_CAPABILITY,
+  ...(agentBrowserMachineCapability() ? { agentBrowser: agentBrowserMachineCapability() } : {}),
 };
 
 /**
@@ -2071,7 +2074,8 @@ export async function startDaemon(): Promise<void> {
         }
         // A fork or recovery continues an existing conversation under a new session id: say which, so the
         // Runtime refuses a conversation of an earlier profile assignment.
-        browserTaskRegistration = await browserTaskBroker?.register(browserTaskLineage(options));
+        // Studio's session-user attestation (a new chat on a shared machine) goes to the broker only.
+        browserTaskRegistration = await browserTaskBroker?.register(browserTaskLineage(options), options.browserAttestation);
         if (browserTaskRegistration) {
           // Session process only; it removes the secret from its env before spawning claude.
           extraEnv.HAPPY_BROWSER_TASK_SESSION_SECRET = browserTaskRegistration.sessionSecret;
@@ -2835,9 +2839,9 @@ export async function startDaemon(): Promise<void> {
     const resumeSession = (happySessionId: string, options?: ResumeSessionOptions): Promise<ResumeSessionResult> =>
       shareInFlight(resumeInFlight, happySessionId, () => spawnResumedSession(happySessionId, options));
 
-    const checkpointRestartInFlight = new Map<string, Promise<void>>();
-    const restartCheckpointSession = (authority: CheckpointRpcSessionAuthority): Promise<void> =>
-      shareInFlight(checkpointRestartInFlight, authority.sessionId, async () => {
+    const queueCheckpointRestart = createCheckpointRestartQueue();
+    const restartCheckpointSession = (authority: CheckpointRpcSessionAuthority, preserveProtection = false): Promise<void> =>
+      queueCheckpointRestart(authority.sessionId, preserveProtection, async () => {
         await restartCheckpointProtectedSession(authority, {
           resolveTarget: async (sessionId) => {
             const tracked = findTrackedSessionById(sessionId);
@@ -2858,7 +2862,7 @@ export async function startDaemon(): Promise<void> {
                 if (pidToTrackedSession.get(tracked.pid) !== tracked) {
                   throw new Error('checkpoint protected restart target changed before termination');
                 }
-                if (!preserveSessionForResume(tracked, 'checkpoint-protection-disabled')) {
+                if (!preserveSessionForResume(tracked, preserveProtection ? 'checkpoint-protection-refresh' : 'checkpoint-protection-disabled')) {
                   throw new Error('checkpoint protected restart cannot preserve the session');
                 }
                 await stopServerProcess({ pid: tracked.pid });
@@ -2878,7 +2882,7 @@ export async function startDaemon(): Promise<void> {
             environmentVariables,
             checkpointRestart: true,
           }),
-        });
+        }, { preserveProtection });
       });
 
     const verifyRecoveryNativeSession = async (session: ReconnectableHappySession): Promise<boolean> => {
@@ -3672,6 +3676,12 @@ export async function startDaemon(): Promise<void> {
       host: difficultyRoutingHost,
       baseMetadata: difficultyRoutingMachineMetadata,
     });
+    // An existing machine keeps the metadata it first registered with: publish the agent browser capability
+    // (Studio sends session-user attestations only to machines that report it).
+    if (agentBrowserMetadataUpdate(machine.metadata, agentBrowserMachineCapability())) {
+      void apiMachine.updateMachineMetadata((metadata) => agentBrowserMetadataUpdate(metadata, agentBrowserMachineCapability()) ?? metadata!)
+        .catch((error) => logger.debug('[DAEMON RUN] agent browser capability not published', error));
+    }
     /** Set only for a managed runtime; the beat below keeps it current. */
     let managedCredentialState: {
       stateDir: string;
@@ -4214,7 +4224,10 @@ export async function startDaemon(): Promise<void> {
     if (!standaloneWindows) await apiMachine.setLessonHosts(lessonHosts);
     apiMachine.setServerAutomationCache(serverAutomationCache);
     const serverAutomationTickRunner = createAutomationTickRunner({
-      runTick: () => standaloneWindows ? Promise.resolve() : runServerAutomationTick({
+      // Windows standalone: sessions launch through the verified Job owner, so scheduled
+      // sessions run; script gates and GitHub triggers would spawn unfenced cmd/gh/git.
+      runTick: () => runServerAutomationTick({
+        hostCommandsAllowed: !standaloneWindows,
         cache: serverAutomationCache,
         runtimeStore: serverAutomationRuntimeStore,
         machineSecretKey: machineAutomationKey.secretKey,
@@ -4541,7 +4554,9 @@ export async function startDaemon(): Promise<void> {
         browserSessionWaiting: async (sessionId: string) => heldBrowserAttentions.answerWaiting(sessionId) || browserTaskBroker!.waiting(sessionId),
       } : {}),
       autonomousQualityGate: createAutonomousQualityGateRpcHandlers(autonomousQualityGateRegistry),
-      checkpoint: createCheckpointRpcHandlers({
+      checkpoint: {
+        retireWorktree: (params) => new CheckpointRetention(join(configuration.happyHomeDir, 'checkpoints')).retireWorktree(params),
+        ...createCheckpointRpcHandlers({
         checkpointRoot: join(configuration.happyHomeDir, 'checkpoints'),
         resolveAuthority: (sessionId) => resolveCheckpointSessionAuthority({
           sessionId,
@@ -4559,7 +4574,8 @@ export async function startDaemon(): Promise<void> {
           });
         },
         restartSession: restartCheckpointSession,
-      }),
+        refreshSession: (authority) => restartCheckpointSession(authority, true),
+      }) },
       // specs/daemon-spawn-project-link — a session created by `agent spawn` has no way to
       // register itself with A+ (its credential does not authenticate /api/*), so the daemon
       // reports it here. The request is bounded inside linkSpawnedProjectSession and
@@ -4590,6 +4606,16 @@ export async function startDaemon(): Promise<void> {
         + activeServerAutomationLeaseCount,
     });
     apiMachine.setRuntimeActivityProvider(getRuntimeActivity);
+    const checkpointRetention = new CheckpointRetention(join(configuration.happyHomeDir, 'checkpoints'));
+    const checkpointRetentionSchedule = new CheckpointRetentionSchedule({
+      collect: (now) => checkpointRetention.collect(now),
+      isIdle: () => {
+        const activity = getRuntimeActivity();
+        return activity.activeSessionCount === 0 && activity.activeAutomationCount === 0;
+      },
+      onError: (error) => logger.debug(`[checkpoint-retention] ${String(error)}`),
+    });
+    void checkpointRetentionSchedule.tick();
 
     // All launch dependencies and RPC handlers now exist; early HTTP requests were refused.
     launchReadiness.markReady();
@@ -4629,6 +4655,7 @@ export async function startDaemon(): Promise<void> {
         return;
       }
       heartbeatRunning = true;
+      void checkpointRetentionSchedule.tick();
 
       if (process.env.DEBUG) {
         logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
@@ -4780,6 +4807,7 @@ export async function startDaemon(): Promise<void> {
           },
           teardownCurrentDaemon: async () => {
             clearInterval(restartOnStaleVersionAndHeartbeat);
+            await checkpointRetentionSchedule.stop();
 
             // Release ownership BEFORE spawning the new daemon. Otherwise the spawned
             // `happy daemon start` reads our still-present daemon.state.json, sees
@@ -4913,6 +4941,7 @@ export async function startDaemon(): Promise<void> {
     // Setup signal handlers
     const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => {
       logger.debug(`[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
+      await checkpointRetentionSchedule.stop();
 
       stopBrowserTaskReconciliation();
       await stopBrowserAttention();

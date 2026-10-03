@@ -7,6 +7,8 @@ import { logger } from '@/ui/logger';
 
 type McpConfigControl = Pick<Query, 'setMcpServers'>;
 
+export type McpConfigMeasure = <T>(stage: 'mcp-grant' | 'mcp-fetch' | 'mcp-compare' | 'mcp-apply', action: () => T | Promise<T>) => Promise<T>;
+
 export type McpConfigSource = {
     baseServers: Record<string, any>;
     initialAplusServers: AplusMcpServersMap;
@@ -19,7 +21,7 @@ export type McpConfigSource = {
      * 유지해봐야 죽은 툴만 남는다.
      */
     floorServerNames?: string[];
-    fetchAplusServers: () => Promise<AplusMcpServersFetchResult>;
+    fetchAplusServers: (measure?: McpConfigMeasure) => Promise<AplusMcpServersFetchResult>;
     onApplied?: (servers: Record<string, any>, aplusServers: AplusMcpServersMap) => void;
 };
 
@@ -59,10 +61,10 @@ export class McpConfigSynchronizer {
         return out;
     }
 
-    async sync(): Promise<void> {
+    async sync(measure?: McpConfigMeasure): Promise<void> {
         let result: AplusMcpServersFetchResult;
         try {
-            result = await this.options.fetchAplusServers();
+            result = await this.options.fetchAplusServers(measure);
         } catch (error) {
             this.emitConfigFailure(sanitizeMcpError(error));
             return;
@@ -99,13 +101,14 @@ export class McpConfigSynchronizer {
             return;
         }
         const aplusServers = this.withFloor(result.servers);
-        if (deepEqual(this.currentAplusServers, aplusServers)) {
+        const equal = measure ? await measure('mcp-compare', () => deepEqual(this.currentAplusServers, aplusServers)) : deepEqual(this.currentAplusServers, aplusServers);
+        if (equal) {
             return;
         }
 
         const servers = { ...this.options.baseServers, ...aplusServers };
         try {
-            const applied = await this.query.setMcpServers(servers);
+            const applied = await (measure ? measure('mcp-apply', () => this.query.setMcpServers(servers)) : this.query.setMcpServers(servers));
             this.currentAplusServers = aplusServers;
             this.options.onApplied?.(servers, aplusServers);
             const added = [...applied.added].sort().join(',') || '(none)';

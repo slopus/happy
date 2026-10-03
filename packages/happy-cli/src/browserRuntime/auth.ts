@@ -68,10 +68,15 @@ export function mintInteractiveCapability(capability: InteractiveCapability, key
  * holds a private key; this exists for tests and the harness.
  */
 export function signServerCapability(capability: ServerCapability, signer: { kid: string; privateKey: KeyObject | string }): string {
-    const header = Buffer.from(canonicalJson({ alg: 'EdDSA', kid: signer.kid, typ: 'abp-cap' })).toString('base64url')
-    const payload = Buffer.from(canonicalJson(capability)).toString('base64url')
-    const signature = signBytes(null, Buffer.from(`abp2.${header}.${payload}`), signer.privateKey).toString('base64url')
-    return `abp2.${header}.${payload}.${signature}`
+    return signServerEnvelope('abp-cap', capability, signer)
+}
+
+/** An abp2 token: `abp2.<header {alg EdDSA, kid, typ}>.<payload>.<Ed25519 signature>`. */
+function signServerEnvelope(typ: string, payload: object, signer: { kid: string; privateKey: KeyObject | string }): string {
+    const header = Buffer.from(canonicalJson({ alg: 'EdDSA', kid: signer.kid, typ })).toString('base64url')
+    const body = Buffer.from(canonicalJson(payload)).toString('base64url')
+    const signature = signBytes(null, Buffer.from(`abp2.${header}.${body}`), signer.privateKey).toString('base64url')
+    return `abp2.${header}.${body}.${signature}`
 }
 
 function decodeJson<T>(part: string): T {
@@ -101,20 +106,64 @@ function issuerKey(issuers: readonly TrustedIssuer[], kid: string): KeyObject | 
     return keys.get(kid)
 }
 
-function verifyServerToken(parts: string[], policy: VerifyPolicy): Credential {
+/** The payload of an abp2 token of header type `typ`, signed by a trusted issuer. */
+function openServerEnvelope<T>(parts: string[], typ: string, trustedIssuers: readonly TrustedIssuer[]): T {
     if (parts.length !== 4) throw new BrowserRuntimeError('UNAUTHORIZED', 'Malformed credential')
     const header = decodeJson<{ alg?: unknown; kid?: unknown; typ?: unknown }>(parts[1])
-    if (!header || header.alg !== 'EdDSA' || header.typ !== 'abp-cap' || typeof header.kid !== 'string') throw new BrowserRuntimeError('UNAUTHORIZED', 'Unsupported credential header')
-    const key = issuerKey(policy.trustedIssuers ?? [], header.kid)
+    if (!header || header.alg !== 'EdDSA' || header.typ !== typ || typeof header.kid !== 'string') throw new BrowserRuntimeError('UNAUTHORIZED', 'Unsupported credential header')
+    const key = issuerKey(trustedIssuers, header.kid)
     if (!key || key.asymmetricKeyType !== 'ed25519') throw new BrowserRuntimeError('UNAUTHORIZED', 'Credential issuer is not trusted')
     if (!verifyBytes(null, Buffer.from(`abp2.${parts[1]}.${parts[2]}`), key, Buffer.from(parts[3], 'base64url'))) throw new BrowserRuntimeError('UNAUTHORIZED', 'Invalid credential signature')
-    const credential = decodeJson<ServerCapability>(parts[2])
+    return decodeJson<T>(parts[2])
+}
+
+function verifyServerToken(parts: string[], policy: VerifyPolicy): Credential {
+    const credential = openServerEnvelope<ServerCapability>(parts, 'abp-cap', policy.trustedIssuers ?? [])
     // Agent grants are minted by this Runtime only; the server signs interactive capabilities only.
     if (!credential || credential.kind !== 'interactive') throw new BrowserRuntimeError('UNAUTHORIZED', 'Server credentials must be interactive capabilities')
     if (credential.iss !== INTERACTIVE_CAPABILITY_ISSUER) throw new BrowserRuntimeError('UNAUTHORIZED', 'Credential issuer is not trusted')
     if (!policy.machineId || credential.aud !== policy.machineId) throw new BrowserRuntimeError('UNAUTHORIZED', 'Credential audience is not this machine')
     if (credential.expiresAtMs - credential.issuedAtMs > POC_LIMITS.maxInteractiveLifetimeMs) throw new BrowserRuntimeError('UNAUTHORIZED', 'Credential is expired or outside its lifetime')
     return credential
+}
+
+/**
+ * Studio's statement of who started a session on a shared machine (abp2, header type `abp-session-user`).
+ * The broker binds the session to that user's profile. It grants nothing by itself, so the task API never
+ * accepts it (another header type) and there is no one-time ledger: shared machines trust their users.
+ */
+export interface SessionUserAttestation {
+    kind: 'session-user'
+    iss: string
+    /** This machine. */
+    aud: string
+    principalId: PrincipalId
+    workspaceId: WorkspaceId
+    machineId: MachineId
+    issuedAtMs: number
+    expiresAtMs: number
+}
+export const SESSION_USER_TYP = 'abp-session-user'
+export const MAX_SESSION_USER_LIFETIME_MS = 10 * 60_000
+
+/** Signs a session-user attestation the way the Saycode server does (tests and the harness). */
+export function signSessionUserAttestation(attestation: SessionUserAttestation, signer: { kid: string; privateKey: KeyObject | string }): string {
+    return signServerEnvelope(SESSION_USER_TYP, attestation, signer)
+}
+
+export function verifySessionUserAttestation(token: string, policy: { machineId: MachineId; workspaceId: WorkspaceId; trustedIssuers: readonly TrustedIssuer[] }, nowMs: number): { principalId: PrincipalId; issuedAtMs: number } {
+    const parts = token.split('.')
+    if (parts[0] !== 'abp2') throw new BrowserRuntimeError('UNAUTHORIZED', 'Malformed session attestation')
+    const claims = openServerEnvelope<Partial<SessionUserAttestation>>(parts, SESSION_USER_TYP, policy.trustedIssuers)
+    if (!claims || claims.kind !== 'session-user' || claims.iss !== INTERACTIVE_CAPABILITY_ISSUER) throw new BrowserRuntimeError('UNAUTHORIZED', 'Not a session attestation of a trusted issuer')
+    if (claims.aud !== policy.machineId || claims.machineId !== policy.machineId) throw new BrowserRuntimeError('UNAUTHORIZED', 'Session attestation is for another machine')
+    if (claims.workspaceId !== policy.workspaceId) throw new BrowserRuntimeError('UNAUTHORIZED', 'Session attestation is for another workspace')
+    if (typeof claims.principalId !== 'string' || claims.principalId.length === 0 || claims.principalId.length > 256) throw new BrowserRuntimeError('UNAUTHORIZED', 'Session attestation has no user')
+    const { issuedAtMs, expiresAtMs } = claims
+    if (typeof issuedAtMs !== 'number' || typeof expiresAtMs !== 'number' || !Number.isFinite(issuedAtMs) || !Number.isFinite(expiresAtMs)
+        || issuedAtMs > nowMs + issuedAtClockSkewMs || expiresAtMs <= nowMs || expiresAtMs <= issuedAtMs || expiresAtMs - issuedAtMs > MAX_SESSION_USER_LIFETIME_MS)
+        throw new BrowserRuntimeError('UNAUTHORIZED', 'Session attestation is expired or outside its lifetime')
+    return { principalId: claims.principalId, issuedAtMs }
 }
 
 /** Configured identity binds every credential kind: machine, workspace, and the owner of the profile. */

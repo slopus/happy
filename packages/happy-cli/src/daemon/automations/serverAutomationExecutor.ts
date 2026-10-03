@@ -218,6 +218,12 @@ export interface ServerAutomationExecutorInput {
   /** 매달린 워커 세션에 종료를 요청한다. 실제 종료는 다음 틱의 isSessionRunning 으로 확인한다. */
   stopSession?: (sessionId: string) => void
   isDirectoryInUse: (directory: string) => boolean
+  /**
+   * false 면 스크립트 조건과 GitHub 트리거를 실행하지 않고 HOST_COMMANDS_UNSUPPORTED 로
+   * 보고한다. Windows 정식 빌드의 데몬은 세션만 Job 런처로 묶을 수 있고, 이 두 기능은
+   * Job 밖에서 cmd·gh·git 을 띄운다(specs/windows-build-support DRAIN-4). 기본값은 허용.
+   */
+  hostCommandsAllowed?: boolean
   randomId?: () => string
   logDebug?: (message: string) => void
 }
@@ -1090,6 +1096,10 @@ async function executeStartedRun(
   degradedCode?: string
   queueDepth?: number
 }> {
+  if (input.hostCommandsAllowed === false && (payload.scriptCommand || payload.githubTrigger)) {
+    input.logDebug?.(`[server-automation] ${automation.automationId} needs host commands, which this runtime does not allow`)
+    return { outcome: 'ERROR', sessionId: null, failureCode: 'HOST_COMMANDS_UNSUPPORTED' }
+  }
   let prompt = `${SCHEDULED_AUTOMATION_PROMPT_PREAMBLE}\n\n${payload.prompt}`
   let environmentVariables: Record<string, string> | undefined
   let agentTaskDispatch: AutomationAgentTaskDispatch | null = null
@@ -1703,7 +1713,8 @@ export async function runServerAutomationTick(
   input: ServerAutomationExecutorInput,
 ): Promise<Array<{ automationId: string; outcome: ServerAutomationReportOutcome }>> {
   await flushPendingReports(input)
-  await cleanupInactiveGithubWorktrees(input)
+  // Cleanup runs git outside the Windows Job; keep the journal until a runtime that may run it.
+  if (input.hostCommandsAllowed !== false) await cleanupInactiveGithubWorktrees(input)
   const cache = input.cache.read()
   if (cache.cursor === 0n) return []
   const now = serverNow(cache, input.now)

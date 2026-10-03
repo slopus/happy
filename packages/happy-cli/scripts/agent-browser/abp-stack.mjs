@@ -9,6 +9,8 @@
 //   abp-stack rotate-keys [--daemon-token] [--vnc-password]      (both when neither is given)
 //   abp-stack set-principal <profileId> <principalId>              (switches to that owner's browser volume)
 //   abp-stack set-principal --resume | --abort
+//   abp-stack add-profile <studio userId> | remove-profile <studio userId> [--block]   (shared machine)
+//   abp-stack list-profiles [--json] | recover-profiles                                 (shared machine)
 //   abp-stack load <dir> [--set-initial]                          (docker load + digest check)
 //   abp-stack build --source <happy-cli dir> [--out <dir>] [--tag <tag>] [--set-initial]
 //   abp-stack run                                                 (abp-stack.service only)
@@ -24,13 +26,15 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { PATHS, STACK_LABEL, browserCreateArgs, fenceRule, legacyProfileVolumeName, profileVolumeName, profileVolumeLabels, mergeInstallOptions, networkCreateArgs, runtimeConfig, runtimeCreateArgs, stackLayout } from "./lib/abpPlan.mjs";
+import { CONTAINER_MEMORY_GIB, MAX_SHARED_PROFILES, PATHS, STACK_LABEL, browserCreateArgs, fenceRule, legacyProfileVolumeName, profileVolumeName, profileVolumeLabels, mergeInstallOptions, networkCreateArgs, runtimeConfig, runtimeCreateArgs, sharedProfileId, stackLayout } from "./lib/abpPlan.mjs";
 
 import { PROFILE_COPY } from "./lib/profileCopy.mjs";
 
 const refusal = (message) => Object.assign(new Error(message), { exitCode: 78 });
 
 const IMAGE_ID = /^sha256:[0-9a-f]{64}$/;
+/** Lowest image and package contract an install runs on: shared machines need tenancyMode in runtime.json (3). */
+const requiredContract = (install) => (install?.tenancyMode === "shared" ? 3 : 2);
 const IMAGE_LABEL = '{{index .Config.Labels "ai.saycode.abp.image"}}';
 const RESTART_BACKOFF_MS = { first: 2_000, max: 60_000, resetAfterRunningMs: 60_000 };
 const DEFAULT_READY_TIMEOUT_MS = 180_000;
@@ -49,6 +53,12 @@ const EMERGENCY_FLAG = "/run/abp-stack-emergency";
 const START_REQUEST = "/run/abp-stack-start-request";
 const MAINTENANCE_FLAG = "/run/abp-stack-maintenance";
 const MAINTENANCE_MAX_MS = 15 * 60_000;
+/** A first-use profile request the machine cannot hold (or that failed) is refused this long. */
+const PROFILE_REFUSAL_MS = 10 * 60_000;
+const PROFILE_BUSY_RETRY_MS = 2 * 60_000;
+/** Busy postponements of one request before it is refused as busy. */
+const PROFILE_BUSY_RETRIES = 3;
+const PROFILE_POLL_MS = 3_000;
 const NETWORK_FORMAT = '{{range .IPAM.Config}}{{.Subnet}} {{.Gateway}}{{end}} {{index .Options "com.docker.network.bridge.name"}}';
 const SERVICE = "abp-stack.service";
 const DAEMON_SERVICE = "abp-happy-daemon.service";
@@ -121,6 +131,14 @@ export function systemDeps() {
     /** Admin metrics over the root-only admin socket; undefined when the Runtime does not answer. */
     adminReady: () => unixJson(PATHS.adminSocket, "/admin/ready", {}).then((r) => r.status === 200 ? r.body?.result : undefined, () => undefined),
     openAdmission: (assignments) => unixJson(PATHS.adminSocket, "/admin/open-admission", {}, { assignments }).then((r) => r.status === 200 && r.body?.result?.admission === "open", () => false),
+    /** /proc/meminfo in bytes: add-profile checks the budget and what is available now. */
+    memInfo: () => {
+      const info = readFileSync("/proc/meminfo", "utf8");
+      const kib = (key) => Number(new RegExp(`^${key}:\\s+(\\d+) kB$`, "m").exec(info)?.[1] ?? NaN) * 1024;
+      return { totalBytes: kib("MemTotal"), availableBytes: kib("MemAvailable") };
+    },
+    adminProfileRequests: () => unixJson(PATHS.adminSocket, "/admin/profile-requests", {}).then((reply) => (reply.status === 200 ? reply.body?.result?.requests : undefined), () => undefined),
+    refuseProfileRequest: (principalId, reason, retryAfterMs) => unixJson(PATHS.adminSocket, "/admin/profile-requests/refuse", {}, { principalId, reason, retryAfterMs }).then((reply) => reply.status === 200, () => false),
     adminMetrics: () => unixJson(PATHS.adminSocket, "/admin/metrics", {}).then((reply) => (reply.status === 200 ? reply.body?.result : undefined), () => undefined),
     /** Status of an authenticated, read-only broker call made with the given daemon token (200 = accepted). */
     brokerProbe: (token) => unixJson(PATHS.brokerSocket, "/v1/attention?afterSeq=0&waitMs=0", { "x-abp-daemon-token": token }).then((reply) => reply.status, () => 0),
@@ -151,6 +169,10 @@ export function systemDeps() {
 }
 
 export function createStack(deps) {
+  /** First-use additions that failed, per user, for the service's lifetime (their refusals grow). */
+  const failedAdditions = new Map();
+  /** Consecutive busy postponements per user (the drain timed out). */
+  const busyPostponements = new Map();
   const docker = (args, opts) => deps.run("docker", args, opts);
   const systemctl = (args, opts) => deps.run("systemctl", args, opts);
   const firewall = (args, opts) => deps.run(FIREWALL, args, opts);
@@ -180,7 +202,8 @@ export function createStack(deps) {
       if (found.status !== 0) throw new Error(`${role} image ${ids[role]} is not loaded`);
       if (found.stdout !== ids[role]) throw refusal(`${role} image digest mismatch`);
       const contract = docker(["image", "inspect", "--format", '{{index .Config.Labels "ai.saycode.abp.contract"}}', ids[role]]);
-      if (contract.stdout !== "2") throw refusal(`${role} image requires assignment contract 2; downgrade refused`);
+      const required = requiredContract(install());
+      if (!/^\d+$/.test(contract.stdout) || Number(contract.stdout) < required) throw refusal(`${role} image requires assignment contract ${required}; downgrade refused`);
     }
   }
 
@@ -218,19 +241,22 @@ export function createStack(deps) {
     const marker = join(options.happyPrefix ?? PATHS.happyPrefix, "lib/node_modules/@buzzni/happy-cli/scripts/agent-browser/contract.json");
     let contract;
     try { contract = readJson(marker); } catch {}
-    if (contract?.contractVersion !== 2) throw refusal("installed Happy package requires assignment/lineage contract 2; install the current --happy-tarball");
+    const required = requiredContract(options);
+    if (!(contract?.contractVersion >= required)) throw refusal(`installed Happy package requires assignment/lineage contract ${required}; install the current --happy-tarball`);
   }
   /**
    * checkPackage false (the periodic supervisor): abp-install swaps the package with two renames, and a tick
    * between them must not stop a running stack; start, up, set-principal and upgrade still check it.
    */
-  function assertStable(allowStartRecovery = false, { checkPackage = true } = {}) {
+  function assertStable(allowStartRecovery = false, { checkPackage = true, allowFailedProfileOp = false } = {}) {
     if (checkPackage) assertPackageContract(install());
+    const settled = allowFailedProfileOp && readState().profileOp?.phase === "failed";
     const state = readState();
     if (!allowStartRecovery && deps.exists(START_REQUEST)) throw refusal("unfinished service startup; use abp-stack up or assignment/migration recovery");
     if (state.migrationHold) throw refusal("incomplete legacy migration; preserve both volumes and inspect before recovery");
     if (state.transition) throw refusal("unfinished assignment transition; use set-principal --resume or --abort");
-    if (state.applied && !same(state.applied, identity(install()))) throw refusal("install identity differs from applied assignment; direct edits are refused");
+    if (state.profileOp && !settled) throw refusal(`unfinished ${state.profileOp.op}-profile; restart the stack (abp-stack up --restart) or run abp-stack recover-profiles`);
+    if (!settled && state.applied && !same(state.applied, identity(install()))) throw refusal("install identity differs from applied assignment; direct edits are refused");
   }
   function validConfig(options) {
     assertPackageContract(options);
@@ -279,20 +305,29 @@ export function createStack(deps) {
     const profiles = mounts.filter((m) => m.Destination === "/home/browser/profile");
     return profiles.length === 1 && profiles[0].Type === "volume" && profiles[0].Name === browser.volume && profiles[0].RW === true;
   }
-  async function verifyAssignment(options) {
+  /**
+   * The Runtime serves these assignments, cleaned up. A dedicated machine needs every browser; a shared one only
+   * the browsers of `requireBrowsers` (the profile a change is about), so one user's broken browser holds nobody else.
+   */
+  async function verifyAssignment(options, { requireBrowsers = [] } = {}) {
+    const shared = options.tenancyMode === "shared";
     const deadline = deps.now() + DEFAULT_READY_TIMEOUT_MS;
     for (;;) {
       const ready = await deps.adminReady();
-      if (ready && ready.assignment?.state === "ready" && same(ready.assignment.applied, assignments(options)) && same(identity({ profiles: ready.profiles ?? [] }), identity(options)) && ["browsers", "writerLock", "disk", "revocations", "principalState"].every((key) => ready.checks?.[key] === true)) break;
+      if (ready && ready.assignment?.state === "ready" && same(ready.assignment.applied, assignments(options)) && same(identity({ profiles: ready.profiles ?? [] }), identity(options))
+        && [...shared ? [] : ["browsers"], "writerLock", "disk", "revocations", "principalState"].every((key) => ready.checks?.[key] === true)
+        && requireBrowsers.every((profileId) => ready.profileBrowsers?.[profileId] === true)) break;
       if (deps.now() >= deadline) throw new Error("admin readiness or applied assignment mismatch");
       await deps.sleep(1000);
     }
     const plan = stackLayout(options);
     const current = readState().current;
-    for (const [name, expected] of [[plan.runtime.container, current.runtime], ...plan.browsers.map((b) => [b.container, current.browser])]) {
+    const browsers = shared ? plan.browsers.filter((browser) => requireBrowsers.includes(browser.profileId)) : plan.browsers;
+    for (const [name, expected] of [[plan.runtime.container, current.runtime], ...browsers.map((b) => [b.container, current.browser])]) {
       const actual = docker(["inspect", "-f", `{{.State.Running}} ${IMAGE_LABEL}`, name]).stdout;
       if (actual !== `true ${expected}`) throw new Error(`unexpected container image: ${name}`);
     }
+    // Every browser is on its owner's volume, connected or not.
     for (const browser of plan.browsers) {
       validateVolume(browser.volume, browser.volumeLabels);
       if (!hasExpectedProfileMount(browser)) throw new Error(`wrong profile mount: ${browser.container}`);
@@ -384,7 +419,7 @@ export function createStack(deps) {
     const abort = (reason, detail) => {
       iptables(["-F", "ABP-FENCE"], { allowFail: true });
       writeState(record(readState(), { action, result: "aborted", reason, ...detail }));
-      throw new Error(`${action} aborted: ${reason}; nothing was stopped or changed (abp-stack emergency-stop stops regardless)`);
+      throw Object.assign(new Error(`${action} aborted: ${reason}; nothing was stopped or changed (abp-stack emergency-stop stops regardless)`), { nothingChanged: true });
     };
     let state;
     try { state = containerState(runtime.container); } catch (error) { abort(error.message); }
@@ -460,6 +495,14 @@ export function createStack(deps) {
     if (docker(["restart", "-t", "30", runtime.container], { allowFail: true }).status !== 0) throw new Error("docker restart failed for the Runtime");
     await verifyAssignment(options);
     await releaseAdmission(options);
+  }
+
+  /** The network exists with its subnet, gateway and bridge name; one that differs is recreated. */
+  function ensureNetwork(network) {
+    const found = docker(["network", "inspect", "-f", NETWORK_FORMAT, network.network], { allowFail: true });
+    if (found.status === 0 && found.stdout === `${network.subnet} ${network.gateway} ${network.bridge}`) return;
+    if (found.status === 0) docker(["network", "rm", network.network]);
+    docker(networkCreateArgs(network));
   }
 
   function createAndStartBrowser(plan, browser, image) {
@@ -559,8 +602,241 @@ export function createStack(deps) {
     }
   }
 
+  function requireShared(options) {
+    if (options.tenancyMode !== "shared") throw refusal("profiles are added and removed only on a shared machine (abp-install --tenancy shared)");
+  }
+  /** K11: fewer than 8 profiles, a static budget of container limits, and memory available right now. */
+  function assertCapacity(options) {
+    const full = (message, reason) => Object.assign(refusal(message), { capacityReason: reason });
+    if (options.profiles.length >= MAX_SHARED_PROFILES) throw full(`a shared machine runs at most ${MAX_SHARED_PROFILES} browser profiles`, "capacity");
+    const GiB = 2 ** 30;
+    const { totalBytes, availableBytes } = deps.memInfo();
+    const budget = (CONTAINER_MEMORY_GIB.runtime + CONTAINER_MEMORY_GIB.browser * (options.profiles.length + 1)) * GiB;
+    if (totalBytes - (options.memoryReserveMiB ?? 4096) * 2 ** 20 < budget) throw full(`not enough memory for another browser profile (${options.profiles.length} running; memoryReserveMiB ${options.memoryReserveMiB ?? 4096})`, "memory");
+    if (availableBytes < (CONTAINER_MEMORY_GIB.browser + 1) * GiB) throw full("not enough memory available right now for another browser profile", "memory");
+  }
+  /** Recreates the Runtime for these profiles (browsers keep running), verifies it and opens admission. */
+  async function recreateRuntime(options, requireBrowsers = []) {
+    const plan = stackLayout(options);
+    stopAndRemove(plan.runtime.container, 30);
+    writeRuntimeConfig({ ...options, admissionHold: true });
+    ensureNetwork(plan.runtimeNetwork);
+    createAndStartRuntime(plan, readState().current.runtime);
+    await verifyAssignment(options, { requireBrowsers });
+    writeState({ ...readState(), applied: identity(options) });
+    await releaseAdmission(options);
+  }
+  /**
+   * add-profile / remove-profile (K9): the browser's own containers and network, and a new Runtime for the
+   * new set of profiles; the other browsers keep running with their pages and pending approvals. Journaled
+   * (profileOp) so that start, supervision and other operations hold until it finished or recover-profiles
+   * put the previous profiles back. A failure is rolled back to the previous profiles.
+   */
+  /**
+   * Settles a profile change left behind: before its commit (or an addition whose rollback failed) the previous
+   * profiles, after it the new ones. Only for a caller that then recreates every container (start, up --restart).
+   */
+  function settleProfileChange() {
+    const { profileOp, ...rest } = readState();
+    if (!profileOp) return;
+    const adopted = profileOp.phase === "committed" || (profileOp.phase === "failed" && profileOp.committed && profileOp.op === "remove") ? "next" : "before";
+    if (adopted === "before") writeInstall(profileOp.before);
+    writeState(record({ ...rest, applied: identity(install()) }, { action: "settle-profile-change", op: profileOp.op, profileId: profileOp.profileId, phase: profileOp.phase, adopted }));
+  }
+
+  /** Containers change only under the running stack service (never after down or emergency-stop). */
+  function requireRunningService() {
+    if (deps.exists(EMERGENCY_FLAG)) throw refusal("the stack is emergency-stopped; bring it back with abp-stack up first");
+    if (systemctl(["is-active", SERVICE], { allowFail: true }).stdout !== "active") throw refusal("the stack service is not running; start it with abp-stack up first");
+  }
+  /**
+   * add-profile / remove-profile (K9): the browser's own containers and network, and a new Runtime for the
+   * new set of profiles; the other browsers keep running with their pages and pending approvals. Journaled
+   * (profileOp) so that other operations hold until it finished; a service start settles one left behind.
+   * Before the commit a failure only undoes the new browser; after it an addition is rolled back (its user
+   * never had a session) and a removal goes forward (that user's sessions have already ended).
+   * `firstUse`: a session asked for it; a blocked user is refused.
+   */
+  async function changeProfile(op, principalId, { block = false, firstUse = false } = {}) {
+    const options = install();
+    requireShared(options);
+    assertStable();
+    if (typeof principalId !== "string" || !/^[\x21-\x7e]{1,256}$/.test(principalId)) throw refusal("usage: a Studio user id");
+    const profileId = sharedProfileId(principalId);
+    const existing = options.profiles.find((profile) => profile.principalId === principalId);
+    const tombstone = (options.profileTombstones ?? []).find((entry) => entry.principalId === principalId);
+    const others = (options.profileTombstones ?? []).filter((entry) => entry.principalId !== principalId);
+    let next;
+    if (op === "add") {
+      if (existing) return { changed: false, profileId, networkSlot: existing.networkSlot };
+      if (firstUse && tombstone?.removedAtMs === Number.MAX_SAFE_INTEGER) throw Object.assign(refusal("the user was removed from this machine with --block"), { capacityReason: "blocked" });
+      assertCapacity(options);
+      const used = new Set(options.profiles.map((profile) => profile.networkSlot));
+      const networkSlot = [...Array(MAX_SHARED_PROFILES).keys()].find((slot) => !used.has(slot));
+      // The removal time stays: the user's chats from before the removal remain retired. A block becomes a removal now.
+      const kept = tombstone ? [{ principalId, removedAtMs: tombstone.removedAtMs === Number.MAX_SAFE_INTEGER ? deps.now() : tombstone.removedAtMs }] : [];
+      next = { ...options, profiles: [...options.profiles, { profileId, principalId, assignmentId: randomBytes(16).toString("hex"), networkSlot }], profileTombstones: [...others, ...kept] };
+    } else {
+      next = { ...options, profiles: options.profiles.filter((profile) => profile.principalId !== principalId),
+        // A block stays until add-profile lifts it, also through a later plain remove-profile.
+        profileTombstones: [...others, { principalId, removedAtMs: block || tombstone?.removedAtMs === Number.MAX_SAFE_INTEGER ? Number.MAX_SAFE_INTEGER : deps.now() }] };
+      if (!existing) {
+        // Nothing runs for the user: the tombstone reaches the broker with the next Runtime start.
+        writeInstall(mergeInstallOptions(next, {}));
+        return { changed: false, profileId };
+      }
+    }
+    next = mergeInstallOptions(next, {});
+    requireRunningService();
+    const action = `${op}-profile`;
+    const quiesced = await quiesce(action);
+    const browser = stackLayout(op === "add" ? next : options).browsers.find((entry) => entry.profileId === profileId);
+    let committed = false;
+    const journal = (phase) => writeState({ ...readState(), profileOp: { op, principalId, profileId, phase, committed, before: options } });
+    const finish = (result, detail = {}) => { const { profileOp, ...state } = readState(); writeState(record(state, { action, result, profileId, ...detail })); };
+    try {
+      journal("started");
+      deps.writeFileAtomic(MAINTENANCE_FLAG, String(deps.now()), { mode: 0o600, owner: "root", group: "root" });
+      if (op === "add") {
+        ensureNetwork(browser);
+        checkLegacyVolumes([browser]);
+        ensureProfileVolume(browser);
+        createAndStartBrowser(stackLayout(next), browser, readState().current.browser);
+      }
+      writeInstall(next);
+      journal("committed");
+      committed = true;
+      await recreateRuntime(next, op === "add" ? [profileId] : []);
+      if (op === "remove") {
+        // Best effort: a browser left behind is outside the plan and goes with the next start.
+        try { stopAndRemove(browser.container, BROWSER_STOP_S); } catch (error) { deps.log(`remove-profile: ${browser.container} not removed: ${error instanceof Error ? error.message : "failed"}`); }
+        docker(["network", "rm", browser.network], { allowFail: true });
+      }
+      finish("ready", { quiesce: quiesced });
+      return { changed: true, profileId, ...op === "add" ? { networkSlot: next.profiles.find((profile) => profile.profileId === profileId).networkSlot } : {} };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : "failed";
+      if (committed && op === "remove") {
+        journal("failed");
+        writeState(record(readState(), { action, result: "failed", profileId, error: reason }));
+        throw new Error(`${action} failed after its commit (${reason}); the user is removed. Restart the stack (abp-stack up --restart) to settle it`);
+      }
+      try {
+        writeInstall(options);
+        if (op === "add") {
+          try { stopAndRemove(browser.container, BROWSER_STOP_S); } catch {}
+          docker(["network", "rm", browser.network], { allowFail: true });
+        }
+        // Before the commit the Runtime still serves the previous profiles: only the fence goes.
+        if (committed) await recreateRuntime(options);
+        else unfence();
+        finish("rolled-back", { error: reason });
+      } catch (rollbackError) {
+        journal("failed");
+        writeState(record(readState(), { action, result: "failed", profileId, error: reason }));
+        throw new Error(`${action} failed (${reason}) and could not be rolled back (${rollbackError instanceof Error ? rollbackError.message : "failed"}); restart the stack (abp-stack up --restart) or run abp-stack recover-profiles`);
+      }
+      throw new Error(`${action} failed (${reason}); the previous profiles were restored`);
+    } finally {
+      if (deps.exists(MAINTENANCE_FLAG)) deps.remove(MAINTENANCE_FLAG);
+    }
+  }
+
+
   const stack = {
     locked,
+    addProfile: (principalId) => locked(() => changeProfile("add", principalId)),
+    removeProfile: (principalId, options) => locked(() => changeProfile("remove", principalId, options)),
+    /**
+     * The abp-stack service, every few seconds on a shared machine: adds a profile a session asked for on first use
+     * (the broker verified the user's attestation). One at a time, and only when no other operation holds the lock;
+     * a request that cannot be served (capacity, memory, blocked, or a failed addition) is refused with the reason
+     * for 10 minutes.
+     */
+    async provisionRequestedProfiles(backoff) {
+      if (install().tenancyMode !== "shared") return {};
+      const requests = (await deps.adminProfileRequests()) ?? [];
+      const now = deps.now();
+      // A newer chat of a refused user asks again: the broker gets the same refusal for what is left of it.
+      for (const entry of requests) {
+        const held = backoff.get(entry.principalId);
+        if (held?.reason && held.until > now) await deps.refuseProfileRequest(entry.principalId, held.reason, held.until - now);
+      }
+      const request = requests.find((entry) => (backoff.get(entry.principalId)?.until ?? 0) <= now);
+      if (!request) return {};
+      let release;
+      try { release = await deps.opLock(); } catch { return { busy: true }; }
+      try {
+        // A journal while the lock is free: its owner died. The service restarts and its start settles it.
+        if (readState().profileOp) return { restartToSettle: true };
+        await changeProfile("add", request.principalId, { firstUse: true });
+        backoff.delete(request.principalId);
+        busyPostponements.delete(request.principalId);
+        deps.log(`profile added on first use: ${sharedProfileId(request.principalId)}`);
+        return { added: [request.principalId] };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "failed";
+        // Busy (the drain timed out, nothing changed): tried again shortly, then refused as busy, so the fence of a
+        // retry does not interrupt everyone every 2 minutes for as long as the machine stays busy.
+        let reason = error?.capacityReason ?? "failed";
+        if (error?.nothingChanged) {
+          const postponed = (busyPostponements.get(request.principalId) ?? 0) + 1;
+          if (postponed <= PROFILE_BUSY_RETRIES) {
+            busyPostponements.set(request.principalId, postponed);
+            backoff.set(request.principalId, { until: deps.now() + PROFILE_BUSY_RETRY_MS });
+            deps.log(`profile request postponed: ${message}`);
+            return { busy: true };
+          }
+          busyPostponements.delete(request.principalId);
+          reason = "busy";
+        }
+        // A request that cannot be served is refused (the session is told why), for longer each time an addition
+        // fails, so a persistent failure does not restart everyone's Runtime over and over.
+        const failures = reason === "failed" ? (failedAdditions.get(request.principalId) ?? 0) + 1 : 1;
+        if (reason === "failed") failedAdditions.set(request.principalId, failures);
+        const refusalMs = Math.min(PROFILE_REFUSAL_MS * 3 ** (failures - 1), 24 * 60 * 60_000);
+        backoff.set(request.principalId, { until: deps.now() + refusalMs, reason });
+        await deps.refuseProfileRequest(request.principalId, reason, refusalMs);
+        deps.log(`profile request refused (${reason}): ${sharedProfileId(request.principalId)}: ${message}`);
+        // A change that failed for good holds the fence: the service restarts, and its start settles it.
+        const restartToSettle = readState().profileOp?.phase === "failed";
+        return { refused: [{ principalId: request.principalId, reason }], ...restartToSettle ? { restartToSettle: true } : {} };
+      } finally { release(); }
+    },
+
+    /** Puts back the profiles from before an unfinished add/remove-profile (the whole stack restarts). */
+    recoverProfiles() {
+      return locked(async () => {
+        const journal = readState().profileOp;
+        if (!journal) throw new Error("no unfinished profile change");
+        systemctl(["stop", SERVICE]);
+        verifyStopped();
+        writeInstall(journal.before);
+        const { profileOp, ...state } = readState();
+        writeState({ ...state, applied: identity(journal.before) });
+        await startServiceHeld(journal.before);
+        await releaseAdmission(journal.before);
+        clearStartRequest();
+        writeState(record(readState(), { action: "recover-profiles", result: "ready", profileId: journal.profileId, op: journal.op }));
+      });
+    },
+    listProfiles() {
+      const options = install();
+      requireShared(options);
+      const plan = stackLayout(options);
+      return {
+        profiles: options.profiles.map(({ profileId, principalId, networkSlot, assignmentId }) => {
+          let running = false;
+          try { running = containerState(plan.browsers.find((b) => b.profileId === profileId).container) === "running"; } catch {}
+          // A re-added user keeps their removal time (their chats from before stay retired): shown here, not as removed.
+          const removal = (options.profileTombstones ?? []).find((entry) => entry.principalId === principalId);
+          return { profileId, principalId, networkSlot, assignmentId, volume: profileVolumeName(profileId, principalId), running, ...removal ? { removedAtMs: removal.removedAtMs } : {} };
+        }),
+        removed: (options.profileTombstones ?? []).filter(({ principalId }) => !options.profiles.some((profile) => profile.principalId === principalId))
+          .map(({ principalId, removedAtMs }) => ({ principalId, removedAtMs, blocked: removedAtMs === Number.MAX_SAFE_INTEGER })),
+        capacity: { max: MAX_SHARED_PROFILES, used: options.profiles.length },
+      };
+    },
     assertStable,
     /** Recreates the stack containers from the current digests (volumes kept) behind a live egress firewall, then lifts the fence. */
     async start() {
@@ -575,9 +851,12 @@ export function createStack(deps) {
         if (!egressInPlace()) throw new Error("browser egress firewall is not in place (abp-firewall check-egress); not starting");
         if (deps.exists(EMERGENCY_FLAG)) deps.remove(EMERGENCY_FLAG);
         assertImages(state.current);
+        if (state.migrationHold) throw refusal("incomplete legacy migration; startup held");
+        // A profile change left behind (crash, reboot, failed rollback) is settled here, under the lock: start
+        // recreates every container anyway.
+        if (!request) settleProfileChange();
         const options = install();
         validConfig(options);
-        if (state.migrationHold) throw refusal("incomplete legacy migration; startup held");
         if (state.transition && !["committed", "verified"].includes(state.transition.phase)) throw refusal("assignment transition blocked; use set-principal --resume or --abort");
         if (!state.transition) assertStable(true);
         else if (!same(identity(options), identity(state.transition.target))) throw refusal("transition target mismatch");
@@ -592,12 +871,8 @@ export function createStack(deps) {
         const old = docker(["ps", "-aq", "--filter", `label=${STACK_LABEL}`]).stdout.split("\n").filter(Boolean);
         for (const name of old) stopAndRemove(name, name === plan.runtime.container ? 30 : BROWSER_STOP_S);
         checkLegacyVolumes(plan.browsers, !request);
-        for (const browser of plan.browsers) {
-          const found = docker(["network", "inspect", "-f", NETWORK_FORMAT, browser.network], { allowFail: true });
-          if (found.status === 0 && found.stdout === `${browser.subnet} ${browser.gateway} ${browser.bridge}`) continue;
-          if (found.status === 0) docker(["network", "rm", browser.network]);
-          docker(networkCreateArgs(browser));
-        }
+        if (plan.runtimeNetwork) ensureNetwork(plan.runtimeNetwork);
+        for (const browser of plan.browsers) ensureNetwork(browser);
         // Only the current owners' volumes: a previous owner's stays detached indefinitely.
         if (docker(["volume", "inspect", plan.runtime.volume], { allowFail: true }).status !== 0) docker(["volume", "create", `--label=${STACK_LABEL}`, plan.runtime.volume]);
         for (const browser of plan.browsers) ensureProfileVolume(browser);
@@ -618,6 +893,11 @@ export function createStack(deps) {
 
     up({ restart = false } = {}) {
       return locked(async () => {
+        // A profile change left behind is settled by a restart (up --restart), which recreates every container.
+        if (readState().profileOp) {
+          if (!restart) throw refusal(`unfinished ${readState().profileOp.op}-profile; run abp-stack up --restart`);
+          settleProfileChange();
+        }
         assertStable(true);
         if (!restart && !deps.exists(START_REQUEST) && systemctl(["is-active", SERVICE], { allowFail: true }).stdout === "active"
           && (await deps.adminReady())?.admission === "open") {
@@ -650,8 +930,10 @@ export function createStack(deps) {
           }
           lastEgressCheckMs = deps.now();
         }
-        if (readState().transition || readState().migrationHold || deps.exists(START_REQUEST)) return;
-        assertStable(false, { checkPackage: false });
+        // A profile change in progress holds supervision; one that failed for good does not (the others still need it).
+        const profileOp = readState().profileOp;
+        if (readState().transition || readState().migrationHold || (profileOp && profileOp.phase !== "failed") || deps.exists(START_REQUEST)) return;
+        assertStable(false, { checkPackage: false, allowFailedProfileOp: true });
         let maintenance;
         try { maintenance = Number(deps.readFile(MAINTENANCE_FLAG)); }
         catch (error) { if (error.code !== "ENOENT") throw error; }
@@ -829,6 +1111,7 @@ export function createStack(deps) {
     /** Whole-stack assignment transaction. Even rollback creates a fresh execution generation. */
     setPrincipal(profileId, principalId, recovery) {
       return locked(async () => {
+        if (install().tenancyMode === "shared") throw refusal("a shared machine has a profile per user: use add-profile/remove-profile");
         let journal = readState().transition;
         if (recovery) {
           if (!journal) throw new Error("no unfinished assignment transition");
@@ -1040,18 +1323,36 @@ function option(args, name) {
 /** abp-stack.service: start, then supervise until SIGTERM, then fence, drain and stop (Runtime first), verified. */
 async function runForeground(deps, stack) {
   let stopping = false;
-  const stop = () => {
+  let provisioning;
+  // exitCode 1 (not 78): systemd restarts the service (Restart=always).
+  const stop = (exitCode = 0) => {
     if (stopping) return;
     stopping = true;
     deps.log("stopping: fence, drain, Runtime, browsers");
-    stack.stop().then(() => process.exit(0), (error) => {
+    // A first-use addition in progress gets up to 60 s (systemd allows 150 s); cut short, the next start settles it.
+    const inFlight = provisioning && exitCode === 0 ? Promise.race([provisioning, deps.sleep(60_000)]) : Promise.resolve();
+    inFlight.then(() => stack.stop()).then(() => process.exit(exitCode), (error) => {
       deps.log(`stop failed: ${error instanceof Error ? error.message : "failed"}`);
       process.exit(1);
     });
   };
-  process.on("SIGTERM", stop);
-  process.on("SIGINT", stop);
+  process.on("SIGTERM", () => stop());
+  process.on("SIGINT", () => stop());
   await stack.start();
+  // First-use profile requests run beside supervision, never blocking it (an addition takes a minute).
+  const profileBackoff = new Map();
+  const provision = setInterval(() => {
+    if (stopping || provisioning) return;
+    provisioning = stack.provisionRequestedProfiles(profileBackoff)
+      .then((result) => {
+        if (!result?.restartToSettle) return;
+        deps.log("a profile change failed for good; restarting the service so its start settles it");
+        stop(1);
+      })
+      .catch((error) => deps.log(`profile requests: ${error instanceof Error ? error.message : "failed"}`))
+      .finally(() => { provisioning = undefined; });
+  }, PROFILE_POLL_MS);
+  provision.unref();
   const backoff = new Map();
   for (;;) {
     await deps.sleep(2_000);
@@ -1111,12 +1412,30 @@ export async function main(argv, deps = systemDeps()) {
         await stack.setPrincipal(args[0], args[1]);
       }
       return;
+    case "add-profile":
+    case "remove-profile": {
+      if (!args[0]) throw new Error(`usage: abp-stack ${command} <studio userId>${command === "remove-profile" ? " [--block]" : ""}`);
+      const result = command === "add-profile" ? await stack.addProfile(args[0]) : await stack.removeProfile(args[0], { block: args.includes("--block") });
+      console.log(JSON.stringify(result));
+      return;
+    }
+    case "list-profiles": {
+      const list = stack.listProfiles();
+      if (args.includes("--json")) console.log(JSON.stringify(list, null, 2));
+      else {
+        for (const p of list.profiles) console.log(`${p.profileId}  ${p.principalId}  slot ${p.networkSlot}  ${p.running ? "running" : "stopped"}  ${p.volume}${p.removedAtMs ? `  (re-added; chats before ${new Date(p.removedAtMs).toISOString()} need a new chat)` : ""}`);
+        for (const r of list.removed) console.log(`removed  ${r.principalId}${r.blocked ? "  (blocked)" : ""}`);
+        console.log(`${list.capacity.used}/${list.capacity.max} profiles`);
+      }
+      return;
+    }
+    case "recover-profiles": await stack.recoverProfiles(); return;
     case "migrate-legacy-profile":
       return stack.migrateLegacyProfile(args[0], option(args, "--owner"), args.includes("--owner-verified"), args.includes("--resume"));
     case "delete-profile-volume":
       return stack.deleteProfileVolume(args[0], option(args, "--confirm"));
     default:
-      throw new Error("usage: abp-stack up|down|emergency-stop|status|upgrade|rollback|rotate-keys|set-principal|migrate-legacy-profile|delete-profile-volume|load|build|run");
+      throw new Error("usage: abp-stack up|down|emergency-stop|status|upgrade|rollback|rotate-keys|set-principal|add-profile|remove-profile|list-profiles|recover-profiles|migrate-legacy-profile|delete-profile-volume|load|build|run");
   }
 }
 

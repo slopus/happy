@@ -1,8 +1,8 @@
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, mkdtemp, realpath, rm, unlink } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import type { CheckpointLedgerBinding } from './checkpointLedger';
+import { CheckpointLedger, type CheckpointLedgerBinding } from './checkpointLedger';
 import { withCheckpointPin } from './checkpointGarbageCollector';
 import { observeCheckpointOperation, type CheckpointOperationObserver } from './checkpointObservability';
 import {
@@ -18,7 +18,8 @@ import {
     type CheckpointRestorePlan,
     type CheckpointRestorePlanEntry,
 } from './checkpointRestorePlan';
-import { resolveCheckpointStoreLayout } from './checkpointStore';
+import { CheckpointStore, resolveCheckpointStoreLayout } from './checkpointStore';
+import { checkpointExclusionMatcher } from './checkpointCoverage';
 
 export type CheckpointRestoreExecuteRequest = CheckpointLedgerBinding & {
     operationId: string;
@@ -26,6 +27,12 @@ export type CheckpointRestoreExecuteRequest = CheckpointLedgerBinding & {
     confirmed: boolean;
     excludedPaths?: string[];
     excludedPatterns?: string[];
+    includePaths?: string[];
+    /**
+     * specs/checkpoint-local-history R4 — the safety checkpoint and a record after the restore are
+     * taken the way turns are recorded, so restoring the safety checkpoint undoes this restore.
+     */
+    localHistory?: { maxFileBytes: number };
 };
 
 type CheckpointRestoreEntryResult = {
@@ -114,19 +121,22 @@ export class CheckpointRestoreExecutor {
         projectPath: string,
         journalFile: string,
     ): Promise<CheckpointRestoreExecuteResult> {
-        const requestFingerprint = checkpointRestoreRequestFingerprint({
+        const fingerprintInput = {
             sessionId: request.sessionId,
             projectId: request.projectId,
             worktreeId: request.worktreeId,
             operationId: request.operationId,
             projectPath,
             plan: request.plan,
-            excludedPaths: request.excludedPaths ?? [],
-            excludedPatterns: request.excludedPatterns ?? [],
-        });
+        };
+        const requestFingerprint = checkpointRestoreRequestFingerprint(fingerprintInput);
         let journal = await readCheckpointRestoreJournal(journalFile);
         if (journal && journal.requestFingerprint !== requestFingerprint) {
-            throw new Error('checkpoint restore idempotency key conflict');
+            const legacyFingerprint = checkpointRestoreRequestFingerprint({ ...fingerprintInput,
+                excludedPaths: request.excludedPaths ?? [], excludedPatterns: request.excludedPatterns ?? [] });
+            if (journal.requestFingerprint !== legacyFingerprint) throw new Error('checkpoint restore idempotency key conflict');
+            journal.requestFingerprint = requestFingerprint;
+            await writeCheckpointRestoreJournal(journalFile, journal);
         }
 
         const planner = new CheckpointRestorePlanner(this.checkpointRoot);
@@ -137,6 +147,9 @@ export class CheckpointRestoreExecutor {
                 worktreeId: request.worktreeId,
                 projectPath,
                 checkpointId: request.plan.checkpointId,
+                excludedPaths: request.excludedPaths,
+                excludedPatterns: request.excludedPatterns,
+                includePaths: request.includePaths,
             });
             if (JSON.stringify(currentPlan) !== JSON.stringify(request.plan)) {
                 return { status: 'stale-plan' };
@@ -149,6 +162,7 @@ export class CheckpointRestoreExecutor {
                 projectPath,
                 excludedPaths: request.excludedPaths,
                 excludedPatterns: request.excludedPatterns,
+                ...(request.localHistory ? { workTree: { ...request.localHistory, record: 'safety' as const } } : {}),
             });
             journal = createCheckpointRestoreJournal(
                 requestFingerprint,
@@ -165,6 +179,17 @@ export class CheckpointRestoreExecutor {
             journalFile,
             journal,
         );
+        if (request.localHistory) {
+            await new CheckpointStore(this.checkpointRoot).snapshotTurn({
+                sessionId: request.sessionId,
+                projectId: request.projectId,
+                worktreeId: request.worktreeId,
+                projectPath,
+                operationId: `${safetyOperationId(request.operationId)}:after:${randomUUID()}`,
+                excludedPatterns: request.excludedPatterns,
+                workTree: { ...request.localHistory, record: 'restored' },
+            });
+        }
         return {
             status: entries.some((entry) => entry.outcome === 'failed')
                 ? 'partial'
@@ -213,6 +238,11 @@ export class CheckpointRestoreExecutor {
                 journalEntry.outcome = 'applying';
                 await writeCheckpointRestoreJournal(journalFile, journal);
                 try {
+                    const expectedContentHash = entry.action === 'restore'
+                        ? await new CheckpointRestorePlanner(this.checkpointRoot).readCheckpointFileHash({
+                            ...request, checkpointId: request.plan.checkpointId,
+                        }, entry.path, projectPath)
+                        : null;
                     await prepareSafeMutationPath(
                         projectPath,
                         entry.path,
@@ -221,18 +251,33 @@ export class CheckpointRestoreExecutor {
                     await this.mutate({
                         entry,
                         apply: async () => {
+                            if (checkpointExclusionMatcher(request)(entry.path)) {
+                                throw new Error('checkpoint restore path is currently excluded');
+                            }
                             const current = await new CheckpointRestorePlanner(this.checkpointRoot).matchesCurrentEntry({
                                 sessionId: request.sessionId,
                                 projectId: request.projectId,
                                 worktreeId: request.worktreeId,
                                 projectPath,
                                 checkpointId: request.plan.checkpointId,
+                                excludedPaths: request.excludedPaths,
+                                excludedPatterns: request.excludedPatterns,
+                                includePaths: request.includePaths,
                             }, entry);
-                            if (!current) {
+                            if (!current && !await new CheckpointRestorePlanner(this.checkpointRoot)
+                                .matchesTargetHash(projectPath, entry.path, expectedContentHash)) {
                                 throw new Error('checkpoint restore file changed before mutation');
                             }
-                            await applyMutation(entry, projectPath, environment);
+                            if (current) await applyMutation(entry, projectPath, environment);
                         },
+                    });
+                    await new CheckpointLedger(this.checkpointRoot).recordMutation({
+                        ...request, projectPath,
+                        operationId: `restore:${createHash('sha256').update(request.operationId).digest('hex')}`,
+                        mutationId: createHash('sha256').update(entry.path).digest('hex'),
+                        path: entry.path,
+                        action: entry.action === 'restore' ? 'written' : 'deleted',
+                        expectedContentHash,
                     });
                     journalEntry.outcome = entry.action === 'restore' ? 'restored' : 'deleted';
                 } catch {

@@ -242,6 +242,46 @@ describe('claudeRemote', () => {
         expect(calls).toEqual(['close', 'apply', 'ready']);
     });
 
+    // specs/checkpoint-local-history — a recorded turn keeps the provider running and records what
+    // the turn left before announcing ready; a failed record never fails the turn.
+    it.each([
+        ['records', async () => undefined],
+        ['still announces ready when the record fails', async () => { throw new Error('store busy'); }],
+    ])('%s after a local-history turn without closing the provider', async (_label, record) => {
+        const calls: string[] = [];
+        const close = vi.fn(() => calls.push('close'));
+        vi.mocked(query).mockReturnValue({
+            close,
+            setPermissionMode: vi.fn(),
+            mcpServerStatus: vi.fn(async () => []),
+            async *[Symbol.asyncIterator]() {
+                yield { type: 'result', subtype: 'success' };
+            },
+        } as any);
+
+        const result = await claudeRemote({
+            checkpointGuidance: async () => 'checkpoint test guidance',
+            sessionId: null,
+            path: process.cwd(),
+            allowedTools: [],
+            hookSettingsPath: '/tmp/happy-test-settings.json',
+            exitAfterFirstTurn: true,
+            nextMessage: async () => ({ message: 'edit the project', mode }),
+            beforeTurn: vi.fn(async () => ({ operationId: 'turn-1', checkpointId: 'a'.repeat(40), providerPath: process.cwd() })),
+            afterTurn: vi.fn(async () => { calls.push('record'); await record(); }),
+            onReady: () => calls.push('ready'),
+            canCallTool: async () => ({ behavior: 'allow' }) as any,
+            isAborted: () => false,
+            onSessionFound: vi.fn(),
+            onThinkingChange: vi.fn(),
+            onMessage: vi.fn(),
+        });
+
+        expect(vi.mocked(query).mock.calls.at(-1)?.[0].options?.appendSystemPrompt).toContain('checkpoint test guidance');
+        expect(result).toBe('turn-complete');
+        expect(calls).toEqual(['record', 'ready']);
+    });
+
     it('does not dispatch an excluded-path retry while protection confirmation is pending', async () => {
         vi.mocked(query).mockReturnValue({
             setPermissionMode: vi.fn(),

@@ -70,8 +70,9 @@ describe('resolveCheckpointSessionAuthority', () => {
             worktreeId: null,
             projectPath,
             protection: { status: 'protected' },
-            excludedPaths: ['.env'],
-            excludedPatterns: ['**/.env*'],
+            mode: 'local-history',
+            excludedPaths: [],
+            excludedPatterns: ['.env*', '.aplus/worktrees/'],
         });
     });
 
@@ -116,17 +117,9 @@ describe('resolveCheckpointSessionAuthority', () => {
         });
     });
 
-    // specs/linux-checkpoint-enforcement-backend R1/R2
-    it('advertises Linux protection only when the bubblewrap dependencies are present', async () => {
-        vi.mocked(cachedLinuxSandboxDependencyStatus).mockReturnValueOnce({ ok: false, missing: ['socat'] });
-        await expect(resolveCheckpointSessionAuthority({
-            sessionId: 'session-1',
-            trackedSession: trackedSession(),
-            checkpointRoot,
-            platform: 'linux',
-        })).resolves.toMatchObject({
-            protection: { status: 'unavailable', reason: 'unsupported-platform' },
-        });
+    // specs/checkpoint-local-history — recording needs git, not the Linux sandbox backend.
+    it('offers local history on Linux without the bubblewrap dependencies', async () => {
+        vi.mocked(cachedLinuxSandboxDependencyStatus).mockReturnValue({ ok: false, missing: ['socat'] });
         await expect(resolveCheckpointSessionAuthority({
             sessionId: 'session-1',
             trackedSession: trackedSession(),
@@ -134,7 +127,7 @@ describe('resolveCheckpointSessionAuthority', () => {
             platform: 'linux',
         })).resolves.toMatchObject({
             protection: { status: 'protected' },
-            excludedPatterns: ['**/.env*'],
+            mode: 'local-history',
         });
     });
 

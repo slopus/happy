@@ -34,6 +34,7 @@ describe('abp-plan CLI', () => {
         expect(flags.issuers[0].publicKeyPem).toContain('BEGIN PUBLIC KEY')
         expect(flags).toMatchObject({ runtimePort: 38701, happyPrefix: '/opt/happy', serverUrl: 'https://dev-studio.example', sites: [{ origin: 'https://shop.example' }] })
         expect(() => parseOptionFlags(['--profile', 'main'])).toThrow(/<name>=<value>/)
+        expect(parseOptionFlags(['--tenancy', 'shared'])).toEqual({ tenancyMode: 'shared' })
         expect(() => parseOptionFlags(['--issuer', 'k1=/nonexistent/key.pem'])).toThrow(/unreadable/)
         expect(() => parseOptionFlags(['--bogus', 'x'])).toThrow(/unknown option/)
     })
@@ -408,6 +409,14 @@ describe('abp-install Happy package replacement', () => {
         expect(result.status).not.toBe(0)
         expect(result.stderr).toMatch(/contract 2/)
         expect(readFileSync(join(prefix, 'bin', 'happy'), 'utf8')).toBe('old')
+        rmSync(root, { recursive: true, force: true })
+    })
+
+    it('accepts a package of a newer contract', () => {
+        const { root, prefix } = live()
+        const result = replace(prefix, complete.replace('{"contractVersion":2}', '{"contractVersion":3}'))
+        expect(result.status).toBe(0)
+        expect(readFileSync(join(prefix, 'bin', 'happy'), 'utf8')).toBe('new\n')
         rmSync(root, { recursive: true, force: true })
     })
 

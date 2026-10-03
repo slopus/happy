@@ -23,6 +23,11 @@ import { withCheckpointStoreLock } from '@/checkpoint/checkpointStoreLock';
  * every process on the machine. The executor's in-process queue is not — two
  * daemons on one volume are two processes and would not see each other's
  * queue at all.
+ *
+ * This lock is not reentrant. Its action must not acquire the same checkpoint
+ * store lock again (including ordinary CheckpointRestoreExecutor, whose pin
+ * and snapshot operations acquire it). A boot restore adapter must honor the
+ * already-held producer lock before checkpoint restore is wired here.
  */
 export function withManagedProducerLock<T>(
     checkpointRoot: string,

@@ -134,140 +134,6 @@ function setup(
 }
 
 describe('AI credential machine runtime', () => {
-  it.each([[7, false], [9, false], [7, true]] as const)('automatically replaces only verified dead matching credentials on merge (active=%i, rotating=%s)', async (active, rotating) => {
-    const { runtime, files, execFile, supervisor } = setup()
-    supervisor.status.mockReturnValue({ state: rotating ? 'running' : 'stopped' as never, lastErrorKind: null })
-    const accounts: Array<{ number: number; email: string; organizationUuid?: string; usageStatus?: string; disabled?: boolean }> = [
-      { number: 7, email: 'dead@example.com', organizationUuid: 'org', usageStatus: 'relogin_required' },
-      { number: 9, email: 'healthy@example.com', organizationUuid: 'org', usageStatus: 'ok' },
-      { number: 10, email: 'disabled@example.com', usageStatus: 'relogin_required', disabled: true },
-      { number: 11, email: 'unknown@example.com' },
-      { number: 12, email: 'dead@example.com', organizationUuid: 'other-org', usageStatus: 'relogin_required' },
-    ]
-    const payload = claudeOauthPayload([
-      { email: 'dead@example.com', organizationUuid: 'org' }, { email: 'healthy@example.com', organizationUuid: 'org' },
-      { email: 'disabled@example.com' }, { email: 'unknown@example.com' }, { email: 'new@example.com' },
-    ])
-    const source = JSON.parse(payload).accounts
-    source[0].disabled = true
-    const stored = accounts.map(a => ({ ...a, credentials: { claudeAiOauth: { accessToken: `old-${a.number}`, refreshToken: 'old-refresh' } } }))
-    files.set('/home/operator/.claude/.credentials.json', `live-${active}`)
-    const original = execFile.getMockImplementation()!
-    const probes: string[] = []
-    const imports: Array<{ force: boolean; emails: string[] }> = []
-    execFile.mockImplementation(async (command, args, options) => {
-      if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: active, accounts }), stderr: '' }
-      if (command === 'claude') {
-        const oauth = JSON.parse(files.get(`${options?.environment?.HOME}/.claude/.credentials.json`)!).claudeAiOauth
-        expect(oauth.refreshToken).toBeUndefined()
-        probes.push(oauth.accessToken)
-        return { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 }
-      }
-      if (command === 'cswap' && args[0] === 'export') return { stdout: JSON.stringify({ version: 1, accounts: stored }), stderr: '' }
-      if (command === 'cswap' && args[0] === 'import') {
-        const imported = JSON.parse(files.get(args[1]!)!).accounts
-        imports.push({ force: args.includes('--force'), emails: imported.map((a: { email: string }) => a.email) })
-        for (const incoming of imported) {
-          const index = accounts.findIndex(a => a.email === incoming.email && (a.organizationUuid ?? '') === (incoming.organizationUuid ?? ''))
-          if (index >= 0) {
-            expect(args).toContain('--force')
-            expect(incoming.disabled).not.toBe(true)
-            stored[index]!.credentials = incoming.credentials
-            accounts[index]!.usageStatus = 'ok'
-          } else accounts.push({ number: 13, email: incoming.email, usageStatus: 'ok' })
-        }
-        return { stdout: '', stderr: '' }
-      }
-      if (command === 'cswap' && args[0] === 'switch') {
-        expect(args).toEqual(['switch', '7', '--force', '--json'])
-        files.set('/home/operator/.claude/.credentials.json', JSON.stringify(stored[0]!.credentials))
-      }
-      return original(command, args, options)
-    })
-    const result = await runtime.apply({ provider: 'claude', applyMode: 'merge', payload: JSON.stringify({ ...JSON.parse(payload), accounts: source }),
-      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 } })
-    expect(result).toMatchObject({ applyMode: 'merge', repairedAccountCount: 1, credentialRepairFailedAccountCount: 0, accountCount: 6 })
-    expect(imports).toEqual([{ force: true, emails: ['dead@example.com'] }, { force: false, emails: ['new@example.com'] }])
-    expect(probes).toEqual(['oauth-1', 'oauth-1'])
-    expect(stored[0]!.credentials).toEqual(source[0].credentials)
-    expect(stored.slice(1).map(a => a.credentials.claudeAiOauth.accessToken)).toEqual(['old-9', 'old-10', 'old-11', 'old-12'])
-    expect(files.get('/home/operator/.claude/.credentials.json')).toBe(active === 7 ? JSON.stringify(source[0].credentials) : 'live-9')
-    expect(supervisor.stop).toHaveBeenCalledTimes(rotating ? 1 : 0)
-    expect(supervisor.enable).toHaveBeenCalledTimes(rotating ? 1 : 0)
-    expect(JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!).claude.identities).toEqual([
-      ['dead@example.com', 'org', ''], ['new@example.com', '', ''],
-    ])
-  })
-
-  it.each(['401 authentication_error', 'network error'])('keeps rejected merge credentials and still adds new identities (%s)', async error => {
-    const { runtime, files, execFile, supervisor } = setup()
-    const accounts = [{ number: 7, email: 'dead@example.com', usageStatus: 'relogin_required' }]
-    const original = execFile.getMockImplementation()!
-    execFile.mockImplementation(async (command, args, options) => {
-      if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: 7, accounts }), stderr: '' }
-      if (command === 'claude') return { stdout: '', stderr: error, exitCode: 1 }
-      if (command === 'cswap' && args[0] === 'import') {
-        expect(args).not.toContain('--force')
-        expect(JSON.parse(files.get(args[1]!)!).accounts.map((a: { email: string }) => a.email)).toEqual(['new@example.com'])
-        accounts.push({ number: 8, email: 'new@example.com', usageStatus: 'ok' })
-      }
-      return original(command, args, options)
-    })
-    const result = await runtime.apply({ provider: 'claude', applyMode: 'merge', payload: claudeOauthPayload([{ email: 'dead@example.com' }, { email: 'new@example.com' }]),
-      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 } })
-    expect(result).toMatchObject({ repairedAccountCount: 0, credentialRepairFailedAccountCount: 1, reloginRequiredAccountCount: 1 })
-    expect(accounts[0]!.usageStatus).toBe('relogin_required')
-    expect(supervisor.stop).not.toHaveBeenCalled()
-    expect(supervisor.enable).not.toHaveBeenCalled()
-    expect(execFile.mock.calls.some(([, args]) => args[0] === 'switch')).toBe(false)
-    expect(JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!).claude.identities).toEqual([['new@example.com', '', '']])
-  })
-
-  it('merges a mixed set by repairing only the verified expired identity and attributing only installed company credentials', async () => {
-    const { runtime, files, execFile, supervisor } = setup()
-    supervisor.status.mockReturnValue({ state: 'stopped' as never, lastErrorKind: null })
-    const accounts = [
-      { number: 7, email: 'recoverable@example.com', usageStatus: 'relogin_required' },
-      { number: 9, email: 'rejected@example.com', usageStatus: 'relogin_required' },
-      { number: 10, email: 'healthy@example.com', usageStatus: 'ok' },
-    ]
-    const payload = claudeOauthPayload([{ email: 'recoverable@example.com' }, { email: 'rejected@example.com' }, { email: 'healthy@example.com' }])
-    const stored = JSON.parse(payload).accounts
-    stored[0].credentials.claudeAiOauth.accessToken = 'old-recoverable'
-    stored[1].credentials.claudeAiOauth.accessToken = 'old-rejected'
-    stored[2].credentials.claudeAiOauth.accessToken = 'old-healthy'
-    const original = execFile.getMockImplementation()!
-    const probes: string[] = []
-    execFile.mockImplementation(async (command, args, options) => {
-      if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: 10, accounts }), stderr: '' }
-      if (command === 'claude') {
-        const token = JSON.parse(files.get(`${options?.environment?.HOME}/.claude/.credentials.json`)!).claudeAiOauth.accessToken
-        probes.push(token)
-        return token === 'oauth-1' ? { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 }
-          : { stdout: '', stderr: '401 authentication_error', exitCode: 1 }
-      }
-      if (command === 'cswap' && args[0] === 'import') {
-        expect(args).toContain('--force')
-        const imported = JSON.parse(files.get(args[1]!)!).accounts
-        expect(imported.map((a: { email: string }) => a.email)).toEqual(['recoverable@example.com'])
-        stored[0] = imported[0]
-        accounts[0]!.usageStatus = 'ok'
-      }
-      if (command === 'cswap' && args[0] === 'export') return { stdout: JSON.stringify({ version: 1, accounts: stored }), stderr: '' }
-      return original(command, args, options)
-    })
-    const result = await runtime.apply({ provider: 'claude', applyMode: 'merge', payload,
-      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 } })
-    expect(result).toMatchObject({ repairedAccountCount: 1, credentialRepairFailedAccountCount: 1 })
-    expect(probes).toEqual(['oauth-1', 'oauth-2', 'oauth-1'])
-    expect(stored[1].credentials.claudeAiOauth.accessToken).toBe('old-rejected')
-    expect(stored[2].credentials.claudeAiOauth.accessToken).toBe('old-healthy')
-    expect(execFile.mock.calls.filter(([, args]) => args[0] === 'import')).toHaveLength(1)
-    expect(execFile.mock.calls.some(([, args]) => args[0] === 'switch')).toBe(false)
-    expect(supervisor.enable).not.toHaveBeenCalled()
-    expect(JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!).claude.identities).toEqual([['recoverable@example.com', '', '']])
-  })
-
   it.each([
     ['ok', 'usage-readable', 1, 1],
     ['relogin_required', 'relogin-required', 0, 2],
@@ -414,18 +280,24 @@ describe('AI credential machine runtime', () => {
     const payload = claudeOauthPayload([{ email: 'owner@example.com' }, { email: 'new@example.com' }])
     const original = execFile.getMockImplementation()!
     let requests = 0
+    let imported = false
     execFile.mockImplementation(async (command, args, options) => {
       if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: 1,
         accounts: [{ number: 1, email: 'owner@example.com', usageStatus: 'relogin_required' }] }), stderr: '' }
       if (command === 'claude') {
         requests += 1
         const isolated = JSON.parse(files.get(`${options?.environment?.HOME}/.claude/.credentials.json`)!)
+        if (isolated.claudeAiOauth.accessToken === 'local-token') {
+          requests -= 1
+          return { stdout: '', stderr: '401 authentication_error', exitCode: 1 }
+        }
         expect(isolated.claudeAiOauth.accessToken).toBe('oauth-1')
         expect(isolated.claudeAiOauth.refreshToken).toBeUndefined()
         return requests === 1 ? { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 }
           : { stdout: '', stderr: '401 authentication_error', exitCode: 1 }
       }
-      if (command === 'cswap' && args[0] === 'export') return { stdout: payload, stderr: '' }
+      if (command === 'cswap' && args[0] === 'export') return { stdout: imported ? payload : payload.replace('oauth-1', 'local-token'), stderr: '' }
+      if (command === 'cswap' && args[0] === 'import') imported = true
       return original(command, args, options)
     })
     await expect(runtime.apply({ provider: 'claude', applyMode, payload,
@@ -452,7 +324,13 @@ describe('AI credential machine runtime', () => {
           { number: 2, email: 'personal@example.com', usageStatus: 'ok' },
           ...(added ? [{ number: 4, email: 'new@example.com', usageStatus: 'ok' }] : []),
         ] }), stderr: '' }
-      if (command === 'claude') { probed = true; return { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 } }
+      if (command === 'cswap' && args[0] === 'export') return { stdout: claudeOauthPayload([{ email: 'owner@example.com' }]).replace('oauth-1', 'local-token'), stderr: '' }
+      if (command === 'claude') {
+        const token = JSON.parse(files.get(`${options?.environment?.HOME}/.claude/.credentials.json`)!).claudeAiOauth.accessToken
+        if (token === 'local-token') return { stdout: '', stderr: '401 authentication_error', exitCode: 1 }
+        probed = true
+        return { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 }
+      }
       if (command === 'cswap' && args[0] === 'import') {
         expect(args).not.toContain('--force')
         expect(JSON.parse(files.get(args[1]!)!).accounts.map((a: { email: string }) => a.email)).toEqual(['new@example.com'])
@@ -551,6 +429,142 @@ describe('AI credential machine runtime', () => {
     expect(provenance.claude.identities).toEqual([['shared@example.com', '', '']])
   })
 
+  it.each([
+    ['ok', 'ok', 7, false, false],
+    ['auth', 'ok', 7, true, false],
+    ['auth', 'ok', 9, true, false],
+    ['network', 'ok', 7, false, false],
+    ['quota', 'ok', 7, false, false],
+    ['timeout', 'ok', 7, false, false],
+    ['auth', 'auth', 7, false, false],
+    ['auth', 'network', 7, false, false],
+    ['auth', 'ok', null, true, false],
+    ['changed', 'ok', 7, false, false],
+    ['auth', 'ok', 7, true, true],
+    ['auth', 'auth', 7, false, true],
+  ] as const)('merge keeps or refreshes duplicate credentials for local %s / shared %s with active %i, refreshed %s and new account %s', async (localResult, sharedResult, active, refreshed, withNew) => {
+    const { runtime, files, calls, execFile, supervisor } = setup()
+    const incoming = JSON.parse(claudeOauthPayload([{ email: 'shared@example.com', organizationUuid: 'company-org' }, ...(withNew ? [{ email: 'new@example.com', organizationUuid: 'company-org' }] : [])]))
+    let stored = { ...incoming.accounts[0], number: 7, credentials: { claudeAiOauth: { accessToken: 'local-token' } } }
+    const accounts = [
+      { number: 7, email: 'shared@example.com', organizationUuid: 'company-org', usageStatus: 'ok' },
+      { number: 9, email: 'personal@example.com', organizationUuid: 'private-org', usageStatus: 'ok' },
+    ]
+    // Source metadata must not disable an enabled local slot or prevent its repair.
+    incoming.accounts[0].disabled = true
+    const probes: string[] = []
+    let activeNumber: number | null = active
+    let exports = 0
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: activeNumber, accounts }), stderr: '' }
+      if (command === 'cswap' && args[0] === 'export') {
+        exports += 1
+        if (localResult === 'changed' && exports > 1) stored = { ...stored, credentials: { claudeAiOauth: { accessToken: 'rotated-local' } } }
+        return { stdout: JSON.stringify({ version: 1, encrypted: false, accounts: [stored] }), stderr: '' }
+      }
+      if (command === 'cswap' && args[0] === 'switch') activeNumber = Number(args[1])
+      if (command === 'claude') {
+        const token = JSON.parse(files.get(`${options?.environment?.HOME}/.claude/.credentials.json`)!).claudeAiOauth.accessToken
+        probes.push(token)
+        const result = token === 'local-token' ? localResult : sharedResult
+        if (result === 'timeout') throw Object.assign(new Error('timeout'), { kind: 'COMMAND_TIMED_OUT' })
+        return result === 'ok'
+          ? { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 }
+          : { stdout: '', stderr: result === 'auth' || result === 'changed' ? 'authentication_error 401' : result === 'quota' ? 'rate_limit 429' : 'network error ECONNRESET', exitCode: 1 }
+      }
+      if (command === 'cswap' && args[0] === 'import') {
+        calls.push({ command, args })
+        const imported = JSON.parse(files.get(args[1]!)!).accounts
+        expect(imported).toHaveLength(1)
+        if (imported[0].email === 'new@example.com') {
+          expect(args).not.toContain('--force')
+          expect(imported[0].credentials.claudeAiOauth.accessToken).toBe('oauth-2')
+          accounts.push({ number: 10, email: 'new@example.com', organizationUuid: 'company-org', usageStatus: 'ok' })
+          return { stdout: '', stderr: '' }
+        }
+        expect(imported[0].credentials.claudeAiOauth.accessToken).toBe('oauth-1')
+        expect(args).toContain('--force')
+        stored = { ...imported[0], number: 7 }
+        return { stdout: '', stderr: '' }
+      }
+      return original(command, args, options)
+    })
+    const result = await runtime.apply({ provider: 'claude', applyMode: 'merge', payload: JSON.stringify(incoming),
+      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 } })
+    expect(result).toMatchObject({
+      repairedAccountCount: refreshed ? 1 : 0,
+      credentialRepairFailedAccountCount: !refreshed && (localResult === 'auth' || localResult === 'changed') ? 1 : 0,
+    })
+    expect(probes).toEqual(localResult === 'auth' || localResult === 'changed'
+      ? refreshed ? ['local-token', 'oauth-1', 'oauth-1'] : ['local-token', 'oauth-1']
+      : ['local-token'])
+    expect(stored.credentials.claudeAiOauth.accessToken).toBe(localResult === 'changed' ? 'rotated-local' : refreshed ? 'oauth-1' : 'local-token')
+    expect(calls.filter(call => call.command === 'cswap' && call.args[0] === 'import')).toHaveLength((refreshed ? 1 : 0) + (withNew ? 1 : 0))
+    expect(calls.filter(call => call.command === 'cswap' && call.args[0] === 'switch')).toEqual(refreshed && (active === 7 || active === null)
+      ? [{ command: 'cswap', args: ['switch', '7', '--force', '--json'] }] : [])
+    if (refreshed) expect(stored.disabled).not.toBe(true)
+    expect(accounts[1]).toMatchObject({ number: 9, organizationUuid: 'private-org', usageStatus: 'ok' })
+    expect(activeNumber).toBe(active ?? 7)
+    expect(supervisor.stop).toHaveBeenCalledTimes(refreshed ? 1 : 0)
+    expect(supervisor.enable).toHaveBeenCalledTimes(refreshed ? 1 : 0)
+    if (refreshed) expect(JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!).claude.identities).toContainEqual(['shared@example.com', 'company-org', ''])
+    if (withNew) expect(JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!).claude.identities).toContainEqual(['new@example.com', 'company-org', ''])
+  })
+
+  function freshMachineAdding(added: Array<Record<string, unknown>>) {
+    const setupResult = setup()
+    const state: { active: number | null; accounts: Array<Record<string, unknown>> } = { active: null, accounts: [] }
+    const original = setupResult.execFile.getMockImplementation()!
+    setupResult.execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: state.active, accounts: state.accounts }), stderr: '' }
+      if (command === 'cswap' && args[0] === 'import') state.accounts = added
+      if (command === 'cswap' && args[0] === 'switch') state.active = Number(args[1])
+      return original(command, args, options)
+    })
+    const input = { provider: 'claude' as const, applyMode: 'merge' as const,
+      payload: claudeOauthPayload(added.map(account => ({ email: String(account.email) }))),
+      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 } }
+    return { ...setupResult, state, input }
+  }
+
+  it('activates a usable shared Claude account on a machine that had none, instead of reporting success without one', async () => {
+    // A fresh Windows PC (2026-10-02): seven shared accounts were added, none became active, so Claude Code stayed
+    // signed out ("사용 가능한 agent가 없습니다") while the deploy reported configured: true.
+    const { runtime, calls, supervisor, state, input } = freshMachineAdding([
+      { number: 1, email: 'expired@example.com', organizationUuid: '', usageStatus: 'relogin_required' },
+      { number: 2, email: 'shared@example.com', organizationUuid: '', usageStatus: 'ok' },
+    ])
+    expect(await runtime.apply(input)).toMatchObject({ configured: true })
+    expect(state.active).toBe(2)
+    expect(calls.filter(call => call.command === 'cswap' && call.args[0] === 'switch').map(call => call.args.slice(0, 2))).toEqual([['switch', '2']])
+    expect(supervisor.enable).not.toHaveBeenCalled()
+  })
+
+  it('fails an additive Claude apply that leaves a machine without an active account because every account needs re-login', async () => {
+    const { runtime, calls, files, state, input } = freshMachineAdding([
+      { number: 1, email: 'expired@example.com', organizationUuid: '', usageStatus: 'relogin_required' },
+    ])
+    await expect(runtime.apply(input)).rejects.toMatchObject({ kind: 'CLAUDE_APPLY_RELOGIN_REQUIRED' })
+    expect(state.active).toBeNull()
+    expect(calls.some(call => call.command === 'cswap' && call.args[0] === 'switch')).toBe(false)
+    // The imported slots stay on the machine, so they stay attributed to the organization (a later merge sees them as existing).
+    expect(JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!).claude.identities).toEqual([['expired@example.com', '', '']])
+  })
+
+  it('keeps the imported shared Claude slots attributed when the switch to one of them does not take', async () => {
+    const { runtime, execFile, files, state, input } = freshMachineAdding([
+      { number: 2, email: 'shared@example.com', organizationUuid: '', usageStatus: 'ok' },
+    ])
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => command === 'cswap' && args[0] === 'switch'
+      ? { stdout: '', stderr: '' } // the switch reports nothing and leaves no active account
+      : original(command, args, options))
+    await expect(runtime.apply(input)).rejects.toMatchObject({ kind: 'CLAUDE_APPLY_VERIFICATION_FAILED' })
+    expect(state.active).toBeNull()
+    expect(JSON.parse(files.get('/home/operator/.happy/ai-credential-provenance.json')!).claude.identities).toEqual([['shared@example.com', '', '']])
+  })
+
   it('rolls back both Codex files if an additive write fails without touching live auth', async () => {
     const { runtime, files, writeFile } = setup()
     const path = '/home/operator/.codex/multi-auth/openai-codex-accounts.json'
@@ -558,7 +572,7 @@ describe('AI credential machine runtime', () => {
     const existing = JSON.stringify(codexMultiAuthBundle().accounts)
     files.set(path, existing)
     files.set(settings, 'original-settings')
-    files.set('/home/operator/.codex/auth.json', 'live-auth')
+    files.set('/home/operator/.codex/auth.json', JSON.stringify({ tokens: { account_id: 'account-a', access_token: 'live-access', refresh_token: 'live-refresh' } }))
     // Invalid prior state is rejected before any writes, rather than reset.
     await expect(runtime.apply({ provider: 'codex', payload: JSON.stringify(codexMultiAuthBundle()), applyMode: 'merge' })).rejects.toThrow()
     expect(files.get(path)).toBe(existing)
@@ -572,7 +586,7 @@ describe('AI credential machine runtime', () => {
     await expect(runtime.apply({ provider: 'codex', payload: JSON.stringify(codexMultiAuthBundle()), applyMode: 'merge' })).rejects.toThrow('CODEX_MULTI_AUTH_APPLY_FAILED')
     expect(files.get(path)).toBe(existing)
     expect(files.get(settings)).toBe(validSettings)
-    expect(files.get('/home/operator/.codex/auth.json')).toBe('live-auth')
+    expect(files.get('/home/operator/.codex/auth.json')).toBe(JSON.stringify({ tokens: { account_id: 'account-a', access_token: 'live-access', refresh_token: 'live-refresh' } }))
   })
 
   it('merges shared Codex accounts without changing personal credentials, indexes, pin or settings', async () => {
@@ -583,7 +597,7 @@ describe('AI credential machine runtime', () => {
     const settings = { version: 1, pluginConfig: { custom: true } }
     files.set(`${root}/openai-codex-accounts.json`, JSON.stringify(existing))
     files.set(`${root}/settings.json`, JSON.stringify(settings))
-    files.set('/home/operator/.codex/auth.json', 'personal-live-auth')
+    files.set('/home/operator/.codex/auth.json', JSON.stringify({ tokens: { account_id: personal.accountId, access_token: 'personal-access', refresh_token: personal.refreshToken } }))
     const input = { provider: 'codex' as const, payload: JSON.stringify(codexMultiAuthBundle()), applyMode: 'merge' as const }
     await runtime.apply(input)
     await runtime.apply(input)
@@ -592,7 +606,7 @@ describe('AI credential machine runtime', () => {
     expect(pool.accounts[0]).toEqual(personal)
     expect(pool).toMatchObject({ activeIndex: 0, pinnedAccountIndex: 0, activeIndexByFamily: { codex: 0 } })
     expect(JSON.parse(files.get(`${root}/settings.json`)!)).toEqual(settings)
-    expect(files.get('/home/operator/.codex/auth.json')).toBe('personal-live-auth')
+    expect(files.get('/home/operator/.codex/auth.json')).toBe(JSON.stringify({ tokens: { account_id: personal.accountId, access_token: 'personal-access', refresh_token: personal.refreshToken } }))
     expect(calls.some(call => call.command === 'codex-multi-auth' && ['forecast', 'check', 'switch'].includes(call.args[0]!))).toBe(false)
   })
 
@@ -606,12 +620,132 @@ describe('AI credential machine runtime', () => {
     expect(JSON.parse(files.get(path)!).accounts[0].refreshToken).toBe('newer-personal-token')
   })
 
-  it('refuses to strand a live personal Codex login that has not been captured into the pool', async () => {
-    const { runtime, files } = setup()
-    files.set('/home/operator/.codex/auth.json', 'personal-live-auth')
-    await expect(runtime.apply({ provider: 'codex', payload: JSON.stringify(codexMultiAuthBundle()), applyMode: 'merge' })).rejects.toThrow('AI_CREDENTIAL_PERSONAL_CAPTURE_REQUIRED')
-    expect(files.get('/home/operator/.codex/auth.json')).toBe('personal-live-auth')
+  it.each(['auth', 'ok', 'network', 'invalid-shared'])('refreshes Codex duplicate only for proven auth failure with valid shared credentials: %s', async (kind) => {
+    const { runtime, files, execFile } = setup()
+    const bundle = codexMultiAuthBundle()
+    const root = '/home/operator/.codex/multi-auth/openai-codex-accounts.json'
+    const local = structuredClone(bundle.accounts)
+    local.accounts[0]!.accessToken = 'local-token'
+    local.accounts[0]!.refreshToken = 'local-refresh'
+    Object.assign(local, { pinnedAccountIndex: 0 })
+    files.set(root, JSON.stringify(local))
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'codex' && args[0] === 'exec') {
+        const auth = JSON.parse(files.get(`${options?.environment?.HOME}/.codex/auth.json`)!)
+        const bad = auth.access_token === 'local-token' ? kind !== 'ok' : kind === 'invalid-shared'
+        if (bad) return { exitCode: 1, stdout: '', stderr: kind === 'network' ? 'network error' : '401 unauthorized' }
+        return { exitCode: 0, stderr: '', stdout: JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'SHARED_AI_OK' } }) + '\n' + JSON.stringify({ type: 'turn.completed' }) }
+      }
+      return original(command, args, options)
+    })
+    await runtime.apply({ provider: 'codex', payload: JSON.stringify(bundle), applyMode: 'merge' })
+    const result = JSON.parse(files.get(root)!)
+    expect(result.accounts[0].refreshToken).toBe(kind === 'auth' ? 'refresh-a' : 'local-refresh')
+    expect(result).toMatchObject({ activeIndex: 0, pinnedAccountIndex: 0 })
+  })
+
+  it('rejects an invalid explicit active account before changing any pool', async () => {
+    const { runtime, files, execFile } = setup()
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => command === 'codex' && args[0] === 'exec'
+      ? { exitCode: 1, stdout: '', stderr: '401 unauthorized' } : original(command, args, options))
+    await expect(runtime.apply({ provider: 'codex', payload: JSON.stringify(codexMultiAuthBundle()), applyMode: 'merge', activeAccountIndex: 1 } as never)).rejects.toThrow('AI_CREDENTIAL_ACTIVE_INVALID')
     expect(files.has('/home/operator/.codex/multi-auth/openai-codex-accounts.json')).toBe(false)
+  })
+
+  it('explicitly activates the selected installed Codex identity using its local index', async () => {
+    const { runtime, calls, execFile, files } = setup()
+    const bundle = codexMultiAuthBundle()
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'codex' && args[0] === 'exec') return { exitCode: 0, stderr: '', stdout: JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'SHARED_AI_OK' } }) + '\n' + JSON.stringify({ type: 'turn.completed' }) }
+      if (command === 'codex-multi-auth' && args[0] === 'switch') {
+        const path = '/home/operator/.codex/multi-auth/openai-codex-accounts.json'
+        const pool = JSON.parse(files.get(path)!); pool.activeIndex = Number(args[1]) - 1; files.set(path, JSON.stringify(pool));
+        const active = pool.accounts[pool.activeIndex]; files.set('/home/operator/.codex/auth.json', JSON.stringify({ tokens: { account_id: active.accountId, access_token: active.accessToken, refresh_token: active.refreshToken } }))
+      }
+      return original(command, args, options)
+    })
+    const result = await runtime.apply({ provider: 'codex', payload: JSON.stringify(bundle), applyMode: 'merge', activeAccountIndex: 1 } as never)
+    expect(result).toMatchObject({ activeAccountIndex: 1 })
+    expect(calls).toContainEqual({ command: 'codex-multi-auth', args: ['switch', '2'] })
+  })
+
+  it('explicitly activates the selected shared Claude account without losing a personal slot', async () => {
+    const { runtime, execFile, files } = setup()
+    let active = 7
+    const accounts = [
+      { number: 7, email: 'personal@example.com', usageStatus: 'ok', organizationUuid: '' },
+      { number: 9, email: 'shared@example.com', usageStatus: 'ok', organizationUuid: '' },
+    ]
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: active, accounts }), stderr: '' }
+      if (command === 'cswap' && args[0] === 'export') return { stdout: claudeOauthPayload(accounts), stderr: '' }
+      if (command === 'cswap' && args[0] === 'switch') active = Number(args[1])
+      if (command === 'claude' && args[0] === '--print') return { exitCode: 0, stderr: '', stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }) }
+      return original(command, args, options)
+    })
+    await runtime.apply({ provider: 'claude', payload: claudeOauthPayload([{ email: 'shared@example.com' }]), applyMode: 'merge', activeAccountIndex: 0 })
+    expect(active).toBe(9)
+    expect(accounts[0]).toMatchObject({ number: 7, email: 'personal@example.com' })
+    expect(files.has('/home/operator/.happy/ai-credential-apply-generations.json')).toBe(true)
+  })
+
+  it('rejects a Codex switch that changes the pool but fails to synchronize live auth', async () => {
+    const { runtime, files, execFile } = setup()
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'codex' && args[0] === 'exec') return { exitCode: 0, stderr: '', stdout: JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'SHARED_AI_OK' } }) + '\n' + JSON.stringify({ type: 'turn.completed' }) }
+      if (command === 'codex-multi-auth' && args[0] === 'switch') {
+        const path = '/home/operator/.codex/multi-auth/openai-codex-accounts.json'
+        const pool = JSON.parse(files.get(path)!); pool.activeIndex = Number(args[1]) - 1; files.set(path, JSON.stringify(pool))
+      }
+      return original(command, args, options)
+    })
+    await expect(runtime.apply({ provider: 'codex', payload: JSON.stringify(codexMultiAuthBundle()), applyMode: 'merge', activeAccountIndex: 1 })).rejects.toThrow('AI_CREDENTIAL_ACTIVE_INVALID')
+    expect(JSON.parse(files.get('/home/operator/.codex/multi-auth/openai-codex-accounts.json')!).activeIndex).toBe(0)
+  })
+
+  it('registers an unpooled personal Codex login before adding shared accounts without switching', async () => {
+    const { runtime, files, calls } = setup()
+    const token = `header.${Buffer.from(JSON.stringify({ email: 'personal@example.com', exp: 9999999999 })).toString('base64url')}.signature`
+    const live = JSON.stringify({ tokens: { account_id: 'personal-id', access_token: token, refresh_token: 'personal-refresh' } })
+    files.set('/home/operator/.codex/auth.json', live)
+    await runtime.apply({ provider: 'codex', payload: JSON.stringify(codexMultiAuthBundle()), applyMode: 'merge' })
+    const pool = JSON.parse(files.get('/home/operator/.codex/multi-auth/openai-codex-accounts.json')!)
+    expect(pool.accounts).toHaveLength(4)
+    expect(pool.accounts[pool.activeIndex]).toMatchObject({ accountId: 'personal-id', refreshToken: 'personal-refresh' })
+    expect(files.get('/home/operator/.codex/auth.json')).toBe(live)
+    expect(calls.some(call => call.command === 'codex-multi-auth' && call.args[0] === 'switch')).toBe(false)
+  })
+
+  it('keeps unreadable personal Codex credentials and aborts before adding shared accounts', async () => {
+    const { runtime, files } = setup()
+    files.set('/home/operator/.codex/auth.json', 'unreadable-personal-login')
+    await expect(runtime.apply({ provider: 'codex', payload: JSON.stringify(codexMultiAuthBundle()), applyMode: 'merge' })).rejects.toThrow()
+    expect(files.get('/home/operator/.codex/auth.json')).toBe('unreadable-personal-login')
+    expect(files.has('/home/operator/.codex/multi-auth/openai-codex-accounts.json')).toBe(false)
+  })
+
+  it('captures a live unregistered Claude identity before import and retains it as active', async () => {
+    const { runtime, execFile, files, calls } = setup()
+    files.set('/home/operator/.claude.json', JSON.stringify({ oauthAccount: { emailAddress: 'personal@example.com' } }))
+    let registered = false, imported = false
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => {
+      if (command === 'cswap' && args[0] === 'add') registered = true
+      if (command === 'cswap' && args[0] === 'import') imported = true
+      if (command === 'cswap' && args[0] === 'list') return { stdout: JSON.stringify({ schemaVersion: 1, activeAccountNumber: registered ? 7 : null, accounts: [
+        ...(registered ? [{ number: 7, email: 'personal@example.com', usageStatus: 'ok' }] : []),
+        ...(imported ? [{ number: 8, email: 'shared@example.com', usageStatus: 'ok' }] : []),
+      ] }), stderr: '' }
+      return original(command, args, options)
+    })
+    await runtime.apply({ provider: 'claude', payload: claudeOauthPayload([{ email: 'shared@example.com' }]), applyMode: 'merge' })
+    expect(registered).toBe(true)
+    expect(calls.some(call => call.command === 'cswap' && call.args[0] === 'switch')).toBe(false)
   })
 
   it('creates a shared Codex pool when no personal login exists without enabling imported automatic rotation settings', async () => {
@@ -1259,6 +1393,28 @@ describe('AI credential machine runtime', () => {
     await expect(runtime.capture({ provider: '../etc/passwd' as never })).rejects.toThrow(/provider/i)
   })
 
+  it.each(['2.16.0', '2.17.0'])('captures a Codex %s account pool with default settings when settings.json is absent without writing source files', async (packageVersion) => {
+    const execFile = vi.fn(async (command: string, args: string[]) => ({
+      stdout: command === 'npm' ? '/global/node_modules\n' : `${packageVersion}\n`, stderr: '',
+    }))
+    const warn = vi.fn()
+    const { runtime, files } = setup({ env: { CODEX_HOME: '/fixed/codex' }, execFile, warn })
+    const bundle = codexMultiAuthBundle()
+    bundle.packageVersion = packageVersion
+    files.set('/global/node_modules/codex-multi-auth/package.json', JSON.stringify({ version: packageVersion }))
+    files.set('/fixed/codex/multi-auth/openai-codex-accounts.json', JSON.stringify(bundle.accounts))
+    files.set('/fixed/codex/auth.json', '{"OPENAI_API_KEY":"unrelated-secret"}')
+    const beforeCapture = new Map(files)
+
+    const captured = await runtime.capture({ provider: 'codex' })
+
+    expect(JSON.parse(captured.payload)).toEqual(bundle)
+    expect(captured.provider).toBe('codex')
+    expect(files).toEqual(beforeCapture)
+    expect(execFile.mock.calls.some(([command, args]) => command === 'npm' && args[0] === 'install')).toBe(false)
+    expect(warn).not.toHaveBeenCalled()
+  })
+
   it('captures the fixed Codex multi-auth account pool and settings as one versioned bundle', async () => {
     const { runtime, files } = setup({ env: { CODEX_HOME: '/fixed/codex' } })
     const bundle = codexMultiAuthBundle()
@@ -1271,7 +1427,73 @@ describe('AI credential machine runtime', () => {
     expect(JSON.parse(captured.payload)).toEqual(bundle)
   })
 
-  it.each(['2.16.0', '2.17.0'])('captures and reapplies the actual supported runtime %s without installing', async (version) => {
+  it.each(['openai-codex-accounts.json', 'settings.json'])('fails closed on malformed Codex %s without leaking its contents', async (fileName) => {
+    const warn = vi.fn()
+    const { runtime, files } = setup({ warn })
+    const bundle = codexMultiAuthBundle()
+    files.set('/home/operator/.codex/multi-auth/openai-codex-accounts.json', JSON.stringify(bundle.accounts))
+    files.set('/home/operator/.codex/multi-auth/settings.json', JSON.stringify(bundle.settings))
+    files.set(`/home/operator/.codex/multi-auth/${fileName}`, '{"token":"fixture-secret",')
+    const beforeCapture = new Map(files)
+
+    await expect(runtime.capture({ provider: 'codex' })).rejects.toMatchObject({
+      kind: 'CODEX_CAPTURE_FAILED', message: 'AI credential operation failed (CODEX_CAPTURE_FAILED)',
+    })
+    expect(files).toEqual(beforeCapture)
+    expect(warn).toHaveBeenCalledExactlyOnceWith(`Codex credential capture could not read ${fileName} (INVALID_JSON)`)
+  })
+
+  it.each([
+    ['openai-codex-accounts.json', 'EACCES'],
+    ['openai-codex-accounts.json', 'EIO'],
+    ['settings.json', 'EACCES'],
+    ['settings.json', 'EPERM'],
+    ['settings.json', 'EIO'],
+  ])('fails closed on %s read error %s instead of using default settings', async (fileName, code) => {
+    const readFile = vi.fn(async (filePath: string) => {
+      if (filePath === join('/home/operator', '.codex', 'multi-auth', fileName)) {
+        throw Object.assign(new Error('/private/path fixture-secret'), { code })
+      }
+      if (filePath.endsWith('package.json')) return JSON.stringify({ version: '2.16.0' })
+      return JSON.stringify(codexMultiAuthBundle().accounts)
+    })
+    const warn = vi.fn()
+    const { runtime } = setup({ readFile, warn })
+
+    await expect(runtime.capture({ provider: 'codex' })).rejects.toMatchObject({
+      kind: 'CODEX_CAPTURE_FAILED', message: 'AI credential operation failed (CODEX_CAPTURE_FAILED)',
+    })
+    expect(readFile).toHaveBeenCalledWith(join('/home/operator', '.codex', 'multi-auth', fileName))
+    expect(warn).toHaveBeenCalledExactlyOnceWith(`Codex credential capture could not read ${fileName} (${code})`)
+  })
+
+  it('redacts unexpected filesystem codes in Codex capture diagnostics', async () => {
+    const warn = vi.fn()
+    const readFile = vi.fn(async (filePath: string) => {
+      if (filePath.endsWith('settings.json')) {
+        throw Object.assign(new Error('/private/path fixture-secret'), { code: 'fixture-secret' })
+      }
+      if (filePath.endsWith('package.json')) return JSON.stringify({ version: '2.16.0' })
+      return JSON.stringify(codexMultiAuthBundle().accounts)
+    })
+    const { runtime } = setup({ readFile, warn })
+
+    await expect(runtime.capture({ provider: 'codex' })).rejects.toMatchObject({ kind: 'CODEX_CAPTURE_FAILED' })
+    expect(warn).toHaveBeenCalledExactlyOnceWith('Codex credential capture could not read settings.json (READ_FAILED)')
+  })
+
+  it('preserves the Codex capture failure when the diagnostic callback throws', async () => {
+    const warn = vi.fn(() => { throw new AiCredentialRuntimeError('DIAGNOSTIC_CALLBACK_FAILED') })
+    const { runtime, files } = setup({ warn })
+    files.set('/home/operator/.codex/multi-auth/openai-codex-accounts.json', '{"token":"fixture-secret",')
+
+    await expect(runtime.capture({ provider: 'codex' })).rejects.toMatchObject({
+      kind: 'CODEX_CAPTURE_FAILED', message: 'AI credential operation failed (CODEX_CAPTURE_FAILED)',
+    })
+    expect(warn).toHaveBeenCalledExactlyOnceWith('Codex credential capture could not read openai-codex-accounts.json (INVALID_JSON)')
+  })
+
+  it.each(['2.16.0', '2.17.0', '2.19.0'])('captures and reapplies the actual supported runtime %s without installing', async (version) => {
     const execFile = vi.fn(async (command: string, args: string[]) => ({
       stdout: command === 'codex-multi-auth' && args[0] === '--version' ? version
         : command === 'npm' && args[0] === 'root' ? '/global/node_modules' : '',
@@ -1293,7 +1515,7 @@ describe('AI credential machine runtime', () => {
       stdout: command === 'npm' ? '/global/node_modules' : '2.17.0', stderr: '',
     })) })
     files.set('/global/node_modules/codex-multi-auth/package.json', JSON.stringify({ version }))
-    await expect(runtime.capture({ provider: 'codex' })).rejects.toMatchObject({ kind: 'CODEX_MULTI_AUTH_VERSION_MISMATCH', message: expect.stringContaining(`installed=2.17.0 global=${version} supported=2.16.0,2.17.0`) })
+    await expect(runtime.capture({ provider: 'codex' })).rejects.toMatchObject({ kind: 'CODEX_MULTI_AUTH_VERSION_MISMATCH', message: expect.stringContaining(`installed=2.17.0 global=${version} supported=>=2.16.0`) })
   })
 
   it('rejects Codex capture when the installed multi-auth package is not the pinned version', async () => {
@@ -1374,7 +1596,7 @@ describe('AI credential machine runtime', () => {
     expect(JSON.stringify(execFile.mock.calls)).not.toContain('refresh-a')
   })
 
-  it.each(['2.15.0', '2.17.0'])('applies a compatible bundle from %s on runtime 2.16.0', async (packageVersion) => {
+  it.each(['2.15.0', '2.17.0', '2.19.0'])('applies a compatible bundle from %s on runtime 2.16.0', async (packageVersion) => {
     const execFile = vi.fn(async (command: string, args: string[]) => {
       if (command === 'codex-multi-auth' && args[0] === '--version') {
         return { stdout: '2.16.0\n', stderr: '' }

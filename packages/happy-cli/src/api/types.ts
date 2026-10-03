@@ -163,6 +163,8 @@ export const MachineMetadataSchema = z.object({
     keyVersion: z.number().int().min(1).optional(),
     sessionFollowup: z.literal(true).optional(),
     protocolVersion: z.number().int().min(1).optional(),
+    /** false: 스크립트 조건·GitHub 트리거처럼 Job 밖 명령이 필요한 자동화는 실행하지 않는다(Windows 정식 빌드). */
+    hostCommands: z.boolean().optional(),
   }).optional(),
   /**
    * External messenger channel support (Saycode specs/desktop-messenger-channels).
@@ -234,6 +236,11 @@ export const MachineMetadataSchema = z.object({
   aiAuthSelection: z.object({ version: z.literal(1) }).optional(),
   /** Current tracked-child presence via encrypted machine RPC (BYOS only). */
   daemonSessionState: z.object({ version: z.literal(1) }).optional(),
+  /**
+   * Agent Browser execution machine. protocol 2: spawns accept `browserAttestation` (a session-user
+   * attestation). Studio sends one only when this is reported, and treats the machine by `tenancyMode`.
+   */
+  agentBrowser: z.object({ protocol: z.number().int().positive(), tenancyMode: z.enum(['dedicated', 'shared']) }).optional(),
 })
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>

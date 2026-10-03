@@ -120,6 +120,9 @@ export class CodexMcpRuntimeRecovery {
 
     /** Read-only: normal readiness must be visible even when no recovery ran. */
     async readStatuses(input: RecoveryInput): Promise<McpRuntimeServerStatus[]> {
+        // An empty reporting scope always yields []; querying all configured
+        // app-server MCPs here can wait for unrelated startup on every turn.
+        if (input.expectedServerNames.length === 0) return [];
         // Status is informational: every input it reads is untrusted evidence,
         // and no shape of it may throw out of here. A rejection would reach the
         // turn loop, which treats it as a process crash and drops the prompt.

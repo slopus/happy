@@ -50,16 +50,18 @@ export async function verifyLocalAiAccounts(
   provider: 'claude' | 'codex',
   requested: VerificationIdentity[],
   local: Array<Record<string, unknown>>,
+  options?: { budgetMs: number },
 ): Promise<{ checkedAt: number; accounts: AccountVerification[] }> {
   const accounts: AccountVerification[] = []
   const started = deps.now()
+  const budgetMs = options?.budgetMs ?? 240_000
   for (const [index, identity] of requested.entries()) {
     const account = local.find(candidate => provider === 'claude'
       ? candidate.email === identity.email && (candidate.organizationUuid ?? '') === (identity.organizationUuid ?? '')
       : identity.accountId ? candidate.accountId === identity.accountId : candidate.email === identity.email)
     if (!account) { accounts.push({ account: index + 1, ok: false, errorKind: 'ACCOUNT_NOT_INSTALLED' }); continue }
     if (account.disabled === true || account.enabled === false) { accounts.push({ account: index + 1, ok: false, errorKind: 'ACCOUNT_DISABLED' }); continue }
-    if (deps.now() - started >= 240_000) { accounts.push({ account: index + 1, ok: false, errorKind: 'VERIFICATION_TIMEOUT' }); continue }
+    if (deps.now() - started >= budgetMs) { accounts.push({ account: index + 1, ok: false, errorKind: 'VERIFICATION_TIMEOUT' }); continue }
     const home = await deps.makeTempDir()
     let model = provider === 'claude' ? 'haiku' : 'gpt-6-luna'
     try {
@@ -82,10 +84,14 @@ export async function verifyLocalAiAccounts(
         if (typeof account.accessToken !== 'string' || typeof account.accountId !== 'string') throw new Error('missing local OAuth credential')
         await deps.writeFile(join(config, 'auth.json'), JSON.stringify({ auth_mode: 'chatgptAuthTokens', access_token: account.accessToken, account_id: account.accountId }), { mode: 0o600 })
       }
-      const run = () => deps.execFile(provider === 'claude' ? 'claude' : 'codex', provider === 'claude'
-        ? ['--print', '--model', model, '--output-format', 'json', '--no-session-persistence', '--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--setting-sources', '', '--max-turns', '1', PROMPT]
-        : ['exec', '--ephemeral', '--json', '--skip-git-repo-check', '--sandbox', 'read-only', '--model', model, '-c', 'model_reasoning_effort="low"', '-c', 'cli_auth_credentials_store="file"', PROMPT],
-      { environment: isolatedEnvironment(deps.env, home), cwd: home, terminateProcessTree: true, maxOutputBytes: 64 * 1024, timeoutMs: 30_000, acceptNonZeroExit: true })
+      const run = () => {
+        const remainingMs = budgetMs - (deps.now() - started)
+        if (remainingMs <= 0) throw Object.assign(new Error('verification budget exhausted'), { kind: 'COMMAND_TIMED_OUT' })
+        return deps.execFile(provider === 'claude' ? 'claude' : 'codex', provider === 'claude'
+          ? ['--print', '--model', model, '--output-format', 'json', '--no-session-persistence', '--tools', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}', '--setting-sources', '', '--max-turns', '1', PROMPT]
+          : ['exec', '--ephemeral', '--json', '--skip-git-repo-check', '--sandbox', 'read-only', '--model', model, '-c', 'model_reasoning_effort="low"', '-c', 'cli_auth_credentials_store="file"', PROMPT],
+        { environment: isolatedEnvironment(deps.env, home), cwd: home, terminateProcessTree: true, maxOutputBytes: 64 * 1024, timeoutMs: Math.min(30_000, remainingMs), acceptNonZeroExit: true })
+      }
       let response = await run()
       if (!successful(provider, response) && requestError(response) === 'MODEL_UNAVAILABLE') {
         model = provider === 'claude' ? 'sonnet' : 'gpt-6.1-sol'

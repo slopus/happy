@@ -1,7 +1,7 @@
 import { spawn as crossSpawn } from 'cross-spawn'
 import { verifyLocalAiAccounts, type VerificationIdentity } from './aiCredentialVerification'
 import { mergeCodexAccounts } from './aiCredentialAdditive'
-import { CODEX_MULTI_AUTH_VERSION, isSupportedCodexMultiAuthVersion, SUPPORTED_CODEX_MULTI_AUTH_VERSIONS } from '../utils/codexMultiAuthVersions'
+import { CODEX_MULTI_AUTH_VERSION, isSupportedCodexMultiAuthVersion, SUPPORTED_CODEX_MULTI_AUTH_VERSION_RANGE } from '../utils/codexMultiAuthVersions'
 import { stagingParent } from './stagedCredentialRoot'
 import { spawn } from 'node:child_process'
 import { chmod, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
@@ -31,11 +31,12 @@ const MAX_PAYLOAD_BYTES = 1024 * 1024
 const CLAUDE_SWAP_VERSION = '0.25.0'
 const CLAUDE_STATUS_TIMEOUT_MS = 120_000
 // Keep readable historical bundles separate from supported installed runtimes.
-// 2.17.0 retains the OAuth account v3 / settings v1 contract (verified by package smoke).
-const READABLE_CODEX_MULTI_AUTH_BUNDLE_VERSIONS: ReadonlySet<string> = new Set([
-  '2.15.0',
-  ...SUPPORTED_CODEX_MULTI_AUTH_VERSIONS,
-])
+// Bundles from supported runtimes are readable; parseCodexMultiAuthBundle still
+// requires the OAuth account v3 / settings v1 contract.
+const READABLE_HISTORICAL_CODEX_MULTI_AUTH_BUNDLE_VERSIONS: ReadonlySet<string> = new Set(['2.15.0'])
+function isReadableCodexMultiAuthBundleVersion(version: string): boolean {
+  return READABLE_HISTORICAL_CODEX_MULTI_AUTH_BUNDLE_VERSIONS.has(version) || isSupportedCodexMultiAuthVersion(version)
+}
 const CODEX_MULTI_AUTH_THRESHOLD = 5
 
 export type AiCredentialProvider = 'claude' | 'codex' | 'zai'
@@ -122,6 +123,13 @@ export class AiCredentialRuntimeError extends Error {
       + (applyGeneration === undefined ? '' : ` [applyGeneration=${applyGeneration}]`),
     )
     if (probe) this.probe = probe
+  }
+}
+
+/** An additive Claude apply that imported shared slots but could not activate one: the slots stay, so they keep their provenance. */
+class ClaudeActivationError extends AiCredentialRuntimeError {
+  constructor(kind: string, readonly importedAccounts: ClaudeListDetails['accounts']) {
+    super(kind)
   }
 }
 
@@ -331,6 +339,21 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     await writeAtomicFile(deps, trialMarkerPath(), JSON.stringify(marker))
   }
 
+  function warnCodexCaptureReadFailure(
+    fileName: 'openai-codex-accounts.json' | 'settings.json',
+    error: unknown,
+  ): void {
+    const errorCode = (error as NodeJS.ErrnoException | undefined)?.code
+    const reason = error instanceof SyntaxError
+      ? 'INVALID_JSON'
+      : ['EACCES', 'EPERM', 'EIO', 'ENOTDIR', 'EBUSY', 'EAGAIN'].includes(errorCode ?? '')
+        ? errorCode
+        : 'READ_FAILED'
+    try {
+      deps.warn?.(`Codex credential capture could not read ${fileName} (${reason})`)
+    } catch {}
+  }
+
   async function capture(input: { provider: AiCredentialProvider }) {
     const selected = provider(input?.provider)
     return serialize(() => withSafeErrors(`${selected.toUpperCase()}_CAPTURE_FAILED`, async () => {
@@ -343,19 +366,32 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         payload = result.stdout
       } else {
         const packageVersion = await assertSupportedCodexMultiAuthInstalled()
+        let accounts: unknown
         try {
-          const accounts = JSON.parse(await deps.readFile(join(codexMultiAuthDir(), 'openai-codex-accounts.json')))
-          const settings = JSON.parse(await deps.readFile(join(codexMultiAuthDir(), 'settings.json')))
-          payload = JSON.stringify({
-            version: 1,
-            kind: 'codex-multi-auth',
-            packageVersion,
-            accounts,
-            settings,
-          })
-        } catch {
+          accounts = JSON.parse(await deps.readFile(join(codexMultiAuthDir(), 'openai-codex-accounts.json')))
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            warnCodexCaptureReadFailure('openai-codex-accounts.json', error)
+            throw error
+          }
           throw new AiCredentialRuntimeError('CODEX_FILE_STORE_REQUIRED')
         }
+        let settings: unknown = { version: 1, pluginConfig: {} }
+        try {
+          settings = JSON.parse(await deps.readFile(join(codexMultiAuthDir(), 'settings.json')))
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+            warnCodexCaptureReadFailure('settings.json', error)
+            throw error
+          }
+        }
+        payload = JSON.stringify({
+          version: 1,
+          kind: 'codex-multi-auth',
+          packageVersion,
+          accounts,
+          settings,
+        })
       }
       assertPayloadSize(payload)
       return { provider: selected, payload }
@@ -424,18 +460,72 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
     })).stdout)
     let before = await list()
-    const prepared = await prepareClaudeRepair(payload, before)
-    const repaired = prepared.envelope.accounts.length > 0 ? await applyClaudeRepair(prepared) : null
-    // Verification may span rotation ticks or a user's selection/disable action.
-    // New identities must preserve the latest destination state in either case.
-    if (prepared.requested.length > 0) before = await list()
-    const repairedIdentities = new Set(repaired?.verifiedAccounts.map(claudeListAccountIdentity) ?? [])
-    const repairedAccountCount = repairedIdentities.size
-    const credentialRepairFailedAccountCount = prepared.requested.length - repairedAccountCount
-    const existing = new Set(before.accounts.map(claudeListAccountIdentity))
+    const config = await readOptionalJson(deps.env.CLAUDE_CONFIG_DIR
+      ? join(deps.env.CLAUDE_CONFIG_DIR, '.claude.json') : join(deps.homeDir, '.claude.json'))
+    const liveIdentity = isObject(config?.oauthAccount) ? config.oauthAccount : null
+    const unregistered = typeof liveIdentity?.emailAddress === 'string' && !!liveIdentity.emailAddress
+      && !before.accounts.some(account => account.email === liveIdentity.emailAddress
+        && (account.organizationUuid ?? '') === (liveIdentity.organizationUuid ?? ''))
+    if (unregistered || before.activeAccountNumber === null) {
+      const live = await readOptionalJson(join(deps.env.CLAUDE_CONFIG_DIR || join(deps.homeDir, '.claude'), '.credentials.json'))
+      if (unregistered || isObject(live?.claudeAiOauth)) {
+        await deps.execFile('cswap', ['add'], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })
+        before = await list()
+        if (before.activeAccountNumber === null) throw new AiCredentialRuntimeError('AI_CREDENTIAL_PERSONAL_CAPTURE_REQUIRED')
+      }
+    }
     const envelope = JSON.parse(payload)
-    // Existing slots are handled only by the verified repair path above: plain
-    // import may auto-heal dead-token status and clear disabled metadata.
+    let repairRequestedAccountCount = 0
+    const repairedIdentities = new Set<string>()
+    const duplicates: Array<Record<string, unknown> & { email: string }> = envelope.accounts.filter((account: { email: string }) =>
+      before.accounts.some(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account) && local.disabled !== true))
+    if (duplicates.length > 0) {
+      const exported = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
+      if (exported.version !== 1 || exported.encrypted === true || !Array.isArray(exported.accounts)) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      const identities = (accounts: Array<Record<string, unknown> & { email: string }>) => accounts.map(account => ({
+        email: account.email, organizationUuid: typeof account.organizationUuid === 'string' ? account.organizationUuid : '',
+      }))
+      // Authentication failure is the only proof that permits replacing a duplicate.
+      // Quota, transport, missing credentials and exhausted budgets keep it untouched.
+      const localVerification = await verifyLocalAiAccounts(deps, 'claude', identities(duplicates), exported.accounts, { budgetMs: 60_000 })
+      const invalid = duplicates.filter((_account, index) => localVerification.accounts[index]?.errorKind === 'AUTHENTICATION_FAILED')
+      if (invalid.length > 0) {
+        repairRequestedAccountCount = invalid.length
+        const requested = identities(invalid)
+        const verification = await verifyLocalAiAccounts(deps, 'claude', requested, invalid.map(account => ({
+          ...account, disabled: before.accounts.find(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account))?.disabled,
+        })), { budgetMs: 60_000 })
+        let accepted = invalid.filter((_account, index) => verification.accounts[index]?.ok)
+        if (accepted.length > 0) {
+          const current = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
+          if (current.version !== 1 || current.encrypted === true || !Array.isArray(current.accounts)) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+          // A login or refresh during the probes wins over the older failed snapshot.
+          for (const [index, account] of invalid.entries()) {
+            const find = (accounts: Array<{ email: string; credentials?: unknown; config?: unknown }>) => accounts.find(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account))
+            const original = find(exported.accounts), latest = find(current.accounts)
+            if (!original || !latest || JSON.stringify([original.credentials, original.config]) !== JSON.stringify([latest.credentials, latest.config])) {
+              verification.accounts[index] = { account: index + 1, ok: false, errorKind: 'LOCAL_ACCOUNT_CHANGED' }
+            }
+          }
+          accepted = invalid.filter((_account, index) => verification.accounts[index]?.ok)
+        }
+        if (accepted.length > 0) {
+          const repaired = await applyClaudeRepair({ before, envelope: { ...envelope, accounts: accepted.map(account => ({
+            ...account, disabled: before.accounts.find(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account))?.disabled,
+          })) }, requested, verification, automatic: true }, { budgetMs: 60_000 })
+          for (const account of repaired?.verifiedAccounts ?? []) {
+            repairedIdentities.add(claudeListAccountIdentity(account))
+            knownCompanyIdentities.add(JSON.stringify([account.email, account.organizationUuid ?? '', account.organizationName ?? '']))
+          }
+        }
+      }
+    }
+    // Probes can span rotation ticks and user changes; preserve the latest state
+    // even when an automatic repair was skipped before any credential write.
+    if (duplicates.length > 0) before = await list()
+    const existing = new Set(before.accounts.map(claudeListAccountIdentity))
+    // Existing slots that were not proven invalid remain outside the import,
+    // which also preserves their local disabled metadata.
     envelope.accounts = envelope.accounts.filter((account: { email: string }) => !existing.has(claudeListAccountIdentity(account)))
     if (envelope.accounts.length > 0) {
       const tempDir = await deps.makeTempDir()
@@ -449,6 +539,9 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       }
     }
     let after = await list()
+    // Only newly imported slots are proven organizational material. Matching
+    // personal credentials were deliberately not overwritten by this import.
+    const sharedAccounts = (details: ClaudeListDetails) => details.accounts.filter(account => incoming.has(claudeListAccountIdentity(account)) && (!existing.has(claudeListAccountIdentity(account)) || knownCompanyIdentities.has(JSON.stringify([account.email, account.organizationUuid ?? '', account.organizationName ?? '']))))
     const present = new Set(after.accounts.map(claudeListAccountIdentity))
     if ([...existing, ...incoming].some(identity => !present.has(identity))
       || before.accounts.some(account => {
@@ -459,32 +552,39 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       if (after.activeAccountNumber !== before.activeAccountNumber) {
         throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
       }
-    } else if (after.activeAccountNumber !== null) {
-      await deps.execFile('cswap', ['switch', String(after.activeAccountNumber), '--force', '--json'], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })
-      after = await list()
-      if (!after.activeUsable && after.activeCredentialKind !== 'api_key') throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+    } else {
+      // Nothing personal is active to keep. Like a replace, activate a usable account rather than report
+      // "configured" while Claude Code stays signed out (a fresh Windows PC, 2026-10-02).
+      const imported = sharedAccounts(after)
+      try {
+        const target = after.activeAccountNumber !== null && (after.activeUsable || after.activeCredentialKind === 'api_key')
+          ? after.activeAccountNumber
+          : after.usableAccountNumber
+        if (target === null) throw new AiCredentialRuntimeError(claudeNoUsableAccountKind(after))
+        await deps.execFile('cswap', ['switch', String(target), '--force', '--json'], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })
+        after = await list()
+        if (!after.activeUsable && after.activeCredentialKind !== 'api_key') throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      } catch (error) {
+        // The imported slots stay on the machine, so a failed activation must not leave them unattributed.
+        throw new ClaudeActivationError(error instanceof AiCredentialRuntimeError ? error.kind : 'CLAUDE_APPLY_FAILED', imported)
+      }
     }
     return {
       result: { provider: 'claude' as const, configured: true, ...claudeAccountHealth(after),
-        repairedAccountCount, credentialRepairFailedAccountCount, rotation: deps.supervisor.status() },
-      // New or verified repaired slots contain organizational credentials.
-      // Unchanged personal identities are not attributed to the company.
-      verifiedAccounts: after.accounts.filter(account => incoming.has(claudeListAccountIdentity(account)) && (!existing.has(claudeListAccountIdentity(account)) || repairedIdentities.has(claudeListAccountIdentity(account)) || knownCompanyIdentities.has(JSON.stringify([account.email, account.organizationUuid ?? '', account.organizationName ?? ''])))),
+        repairedAccountCount: repairedIdentities.size,
+        credentialRepairFailedAccountCount: repairRequestedAccountCount - repairedIdentities.size,
+        rotation: deps.supervisor.status() },
+      verifiedAccounts: sharedAccounts(after),
     }
   }
 
-  async function prepareClaudeRepair(payload: string, expiredSnapshot?: ClaudeListDetails) {
+  async function prepareClaudeRepair(payload: string) {
     if (!claudeImportedAccountIdentities(payload)) throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
-    if (!expiredSnapshot) await ensureClaudeSwap(true)
-    const before = expiredSnapshot ?? parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
+    await ensureClaudeSwap(true)
+    const before = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
       maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
     })).stdout)
     const envelope = JSON.parse(payload)
-    if (expiredSnapshot) {
-      envelope.accounts = envelope.accounts.filter((account: { email: string }) => before.accounts.some(existing =>
-        claudeListAccountIdentity(existing) === claudeListAccountIdentity(account)
-        && existing.usageStatus === 'relogin_required' && existing.disabled !== true))
-    }
     const requested: Array<{ email: string; organizationUuid: string }> = envelope.accounts.map((account: { email: string; organizationUuid?: string }) => ({
       email: account.email, organizationUuid: account.organizationUuid ?? '',
     }))
@@ -498,11 +598,11 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     const accepted = envelope.accounts.filter((_account: unknown, index: number) => verification.accounts[index]?.ok)
       .map((account: { email: string }) => ({ ...account, disabled: before.accounts.find(existing =>
         claudeListAccountIdentity(existing) === claudeListAccountIdentity(account))?.disabled }))
-    if (accepted.length === 0 && !expiredSnapshot) throw new AiCredentialRuntimeError('CLAUDE_APPLY_RELOGIN_REQUIRED')
-    return { before, envelope: { ...envelope, accounts: accepted }, requested, verification, expiredOnly: !!expiredSnapshot }
+    if (accepted.length === 0) throw new AiCredentialRuntimeError('CLAUDE_APPLY_RELOGIN_REQUIRED')
+    return { before, envelope: { ...envelope, accounts: accepted }, requested, verification }
   }
 
-  async function applyClaudeRepair(prepared: Awaited<ReturnType<typeof prepareClaudeRepair>>) {
+  async function applyClaudeRepair(prepared: Awaited<ReturnType<typeof prepareClaudeRepair>> & { automatic?: boolean }, verificationOptions?: { budgetMs: number }) {
     const list = async () => parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
       maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
     })).stdout)
@@ -522,12 +622,11 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       const changed = current.activeAccountNumber !== before.activeAccountNumber || before.accounts.some(account => {
         const retained = current.accounts.find(candidate => claudeListAccountIdentity(candidate) === claudeListAccountIdentity(account))
         return retained?.number !== account.number || retained?.disabled !== account.disabled
-      }) || (prepared.expiredOnly && envelope.accounts.some((account: { email: string }) => current.accounts.find(candidate =>
-        claudeListAccountIdentity(candidate) === claudeListAccountIdentity(account))?.usageStatus !== 'relogin_required'))
+      }) || (prepared.automatic && envelope.accounts.some((account: { email: string }) =>
+        before.accounts.find(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account))?.usageStatus === 'relogin_required'
+        && current.accounts.find(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account))?.usageStatus !== 'relogin_required'))
       if (changed) {
-        // No credentials have been written. The additive caller counts this as
-        // a skipped repair and can safely continue adding new identities.
-        if (prepared.expiredOnly) return null
+        if (prepared.automatic) return null
         throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
       }
       const file = join(tempDir, 'claude-swap.json')
@@ -551,7 +650,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       const acceptedIndices = requested.flatMap((_identity, index) => verification.accounts[index]?.ok ? [index] : [])
       installed = await verifyLocalAiAccounts(deps, 'claude', acceptedIndices.map(index => requested[index]!), exported.accounts.map((account: { email: string }) => ({
         ...account, disabled: after.accounts.find(existing => claudeListAccountIdentity(existing) === claudeListAccountIdentity(account))?.disabled === true,
-      })))
+      })), verificationOptions)
       accounts = verification.accounts.map((account, index) => account.ok
         ? { ...installed.accounts[acceptedIndices.indexOf(index)]!, account: index + 1 } : account)
       if (!accounts.some(account => account.ok)) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
@@ -813,7 +912,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     const installed = await inspectCodexMultiAuthInstallation()
     if (isSupportedCodexMultiAuthVersion(installed.cli) && installed.cli === installed.global) return installed.cli
     const error = new AiCredentialRuntimeError('CODEX_MULTI_AUTH_VERSION_MISMATCH')
-    error.message += ` [codex-multi-auth installed=${installed.cli} global=${installed.global} supported=${SUPPORTED_CODEX_MULTI_AUTH_VERSIONS.join(',')}]`
+    error.message += ` [codex-multi-auth installed=${installed.cli} global=${installed.global} supported=${SUPPORTED_CODEX_MULTI_AUTH_VERSION_RANGE}]`
     throw error
   }
 
@@ -842,6 +941,17 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     return installed
   }
 
+  async function readOptionalJson(path: string): Promise<Record<string, unknown> | null> {
+    try {
+      const parsed = JSON.parse(await deps.readFile(path))
+      if (!isObject(parsed)) throw new AiCredentialRuntimeError('AI_CREDENTIAL_PERSONAL_CAPTURE_REQUIRED')
+      return parsed
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw error
+    }
+  }
+
   async function applyCodexMultiAuth(bundle: CodexMultiAuthBundle, applyMode: 'merge' | 'replace') {
     await ensureCodexMultiAuth()
     const root = codexMultiAuthDir()
@@ -859,14 +969,36 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         if (!current) throw new AiCredentialRuntimeError('CODEX_MULTI_AUTH_PAYLOAD_INVALID')
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
-        // A live login without a pool must first be captured by onboarding;
-        // do not silently replace or strand that personal identity.
-        try {
-          await deps.readFile(join(codexHome(), 'auth.json'))
+      }
+      const live = await readOptionalJson(deps.env.CODEX_CLI_AUTH_PATH || join(codexHome(), 'auth.json'))
+      if (live) {
+        const tokens = isObject(live.tokens) ? live.tokens : null
+        if (!tokens || typeof tokens.refresh_token !== 'string' || !tokens.refresh_token
+          || typeof tokens.access_token !== 'string' || !tokens.access_token) {
           throw new AiCredentialRuntimeError('AI_CREDENTIAL_PERSONAL_CAPTURE_REQUIRED')
-        } catch (authError) {
-          if ((authError as NodeJS.ErrnoException).code !== 'ENOENT') throw authError
         }
+        const claims = (token: unknown): Record<string, unknown> => {
+          try { const parsed = JSON.parse(Buffer.from(String(token).split('.')[1] || '', 'base64url').toString()); return isObject(parsed) ? parsed : {} } catch { return {} }
+        }
+        const access = claims(tokens.access_token), id = claims(tokens.id_token)
+        const auth = id['https://api.openai.com/auth'] || access['https://api.openai.com/auth']
+        const accountId = tokens.account_id || (isObject(auth) ? auth.chatgpt_account_id : null)
+        if (typeof accountId !== 'string' || !accountId) throw new AiCredentialRuntimeError('AI_CREDENTIAL_PERSONAL_CAPTURE_REQUIRED')
+        const candidate: CodexMultiAuthAccount = {
+          accountId, refreshToken: tokens.refresh_token, accessToken: tokens.access_token,
+          ...(typeof (id.email || access.email) === 'string' ? { email: String(id.email || access.email) } : {}),
+          ...(typeof access.exp === 'number' ? { expiresAt: access.exp * 1000 } : {}),
+          addedAt: deps.now(), lastUsed: deps.now(),
+        }
+        // Capture first, before importing any shared material. A fresh pool starts on the live identity.
+        let hasPool = true
+        try { await deps.readFile(accountsPath) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; hasPool = false }
+        const personalPool = hasPool ? mergeCodexAccounts(current.accounts, { ...bundle.accounts, accounts: [candidate] })
+          : { version: 3 as const, activeIndex: 0, accounts: [candidate] }
+        current = { ...bundle, accounts: personalPool }
+        await replaceCodexMultiAuthFiles(deps, [{ path: accountsPath, content: JSON.stringify(personalPool) }], async () => {
+          if (await deps.readFile(accountsPath) !== JSON.stringify(personalPool)) throw new AiCredentialRuntimeError('CODEX_MULTI_AUTH_PAYLOAD_INVALID')
+        })
       }
       try {
         savedSettings = JSON.parse(await deps.readFile(settingsPath))
@@ -876,7 +1008,32 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
       }
-      const merged = mergeCodexAccounts(current.accounts, bundle.accounts)
+      const identity = (account: CodexMultiAuthAccount): VerificationIdentity => typeof account.accountId === 'string' && account.accountId
+        ? { accountId: account.accountId } : { email: typeof account.email === 'string' ? account.email : undefined }
+      const matching = (account: CodexMultiAuthAccount, other: CodexMultiAuthAccount) => account.accountId
+        ? account.accountId === other.accountId : account.email === other.email
+      const duplicates = bundle.accounts.accounts.filter(incoming => current.accounts.accounts.some(local => matching(local, incoming)
+        && local.enabled !== false && (local.accessToken !== incoming.accessToken || local.refreshToken !== incoming.refreshToken)))
+      const localCheck = await verifyLocalAiAccounts(deps, 'codex', duplicates.map(identity), current.accounts.accounts, { budgetMs: 60_000 })
+      const invalid = duplicates.filter((_account, index) => localCheck.accounts[index]?.errorKind === 'AUTHENTICATION_FAILED')
+      const sharedCheck = await verifyLocalAiAccounts(deps, 'codex', invalid.map(identity), invalid, { budgetMs: 60_000 })
+      const accepted = invalid.filter((_account, index) => sharedCheck.accounts[index]?.ok)
+      const refreshed = { ...current.accounts, accounts: current.accounts.accounts.map(local => {
+        const incoming = accepted.find(account => matching(local, account))
+        return incoming ? { ...local, refreshToken: incoming.refreshToken, accessToken: incoming.accessToken,
+          expiresAt: incoming.expiresAt } : local
+      }) }
+      const repairedActive = accepted.some(account => {
+        const active = current.accounts.accounts[current.accounts.activeIndex]
+        return active && matching(active, account) && !!live && isObject(live.tokens) && live.tokens.account_id === active.accountId
+      })
+      const merged = mergeCodexAccounts(refreshed, bundle.accounts)
+      // A refresh/login performed while probing wins over our older snapshot.
+      try {
+        if (JSON.stringify(JSON.parse(await deps.readFile(accountsPath))) !== JSON.stringify(current.accounts)) {
+          throw new AiCredentialRuntimeError('CODEX_MULTI_AUTH_PAYLOAD_INVALID')
+        }
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
       await replaceCodexMultiAuthFiles(deps, [
         { path: accountsPath, content: JSON.stringify(merged) },
         { path: settingsPath, content: JSON.stringify(savedSettings) },
@@ -886,6 +1043,13 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
           throw new AiCredentialRuntimeError('CODEX_MULTI_AUTH_PAYLOAD_INVALID')
         }
       })
+      if (repairedActive) {
+        // Refresh the same live identity, never switch a valid personal login to another account.
+        await deps.execFile('codex-multi-auth', ['switch', String(merged.activeIndex + 1)], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })
+        const selected = JSON.parse(await deps.readFile(accountsPath)) as CodexMultiAuthBundle['accounts']
+        await assertCodexLiveAccount(selected.accounts[merged.activeIndex]!)
+        await writeAtomicFile(deps, accountsPath, JSON.stringify({ ...merged, accounts: selected.accounts }))
+      }
       return { provider: 'codex' as const, configured: true, accountCount: merged.accounts.length }
     }
     const applied = await replaceCodexMultiAuthFiles(deps, [
@@ -1060,11 +1224,78 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     }))
   }
 
+  async function requestedActivation(input: { provider: AiCredentialProvider; payload: string; activeAccountIndex?: number }) {
+    if (input.activeAccountIndex === undefined) return null
+    const parsed = JSON.parse(input.payload)
+    const accounts = input.provider === 'claude' ? parsed.accounts : parsed.accounts?.accounts
+    const index = input.activeAccountIndex
+    if (!Number.isSafeInteger(index) || index < 0 || !Array.isArray(accounts) || index >= accounts.length) {
+      throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
+    }
+    const account = accounts[index]
+    const requested: VerificationIdentity = input.provider === 'claude'
+      ? { email: account.email, organizationUuid: account.organizationUuid ?? '' }
+      : account.accountId ? { accountId: account.accountId } : { email: account.email }
+    const verification = await verifyLocalAiAccounts(deps, input.provider as 'claude' | 'codex', [requested], [account], { budgetMs: 60_000 })
+    if (!verification.accounts[0]?.ok) throw new AiCredentialRuntimeError('AI_CREDENTIAL_ACTIVE_INVALID')
+    return requested
+  }
+
+  async function assertCodexLiveAccount(account: CodexMultiAuthAccount) {
+    const live = await readOptionalJson(deps.env.CODEX_CLI_AUTH_PATH || join(codexHome(), 'auth.json'))
+    if (!isObject(live?.tokens) || typeof account.accountId !== 'string' || live.tokens.account_id !== account.accountId
+      || typeof account.accessToken !== 'string' || live.tokens.access_token !== account.accessToken) {
+      throw new AiCredentialRuntimeError('AI_CREDENTIAL_ACTIVE_INVALID')
+    }
+  }
+
+  async function activateInstalledAccount(selected: 'claude' | 'codex', identity: VerificationIdentity) {
+    if (selected === 'claude') {
+      const before = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'])).stdout)
+      const account = before.accounts.find(item => item.email === identity.email && (item.organizationUuid ?? '') === (identity.organizationUuid ?? ''))
+      if (!account || account.disabled) throw new AiCredentialRuntimeError('AI_CREDENTIAL_ACTIVE_INVALID')
+      const exported = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
+      const verified = await verifyLocalAiAccounts(deps, selected, [identity], exported.accounts, { budgetMs: 60_000 })
+      if (!verified.accounts[0]?.ok) throw new AiCredentialRuntimeError('AI_CREDENTIAL_ACTIVE_INVALID')
+      try {
+        await deps.execFile('cswap', ['switch', String(account.number), '--force', '--json'], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })
+        const after = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'])).stdout)
+        if (after.activeAccountNumber !== account.number) throw new AiCredentialRuntimeError('AI_CREDENTIAL_ACTIVE_INVALID')
+      } catch (error) {
+        if (before.activeAccountNumber !== null) await deps.execFile('cswap', ['switch', String(before.activeAccountNumber), '--force', '--json'], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS }).catch(() => undefined)
+        throw error
+      }
+    } else {
+      const path = join(codexMultiAuthDir(), 'openai-codex-accounts.json')
+      const before = JSON.parse(await deps.readFile(path)) as CodexMultiAuthBundle['accounts']
+      const livePath = deps.env.CODEX_CLI_AUTH_PATH || join(codexHome(), 'auth.json')
+      let previousLive: string | null = null
+      try { previousLive = await deps.readFile(livePath) } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+      const index = before.accounts.findIndex(account => identity.accountId ? account.accountId === identity.accountId : account.email === identity.email)
+      if (index < 0 || before.accounts[index]?.enabled === false) throw new AiCredentialRuntimeError('AI_CREDENTIAL_ACTIVE_INVALID')
+      const verified = await verifyLocalAiAccounts(deps, selected, [identity], before.accounts, { budgetMs: 60_000 })
+      if (!verified.accounts[0]?.ok) throw new AiCredentialRuntimeError('AI_CREDENTIAL_ACTIVE_INVALID')
+      try {
+        await deps.execFile('codex-multi-auth', ['switch', String(index + 1)], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })
+        const after = JSON.parse(await deps.readFile(path))
+        if (after.activeIndex !== index) throw new AiCredentialRuntimeError('AI_CREDENTIAL_ACTIVE_INVALID')
+        await assertCodexLiveAccount(after.accounts[index])
+      } catch (error) {
+        await deps.execFile('codex-multi-auth', ['switch', String(before.activeIndex + 1)], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS }).catch(() => undefined)
+        await writeAtomicFile(deps, path, JSON.stringify(before))
+        if (previousLive !== null) await writeAtomicFile(deps, livePath, previousLive)
+        else await deps.rm(livePath, { force: true })
+        throw error
+      }
+    }
+  }
+
   async function apply(input: {
     provider: AiCredentialProvider
     payload: string
     trialLease?: TrialAiCredentialLeaseMarker
     applyMode?: 'merge' | 'replace' | 'repair'
+    activeAccountIndex?: number
     /** Sent only by the org deployment: which company bundle this is. */
     provenance?: unknown
   }) {
@@ -1075,6 +1306,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     assertPayloadSize(input.payload)
     const applyMode = input.applyMode ?? 'replace'
     if (applyMode !== 'merge' && applyMode !== 'replace' && applyMode !== 'repair') throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
+    if (input.activeAccountIndex !== undefined && (applyMode !== 'merge' || selected === 'zai')) throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
     if (applyMode === 'repair' && (selected !== 'claude' || input.trialLease !== undefined || !parseClaudeProvenanceInput(input.provenance))) {
       throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
     }
@@ -1092,6 +1324,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         }
         // Verify incoming repair material before advancing the apply fence:
         // rejected source credentials never invalidate the installed provenance.
+        const activation = await requestedActivation(input)
         const repair = applyMode === 'repair' ? await prepareClaudeRepair(input.payload) : null
         const previousProvenance = selected === 'claude' && applyMode === 'merge'
           ? await readActiveClaudeProvenance({ homeDir: deps.homeDir, readFile: deps.readFile })
@@ -1164,9 +1397,14 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
               }
             }
           }
+          if (activation) await activateInstalledAccount(selected as 'claude' | 'codex', activation)
           if (claudeApplied) await recordClaudeProvenance(input, applyGeneration, claudeApplied.verifiedAccounts)
-          return { ...result, applyGeneration, ...(input.applyMode ? { applyMode } : {}) }
+          return { ...result, applyGeneration, ...(activation ? { activeAccountIndex: input.activeAccountIndex } : {}), ...(input.applyMode ? { applyMode } : {}) }
         } catch (error) {
+          if (error instanceof ClaudeActivationError) {
+            await recordClaudeProvenance(input, applyGeneration, error.importedAccounts)
+              .catch(() => deps.warn?.('Claude provenance could not be recorded after a failed activation'))
+          }
           if (requestedLease && marker && markerChanged) {
             if (previousLease) marker.leases[selected] = previousLease
             else delete marker.leases[selected]
@@ -1455,7 +1693,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
-  return { capture, apply, purge, status, verify, rotation, sessionEnvironment, capabilities: () => ({ version: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'] }) }
+  return { capture, apply, purge, status, verify, rotation, sessionEnvironment, capabilities: () => ({ version: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'] }) }
 }
 
 type ClaudeListDetails = {
@@ -1510,6 +1748,14 @@ function claudeListAccountIdentity(
     account.email,
     typeof account.organizationUuid === 'string' ? account.organizationUuid : '',
   ])
+}
+
+/** Why no Claude account can be made active: every enabled account needs re-login, or the list is not as expected. */
+function claudeNoUsableAccountKind(details: ClaudeListDetails): 'CLAUDE_APPLY_RELOGIN_REQUIRED' | 'CLAUDE_APPLY_VERIFICATION_FAILED' {
+  const enabled = details.accounts.filter((account) => account.disabled !== true)
+  return enabled.length > 0 && enabled.every((account) => account.usageStatus === 'relogin_required')
+    ? 'CLAUDE_APPLY_RELOGIN_REQUIRED'
+    : 'CLAUDE_APPLY_VERIFICATION_FAILED'
 }
 
 function parseClaudeListDetails(stdout: string): ClaudeListDetails {
@@ -1642,7 +1888,7 @@ function parseCodexMultiAuthBundle(payload: string): CodexMultiAuthBundle | null
   if (!isObject(parsed) || parsed.kind !== 'codex-multi-auth') return null
   if (parsed.version !== 1
     || typeof parsed.packageVersion !== 'string'
-    || !READABLE_CODEX_MULTI_AUTH_BUNDLE_VERSIONS.has(parsed.packageVersion)
+    || !isReadableCodexMultiAuthBundleVersion(parsed.packageVersion)
     || !isObject(parsed.accounts)
     || parsed.accounts.version !== 3
     || !Array.isArray(parsed.accounts.accounts)

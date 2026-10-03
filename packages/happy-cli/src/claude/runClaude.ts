@@ -717,6 +717,7 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
         browserHostContinues: process.env.HAPPY_AUTOMATION_BROWSER_CONTINUATION === '1',
         mandatorySandbox: sandboxPolicyMode === 'mandatory',
         ...(principal.kind === 'account' ? { proposeLesson: lessonProposalTurn.submit } : {}),
+        checkpointReader: checkpointComposition.agentReader,
         protectedBashCwd: checkpointComposition.protectedBashCwd,
         trackProtectedBashProcess: checkpointComposition.trackProtectedWriter,
         // A tool call in flight finishes across a drain freeze; none starts after it.
@@ -1896,17 +1897,15 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
             baseServers: baseMcpServers,
             initialAplusServers: aplusMcpServers,
             floorServerNames: resolveMcpFloorServerNames(aplusMcpServers, readExpectedConnectors()),
-            fetchAplusServers: async () => {
+            fetchAplusServers: async (measure) => {
                 // 조회 직전에 교환해야 새 grant 로 조회된다. 24시간을 넘겨 사는
                 // 세션이 403 으로 마지막 정상 설정에 갇히는 것을 막는다.
                 const token = requireAccountToken(accountToken);
                 const account = requireAccountMachineId(machineId);
-                await refreshMcpCallerGrantIfExpiring(token, account, { sessionId: readLessonOwner() === 'host' ? session.sessionId : undefined });
-                return fetchAplusMcpServersResult(
-                    token,
-                    account,
-                    { sessionId: session.sessionId, lifecycle: 'turn' },
-                );
+                const refresh = () => refreshMcpCallerGrantIfExpiring(token, account, { sessionId: readLessonOwner() === 'host' ? session.sessionId : undefined });
+                await (measure ? measure('mcp-grant', refresh) : refresh());
+                const fetchConfig = () => fetchAplusMcpServersResult(token, account, { sessionId: session.sessionId, lifecycle: 'turn' });
+                return measure ? measure('mcp-fetch', fetchConfig) : fetchConfig();
             },
         },
         session,

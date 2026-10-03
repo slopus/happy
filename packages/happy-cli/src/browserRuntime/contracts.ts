@@ -58,6 +58,10 @@ export const ERROR_CODES = [
     // overloading CONFLICT. Kept separate so callers can tell "fix the request"
     // from "someone else changed the task".
     'INVALID_REQUEST',
+    // Shared machines: the session user's browser profile is being created (retry shortly), or cannot be
+    // (the machine is full or short of memory; the message says which).
+    'PROFILE_PROVISIONING',
+    'PROFILE_UNAVAILABLE',
 ] as const
 export type ErrorCode = (typeof ERROR_CODES)[number]
 

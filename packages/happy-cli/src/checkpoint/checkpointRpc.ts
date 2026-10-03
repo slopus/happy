@@ -1,3 +1,4 @@
+import { checkpointFileDiff } from './checkpointFileDiff';
 import { execFile } from 'node:child_process';
 import { access } from 'node:fs/promises';
 import { z } from 'zod';
@@ -8,8 +9,10 @@ import {
     type CheckpointPendingDecision,
 } from './checkpointProtectionState';
 import { CheckpointRestoreExecutor } from './checkpointRestore';
+import { LOCAL_HISTORY_MAX_FILE_BYTES } from './checkpointLocalHistory';
 import { CheckpointRestorePlanner } from './checkpointRestorePlan';
 import { checkpointOperationRefPrefix, resolveCheckpointStoreLayout } from './checkpointStore';
+import { checkpointRecoveryStatus } from './checkpointRecovery';
 
 const identifierSchema = z.string().min(1).max(128).refine(
     (value) => value.trim() === value && !/[\u0000-\u001F\u007F]/.test(value),
@@ -26,8 +29,15 @@ const bindingRequestSchema = z.object({
     worktreeId: identifierSchema.nullable(),
 }).strict();
 
+const projectRelativePathsSchema = z.array(z.string().min(1).refine((value) => (
+    !value.includes('\0')
+    && !/^(?:[A-Za-z]:|[\\/])/.test(value)
+    && !value.split(/[\\/]+/).includes('..')
+), 'path must be project-relative')).max(10_000);
+
 const previewRequestSchema = bindingRequestSchema.extend({
     checkpointId: z.string().regex(/^[a-f0-9]{40,64}$/),
+    includePaths: projectRelativePathsSchema.optional(),
 }).strict();
 
 const cancelRequestSchema = bindingRequestSchema.extend({
@@ -40,6 +50,11 @@ const decisionRequestSchema = cancelRequestSchema.extend({
 
 const restartRequestSchema = bindingRequestSchema.extend({
     timeout: z.literal(70_000),
+}).strict();
+const refreshRequestSchema = restartRequestSchema.extend({
+    operationId: operationIdSchema,
+    requestId: operationIdSchema,
+    revision: z.string().regex(/^[a-f0-9]{64}$/),
 }).strict();
 
 const projectRelativePathSchema = z.string().min(1).refine((value) => (
@@ -75,12 +90,15 @@ const restorePlanSchema = z.object({
     schemaVersion: z.literal(1),
     checkpointId: z.string().regex(/^[a-f0-9]{40,64}$/),
     entries: z.array(restorePlanEntrySchema),
+    // A preview echoed back whole carries its details; they never change what runs.
+    skipDetails: z.array(z.unknown()).optional(),
 }).strict();
 
 const executeRequestSchema = bindingRequestSchema.extend({
     operationId: operationIdSchema,
     confirmed: z.literal(true),
     plan: restorePlanSchema,
+    includePaths: projectRelativePathsSchema.optional(),
 }).strict();
 
 export type CheckpointRpcSessionAuthority = {
@@ -92,17 +110,24 @@ export type CheckpointRpcSessionAuthority = {
     pendingDecision: CheckpointPendingDecision | null;
     excludedPaths: string[];
     excludedPatterns: string[];
+    canRestoreHistory?: boolean;
+    limits?: { maxFileBytes: number; maxFiles: number; maxTotalBytes: number };
+    /** specs/checkpoint-local-history R5 — additive: a Desktop that knows it drops the old decision UI. */
+    mode?: 'local-history';
 };
 
 export type CheckpointRpcHandlers = {
     status(params: unknown): Promise<unknown>;
     list(params: unknown): Promise<unknown>;
     preview(params: unknown): Promise<unknown>;
+    retireWorktree?(params: unknown): Promise<unknown>;
+    diff?(params: unknown): Promise<unknown>;
     execute(params: unknown): Promise<unknown>;
     retry(params: unknown): Promise<unknown>;
     cancel(params: unknown): Promise<unknown>;
     decision(params: unknown): Promise<unknown>;
     restart(params: unknown): Promise<unknown>;
+    refresh?(params: unknown): Promise<unknown>;
 };
 
 export function createCheckpointRpcHandlers(input: {
@@ -110,6 +135,7 @@ export function createCheckpointRpcHandlers(input: {
     resolveAuthority(sessionId: string): Promise<CheckpointRpcSessionAuthority | null>;
     resolveEventPublisher(sessionId: string): Promise<Pick<CheckpointEventPublisher, 'rewind'> | null>;
     restartSession(authority: CheckpointRpcSessionAuthority): Promise<void>;
+    refreshSession?(authority: CheckpointRpcSessionAuthority): Promise<void>;
     restoreExecutor?: CheckpointRestoreExecutor;
 }): CheckpointRpcHandlers {
     const restoreExecutor = input.restoreExecutor ?? new CheckpointRestoreExecutor(input.checkpointRoot);
@@ -137,7 +163,13 @@ export function createCheckpointRpcHandlers(input: {
                 projectId: authority.projectId,
                 worktreeId: authority.worktreeId,
                 protection: authority.protection,
+                ...(authority.mode ? { mode: authority.mode } : {}),
                 pendingDecision: authority.pendingDecision,
+                ...(input.refreshSession ? { recovery: checkpointRecoveryStatus({
+                    pendingDecision: authority.pendingDecision,
+                    canRestoreHistory: authority.protection.status === 'protected' || authority.canRestoreHistory === true,
+                    limits: authority.limits,
+                }) } : {}),
             };
         },
         list: async (params) => {
@@ -151,19 +183,34 @@ export function createCheckpointRpcHandlers(input: {
         preview: async (params) => {
             const request = previewRequestSchema.parse(params);
             const authority = await resolveRequestAuthority(request);
-            const plan = await new CheckpointRestorePlanner(input.checkpointRoot).plan({
+            const { plan, details } = await new CheckpointRestorePlanner(input.checkpointRoot).planWithDetails({
                 sessionId: authority.sessionId,
                 projectId: authority.projectId,
                 worktreeId: authority.worktreeId,
                 projectPath: authority.projectPath,
                 checkpointId: request.checkpointId,
+                excludedPaths: authority.excludedPaths,
+                excludedPatterns: authority.excludedPatterns,
+                includePaths: request.includePaths,
             });
-            return { schemaVersion: 1 as const, ...plan };
+            return { schemaVersion: 1 as const, ...plan, ...(details.length > 0 ? { skipDetails: details } : {}) };
+        },
+        diff: async (params) => {
+            const request = bindingRequestSchema.extend({
+                checkpointId: z.string().regex(/^[a-f0-9]{40,64}$/),
+                path: projectRelativePathSchema,
+            }).strict().parse(params);
+            const authority = await resolveRequestAuthority(request);
+            const result = await checkpointFileDiff(input.checkpointRoot, {
+                ...authority, checkpointId: request.checkpointId, path: request.path,
+            });
+            return { ...request, ...result };
         },
         execute: async (params) => {
             const request = executeRequestSchema.parse(params);
             const authority = await resolveRequestAuthority(request);
-            if (authority.protection.status !== 'protected') {
+            if (authority.pendingDecision || (authority.protection.status !== 'protected'
+                && !(authority.protection.status === 'legacy' && authority.canRestoreHistory))) {
                 throw new Error('checkpoint RPC mutation requires protected status');
             }
             const eventPublisher = await input.resolveEventPublisher(request.sessionId);
@@ -181,6 +228,8 @@ export function createCheckpointRpcHandlers(input: {
                 },
                 excludedPaths: authority.excludedPaths,
                 excludedPatterns: authority.excludedPatterns,
+                includePaths: request.includePaths,
+                ...(authority.mode === 'local-history' ? { localHistory: { maxFileBytes: LOCAL_HISTORY_MAX_FILE_BYTES } } : {}),
             });
             await publishRewindResult(eventPublisher, request, result);
             return {
@@ -192,7 +241,8 @@ export function createCheckpointRpcHandlers(input: {
         retry: async (params) => {
             const request = executeRequestSchema.parse(params);
             const authority = await resolveRequestAuthority(request);
-            if (authority.protection.status !== 'protected') {
+            if (authority.pendingDecision || (authority.protection.status !== 'protected'
+                && !(authority.protection.status === 'legacy' && authority.canRestoreHistory))) {
                 throw new Error('checkpoint RPC mutation requires protected status');
             }
             const eventPublisher = await input.resolveEventPublisher(request.sessionId);
@@ -210,6 +260,8 @@ export function createCheckpointRpcHandlers(input: {
                 },
                 excludedPaths: authority.excludedPaths,
                 excludedPatterns: authority.excludedPatterns,
+                includePaths: request.includePaths,
+                ...(authority.mode === 'local-history' ? { localHistory: { maxFileBytes: LOCAL_HISTORY_MAX_FILE_BYTES } } : {}),
             });
             await publishRewindResult(eventPublisher, request, result);
             return {
@@ -264,6 +316,15 @@ export function createCheckpointRpcHandlers(input: {
                 status: 'restarted' as const,
             };
         },
+        ...(input.refreshSession ? { refresh: async (params: unknown) => {
+            const request = refreshRequestSchema.parse(params);
+            const authority = await resolveRequestAuthority(request);
+            const status = await protectionState.refreshPending({
+                ...authority, operationId: request.operationId, requestId: request.requestId, revision: request.revision,
+            }, () => input.refreshSession!(authority));
+            return { schemaVersion: 1, sessionId: authority.sessionId, projectId: authority.projectId,
+                worktreeId: authority.worktreeId, requestId: request.requestId, status };
+        } } : {}),
     };
 }
 

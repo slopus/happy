@@ -65,7 +65,7 @@ export function scriptAutomationRoutes(app: Fastify, dependencies: ScriptRouteDe
     try { return await action(); }
     catch (error) {
       const code = error instanceof Error ? error.message : '';
-      if (['PROJECT_WRITE_DENIED', 'PROJECT_READ_DENIED', 'MACHINE_DENIED', 'SCRIPT_SERVICE_PROOF_INVALID', 'KEY_REVOKED'].includes(code)) return reply.code(403).send({ error: code });
+      if (['PROJECT_WRITE_DENIED', 'MACHINE_DENIED', 'SCRIPT_SERVICE_PROOF_INVALID', 'KEY_REVOKED'].includes(code)) return reply.code(403).send({ error: code });
       if (code === 'SCRIPT_SERVICE_SECRET_REQUIRED') return reply.code(503).send({ error: code });
       if (code === 'ARTIFACT_NOT_FOUND' || code === 'NOT_FOUND') return reply.code(404).send({ error: code });
       if (code === 'INPUT_SCHEMA_INVALID' || error instanceof z.ZodError) return reply.code(422).send({ error: 'INPUT_SCHEMA_INVALID' });
@@ -90,10 +90,12 @@ export function scriptAutomationRoutes(app: Fastify, dependencies: ScriptRouteDe
     return { automation: serializeScriptAutomation(complete) };
   })));
 
+  // Read routes answer a missing project and an inaccessible one with the same NOT_FOUND, like the legacy automation
+  // routes: no project-id existence oracle, and web-ui heals a missing mirror on NOT_FOUND instead of reporting a denial.
   app.get('/v1/projects/:projectId/script-automations', {
     preHandler: app.authenticate, schema: { params: projectParams },
   }, (request, reply) => handle(reply, async () => dependencies.transaction(async (tx) => {
-    if (!await projectAccess(tx, request.userId, request.params.projectId)) throw new Error('PROJECT_READ_DENIED');
+    if (!await projectAccess(tx, request.userId, request.params.projectId)) throw new Error('NOT_FOUND');
     const rows = await tx.automation.findMany({
       where: { projectId: request.params.projectId, payloadVersion: 3, deletedAt: null },
       include: includes, orderBy: { createdAt: 'desc' },
@@ -105,7 +107,7 @@ export function scriptAutomationRoutes(app: Fastify, dependencies: ScriptRouteDe
     preHandler: app.authenticate,
     schema: { params: projectParams.extend({ artifactId: z.string().min(1).max(200) }) },
   }, (request, reply) => handle(reply, async () => dependencies.transaction(async (tx) => {
-    if (!await projectAccess(tx, request.userId, request.params.projectId)) throw new Error('PROJECT_READ_DENIED');
+    if (!await projectAccess(tx, request.userId, request.params.projectId)) throw new Error('NOT_FOUND');
     const artifacts = createScriptArtifactService({ transaction: (action) => action({
       query: <T>(sql: string, values: unknown[] = []) => tx.$queryRawUnsafe<T[]>(sql, ...values),
     }) });
@@ -148,14 +150,14 @@ export function scriptAutomationRoutes(app: Fastify, dependencies: ScriptRouteDe
   }, (request, reply) => handle(reply, async () => dependencies.transaction(async (tx) => {
     const claims = proof(request.body.serviceToken, 'status', request.params);
     if (claims.runId !== request.params.runId) throw new Error('SCRIPT_SERVICE_PROOF_INVALID');
-    if (!await projectAccess(tx, request.userId, request.params.projectId)) throw new Error('PROJECT_READ_DENIED');
+    if (!await projectAccess(tx, request.userId, request.params.projectId)) throw new Error('NOT_FOUND');
     return scriptQueueInTransaction(tx).apiStatus(claims, Date.now());
   })));
 
   app.get('/v1/projects/:projectId/script-automations/:automationId/runs', {
     preHandler: app.authenticate, schema: { params: automationParams },
   }, (request, reply) => handle(reply, async () => dependencies.transaction(async (tx) => {
-    if (!await projectAccess(tx, request.userId, request.params.projectId)) throw new Error('PROJECT_READ_DENIED');
+    if (!await projectAccess(tx, request.userId, request.params.projectId)) throw new Error('NOT_FOUND');
     const row = await tx.automation.findFirst({ where: { id: request.params.automationId, projectId: request.params.projectId, payloadVersion: 3, deletedAt: null } });
     if (!row) throw new Error('NOT_FOUND');
     const runs = await tx.scriptInvocation.findMany({ where: { automationId: row.id }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 100 });
@@ -166,7 +168,7 @@ export function scriptAutomationRoutes(app: Fastify, dependencies: ScriptRouteDe
   app.get('/v1/projects/:projectId/script-automations/:automationId/runs/:runId/log', {
     preHandler: app.authenticate, schema: { params: automationParams.extend({ runId: identifier }) },
   }, (request, reply) => handle(reply, async () => dependencies.transaction(async (tx) => {
-    if (!await projectAccess(tx, request.userId, request.params.projectId)) throw new Error('PROJECT_READ_DENIED');
+    if (!await projectAccess(tx, request.userId, request.params.projectId)) throw new Error('NOT_FOUND');
     const run = await tx.scriptInvocation.findFirst({ where: { id: request.params.runId, automationId: request.params.automationId,
       automation: { projectId: request.params.projectId, payloadVersion: 3, deletedAt: null } }, select: { logCiphertext: true } });
     if (!run) throw new Error('NOT_FOUND');

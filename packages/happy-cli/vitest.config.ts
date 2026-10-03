@@ -49,8 +49,6 @@ export default defineConfig({
                         'src/claude/mcpRuntimeRecovery.integration.test.ts',
                         'src/codex/codex.integration.test.ts',
                         'src/checkpoint/checkpointProvider.integration.test.ts',
-                        'src/checkpoint/checkpointSandbox.integration.test.ts',
-                        'src/checkpoint/checkpointSandbox.linux.integration.test.ts',
                         'src/checkpoint/checkpointGitIsolation.integration.test.ts',
                         'src/sandbox/network.integration.test.ts',
                     ],

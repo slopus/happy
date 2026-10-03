@@ -5,6 +5,13 @@ import {
     CodexMcpRuntimeRecovery,
 } from './codexMcpRuntimeRecovery';
 
+it('does not query the entire app-server inventory when no external server needs status', async () => {
+    const client = { getMcpStartupStatuses: vi.fn(() => []), listMcpServerStatus: vi.fn(async () => ({ data: [] })), resumeThread: vi.fn() };
+    expect(await new CodexMcpRuntimeRecovery(client).readStatuses({ threadId: 't', mcpServers: {}, expectedServerNames: [] })).toEqual([]);
+    expect(client.listMcpServerStatus).not.toHaveBeenCalled();
+    expect(client.getMcpStartupStatuses).not.toHaveBeenCalled();
+});
+
 describe('buildCodexMcpRecoveryMetadataStatuses', () => {
     it('maps mixed recovery results to connector-aware wire statuses', () => {
         expect(buildCodexMcpRecoveryMetadataStatuses({

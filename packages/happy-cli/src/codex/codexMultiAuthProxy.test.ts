@@ -104,7 +104,7 @@ describe('Codex multi-auth proxy adapter', () => {
 })
 
 // Exercise package discovery and dynamic loading, not the injected startProxy shortcut.
-it.each(['2.16.0', '2.17.0', '2.18.0'])('loads only a supported global proxy package: %s', async (version) => {
+it.each(['2.15.0', '2.16.0', '2.17.0', '2.19.0'])('loads only a supported global proxy package: %s', async (version) => {
   const root = await mkdtemp(join(tmpdir(), 'happy-proxy-version-'))
   command.root = root
   const packageRoot = join(root, 'codex-multi-auth')
@@ -124,8 +124,8 @@ it.each(['2.16.0', '2.17.0', '2.18.0'])('loads only a supported global proxy pac
   })
   try {
     const result = prepareCodexMultiAuthProxy({}, { readFile: async () => JSON.stringify(settings) })
-    if (version === '2.18.0') {
-      await expect(result).rejects.toThrow(/2.18.0/)
+    if (version === '2.15.0') {
+      await expect(result).rejects.toThrow('Unsupported codex-multi-auth version 2.15.0; supported: >=2.16.0')
     } else {
       const prepared = await result
       expect(prepared).not.toBeNull()

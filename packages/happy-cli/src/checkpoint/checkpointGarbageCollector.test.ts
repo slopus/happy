@@ -9,7 +9,7 @@ import {
     withCheckpointPin,
 } from './checkpointGarbageCollector';
 import { CheckpointStore, resolveCheckpointStoreLayout } from './checkpointStore';
-import { withCheckpointStoreLock } from './checkpointStoreLock';
+import { withCheckpointStaging, withCheckpointStoreLock } from './checkpointStoreLock';
 
 const execFileAsync = promisify(execFile);
 
@@ -63,6 +63,37 @@ describe('CheckpointGarbageCollector', () => {
         const result = await collector.collect({ maxCheckpointsPerBinding: 0 });
         expect(result).toMatchObject({ prunedCheckpoints: 3, retainedActive: 0 });
         await expectObject(checkpointRoot, binding, checkpoints[0]!, false);
+    });
+
+    it('preserves latest baseline and latest safety above age, count and soft capacity', async () => {
+        const store = new CheckpointStore(checkpointRoot);
+        const ids: string[] = [];
+        for (const [index, record] of (['before', 'safety', 'after'] as const).entries()) {
+            await writeFile(join(projectPath, 'tracked.txt'), `version ${index}`);
+            ids.push((await store.snapshotTurn({ ...binding, projectPath, operationId: `protected-${index}`,
+                workTree: { maxFileBytes: 1024, record } })).checkpointId);
+        }
+        const result = await new CheckpointGarbageCollector(checkpointRoot).collect({
+            maxCheckpointsPerBinding: 0, maxAgeMs: 0, now: Date.now() + 10_000,
+            maxStoreBytes: 0, preserveLatest: true,
+        });
+        expect(result.prunedCheckpoints).toBe(1);
+        await expectObject(checkpointRoot, binding, ids[0]!, false);
+        await expectObject(checkpointRoot, binding, ids[1]!, true);
+        await expectObject(checkpointRoot, binding, ids[2]!, true);
+        expect(result.storeBytes).toBeGreaterThan(0);
+    });
+
+    it('stops capacity reclamation once the pass budget is spent and resumes on the next pass', async () => {
+        const store = new CheckpointStore(checkpointRoot);
+        for (let index = 0; index < 3; index += 1) {
+            await writeFile(join(projectPath, 'tracked.txt'), `version ${index}`);
+            await store.snapshotTurn({ ...binding, projectPath, operationId: `budget-${index}` });
+        }
+        const collector = new CheckpointGarbageCollector(checkpointRoot);
+        const policy = { maxStoreBytes: 0, preserveLatest: true } as const;
+        expect((await collector.collect({ ...policy, capacityBudgetMs: 0 })).prunedCheckpoints).toBe(0);
+        expect((await collector.collect({ ...policy, capacityBudgetMs: 60_000 })).prunedCheckpoints).toBe(2);
     });
 
     it('refuses to create a pin for a checkpoint owned by another binding', async () => {
@@ -129,6 +160,31 @@ describe('CheckpointGarbageCollector', () => {
         }
     });
 
+    // A whole-folder record hashes outside the store lock; its fresh objects are not referenced yet.
+    it('keeps objects written after an in-flight staging began until it finishes', async () => {
+        await writeFile(join(projectPath, 'tracked.txt'), 'owned\n');
+        await new CheckpointStore(checkpointRoot).snapshotTurn({ ...binding, projectPath, operationId: 'turn-1' });
+        const layout = resolveCheckpointStoreLayout({ checkpointRoot, ...binding });
+        const staged = async () => {
+            const child = execFile('git', [`--git-dir=${layout.gitDirectory}`, 'hash-object', '-w', '--stdin']);
+            child.stdin!.end('staged but not committed\n');
+            return (await new Promise<string>((resolve) => { let out = ''; child.stdout!.on('data', (chunk) => { out += chunk; }); child.on('close', () => resolve(out.trim())); }));
+        };
+        const exists = (id: string) => execFileAsync('git', [`--git-dir=${layout.gitDirectory}`, 'cat-file', '-e', id]).then(() => true, () => false);
+
+        const kept = await withCheckpointStaging(checkpointRoot, async () => {
+            const id = await staged();
+            await new CheckpointGarbageCollector(checkpointRoot).collect({ maxCheckpointsPerBinding: 0 });
+            return id;
+        });
+        expect(await exists(kept)).toBe(true);
+
+        await writeFile(join(projectPath, 'tracked.txt'), 'owned again\n');
+        await new CheckpointStore(checkpointRoot).snapshotTurn({ ...binding, projectPath, operationId: 'turn-2' });
+        await new CheckpointGarbageCollector(checkpointRoot).collect({ maxCheckpointsPerBinding: 0 });
+        expect(await exists(kept)).toBe(false);
+    });
+
     it('waits for an in-flight store writer before destructive collection', async () => {
         await writeFile(join(projectPath, 'tracked.txt'), 'owned\n');
         await new CheckpointStore(checkpointRoot).snapshotTurn({
@@ -188,7 +244,7 @@ describe('CheckpointGarbageCollector', () => {
     });
 
     it.each([
-        ['age', { maxAgeMs: 0, now: Date.now() + 10_000 }],
+        ['age', { maxAgeMs: 0 }],
         ['capacity', { maxStoreBytes: 0 }],
     ] as const)('reclaims checkpoints using the explicit %s limit', async (_name, policy) => {
         const store = new CheckpointStore(checkpointRoot);
@@ -202,7 +258,7 @@ describe('CheckpointGarbageCollector', () => {
             })).checkpointId);
         }
 
-        const result = await new CheckpointGarbageCollector(checkpointRoot).collect(policy);
+        const result = await new CheckpointGarbageCollector(checkpointRoot).collect({ ...policy, now: Date.now() + 10_000 });
 
         expect(result.prunedCheckpoints).toBe(2);
         for (const checkpointId of checkpoints) {

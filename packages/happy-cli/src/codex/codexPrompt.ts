@@ -56,14 +56,16 @@ export function hashCodexEnhancedMode(mode: CodexEnhancedMode): string {
 
 export function buildCodexDeveloperInstructions({
     connectorGuidance,
+    checkpointGuidance,
     agentOrchestrationPrompt,
     mode,
 }: {
     connectorGuidance?: string;
+    checkpointGuidance?: string;
     agentOrchestrationPrompt?: string;
     mode: Pick<CodexEnhancedMode, 'appendSystemPrompt' | 'saycodeSystemPromptEnabled' | 'saycodePromptBlocks'>;
 }): string | undefined {
-    const blocks = [connectorGuidance];
+    const blocks = [connectorGuidance, checkpointGuidance];
     if (isSaycodePromptBlockEnabled(
         'agentOrchestration',
         mode.saycodePromptBlocks,

@@ -13,11 +13,14 @@ const fixture = vi.hoisted(() => ({
     proposal: { name: 'Verified recovery' },
     statusProbeFails: false,
     send: vi.fn(),
+    startThread: vi.fn(),
     session: {
         sessionId: 'lesson-session', getMetadata: () => ({ path: '/tmp/lesson-test' }),
         drainAttachmentsForUserMessage: vi.fn(async () => []),
         onUserMessage: vi.fn(), onFileEvent: vi.fn(), on: vi.fn(), hasTitle: () => true,
         sendSessionEvent: vi.fn(), sendSessionProtocolMessage: vi.fn(), sendSessionMessage: vi.fn(),
+        sendTurnLatency: vi.fn(),
+        sendStreamDelta: vi.fn(),
         updateMetadata: vi.fn(), updateAgentState: vi.fn(), keepAlive: vi.fn(),
         sendSessionDeath: vi.fn(), flush: vi.fn(async () => {}), close: vi.fn(async () => {}),
         rpcHandlerManager: { registerHandler: vi.fn() },
@@ -65,7 +68,7 @@ vi.mock('@/codex/codexAppServerClient', () => ({ CodexAppServerClient: class {
     setEventHandler = (handler: (event: unknown) => void) => { fixture.emit = handler; };
     supportsGoalActions = () => false;
     hasActiveThread = () => Boolean(this.threadId);
-    startThread = async () => { this.threadId = 'thread'; return { threadId: 'thread', model: 'test' }; };
+    startThread = async (options: unknown) => { fixture.startThread(options); this.threadId = 'thread'; return { threadId: 'thread', model: 'test' }; };
     abortPreparedTurn = vi.fn();
     abortTurnWithFallback = async () => ({ forcedRestart: false });
     sendTurnAndWait = async (prompt: string, options: unknown) => {
@@ -87,7 +90,80 @@ afterEach(() => {
             if (!signalListeners.get(signal)?.has(listener)) process.removeListener(signal, listener);
         }
     }
-    fixture.requestIds = undefined; vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.clearAllMocks(); fixture.submit = null; fixture.onSend = null; fixture.onSteer = null; fixture.steerText = ''; fixture.statusProbeFails = false; });
+    fixture.requestIds = undefined; vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.clearAllMocks(); fixture.submit = null; fixture.onSend = null; fixture.onSteer = null; fixture.steerText = ''; fixture.statusProbeFails = false; fixture.session.sendTurnLatency.mockReset(); });
+
+// specs/checkpoint-local-history — Codex keeps its process across turns and records the folder
+// before dispatch and after the turn, including a turn the provider failed.
+describe('Codex local history wiring', () => {
+    it.each([[false, false], [true, false], [false, true]])('connects an API input trace to preparation and terminal without changing dispatch (observerFails=%s, steer=%s)', async (observerFails, steer) => {
+        for (const key of Object.keys(process.env)) {
+            if (/^(HAPPY_RECONNECT_|HAPPY_INITIAL_|HAPPY_FORK|HAPPY_MANAGED_|SAYCODE_PROVIDER_|HAPPY_AUTOMATION_)/.test(key)) vi.stubEnv(key, undefined);
+        }
+        fixture.aborted = false;
+        vi.stubEnv('HAPPY_INITIAL_PROMPT', 'Initial request');
+        if (observerFails) fixture.session.sendTurnLatency.mockImplementation(() => { throw new Error('diagnostic failed'); });
+        fixture.onSend = async () => {
+            if (fixture.send.mock.calls.length === 1) {
+                expect(fixture.session.sendTurnLatency).not.toHaveBeenCalled();
+                await fixture.session.onUserMessage.mock.calls[0][0]({
+                    role: 'user', content: { type: 'text', text: 'Traced input' },
+                    meta: { latencyTrace: { version: 1, id: 'f4197a29-55c5-4e65-a5c1-fbdc18e7babe' } },
+                });
+            } else {
+                if (steer) {
+                    const handler = fixture.session.rpcHandlerManager.registerHandler.mock.calls.find(([name]) => name === 'steer')![1] as (input: unknown) => Promise<unknown>;
+                    await handler({ text: 'Keep the answer short' });
+                }
+                try { fixture.emit?.({ type: 'agent_message_delta', item_id: 'item', index: 0, offset: 0, delta: 'OK' }); }
+                finally { fixture.closeQueue?.(); }
+            }
+        };
+        const review = { prepareReviewTurn: vi.fn(async () => ({ revision: 9 })), reviewFinishedTurn: vi.fn(async () => 'reviewed' as const) };
+        const { runCodex } = await import('./runCodex');
+        await runCodex({ principal: { kind: 'account', credentials: { token: 'test-token' } as never },
+            noSandbox: true, lessons: { turn: null, review, sessionKind: 'foreground' } });
+        expect(fixture.send).toHaveBeenCalledTimes(2);
+        const frames = fixture.session.sendTurnLatency.mock.calls.map(([frame]) => frame);
+        expect(frames).toContainEqual(expect.objectContaining({ type: 'turn-latency-progress', phase: 'preparing' }));
+        expect(frames).toContainEqual(expect.objectContaining({ type: 'turn-latency-progress', phase: 'completed' }));
+        expect(frames).toContainEqual(expect.objectContaining({
+            type: 'turn-latency', id: 'f4197a29-55c5-4e65-a5c1-fbdc18e7babe', attribution: steer ? 'coalesced' : 'exclusive', inputCount: steer ? 2 : 1, outcome: 'text',
+        }));
+        fixture.session.sendTurnLatency.mockReset();
+    });
+
+    it.each([['completes', false], ['fails', true]])('records around a turn that %s', async (_label, fails) => {
+        for (const key of Object.keys(process.env)) {
+            if (/^(HAPPY_RECONNECT_|HAPPY_INITIAL_|HAPPY_FORK|HAPPY_MANAGED_|SAYCODE_PROVIDER_|HAPPY_AUTOMATION_)/.test(key)) vi.stubEnv(key, undefined);
+        }
+        fixture.aborted = false;
+        vi.stubEnv('HAPPY_AUTOMATION_RUN_ONCE', '1');
+        vi.stubEnv('HAPPY_INITIAL_PROMPT', 'Edit b.html');
+        const calls: string[] = [];
+        const { createCheckpointSessionComposition } = await import('@/checkpoint/checkpointSessionComposition');
+        const agentReader = { guidance: vi.fn(async () => 'checkpoint test guidance'), status: vi.fn(), query: vi.fn() } as never;
+        vi.mocked(createCheckpointSessionComposition).mockResolvedValueOnce({
+            sandboxConfig: undefined,
+            agentReader,
+            localHistory: {
+                beforeTurn: async () => { calls.push('before'); return { operationId: 'turn-1', checkpointId: 'a'.repeat(40), providerPath: process.cwd() }; },
+                afterTurn: async () => { calls.push('after'); },
+            },
+        });
+        fixture.onSend = async () => {
+            calls.push('send');
+            if (fails) throw new Error('provider unavailable');
+        };
+        const review = { prepareReviewTurn: vi.fn(async () => ({ revision: 9 })), reviewFinishedTurn: vi.fn(async () => 'reviewed' as const) };
+        const { runCodex } = await import('./runCodex');
+        await runCodex({ principal: { kind: 'account', credentials: { token: 'test-token' } as never },
+            noSandbox: true, lessons: { turn: null, review, sessionKind: 'foreground' } });
+        const { startHappyServer } = await import('@/claude/utils/startHappyServer');
+        expect(startHappyServer).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ checkpointReader: agentReader }));
+        expect(fixture.startThread).toHaveBeenCalledWith(expect.objectContaining({ developerInstructions: expect.stringContaining('checkpoint test guidance') }));
+        expect(calls).toEqual(['before', 'send', 'after']);
+    });
+});
 
 describe('Codex foreground lesson proposal wiring', () => {
     it('preserves durable local-auto request ids through a merged Codex batch', async () => {

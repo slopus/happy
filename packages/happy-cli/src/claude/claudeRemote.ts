@@ -67,7 +67,7 @@ export type ClaudeTurnLatencyInput = {
 };
 
 type PreparationSpan = {
-    stage: 'mcp-sync' | 'before-turn' | 'mcp-recovery' | 'lesson-recall' | 'lesson-proposal';
+    stage: 'mcp-grant' | 'mcp-fetch' | 'mcp-compare' | 'mcp-apply' | 'mcp-sync' | 'before-turn' | 'mcp-recovery' | 'lesson-recall' | 'lesson-proposal';
     durationMs: number | null;
     outcome: 'resolved' | 'rejected';
 };
@@ -204,7 +204,10 @@ export async function claudeRemote(opts: {
         channelRequestId?: string,
         latency?: ClaudeTurnLatencyInput,
     } | null>,
+    checkpointGuidance?: () => Promise<string>,
     beforeTurn?: () => Promise<CheckpointTurnPreparation | void>,
+    /** specs/checkpoint-local-history — records the folder a finished turn left behind. */
+    afterTurn?: () => Promise<void>,
     prepareChannelExecution?: (requestId: string) => Promise<boolean>,
     beginChannelExecution?: (requestId: string) => boolean,
     completeTurn?: CheckpointSessionComposition['completeTurn'],
@@ -467,6 +470,7 @@ async function runClaudeRemote(
         orchestratorPrompt,
         workerDelegationPrompt: workerAgents.delegationPrompt,
         connectorGuidance,
+        checkpointGuidance: await opts.checkpointGuidance?.(),
         saycodeSystemPromptEnabled: initial.mode.saycodeSystemPromptEnabled,
         saycodePromptBlocks: initial.mode.saycodePromptBlocks,
     });
@@ -1070,6 +1074,12 @@ function readTurnText(content: unknown): string {
 
                 // Without checkpoint protection, the provider result is the
                 // completion boundary. Protected turns must apply first.
+                if (opts.afterTurn) {
+                    // A missing record only makes a later restore more cautious; never fail the turn.
+                    await opts.afterTurn().catch((error) => {
+                        logger.debug('[claudeRemote] local history record after turn failed', error);
+                    });
+                }
                 finishLessonReview();
                 // Send ready event
                 opts.onReady();
@@ -1107,7 +1117,7 @@ function readTurnText(content: unknown): string {
                     } else {
                         preemptReview();
                         const preparation = preparationFor(next.latency);
-                        if (mcpConfigSynchronizer) await measurePreparation(preparation, 'mcp-sync', () => mcpConfigSynchronizer.sync());
+                        if (mcpConfigSynchronizer) await measurePreparation(preparation, 'mcp-sync', () => mcpConfigSynchronizer.sync(preparation ? (stage, action) => measurePreparation(preparation, stage, action) : undefined));
                         try {
                             const nextTurn = opts.beforeTurn ? await measurePreparation(preparation, 'before-turn', opts.beforeTurn) : undefined;
                             if (nextTurn?.providerPath && nextTurn.providerPath !== providerPath) {

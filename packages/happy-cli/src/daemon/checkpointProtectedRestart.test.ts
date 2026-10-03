@@ -1,6 +1,35 @@
 import { describe, expect, it, vi } from 'vitest';
 import { SandboxConfigSchema } from '@/persistence';
-import { restartCheckpointProtectedSession } from './checkpointProtectedRestart';
+import { createCheckpointRestartQueue, restartCheckpointProtectedSession } from './checkpointProtectedRestart';
+
+describe('checkpoint restart queue', () => {
+    it('shares matching modes but serializes a disable after protected refresh', async () => {
+        const restart = createCheckpointRestartQueue();
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        const order: string[] = [];
+        const refresh = restart('session', true, async () => { order.push('refresh'); await gate; });
+        const duplicate = restart('session', true, async () => { throw new Error('duplicate'); });
+        const disable = restart('session', false, async () => { order.push('disable'); });
+        expect(duplicate).toBe(refresh);
+        expect(order).toEqual(['refresh']);
+        release();
+        await Promise.all([refresh, disable]);
+        expect(order).toEqual(['refresh', 'disable']);
+        await restart('session', true, async () => { order.push('fresh'); });
+        expect(order.at(-1)).toBe('fresh');
+    });
+
+    it('does not start a different mode after an uncertain restart failure', async () => {
+        const restart = createCheckpointRestartQueue();
+        const disable = vi.fn(async () => {});
+        const refresh = restart('session', true, async () => { throw new Error('unknown'); });
+        const queued = restart('session', false, disable);
+        await expect(refresh).rejects.toThrow('unknown');
+        await expect(queued).rejects.toThrow('unknown');
+        expect(disable).not.toHaveBeenCalled();
+    });
+});
 
 describe('restartCheckpointProtectedSession', () => {
     const binding = {
@@ -71,6 +100,19 @@ describe('restartCheckpointProtectedSession', () => {
         })).rejects.toThrow('binding mismatch');
 
         expect(terminate).not.toHaveBeenCalled();
+    });
+
+    it('preserves the exact checkpoint and sandbox policy during protected refresh', async () => {
+        const resume = vi.fn(async () => ({ type: 'success', sessionId: binding.sessionId }));
+        await restartCheckpointProtectedSession(binding, {
+            resolveTarget: async () => ({ ...binding, pid: 0, active: false, knownStopped: true,
+                sandboxConfig, terminate: vi.fn() }),
+            isProcessAlive: () => false,
+            resume,
+        }, { preserveProtection: true });
+        expect(resume).toHaveBeenCalledWith(binding.sessionId, {
+            HAPPY_PROJECT_SANDBOX_CONFIG: JSON.stringify(sandboxConfig),
+        });
     });
 
     it('retries replacement spawn when the previous protected child is already stopped', async () => {

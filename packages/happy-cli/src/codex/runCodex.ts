@@ -39,7 +39,8 @@ import { resolveSessionSandboxPolicyMode } from '@/sandbox/sandboxPolicy';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
-import { MessageQueue2, type CollectedBatch, type PendingAttachment } from '@/utils/MessageQueue2';
+import { MessageQueue2, type CollectedBatch, type PendingAttachment, type QueueLatencyTrace } from '@/utils/MessageQueue2';
+import { captureCodexLatencyTrace, createCodexTurnLatency, type CodexLatencyStage } from './codexTurnLatency';
 import { ChannelPromptAcceptance, CHANNEL_ACK_DEADLINE_MS } from '@/channel/channelPromptAcceptance';
 import { enqueueChannelTurn } from '@/channel/channelTurnEnqueue';
 import { projectPath } from '@/projectPath';
@@ -174,6 +175,7 @@ const DEFAULT_CODEX_PERMISSION_MODE: PermissionMode = 'yolo';
 type ClaimedUserMessage = {
     message: UserMessage;
     attachmentsPromise: Promise<PendingAttachment[]>;
+    latencyTrace?: QueueLatencyTrace;
 };
 
 /**
@@ -550,7 +552,8 @@ export async function runCodex(opts: {
         lessonProposalTurn.cancel();
     };
 
-    const handleUserMessage = createSerialAsyncHandler<ClaimedUserMessage>(async ({ message, attachmentsPromise }) => {
+    let activeLatency: ReturnType<typeof createCodexTurnLatency> = null;
+    const handleUserMessage = createSerialAsyncHandler<ClaimedUserMessage>(async ({ message, attachmentsPromise, latencyTrace }) => {
         const delegatedDifficultyRoutingMessage = isDelegatedDifficultyRoutingMessage(message);
 
         const attachmentsForThisMessage = await attachmentsPromise;
@@ -721,6 +724,7 @@ export async function runCodex(opts: {
                 mode: enhancedMode,
                 queue: messageQueue,
                 attachments: attachmentsForThisMessage,
+                latencyTrace,
                 // Travels beside the mode so the engine boundary below can commit
                 // this decision — and so a batch keeps every merged request's id.
                 requestIds: routed
@@ -786,10 +790,11 @@ export async function runCodex(opts: {
             logger.debug('[managed] Refusing a user turn that did not come from an admitted run');
             return;
         }
+        const latencyTrace = captureCodexLatencyTrace(message.meta?.latencyTrace, diagnostic => session.sendTurnLatency(diagnostic));
         const accept = () => {
             preemptLessonReview();
             const attachmentsPromise = session.drainAttachmentsForUserMessage();
-            return handleUserMessage({ message, attachmentsPromise });
+            return handleUserMessage({ message, attachmentsPromise, latencyTrace });
         };
         return runtimeGate ? runtimeGate.admit(accept).catch(error => {
             logger.warn('[Codex] User input admission refused', { errorName: error instanceof Error ? error.name : typeof error });
@@ -1213,6 +1218,8 @@ export async function runCodex(opts: {
         admit: admitRpc,
         client: {
             steerTurn: async (text) => {
+                // Conservatively invalidate exclusive attribution even if steering later fails.
+                activeLatency?.steered();
                 const frame = activeLessonTurn;
                 preemptLessonReview();
                 if (!frame?.acceptingSteer) {
@@ -1460,6 +1467,9 @@ export async function runCodex(opts: {
 
     // Event handler: same EventMsg types as the legacy MCP server — no changes needed
     client.setEventHandler((msg) => {
+        if (msg.type === 'agent_message_delta' && typeof msg.delta === 'string') activeLatency?.text(msg.delta);
+        else if (msg.type === 'agent_message' && typeof msg.message === 'string') activeLatency?.text(msg.message);
+        else if (['task_started', 'agent_reasoning_delta', 'agent_reasoning', 'exec_command_begin', 'mcp_tool_call_begin'].includes(msg.type)) activeLatency?.activity();
         // Text deltas arrive many times per second. Logging their full body would
         // stringify every preview frame and duplicate the answer in debug logs.
         if (msg.type !== 'agent_message_delta') {
@@ -1659,6 +1669,7 @@ export async function runCodex(opts: {
         browserHostContinues: process.env.HAPPY_AUTOMATION_BROWSER_CONTINUATION === '1',
         ...(runtimeGate ? { admitTool: <T,>(work: () => Promise<T>) => runtimeGate.admit(work, 'writer') } : {}),
         ...(accountToken !== null ? { proposeLesson: lessonProposalTurn.submit } : {}),
+        checkpointReader: checkpointComposition.agentReader,
         protectedBashCwd: checkpointComposition.protectedBashCwd,
         trackProtectedBashProcess: checkpointComposition.trackProtectedWriter,
     });
@@ -1779,21 +1790,32 @@ export async function runCodex(opts: {
 
     try {
         logger.debug('[codex]: client.connect begin');
-        await client.connect();
-        logger.debug('[codex]: client.connect done');
+        try {
+            await client.connect();
+            logger.debug('[codex]: client.connect done');
 
-        if (opts.resumeThreadId) {
-            await resumeExistingThread({
-                client,
-                session,
-                messageBuffer,
-                threadId: opts.resumeThreadId,
-                cwd: process.cwd(),
-                mcpServers: mcpConfigSynchronizer.mcpServers,
-                developerInstructions: currentDeveloperInstructions,
-            });
-            await reportMcpStatuses();
-            appendSystemPromptInjected = true;
+            if (opts.resumeThreadId) {
+                await resumeExistingThread({
+                    client,
+                    session,
+                    messageBuffer,
+                    threadId: opts.resumeThreadId,
+                    cwd: process.cwd(),
+                    mcpServers: mcpConfigSynchronizer.mcpServers,
+                    developerInstructions: currentDeveloperInstructions,
+                });
+                await reportMcpStatuses();
+                appendSystemPromptInjected = true;
+            }
+        } catch (error) {
+            // The daemon spawns this process with stdio ignored, so the caller's
+            // stderr report reaches no one. Record the reason here; the finally
+            // below flushes it before the session is closed.
+            logger.warn('[codex]: Codex failed to start', error);
+            const failureMessage = `Codex failed to start: ${error instanceof Error ? error.message : String(error)}`;
+            messageBuffer.addMessage(failureMessage, 'status');
+            session.sendSessionEvent({ type: 'message', message: failureMessage });
+            throw error;
         }
 
         const forkCodexThreadId = process.env.HAPPY_FORK_CODEX_THREAD_ID;
@@ -1926,6 +1948,10 @@ export async function runCodex(opts: {
              * turn actually takes.
              */
             codexPendingRequestId = message.channelRequestId ?? null;
+            const latency = createCodexTurnLatency(message, diagnostic => session.sendTurnLatency(diagnostic));
+            activeLatency = latency;
+            const measure = <T>(stage: CodexLatencyStage, action: () => T | Promise<T>): T | Promise<T> =>
+                latency ? latency.measure(stage, action) : action();
 
             try {
                 /*
@@ -1940,9 +1966,10 @@ export async function runCodex(opts: {
                 const owningReviewSignal = lessonReviewAbort.signal;
                 const owningForegroundSignal = abortController.signal;
 
-                await authRecovery.beginTurn();
+                await measure('auth', () => authRecovery.beginTurn());
                 if (shouldExit) { authRecovery.endTurn(); break; }
                 if (shouldHandleCodexClear(message) && authRecovery.status().state !== 'failed') {
+                    latency?.finish('control');
                     authRecovery.endTurn();
                     logger.debug('[Codex] Handling /clear command - resetting Codex thread state');
                     /*
@@ -1992,14 +2019,17 @@ export async function runCodex(opts: {
                         // materialize its workspace) before codex is wrapped and spawned. On Linux bwrap
                         // binds mount points into the writable root the moment it starts, so a workspace
                         // prepared afterwards would be materialized into a non-empty directory.
-                        await client.prepareProtectedTurn();
+                        await measure('checkpoint', () => client.prepareProtectedTurn());
                         if (!client.isConnected) {
                             const expectedThreadId = client.threadId;
-                            const resumed = await client.reconnectAndResumeThread();
+                            const resumed = await measure('thread-resume', () => client.reconnectAndResumeThread());
                             if (expectedThreadId && !resumed) {
                                 throw new Error('checkpoint protection could not resume the Codex thread');
                             }
                         }
+                    } else if (checkpointComposition.localHistory) {
+                        // specs/checkpoint-local-history — the record is the dispatch gate; Codex keeps running.
+                        await measure('checkpoint', () => checkpointComposition.localHistory!.beforeTurn());
                     }
                     // Map permission mode to approval policy and sandbox.
                     // With app-server, these are per-turn — no restart needed on mode change.
@@ -2028,12 +2058,14 @@ export async function runCodex(opts: {
                         continue;
                     }
 
-                    const mcpSync = await mcpConfigSynchronizer.sync({
+                    const checkpointGuidance = await checkpointComposition.agentReader?.guidance();
+                    const mcpSync = await measure('mcp-sync', () => mcpConfigSynchronizer.sync({
                         threadId: client.threadId,
                         resumeThread: client.threadId
                             ? async ({ threadId, mcpServers }) => {
                                 const nextDeveloperInstructions = buildCodexDeveloperInstructions({
                                     connectorGuidance: buildConnectorGuidance(mcpServers),
+                                    checkpointGuidance,
                                     agentOrchestrationPrompt: AGENT_ORCHESTRATION_SYSTEM_PROMPT,
                                     mode: message.mode,
                                 });
@@ -2047,27 +2079,29 @@ export async function runCodex(opts: {
                                 return resumed;
                             }
                             : undefined,
-                    });
+                    }));
 
                     const nextDeveloperInstructions = buildCodexDeveloperInstructions({
                         connectorGuidance: buildConnectorGuidance(mcpSync.mcpServers),
+                        checkpointGuidance,
                         agentOrchestrationPrompt: AGENT_ORCHESTRATION_SYSTEM_PROMPT,
                         mode: message.mode,
                     });
                     if (client.threadId && nextDeveloperInstructions !== currentDeveloperInstructions) {
-                        await client.resumeThread({
-                            threadId: client.threadId,
+                        const threadId = client.threadId;
+                        await measure('thread-resume', () => client.resumeThread({
+                            threadId,
                             writableRoots: additionalDirectories,
                             mcpServers: mcpSync.mcpServers,
                             developerInstructions: nextDeveloperInstructions ?? null,
-                        });
+                        }));
                         currentDeveloperInstructions = nextDeveloperInstructions;
                     }
 
                     // Start thread on first turn (thread persists across mode changes)
                     let activeThreadId = client.threadId;
                     if (!client.hasActiveThread() || !activeThreadId) {
-                        const startedThread = await client.startThread({
+                        const startedThread = await measure('thread-start', () => client.startThread({
                             model: message.mode.model,
                             cwd: process.cwd(),
                             approvalPolicy: executionPolicy.approvalPolicy,
@@ -2075,7 +2109,7 @@ export async function runCodex(opts: {
                             writableRoots: additionalDirectories,
                             mcpServers: mcpSync.mcpServers,
                             developerInstructions: nextDeveloperInstructions,
-                        });
+                        }));
                         activeThreadId = startedThread.threadId;
                         currentDeveloperInstructions = nextDeveloperInstructions;
                         session.updateMetadata((currentMetadata) => ({
@@ -2084,13 +2118,13 @@ export async function runCodex(opts: {
                         }));
                     }
 
-                    const runtimeRecovery = await mcpRuntimeRecovery.recoverBeforeTurn({
+                    const runtimeRecovery = await measure('mcp-recovery', () => mcpRuntimeRecovery.recoverBeforeTurn({
                         threadId: activeThreadId,
                         mcpServers: mcpSync.mcpServers,
                         expectedServerNames: listConfiguredExternalServices(mcpSync.mcpServers),
                         developerInstructions: currentDeveloperInstructions,
-                    });
-                    await reportMcpStatuses();
+                    }));
+                    await measure('mcp-status', reportMcpStatuses);
                     if (runtimeRecovery.status !== 'ready') {
                         const metadataStatuses = buildCodexMcpRecoveryMetadataStatuses({
                             recovery: runtimeRecovery,
@@ -2112,6 +2146,7 @@ export async function runCodex(opts: {
 
                     const goalCommand = parseCodexGoalCommand(message.message);
                     if (goalCommand && await handleCodexGoalCommand(goalCommand, activeThreadId)) {
+                        latency?.finish('control');
                         continue;
                     }
 
@@ -2120,9 +2155,9 @@ export async function runCodex(opts: {
                         && message.mode.appendSystemPrompt
                         && !appendSystemPromptInjected,
                     );
-                    const imageInputs = await prepareCodexImageInputItems(message.attachments, {
+                    const imageInputs = await measure('images', () => prepareCodexImageInputItems(message.attachments, {
                         sessionId: session.sessionId,
-                    });
+                    }));
                     if ((message.attachments?.length ?? 0) > 0) {
                         logger.debug('[Codex] Prepared image inputs for turn', {
                             inputCount: imageInputs.inputItems.length,
@@ -2152,14 +2187,14 @@ export async function runCodex(opts: {
                     };
                     activeLessonTurn = lessonFrame;
                     const lessonRecall = lessonTurn
-                        ? await lessonTurn.recall({
+                        ? await measure('lesson-recall', () => lessonTurn.recall({
                             turnId: codexTurnId,
                             query: message.message,
                             signal: owningReviewSignal,
-                        })
+                        }))
                         : null;
                     let reviewInstruction = lessonSessionKind === 'foreground' && !owningReviewSignal.aborted && lessonReview?.prepareReviewTurn
-                        ? await lessonProposalTurn.prepare(codexTurnId, () => lessonReview.prepareReviewTurn!()) : '';
+                        ? await measure('lesson-proposal', () => lessonProposalTurn.prepare(codexTurnId!, () => lessonReview.prepareReviewTurn!())) : '';
                     if (owningForegroundSignal.aborted) { lessonProposalTurn.cancel(); continue; }
                     if (owningReviewSignal.aborted) { lessonProposalTurn.cancel(); reviewInstruction = ''; }
                     const turnPrompt = (reviewInstruction ? `${reviewInstruction}\n\n` : '') + buildCodexTurnPrompt({
@@ -2193,6 +2228,7 @@ export async function runCodex(opts: {
                      */
                     const appliedRoute = difficultyRoutingCommitter.commitApplied(message.requestIds, codexTurnId!);
                     routingApplied = true;
+                    latency?.submitted();
                     const result = await client.sendTurnAndWait(turnPrompt, {
                         model: appliedRoute ? appliedRoute.model : message.mode.model,
                         approvalPolicy: executionPolicy.approvalPolicy,
@@ -2202,7 +2238,14 @@ export async function runCodex(opts: {
                             ? (isSupportedCodexReasoningEffort(appliedRoute.effort) ? appliedRoute.effort : undefined)
                             : message.mode.effort,
                         extraInputItems: imageInputs.inputItems,
+                    }).finally(async () => {
+                        // Recorded even after a failed turn: it may already have changed files. A
+                        // missing record only makes a later restore more cautious.
+                        await checkpointComposition.localHistory?.afterTurn().catch((error) => {
+                            logger.debug('[Codex] local history record after turn failed', error);
+                        });
                     });
+                    latency?.finish(result.aborted ? 'cancelled' : 'completed');
                     lessonFrame.acceptingSteer = false;
                     if (lessonFrame.pendingSteer) preemptLessonReview();
                     if (includeAppendSystemPrompt) {
@@ -2262,6 +2305,7 @@ export async function runCodex(opts: {
                     }
                     codexTurnCounter += 1;
                 } catch (error) {
+                    latency?.finish('failed');
                     preemptLessonReview();
                     // Only actual errors reach here (process crash, connection failure, etc.)
                     // No task_complete/turn_aborted was ever received for this turn, so the
@@ -2344,6 +2388,8 @@ export async function runCodex(opts: {
                     logActiveHandles('after-turn');
                 }
             } finally {
+                latency?.finish(abortController.signal.aborted ? 'cancelled' : 'failed');
+                if (activeLatency === latency) activeLatency = null;
                 runtimeGate?.endTurn();
             }
         }

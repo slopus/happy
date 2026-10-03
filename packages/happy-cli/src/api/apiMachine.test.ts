@@ -8,6 +8,8 @@ import { logger } from '@/ui/logger';
 import type { Machine } from './types';
 import { CHANNEL_SUPPORT_CAPABILITY } from '@/channel/channelSupportCapability';
 import { AI_AUTH_SELECTION_CAPABILITY } from '@/daemon/sessionEnv';
+import { createAiCredentialRuntime } from '@/daemon/aiCredentialRuntime';
+import { join } from 'node:path';
 
 const {
     mockIo,
@@ -432,11 +434,14 @@ describe('ApiMachineClient socket reconnection', () => {
             status: vi.fn(),
             list: vi.fn(),
             preview: vi.fn(),
+            diff: vi.fn(),
+            retireWorktree: vi.fn(),
             execute: vi.fn(),
             cancel: vi.fn(),
             retry: vi.fn(),
             decision: vi.fn(),
             restart: vi.fn(),
+            refresh: vi.fn(),
         };
 
         client.setRPCHandlers({
@@ -450,7 +455,7 @@ describe('ApiMachineClient socket reconnection', () => {
 
         for (const method of Object.keys(checkpoint) as Array<keyof typeof checkpoint>) {
             expect(manager.registerHandler).toHaveBeenCalledWith(
-                `checkpoint:${method}`,
+                `checkpoint:${method === 'retireWorktree' ? 'retire-worktree' : method}`,
                 checkpoint[method],
             );
         }
@@ -496,6 +501,53 @@ describe('ApiMachineClient socket reconnection', () => {
         expect(spawnSession).toHaveBeenCalledWith(expect.objectContaining({
             additionalDirectories: ['/home/user/frontend'],
         }));
+    });
+
+    it('exports a Codex account pool through the credential RPC when optional settings are absent', async () => {
+        const accounts = { version: 3, activeIndex: 0, accounts: [
+            { accountId: 'account-1', refreshToken: 'fixture-refresh', addedAt: 1, lastUsed: 1 },
+        ] };
+        const poolPath = join('/fixed/codex', 'multi-auth', 'openai-codex-accounts.json');
+        const readFile = vi.fn(async (filePath: string) => {
+            if (filePath === join('/global/node_modules', 'codex-multi-auth', 'package.json')) {
+                return JSON.stringify({ version: '2.16.0' });
+            }
+            if (filePath === poolPath) return JSON.stringify(accounts);
+            throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+        });
+        const writeFile = vi.fn(async () => undefined);
+        const runtime = createAiCredentialRuntime({
+            homeDir: '/home/operator', now: () => 0, env: { CODEX_HOME: '/fixed/codex' },
+            execFile: vi.fn(async (command: string) => ({
+                stdout: command === 'npm' ? '/global/node_modules\n' : '2.16.0\n', stderr: '',
+            })),
+            readFile, writeFile, readdir: vi.fn(async () => []),
+            mkdir: vi.fn(async () => undefined), rename: vi.fn(async () => undefined),
+            chmod: vi.fn(async () => undefined), rm: vi.fn(async () => undefined),
+            makeTempDir: vi.fn(async () => '/unused'),
+            supervisor: {
+                enable: vi.fn(async () => undefined), stop: vi.fn(async () => undefined),
+                status: vi.fn(() => ({ state: 'stopped' as const, lastErrorKind: null })),
+            },
+        });
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.setRPCHandlers({
+            spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn(),
+            portRegistry: {} as any, aiCredentialRuntime: runtime,
+        });
+        const handler = (client as any).rpcHandlerManager.registerHandler.mock.calls
+            .find(([method]: [string]) => method === 'ai-credential:export')?.[1];
+
+        expect(handler).toBeTypeOf('function');
+        const captured = await handler({ provider: 'codex' });
+
+        expect(captured.provider).toBe('codex');
+        expect(JSON.parse(captured.payload)).toEqual({
+            version: 1, kind: 'codex-multi-auth', packageVersion: '2.16.0', accounts,
+            settings: { version: 1, pluginConfig: {} },
+        });
+        expect(readFile).not.toHaveBeenCalledWith(join('/fixed/codex', 'auth.json'));
+        expect(writeFile).not.toHaveBeenCalled();
     });
 
     it('exposes additive credential capability without receiving credentials', async () => {
@@ -1160,6 +1212,36 @@ describe('ApiMachineClient socket reconnection', () => {
             protocolVersion: protocolVersion ?? AUTOMATION_PROTOCOL_VERSION,
         });
         expect(mockSocket.emitWithAck).toHaveBeenCalledWith('machine-update-metadata', expect.any(Object));
+        client.shutdown();
+    });
+
+    // Windows 정식 빌드는 세션만 Job 런처로 묶는다. Desktop 이 스크립트·GitHub 트리거를
+    // 막을 수 있도록 서버 자동화 광고에 hostCommands:false 를 싣는다.
+    it.each([
+        { trial: true, expected: false },
+        { trial: false, expected: undefined },
+    ])('advertises hostCommands=$expected with server-backed automations (trial=$trial)', async ({ trial, expected }) => {
+        mockSocket.emitWithAck.mockImplementation(async (event: string, data: any) => {
+            if (event === 'automation-key-register') return { ok: true, value: { keyVersion: 4 } };
+            if (event === 'machine-update-metadata') {
+                return { result: 'success', version: 1, metadata: data.metadata };
+            }
+            return { result: 'success' };
+        });
+        const machine = makeMachine();
+        const client = new ApiMachineClient('fake-token', machine);
+        if (trial) client.setWindowsStandaloneTrial();
+        (client as any).setAutomationKey({
+            version: 1,
+            publicKey: new Uint8Array(32).fill(7),
+            secretKey: new Uint8Array(32).fill(8),
+            registeredKeyVersion: 3,
+        }, vi.fn());
+        client.connect();
+
+        socketHandlers.connect![0]!();
+        await vi.waitFor(() => expect(machine.metadata?.automationSupport?.serverBacked).toBe(true));
+        expect(machine.metadata?.automationSupport?.hostCommands).toBe(expected);
         client.shutdown();
     });
 

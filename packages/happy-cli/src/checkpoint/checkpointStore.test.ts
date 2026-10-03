@@ -1,9 +1,11 @@
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, stat, symlink, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, parse, relative } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { checkpointCoverageMatcher } from './checkpointCoverage';
+import { withCheckpointStoreLock } from './checkpointStoreLock';
 import {
     checkpointOperationRefPrefix,
     CheckpointStore,
@@ -329,5 +331,139 @@ describe('CheckpointStore', () => {
 
         expect(stdout.split('\n')).toContain('source.txt');
         expect(stdout.split('\n')).not.toContain('.env.raced');
+    });
+
+    // specs/checkpoint-local-history R2 — record the whole folder the agent works in, not a bounded
+    // manifest: a project over the old 100-file limit, its symlinks and its nested repositories.
+    describe('local-history work tree', () => {
+        const binding = () => ({ sessionId: 'session-1', projectId: 'project-1', worktreeId: null, projectPath });
+        const git = (args: string[]) => execFileAsync('git', [`--git-dir=${resolveCheckpointStoreLayout({ checkpointRoot, ...binding() }).gitDirectory}`, ...args]);
+        const recorded = async (checkpointId: string) => (await git(['ls-tree', '-r', '--name-only', checkpointId])).stdout.split('\n').filter(Boolean);
+
+        it('records every file of a project far over the old file limit, with symlinks', async () => {
+            for (let index = 0; index < 150; index += 1) await writeFile(join(projectPath, `file-${index}.txt`), `${index}\n`);
+            await symlink('file-0.txt', join(projectPath, 'link.txt'));
+
+            const snapshot = await new CheckpointStore(checkpointRoot).snapshotTurn({
+                ...binding(), operationId: 'turn-1', workTree: { maxFileBytes: 1024 },
+            });
+
+            const paths = await recorded(snapshot.checkpointId);
+            expect(paths).toHaveLength(151);
+            expect((await git(['ls-tree', snapshot.checkpointId, 'link.txt'])).stdout).toMatch(/^120000 blob /);
+        });
+
+        it('leaves files over the size cap and nested repositories unrecorded, and says so in coverage', async () => {
+            await writeFile(join(projectPath, 'small.txt'), 'small\n');
+            await writeFile(join(projectPath, 'large.bin'), Buffer.alloc(2048));
+            await mkdir(join(projectPath, 'nested'));
+            await execFileAsync('git', ['init', '--quiet', join(projectPath, 'nested')]);
+            await writeFile(join(projectPath, 'nested', 'inner.txt'), 'inner\n');
+
+            const snapshot = await new CheckpointStore(checkpointRoot).snapshotTurn({
+                ...binding(), operationId: 'turn-1', workTree: { maxFileBytes: 1024 },
+            });
+
+            const paths = await recorded(snapshot.checkpointId);
+            expect(paths).toContain('small.txt');
+            expect(paths).not.toContain('large.bin');
+            expect(paths.filter((path) => path.startsWith('nested'))).toEqual([]);
+            const body = (await git(['show', '-s', '--format=%b', snapshot.checkpointId])).stdout;
+            expect(body).toContain('saycode-local-history-v1');
+            expect(checkpointCoverageMatcher(body)?.('large.bin')).toBe(true);
+            expect(checkpointCoverageMatcher(body)?.('nested/inner.txt')).toBe(true);
+            expect(checkpointCoverageMatcher(body)?.('small.txt')).toBe(false);
+        });
+
+        it('follows the project ignore rules without touching the project repository', async () => {
+            await execFileAsync('git', ['init', '--quiet', projectPath]);
+            await writeFile(join(projectPath, '.gitignore'), 'dist/\n');
+            await mkdir(join(projectPath, 'dist'));
+            await writeFile(join(projectPath, 'dist', 'out.js'), 'built\n');
+            await writeFile(join(projectPath, 'source.ts'), 'source\n');
+            const gitEntries = async () => (await readdir(join(projectPath, '.git'), { recursive: true })).sort();
+            const indexMtime = async () => (await stat(join(projectPath, '.git', 'HEAD'))).mtimeMs;
+            const before = { entries: await gitEntries(), head: await indexMtime() };
+
+            const snapshot = await new CheckpointStore(checkpointRoot).snapshotTurn({
+                ...binding(), operationId: 'turn-1', workTree: { maxFileBytes: 1024 },
+            });
+
+            const paths = await recorded(snapshot.checkpointId);
+            expect(paths).toEqual(expect.arrayContaining(['.gitignore', 'source.ts']));
+            expect(paths).not.toContain('dist/out.js');
+            expect(paths.some((path) => path.startsWith('.git/'))).toBe(false);
+            expect({ entries: await gitEntries(), head: await indexMtime() }).toEqual(before);
+        });
+
+        it('keeps two worktrees of one project apart when they record at the same time', async () => {
+            const otherPath = join(fixtureRoot, 'worktree');
+            await mkdir(otherPath);
+            await writeFile(join(projectPath, 'a.txt'), 'main\n');
+            await writeFile(join(otherPath, 'a.txt'), 'worktree\n');
+            const main = { ...binding(), worktreeId: null };
+            const worktree = { ...binding(), worktreeId: 'worktree-1', projectPath: otherPath };
+            const store = new CheckpointStore(checkpointRoot);
+            const otherStore = new CheckpointStore(checkpointRoot);
+
+            const [first, second] = await Promise.all([
+                store.snapshotTurn({ ...main, operationId: 'turn-1', workTree: { maxFileBytes: 1024 } }),
+                otherStore.snapshotTurn({ ...worktree, operationId: 'turn-1', workTree: { maxFileBytes: 1024 } }),
+            ]);
+
+            expect((await git(['show', `${first.checkpointId}:a.txt`])).stdout).toBe('main\n');
+            expect((await git(['show', `${second.checkpointId}:a.txt`])).stdout).toBe('worktree\n');
+            const mainLayout = resolveCheckpointStoreLayout({ checkpointRoot, ...main });
+            const worktreeLayout = resolveCheckpointStoreLayout({ checkpointRoot, ...worktree });
+            expect(mainLayout.indexFile).not.toBe(worktreeLayout.indexFile);
+            expect((await git(['rev-parse', mainLayout.refName])).stdout.trim()).toBe(first.checkpointId);
+            expect((await git(['rev-parse', worktreeLayout.refName])).stdout.trim()).toBe(second.checkpointId);
+        });
+
+        it('initializes one shared store when many sessions record for the first time at once', async () => {
+            await writeFile(join(projectPath, 'a.txt'), 'one\n');
+            for (let round = 0; round < 3; round += 1) {
+                const root = join(fixtureRoot, `race-${round}`);
+                const results = await Promise.all(Array.from({ length: 8 }, (_unused, index) =>
+                    new CheckpointStore(root).snapshotTurn({
+                        ...binding(), sessionId: `session-${index}`, operationId: 'turn-1', workTree: { maxFileBytes: 1024 },
+                    })));
+                expect(results.filter((result) => /^[a-f0-9]{40,64}$/.test(result.checkpointId))).toHaveLength(8);
+            }
+        }, 60_000);
+
+        // A large first record hashes for a long time; it must not hold every other session's turn.
+        it('hashes a whole-folder record while another writer holds the store lock', async () => {
+            await new CheckpointStore(checkpointRoot).snapshotTurn({ ...binding(), operationId: 'init' });
+            for (let index = 0; index < 400; index += 1) {
+                await writeFile(join(projectPath, `file-${index}.txt`), `content ${index}\n`);
+            }
+            const last = (await execFileAsync('git', ['hash-object', join(projectPath, 'file-399.txt')])).stdout.trim();
+            const staging = join(checkpointRoot, 'store', 'checkpoint-staging');
+
+            const snapshot = new CheckpointStore(checkpointRoot).snapshotTurn({ ...binding(), operationId: 'turn-1', workTree: { maxFileBytes: 1024 } });
+            await expect.poll(() => readdir(staging).then((names) => names.length, () => 0), { timeout: 10_000 }).toBeGreaterThan(0);
+            await withCheckpointStoreLock(checkpointRoot, async () => {
+                await expect.poll(() => git(['cat-file', '-e', last]).then(() => true, () => false), { timeout: 10_000 }).toBe(true);
+            });
+            expect((await git(['show', `${(await snapshot).checkpointId}:file-399.txt`])).stdout).toBe('content 399\n');
+            expect(await readdir(staging)).toEqual([]);
+        }, 30_000);
+
+        it('keeps a per-binding index so later turns only rehash what changed', async () => {
+            await writeFile(join(projectPath, 'a.txt'), 'one\n');
+            const store = new CheckpointStore(checkpointRoot);
+            const first = await store.snapshotTurn({ ...binding(), operationId: 'turn-1', workTree: { maxFileBytes: 1024 } });
+            const layout = resolveCheckpointStoreLayout({ checkpointRoot, ...binding() });
+            expect((await stat(layout.indexFile)).isFile()).toBe(true);
+
+            const unchanged = await store.snapshotTurn({ ...binding(), operationId: 'turn-2', workTree: { maxFileBytes: 1024 } });
+            await writeFile(join(projectPath, 'a.txt'), 'two\n');
+            const changed = await store.snapshotTurn({ ...binding(), operationId: 'turn-3', workTree: { maxFileBytes: 1024 } });
+
+            expect(unchanged).toEqual({ checkpointId: first.checkpointId, created: false });
+            expect(changed.created).toBe(true);
+            expect((await git(['show', `${changed.checkpointId}:a.txt`])).stdout).toBe('two\n');
+        });
     });
 });

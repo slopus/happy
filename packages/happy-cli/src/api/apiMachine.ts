@@ -1008,11 +1008,14 @@ export class ApiMachineClient {
             this.rpcHandlerManager.registerHandler('checkpoint:status', checkpoint.status);
             this.rpcHandlerManager.registerHandler('checkpoint:list', checkpoint.list);
             this.rpcHandlerManager.registerHandler('checkpoint:preview', checkpoint.preview);
+            if (checkpoint.retireWorktree) this.rpcHandlerManager.registerHandler('checkpoint:retire-worktree', checkpoint.retireWorktree);
+            if (checkpoint.diff) this.rpcHandlerManager.registerHandler('checkpoint:diff', checkpoint.diff);
             this.rpcHandlerManager.registerHandler('checkpoint:execute', checkpoint.execute);
             this.rpcHandlerManager.registerHandler('checkpoint:cancel', checkpoint.cancel);
             this.rpcHandlerManager.registerHandler('checkpoint:retry', checkpoint.retry);
             this.rpcHandlerManager.registerHandler('checkpoint:decision', checkpoint.decision);
             this.rpcHandlerManager.registerHandler('checkpoint:restart', checkpoint.restart);
+            if (checkpoint.refresh) this.rpcHandlerManager.registerHandler('checkpoint:refresh', checkpoint.refresh);
         }
 
         // Scheduled automations CRUD (specs: daemon-scheduled-automations).
@@ -1081,6 +1084,7 @@ export class ApiMachineClient {
                 initialPrompt,
                 exitAfterFirstTurn,
                 browserContinuation,
+                browserAttestation,
                 aiAuthSelection,
             } = params || {};
             logger.debug(`[API MACHINE] Spawning session: dir=${directory}, hasUserCreds=${!!(happyToken && happySecret)}`);
@@ -1145,6 +1149,9 @@ export class ApiMachineClient {
             if (browserContinuation && !exitAfterFirstTurn) {
                 throw new Error('Browser continuation is only for a run-once session');
             }
+            if (browserAttestation !== undefined && (typeof browserAttestation !== 'string' || !browserAttestation || browserAttestation.length > 4096)) {
+                throw new Error('Browser attestation must be a string of at most 4096 characters');
+            }
 
             const result = await spawnSession({
                 directory,
@@ -1174,6 +1181,7 @@ export class ApiMachineClient {
                 initialPrompt,
                 exitAfterFirstTurn,
                 ...(browserContinuation ? { browserContinuation: true } : {}),
+                ...(browserAttestation ? { browserAttestation } : {}),
                 aiAuthSelection: validAiAuthSelection,
             });
 
@@ -3037,6 +3045,11 @@ export class ApiMachineClient {
         this.serverAutomationSyncInFlight = sync;
     }
 
+    /** The Windows standalone runtime fences sessions only; script gates and GitHub triggers run outside its Job. */
+    private automationHostCommandsField(): { hostCommands?: false } {
+        return this.windowsStandaloneTrial ? { hostCommands: false } : {};
+    }
+
     private async registerAutomationKey(): Promise<void> {
         this.automationLegacyFallbackEnabled = false;
         const key = this.automationKey;
@@ -3069,6 +3082,7 @@ export class ApiMachineClient {
                 keyVersion,
                 sessionFollowup: true,
                 protocolVersion: this.automationProtocolVersion,
+                ...this.automationHostCommandsField(),
             },
         }));
     }
@@ -3932,6 +3946,7 @@ export class ApiMachineClient {
                         ...(this.automationServerKeyVersion !== null ? { keyVersion: this.automationServerKeyVersion } : {}),
                         sessionFollowup: true,
                         protocolVersion: this.automationProtocolVersion,
+                        ...this.automationHostCommandsField(),
                     },
                     autonomousQualityGateSupport: {
                         apiVersion: 1,

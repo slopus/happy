@@ -1,9 +1,9 @@
 import { realpath } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import {
-    CheckpointExclusionGuard,
-    resolveCheckpointProtectionCapability,
-} from '@/checkpoint/checkpointExclusionPolicy';
+    LOCAL_HISTORY_ALWAYS_EXCLUDED,
+    resolveCheckpointLocalHistoryCapability,
+} from '@/checkpoint/checkpointLocalHistory';
 import type { CheckpointRpcSessionAuthority } from '@/checkpoint/checkpointRpc';
 import { CheckpointProtectionStateStore } from '@/checkpoint/checkpointProtectionState';
 import { readCheckpointSpawnContext } from '@/checkpoint/checkpointSpawnContext';
@@ -14,6 +14,7 @@ export async function resolveCheckpointSessionAuthority(input: {
     trackedSession: TrackedSession | undefined;
     checkpointRoot: string;
     platform: NodeJS.Platform;
+    isProcessAlive?: (pid: number) => boolean;
 }): Promise<CheckpointRpcSessionAuthority | null> {
     const tracked = input.trackedSession;
     if (
@@ -40,12 +41,13 @@ export async function resolveCheckpointSessionAuthority(input: {
             pendingDecision: null,
             excludedPaths: [],
             excludedPatterns: [],
+            canRestoreHistory: false,
         };
     }
 
     const flavor = tracked.happySessionMetadataFromLocalWebhook?.flavor;
     const provider = flavor === 'claude' ? 'claude-remote' : flavor ?? 'unknown';
-    const capability = resolveCheckpointProtectionCapability({
+    const capability = resolveCheckpointLocalHistoryCapability({
         platform: input.platform,
         provider,
     });
@@ -70,16 +72,15 @@ export async function resolveCheckpointSessionAuthority(input: {
                 excludedPatterns: [],
             };
         }
-        const guard = await CheckpointExclusionGuard.create({
-            projectPath,
-            ...checkpointProtection,
-        });
+        // specs/checkpoint-local-history — the record's own coverage says what it left out; the
+        // current exclusions are the recording patterns, not a scan of the whole project.
         return {
             ...base,
             protection: { status: 'protected' },
+            mode: 'local-history',
             pendingDecision: persisted.pendingDecision,
-            excludedPaths: guard.manifest.excluded.map((entry) => entry.path),
-            excludedPatterns: guard.secretPatterns,
+            excludedPaths: [],
+            excludedPatterns: [...checkpointProtection.secretPatterns, ...LOCAL_HISTORY_ALWAYS_EXCLUDED],
         };
     } catch {
         return {

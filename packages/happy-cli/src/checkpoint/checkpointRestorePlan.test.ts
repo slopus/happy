@@ -31,6 +31,17 @@ describe('CheckpointRestorePlanner', () => {
         await rm(fixtureRoot, { recursive: true, force: true });
     });
 
+    it('never turns a historical symlink into a restorable regular-file operation', async () => {
+        await symlink('outside-target', join(projectPath, 'link.txt'));
+        const target = await new CheckpointStore(checkpointRoot).snapshotTurn({ ...binding, projectPath, operationId: 'symlink-target' });
+        await unlink(join(projectPath, 'link.txt'));
+        await writeFile(join(projectPath, 'link.txt'), 'agent regular file');
+        await new CheckpointLedger(checkpointRoot).recordMutation({ ...binding, projectPath, operationId: 'agent-edit',
+            mutationId: 'write-link', path: 'link.txt', action: 'written' });
+        expect((await new CheckpointRestorePlanner(checkpointRoot).plan({ ...binding, projectPath,
+            checkpointId: target.checkpointId })).entries).toEqual([{ path: 'link.txt', action: 'conflict', reason: 'unsafe-path' }]);
+    });
+
     it('skips a file that the user edited after the recorded agent write', async () => {
         const store = new CheckpointStore(checkpointRoot);
         const ledger = new CheckpointLedger(checkpointRoot);

@@ -65,6 +65,24 @@ describe('buildResumeLaunch', () => {
         });
     });
 
+    // A thread exists only after the first turn and is dropped on context reset,
+    // so a missing ID does not by itself mean Codex failed to start.
+    it('explains every way a Codex session can lack a thread instead of only naming the missing ID', () => {
+        expect(() => buildResumeLaunch({
+            id: 'session-4',
+            active: false,
+            metadata: {
+                path: '/tmp/repo',
+                flavor: 'codex',
+                host: 'localhost',
+                homeDir: '/tmp',
+                happyHomeDir: '/tmp/.happy',
+                happyLibDir: '/tmp/happy',
+                happyToolsDir: '/tmp/happy/tools',
+            },
+        })).toThrow('Happy session session-4 has no Codex thread to resume (Codex never started a thread in it, or its context was reset). Start a new conversation.');
+    });
+
     it('rejects unsupported flavors', () => {
         expect(() => buildResumeLaunch({
             id: 'session-3',
