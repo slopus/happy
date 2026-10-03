@@ -3424,6 +3424,8 @@ export async function startDaemon(): Promise<void> {
         filterInheritedCredentials: input.filterInheritedCredentials,
         environmentVariables: input.environmentVariables,
         expectedConnectors: input.expectedConnectors,
+        // specs/agent-browser-shared-profiles — binds the run to its principal's browser profile on a shared machine.
+        ...(input.mcpSpawnContext?.browserAttestation ? { browserAttestation: input.mcpSpawnContext.browserAttestation } : {}),
       }, input.mcpSpawnContext);
       if (result.type === 'success') {
         return { ok: true, sessionId: result.sessionId };
