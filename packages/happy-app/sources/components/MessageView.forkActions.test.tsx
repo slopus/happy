@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import TestRenderer from 'react-test-renderer';
 
 import { MessageView } from './MessageView';
-import { TranscriptReadOnlyContext } from './TranscriptReadOnlyContext';
+import { TranscriptReadOnlyContext, TranscriptRestrictedContentContext } from './TranscriptReadOnlyContext';
+import * as Clipboard from 'expo-clipboard';
 
 const autoFold = vi.hoisted(() => ({
     getBody: vi.fn<(args: unknown) => any>(() => ({ kind: 'preview-text', text: 'preview' })),
@@ -106,12 +107,35 @@ describe('MessageView fork action feedback', () => {
             });
             expect(renderer.root.findByType('MarkdownView').props.sessionId).toBe('original-session');
             expect(renderer.root.findByType('MarkdownView').props.onOptionPress).toBeUndefined();
+            const copyId = message.kind === 'user-text' ? `message-user-copy-${message.id}` : `message-agent-copy-${message.id}`;
+            act(() => renderer.root.findByProps({ testID: copyId }).props.onPress());
+            expect(Clipboard.setStringAsync).toHaveBeenCalledWith(message.text);
+            expect(renderer.root.findAllByProps({ testID: `message-user-edit-${message.id}` })).toHaveLength(0);
             expect(renderer.root.findAllByType('Pressable').filter((node: any) =>
                 node.props.onLongPress || node.props.testID?.startsWith('message-agent-fork'))).toHaveLength(0);
             expect(renderer.root.findAllByType('TextInput')).toHaveLength(0);
             expect(onFork).not.toHaveBeenCalled();
             expect(onEdit).not.toHaveBeenCalled();
             act(() => renderer.unmount());
+        }
+    });
+
+    it('preserves inert external Markdown without restricting ordinary history formatting', () => {
+        for (const restricted of [false, true]) {
+            for (const folded of [false, true]) {
+                autoFold.getInfo.mockReturnValue(folded ? { charCount: 2000, lineCount: 20, preview: 'preview' } : null);
+                autoFold.getBody.mockReturnValue({ kind: 'markdown', text: agentMessage.text, markdownVariant: 'foldedPrompt' });
+                let renderer: any;
+                act(() => {
+                    renderer = TestRenderer.create(<TranscriptReadOnlyContext.Provider value={true}>
+                        <TranscriptRestrictedContentContext.Provider value={restricted}>
+                            <MessageView message={agentMessage} metadata={null} />
+                        </TranscriptRestrictedContentContext.Provider>
+                    </TranscriptReadOnlyContext.Provider>);
+                });
+                expect(renderer.root.findByType('MarkdownView').props.readOnly).toBe(restricted);
+                act(() => renderer.unmount());
+            }
         }
     });
 

@@ -19,17 +19,48 @@ import type { TranscriptReadingAdapter } from './transcriptReading';
 import { useSessionTextPreviews } from '@/sync/sessionTextStream';
 import { selectVisibleTextPreviews } from './sessionTextPreviewProjection';
 import { StreamingTextPreviews } from './StreamingTextPreviews';
+import type { Message } from '@/sync/typesMessage';
+import { TranscriptReadOnlyContext, TranscriptRestrictedContentContext } from './TranscriptReadOnlyContext';
 
 type ChatListProps = { session: Session; followLatestRequest?: number; desktopMainWidth?: number; turnAvatar?: { id: string; imageUrl: string | null; thumbhash?: string | null } };
-export const ChatList = React.memo((props: ChatListProps) => {
+function useTurnAvatar(desktopMainWidth?: number) {
     const desktopSkinId = useLocalSetting('desktopSkinId');
     const profile = useProfile();
-    const turnAvatar = Platform.OS === 'web' && desktopSkinId !== 'default' && (props.desktopMainWidth ?? 0) >= 920
+    return Platform.OS === 'web' && desktopSkinId !== 'default' && (desktopMainWidth ?? 0) >= 920
         ? { id: profile.id, imageUrl: getAvatarUrl(profile), thumbhash: profile.avatar?.thumbhash }
         : undefined;
+}
+
+export const ChatList = React.memo((props: ChatListProps) => {
+    const turnAvatar = useTurnAvatar(props.desktopMainWidth);
     const childProps = { ...props, turnAvatar };
     return props.session.metadata?.continuationOfSessionId
         ? <ContinuationChatList key={props.session.id} {...childProps} /> : <SingleSessionChatList {...childProps} />;
+});
+
+/** Application-owned histories use the same transcript without session RPC or a composer. */
+export const ReadOnlyChatList = React.memo((props: {
+    scopeId: string;
+    messages: Message[];
+    currentTurnActive: boolean;
+    desktopMainWidth?: number;
+}) => {
+    const turnAvatar = useTurnAvatar(props.desktopMainWidth);
+    const groupToolCalls = useSetting('groupToolCalls');
+    return <TranscriptReadOnlyContext.Provider value={true}><TranscriptRestrictedContentContext.Provider value={true}>
+        <ConversationTranscript
+            key={props.scopeId}
+            browserProgressScope={props.scopeId}
+            metadata={null}
+            messages={props.messages}
+            turnAvatar={turnAvatar}
+            groupToolCalls={groupToolCalls}
+            currentTurnActive={props.currentTurnActive}
+            showMessageActions={Platform.OS === 'web'}
+            visualTop={<ListHeader />}
+            visualBottom={<ChatFooter />}
+        />
+    </TranscriptRestrictedContentContext.Provider></TranscriptReadOnlyContext.Provider>;
 });
 
 const ContinuationChatList = React.memo((props: ChatListProps) => {

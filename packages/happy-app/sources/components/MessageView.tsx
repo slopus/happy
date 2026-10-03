@@ -1,5 +1,5 @@
 import * as React from "react";
-import { TranscriptReadOnlyContext } from "./TranscriptReadOnlyContext";
+import { TranscriptReadOnlyContext, TranscriptRestrictedContentContext } from "./TranscriptReadOnlyContext";
 import { ActivityIndicator, Image, View, Text, Pressable, Platform, TextInput } from "react-native";
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
@@ -187,6 +187,7 @@ function UserTextBlock(props: {
 }) {
   const { theme } = useUnistyles();
   const readOnly = React.useContext(TranscriptReadOnlyContext);
+  const restrictedContent = React.useContext(TranscriptRestrictedContentContext);
   const [isEditing, setIsEditing] = React.useState(false);
   const [editText, setEditText] = React.useState('');
   const [isSendingEdit, setIsSendingEdit] = React.useState(false);
@@ -209,8 +210,8 @@ function UserTextBlock(props: {
       props.onForkFromUserMessage(props.message.id, rewindPointId, visibleText, undefined, props.message.createdAt);
     }
   }, [props.message.createdAt, props.message.id, props.onForkFromUserMessage, rewindPointId, visibleText, readOnly]);
-  const showActions = !readOnly && Platform.OS === 'web' && props.showUserMessageActions;
-  const canEdit = showActions && props.canEditUserMessage && Boolean(props.onEditUserMessage);
+  const showActions = Platform.OS === 'web' && props.showUserMessageActions;
+  const canEdit = !readOnly && showActions && props.canEditUserMessage && Boolean(props.onEditUserMessage);
   const startEditing = React.useCallback(() => {
     if (readOnly) return;
     setEditText(visibleText);
@@ -364,7 +365,7 @@ function UserTextBlock(props: {
           (modeLabel || showActions) && styles.userContentWithModeMeta,
         ]}
       >
-        <MarkdownView markdown={parsed.text} onOptionPress={!readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
+        <MarkdownView readOnly={restrictedContent} markdown={parsed.text} onOptionPress={!readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
       </Pressable>
       {showActions && (
         <View style={[styles.userMessageActions, modeLabel && styles.userMessageActionsWithMode]}>
@@ -443,6 +444,7 @@ function AgentTextBlock(props: {
 }) {
   const { theme } = useUnistyles();
   const readOnly = React.useContext(TranscriptReadOnlyContext);
+  const restrictedContent = React.useContext(TranscriptRestrictedContentContext);
   const [isHovered, setIsHovered] = React.useState(false);
   const [isActionFocused, setIsActionFocused] = React.useState(false);
   const [hoveredAction, setHoveredAction] = React.useState<'copy' | 'fork' | null>(null);
@@ -474,7 +476,7 @@ function AgentTextBlock(props: {
     return null;
   }
 
-  const showActions = !readOnly && Platform.OS === 'web' && props.showActions;
+  const showActions = Platform.OS === 'web' && props.showActions;
   const canFork = !readOnly && Boolean(props.forkTarget && props.onForkFromMessage);
   const isForkingThisMessage = Boolean(
     props.forkTarget && props.forkingFromMessageId === props.forkTarget.messageId,
@@ -515,7 +517,7 @@ function AgentTextBlock(props: {
         onMouseLeave: () => setIsHovered(false),
       } as any) : {})}
     >
-      <MarkdownView markdown={props.message.text} onOptionPress={!readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
+      <MarkdownView readOnly={restrictedContent} markdown={props.message.text} onOptionPress={!readOnly && props.sessionId ? handleOptionPress : undefined} sessionId={props.sessionId} typography="chatMono" />
       {showActions && (
         <View
           testID={`message-agent-actions-${props.message.id}`}
@@ -612,6 +614,7 @@ function AutoFoldPromptBlock(props: {
 }) {
   const { theme } = useUnistyles();
   const readOnly = React.useContext(TranscriptReadOnlyContext);
+  const restrictedContent = React.useContext(TranscriptRestrictedContentContext);
   const [expanded, setExpanded] = React.useState(false);
   const toggleExpanded = React.useCallback(() => {
     setExpanded((value) => !value);
@@ -649,6 +652,7 @@ function AutoFoldPromptBlock(props: {
       <View style={styles.autoFoldBody}>
         {bodyRenderState.kind === 'markdown' ? (
           <MarkdownView
+            readOnly={restrictedContent}
             markdown={bodyRenderState.text}
             onOptionPress={readOnly ? undefined : props.onOptionPress}
             sessionId={props.sessionId}
