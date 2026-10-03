@@ -10,6 +10,18 @@ export default defineConfig({
             {
                 extends: true,
                 test: {
+                    name: 'integration-write-scope',
+                    include: ['src/daemon/sessionWriteScope.integration.test.ts'],
+                    setupFiles: ['./src/testing/unit.setup.ts'],
+                    fileParallelism: false,
+                    maxWorkers: 1,
+                    testTimeout: 180_000,
+                    hookTimeout: 60_000,
+                },
+            },
+            {
+                extends: true,
+                test: {
                     name: 'unit',
                     include: ['src/**/*.test.ts', 'scripts/**/*.test.ts'],
                     exclude: ['src/**/*.integration.test.ts', 'src/**/*.poc.test.ts'],

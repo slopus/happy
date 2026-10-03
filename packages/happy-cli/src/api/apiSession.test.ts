@@ -2984,6 +2984,34 @@ describe('ApiSessionClient v3 messages API migration', () => {
             mockSocket.emit.mockImplementation((event: string, callback: () => void) => { if(event==='ping')callback(); });
             await client.flush();expect(mockAxiosPost).toHaveBeenCalledTimes(2);await client.close();
         });
+        it('releases flush deadlines after an ACK so the owned process can exit immediately', async () => {
+            vi.useFakeTimers();
+            mockSocket.emit.mockImplementation((event: string, callback: () => void) => { if (event === 'ping') callback(); });
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            await client.flush();
+            await client.close();
+            expect(vi.getTimerCount()).toBe(0);
+        });
+        it('still bounds a flush whose ping ACK never arrives', async () => {
+            vi.useFakeTimers();
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            let settled = false;
+            const flush = client.flush().then(() => { settled = true; });
+            await vi.advanceTimersByTimeAsync(9999);
+            expect(settled).toBe(false);
+            await vi.advanceTimersByTimeAsync(1);
+            await flush;
+            await client.close();
+            expect(vi.getTimerCount()).toBe(0);
+        });
+        it('releases the ping deadline when the transport throws', async () => {
+            vi.useFakeTimers();
+            mockSocket.emit.mockImplementation((event: string) => { if (event === 'ping') throw new Error('fixture transport failed'); });
+            const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
+            await expect(client.flush()).rejects.toThrow('fixture transport failed');
+            await client.close();
+            expect(vi.getTimerCount()).toBe(0);
+        });
         it('requires a frozen cursor and waits for daemon confirmation before releasing scope preservation', async () => {
             const client = new ApiSessionClient('fake-token', session, undefined, { trackShutdownStorage: true });
             expect(await client.confirmShutdownCursor()).toBe(false);

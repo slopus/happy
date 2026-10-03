@@ -1,5 +1,37 @@
 # Dev Environments
 
+## Real standalone write-scope integration (opt-in)
+
+From the repository root, run `pnpm --filter @buzzni/happy-cli test:integration:write-scope`.
+Vitest's normal setup builds the CLI first. Install workspace dependencies and generate the
+Happy server Prisma client beforehand using the normal repository setup. The test needs
+Node 24, `codex` on PATH, and the existing sandbox dependencies. macOS is supported;
+Linux additionally requires working unprivileged bubblewrap namespaces. Opting in on an
+unsupported sandbox fails the test instead of treating an unprotected launch as success.
+Without `HAPPY_SCOPE_SERVER_INTEGRATION=1`, this project skips its native cases.
+
+The [fixture](../packages/happy-cli/src/testing/sessionWriteScopeFixture.ts) owns a source
+standalone server with real PGlite migrations, a new account/Happy home and a real daemon.
+Native Codex uses an isolated CODEX_HOME and a loopback-only deterministic Responses SSE
+endpoint. Child environments are allowlisted; no production server, user credential or
+paid model is used. Files are created only in a disposable narrow directory below the OS
+account home, which must be writable. No Expo app, release install or runtime pin is changed.
+
+The [cases](../packages/happy-cli/src/daemon/sessionWriteScope.integration.test.ts) verify
+real host-signed approval, storage/cursor drain, old parent exit, same-ID/thread/encryption
+resume and profile receipt. They also cover queued input exactly once, encrypted history,
+another session's PID/settings, forged reports, replay, revoke, discarded approval results
+reconciled through list, server disconnect and journal recovery across daemon incarnations.
+Recovery uses the existing encrypted, nonce-bound `resume-happy-session` machine RPC.
+
+A disconnected storage drain deliberately retains a blocked runtime. The fault case
+explicitly terminates only its owned fixture process group before restarting; that signal
+is fault-injection cleanup, **not** a successful drain or proof that all descendants' access
+was revoked. Recovered grants stay inactive and the resumed profile uses its saved baseline.
+Normal teardown requires clean server/daemon exit and observes session parent exit;
+unexpected forced cleanup fails the test. Native Claude, Linux execution of these server
+cases, dataKey account mode and published artifact acceptance remain separate evidence.
+
 This document covers the local environment manager in [`environments/environments.ts`](../environments/environments.ts).
 
 ## What `pnpm env:*` Does
