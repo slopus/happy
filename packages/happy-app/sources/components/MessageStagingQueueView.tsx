@@ -16,6 +16,7 @@ export function MessageStagingQueueView(props: {
     if (!props.messages.length) return null;
     const busy = props.session.state === 'running' || props.session.state === 'permission_required';
     const unavailableHint = busy && !props.session.supportsSteer ? t('messageQueue.steerUnavailable') : t('messageQueue.steerHint');
+    const sendNowLabel = busy ? t('messageQueue.steerDuringTurn') : t('messageQueue.steer');
     const sending = props.messages.some(m => m.status === 'sending');
     return <View style={styles.container} testID="message-staging-queue">
         <Text style={styles.heading}>{t('messageQueue.title')} · {props.messages.length}</Text>
@@ -27,11 +28,11 @@ export function MessageStagingQueueView(props: {
                     {message.status === 'failed' && <Text style={styles.secondary}>{t('messageQueue.failed')}</Text>}
                 </View>
                 {message.status === 'sending' ? <ActivityIndicator accessibilityLabel={t('messageQueue.sending')} color={theme.colors.textSecondary} /> : <>
-                    <Pressable accessibilityRole="button" accessibilityLabel={t('messageQueue.steer')} accessibilityHint={unavailableHint}
+                    <Pressable accessibilityRole="button" accessibilityLabel={sendNowLabel} accessibilityHint={unavailableHint}
                         disabled={sending || !canSendStagedMessageNow(message, props.session)} onPress={() => props.onSteer(message.id)}
                         style={({ pressed }) => [styles.action, pressed && styles.pressed, (sending || !canSendStagedMessageNow(message, props.session)) && styles.disabled]}>
                         <Ionicons name="return-down-forward-outline" size={18} color={theme.colors.textSecondary} />
-                        <Text style={styles.secondary}>{t('messageQueue.steer')}</Text>
+                        <Text style={styles.secondary}>{sendNowLabel}</Text>
                     </Pressable>
                     <Pressable accessibilityRole="button" accessibilityLabel={t('messageQueue.edit')} onPress={() => props.onEdit(message)} style={({ pressed }) => [styles.action, pressed && styles.pressed]}>
                         <Ionicons name="create-outline" size={18} color={theme.colors.textSecondary} />

@@ -17,7 +17,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHant: TranslationStructure = {
-    messageQueue: { title: '待傳送', hint: '目前任務結束後逐條傳送；請保持本機 Paws 開啟。', enqueue: '加入待傳送佇列（Tab）', enqueueSend: '加入待傳送佇列', steer: '現在傳送', steerUnavailable: '目前會話不支援執行中插話。請更新 Paws CLI 並建立新會話；排隊訊息仍可在目前任務結束後傳送。', steerHint: '插入目前 Codex 任務，不中斷；使用目前任務的模型與權限設定', sending: '傳送中…', failed: '傳送失敗或結果待確認，請先檢查聊天記錄再重試。', attachments: '附件', edit: '取回編輯', occupied: '請先傳送或清空輸入框中的草稿，再取回排隊訊息。' },
+    messageQueue: { title: '待傳送', hint: '目前任務結束後逐條傳送；請保持本機 Paws 開啟。', enqueue: '加入待傳送佇列（Tab）', enqueueHint: '目前任務結束後傳送', steerDuringTurn: '立即插話', enqueueSend: '加入待傳送佇列', steer: '現在傳送', steerUnavailable: '目前會話不支援執行中插話。請更新 Paws CLI 並建立新會話；排隊訊息仍可在目前任務結束後傳送。', steerHint: '插入目前 Codex 任務，不中斷；使用目前任務的模型與權限設定', sending: '傳送中…', failed: '傳送失敗或結果待確認，請先檢查聊天記錄再重試。', attachments: '附件', edit: '取回編輯', occupied: '請先傳送或清空輸入框中的草稿，再取回排隊訊息。' },
     accounts: {
         attachmentWarning: "切換帳號會重新載入。文字草稿將保留，但尚未傳送的附件需要重新選取。是否繼續？",
         title: "Paws 帳號",

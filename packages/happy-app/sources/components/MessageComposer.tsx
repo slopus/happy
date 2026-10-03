@@ -54,10 +54,11 @@ interface MessageComposerProps {
     onChangeText?: (text: string) => void;
     sessionId?: string;
     onSend: () => void;
-    /** Explicit queue shortcut; session Enter also stages ordinary submissions. */
+    /** Keyboard-only queue shortcut; the primary button also stages submissions. */
     onQueue?: () => void;
     sendIcon?: React.ReactNode;
     sendLabel?: string;
+    sendHint?: string;
     onAbort?: () => void | Promise<void>;
     showAbortButton?: boolean;
     connectionStatus?: {
@@ -954,15 +955,6 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                     <SessionComposerModeSelector {...props.modeSelector} />
                                 ) : null}
 
-                                {props.onQueue && <Pressable
-                                    accessibilityRole="button" accessibilityLabel={t('messageQueue.enqueue')}
-                                    disabled={!canPressSendButton}
-                                    onPress={props.onQueue}
-                                    style={({ pressed }) => ({ minHeight: 44, paddingHorizontal: 8, justifyContent: 'center', borderRadius: 8,
-                                        backgroundColor: pressed ? theme.colors.surfacePressed : theme.colors.surface,
-                                        opacity: canPressSendButton ? 1 : 0.4 })}>
-                                    <Ionicons name="list-outline" size={20} color={theme.colors.textSecondary} />
-                                </Pressable>}
                                 {/* Primary action: stop while running and empty, send when there is a payload. */}
                                 <Shaker
                                     ref={shakerRef}
@@ -981,6 +973,7 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                                         accessibilityLabel={(isAbortAction || isAbortConfirmationArmed)
                                             ? t('keyboardShortcuts.stopRunningAgent')
                                             : (props.sendLabel ?? t('keyboardShortcuts.sendMessage'))}
+                                        accessibilityHint={(isAbortAction || isAbortConfirmationArmed) ? undefined : props.sendHint}
                                         style={(p) => ({
                                             width: '100%',
                                             height: '100%',
@@ -1031,6 +1024,12 @@ export const MessageComposer = React.memo(React.forwardRef<MultiTextInputHandle,
                             </View>
                         </View>
                     </View>
+                    {hasPayload && !isAbortConfirmationArmed && props.sendHint ? (
+                        <Text testID="message-composer-send-hint" style={{
+                            color: theme.colors.textSecondary, fontSize: 12,
+                            paddingHorizontal: 12, paddingBottom: 6, textAlign: 'right',
+                        }}>{props.sendHint}</Text>
+                    ) : null}
                     {isSession && !props.zenMode && props.machineName && !props.onMachineClick && supportsDesktopComposerModeSelector({
                         isWeb: Platform.OS === 'web',
                         windowWidth: screenWidth,

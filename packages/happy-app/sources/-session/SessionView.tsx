@@ -1714,7 +1714,6 @@ function SessionViewLoaded({
     // Keep ordinary submissions staged on every turn, including after Send now.
     // Only the explicit queue-row action inserts guidance into the active turn.
     const handleSend = React.useCallback(() => submitComposer('queue'), [submitComposer]);
-    const handleQueue = React.useCallback(() => submitComposer('queue'), [submitComposer]);
 
     const handleContinueFailedTurn = React.useCallback(() => {
         if (failedHistoryLoading && newerError && !failedHistoryBehind) {
@@ -1844,8 +1843,9 @@ function SessionViewLoaded({
             connectionStatus={connectionStatus}
             blockSend={false}
             onSend={handleSend}
-            onQueue={isTaskRunning ? handleQueue : undefined}
+            onQueue={isTaskRunning ? handleSend : undefined}
             sendLabel={isTaskRunning ? t('messageQueue.enqueueSend') : undefined}
+            sendHint={isTaskRunning ? t('messageQueue.enqueueHint') : undefined}
             onAbort={isDisconnected ? undefined : handleAbort}
             showAbortButton={sessionStatus.state === 'running'}
             onFileViewerPress={experiments && !isTablet ? handleFileViewerPress : undefined}
