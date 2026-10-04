@@ -101,14 +101,29 @@ export async function readClusterPeerCount(adapter: { serverCount?: () => Promis
 export function instrumentStreamWrites(
     client: { xadd: (...args: any[]) => Promise<any> },
     onFailure: (code: string, error: unknown) => void,
+    observe?: (result: 'success' | 'failure', seconds: number) => void,
 ): void {
     const original = client.xadd.bind(client);
     client.xadd = async (...args: any[]) => {
+        let started: number | undefined;
+        if (observe) {
+            try { started = performance.now(); } catch { /* Run the write even without a clock. */ }
+        }
+        const report = (result: 'success' | 'failure') => {
+            if (started === undefined) return;
+            try { observe?.(result, Math.max(0, performance.now() - started) / 1000); }
+            catch { /* Observation must not change the write outcome. */ }
+        };
+        let value: any;
         try {
-            return await original(...args);
+            value = await original(...args);
         } catch (error) {
-            onFailure(redisErrorCode(error), error);
+            report('failure');
+            try { onFailure(redisErrorCode(error), error); }
+            catch { /* Keep the original Redis error if diagnostics fail. */ }
             throw error;
         }
+        report('success');
+        return value;
     };
 }

@@ -25,3 +25,10 @@
 1. [Done] 운영 10.26초 지연과 기존 신호의 분류 공백 확인.
 2. [Done] GC 최대 보고 duration/ELU scrape delta 회귀 Red→Green. p99/max 수집 계약 유지.
 3. [Done] Opus 리뷰 approve, 관련88테스트/typecheck/runtime build 및 Node20 API 스모크 통과. 커밋·PR로 제공한다. 서버 변경은 근본 원인 수정이 아닌 판별 계측이다.
+
+## 성공 stream write 지연 판별 (2026-10-04 사용자 다음 진행 승인)
+
+1. [Done] XADD 성공·실패 elapsed 및 관측 실패 안전성을 먼저 Red로 확인한다.
+2. [Done] 기존 account writer에 result별 duration histogram과250ms 초과 성공 로그(1/min)를 최소 연결한다.
+3. [Done] 실제 streams adapter 경로·회귀·타입·build·Opus 리뷰로 검증한다.
+4. [ ] commit/PR 후 배포에서 writer elapsed와 event-loop/read 사건을 대조한다. 원인 수정·회복은 별도다.

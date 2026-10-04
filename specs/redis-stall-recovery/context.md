@@ -49,3 +49,13 @@
 - 기존 p99 collector에서 ELU snapshot delta와 GC observer 최대 보고 duration을 노출한다. label/timer/payload 로그를 추가하지 않는다. GC 비동기 보고는 사건과 다음 scrape로 갈라질 수 있어 인접 창을 함께 본다. ELU는 CPU 사용률이 아니며 NaN delta는0으로 내보낸다.
 - GC 최대/reset/유효 duration 및 ELU delta3개 Red→Green. Opus5.5/high 변경 리뷰 approve. ELU NaN 회귀도 Red 확인 후 finite guard로 수정했다. 순서 의존과 문자열 assertion도 보강했다. 관련6파일88테스트/typecheck/runtime build 통과. 운영 image의 별도 Node20.20.2 프로세스에서 API 스모크도 통과했다.
 - 원인 수정과 운영 해결은 미확정이다. 앱 프로세스 변경/재시작/flag 변경/운영 배포는 하지 않았다.
+
+## 2026-10-04 account writer 지연 관측
+
+- #4660 MERGED와CI2개 success, prod b6801b4→Happy8b149ae7 배포·양쪽 파드restart0·새GC/ELU 수집 확인. 약79분 로그에 timeout행101/61, 배포 초기5분 제외10/19였다. g7spl event-loop max4.517s 인접GC최대44ms, ELU0.359, 인접2분CPU0.316core·throttled-period1.88%. 이는 단일 긴GC pause만으로 설명하기 어렵다는 근거이며 짧은GC 누적·동기 처리·스케줄링을 확정/배제하지 않는다. coarse window 상관은 요청별 인과가 아니다.
+- 기존 peer trace는 native client opt-in·서버flags·10/min admission이 필요하고 presence에 trace가 없어 현재 모든 재발 경계 확인을 대체하지 못한다. 성공XADD elapsed가 없어 writer queue/네트워크/로컬event-loop 대기를 비교할 공백을 최소 계측한다.
+- 기존 instrumentStreamWrites에 optional observe callback을 추가했다. callback이 없으면 clock을 읽지 않는다. start clock 실패에도 명령을 실행하고 callback/기존 onFailure 예외가 원래 command result/error를 바꾸지 않는다. 기존 onFailure 예외의 error 대체 문제를 Red로 재현해 고쳤다. 성공·실패·sync throw·인자·error identity·observer 실패를 검증했다.
+- account writer에 result별 histogram과250ms 초과 성공 로그(1/min, ms만)를 연결했다. XADD 이전 JSON/msgpack serialization, managed 전용 bus, consume 이후처리는 측정하지 않는다. timeout/routing/권한·prod flags는 바꾸지 않았다.
+- 실제 adapter broadcast 성공·실패 publish에서 histogram count/sum·기존 failure callback을 검증했다. 관련5파일83테스트/typecheck/runtime build/diff check 통과. observer 보호 제거 mutation은 두 회귀가 실패했고 원상복구했다.
+- Claude Opus5.5/high 계획·코드리뷰 approve. 지적한 spy cleanup은 기존 afterEach restoreAllMocks가 이미 있고, label 순서는 실행된 prom-client 출력과 테스트로 확인했다. 빠른 XADD만으로 Redis 전체를 배제한다는 리뷰 해석은 채택하지 않았다. 요청별 연관·나머지 구간 측정이 남아 있다.
+- Happy base871fc11f는 prod8b149ae7과 server/wire diff0. baseCLI .287 tag510b0b6c와 GitHub Actions publisher37179808880 SUCCESS, tag ancestry 확인. CLI version/tag/publish는 이번 작업에서 변경하지 않았다.

@@ -2,7 +2,8 @@ import { describe, expect, it, vi } from 'vitest';
 import { Server } from 'socket.io';
 import type { Redis } from 'ioredis';
 import { createIsolatedRedisAdapter, RESTORE_SESSION_TIMEOUT_MS } from './createIsolatedRedisAdapter';
-import { redisStreamReadDuration, register } from '@/app/monitoring/metrics2';
+import { redisStreamReadDuration, redisStreamWriteDuration, register } from '@/app/monitoring/metrics2';
+import { instrumentStreamWrites } from '@/app/monitoring/redisHealth';
 import { log } from '@/utils/log';
 
 vi.mock('@/utils/log', () => ({ log: vi.fn() }));
@@ -39,6 +40,45 @@ function redisConnection(restore: { exec: () => Promise<unknown>; xrange: () => 
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
 
 describe('createIsolatedRedisAdapter', () => {
+    it.each(['success', 'failure'] as const)('observes %s XADD through the actual streams adapter publish path', async (result) => {
+        const writer = redisConnection(), reader = redisConnection();
+        let now = 0;
+        const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+        const observe = vi.fn((outcome: 'success' | 'failure', seconds: number) => redisStreamWriteDuration.observe({ result: outcome }, seconds));
+        const failure = vi.fn(), error = new Error('Command timed out');
+        const command = vi.fn(async () => '2-0');
+        writer.client.xadd = command as unknown as Redis['xadd'];
+        instrumentStreamWrites(writer.client, failure, observe);
+        let io: Server | undefined;
+        try {
+            redisStreamWriteDuration.reset();
+            io = new Server({ adapter: createIsolatedRedisAdapter(writer.client, reader.client, {}) });
+            await flush();
+            // Prime startup handshakes, then observe one actual broadcast publish.
+            command.mockClear();
+            observe.mockClear();
+            failure.mockClear();
+            redisStreamWriteDuration.reset();
+            command.mockImplementation(async () => { now = 400; if (result === 'failure') throw error; return '2-0'; });
+            io.emit('probe', 'value');
+            await flush();
+            expect(command).toHaveBeenCalledOnce();
+            expect(observe).toHaveBeenCalledExactlyOnceWith(result, 0.4);
+            const metrics = (await register.metrics());
+            expect(metrics).toContain(`redis_stream_write_duration_seconds_count{app="happy-server",result="${result}"} 1\n`);
+            expect(metrics).toContain(`redis_stream_write_duration_seconds_sum{app="happy-server",result="${result}"} 0.4\n`);
+            if (result === 'failure') expect(failure).toHaveBeenCalledExactlyOnceWith('TIMEOUT', error);
+            else expect(failure).not.toHaveBeenCalled();
+        } finally {
+            io?.of('/').adapter.close();
+            reader.client.disconnect();
+            writer.client.disconnect();
+            await flush();
+            clock.mockRestore();
+            redisStreamWriteDuration.reset();
+        }
+    });
+
     it.each(['socket.io', 'socket.io.managed'])('logs only successful %s reads over one second and throttles for one minute', async (streamName) => {
         const writer = redisConnection();
         const reader = redisConnection();
