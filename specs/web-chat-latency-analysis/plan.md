@@ -69,3 +69,11 @@ Investigation1–3 Done: exact native await semantics and fully verified20 cold/
 4. Ready companion PRs; Web deploy before future released CLI; no runtime change.
 
 Per-server timing steps1–3 Done: Red4+1, Green194+66, CLI build/typecheck and Web lint. Step4 Ready PR publication next; deployment/release/live measurement pending.
+
+## .288 instrumentation release preparation
+1. Confirm #693/#4670 merge and candidate registry/tag state — Done; merged CI/Web deploy pending.
+2. Prepare .288 and run related regression/build/artifact install guard — In progress.
+3. Ready version PR, merge/CI and exact release-tag approval — Pending.
+4. Web deployed parser first, CI publish/registry verify, released vendor/ethan runtime and initial-request measurement — Pending.
+
+.288 steps1–2 Done: merged Happy CI success, deployed Web212550c ready2/2, candidate214 tests/build/typecheck and prepared artifact fresh install smoke pass. Step3 Ready version PR next; exact tag approval/CI publish and runtime measurement remain pending.

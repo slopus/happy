@@ -98,3 +98,11 @@ Red: Happy observer regressions4 and Web allowlist1 failed before implementation
 Implementation complete; companion Ready PRs next. Deploy Web parser before future CI-only instrumentation CLI release, then verify ethan installed/running version and measure initial requests with independent durable completion. Package version/vendor/shared daemon unchanged; no release/tag/publish performed.
 
 #691 merge65dc4114b3359c72d2c917797e03908a68fd7947 independently confirmed.
+
+## .288 instrumentation release preparation — 2026-10-04
+
+#693 merged8b7fa7346e386d061fed0a4569d318ff88ff2734 and #4670 merged212550c1c0b00e6c4ad171ebee15cdcaf0b9ebbc independently confirmed. Happy merged CLI Smoke Test37187092168 completed/success. Web Build and Push37187097280 completed/success, manifests commitf43cfdd pushed. Development web-ui image212550c desired/ready/updated2, observedGeneration=generation1265 verified. New parser is deployed before any instrumentation CLI release. No usage wire change.
+
+Registry latest/source=.287; candidate exact .288 E404 and matching tag absent. Version-only .288 candidate based on merged main8b7fa734; no vendor/shared daemon/account changes. Related client128/recovery52/latency14=194 and registry verifier9 passed with CLI global build/typecheck. Artifact guard11 passed on rerun with task-specific npm cache: total214 distinct related tests across5 files. Initial guard7 failures were cache EPERM, not guard contract failures; shared cache permissions unchanged. Two initially overlapping build invocations were cancelled and discarded; final regression run was single build. Existing bin-path/empty-chunk notices unchanged. No full-suite/ESLint claim.
+
+Prepared /tmp/happy-cli-288-prepared-20261004; artifact guard --install-smoke exit0, exact .288,12 bundled files and fresh lifecycle-enabled install with agent facade, dependency closure, daemon preflight/status verified. Guard isolated install/home and cleaned temporary resources. No local publish/tag/latest mutation. Ready version PR next; after merge and CI verify, exact happy-cli-v1.1.10-aplus.288 tag push requires release approval per docs/happy-cli-release.md. CI is sole publisher. Then released vendor/ethan install version + existing session preservation + independent durable initial-request measurements. No new speedup claim.
