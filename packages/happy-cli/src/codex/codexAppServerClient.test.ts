@@ -1067,6 +1067,62 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('queries only requested thread servers with scoped pagination', async () => {
+        const requests: MockRpcMessage[] = [];
+        mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (msg, stdout) => {
+            if (msg.method !== 'mcpServerStatus/list' || msg.id == null) return;
+            requests.push(msg);
+            const name = msg.params?.serverName;
+            pushJsonLine(stdout, { id: msg.id, result: { data: [{ name, authStatus: 'unsupported', tools: {} }], nextCursor: name === 'one' && !msg.params?.cursor ? 'page-2' : null } });
+        } }));
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        await client.connect();
+        const result = await client.listMcpServerStatus({ threadId: 'thread-1', serverNames: ['one', 'two', 'one'] });
+        expect(requests.map(({ params }) => [params?.serverName, params?.cursor])).toEqual([['one', null], ['one', 'page-2'], ['two', null]]);
+        expect(result.data.map(entry => entry.name)).toEqual(['one', 'one', 'two']);
+        requests.length = 0;
+        await expect(client.listMcpServerStatus({ threadId: 'thread-1', serverNames: [] })).resolves.toEqual({ data: [], nextCursor: null });
+        expect(requests).toHaveLength(0);
+        await client.disconnect();
+    });
+
+    it.each([null, 'page-2'])('finishes a scope-ignored inventory when mismatch appears at cursor %s', async mismatchCursor => {
+        const requests: MockRpcMessage[] = [];
+        mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (msg, stdout) => {
+            if (msg.method !== 'mcpServerStatus/list' || msg.id == null) return;
+            requests.push(msg);
+            const cursor = msg.params?.cursor ?? null;
+            const names = cursor === mismatchCursor ? ['other'] : cursor === 'page-3' ? ['last'] : ['one'];
+            const nextCursor = cursor === null ? 'page-2' : cursor === 'page-2' ? 'page-3' : null;
+            pushJsonLine(stdout, { id: msg.id, result: { data: names.map(name => ({ name, authStatus: 'unsupported', tools: {} })), nextCursor } });
+        } }));
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        await client.connect();
+        const result = await client.listMcpServerStatus({ threadId: 'thread-1', serverNames: ['one', 'two', 'three'] });
+        expect(result.data.map(entry => entry.name)).toEqual(mismatchCursor === null ? ['other', 'one', 'last'] : ['one', 'other', 'last']);
+        expect(requests.map(({ params }) => [params?.serverName, params?.cursor])).toEqual([['one', null], ['one', 'page-2'], ['one', 'page-3']]);
+        await client.disconnect();
+    });
+
+    it('replaces earlier scoped data with a later scope-ignored complete inventory', async () => {
+        const requests: MockRpcMessage[] = [];
+        mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (msg, stdout) => {
+            if (msg.method !== 'mcpServerStatus/list' || msg.id == null) return;
+            requests.push(msg);
+            const names = msg.params?.serverName === 'one' ? ['one'] : ['one', 'two', 'three'];
+            pushJsonLine(stdout, { id: msg.id, result: { data: names.map(name => ({ name, authStatus: 'unsupported', tools: {} })), nextCursor: null } });
+        } }));
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        await client.connect();
+        const result = await client.listMcpServerStatus({ threadId: 'thread-1', serverNames: ['one', 'two', 'three'] });
+        expect(result.data.map(entry => entry.name)).toEqual(['one', 'two', 'three']);
+        expect(requests.map(({ params }) => params?.serverName)).toEqual(['one', 'two']);
+        await client.disconnect();
+    });
+
     it('completes MCP runtime recovery before starting the next user turn', async () => {
         const requests: MockRpcMessage[] = [];
         let appServerStdout: (NodeJS.ReadableStream & { push: (chunk: string) => void }) | null = null;

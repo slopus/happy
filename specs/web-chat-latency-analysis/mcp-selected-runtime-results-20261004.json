@@ -1,0 +1,1282 @@
+{
+  "kind": "real-local-codex-selected-runtime-inventory-paired-benchmark",
+  "date": "2026-10-04",
+  "environment": {
+    "platform": "darwin",
+    "codexVersion": "codex-cli 0.160.0",
+    "happySourceVersion": "1.1.10-aplus.286",
+    "scope": "Isolated empty Codex/Happy homes, same thread and local stdio MCP; no credentials copied, no provider turn, no simulated RPC delay"
+  },
+  "protocol": {
+    "pairs": 20,
+    "attempts": 40,
+    "firstThreadBootstrapExcluded": true,
+    "order": "Alternating baseline/treatment and treatment/baseline",
+    "priorThreshold": "max(10ms, 2*baseline MAD)",
+    "rawIdsAndContentExcluded": true,
+    "cleanupConfirmed": true
+  },
+  "summary": {
+    "baselineMedianMs": 32.05087449999996,
+    "treatmentMedianMs": 0.8673539999999775,
+    "baselineMadMs": 2.461979499999984,
+    "thresholdMs": 10,
+    "medianReductionMs": 31.183520499999986,
+    "medianReductionPercent": 97.29382110931176,
+    "pairedReductionMedianMs": 30.474729000000025,
+    "baselineInventoryCalls": 20,
+    "treatmentInventoryCalls": 20,
+    "recoveryFailures": 0,
+    "statusMismatch": 0,
+    "resumeCalls": 0,
+    "exploratoryTimeThresholdMet": true
+  },
+  "limits": [
+    "Local preparation-only scope; no Web/SDK-text/paint/ethan or model inference measurement.",
+    "No provider response or durable terminal was requested; not a Luna normal-response baseline.",
+    "Twenty pairs do not establish p95 or live authorization non-regression."
+  ],
+  "rows": [
+    {
+      "pair": 1,
+      "condition": "baseline",
+      "order": 0,
+      "durationMs": 39.668083000000024,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 1,
+      "condition": "treatment",
+      "order": 1,
+      "durationMs": 0.9260000000000446,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 2,
+      "condition": "treatment",
+      "order": 0,
+      "durationMs": 0.8809579999999642,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 2,
+      "condition": "baseline",
+      "order": 1,
+      "durationMs": 33.958999999999946,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 3,
+      "condition": "baseline",
+      "order": 0,
+      "durationMs": 39.904750000000035,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 3,
+      "condition": "treatment",
+      "order": 1,
+      "durationMs": 1.5157920000000331,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 4,
+      "condition": "treatment",
+      "order": 0,
+      "durationMs": 0.8197909999998956,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 4,
+      "condition": "baseline",
+      "order": 1,
+      "durationMs": 38.13533399999994,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 5,
+      "condition": "baseline",
+      "order": 0,
+      "durationMs": 32.668333000000075,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 5,
+      "condition": "treatment",
+      "order": 1,
+      "durationMs": 1.0724589999999807,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 6,
+      "condition": "treatment",
+      "order": 0,
+      "durationMs": 0.6741250000000036,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 6,
+      "condition": "baseline",
+      "order": 1,
+      "durationMs": 35.62470900000005,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 7,
+      "condition": "baseline",
+      "order": 0,
+      "durationMs": 35.25983300000007,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 7,
+      "condition": "treatment",
+      "order": 1,
+      "durationMs": 7.140916000000061,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 8,
+      "condition": "treatment",
+      "order": 0,
+      "durationMs": 2.733833000000004,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 8,
+      "condition": "baseline",
+      "order": 1,
+      "durationMs": 38.04162500000007,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 9,
+      "condition": "baseline",
+      "order": 0,
+      "durationMs": 30.28520800000001,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 9,
+      "condition": "treatment",
+      "order": 1,
+      "durationMs": 0.9052090000000135,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 10,
+      "condition": "treatment",
+      "order": 0,
+      "durationMs": 0.8537499999999909,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 10,
+      "condition": "baseline",
+      "order": 1,
+      "durationMs": 31.433415999999852,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 11,
+      "condition": "baseline",
+      "order": 0,
+      "durationMs": 33.77345800000012,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 11,
+      "condition": "treatment",
+      "order": 1,
+      "durationMs": 0.7454580000000988,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 12,
+      "condition": "treatment",
+      "order": 0,
+      "durationMs": 0.40654200000017227,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 12,
+      "condition": "baseline",
+      "order": 1,
+      "durationMs": 29.96024999999986,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 13,
+      "condition": "baseline",
+      "order": 0,
+      "durationMs": 29.9693749999999,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 13,
+      "condition": "treatment",
+      "order": 1,
+      "durationMs": 0.7280419999999594,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 14,
+      "condition": "treatment",
+      "order": 0,
+      "durationMs": 0.6139169999999012,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 14,
+      "condition": "baseline",
+      "order": 1,
+      "durationMs": 30.767208999999866,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 15,
+      "condition": "baseline",
+      "order": 0,
+      "durationMs": 27.964833999999883,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 15,
+      "condition": "treatment",
+      "order": 1,
+      "durationMs": 0.6213340000001608,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 16,
+      "condition": "treatment",
+      "order": 0,
+      "durationMs": 0.543042000000014,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 16,
+      "condition": "baseline",
+      "order": 1,
+      "durationMs": 30.912834000000203,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 17,
+      "condition": "baseline",
+      "order": 0,
+      "durationMs": 28.07462499999997,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 17,
+      "condition": "treatment",
+      "order": 1,
+      "durationMs": 0.9091249999999036,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 18,
+      "condition": "treatment",
+      "order": 0,
+      "durationMs": 0.7890840000000026,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 18,
+      "condition": "baseline",
+      "order": 1,
+      "durationMs": 29.64737500000001,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 19,
+      "condition": "baseline",
+      "order": 0,
+      "durationMs": 27.482917000000043,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 19,
+      "condition": "treatment",
+      "order": 1,
+      "durationMs": 1.1488329999999678,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 20,
+      "condition": "treatment",
+      "order": 0,
+      "durationMs": 1.4084579999998823,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    },
+    {
+      "pair": 20,
+      "condition": "baseline",
+      "order": 1,
+      "durationMs": 34.57133399999998,
+      "inventoryCalls": 1,
+      "resumeCalls": 0,
+      "recovery": "ready",
+      "statuses": [
+        {
+          "name": "benchmark",
+          "status": "connected"
+        }
+      ]
+    }
+  ],
+  "initialExploratoryRun": {
+    "kind": "real-local-codex-selected-runtime-inventory-paired-benchmark",
+    "date": "2026-10-04",
+    "environment": {
+      "platform": "darwin",
+      "codexVersion": "codex-cli 0.160.0",
+      "happySourceVersion": "1.1.10-aplus.286",
+      "scope": "Isolated empty Codex/Happy homes, same thread and local stdio MCP; no credentials copied, no provider turn, no simulated RPC delay"
+    },
+    "protocol": {
+      "pairs": 20,
+      "attempts": 40,
+      "firstThreadBootstrapExcluded": true,
+      "order": "Alternating baseline/treatment and treatment/baseline",
+      "priorThreshold": "max(10ms, 2*baseline MAD)",
+      "rawIdsAndContentExcluded": true,
+      "cleanupConfirmed": true
+    },
+    "summary": {
+      "baselineMedianMs": 26.448354499999994,
+      "treatmentMedianMs": 0.6787285000000338,
+      "baselineMadMs": 1.240020999999956,
+      "thresholdMs": 10,
+      "medianReductionMs": 25.76962599999996,
+      "medianReductionPercent": 97.43375906429252,
+      "pairedReductionMedianMs": 25.762916999999902,
+      "baselineInventoryCalls": 20,
+      "treatmentInventoryCalls": 20,
+      "recoveryFailures": 0,
+      "statusMismatch": 0,
+      "resumeCalls": 0,
+      "exploratoryTimeThresholdMet": true
+    },
+    "limits": [
+      "Local preparation-only scope; no Web/SDK-text/paint/ethan or model inference measurement.",
+      "No provider response or durable terminal was requested; not a Luna normal-response baseline.",
+      "Twenty pairs do not establish p95 or live authorization non-regression."
+    ],
+    "rows": [
+      {
+        "pair": 1,
+        "condition": "baseline",
+        "order": 0,
+        "durationMs": 27.008291999999983,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 1,
+        "condition": "treatment",
+        "order": 1,
+        "durationMs": 0.9445000000000618,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 2,
+        "condition": "treatment",
+        "order": 0,
+        "durationMs": 0.8142500000000155,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 2,
+        "condition": "baseline",
+        "order": 1,
+        "durationMs": 25.327417000000082,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 3,
+        "condition": "baseline",
+        "order": 0,
+        "durationMs": 26.942499999999995,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 3,
+        "condition": "treatment",
+        "order": 1,
+        "durationMs": 0.8054590000000417,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 4,
+        "condition": "treatment",
+        "order": 0,
+        "durationMs": 0.4635000000000673,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 4,
+        "condition": "baseline",
+        "order": 1,
+        "durationMs": 39.798875000000066,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 5,
+        "condition": "baseline",
+        "order": 0,
+        "durationMs": 26.56104199999993,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 5,
+        "condition": "treatment",
+        "order": 1,
+        "durationMs": 0.7022910000000593,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 6,
+        "condition": "treatment",
+        "order": 0,
+        "durationMs": 0.5138749999999845,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 6,
+        "condition": "baseline",
+        "order": 1,
+        "durationMs": 26.167374999999993,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 7,
+        "condition": "baseline",
+        "order": 0,
+        "durationMs": 27.850832999999966,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 7,
+        "condition": "treatment",
+        "order": 1,
+        "durationMs": 0.877042000000074,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 8,
+        "condition": "treatment",
+        "order": 0,
+        "durationMs": 1.9341660000000047,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 8,
+        "condition": "baseline",
+        "order": 1,
+        "durationMs": 30.681959000000006,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 9,
+        "condition": "baseline",
+        "order": 0,
+        "durationMs": 28.230000000000018,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 9,
+        "condition": "treatment",
+        "order": 1,
+        "durationMs": 0.6551660000000084,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 10,
+        "condition": "treatment",
+        "order": 0,
+        "durationMs": 0.38637500000004366,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 10,
+        "condition": "baseline",
+        "order": 1,
+        "durationMs": 25.662666999999942,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 11,
+        "condition": "baseline",
+        "order": 0,
+        "durationMs": 26.21124999999995,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 11,
+        "condition": "treatment",
+        "order": 1,
+        "durationMs": 0.5441670000000158,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 12,
+        "condition": "treatment",
+        "order": 0,
+        "durationMs": 0.2682080000000724,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 12,
+        "condition": "baseline",
+        "order": 1,
+        "durationMs": 28.266209000000003,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 13,
+        "condition": "baseline",
+        "order": 0,
+        "durationMs": 26.335667000000058,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 13,
+        "condition": "treatment",
+        "order": 1,
+        "durationMs": 0.9870409999999765,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 14,
+        "condition": "treatment",
+        "order": 0,
+        "durationMs": 0.790834000000018,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 14,
+        "condition": "baseline",
+        "order": 1,
+        "durationMs": 25.648374999999874,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 15,
+        "condition": "baseline",
+        "order": 0,
+        "durationMs": 27.28366600000004,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 15,
+        "condition": "treatment",
+        "order": 1,
+        "durationMs": 0.705417000000125,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 16,
+        "condition": "treatment",
+        "order": 0,
+        "durationMs": 0.639417000000094,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 16,
+        "condition": "baseline",
+        "order": 1,
+        "durationMs": 25.089249999999993,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 17,
+        "condition": "baseline",
+        "order": 0,
+        "durationMs": 28.113542000000052,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 17,
+        "condition": "treatment",
+        "order": 1,
+        "durationMs": 0.7312079999999241,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 18,
+        "condition": "treatment",
+        "order": 0,
+        "durationMs": 0.5309170000000449,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 18,
+        "condition": "baseline",
+        "order": 1,
+        "durationMs": 24.661792000000105,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 19,
+        "condition": "baseline",
+        "order": 0,
+        "durationMs": 24.888416000000007,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 19,
+        "condition": "treatment",
+        "order": 1,
+        "durationMs": 0.6079999999999472,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 20,
+        "condition": "treatment",
+        "order": 0,
+        "durationMs": 0.3218749999998636,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      },
+      {
+        "pair": 20,
+        "condition": "baseline",
+        "order": 1,
+        "durationMs": 24.841042000000016,
+        "inventoryCalls": 1,
+        "resumeCalls": 0,
+        "recovery": "ready",
+        "statuses": [
+          {
+            "name": "benchmark",
+            "status": "connected"
+          }
+        ]
+      }
+    ]
+  }
+}

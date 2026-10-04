@@ -200,6 +200,7 @@ export type McpServerStartupStatus = {
 };
 
 export type ListMcpServerStatusParams = {
+    serverName?: string | null;
     cursor?: string | null;
     limit?: number | null;
     detail?: 'full' | 'toolsAndAuthOnly' | null;
@@ -207,6 +208,7 @@ export type ListMcpServerStatusParams = {
 };
 
 export type McpServerStatus = {
+    runtimeStatus?: string | null;
     name: string;
     authStatus: 'unknown' | 'unsupported' | 'notLoggedIn' | 'bearerToken' | 'oAuth' | string;
     tools: Record<string, unknown>;

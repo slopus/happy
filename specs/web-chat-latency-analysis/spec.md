@@ -16,3 +16,6 @@ Full prior Web measurements remain in the platform repository's `specs/web-chat-
 ## Recovery cost decomposition
 
 After the .284 Web followup observations, instrument the initial inventory RPC, reconnect RPC, existing retry backoff and verification RPC independently using the opt-in turn recorder. Preserve retry/auth/cooldown, same-operation inventory reuse and in-flight ownership. Diagnostic failures must neither skip nor repeat operations or replace their results. No recovery timeout change. Fixed stage names only; no server/thread/config/error data. Parent and child spans overlap and must not be summed. Web must accept these names before the new CLI is used for measurement.
+
+## Selected runtime inventory
+Use per-server thread runtime snapshots for expected servers only. Preserve fresh auth, dirty runtime refresh, pagination, failed/cancelled/disabled/starting/notStarted/authenticationRequired evidence and manual all-server API. No cross-turn cache or tool removal. Verify Codex0.160.0 in provider-free20-pair A/B.
