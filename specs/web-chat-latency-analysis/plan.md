@@ -30,3 +30,18 @@ Implementation and parser regression checks complete. Runtime-loop baseline fail
 2. Prepare .285 on merged main; related195 tests/build/prepared install guard — Done.
 3. Ready version PR; after merge request exact-tag approval, CI publish/registry verify — Pending.
 4. Consume only released vendor and verify ethan runtime before collecting recovery substages — Pending.
+
+## Selected runtime inventory — 2026-10-04
+1. Exact0.160.0 upstream semantics.
+2. Red scoped pagination/runtime precedence then minimal implementation.
+3. Related tests/type/build and local20-pair A/B.
+4. Record limits and Ready PR; no release/runtime update.
+
+Steps1–3 Done: native semantics, Red/Green182 tests/build/typecheck, changed-file unused checks and20-pair real A/B. Step4 records ready; implementation PR next. External release and Web20 remain pending, no live speedup claim.
+
+## Review compatibility fix
+1. Red first/later-page ignored serverName response tests.
+2. Finish that inventory pagination and skip remaining server queries; no persistent capability cache.
+3. Regression/build and update existing Ready PR.
+
+Compatibility steps1–3 Done: Red3, Green185, build/typecheck/unused0/diff checks, existing Ready PR update. Native older-version/Web latency remains unmeasured.

@@ -1769,25 +1769,40 @@ export class CodexAppServerClient {
         return await this.request('thread/read', params) as ReadConversationResponse;
     }
 
-    async listMcpServerStatus(opts: { threadId: string }): Promise<ListMcpServerStatusResponse> {
+    async listMcpServerStatus(opts: { threadId: string; serverNames?: string[] }): Promise<ListMcpServerStatusResponse> {
         const data: ListMcpServerStatusResponse['data'] = [];
-        let cursor: string | null = null;
-        const seenCursors = new Set<string>();
-        do {
-            const params: ListMcpServerStatusParams = {
-                threadId: opts.threadId,
-                cursor,
-                limit: 100,
-                detail: 'toolsAndAuthOnly',
-            };
-            const result = await this.request('mcpServerStatus/list', params) as ListMcpServerStatusResponse;
-            data.push(...result.data);
-            cursor = result.nextCursor;
-            if (cursor && seenCursors.has(cursor)) {
-                throw new Error('Codex MCP status pagination returned a repeated cursor');
-            }
-            if (cursor) seenCursors.add(cursor);
-        } while (cursor);
+        // A selected server reads the current thread runtime; an unscoped
+        // request builds a separate status-only snapshot in Codex 0.160.0.
+        const servers = opts.serverNames === undefined ? [undefined] : [...new Set(opts.serverNames)];
+        for (const serverName of servers) {
+            const serverData: ListMcpServerStatusResponse['data'] = [];
+            let scopeIgnored = false;
+            let cursor: string | null = null;
+            const seenCursors = new Set<string>();
+            do {
+                const params: ListMcpServerStatusParams = {
+                    threadId: opts.threadId,
+                    ...(serverName === undefined ? {} : { serverName }),
+                    cursor,
+                    limit: 100,
+                    detail: 'toolsAndAuthOnly',
+                };
+                const result = await this.request('mcpServerStatus/list', params) as ListMcpServerStatusResponse;
+                serverData.push(...result.data);
+                if (serverName !== undefined && result.data.some(entry => entry.name !== serverName)) {
+                    scopeIgnored = true;
+                }
+                cursor = result.nextCursor;
+                if (cursor && seenCursors.has(cursor)) {
+                    throw new Error('Codex MCP status pagination returned a repeated cursor');
+                }
+                if (cursor) seenCursors.add(cursor);
+            } while (cursor);
+            // Older app-servers may ignore serverName and return the entire
+            // inventory. Finish its pages, replacing any earlier scoped data.
+            if (scopeIgnored) return { data: serverData, nextCursor: null };
+            data.push(...serverData);
+        }
         return { data, nextCursor: null };
     }
 

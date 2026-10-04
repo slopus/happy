@@ -10,6 +10,7 @@ export type CodexMcpStartupStatus = {
 };
 
 export type CodexMcpServerInventory = {
+    runtimeStatus?: string | null;
     name: string;
     authStatus: string;
     tools: Record<string, unknown>;
@@ -17,7 +18,7 @@ export type CodexMcpServerInventory = {
 
 type CodexMcpRuntimeClient = {
     getMcpStartupStatuses: () => CodexMcpStartupStatus[];
-    listMcpServerStatus: (opts: { threadId: string }) => Promise<{
+    listMcpServerStatus: (opts: { threadId: string; serverNames?: string[] }) => Promise<{
         data: CodexMcpServerInventory[];
         nextCursor?: string | null;
     }>;
@@ -141,7 +142,7 @@ export class CodexMcpRuntimeRecovery {
         }
         let inventory: Map<string, CodexMcpServerInventory> | undefined;
         try {
-            const result = await this.client.listMcpServerStatus({ threadId: input.threadId });
+            const result = await this.client.listMcpServerStatus({ threadId: input.threadId, serverNames: input.expectedServerNames });
             inventory = new Map(result.data.map((entry) => [entry.name, entry]));
         } catch {
             // No inventory is unknown, never proof of a healthy connection.
@@ -162,8 +163,12 @@ export class CodexMcpRuntimeRecovery {
             const started = startup.get(name);
             const entry = inventory?.get(name);
             let status: McpRuntimeServerStatus['status'] = 'reconnecting';
-            if (entry?.authStatus === 'notLoggedIn' || started?.failureReason === 'reauthenticationRequired') {
+            if (entry?.runtimeStatus === 'authenticationRequired' || entry?.authStatus === 'notLoggedIn' || started?.failureReason === 'reauthenticationRequired') {
                 status = 'needs-auth';
+            } else if (['failed', 'cancelled', 'disabled'].includes(entry?.runtimeStatus ?? '')) {
+                status = 'failed';
+            } else if (['starting', 'notStarted'].includes(entry?.runtimeStatus ?? '')) {
+                status = 'reconnecting';
             } else if (started?.status === 'failed' || started?.status === 'cancelled') {
                 status = 'failed';
             } else if (started?.status !== 'starting') {
@@ -353,7 +358,7 @@ export class CodexMcpRuntimeRecovery {
         );
         let inventoryByName: Map<string, CodexMcpServerInventory> | null = null;
         try {
-            const inventory = await this.measure(input, stage, () => this.client.listMcpServerStatus({ threadId: input.threadId }));
+            const inventory = await this.measure(input, stage, () => this.client.listMcpServerStatus({ threadId: input.threadId, serverNames: input.expectedServerNames }));
             inventoryByName = new Map(inventory.data.map((entry) => [entry.name, entry]));
         } catch {
             // Startup notifications remain useful on older app-server versions.
@@ -374,7 +379,7 @@ export class CodexMcpRuntimeRecovery {
         const needsAuth = expected.filter((name) => {
             const startup = startupByName.get(name);
             const inventory = inventoryByName?.get(name);
-            if (inventory?.authStatus === 'notLoggedIn') return true;
+            if (inventory?.runtimeStatus === 'authenticationRequired' || inventory?.authStatus === 'notLoggedIn') return true;
             if (inventory && inventory.authStatus !== 'unknown') return false;
             return startup?.failureReason === 'reauthenticationRequired';
         });
@@ -383,6 +388,8 @@ export class CodexMcpRuntimeRecovery {
         const failed = expected.filter((name) => {
             if (needsAuthNames.has(name)) return false;
             const startup = startupByName.get(name);
+            if (['failed', 'cancelled', 'disabled'].includes(inventoryByName?.get(name)?.runtimeStatus ?? '')) return true;
+            if (['starting', 'notStarted'].includes(inventoryByName?.get(name)?.runtimeStatus ?? '')) return false;
             if (startup?.status === 'failed' || startup?.status === 'cancelled') return true;
             if (startup?.status === 'starting') return false;
             if (inventoryByName && !inventoryByName.has(name)) return true;
