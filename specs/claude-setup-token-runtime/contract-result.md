@@ -477,3 +477,51 @@ recovery/latency and browser image policy. Mandatory CLI build and separate
 warnings remain. Diff whitespace and unresolved-conflict checks passed. The prior
 actual-wheel integration evidence was not rerun or relabeled as post-merge evidence.
 No operating daemon, live credentials, runtime pins, publish or push was changed.
+
+## Post-merge packed candidate and CI follow-up (2026-10-04)
+
+Happy runtime source `822948b9613d03563a688c87f5015bb2386517ed` was prepared with
+`prepare-publish-package.cjs`, packed, and installed with lifecycle scripts disabled
+into `/private/tmp/happy-final-candidate.b4xsdv/install` (not a global install).
+Tarball `/private/tmp/happy-final-candidate.b4xsdv/buzzni-happy-cli-1.1.10-aplus.286.tgz`
+SHA-256: `03e1368e3955ad7c2ba1d9d4e566d3a5f6d529d41664be2ae7e826effa0c2d62`.
+Artifact guard validated 12 required bundled files; installed production dependency
+closure passed. macOS `/tmp` alias initially confused npm's file dependency locator;
+reinstalling the same tarball with canonical `/private/tmp` paths resolved it.
+
+Actual installed binary reported version `1.1.10-aplus.286` and `Not authenticated`
+under a clean environment and isolated empty state. Repeat the non-daemon smoke with:
+```sh
+env -i PATH=/usr/bin:/bin HOME=/private/tmp/happy-final-candidate.b4xsdv/home \
+  HAPPY_HOME_DIR=/private/tmp/happy-final-candidate.b4xsdv/state \
+  XDG_CONFIG_HOME=/private/tmp/happy-final-candidate.b4xsdv/config \
+  HAPPY_SERVER_URL=http://127.0.0.1:1 \
+  /Users/justin/.hermes/node/bin/node \
+  /private/tmp/happy-final-candidate.b4xsdv/install/node_modules/@buzzni/happy-cli/bin/happy.mjs auth status
+```
+Substitute `--version` for `auth status` for version-only smoke. This recipe never
+starts a daemon; no existing service or credentials are used. Installation skipped
+native/postinstall lifecycle scripts, so these checks do not assert a fully operational
+PTY/daemon installation. No runtime pin or release was changed.
+
+Post-merge actual-wheel tests passed 19/19 across binding artifact and collector
+suites, without skips. Provider wheel `claude_swap-0.27.0b1-py3-none-any.whl` SHA-256
+`87501a7d4df6e59f2734170204cfceca5cfe66f15b5f8bc39ea201d10d97bfea` contains runtime
+source `2fef57e` (provider HEAD `6baf237` adds provenance documentation only).
+Collector imported the fresh target `dist/isolated-provider-mq32f4vu/pack-smoke/install`;
+binding installed the same wheel into its own temporary file-backend home. Six network
+attempts were intercepted and blocked by the binding harness; collector used guarded
+fake HTTP. Build/typecheck within test setup passed with existing pkgroll warnings.
+
+PR #684 Linux Node20/24 and Windows Node20/24 passed. macOS run37173720779 failed
+one stale test out of 10422: `installCompanionTools.test.ts` searched source for the old
+inline version regex removed by this feature. Local focused RED reproduced 1 failure,
+37 passes. The test now invokes `parseCswapVersion`/`cswapAtLeastPinned` against the
+installer pin, a newer marked-build version, and an older rejected version; runtime
+code/artifact bytes remain unchanged. This is a scoped test correction, not a release
+pin change. Fresh remote CI is required after pushing that correction.
+
+CI correction GREEN: 94/94 passed (installer script38, setup-token runtime56),
+mandatory CLI build/typecheck passed, diff whitespace clean. The isolated candidate
+state contains no daemon.state.json. Remote CI has not yet rerun for this test-only
+correction; the failed macOS run remains the last remote result until a new push.

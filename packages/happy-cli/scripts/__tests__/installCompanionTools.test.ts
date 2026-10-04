@@ -1,4 +1,5 @@
 import { runInNewContext } from 'node:vm'
+import { cswapAtLeastPinned, parseCswapVersion } from '../../src/daemon/claudeSetupToken'
 import { isSupportedCodexMultiAuthVersion } from '../../src/utils/codexMultiAuthVersions'
 import { describe, it, expect, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -116,22 +117,16 @@ describe('CODEX_MULTI_AUTH_VERSION', () => {
     });
 });
 
-// ensureClaudeSwap gates on `cswap --version` with a regex hard-coded to this
-// version, and Happy invokes the tool as `cswap` — grepping the repo for
-// "claude-swap" alone misses that and makes the coupling look nonexistent.
-// Installing latest here left 0.26.0 where 0.25.0 was required.
+// The installer pin must be accepted by the runtime, which also preserves newer marked builds.
 describe('CLAUDE_SWAP_VERSION', () => {
     it('matches the version the daemon runtime pins', () => {
         expect(CLAUDE_SWAP_VERSION).toBe(pinnedVersionIn('daemon/aiCredentialRuntime.ts', 'CLAUDE_SWAP_VERSION'));
     });
 
     it('is the version ensureClaudeSwap accepts from `cswap --version`', () => {
-        const source = readFileSync(join(__dirname, '..', '..', 'src', 'daemon', 'aiCredentialRuntime.ts'), 'utf8');
-        const guard = source.match(/installed = (\/\^.*\/)\.test\(version\.stdout\)/);
-        if (!guard) throw new Error('ensureClaudeSwap version guard not found');
-        // eslint-disable-next-line no-eval
-        const pattern = eval(guard[1]) as RegExp;
-        expect(pattern.test(`cswap ${CLAUDE_SWAP_VERSION}`)).toBe(true);
+        expect(cswapAtLeastPinned(parseCswapVersion(`cswap ${CLAUDE_SWAP_VERSION}`))).toBe(true);
+        expect(cswapAtLeastPinned(parseCswapVersion('cswap 0.27.0b1'))).toBe(true);
+        expect(cswapAtLeastPinned(parseCswapVersion('cswap 0.24.0'))).toBe(false);
     });
 });
 
