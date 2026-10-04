@@ -88,3 +88,13 @@ Provider-free real Codex0.160.0 isolated homes/cwd,20 fresh threads with4 local 
 First attempt aborted before pair20 due local ENOSPC;19 earlier rows were not persisted and are not a complete latency cohort. Runner now writes each completed pair before continuing; only the final fully completed20-row cohort is used. Removed only this task's local .287 prepared package to free space. No shared daemon/provider/config or release changes.
 
 Next implementation target: opt-in fixed bounded per-server inventory timing (ordinal only, no server IDs/config/error) to identify real startup contributor, with Web parser compatibility before release. Keep readiness/auth unchanged. This investigation does not resolve real7s root cause or claim a new speed improvement. No product runtime changes in this PR.
+
+## Per-server inventory timing — 2026-10-04
+
+Opt-in diagnostics now emit repeated fixed `mcp-inventory-server` spans for each scoped server's complete pagination. Array order is ordinal only; no server names, configuration, IDs or raw errors are exported. Parent inventory/recovery spans overlap these children and must not be summed. Wire version1,32 preparation spans and privacy filtering remain unchanged. Diagnostic-off requests omit the callback. Observer failure before/after execution, duplicate action invocation and swallowed operation errors preserve single execution and authoritative query results/errors. Pagination, scope-ignored old-server compatibility, sequential readiness/auth and recovery contracts are preserved.
+
+Red: Happy observer regressions4 and Web allowlist1 failed before implementation. Green: Happy client128/recovery52/latency14=194 tests passed with CLI global build/typecheck; Web66 parser tests and configured changed-file ESLint passed. No full-suite or live speedup claim. Web uses runner config loader with existing ignored dependency symlink; shared dependency permissions unchanged.
+
+Implementation complete; companion Ready PRs next. Deploy Web parser before future CI-only instrumentation CLI release, then verify ethan installed/running version and measure initial requests with independent durable completion. Package version/vendor/shared daemon unchanged; no release/tag/publish performed.
+
+#691 merge65dc4114b3359c72d2c917797e03908a68fd7947 independently confirmed.

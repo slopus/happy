@@ -61,3 +61,11 @@ Compatibility steps1–3 Done: Red3, Green185, build/typecheck/unused0/diff chec
 4. Record evidence; do not skip readiness or infer a safe optimization without measured duplicate work.
 
 Investigation1–3 Done: exact native await semantics and fully verified20 cold/warm pairs. Step4 evidence recorded; next separate increment is privacy-bounded server-ordinal inventory timing, parser compatibility and actual cold measurements. No readiness bypass or speculative parallel implementation.
+
+## Per-server inventory timing
+1. Red full-pagination/diagnostic exception and single execution contracts.
+2. Fixed repeated mcp-inventory-server spans; no identifiers, same32-span limit.
+3. Web allowlist Red then scoped regressions/build.
+4. Ready companion PRs; Web deploy before future released CLI; no runtime change.
+
+Per-server timing steps1–3 Done: Red4+1, Green194+66, CLI build/typecheck and Web lint. Step4 Ready PR publication next; deployment/release/live measurement pending.

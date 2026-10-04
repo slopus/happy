@@ -927,3 +927,15 @@ it('recovers failed runtime even without a startup failure and rechecks the resu
     expect(resume).toHaveBeenCalledOnce();
     expect(list).toHaveBeenCalledTimes(2);
 });
+
+it('forwards opt-in server measurement through the owning inventory operation only', async () => {
+    const stages: string[] = [];
+    const action = vi.fn(async () => ({ data: [{ name: 'probe', authStatus: 'unsupported', tools: {} }] }));
+    const list = vi.fn(async (opts: { measureServer?: <T>(action: () => Promise<T>) => Promise<T> }) => opts.measureServer ? opts.measureServer(action) : action());
+    const recovery = new CodexMcpRuntimeRecovery({ getMcpStartupStatuses: () => [], listMcpServerStatus: list, resumeThread: vi.fn() }, { connectorNames: [] });
+    await recovery.recoverBeforeTurn({ threadId: 't', mcpServers: {}, expectedServerNames: ['probe'], measure: async (stage, execute) => { stages.push(stage); return execute(); } });
+    expect(stages).toEqual(['mcp-inventory', 'mcp-inventory-server']);
+    expect(action).toHaveBeenCalledOnce();
+    await recovery.recoverBeforeTurn({ threadId: 't', mcpServers: {}, expectedServerNames: ['probe'] });
+    expect(list.mock.calls[1][0]).not.toHaveProperty('measureServer');
+});

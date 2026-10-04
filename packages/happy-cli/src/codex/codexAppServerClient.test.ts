@@ -1123,6 +1123,43 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it.each(['normal', 'before', 'after', 'twice'])('measures each complete scoped pagination without changing RPCs when observer is %s', async mode => {
+        const requests: MockRpcMessage[] = [];
+        mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (msg, stdout) => {
+            if (msg.method !== 'mcpServerStatus/list' || msg.id == null) return;
+            requests.push(msg);
+            pushJsonLine(stdout, { id: msg.id, result: { data: [{ name: msg.params?.serverName, authStatus: 'unsupported', tools: {} }], nextCursor: msg.params?.serverName === 'one' && !msg.params?.cursor ? 'page-2' : null } });
+        } }));
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();await client.connect();
+        let measurements = 0;
+        const measureServer = async <T>(action: () => Promise<T>) => {
+            measurements++;
+            if (mode === 'before') throw Error('observer');
+            const result = await action();
+            if (mode === 'after') throw Error('observer');
+            if (mode === 'twice') await action();
+            return result;
+        };
+        const result = await client.listMcpServerStatus({ threadId: 't', serverNames: ['one', 'two'], measureServer });
+        expect(result.data.map(x => x.name)).toEqual(['one', 'one', 'two']);
+        expect(requests.map(x => [x.params?.serverName, x.params?.cursor])).toEqual([['one', null], ['one', 'page-2'], ['two', null]]);
+        expect(measurements).toBe(2);
+        await client.disconnect();
+    });
+
+    it('preserves inventory rejection when the observer swallows it', async () => {
+        let calls = 0;
+        mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (msg, stdout) => {
+            if (msg.method !== 'mcpServerStatus/list' || msg.id == null) return;
+            calls++;pushJsonLine(stdout, { id: msg.id, error: { code: -32000, message: 'inventory failed' } });
+        } }));
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();await client.connect();
+        await expect(client.listMcpServerStatus({ threadId: 't', serverNames: ['one'], measureServer: async <T>(action: () => Promise<T>) => { try { return await action(); } catch { return undefined as T; } } })).rejects.toThrow('inventory failed');
+        expect(calls).toBe(1);await client.disconnect();
+    });
+
     it('completes MCP runtime recovery before starting the next user turn', async () => {
         const requests: MockRpcMessage[] = [];
         let appServerStdout: (NodeJS.ReadableStream & { push: (chunk: string) => void }) | null = null;

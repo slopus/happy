@@ -18,7 +18,7 @@ export type CodexMcpServerInventory = {
 
 type CodexMcpRuntimeClient = {
     getMcpStartupStatuses: () => CodexMcpStartupStatus[];
-    listMcpServerStatus: (opts: { threadId: string; serverNames?: string[] }) => Promise<{
+    listMcpServerStatus: (opts: { threadId: string; serverNames?: string[]; measureServer?: <T>(action: () => Promise<T>) => Promise<T> }) => Promise<{
         data: CodexMcpServerInventory[];
         nextCursor?: string | null;
     }>;
@@ -80,7 +80,7 @@ type RecoveryOptions = {
     connectorNames?: readonly string[];
 };
 
-export type CodexMcpRecoveryStage = 'mcp-inventory' | 'mcp-reconnect' | 'mcp-backoff' | 'mcp-verification';
+export type CodexMcpRecoveryStage = 'mcp-inventory' | 'mcp-inventory-server' | 'mcp-reconnect' | 'mcp-backoff' | 'mcp-verification';
 
 type RecoveryInput = {
     threadId: string;
@@ -358,7 +358,7 @@ export class CodexMcpRuntimeRecovery {
         );
         let inventoryByName: Map<string, CodexMcpServerInventory> | null = null;
         try {
-            const inventory = await this.measure(input, stage, () => this.client.listMcpServerStatus({ threadId: input.threadId, serverNames: input.expectedServerNames }));
+            const inventory = await this.measure(input, stage, () => this.client.listMcpServerStatus({ threadId: input.threadId, serverNames: input.expectedServerNames, ...(input.measure ? { measureServer: <T>(action: () => Promise<T>) => this.measure(input, 'mcp-inventory-server', action) } : {}) }));
             inventoryByName = new Map(inventory.data.map((entry) => [entry.name, entry]));
         } catch {
             // Startup notifications remain useful on older app-server versions.
