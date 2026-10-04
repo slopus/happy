@@ -53,6 +53,19 @@ describe('배선 가드: spawn 이 선택을 존중하고 검증하는가', () =
     )
   })
 
+  it('새 spawn 은 요청 선택을, resume 은 기록된 setup-token 결합을 관리 자격 해석에 넘긴다', async () => {
+    const text = await runSource()
+    // Resume re-binds exactly the session's own recorded setup-token, never the machine default.
+    expect(text).toMatch(/const resumeBinding = readSetupTokenResumeSelection\(tracked\.agentEnvironment\);/)
+    expect(text).toMatch(/await resolveManagedAiCredentialEnvironment\(\s*resumeAgent,\s*resumeBinding\?\.selection,\s*resumeBinding\?\.binding,?\s*\)/)
+    // A new spawn carries only the selection; the caller comes from the signed grant inside it.
+    expect(text).toMatch(/await resolveManagedAiCredentialEnvironment\(options\.agent, options\.aiAuthSelection\)/)
+    expect(text).toMatch(/aiCredentialRuntime\.sessionEnvironment\(agent, selection, recorded\)/)
+    // The verifier exists only with the daemon's own trusted origin and this machine's id.
+    expect(text).toMatch(/readTrustedStudioOrigin\(process\.env\)/)
+    expect(text).toMatch(/createSetupTokenBindingVerifier\(\{ origin: trustedStudioOrigin, machineId \}\)/)
+  })
+
   it('두 spawn 경로가 자식에게 건네는 바로 그 env 를 검증한다', async () => {
     const text = await runSource()
     const checks = [...text.matchAll(/verifyAiAuthSelection\(options\.aiAuthSelection, (\w+)\)/g)]
@@ -61,8 +74,12 @@ describe('배선 가드: spawn 이 선택을 존중하고 검증하는가', () =
     // 검증 대상이 최종 env 인지: 두 이름 모두 헬퍼가 만든 값이고 자식에게 그대로 간다.
     expect(text).toMatch(/const tmuxEnv = applyAppliedAiAuthSourceEnv\(/)
     expect(text).toMatch(/const spawnEnvironment = applyAppliedAiAuthSourceEnv\(/)
-    expect(text).toMatch(/\}, tmuxEnv\)/)
-    expect(text).toMatch(/env: spawnEnvironment,/)
+    expect(text).toMatch(/\}, tmuxEnv, start => launchManagedAiCredentialSession\(managedAiCredentialEnvironment, start\)\)/)
+    expect(text).toMatch(/env: spawnEnvironment,\s*managedAiCredentialEnvironment,/)
+    expect(text).toMatch(/launchManagedAiCredentialSession = aiCredentialRuntime\.launchSession/)
+    expect(text).toMatch(/await launchManagedAiCredentialSession\(managedAiCredentialEnvironment,\s*\(\) => spawnHappyCLI\(/)
+    expect(text).toMatch(/await launchManagedAiCredentialSession\(managedAiCredentialEnvironment, \(\) => prepared\.resume\(\)\)/)
+    expect(text).toMatch(/resumeTargetSessionId: happySessionId,\s*managedAiCredentialEnvironment,/)
   })
 
   it('어긋난 선택이 spawn 을 실제로 멈춘다 — 사유와 함께', async () => {

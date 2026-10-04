@@ -60,4 +60,16 @@ describe('scoped credential group synchronization',()=>{
     await expect(corrupt.sync(input(3,null))).rejects.toThrow('AI_GROUP_JOURNAL_INVALID')
     expect(deps.write).toHaveBeenCalledTimes(writes)
   })
+  it('authorizes only a reconciled desired owned identity for exact company and user',async()=>{
+    const {sync,input}=setup()
+    const request=input(1,'["shared"]')
+    await sync.sync(request)
+    expect(await sync.authorize(request.scope,request.userId,'shared')).toBe(true)
+    expect(await sync.authorize('other',request.userId,'shared')).toBe(false)
+    expect(await sync.authorize(request.scope,'other','shared')).toBe(false)
+    expect(await sync.authorize(request.scope,request.userId,'personal')).toBe(false)
+    await sync.invalidate('claude',[])
+    expect(await sync.authorize(request.scope,request.userId,'shared')).toBe(false)
+  })
+
 })

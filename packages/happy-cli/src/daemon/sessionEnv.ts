@@ -61,7 +61,13 @@ type SaycodeAgentEnvironmentKey = typeof SAYCODE_AGENT_ENV_KEYS[number]
 const CHECKPOINT_CONTEXT_KEY = CHECKPOINT_SPAWN_CONTEXT_ENV_KEY
 /** Set from the spawn option `browserContinuation` only (request environment cannot carry HAPPY_AUTOMATION_*). */
 export const BROWSER_CONTINUATION_ENV = 'HAPPY_AUTOMATION_BROWSER_CONTINUATION'
-type SessionScopedEnvironmentKey = SaycodeAgentEnvironmentKey | typeof CHECKPOINT_CONTEXT_KEY | 'HAPPY_WRITE_SCOPE_SESSION' | 'HAPPY_SANDBOX_POLICY_MODE' | 'HAPPY_PROJECT_SANDBOX_CONFIG' | typeof ADDITIONAL_DIRECTORIES_ENV | typeof BROWSER_CONTINUATION_ENV
+/**
+ * Secret-free record of which managed setup-token generation a session was started on.
+ * Daemon-written only: the HAPPY_AI_AUTH_ prefix is scrubbed from inherited and
+ * requested environments, so neither can forge or carry it to another session.
+ */
+export const SETUP_TOKEN_BINDING_ENV = 'HAPPY_AI_AUTH_SETUP_TOKEN_BINDING'
+type SessionScopedEnvironmentKey = SaycodeAgentEnvironmentKey | typeof CHECKPOINT_CONTEXT_KEY | typeof SETUP_TOKEN_BINDING_ENV | 'HAPPY_WRITE_SCOPE_SESSION' | 'HAPPY_SANDBOX_POLICY_MODE' | 'HAPPY_PROJECT_SANDBOX_CONFIG' | typeof ADDITIONAL_DIRECTORIES_ENV | typeof BROWSER_CONTINUATION_ENV
 
 export type SaycodeAgentEnvironment = Partial<Record<SessionScopedEnvironmentKey, string>>
 
@@ -74,6 +80,9 @@ export function scrubSessionLineageEnv(env: NodeJS.ProcessEnv): Record<string, s
     const scrubbed: Record<string, string> = {}
     for (const [key, value] of Object.entries(env)) {
         if (value === undefined || isLineageKey(key)) continue
+        // A child can restart the daemon. Drop its bound bearer before losing
+        // the marker, including malformed markers; unbound personal auth stays.
+        if (env[SETUP_TOKEN_BINDING_ENV] !== undefined && key === 'CLAUDE_CODE_OAUTH_TOKEN') continue
         scrubbed[key] = value
     }
     return scrubbed
@@ -206,6 +215,10 @@ export function stripManagedCredentialConflicts(
         delete effectiveRequested.ANTHROPIC_MODEL
         delete effectiveRequested.ANTHROPIC_SMALL_FAST_MODEL
     }
+    // A bound setup-token session spends only that token; the model choice stays the user's.
+    if (managed.CLAUDE_CODE_OAUTH_TOKEN) {
+        for (const key of CLAUDE_AUTH_OVERRIDE_ENV_KEYS) delete effectiveRequested[key]
+    }
     return effectiveRequested
 }
 
@@ -244,11 +257,62 @@ export function captureSaycodeAgentEnvironment(
     }
     // A Studio Chat(beta) session keeps being parked across the resumes an Agent Browser attention causes.
     if (env[BROWSER_CONTINUATION_ENV] === '1') captured[BROWSER_CONTINUATION_ENV] = '1'
+    const binding = env[SETUP_TOKEN_BINDING_ENV]
+    // A malformed record must stay bound-but-invalid through every capture/persistence
+    // path. Keep no corrupt bytes; the resume guard rejects this bounded marker.
+    if (binding !== undefined) captured[SETUP_TOKEN_BINDING_ENV] = parseSetupTokenBinding(binding) ? binding : ''
     const encodedCheckpointContext = env[CHECKPOINT_CONTEXT_KEY]
     if (encodedCheckpointContext && readCheckpointSpawnContext(env)) {
         captured[CHECKPOINT_CONTEXT_KEY] = encodedCheckpointContext
     }
     return Object.keys(captured).length > 0 ? captured : undefined
+}
+
+const MANAGED_ACCOUNT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+
+const GROUP_SCOPE = /^[A-Za-z0-9_-]{1,128}$/
+const BINDING_KEYS = ['version', 'managedAccountId', 'credentialGeneration', 'groupScope', 'companyId', 'userId', 'machineId', 'keyId', 'nonce', 'issuedAt'] as const
+
+/**
+ * The immutable, signed facts a bound session keeps: who the server said may bind
+ * which managed account at which generation. No token and no grant envelope.
+ */
+export type SetupTokenBinding = {
+    managedAccountId: string; credentialGeneration: number; groupScope: string; companyId: string
+    userId: string; machineId: string; keyId: string; nonce: string; issuedAt: number
+}
+
+export function formatSetupTokenBinding(binding: SetupTokenBinding): string {
+    return JSON.stringify(Object.fromEntries(BINDING_KEYS.map((key) => [key, key === 'version' ? 1 : binding[key]])))
+}
+
+function parseSetupTokenBinding(value: string): SetupTokenBinding | null {
+    try {
+        const parsed = JSON.parse(value)
+        if (parsed?.version !== 1 || Object.keys(parsed).length !== BINDING_KEYS.length
+            || typeof parsed.managedAccountId !== 'string' || !MANAGED_ACCOUNT_ID.test(parsed.managedAccountId)
+            || typeof parsed.nonce !== 'string' || !MANAGED_ACCOUNT_ID.test(parsed.nonce)
+            || ![parsed.groupScope, parsed.companyId, parsed.userId, parsed.machineId].every((id) => typeof id === 'string' && GROUP_SCOPE.test(id))
+            || typeof parsed.keyId !== 'string' || !/^[a-f0-9]{64}$/.test(parsed.keyId)
+            || ![parsed.credentialGeneration, parsed.issuedAt].every((n) => Number.isSafeInteger(n) && n >= 1)) return null
+        const { version: _version, ...binding } = parsed
+        return binding as SetupTokenBinding
+    } catch { return null }
+}
+
+/**
+ * What a resume must bind: exactly the recorded account, generation and owner. No
+ * new grant is needed (the original one was verified and consumed); the journal and
+ * storage are re-checked instead. A corrupt record refuses the resume.
+ */
+export function readSetupTokenResumeSelection(agentEnvironment: SaycodeAgentEnvironment | undefined):
+    { selection: AiAuthSelection; binding: SetupTokenBinding } | undefined {
+    const raw = agentEnvironment?.[SETUP_TOKEN_BINDING_ENV]
+    if (raw === undefined) return undefined
+    const binding = parseSetupTokenBinding(raw)
+    if (!binding) throw new Error('Recorded setup-token binding is invalid; the session is not resumed with another credential')
+    const { managedAccountId, credentialGeneration, groupScope } = binding
+    return { selection: { kind: 'claude-setup-token', managedAccountId, groupScope, credentialGeneration }, binding }
 }
 
 function isValidAdditionalDirectories(value: string): boolean {
@@ -355,11 +419,19 @@ export function applyConfirmedPromptDeliveryFlag(
  * machine would have used anyway, which is the outcome the person was trying
  * to avoid by choosing.
  */
-export const AI_AUTH_SELECTION_KINDS = ['machine-personal', 'org-bundle'] as const
+export const AI_AUTH_SELECTION_KINDS = ['machine-personal', 'org-bundle', 'claude-setup-token'] as const
 
 export type AiAuthSelectionKind = (typeof AI_AUTH_SELECTION_KINDS)[number]
 
-export type AiAuthSelection = { kind: AiAuthSelectionKind }
+/**
+ * `claude-setup-token` pins one new Claude session to an organisation-managed
+ * setup-token slot. Older daemons reject the kind, so a client gates it on
+ * `ai-credential:capabilities.newSessionProfileBinding`.
+ */
+export type AiAuthSelection =
+    | { kind: 'machine-personal' | 'org-bundle' }
+    /** `bindingGrant` is required on a new spawn; a resume rebuilds the selection from the recorded binding. */
+    | { kind: 'claude-setup-token'; managedAccountId: string; groupScope: string; credentialGeneration: number; bindingGrant?: string }
 
 /**
  * Advertised in `MachineMetadataSchema` so a client can tell this daemon
@@ -382,7 +454,29 @@ export function parseAiAuthSelection(value: unknown): AiAuthSelection | undefine
             `AI auth selection kind must be one of: ${AI_AUTH_SELECTION_KINDS.join(', ')}`,
         )
     }
-    return { kind: kind as AiAuthSelectionKind }
+    if (kind === 'claude-setup-token') {
+        const managedAccountId = (value as { managedAccountId?: unknown }).managedAccountId
+        if (typeof managedAccountId !== 'string'
+            || !MANAGED_ACCOUNT_ID.test(managedAccountId)) {
+            throw new Error('AI auth selection claude-setup-token requires a managedAccountId')
+        }
+        // The group-sync scope (company) whose daemon journal must own the slot.
+        const groupScope = (value as { groupScope?: unknown }).groupScope
+        if (typeof groupScope !== 'string' || !GROUP_SCOPE.test(groupScope)) {
+            throw new Error('AI auth selection claude-setup-token requires a groupScope')
+        }
+        const credentialGeneration = (value as { credentialGeneration?: unknown }).credentialGeneration
+        if (!Number.isSafeInteger(credentialGeneration) || Number(credentialGeneration) < 1) {
+            throw new Error('AI auth selection credentialGeneration must be a positive integer')
+        }
+        // The server-signed proof; verified, matched and consumed by the daemon, never persisted.
+        const bindingGrant = (value as { bindingGrant?: unknown }).bindingGrant
+        if (typeof bindingGrant !== 'string' || bindingGrant.length > 4096 || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(bindingGrant)) {
+            throw new Error('AI auth selection claude-setup-token requires a bindingGrant')
+        }
+        return { kind, managedAccountId, groupScope, credentialGeneration: Number(credentialGeneration), bindingGrant }
+    }
+    return { kind: kind as 'machine-personal' | 'org-bundle' }
 }
 
 /**
@@ -392,6 +486,11 @@ export function parseAiAuthSelection(value: unknown): AiAuthSelection | undefine
  * put its managed credential on top — `overlayManagedCredentialEnvironment`
  * applies last and would otherwise always win. Without a selection nothing
  * changes.
+ */
+/*
+ * Not the unbound-default guard: an explicit `machine-personal` selection is a deliberate escape
+ * from managed credentials (and is then held to the applied-source proof). The setup-token guard
+ * in the AI credential runtime only applies to launches that name no selection.
  */
 export function honorsManagedAiCredentials(selection: AiAuthSelection | undefined): boolean {
     return selection?.kind !== 'machine-personal'
@@ -457,5 +556,5 @@ export function verifyAiAuthSelection(
 
 /** The applied source that would prove a selection was honoured. */
 function selectionAppliedSource(kind: AiAuthSelectionKind): AiAuthSource {
-    return kind === 'org-bundle' ? 'org-bundle' : 'personal-subscription'
+    return kind === 'org-bundle' || kind === 'claude-setup-token' ? 'org-bundle' : 'personal-subscription'
 }

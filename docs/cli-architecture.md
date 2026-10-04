@@ -667,3 +667,44 @@ adapter that honors the already-held lock; do not weaken GC pin ownership to all
 ## AI credential group custody
 
 The optional `ai-credential:group-sync` customer-lane RPC leaves the existing apply DTO and response unchanged. The daemon serializes group changes with legacy operations. An owner-only journal stores identity hashes, desired unions, generations and durable pending intent before provider writes. Revocation removes only introduced accounts no other assignment needs; legacy/manual apply invalidates the receipt and relinquishes touched slots. Provider adapters keep personal login and index selections. Completed receipts are readable through `ai-credential:status` and contain no credentials; server-lane mutation permissions are unchanged. A failed removal remains pending in the journal until an observed retry completes.
+
+Managed setup-token launches retain an internal one-use launch handle after the signed
+nonce is consumed. Immediately before plain child creation, tmux `new-window`, or
+Windows suspended-root resume, the credential runtime rechecks assignment, disabled
+state, exact generation/token and fresh-grant expiry on the same serialized queue as
+group sync. Preparation and webhook waits stay outside that critical section. Recorded
+resumes have no new grant expiry but still recheck custody. Default Claude environments are also recognized by
+object identity and recheck managed-assignment refusal under that queue immediately
+before submission; explicit machine-personal, non-Claude and prepared ZAI environments
+retain their bypass. A bound child restarting the daemon loses both its binding marker
+and bearer at the daemon spawn boundary.
+
+## Organization Claude collector boundary
+
+Desktop owns authenticated Studio discovery/reserve/publish and OFF-default scheduling.
+The customer-bound `ai-credential:collector-probe` daemon RPC fetches an Ed25519 public
+key only from the configured `HAPPY_APLUS_STUDIO_ORIGIN` origin, validates signed
+reservation claims against the machine and local custody journal, durably consumes
+one permit, then invokes the marked provider's internal stdin bridge. No Studio bearer
+or credential enters the RPC DTO. Server-lane dispatch is forbidden even when its
+allowlist changes. A corrupt replay ledger or orphaned consume lock fails closed;
+explicit operator recovery must preserve the ledger. Desktop consumes only epoch-ms
+whitelisted observations. See `specs/claude-setup-token-runtime/contract-result.md`.
+
+Personal setup-token status/consent/manual refresh uses customer-bound
+`ai-credential:token-probe`; every action binds a stable local ref and generation.
+Core rejects organization rows, acknowledges cost before enabling, and passes a
+provider generation CAS flag on consent/collect. Budgets/singleflight/backoff remain
+provider-owned and shared with organization collection. No renderer probe loop is introduced; a resident Core scheduler uses durable consent,
+real provider budgets and live/fresh Claude activity while the daemon is online. A marked artifact alone never enables
+new-session setup-token binding; a true prepared-profile receipt remains pending.
+Existing Claude status additionally exposes a validated local `tokenRuntime` roster
+for stable-ref discovery, retaining all legacy status fields. It cannot own normal
+OAuth usage: number plus exact roster metadata joins display rows, while ref and
+generation authorize probe actions. No global stored selection implies session activity.
+
+The resident personal scheduler starts at most once/ref/15min and polls eligibility
+every5s while in use. It aborts native probe processes on revoke/replacement/offline/
+inactivity/shutdown, preserving spending; it shares the runtime queue and provider
+collector lock with organization/manual probes. UI status is normalized separately
+from nested usage/auth, using integration6a930c9 durable budget metadata.

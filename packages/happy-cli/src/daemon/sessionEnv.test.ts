@@ -14,11 +14,24 @@ import {
     parseAiAuthSelection,
     honorsManagedAiCredentials,
     verifyAiAuthSelection,
+    captureSaycodeAgentEnvironment as captureSetupTokenEnvironment,
+    readSetupTokenResumeSelection,
+    scrubSessionLineageEnv as scrubSetupTokenLineage,
 } from './sessionEnv'
 import { readAiAuthConnectionVersion } from '../usage/aiAuthSource'
 import { expandEnvironmentVariables } from '../utils/expandEnvVars'
 
 describe('scrubSessionLineageEnv', () => {
+    it.each(['valid-record', ''])('removes a bound child token before forgetting its lineage (%s)', (binding) => {
+        const child = { HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding, CLAUDE_CODE_OAUTH_TOKEN: 'synthetic-bound',
+            HAPPY_AI_AUTH_SOURCE: 'org-bundle', SAFE: 'kept' }
+        const daemon = scrubSessionLineageEnv(child)
+        // After scoped revoke, an unbound session has no managed environment overlay.
+        const unrelated = buildManagedSessionSpawnEnvironment(daemon, {}, {})
+        expect(unrelated).toEqual({ SAFE: 'kept' })
+        expect(child.CLAUDE_CODE_OAUTH_TOKEN).toBe('synthetic-bound')
+    })
+
     it('removes reconnect and fork lineage variables while keeping everything else', () => {
         // 2026-07-19 incident: a resumed child restarted the daemon, the daemon
         // inherited HAPPY_RECONNECT_* from that child, and every subsequently
@@ -538,8 +551,32 @@ describe('parseAiAuthSelection', () => {
         expect(parseAiAuthSelection(undefined)).toBeUndefined()
     })
 
-    it.each(AI_AUTH_SELECTION_KINDS)('닫힌 집합의 %s 를 받는다', (kind) => {
+    it.each(AI_AUTH_SELECTION_KINDS.filter((kind) => kind !== 'claude-setup-token'))('닫힌 집합의 %s 를 받는다', (kind) => {
         expect(parseAiAuthSelection({ kind })).toEqual({ kind })
+    })
+
+    it('claude-setup-token 은 managedAccountId 와 함께만 받는다', () => {
+        const managedAccountId = '0b6f2c1e-1111-4a2b-8c3d-000000000001'
+        expect(parseAiAuthSelection({ kind: 'claude-setup-token', managedAccountId, groupScope: 'company-1', credentialGeneration: 1, bindingGrant: 'eyJ2IjoxfQ.c2ln', extra: 1 }))
+            .toEqual({ kind: 'claude-setup-token', managedAccountId, groupScope: 'company-1', credentialGeneration: 1, bindingGrant: 'eyJ2IjoxfQ.c2ln' })
+        for (const bad of [undefined, '', 'not-a-uuid', managedAccountId.toUpperCase()]) {
+            expect(() => parseAiAuthSelection({ kind: 'claude-setup-token', managedAccountId: bad, groupScope: 'company-1', credentialGeneration: 1, bindingGrant: 'eyJ2IjoxfQ.c2ln' })).toThrow(/managedAccountId/)
+        }
+    })
+
+    it('claude-setup-token 은 daemon 이 org-bundle 로 적용했다고 증명할 때만 통과한다', () => {
+        const selection = { kind: 'claude-setup-token' as const, managedAccountId: '0b6f2c1e-1111-4a2b-8c3d-000000000001', groupScope: 'company-1', credentialGeneration: 1 }
+        expect(verifyAiAuthSelection(selection, { HAPPY_AI_AUTH_SOURCE: 'org-bundle' }).rejection).toBeUndefined()
+        expect(verifyAiAuthSelection(selection, {}).rejection).toMatch(/claude-setup-token/)
+    })
+
+    it('setup-token 결합은 상속·요청된 Claude 인증 override 를 지우고 모델 선택은 남긴다', () => {
+        const env = buildManagedSessionSpawnEnvironment(
+            { ANTHROPIC_API_KEY: 'inherited', ANTHROPIC_MODEL: 'opus' },
+            { ANTHROPIC_BASE_URL: 'https://example.invalid', CLAUDE_CODE_USE_BEDROCK: '1' },
+            { CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-FAKE' },
+        )
+        expect(env).toEqual({ ANTHROPIC_MODEL: 'opus', CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-FAKE' })
     })
 
     it.each([
@@ -740,3 +777,55 @@ describe('request-supplied environment cannot run code outside the agent sandbox
     })
 })
 
+
+describe('setup-token resume binding', () => {
+    const managedAccountId = '0b6f2c1e-1111-4a2b-8c3d-000000000001'
+    const record = { managedAccountId, credentialGeneration: 3, groupScope: 'company-1', companyId: 'company-1', userId: 'user-1',
+        machineId: 'machine-1', keyId: 'a'.repeat(64), nonce: '6a1f7d3e-2222-4b2b-8c3d-000000000009', issuedAt: 1_800_000_000_000 }
+    const binding = JSON.stringify({ version: 1, ...record })
+
+    it('captures the daemon-written binding from the final child env so resume can reuse it', () => {
+        expect(captureSetupTokenEnvironment({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding, CLAUDE_CODE_OAUTH_TOKEN: 'sk-ant-oat01-FAKE' }))
+            .toEqual({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding })
+    })
+
+    it('never inherits a binding from the daemon process environment', () => {
+        expect(scrubSetupTokenLineage({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding })).toEqual({})
+    })
+
+    it('drops a binding a client puts in the spawn request so it cannot pick a credential', () => {
+        expect(buildManagedSessionSpawnEnvironment({}, buildSpawnRequestEnvironment({}, { HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding }), {}))
+            .not.toHaveProperty('HAPPY_AI_AUTH_SETUP_TOKEN_BINDING')
+    })
+
+    it('turns the binding into an exact-generation selection and fails closed on a malformed one', () => {
+        // The recorded owner, not the resuming caller, is what the journal is checked against.
+        // The recorded signed owner, not a resuming caller, is checked against the journal; no grant is kept.
+        expect(readSetupTokenResumeSelection({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding })).toEqual({
+            selection: { kind: 'claude-setup-token', managedAccountId, credentialGeneration: 3, groupScope: 'company-1' }, binding: record })
+        expect(() => readSetupTokenResumeSelection({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: JSON.stringify({ version: 1, ...record, bindingGrant: 'x.y' }) })).toThrow(/binding/)
+        expect(readSetupTokenResumeSelection({})).toBeUndefined()
+        expect(readSetupTokenResumeSelection(undefined)).toBeUndefined()
+        expect(() => readSetupTokenResumeSelection({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '{"version":1}' })).toThrow(/binding/)
+        expect(captureSetupTokenEnvironment({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '{"version":1}' }))
+            .toEqual({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '' })
+    })
+
+    it.each(['{"version":1}', 'not-json', '', null, 7])('retains an invalid sentinel across capture and re-capture so resume rejects corruption: %j', (binding) => {
+        const captured = captureSetupTokenEnvironment({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding } as NodeJS.ProcessEnv)
+        expect(captured).toEqual({ HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: '' })
+        const recovered = captureSetupTokenEnvironment(JSON.parse(JSON.stringify(captured)))
+        expect(() => readSetupTokenResumeSelection(recovered)).toThrow(/binding/)
+    })
+
+    it('requires an exact generation and a signed binding grant on the spawn selection', () => {
+        const base = { kind: 'claude-setup-token', managedAccountId, groupScope: 'company-1', credentialGeneration: 2, bindingGrant: 'eyJ2IjoxfQ.c2ln' }
+        expect(parseAiAuthSelection(base)).toEqual(base)
+        expect(() => parseAiAuthSelection({ ...base, credentialGeneration: undefined })).toThrow(/credentialGeneration/)
+        expect(() => parseAiAuthSelection({ ...base, credentialGeneration: 0 })).toThrow(/credentialGeneration/)
+        expect(() => parseAiAuthSelection({ ...base, groupScope: undefined })).toThrow(/groupScope/)
+        for (const bad of [undefined, '', 'no-dot', 'a.b.c', 'x'.repeat(5000)]) {
+            expect(() => parseAiAuthSelection({ ...base, bindingGrant: bad })).toThrow(/bindingGrant/)
+        }
+    })
+})

@@ -24,12 +24,14 @@ import { RpcNonceGuard } from './rpcNonceGuard';
 
 export class RpcHandlerManager {
     private handlers: RpcHandlerMap = new Map();
+    private customerBound = new Set<string>();
     private readonly scopePrefix: string;
     private readonly encryptionKey: Uint8Array;
     private readonly encryptionVariant: 'legacy' | 'dataKey';
     private readonly serverLane: ServerLaneConfig | null;
     private readonly requireBoundRequests: boolean;
     private readonly nonceGuard: RpcNonceGuard;
+    private readonly customerBoundNonceGuard: RpcNonceGuard;
     private readonly logger: (message: string, data?: any) => void;
     private socket: Socket | null = null;
     /**
@@ -52,6 +54,11 @@ export class RpcHandlerManager {
             maxEntries: config.maxBoundRequestsInWindow ?? 10_000,
             whenFull: this.requireBoundRequests ? 'refuse' : 'evict-oldest',
         });
+        this.customerBoundNonceGuard = new RpcNonceGuard({
+            windowMs: RPC_BINDING_WINDOW_MS,
+            maxEntries: config.maxBoundRequestsInWindow ?? 10_000,
+            whenFull: 'refuse',
+        });
         this.logger = config.logger || ((msg, data) => defaultLogger.debug(msg, data));
     }
 
@@ -62,12 +69,15 @@ export class RpcHandlerManager {
      */
     registerHandler<TRequest = any, TResponse = any>(
         method: string,
-        handler: RpcHandler<TRequest, TResponse>
+        handler: RpcHandler<TRequest, TResponse>,
+        policy?: { customerBound?: boolean }
     ): void {
         const prefixedMethod = this.getPrefixedMethod(method);
 
         // Store the handler
         this.handlers.set(prefixedMethod, handler);
+        if (policy?.customerBound) this.customerBound.add(prefixedMethod);
+        else this.customerBound.delete(prefixedMethod);
 
         if (this.socket) {
             this.socket.emit('rpc-register', { method: prefixedMethod });
@@ -98,6 +108,7 @@ export class RpcHandlerManager {
     unregisterHandler(method: string): void {
         const prefixedMethod = this.getPrefixedMethod(method);
         this.handlers.delete(prefixedMethod);
+        this.customerBound.delete(prefixedMethod);
 
         if (this.socket) {
             this.socket.emit('rpc-unregister', { method: prefixedMethod });
@@ -158,7 +169,7 @@ export class RpcHandlerManager {
                     // Under compat the server can already obtain the scope key, so the
                     // window would protect nothing and only refuse a client whose clock
                     // is off. Strict keeps it.
-                    allowStale: !this.requireBoundRequests,
+                    allowStale: !(this.requireBoundRequests || this.customerBound.has(request.method)),
                 });
                 if (binding.kind === 'refused') {
                     this.logger('[RPC] Bound request refused', { method: request.method, code: binding.code });
@@ -171,7 +182,7 @@ export class RpcHandlerManager {
                     };
                     return sealWithScopeKey(binding.nonce ? bindRpcResponse(binding.nonce, refusal) : refusal);
                 }
-                if (binding.kind === 'unbound' && this.requireBoundRequests) {
+                if (binding.kind === 'unbound' && (this.requireBoundRequests || this.customerBound.has(request.method))) {
                     this.logger('[RPC] Unbound request refused under strict machine control', { method: request.method });
                     return sealWithScopeKey({
                         error: 'Strict machine control accepts only bound requests',
@@ -187,7 +198,8 @@ export class RpcHandlerManager {
                     }
                     // A stale request is remembered from when it arrived. Its own issue time
                     // would forget it at once, or hold the guard's oldest slot for hours.
-                    const admission = this.nonceGuard.admit(binding.nonce, binding.stale ? now : binding.issuedAt, now);
+                    const guard = this.customerBound.has(request.method) ? this.customerBoundNonceGuard : this.nonceGuard;
+                    const admission = guard.admit(binding.nonce, binding.stale ? now : binding.issuedAt, now);
                     if (admission === 'full') {
                         this.logger('[RPC] Bound request refused: the time window holds as many as it can remember', { method: request.method });
                         return sealWithScopeKey(bindRpcResponse(binding.nonce, {
@@ -231,7 +243,7 @@ export class RpcHandlerManager {
                 return sealRefusal({ error: 'Method not found' });
             }
 
-            if (opened.lane === 'server' && !this.serverLane!.allows(bareMethod)) {
+            if (opened.lane === 'server' && (this.customerBound.has(request.method) || !this.serverLane!.allows(bareMethod))) {
                 this.logger('[RPC] Server lane method refused', { method: request.method });
                 return seal({ error: `${bareMethod} is not available to the server lane`, code: 'SERVER_LANE_METHOD_NOT_ALLOWED' });
             }
@@ -307,6 +319,7 @@ export class RpcHandlerManager {
      */
     clearHandlers(): void {
         this.handlers.clear();
+        this.customerBound.clear();
         this.logger('Cleared all RPC handlers');
     }
 

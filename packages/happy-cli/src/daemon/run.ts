@@ -84,9 +84,12 @@ import {
   captureSaycodeAgentEnvironment,
   honorsManagedAiCredentials,
   overlayManagedCredentialEnvironment,
-  SESSION_LINEAGE_ENV_PREFIXES,
+  scrubSessionLineageEnv,
   stripManagedCredentialConflicts,
   verifyAiAuthSelection,
+  type AiAuthSelection,
+  type SetupTokenBinding,
+  readSetupTokenResumeSelection,
 } from './sessionEnv';
 import type { AiAuthSource } from '@/usage/aiAuthSource';
 import { detectCLIAvailability } from '@/utils/detectCLI';
@@ -260,8 +263,10 @@ import {
   McpCallerGrantEnvelopeConsumer,
   prepareMcpChildEnvironment,
 } from './mcpCallerGrantEnvelope';
+import { createSetupTokenBindingVerifier, readTrustedStudioOrigin } from './setupTokenBindingProof';
 import { createClaudeSwapSupervisor } from './claudeSwapSupervisor';
 import { createNodeAiCredentialRuntime } from './aiCredentialRuntime';
+import { hasActiveClaudeUse } from './personalProbeScheduler';
 import { resolveReconnectableSession, type ReconnectableHappySession } from '@/resume/resolveHappySession';
 import { claudeCheckSession } from '@/claude/utils/claudeCheckSession';
 import { CodexAppServerClient } from '@/codex/codexAppServerClient';
@@ -582,8 +587,9 @@ export async function startDaemon(): Promise<void> {
   // environment. Those variables are per-spawn instructions, not daemon
   // state; if they survive here they leak into every child we spawn and all
   // new sessions reconnect to one poisoned session (2026-07-19 incident).
+  const daemonEnvironment = scrubSessionLineageEnv(process.env);
   for (const key of Object.keys(process.env)) {
-    if (SESSION_LINEAGE_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+    if (!(key in daemonEnvironment)) {
       logger.debug(`[DAEMON RUN] Scrubbing inherited session lineage env: ${key}`);
       delete process.env[key];
     }
@@ -1695,7 +1701,11 @@ export async function startDaemon(): Promise<void> {
 
     let resolveManagedAiCredentialEnvironment = async (
       _agent: string | undefined,
+      _selection?: AiAuthSelection,
+      _recorded?: SetupTokenBinding,
     ): Promise<Record<string, string>> => ({});
+
+    let launchManagedAiCredentialSession = async <T>(_env: Record<string, string>, start: () => T | Promise<T>): Promise<T> => start();
 
     const launchReadiness = createLaunchReadinessGate();
     const ownsUnresolvedJob = (pid: number) => standaloneWindows?.owner.ownsRoot(pid) ?? false;
@@ -1915,7 +1925,7 @@ export async function startDaemon(): Promise<void> {
         // 해석해 두면 overlayManagedCredentialEnvironment 가 마지막에 덮어 항상
         // 이긴다 — 그래서 해석 자체를 하지 않는다.
         const managedAiCredentialEnvironment = honorsManagedAiCredentials(options.aiAuthSelection)
-          ? await resolveManagedAiCredentialEnvironment(options.agent)
+          ? await resolveManagedAiCredentialEnvironment(options.agent, options.aiAuthSelection)
           : {};
         let extraEnv: Record<string, string> = injectMcpCallerGrant(
           stripManagedCredentialConflicts(
@@ -2215,7 +2225,7 @@ export async function startDaemon(): Promise<void> {
             sessionName: tmuxSessionName,
             windowName: windowName,
             cwd: directory
-          }, tmuxEnv);  // Pass complete environment for tmux session
+          }, tmuxEnv, start => launchManagedAiCredentialSession(managedAiCredentialEnvironment, start));
 
           if (tmuxResult.success) {
             logger.debug(`[DAEMON RUN] Successfully spawned in tmux session: ${tmuxResult.sessionId}, PID: ${tmuxResult.pid}`);
@@ -2323,6 +2333,7 @@ export async function startDaemon(): Promise<void> {
             args,
             cwd: directory,
             env: spawnEnvironment,
+            managedAiCredentialEnvironment,
             directoryCreated,
             message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined,
             userHomeDir: stagedUserHomeDir,
@@ -2354,6 +2365,7 @@ export async function startDaemon(): Promise<void> {
       message,
       userHomeDir,
       resumeTargetSessionId,
+      managedAiCredentialEnvironment = {},
     }: {
       args: string[];
       cwd: string;
@@ -2367,15 +2379,18 @@ export async function startDaemon(): Promise<void> {
        * from spawn onward instead of only after its session webhook lands.
        */
       resumeTargetSessionId?: string;
+      managedAiCredentialEnvironment?: Record<string, string>;
     }): Promise<SpawnSessionResult> => {
       if (standaloneWindows && (!standaloneWindows.owner.acceptingLaunches || !acceptsStandaloneWindowsLaunch(args))) {
         return { type: 'error', errorMessage: 'Windows trial launch is closed or this provider is unsupported' };
       }
+      // Native preparation creates a suspended root; authorize execution at resume below.
       const prepared = standaloneWindows ? await standaloneWindows.owner.prepare({ args, cwd, env }) : undefined;
       const scopeReports = env.HAPPY_WRITE_SCOPE_SESSION === '1' ? writeScopeRuntime?.prepareReports(resumeTargetSessionId) : undefined;
-      const happyProcess = prepared?.childProcess ?? spawnHappyCLI(args, { cwd, detached: true,
+      const happyProcess = prepared?.childProcess ?? await launchManagedAiCredentialSession(managedAiCredentialEnvironment,
+        () => spawnHappyCLI(args, { cwd, detached: true,
         stdio: scopeReports ? ['ignore', 'ignore', 'ignore', 'pipe'] : 'ignore',
-        env: { ...env, ...scopeReports?.environment } });
+        env: { ...env, ...scopeReports?.environment } }));
       scopeReports?.attach(happyProcess);
       const rootPid = prepared?.pid ?? happyProcess.pid;
       if (!rootPid) return { type: 'error', errorMessage: 'Failed to spawn Happy process - no PID returned' };
@@ -2417,7 +2432,7 @@ export async function startDaemon(): Promise<void> {
       if (prepared) {
         try {
           if (!standaloneWindows?.owner.acceptingLaunches) throw new Error('Standalone launch frozen before resume');
-          await prepared.resume(); resumed = true;
+          await launchManagedAiCredentialSession(managedAiCredentialEnvironment, () => prepared.resume()); resumed = true;
         }
         catch (error) { webhookCancellation.abort(); prepared.cancelBeforeResume?.(); throw error; }
       }
@@ -2756,7 +2771,13 @@ export async function startDaemon(): Promise<void> {
           filterCredentials: options?.automation !== undefined,
         });
         const priorCheckpointContext = readCheckpointSpawnContext(tracked.agentEnvironment ?? {});
-        const managedAiCredentialEnvironment = await resolveManagedAiCredentialEnvironment(resumeAgent);
+        // A setup-token-bound session resumes on exactly its recorded generation or not at all.
+        const resumeBinding = readSetupTokenResumeSelection(tracked.agentEnvironment);
+        const managedAiCredentialEnvironment = await resolveManagedAiCredentialEnvironment(
+          resumeAgent,
+          resumeBinding?.selection,
+          resumeBinding?.binding,
+        );
         const mcpEnvironment = prepareMcpChildEnvironment({
           environmentVariables: overlayManagedCredentialEnvironment(buildResumedSessionSpawnEnvironment({
             inherited: inheritedResumeEnvironment,
@@ -2880,6 +2901,7 @@ export async function startDaemon(): Promise<void> {
               env,
               userHomeDir: credentialDecision.kind === 'user-staged' ? credentialDecision.homeDir : undefined,
               resumeTargetSessionId: happySessionId,
+              managedAiCredentialEnvironment,
             });
           },
           ownerPid: () => Array.from(pidToTrackedSession.values()).find((session) => session.happySessionId === happySessionId)?.pid,
@@ -4162,8 +4184,23 @@ export async function startDaemon(): Promise<void> {
     );
     stopClaudeSwapSupervisor = () => claudeSwapSupervisor.shutdown();
     if (!standaloneWindows) await claudeSwapSupervisor.restore();
-    const aiCredentialRuntime = createNodeAiCredentialRuntime(claudeSwapSupervisor);
-    resolveManagedAiCredentialEnvironment = (agent) => aiCredentialRuntime.sessionEnvironment(agent);
+    // Setup-token session binding is verifiable only against the daemon's own trusted Studio origin.
+    const trustedStudioOrigin = readTrustedStudioOrigin(process.env);
+    const aiCredentialRuntime = createNodeAiCredentialRuntime(claudeSwapSupervisor, process.env, os.homedir(), {
+      setupTokenBinding: trustedStudioOrigin ? createSetupTokenBindingVerifier({ origin: trustedStudioOrigin, machineId }) : undefined,
+    });
+    const personalProbeTimer = setInterval(() => {
+      void aiCredentialRuntime.personalSchedulerTick({
+        online: apiMachine.getConnectionHealth().connected,
+        inUse: !managedRuntimeActive && hasActiveClaudeUse(getCurrentChildren(), Date.now(), isPidAlive),
+      }).catch(() => undefined);
+    }, 5_000);
+    personalProbeTimer.unref();
+    const stopPersonalProbes = () => { clearInterval(personalProbeTimer); aiCredentialRuntime.stopPersonalScheduler(); };
+    stopClaudeSwapSupervisor = () => { stopPersonalProbes(); claudeSwapSupervisor.shutdown(); };
+
+    resolveManagedAiCredentialEnvironment = (agent, selection, recorded) => aiCredentialRuntime.sessionEnvironment(agent, selection, recorded);
+    launchManagedAiCredentialSession = aiCredentialRuntime.launchSession;
     let activeServerAutomationLeaseCount = 0;
     let scriptWorker: ReturnType<typeof createScriptAutomationWorker> | null = null;
     if (!standaloneWindows && shouldRunScriptAutomations({
@@ -4915,6 +4952,7 @@ export async function startDaemon(): Promise<void> {
             // `happy daemon start` reads our still-present daemon.state.json, sees
             // isDaemonRunningCurrentlyInstalledHappyVersion() === true, and exits —
             // leaving nothing running once we also exit.
+            stopPersonalProbes();
             claudeSwapSupervisor.shutdown();
             // Before the replacement exists: it starts its own host, and two hosts must never
             // overlap. stop() returns only once the child has exited (SIGKILL after its grace).
@@ -5059,6 +5097,7 @@ export async function startDaemon(): Promise<void> {
         logger.debug('[DAEMON RUN] Health check interval cleared');
       }
       stopLogHousekeeping();
+      stopPersonalProbes();
       claudeSwapSupervisor.shutdown();
       scriptAutomationTickRunner.pause();
       await stopScriptWorker();

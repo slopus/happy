@@ -1042,7 +1042,9 @@ export class ApiMachineClient {
         this.rpcHandlerManager.registerHandler('ai-credential:export', (params) => (
             aiCredentialRuntime.capture(params)
         ));
-        this.rpcHandlerManager.registerHandler('ai-credential:capabilities', () => aiCredentialRuntime.capabilities());
+        this.rpcHandlerManager.registerHandler('ai-credential:token-probe', params => aiCredentialRuntime.tokenProbe(params), { customerBound: true });
+        this.rpcHandlerManager.registerHandler('ai-credential:collector-probe', params => aiCredentialRuntime.collectorProbe(params, this.machine.id), { customerBound: true });
+        this.rpcHandlerManager.registerHandler('ai-credential:capabilities', () => aiCredentialRuntime.capabilities(this.machine.id));
         this.rpcHandlerManager.registerHandler('ai-credential:apply', (params) => (
             aiCredentialRuntime.apply(params)
         ));

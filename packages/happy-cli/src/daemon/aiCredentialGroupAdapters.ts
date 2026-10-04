@@ -2,8 +2,12 @@ import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import type { AiCredentialRuntimeDependencies } from './aiCredentialRuntime'
 import type { GroupProvider } from './aiCredentialGroups'
+import { managedSetupTokenId, setupTokenGroupIdentity } from './claudeSetupToken'
 type Account = Record<string,unknown>
 export function groupAccountIdentity(provider:GroupProvider,account:Account):string {
+  // Managed setup-tokens use the server's company-scoped ID; the synthetic email carries it in cswap lists.
+  const managedId=provider==='claude'?(account.credentialType==='setup_token'&&typeof account.managedAccountId==='string'?account.managedAccountId:managedSetupTokenId(account.email)):null
+  if(managedId)return setupTokenGroupIdentity(managedId)
   const email=typeof account.email==='string'?account.email.trim().toLowerCase():''
   const accountId=typeof account.accountId==='string'?account.accountId.trim():''
   if(!email&&!accountId)throw new Error('AI_GROUP_ACCOUNT_IDENTITY_UNAVAILABLE')

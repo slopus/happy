@@ -2,13 +2,16 @@ import { createHash } from 'node:crypto'
 /** Group custody journal: hashes only, durable intent before changing credentials. */
 export type GroupProvider = 'claude' | 'codex'
 export type CredentialGroupRequest = { version:1; scope:string; userId:string; provider:GroupProvider; generation:number; fingerprint:string; payload:string|null }
-type Entry = Omit<CredentialGroupRequest,'version'|'payload'> & { desired:string[]; owned:string[]; pending:boolean; payloadDigest:string|null }
+/** `managed`: the desired identities that are org-managed setup-tokens (absent in older journals). */
+type Entry = Omit<CredentialGroupRequest,'version'|'payload'> & { desired:string[]; owned:string[]; pending:boolean; payloadDigest:string|null; managed?:string[] }
 type Journal = { version:1; entries:Entry[] }
 export type CredentialGroupDeps = {
   read():Promise<string|null>; write(value:string):Promise<void>
   snapshot(provider:GroupProvider):Promise<string[]>
   incoming(provider:GroupProvider,payload:string):string[]
-  apply(provider:GroupProvider,payload:string):Promise<unknown>
+  managedIdentities?(provider:GroupProvider,payload:string):string[]
+  /** `owned` are identities this scope installed earlier: the only slots it may replace. */
+  apply(provider:GroupProvider,payload:string,owned:string[]):Promise<unknown>
   remove(provider:GroupProvider,identities:string[]):Promise<void>
 }
 const fail=(code:string):never=>{throw new Error(code)}
@@ -26,7 +29,7 @@ function parse(raw:string|null):Journal {
     if(value.version!==1||!Array.isArray(value.entries)||value.entries.length>1000)fail('AI_GROUP_JOURNAL_INVALID')
     for(const entry of value.entries){
       request({...entry,version:1,payload:null})
-      if(!(entry.payloadDigest===null||typeof entry.payloadDigest==='string'&&/^[a-f0-9]{64}$/.test(entry.payloadDigest))||typeof entry.pending!=='boolean'||![entry.desired,entry.owned].every(items=>Array.isArray(items)&&items.length<=1000&&items.every(id)))fail('AI_GROUP_JOURNAL_INVALID')
+      if(!(entry.payloadDigest===null||typeof entry.payloadDigest==='string'&&/^[a-f0-9]{64}$/.test(entry.payloadDigest))||typeof entry.pending!=='boolean'||![entry.desired,entry.owned,entry.managed??[]].every(items=>Array.isArray(items)&&items.length<=1000&&items.every(id)))fail('AI_GROUP_JOURNAL_INVALID')
     }
     if(new Set(value.entries.map(e=>JSON.stringify([e.scope,e.provider]))).size!==value.entries.length)fail('AI_GROUP_JOURNAL_INVALID')
     return value
@@ -50,12 +53,13 @@ export function createCredentialGroupSync(deps:CredentialGroupDeps) {
     const before=new Set(await deps.snapshot(input.provider))
     const desired=input.payload===null?[]:[...new Set(deps.incoming(input.provider,input.payload))]
     if(desired.length>500||desired.some(value=>!id(value)))fail('AI_GROUP_INVALID_INPUT')
-    const entry:Entry={scope:input.scope,userId:input.userId,provider:input.provider,generation:input.generation,fingerprint:input.fingerprint,payloadDigest,desired,
+    const managed=input.payload===null?[]:(deps.managedIdentities?.(input.provider,input.payload)??[]).filter(value=>desired.includes(value))
+    const entry:Entry={scope:input.scope,userId:input.userId,provider:input.provider,generation:input.generation,fingerprint:input.fingerprint,payloadDigest,desired,managed,
       owned:[...new Set([...(prior?.owned??[]),...desired.filter(value=>!before.has(value))])],pending:true}
     journal.entries=journal.entries.filter(e=>!(e.scope===input.scope&&e.provider===input.provider))
     journal.entries.push(entry)
     await deps.write(JSON.stringify(journal))
-    if(input.payload!==null)await deps.apply(input.provider,input.payload)
+    if(input.payload!==null)await deps.apply(input.provider,input.payload,prior?.owned??[])
     const after=new Set(await deps.snapshot(input.provider))
     if(desired.some(identity=>!after.has(identity)))fail('AI_GROUP_INSTALL_INCOMPLETE')
     const related=journal.entries.filter(e=>e.provider===input.provider)
@@ -74,5 +78,21 @@ export function createCredentialGroupSync(deps:CredentialGroupDeps) {
     for(const entry of journal.entries.filter(e=>e.provider===provider)){entry.pending=true;entry.owned=touched===null?[]:entry.owned.filter(id=>!touched.includes(id));changed=true}
     if(changed)await deps.write(JSON.stringify(journal))
   }
-  return {sync,invalidate,receipt:async(scope:string,provider:GroupProvider)=>{const entry=await readReceipt(scope,provider);return entry?receipt(entry):null}}
+  /** Who a scope's applied assignment belongs to and what it installed: the local ownership proof. */
+  async function assignment(scope:string,provider:GroupProvider){const entry=await readReceipt(scope,provider);return entry?{userId:entry.userId,desired:[...entry.desired],reconciled:!entry.pending}:null}
+  /** Some current assignment (applied or in flight) desires an org-managed setup-token. Revoked entries desire nothing. */
+  /** Entries written before the `managed` projection existed: unknown, never assumed unmanaged. */
+  async function unprojected(provider:GroupProvider){return parse(await deps.read()).entries.filter(e=>e.provider===provider&&e.managed===undefined).map(e=>({scope:e.scope,desired:[...e.desired]}))}
+  /** One-time migration: record which desired identities of an old entry are managed. */
+  async function recordManaged(provider:GroupProvider,scope:string,managed:string[]){
+    const journal=parse(await deps.read())
+    const entry=journal.entries.find(e=>e.provider===provider&&e.scope===scope&&e.managed===undefined)
+    if(!entry)return
+    entry.managed=managed.filter(value=>entry.desired.includes(value))
+    await deps.write(JSON.stringify(journal))
+  }
+  async function hasManagedDesired(provider:GroupProvider){return parse(await deps.read()).entries.some(e=>e.provider===provider&&(e.managed??[]).some(value=>e.desired.includes(value)))}
+  /** Collector custody: the scope's reconciled assignment for this user both desires and installed the identity. */
+  const authorize=async(scope:string,userId:string,identity:string)=>{const e=await readReceipt(scope,'claude');return Boolean(e&&!e.pending&&e.userId===userId&&e.desired.includes(identity)&&e.owned.includes(identity))}
+  return {sync,invalidate,assignment,hasManagedDesired,unprojected,recordManaged,authorize,receipt:async(scope:string,provider:GroupProvider)=>{const entry=await readReceipt(scope,provider);return entry?receipt(entry):null}}
 }

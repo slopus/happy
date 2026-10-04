@@ -1,12 +1,16 @@
+import { createHash } from 'node:crypto'
+import { createPersonalProbeScheduler } from './personalProbeScheduler'
+import { createTokenProbe, personalProbeSupported, readTokenRuntime } from './tokenProbe'
+import { createClaudeCollector, consumeCollectorPermit, collectorVerificationReady } from './claudeCollector'
 import { createCredentialGroupSync, type CredentialGroupRequest } from './aiCredentialGroups'
-import { createGroupProviderAdapters, groupPayloadIdentities } from './aiCredentialGroupAdapters'
+import { createGroupProviderAdapters, groupAccountIdentity, groupPayloadIdentities } from './aiCredentialGroupAdapters'
 import { spawn as crossSpawn } from 'cross-spawn'
 import { verifyLocalAiAccounts, type VerificationIdentity } from './aiCredentialVerification'
 import { mergeCodexAccounts } from './aiCredentialAdditive'
 import { CODEX_MULTI_AUTH_VERSION, isSupportedCodexMultiAuthVersion, SUPPORTED_CODEX_MULTI_AUTH_VERSION_RANGE } from '../utils/codexMultiAuthVersions'
 import { stagingParent } from './stagedCredentialRoot'
 import { spawn } from 'node:child_process'
-import { chmod, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, open, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { logger } from '@/ui/logger'
@@ -27,7 +31,14 @@ import {
   serializeAppliedClaudeProvenance,
   serializeInvalidatedClaudeProvenance,
 } from './aiCredentialProvenance'
-import { overlayManagedCredentialEnvironment } from './sessionEnv'
+import { SETUP_TOKEN_BINDING_ENV, formatSetupTokenBinding, overlayManagedCredentialEnvironment, type AiAuthSelection, type SetupTokenBinding } from './sessionEnv'
+import { readTrustedStudioOrigin, type SetupTokenBindingVerifier } from './setupTokenBindingProof'
+import { CLAUDE_AUTH_OVERRIDE_ENV_KEYS } from '@/claude/utils/claudeAuthOverrideEnv'
+import { HAPPY_AI_AUTH_SOURCE_ENV } from '@/usage/aiAuthSource'
+import {
+  cswapAtLeastPinned, isManagedSetupTokenAccount, managedSetupTokenEmail, managedSetupTokenId, parseCswapVersion, sameManagedSetupToken,
+  setupTokenGroupIdentity, setupTokenRuntimeStatus, supportsManagedSetupTokens,
+} from './claudeSetupToken'
 
 const MAX_PAYLOAD_BYTES = 1024 * 1024
 const CLAUDE_SWAP_VERSION = '0.25.0'
@@ -84,6 +95,7 @@ type CommandOptions = {
   acceptNonZeroExit?: boolean
   environment?: NodeJS.ProcessEnv
   input?: string
+  signal?: AbortSignal
 }
 
 type Supervisor = {
@@ -105,10 +117,15 @@ export type AiCredentialRuntimeDependencies = {
   chmod(path: string, mode: number): Promise<void>
   rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void>
   makeTempDir(): Promise<string>
+  /** Required only for one-use setup-token binding nonce persistence; missing support fails closed. */
+  syncFile?(path: string): Promise<void>
+  syncDirectory?(path: string): Promise<void>
   /** Unexpected but non-fatal conditions, e.g. a provenance record that could not be written. */
   warn?(message: string): void
   supervisor: Supervisor
   codexProxyStatus?: () => { activeRoutes: number }
+  /** Present only when the daemon has a trusted Studio origin configured. */
+  setupTokenBinding?: Pick<SetupTokenBindingVerifier, 'verify' | 'available'>
 }
 
 export class AiCredentialRuntimeError extends Error {
@@ -196,6 +213,18 @@ function restrictiveRemainingPercent(entry: CodexQuotaEntry): number | null {
     return null
   }
   return Math.min(...used.map((value) => Math.max(0, Math.min(100, 100 - value))))
+}
+
+/**
+ * Outer process bounds for personal/org cswap calls. Collection keeps the provider's own
+ * 10 s signed HTTP deadline inside, then persists and returns; 30 s lets a valid completion
+ * reach Core before the signed publication grace, and a hung run is killed as a tree.
+ * Metadata reads stay at 10 s.
+ */
+export function cswapCollectorCommandOptions(args: string[]): { timeoutMs: number; maxOutputBytes: number; terminateProcessTree?: true } {
+  return args[0] === 'token-runtime' && ['collect', 'collect-org'].includes(args[1] ?? '')
+    ? { timeoutMs: 30_000, maxOutputBytes: 65536, terminateProcessTree: true }
+    : { timeoutMs: 10_000, maxOutputBytes: 65536 }
 }
 
 export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies) {
@@ -433,17 +462,15 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     return null
   }
 
+  async function installedClaudeSwapVersion(): Promise<string | null> {
+    try { return parseCswapVersion((await deps.execFile('cswap', ['--version'])).stdout) } catch { return null }
+  }
+
   async function ensureClaudeSwap(preserveSettings = false): Promise<void> {
     await deps.execFile('uv', ['--version'])
     const python = await claudeSwapPython()
-    let installed = false
-    try {
-      const version = await deps.execFile('cswap', ['--version'])
-      installed = /^(?:cswap|claude-swap) 0\.25\.0\s*$/.test(version.stdout)
-    } catch {
-      installed = false
-    }
-    if (!installed) {
+    // A newer installed build is kept: replacing it with the pin would be a silent downgrade.
+    if (!cswapAtLeastPinned(await installedClaudeSwapVersion())) {
       await deps.execFile('uv', [
         'tool', 'install', `claude-swap==${CLAUDE_SWAP_VERSION}`,
         '--python', python, '--force',
@@ -454,9 +481,20 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     await deps.execFile('cswap', ['config', 'set', 'autoswitch.strategy', 'consume-first'])
   }
 
-  async function applyClaudeAdditive(payload: string, knownCompanyIdentities: Set<string>) {
+  async function setupTokenRuntimeSupported(): Promise<boolean> {
+    try {
+      return supportsManagedSetupTokens((await deps.execFile('cswap', ['token-runtime', 'capabilities'], {
+        maxOutputBytes: 64 * 1024, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout)
+    } catch { return false }
+  }
+
+  async function applyClaudeAdditive(payload: string, knownCompanyIdentities: Set<string>, groupOwned: ReadonlySet<string> = new Set()) {
     const incoming = claudeImportedAccountIdentities(payload)
     if (!incoming) throw new AiCredentialRuntimeError('AI_CREDENTIAL_MERGE_UNSUPPORTED')
+    let managed: Array<Record<string, unknown> & { email: string }>
+    try { managed = JSON.parse(payload).accounts.filter(isManagedSetupTokenAccount) } catch { throw new AiCredentialRuntimeError('INVALID_PAYLOAD') }
+    // Unsupported or missing runtimes need action before anything installs or changes.
+    if (managed.length > 0 && !await setupTokenRuntimeSupported()) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
     await ensureClaudeSwap(true)
     const list = async () => parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
       maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
@@ -479,8 +517,9 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     const envelope = JSON.parse(payload)
     let repairRequestedAccountCount = 0
     const repairedIdentities = new Set<string>()
+    // Managed setup-token slots are replaced by generation below; they never take the inference repair path.
     const duplicates: Array<Record<string, unknown> & { email: string }> = envelope.accounts.filter((account: { email: string }) =>
-      before.accounts.some(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account) && local.disabled !== true))
+      managedSetupTokenId(account.email) === null && before.accounts.some(local => claudeListAccountIdentity(local) === claudeListAccountIdentity(account) && local.disabled !== true))
     if (duplicates.length > 0) {
       const exported = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
       if (exported.version !== 1 || exported.encrypted === true || !Array.isArray(exported.accounts)) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
@@ -538,7 +577,55 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         await deps.rm(tempDir, { recursive: true, force: true })
       }
     }
+    // cswap storage is authoritative for managed metadata. A managed slot is replaced only
+    // when this deployment proves it owns the slot; a personal import of the same synthetic
+    // email is a conflict, never a silent takeover. --force drops `disabled`, so restore it.
+    const exportedAccounts = async () => {
+      const exported = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
+      if (exported.version !== 1 || exported.encrypted === true || !Array.isArray(exported.accounts)) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      return exported.accounts as Array<Record<string, unknown>>
+    }
+    const owns = (account: Record<string, unknown> & { email: string }) => groupOwned.has(setupTokenGroupIdentity(account.managedAccountId as string))
+      || [...knownCompanyIdentities].some(identity => JSON.parse(identity)[0] === account.email)
+    const managedExisting = managed.filter(account => existing.has(claudeListAccountIdentity(account)))
+    if (managedExisting.length > 0) {
+      const local = await exportedAccounts()
+      const changed = managedExisting.filter(account => !sameManagedSetupToken(local.find(slot => slot.email === account.email), account))
+      for (const account of changed) {
+        const stored = local.find(slot => slot.email === account.email)
+        if (!owns(account) || !stored || stored.managedAccountId !== account.managedAccountId) throw new AiCredentialRuntimeError('AI_GROUP_CREDENTIAL_CONFLICT')
+        const storedGeneration = Number(stored.credentialGeneration)
+        if (storedGeneration > Number(account.credentialGeneration)) throw new AiCredentialRuntimeError('AI_GROUP_GENERATION_STALE')
+        if (storedGeneration === account.credentialGeneration) throw new AiCredentialRuntimeError('AI_GROUP_GENERATION_CONFLICT')
+      }
+      if (changed.length > 0) {
+        const tempDir = await deps.makeTempDir()
+        const file = join(tempDir, 'claude-swap.json')
+        try {
+          await deps.writeFile(file, JSON.stringify({ ...envelope, accounts: changed }), { mode: 0o600 })
+          await deps.chmod(file, 0o600)
+          await deps.execFile('cswap', ['import', file, '--force'])
+        } finally {
+          await deps.rm(tempDir, { recursive: true, force: true })
+        }
+        const current = await list()
+        for (const account of changed) {
+          const prior = before.accounts.find(slot => claudeListAccountIdentity(slot) === claudeListAccountIdentity(account))
+          if (prior?.disabled === true && current.accounts.find(slot => slot.number === prior.number)?.disabled !== true) {
+            await deps.execFile('cswap', ['disable', String(prior.number)], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })
+          }
+        }
+      }
+      for (const account of managedExisting.filter(owns)) knownCompanyIdentities.add(JSON.stringify([account.email, '', '']))
+    }
     let after = await list()
+    if (managed.length > 0) {
+      // Presence is not enough: ID, generation, label and credential must all be this payload's.
+      const local = await exportedAccounts()
+      if (managed.some(account => !sameManagedSetupToken(local.find(slot => slot.email === account.email), account))) {
+        throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+      }
+    }
     // Only newly imported slots are proven organizational material. Matching
     // personal credentials were deliberately not overwritten by this import.
     const sharedAccounts = (details: ClaudeListDetails) => details.accounts.filter(account => incoming.has(claudeListAccountIdentity(account)) && (!existing.has(claudeListAccountIdentity(account)) || knownCompanyIdentities.has(JSON.stringify([account.email, account.organizationUuid ?? '', account.organizationName ?? '']))))
@@ -557,13 +644,17 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
       // "configured" while Claude Code stays signed out (a fresh Windows PC, 2026-10-02).
       const imported = sharedAccounts(after)
       try {
-        const target = after.activeAccountNumber !== null && (after.activeUsable || after.activeCredentialKind === 'api_key')
+        // A stored setup-token is activatable without readable usage; its usage scope is a separate state.
+        const setupToken = (details: ClaudeListDetails) => details.accounts.find(account => account.number === details.activeAccountNumber
+          && account.disabled !== true && managed.some(incomingAccount => incomingAccount.email === account.email))
+        const target = after.activeAccountNumber !== null && (after.activeUsable || after.activeCredentialKind === 'api_key' || setupToken(after))
           ? after.activeAccountNumber
-          : after.usableAccountNumber
+          : after.usableAccountNumber ?? after.accounts.find(account => account.disabled !== true
+            && managed.some(incomingAccount => incomingAccount.email === account.email))?.number ?? null
         if (target === null) throw new AiCredentialRuntimeError(claudeNoUsableAccountKind(after))
         await deps.execFile('cswap', ['switch', String(target), '--force', '--json'], { timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })
         after = await list()
-        if (!after.activeUsable && after.activeCredentialKind !== 'api_key') throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
+        if (!after.activeUsable && after.activeCredentialKind !== 'api_key' && !setupToken(after)) throw new AiCredentialRuntimeError('CLAUDE_APPLY_VERIFICATION_FAILED')
       } catch (error) {
         // The imported slots stay on the machine, so a failed activation must not leave them unattributed.
         throw new ClaudeActivationError(error instanceof AiCredentialRuntimeError ? error.kind : 'CLAUDE_APPLY_FAILED', imported)
@@ -1299,6 +1390,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     /** Sent only by the org deployment: which company bundle this is. */
     provenance?: unknown
   }) {
+    if (input?.provider === 'claude') cancelPersonal()
     const selected = provider(input?.provider)
     if (typeof input?.payload !== 'string') {
       throw new AiCredentialRuntimeError('INVALID_PAYLOAD')
@@ -1437,15 +1529,24 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     read: async () => { try { return await deps.readFile(groupJournalPath) } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null; throw error } },
     write: async content => { await deps.mkdir(join(deps.homeDir, '.happy'), { recursive: true, mode: 0o700 }); await deps.chmod(join(deps.homeDir, '.happy'), 0o700); await writeAtomicFile(deps, groupJournalPath, content) },
     snapshot: groupAdapters.snapshot, incoming: groupPayloadIdentities, remove: groupAdapters.remove,
-    apply: async (selected, payload) => {
+    managedIdentities: (selected, payload) => selected !== 'claude' ? [] : (JSON.parse(payload).accounts as Array<Record<string, unknown>>)
+      .filter(account => account?.credentialType === 'setup_token' && typeof account.managedAccountId === 'string')
+      .map(account => setupTokenGroupIdentity(account.managedAccountId as string)),
+    apply: async (selected, payload, owned) => {
       const marker = await readTrialMarker()
       if (marker.leases[selected] || (selected === 'claude' && marker.leases.zai)) throw new AiCredentialRuntimeError('AI_CREDENTIAL_MERGE_UNSUPPORTED')
-      if (selected === 'claude') return applyClaudeAdditive(payload, new Set())
+      if (selected === 'claude') return applyClaudeAdditive(payload, new Set(), new Set(owned))
       return applyCodex(payload, 'merge')
     },
   })
   async function groupSync(input: CredentialGroupRequest) {
-    return serialize(() => withSafeErrors('AI_GROUP_SYNC_FAILED', () => groups.sync(input)))
+    if (input?.provider === 'claude') cancelPersonal()
+    return serialize(() => withSafeErrors('AI_GROUP_SYNC_FAILED', async () => {
+      // The journal snapshots cswap before applying, so the runtime gate must come first.
+      if (input?.provider === 'claude' && typeof input.payload === 'string' && containsManagedSetupTokens(input.payload)
+        && !await setupTokenRuntimeSupported()) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
+      return groups.sync(input)
+    }))
   }
 
   async function purgeManagedProvider(selected: AiCredentialProvider): Promise<void> {
@@ -1469,6 +1570,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
   }
 
   async function purge(input: { provider: AiCredentialProvider; leaseId: string }) {
+    if (input?.provider === 'claude') cancelPersonal()
     const selected = provider(input?.provider)
     if (typeof input?.leaseId !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(input.leaseId)) {
       throw new AiCredentialRuntimeError('TRIAL_MARKER_INVALID')
@@ -1607,9 +1709,13 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         timeoutMs: CLAUDE_STATUS_TIMEOUT_MS,
       })
       const claudeStatus = parseClaudeList(result.stdout)
+      const tokenRuntime = await readTokenRuntime({ invoke: async args => (await deps.execFile('cswap', args, {
+        timeoutMs: 5000, maxOutputBytes: 65536, environment: deps.env,
+      })).stdout })
       return {
         provider: selected,
         ...claudeStatus,
+        ...(tokenRuntime ? { tokenRuntime } : {}),
         rotation: claudeStatus.credentialKind === 'api_key'
           ? apiKeyRotationStatus()
           : deps.supervisor.status(),
@@ -1705,16 +1811,299 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     }))
   }
 
-  async function sessionEnvironment(agent: string | undefined): Promise<Record<string, string>> {
+  /**
+   * Binds one new Claude spawn to a managed setup-token slot. The token reaches only
+   * that child's environment (as with a Z.AI lease); every other Claude auth override
+   * is written empty so neither inherited nor tmux-server values can win. Fails
+   * closed: no substitute credential is ever returned.
+   */
+  const bindingNoncePath = join(deps.homeDir, '.happy', 'setup-token-binding-nonces.json')
+  // Only the exact daemon-created object can authorize a spawn; never an RPC DTO.
+  const defaultSessionLaunches = new WeakSet<Record<string, string>>()
+  const sessionLaunches = new WeakMap<Record<string, string>, {
+    agent: string | undefined; selection: Extract<AiAuthSelection, { kind: 'claude-setup-token' }>
+    binding: SetupTokenBinding; expiresAt: number | null; started: boolean
+  }>()
+  /** One-use, durable across restarts: a grant observed on the wire cannot start a second session. */
+  async function consumeBindingNonce(nonce: string, expiresAt: number) {
+    let ledger: { version: 1; nonces: Record<string, number> }
+    try {
+      const raw = await deps.readFile(bindingNoncePath).catch(error => { if (error?.code === 'ENOENT') return null; throw error })
+      ledger = raw === null ? { version: 1, nonces: {} } : JSON.parse(raw)
+      if (ledger?.version !== 1 || typeof ledger.nonces !== 'object' || ledger.nonces === null || Array.isArray(ledger.nonces)
+        || Object.entries(ledger.nonces).some(([nonce, expiry]) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(nonce)
+          || !Number.isSafeInteger(expiry) || expiry < 1)) throw new Error('invalid')
+    } catch { throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_LEDGER_INVALID') }
+    const now = deps.now()
+    // Entries are kept until well past their grant's validity, so pruning cannot reopen a replay.
+    const nonces = Object.fromEntries(Object.entries(ledger.nonces).filter(([, until]) => until + 120_000 > now))
+    if (nonce in nonces) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_REPLAYED')
+    if (Object.keys(nonces).length >= 4096) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+    nonces[nonce] = expiresAt
+    if (!deps.syncFile || !deps.syncDirectory) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+    const directory = join(deps.homeDir, '.happy')
+    await deps.mkdir(directory, { recursive: true, mode: 0o700 })
+    const tempPath = `${bindingNoncePath}.happy-tmp`
+    try {
+      await deps.writeFile(tempPath, JSON.stringify({ version: 1, nonces }), { mode: 0o600 })
+      await deps.chmod(tempPath, 0o600)
+      await deps.syncFile(tempPath)
+      await deps.rename(tempPath, bindingNoncePath)
+      await deps.syncDirectory(directory)
+      // Also persist .happy itself when this was the first creation of that directory.
+      await deps.syncDirectory(deps.homeDir)
+    } catch (error) {
+      // Never roll back a renamed ledger: its nonce may already be durable.
+      await deps.rm(tempPath, { force: true }).catch(() => undefined)
+      throw error
+    }
+  }
+
+  /**
+   * Binds one Claude spawn to a managed setup-token slot. A new spawn needs a
+   * server-signed binding grant (caller, company, machine, account, generation,
+   * one-use nonce); a resume reuses the binding recorded when that grant was
+   * consumed. Both re-check the journal (reconciled, owned by that user) and the
+   * stored generation. The token reaches only that child's environment and every
+   * other Claude auth override is written empty. Never a substitute credential.
+   */
+  async function setupTokenSessionEnvironment(agent: string | undefined, selection: Extract<AiAuthSelection, { kind: 'claude-setup-token' }>, recorded: SetupTokenBinding | undefined) {
+    const { managedAccountId, credentialGeneration, groupScope } = selection
+    if (agent !== undefined && agent !== 'claude') throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+    if (!await setupTokenRuntimeSupported()) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
+    const unavailable = () => new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+    let binding: SetupTokenBinding
+    let consume: { nonce: string; expiresAt: number } | null = null
+    if (recorded) {
+      if (recorded.managedAccountId !== managedAccountId || recorded.groupScope !== groupScope || recorded.credentialGeneration !== credentialGeneration) throw unavailable()
+      binding = recorded
+    } else {
+      if (!deps.setupTokenBinding || !selection.bindingGrant) throw unavailable()
+      const claims = await deps.setupTokenBinding.verify(selection.bindingGrant)
+      if (!claims || claims.managedAccountId !== managedAccountId || claims.groupScope !== groupScope
+        || claims.credentialGeneration !== credentialGeneration) throw unavailable()
+      const { companyId, userId, machineId, keyId, nonce, issuedAt } = claims
+      binding = { managedAccountId, credentialGeneration, groupScope, companyId, userId, machineId, keyId, nonce, issuedAt }
+      consume = { nonce, expiresAt: claims.expiresAt }
+    }
+    // The signed caller must own the slot through this scope's applied assignment.
+    // Personal, other-company, other-user, pending and revoked slots fail.
+    const assignment = await groups.assignment(groupScope, 'claude')
+    if (!assignment || !assignment.reconciled || assignment.userId !== binding.userId
+      || !assignment.desired.includes(setupTokenGroupIdentity(managedAccountId))) throw unavailable()
+    const email = managedSetupTokenEmail(managedAccountId)
+    const listed = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
+      maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout).accounts.find(account => account.email === email)
+    const exported = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
+    const slot = Array.isArray(exported?.accounts) ? exported.accounts.find((account: Record<string, unknown>) => account?.email === email) : undefined
+    const token = slot?.credentials?.claudeAiOauth?.accessToken
+    if (!listed || listed.disabled === true || slot?.credentialType !== 'setup_token' || slot.managedAccountId !== managedAccountId
+      || typeof token !== 'string' || !token.startsWith('sk-ant-oat01-')
+      || !Number.isSafeInteger(slot.credentialGeneration) || slot.credentialGeneration < 1) throw unavailable()
+    // Exactly the signed generation: a replaced token is a different credential.
+    if (slot.credentialGeneration !== credentialGeneration) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_STALE')
+    if (consume) {
+      // A fresh grant must still be live when it is spent and when its token env is handed out;
+      // the slot reads and the durable write can cross the 60 s lifetime. A recorded resume has no fresh grant.
+      const expired = () => new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_EXPIRED')
+      if (deps.now() >= consume.expiresAt) throw expired()
+      await consumeBindingNonce(consume.nonce, consume.expiresAt)
+      if (deps.now() >= consume.expiresAt) throw expired()
+    }
+    const cleared = Object.fromEntries(CLAUDE_AUTH_OVERRIDE_ENV_KEYS.map(key => [key, '']))
+    const environment = { ...cleared, CLAUDE_CODE_OAUTH_TOKEN: token, [HAPPY_AI_AUTH_SOURCE_ENV]: 'org-bundle',
+      [SETUP_TOKEN_BINDING_ENV]: formatSetupTokenBinding(binding) }
+    sessionLaunches.set(environment, { agent, selection, binding, expiresAt: consume?.expiresAt ?? null, started: false })
+    return environment
+  }
+
+  /**
+   * A launch or resume without a setup-token binding runs on the machine default.
+   * While any current assignment desires an org-managed setup-token, that is
+   * refused with an actionable code, even with a personal login active: group-sync
+   * keeps the personal login, so an unbound launch (agent facade, automation, fork,
+   * unrecorded resume) would otherwise silently decide the credential. Revoked
+   * assignments, ordinary OAuth groups, Z.AI leases, other agents and machines
+   * without assignments are unchanged. Journal-only: no cswap call per launch.
+   */
+  async function refuseUnboundManagedDefault() {
+    const required = () => new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
+    if (await groups.hasManagedDesired('claude')) throw required()
+    // Journals from before the projection cannot say whether they desire a managed slot.
+    // An empty (revoked) one desires nothing. A non-empty one is classified from the roster
+    // once and recorded; until every desired identity is classified it is refused, never
+    // treated as unmanaged. Later launches then use the journal only.
+    const legacy = await groups.unprojected('claude')
+    for (const entry of legacy.filter(entry => entry.desired.length === 0)) await groups.recordManaged('claude', entry.scope, [])
+    const unknown = legacy.filter(entry => entry.desired.length > 0)
+    if (unknown.length === 0) return
+    const unresolved = () => new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_ASSIGNMENT_UNRESOLVED')
+    let accounts: Array<Record<string, unknown>>
+    try {
+      accounts = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
+        maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout).accounts
+      const live = await readOptionalJson(deps.env.CLAUDE_CONFIG_DIR ? join(deps.env.CLAUDE_CONFIG_DIR, '.claude.json') : join(deps.homeDir, '.claude.json'))
+      const liveAccount = live?.oauthAccount as { emailAddress?: unknown; organizationUuid?: unknown } | undefined
+      if (typeof liveAccount?.emailAddress === 'string' && liveAccount.emailAddress) {
+        accounts = [...accounts, { email: liveAccount.emailAddress, organizationUuid: typeof liveAccount.organizationUuid === 'string' ? liveAccount.organizationUuid : '' }]
+      }
+    } catch { throw unresolved() }
+    // Both identity formats a journal may hold for a managed slot (managed-ID and older email
+    // hash); every other installed account classifies its identity as not managed.
+    const managedIdentities = new Set<string>()
+    const classified = new Set<string>()
+    for (const account of accounts) {
+      const id = managedSetupTokenId(account.email)
+      if (id !== null) {
+        for (const identity of [setupTokenGroupIdentity(id), createHash('sha256').update(JSON.stringify(['claude', String(account.email).trim().toLowerCase(), ''])).digest('hex')]) {
+          managedIdentities.add(identity); classified.add(identity)
+        }
+      } else {
+        try { classified.add(groupAccountIdentity('claude', account)) } catch { /* no identity, cannot classify anything */ }
+      }
+    }
+    let managed = false
+    let pending = false
+    for (const entry of unknown) {
+      if (entry.desired.some(identity => !classified.has(identity))) { pending = true; continue }
+      const desiredManaged = entry.desired.filter(identity => managedIdentities.has(identity))
+      await groups.recordManaged('claude', entry.scope, desiredManaged)
+      if (desiredManaged.length > 0) managed = true
+    }
+    if (managed) throw required()
+    if (pending) throw unresolved()
+  }
+
+  async function sessionEnvironment(agent: string | undefined, selection?: AiAuthSelection, recorded?: SetupTokenBinding): Promise<Record<string, string>> {
+    if (selection?.kind === 'claude-setup-token') return serialize(() => withSafeErrors('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE',
+      () => setupTokenSessionEnvironment(agent, selection, recorded)))
     if (agent !== undefined && agent !== 'claude') return {}
     return serialize(async () => {
       const marker = await readTrialMarker()
-      if (!marker.leases.zai) return {}
-      return parseZaiEnvironment(await deps.readFile(zaiEnvironmentPath()))
+      if (marker.leases.zai) return parseZaiEnvironment(await deps.readFile(zaiEnvironmentPath()))
+      await refuseUnboundManagedDefault()
+      const environment = {}
+      defaultSessionLaunches.add(environment)
+      return environment
     })
   }
 
-  return { capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: () => ({ version: 1, groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'] }) }
+  // The caller invokes this around the actual child creation, after preparation.
+  async function launchSession<T>(environment: Record<string, string>, start: () => T | Promise<T>): Promise<T> {
+    const launch = sessionLaunches.get(environment)
+    if (!launch) {
+      if (SETUP_TOKEN_BINDING_ENV in environment) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      // Recognize only default Claude environments prepared by this runtime.
+      // Explicit personal, other agents and ZAI environments retain their bypass.
+      if (defaultSessionLaunches.has(environment)) return serialize(async () => {
+        await refuseUnboundManagedDefault()
+        return await start()
+      })
+      return start()
+    }
+    return serialize(() => withSafeErrors('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE', async () => {
+      if (launch.started) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_REPLAYED')
+      const checkExpiry = () => {
+        if (launch.expiresAt !== null && deps.now() >= launch.expiresAt) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_EXPIRED')
+      }
+      checkExpiry()
+      // Recheck custody/disabled/generation under the same queue as group-sync.
+      // The original grant was consumed already; this is not another grant use.
+      const current = await setupTokenSessionEnvironment(launch.agent, launch.selection, launch.binding)
+      if (current.CLAUDE_CODE_OAUTH_TOKEN !== environment.CLAUDE_CODE_OAUTH_TOKEN) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_STALE')
+      checkExpiry()
+      launch.started = true
+      // No asynchronous launch preparation belongs in start: plain spawn calls
+      // spawnHappyCLI, tmux calls new-window, Windows resumes a suspended root.
+      // Keep custody locked until submitted.
+      return await start()
+    }))
+  }
+
+  let personalUse = { online: false, inUse: false }
+  let personalCancelEpoch = 0
+  const personalRefEpochs = new Map<string, number>()
+  let personalCommand: { ref: string; controller: AbortController } | null = null
+  const personalInvoke = async (args: string[], signal?: AbortSignal) => (await deps.execFile('cswap', args, {
+    ...cswapCollectorCommandOptions(args), environment: deps.env, signal,
+  })).stdout
+  const personalScheduler = createPersonalProbeScheduler({
+    now: deps.now, online: () => personalUse.online, inUse: () => personalUse.inUse,
+    roster: async () => (await readTokenRuntime({ invoke: args => personalInvoke(args), now: deps.now }))?.accounts ?? [],
+    collect: (row, signal) => tokenProbe({ version: 1, operation: 'collect', accountRef: row.accountRef, credentialGeneration: row.credentialGeneration }, signal),
+  })
+  function cancelPersonal(ref?: string) {
+    if (ref) {
+      // Bound memory without allowing an old captured ref epoch to become current again.
+      if (!personalRefEpochs.has(ref) && personalRefEpochs.size >= 1000) { personalCancelEpoch++; personalRefEpochs.clear() }
+      personalRefEpochs.set(ref, (personalRefEpochs.get(ref) ?? 0) + 1)
+    } else personalCancelEpoch++
+    personalScheduler.cancel(ref)
+    if (personalCommand && (!ref || personalCommand.ref === ref)) personalCommand.controller.abort()
+  }
+  async function tokenProbe(input: unknown, signal?: AbortSignal) {
+    const request = input as { operation?: string; enabled?: boolean; accountRef?: string }
+    if (request?.operation === 'consent' && request.enabled === false) cancelPersonal(request.accountRef)
+    const queuedEpoch = personalCancelEpoch
+    const queuedRefEpoch = personalRefEpochs.get(request?.accountRef ?? '') ?? 0
+    return serialize(async () => {
+      const revoked = queuedRefEpoch !== (personalRefEpochs.get(request?.accountRef ?? '') ?? 0)
+      if (request?.operation === 'collect' && (revoked || queuedEpoch !== personalCancelEpoch || signal?.aborted)) {
+        return { version: 1, status: revoked ? 'disabled' : 'unavailable', reason: revoked ? 'probe_disabled' : 'cancelled', error: 'TOKEN_PROBE_CANCELLED' }
+      }
+      const controller = new AbortController()
+      const abort = () => controller.abort()
+      signal?.addEventListener('abort', abort, { once: true })
+      if (signal?.aborted) controller.abort()
+      const flight = request?.operation === 'collect' ? { ref: request.accountRef ?? '', controller } : null
+      if (flight) personalCommand = flight
+      try {
+        return await createTokenProbe({ invoke: args => personalInvoke(args, controller.signal), now: deps.now })(input)
+      } finally {
+        signal?.removeEventListener('abort', abort)
+        if (personalCommand === flight) personalCommand = null
+      }
+    })
+  }
+  function personalSchedulerTick(context: { online: boolean; inUse: boolean }) {
+    personalUse = context
+    if (!context.online || !context.inUse) cancelPersonal()
+    return personalScheduler.tick()
+  }
+  function stopPersonalScheduler() { personalUse = { online: false, inUse: false }; personalScheduler.close(); cancelPersonal() }
+  async function tokenProbeCapability() {
+    try { return personalProbeSupported(JSON.parse((await deps.execFile('cswap', ['token-runtime', 'capabilities'], { timeoutMs: 5000, maxOutputBytes: 8192 })).stdout)) } catch { return false }
+  }
+  function collectorOrigin() {
+    return readTrustedStudioOrigin(deps.env)
+  }
+  async function collectorCapability() {
+    if (!collectorOrigin()) return false
+    try {
+      const caps = JSON.parse((await deps.execFile('cswap', ['token-runtime', 'capabilities'], { timeoutMs: 5000, maxOutputBytes: 8192 })).stdout)
+      return caps.artifact === 'saycode-setup-token-runtime-v1' && caps.organizationCollectorVersion === 1 && await collectorVerificationReady(collectorOrigin())
+    } catch { return false }
+  }
+  async function collectorProbe(input: unknown, machineId: string) {
+    return serialize(async () => {
+      const origin = collectorOrigin()
+      return createClaudeCollector({
+        studioOrigin: origin, machineId, now: deps.now,
+        authorize: r => groups.authorize(r.companyId, r.userId, setupTokenGroupIdentity(r.managedAccountId)),
+        consume: (id, expiresAt) => consumeCollectorPermit(join(deps.homeDir, '.happy', 'claude-collector'), id, expiresAt, deps.now()),
+        invoke: async (args, input) => (await deps.execFile('cswap', args, {
+          input, ...cswapCollectorCommandOptions(args), environment: deps.env,
+        })).stdout,
+      })(input)
+    })
+  }
+
+  return { launchSession, personalSchedulerTick, stopPersonalScheduler, tokenProbe, collectorProbe, capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: async (machineId?: string) => { const setupToken = await setupTokenRuntimeSupported(); const collector = Boolean(machineId) && await collectorCapability(); const personal = await tokenProbeCapability(); return { version: 1, ...(personal ? { tokenProbeVersion: 1 } : {}), ...(collector ? { collectorProbeVersion: 1 } : {}), groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
+    // Managed setup-token import with metadata verification, only on the marked cswap token runtime.
+    ...(setupToken ? { setupTokenVersion: 1, setupTokenStatusVersion: 1 } : {}),
+    // Advertised only when a server-signed binding proof can actually be verified here.
+    ...(setupToken && deps.setupTokenBinding && await deps.setupTokenBinding.available()
+      ? { newSessionProfileBinding: true, setupTokenSessionBindingVersion: 1 } : { newSessionProfileBinding: false }) } } }
 }
 
 type ClaudeListDetails = {
@@ -1741,6 +2130,10 @@ function claudeApiKeyTargetEmail(payload: string): string | null {
   } catch {
     return null
   }
+}
+
+function containsManagedSetupTokens(payload: string): boolean {
+  try { return JSON.parse(payload)?.accounts?.some((account: Record<string, unknown>) => account?.credentialType === 'setup_token') === true } catch { return false }
 }
 
 function claudeImportedAccountIdentities(payload: string): Set<string> | null {
@@ -1851,6 +2244,7 @@ function claudeAccountHealth(details: ClaudeListDetails) {
     : active.disabled === true ? 'disabled' as const
     : active.usageStatus === 'ok' ? 'usage-readable' as const
     : active.usageStatus === 'api_key' ? 'api-key' as const
+    : managedSetupTokenId(active.email) !== null ? 'unknown' as const
     : active.usageStatus === 'relogin_required' ? 'relogin-required' as const
     : 'unknown' as const
   return {
@@ -1858,17 +2252,21 @@ function claudeAccountHealth(details: ClaudeListDetails) {
     activeAccountStatus,
     usableAccountCount: details.accounts.filter(account => account.disabled !== true
       && (account.usageStatus === 'ok' || account.usageStatus === 'api_key')).length,
-    reloginRequiredAccountCount: details.accounts.filter(account => account.disabled !== true && account.usageStatus === 'relogin_required').length,
+    // A setup-token has no refresh token; cswap's relogin verdict is not an authentication result for it.
+    reloginRequiredAccountCount: details.accounts.filter(account => account.disabled !== true && account.usageStatus === 'relogin_required'
+      && managedSetupTokenId(account.email) === null).length,
   }
 }
 
 function parseClaudeList(stdout: string) {
   const details = parseClaudeListDetails(stdout)
   const { configured, activeAccount, activeCredentialKind } = details
+  const setupToken = setupTokenRuntimeStatus(details.accounts, details.activeAccountNumber)
   return {
     configured,
     activeAccount,
     ...claudeAccountHealth(details),
+    ...(setupToken.accounts.length > 0 ? { setupToken } : {}),
     ...(activeCredentialKind ? { credentialKind: activeCredentialKind } : {}),
   }
 }
@@ -2109,14 +2507,18 @@ export function createNodeAiCredentialRuntime(
   supervisor: Supervisor,
   env: Record<string, string | undefined> = process.env,
   homeDir: string = homedir(),
+  options: Pick<AiCredentialRuntimeDependencies, 'setupTokenBinding'> = {},
 ) {
   return createAiCredentialRuntime({
+    ...options,
     homeDir,
     now: Date.now,
     env,
     execFile: (command, args, options) => runAiCredentialCommand(command, args, options, options?.terminateProcessTree ? crossSpawn as typeof spawn : spawn),
     readFile: (path) => readFile(path, 'utf8'),
     readdir: (path) => readdir(path),
+    syncFile: async (path) => { const file = await open(path, 'r+'); try { await file.sync() } finally { await file.close() } },
+    syncDirectory: async (path) => { const directory = await open(path, 'r'); try { await directory.sync() } finally { await directory.close() } },
     writeFile: async (path, content, options) => { await writeFile(path, content, options) },
     mkdir,
     rename,
@@ -2135,6 +2537,7 @@ export function runAiCredentialCommand(
   spawnCommand: typeof spawn = spawn,
 ): Promise<AiCredentialCommandResult> {
   return new Promise((resolve, reject) => {
+    if (options.signal?.aborted) { reject(new AiCredentialRuntimeError('COMMAND_CANCELLED')); return }
     const environment = options.environment ?? process.env
     const child = spawnCommand(command, args, {
       env: command === 'uv' || command === 'cswap'
@@ -2152,6 +2555,7 @@ export function runAiCredentialCommand(
     const fail = (kind: string) => {
       if (settled) return
       settled = true
+      options.signal?.removeEventListener('abort', abort)
       if (timeout) clearTimeout(timeout)
       if (options.terminateProcessTree && child.pid) {
         if (process.platform === 'win32') {
@@ -2167,6 +2571,7 @@ export function runAiCredentialCommand(
       }
       reject(new AiCredentialRuntimeError(kind))
     }
+    const abort = () => fail('COMMAND_CANCELLED')
     const collect = (target: Buffer[]) => {
       let outputBytes = 0
       return (chunk: Buffer) => {
@@ -2187,6 +2592,7 @@ export function runAiCredentialCommand(
     child.on('close', (code) => {
       if (settled) return
       settled = true
+      options.signal?.removeEventListener('abort', abort)
       if (timeout) clearTimeout(timeout)
       if (code !== 0) {
         if (!options.acceptNonZeroExit) {
@@ -2200,6 +2606,8 @@ export function runAiCredentialCommand(
         ...(options.acceptNonZeroExit && { exitCode: code ?? -1 }),
       })
     })
+    options.signal?.addEventListener('abort', abort, { once: true })
+    if (options.signal?.aborted) { abort(); return }
     timeout = setTimeout(() => fail('COMMAND_TIMED_OUT'), options.timeoutMs ?? 30_000)
     if (options.input !== undefined) {
       child.stdin?.on('error', () => fail('COMMAND_FAILED'))

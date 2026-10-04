@@ -5,7 +5,7 @@
  * They do NOT require tmux to be installed on the system.
  * All tests mock environment variables and test string parsing only.
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
     parseTmuxSessionIdentifier,
     formatTmuxSessionIdentifier,
@@ -452,5 +452,27 @@ describe('Round-trip consistency', () => {
         expect(built.success).toBe(true);
         const parsed = parseTmuxSessionIdentifier(built.identifier!);
         expect(parsed).toEqual(params);
+    });
+});
+
+
+describe('tmux spawn boundary', () => {
+    it('runs authorization after preparation and submits new-window while it is held', async () => {
+        const tmux = new TmuxUtilities('fixture');
+        let authorized = false;
+        const command = vi.spyOn(tmux, 'executeTmuxCommand').mockImplementation(async (args) => {
+            if (args[0] === 'new-window') expect(authorized).toBe(true);
+            return { returncode: 0, stdout: '123', stderr: '', command: args };
+        });
+        vi.spyOn(tmux, 'ensureSessionExists').mockImplementation(async () => {
+            expect(authorized).toBe(false);
+            return true;
+        });
+        const result = await tmux.spawnInTmux(['synthetic'], { sessionName: 'fixture' }, {}, async start => {
+            authorized = true;
+            try { return await start(); } finally { authorized = false; }
+        });
+        expect(result).toMatchObject({ success: true, pid: 123 });
+        expect(command.mock.calls.filter(([args]) => args[0] === 'new-window')).toHaveLength(1);
     });
 });

@@ -745,7 +745,8 @@ export class TmuxUtilities {
     async spawnInTmux(
         args: string[],
         options: TmuxSpawnOptions = {},
-        env?: Record<string, string>
+        env?: Record<string, string>,
+        atSpawn?: <T>(start: () => Promise<T>) => Promise<T>,
     ): Promise<{ success: boolean; sessionId?: string; pid?: number; error?: string }> {
         try {
             // Check if tmux is available
@@ -833,7 +834,8 @@ export class TmuxUtilities {
             createWindowArgs.push('-F', '#{pane_pid}');
 
             // Create window with command and get PID immediately
-            const createResult = await this.executeTmuxCommand(createWindowArgs, sessionName);
+            const start = () => this.executeTmuxCommand(createWindowArgs, sessionName!);
+            const createResult = await (atSpawn ? atSpawn(start) : start());
 
             if (!createResult || createResult.returncode !== 0) {
                 throw new Error(`Failed to create tmux window: ${createResult?.stderr}`);

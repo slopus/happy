@@ -2277,7 +2277,7 @@ describe('AI credential machine runtime', () => {
         return { stdout: 'Python 3.12.13', stderr: '' }
       }
       if (command === 'cswap' && args[0] === '--version') {
-        return { stdout: 'cswap 0.26.0', stderr: '' }
+        return { stdout: 'cswap 0.24.0', stderr: '' }
       }
       if (command === 'cswap' && args[0] === 'list') {
         return { stdout: configuredClaudeList, stderr: '' }
@@ -2295,6 +2295,15 @@ describe('AI credential machine runtime', () => {
     expect(execFile).toHaveBeenCalledWith('uv', [
       'tool', 'install', 'claude-swap==0.25.0', '--python', physical, '--force',
     ], expect.anything())
+  })
+
+  it.each(['cswap 0.25.0', 'cswap 0.26.0', 'claude-swap 0.27.0b1'])('keeps installed %s instead of downgrading to the pin', async version => {
+    const base = setup().execFile
+    const execFile = vi.fn(async (command: string, args: string[], options?: object) => (
+      command === 'cswap' && args[0] === '--version' ? { stdout: version, stderr: '' } : base(command, args, options)))
+    const { runtime } = setup({ execFile })
+    await runtime.apply({ provider: 'claude', payload: '{}' })
+    expect(execFile.mock.calls.some(([command, args]) => command === 'uv' && args[0] === 'tool')).toBe(false)
   })
 
   it('keeps the uv Python failure when no physical Python 3.12+ installation runs', async () => {
@@ -3296,5 +3305,78 @@ describe('org deployment provenance (specs/agent-ai-source-routing observation i
     await expect(runtime.apply({ provider: 'claude', payload, provenance }))
       .resolves.toMatchObject({ provider: 'claude', configured: true })
     expect(warn).toHaveBeenCalledWith(expect.stringContaining('provenance'))
+  })
+})
+
+describe('resident personal runtime wiring',()=>{
+ it('uses generation CAS and cancels the pending collect before applying revocation',async()=>{
+  const ref='11111111-1111-4111-8111-111111111111';let enabled=true;let collecting=false;let aborted=false
+  const row=()=>({accountRef:ref,credentialGeneration:1,number:1,roster:{email:'personal@token.local',organizationUuid:'',uuid:''},credentialType:'setup_token',probeEnabled:enabled,authState:'usable',usageStatus:'partial',reasonCodes:['coverage_unknown'],probeBudget:{scope:'local-per-token',accountUsed24h:0,accountLimit24h:96,accountRemaining24h:96,nextProbeAt:null,failureStreak:0,minIntervalSeconds:300,recommendedIntervalSeconds:900}})
+  const invoke=vi.fn(async(_command:string,args:string[],options?:{signal?:AbortSignal})=>{
+   if(options?.signal?.aborted)throw new Error('cancelled')
+   if(args[1]==='capabilities')return {stdout:JSON.stringify({artifact:'saycode-setup-token-runtime-v1',setupTokenObservation:true,durableProbeBudget:true,personalProbeVersion:1}),stderr:''}
+   if(args[1]==='status')return {stdout:JSON.stringify({accounts:[row()],budget:{machineUsed24h:0,machineLimit24h:288,machineRemaining24h:288,machineSlotFreesAt:null,accountLimit24h:96}}),stderr:''}
+   if(args[1]==='collect'){
+    expect(args).toContain('--generation');collecting=true
+    await new Promise<void>(resolve=>options?.signal?.addEventListener('abort',()=>{aborted=true;resolve()}))
+    throw new Error('cancelled')
+   }
+   if(args[1]==='consent'){expect(aborted).toBe(true);enabled=false;return {stdout:'{}',stderr:''}}
+   throw new Error('unexpected command')
+  })
+  const {runtime}=setup({execFile:invoke,now:()=>1000000})
+  await runtime.personalSchedulerTick({online:true,inUse:true})
+  await vi.waitFor(()=>expect(collecting).toBe(true))
+  expect(await runtime.tokenProbe({version:1,operation:'consent',accountRef:ref,credentialGeneration:1,enabled:false})).toMatchObject({enabled:false,scope:'personal'})
+  expect(aborted).toBe(true)
+  runtime.stopPersonalScheduler()
+ })
+ it('cancels a native command without returning buffered output',async()=>{
+  const controller=new AbortController()
+  const pending=runAiCredentialCommand(process.execPath,['-e','process.stdout.write("private"); setInterval(()=>{},1000)'],{signal:controller.signal,timeoutMs:5000})
+  setTimeout(()=>controller.abort(),20)
+  await expect(pending).rejects.toMatchObject({kind:'COMMAND_CANCELLED'})
+ })
+})
+
+it.each(['OFF','offline'])('fences manual collection queued behind organization work when %s arrives before execution',async(action)=>{
+ const ref='11111111-1111-4111-8111-111111111111';let enabled=true;let entered=false;let release!:()=>void
+ const fetcher=vi.spyOn(globalThis,'fetch').mockImplementation(async()=>new Promise<Response>(resolve=>{entered=true;release=()=>resolve(new Response('{}',{status:503}))}))
+ const invoke=vi.fn(async(_command:string,args:string[])=>{
+  if(args[1]==='capabilities')return {stdout:JSON.stringify({artifact:'saycode-setup-token-runtime-v1',setupTokenObservation:true,durableProbeBudget:true,personalProbeVersion:1}),stderr:''}
+  if(args[1]==='status')return {stdout:JSON.stringify({accounts:[{accountRef:ref,credentialGeneration:1,number:1,roster:{email:'personal@token.local',organizationUuid:'',uuid:''},credentialType:'setup_token',probeEnabled:enabled,authState:'usable',usageStatus:'partial',reasonCodes:['coverage_unknown'],probeBudget:{scope:'local-per-token',accountUsed24h:0,accountLimit24h:96,accountRemaining24h:96,nextProbeAt:null,failureStreak:0,minIntervalSeconds:300,recommendedIntervalSeconds:900}}],budget:{machineUsed24h:0,machineLimit24h:288,machineRemaining24h:288,machineSlotFreesAt:null,accountLimit24h:96}}),stderr:''}
+  if(args[1]==='consent')enabled=false
+  return {stdout:'{}',stderr:''}
+ })
+ const {runtime}=setup({execFile:invoke,env:{HAPPY_APLUS_STUDIO_ORIGIN:'https://studio.test'}})
+ try {
+  const org=runtime.collectorProbe({version:1,companyId:'c',userId:'u',machineId:'m',managedAccountId:ref,accountRef:ref,credentialGeneration:1,policyRevision:1,permitId:ref,grant:'a.b'},'m')
+  await vi.waitFor(()=>expect(entered).toBe(true))
+  const queued=runtime.tokenProbe({version:1,operation:'collect',accountRef:ref,credentialGeneration:1})
+  const off=action==='OFF'?runtime.tokenProbe({version:1,operation:'consent',accountRef:ref,credentialGeneration:1,enabled:false}):runtime.personalSchedulerTick({online:false,inUse:false})
+  expect(invoke).not.toHaveBeenCalled()
+  release();await org
+  expect(await queued).toMatchObject({status:action==='OFF'?'disabled':'unavailable',error:'TOKEN_PROBE_CANCELLED'})
+  if(action==='OFF')expect(await off).toMatchObject({enabled:false,status:'disabled'})
+  else await off
+  expect(invoke.mock.calls.filter(([,args])=>args[1]==='collect')).toHaveLength(0)
+  expect(invoke.mock.calls.map(([,args])=>args[1])).toEqual(action==='OFF'?['capabilities','status','consent','status']:[])
+ }finally{release?.();fetcher.mockRestore();runtime.stopPersonalScheduler()}
+})
+
+describe('cswap collector command options', () => {
+  it('gives collect-org a 30 s outer bound with process-tree termination; metadata reads keep 10 s', async () => {
+    const { cswapCollectorCommandOptions } = await import('./aiCredentialRuntime')
+    expect(cswapCollectorCommandOptions(['token-runtime', 'collect-org'])).toMatchObject({ timeoutMs: 30_000, terminateProcessTree: true })
+    for (const read of [['token-runtime', 'capabilities'], ['token-runtime', 'status']]) {
+      const options = cswapCollectorCommandOptions(read)
+      expect(options.timeoutMs).toBe(10_000)
+      expect(options.terminateProcessTree).toBeUndefined()
+    }
+  })
+
+  it('is what the collector adapter uses for every cswap call', async () => {
+    const source = await readTestFile(join(__dirname, 'aiCredentialRuntime.ts'), 'utf8')
+    expect(source).toMatch(/invoke: async \(args, input\) => \(await deps\.execFile\('cswap', args, \{\s*input, \.\.\.cswapCollectorCommandOptions\(args\), environment: deps\.env,/)
   })
 })
