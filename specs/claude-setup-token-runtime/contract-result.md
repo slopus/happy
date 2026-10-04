@@ -558,3 +558,25 @@ client was used). Real Studio reserve→daemon→publish, real Claude authentica
 model coverage, native postinstall/release package/rollback and runtime pin
 acceptance remain open. Real account requests:0. No product code or operating
 daemon/pins changed.
+
+
+### Follow-up: real Studio HTTP joined to installed daemon
+
+A fresh PostgreSQL16 tmpfs database, vault key and synthetic account were used
+with actual Studio auth/routes/Prisma. HTTP registration/group/binding and the
+actual signer/public-key→policy/reserve→installed-daemon DEK collector→HTTP
+publish→receiver fresh path passed. Receiver decisionEligible/probeAllowed
+stayed false (coverage unknown). A real Studio HTTP bindingGrant launched the
+session and reached the actual Claude fixture executable with the exact binding.
+One permit and four audit records were persisted; one fake inference call occurred.
+Session/daemon control and server stdin EOF exited normally; owned PIDs and
+the temporary PostgreSQL container were removed without fallback cleanup.
+Parent independently reviewed/asserted outcomes in
+`/tmp/claude/studio-happy-e2e.4paav5y3/{harness.cjs,studio.mts,result.json,cleanup-proof.json}`.
+
+This supersedes the preceding fixture-signer/reserve/publish gap only. Presence,
+inference and Claude execution remain fixtures; group-sync payload was built by
+the harness from the registered ID/same synthetic token, not Studio prepare/complete.
+Desktop's actual RPC function, macOS Keychain (provider used file-backend fixture),
+real Claude coverage/authentication and release/pin/rollback remain unaccepted.
+Product code changes:0; real account requests:0.
