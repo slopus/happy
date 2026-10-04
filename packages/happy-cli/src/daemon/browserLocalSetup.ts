@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto'
-import { BrowserBridge, deriveBrowserViewerBridgeToken, type BrowserSetupPolicy } from './browserBridge'
+import { BrowserBridge, deriveBrowserSetupPairingToken, type BrowserSetupPolicy } from './browserBridge'
 
 const SCOPE = /^bv1_[A-Za-z0-9_-]{32}$/
 const TTL = 5 * 60 * 1000
@@ -59,7 +59,7 @@ export class BrowserLocalSetup {
             const entry = [...this.operations].find(([, op]) => op.id === operationId)
             if (!entry || entry[1].consumed || entry[1].expires <= this.now()) throw new Error('SETUP_EXPIRED')
             const [viewerKey, op] = entry
-            const token = deriveBrowserViewerBridgeToken(await this.options.readToken(), viewerKey)
+            const token = deriveBrowserSetupPairingToken(await this.options.readToken(), viewerKey, op.id)
             op.consumed = true
             return { token, port: this.options.port, host: '127.0.0.1', viewerKey, pairingId: op.id, profile: op.profile }
         })
@@ -74,7 +74,8 @@ export class BrowserLocalSetup {
         const connection = this.options.bridge.connections(viewerKey).find(c => c.profile === grant.profile && c.pairingId === grant.pairingId)
         if (!connection) {
             const op = this.operations.get(viewerKey)
-            return { state: op && op.expires <= this.now() ? 'expired' : 'waiting', ...base }
+            // A consumed pairing whose Chrome is offline is waiting to reconnect, not an expired setup.
+            return { state: op && !op.consumed && op.expires <= this.now() ? 'expired' : 'waiting', ...base }
         }
         try {
             const result = await this.options.bridge.request('tabs_list', {}, { viewerKey, profile: grant.profile, timeoutMs: 5000 })

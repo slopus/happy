@@ -524,7 +524,8 @@ export async function startHappyServer(
         try {
             const context = await localToolAgentContext(client.sessionId, client.getMetadata()?.machineId);
             if (!context) return false;
-            const result = await requestLocalToolAgent(context, { action: 'describe' });
+            // Every runner awaits startup; a slow Desktop must cost at most 2s, not the 3s+35s call budget.
+            const result = await requestLocalToolAgent(context, { action: 'describe' }, AbortSignal.timeout(2000));
             return Array.isArray(result.tools) && result.tools.length > 0;
         } catch { return false; }
     };

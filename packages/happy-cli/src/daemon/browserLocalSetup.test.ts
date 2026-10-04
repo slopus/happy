@@ -95,6 +95,26 @@ describe('trusted local browser setup', () => {
         await setup.revoke(alice)
         await expect(setup.consume(third.operationId)).rejects.toThrow('SETUP_EXPIRED')
     })
+    it('admits a setup pairing only at the daemon that holds its live policy, never via another home or the legacy check', async () => {
+        const { setup, bridge } = fixture()
+        const config = await setup.consume((await setup.begin(alice, 'My Chrome')).operationId)
+        expect(bridge.handleConnection(new Socket(), config)).toBe(true)
+        // Another Happy home shares the machine-wide base token but has no policy entry for this pairing.
+        const otherHome = new BrowserBridge({ authToken: baseToken })
+        expect(otherHome.handleConnection(new Socket(), config)).toBe(false)
+        // Dropping the pairing id must not fall back to the plain viewer credential.
+        const { pairingId: _dropped, ...withoutPairing } = config
+        expect(otherHome.handleConnection(new Socket(), withoutPairing)).toBe(false)
+    })
+    it('reports a consumed pairing whose Chrome is offline as waiting, not expired', async () => {
+        const { setup, bridge, expire } = fixture()
+        const config = await setup.consume((await setup.begin(alice, 'My Chrome')).operationId)
+        const socket = new Socket()
+        expect(bridge.handleConnection(socket, config)).toBe(true)
+        socket.close()
+        expire()
+        expect((await setup.status(alice)).state).toBe('waiting')
+    })
     it('fails closed if durable permission cannot be written', async () => {
         const bridge = new BrowserBridge({ authToken: baseToken })
         const setup = new BrowserLocalSetup({ bridge, readToken: async () => baseToken, port: 41777,
