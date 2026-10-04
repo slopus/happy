@@ -221,6 +221,14 @@ export const redisStreamWriteFailuresCounter = new Counter({
     registers: [register]
 });
 
+export const redisStreamWriteDuration = new Histogram({
+    name: 'redis_stream_write_duration_seconds',
+    help: 'Account bus XADD elapsed time including connection queue, network and event-loop delay; excludes adapter serialization',
+    labelNames: ['result'] as const,
+    buckets: [0.01, 0.1, 0.25, 0.5, 1, 2, 5, 10],
+    registers: [register]
+});
+
 export const redisStreamReadFailuresCounter = new Counter({
     name: 'redis_stream_read_failures_total',
     help: 'Failed XREAD commands on the Socket.IO cluster bus',

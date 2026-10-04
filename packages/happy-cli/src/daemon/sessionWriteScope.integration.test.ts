@@ -10,7 +10,8 @@ describe.skipIf(process.env.HAPPY_SCOPE_SERVER_INTEGRATION !== '1' || !['darwin'
     { provider: 'codex' as const, encryptionVariant: 'dataKey' as const },
     { provider: 'claude' as const, encryptionVariant: 'legacy' as const },
     { provider: 'claude' as const, encryptionVariant: 'dataKey' as const },
-])('real standalone/daemon/$provider/$encryptionVariant scope replacement', ({ provider, encryptionVariant }) => {
+// Linux same-UID Claude launches fail closed until Happy MCP can cross the protected boundary.
+].filter(({ provider }) => provider !== 'claude' || process.platform !== 'linux'))('real standalone/daemon/$provider/$encryptionVariant scope replacement', ({ provider, encryptionVariant }) => {
     it('preserves identity, encrypted history, queued input and another session across approval/revoke with lost response', async () => {
         const fixture = new SessionWriteScopeFixture({ provider, encryptionVariant });
         try {

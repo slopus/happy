@@ -7,7 +7,7 @@ import { createRedisClient, isRedisConfigured } from "@/storage/createRedisClien
 import { log } from "@/utils/log";
 import { auth } from "@/app/auth/auth";
 import { BROWSER_SYNC_EXPIRES_AT, armBrowserSyncDeadline, authenticateBrowserSyncSocket } from "./socket/browserSyncSocketAuth";
-import { getMetricsLabelsFromSocket, redisStreamInfoFailuresCounter, redisStreamLagMsGauge, redisStreamWriteFailuresCounter, socketioClusterPeersGauge, websocketConnectionsGauge, websocketEventsCounter } from "../monitoring/metrics2";
+import { getMetricsLabelsFromSocket, redisStreamInfoFailuresCounter, redisStreamLagMsGauge, redisStreamWriteFailuresCounter, redisStreamWriteDuration, socketioClusterPeersGauge, websocketConnectionsGauge, websocketEventsCounter } from "../monitoring/metrics2";
 import { createLogThrottle, instrumentStreamWrites, readClusterPeerCount } from "../monitoring/redisHealth";
 import { usageHandler } from "./socket/usageHandler";
 import { rpcHandler } from "./socket/rpcHandler";
@@ -93,11 +93,18 @@ export function startSocket(app: Fastify, managedControl: ManagedControlRuntime 
         // publish() catches the XADD rejection into a debug() log. Count it
         // here so a pinned-to-replica client (-READONLY) is observable.
         const shouldLogWriteFailure = createLogThrottle(60_000);
+        const shouldLogSlowWrite = createLogThrottle(60_000);
         instrumentStreamWrites(streamClient, (code, error) => {
             redisStreamWriteFailuresCounter.inc({ code });
             if (shouldLogWriteFailure(code)) {
                 log({ module: 'websocket', level: 'error' },
                     `cluster bus write failed (${code}, throttled to 1/min) — cross-replica routing is degraded: ${error}`);
+            }
+        }, (result, seconds) => {
+            redisStreamWriteDuration.observe({ result }, seconds);
+            if (result === 'success' && seconds > 0.25 && shouldLogSlowWrite('slow')) {
+                log({ module: 'websocket', level: 'warn' },
+                    `cluster bus write slow (${Math.round(seconds * 1000)}ms, throttled to 1/min)`);
             }
         });
 

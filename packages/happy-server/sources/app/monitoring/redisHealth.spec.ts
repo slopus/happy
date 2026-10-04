@@ -127,6 +127,62 @@ describe('readClusterPeerCount', () => {
 });
 
 describe('instrumentStreamWrites', () => {
+    it.each(['success', 'failure'] as const)('observes %s write elapsed without changing command arguments or outcome', async (result) => {
+        let now = 10;
+        vi.spyOn(performance, 'now').mockImplementation(() => now);
+        const error = new Error('Command timed out');
+        const command = vi.fn(async (..._args: any[]) => {
+            now = 410;
+            if (result === 'failure') throw error;
+            return '2-0';
+        });
+        const client = { xadd: command };
+        const failure = vi.fn(), observe = vi.fn();
+        instrumentStreamWrites(client, failure, observe);
+        if (result === 'success') await expect(client.xadd('stream', '*', 'data', 'private')).resolves.toBe('2-0');
+        else await expect(client.xadd('stream', '*', 'data', 'private')).rejects.toBe(error);
+        expect(command).toHaveBeenCalledExactlyOnceWith('stream', '*', 'data', 'private');
+        expect(observe).toHaveBeenCalledExactlyOnceWith(result, 0.4);
+        if (result === 'failure') expect(failure).toHaveBeenCalledExactlyOnceWith('TIMEOUT', error);
+        else expect(failure).not.toHaveBeenCalled();
+    });
+
+    it.each(['success', 'failure'] as const)('preserves %s outcome when observation callbacks throw', async (result) => {
+        const error = new Error('READONLY write failed');
+        const command = vi.fn(async () => { if (result === 'failure') throw error; return '2-0'; });
+        const client = { xadd: command };
+        const observe = vi.fn(() => { throw new Error('metrics unavailable'); });
+        instrumentStreamWrites(client, () => { throw new Error('logger unavailable'); }, observe);
+        if (result === 'success') await expect(client.xadd()).resolves.toBe('2-0');
+        else await expect(client.xadd()).rejects.toBe(error);
+        expect(command).toHaveBeenCalledOnce();
+        expect(observe).toHaveBeenCalledOnce();
+    });
+
+    it.each(['success', 'failure'] as const)('still executes %s writes if the elapsed clock is unavailable', async (result) => {
+        vi.spyOn(performance, 'now').mockImplementation(() => { throw new Error('clock unavailable'); });
+        const error = new Error('Command timed out');
+        const command = vi.fn(async () => { if (result === 'failure') throw error; return '2-0'; });
+        const client = { xadd: command }, failure = vi.fn(), observe = vi.fn();
+        instrumentStreamWrites(client, failure, observe);
+        if (result === 'success') await expect(client.xadd()).resolves.toBe('2-0');
+        else await expect(client.xadd()).rejects.toBe(error);
+        expect(command).toHaveBeenCalledOnce();
+        expect(observe).not.toHaveBeenCalled();
+        if (result === 'failure') expect(failure).toHaveBeenCalledExactlyOnceWith('TIMEOUT', error);
+    });
+
+    it('observes a synchronous write throw once and keeps the original error', async () => {
+        vi.spyOn(performance, 'now').mockReturnValueOnce(10).mockReturnValueOnce(260);
+        const error = new Error('Command timed out');
+        const client = { xadd: vi.fn(() => { throw error; }) };
+        const failure = vi.fn(), observe = vi.fn();
+        instrumentStreamWrites(client, failure, observe);
+        await expect(client.xadd()).rejects.toBe(error);
+        expect(observe).toHaveBeenCalledExactlyOnceWith('failure', 0.25);
+        expect(failure).toHaveBeenCalledExactlyOnceWith('TIMEOUT', error);
+    });
+
     it('shouldPassThroughSuccessfulWrites', async () => {
         const onFailure = vi.fn();
         const client = { xadd: vi.fn(async (..._args: any[]) => '1-0') };
