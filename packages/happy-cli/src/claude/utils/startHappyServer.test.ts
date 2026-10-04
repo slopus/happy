@@ -1,12 +1,13 @@
 /** Happy MCP registration, tool routing and session-specific guidance contracts. */
 import { runBashStream } from './bashStream';
 import { RuntimeProducerGate } from '@/sessionDrain/runtimeProducerGate';
-import { mkdir, mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { request } from 'node:http';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createChangeTitleHandler, startHappyServer } from './startHappyServer';
+import { MandatorySandboxError } from '@/sandbox/sandboxPolicy';
 import type { ApiSessionClient } from '@/api/apiSession';
 
 vi.mock('./bashStream', async original => {
@@ -49,12 +50,33 @@ async function callTool(serverUrl: string, id: number, name: string, args: Recor
 }
 
 describe('Happy MCP shutdown admission', () => {
-    it('uses an owner-only authenticated socket for same-UID protected Linux sessions', async () => {
+    it('fails closed for same-UID protected Linux sessions without creating an MCP socket', async () => {
+        const descriptor = Object.getOwnPropertyDescriptor(process, 'platform')!;
+        const previousTmp = process.env.TMPDIR;
+        const isolatedTmp = await mkdtemp(join(tmpdir(), 'happy-mcp-test-'));
+        let server: Awaited<ReturnType<typeof startHappyServer>> | undefined;
+        try {
+            process.env.TMPDIR = isolatedTmp;
+            Object.defineProperty(process, 'platform', { ...descriptor, value: 'linux' });
+            await expect(startHappyServer(makeFakeClient(false), { mandatorySandbox: true, sameUidSandbox: true })
+                .then(value => { server = value; return value; }))
+                .rejects.toBeInstanceOf(MandatorySandboxError);
+            expect(await readdir(isolatedTmp)).toEqual([]);
+        } finally {
+            server?.stop();
+            Object.defineProperty(process, 'platform', descriptor);
+            if (previousTmp === undefined) delete process.env.TMPDIR;
+            else process.env.TMPDIR = previousTmp;
+            await rm(isolatedTmp, { recursive: true, force: true });
+        }
+    });
+
+    it('uses an owner-only authenticated socket for same-UID protected macOS sessions', async () => {
         const descriptor = Object.getOwnPropertyDescriptor(process, 'platform')!;
         const marker = process.env.HAPPY_WRITE_SCOPE_SESSION;
         let server: Awaited<ReturnType<typeof startHappyServer>> | undefined;
         try {
-            Object.defineProperty(process, 'platform', { ...descriptor, value: 'linux' });
+            Object.defineProperty(process, 'platform', { ...descriptor, value: 'darwin' });
             process.env.HAPPY_WRITE_SCOPE_SESSION = '1';
             const options = { mandatorySandbox: true, sameUidSandbox: true };
             server = await startHappyServer(makeFakeClient(false), options);

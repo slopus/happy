@@ -6,6 +6,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { SandboxConfigSchema } from '@/persistence';
 import { prepareSessionWriteScopeClaude } from './sessionWriteScopeClaude';
 import { readDaemonControlPort } from './browserClient';
+import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { MandatorySandboxError } from '@/sandbox/sandboxPolicy';
+import type { ApiSessionClient } from '@/api/apiSession';
 
 vi.mock('./browserClient', () => ({ readDaemonControlPort: vi.fn() }));
 it('refuses disabled, checkpoint and unsupported-platform Claude profiles before provider creation', async () => {
@@ -61,6 +64,44 @@ describe.skipIf(!['darwin', 'linux'].includes(process.platform) || process.env.H
       await prepared?.close();
       for (const key of Object.keys(overrides)) { if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key]; }
       await new Promise<void>(resolve => server.close(() => resolve()));
+      await rm(fixture, { recursive: true, force: true });
+    }
+  }, 30000);
+
+  it.skipIf(process.platform !== 'linux')('denies Unix sockets inside the same-UID Linux boundary, so Happy MCP fails closed', async () => {
+    const fixture = await realpath(await mkdtemp(join(process.cwd(), '.scope-claude-')));
+    const project = join(fixture, 'project'), home = join(fixture, 'home'), socketPath = join(fixture, 'probe.sock');
+    await Promise.all([project, home].map(path => mkdir(path)));
+    const config = SandboxConfigSchema.parse({ sessionIsolation: 'strict' });
+    const confirmation = { token: 'private-fixture', sessionId: 'fixture-session', digest: createHash('sha256').update(JSON.stringify(config)).digest('hex') };
+    const control = createServer((_request, response) => { response.writeHead(200); response.end('{}'); });
+    const probe = createServer((_request, response) => { response.writeHead(200); response.end('reachable'); });
+    await new Promise<void>(resolve => control.listen(0, '127.0.0.1', resolve));
+    await new Promise<void>(resolve => probe.listen(socketPath, resolve));
+    vi.mocked(readDaemonControlPort).mockResolvedValue({ port: (control.address() as { port: number }).port, controlSecret: 'fixture' });
+    const overrides = { HOME: home, CLAUDE_CONFIG_DIR: join(home, '.claude'), CODEX_HOME: join(home, '.codex'), TMPDIR: project };
+    const previous = Object.fromEntries(Object.keys(overrides).map(key => [key, process.env[key]]));
+    Object.assign(process.env, overrides);
+    let prepared: Awaited<ReturnType<typeof prepareSessionWriteScopeClaude>> | undefined;
+    let mcp: Awaited<ReturnType<typeof startHappyServer>> | undefined;
+    try {
+      prepared = await prepareSessionWriteScopeClaude({ path: project, config, confirmation });
+      const code = `require('http').get({socketPath:process.argv[1],path:'/'},r=>console.log(r.statusCode)).on('error',e=>console.log(e.code))`;
+      const child = prepared.spawn({ command: process.execPath, args: ['-e', code, socketPath], cwd: project, env: { ...process.env }, signal: new AbortController().signal });
+      child.stdin!.end();
+      let output = ''; child.stdout!.on('data', chunk => { output += chunk; });
+      await new Promise<void>((resolve, reject) => { child.once('error', reject); child.once('close', () => resolve()); });
+      // If this ever connects, the boundary gained a Unix-socket path and startHappyServer's same-UID guard can be revisited.
+      expect(output.trim()).toBe('EPERM');
+      const client = { hasTitle: () => false, sendClaudeSessionMessage: () => {}, updateMetadata: () => {} } as unknown as ApiSessionClient;
+      await expect(startHappyServer(client, { mandatorySandbox: true, sameUidSandbox: true })
+        .then(value => { mcp = value; return value; })).rejects.toBeInstanceOf(MandatorySandboxError);
+    } finally {
+      mcp?.stop();
+      await prepared?.close();
+      for (const key of Object.keys(overrides)) { if (previous[key] === undefined) delete process.env[key]; else process.env[key] = previous[key]; }
+      await new Promise<void>(resolve => probe.close(() => resolve()));
+      await new Promise<void>(resolve => control.close(() => resolve()));
       await rm(fixture, { recursive: true, force: true });
     }
   }, 30000);

@@ -56,7 +56,10 @@ real host-signed approval, storage/cursor drain, old parent exit, same-ID/thread
 resume and profile receipt. They also cover queued input exactly once, encrypted history,
 another session's PID/settings, forged reports, replay, revoke, discarded approval results
 reconciled through list, server disconnect and journal recovery across daemon incarnations.
-The suite runs both cases for Codex/Claude × legacy/dataKey (eight cases per platform).
+The suite runs both cases for Codex/Claude × legacy/dataKey on macOS (eight cases).
+Linux runs the four Codex cases; protected same-UID Claude launches are rejected until
+Happy MCP has a transport that works inside that boundary. A separate opt-in native
+regression verifies the Linux Unix-socket denial and explicit launch rejection.
 In dataKey mode, the fixture opens each session key envelope with its account private key,
 checks that two sessions and the machine have distinct keys, and decrypts stored metadata
 and transcript using the session key. Recovery opens the machine envelope and uses the
@@ -76,9 +79,13 @@ setting it on Linux suppresses its model proxy route despite the external bubble
 Externally sandboxed Linux launches also strip an inherited `seatbelt` marker from the
 child environment without changing the parent's environment.
 A protected Claude scope launch is authenticated by its daemon launch channel and stays at
-the parent UID. Its mandatory MCP transport uses an owner-only temporary directory and
-a token-authenticated Unix socket, while separate-UID Linux launches retain the existing
-`agent-sbx` group and `/run/abp-mcp` requirements. Neither change opens an unprotected fallback.
+the parent UID. On macOS its mandatory MCP transport uses an owner-only temporary directory
+and a token-authenticated Unix socket. Linux same-UID scope launches fail closed with
+`MandatorySandboxError`: the protected boundary blocks `socket(AF_UNIX)`, preventing Happy
+MCP tools from connecting. The native regression runs with `HAPPY_SCOPE_NATIVE_CLAUDE=1`.
+Separate-UID Linux launches retain the existing `agent-sbx` group and `/run/abp-mcp`
+requirements. Revisit this rejection only after a transport works inside the same protected
+boundary; do not enable all Unix sockets or remove the existing filesystem/network limits.
 
 This document covers the local environment manager in [`environments/environments.ts`](../environments/environments.ts).
 
