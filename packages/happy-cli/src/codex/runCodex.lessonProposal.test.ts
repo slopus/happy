@@ -15,6 +15,9 @@ const fixture = vi.hoisted(() => ({
     statusProbeFails: false,
     send: vi.fn(),
     startThread: vi.fn(),
+    readThread: vi.fn(async (_options?: { threadId: string; includeTurns: boolean }) => ({ thread: { id: 'thread', path: '/tmp/native-rollout.jsonl' } })),
+    completedThread: null as { id: string; path: string } | null,
+    completedTurnId: 'native-completed-turn',
     session: {
         sessionId: 'lesson-session', getMetadata: () => ({ path: '/tmp/lesson-test' }),
         drainAttachmentsForUserMessage: vi.fn(async () => []),
@@ -73,6 +76,7 @@ vi.mock('@/codex/codexAppServerClient', () => ({ CodexAppServerClient: class {
     supportsGoalActions = () => false;
     hasActiveThread = () => Boolean(this.threadId);
     startThread = async (options: unknown) => { fixture.startThread(options); this.threadId = 'thread'; return { threadId: 'thread', model: 'test' }; };
+    readThread = (options: { threadId: string; includeTurns: boolean }) => fixture.readThread(options);
     abortPreparedTurn = vi.fn();
     abortTurnWithFallback = async () => ({ forcedRestart: false });
     sendTurnAndWait = async (prompt: string, options: unknown) => {
@@ -81,6 +85,8 @@ vi.mock('@/codex/codexAppServerClient', () => ({ CodexAppServerClient: class {
         expect(fixture.submit?.({ token: fixture.token, proposal: fixture.proposal })).toEqual({ accepted: true });
         (options as { onSubmitted?: () => void })?.onSubmitted?.();
         await fixture.onSend?.();
+        if (!fixture.aborted) (options as { onCompleted?: (turnId: string, thread: { id: string; path: string } | null) => void })?.onCompleted?.(fixture.completedTurnId, fixture.completedThread);
+        (options as { onCompletionObservationSettled?: () => void })?.onCompletionObservationSettled?.();
         return { aborted: fixture.aborted };
     };
 } }));
@@ -95,7 +101,9 @@ afterEach(() => {
             if (!signalListeners.get(signal)?.has(listener)) process.removeListener(signal, listener);
         }
     }
-    fixture.requestIds = undefined; fixture.channelRequestId = undefined; vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.clearAllMocks(); fixture.submit = null; fixture.onSend = null; fixture.onSteer = null; fixture.steerText = ''; fixture.statusProbeFails = false; fixture.session.sendTurnLatency.mockReset(); });
+    fixture.readThread.mockReset().mockResolvedValue({ thread: { id: 'thread', path: '/tmp/native-rollout.jsonl' } });
+    fixture.completedTurnId = 'native-completed-turn';
+    fixture.requestIds = undefined; fixture.channelRequestId = undefined; vi.unstubAllEnvs(); vi.restoreAllMocks(); vi.clearAllMocks(); fixture.submit = null; fixture.onSend = null; fixture.onSteer = null; fixture.steerText = ''; fixture.statusProbeFails = false; fixture.completedThread = null; fixture.session.sendTurnLatency.mockReset(); });
 
 // specs/checkpoint-local-history — Codex keeps its process across turns and records the folder
 // before dispatch and after the turn, including a turn the provider failed.
@@ -210,6 +218,11 @@ describe('Codex foreground lesson proposal wiring', () => {
             });
             const markSubmitted = vi.fn();
             vi.spyOn(memory, 'prepareCodexRecallHost').mockResolvedValue({ recall, markSubmitted });
+            const ingestMemory = await import('@/memory/codexIngestHost');
+            const ingest = vi.fn(async () => ({ reason: 'imported' as const, importedPrompts: 1,
+                importedResponses: 1, skippedDuplicates: 0, completedTurns: 1 }));
+            const close = vi.fn(async () => {});
+            vi.spyOn(ingestMemory, 'prepareCodexIngestHost').mockResolvedValue({ ingest, close });
             const review = { prepareReviewTurn: vi.fn(async () => ({ revision: 9 })), reviewFinishedTurn: vi.fn(async () => 'reviewed' as const) };
             const { runCodex } = await import('./runCodex');
             await runCodex({ principal: { kind: 'account', credentials: { token: 'test-token' } as never },
@@ -227,11 +240,16 @@ describe('Codex foreground lesson proposal wiring', () => {
                 expect(recall.mock.invocationCallOrder[0]).toBeLessThan(fixture.send.mock.invocationCallOrder[0]);
                 expect(begin.mock.invocationCallOrder[0]).toBeLessThan(fixture.send.mock.invocationCallOrder[0]);
                 expect(markSubmitted).toHaveBeenCalledWith('thread', true);
+                expect(fixture.readThread).toHaveBeenCalledWith({ threadId: 'thread', includeTurns: false });
+                expect(ingest).toHaveBeenCalledWith({ threadId: 'thread', transcriptPath: '/tmp/native-rollout.jsonl', throughTurnId: 'native-completed-turn' });
             } else {
                 expect(fixture.send).not.toHaveBeenCalled();
                 expect(markSubmitted).not.toHaveBeenCalled();
                 expect(review.reviewFinishedTurn).not.toHaveBeenCalled();
+                expect(ingest).not.toHaveBeenCalled();
+                expect(fixture.readThread).not.toHaveBeenCalled();
             }
+            expect(close).toHaveBeenCalledOnce();
         },
     );
 
@@ -532,5 +550,106 @@ describe('Codex foreground lesson proposal wiring', () => {
         expect(review.reviewFinishedTurn).toHaveBeenCalledOnce();
         expect(fixture.session.sendSessionEvent.mock.calls.map(([event]) => event))
             .not.toContainEqual({ type: 'message', message: 'Process exited unexpectedly' });
+    });
+});
+
+describe('Codex completed-turn memory ingestion wiring', () => {
+    it.each(['completed', 'aborted', 'provider_failed', 'missing_thread', 'wrong_thread', 'ingest_failed', 'checkpoint_stopped'] as const)(
+        'ingests only the owning native normal completion and preserves foreground success (%s)', async scenario => {
+            for (const key of Object.keys(process.env)) {
+                if (/^(HAPPY_RECONNECT_|HAPPY_INITIAL_|HAPPY_FORK|HAPPY_MANAGED_|SAYCODE_PROVIDER_|HAPPY_AUTOMATION_)/.test(key)) vi.stubEnv(key, undefined);
+            }
+            fixture.aborted = scenario === 'aborted';
+            vi.stubEnv('HAPPY_AUTOMATION_RUN_ONCE', '1');
+            vi.stubEnv('HAPPY_INITIAL_PROMPT', 'Completed native request');
+            if (scenario === 'provider_failed') fixture.onSend = async () => { throw new Error('provider failure'); };
+            if (scenario === 'missing_thread') fixture.readThread.mockRejectedValueOnce(new Error('private rollout path'));
+            if (scenario === 'wrong_thread') fixture.readThread.mockResolvedValueOnce({ thread: { id: 'foreign-thread', path: '/tmp/foreign-rollout.jsonl' } });
+            if (scenario === 'checkpoint_stopped') {
+                fixture.completedThread = { id: 'thread', path: '/tmp/checkpoint-native-rollout.jsonl' };
+                fixture.readThread.mockRejectedValueOnce(new Error('app-server stopped by checkpoint'));
+            }
+            const ingestMemory = await import('@/memory/codexIngestHost');
+            const ingest = vi.fn(async () => {
+                if (scenario === 'ingest_failed') throw new Error('private transcript contents');
+                return { reason: 'imported' as const, importedPrompts: 1, importedResponses: 1, skippedDuplicates: 0, completedTurns: 1 };
+            });
+            const close = vi.fn(async () => {});
+            vi.spyOn(ingestMemory, 'prepareCodexIngestHost').mockResolvedValue({ ingest, close });
+            const review = { prepareReviewTurn: vi.fn(async () => ({ revision: 9 })), reviewFinishedTurn: vi.fn(async () => 'reviewed' as const) };
+            const { runCodex } = await import('./runCodex');
+            await runCodex({ principal: { kind: 'account', credentials: { token: 'test-token' } as never },
+                noSandbox: true, lessons: { turn: null, review, sessionKind: 'foreground' } });
+            if (scenario === 'completed' || scenario === 'ingest_failed' || scenario === 'checkpoint_stopped') {
+                expect(ingest).toHaveBeenCalledWith({ threadId: 'thread',
+                    transcriptPath: scenario === 'checkpoint_stopped' ? '/tmp/checkpoint-native-rollout.jsonl' : '/tmp/native-rollout.jsonl', throughTurnId: 'native-completed-turn' });
+                expect(review.reviewFinishedTurn).toHaveBeenCalledOnce();
+            } else expect(ingest).not.toHaveBeenCalled();
+            if (scenario === 'aborted' || scenario === 'provider_failed' || scenario === 'checkpoint_stopped') expect(fixture.readThread).not.toHaveBeenCalled();
+            expect(close).toHaveBeenCalledOnce();
+            const { logger } = await import('@/ui/logger');
+            expect(JSON.stringify(vi.mocked(logger.debug).mock.calls.filter(([label]) => label === '[CodexMemoryIngest]'))).not.toContain('private');
+        },
+    );
+
+    it('continues foreground turns during a slow lookup and never replaces a newer queued completion with an older prefix', async () => {
+        for (const key of Object.keys(process.env)) {
+            if (/^(HAPPY_RECONNECT_|HAPPY_INITIAL_|HAPPY_FORK|HAPPY_MANAGED_|SAYCODE_PROVIDER_|HAPPY_AUTOMATION_)/.test(key)) vi.stubEnv(key, undefined);
+        }
+        fixture.aborted = false;
+        vi.stubEnv('HAPPY_INITIAL_PROMPT', 'First native completion');
+        let releaseLookup!: () => void;
+        fixture.readThread.mockImplementationOnce(() => new Promise(resolve => {
+            releaseLookup = () => resolve({ thread: { id: 'thread', path: '/tmp/native-rollout.jsonl' } });
+        }));
+        fixture.onSend = async () => {
+            if (fixture.send.mock.calls.length === 1) {
+                fixture.completedTurnId = 'native-turn-1';
+                await fixture.session.onUserMessage.mock.calls[0][0]({ role: 'user', content: { type: 'text', text: 'Second native completion' } });
+            } else {
+                fixture.completedTurnId = 'native-turn-2';
+                fixture.completedThread = { id: 'thread', path: '/tmp/native-rollout.jsonl' };
+                fixture.closeQueue?.();
+            }
+        };
+        const ingestMemory = await import('@/memory/codexIngestHost');
+        const ingest = vi.fn(async () => ({ reason: 'imported' as const, importedPrompts: 1,
+            importedResponses: 1, skippedDuplicates: 0, completedTurns: 1 }));
+        const close = vi.fn(async () => {});
+        vi.spyOn(ingestMemory, 'prepareCodexIngestHost').mockResolvedValue({ ingest, close });
+        const review = { prepareReviewTurn: vi.fn(async () => ({ revision: 9 })), reviewFinishedTurn: vi.fn(async () => 'reviewed' as const) };
+        const { runCodex } = await import('./runCodex');
+        const running = runCodex({ principal: { kind: 'account', credentials: { token: 'test-token' } as never },
+            noSandbox: true, lessons: { turn: null, review, sessionKind: 'foreground' } });
+        await vi.waitFor(() => expect(ingest).toHaveBeenCalledOnce());
+        expect(fixture.send).toHaveBeenCalledTimes(2);
+        expect(ingest).toHaveBeenCalledWith({ threadId: 'thread', transcriptPath: '/tmp/native-rollout.jsonl', throughTurnId: 'native-turn-2' });
+        releaseLookup(); await running;
+        expect(ingest).toHaveBeenCalledOnce();
+        expect(close).toHaveBeenCalledOnce();
+    });
+
+    it('waits for a detached ingest before closing the session in a run-once session', async () => {
+        for (const key of Object.keys(process.env)) {
+            if (/^(HAPPY_RECONNECT_|HAPPY_INITIAL_|HAPPY_FORK|HAPPY_MANAGED_|SAYCODE_PROVIDER_|HAPPY_AUTOMATION_)/.test(key)) vi.stubEnv(key, undefined);
+        }
+        fixture.aborted = false;
+        vi.stubEnv('HAPPY_AUTOMATION_RUN_ONCE', '1');
+        vi.stubEnv('HAPPY_INITIAL_PROMPT', 'Durable native completion');
+        const ingestMemory = await import('@/memory/codexIngestHost');
+        let release!: () => void;
+        const ingest = vi.fn(() => new Promise<never>(resolve => { release = () => resolve(undefined as never); }));
+        const close = vi.fn(async () => {});
+        vi.spyOn(ingestMemory, 'prepareCodexIngestHost').mockResolvedValue({ ingest, close });
+        const review = { prepareReviewTurn: vi.fn(async () => ({ revision: 9 })), reviewFinishedTurn: vi.fn(async () => 'reviewed' as const) };
+        const { runCodex } = await import('./runCodex');
+        const running = runCodex({ principal: { kind: 'account', credentials: { token: 'test-token' } as never },
+            noSandbox: true, lessons: { turn: null, review, sessionKind: 'foreground' } });
+        await vi.waitFor(() => expect(ingest).toHaveBeenCalledOnce());
+        const closeEarly = fixture.session.close.mock.calls.length;
+        release(); await running;
+        expect(closeEarly).toBe(0);
+        expect(close).toHaveBeenCalledOnce();
+        expect(fixture.session.close).toHaveBeenCalledOnce();
     });
 });

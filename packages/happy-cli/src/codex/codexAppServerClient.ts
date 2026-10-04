@@ -86,6 +86,18 @@ type DeferredRawTurnCompletion = {
     source: string;
 };
 
+type NativeCompletionObservation = {
+    turnId: string | null;
+    threadId: string;
+    thread: { id: string; path: string } | null;
+    successful: boolean | null;
+    earlyCompletions: Map<string, boolean>;
+    applied: boolean;
+    timer?: ReturnType<typeof setTimeout>;
+    onCompleted: (turnId: string, thread: { id: string; path: string } | null) => void;
+    onSettled?: () => void;
+};
+
 const CODEX_AGENT_MESSAGE_DELTA_FLUSH_MS = 80;
 const CODEX_AGENT_MESSAGE_DELTA_MAX_CHARS = 2_048;
 
@@ -292,6 +304,8 @@ export class CodexAppServerClient {
     // Session state
     private _threadId: string | null = null;
     private _turnId: string | null = null;
+    private nativeThreadMetadata: { id: string; path: string } | null = null;
+    private readonly nativeCompletionObservations = new Set<NativeCompletionObservation>();
     private threadDefaults: {
         model?: string;
         cwd?: string;
@@ -313,6 +327,7 @@ export class CodexAppServerClient {
         hasSteeredInput: boolean;
         inactivityTimeoutMs: number;
         inactivityTimer: ReturnType<typeof setTimeout> | null;
+        observation?: NativeCompletionObservation;
     } | null = null;
 
     // Tracks in-flight interruptTurn() RPCs so sendTurnAndWait can wait for them
@@ -1469,7 +1484,9 @@ export class CodexAppServerClient {
             // so a later turn's watchdog is not left permanently disarmed.
             this.outstandingServerRequests = 0;
             if (!opts?.preserveThreadState) {
+                for (const observation of this.nativeCompletionObservations) this.settleNativeCompletionObservation(observation, false);
                 this._threadId = null;
+                this.nativeThreadMetadata = null;
                 this.threadDefaults = null;
             }
 
@@ -1511,7 +1528,9 @@ export class CodexAppServerClient {
         await this.disconnectInternal();
         // A queued public stop also settles state preserved by an already-finished restart.
         this.resolvePendingTurn(true);
+        for (const observation of this.nativeCompletionObservations) this.settleNativeCompletionObservation(observation, false);
         this._threadId = null;
+        this.nativeThreadMetadata = null;
         this.threadDefaults = null;
     }
 
@@ -1636,6 +1655,7 @@ export class CodexAppServerClient {
 
         const result = await this.request('thread/start', params) as NewConversationResponse;
         this._threadId = result.thread.id;
+        this.rememberNativeThreadMetadata(result.thread);
         this.scheduleBackgroundRefresh();
         this._turnId = null;
         this.rememberThreadDefaults(opts);
@@ -1681,6 +1701,7 @@ export class CodexAppServerClient {
 
         const result = await this.request('thread/resume', params) as ResumeConversationResponse;
         this._threadId = result.thread.id;
+        this.rememberNativeThreadMetadata(result.thread);
         this.scheduleBackgroundRefresh();
         this._turnId = null;
         this.rememberThreadDefaults({
@@ -1732,6 +1753,7 @@ export class CodexAppServerClient {
 
         const result = await this.request('thread/fork', params) as ForkConversationResponse;
         this._threadId = result.thread.id;
+        this.rememberNativeThreadMetadata(result.thread);
         this.scheduleBackgroundRefresh();
         this._turnId = null;
         this.rememberThreadDefaults({
@@ -1756,6 +1778,35 @@ export class CodexAppServerClient {
             path: opts.path,
             cwd: opts.cwd,
         });
+    }
+
+    private rememberNativeThreadMetadata(thread: Thread): void {
+        this.nativeThreadMetadata = typeof thread.path === 'string' && thread.path.length > 0
+            ? { id: thread.id, path: thread.path } : null;
+    }
+
+    private settleNativeCompletionObservation(observation: NativeCompletionObservation, successful: boolean): void {
+        if (!this.nativeCompletionObservations.delete(observation)) return;
+        if (observation.timer) clearTimeout(observation.timer);
+        try { if (successful && observation.turnId) observation.onCompleted(observation.turnId, observation.thread); }
+        catch { logger.warn('[CodexAppServer] Completion observer failed'); }
+        finally { try { observation.onSettled?.(); } catch { /* optional host continuation */ } }
+    }
+
+    private observeAuthoritativeNativeCompletion(turnId: string | null, threadId: string | null, successful: boolean): void {
+        if (!turnId) return;
+        for (const observation of this.nativeCompletionObservations) {
+            if (threadId && observation.threadId !== threadId) continue;
+            // Notifications can precede the turn/start RPC response, including child
+            // turns. Only that accepted response identifies the owning native turn.
+            if (!observation.turnId) {
+                if (observation.earlyCompletions.size < 32) observation.earlyCompletions.set(turnId, successful);
+                continue;
+            }
+            if (observation.turnId !== turnId) continue;
+            observation.successful = successful;
+            if (!successful || observation.applied) this.settleNativeCompletionObservation(observation, successful);
+        }
     }
 
     async readThread(opts: {
@@ -1988,6 +2039,10 @@ export class CodexAppServerClient {
             clearTimeout(this.pendingTurnCompletion.inactivityTimer);
         }
         this.clearRawTurnCompletionFallback();
+        const observation = this.pendingTurnCompletion.observation;
+        if (observation) {
+            if (aborted) this.settleNativeCompletionObservation(observation, false);
+        }
         this.pendingTurnCompletion.resolve(aborted);
         this.pendingTurnCompletion = null;
         this.openCommandExecutionTurns.clear();
@@ -2227,10 +2282,17 @@ export class CodexAppServerClient {
         // turn/start returns immediately; turn completes via events.
         // We don't await completion here — the caller's event handler
         // tracks task_complete / turn_aborted.
+        const observation = this.pendingTurnCompletion?.observation;
         const result = await this.request('turn/start', params) as { turn?: { id?: string | null } };
         try { opts?.onSubmitted?.(); } catch { logger.warn('[CodexAppServer] Submission observer failed'); }
         const turnId = result?.turn?.id;
         if (typeof turnId === 'string' && turnId.length > 0) {
+            if (observation && this.nativeCompletionObservations.has(observation)) {
+                observation.turnId = turnId;
+                observation.successful = observation.earlyCompletions.get(turnId) ?? null;
+                observation.earlyCompletions.clear();
+                if (observation.successful === false) this.settleNativeCompletionObservation(observation, false);
+            }
             this._turnId = turnId;
             if (this.pendingTurnCompletion) {
                 if (this.pendingTurnCompletion.startedTurnId !== turnId) {
@@ -2266,6 +2328,10 @@ export class CodexAppServerClient {
         beforeTurn?: () => Promise<CheckpointTurnPreparation | void>;
         /** Host observer invoked only after the provider accepts turn/start. */
         onSubmitted?: () => void;
+        /** Host observer of this native completion, after successful checkpoint apply. */
+        onCompleted?: (turnId: string, thread: { id: string; path: string } | null) => void;
+        /** Releases the pre-admitted host continuation, including unsupported/fallback completion. */
+        onCompletionObservationSettled?: () => void;
         /** Max time without any turn activity before interrupting the provider. */
         turnTimeoutMs?: number;
     }): Promise<{ aborted: boolean }> {
@@ -2299,6 +2365,17 @@ export class CodexAppServerClient {
         const effectiveOpts = applyCheckpointTurnPreparation(opts, turnPreparation);
 
         const timeoutMs = opts?.turnTimeoutMs ?? CodexAppServerClient.TURN_TIMEOUT_MS;
+        // Checkpoint completion quiesces the provider process. Its own rollout metadata
+        // must be captured now; no constructed path or model/RPC argument can replace it.
+        const completedThread = this.nativeThreadMetadata?.id === this._threadId
+            ? { ...this.nativeThreadMetadata } : null;
+        const observation = opts?.onCompleted ? {
+            turnId: null as string | null, threadId: this._threadId, thread: completedThread,
+            successful: null as boolean | null, applied: false, timer: undefined as ReturnType<typeof setTimeout> | undefined,
+            earlyCompletions: new Map<string, boolean>(),
+            onCompleted: opts.onCompleted, onSettled: opts.onCompletionObservationSettled,
+        } : undefined;
+        if (observation) this.nativeCompletionObservations.add(observation);
         const completion = new Promise<boolean>((resolve) => {
             this.pendingTurnCompletion = {
                 resolve,
@@ -2308,6 +2385,7 @@ export class CodexAppServerClient {
                 hasSteeredInput: false,
                 inactivityTimeoutMs: timeoutMs,
                 inactivityTimer: null,
+                observation,
             };
             this.schedulePendingTurnInactivityTimeout();
         });
@@ -2323,19 +2401,27 @@ export class CodexAppServerClient {
         }
 
         const aborted = await completion;
-        if (this.completeTurn) {
-            const applyResult = await this.completeTurn(async () => {
-                if (!this.protectedWriterTree) {
-                    throw new Error('checkpoint writer process tree is unavailable');
-                }
-                await this.protectedWriterTree.quiesce(() => this.disconnectInternal({
-                    preserveThreadState: true,
-                    awaitProcessExit: true,
-                }));
-            });
-            if (applyResult.status !== 'completed') {
-                throw new Error('checkpoint turn apply did not complete');
+        try {
+            if (this.completeTurn) {
+                const applyResult = await this.completeTurn(async () => {
+                    if (!this.protectedWriterTree) {
+                        throw new Error('checkpoint writer process tree is unavailable');
+                    }
+                    await this.protectedWriterTree.quiesce(() => this.disconnectInternal({
+                        preserveThreadState: true,
+                        awaitProcessExit: true,
+                    }));
+                });
+                if (applyResult.status !== 'completed') throw new Error('checkpoint turn apply did not complete');
             }
+        } catch (error) {
+            if (observation) this.settleNativeCompletionObservation(observation, false);
+            throw error;
+        }
+        if (observation && this.nativeCompletionObservations.has(observation)) {
+            observation.applied = true;
+            if (aborted || observation.successful !== null) this.settleNativeCompletionObservation(observation, !aborted && observation.successful === true);
+            else observation.timer = setTimeout(() => this.settleNativeCompletionObservation(observation, false), 2_000);
         }
         return { aborted };
     }
@@ -2417,11 +2503,13 @@ export class CodexAppServerClient {
             `[CodexAppServer] Clearing thread state: thread=${this._threadId ?? 'none'} turn=${this._turnId ?? 'none'}`,
         );
         this.resolvePendingTurn(true);
+        for (const observation of this.nativeCompletionObservations) this.settleNativeCompletionObservation(observation, false);
         // This resolution emits no terminal event, so drop any watchdog snapshot
         // rather than let it mislabel a later turn's abort.
         this.pendingInactivityAbort = null;
         this._threadId = null;
         this._turnId = null;
+        this.nativeThreadMetadata = null;
         this.threadDefaults = null;
         this.completedTurnIds.clear();
         this.rawFileChangesByItemId.clear();
@@ -2691,12 +2779,31 @@ export class CodexAppServerClient {
     private handleNotification(method: string, params: any): void {
         this.recordPendingTurnActivity(method, params);
 
+        // Memory observes only a matching authoritative success. UI final-answer/idle
+        // fallbacks may settle earlier; a bounded host continuation can still receive
+        // the later true completion without changing those existing UI semantics.
+        if (method === 'turn/completed') {
+            this.observeAuthoritativeNativeCompletion(
+                this.extractTurnId(params), this.extractThreadId(params),
+                this.extractTurnStatus(params) === 'completed'
+                    && (params?.turn?.error ?? params?.error) == null && this.pendingInactivityAbort === null,
+            );
+        }
+
         // codex/event notifications: either `codex/event` or `codex/event/<type>`
         if (method === 'codex/event' || method.startsWith('codex/event/')) {
             this.notificationProtocol = 'legacy';
             const msg = params?.msg;
             if (msg) {
                 const turnId = msg.turn_id ?? msg.turnId ?? null;
+                if (msg.type === 'task_complete' || msg.type === 'turn_aborted') {
+                    this.observeAuthoritativeNativeCompletion(
+                        typeof turnId === 'string' ? turnId : null,
+                        typeof (msg.thread_id ?? msg.threadId ?? params?.threadId) === 'string' ? msg.thread_id ?? msg.threadId ?? params.threadId : null,
+                        msg.type === 'task_complete' && (msg.status == null || msg.status === 'completed')
+                            && msg.error == null && this.pendingInactivityAbort === null,
+                    );
+                }
                 if (msg.type === 'exec_command_begin') {
                     this.reopenConsumerLifecycleOnResumedWork(turnId);
                 }

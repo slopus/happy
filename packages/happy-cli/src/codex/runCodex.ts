@@ -103,6 +103,7 @@ import { buildCodexThreadBackfillEnvelopes } from './utils/threadImageBackfill';
 import type { LessonReviewWorker } from '@/memory/lessonReviewWorker';
 import { createLazyLessonSessionHost } from '@/memory/lessonSessionHost';
 import { prepareCodexRecallHost, buildCodexMemoryReferenceBlock } from '@/memory/codexRecallHost';
+import { prepareCodexIngestHost, type CodexIngestHost } from '@/memory/codexIngestHost';
 import { readLessonOwner } from '@/memory/lessonOwnerMarker';
 import type { LessonTurnKind } from '@/memory/lessonTurnEvidence';
 import { createLessonTurnObservations } from '@/memory/lessonTurnObservations';
@@ -400,6 +401,11 @@ export async function runCodex(opts: {
     // (assigned later at line ~385 after client setup)
     let permissionHandler: CodexPermissionHandler;
     let client!: CodexAppServerClient;
+    let memoryIngestHost: CodexIngestHost | null = null;
+    const pendingMemoryIngest = new Set<Promise<void>>();
+    const waitingMemoryIngest = new Set<() => void>();
+    const memoryIngestShutdown = new AbortController();
+    let memoryIngestClose: Promise<void> | null = null;
     let reasoningProcessor!: ReasoningProcessor;
     let abortInProgress: Promise<void> | null = null;
     // Assigned after handleKillSession is defined; re-attached on session swap
@@ -1048,11 +1054,18 @@ export async function runCodex(opts: {
             return;
         }
         runtimeGate?.beginTermination();
+        // An admitted continuation may still await its provider acknowledgement.
+        // Closing a worker host cannot settle that wait, so seal it before abort/join.
+        cancelMemoryIngest();
         logger.debug('[Codex] Kill session requested - terminating process');
         await handleAbort();
         logger.debug('[Codex] Abort completed, proceeding with termination');
 
         try {
+            // This path exits directly rather than entering the loop's finally. Reap any
+            // host memory writer before releasing the account session's ownership.
+            await closeMemoryIngest();
+            await Promise.all([...pendingMemoryIngest]);
             // Update lifecycle state to archived before closing —
             // unless the caller says the session may still be alive
             // server-side (sync-fatal 401/403), in which case leave the
@@ -1197,6 +1210,24 @@ export async function runCodex(opts: {
         report: ({ event, reason, contextChars }) => logger.debug('[CodexMemoryHost]', { event, reason, contextChars }),
     });
     logger.debug('[CodexMemoryHost]', { status: recallHost ? 'prepared' : sandboxPolicyMode === 'mandatory' ? 'policy_requires_binding' : 'unsupported' });
+    memoryIngestHost = await prepareCodexIngestHost({
+        accountOwned: opts.principal.kind === 'account',
+        sandboxEnabled: checkpointComposition.sandboxConfig?.enabled === true,
+        sandboxPolicyMode,
+        projectPath: recallProjectPath,
+        env: recallHostEnvironment,
+        report: result => logger.debug('[CodexMemoryIngest]', result),
+    });
+    logger.debug('[CodexMemoryIngest]', { status: memoryIngestHost ? 'prepared' : sandboxPolicyMode === 'mandatory' ? 'policy_requires_binding' : 'unsupported' });
+
+    function cancelMemoryIngest(): void {
+        if (!memoryIngestShutdown.signal.aborted) memoryIngestShutdown.abort();
+        for (const cancel of [...waitingMemoryIngest]) cancel();
+    }
+    function closeMemoryIngest(): Promise<void> {
+        if (!memoryIngestClose) memoryIngestClose = memoryIngestHost?.close() ?? Promise.resolve();
+        return memoryIngestClose;
+    }
 
     client = new CodexAppServerClient(
         checkpointComposition.sandboxConfig,
@@ -1218,6 +1249,94 @@ export async function runCodex(opts: {
         checkpointComposition.markTurnDispatched,
         recallHost !== null,
     );
+
+    let ingestThreadMetadata: { threadId: string; path: Promise<string | null> } | null = null;
+    let memoryIngestOrdinal = 0;
+    const enqueuedIngestOrdinals = new Map<string, number>();
+    const resolveIngestTranscript = (threadId: string, providerThread: { id: string; path: string } | null): Promise<string | null> => {
+        // This snapshot survives checkpoint quiescence, which may have already stopped
+        // the app-server. It was captured from thread/start, resume or fork.
+        if (memoryIngestShutdown.signal.aborted) return Promise.resolve(null);
+        if (providerThread?.id === threadId && providerThread.path) return Promise.resolve(providerThread.path);
+        if (ingestThreadMetadata?.threadId === threadId) return ingestThreadMetadata.path;
+        const cached = {
+            threadId,
+            path: (async () => {
+                let timer: ReturnType<typeof setTimeout> | undefined;
+                let cancelled: (() => void) | undefined;
+                try {
+                    const result = await Promise.race([
+                        client.readThread({ threadId, includeTurns: false }),
+                        new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), 2_000); }),
+                        new Promise<null>(resolve => {
+                            if (memoryIngestShutdown.signal.aborted) { resolve(null); return; }
+                            cancelled = () => resolve(null);
+                            memoryIngestShutdown.signal.addEventListener('abort', cancelled, { once: true });
+                        }),
+                    ]);
+                    return !memoryIngestShutdown.signal.aborted
+                        && result?.thread.id === threadId && typeof result.thread.path === 'string' && result.thread.path
+                        ? result.thread.path : null;
+                } catch { return null; }
+                finally {
+                    if (timer) clearTimeout(timer);
+                    if (cancelled) memoryIngestShutdown.signal.removeEventListener('abort', cancelled);
+                }
+            })(),
+        };
+        ingestThreadMetadata = cached;
+        // Failed lookups may retry next completion. Concurrent completions share one
+        // lookup, preserving prefix order rather than racing one read per turn.
+        void cached.path.then(path => { if (!path && ingestThreadMetadata === cached) ingestThreadMetadata = null; });
+        return cached.path;
+    };
+    const reserveCompletedTurnIngest = (threadId: string) => {
+        const host = memoryIngestHost;
+        if (!host) return undefined;
+        const ordinal = ++memoryIngestOrdinal;
+        let supply!: (completion: { throughTurnId: string; providerThread: { id: string; path: string } | null } | null) => void;
+        const completion = new Promise<{ throughTurnId: string; providerThread: { id: string; path: string } | null } | null>(resolve => { supply = resolve; });
+        let supplied = false;
+        const settle = (native: { throughTurnId: string; providerThread: { id: string; path: string } | null } | null) => {
+            if (supplied) return;
+            supplied = true;
+            waitingMemoryIngest.delete(cancel);
+            supply(native);
+        };
+        const cancel = () => settle(null);
+        waitingMemoryIngest.add(cancel);
+        const work = async () => {
+            try {
+                const native = await completion;
+                if (!native || memoryIngestShutdown.signal.aborted) return;
+                // Resolve the owning rollout from the provider, never from a user-supplied
+                // path or prompt. A stalled metadata read must not stall another turn.
+                const transcriptPath = await resolveIngestTranscript(threadId, native.providerThread);
+                if (!transcriptPath) {
+                    logger.debug('[CodexMemoryIngest]', { reason: 'thread_unavailable' });
+                    return;
+                }
+                // A reconnect can add metadata while an earlier lookup is pending. An
+                // older resolved prefix must never replace an already queued newer one.
+                if ((enqueuedIngestOrdinals.get(threadId) ?? 0) > ordinal) return;
+                enqueuedIngestOrdinals.set(threadId, ordinal);
+                await host.ingest({ threadId, transcriptPath, throughTurnId: native.throughTurnId });
+            } catch {
+                // Ingestion is optional and has its own failure boundary. Never turn a
+                // successful provider completion into a failed foreground transcript.
+                logger.debug('[CodexMemoryIngest]', { reason: 'thread_unavailable' });
+            }
+        };
+        // Reserve while this foreground turn is still admitted. Shutdown may freeze
+        // new work during inference; this trusted continuation belongs to that turn.
+        const pending = (runtimeGate ? runtimeGate.admit(work, 'writer') : work()).catch(() => cancel());
+        pendingMemoryIngest.add(pending);
+        void pending.finally(() => pendingMemoryIngest.delete(pending));
+        return {
+            onCompleted: (throughTurnId: string, providerThread: { id: string; path: string } | null) => settle({ throughTurnId, providerThread }),
+            onSettled: cancel,
+        };
+    };
 
     if (runtimeGate) client.setTurnDispatchHandler(() => runtimeGate.markDispatched());
     if (session.tracksShutdownStorage) {
@@ -2289,8 +2408,11 @@ export async function runCodex(opts: {
                     const appliedRoute = difficultyRoutingCommitter.commitApplied(message.requestIds, codexTurnId!);
                     routingApplied = true;
                     latency?.submitted();
+                    const memoryIngest = reserveCompletedTurnIngest(activeThreadId);
                     const result = await client.sendTurnAndWait(turnPrompt, {
                         ...(memoryRecall?.reason === 'context_returned' ? { onSubmitted: () => recallHost?.markSubmitted(activeThreadId, memoryRecall.startupIncluded === true) } : {}),
+                        ...(memoryIngest ? { onCompleted: memoryIngest.onCompleted,
+                            onCompletionObservationSettled: memoryIngest.onSettled } : {}),
                         model: appliedRoute ? appliedRoute.model : message.mode.model,
                         approvalPolicy: executionPolicy.approvalPolicy,
                         sandbox: executionPolicy.sandbox,
@@ -2299,7 +2421,7 @@ export async function runCodex(opts: {
                             ? (isSupportedCodexReasoningEffort(appliedRoute.effort) ? appliedRoute.effort : undefined)
                             : message.mode.effort,
                         extraInputItems: imageInputs.inputItems,
-                    }).finally(async () => {
+                    }).catch(error => { memoryIngest?.onSettled(); throw error; }).finally(async () => {
                         // Recorded even after a failed turn: it may already have changed files. A
                         // missing record only makes a later restore more cautious.
                         await checkpointComposition.localHistory?.afterTurn().catch((error) => {
@@ -2317,6 +2439,7 @@ export async function runCodex(opts: {
                         // Turn was aborted (user abort or permission cancel).
                         // UI handling already done by the event handler (turn_aborted).
                         logger.debug('[Codex] Turn aborted');
+                        memoryIngest?.onSettled();
                     }
 
                     if (lessonTurn && lessonRecall?.outcome === 'selected' && !result.aborted) {
@@ -2459,6 +2582,14 @@ export async function runCodex(opts: {
         let loopExitRecorded = false;
         try {
             preemptLessonReview();
+            const frozen = runtimeGate?.isFrozen() === true;
+            if (frozen) {
+                // Optional memory is outside the foreground drain contract. Stop its
+                // pending metadata reads and kill/join its worker before exposing the
+                // frozen runtime to SessionDrain's deadline.
+                cancelMemoryIngest();
+                await closeMemoryIngest();
+            }
             if (runtimeGate) {
                 // Seal synchronously before stopping the listener; existing callbacks retain their promises.
                 const producers = runtimeGate.closeAdmissionAndWait();
@@ -2483,6 +2614,10 @@ export async function runCodex(opts: {
                 }
                 await producers;
             }
+            // Run-once sessions need the same durable completion as long-lived sessions;
+            // do not cancel their just-enqueued import merely because the loop ended.
+            await Promise.all([...pendingMemoryIngest]);
+            await closeMemoryIngest();
             await reportManagedStop();
             /*
              * The bridge points at this run's loop. Left registered, a stop

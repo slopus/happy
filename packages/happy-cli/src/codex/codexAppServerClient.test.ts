@@ -269,6 +269,176 @@ describe('CodexAppServerClient sandbox integration', () => {
         } finally { await client.disconnect(); }
     });
 
+    it.each([false, true])('reports only the matching native normal completion to the memory observer (aborted=%s)', async (aborted) => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const onCompleted = vi.fn();
+        const send = vi.spyOn(client, 'sendTurn').mockImplementation(async () => {
+            const pending = (client as any).pendingTurnCompletion;
+            pending.turnId = 'native-completed-turn';
+            pending.observation.turnId = 'native-completed-turn';
+            expect((client as any).tryResolvePendingTurn(false, 'stale-or-child-turn', 'test')).toBe(false);
+            expect(onCompleted).not.toHaveBeenCalled();
+            (client as any).handleNotification('turn/completed', { threadId: 'own-thread', turn: {
+                id: 'native-completed-turn', status: aborted ? 'cancelled' : 'completed', error: null,
+            } });
+        });
+        try {
+            await client.connect();
+            (client as any)._threadId = 'own-thread';
+            await expect(client.sendTurnAndWait('completed request', { onCompleted })).resolves.toEqual({ aborted });
+            if (aborted) expect(onCompleted).not.toHaveBeenCalled();
+            else expect(onCompleted).toHaveBeenCalledWith('native-completed-turn', null);
+        } finally { send.mockRestore(); await client.disconnect(); }
+    });
+
+    it('ignores completion observer errors and preserves the native result shape', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const send = vi.spyOn(client, 'sendTurn').mockImplementation(async () => {
+            (client as any).pendingTurnCompletion.observation.turnId = 'fast-completed-turn';
+            (client as any).handleNotification('turn/completed', { threadId: 'own-thread', turn: { id: 'fast-completed-turn', status: 'completed', error: null } });
+        });
+        const onCompleted = vi.fn(() => { throw new Error('private observer text'); });
+        try {
+            await client.connect();
+            (client as any)._threadId = 'own-thread';
+            await expect(client.sendTurnAndWait('completed request', { onCompleted })).resolves.toEqual({ aborted: false });
+            expect(onCompleted).toHaveBeenCalledWith('fast-completed-turn', null);
+            const { logger } = await import('@/ui/logger');
+            expect(logger.warn).toHaveBeenCalledWith('[CodexAppServer] Completion observer failed');
+            expect(JSON.stringify(vi.mocked(logger.warn).mock.calls)).not.toContain('private observer text');
+        } finally { send.mockRestore(); await client.disconnect(); }
+    });
+
+    it('suppresses completed-turn memory when checkpoint apply fails', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const completeTurn = vi.fn(async () => { throw new Error('checkpoint apply failed'); });
+        const client = new CodexAppServerClient(undefined, undefined, completeTurn);
+        const onCompleted = vi.fn();
+        const send = vi.spyOn(client, 'sendTurn').mockImplementation(async () => {
+            (client as any).pendingTurnCompletion.observation.turnId = 'completed-before-apply';
+            (client as any).handleNotification('turn/completed', { threadId: 'own-thread', turn: { id: 'completed-before-apply', status: 'completed', error: null } });
+        });
+        try {
+            await client.connect();
+            (client as any)._threadId = 'own-thread';
+            await expect(client.sendTurnAndWait('apply request', { onCompleted })).rejects.toThrow('checkpoint apply failed');
+            expect(onCompleted).not.toHaveBeenCalled();
+        } finally { send.mockRestore(); await client.disconnect(); }
+    });
+
+    it.each([
+        ['failed', null], ['completed', { message: 'private error' }], ['interrupted', null],
+    ])('never treats native error/failure as a successful memory completion (status=%s)', async (status, error) => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const onCompleted = vi.fn(); const onSettled = vi.fn();
+        const send = vi.spyOn(client, 'sendTurn').mockImplementation(async () => {
+            const pending = (client as any).pendingTurnCompletion;
+            pending.turnId = 'native-failed-turn'; pending.observation.turnId = 'native-failed-turn';
+            (client as any).handleNotification('turn/completed', { threadId: 'own-thread', turn: { id: 'native-failed-turn', status, error } });
+        });
+        try {
+            await client.connect(); (client as any)._threadId = 'own-thread';
+            const result = await client.sendTurnAndWait('native failure', { onCompleted, onCompletionObservationSettled: onSettled });
+            expect(result).toEqual({ aborted: status === 'interrupted' });
+            expect(onCompleted).not.toHaveBeenCalled(); expect(onSettled).toHaveBeenCalledOnce();
+        } finally { send.mockRestore(); await client.disconnect(); }
+    });
+
+    it.each(['thread/status/changed:idle', 'item/completed:final_answer'])('preserves synthetic UI completion while waiting for a later authoritative memory completion (%s)', async source => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const onCompleted = vi.fn(); const onSettled = vi.fn();
+        const send = vi.spyOn(client, 'sendTurn').mockImplementation(async () => {
+            const pending = (client as any).pendingTurnCompletion;
+            pending.turnId = 'native-fallback-turn'; pending.observation.turnId = 'native-fallback-turn';
+            (client as any).emitRawTurnCompletion('native-fallback-turn', 'completed', null, source);
+        });
+        try {
+            await client.connect(); (client as any)._threadId = 'own-thread';
+            await expect(client.sendTurnAndWait('native fallback', { onCompleted, onCompletionObservationSettled: onSettled })).resolves.toEqual({ aborted: false });
+            expect(onCompleted).not.toHaveBeenCalled(); expect(onSettled).not.toHaveBeenCalled();
+            (client as any).handleNotification('turn/completed', { threadId: 'foreign-thread', turn: { id: 'native-fallback-turn', status: 'completed' } });
+            expect(onCompleted).not.toHaveBeenCalled();
+            (client as any).handleNotification('turn/completed', { threadId: 'own-thread', turn: { id: 'native-fallback-turn', status: 'completed' } });
+            expect(onCompleted).toHaveBeenCalledWith('native-fallback-turn', null); expect(onSettled).toHaveBeenCalledOnce();
+            (client as any).handleNotification('turn/completed', { threadId: 'own-thread', turn: { id: 'native-fallback-turn', status: 'completed' } });
+            expect(onCompleted).toHaveBeenCalledOnce();
+        } finally { send.mockRestore(); await client.disconnect(); }
+    });
+
+    it('bounds a missing authoritative completion and releases its host continuation', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const onCompleted = vi.fn(); const onSettled = vi.fn();
+        const send = vi.spyOn(client, 'sendTurn').mockImplementation(async () => {
+            const pending = (client as any).pendingTurnCompletion;
+            pending.turnId = 'native-incomplete'; pending.observation.turnId = 'native-incomplete';
+            (client as any).emitRawTurnCompletion('native-incomplete', 'completed', null, 'item/completed:final_answer');
+        });
+        try {
+            await client.connect(); (client as any)._threadId = 'own-thread';
+            await client.sendTurnAndWait('incomplete fallback', { onCompleted, onCompletionObservationSettled: onSettled });
+            await vi.waitFor(() => expect(onSettled).toHaveBeenCalledOnce(), { timeout: 3_000 });
+            expect(onCompleted).not.toHaveBeenCalled();
+            expect((client as any).nativeCompletionObservations.size).toBe(0);
+        } finally { send.mockRestore(); await client.disconnect(); }
+    });
+
+    it('pins memory completion to the accepted turn/start ID rather than an early child lifecycle', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const onCompleted = vi.fn(); const onSettled = vi.fn();
+        await client.connect(); (client as any)._threadId = 'own-thread';
+        const request = vi.spyOn(client as any, 'request').mockImplementation(async (method: unknown) => {
+            if (method === 'turn/start') {
+                // Stdio notifications can precede the continuation of the accepted RPC.
+                (client as any).handleNotification('turn/completed', { threadId: 'own-thread', turn: { id: 'child-turn', status: 'completed' } });
+                return { turn: { id: 'accepted-native-turn' } };
+            }
+            return {};
+        });
+        try {
+            await expect(client.sendTurnAndWait('native request', { onCompleted, onCompletionObservationSettled: onSettled })).resolves.toEqual({ aborted: false });
+            expect(onCompleted).not.toHaveBeenCalled(); expect(onSettled).not.toHaveBeenCalled();
+            (client as any).handleNotification('turn/completed', { threadId: 'own-thread', turn: { id: 'accepted-native-turn', status: 'completed' } });
+            expect(onCompleted).toHaveBeenCalledWith('accepted-native-turn', null); expect(onSettled).toHaveBeenCalledOnce();
+        } finally { request.mockRestore(); await client.disconnect(); }
+    });
+
+    it('uses only matching provider metadata across start, resume, fork and clear', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const request = vi.spyOn(client as any, 'request').mockImplementation(async (method: unknown) => {
+            if (method === 'config/read') return { config: {} };
+            const name = String(method).split('/')[1];
+            return { thread: { id: `thread-${name}`, path: `/tmp/rollout-${name}` }, model: 'test' };
+        });
+        const send = vi.spyOn(client, 'sendTurn').mockImplementation(async () => {
+            (client as any).pendingTurnCompletion.observation.turnId = 'own-completed-turn';
+            (client as any).handleNotification('turn/completed', { threadId: client.threadId, turn: { id: 'own-completed-turn', status: 'completed', error: null } });
+        });
+        try {
+            await client.connect();
+            await client.startThread({ cwd: '/tmp/project' });
+            const startCompleted = vi.fn();
+            await client.sendTurnAndWait('start request', { onCompleted: startCompleted });
+            expect(startCompleted).toHaveBeenCalledWith('own-completed-turn', { id: 'thread-start', path: '/tmp/rollout-start' });
+            await client.resumeThread({ threadId: 'thread-start' });
+            const resumeCompleted = vi.fn();
+            await client.sendTurnAndWait('resume request', { onCompleted: resumeCompleted });
+            expect(resumeCompleted).toHaveBeenCalledWith('own-completed-turn', { id: 'thread-resume', path: '/tmp/rollout-resume' });
+            await client.forkThread({ threadId: 'thread-resume' });
+            const forkCompleted = vi.fn();
+            await client.sendTurnAndWait('fork request', { onCompleted: forkCompleted });
+            expect(forkCompleted).toHaveBeenCalledWith('own-completed-turn', { id: 'thread-fork', path: '/tmp/rollout-fork' });
+            client.clearThreadState();
+            expect((client as any).nativeThreadMetadata).toBeNull();
+        } finally { request.mockRestore(); send.mockRestore(); await client.disconnect(); }
+    });
+
     it.each([
         [false, 'owner-choice', undefined],
         [true, 'mandatory', undefined],
@@ -1465,12 +1635,19 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.connect();
         await client.startThread({ cwd: '/tmp/project', sandbox: 'workspace-write' });
 
-        await expect(client.sendTurnAndWait('edit the project'))
+        const onCompleted = vi.fn((turnId, thread) => {
+            expect((client as any).connected).toBe(false);
+            expect(turnId).toBe('turn-gated');
+            expect(thread).toEqual({ id: 'thread-gated', path: '/tmp/thread-gated' });
+            order.push('memory');
+        });
+        await expect(client.sendTurnAndWait('edit the project', { onCompleted }))
             .resolves.toEqual({ aborted: false });
 
         expect(beforeTurn).toHaveBeenCalledOnce();
         expect(completeTurn).toHaveBeenCalledOnce();
-        expect(order).toEqual(['gate', 'provider', 'apply']);
+        expect(onCompleted).toHaveBeenCalledOnce();
+        expect(order).toEqual(['gate', 'provider', 'apply', 'memory']);
         expect(requests.find(({ method }) => method === 'turn/start')?.params.cwd)
             .toBe('/private/checkpoints/codex-turn-1');
         await client.disconnect();
