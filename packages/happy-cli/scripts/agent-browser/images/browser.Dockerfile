@@ -5,7 +5,7 @@
 ARG DEBIAN_IMAGE=debian:bookworm-slim@sha256:3783cc01769c7b2b1b83a5c5ad96c815348e28ed7da68e2e3687004faa906251
 FROM ${DEBIAN_IMAGE}
 LABEL ai.saycode.abp.contract="3"
-RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends chromium xvfb x11vnc socat python3 python3-websocket tini procps ca-certificates fonts-liberation \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends chromium xvfb x11vnc socat python3 python3-websocket tini procps ca-certificates fonts-liberation fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/* \
     && groupadd --gid 10871 browser && useradd --uid 10871 --gid 10871 --create-home --shell /usr/sbin/nologin browser \
     && mkdir -p /run/abp /home/browser/profile && chown -R browser:browser /run/abp /home/browser

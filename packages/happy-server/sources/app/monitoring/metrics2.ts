@@ -1,5 +1,5 @@
 import { register, Counter, Gauge, Histogram } from 'prom-client';
-import { monitorEventLoopDelay } from 'node:perf_hooks';
+import { monitorEventLoopDelay, performance, PerformanceObserver } from 'node:perf_hooks';
 import { db } from '@/storage/db';
 import { forever } from '@/utils/forever';
 import { delay } from '@/utils/delay';
@@ -42,6 +42,16 @@ export function getMetricsLabelsFromRequest(request: { headers: Record<string, s
 // Application metrics
 const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
 eventLoopDelay.enable();
+let previousUtilization = performance.eventLoopUtilization();
+let maximumGcDurationMs = 0;
+const gcObserver = new PerformanceObserver(list => {
+    for (const entry of list.getEntries()) {
+        if (Number.isFinite(entry.duration)) {
+            maximumGcDurationMs = Math.max(maximumGcDurationMs, entry.duration);
+        }
+    }
+});
+gcObserver.observe({ entryTypes: ['gc'] });
 
 export const eventLoopLagSecondsGauge = new Gauge({
     name: 'event_loop_lag_seconds',
@@ -52,6 +62,12 @@ export const eventLoopLagSecondsGauge = new Gauge({
         const maxNanoseconds = eventLoopDelay.max;
         this.set(Number.isFinite(p99Nanoseconds) ? p99Nanoseconds / 1e9 : 0);
         eventLoopLagMaxSecondsGauge.set(Number.isFinite(maxNanoseconds) ? maxNanoseconds / 1e9 : 0);
+        const currentUtilization = performance.eventLoopUtilization();
+        const intervalUtilization = performance.eventLoopUtilization(currentUtilization, previousUtilization);
+        previousUtilization = currentUtilization;
+        eventLoopUtilizationRatioGauge.set(Number.isFinite(intervalUtilization.utilization) ? intervalUtilization.utilization : 0);
+        gcPauseMaxSecondsGauge.set(maximumGcDurationMs / 1000);
+        maximumGcDurationMs = 0;
         eventLoopDelay.reset();
     }
 });
@@ -60,6 +76,18 @@ export const eventLoopLagSecondsGauge = new Gauge({
 export const eventLoopLagMaxSecondsGauge = new Gauge({
     name: 'event_loop_lag_max_seconds',
     help: 'Maximum event loop delay in seconds since the previous metrics scrape',
+    registers: [register]
+});
+
+export const eventLoopUtilizationRatioGauge = new Gauge({
+    name: 'event_loop_utilization_ratio',
+    help: 'Event loop utilization since the previous metrics scrape; not CPU utilization',
+    registers: [register]
+});
+
+export const gcPauseMaxSecondsGauge = new Gauge({
+    name: 'gc_pause_max_seconds',
+    help: 'Maximum GC duration reported by the asynchronous observer since the previous metrics scrape',
     registers: [register]
 });
 

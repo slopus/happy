@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { dbMock, eventLoopHistogram } = vi.hoisted(() => {
+const { dbMock, eventLoopHistogram, gcObserver, initialUtilization, utilization } = vi.hoisted(() => {
     const dbMock = {
         account: { count: vi.fn() },
         session: { count: vi.fn() },
@@ -10,16 +10,27 @@ const { dbMock, eventLoopHistogram } = vi.hoisted(() => {
     };
 
     const eventLoopHistogram = { enable: vi.fn(), percentile: vi.fn(() => 20_000_000), max: 0, reset: vi.fn() };
-    return { dbMock, eventLoopHistogram };
+    const gcObserver = { observe: vi.fn(), callback: undefined as ((list: { getEntries: () => { duration: number }[] }) => void) | undefined };
+    const initialUtilization = { idle: 0, active: 0, utilization: 0 };
+    const utilization = vi.fn(() => initialUtilization);
+    return { dbMock, eventLoopHistogram, gcObserver, initialUtilization, utilization };
 });
 
-vi.mock('node:perf_hooks', () => ({ monitorEventLoopDelay: () => eventLoopHistogram }));
+vi.mock('node:perf_hooks', () => ({
+    monitorEventLoopDelay: () => eventLoopHistogram,
+    performance: { eventLoopUtilization: utilization },
+    PerformanceObserver: class {
+        constructor(callback: typeof gcObserver.callback) { gcObserver.callback = callback; }
+        observe = gcObserver.observe;
+    }
+}));
 
 vi.mock("@/storage/db", () => ({
     db: dbMock
 }));
 
 import { register, updateDatabaseMetrics } from "./metrics2";
+const gcObservationOptions = gcObserver.observe.mock.calls[0];
 
 describe("updateDatabaseMetrics", () => {
     beforeEach(() => {
@@ -46,6 +57,51 @@ describe("updateDatabaseMetrics", () => {
 });
 
 describe("event loop lag metric", () => {
+    beforeEach(() => {
+        utilization.mockReset().mockReturnValue(initialUtilization);
+        eventLoopHistogram.max = 0;
+        eventLoopHistogram.percentile.mockReset().mockReturnValue(20_000_000);
+        eventLoopHistogram.reset.mockReset();
+    });
+
+    it('reports utilization for each scrape interval rather than the process lifetime', async () => {
+        await register.metrics(); // Prime the baseline independently of test order.
+        const firstSnapshot = { idle: 100, active: 400, utilization: 0.8 };
+        const secondSnapshot = { idle: 900, active: 600, utilization: 0.4 };
+        utilization.mockClear();
+        utilization.mockReturnValueOnce(firstSnapshot).mockReturnValueOnce({ idle: 100, active: 400, utilization: 0.8 });
+        const first = await register.getMetricsAsJSON();
+        expect(first.find(metric => metric.name === 'event_loop_utilization_ratio')?.values[0].value).toBe(0.8);
+        expect(utilization).toHaveBeenCalledWith(firstSnapshot, initialUtilization);
+        utilization.mockReturnValueOnce(secondSnapshot).mockReturnValueOnce({ idle: 800, active: 200, utilization: 0.2 });
+        const second = await register.getMetricsAsJSON();
+        expect(second.find(metric => metric.name === 'event_loop_utilization_ratio')?.values[0].value).toBe(0.2);
+        expect(utilization).toHaveBeenCalledWith(secondSnapshot, firstSnapshot);
+    });
+
+    it('exports zero rather than NaN when an ELU interval has no elapsed activity', async () => {
+        utilization.mockReturnValueOnce(initialUtilization).mockReturnValueOnce({ idle: 0, active: 0, utilization: NaN });
+        const metrics = await register.getMetricsAsJSON();
+        expect(metrics.find(metric => metric.name === 'event_loop_utilization_ratio')?.values[0].value).toBe(0);
+    });
+
+    it('exposes the largest reported GC pause once then resets for the next scrape', async () => {
+        expect(gcObserver.callback).toBeTypeOf('function');
+        expect(gcObservationOptions).toEqual([{ entryTypes: ['gc'] }]);
+        gcObserver.callback!({ getEntries: () => [{ duration: 25 }, { duration: 3_200 }, { duration: 10 }] });
+        const first = await register.metrics();
+        expect(first).toContain('gc_pause_max_seconds{app="happy-server"} 3.2\n');
+        const second = await register.getMetricsAsJSON();
+        expect(second.find(metric => metric.name === 'gc_pause_max_seconds')?.values[0].value).toBe(0);
+    });
+
+    it('ignores invalid GC durations without losing the last finite pause', async () => {
+        expect(gcObserver.callback).toBeTypeOf('function');
+        gcObserver.callback!({ getEntries: () => [{ duration: 400 }, { duration: NaN }, { duration: Infinity }, { duration: -10 }] });
+        const metrics = await register.getMetricsAsJSON();
+        expect(metrics.find(metric => metric.name === 'gc_pause_max_seconds')?.values[0].value).toBe(0.4);
+    });
+
     it('exposes a rare three-second pause alongside the same window p99 and resets once per scrape', async () => {
         eventLoopHistogram.max = 3_000_000_000;
         eventLoopHistogram.percentile.mockReturnValue(20_000_000);
@@ -71,8 +127,8 @@ describe("event loop lag metric", () => {
         expect(prometheus).toContain('event_loop_lag_max_seconds{app="happy-server"} 4');
         expect(eventLoopHistogram.reset).toHaveBeenCalledTimes(3);
         const nextPrometheus = await register.metrics();
-        expect(nextPrometheus).toContain('event_loop_lag_seconds{app="happy-server"} 0');
-        expect(nextPrometheus).toContain('event_loop_lag_max_seconds{app="happy-server"} 0');
+        expect(nextPrometheus).toContain('event_loop_lag_seconds{app="happy-server"} 0\n');
+        expect(nextPrometheus).toContain('event_loop_lag_max_seconds{app="happy-server"} 0\n');
         expect(eventLoopHistogram.reset).toHaveBeenCalledTimes(4);
     });
 

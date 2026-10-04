@@ -459,3 +459,21 @@ capture/session environment, hydration, setup-token binding, auth wiring and the
 checkpoint/write-scope consumers of capture. Separate typecheck, mandatory CLI build
 and `git diff --check` passed; existing pkgroll warnings only. This is the same medium
 severity finding, not an additional issue or authority change.
+
+## PR branch update against main (2026-10-04)
+
+Merged `origin/main` at `ec5c82428` into the reviewed integration branch (`9a55ad32f`)
+without conflicts. Incoming CLI changes add Codex MCP preparation timing and browser
+CJK fonts; server monitoring adds GC/event-loop metrics. None changes setup-token
+binding, session environment capture, custody or collector authorization. The CLI
+version `1.1.10-aplus.286` is inherited from main, not a new release/pin decision.
+
+Post-merge validation: 13 focused CLI suites passed, 538 tests passed and one
+installed-provider collector fixture skipped because its artifact environment was
+not supplied. Coverage includes setup-token/proof/session hydration and environment,
+custody/runtime/RPC, personal scheduler/probe, collector, plus incoming Codex MCP
+recovery/latency and browser image policy. Mandatory CLI build and separate
+`pnpm -C packages/happy-cli typecheck` passed. Existing pkgroll bin/empty-chunk
+warnings remain. Diff whitespace and unresolved-conflict checks passed. The prior
+actual-wheel integration evidence was not rerun or relabeled as post-merge evidence.
+No operating daemon, live credentials, runtime pins, publish or push was changed.

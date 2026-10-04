@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { createCodexTurnLatency } from './codexTurnLatency';
 
 import {
     buildCodexMcpRecoveryMetadataStatuses,
@@ -827,5 +828,82 @@ describe('Codex MCP status reporting agrees with the recovery path', () => {
         expect(await throwingStartup.readStatuses(input)).toEqual([
             { name: 'notion', status: 'failed', checkedAt: 5 },
         ]);
+    });
+});
+
+describe('Codex MCP recovery preparation spans', () => {
+    const input = { threadId: 't', mcpServers: {}, expectedServerNames: ['notion'] };
+    it('separates initial inspection, resume, backoff and post-resume verification without duplicate RPCs', async () => {
+        let status = 'failed';
+        const stages: string[] = [];
+        const client = {
+            getMcpStartupStatuses: () => [{ name: 'notion', status }],
+            listMcpServerStatus: vi.fn(async () => ({ data: [{ name: 'notion', authStatus: 'unsupported', tools: {} }] })),
+            resumeThread: vi.fn(async () => { status = 'ready'; return { threadId: 't', model: 'test' }; }),
+        };
+        const sleep = vi.fn(async () => {});
+        const recovery = new CodexMcpRuntimeRecovery(client, { sleep });
+        const measure = async <T>(stage: string, action: () => T | Promise<T>): Promise<T> => {
+            stages.push(stage); return action();
+        };
+        expect(await recovery.recoverBeforeTurn({ ...input, measure })).toEqual({ status: 'recovered', affectedServers: ['notion'] });
+        expect(stages).toEqual(['mcp-inventory', 'mcp-reconnect', 'mcp-backoff', 'mcp-verification']);
+        expect(client.listMcpServerStatus).toHaveBeenCalledTimes(2);
+        expect(client.resumeThread).toHaveBeenCalledOnce();
+        expect(sleep).toHaveBeenCalledExactlyOnceWith(250);
+    });
+    it.each(['before', 'after'] as const)('contains a diagnostic failure %s execution and invokes inventory once', async where => {
+        const list = vi.fn(async () => ({ data: [{ name: 'notion', authStatus: 'unsupported', tools: {} }] }));
+        const recovery = new CodexMcpRuntimeRecovery({ getMcpStartupStatuses: () => [], listMcpServerStatus: list, resumeThread: vi.fn() });
+        const measure = async <T>(_stage: string, action: () => T | Promise<T>): Promise<T> => {
+            if (where === 'after') await action();
+            throw new Error('diagnostic failure');
+        };
+        expect(await recovery.recoverBeforeTurn({ ...input, measure })).toEqual({ status: 'ready', affectedServers: [] });
+        expect(list).toHaveBeenCalledOnce();
+    });
+    it('reports measured inventory duration inside the overlapping recovery parent', async () => {
+        let clock = 0;
+        const emit = vi.fn();
+        const recorder = createCodexTurnLatency({ inputCount: 1, latencyTraces: [{ id: 'trace', receivedAt: 0 }] }, emit, () => clock)!;
+        const list = vi.fn(async () => { clock += 37; return { data: [{ name: 'notion', authStatus: 'unsupported', tools: {} }] }; });
+        const recovery = new CodexMcpRuntimeRecovery({ getMcpStartupStatuses: () => [], listMcpServerStatus: list, resumeThread: vi.fn() });
+        await recorder.measure('mcp-recovery', () => recovery.recoverBeforeTurn({ ...input, measure: recorder.measure }));
+        expect(emit).toHaveBeenLastCalledWith(expect.objectContaining({ preparation: [
+            { stage: 'mcp-recovery', startedMs: 0, durationMs: 37, outcome: 'resolved' },
+            { stage: 'mcp-inventory', startedMs: 0, durationMs: 37, outcome: 'resolved' },
+        ] }));
+        expect(list).toHaveBeenCalledOnce();
+    });
+    it('does not retry a failed resume twice when diagnostics swallow or repeat the operation', async () => {
+        const resume = vi.fn(async () => { throw new Error('provider failure'); });
+        const list = vi.fn(async () => ({ data: [] }));
+        const recovery = new CodexMcpRuntimeRecovery({ getMcpStartupStatuses: () => [], listMcpServerStatus: list, resumeThread: resume }, { maxAttempts: 1, backoffMs: 0 });
+        const measure = async <T>(_stage: string, action: () => T | Promise<T>): Promise<T | undefined> => {
+            try { await action(); return await action(); } catch { return undefined; }
+        };
+        const result = await recovery.recoverBeforeTurn({ ...input, measure: <T>(stage: string, action: () => T | Promise<T>) => measure(stage, action) as Promise<T> });
+        expect(result).toEqual({ status: 'failed', affectedServers: ['notion'] });
+        expect(list).toHaveBeenCalledOnce();
+        expect(resume).toHaveBeenCalledOnce();
+    });
+    it('records a shared in-flight inspection only for its initiating input', async () => {
+        let release!: () => void;
+        const wait = new Promise<void>(resolve => { release = resolve; });
+        const list = vi.fn(async () => { await wait; return { data: [{ name: 'notion', authStatus: 'unsupported', tools: {} }] }; });
+        const recovery = new CodexMcpRuntimeRecovery({ getMcpStartupStatuses: () => [], listMcpServerStatus: list, resumeThread: vi.fn() });
+        const stages: string[] = [];
+        const measure = async <T>(stage: string, action: () => T | Promise<T>): Promise<T> => { stages.push(stage); return action(); };
+        const joined = vi.fn();
+        const first = recovery.recoverBeforeTurn({ ...input, expectedServerNames: [], measure });
+        await first;
+        expect(stages).toEqual([]);
+        const owner = recovery.recoverBeforeTurn({ ...input, measure });
+        const second = recovery.recoverBeforeTurn({ ...input, measure: <T>(stage: string, action: () => T | Promise<T>) => { joined(stage, action); return action(); } });
+        expect(second).toBe(owner);
+        release(); await owner;
+        expect(stages).toEqual(['mcp-inventory']);
+        expect(joined).not.toHaveBeenCalled();
+        expect(list).toHaveBeenCalledOnce();
     });
 });

@@ -19,3 +19,9 @@
 3. [Done] Opus 5.5/high 변경 리뷰 approve, 관련 84테스트·typecheck/runtime build와 diff check 통과. p99 인자 assertion도 보강했다.
 4. [Done] commit/push 및 Happy PR #672 생성. 소비 플랫폼 PR은 Happy merge를 기다리는 Draft로 준비한다.
 5. [ ] 배포 후 replica별 timeout/slow-read/event-loop max 상관분석과 같은 조건의 24h 비교. 관측 배포만으로 #1326 해결 판정하지 않는다.
+
+## 2026-10-04 지연 원인 분류
+
+1. [Done] 운영 10.26초 지연과 기존 신호의 분류 공백 확인.
+2. [Done] GC 최대 보고 duration/ELU scrape delta 회귀 Red→Green. p99/max 수집 계약 유지.
+3. [Done] Opus 리뷰 approve, 관련88테스트/typecheck/runtime build 및 Node20 API 스모크 통과. 커밋·PR로 제공한다. 서버 변경은 근본 원인 수정이 아닌 판별 계측이다.

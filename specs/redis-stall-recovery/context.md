@@ -42,3 +42,10 @@
   `rpc_calls_total{method="bash",result="not_available"}` 가 한쪽 파드에서만 증가).
   23:20~23:22 에 prod 파드를 하나씩 삭제했고, peers 1 / lag 0~2ms 로 복구된 것을 확인했다.
   PR 의 commandTimeout 이 있으면 멈춘 XREAD 가 5초에 실패하고 폴링 루프가 다시 돈다.
+
+## 2026-10-04 지연 원인 분류 계측
+
+- prod에서 최대10.26초 event-loop 지연을 확인했다. raw scrape/read sum/CPU/restore 대조로도 GC·동기 실행·외부 CPU 대기를 분류하지 못했다. 상위 분석 근거는 specs/machine-rpc-peer-timeouts/2026-10-04-analysis.md에 있다.
+- 기존 p99 collector에서 ELU snapshot delta와 GC observer 최대 보고 duration을 노출한다. label/timer/payload 로그를 추가하지 않는다. GC 비동기 보고는 사건과 다음 scrape로 갈라질 수 있어 인접 창을 함께 본다. ELU는 CPU 사용률이 아니며 NaN delta는0으로 내보낸다.
+- GC 최대/reset/유효 duration 및 ELU delta3개 Red→Green. Opus5.5/high 변경 리뷰 approve. ELU NaN 회귀도 Red 확인 후 finite guard로 수정했다. 순서 의존과 문자열 assertion도 보강했다. 관련6파일88테스트/typecheck/runtime build 통과. 운영 image의 별도 Node20.20.2 프로세스에서 API 스모크도 통과했다.
+- 원인 수정과 운영 해결은 미확정이다. 앱 프로세스 변경/재시작/flag 변경/운영 배포는 하지 않았다.
