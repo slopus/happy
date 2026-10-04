@@ -39,8 +39,10 @@ export class SessionWriteScopeFixture {
     readonly accountBox = tweetnacl.box.keyPair();
     readonly machineKey = randomBytes(32);
     private readonly sessionKeys = new Map<string, Buffer>();
-    readonly cli = process.cwd();
-    readonly serverDirectory = resolve(this.cli, '../happy-server');
+    cli = resolve(process.env.HAPPY_SCOPE_INSTALLED_CLI ?? process.cwd());
+    readonly serverDirectory = resolve(process.cwd(), '../happy-server');
+    readonly serverBinary = process.env.HAPPY_SCOPE_PACKAGED_SERVER;
+    readonly freshProviderState = process.env.HAPPY_SCOPE_FRESH_PROVIDER_STATE === '1';
     readonly modelRequests: string[] = [];
     readonly failures: string[] = [];
     readonly logs: string[] = [];
@@ -83,10 +85,14 @@ export class SessionWriteScopeFixture {
         // AF_UNIX socket paths must fit even when the source worktree path is long.
         this.temporaryDirectory = await realpath(await mkdtemp(join(process.platform === 'darwin' ? '/private/tmp' : tmpdir(), 'scope-fixture-')));
         await Promise.all([this.home, this.happyHome, this.project, this.otherProject, this.tools, this.otherTools,
-            codexHome, join(this.home, '.claude'), join(this.root, 'server')].map(path => mkdir(path, { recursive: true, mode: 0o700 })));
+            codexHome, ...(!this.freshProviderState ? [join(this.home, '.claude')] : []), join(this.root, 'server')].map(path => mkdir(path, { recursive: true, mode: 0o700 })));
         this.model = createServer(async (request, response) => {
             let body = '';
             for await (const chunk of request) body += chunk;
+            // Older Claude performs this bootstrap health request before its first turn.
+            if (request.url === '/api/hello') {
+                response.writeHead(200, { 'Content-Type': 'application/json' }).end('{}'); return;
+            }
             if (request.url?.startsWith('/v1/messages/count_tokens')) {
                 response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ input_tokens: 10 })); return;
             }
@@ -148,9 +154,10 @@ export class SessionWriteScopeFixture {
             ...(process.env.HAPPY_CLAUDE_PATH ? { HAPPY_CLAUDE_PATH: process.env.HAPPY_CLAUDE_PATH } : {}) };
         this.serverEnvironment = { ...this.environment, TSX_TSCONFIG_PATH: join(this.serverDirectory, 'tsconfig.json'),
             HANDY_MASTER_SECRET: randomBytes(32).toString('hex'), DB_PROVIDER: 'pglite',
+            ...(process.env.HAPPY_SCOPE_PACKAGED_PRISMA_ENGINE ? { PRISMA_QUERY_ENGINE_LIBRARY: process.env.HAPPY_SCOPE_PACKAGED_PRISMA_ENGINE } : {}),
             DATA_DIR: join(this.root, 'server'), PGLITE_DIR: join(this.root, 'server/pglite'),
             HOST: '127.0.0.1', PORT: String(serverPort), METRICS_ENABLED: 'false', HAPPY_STANDALONE_CONTROL: 'stdin-v1' };
-        const migration = this.launch(['--import', 'tsx', 'sources/standalone.ts', 'migrate'], this.serverDirectory, this.serverEnvironment);
+        const migration = this.launchServer('migrate');
         await waitExit(migration);
         await this.startServer();
         const privateKey = createPrivateKey({ key: Buffer.concat([Buffer.from('302e020100300506032b657004220420', 'hex'), this.seed]), type: 'pkcs8', format: 'der' });
@@ -166,8 +173,8 @@ export class SessionWriteScopeFixture {
         await writeFile(join(this.happyHome, 'settings.json'), JSON.stringify({ serverUrl: this.serverUrl }), { mode: 0o600 });
         await this.startDaemon();
     }
-    private launch(args: string[], cwd: string, env: NodeJS.ProcessEnv) {
-        const child = spawn(process.execPath, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
+    private launch(args: string[], cwd: string, env: NodeJS.ProcessEnv, executable = process.execPath) {
+        const child = spawn(executable, args, { cwd, env, stdio: ['pipe', 'pipe', 'pipe'] });
         this.processes.add(child);
         child.on('error', error => this.failures.push(error.message));
         for (const stream of [child.stdout, child.stderr]) stream!.on('data', data => {
@@ -175,8 +182,13 @@ export class SessionWriteScopeFixture {
         });
         return child;
     }
+    private launchServer(command: 'migrate' | 'serve') {
+        return this.serverBinary
+            ? this.launch([command], dirname(this.serverBinary), this.serverEnvironment, this.serverBinary)
+            : this.launch(['--import', 'tsx', 'sources/standalone.ts', command], this.serverDirectory, this.serverEnvironment);
+    }
     async startServer() {
-        this.server = this.launch(['--import', 'tsx', 'sources/standalone.ts', 'serve'], this.serverDirectory, this.serverEnvironment);
+        this.server = this.launchServer('serve');
         await eventually(async () => {
             if (exited(this.server!)) throw new Error(`Server exited: ${this.logs.join('')}`);
             try { return (await fetch(this.serverUrl + '/health', { signal: AbortSignal.timeout(500) })).ok ? true : undefined; } catch { return undefined; }
@@ -232,7 +244,10 @@ export class SessionWriteScopeFixture {
             return result.body.sessionId as string;
         }, 'daemon ready and session spawned');
     }
-    async resumeSession(sessionId: string): Promise<string> {
+    async resumeSession(sessionId: string, legacy279 = false): Promise<string> {
+        if (legacy279 && JSON.parse(await readFile(join(this.cli, 'package.json'), 'utf8')).version !== '1.1.10-aplus.279') {
+            throw new Error('Legacy fixture RPC is restricted to exact .279 rollback');
+        }
         await this.waitDaemonConnection(true);
         const machines = (await this.http('/v1/machines')).body;
         if (machines.length !== 1 || machines[0].accountId !== this.accountId) throw new Error('Unexpected fixture machine identity');
@@ -248,11 +263,12 @@ export class SessionWriteScopeFixture {
                 socket.once('connect_error', error => { clearTimeout(timer); reject(error); });
             });
             const method = 'resume-happy-session', nonce = randomBytes(16).toString('base64');
-            const bound = bindRpcRequest({ method, scope: machineId, params: { sessionId }, issuedAt: Date.now(), nonce });
+            const bound = legacy279 ? { sessionId } : bindRpcRequest({ method, scope: machineId, params: { sessionId }, issuedAt: Date.now(), nonce });
             const response = await socket.timeout(30_000).emitWithAck('rpc-call', { method: `${machineId}:${method}`,
                 params: Buffer.from(encrypt(rpcKey, this.options.encryptionVariant, bound)).toString('base64') });
             if (!response.ok) throw new Error(`Fixture RPC failed: ${response.error}`);
-            const opened = readBoundRpcResponse(decrypt(rpcKey, this.options.encryptionVariant, Buffer.from(response.result, 'base64')), nonce);
+            const decoded = decrypt(rpcKey, this.options.encryptionVariant, Buffer.from(response.result, 'base64'));
+            const opened = legacy279 ? { ok: true as const, result: decoded } : readBoundRpcResponse(decoded, nonce);
             if (!opened.ok) throw new Error(`Fixture RPC binding failed: ${opened.code}`);
             const result = opened.result as { type: string; sessionId: string; errorMessage?: string };
             if (result.type !== 'success') throw new Error(`Fixture resume rejected: ${result.errorMessage}`);
