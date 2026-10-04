@@ -580,3 +580,16 @@ the harness from the registered ID/same synthetic token, not Studio prepare/comp
 Desktop's actual RPC function, macOS Keychain (provider used file-backend fixture),
 real Claude coverage/authentication and release/pin/rollback remain unaccepted.
 Product code changes:0; real account requests:0.
+
+
+### 실제 배포·정상 재시작·forward credential 복구 후속 — 2026-10-04
+
+실제 Studio HTTP auth/routes/Prisma와 새 PostgreSQL16.15에서 생성된 prepare payload를 기존 installed candidate(runtime822948b96) daemon의 DEK group-sync로 적용하고 HTTP complete applied를 확인했다. group service RPC는 matching-wire 고객 키 adapter 주입이며 presence는 fixture다. default server-admin RPC/Desktop 함수 직접 수락은 아니다.
+
+credential generation1→2 교체 후 오래된 complete receipt(AI_GROUP_RECEIPT_MISMATCH), group-sync(공개 AI_GROUP_SYNC_FAILED), generation1 spawn binding(CLAUDE_SETUP_TOKEN_BINDING_STALE)이 거부됐다. 정상 daemon stop/restart 후 applied 보존, binding DELETE→null payload→revoked/accountCount0와 다시 restart한 회수 보존을 확인했다. 원래 합성 token은 generation을 낮추지 않고3으로 복원했고(group operation6), fresh Studio signed grant로 실제 Happy 자식/Claude 대역의 token·binding 전달이 성공했다. scoped export와 전역 활성 login은 별개다. import는 전역 login을 바꾸지 않으며 signed generation3 spawn이 정확 저장 slot을 사용한다. 직접 terminal binding은 보장하지 않는다.
+
+세션2개·daemon3회·서버 모두 인증된 stop/EOF 정상 종료, owned PID12개/PG 컨테이너 부재, bundle1/audit8 보존, fallback kill 없음. 부모가 source/result/provenance/cleanup assertions를 직접 확인했다. 증거 `/tmp/claude/studio-deploy-recovery.b2r665ab/`. 합성 inference1, 예상 밖 외부 시도0이며 OS 방화벽 증거는 아니다.
+
+별도 실제 Claude Code2.1.283 print는 지정 token2개 각1회 성공했고 env 제거 auth negative control도 통과했다. CLI 추정 합계$0.000548, 누적 live4회(앞선 provider2+CLI2)다. 실제 Happy/SDK+실계정 조합, Keychain·장기 유지·coverage는 별도다. 증거 `/tmp/claude-cli-acceptance-rkj05uv1/result.json`.
+
+공식 npm.279 fresh prefix(ignore-scripts) registry integrity 및 tag/pin commit b71b4947ff8b7e0576ff8edac8234d82beeb3568 일치를 확인했다. 빈 HOME 후보.286→.279→.286 version/auth6명령 exit0, daemon 미시작. 이는 cold-start smoke이고 관리 데이터 downgrade/native installer/postinstall·release rollback·archive→commit cryptographic binding 수락은 아니다. 증거 `/tmp/happy-pinned-rollback-6k3mwtyz/`. 제품 코드·운영 install/daemon/pin·release 변경 없음, automaticRotation/externalWriterExclusion false 유지.
