@@ -44,6 +44,13 @@ describe('browser image Chromium policy', () => {
 })
 
 
+describe('browser image fonts', () => {
+    it('ships a CJK font, so Korean, Japanese and Chinese pages are readable in the viewer instead of empty boxes', () => {
+        const install = readFileSync(join(here, 'images/browser.Dockerfile'), 'utf8').match(/apt-get install[^\n]*/)?.[0] ?? ''
+        expect(install.split(/\s+/)).toContain('fonts-noto-cjk')
+    })
+})
+
 describe('image assignment contract', () => {
     it('matches the package contract marker', () => {
         expect(JSON.parse(readFileSync(join(here, 'contract.json'), 'utf8'))).toEqual({ contractVersion: 3 })
