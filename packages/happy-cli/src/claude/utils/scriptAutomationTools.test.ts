@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import nacl from 'tweetnacl';
 import { decryptScriptValue, encryptScriptValue, openScriptValueForMachine } from '@slopus/happy-wire';
-import { createScriptAutomationTools } from './scriptAutomationTools';
+import { createScriptAutomationTools, resolveScriptAutomationScope } from './scriptAutomationTools';
 let directory: string;
 const pair = nacl.box.keyPair();
 beforeEach(async () => { directory = await mkdtemp(join(tmpdir(), 'script-agent-')); });
@@ -99,4 +99,20 @@ it('seals anonymously when the target is another machine, whose key it does not 
   for (const opened of await registered(nacl.box.keyPair())) {
     expect(opened).toMatchObject({ ok: true, authentication: { kind: 'anonymous' } });
   }
+});
+
+const grantWith = (payload: Record<string, unknown>) => `${Buffer.from(JSON.stringify(payload)).toString('base64url')}.signature`;
+
+it('uses the project scope from the MCP config URL', () => {
+  expect(resolveScriptAutomationScope('https://saycode.ai/api/me/mcp-config?project_id=P-1', grantWith({ projectId: 'P-1', personalChatId: null }))).toBe('P-1');
+});
+
+it('uses the Chat scope from a Chat session grant when the config URL has no project', () => {
+  expect(resolveScriptAutomationScope('https://saycode.ai/api/me/mcp-config', grantWith({ projectId: null, personalChatId: 'C-1' }))).toBe('chat:C-1');
+});
+
+it('has no scope when neither the config URL nor the grant names a project or Chat', () => {
+  expect(resolveScriptAutomationScope('https://saycode.ai/api/me/mcp-config', grantWith({ projectId: null, personalChatId: null }))).toBeNull();
+  expect(resolveScriptAutomationScope('https://saycode.ai/api/me/mcp-config', 'not-a-grant')).toBeNull();
+  expect(resolveScriptAutomationScope('https://saycode.ai/api/me/mcp-config', undefined)).toBeNull();
 });

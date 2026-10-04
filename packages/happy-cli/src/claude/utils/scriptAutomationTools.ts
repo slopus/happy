@@ -127,17 +127,31 @@ export function createScriptAutomationTools(options: {
   };
 }
 
+// Chat sessions have no project_id in their config URL; their grant names the Chat, whose automation scope is `chat:<chatId>`.
+// The server verifies the grant signature; this only picks the scope to ask for.
+export function resolveScriptAutomationScope(configUrl: string, callerGrant: string | undefined): string | null {
+  const projectId = new URL(configUrl).searchParams.get('project_id')?.trim();
+  if (projectId) return projectId;
+  try {
+    const payload = JSON.parse(Buffer.from(callerGrant?.split('.')[0] ?? '', 'base64url').toString('utf8')) as { personalChatId?: unknown };
+    return typeof payload?.personalChatId === 'string' && payload.personalChatId ? `chat:${payload.personalChatId}` : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function runScriptAutomationTool(raw: unknown, session: { directory: string; machineId?: string }) {
   const configUrl = process.env.HAPPY_APLUS_MCP_CONFIG_URL;
   const credentials = readLocalHappyAgentCredentials();
   const machineId = session.machineId ?? (await readSettings()).machineId;
   if (!configUrl || !credentials || !machineId) throw new Error('SCRIPT_AGENT_CONTEXT_REQUIRED');
   const url = new URL(configUrl);
-  const projectId = url.searchParams.get('project_id');
-  if (!projectId) throw new Error('SCRIPT_PROJECT_CONTEXT_REQUIRED');
-  await refreshMcpCallerGrantIfExpiring(credentials.token, machineId, { projectId });
+  // The grant refresh keeps the grant's own scope; it reads project_id from the config URL itself.
+  await refreshMcpCallerGrantIfExpiring(credentials.token, machineId);
   const callerGrant = process.env.HAPPY_APLUS_MCP_CALLER_GRANT;
   if (!callerGrant) throw new Error('SCRIPT_AGENT_CONTEXT_REQUIRED');
+  const projectId = resolveScriptAutomationScope(configUrl, callerGrant);
+  if (!projectId) throw new Error('SCRIPT_PROJECT_CONTEXT_REQUIRED');
   const client = createScriptAutomationTools({ projectId, directory: session.directory, viewerKeyPair: credentials.contentKeyPair,
     localAutomationKey: readMachineAutomationKey(configuration.automationKeyFile),
     request: async (request) => {

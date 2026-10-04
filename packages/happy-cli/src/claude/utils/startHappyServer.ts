@@ -140,8 +140,8 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
     }
 
     if (!handlers.mandatorySandbox && !scopedSession) mcp.registerTool('script_automations', {
-        title: 'Manage Project Script Automations',
-        description: 'Manage Node bundle scripts in the project Execution > Automations admin without an LLM session. List before registering scheduled collection or batch work. Supports list/get/upsert/run/list_runs/set_enabled; use registrationKey and expectedRevision for safe retries. upsert reads sourcePath relative to this project, encrypts the bundle, and supports schedule=null or at/interval/daily/weekly, externalEnabled, JSON inputSchema, allowlisted origins and env:<mountedGroupId>:<KEY> secret references. No API keys are issued by this tool. Return and use the same admin ID; do not install OS cron or hidden background timers.',
+        title: 'Manage Script Automations',
+        description: 'Manage Node bundle scripts in the Execution > Automations admin of this project or Chat without an LLM session. List before registering scheduled collection or batch work. Supports list/get/upsert/run/list_runs/set_enabled; use registrationKey and expectedRevision for safe retries. upsert reads sourcePath relative to this project or Chat workspace, encrypts the bundle, and supports schedule=null or at/interval/daily/weekly, externalEnabled, JSON inputSchema, allowlisted origins and env:<mountedGroupId>:<KEY> secret references (in a Chat, only default-load env groups of the organization resolve). No API keys are issued by this tool. Return and use the same admin ID; do not install OS cron or hidden background timers.',
         inputSchema: { request: scriptAutomationToolRequestSchema },
     }, async ({ request }) => runTool(async () => {
         try {
