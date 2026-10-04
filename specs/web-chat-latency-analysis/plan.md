@@ -45,3 +45,11 @@ Steps1–3 Done: native semantics, Red/Green182 tests/build/typecheck, changed-f
 3. Regression/build and update existing Ready PR.
 
 Compatibility steps1–3 Done: Red3, Green185, build/typecheck/unused0/diff checks, existing Ready PR update. Native older-version/Web latency remains unmeasured.
+
+## .287 release preparation
+1. Confirm #685 merge/CI and published .286; prepare next .287.
+2. Related regressions/build and prepared artifact install guard.
+3. Ready version PR; after merge present exact tag for approval.
+4. CI-only publish then released vendor/ethan runtime and Web20. No unreleased runtime consumption.
+
+.287 steps1–2 preparation/validation Done. Steps3–4 publish part superseded: .287 (tag 510b0b6c, PR #686, includes #685) was already published by CI; no .287 tag creation. Released vendor/ethan runtime and Web20 measurement pending.
