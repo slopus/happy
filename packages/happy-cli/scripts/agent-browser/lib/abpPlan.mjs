@@ -5,6 +5,7 @@
 // installed copy runs with /usr/bin/node alone and the unit tests pin it.
 // Errors name the field, never the value (issuer keys, tokens).
 import { createHash, createPublicKey, randomBytes } from "node:crypto";
+import { join } from "node:path";
 
 export const DEFAULT_RUNTIME_PORT = 38700;
 export const PACKAGE_NAME = "@buzzni/happy-cli";
@@ -442,14 +443,31 @@ const SESSION_SANDBOX_CONFIG = { enabled: true, workspaceRoot: "/work", sessionI
  */
 const HAPPY_DEFAULT_SERVER_URL = "https://saycode.ai";
 
-export function happySettings(existing, install) {
+export function happySettings(existing, install, credentials) {
   if (install.serverUrl === undefined) return undefined;
   const settings = existing ?? {};
   const registeredWith = settings.serverUrl ?? HAPPY_DEFAULT_SERVER_URL;
   if (settings.machineId && registeredWith !== install.serverUrl) {
     fail("serverUrl", `the agent is registered with ${registeredWith}; run sudo -iu agent happy auth logout first to move it`);
   }
-  return { ...settings, serverUrl: install.serverUrl, webappUrl: install.serverUrl };
+  // Credentials from the machine registration claim register the agent as that machine (one-pass install).
+  if (credentials?.machineId && settings.machineId && settings.machineId !== credentials.machineId) {
+    fail("machineId", `the agent is already registered as ${settings.machineId}; run sudo -iu agent happy auth logout first to register it again`);
+  }
+  return { ...settings, serverUrl: install.serverUrl, webappUrl: install.serverUrl, ...credentials?.machineId ? { machineId: credentials.machineId } : {} };
+}
+
+/**
+ * The machine registration claim response (Studio /api/auth/claim-machine-token: token, secret, machineId, ...) as the
+ * agent's Happy credentials: the access.key payload and the machine id. Saydo specs/agent-browser-one-click-install I6.
+ */
+export function agentCredentials(raw) {
+  const bad = (why) => { throw new Error(`agent credentials: ${why}`); };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) bad("expected a JSON object");
+  if (typeof raw.token !== "string" || !raw.token) bad("token is missing");
+  if (typeof raw.secret !== "string" || !/^[A-Za-z0-9+/]+={0,2}$/.test(raw.secret) || raw.secret.length % 4 !== 0) bad("secret is not base64");
+  if (raw.machineId !== undefined && (typeof raw.machineId !== "string" || !raw.machineId)) bad("machineId must be a non-empty string");
+  return { accessKey: { token: raw.token, secret: raw.secret }, ...raw.machineId ? { machineId: raw.machineId } : {} };
 }
 
 export function daemonEnv(install) {
@@ -776,5 +794,16 @@ export function browserCreateArgs(layout, browser, image) {
     `--mount=type=bind,source=${PATHS.browserSecrets},target=${IN_CONTAINER.secrets},readonly`,
     `--env=ABP_CDP_HOST=${browser.alias}:9223`,
     image,
+  ];
+}
+
+/** The files the runtime and browser images are built from (besides runtime.mjs), as [source, name in the build context]. */
+export function imageContextFiles(packageDir) {
+  const poc = join(packageDir, "scripts/browser-poc/images");
+  const own = join(packageDir, "scripts/agent-browser/images");
+  return [
+    [join(poc, "runtime-entrypoint.sh"), "runtime-entrypoint.sh"], [join(poc, "cdp-proxy.py"), "cdp-proxy.py"], [join(poc, "instance-server.py"), "instance-server.py"],
+    [join(own, "runtime.Dockerfile"), "runtime.Dockerfile"], [join(own, "browser.Dockerfile"), "browser.Dockerfile"], [join(own, "browser-entrypoint.sh"), "browser-entrypoint.sh"],
+    [join(own, "browser-shutdown.py"), "browser-shutdown.py"], [join(own, "chromium-policy.json"), "chromium-policy.json"],
   ];
 }

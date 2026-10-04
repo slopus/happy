@@ -11,6 +11,11 @@ name: Publish @buzzni/happy-cli
 #      repository secret: NPM_TOKEN = <the token from step 1>.
 #   3. Bump version in packages/happy-cli/package.json.
 #   4. `git tag happy-cli-v1.1.4-aplus.0 && git push origin happy-cli-v1.1.4-aplus.0`.
+#   5. Agent Browser images (Saydo specs/agent-browser-one-click-install): repository
+#      secret DOCKER_PAT = a Docker Hub access token of the `namsangboy` account
+#      with write access to namsangboy/abp-runtime and namsangboy/abp-browser.
+#      Without it the CLI is still published, but without abp-images.json, so
+#      machines of that release cannot use the one-line install.
 
 on:
     push:
@@ -30,7 +35,8 @@ jobs:
     publish:
         if: github.event_name == 'push'
         runs-on: ubuntu-latest
-        timeout-minutes: 20
+        # The arm64 browser image builds under QEMU emulation (Chromium apt install), which takes a while.
+        timeout-minutes: 75
         permissions:
             contents: read
             id-token: write  # enables npm provenance
@@ -71,6 +77,38 @@ jobs:
               run: |
                   PACKAGE_NAME="$(node -p "require('./packages/happy-cli/package.json').name")"
                   pnpm --filter "$PACKAGE_NAME" build
+
+            - name: Check Agent Browser image credentials
+              id: abp_images
+              env:
+                  DOCKER_PAT: ${{ secrets.DOCKER_PAT }}
+              run: |
+                  if [ -z "$DOCKER_PAT" ]; then
+                      echo "::warning::DOCKER_PAT is not configured: publishing without Agent Browser images (no abp-images.json, the one-line install will refuse this release)."
+                      echo "enabled=false" >> "$GITHUB_OUTPUT"
+                  else
+                      echo "enabled=true" >> "$GITHUB_OUTPUT"
+                  fi
+
+            - name: Set up QEMU
+              if: steps.abp_images.outputs.enabled == 'true'
+              uses: docker/setup-qemu-action@v3
+
+            - name: Set up Docker Buildx
+              if: steps.abp_images.outputs.enabled == 'true'
+              uses: docker/setup-buildx-action@v3
+
+            - name: Log in to Docker Hub
+              if: steps.abp_images.outputs.enabled == 'true'
+              uses: docker/login-action@v3
+              with:
+                  username: namsangboy
+                  password: ${{ secrets.DOCKER_PAT }}
+
+            - name: Publish Agent Browser images (linux/amd64, linux/arm64)
+              if: steps.abp_images.outputs.enabled == 'true'
+              # Writes scripts/agent-browser/abp-images.json into the package: the digests abp-stack pull checks.
+              run: node packages/happy-cli/scripts/agent-browser/publish-images.mjs --repo namsangboy --version "${{ steps.release_version.outputs.version }}" --out packages/happy-cli/scripts/agent-browser/abp-images.json
 
             - name: Prepare publish artifact
               run: node packages/happy-cli/scripts/prepare-publish-package.cjs --out "$RUNNER_TEMP/happy-cli-publish"

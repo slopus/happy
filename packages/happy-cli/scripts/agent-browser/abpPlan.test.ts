@@ -1,13 +1,15 @@
 import { generateKeyPairSync } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { parseRuntimeConfig } from '../../src/browserRuntime/runtimeConfig'
 import { sharedProfileId } from '../../src/browserRuntime/tenancy'
+import { parseOptionFlags } from './abp-plan.mjs'
 import {
     DEFAULT_RUNTIME_PORT, PATHS, browserCreateArgs, chromiumSeccompProfile, daemonEnv, egressRules, egressRulesFile, fenceRule, firewallRules,
-    firewallRulesFile, happySettings, mergeInstallOptions, profileVolumeName, profileVolumeLabels, networkCreateArgs, permissionTable, runtimeConfig, runtimeCreateArgs, stackLayout, sudoersDropIn,
+    agentCredentials, firewallRulesFile, happySettings, mergeInstallOptions, profileVolumeName, profileVolumeLabels, networkCreateArgs, permissionTable, runtimeConfig, runtimeCreateArgs, stackLayout, sudoersDropIn,
     systemdUnits, tmpfilesConf,
 } from './lib/abpPlan.mjs'
 
@@ -588,5 +590,48 @@ describe('assignment config upgrade', () => {
         expect(upgraded.profiles[0].assignmentId).toMatch(/^[0-9a-f]{32}$/)
         expect(mergeInstallOptions(upgraded, { profiles: old.profiles }).profiles).toEqual(upgraded.profiles)
         expect(mergeInstallOptions(upgraded, { profiles: [{ profileId: 'main', principalId: 'user-2' }] }).profiles[0].assignmentId).not.toBe(upgraded.profiles[0].assignmentId)
+    })
+})
+
+// Saydo specs/agent-browser-one-click-install I4/I6: the Studio install script hands abp-install one settings file and the
+// agent's Happy credentials, so the install finishes in one pass without an interactive login.
+describe('unattended install inputs', () => {
+    const tmp = () => mkdtempSync(join(tmpdir(), 'abp-unattended-'))
+
+    it('reads the install options from one --config file, in the shape install.json keeps', () => {
+        const dir = tmp()
+        const config = { serverUrl: 'https://dev-studio.example', tenancyMode: 'shared', workspaceId: 'ws-1', machineId: 'auto',
+            profiles: [{ profileId: 'main', principalId: 'user-1' }], issuers: [{ kid: 'k1', publicKeyPem: pem() }], sites: SITES }
+        writeFileSync(join(dir, 'config.json'), JSON.stringify(config))
+        expect(parseOptionFlags(['--config', join(dir, 'config.json')])).toEqual(config)
+        // A flag after the file wins over the file.
+        expect(parseOptionFlags(['--config', join(dir, 'config.json'), '--workspace-id', 'ws-2']).workspaceId).toBe('ws-2')
+    })
+
+    it('refuses an unknown or test-only key in --config rather than ignoring it', () => {
+        const dir = tmp()
+        writeFileSync(join(dir, 'typo.json'), JSON.stringify({ serverURL: 'https://x.example' }))
+        expect(() => parseOptionFlags(['--config', join(dir, 'typo.json')])).toThrow(/--config: unknown key serverURL/)
+        writeFileSync(join(dir, 'test.json'), JSON.stringify({ testAllowCidrs: ['10.0.0.0/24'] }))
+        expect(() => parseOptionFlags(['--config', join(dir, 'test.json')])).toThrow(/--config: unknown key testAllowCidrs/)
+        writeFileSync(join(dir, 'array.json'), '[]')
+        expect(() => parseOptionFlags(['--config', join(dir, 'array.json')])).toThrow(/--config/)
+    })
+
+    it('accepts the machine registration claim response as agent credentials', () => {
+        const secret = Buffer.alloc(32, 7).toString('base64')
+        expect(agentCredentials({ token: 'tok', secret, machineId: 'machine-9', serverUrl: 'https://dev-studio.example' }))
+            .toEqual({ accessKey: { token: 'tok', secret }, machineId: 'machine-9' })
+        for (const bad of [{}, { token: 'tok' }, { token: 'tok', secret: 'not base64!' }, { token: '', secret }, { token: 'tok', secret, machineId: 3 }]) {
+            expect(() => agentCredentials(bad), JSON.stringify(bad)).toThrow(/agent credentials/)
+        }
+    })
+
+    it('registers the agent with the credential machine id, refusing to replace another registration', () => {
+        const options = mergeInstallOptions(base(), { serverUrl: 'https://dev-studio.example' })
+        const credentials = { accessKey: { token: 't', secret: 's' }, machineId: 'machine-9' }
+        expect(happySettings(undefined, options, credentials)).toEqual({ serverUrl: 'https://dev-studio.example', webappUrl: 'https://dev-studio.example', machineId: 'machine-9' })
+        expect(happySettings({ serverUrl: 'https://dev-studio.example', machineId: 'machine-9' }, options, credentials)).toMatchObject({ machineId: 'machine-9' })
+        expect(() => happySettings({ serverUrl: 'https://dev-studio.example', machineId: 'other' }, options, credentials)).toThrow(/already registered as other/)
     })
 })

@@ -96,6 +96,16 @@ sudo -iu agent happy auth login          # the Happy account of H; creates machi
 sudo ./abp-install                       # re-run: resolves machineId, writes runtime.json, starts stack + daemon
 ```
 
+Unattended (one run, no interactive login; the Studio one-line install uses this): put the machine
+options in one JSON file in `install.json`'s shape and pass the machine registration claim response
+(`token`, `secret`, `machineId`) as the agent's credentials. The credentials file is deleted after use and
+never printed; `--agent-credentials` needs a `serverUrl`.
+
+```sh
+sudo ./abp-install install --happy-tarball ./buzzni-happy-cli-X.tgz --images /tmp/abp-images \
+  --config ./install-config.json --agent-credentials ./agent-credentials.json
+```
+
 - `--machine-id` defaults to `auto` (the agent's `~/.happy/settings.json` machineId), which the
   Runtime uses as capability `aud`. Options are saved in `/etc/abp/install.json`; a re-run
   without flags keeps them, flags override single fields.

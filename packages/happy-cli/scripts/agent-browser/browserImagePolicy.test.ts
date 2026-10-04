@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { imageContextFiles } from './lib/abpPlan.mjs'
 
 const here = dirname(fileURLToPath(import.meta.url))
 
@@ -20,7 +21,7 @@ describe('browser image Chromium policy', () => {
     it('installs the policy where Debian Chromium reads managed policies, and ships it in the build context', () => {
         expect(readFileSync(join(here, 'images/browser.Dockerfile'), 'utf8'))
             .toMatch(/^COPY chromium-policy\.json \/etc\/chromium\/policies\/managed\/abp\.json$/m)
-        expect(readFileSync(join(here, 'abp-stack.mjs'), 'utf8')).toContain('"chromium-policy.json"')
+        expect(imageContextFiles('/pkg').map(([, name]) => name)).toContain('chromium-policy.json')
     })
 
     it('makes the policy readable by the browser user whatever mode the checkout gave the file', () => {

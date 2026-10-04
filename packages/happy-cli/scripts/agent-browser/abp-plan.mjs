@@ -8,7 +8,7 @@ import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync } from "
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
-  chromiumSeccompProfile, daemonEnv, egressRules, egressRulesFile, firewallRulesFile, happySettings, mergeInstallOptions, permissionTable, runtimeConfig, stackLayout,
+  agentCredentials, chromiumSeccompProfile, daemonEnv, egressRules, egressRulesFile, firewallRulesFile, happySettings, mergeInstallOptions, permissionTable, runtimeConfig, stackLayout,
   sudoersDropIn, systemdUnits, tmpfilesConf,
 } from "./lib/abpPlan.mjs";
 
@@ -18,6 +18,17 @@ function readJson(path, what) {
   } catch {
     throw new Error(`${what} is unreadable or not JSON`);
   }
+}
+
+/** Install option keys a --config file may set: what the flags set, in install.json's shape. Test-only keys stay flags. */
+const CONFIG_KEYS = new Set(["machineId", "tenancyMode", "workspaceId", "profiles", "agentProfileId", "issuers", "sites", "runtimePort",
+  "maxAgentWindows", "retentionDays", "viewerOrigins", "egressDomains", "happyPrefix", "serverUrl", "browserSubnetPool", "denyCidrs", "browserDns"]);
+
+/** --config <file>: the install options as one JSON object (the Studio install script writes it). mergeInstallOptions validates the values. */
+function configFlags(config) {
+  if (!config || typeof config !== "object" || Array.isArray(config)) throw new Error("--config: the file must hold a JSON object");
+  for (const key of Object.keys(config)) if (!CONFIG_KEYS.has(key)) throw new Error(`--config: unknown key ${key}`);
+  return config;
 }
 
 /** abp-install flags that set install options (see README). */
@@ -59,6 +70,7 @@ export function parseOptionFlags(argv) {
       case "--deny-cidr": list("denyCidrs", value); break;
       case "--test-allow-cidr": list("testAllowCidrs", value); break;
       case "--browser-dns": list("browserDns", value); break;
+      case "--config": Object.assign(flags, configFlags(readJson(value, "--config file"))); break;
       default: throw new Error(`unknown option ${name}`);
     }
   }
@@ -128,10 +140,16 @@ export function main(argv, out = (text) => process.stdout.write(text)) {
       return out(`${JSON.stringify(config, null, 2)}\n`);
     }
     case "happy-settings": {
-      // happy-settings --install <file> --settings <agent ~/.happy/settings.json>: prints the settings, or nothing without --server-url.
+      // happy-settings --install <file> --settings <agent ~/.happy/settings.json> [--credentials <file>]: prints the settings, or nothing without --server-url.
       const settingsPath = option(args, "--settings");
-      const settings = happySettings(existsSync(settingsPath) ? readJson(settingsPath, "Happy settings") : undefined, readJson(option(args, "--install"), "install options"));
+      const credentialsPath = args.indexOf("--credentials") >= 0 ? option(args, "--credentials") : undefined;
+      const credentials = credentialsPath ? agentCredentials(readJson(credentialsPath, "agent credentials")) : undefined;
+      const settings = happySettings(existsSync(settingsPath) ? readJson(settingsPath, "Happy settings") : undefined, readJson(option(args, "--install"), "install options"), credentials);
       return settings ? out(`${JSON.stringify(settings, null, 2)}\n`) : undefined;
+    }
+    case "agent-access-key": {
+      // agent-access-key --credentials <file>: the agent's ~/.happy/access.key, from the machine registration claim response.
+      return out(`${JSON.stringify(agentCredentials(readJson(option(args, "--credentials"), "agent credentials")).accessKey)}\n`);
     }
     case "daemon-env": return out(daemonEnv(readJson(option(args, "--install"), "install options")));
     case "egress-policy": {

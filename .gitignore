@@ -84,3 +84,6 @@ memory.bak-*/
 # Lesson host source is code, not runtime memory storage.
 !packages/happy-cli/src/memory/
 !packages/happy-cli/src/memory/**
+
+# Written by the release workflow (publish-images.mjs), never committed.
+packages/happy-cli/scripts/agent-browser/abp-images.json

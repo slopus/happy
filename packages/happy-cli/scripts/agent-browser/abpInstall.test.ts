@@ -177,6 +177,47 @@ describe('abp-install --dry-run', () => {
         expect(out).toContain('    |   "webappUrl": "https://dev-studio.example"')
     })
 
+    // Saydo specs/agent-browser-one-click-install I4/I6: one settings file plus the agent's credentials finish the install in one pass.
+    it('installs from --config and --agent-credentials in one pass, writing the access key without printing it', () => {
+        const config = join(dir, 'install-config.json')
+        writeFileSync(config, JSON.stringify({ serverUrl: 'https://dev-studio.example', machineId: 'auto', workspaceId: 'ws-1', tenancyMode: 'shared',
+            issuers: [{ kid: 'k1', publicKeyPem: readFileSync(pemFile, 'utf8') }], sites: [{ origin: 'https://shop.example' }] }))
+        const credentials = join(dir, 'agent-credentials.json')
+        const credentialSecret = Buffer.from(`${SECRET_SENTINEL}-agent-secret`).toString('base64')
+        writeFileSync(credentials, JSON.stringify({ token: `${SECRET_SENTINEL}-agent-token`, secret: credentialSecret, machineId: 'machine-9' }))
+        const result = bash('abp-install', ['--dry-run', 'install', '--config', config, '--agent-credentials', credentials])
+        expect(result.status, result.stderr).toBe(0)
+        expect(result.stdout).toMatch(/\+ write \/home\/agent\/\.happy\/access\.key \(agent:agent 0600, \d+ bytes\)\n(?!    \|)/)
+        expect(result.stdout).toContain('    |   "machineId": "machine-9"')
+        // The machine id is known now: the Runtime config is written and no second run is asked for.
+        expect(result.stdout).toContain('+ write /etc/abp/runtime.json')
+        expect(result.stderr).not.toMatch(/machine id unresolved/)
+        expect(result.stdout + result.stderr).not.toContain(SECRET_SENTINEL)
+        expect(result.stdout + result.stderr).not.toContain(credentialSecret)
+    })
+
+    it('refuses --agent-credentials without a server to register with, and bad credentials, before any action', () => {
+        const credentials = join(dir, 'agent-credentials-bad.json')
+        writeFileSync(credentials, JSON.stringify({ token: 'tok' }))
+        const bad = bash('abp-install', ['--dry-run', 'install', '--machine-id', 'auto', '--workspace-id', 'ws-1', '--profile', 'main=user-1',
+            '--issuer', `k1=${pemFile}`, '--sites', sitesFile, '--server-url', 'https://dev-studio.example', '--agent-credentials', credentials])
+        expect(bad.status).not.toBe(0)
+        expect(bad.stderr).toMatch(/agent credentials: secret is not base64/)
+        expect(bad.stdout).not.toContain('+ ')
+        writeFileSync(credentials, JSON.stringify({ token: 'tok', secret: Buffer.alloc(8).toString('base64') }))
+        const noServer = bash('abp-install', ['--dry-run', 'install', '--machine-id', 'auto', '--workspace-id', 'ws-1', '--profile', 'main=user-1',
+            '--issuer', `k1=${pemFile}`, '--sites', sitesFile, '--agent-credentials', credentials])
+        expect(noServer.status).not.toBe(0)
+        expect(noServer.stderr).toMatch(/--agent-credentials needs --server-url/)
+    })
+
+    it('pulls the released images by digest with --images-manifest instead of loading or building them', () => {
+        const out = bash('abp-install', ['--dry-run', 'install', '--machine-id', 'machine-1', '--workspace-id', 'ws-1', '--profile', 'main=user-1',
+            '--issuer', `k1=${pemFile}`, '--sites', sitesFile, '--images-manifest', join(dir, 'abp-images.json')]).stdout
+        expect(out).toMatch(/\+ \S+ \S*abp-stack\.mjs pull \S*abp-images\.json --set-initial/)
+        expect(out).not.toMatch(/abp-stack\.mjs (load|build)/)
+    })
+
     it('leaves the default server alone without --server-url', () => {
         expect(run().stdout).not.toContain('/home/agent/.happy/settings.json (')
     })

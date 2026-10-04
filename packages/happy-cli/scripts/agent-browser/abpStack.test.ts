@@ -584,6 +584,48 @@ describe('abp-stack load', () => {
     })
 })
 
+// Saydo specs/agent-browser-one-click-install I5: released images are pulled from the registry by digest, never built on the machine.
+describe('abp-stack pull', () => {
+    const RUNTIME_REF = `docker.io/namsangboy/abp-runtime@sha256:${'a'.repeat(64)}`
+    const BROWSER_REF = `docker.io/namsangboy/abp-browser@sha256:${'b'.repeat(64)}`
+    const manifest = (overrides: Record<string, unknown> = {}) => JSON.stringify({
+        schemaVersion: 1, version: '1.1.10-aplus.287',
+        runtime: { ref: RUNTIME_REF, ids: { amd64: RUNTIME_NEW, arm64: RUNTIME_NEW } },
+        browser: { ref: BROWSER_REF, ids: { amd64: BROWSER_NEW, arm64: BROWSER_NEW } },
+        ...overrides,
+    })
+    const hostWith = (data: string, idOfRef: (ref: string) => string = (ref) => (ref === RUNTIME_REF ? RUNTIME_NEW : BROWSER_NEW)) => {
+        const host = fakeHost({ handlers: [[/^docker image inspect --format \{\{\.Id\}\} docker\.io\//, (args) => ({ stdout: idOfRef(args.at(-1)!) })]] })
+        host.files.set('/rel/abp-images.json', { data, mode: 0o644, owner: 'root', group: 'root' })
+        return host
+    }
+
+    it('pulls each image by its pinned digest and accepts it when the local image id is the one released for this architecture', () => {
+        const host = hostWith(manifest())
+        expect(createStack(host.deps).pull('/rel/abp-images.json', { arch: 'arm64' })).toEqual({ runtime: RUNTIME_NEW, browser: BROWSER_NEW })
+        expect(host.calls.filter((line) => line.startsWith('docker pull'))).toEqual([`docker pull ${RUNTIME_REF}`, `docker pull ${BROWSER_REF}`])
+    })
+
+    it('accepts the pulled index digest as the local id (containerd image store) and returns that id', () => {
+        const host = hostWith(manifest(), (ref) => ref.split('@')[1])
+        expect(createStack(host.deps).pull('/rel/abp-images.json', { arch: 'amd64' })).toEqual({ runtime: RUNTIME_REF.split('@')[1], browser: BROWSER_REF.split('@')[1] })
+    })
+
+    it('refuses an image whose local id differs from the released one (a replaced image)', () => {
+        const host = hostWith(manifest(), (ref) => (ref === RUNTIME_REF ? RUNTIME_NEW : 'sha256:' + '0'.repeat(64)))
+        expect(() => createStack(host.deps).pull('/rel/abp-images.json', { arch: 'amd64' })).toThrow(/browser image digest mismatch/)
+    })
+
+    it('refuses a reference that is not pinned by digest, and an architecture the release does not ship, before pulling anything', () => {
+        const tagged = hostWith(manifest({ browser: { ref: 'docker.io/namsangboy/abp-browser:latest', ids: { amd64: BROWSER_NEW, arm64: BROWSER_NEW } } }))
+        expect(() => createStack(tagged.deps).pull('/rel/abp-images.json', { arch: 'arm64' })).toThrow(/browser image reference must be pinned by digest/)
+        expect(tagged.calls.some((line) => line.startsWith('docker pull'))).toBe(false)
+        const host = hostWith(manifest())
+        expect(() => createStack(host.deps).pull('/rel/abp-images.json', { arch: 'riscv64' })).toThrow(/no runtime image for riscv64/)
+        expect(host.calls.some((line) => line.startsWith('docker pull'))).toBe(false)
+    })
+})
+
 describe('abp-stack rotate-keys', () => {
     it('rotates the daemon token: new 0400 agent file, matching hash, fenced Runtime restart, broker accepts it, daemon restarted', async () => {
         const host = fakeHost()

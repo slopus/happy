@@ -4,7 +4,7 @@
 //
 //   abp-stack up | down | status [--json]
 //   abp-stack emergency-stop                                      (no lock, no drain; incidents only)
-//   abp-stack upgrade (--images <dir> | --runtime-image <sha256:…> --browser-image <sha256:…>) [--ready-timeout <s>]
+//   abp-stack upgrade (--images <dir> | --pull <abp-images.json> | --runtime-image <sha256:…> --browser-image <sha256:…>) [--ready-timeout <s>]
 //   abp-stack rollback [--ready-timeout <s>]
 //   abp-stack rotate-keys [--daemon-token] [--vnc-password]      (both when neither is given)
 //   abp-stack set-principal <profileId> <principalId>              (switches to that owner's browser volume)
@@ -12,6 +12,7 @@
 //   abp-stack add-profile <studio userId> | remove-profile <studio userId> [--block]   (shared machine)
 //   abp-stack list-profiles [--json] | recover-profiles                                 (shared machine)
 //   abp-stack load <dir> [--set-initial]                          (docker load + digest check)
+//   abp-stack pull <abp-images.json> [--set-initial]              (released images: docker pull by digest + image id check)
 //   abp-stack build --source <happy-cli dir> [--out <dir>] [--tag <tag>] [--set-initial]
 //   abp-stack run                                                 (abp-stack.service only)
 //
@@ -26,7 +27,7 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { CONTAINER_MEMORY_GIB, MAX_SHARED_PROFILES, PATHS, STACK_LABEL, browserCreateArgs, fenceRule, legacyProfileVolumeName, profileVolumeName, profileVolumeLabels, mergeInstallOptions, networkCreateArgs, runtimeConfig, runtimeCreateArgs, sharedProfileId, stackLayout } from "./lib/abpPlan.mjs";
+import { CONTAINER_MEMORY_GIB, MAX_SHARED_PROFILES, PATHS, STACK_LABEL, browserCreateArgs, fenceRule, imageContextFiles, legacyProfileVolumeName, profileVolumeName, profileVolumeLabels, mergeInstallOptions, networkCreateArgs, runtimeConfig, runtimeCreateArgs, sharedProfileId, stackLayout } from "./lib/abpPlan.mjs";
 
 import { PROFILE_COPY } from "./lib/profileCopy.mjs";
 
@@ -998,6 +999,33 @@ export function createStack(deps) {
       return ids;
     },
 
+    /**
+     * Released images (abp-images.json in the Happy package): pull each by its pinned registry digest and accept it only
+     * when the local image id is the one released for this machine's architecture, or the pinned digest itself (containerd image store). Saydo specs/agent-browser-one-click-install I5.
+     */
+    pull(manifestPath, { arch = process.arch } = {}) {
+      const manifest = readJson(manifestPath);
+      const platform = { x64: "amd64", amd64: "amd64", arm64: "arm64" }[arch] ?? arch;
+      const wanted = {};
+      for (const role of ["runtime", "browser"]) {
+        const ref = manifest[role]?.ref;
+        if (typeof ref !== "string" || !/@sha256:[0-9a-f]{64}$/.test(ref)) throw refusal(`${role} image reference must be pinned by digest (<repo>@sha256:<64 hex>)`);
+        const id = manifest[role]?.ids?.[platform];
+        if (!IMAGE_ID.test(id ?? "")) throw refusal(`no ${role} image for ${platform} in ${manifestPath}`);
+        wanted[role] = { ref, id };
+      }
+      const ids = {};
+      for (const role of ["runtime", "browser"]) {
+        docker(["pull", wanted[role].ref]);
+        const local = docker(["image", "inspect", "--format", "{{.Id}}", wanted[role].ref]).stdout;
+        // The classic image store reports the platform config digest; the containerd image store reports the pulled index digest.
+        if (local !== wanted[role].id && local !== wanted[role].ref.split("@")[1]) throw refusal(`${role} image digest mismatch`);
+        ids[role] = local;
+      }
+      assertImages(ids);
+      return ids;
+    },
+
     /** First install only: an existing current digest is changed by upgrade, never here. */
     setInitialImages(ids) {
       assertImages(ids);
@@ -1287,13 +1315,7 @@ export function createStack(deps) {
       const staging = deps.tempDir();
       try {
         deps.run(process.execPath, [join(packageDir, "scripts/browser-poc/build-runtime.mjs"), join(staging, "runtime.mjs")]);
-        const poc = join(packageDir, "scripts/browser-poc/images");
-        const own = join(packageDir, "scripts/agent-browser/images");
-        for (const [from, name] of [[join(poc, "runtime-entrypoint.sh"), "runtime-entrypoint.sh"], [join(poc, "cdp-proxy.py"), "cdp-proxy.py"], [join(poc, "instance-server.py"), "instance-server.py"],
-          [join(own, "runtime.Dockerfile"), "runtime.Dockerfile"], [join(own, "browser.Dockerfile"), "browser.Dockerfile"], [join(own, "browser-entrypoint.sh"), "browser-entrypoint.sh"], [join(own, "browser-shutdown.py"), "browser-shutdown.py"],
-          [join(own, "chromium-policy.json"), "chromium-policy.json"]]) {
-          deps.copyFile(from, join(staging, name));
-        }
+        for (const [from, name] of imageContextFiles(packageDir)) deps.copyFile(from, join(staging, name));
         const ids = {};
         for (const role of ["runtime", "browser"]) {
           docker(["build", "--pull=false", "-f", join(staging, `${role}.Dockerfile`), "-t", `abp-${role}:${tag}`, staging]);
@@ -1387,6 +1409,12 @@ export async function main(argv, deps = systemDeps()) {
       console.log(JSON.stringify(ids));
       return;
     }
+    case "pull": {
+      const ids = stack.pull(args[0]);
+      if (args.includes("--set-initial")) await stack.locked(async () => stack.setInitialImages(ids));
+      console.log(JSON.stringify(ids));
+      return;
+    }
     case "build": {
       const ids = stack.build({ source: option(args, "--source") ?? resolve(dirname(fileURLToPath(import.meta.url)), "../.."), out: option(args, "--out"), tag: option(args, "--tag") });
       if (args.includes("--set-initial")) stack.setInitialImages(ids);
@@ -1395,7 +1423,8 @@ export async function main(argv, deps = systemDeps()) {
     }
     case "upgrade": {
       const images = option(args, "--images");
-      const ids = images ? undefined : { runtime: option(args, "--runtime-image"), browser: option(args, "--browser-image") };
+      const pulled = option(args, "--pull");
+      const ids = images ? undefined : pulled ? stack.pull(pulled) : { runtime: option(args, "--runtime-image"), browser: option(args, "--browser-image") };
       console.log(JSON.stringify(await stack.upgrade({ images, ids, readyTimeoutMs: timeout, noStart: args.includes("--no-start") })));
       return;
     }
@@ -1435,7 +1464,7 @@ export async function main(argv, deps = systemDeps()) {
     case "delete-profile-volume":
       return stack.deleteProfileVolume(args[0], option(args, "--confirm"));
     default:
-      throw new Error("usage: abp-stack up|down|emergency-stop|status|upgrade|rollback|rotate-keys|set-principal|add-profile|remove-profile|list-profiles|recover-profiles|migrate-legacy-profile|delete-profile-volume|load|build|run");
+      throw new Error("usage: abp-stack up|down|emergency-stop|status|upgrade|rollback|rotate-keys|set-principal|add-profile|remove-profile|list-profiles|recover-profiles|migrate-legacy-profile|delete-profile-volume|load|pull|build|run");
   }
 }
 
