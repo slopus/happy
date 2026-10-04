@@ -1,8 +1,9 @@
 /** Happy MCP registration, tool routing and session-specific guidance contracts. */
 import { runBashStream } from './bashStream';
 import { RuntimeProducerGate } from '@/sessionDrain/runtimeProducerGate';
-import { mkdir, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
+import { request } from 'node:http';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createChangeTitleHandler, startHappyServer } from './startHappyServer';
@@ -48,6 +49,46 @@ async function callTool(serverUrl: string, id: number, name: string, args: Recor
 }
 
 describe('Happy MCP shutdown admission', () => {
+    it('uses an owner-only authenticated socket for same-UID protected Linux sessions', async () => {
+        const descriptor = Object.getOwnPropertyDescriptor(process, 'platform')!;
+        const marker = process.env.HAPPY_WRITE_SCOPE_SESSION;
+        let server: Awaited<ReturnType<typeof startHappyServer>> | undefined;
+        try {
+            Object.defineProperty(process, 'platform', { ...descriptor, value: 'linux' });
+            process.env.HAPPY_WRITE_SCOPE_SESSION = '1';
+            const options = { mandatorySandbox: true, sameUidSandbox: true };
+            server = await startHappyServer(makeFakeClient(false), options);
+            expect(server.socketPath).toBeTruthy();
+            expect(server.socketPath!.startsWith(join(tmpdir(), 'happy-mcp-'))).toBe(true);
+            expect((await stat(server.socketPath!)).mode & 0o777).toBe(0o600);
+            expect((await stat(join(server.socketPath!, '..'))).mode & 0o777).toBe(0o700);
+            const call = (authorized: boolean) => new Promise<{ status: number; body: string }>((resolve, reject) => {
+                const req = request({ socketPath: server!.socketPath, method: 'POST', path: '/', headers: {
+                    'Content-Type': 'application/json', Accept: 'application/json, text/event-stream',
+                    ...(authorized ? { Authorization: `Bearer ${server!.mcpConfig.env!.SAYCODE_MCP_TOKEN}` } : {}),
+                } }, res => {
+                    let body = ''; res.on('data', chunk => { body += chunk; });
+                    res.on('end', () => resolve({ status: res.statusCode!, body }));
+                });
+                req.on('error', reject);
+                req.end(JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }));
+            });
+            expect((await call(false)).status).toBe(401);
+            const reply = await call(true);
+            expect(reply.status).toBe(200);
+            const payload = JSON.parse(reply.body.startsWith('event:') ? reply.body.slice(reply.body.indexOf('data: ') + 6) : reply.body);
+            const names = payload.result.tools.map((tool: { name: string }) => tool.name);
+            expect(names).toContain('session_write_scope');
+            expect(names).not.toContain('bash_stream');
+            expect(names).not.toContain('script_automations');
+        } finally {
+            server?.stop();
+            Object.defineProperty(process, 'platform', descriptor);
+            if (marker === undefined) delete process.env.HAPPY_WRITE_SCOPE_SESSION;
+            else process.env.HAPPY_WRITE_SCOPE_SESSION = marker;
+        }
+    });
+
     it('keeps a running bash tool owned across freeze until actual completion', async () => {
         const gate = new RuntimeProducerGate({ hasUndeliveredInput: () => false,
             canFreezeInbound: () => true, freezeInbound: () => true, stopLoop: () => {} });

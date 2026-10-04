@@ -4,8 +4,10 @@ import { createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, ra
 import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { dirname, join, resolve } from 'node:path';
-import { userInfo } from 'node:os';
+import { tmpdir, userInfo } from 'node:os';
+import { lookup } from 'node:dns/promises';
 import { io } from 'socket.io-client';
+import tweetnacl from 'tweetnacl';
 import { bindRpcRequest, readBoundRpcResponse } from '@slopus/happy-wire';
 import { decrypt, encrypt } from '@/api/encryption';
 import { decisionBytes, type ScopeDecision, type ScopeRequest } from '@/daemon/sessionWriteScope';
@@ -34,6 +36,9 @@ export type DaemonState = { pid: number; httpPort: number; controlSecret: string
 export class SessionWriteScopeFixture {
     readonly keys = generateKeyPairSync('ed25519');
     readonly seed = randomBytes(32);
+    readonly accountBox = tweetnacl.box.keyPair();
+    readonly machineKey = randomBytes(32);
+    private readonly sessionKeys = new Map<string, Buffer>();
     readonly cli = process.cwd();
     readonly serverDirectory = resolve(this.cli, '../happy-server');
     readonly modelRequests: string[] = [];
@@ -45,24 +50,48 @@ export class SessionWriteScopeFixture {
     daemon?: ChildProcess;
     server?: ChildProcess;
     private model?: Server;
+    private temporaryDirectory = '';
     private environment: NodeJS.ProcessEnv = {};
     private serverEnvironment: NodeJS.ProcessEnv = {};
     private readonly ownedPids = new Set<number>();
     private readonly processes = new Set<ChildProcess>();
 
+    constructor(readonly options: { provider: 'codex' | 'claude'; encryptionVariant: 'legacy' | 'dataKey' } = { provider: 'codex', encryptionVariant: 'legacy' }) {}
+    get modelHost() { return process.platform === 'linux' ? 'scope-model.test' : '127.0.0.1'; }
+    get modelName() { return this.options.provider === 'codex' ? 'gpt-5.1-codex' : 'claude-sonnet-4-6'; }
+    get providerIdentityField() { return this.options.provider === 'codex' ? 'codexThreadId' : 'claudeSessionId'; }
+    sessionKey(id: string) {
+        const key = this.sessionKeys.get(id);
+        if (!key) throw new Error('Fixture session key unavailable');
+        return key;
+    }
+    private unwrapKey(wrapped: string): Buffer {
+        const bytes = Buffer.from(wrapped, 'base64');
+        if (bytes[0] !== 0) throw new Error('Unknown fixture key envelope');
+        const key = tweetnacl.box.open(bytes.subarray(57), bytes.subarray(33, 57), bytes.subarray(1, 33), this.accountBox.secretKey);
+        if (!key || key.length !== 32) throw new Error('Fixture account cannot open key envelope');
+        return Buffer.from(key);
+    }
+
     async start() {
         // A scope root must be a narrow real directory below the OS account home.
-        this.root = await realpath(await mkdtemp(join(userInfo().homedir, '.scope-server-integration-')));
+        this.root = await realpath(await mkdtemp(join(process.env.HAPPY_SCOPE_FIXTURE_PARENT ?? userInfo().homedir, '.scope-server-integration-')));
         this.home = join(this.root, 'home'); this.happyHome = join(this.home, '.happy');
         this.project = join(this.root, 'project'); this.otherProject = join(this.root, 'other-project');
         this.tools = join(this.root, 'tools'); this.otherTools = join(this.root, 'other-tools');
         const codexHome = join(this.home, '.codex');
+        // AF_UNIX socket paths must fit even when the source worktree path is long.
+        this.temporaryDirectory = await realpath(await mkdtemp(join(process.platform === 'darwin' ? '/private/tmp' : tmpdir(), 'scope-fixture-')));
         await Promise.all([this.home, this.happyHome, this.project, this.otherProject, this.tools, this.otherTools,
-            codexHome, join(this.root, 'server'), join(this.root, 'tmp')].map(path => mkdir(path, { recursive: true, mode: 0o700 })));
+            codexHome, join(this.home, '.claude'), join(this.root, 'server')].map(path => mkdir(path, { recursive: true, mode: 0o700 })));
         this.model = createServer(async (request, response) => {
             let body = '';
             for await (const chunk of request) body += chunk;
-            if (!request.url?.endsWith('/responses')) {
+            if (request.url?.startsWith('/v1/messages/count_tokens')) {
+                response.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify({ input_tokens: 10 })); return;
+            }
+            const claude = request.url?.split('?')[0] === '/v1/messages';
+            if (!claude && !request.url?.endsWith('/responses')) {
                 this.failures.push(`Unexpected local model route ${request.url}`); response.writeHead(404).end(); return;
             }
             this.modelRequests.push(body);
@@ -76,6 +105,16 @@ export class SessionWriteScopeFixture {
                 status: 'completed', output: [item], usage: { input_tokens: 10, output_tokens: 5, total_tokens: 15 } };
             response.writeHead(200, { 'Content-Type': 'text/event-stream' });
             const emit = (type: string, payload: Record<string, unknown>) => response.write(`event: ${type}\ndata: ${JSON.stringify({ type, ...payload })}\n\n`);
+            if (claude) {
+                const message = { id: itemId, type: 'message', role: 'assistant', model: 'claude-sonnet-4-6',
+                    content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 10, output_tokens: 0 } };
+                emit('message_start', { message });
+                emit('content_block_start', { index: 0, content_block: { type: 'text', text: '' } });
+                emit('content_block_delta', { index: 0, delta: { type: 'text_delta', text } });
+                emit('content_block_stop', { index: 0 });
+                emit('message_delta', { delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 5 } });
+                emit('message_stop', {}); response.end(); return;
+            }
             emit('response.created', { response: { ...result, status: 'in_progress', output: [] } });
             emit('response.output_item.added', { output_index: 0, item: { ...item, status: 'in_progress', content: [] } });
             emit('response.content_part.added', { item_id: itemId, output_index: 0, content_index: 0,
@@ -87,18 +126,26 @@ export class SessionWriteScopeFixture {
             emit('response.completed', { response: result }); response.end();
         });
         const modelPort = await listen(this.model);
-        await writeFile(join(codexHome, 'config.toml'), `model = "gpt-5.1-codex"\nmodel_provider = "scope_fixture"\nweb_search = "disabled"\n[model_providers.scope_fixture]\nname = "Local scope fixture"\nbase_url = "http://127.0.0.1:${modelPort}/v1"\nwire_api = "responses"\nrequires_openai_auth = false\n`);
+        // Linux's sandbox proxy bypasses literal loopback in its separate network namespace.
+        // The dedicated fixture alias must resolve only to this owned loopback endpoint.
+        if ((await lookup(this.modelHost, { all: true })).some(address => address.address !== '127.0.0.1')) {
+            throw new Error('Fixture model hostname must resolve only to 127.0.0.1');
+        }
+        await writeFile(join(codexHome, 'config.toml'), `model = "gpt-5.1-codex"\nmodel_provider = "scope_fixture"\nweb_search = "disabled"\n[model_providers.scope_fixture]\nname = "Local scope fixture"\nbase_url = "http://${this.modelHost}:${modelPort}/v1"\nwire_api = "responses"\nrequires_openai_auth = false\n`);
         const reservation = createServer();
         const serverPort = await listen(reservation);
         await new Promise<void>((resolve, reject) => reservation.close(error => error ? reject(error) : resolve()));
         this.serverUrl = `http://127.0.0.1:${serverPort}`;
         // An allowlist avoids ambient auth, provider/proxy endpoints and caller lineage.
         this.environment = { PATH: `${dirname(process.execPath)}:${process.env.PATH}`, HOME: this.home,
-            TMPDIR: join(this.root, 'tmp'), LANG: 'en_US.UTF-8', HAPPY_HOME_DIR: this.happyHome,
+            TMPDIR: this.temporaryDirectory, LANG: 'en_US.UTF-8', HAPPY_HOME_DIR: this.happyHome,
             HAPPY_SERVER_URL: this.serverUrl, HAPPY_WEBAPP_URL: this.serverUrl, HAPPY_DISABLE_CAFFEINATE: '1',
             HAPPY_DAEMON_HEARTBEAT_INTERVAL: '500',
-            CODEX_HOME: codexHome, OPENAI_API_KEY: 'fixture-local-only', NO_PROXY: '127.0.0.1,localhost',
-            HAPPY_BROWSER_BRIDGE_HOST: '127.0.0.1' };
+            CODEX_HOME: codexHome, OPENAI_API_KEY: 'fixture-local-only', NO_PROXY: process.platform === 'linux' ? '' : '127.0.0.1,localhost',
+            HAPPY_BROWSER_BRIDGE_HOST: '127.0.0.1',
+            ANTHROPIC_API_KEY: 'fixture-local-only', ANTHROPIC_BASE_URL: `http://${this.modelHost}:${modelPort}`,
+            CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+            ...(process.env.HAPPY_CLAUDE_PATH ? { HAPPY_CLAUDE_PATH: process.env.HAPPY_CLAUDE_PATH } : {}) };
         this.serverEnvironment = { ...this.environment, TSX_TSCONFIG_PATH: join(this.serverDirectory, 'tsconfig.json'),
             HANDY_MASTER_SECRET: randomBytes(32).toString('hex'), DB_PROVIDER: 'pglite',
             DATA_DIR: join(this.root, 'server'), PGLITE_DIR: join(this.root, 'server/pglite'),
@@ -112,7 +159,10 @@ export class SessionWriteScopeFixture {
             challenge: challenge.toString('base64'), signature: sign(null, challenge, privateKey).toString('base64') });
         this.token = auth.body.token;
         this.accountId = JSON.parse(Buffer.from(this.token.split('.')[1], 'base64url').toString()).sub;
-        await writeFile(join(this.happyHome, 'access.key'), JSON.stringify({ token: this.token, secret: this.seed.toString('base64') }), { mode: 0o600 });
+        await writeFile(join(this.happyHome, 'access.key'), JSON.stringify(this.options.encryptionVariant === 'legacy'
+            ? { token: this.token, secret: this.seed.toString('base64') }
+            : { token: this.token, encryption: { publicKey: Buffer.from(this.accountBox.publicKey).toString('base64'),
+                machineKey: this.machineKey.toString('base64') } }), { mode: 0o600 });
         await writeFile(join(this.happyHome, 'settings.json'), JSON.stringify({ serverUrl: this.serverUrl }), { mode: 0o600 });
         await this.startDaemon();
     }
@@ -173,11 +223,12 @@ export class SessionWriteScopeFixture {
     }
     async spawnSession(directory: string, config: unknown): Promise<string> {
         return eventually(async () => {
-            const result = await this.control('/spawn-session', { directory, agent: 'codex',
+            const result = await this.control('/spawn-session', { directory, agent: this.options.provider,
                 environmentVariables: { HAPPY_PROJECT_SANDBOX_CONFIG: JSON.stringify(config) } });
             if (result.body.error === 'Daemon is initializing; retry the launch shortly') return undefined;
             if (result.status !== 200 || !result.body.success || !result.body.sessionId) throw new Error(`Spawn rejected: ${JSON.stringify(result)}`);
             await this.children();
+            await this.session(result.body.sessionId);
             return result.body.sessionId as string;
         }, 'daemon ready and session spawned');
     }
@@ -186,6 +237,8 @@ export class SessionWriteScopeFixture {
         const machines = (await this.http('/v1/machines')).body;
         if (machines.length !== 1 || machines[0].accountId !== this.accountId) throw new Error('Unexpected fixture machine identity');
         const machineId = machines[0].id as string;
+        const rpcKey = this.options.encryptionVariant === 'legacy' ? this.seed : this.unwrapKey(machines[0].dataEncryptionKey);
+        if (!rpcKey.equals(this.options.encryptionVariant === 'legacy' ? this.seed : this.machineKey)) throw new Error('Fixture machine key mismatch');
         const socket = io(this.serverUrl, { path: '/v1/updates', transports: ['websocket'], reconnection: false,
             auth: { token: this.token, clientType: 'user-scoped' } });
         try {
@@ -197,9 +250,9 @@ export class SessionWriteScopeFixture {
             const method = 'resume-happy-session', nonce = randomBytes(16).toString('base64');
             const bound = bindRpcRequest({ method, scope: machineId, params: { sessionId }, issuedAt: Date.now(), nonce });
             const response = await socket.timeout(30_000).emitWithAck('rpc-call', { method: `${machineId}:${method}`,
-                params: Buffer.from(encrypt(this.seed, 'legacy', bound)).toString('base64') });
+                params: Buffer.from(encrypt(rpcKey, this.options.encryptionVariant, bound)).toString('base64') });
             if (!response.ok) throw new Error(`Fixture RPC failed: ${response.error}`);
-            const opened = readBoundRpcResponse(this.decode(response.result), nonce);
+            const opened = readBoundRpcResponse(decrypt(rpcKey, this.options.encryptionVariant, Buffer.from(response.result, 'base64')), nonce);
             if (!opened.ok) throw new Error(`Fixture RPC binding failed: ${opened.code}`);
             const result = opened.result as { type: string; sessionId: string; errorMessage?: string };
             if (result.type !== 'success') throw new Error(`Fixture resume rejected: ${result.errorMessage}`);
@@ -208,16 +261,16 @@ export class SessionWriteScopeFixture {
         } finally { socket.disconnect(); }
     }
     async messages(id: string): Promise<StoredMessage[]> { return (await this.http(`/v3/sessions/${id}/messages?limit=500`)).body.messages; }
-    decode(content: string) { return decrypt(this.seed, 'legacy', Buffer.from(content, 'base64')); }
+    decode(content: string, id: string) { return decrypt(this.sessionKey(id), this.options.encryptionVariant, Buffer.from(content, 'base64')); }
     async waitReply(id: string, marker: string) {
         return eventually(async () => {
             const messages = await this.messages(id);
             const reply = messages.find(message => {
-                const decoded = this.decode(message.content.c);
+                const decoded = this.decode(message.content.c, id);
                 return decoded?.role === 'session' && decoded.content?.role === 'agent'
                     && decoded.content?.ev?.t === 'text' && decoded.content.ev.text === `fixture reply ${marker}`;
             });
-            return reply && messages.some(message => message.seq > reply.seq && this.decode(message.content.c)?.content?.ev?.t === 'turn-end')
+            return reply && messages.some(message => message.seq > reply.seq && this.decode(message.content.c, id)?.content?.ev?.t === 'turn-end')
                 ? reply : undefined;
         }, `stored reply and completed turn ${marker}`);
     }
@@ -225,7 +278,8 @@ export class SessionWriteScopeFixture {
         const sessions = (await this.http('/v1/sessions')).body.sessions;
         const session = sessions.find((value: { id: string }) => value.id === id);
         if (!session) throw new Error('Fixture session missing');
-        return { ...session, metadata: this.decode(session.metadata) };
+        this.sessionKeys.set(id, this.options.encryptionVariant === 'legacy' ? this.seed : this.unwrapKey(session.dataEncryptionKey));
+        return { ...session, metadata: this.decode(session.metadata, id) };
     }
     async savedSession(id: string) {
         return JSON.parse(await readFile(join(this.happyHome, 'sessions.json'), 'utf8')).sessions[id];
@@ -246,8 +300,8 @@ export class SessionWriteScopeFixture {
     }
     async send(id: string, marker: string, localId = randomUUID()) {
         return (await this.http(`/v3/sessions/${id}/messages`, { messages: [{ localId,
-            content: Buffer.from(encrypt(this.seed, 'legacy', { role: 'user', content: { type: 'text', text: marker },
-                meta: { permissionMode: 'yolo', model: 'gpt-5.1-codex' } })).toString('base64') }] })).body.messages[0] as StoredMessage;
+            content: Buffer.from(encrypt(this.sessionKey(id), this.options.encryptionVariant, { role: 'user', content: { type: 'text', text: marker },
+                meta: { permissionMode: 'yolo', model: this.modelName } })).toString('base64') }] })).body.messages[0] as StoredMessage;
     }
     approval(request: ScopeRequest) {
         const decision: ScopeDecision = { version: 1, requestId: request.id, digest: request.digest,
@@ -263,7 +317,10 @@ export class SessionWriteScopeFixture {
             return [file, ...lines.filter(line => /^\[\d/.test(line) && /drain|shutdown|Preserved session|resume|Failed|Error|freeze|EOF|stored|release|cleanup|flush|close|disconnect|handles/i.test(line)
                 && !/encryption|Bearer|authorization|environment|metadata|snapshot/i.test(line)).slice(-45)].join('\n');
         }));
-        return logs.join('\n');
+        const serverErrors = this.logs.flatMap(chunk => chunk.split('\n')).filter(line => /error|unknown argument|inconsistent|could not|convert|expected|found/i.test(line)
+            && !/secret|token|bearer|authorization|environment/i.test(line)).map(line => line.replace(/[A-Za-z0-9+\/=_-]{40,}/g, '[redacted]'));
+        const modelSummary = this.modelRequests.map(body => ({ model: JSON.parse(body).model, markers: [...body.matchAll(/scope-marker-[a-z0-9-]+/g)].map(match => match[0]) }));
+        return [...logs, ...serverErrors.slice(-20), JSON.stringify(modelSummary)].join('\n');
     }
     async terminateFaultedFixtureSession(id: string) {
         const child = (await this.children()).find(value => value.happySessionId === id);
@@ -310,6 +367,7 @@ export class SessionWriteScopeFixture {
         }
         if (this.model) { this.model.closeAllConnections(); await new Promise<void>(resolve => this.model!.close(() => resolve())); }
         if (this.root) await rm(this.root, { recursive: true, force: true });
+        if (this.temporaryDirectory) await rm(this.temporaryDirectory, { recursive: true, force: true });
         if (errors.length) throw new AggregateError(errors, `Fixture cleanup failed: ${errors.map(String).join('; ')}`);
     }
 }

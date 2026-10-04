@@ -1477,28 +1477,36 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
-    it('wraps transport when sandbox is enabled', async () => {
-        // Dynamic import to ensure mocks are applied
+    it.each([
+        { platform: 'darwin', inheritedMarker: undefined },
+        { platform: 'darwin', inheritedMarker: 'seatbelt' },
+        { platform: 'linux', inheritedMarker: undefined },
+        { platform: 'linux', inheritedMarker: 'seatbelt' },
+    ] as const)('wraps transport with the correct native sandbox marker on $platform (inherited: $inheritedMarker)', async ({ platform, inheritedMarker }) => {
+        const platformDescriptor = Object.getOwnPropertyDescriptor(process, 'platform')!;
+        const originalMarker = process.env.CODEX_SANDBOX;
         const { CodexAppServerClient } = await import('./codexAppServerClient');
         const client = new CodexAppServerClient(sandboxConfig);
-
-        await client.connect();
-
-        expect(mockInitializeSandbox).toHaveBeenCalledWith(sandboxConfig, process.cwd(), 'owner-choice');
-        expect(mockWrapForMcpTransport).toHaveBeenCalledWith('codex', ['app-server', '--listen', 'stdio://']);
-        expect(mockSpawn).toHaveBeenCalledWith(
-            'sh',
-            ['-c', 'wrapped codex app-server'],
-            expect.objectContaining({
-                env: expect.objectContaining({
-                    CODEX_SANDBOX: 'seatbelt',
-                    RUST_LOG: expect.stringContaining('codex_core::rollout::list=off'),
-                }),
-            }),
-        );
-        expect(client.sandboxEnabled).toBe(true);
-
-        await client.disconnect();
+        try {
+            Object.defineProperty(process, 'platform', { ...platformDescriptor, value: platform });
+            if (inheritedMarker === undefined) delete process.env.CODEX_SANDBOX;
+            else process.env.CODEX_SANDBOX = inheritedMarker;
+            await client.connect();
+            expect(mockInitializeSandbox).toHaveBeenCalledWith(sandboxConfig, process.cwd(), 'owner-choice');
+            expect(mockWrapForMcpTransport).toHaveBeenCalledWith('codex', ['app-server', '--listen', 'stdio://']);
+            expect(mockSpawn).toHaveBeenCalledWith('sh', ['-c', 'wrapped codex app-server'], expect.anything());
+            const env = mockSpawn.mock.calls[0][2].env;
+            if (platform === 'darwin') expect(env.CODEX_SANDBOX).toBe('seatbelt');
+            else expect(env).not.toHaveProperty('CODEX_SANDBOX');
+            expect(env.RUST_LOG).toContain('codex_core::rollout::list=off');
+            expect(process.env.CODEX_SANDBOX).toBe(inheritedMarker);
+            expect(client.sandboxEnabled).toBe(true);
+        } finally {
+            await client.disconnect();
+            Object.defineProperty(process, 'platform', platformDescriptor);
+            if (originalMarker === undefined) delete process.env.CODEX_SANDBOX;
+            else process.env.CODEX_SANDBOX = originalMarker;
+        }
     });
 
     // specs/linux-checkpoint-enforcement-backend R4 — bubblewrap binds a mount point for every

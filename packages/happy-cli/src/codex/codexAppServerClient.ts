@@ -1143,8 +1143,12 @@ export class CodexAppServerClient {
         } else if (!env.RUST_LOG.includes('codex_core::rollout::list=')) {
             env.RUST_LOG += `,${filter}`;
         }
-        if (this.sandboxEnabled) {
+        // The native seatbelt marker disables Codex's model proxy path on Linux.
+        // Linux remains protected by the external bubblewrap wrapper.
+        if (this.sandboxEnabled && process.platform === 'darwin') {
             env.CODEX_SANDBOX = 'seatbelt';
+        } else if (this.sandboxEnabled && process.platform === 'linux' && env.CODEX_SANDBOX === 'seatbelt') {
+            delete env.CODEX_SANDBOX;
         }
 
         logger.debug(`[CodexAppServer] Spawning: ${command} ${args.join(' ')}`);

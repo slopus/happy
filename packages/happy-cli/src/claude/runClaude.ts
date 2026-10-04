@@ -724,6 +724,7 @@ export async function runClaude(principal: RunnerPrincipal, options: StartOption
         exitAfterFirstTurn,
         browserHostContinues: process.env.HAPPY_AUTOMATION_BROWSER_CONTINUATION === '1',
         mandatorySandbox: sandboxPolicyMode === 'mandatory',
+        sameUidSandbox: Boolean(scopeLaunch),
         ...(principal.kind === 'account' ? { proposeLesson: lessonProposalTurn.submit } : {}),
         checkpointReader: checkpointComposition.agentReader,
         protectedBashCwd: checkpointComposition.protectedBashCwd,

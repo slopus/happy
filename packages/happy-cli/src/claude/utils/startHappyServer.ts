@@ -480,6 +480,8 @@ export async function startHappyServer(
         /** Set by the daemon for a Studio Chat(beta) session (HAPPY_AUTOMATION_BROWSER_CONTINUATION). */
         browserHostContinues?: boolean;
         mandatorySandbox?: boolean;
+        /** Authenticated scope launch stays at the parent UID, rather than using agent-sbx. */
+        sameUidSandbox?: boolean;
         admitTool?: <T>(work: () => Promise<T>) => Promise<T>;
         proposeLesson?: (input: { token: string; proposal: unknown }) => { accepted: boolean };
         protectedBashCwd?: () => string | null;
@@ -496,7 +498,7 @@ export async function startHappyServer(
     }
 
     const changeTitle = createChangeTitleHandler(client);
-    const linuxMandatory = options.mandatorySandbox && process.platform === 'linux';
+    const linuxMandatory = options.mandatorySandbox && process.platform === 'linux' && !options.sameUidSandbox;
     let mcpGroup: number | undefined;
     let privateDir: string | undefined;
     try {
