@@ -1,0 +1,42 @@
+Your coding agent shouldn't wait for you to get back to your desk.
+
+A task can run for an hour and then stop five minutes in to ask for permission or a decision. Happy lets you answer from your phone, and the same agent carries on in the same repository with the same tools and context.
+
+Happy is the mobile app for Claude Code and Codex. The agents keep running on your own computer, and your phone is how you start them, steer them and review their work.
+
+WHAT YOU CAN DO FROM YOUR PHONE
+• Start a new session or pick up one you began at your desk
+• Get notified when an agent needs input or finishes
+• Approve or deny permission requests, or let a session run in Auto mode
+• Choose the model and reasoning effort from the providers set up on your computer
+• Review changes: a file list, colored diffs, and the full set of changes on a branch
+• Attach a screenshot or photo to your prompt
+• Browse sessions in one list or grouped by project, with each checkout's chats as tabs
+• Open a side chat next to a session without losing your place
+• Drafts follow you between your phone and your computer
+
+HOW IT WORKS
+Happy runs on your computer, and this app connects to it.
+1. Install Happy Desktop from happy.engineering, or if you prefer the terminal, run: npm install -g happy
+2. Create an account in the app. You don't need an email address or a password.
+3. Scan the QR code your computer shows to link it to your phone.
+
+Then start a session from either device. What you see on your phone is the same live session that's running on your computer.
+
+YOU WILL NEED
+• A computer running Happy Desktop or the Happy CLI
+• Access to the coding agents you want to use, such as a Claude or ChatGPT/Codex plan or API key. Happy uses your existing accounts.
+
+PRIVATE BY DESIGN
+Sessions are end-to-end encrypted. Your code, agent and encryption keys stay on your devices. Happy's servers only relay and store encrypted session data and can't read your prompts, responses or code.
+
+OPEN SOURCE
+The app, the CLI and the server are MIT-licensed and on GitHub. Read the code, run your own build or host your own server.
+
+ALSO ON DESKTOP
+Happy Desktop adds a harness that works across providers and lets you switch models in the middle of a task. The sessions it starts show up on your phone too.
+
+Happy is an independent project. It is not affiliated with or endorsed by Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic. Codex and ChatGPT are trademarks of OpenAI.
+
+Privacy Policy: https://happy.engineering/privacy
+Terms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/

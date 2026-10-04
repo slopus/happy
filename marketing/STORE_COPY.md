@@ -12,7 +12,7 @@ notes at the bottom are not for upload. Locale: English (United States).
 | App Store Connect → App Information | Name | [Shared app name](#shared) |
 | App Store Connect → App Information | Subtitle | [App Store subtitle](#app-store-connect--ios-and-ipados) |
 | App Store Connect → iOS App → 1.8.0 | Promotional Text, Keywords, Support URL, Marketing URL | [App Store fields](#app-store-connect--ios-and-ipados) |
-| App Store Connect → iOS App → 1.8.0 | Description | [App Store description](#app-store-description) |
+| App Store Connect → iOS App → 1.8.0 | Description | [App Store description](#app-store-description) (paste from [description.txt](app-store/description.txt)) |
 | App Store Connect → iOS App → 1.8.0 | What's New in This Version | [Shared release notes](#shared-release-notes--whats-new-in-this-version-and-release-notes) |
 | Play Console → Store presence → Main store listing | App name | [Shared app name](#shared) |
 | Play Console → Store presence → Main store listing | Short description | [Google Play fields](#google-play-console--android) |
@@ -116,7 +116,9 @@ Start, steer and approve Claude Code and Codex sessions from your phone. They ke
 ai,agent,coding,developer,terminal,cli,remote,programming,git,diff,llm,assistant,gpt,grok,mac,ssh
 ```
 
-**Description**: paste the [App Store description](#app-store-description).
+**Description**: paste the complete contents of [description.txt](app-store/description.txt),
+including the Privacy Policy and Terms of Use (EULA) URLs at the end. It matches
+the [App Store description](#app-store-description) below.
 
 **What's New in This Version**: paste the [shared release notes](#shared-release-notes--whats-new-in-this-version-and-release-notes).
 
@@ -236,7 +238,7 @@ including the language tags:
 
 ### App Store description
 
-2,474 / 4,000 characters. App Store only: Google Play uses its own
+2,612 / 4,000 characters. App Store only: Google Play uses its own
 [shorter description](#google-play-console--android).
 
 ```
@@ -279,6 +281,9 @@ ALSO ON DESKTOP
 Happy Desktop adds a harness that works across providers and lets you switch models in the middle of a task. The sessions it starts show up on your phone too.
 
 Happy is an independent project. It is not affiliated with or endorsed by Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic. Codex and ChatGPT are trademarks of OpenAI.
+
+Privacy Policy: https://happy.engineering/privacy
+Terms of Use (EULA): https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
 ```
 
 ### Shared release notes — What's New in This Version and Release notes
@@ -309,7 +314,7 @@ Google Play's complete language-tagged block is included in its section above.
 | Promotional text       | 168   | 170   |
 | Keywords               | 97    | 100   |
 | Play short description | 78    | 80    |
-| App Store description  | 2,474 | 4,000 |
+| App Store description  | 2,612 | 4,000 |
 | Play full description  | 1,801 | 4,000 |
 | What's New             | 490   | 4,000 (Play: 500) |
 
@@ -318,6 +323,14 @@ curly quotes take several bytes each.
 
 ### Evidence for each claim
 
+- **Subscription legal links:** the App Store description includes plain URLs
+  for the privacy policy and Apple's standard EULA. App Store Connect has no
+  custom EULA for this app. Keep these links when editing the description;
+  the MIT source license does not replace the store EULA link.
+  [App Review Guideline 3.1.2(c)](https://developer.apple.com/app-store/review/guidelines/#subscriptions)
+  requires accessible Terms of Use and Privacy Policy links for subscriptions.
+  The iOS Settings screen already links to the same standard EULA in
+  `packages/happy-app/sources/components/SettingsView.tsx`.
 - **Setup with Desktop or CLI, QR linking, no email or password:**
   `packages/happy-app/sources/text/translations/en.ts`, in the `onboarding`
   block (`tagline`, `installStep`, `terminalInstall`, `scanStep`). The live
