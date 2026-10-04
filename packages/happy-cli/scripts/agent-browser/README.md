@@ -63,8 +63,9 @@ and `abp-egress.service` re-runs whenever Docker restarts.
 
 Debian 12 / Ubuntu 22.04+ (arm64 tested), systemd, Docker Engine, Node 20+ at `/usr/bin/node`
 (root-owned; NodeSource or distro package), npm for `--happy-tarball`. `--install-packages`
-apt-gets the rest: bubblewrap, sudo, iptables, ipset, acl, gcc, libc6-dev, systemd-resolved,
-libnss-resolve (the kernel needs `xt_set`/`ip_set_hash_net`, standard in Debian/Ubuntu kernels). The proxy resolves through systemd-resolved's socket (`hosts: … resolve …` in
+apt-gets the rest: bubblewrap, sudo, iptables, ipset, acl, gcc, g++, make (node-pty compiles where it has
+no prebuild, e.g. linux-arm64), libc6-dev, libnss-resolve and, where it is a package of its own (Debian 12,
+Ubuntu 22.10+; Ubuntu 22.04 ships it inside systemd), systemd-resolved (the kernel needs `xt_set`/`ip_set_hash_net`, standard in Debian/Ubuntu kernels). The proxy resolves through systemd-resolved's socket (`hosts: … resolve …` in
 `/etc/nsswitch.conf`, set by the installer); the firewall gives it no DNS port. Installing
 systemd-resolved switches `/etc/resolv.conf` to its stub.
 
