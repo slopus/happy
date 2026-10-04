@@ -33,7 +33,7 @@ describe.skipIf(!['darwin', 'linux'].includes(process.platform) || process.env.H
     });
     await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
     vi.mocked(readDaemonControlPort).mockResolvedValue({ port: (server.address() as { port: number }).port, controlSecret: 'fixture' });
-    const overrides = { HOME: home, CLAUDE_CONFIG_DIR: join(home, '.claude'), CODEX_HOME: join(home, '.codex') };
+    const overrides = { HOME: home, CLAUDE_CONFIG_DIR: join(home, '.claude'), CODEX_HOME: join(home, '.codex'), TMPDIR: project };
     const previous = Object.fromEntries(Object.keys(overrides).map(key => [key, process.env[key]]));
     Object.assign(process.env, overrides);
     let prepared: Awaited<ReturnType<typeof prepareSessionWriteScopeClaude>> | undefined;
@@ -49,6 +49,7 @@ describe.skipIf(!['darwin', 'linux'].includes(process.platform) || process.env.H
         await new Promise<void>((resolve, reject) => { child.once('error', reject); child.once('close', code => code === 0 ? resolve() : reject(new Error('sandbox child failed'))); });
         return JSON.parse(output.trim());
       }
+      expect(await execute(join(home, '.claude', 'scope-state'))).toEqual({ allowed: true, leaked: false });
       expect(await execute(join(root, "quote'$`file"))).toEqual({ allowed: true, leaked: false });
       for (const path of [join(sibling, 'denied'), join(root, 'escape', 'denied')]) {
         const result = await execute(path); expect(['EPERM', 'EACCES', 'EROFS']).toContain(result.code); expect(result.leaked).toBe(false);

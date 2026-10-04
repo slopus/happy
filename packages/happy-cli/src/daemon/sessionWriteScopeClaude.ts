@@ -1,4 +1,7 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { mkdir } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { realpathSync } from 'node:fs';
 import type { SpawnOptions } from '@anthropic-ai/claude-agent-sdk';
 import { SandboxConfigSchema, type SandboxConfig } from '@/persistence';
@@ -19,6 +22,9 @@ export async function prepareSessionWriteScopeClaude(input: {
   }
   const path = realpathSync(input.path);
   const config = SandboxConfigSchema.parse(JSON.parse(JSON.stringify(input.config)));
+  // Linux skips nonexistent writable roots; initialize only the provider's state root.
+  const claudeState = (process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude')).replace(/^~(?=\/|$)/, homedir());
+  await mkdir(resolve(path, claudeState), { recursive: true, mode: 0o700 });
   const reset = await initializeSandbox(config, path, 'mandatory');
   const children = new Set<ChildProcess>();
   let closed = false;

@@ -1,3 +1,5 @@
+import { access, readFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { SandboxConfigSchema } from '@/persistence';
 import { eventually, SessionWriteScopeFixture } from '@/testing/sessionWriteScopeFixture';
@@ -13,6 +15,7 @@ describe.skipIf(process.env.HAPPY_SCOPE_SERVER_INTEGRATION !== '1' || !['darwin'
         const fixture = new SessionWriteScopeFixture({ provider, encryptionVariant });
         try {
             await fixture.start();
+            if (fixture.freshProviderState) await expect(access(join(fixture.home, '.claude'))).rejects.toMatchObject({ code: 'ENOENT' });
             const config = SandboxConfigSchema.parse({ sessionIsolation: 'strict', networkMode: 'custom', allowedDomains: ['127.0.0.1', 'localhost', fixture.modelHost] });
             const id = await fixture.spawnSession(fixture.project, config);
             const other = await fixture.spawnSession(fixture.otherProject, config);
@@ -84,10 +87,49 @@ describe.skipIf(process.env.HAPPY_SCOPE_SERVER_INTEGRATION !== '1' || !['darwin'
             console.error('Scope integration failed:', error, 'model requests:', fixture.modelRequests.length, await fixture.diagnostics()); throw error;
         } finally { await fixture.close(); }
     });
+    it.skipIf(!process.env.HAPPY_SCOPE_ROLLBACK_CLI)('preserves account/history/journal across authenticated drain and a baseline-only rollback', async () => {
+        const fixture = new SessionWriteScopeFixture({ provider, encryptionVariant });
+        try {
+            await fixture.start();
+            const config = SandboxConfigSchema.parse({ sessionIsolation: 'strict', networkMode: 'custom', allowedDomains: ['127.0.0.1', 'localhost', fixture.modelHost] });
+            const id = await fixture.spawnSession(fixture.project, config);
+            await fixture.send(id, 'scope-marker-rollback-before');
+            await fixture.waitReply(id, 'scope-marker-rollback-before');
+            const grant = await fixture.scopeRequest(id, fixture.tools);
+            expect((await fixture.control('/session-write-scope/decide', fixture.approval(grant))).body.result)
+                .toMatchObject({ profileApplied: true, grantActive: true });
+            await fixture.send(id, 'scope-marker-rollback-applied');
+            await fixture.waitReply(id, 'scope-marker-rollback-applied');
+            const identity = await fixture.session(id), saved = await fixture.savedSession(id), history = await fixture.messages(id);
+            await fixture.stopDaemon();
+            const journalPath = join(fixture.happyHome, 'session-write-scope.json');
+            const journal = await readFile(journalPath, 'utf8');
+            const accessKey = await readFile(join(fixture.happyHome, 'access.key'), 'utf8');
+            fixture.cli = resolve(process.env.HAPPY_SCOPE_ROLLBACK_CLI!);
+            fixture.incarnation = 'rollback-' + fixture.incarnation;
+            await fixture.startDaemon();
+            expect((await fixture.control('/session-write-scope', { action: 'list', sessionId: id })).status).toBe(404);
+            expect(await fixture.resumeSession(id, true)).toBe(id);
+            await fixture.send(id, 'scope-marker-rollback-after');
+            await fixture.waitReply(id, 'scope-marker-rollback-after');
+            const resumed = await fixture.session(id);
+            expect(resumed.metadata[fixture.providerIdentityField]).toBe(identity.metadata[fixture.providerIdentityField]);
+            expect(resumed.dataEncryptionKey).toBe(identity.dataEncryptionKey);
+            expect(resumed.metadata.sandbox.extraWritePaths).not.toContain(fixture.tools);
+            expect((await fixture.savedSession(id)).encryptionKey).toBe(saved.encryptionKey);
+            expect((await fixture.messages(id)).slice(0, history.length)).toEqual(history);
+            expect(await readFile(journalPath, 'utf8')).toBe(journal);
+            expect(await readFile(join(fixture.happyHome, 'access.key'), 'utf8')).toBe(accessKey);
+            expect(fixture.failures).toEqual([]);
+        } catch (error) {
+            console.error('Scope rollback failed:', error, await fixture.diagnostics()); throw error;
+        } finally { await fixture.close(); }
+    });
     it('fails closed while storage is disconnected and expires pending/grants on a new daemon incarnation', async () => {
         const fixture = new SessionWriteScopeFixture({ provider, encryptionVariant });
         try {
             await fixture.start();
+            if (fixture.freshProviderState) await expect(access(join(fixture.home, '.claude'))).rejects.toMatchObject({ code: 'ENOENT' });
             const config = SandboxConfigSchema.parse({ sessionIsolation: 'strict', networkMode: 'custom', allowedDomains: ['127.0.0.1', 'localhost', fixture.modelHost] });
             const id = await fixture.spawnSession(fixture.project, config);
             await fixture.send(id, 'scope-marker-recovery-before');

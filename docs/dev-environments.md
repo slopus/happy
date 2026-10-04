@@ -16,12 +16,32 @@ lets the allowlisted model request cross the sandbox proxy without opening netwo
 unsupported sandbox fails the test instead of treating an unprotected launch as success.
 Without `HAPPY_SCOPE_SERVER_INTEGRATION=1`, this project skips its native cases.
 
+To accept a registry installation, set `HAPPY_SCOPE_INSTALLED_CLI` to its absolute
+`node_modules/@buzzni/happy-cli` directory (install with lifecycle scripts enabled),
+and `HAPPY_SCOPE_FRESH_PROVIDER_STATE=1`. The fixture does not create `.claude` in
+this mode. Codex still needs a new `.codex/config.toml` to select the owned local model;
+no provider conversation or login state is copied. This is fresh conversation-state
+acceptance, not provider OAuth onboarding. The source server stays independent of the
+installed CLI path. Set `HAPPY_SCOPE_PACKAGED_SERVER` to an absolute compiled server
+binary to test packaged-server integration, with its PGlite data/wasm and migrations
+beside it. Set `HAPPY_SCOPE_PACKAGED_PRISMA_ENGINE` to its matching native Prisma
+query engine library, as Desktop's runtime launcher does. Compile with the output
+basename `happy-server`; Bun embeds that name for standalone entrypoint detection.
+Record the exact CLI registry integrity and server source identity separately.
+Set `HAPPY_SCOPE_ROLLBACK_CLI` to a separately installed `.279` CLI root to opt into
+four rollback cases. They require authenticated session/daemon exit before switching
+executables while preserving account, provider history, encrypted transcript and scope
+journal. Exact `.279` uses its authenticated encrypted legacy machine RPC; the
+fixture checks the installed version before that protocol and never falls back from a
+failed modern binding. The old runtime must expose no scope capability and resume only the baseline.
+All overrides affect the test harness only; they do not activate a Desktop pin.
+
 The [fixture](../packages/happy-cli/src/testing/sessionWriteScopeFixture.ts) owns a source
 standalone server with real PGlite migrations, a new account/Happy home and a real daemon.
 Native Codex uses an isolated CODEX_HOME and a loopback-only deterministic Responses SSE
 endpoint. Native Claude uses a fresh HOME, a local-only fixture API key and a deterministic
-Messages SSE endpoint; nonessential Claude traffic is disabled. The disposable `.codex`
-and `.claude` state directories exist before wrapping: Linux bubblewrap skips nonexistent
+Messages SSE endpoint; nonessential Claude traffic is disabled. By default, the disposable
+`.codex` and `.claude` state directories exist before wrapping: Linux bubblewrap skips nonexistent
 writable roots, which would prevent the provider from persisting its resume history. Claude internal follow-up API
 requests can use the same model; they are served locally too. Exactly-once processing is
 asserted from stored user replies, rather than equating API request count with user turns.
@@ -29,7 +49,7 @@ Fixture TMPDIR is a separate short disposable path so native MCP sockets fit AF_
 paid model is used. Files are created only in a disposable narrow directory below the OS
 account home, which must be writable. Set `HAPPY_SCOPE_FIXTURE_PARENT` to an existing writable
 directory below that home if direct home writes are restricted; product root validation still
-applies. No Expo app, release install or runtime pin is changed.
+applies. Test installations are private; no Expo app, production daemon or runtime pin is changed.
 
 The [cases](../packages/happy-cli/src/daemon/sessionWriteScope.integration.test.ts) verify
 real host-signed approval, storage/cursor drain, old parent exit, same-ID/thread/encryption

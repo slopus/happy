@@ -610,19 +610,21 @@ export async function startDaemon(): Promise<void> {
   //
   // In case the setup malfunctions - our signal handlers will not properly
   // shut down. We will force exit the process with code 1.
+  let startupShutdownFallback: ReturnType<typeof setTimeout> | undefined;
+  let shutdownCleanupStarted = false;
   let requestShutdown: (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => void;
   let resolvesWhenShutdownRequested = new Promise<({ source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string })>((resolve) => {
     requestShutdown = (source, errorMessage) => {
       logger.debug(`[DAEMON RUN] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`);
 
       // Fallback - in case startup malfunctions - we will force exit the process with code 1
-      setTimeout(async () => {
+      if (!shutdownCleanupStarted && !startupShutdownFallback) startupShutdownFallback = setTimeout(async () => {
         logger.debug('[DAEMON RUN] Startup malfunctioned, forcing exit with code 1');
 
         // Give time for logs to be flushed
         await new Promise(resolve => setTimeout(resolve, 100))
 
-        process.exit(1);
+        if (!shutdownCleanupStarted) process.exit(1);
       }, 1_000);
 
       // Start graceful shutdown
@@ -5041,6 +5043,10 @@ export async function startDaemon(): Promise<void> {
 
     // Setup signal handlers
     const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => {
+      // Startup fallback must not interrupt authenticated cleanup/storage ACKs.
+      shutdownCleanupStarted = true;
+      clearTimeout(startupShutdownFallback);
+      startupShutdownFallback = undefined;
       logger.debug(`[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
       await checkpointRetentionSchedule.stop();
 
