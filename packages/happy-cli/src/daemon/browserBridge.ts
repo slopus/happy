@@ -69,6 +69,20 @@ export function deriveBrowserViewerBridgeToken(authToken: string, viewerKey: str
         .digest('base64url')
 }
 
+/**
+ * Credential for one trusted-setup pairing. Bound to the pairing id so a revoked
+ * pairing's token is useless at any daemon: it never equals the plain viewer
+ * credential that a home without this pairing's policy would check instead.
+ */
+export function deriveBrowserSetupPairingToken(authToken: string, viewerKey: string, pairingId: string): string {
+    return createHmac('sha256', authToken)
+        .update('browser-setup-pairing-v1\0')
+        .update(viewerKey)
+        .update('\0')
+        .update(pairingId)
+        .digest('base64url')
+}
+
 function connectionKey(viewerKey: string | undefined, profile: string): string {
     return `${viewerKey ?? LEGACY_VIEWER_SCOPE}\0${profile}`
 }
@@ -131,16 +145,19 @@ export class BrowserBridge {
             socket.close(4401, 'invalid viewer key')
             return false
         }
-        if (params.viewerKey && Object.hasOwn(this.setupPolicy, params.viewerKey)) {
-            const allowed = this.setupPolicy[params.viewerKey]
+        const setupScope = Boolean(params.viewerKey && Object.hasOwn(this.setupPolicy, params.viewerKey))
+        if (setupScope) {
+            const allowed = this.setupPolicy[params.viewerKey!]
             if (!allowed || allowed.pairingId !== params.pairingId || allowed.profile !== params.profile) {
                 socket.close(4403, 'browser setup permission revoked or mismatched')
                 return false
             }
         }
-        const expectedToken = params.viewerKey
-            ? deriveBrowserViewerBridgeToken(this.authToken, params.viewerKey)
-            : this.authToken
+        const expectedToken = setupScope
+            ? deriveBrowserSetupPairingToken(this.authToken, params.viewerKey!, params.pairingId!)
+            : params.viewerKey
+                ? deriveBrowserViewerBridgeToken(this.authToken, params.viewerKey)
+                : this.authToken
         if (!params.token || !tokensMatch(params.token, expectedToken)) {
             this.recordAuthFailure(viewerScope(params.viewerKey))
             socket.close(4401, 'invalid token')

@@ -593,6 +593,25 @@ describe('session write scope protected tool surface', () => {
 });
 
 describe('approved Desktop computer tools in the session MCP', () => {
+    it('bounds the startup availability probe so a slow Desktop cannot stall session start', async () => {
+        const context = { serverUrl: 'https://saycode.test', machineId: 'M1', sessionId: 'S1', projectId: 'P1', callerGrant: 'signed-caller' };
+        const client = { ...makeFakeClient(false), sessionId: 'S1', getMetadata: () => ({ machineId: 'M1' }) } as unknown as ApiSessionClient;
+        vi.mocked(localToolAgentContext).mockResolvedValue(context);
+        vi.mocked(requestLocalToolAgent).mockImplementation((_context, _request, signal) => new Promise((_resolve, reject) => {
+            signal?.addEventListener('abort', () => reject(new Error('aborted')));
+        }));
+        const started = Date.now();
+        const server = await startHappyServer(client);
+        try {
+            expect(Date.now() - started).toBeLessThan(5000);
+            expect(server.toolNames).not.toContain('local_tool_control');
+        } finally {
+            server.stop();
+            const actual = await vi.importActual<typeof import('@/daemon/localToolAgentRelay')>('@/daemon/localToolAgentRelay');
+            vi.mocked(localToolAgentContext).mockReset().mockImplementation(actual.localToolAgentContext);
+            vi.mocked(requestLocalToolAgent).mockReset().mockImplementation(actual.requestLocalToolAgent);
+        }
+    }, 15000);
     it.each([true, false])('keeps registration aligned with startup toolNames when initial availability is %s', async available => {
         const context = { serverUrl: 'https://saycode.test', machineId: 'M1', sessionId: 'S1', projectId: 'P1', callerGrant: 'signed-caller' };
         const client = { ...makeFakeClient(false), sessionId: 'S1', getMetadata: () => ({ machineId: 'M1' }) } as unknown as ApiSessionClient;

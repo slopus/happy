@@ -3574,7 +3574,7 @@ export async function startDaemon(): Promise<void> {
       : null;
     const browserSetupPolicyFile = join(configuration.happyHomeDir, 'browser-local-setup.v1.json');
     const browserSetupPolicy = await readBrowserSetupPolicy(browserSetupPolicyFile).catch(() => {
-      logger.debug('[DAEMON RUN] Browser setup policy could not be read; browser bridge disabled until recovery');
+      logger.warn(`[DAEMON RUN] BROWSER_SETUP_POLICY_CORRUPT: ${browserSetupPolicyFile} could not be read; browser bridge disabled until it is repaired or removed`);
       return null;
     });
     const browserBridge = new BrowserBridge({
@@ -3590,7 +3590,9 @@ export async function startDaemon(): Promise<void> {
         },
       } : {}),
     });
-    const browserLocalSetup = browserSetupPolicy !== null && !standaloneWindows
+    // Offered only while this daemon owns the bridge port: another daemon's extension connection
+    // could otherwise complete a pairing this daemon reports and revokes.
+    let browserLocalSetup = browserSetupPolicy !== null && !standaloneWindows
       && resolveBrowserBridgeHost(process.env) === '127.0.0.1'
       ? new BrowserLocalSetup({
         bridge: browserBridge, readToken: async () => nativeMessaging.token,
@@ -3601,11 +3603,12 @@ export async function startDaemon(): Promise<void> {
     try {
       if (!standaloneWindows && browserSetupPolicy !== null) {
         const bridgeHost = resolveBrowserBridgeHost(process.env);
+        const setupCandidate = browserLocalSetup;
         const bridgeServer = await startBrowserBridgeServer({
           bridge: browserBridge,
           port: DEFAULT_BROWSER_BRIDGE_PORT,
           host: bridgeHost
-          ,consumeSetup: browserLocalSetup ? id => browserLocalSetup.consume(id) : undefined
+          ,consumeSetup: setupCandidate ? id => setupCandidate.consume(id) : undefined
         });
         stopBrowserBridge = bridgeServer.stop;
         if (bridgeHost !== '127.0.0.1') {
@@ -3613,6 +3616,7 @@ export async function startDaemon(): Promise<void> {
         }
       }
     } catch (err) {
+      browserLocalSetup = undefined;
       logger.debug(`[DAEMON RUN] Browser bridge failed to start on ${DEFAULT_BROWSER_BRIDGE_PORT}: ${err instanceof Error ? err.message : String(err)}`);
     }
 

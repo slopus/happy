@@ -1,4 +1,4 @@
-import { readFile, mkdir, writeFile, rename } from 'node:fs/promises'
+import { readFile, mkdir, open, rename } from 'node:fs/promises'
 import { readFileSync } from 'node:fs'
 import { dirname } from 'node:path'
 import { randomBytes } from 'node:crypto'
@@ -23,7 +23,10 @@ export async function readBrowserSetupPolicy(file: string): Promise<BrowserSetup
 export async function writeBrowserSetupPolicy(file: string, scopes: BrowserSetupPolicy): Promise<void> {
     await mkdir(dirname(file), { recursive: true, mode: 0o700 })
     const temporary = `${file}.${randomBytes(8).toString('hex')}.tmp`
-    await writeFile(temporary, JSON.stringify({ version: 1, scopes }), { mode: 0o600, flag: 'wx' })
+    // fsync before rename: a crash must leave the old policy or the new one, never a truncated file
+    // (an unreadable policy disables the whole bridge).
+    const handle = await open(temporary, 'wx', 0o600)
+    try { await handle.writeFile(JSON.stringify({ version: 1, scopes })); await handle.sync() } finally { await handle.close() }
     await rename(temporary, file)
 }
 export function localBrowserExtensionMetadata() {
