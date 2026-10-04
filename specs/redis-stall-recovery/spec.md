@@ -88,3 +88,7 @@ replica별로 비교한 뒤 Redis/네트워크 경로와 peer 처리 지연을 �
   `main.ts` 는 처리되지 않은 거절에서 `process.exit(1)` 하므로, 그런 경로마다
   처리자를 달아야 한다 (streams adapter 의 `persistSession` 쓰기,
   터미널 세션 정리).
+
+## 지연 원인 분류 신호
+
+기존 scrape collector에서 ELU를 이전 snapshot 대비 delta로 노출한다. GC observer는 유한한 nonnegative duration의 최대값만 보관하고 다음 scrape에서 seconds로 노출·reset한다. GC는 비동기 보고 시점 기준 window라 event-loop max와 정확히 같은 사건 window라고 주장하지 않는다. 새 label·주기 timer·stack/payload 로그는 만들지 않는다. 근본 원인 수정과 운영 회복은 별도 판정한다.
