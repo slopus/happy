@@ -690,3 +690,44 @@ overlap the final 472/2/654 checks; do not sum them. Source review is accepted f
 commit/push to the existing feature PR, with latest-head CI tracked there. The earlier
 installed artifacts predate these fixes and require rebuild/reacceptance before release.
 No new live calls or operating/release changes were made.
+
+
+### Additional tmux-fallback verification on bc7670d4d — 2026-10-04
+
+This is a test/documentation follow-up to the preceding parent-committed review;
+no Happy production code changed. Parent additions above are preserved.
+
+- [x] Deferred default-launch rejection is also exercised through the plain fallback
+  callback using the same recognized environment. It remains refused after assignment.
+- [x] Bound tmux revoke/generation/expiry failures are followed by that same guarded plain
+  fallback and remain refused. The source passes the original managed environment into
+  `spawnTrackedHappyProcess`, whose actual spawn calls `launchSession` again.
+- [x] A tmux preparation/infrastructure failure before submission still permits one
+  validated plain fallback with the original bound environment. This is additional
+  regression coverage, not a newly reproduced Happy production defect.
+- [x] Source recheck: Windows owner preparation precedes final authorization while the
+  root is suspended. The final guard invokes `prepared.resume()`; its native adapter
+  writes the resume command before its first await. Failure cancels the suspended root.
+  This checks the execution boundary, not an assertion that root allocation happens
+  after validation. No native Windows process was run. The private setup-token helper
+  has no redundant standalone block left from serialization extraction.
+
+Final selected checks for this additional diff: **473 Happy tests**, **2 offline source
+integration tests**, `tsc --noEmit`, and diff whitespace check passed. Provider's confirmed
+adjacent-writer follow-up has **661 related tests** passing; it preserves validated
+forward import and config-only switch backup. Synthetic fixtures only; intercepted
+profile network attempts remain blocked, and no inference/operating service is used.
+No install, commit, push, Desktop/Studio edit or release action. ESLint configuration
+is still absent, so lint is not claimed. Parent will review and commit/push this new diff.
+
+
+Parent follow-up acceptance (2026-10-04): Parent independently reviewed and reran the final 67 setup-token launch tests; all passed. Current PR head/checks own the final CI result. Previous installed artifacts still require rebuild/reacceptance.
+
+
+CI at bc7670d4d (37190922701): Linux Node20/24 and Windows Node20/24 passed;
+macOS failed one existing viewerProxy first-byte authorization test (10432passed,
+42skipped,1failed). Its production/test files are unchanged against the fixed review
+base ec5c82428; the complete local viewerProxy file rerun passed29tests. This does not
+convert that failed CI to success or establish the timing cause. No unrelated viewer
+implementation/test was changed. The final test-only follow-up's latest-head CI is
+tracked in PR #684.

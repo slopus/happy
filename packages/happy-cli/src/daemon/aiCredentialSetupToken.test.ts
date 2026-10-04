@@ -142,6 +142,7 @@ describe('managed Claude setup-token runtime', () => {
     await result
     expect(spawn).not.toHaveBeenCalled()
     expect(command.mock.calls.some(([args]) => args[0] === 'new-window')).toBe(false)
+    await expect(runtime.launchSession(env, spawn)).rejects.toThrow('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
   })
 
   it('preserves machine-personal, non-Claude and prepared ZAI bypasses at final launch', async () => {
@@ -202,6 +203,21 @@ describe('managed Claude setup-token runtime', () => {
     release()
     expect(await launching).toMatchObject({ success: false })
     expect(command.mock.calls.some(([args]) => args[0] === 'new-window')).toBe(false)
+    await expect(runtime.launchSession(env, () => spawnHappyCLI(['claude'], { env }))).rejects.toThrow(/CLAUDE_SETUP_TOKEN_BINDING/)
+  })
+
+  it('permits a guarded plain fallback when tmux preparation fails before submission', async () => {
+    const { runtime } = fakeMachine([], null)
+    await runtime.groupSync(sync(1, payload(managed(A, 1, fakeToken('a')))))
+    const env = await runtime.sessionEnvironment('claude', { kind: 'claude-setup-token', managedAccountId: A,
+      groupScope: 'company-1', credentialGeneration: 1, bindingGrant: bindingGrant() })
+    const tmux = new TmuxUtilities('fixture')
+    vi.spyOn(tmux, 'executeTmuxCommand').mockResolvedValue({ returncode: 0, stdout: '123', stderr: '', command: [] })
+    vi.spyOn(tmux, 'ensureSessionExists').mockRejectedValue(new Error('synthetic tmux unavailable'))
+    expect(await tmux.spawnInTmux(['synthetic'], { sessionName: 'fixture' }, env, start => runtime.launchSession(env, start)))
+      .toMatchObject({ success: false })
+    await runtime.launchSession(env, () => spawnHappyCLI(['claude'], { env }))
+    expect(crossSpawn).toHaveBeenLastCalledWith(expect.any(String), expect.any(Array), expect.objectContaining({ env }))
   })
 
   it('checks expiry after the final provider read and permits only one submitted spawn', async () => {
