@@ -179,6 +179,7 @@ import { ensureViewerWebRoot } from '@/daemon/viewerWebRoot';
 import { BrowserSessionBrokerClient } from '@/daemon/browserSessionBrokerContract';
 import { readOrCreateBrowserBridgeToken } from '@/daemon/browserBridgeToken';
 import { deriveBrowserViewerBridgeToken } from '@/daemon/browserBridge';
+import { registerBrowserLocalSetupRpc } from '@/daemon/browserLocalSetupRpc';
 import { readFile, readdir } from 'node:fs/promises';
 import { DEFERRED_CONTINUATION_CONTEXT_MAX_BYTES } from '@/utils/deferredContinuationContext';
 import { ensureElectronGuiDisplay } from '@/daemon/electronGuiDisplay';
@@ -1440,6 +1441,7 @@ export class ApiMachineClient {
         // Browser bridge setup, driven by buttons on the machine screen so a
         // terminal-only Linux box needs no SSH session. See
         // specs/browser-setup-gui/.
+        registerBrowserLocalSetupRpc(this.rpcHandlerManager);
         this.rpcHandlerManager.registerHandler('browser-setup:status', async () => {
             const chrome = await detectChrome();
             const state = await readDaemonState();

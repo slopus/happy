@@ -1,4 +1,5 @@
 import { registerSessionWriteScopeTools } from '@/daemon/sessionWriteScopeAgentTools';
+import { localToolAgentContext, requestLocalToolAgent } from '@/daemon/localToolAgentRelay';
 /**
  * Happy MCP server
  * Provides Happy CLI specific tools including chat session title management
@@ -44,6 +45,7 @@ import { runScriptAutomationTool, scriptAutomationToolRequestSchema } from './sc
 export const BASH_STREAM_AGENT_TOOL_NAME = 'mcp__happy__bash_stream';
 
 export interface HappyServerHandlers {
+    localToolAvailable?: boolean;
     checkpointReader?: CheckpointAgentReader;
     admitTool?: <T>(work: () => Promise<T>) => Promise<T>;
     changeTitle: (title: string, branchSlug?: string) => Promise<{ success: boolean; error?: string }>;
@@ -277,6 +279,26 @@ function createMcpServer(handlers: HappyServerHandlers): McpServer {
         registerBrowserTools(mcp, runTool);
     }
 
+    if (handlers.localToolAvailable && !handlers.mandatorySandbox && !handlers.browserTaskRuntime) {
+        const invoke = async (operation: Record<string, unknown>, signal?: AbortSignal) => runTool(async () => {
+            try {
+                const context = await localToolAgentContext(handlers.client.sessionId, handlers.client.getMetadata()?.machineId);
+                if (!context) throw new Error('CALLER_REQUIRED');
+                const value = await requestLocalToolAgent(context, operation, signal);
+                return { content: [{ type: 'text' as const, text: JSON.stringify(value) }] };
+            } catch (error) {
+                const code = error instanceof Error && /^[A-Z_]{1,80}$/.test(error.message) ? error.message : 'LOCAL_TOOL_FAILED';
+                return { isError: true, content: [{ type: 'text' as const, text: code }] };
+            }
+        });
+        mcp.registerTool('local_tool_capabilities', {
+            title: 'Inspect approved computer tools', description: 'List currently approved local computer tool operations and their bounded input schemas. Inspect before controlling the computer. Native permission prompts and denied/ambiguous input require the user.', inputSchema: {},
+        }, (_input, extra) => invoke({ action: 'describe' }, extra.signal));
+        mcp.registerTool('local_tool_control', {
+            title: 'Control this computer', description: 'Run a currently approved operation from local_tool_capabilities. Use fresh window/element references; do not bypass native permission prompts. Requires the same authenticated user, machine and conversation on a running Desktop. Cancel releases only this conversation; remote work may remain unconfirmed.',
+            inputSchema: z.object({ action: z.enum(['run', 'cancel']), extensionId: z.string().regex(/^[a-z][a-z0-9.-]{1,127}$/), operation: z.string().regex(/^[A-Za-z][A-Za-z0-9_]{0,63}$/).optional(), parameters: z.record(z.string(), z.union([z.string(), z.number(), z.boolean(), z.null()])).optional() }).strict(),
+        }, (input, extra) => invoke({ ...input, ...(input.action === 'run' ? { parameters: input.parameters ?? {} } : {}) }, extra.signal));
+    }
     return mcp;
 }
 
@@ -497,6 +519,16 @@ export async function startHappyServer(
         logger.debug('[happyMCP] legacy browser_* tools disabled by HAPPY_BROWSER_TASK_RUNTIME_URL (agent browser PoC)');
     }
 
+    const computerAvailable = async () => {
+        if (options.mandatorySandbox || browserTaskRuntime) return false;
+        try {
+            const context = await localToolAgentContext(client.sessionId, client.getMetadata()?.machineId);
+            if (!context) return false;
+            const result = await requestLocalToolAgent(context, { action: 'describe' });
+            return Array.isArray(result.tools) && result.tools.length > 0;
+        } catch { return false; }
+    };
+    const initialComputerAvailable = await computerAvailable();
     const changeTitle = createChangeTitleHandler(client);
     // The same-UID Linux scope boundary denies socket(AF_UNIX); do not start without Happy tools.
     if (options.mandatorySandbox && options.sameUidSandbox && process.platform === 'linux') {
@@ -533,6 +565,9 @@ export async function startHappyServer(
             }
         }
         const mcp = createMcpServer({
+            // Keep the advertised tools and stateless request registration in sync.
+            // Invocation still resolves the caller and enforces current grants.
+            localToolAvailable: initialComputerAvailable,
             changeTitle,
             checkpointReader: options.checkpointReader,
             admitTool: options.admitTool,
@@ -599,7 +634,7 @@ export async function startHappyServer(
         url: baseUrl.toString(),
         socketPath,
         mcpConfig,
-        toolNames: [...(options.checkpointReader ? ['checkpoint_status', 'checkpoint_list', 'checkpoint_preview', 'checkpoint_diff'] : []), ...(options.mandatorySandbox
+        toolNames: [...(initialComputerAvailable ? ['local_tool_capabilities', 'local_tool_control'] : []), ...(options.checkpointReader ? ['checkpoint_status', 'checkpoint_list', 'checkpoint_preview', 'checkpoint_diff'] : []), ...(options.mandatorySandbox
             ? ['change_title', ...(browserTaskRuntime ? BROWSER_TASK_TOOL_NAMES : [])]
             : [...(options.proposeLesson ? ['propose_lesson'] : []), 'change_title', 'bash_stream', 'script_automations', ...(browserTaskRuntime ? BROWSER_TASK_TOOL_NAMES : BROWSER_TOOL_NAMES)])],
         stop: () => {

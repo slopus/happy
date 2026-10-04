@@ -1,4 +1,7 @@
+import { attachLocalToolAgentRelayRoutes } from './localToolAgentRelay';
 import { attachStandaloneDrain, type StandaloneDrain } from './standaloneDrain';
+import { attachBrowserLocalSetupRoutes } from './browserLocalSetupRoutes';
+import type { BrowserLocalSetup } from './browserLocalSetup';
 /**
  * HTTP control server for daemon management
  * Provides endpoints for listing sessions, stopping sessions, and daemon shutdown
@@ -102,9 +105,11 @@ export function startDaemonControlServer({
   verifyManagedReport,
   standaloneDrain,
   writeScopeRuntime,
+  browserLocalSetup,
 }: {
   writeScopeRuntime?: SessionWriteScopeRuntime | null;
   standaloneDrain?: StandaloneDrain;
+  browserLocalSetup?: BrowserLocalSetup;
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string, context?: StopSessionContext) => StopSessionResult;
   spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
@@ -907,6 +912,8 @@ export function startDaemonControlServer({
       });
     }
 
+    attachLocalToolAgentRelayRoutes(app);
+    if (browserLocalSetup) attachBrowserLocalSetupRoutes(app, browserLocalSetup);
     attachStandaloneDrain(app, managedRuntime ? undefined : standaloneDrain, requestShutdown);
 
     // Stop daemon

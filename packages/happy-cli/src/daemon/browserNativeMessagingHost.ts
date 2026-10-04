@@ -15,6 +15,7 @@ export async function runBrowserNativeMessagingHost({
     readToken,
     port,
     host,
+    consumeSetup,
 }: {
     input: AsyncIterable<Uint8Array>
     write: (chunk: Buffer) => void
@@ -22,9 +23,16 @@ export async function runBrowserNativeMessagingHost({
     readToken: () => Promise<string>
     port: number
     host: string
+    consumeSetup?: (operationId: string) => Promise<unknown>
 }): Promise<void> {
     try {
         const request = decodeNativeMessage(await readNativeMessageFrame(input))
+        if (request && typeof request === 'object' && 'type' in request && request.type === 'setup-pair') {
+            if (!('operationId' in request) || typeof request.operationId !== 'string'
+                || !/^[A-Za-z0-9_-]{32}$/.test(request.operationId) || !consumeSetup) throw new Error('SETUP_UNAVAILABLE')
+            write(encodeNativeMessage(await consumeSetup(request.operationId)))
+            return
+        }
         const token = await readToken()
         const response = createNativePairingResponse({ request, token, port, host })
         write(encodeNativeMessage(response))

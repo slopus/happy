@@ -26,6 +26,24 @@ function connectExtension(port: number, query: string): Promise<{ ws: WebSocket;
 }
 
 describe('browserBridgeServer', () => {
+    it('admits setup exchange only from the exact installed extension over loopback', async () => {
+        const consume: string[] = []
+        const server = await startBrowserBridgeServer({ bridge: new BrowserBridge({ authToken: TOKEN }), port: 0,
+            consumeSetup: async id => { consume.push(id); return { token: 'scoped-test-token', pairingId: id } },
+        })
+        const id = 'a'.repeat(32)
+        const connect = (origin: string) => new WebSocket(`ws://127.0.0.1:${server.port}/setup-pair?operationId=${id}`, { origin })
+        try {
+            const bad = connect('https://untrusted.test')
+            expect(await new Promise<number>(resolve => bad.on('close', resolve))).toBe(4403)
+            expect(consume).toEqual([])
+            const good = connect('chrome-extension://emaponnolfbhnoaabgiebjmbdlmoifke')
+            const result = await new Promise<string>(resolve => good.on('message', raw => resolve(raw.toString())))
+            expect(JSON.parse(result)).toEqual({ ok: true, config: { token: 'scoped-test-token', pairingId: id } })
+            expect(consume).toEqual([id])
+            good.close()
+        } finally { await server.stop() }
+    })
     let bridge: BrowserBridge
     let port: number
     let stop: () => Promise<void>

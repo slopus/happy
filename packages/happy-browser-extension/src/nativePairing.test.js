@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { BROWSER_NATIVE_HOST_NAME, attemptNativePairing } from './nativePairing.js'
+import { BROWSER_NATIVE_HOST_NAME, attemptNativePairing, attemptSetupPairing } from './nativePairing.js'
 
 function fakeChrome({ stored = {}, response, error } = {}) {
     const set = vi.fn(async () => {})
@@ -23,6 +23,11 @@ function fakeChrome({ stored = {}, response, error } = {}) {
 }
 
 describe('attemptNativePairing', () => {
+    it('preserves a scoped Desktop setup across worker restarts without replacing its token', async () => {
+        const { chrome, sendNativeMessage } = fakeChrome({ stored: { token: 'scoped', viewerKey: 'bv1_abcdefghijklmnopqrstuvwxyz012345', pairingId: 'setup-id' } })
+        expect(await attemptNativePairing(chrome)).toEqual({ status: 'already-configured' })
+        expect(sendNativeMessage).not.toHaveBeenCalled()
+    })
     it('stores local pairing config returned by the Happy native host', async () => {
         const { chrome, set, sendNativeMessage } = fakeChrome({
             response: {
@@ -141,6 +146,22 @@ describe('attemptNativePairing', () => {
         })
 
         await expect(pairing).resolves.toEqual({ status: 'already-configured' })
+        expect(set).not.toHaveBeenCalled()
+    })
+})
+
+describe('Desktop setup native pairing', () => {
+    const operationId = 'a'.repeat(32)
+    const config = { token: 'scoped', port: 41777, host: '127.0.0.1', viewerKey: 'bv1_abcdefghijklmnopqrstuvwxyz012345', pairingId: operationId, profile: 'My Chrome' }
+    it('uses the one-time operation, overwrites legacy pairing, and validates exact marker and scope', async () => {
+        const { chrome, set, sendNativeMessage } = fakeChrome({ stored: { token: 'legacy' }, response: { ok: true, config } })
+        expect(await attemptSetupPairing(chrome, operationId)).toEqual({ status: 'paired' })
+        expect(sendNativeMessage).toHaveBeenCalledWith(BROWSER_NATIVE_HOST_NAME, { type: 'setup-pair', operationId })
+        expect(set).toHaveBeenCalledWith(config)
+    })
+    it.each([{ ...config, pairingId: 'other' }, { ...config, viewerKey: '' }, { ...config, host: 'remote' }])('refuses incorrect config without fallback', async config => {
+        const { chrome, set } = fakeChrome({ response: { ok: true, config } })
+        expect(await attemptSetupPairing(chrome, operationId)).toEqual({ status: 'invalid-response' })
         expect(set).not.toHaveBeenCalled()
     })
 })

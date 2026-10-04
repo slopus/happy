@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Happy Browser Bridge",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAw4/QXXAxDB0tHkqpx6vYyNtZK2DJ+oRjFFjud9JJauEaLTN1Fvqam7j7olEHlkGKe0LprwuQ1sHyFb1sftTA5XmIfagdyttJiq6fuIlhE7yndjNL87Ly7klncBvKIxqCSycJ8a55zI0DeHnTWNoz8IhN8WLqOXe5scMdqKIKQ7VVJMlvBHYqJiq7XXP6mC3LTbXFm2NkennmH/5K+4sSILuVCB1CRsLY7sP5VtqzNyY7LvW0GS2uKN5/qaVm9hfmps1nk++dfM4u8voFvsW+MQQVvZZfYxXL0772O/tn1UYMiB66xZ9IIej2CGeq6Le88ulnIG7zPEIJkzFQtBZJ3QIDAQAB",
   "description": "Lets a happy CLI session control this logged-in Chrome profile through the local daemon bridge.",
   "permissions": ["tabs", "storage", "scripting", "debugger", "nativeMessaging"],

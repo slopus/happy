@@ -58,6 +58,8 @@ import { decideResumeCredentials, readStagedTokenFromHomeDir, tokensShareIdentit
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { preflightDaemonControlServer, startDaemonControlServer } from './controlServer';
 import { BrowserBridge } from './browserBridge';
+import { BrowserLocalSetup } from './browserLocalSetup';
+import { readBrowserSetupPolicy, writeBrowserSetupPolicy, localBrowserExtensionMetadata } from './browserLocalSetupStore';
 import { BrowserSessionBrokerClient } from './browserSessionBrokerContract';
 import { getDaemonTerminalSessionCount } from './daemonTerminalSessions';
 import { startBrowserBridgeServer, DEFAULT_BROWSER_BRIDGE_PORT, resolveBrowserBridgeHost } from './browserBridgeServer';
@@ -3570,8 +3572,14 @@ export async function startDaemon(): Promise<void> {
     const browserSessionBroker = !standaloneWindows && process.env.HAPPY_BROWSER_BROKER_SOCKET
       ? new BrowserSessionBrokerClient(process.env.HAPPY_BROWSER_BROKER_SOCKET)
       : null;
+    const browserSetupPolicyFile = join(configuration.happyHomeDir, 'browser-local-setup.v1.json');
+    const browserSetupPolicy = await readBrowserSetupPolicy(browserSetupPolicyFile).catch(() => {
+      logger.debug('[DAEMON RUN] Browser setup policy could not be read; browser bridge disabled until recovery');
+      return null;
+    });
     const browserBridge = new BrowserBridge({
       authToken: nativeMessaging.token,
+      setupPolicy: browserSetupPolicy ?? {},
       ...(browserSessionBroker ? {
         onViewerActivity: (viewerKey: string) => {
           void browserSessionBroker.request({ op: 'touch', viewerKey }).then((response) => {
@@ -3582,14 +3590,22 @@ export async function startDaemon(): Promise<void> {
         },
       } : {}),
     });
+    const browserLocalSetup = browserSetupPolicy !== null && !standaloneWindows
+      && resolveBrowserBridgeHost(process.env) === '127.0.0.1'
+      ? new BrowserLocalSetup({
+        bridge: browserBridge, readToken: async () => nativeMessaging.token,
+        port: DEFAULT_BROWSER_BRIDGE_PORT, extension: localBrowserExtensionMetadata,
+        persistPolicy: policy => writeBrowserSetupPolicy(browserSetupPolicyFile, policy),
+      }) : undefined;
     let stopBrowserBridge: () => Promise<void> = async () => {};
     try {
-      if (!standaloneWindows) {
+      if (!standaloneWindows && browserSetupPolicy !== null) {
         const bridgeHost = resolveBrowserBridgeHost(process.env);
         const bridgeServer = await startBrowserBridgeServer({
           bridge: browserBridge,
           port: DEFAULT_BROWSER_BRIDGE_PORT,
           host: bridgeHost
+          ,consumeSetup: browserLocalSetup ? id => browserLocalSetup.consume(id) : undefined
         });
         stopBrowserBridge = bridgeServer.stop;
         if (bridgeHost !== '127.0.0.1') {
@@ -3627,6 +3643,7 @@ export async function startDaemon(): Promise<void> {
       onHappySessionRuntime,
       portRegistry,
       browserBridge,
+      browserLocalSetup,
       // 제어 서버의 파일 접근도 같은 잠금 정책을 따른다(HAPPY_RPC_ALLOWED_ROOT).
       allowedRoot: resolveDaemonAllowedRoot(process.env, os.homedir()),
       standaloneDrain: standaloneWindows?.drain,

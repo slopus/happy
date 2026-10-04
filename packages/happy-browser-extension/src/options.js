@@ -1,6 +1,6 @@
 import { parseAllowlist } from './allowlist.js'
 import { parseAutoConnectParams } from './autoConnect.js'
-import { attemptNativePairing } from './nativePairing.js'
+import { attemptNativePairing, attemptSetupPairing } from './nativePairing.js'
 
 const hostInput = document.getElementById('host')
 const portInput = document.getElementById('port')
@@ -10,6 +10,8 @@ const allowlistInput = document.getElementById('allowlist')
 const status = document.getElementById('status')
 const autoPairingStatus = document.getElementById('auto-pairing-status')
 const retryAutoPairingButton = document.getElementById('retry-auto-pairing')
+const setupOperationId = new URLSearchParams(location.search).get('setup')
+if (setupOperationId) history.replaceState(null, '', location.pathname)
 
 const stored = await chrome.storage.local.get(['host', 'port', 'token', 'profile', 'allowlist'])
 hostInput.value = stored.host || '127.0.0.1'
@@ -111,7 +113,16 @@ async function tryNativePairing() {
 
 retryAutoPairingButton.addEventListener('click', tryNativePairing)
 
-if (autoConnect) {
+if (setupOperationId) {
+    const result = await attemptSetupPairing(chrome, setupOperationId)
+    autoPairingStatus.textContent = result.status === 'paired'
+        ? 'Saycode 사용자별 연결을 저장했습니다. Desktop에서 연결 확인을 계속하세요.'
+        : 'Saycode 설정을 완료하지 못했습니다. Desktop에서 다시 연결을 시작하세요.'
+    retryAutoPairingButton.hidden = true
+    tokenInput.value = ''
+    tokenInput.disabled = true
+    document.getElementById('save').disabled = true
+} else if (autoConnect) {
     autoPairingStatus.textContent = '설정 링크의 연결 정보를 사용했습니다.'
 } else {
     await tryNativePairing()

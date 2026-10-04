@@ -52,6 +52,8 @@ interface Connection {
     pending: Map<number, PendingRequest>
 }
 
+export type BrowserSetupPolicy = Record<string, { pairingId: string; profile: string } | null>
+
 const DEFAULT_PROFILE = 'default'
 const DEFAULT_REQUEST_TIMEOUT_MS = 30_000
 const AUTH_FAILURE_WINDOW_MS = 60_000
@@ -109,11 +111,13 @@ export class BrowserBridge {
     private nextRequestId = 1
     private readonly lastAuthFailureByScope = new Map<string, number>()
     private readonly lastViewerActivityByScope = new Map<string, number>()
+    private setupPolicy: BrowserSetupPolicy
 
-    constructor(opts: { authToken: string; requestTimeoutMs?: number; onViewerActivity?: (viewerKey: string) => void }) {
+    constructor(opts: { authToken: string; requestTimeoutMs?: number; onViewerActivity?: (viewerKey: string) => void; setupPolicy?: BrowserSetupPolicy }) {
         this.authToken = opts.authToken
         this.requestTimeoutMs = opts.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS
         this.onViewerActivity = opts.onViewerActivity
+        this.setupPolicy = structuredClone(opts.setupPolicy ?? {})
     }
 
     /**
@@ -126,6 +130,13 @@ export class BrowserBridge {
         if (params.viewerKey !== undefined && !VIEWER_KEY_RE.test(params.viewerKey)) {
             socket.close(4401, 'invalid viewer key')
             return false
+        }
+        if (params.viewerKey && Object.hasOwn(this.setupPolicy, params.viewerKey)) {
+            const allowed = this.setupPolicy[params.viewerKey]
+            if (!allowed || allowed.pairingId !== params.pairingId || allowed.profile !== params.profile) {
+                socket.close(4403, 'browser setup permission revoked or mismatched')
+                return false
+            }
         }
         const expectedToken = params.viewerKey
             ? deriveBrowserViewerBridgeToken(this.authToken, params.viewerKey)
@@ -170,6 +181,21 @@ export class BrowserBridge {
         })
         return true
     }
+
+    /** Core-only durable setup grant. Disconnect before admitting a replacement generation. */
+    setSetupPolicy(policy: BrowserSetupPolicy): void {
+        this.setupPolicy = structuredClone(policy)
+        for (const connection of this.byTarget.values()) {
+            if (!connection.viewerKey || !Object.hasOwn(policy, connection.viewerKey)) continue
+            const allowed = policy[connection.viewerKey]
+            if (allowed?.pairingId === connection.pairingId && allowed?.profile === connection.profile) continue
+            this.byTarget.delete(connectionKey(connection.viewerKey, connection.profile))
+            this.rejectAllPending(connection, new BridgeRequestError('PERMISSION_REVOKED', 'browser control permission revoked'))
+            connection.socket.close(4403, 'browser control permission revoked')
+        }
+    }
+
+    getSetupPolicy(): BrowserSetupPolicy { return structuredClone(this.setupPolicy) }
 
     /** Connected extensions (introspection / status endpoint). */
     connections(viewerKey?: string): Array<{ profile: string; pairingId?: string; viewerKey?: string }> {

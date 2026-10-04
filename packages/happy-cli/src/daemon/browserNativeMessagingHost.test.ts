@@ -8,6 +8,17 @@ import { decodeNativeMessage, encodeNativeMessage } from './browserNativeMessagi
 import { runBrowserNativeMessagingHost } from './browserNativeMessagingHost'
 
 describe('runBrowserNativeMessagingHost', () => {
+    it('delivers scoped setup through native framing without reading or printing the base token', async () => {
+        const output: Buffer[] = []
+        const operationId = 'a'.repeat(32)
+        await runBrowserNativeMessagingHost({
+            input: Readable.from([encodeNativeMessage({ type: 'setup-pair', operationId })]),
+            write: chunk => output.push(chunk), writeError: () => {},
+            readToken: async () => { throw new Error('must not read legacy token') },
+            port: 41777, host: '127.0.0.1', consumeSetup: async id => ({ ok: true, config: { pairingId: id, token: 'scoped' } }),
+        })
+        expect(decodeNativeMessage(output[0])).toEqual({ ok: true, config: { pairingId: operationId, token: 'scoped' } })
+    })
     it('keeps the executable stdout protocol-clean in dev mode', async () => {
         const testHome = await mkdtemp(join(tmpdir(), 'happy-native-host-'))
 

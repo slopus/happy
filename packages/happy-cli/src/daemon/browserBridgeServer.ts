@@ -16,10 +16,11 @@ import { DEFAULT_BROWSER_BRIDGE_PORT } from './browserBridgeConfig'
 
 export { DEFAULT_BROWSER_BRIDGE_PORT, resolveBrowserBridgeHost } from './browserBridgeConfig'
 
-export function startBrowserBridgeServer({ bridge, port, host = '127.0.0.1' }: {
+export function startBrowserBridgeServer({ bridge, port, host = '127.0.0.1', consumeSetup }: {
     bridge: BrowserBridge
     port: number
     host?: string
+    consumeSetup?: (operationId: string) => Promise<unknown>
 }): Promise<{ port: number; stop: () => Promise<void> }> {
     return new Promise((resolve, reject) => {
         const wss = new WebSocketServer({ host, port })
@@ -49,6 +50,20 @@ export function startBrowserBridgeServer({ bridge, port, host = '127.0.0.1' }: {
             // incoming connection once HAPPY_BROWSER_BRIDGE_HOST allowed IPv6
             // binds.
             const url = new URL(request.url ?? '/', 'http://bridge.invalid')
+            if (url.pathname === '/setup-pair') {
+                const operationId = url.searchParams.get('operationId') ?? ''
+                if (!consumeSetup || host !== '127.0.0.1' || request.socket.remoteAddress !== '127.0.0.1'
+                    || request.headers.origin !== 'chrome-extension://emaponnolfbhnoaabgiebjmbdlmoifke'
+                    || [...url.searchParams.keys()].join(',') !== 'operationId'
+                    || !/^[A-Za-z0-9_-]{32}$/.test(operationId)) {
+                    socket.close(4403, 'setup exchange refused'); return
+                }
+                void consumeSetup(operationId).then(config => {
+                    socket.send(JSON.stringify({ ok: true, config }))
+                    socket.close(1000)
+                }).catch(() => socket.close(4403, 'setup expired'))
+                return
+            }
             bridge.handleConnection(socket, {
                 token: url.searchParams.get('token') ?? undefined,
                 profile: url.searchParams.get('profile') ?? undefined,

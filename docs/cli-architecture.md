@@ -708,3 +708,9 @@ every5s while in use. It aborts native probe processes on revoke/replacement/off
 inactivity/shutdown, preserving spending; it shares the runtime queue and provider
 collector lock with organization/manual probes. UI status is normalized separately
 from nested usage/auth, using integration6a930c9 durable budget metadata.
+
+## Optional local computer setup and control
+
+The daemon owns trusted viewer-scoped browser setup, single-use operation IDs, pairing markers, profile ownership and durable revocation policy. Native messaging obtains credentials inside the trusted host; setup links contain only operation IDs. Completion requires a matching viewer/profile/pairing marker and an actual tabs probe. The bundled Chrome 0.2.0 extension implements this candidate protocol; release and Desktop pin adoption remain separate.
+
+`localToolAgentRelay` discovers the running Desktop broker through authenticated daemon control routes with a 30-second lease and rejects takeover of a live relay. Discovery grants no caller authority. Happy MCP advertises `local_tool_capabilities` and `local_tool_control` only when available at session startup, outside mandatory sandbox/browser-task runtimes. Each invocation fixes launcher machine/session/caller context, carries MCP cancellation, and asks Desktop to verify the live caller and separate computer-control consent. Cloud requires a signed Studio caller grant; only the trusted loopback Standalone configuration may use local Happy credentials. No arbitrary executable/argv or raw CUA MCP is exposed. Revisit this boundary when adding another provider or headless host; keep custody and permission enforcement with the trusted broker.

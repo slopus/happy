@@ -1,3 +1,4 @@
+import { localToolAgentContext, requestLocalToolAgent } from '@/daemon/localToolAgentRelay';
 /** Happy MCP registration, tool routing and session-specific guidance contracts. */
 import { runBashStream } from './bashStream';
 import { RuntimeProducerGate } from '@/sessionDrain/runtimeProducerGate';
@@ -9,6 +10,11 @@ import { describe, expect, it, vi } from 'vitest';
 import { createChangeTitleHandler, startHappyServer } from './startHappyServer';
 import { MandatorySandboxError } from '@/sandbox/sandboxPolicy';
 import type { ApiSessionClient } from '@/api/apiSession';
+
+vi.mock('@/daemon/localToolAgentRelay', async original => {
+    const actual = await original<typeof import('@/daemon/localToolAgentRelay')>();
+    return { ...actual, localToolAgentContext: vi.fn(actual.localToolAgentContext), requestLocalToolAgent: vi.fn(actual.requestLocalToolAgent) };
+});
 
 vi.mock('./bashStream', async original => {
     const actual = await original<typeof import('./bashStream')>();
@@ -583,5 +589,62 @@ describe('session write scope protected tool surface', () => {
             expect(names).not.toContain('script_automations');
             expect(names).not.toContain('browser_open_tab');
         } finally { server.stop(); if (previous === undefined) delete process.env.HAPPY_WRITE_SCOPE_SESSION; else process.env.HAPPY_WRITE_SCOPE_SESSION = previous; }
+    });
+});
+
+describe('approved Desktop computer tools in the session MCP', () => {
+    it.each([true, false])('keeps registration aligned with startup toolNames when initial availability is %s', async available => {
+        const context = { serverUrl: 'https://saycode.test', machineId: 'M1', sessionId: 'S1', projectId: 'P1', callerGrant: 'signed-caller' };
+        const client = { ...makeFakeClient(false), sessionId: 'S1', getMetadata: () => ({ machineId: 'M1' }) } as unknown as ApiSessionClient;
+        vi.mocked(localToolAgentContext).mockResolvedValue(context);
+        vi.mocked(requestLocalToolAgent).mockResolvedValue({ version: 1, tools: available ? [] : [{ extensionId: 'buzzni.test' }] })
+            .mockResolvedValueOnce({ version: 1, tools: available ? [{ extensionId: 'buzzni.test' }] : [] });
+        const server = await startHappyServer(client);
+        try {
+            const response = await fetch(server.url, {
+                method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+                body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+            });
+            expect(response.status).toBe(200);
+            const raw = await response.text();
+            const payload = JSON.parse(raw.startsWith('event:') ? raw.slice(raw.indexOf('data: ') + 6) : raw);
+            const names = payload.result.tools.map((tool: { name: string }) => tool.name);
+            expect(names.includes('local_tool_control')).toBe(available);
+            expect(names.includes('local_tool_control')).toBe(server.toolNames.includes('local_tool_control'));
+        } finally {
+            server.stop();
+            const actual = await vi.importActual<typeof import('@/daemon/localToolAgentRelay')>('@/daemon/localToolAgentRelay');
+            vi.mocked(localToolAgentContext).mockReset().mockImplementation(actual.localToolAgentContext);
+            vi.mocked(requestLocalToolAgent).mockReset().mockImplementation(actual.requestLocalToolAgent);
+        }
+    });
+
+    it('advertises current grants, fixes caller attribution, rejects overrides and rechecks revocation', async () => {
+        const context = { serverUrl: 'https://saycode.test', machineId: 'M1', sessionId: 'S1', projectId: 'P1', callerGrant: 'signed-caller' };
+        const client = { ...makeFakeClient(false), sessionId: 'S1', getMetadata: () => ({ machineId: 'M1' }) } as unknown as ApiSessionClient;
+        let denied = false;
+        vi.mocked(localToolAgentContext).mockResolvedValue(context);
+        vi.mocked(requestLocalToolAgent).mockImplementation(async (_context, request) => {
+            if (request.action === 'describe') return { version: 1, tools: [{ extensionId: 'buzzni.test' }] };
+            if (denied) throw new Error('PERMISSION_REQUIRED');
+            return { version: 1, state: 'succeeded' };
+        });
+        const server = await startHappyServer(client);
+        try {
+            expect(server.toolNames).toContain('local_tool_control');
+            const result = await callTool(server.url, 1, 'local_tool_control', { action: 'run', extensionId: 'buzzni.test', operation: 'windows' });
+            expect(JSON.parse(result.result.content[0].text)).toMatchObject({ state: 'succeeded' });
+            expect(requestLocalToolAgent).toHaveBeenLastCalledWith(context, { action: 'run', extensionId: 'buzzni.test', operation: 'windows', parameters: {} }, expect.any(AbortSignal));
+            const invalid = await callTool(server.url, 2, 'local_tool_control', { action: 'run', extensionId: 'buzzni.test', operation: 'windows', sessionId: 'S-other' });
+            expect(invalid.result?.isError ?? Boolean(invalid.error)).toBe(true);
+            denied = true;
+            const revoked = await callTool(server.url, 3, 'local_tool_control', { action: 'run', extensionId: 'buzzni.test', operation: 'windows' });
+            expect(revoked.result).toMatchObject({ isError: true, content: [{ type: 'text', text: 'PERMISSION_REQUIRED' }] });
+        } finally {
+            server.stop();
+            const actual = await vi.importActual<typeof import('@/daemon/localToolAgentRelay')>('@/daemon/localToolAgentRelay');
+            vi.mocked(localToolAgentContext).mockReset().mockImplementation(actual.localToolAgentContext);
+            vi.mocked(requestLocalToolAgent).mockReset().mockImplementation(actual.requestLocalToolAgent);
+        }
     });
 });
