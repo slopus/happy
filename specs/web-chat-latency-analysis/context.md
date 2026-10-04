@@ -98,3 +98,23 @@ Red: Happy observer regressions4 and Web allowlist1 failed before implementation
 Implementation complete; companion Ready PRs next. Deploy Web parser before future CI-only instrumentation CLI release, then verify ethan installed/running version and measure initial requests with independent durable completion. Package version/vendor/shared daemon unchanged; no release/tag/publish performed.
 
 #691 merge65dc4114b3359c72d2c917797e03908a68fd7947 independently confirmed.
+
+## .288 instrumentation release preparation — 2026-10-04
+
+#693 merged8b7fa7346e386d061fed0a4569d318ff88ff2734 and #4670 merged212550c1c0b00e6c4ad171ebee15cdcaf0b9ebbc independently confirmed. Happy merged CLI Smoke Test37187092168 completed/success. Web Build and Push37187097280 completed/success, manifests commitf43cfdd pushed. Development web-ui image212550c desired/ready/updated2, observedGeneration=generation1265 verified. New parser is deployed before any instrumentation CLI release. No usage wire change.
+
+Registry latest/source=.287; candidate exact .288 E404 and matching tag absent. Version-only .288 candidate based on merged main8b7fa734; no vendor/shared daemon/account changes. Related client128/recovery52/latency14=194 and registry verifier9 passed with CLI global build/typecheck. Artifact guard11 passed on rerun with task-specific npm cache: total214 distinct related tests across5 files. Initial guard7 failures were cache EPERM, not guard contract failures; shared cache permissions unchanged. Two initially overlapping build invocations were cancelled and discarded; final regression run was single build. Existing bin-path/empty-chunk notices unchanged. No full-suite/ESLint claim.
+
+Prepared /tmp/happy-cli-288-prepared-20261004; artifact guard --install-smoke exit0, exact .288,12 bundled files and fresh lifecycle-enabled install with agent facade, dependency closure, daemon preflight/status verified. Guard isolated install/home and cleaned temporary resources. No local publish/tag/latest mutation. Ready version PR next; after merge and CI verify, exact happy-cli-v1.1.10-aplus.288 tag push requires release approval per docs/happy-cli-release.md. CI is sole publisher. Then released vendor/ethan install version + existing session preservation + independent durable initial-request measurements. No new speedup claim.
+
+## .288 release scope review — 2026-10-04
+
+Review confirmed competing .288 version PRs: #694 (Draft, scope lifecycle) and #696 (Ready, inventory instrumentation). Consolidate version publication in #696; #694 is superseded, not a .289 candidate. Its original Linux Claude warning is retained as a release acceptance constraint rather than silently waived.
+
+The tested #696 head69ca5ab3 already contains #689/c9af5da1 (graceful daemon cleanup watchdog cancellation and fresh Claude state initialization), #690/871fc11f (unattended Agent Browser installation, digest-pinned released images and new release workflow), and #693 inventory timing. Its previous214 tests/build/install smoke are that candidate's validation, not full validation of later main changes.
+
+Current main additionally contains #695/c602837a server stream write timing and newly merged #683/eac4a67a. #683 deliberately rejects Linux same-UID protected Claude launch when sandboxed Happy MCP is unreachable; it does not restore Linux Claude transport support. A release from main after #696 merge includes this fail-closed restriction. Therefore the review suggestion to omit the #683 hold cannot be applied as written. Before tag approval, validate the exact final release tree and explicitly disclose the unsupported Linux same-UID protected Claude path; do not describe it as a successful Linux Claude support release. #683 PR's reported validation is historical PR evidence, not rerun by this increment.
+
+#690 adds the first future exercise of DOCKER_PAT-gated Docker Hub multi-arch image publication and abp-images.json generation before npm publish. The workflow was inspected: absent credentials warn and still publish CLI without the manifest, causing one-line install to refuse that release. No image publishing, credential availability, public pull or generated-manifest acceptance has been verified in this increment. Tag approval must cover image publication as well as npm latest; release acceptance must distinguish CLI registry smoke from image/manifest success. No secrets were read, no tag/publish/runtime changes.
+
+#696 original-head CLI Smoke Test37187902232 all5 jobs passed. Documentation-only scope correction requires diff validation; previous candidate results are preserved with their exact scope.
