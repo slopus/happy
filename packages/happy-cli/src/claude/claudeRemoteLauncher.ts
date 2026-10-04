@@ -428,13 +428,17 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         logger.debug('[remote]: Session reset');
                         session.clearSessionId();
                     },
-                    onReady: async (status) => {
+                    onReady: async (status, hasPendingBackgroundTasks) => {
                         // Assistant messages are queued until the next tick. Deliver
                         // them before closing an auth-failed turn, or the close can
                         // run before the mapper has even opened that turn.
                         if (status === 'failed') await messageQueue.flush();
                         session.client.closeClaudeSessionTurn(status ?? 'completed');
-                        if (status !== 'failed' && !pending && session.queue.size() === 0) {
+                        // A result while background tasks are still in flight
+                        // (subagents, background shells) is a pause, not a session
+                        // end — hold the "done" push until the turn that wakes on
+                        // task completion lands the real one.
+                        if (status !== 'failed' && !pending && session.queue.size() === 0 && !hasPendingBackgroundTasks) {
                             session.api.push().sendSessionNotification({
                                 kind: 'done',
                                 metadata: session.client.getMetadata(),

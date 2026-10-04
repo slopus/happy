@@ -37,7 +37,7 @@ export async function claudeRemote(opts: {
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode } | null>,
-    onReady: (status?: 'failed') => void | Promise<void>,
+    onReady: (status?: 'failed', hasPendingBackgroundTasks?: boolean) => void | Promise<void>,
     isAborted: (toolCallId: string) => boolean,
 
     // Callbacks
@@ -146,6 +146,12 @@ export async function claudeRemote(opts: {
 
     // Per-turn only: do not retain stale auth state after a user retries.
     let providerAuthFailed = false;
+
+    // Live background work (subagents, background shells), tracked from the
+    // SDK's replace-on-change stream. A result that arrives while this is
+    // set is a pause for background work to wake the session, not a session
+    // end. Ambient tasks are CLI housekeeping and don't count as user work.
+    let hasPendingBackgroundTasks = false;
 
     // Track thinking state
     let thinking = false;
@@ -320,6 +326,14 @@ export async function claudeRemote(opts: {
                 }
             }
 
+            // Track live background work. The SDK pushes a full replacement
+            // set on every membership change, so swap the flag wholesale.
+            if (message.type === 'system' && message.subtype === 'background_tasks_changed') {
+                // Optional-chain guard: the wire messages come from the user's
+                // installed CLI whose version may predate the pinned SDK type.
+                hasPendingBackgroundTasks = message.tasks?.some(task => !task.ambient) ?? false;
+            }
+
             // Buffer plan rate-limit events; flushed on the next result
             if (message.type === 'rate_limit_event') {
                 const info = (message as { rate_limit_info?: RateLimitEventInfo }).rate_limit_info;
@@ -355,7 +369,7 @@ export async function claudeRemote(opts: {
                 if (providerAuthFailed) {
                     await opts.onReady('failed');
                 } else {
-                    await opts.onReady();
+                    await opts.onReady(undefined, hasPendingBackgroundTasks);
                 }
                 providerAuthFailed = false;
 

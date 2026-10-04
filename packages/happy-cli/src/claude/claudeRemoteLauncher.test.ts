@@ -94,4 +94,19 @@ describe('claudeRemoteLauncher provider auth', () => {
         expect(notification).not.toHaveBeenCalled();
         expect(claudeRemote).toHaveBeenCalledTimes(2);
     });
+
+    it('holds the done push while background tasks are pending and sends it once they drain', async () => {
+        const { session, notification, stop } = fixture();
+        vi.mocked(claudeRemote).mockImplementation(async opts => {
+            // A result that pauses for background work must not notify…
+            await opts.onReady(undefined, true);
+            expect(notification).not.toHaveBeenCalled();
+            // …and the turn that wakes once tasks drain does.
+            await opts.onReady(undefined, false);
+            expect(notification).toHaveBeenCalledOnce();
+            expect(session.client.closeClaudeSessionTurn).toHaveBeenLastCalledWith('completed');
+            stop();
+        });
+        await claudeRemoteLauncher(session as any);
+    });
 });

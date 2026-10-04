@@ -106,7 +106,7 @@ describe('claudeRemote', () => {
             expect.objectContaining({ message: { role: 'user', content: 'Original prompt' } }),
             expect.objectContaining({ message: { role: 'user', content: 'User retry after login' } }),
         ]);
-        expect(onReady.mock.calls).toEqual([['failed'], []]);
+        expect(onReady.mock.calls).toEqual([['failed'], [undefined, false]]);
         expect(onCompletionEvent).toHaveBeenCalledOnce();
         expect(query).toHaveBeenCalledOnce();
         expect(query).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ resume: 'fixture-session' }) }));
@@ -118,7 +118,7 @@ describe('claudeRemote', () => {
             { type: 'result', subtype: 'success', is_error: false, result: expired },
         ]);
         expect(callbacks.onCompletionEvent).not.toHaveBeenCalled();
-        expect(callbacks.onReady).toHaveBeenCalledWith();
+        expect(callbacks.onReady).toHaveBeenCalledWith(undefined, false);
     });
 
     it.each(['/clear', 'Ordinary prompt'])('awaits the async ready callback for %s', async prompt => {
@@ -135,6 +135,89 @@ describe('claudeRemote', () => {
             isAborted: () => false, onSessionFound: vi.fn(), onMessage: vi.fn(),
         })).rejects.toBe(failure);
         expect(nextMessage).toHaveBeenCalledOnce();
+    });
+
+    it('flags a result as a background-work pause when tasks are in flight', async () => {
+        const callbacks = await runMessages([
+            {
+                type: 'system', subtype: 'background_tasks_changed',
+                tasks: [{ task_id: 'task-1', task_type: 'subagent', description: 'Researcher' }],
+                uuid: 'u1', session_id: 's1',
+            },
+            { type: 'result', subtype: 'success', is_error: false, result: 'Prompt done' },
+        ]);
+        expect(callbacks.onReady).toHaveBeenCalledWith(undefined, true);
+    });
+
+    it('clears the pause flag when the replacement task set empties', async () => {
+        const callbacks = await runMessages([
+            {
+                type: 'system', subtype: 'background_tasks_changed',
+                tasks: [{ task_id: 'task-1', task_type: 'subagent', description: 'Researcher' }],
+                uuid: 'u1', session_id: 's1',
+            },
+            { type: 'system', subtype: 'background_tasks_changed', tasks: [], uuid: 'u2', session_id: 's1' },
+            { type: 'result', subtype: 'success', is_error: false, result: 'All done' },
+        ]);
+        expect(callbacks.onReady).toHaveBeenCalledWith(undefined, false);
+    });
+
+    it('ignores ambient housekeeping tasks when deciding whether work is pending', async () => {
+        const callbacks = await runMessages([
+            {
+                type: 'system', subtype: 'background_tasks_changed',
+                tasks: [{ task_id: 'task-1', task_type: 'shell', description: 'live-update watcher', ambient: true }],
+                uuid: 'u1', session_id: 's1',
+            },
+            { type: 'result', subtype: 'success', is_error: false, result: 'Done' },
+        ]);
+        expect(callbacks.onReady).toHaveBeenCalledWith(undefined, false);
+    });
+
+    it('still flags a pause when ambient housekeeping tasks coexist with real work', async () => {
+        const callbacks = await runMessages([
+            {
+                type: 'system', subtype: 'background_tasks_changed',
+                tasks: [
+                    { task_id: 'ambient-1', task_type: 'shell', description: 'live-update watcher', ambient: true },
+                    { task_id: 'task-1', task_type: 'subagent', description: 'Researcher' },
+                ],
+                uuid: 'u1', session_id: 's1',
+            },
+            { type: 'result', subtype: 'success', is_error: false, result: 'Prompt done' },
+        ]);
+        expect(callbacks.onReady).toHaveBeenCalledWith(undefined, true);
+    });
+
+    it('keeps the pause flag across consecutive results while tasks remain in flight', async () => {
+        const onReady = vi.fn();
+        const nextMessage = vi.fn()
+            .mockResolvedValueOnce({ message: 'First prompt', mode })
+            .mockResolvedValueOnce({ message: 'Second prompt', mode })
+            .mockResolvedValue(null);
+        vi.mocked(query).mockImplementation(({ prompt }) => ({
+            async *[Symbol.asyncIterator]() {
+                const input = (prompt as AsyncIterable<unknown>)[Symbol.asyncIterator]();
+                void (await input.next());
+                yield {
+                    type: 'system', subtype: 'background_tasks_changed',
+                    tasks: [{ task_id: 'task-1', task_type: 'subagent', description: 'Researcher' }],
+                    uuid: 'u1', session_id: 's1',
+                };
+                yield { type: 'result', subtype: 'success', is_error: false, result: 'First turn done' };
+                void (await input.next());
+                // No replacement set arrived between the two results — the
+                // flag must persist rather than reset per result.
+                yield { type: 'result', subtype: 'success', is_error: false, result: 'Second turn done' };
+            },
+        } as any));
+        await claudeRemote({
+            sessionId: null, path: '/fixture/project', allowedTools: [], hookSettingsPath: '/fixture/settings.json',
+            nextMessage, onReady, onCompletionEvent: vi.fn(),
+            canCallTool: async () => ({ behavior: 'allow', updatedInput: {} }),
+            isAborted: () => false, onSessionFound: vi.fn(), onMessage: vi.fn(),
+        });
+        expect(onReady.mock.calls).toEqual([[undefined, true], [undefined, true]]);
     });
 
     it('does not report successful compaction after a provider auth failure', async () => {
