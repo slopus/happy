@@ -52,4 +52,4 @@ Compatibility steps1–3 Done: Red3, Green185, build/typecheck/unused0/diff chec
 3. Ready version PR; after merge present exact tag for approval.
 4. CI-only publish then released vendor/ethan runtime and Web20. No unreleased runtime consumption.
 
-.287 steps1–2 preparation/validation Done (merged-head CI still running). Step3 Ready version PR prepared; exact tag approval after merge pending. Step4 publish/vendor/runtime/Web measurement pending.
+.287 steps1–2 preparation/validation Done. Steps3–4 publish part superseded: .287 (tag 510b0b6c, PR #686, includes #685) was already published by CI; no .287 tag creation. Released vendor/ethan runtime and Web20 measurement pending.
