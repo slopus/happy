@@ -22,6 +22,16 @@ import { readAiAuthConnectionVersion } from '../usage/aiAuthSource'
 import { expandEnvironmentVariables } from '../utils/expandEnvVars'
 
 describe('scrubSessionLineageEnv', () => {
+    it.each(['valid-record', ''])('removes a bound child token before forgetting its lineage (%s)', (binding) => {
+        const child = { HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: binding, CLAUDE_CODE_OAUTH_TOKEN: 'synthetic-bound',
+            HAPPY_AI_AUTH_SOURCE: 'org-bundle', SAFE: 'kept' }
+        const daemon = scrubSessionLineageEnv(child)
+        // After scoped revoke, an unbound session has no managed environment overlay.
+        const unrelated = buildManagedSessionSpawnEnvironment(daemon, {}, {})
+        expect(unrelated).toEqual({ SAFE: 'kept' })
+        expect(child.CLAUDE_CODE_OAUTH_TOKEN).toBe('synthetic-bound')
+    })
+
     it('removes reconnect and fork lineage variables while keeping everything else', () => {
         // 2026-07-19 incident: a resumed child restarted the daemon, the daemon
         // inherited HAPPY_RECONNECT_* from that child, and every subsequently

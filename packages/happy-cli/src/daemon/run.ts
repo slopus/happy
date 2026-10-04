@@ -84,7 +84,7 @@ import {
   captureSaycodeAgentEnvironment,
   honorsManagedAiCredentials,
   overlayManagedCredentialEnvironment,
-  SESSION_LINEAGE_ENV_PREFIXES,
+  scrubSessionLineageEnv,
   stripManagedCredentialConflicts,
   verifyAiAuthSelection,
   type AiAuthSelection,
@@ -587,8 +587,9 @@ export async function startDaemon(): Promise<void> {
   // environment. Those variables are per-spawn instructions, not daemon
   // state; if they survive here they leak into every child we spawn and all
   // new sessions reconnect to one poisoned session (2026-07-19 incident).
+  const daemonEnvironment = scrubSessionLineageEnv(process.env);
   for (const key of Object.keys(process.env)) {
-    if (SESSION_LINEAGE_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+    if (!(key in daemonEnvironment)) {
       logger.debug(`[DAEMON RUN] Scrubbing inherited session lineage env: ${key}`);
       delete process.env[key];
     }
@@ -1702,6 +1703,8 @@ export async function startDaemon(): Promise<void> {
       _recorded?: SetupTokenBinding,
     ): Promise<Record<string, string>> => ({});
 
+    let launchManagedAiCredentialSession = async <T>(_env: Record<string, string>, start: () => T | Promise<T>): Promise<T> => start();
+
     const launchReadiness = createLaunchReadinessGate();
     const ownsUnresolvedJob = (pid: number) => standaloneWindows?.owner.ownsRoot(pid) ?? false;
 
@@ -2220,7 +2223,7 @@ export async function startDaemon(): Promise<void> {
             sessionName: tmuxSessionName,
             windowName: windowName,
             cwd: directory
-          }, tmuxEnv);  // Pass complete environment for tmux session
+          }, tmuxEnv, start => launchManagedAiCredentialSession(managedAiCredentialEnvironment, start));
 
           if (tmuxResult.success) {
             logger.debug(`[DAEMON RUN] Successfully spawned in tmux session: ${tmuxResult.sessionId}, PID: ${tmuxResult.pid}`);
@@ -2328,6 +2331,7 @@ export async function startDaemon(): Promise<void> {
             args,
             cwd: directory,
             env: spawnEnvironment,
+            managedAiCredentialEnvironment,
             directoryCreated,
             message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined,
             userHomeDir: stagedUserHomeDir,
@@ -2359,6 +2363,7 @@ export async function startDaemon(): Promise<void> {
       message,
       userHomeDir,
       resumeTargetSessionId,
+      managedAiCredentialEnvironment = {},
     }: {
       args: string[];
       cwd: string;
@@ -2372,15 +2377,18 @@ export async function startDaemon(): Promise<void> {
        * from spawn onward instead of only after its session webhook lands.
        */
       resumeTargetSessionId?: string;
+      managedAiCredentialEnvironment?: Record<string, string>;
     }): Promise<SpawnSessionResult> => {
       if (standaloneWindows && (!standaloneWindows.owner.acceptingLaunches || !acceptsStandaloneWindowsLaunch(args))) {
         return { type: 'error', errorMessage: 'Windows trial launch is closed or this provider is unsupported' };
       }
+      // Native preparation creates a suspended root; authorize execution at resume below.
       const prepared = standaloneWindows ? await standaloneWindows.owner.prepare({ args, cwd, env }) : undefined;
       const scopeReports = env.HAPPY_WRITE_SCOPE_SESSION === '1' ? writeScopeRuntime?.prepareReports(resumeTargetSessionId) : undefined;
-      const happyProcess = prepared?.childProcess ?? spawnHappyCLI(args, { cwd, detached: true,
+      const happyProcess = prepared?.childProcess ?? await launchManagedAiCredentialSession(managedAiCredentialEnvironment,
+        () => spawnHappyCLI(args, { cwd, detached: true,
         stdio: scopeReports ? ['ignore', 'ignore', 'ignore', 'pipe'] : 'ignore',
-        env: { ...env, ...scopeReports?.environment } });
+        env: { ...env, ...scopeReports?.environment } }));
       scopeReports?.attach(happyProcess);
       const rootPid = prepared?.pid ?? happyProcess.pid;
       if (!rootPid) return { type: 'error', errorMessage: 'Failed to spawn Happy process - no PID returned' };
@@ -2422,7 +2430,7 @@ export async function startDaemon(): Promise<void> {
       if (prepared) {
         try {
           if (!standaloneWindows?.owner.acceptingLaunches) throw new Error('Standalone launch frozen before resume');
-          await prepared.resume(); resumed = true;
+          await launchManagedAiCredentialSession(managedAiCredentialEnvironment, () => prepared.resume()); resumed = true;
         }
         catch (error) { webhookCancellation.abort(); prepared.cancelBeforeResume?.(); throw error; }
       }
@@ -2891,6 +2899,7 @@ export async function startDaemon(): Promise<void> {
               env,
               userHomeDir: credentialDecision.kind === 'user-staged' ? credentialDecision.homeDir : undefined,
               resumeTargetSessionId: happySessionId,
+              managedAiCredentialEnvironment,
             });
           },
           ownerPid: () => Array.from(pidToTrackedSession.values()).find((session) => session.happySessionId === happySessionId)?.pid,
@@ -4189,6 +4198,7 @@ export async function startDaemon(): Promise<void> {
     stopClaudeSwapSupervisor = () => { stopPersonalProbes(); claudeSwapSupervisor.shutdown(); };
 
     resolveManagedAiCredentialEnvironment = (agent, selection, recorded) => aiCredentialRuntime.sessionEnvironment(agent, selection, recorded);
+    launchManagedAiCredentialSession = aiCredentialRuntime.launchSession;
     let activeServerAutomationLeaseCount = 0;
     let scriptWorker: ReturnType<typeof createScriptAutomationWorker> | null = null;
     if (!standaloneWindows && shouldRunScriptAutomations({

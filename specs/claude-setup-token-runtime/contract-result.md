@@ -602,3 +602,91 @@ Parent `/tmp/claude/desktop-server-rpc-final-978nzt2j/` exercised actual Desktop
 Durable child cmutey1u91vqpys2fjgsgs9rp tested same managed HOME .286→published.279→.286 at `/tmp/managed-downgrade.kdgz3w5x/`; parent read source/fixture/result/provenance/cleanup and independently asserted outcomes. Group/nonce/provider file hashes and credential7/group9/fingerprint survive downgrade. Candidate return rejects consumed grant/stale generation/tampered signature/default launch and accepts a fresh signed fixture spawn.3authenticated daemon stops/server EOF exited0,57owned PIDs absent, no fallback; live0.
 
 **Managed-data .279 downgrade is RED, not supported rollback.** Explicit managed and machine-personal attempts were refused without observed fixture launch, but the default launch succeeded, and Claude fixture read the unchanged global managed credential file without signed binding. This is actual executable/file exposure, not real Claude authentication/inference evidence. Old RPC uses its raw-params encrypted DTO rather than the candidate bound envelope. We cannot protect immutable published.279 through current source changes. Keep/return to the candidate and restore credentials with forward generations; never rewind journals/budgets or downgrade the pin after token distribution. Existing scoped revoke/switch/logout code was inspected only; safe managed-active separation/personal preservation before downgrade is a future acceptance gate. No publication/pin/operating daemon or real token changes. Earlier cumulative live4 remains unchanged.
+
+
+## Offline review fixes — 2026-10-04
+
+Status: implementation, focused verification and parent source review complete; latest-head CI is tracked in PR #684.
+This section records current source regressions, not historical deployment acceptance.
+Only the isolated Happy/provider source worktrees were changed. No real credentials,
+Keychain, inference, operating daemon/services/DB/signers, runtime pins, installation,
+commit or push were used. All credential fixtures and signing keys were synthetic.
+
+- [x] Final spawn timing: RED was three deferred launches still returning a child
+  after assignment revoke, generation replacement or grant expiry during preparation.
+  GREEN rechecks at the actual `spawnHappyCLI`/tmux `new-window` submission boundary,
+  under group-sync serialization. Tests use real adapters with mocked process/terminal
+  I/O; tmux preparation is explicitly suspended while custody changes. Additional tests
+  cover expiry during final provider reads and one-submission recorded resumes. Windows
+  is wired at suspended-root `resume`, with cancellation on rejection; native Windows
+  execution was not run (existing mocked launcher tests and wiring checks passed).
+- [x] Child-to-daemon environment: RED retained the synthetic bearer after stripping
+  its binding marker (two helper cases and both daemon startup subcommands). GREEN
+  strips bearer and marker at actual daemon `cross-spawn` options and direct startup;
+  unrelated child env remains clean. Unbound personal authentication remains unchanged.
+- [x] Personal timeout bookkeeping: RED the real provider process was killed by the
+  old 10 s outer deadline and Happy returned `TOKEN_PROBE_REQUEST_FAILED`. GREEN both
+  personal/org collection have a 30 s outer bound around the provider's 10 s transport.
+  An offline synthetic peer sleeps for the transport timeout, then fails. A second
+  provider process reads durable attempt=1, failureStreak=1, `transport_failed` and
+  roughly 30-minute backoff. Metadata commands retain the 10 s bound.
+- [x] Provider generation preservation: source integration covers G1 active, G2 import,
+  ordinary switch to another slot, status and exact G2 Happy binding. The provider
+  regression separately asserts exported bytes stay G2; see its feature contract.
+
+Final verification (including the parent follow-up below): 472 tests in eight related Happy files passed (setup-token runtime,
+credential runtime, session env, spawn adapter, tmux, selection wiring, daemon-start
+helper, mocked Windows launcher); `tsc --noEmit` passed. Two offline source integration
+tests passed using `HAPPY_CSWAP_TOKEN_RUNTIME_SOURCE` and the provider's existing
+`HAPPY_CSWAP_TOKEN_RUNTIME_PYTHON`. Vitest was invoked through `startVitest` with
+`config:false`, `src/testing/unit.setup.ts`, `@` alias and one worker, avoiding the
+normal global build. Source mode performs no dependency installation, uses a temporary
+HOME and Linux file backend, and blocks network transport. No wheel-mode install ran.
+`git diff --check` passed. ESLint could not run because this checkout has no ESLint
+configuration; lint is not claimed as passed. No full test suite ran.
+
+Residual acceptance: real Claude, macOS Keychain, native Windows launch and release
+artifact/pin/rollback validation remain outside this offline change. A launch already
+submitted before a revoke is not retroactively killed. External provider writers are
+not serialized by Happy's in-process queue. Existing `automaticRotation:false`,
+`externalWriterExclusion:false`, unknown coverage and unsupported published .279
+managed-data downgrade gates remain unchanged.
+
+
+### Parent follow-up: unbound final-authority race — 2026-10-04
+
+- [x] RED: a runtime-created default Claude `{}` was prepared before group assignment;
+  after the assignment arrived, plain spawn returned pid123 and tmux returned success.
+  Both regressions use the actual spawn adapters with mocked terminal/process I/O.
+- [x] GREEN: the runtime recognizes default environments with a private WeakSet and
+  repeats `refuseUnboundManagedDefault` under the group-sync serialize queue through
+  actual submission. Both adapters now refuse with `CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED`
+  without creating the child/window. The same object is forwarded for unrecorded resumes.
+- [x] Explicit machine-personal (production resolver bypass), non-Claude and prepared
+  ZAI environments still reach the spawn adapter after group assignment. Bound launch
+  nonce/generation/expiry checks and Windows suspended-root resume guard are unchanged.
+- [x] Final counts supersede the earlier review: 472 tests in eight related Happy files,
+  two source integration tests, and `tsc --noEmit` passed. Source integration used the
+  final provider edits (654 related provider tests passed), temporary file-backed
+  custody and synthetic transport only. The eight intercepted profile-network attempts
+  were blocked by the harness; no live inference or real account requests were made.
+
+Provider follow-up evidence is bounded to ordinary switch, `add_account` refresh and
+explicit-slot commit paths, and `_resync_rotated_backup`. Capture now checks for an
+import-owned source/target before preparation and again under FileLock through cleanup,
+credential/config and index writes. An actual cooperating import inserted after capture
+preparation was RED in two variants and GREEN with the final guard. This is not an
+all-backup-writer or external-writer exclusion claim. Lint availability and remaining
+native/release acceptance limitations above are unchanged. No commit or push.
+
+
+### Parent final source review — 2026-10-04
+
+Parent independently reviewed the final spawn/environment, tmux/Windows resume wiring
+and provider FileLock/capture diffs. Five directly changed Happy suites were rerun:
+239 passed; seven provider generation/capture/resync regressions passed. The earlier
+two source integration tests were also independently rerun and passed. These counts
+overlap the final 472/2/654 checks; do not sum them. Source review is accepted for
+commit/push to the existing feature PR, with latest-head CI tracked there. The earlier
+installed artifacts predate these fixes and require rebuild/reacceptance before release.
+No new live calls or operating/release changes were made.

@@ -668,6 +668,17 @@ adapter that honors the already-held lock; do not weaken GC pin ownership to all
 
 The optional `ai-credential:group-sync` customer-lane RPC leaves the existing apply DTO and response unchanged. The daemon serializes group changes with legacy operations. An owner-only journal stores identity hashes, desired unions, generations and durable pending intent before provider writes. Revocation removes only introduced accounts no other assignment needs; legacy/manual apply invalidates the receipt and relinquishes touched slots. Provider adapters keep personal login and index selections. Completed receipts are readable through `ai-credential:status` and contain no credentials; server-lane mutation permissions are unchanged. A failed removal remains pending in the journal until an observed retry completes.
 
+Managed setup-token launches retain an internal one-use launch handle after the signed
+nonce is consumed. Immediately before plain child creation, tmux `new-window`, or
+Windows suspended-root resume, the credential runtime rechecks assignment, disabled
+state, exact generation/token and fresh-grant expiry on the same serialized queue as
+group sync. Preparation and webhook waits stay outside that critical section. Recorded
+resumes have no new grant expiry but still recheck custody. Default Claude environments are also recognized by
+object identity and recheck managed-assignment refusal under that queue immediately
+before submission; explicit machine-personal, non-Claude and prepared ZAI environments
+retain their bypass. A bound child restarting the daemon loses both its binding marker
+and bearer at the daemon spawn boundary.
+
 ## Organization Claude collector boundary
 
 Desktop owns authenticated Studio discovery/reserve/publish and OFF-default scheduling.

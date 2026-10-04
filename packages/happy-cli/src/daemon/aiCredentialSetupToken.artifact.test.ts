@@ -21,6 +21,9 @@ import { captureSaycodeAgentEnvironment, readSetupTokenResumeSelection } from '.
 import { SETUP_TOKEN_BINDING_TYPE, createSetupTokenBindingVerifier } from './setupTokenBindingProof'
 
 const WHEEL = process.env.HAPPY_CSWAP_TOKEN_RUNTIME_WHEEL
+// Explicit source-only regression mode: uses existing deps, never installs.
+const SOURCE = process.env.HAPPY_CSWAP_TOKEN_RUNTIME_SOURCE
+const PYTHON = process.env.HAPPY_CSWAP_TOKEN_RUNTIME_PYTHON
 const A = '0b6f2c1e-1111-4a2b-8c3d-000000000001'
 const B = '0b6f2c1e-1111-4a2b-8c3d-000000000002'
 const STUDIO = 'https://studio.example.test'
@@ -36,7 +39,7 @@ const payload = (...accounts: unknown[]) => JSON.stringify({ version: 1, encrypt
 const sync = (generation: number, body: string | null) => ({ version: 1 as const, scope: 'company-1', userId: 'user-1',
   provider: 'claude' as const, generation, fingerprint: String(generation).padStart(64, '0'), payload: body })
 
-describe.skipIf(!WHEEL)('marked cswap artifact: group-sync, status, binding and resume (offline, file backend)', () => {
+describe.skipIf(!WHEEL && !(SOURCE && PYTHON))('marked cswap artifact: group-sync, status, binding and resume (offline, file backend)', () => {
   let root = ''
   const saved: Record<string, string | undefined> = {}
   const signing = (() => {
@@ -57,8 +60,8 @@ describe.skipIf(!WHEEL)('marked cswap artifact: group-sync, status, binding and 
     root = realpathSync(mkdtempSync(join(tmpdir(), 'happy-cswap-artifact-')))
     const home = join(root, 'home'), bin = join(root, 'bin'), install = join(root, 'install')
     for (const dir of [home, bin, install]) mkdirSync(dir, { recursive: true })
-    const python = execFileSync('uv', ['python', 'find', '3.12'], { encoding: 'utf8' }).trim()
-    execFileSync('uv', ['pip', 'install', '--offline', '--no-deps', '--python', python, '--target', install, WHEEL!], { stdio: 'pipe' })
+    const python = SOURCE && PYTHON ? PYTHON : execFileSync('uv', ['python', 'find', '3.12'], { encoding: 'utf8' }).trim()
+    if (!SOURCE) execFileSync('uv', ['pip', 'install', '--offline', '--no-deps', '--python', python, '--target', install, WHEEL!], { stdio: 'pipe' })
     writeFileSync(join(bin, 'cswap'), `#!${python}
 import os, socket, sys, urllib.error, urllib.request
 home = ${JSON.stringify(home)}
@@ -73,9 +76,18 @@ def forbidden(*args, **kwargs):
     raise urllib.error.URLError('network disabled in artifact integration')
 urllib.request.urlopen = urllib.request.build_opener = forbidden
 socket.create_connection = lambda *args, **kwargs: (_ for _ in ()).throw(OSError('network disabled in artifact integration'))
-sys.path.insert(0, ${JSON.stringify(install)})
+sys.path.insert(0, ${JSON.stringify(SOURCE ? join(SOURCE, 'src') : install)})
 import claude_swap
-assert claude_swap.__file__.startswith(${JSON.stringify(install)})
+assert claude_swap.__file__.startswith(${JSON.stringify(SOURCE ? join(SOURCE, 'src') : install)})
+# Real provider transport/bookkeeping; only the HTTP peer is synthetic.
+if os.environ.get('HAPPY_TEST_PROBE_TIMEOUT') == '1' and sys.argv[1:3] == ['token-runtime', 'collect']:
+    import time
+    class TimeoutPeer:
+        def open(self, request, timeout):
+            assert timeout <= 10
+            time.sleep(timeout)
+            raise TimeoutError('synthetic transport timeout')
+    urllib.request.build_opener = lambda *args: TimeoutPeer()
 from claude_swap.cli import main
 sys.argv = ['cswap'] + sys.argv[1:]
 sys.exit(main())
@@ -92,9 +104,13 @@ if sys.argv[1:3] == ['auth', 'logout']:
     if os.path.exists(path):
         data = json.load(open(path)); data.pop('oauthAccount', None); json.dump(data, open(path, 'w'))
 `)
-    // ensureClaudeSwap asks uv for a Python; keep uv's (read-only) interpreter store although HOME moves.
-    const uvPythonDir = execFileSync('uv', ['python', 'dir'], { encoding: 'utf8' }).trim()
-    writeFileSync(join(bin, 'uv'), `#!/bin/sh\nUV_PYTHON_INSTALL_DIR=${JSON.stringify(uvPythonDir)} exec ${JSON.stringify(execFileSync('sh', ['-c', 'command -v uv'], { encoding: 'utf8' }).trim())} "$@"\n`)
+    // Source tests only need uv's read-only version/interpreter queries.
+    if (SOURCE) {
+      writeFileSync(join(bin, 'uv'), `#!/bin/sh\ncase "$1" in\n--version) echo 'uv fixture' ;;\npython) echo '${python}' ;;\n*) exit 1 ;;\nesac\n`)
+    } else {
+      const uvPythonDir = execFileSync('uv', ['python', 'dir'], { encoding: 'utf8' }).trim()
+      writeFileSync(join(bin, 'uv'), `#!/bin/sh\nUV_PYTHON_INSTALL_DIR=${JSON.stringify(uvPythonDir)} exec ${JSON.stringify(execFileSync('sh', ['-c', 'command -v uv'], { encoding: 'utf8' }).trim())} "$@"\n`)
+    }
     for (const name of ['cswap', 'claude', 'uv']) chmodSync(join(bin, name), 0o755)
     for (const key of ['PATH', 'HOME', 'UV_TOOL_BIN_DIR', 'CLAUDE_CONFIG_DIR', 'XDG_DATA_HOME', 'XDG_BIN_HOME']) saved[key] = process.env[key]
     Object.assign(process.env, { PATH: `${bin}:/usr/bin:/bin`, HOME: home, UV_TOOL_BIN_DIR: bin, CLAUDE_CONFIG_DIR: join(home, 'claude') })
@@ -108,14 +124,14 @@ if sys.argv[1:3] == ['auth', 'logout']:
     if (root) rmSync(root, { recursive: true, force: true })
   })
 
-  it('applies, reports, binds one-use, resumes, goes stale on replacement and refuses after revoke', async () => {
+  const failures: string[] = []
+  function make() {
     const home = join(root, 'home')
     const supervisor = { enable: async () => undefined, stop: async () => undefined, status: () => ({ state: 'stopped' as const, lastErrorKind: null }) }
     const verifier = createSetupTokenBindingVerifier({ origin: STUDIO, machineId: 'machine-1',
       fetch: (async () => new Response(JSON.stringify({ version: 1, algorithm: 'Ed25519', keyId: signing.keyId, publicKeyBase64: signing.publicKeyBase64 }))) as typeof fetch })
     // The production dependency set, with a log of failing command verbs for diagnosis (no arguments, no output).
-    const failures: string[] = []
-    const make = () => createAiCredentialRuntime({
+    return createAiCredentialRuntime({
       homeDir: home, now: Date.now, env: { ...process.env }, supervisor: supervisor as never, setupTokenBinding: verifier,
       execFile: async (command, args, options) => {
         try { return await runAiCredentialCommand(command, args, options, spawn) }
@@ -127,6 +143,9 @@ if sys.argv[1:3] == ['auth', 'logout']:
       writeFile: async (path, content, options) => { await writeFile(path, content, options) },
       mkdir, rename, chmod, rm, makeTempDir: () => mkdtemp(join(root, 'stage-')),
     })
+  }
+
+  it('applies, reports, binds one-use, resumes, goes stale on replacement and refuses after revoke', async () => {
     const runtime = make()
     const step = async <T>(label: string, run: () => Promise<T>) => {
       try { return await run() } catch (error) { throw new Error(`${label}: ${(error as Error).message}; failed commands: ${failures.join(' | ')}`) }
@@ -164,6 +183,9 @@ if sys.argv[1:3] == ['auth', 'logout']:
     expect(await step('replacement group-sync', () => restarted.groupSync(sync(2, payload(managed(A, 2, token('a2')), managed(B, 1, token('b1'), 2))))))
       .toMatchObject({ generation: 2, reconciled: true })
     await expect(restarted.sessionEnvironment('claude', resume.selection, resume.binding)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_STALE')
+    await runAiCredentialCommand('cswap', ['switch', '2', '--json'])
+    const providerStatus = JSON.parse((await runAiCredentialCommand('cswap', ['token-runtime', 'status'])).stdout)
+    expect(providerStatus.accounts.find((a: { managedAccountId?: string }) => a.managedAccountId === A).credentialGeneration).toBe(2)
     const next = await restarted.sessionEnvironment('claude', { ...selection, credentialGeneration: 2, bindingGrant: grant(A, 2) })
     expect(next.CLAUDE_CODE_OAUTH_TOKEN).toBe(token('a2'))
 
@@ -181,4 +203,29 @@ if sys.argv[1:3] == ['auth', 'logout']:
     const attempts = existsSync(join(root, 'network-attempts.log')) ? readFileSync(join(root, 'network-attempts.log'), 'utf8').trim().split('\n').filter(Boolean) : []
     console.info(`[artifact] intercepted network attempts: ${attempts.length}`)
   }, 300_000)
+  it('persists personal transport timeout spending and backoff before the outer process deadline', async () => {
+    await runAiCredentialCommand('cswap', ['add-token', token('personal-timeout'), '--email', 'timeout@token.local'])
+    const readStatus = async () => JSON.parse((await runAiCredentialCommand('cswap', ['token-runtime', 'status'])).stdout)
+    const row = (await readStatus()).accounts.find((a: { roster: { email: string } }) => a.roster.email === 'timeout@token.local')
+    const request = { version: 1, accountRef: row.accountRef, credentialGeneration: row.credentialGeneration }
+    const savedTimeout = process.env.HAPPY_TEST_PROBE_TIMEOUT
+    process.env.HAPPY_TEST_PROBE_TIMEOUT = '1'
+    try {
+      const runtime = make()
+      await runtime.tokenProbe({ ...request, operation: 'consent', enabled: true, ackCost: true })
+      const result = await runtime.tokenProbe({ ...request, operation: 'collect' })
+      expect(result).not.toHaveProperty('error')
+      // Another Python process reopens the durable state: not an in-memory assertion.
+      const after = await readStatus()
+      const observed = after.accounts.find((a: { accountRef: string }) => a.accountRef === row.accountRef)
+      expect(observed.probeBudget).toMatchObject({ accountUsed24h: 1, failureStreak: 1 })
+      expect(observed.observation.reason).toBe('transport_failed')
+      expect(Date.parse(observed.probeBudget.nextProbeAt)).toBeGreaterThan(Date.now() + 1_700_000)
+      expect(after.budget.machineUsed24h).toBeGreaterThanOrEqual(1)
+    } finally {
+      if (savedTimeout === undefined) delete process.env.HAPPY_TEST_PROBE_TIMEOUT
+      else process.env.HAPPY_TEST_PROBE_TIMEOUT = savedTimeout
+    }
+  }, 40_000)
+
 })

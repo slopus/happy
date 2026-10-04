@@ -9,6 +9,16 @@ import { preflightInstalledHappyCLI, resolveHappyCliSpawnCommand, spawnHappyCLI,
 vi.mock('cross-spawn', () => ({ spawn: vi.fn(() => ({})) }));
 
 describe('daemon working directory', () => {
+  it.each(['start', 'start-sync'])('scrubs a bound child token at the actual daemon %s spawn', (subcommand) => {
+    const env = { HAPPY_AI_AUTH_SETUP_TOKEN_BINDING: 'synthetic-record', CLAUDE_CODE_OAUTH_TOKEN: 'synthetic-bound', SAFE: 'kept' };
+    spawnHappyCLI(['daemon', subcommand], { env });
+    const spawned = vi.mocked(crossSpawn).mock.calls.at(-1)![2]!.env!;
+    expect(spawned.CLAUDE_CODE_OAUTH_TOKEN).toBeUndefined();
+    expect(spawned.HAPPY_AI_AUTH_SETUP_TOKEN_BINDING).toBeUndefined();
+    expect(spawned.SAFE).toBe('kept');
+    expect(env.CLAUDE_CODE_OAUTH_TOKEN).toBe('synthetic-bound');
+  });
+
   afterEach(() => vi.restoreAllMocks());
 
   it.each(['start', 'start-sync'])('starts daemon %s outside the caller worktree', (subcommand) => {

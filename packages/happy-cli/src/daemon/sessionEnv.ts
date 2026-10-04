@@ -80,6 +80,9 @@ export function scrubSessionLineageEnv(env: NodeJS.ProcessEnv): Record<string, s
     const scrubbed: Record<string, string> = {}
     for (const [key, value] of Object.entries(env)) {
         if (value === undefined || isLineageKey(key)) continue
+        // A child can restart the daemon. Drop its bound bearer before losing
+        // the marker, including malformed markers; unbound personal auth stays.
+        if (env[SETUP_TOKEN_BINDING_ENV] !== undefined && key === 'CLAUDE_CODE_OAUTH_TOKEN') continue
         scrubbed[key] = value
     }
     return scrubbed

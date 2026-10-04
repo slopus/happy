@@ -1,3 +1,6 @@
+import { spawn as crossSpawn } from 'cross-spawn'
+import { spawnHappyCLI } from '../utils/spawnHappyCLI'
+import { TmuxUtilities } from '../utils/tmux'
 import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
 import { SETUP_TOKEN_BINDING_TYPE, createSetupTokenBindingVerifier } from './setupTokenBindingProof'
@@ -5,9 +8,11 @@ import { createAiCredentialRuntime, type AiCredentialCommandResult } from './aiC
 import { groupAccountIdentity } from './aiCredentialGroupAdapters'
 import {
   applyAppliedAiAuthSourceEnv, buildManagedSessionSpawnEnvironment, buildResumedSessionSpawnEnvironment, buildSpawnRequestEnvironment,
-  captureSaycodeAgentEnvironment, overlayManagedCredentialEnvironment, readSetupTokenResumeSelection, verifyAiAuthSelection,
+  captureSaycodeAgentEnvironment, honorsManagedAiCredentials, overlayManagedCredentialEnvironment, readSetupTokenResumeSelection, verifyAiAuthSelection,
 } from './sessionEnv'
 import { managedSetupTokenEmail, managedSetupTokenId, setupTokenGroupIdentity, setupTokenRuntimeStatus } from './claudeSetupToken'
+
+vi.mock('cross-spawn', () => ({ spawn: vi.fn(() => ({ pid: 123 })) }))
 
 const A = '0b6f2c1e-1111-4a2b-8c3d-000000000001'
 const B = '0b6f2c1e-1111-4a2b-8c3d-000000000002'
@@ -116,6 +121,108 @@ const stored = (id: string, generation: number, token: string, extra: Partial<Sl
 }
 
 describe('managed Claude setup-token runtime', () => {
+  it.each(['plain', 'tmux'] as const)('refuses a default Claude %s launch when assignment arrives during preparation', async (adapter) => {
+    const { runtime } = fakeMachine([], null)
+    const env = await runtime.sessionEnvironment('claude')
+    expect(env).toEqual({})
+    let release!: () => void
+    const prepared = new Promise<void>(resolve => { release = resolve })
+    const spawn = vi.fn(() => spawnHappyCLI(['claude'], { env }))
+    const tmux = new TmuxUtilities('fixture')
+    const command = vi.spyOn(tmux, 'executeTmuxCommand').mockResolvedValue({ returncode: 0, stdout: '123', stderr: '', command: [] })
+    vi.spyOn(tmux, 'ensureSessionExists').mockImplementation(async () => { await prepared; return true })
+    const launching = adapter === 'plain'
+      ? (async () => { await prepared; return runtime.launchSession(env, spawn) })()
+      : tmux.spawnInTmux(['synthetic-claude'], { sessionName: 'fixture' }, env, start => runtime.launchSession(env, start))
+    await runtime.groupSync(sync(1, payload(managed(A, 1, fakeToken('a')))))
+    const result = adapter === 'plain'
+      ? expect(launching).rejects.toThrow('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED')
+      : expect(launching).resolves.toMatchObject({ success: false, error: expect.stringContaining('CLAUDE_SETUP_TOKEN_SELECTION_REQUIRED') })
+    release()
+    await result
+    expect(spawn).not.toHaveBeenCalled()
+    expect(command.mock.calls.some(([args]) => args[0] === 'new-window')).toBe(false)
+  })
+
+  it('preserves machine-personal, non-Claude and prepared ZAI bypasses at final launch', async () => {
+    const { runtime, files } = fakeMachine([], null)
+    // The production machine-personal path intentionally skips sessionEnvironment.
+    const personal = honorsManagedAiCredentials({ kind: 'machine-personal' }) ? await runtime.sessionEnvironment('claude') : {}
+    const codex = await runtime.sessionEnvironment('codex')
+    files.set('/home/operator/.happy/trial-ai-credential-leases.json', JSON.stringify({ version: 1,
+      leases: { zai: { leaseId: 'synthetic', contentHash: 'a'.repeat(64), bundleVersion: 1 } } }))
+    files.set('/home/operator/.happy/zai-claude-env.json', JSON.stringify({ ANTHROPIC_AUTH_TOKEN: 'synthetic-zai',
+      ANTHROPIC_BASE_URL: 'https://api.z.ai/api/anthropic', API_TIMEOUT_MS: '3000000',
+      ANTHROPIC_DEFAULT_OPUS_MODEL: 'glm-5.3', ANTHROPIC_DEFAULT_SONNET_MODEL: 'glm-4.7', ANTHROPIC_DEFAULT_HAIKU_MODEL: 'glm-4.7' }))
+    const zai = await runtime.sessionEnvironment('claude')
+    // The lease is removed before the organization assignment is installed.
+    files.delete('/home/operator/.happy/trial-ai-credential-leases.json')
+    await runtime.groupSync(sync(1, payload(managed(A, 1, fakeToken('a')))))
+    for (const env of [personal, codex, zai]) {
+      await runtime.launchSession(env, () => spawnHappyCLI(['claude'], { env }))
+      expect(crossSpawn).toHaveBeenLastCalledWith(expect.any(String), expect.any(Array), expect.objectContaining({ env }))
+    }
+  })
+
+  it.each(['revoke', 'generation', 'expiry'] as const)('refuses %s after preparation before the child spawn', async (change) => {
+    const clock = { now: NOW }
+    const { runtime } = fakeMachine([], null, { clock })
+    await runtime.groupSync(sync(1, payload(managed(A, 1, fakeToken('a')))))
+    const selection = { kind: 'claude-setup-token' as const, managedAccountId: A, groupScope: 'company-1', credentialGeneration: 1, bindingGrant: bindingGrant() }
+    const env = await runtime.sessionEnvironment('claude', selection)
+    let release!: () => void
+    const prepared = new Promise<void>(resolve => { release = resolve })
+    const spawn = vi.fn(() => spawnHappyCLI(['claude'], { env }))
+    const launching = (async () => { await prepared; return runtime.launchSession(env, spawn) })()
+    if (change === 'revoke') await runtime.groupSync(sync(2, null))
+    if (change === 'generation') await runtime.groupSync(sync(2, payload(managed(A, 2, fakeToken('b')))))
+    if (change === 'expiry') clock.now += 60_000
+    const result = expect(launching).rejects.toThrow(/CLAUDE_SETUP_TOKEN_BINDING/)
+    release()
+    await result
+    expect(spawn).not.toHaveBeenCalled()
+  })
+
+  it.each(['revoke', 'generation', 'expiry'] as const)('rechecks %s after actual tmux preparation', async (change) => {
+    const clock = { now: NOW }
+    const { runtime } = fakeMachine([], null, { clock })
+    await runtime.groupSync(sync(1, payload(managed(A, 1, fakeToken('a')))))
+    const env = await runtime.sessionEnvironment('claude', { kind: 'claude-setup-token', managedAccountId: A,
+      groupScope: 'company-1', credentialGeneration: 1, bindingGrant: bindingGrant() })
+    const tmux = new TmuxUtilities('fixture')
+    const command = vi.spyOn(tmux, 'executeTmuxCommand').mockResolvedValue({ returncode: 0, stdout: '123', stderr: '', command: [] })
+    let release!: () => void
+    const preparation = new Promise<boolean>(resolve => { release = () => resolve(true) })
+    vi.spyOn(tmux, 'ensureSessionExists').mockReturnValue(preparation)
+    const launching = tmux.spawnInTmux(['synthetic-claude'], { sessionName: 'fixture' }, env, start => runtime.launchSession(env, start))
+    await vi.waitFor(() => expect(tmux.ensureSessionExists).toHaveBeenCalled())
+    if (change === 'revoke') await runtime.groupSync(sync(2, null))
+    if (change === 'generation') await runtime.groupSync(sync(2, payload(managed(A, 2, fakeToken('b')))))
+    if (change === 'expiry') clock.now += 60_000
+    release()
+    expect(await launching).toMatchObject({ success: false })
+    expect(command.mock.calls.some(([args]) => args[0] === 'new-window')).toBe(false)
+  })
+
+  it('checks expiry after the final provider read and permits only one submitted spawn', async () => {
+    const options = { clock: { now: NOW }, advanceOnExport: 0 }
+    const { runtime } = fakeMachine([], null, options)
+    await runtime.groupSync(sync(1, payload(managed(A, 1, fakeToken('a')))))
+    const selection = { kind: 'claude-setup-token' as const, managedAccountId: A, groupScope: 'company-1', credentialGeneration: 1, bindingGrant: bindingGrant() }
+    const env = await runtime.sessionEnvironment('claude', selection)
+    const spawn = vi.fn(() => spawnHappyCLI(['claude'], { env }))
+    options.advanceOnExport = 60_000
+    await expect(runtime.launchSession(env, spawn)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_EXPIRED')
+    expect(spawn).not.toHaveBeenCalled()
+    // Resume has no fresh-grant expiry, but a prepared resume still has one spawn.
+    options.advanceOnExport = 0
+    const resume = readSetupTokenResumeSelection(captureSaycodeAgentEnvironment(env))!
+    const resumed = await runtime.sessionEnvironment('claude', resume.selection, resume.binding)
+    await runtime.launchSession(resumed, () => spawnHappyCLI(['claude'], { env: resumed }))
+    expect(crossSpawn).toHaveBeenLastCalledWith(expect.any(String), expect.any(Array), expect.objectContaining({ env: resumed }))
+    await expect(runtime.launchSession(resumed, spawn)).rejects.toThrow('CLAUDE_SETUP_TOKEN_BINDING_REPLAYED')
+  })
+
   it('uses the server synthetic email and company-scoped group identity', () => {
     expect(managedSetupTokenEmail(A)).toBe(`managed-${A}@setup-token.local`)
     expect(managedSetupTokenId(managedSetupTokenEmail(A))).toBe(A)

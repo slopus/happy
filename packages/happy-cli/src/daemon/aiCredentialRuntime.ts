@@ -216,13 +216,13 @@ function restrictiveRemainingPercent(entry: CodexQuotaEntry): number | null {
 }
 
 /**
- * Outer process bounds for collector cswap calls. `collect-org` keeps the provider's own
+ * Outer process bounds for personal/org cswap calls. Collection keeps the provider's own
  * 10 s signed HTTP deadline inside, then persists and returns; 30 s lets a valid completion
  * reach Core before the signed publication grace, and a hung run is killed as a tree.
  * Metadata reads stay at 10 s.
  */
 export function cswapCollectorCommandOptions(args: string[]): { timeoutMs: number; maxOutputBytes: number; terminateProcessTree?: true } {
-  return args[0] === 'token-runtime' && args[1] === 'collect-org'
+  return args[0] === 'token-runtime' && ['collect', 'collect-org'].includes(args[1] ?? '')
     ? { timeoutMs: 30_000, maxOutputBytes: 65536, terminateProcessTree: true }
     : { timeoutMs: 10_000, maxOutputBytes: 65536 }
 }
@@ -1818,6 +1818,12 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
    * closed: no substitute credential is ever returned.
    */
   const bindingNoncePath = join(deps.homeDir, '.happy', 'setup-token-binding-nonces.json')
+  // Only the exact daemon-created object can authorize a spawn; never an RPC DTO.
+  const defaultSessionLaunches = new WeakSet<Record<string, string>>()
+  const sessionLaunches = new WeakMap<Record<string, string>, {
+    agent: string | undefined; selection: Extract<AiAuthSelection, { kind: 'claude-setup-token' }>
+    binding: SetupTokenBinding; expiresAt: number | null; started: boolean
+  }>()
   /** One-use, durable across restarts: a grant observed on the wire cannot start a second session. */
   async function consumeBindingNonce(nonce: string, expiresAt: number) {
     let ledger: { version: 1; nonces: Record<string, number> }
@@ -1864,51 +1870,51 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
   async function setupTokenSessionEnvironment(agent: string | undefined, selection: Extract<AiAuthSelection, { kind: 'claude-setup-token' }>, recorded: SetupTokenBinding | undefined) {
     const { managedAccountId, credentialGeneration, groupScope } = selection
     if (agent !== undefined && agent !== 'claude') throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
-    return serialize(() => withSafeErrors('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE', async () => {
-      if (!await setupTokenRuntimeSupported()) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
-      const unavailable = () => new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
-      let binding: SetupTokenBinding
-      let consume: { nonce: string; expiresAt: number } | null = null
-      if (recorded) {
-        if (recorded.managedAccountId !== managedAccountId || recorded.groupScope !== groupScope || recorded.credentialGeneration !== credentialGeneration) throw unavailable()
-        binding = recorded
-      } else {
-        if (!deps.setupTokenBinding || !selection.bindingGrant) throw unavailable()
-        const claims = await deps.setupTokenBinding.verify(selection.bindingGrant)
-        if (!claims || claims.managedAccountId !== managedAccountId || claims.groupScope !== groupScope
-          || claims.credentialGeneration !== credentialGeneration) throw unavailable()
-        const { companyId, userId, machineId, keyId, nonce, issuedAt } = claims
-        binding = { managedAccountId, credentialGeneration, groupScope, companyId, userId, machineId, keyId, nonce, issuedAt }
-        consume = { nonce, expiresAt: claims.expiresAt }
-      }
-      // The signed caller must own the slot through this scope's applied assignment.
-      // Personal, other-company, other-user, pending and revoked slots fail.
-      const assignment = await groups.assignment(groupScope, 'claude')
-      if (!assignment || !assignment.reconciled || assignment.userId !== binding.userId
-        || !assignment.desired.includes(setupTokenGroupIdentity(managedAccountId))) throw unavailable()
-      const email = managedSetupTokenEmail(managedAccountId)
-      const listed = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
-        maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout).accounts.find(account => account.email === email)
-      const exported = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
-      const slot = Array.isArray(exported?.accounts) ? exported.accounts.find((account: Record<string, unknown>) => account?.email === email) : undefined
-      const token = slot?.credentials?.claudeAiOauth?.accessToken
-      if (!listed || listed.disabled === true || slot?.credentialType !== 'setup_token' || slot.managedAccountId !== managedAccountId
-        || typeof token !== 'string' || !token.startsWith('sk-ant-oat01-')
-        || !Number.isSafeInteger(slot.credentialGeneration) || slot.credentialGeneration < 1) throw unavailable()
-      // Exactly the signed generation: a replaced token is a different credential.
-      if (slot.credentialGeneration !== credentialGeneration) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_STALE')
-      if (consume) {
-        // A fresh grant must still be live when it is spent and when its token env is handed out;
-        // the slot reads and the durable write can cross the 60 s lifetime. A recorded resume has no fresh grant.
-        const expired = () => new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_EXPIRED')
-        if (deps.now() >= consume.expiresAt) throw expired()
-        await consumeBindingNonce(consume.nonce, consume.expiresAt)
-        if (deps.now() >= consume.expiresAt) throw expired()
-      }
-      const cleared = Object.fromEntries(CLAUDE_AUTH_OVERRIDE_ENV_KEYS.map(key => [key, '']))
-      return { ...cleared, CLAUDE_CODE_OAUTH_TOKEN: token, [HAPPY_AI_AUTH_SOURCE_ENV]: 'org-bundle',
-        [SETUP_TOKEN_BINDING_ENV]: formatSetupTokenBinding(binding) }
-    }))
+    if (!await setupTokenRuntimeSupported()) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
+    const unavailable = () => new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+    let binding: SetupTokenBinding
+    let consume: { nonce: string; expiresAt: number } | null = null
+    if (recorded) {
+      if (recorded.managedAccountId !== managedAccountId || recorded.groupScope !== groupScope || recorded.credentialGeneration !== credentialGeneration) throw unavailable()
+      binding = recorded
+    } else {
+      if (!deps.setupTokenBinding || !selection.bindingGrant) throw unavailable()
+      const claims = await deps.setupTokenBinding.verify(selection.bindingGrant)
+      if (!claims || claims.managedAccountId !== managedAccountId || claims.groupScope !== groupScope
+        || claims.credentialGeneration !== credentialGeneration) throw unavailable()
+      const { companyId, userId, machineId, keyId, nonce, issuedAt } = claims
+      binding = { managedAccountId, credentialGeneration, groupScope, companyId, userId, machineId, keyId, nonce, issuedAt }
+      consume = { nonce, expiresAt: claims.expiresAt }
+    }
+    // The signed caller must own the slot through this scope's applied assignment.
+    // Personal, other-company, other-user, pending and revoked slots fail.
+    const assignment = await groups.assignment(groupScope, 'claude')
+    if (!assignment || !assignment.reconciled || assignment.userId !== binding.userId
+      || !assignment.desired.includes(setupTokenGroupIdentity(managedAccountId))) throw unavailable()
+    const email = managedSetupTokenEmail(managedAccountId)
+    const listed = parseClaudeListDetails((await deps.execFile('cswap', ['list', '--json'], {
+      maxOutputBytes: MAX_PAYLOAD_BYTES, timeoutMs: CLAUDE_STATUS_TIMEOUT_MS })).stdout).accounts.find(account => account.email === email)
+    const exported = JSON.parse((await deps.execFile('cswap', ['export', '-'], { maxOutputBytes: MAX_PAYLOAD_BYTES })).stdout)
+    const slot = Array.isArray(exported?.accounts) ? exported.accounts.find((account: Record<string, unknown>) => account?.email === email) : undefined
+    const token = slot?.credentials?.claudeAiOauth?.accessToken
+    if (!listed || listed.disabled === true || slot?.credentialType !== 'setup_token' || slot.managedAccountId !== managedAccountId
+      || typeof token !== 'string' || !token.startsWith('sk-ant-oat01-')
+      || !Number.isSafeInteger(slot.credentialGeneration) || slot.credentialGeneration < 1) throw unavailable()
+    // Exactly the signed generation: a replaced token is a different credential.
+    if (slot.credentialGeneration !== credentialGeneration) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_STALE')
+    if (consume) {
+      // A fresh grant must still be live when it is spent and when its token env is handed out;
+      // the slot reads and the durable write can cross the 60 s lifetime. A recorded resume has no fresh grant.
+      const expired = () => new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_EXPIRED')
+      if (deps.now() >= consume.expiresAt) throw expired()
+      await consumeBindingNonce(consume.nonce, consume.expiresAt)
+      if (deps.now() >= consume.expiresAt) throw expired()
+    }
+    const cleared = Object.fromEntries(CLAUDE_AUTH_OVERRIDE_ENV_KEYS.map(key => [key, '']))
+    const environment = { ...cleared, CLAUDE_CODE_OAUTH_TOKEN: token, [HAPPY_AI_AUTH_SOURCE_ENV]: 'org-bundle',
+      [SETUP_TOKEN_BINDING_ENV]: formatSetupTokenBinding(binding) }
+    sessionLaunches.set(environment, { agent, selection, binding, expiresAt: consume?.expiresAt ?? null, started: false })
+    return environment
   }
 
   /**
@@ -1969,14 +1975,49 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
   }
 
   async function sessionEnvironment(agent: string | undefined, selection?: AiAuthSelection, recorded?: SetupTokenBinding): Promise<Record<string, string>> {
-    if (selection?.kind === 'claude-setup-token') return setupTokenSessionEnvironment(agent, selection, recorded)
+    if (selection?.kind === 'claude-setup-token') return serialize(() => withSafeErrors('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE',
+      () => setupTokenSessionEnvironment(agent, selection, recorded)))
     if (agent !== undefined && agent !== 'claude') return {}
     return serialize(async () => {
       const marker = await readTrialMarker()
       if (marker.leases.zai) return parseZaiEnvironment(await deps.readFile(zaiEnvironmentPath()))
       await refuseUnboundManagedDefault()
-      return {}
+      const environment = {}
+      defaultSessionLaunches.add(environment)
+      return environment
     })
+  }
+
+  // The caller invokes this around the actual child creation, after preparation.
+  async function launchSession<T>(environment: Record<string, string>, start: () => T | Promise<T>): Promise<T> {
+    const launch = sessionLaunches.get(environment)
+    if (!launch) {
+      if (SETUP_TOKEN_BINDING_ENV in environment) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE')
+      // Recognize only default Claude environments prepared by this runtime.
+      // Explicit personal, other agents and ZAI environments retain their bypass.
+      if (defaultSessionLaunches.has(environment)) return serialize(async () => {
+        await refuseUnboundManagedDefault()
+        return await start()
+      })
+      return start()
+    }
+    return serialize(() => withSafeErrors('CLAUDE_SETUP_TOKEN_BINDING_UNAVAILABLE', async () => {
+      if (launch.started) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_REPLAYED')
+      const checkExpiry = () => {
+        if (launch.expiresAt !== null && deps.now() >= launch.expiresAt) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_EXPIRED')
+      }
+      checkExpiry()
+      // Recheck custody/disabled/generation under the same queue as group-sync.
+      // The original grant was consumed already; this is not another grant use.
+      const current = await setupTokenSessionEnvironment(launch.agent, launch.selection, launch.binding)
+      if (current.CLAUDE_CODE_OAUTH_TOKEN !== environment.CLAUDE_CODE_OAUTH_TOKEN) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_BINDING_STALE')
+      checkExpiry()
+      launch.started = true
+      // No asynchronous launch preparation belongs in start: plain spawn calls
+      // spawnHappyCLI, tmux calls new-window, Windows resumes a suspended root.
+      // Keep custody locked until submitted.
+      return await start()
+    }))
   }
 
   let personalUse = { online: false, inUse: false }
@@ -1984,7 +2025,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
   const personalRefEpochs = new Map<string, number>()
   let personalCommand: { ref: string; controller: AbortController } | null = null
   const personalInvoke = async (args: string[], signal?: AbortSignal) => (await deps.execFile('cswap', args, {
-    timeoutMs: 10_000, maxOutputBytes: 65536, environment: deps.env, signal, terminateProcessTree: args[1] === 'collect',
+    ...cswapCollectorCommandOptions(args), environment: deps.env, signal,
   })).stdout
   const personalScheduler = createPersonalProbeScheduler({
     now: deps.now, online: () => personalUse.online, inUse: () => personalUse.inUse,
@@ -2057,7 +2098,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
-  return { personalSchedulerTick, stopPersonalScheduler, tokenProbe, collectorProbe, capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: async (machineId?: string) => { const setupToken = await setupTokenRuntimeSupported(); const collector = Boolean(machineId) && await collectorCapability(); const personal = await tokenProbeCapability(); return { version: 1, ...(personal ? { tokenProbeVersion: 1 } : {}), ...(collector ? { collectorProbeVersion: 1 } : {}), groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
+  return { launchSession, personalSchedulerTick, stopPersonalScheduler, tokenProbe, collectorProbe, capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: async (machineId?: string) => { const setupToken = await setupTokenRuntimeSupported(); const collector = Boolean(machineId) && await collectorCapability(); const personal = await tokenProbeCapability(); return { version: 1, ...(personal ? { tokenProbeVersion: 1 } : {}), ...(collector ? { collectorProbeVersion: 1 } : {}), groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
     // Managed setup-token import with metadata verification, only on the marked cswap token runtime.
     ...(setupToken ? { setupTokenVersion: 1, setupTokenStatusVersion: 1 } : {}),
     // Advertised only when a server-signed binding proof can actually be verified here.

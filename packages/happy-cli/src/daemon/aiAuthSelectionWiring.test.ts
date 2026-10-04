@@ -74,8 +74,12 @@ describe('배선 가드: spawn 이 선택을 존중하고 검증하는가', () =
     // 검증 대상이 최종 env 인지: 두 이름 모두 헬퍼가 만든 값이고 자식에게 그대로 간다.
     expect(text).toMatch(/const tmuxEnv = applyAppliedAiAuthSourceEnv\(/)
     expect(text).toMatch(/const spawnEnvironment = applyAppliedAiAuthSourceEnv\(/)
-    expect(text).toMatch(/\}, tmuxEnv\)/)
-    expect(text).toMatch(/env: spawnEnvironment,/)
+    expect(text).toMatch(/\}, tmuxEnv, start => launchManagedAiCredentialSession\(managedAiCredentialEnvironment, start\)\)/)
+    expect(text).toMatch(/env: spawnEnvironment,\s*managedAiCredentialEnvironment,/)
+    expect(text).toMatch(/launchManagedAiCredentialSession = aiCredentialRuntime\.launchSession/)
+    expect(text).toMatch(/await launchManagedAiCredentialSession\(managedAiCredentialEnvironment,\s*\(\) => spawnHappyCLI\(/)
+    expect(text).toMatch(/await launchManagedAiCredentialSession\(managedAiCredentialEnvironment, \(\) => prepared\.resume\(\)\)/)
+    expect(text).toMatch(/resumeTargetSessionId: happySessionId,\s*managedAiCredentialEnvironment,/)
   })
 
   it('어긋난 선택이 spawn 을 실제로 멈춘다 — 사유와 함께', async () => {

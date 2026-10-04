@@ -58,6 +58,7 @@ import { logger } from '@/ui/logger';
 import { existsSync, openSync, writeSync } from 'node:fs';
 import { configuration } from '@/configuration';
 import { isBun } from './runtime';
+import { scrubSessionLineageEnv } from '@/daemon/sessionEnv';
 
 type HappyCliSpawnCommand = {
   runtime: string;
@@ -136,7 +137,7 @@ export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): Child
   // A daemon outlives the caller's automation worktree. Pin both startup
   // commands before even reading process.cwd(), which may already be deleted.
   if (args[0] === 'daemon' && (args[1] === 'start' || args[1] === 'start-sync')) {
-    options = { ...options, cwd: homedir() };
+    options = { ...options, cwd: homedir(), env: scrubSessionLineageEnv(options.env ?? process.env) };
   }
   const command = resolveHappyCliSpawnCommand(args);
 
