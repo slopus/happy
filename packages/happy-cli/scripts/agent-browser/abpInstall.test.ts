@@ -284,6 +284,34 @@ describe.skipIf(!fixtureBase)('abp-install internals (sourced; needs a directory
     const me = spawnSync('id', ['-un'], { encoding: 'utf8' }).stdout.trim()
     const group = spawnSync('id', ['-gn'], { encoding: 'utf8' }).stdout.trim()
 
+    // Found on fresh machines by the one-line install: Debian 12 arm64 had no make/g++ (node-pty has no linux-arm64
+    // prebuild and compiles), and Ubuntu 22.04 has no systemd-resolved package (resolved ships inside systemd there).
+    it('installs the build tools node-pty needs where it has no prebuild', () => {
+        const result = sourced('apt-cache() { return 0; }; host_packages')
+        expect(result.status, result.stderr).toBe(0)
+        expect(result.stdout.split(/\s+/)).toEqual(expect.arrayContaining(['make', 'g++', 'gcc', 'libc6-dev', 'bubblewrap', 'libnss-resolve', 'systemd-resolved']))
+    })
+
+    it('leaves out systemd-resolved where the distribution has no such package (Ubuntu 22.04)', () => {
+        const result = sourced('apt-cache() { [ "$2" != systemd-resolved ]; }; host_packages')
+        expect(result.status, result.stderr).toBe(0)
+        const packages = result.stdout.split(/\s+/)
+        expect(packages).not.toContain('systemd-resolved')
+        expect(packages).toEqual(expect.arrayContaining(['libnss-resolve', 'make', 'g++']))
+    })
+
+    // libnss-resolve's postinst enables systemd-resolved and fails while the unit is masked (seen on an Ubuntu 22.04 VM).
+    it('unmasks systemd-resolved before installing the packages', () => {
+        const result = sourced(`DRY_RUN=1; INSTALL_PACKAGES=1
+            apt-cache() { return 1; }
+            systemctl() { if [ "$1" = is-enabled ]; then echo masked; return 1; fi; return 0; }
+            preflight 2>/dev/null | grep -nE "systemctl unmask|apt-get install" | cut -d: -f2- | cut -c1-60`)
+        const lines = result.stdout.trim().split('\n')
+        expect(lines[0]).toContain('systemctl unmask systemd-resolved.service')
+        expect(lines.some((line) => line.includes('apt-get install'))).toBe(true)
+        expect(lines.findIndex((line) => line.includes('apt-get install'))).toBeGreaterThan(0)
+    })
+
     it('never pipes into write_file (a pipeline runs it in a subshell and loses the change record)', () => {
         const source = readFileSync(join(here, 'abp-install'), 'utf8')
         expect(source.split('\n').filter((line) => /\|\s*write_file\b/.test(line) && !line.trim().startsWith('#'))).toEqual([])

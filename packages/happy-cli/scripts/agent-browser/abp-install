@@ -15,7 +15,8 @@
 #   --build-from <happy-cli>  build the images on this machine instead (needs a source checkout with deps)
 #   --agent-credentials <file> log the agent in to Happy from a machine registration claim response (token, secret,
 #                             machineId; needs --server-url), so a first install finishes in one run. Deleted after use
-#   --install-packages        apt-get the host prerequisites (bubblewrap sudo iptables ipset acl gcc libc6-dev systemd-resolved libnss-resolve)
+#   --install-packages        apt-get the host prerequisites (bubblewrap sudo iptables ipset acl gcc g++ make libc6-dev libnss-resolve,
+#                             and systemd-resolved where it is a package of its own)
 #   --no-start                write everything, start nothing
 # Machine options (saved in /etc/abp/install.json; see abp-plan.mjs parseOptionFlags):
 #   --config <file>           all of the options below as one JSON object, in install.json's shape (later flags win)
@@ -321,6 +322,14 @@ require_file() { # path what
     if [ "$DRY_RUN" = 1 ]; then warn "$2 is missing ($1)"; else die "$2 is missing ($1)"; fi
 }
 
+# host_packages: the apt packages --install-packages installs. make and g++ build node-pty where it ships no prebuild
+# (linux-arm64). systemd-resolved is a package of its own on Debian 12 and Ubuntu 22.10+, part of systemd on Ubuntu 22.04.
+host_packages() {
+    printf '%s ' bubblewrap sudo iptables ipset acl gcc g++ make libc6-dev libnss-resolve util-linux ca-certificates
+    if apt-cache show systemd-resolved >/dev/null 2>&1; then printf 'systemd-resolved'; fi
+    printf '\n'
+}
+
 preflight() {
     if [ "$DRY_RUN" = 0 ]; then
         [ "$(id -u)" = 0 ] || die "run as root"
@@ -328,8 +337,15 @@ preflight() {
         [ -d /run/systemd/system ] || die "systemd is required"
     fi
     if [ "$INSTALL_PACKAGES" = 1 ]; then
+        # Before the packages: libnss-resolve's postinst enables the unit and fails while it is masked.
+        case "$(systemctl is-enabled systemd-resolved.service 2>/dev/null || true)" in
+            masked | masked-runtime) run systemctl unmask systemd-resolved.service ;;
+        esac
         run apt-get update
-        run env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends bubblewrap sudo iptables ipset acl gcc libc6-dev systemd-resolved libnss-resolve util-linux ca-certificates
+        local packages
+        packages=$(host_packages)
+        # shellcheck disable=SC2086
+        run env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends $packages
     fi
     local missing="" cmd
     for cmd in docker bwrap sudo visudo iptables ip6tables iptables-save ip6tables-save ipset setfacl getfacl runuser cc flock getent useradd usermod groupadd gpasswd systemctl systemd-tmpfiles cmp; do
