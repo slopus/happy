@@ -39,6 +39,7 @@ import { getProjectPath } from './utils/path';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { RawJSONLinesSchema, type RawJSONLines } from './types';
+import { backfillUnsyncedTranscript } from './utils/transcriptResync';
 
 /** JavaScript runtime to use for spawning Claude Code */
 export type JsRuntime = 'node' | 'bun'
@@ -292,6 +293,20 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
             lifecycleState: 'running',
             archivedBy: undefined,
         }));
+
+        // Reconnect backfill: the conversation may have continued outside Happy (plain
+        // `claude --resume`) while this session was not running. Send what the session history
+        // lacks before the scanners start, since they treat what is on disk as already sent.
+        const resumeFlagIndex = options.claudeArgs?.findIndex((arg) => arg === '--resume' || arg === '-r') ?? -1;
+        const resumedClaudeSessionId = resumeFlagIndex >= 0 ? options.claudeArgs?.[resumeFlagIndex + 1] : undefined;
+        if (resumedClaudeSessionId && !resumedClaudeSessionId.startsWith('-')) {
+            await backfillUnsyncedTranscript({
+                synced: session.syncedTranscript(),
+                workingDirectory,
+                claudeSessionId: resumedClaudeSessionId,
+                send: (message) => session.sendClaudeSessionMessageFromLocalTranscript(message),
+            });
+        }
     }
 
     // Fork backfill: when this Happy session was just spawned as a fork
