@@ -1,6 +1,6 @@
 /** Saydo specs/agent-browser-one-click-install I5: the release publishes the images and the digests a machine pulls them by. */
 import { describe, expect, it } from 'vitest'
-import { configDigests, imagesManifest } from './publish-images.mjs'
+import { configDigests, imagesManifest, sh } from './publish-images.mjs'
 
 const digest = (c: string) => `sha256:${c.repeat(64)}`
 const index = JSON.stringify({
@@ -38,3 +38,16 @@ describe('release image publisher', () => {
         expect(() => imagesManifest({ version: 'v', runtime, browser: { ...browser, ids: { amd64: digest('a') } } })).toThrow(/browser image id for arm64/)
     })
 })
+
+describe('publisher commands', () => {
+    // The 1.1.10-aplus.288 release stopped here: a command whose output goes straight to the log has no stdout to trim.
+    it('runs a command that streams its output to the log', () => {
+        expect(sh(process.execPath, ['-e', 'process.stdout.write("built")'], { stdio: 'inherit' })).toBe('')
+    })
+
+    it('returns the trimmed output of a captured command and fails on a non-zero exit', () => {
+        expect(sh(process.execPath, ['-e', 'process.stdout.write(" sha256:abc \\n")'])).toBe('sha256:abc')
+        expect(() => sh(process.execPath, ['-e', 'process.exit(3)'])).toThrow(/failed \(3\)/)
+    })
+})
+

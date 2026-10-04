@@ -3,7 +3,9 @@
 // registry and write abp-images.json, the digests a machine pulls them by (abp-stack pull, abp-install --images-manifest).
 // Run by the happy-cli release workflow before npm publish. Saydo specs/agent-browser-one-click-install I5.
 //
-//   node publish-images.mjs --repo <docker hub namespace> --version <release> --out <abp-images.json>
+//   node publish-images.mjs --repo <docker hub namespace> --version <release> --out <abp-images.json> [--registry <host>]
+//
+// --registry (default docker.io) lets a release rehearsal push to a local registry instead.
 //
 // The image id a machine sees after `docker pull` (classic image store) is the platform manifest's config digest, so
 // that is what abp-images.json records per architecture, next to the pinned multi-arch reference.
@@ -40,15 +42,16 @@ export function imagesManifest({ version, runtime, browser }) {
   return { schemaVersion: 1, version, runtime, browser };
 }
 
-function sh(command, args, options = {}) {
+export function sh(command, args, options = {}) {
   const result = spawnSync(command, args, { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"], ...options });
   if (result.status !== 0) throw new Error(`${command} ${args.slice(0, 3).join(" ")} … failed (${result.status})`);
-  return result.stdout.trim();
+  return (result.stdout ?? "").trim();
 }
 
 function main(argv) {
-  const option = (name) => { const i = argv.indexOf(name); if (i < 0 || !argv[i + 1]) throw new Error(`${name} is required`); return argv[i + 1]; };
-  const repo = option("--repo"), version = option("--version"), out = resolve(option("--out"));
+  const value = (name) => { const i = argv.indexOf(name); return i < 0 ? undefined : argv[i + 1]; };
+  const option = (name) => { const found = value(name); if (!found) throw new Error(`${name} is required`); return found; };
+  const repo = option("--repo"), version = option("--version"), out = resolve(option("--out")), registry = value("--registry") ?? "docker.io";
   const packageDir = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
   const staging = mkdtempSync(join(tmpdir(), "abp-publish-"));
   try {
@@ -56,7 +59,7 @@ function main(argv) {
     for (const [from, name] of imageContextFiles(packageDir)) copyFileSync(from, join(staging, name));
     const images = {};
     for (const role of ["runtime", "browser"]) {
-      const name = `docker.io/${repo}/abp-${role}`;
+      const name = `${registry}/${repo}/abp-${role}`;
       const metadata = join(staging, `${role}.metadata.json`);
       sh("docker", ["buildx", "build", "--platform", ARCHITECTURES.map((a) => `linux/${a}`).join(","), "--provenance=false", "--sbom=false",
         "-f", join(staging, `${role}.Dockerfile`), "-t", `${name}:${version}`, "--metadata-file", metadata, "--push", staging], { stdio: "inherit" });
