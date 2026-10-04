@@ -525,3 +525,36 @@ CI correction GREEN: 94/94 passed (installer script38, setup-token runtime56),
 mandatory CLI build/typecheck passed, diff whitespace clean. The isolated candidate
 state contains no daemon.state.json. Remote CI has not yet rerun for this test-only
 correction; the failed macOS run remains the last remote result until a new push.
+
+
+## Actual installed daemon DEK RPC acceptance — 2026-10-04
+
+Latest e34cde5ff CI passed all five Linux20/24, Windows20/24 and macOS jobs;
+the earlier macOS source-regex failure above is historical. Candidate runtime
+remains822948b96; subsequent changes are tests/documentation only.
+
+The same installed CLI tarball and provider wheel were exercised with an actual
+source standalone PGlite server and daemon under a unique temporary HOME.
+A first secretbox/legacy run was not counted as Desktop DEK acceptance. A fresh
+run used credentials without `secret`, registered a wrapped machine DEK, and
+sent customer-bound AES-256-GCM RPC ([0|12-byte nonce|ciphertext|16-byte tag]).
+Capabilities, reconciled group-sync/status for one synthetic managed account,
+collector observed45% plus permit-replay rejection, and signed session spawn
+with appliedAiAuthSource=org-bundle succeeded. Both the Happy child entry and
+actual Claude fixture executable observed the matching token (boolean only),
+nonce/generation binding and empty API-key/baseURL overrides.
+
+Session stop and daemon stop returned200; wrapper and server stdin EOF exited0
+with no signal. Actual daemon/wrapper/child PIDs were absent and no fallback
+cleanup ran. Node net/DNS denial instrumentation recorded no denied attempts;
+the Python external inference transport was mocked exactly once. This is a
+harness network boundary, not OS-wide isolation acceptance. Evidence:
+`/tmp/claude/happy-dek-acceptance._qu85ev6/{harness.cjs,network-guard.cjs,result.json}`.
+Parent reviewed source/result and independently asserted the outcomes and exits.
+
+Studio signing/public-key/grants and inference remained fixtures. Desktop's
+actual callDesktopGroupMachineRpc was not invoked (an independent matching-wire
+client was used). Real Studio reserve→daemon→publish, real Claude authentication,
+model coverage, native postinstall/release package/rollback and runtime pin
+acceptance remain open. Real account requests:0. No product code or operating
+daemon/pins changed.
