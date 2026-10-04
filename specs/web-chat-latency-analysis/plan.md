@@ -53,3 +53,11 @@ Compatibility steps1–3 Done: Red3, Green185, build/typecheck/unused0/diff chec
 4. CI-only publish then released vendor/ethan runtime and Web20. No unreleased runtime consumption.
 
 .287 steps1–2 preparation/validation Done. Steps3–4 publish part superseded: .287 (tag 510b0b6c, PR #686, includes #685) was already published by CI; no .287 tag creation. Released vendor/ethan runtime and Web20 measurement pending.
+
+## Initial inventory cost investigation
+1. Exact0.160.0 startup/catalog await semantics.
+2. Provider-free20 fresh-thread cold/warm pairs with4 local MCPs; retain per-server timing and initializer counts.
+3. Validate raw outcomes, cleanup and distinguish fixture mechanism from real ethan root cause.
+4. Record evidence; do not skip readiness or infer a safe optimization without measured duplicate work.
+
+Investigation1–3 Done: exact native await semantics and fully verified20 cold/warm pairs. Step4 evidence recorded; next separate increment is privacy-bounded server-ordinal inventory timing, parser compatibility and actual cold measurements. No readiness bypass or speculative parallel implementation.
