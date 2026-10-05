@@ -4,7 +4,7 @@ import { z } from 'zod';
 import {
     ServiceConfigSchema, ServiceRefSchema, ServiceRevisionSchema, ServiceGrantSchema,
     ServiceGrantScopeSchema, ServiceGrantKindSchema, type ServiceConfig, type ServiceRef,
-    type ServiceRevision, type ServiceGrant,
+    type ServiceRevision, type ServiceGrant, type ServiceTarget, type CapabilityCatalog,
 } from '@slopus/happy-wire';
 import { createBindingStore, readTrustedCatalog, cacheCatalog, validateCatalogOptions, type TrustedCapabilitySource } from './bindings';
 import { createApplicationRegistry } from './registry';
@@ -28,11 +28,12 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
         if (!service) deny('service-not-found');
         return service;
     }
-    async function verifyConfig(tx: Prisma.TransactionClient, ownerId: string, config: ServiceConfig, expectedFingerprint?: string): Promise<string> {
+    async function verifyIdentity(tx: Prisma.TransactionClient, ownerId: string, config: ServiceTarget, expectedFingerprint?: string): Promise<{ fingerprint: string; catalog: CapabilityCatalog | null }> {
         // Lock current identity rows through commit. Deletion cannot race a successful binding.
         await tx.$queryRaw`SELECT "id" FROM "Machine" WHERE "id" = ${config.machineId} AND "accountId" = ${ownerId} FOR SHARE`;
         if (!await tx.machine.findFirst({ where: { id: config.machineId, accountId: ownerId }, select: { id: true } })) deny('permission-denied');
         let fingerprint: string;
+        let catalog: CapabilityCatalog | null = null;
         if (config.engine === 'codex') {
             await tx.$queryRaw`SELECT "id" FROM "CodexAccountProfile" WHERE "id" = ${config.accountRef.id} AND "accountId" = ${ownerId} FOR SHARE`;
             const profile = await tx.codexAccountProfile.findFirst({ where: { id: config.accountRef.id, accountId: ownerId }, select: { externalAccountFingerprint: true, status: true } });
@@ -40,25 +41,29 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
             if (profile.status !== 'available') deny('account-login-required');
             fingerprint = profile.externalAccountFingerprint;
         } else {
-            const catalog = await readTrustedCatalog(source, ownerId, config);
+            catalog = await readTrustedCatalog(source, ownerId, config);
             if (!catalog) deny('account-not-found');
             fingerprint = config.accountRef.identityId;
-            await cacheCatalog(tx, ownerId, catalog);
         }
         if (expectedFingerprint !== undefined && fingerprint !== expectedFingerprint) deny('account-identity-changed');
+        return { fingerprint, catalog };
+    }
+    async function verifyConfig(tx: Prisma.TransactionClient, ownerId: string, config: ServiceConfig): Promise<string> {
+        const identity = await verifyIdentity(tx, ownerId, config);
+        let catalog = identity.catalog;
         if (config.modelId !== null || config.reasoning.mode === 'explicit') {
-            const catalog = await readTrustedCatalog(source, ownerId, config);
+            catalog ??= await readTrustedCatalog(source, ownerId, config);
             if (!catalog) deny('machine-offline');
             validateCatalogOptions(catalog, config.modelId, config.reasoning, ['chat']);
-            await cacheCatalog(tx, ownerId, catalog);
         }
-        return fingerprint;
+        if (catalog) await cacheCatalog(tx, ownerId, catalog);
+        return identity.fingerprint;
     }
     function requireRevision(actual: number, expected: number) {
         if (!Number.isSafeInteger(expected) || expected < 1) deny('invalid-request');
         if (actual !== expected) deny('revision-conflict');
     }
-    const bindings = createBindingStore(database, source, { lockService, verifyConfig });
+    const bindings = createBindingStore(database, source, { lockService, verifyIdentity });
     return {
         ...registry, ...bindings,
         async createService(ownerId: string, input: CreateServiceInput): Promise<ServiceRef> {
@@ -127,7 +132,7 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
                 const policy = await createApplicationRegistry(tx).readApplication(data.scope.appId);
                 if (data.scope.permissions.some(permission => !policy.capabilities.includes(permission))) deny('permission-denied');
                 if (data.scope.expiresAt !== null && data.scope.expiresAt <= Date.now()) deny('authorization-expired');
-                for (const target of data.scope.targets) await verifyConfig(tx, ownerId, { ...target, modelId: null, reasoning: { mode: 'default' } });
+                for (const target of data.scope.targets) await verifyIdentity(tx, ownerId, target);
                 const row = await tx.aIServiceAuthorization.create({ data: { id: data.id, ownerId, appId: data.scope.appId,
                     serviceId: data.scope.serviceId, kind: data.kind, scope: data.scope,
                     expiresAt: data.scope.expiresAt === null ? null : new Date(data.scope.expiresAt),

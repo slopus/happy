@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import {
     CapabilityCatalogSchema, ExecutionBindingSchema, ServicePrincipalSchema, ServiceReasoningSchema,
-    ServicePermissionsSchema, ServiceConfigSchema, type CapabilityCatalog, type ExecutionBinding, type ServiceConfig,
+    ServicePermissionsSchema, ServiceConfigSchema, type CapabilityCatalog, type ExecutionBinding,
     type ServicePrincipal, type ServiceTarget, type ServiceReasoning, type ServicePermission,
 } from '@slopus/happy-wire';
 import { z } from 'zod';
@@ -57,7 +57,7 @@ export function validateCatalogOptions(catalog: CapabilityCatalog, requestedMode
 
 export interface BindingDependencies {
     lockService(tx: Prisma.TransactionClient, ownerId: string, serviceId: string): Promise<{ id: string; enabled: boolean; revision: number }>;
-    verifyConfig(tx: Prisma.TransactionClient, ownerId: string, config: ServiceConfig, expectedFingerprint?: string): Promise<string>;
+    verifyIdentity(tx: Prisma.TransactionClient, ownerId: string, target: ServiceTarget, expectedFingerprint?: string): Promise<{ fingerprint: string; catalog: CapabilityCatalog | null }>;
 }
 export function createBindingStore(database: PrismaClient, source: TrustedCapabilitySource | undefined, dependencies: BindingDependencies) {
     async function authorize(tx: Prisma.TransactionClient, input: ServicePrincipal, appId: string, serviceId: string) {
@@ -109,8 +109,8 @@ export function createBindingStore(database: PrismaClient, source: TrustedCapabi
                     if (options.data.modelId !== undefined && !grant.allowModelOverride) deny('permission-denied');
                     if (options.data.reasoning !== undefined && !grant.allowReasoningOverride) deny('permission-denied');
                 }
-                await dependencies.verifyConfig(tx, principal.ownerId, config, revision.accountFingerprint);
-                const catalog = await readTrustedCatalog(source, principal.ownerId, config);
+                const identity = await dependencies.verifyIdentity(tx, principal.ownerId, config, revision.accountFingerprint);
+                const catalog = identity.catalog ?? await readTrustedCatalog(source, principal.ownerId, config);
                 if (!catalog) deny('machine-offline');
                 const requestedModel = options.data.modelId === undefined ? config.modelId : options.data.modelId;
                 const reasoning = options.data.reasoning ?? config.reasoning;
@@ -133,9 +133,8 @@ export function createBindingStore(database: PrismaClient, source: TrustedCapabi
                 const { row, binding } = await readStored(tx, principal, appId, id);
                 const service = await dependencies.lockService(tx, principal.ownerId, row.serviceId);
                 if (!service.enabled) deny('service-disabled');
-                const config: ServiceConfig = ServiceConfigSchema.parse({ machineId: binding.machineId, engine: binding.engine, accountRef: binding.accountRef, modelId: binding.requestedModel, reasoning: binding.reasoning });
-                await dependencies.verifyConfig(tx, principal.ownerId, config, row.accountFingerprint);
-                const catalog = await readTrustedCatalog(source, principal.ownerId, binding);
+                const identity = await dependencies.verifyIdentity(tx, principal.ownerId, binding, row.accountFingerprint);
+                const catalog = identity.catalog ?? await readTrustedCatalog(source, principal.ownerId, binding);
                 if (!catalog) deny('machine-offline');
                 validateCatalogOptions(catalog, binding.requestedModel, binding.reasoning, binding.permissions);
                 await cacheCatalog(tx, principal.ownerId, catalog);

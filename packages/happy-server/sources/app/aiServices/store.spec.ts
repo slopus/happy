@@ -145,6 +145,45 @@ describe('AI service persistence and authorization', () => {
         const service = await store.createService(owner, { name: 'Claude', config: claude });
         expect((await store.resolveBinding(principal(), appId, service.id, {})).engine).toBe('claude');
     });
+    it.each(['owner', 'allowed-grant', 'denied-grant'] as const)('validates a replacement model over an obsolete default for %s', async caller => {
+        const service = await store.createService(owner, { name: 'Explicit default', config: { ...config, modelId: 'native-default' } });
+        let user = principal();
+        if (caller !== 'owner') {
+            const grant = await store.registerAuthorization(owner, { id: `${owner}-grant`, kind: 'platform-grant', scope: { appId, serviceId: service.id, targets: [{ machineId: machine, engine: 'codex', accountRef: { kind: 'codex-profile', id: profile } }], permissions: ['chat'], expiresAt: null }, allowModelOverride: caller === 'allowed-grant', allowReasoningOverride: false });
+            user = { kind: 'platform-grant', ownerId: owner, grantId: grant.id, scope: grant.scope };
+        }
+        catalog!.models = catalog!.models.filter(model => model.id === 'native-text');
+        catalog!.defaultModelId = 'native-text';
+        if (caller === 'denied-grant') {
+            await expect(store.resolveBinding(user, appId, service.id, { modelId: 'native-text' })).rejects.toMatchObject({ code: 'permission-denied' });
+            expect(await context.database.aIServiceBinding.count({ where: { serviceId: service.id } })).toBe(0);
+        } else {
+            const binding = await store.resolveBinding(user, appId, service.id, { modelId: 'native-text' });
+            expect(binding).toMatchObject({ revision: 1, requestedModel: 'native-text', reasoning: { mode: 'default' } });
+            expect(await store.validateBinding(user, appId, binding.id)).toEqual(binding);
+        }
+        expect((await store.readRevision(owner, service.id, 1)).config.modelId).toBe('native-default');
+        expect((await store.readService(owner, service.id)).service.revision).toBe(1);
+    });
+    it.each(['owner', 'allowed-grant', 'denied-grant'] as const)('validates replacement reasoning over an obsolete default for %s', async caller => {
+        const service = await store.createService(owner, { name: 'Explicit reasoning', config: { ...config, reasoning: { mode: 'explicit', value: 'native-high' } } });
+        let user = principal();
+        if (caller !== 'owner') {
+            const grant = await store.registerAuthorization(owner, { id: `${owner}-grant`, kind: 'personal-grant', scope: { appId, serviceId: service.id, targets: [{ machineId: machine, engine: 'codex', accountRef: { kind: 'codex-profile', id: profile } }], permissions: ['chat'], expiresAt: null }, allowModelOverride: false, allowReasoningOverride: caller === 'allowed-grant' });
+            user = { kind: 'personal-grant', ownerId: owner, grantId: grant.id, scope: grant.scope };
+        }
+        catalog!.models[0].reasoning = { supportsDefault: true, values: ['native-low'], defaultValue: 'native-low' };
+        if (caller === 'denied-grant') {
+            await expect(store.resolveBinding(user, appId, service.id, { reasoning: { mode: 'explicit', value: 'native-low' } })).rejects.toMatchObject({ code: 'permission-denied' });
+            expect(await context.database.aIServiceBinding.count({ where: { serviceId: service.id } })).toBe(0);
+        } else {
+            const binding = await store.resolveBinding(user, appId, service.id, { reasoning: { mode: 'explicit', value: 'native-low' } });
+            expect(binding).toMatchObject({ revision: 1, requestedModel: null, reasoning: { mode: 'explicit', value: 'native-low' } });
+            expect(await store.validateBinding(user, appId, binding.id)).toEqual(binding);
+        }
+        expect((await store.readRevision(owner, service.id, 1)).config.reasoning).toEqual({ mode: 'explicit', value: 'native-high' });
+        expect((await store.readService(owner, service.id)).service.revision).toBe(1);
+    });
     it('rejects unsupported or unknown explicit configuration before committing a revision', async () => {
         const service = await create();
         await expect(store.updateService(owner, service.id, 1, { ...config, modelId: 'unknown' })).rejects.toMatchObject({ code: 'model-unavailable' });
