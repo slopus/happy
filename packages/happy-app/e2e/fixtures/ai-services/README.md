@@ -1,0 +1,26 @@
+# AI service UI fixture
+
+Run from the repository root:
+
+```sh
+node packages/happy-app/e2e/fixtures/ai-services/serve.mjs
+```
+
+Open `http://127.0.0.1:49817/?case=list&theme=dark` with Ego. The controller owns the browser space. This server binds only to localhost. It does not publish a preview.
+
+The fixture mounts the actual ServiceList, ServiceEditor and ServiceConsent components. It also uses AppAuthorizationLayout, AuthorizationChoice, AuthorizationNotice, RoundButton, ItemList, Typography, React Native Web and the current appThemes. `theme=dark` selects `ginghamDark`. `theme=light` selects `caramelLight`.
+
+The fixture replaces the app/auth shell with synthetic props. It simulates owner APIs, accounts, workers and pairing data. The Unistyles adapter evaluates the real style factories against the chosen theme. It does not test the production Unistyles runtime or theme persistence. Layout uses the current Web maximum width of 800. Unused icon rendering is stubbed. It does not load a login provider or contact a server. Synthetic approval does not test encryption, a real grant or native execution. Unit tests cover the real recipient sealing function.
+
+Cases:
+
+- `list`: inspect the service, application reference and recent call. Requested model is Model One. Actual model and actual reasoning remain unknown. Exercise rename, revoke and delete confirmation without a server mutation.
+- `editor`: select Claude. Its identity comes from the synthetic worker observation. Its quota and native default model are unknown. Choose Model One. Confirm that affected apps need a new authorization before saving. Unverified image capability remains disabled.
+- `conflict`: select Model Two and save. The first save returns a revision conflict. Model Two remains selected. Read the latest version, then save again. The request record shows revision 3 followed by revision 4 with the same draft.
+- `new`: enter a name, select an existing device/account tuple and configure a model. Save uses the synthetic create API.
+- `consent`: inspect the application, service, device, account, engine, default model, reasoning and permissions. Images require a separate selection. Compare 1 day, 7 days and until revoked. Browser remembering is separate from the grant lifetime.
+- `expired`: the same consent UI has an expired pairing. Approval stays disabled.
+
+Check both themes and narrow/desktop viewports. Test Tab, Space and arrow keys on choices. Confirm that content scrolls and controls remain visible. The fixture request record contains synthetic metadata only.
+
+Generated bundles stay in the ignored task evidence directory. Restart the server after component changes. No native, provider, production auth or published-app acceptance is implied.

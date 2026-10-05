@@ -1,0 +1,31 @@
+import * as React from 'react';
+import { act } from 'react';
+import { expect, it, vi } from 'vitest';
+import { render, press, snapshot, catalog, worker, account } from './testSupport';
+import { ServiceEditor } from './ServiceEditor';
+import { AIServiceAPIError } from '@/sync/apiAIServices';
+it('retains edited model and base revision on conflict, then explicitly rebases without losing inputs', async () => {
+    const api = { capabilities: vi.fn(async () => ({ catalog })), update: vi.fn().mockRejectedValueOnce(new AIServiceAPIError('revision-conflict')).mockResolvedValue({ revision: { ...snapshot.revision, revision: 5 } }), read: vi.fn(async () => ({ ...snapshot, service: { ...snapshot.service, revision: 4 }, revision: { ...snapshot.revision, revision: 4 } })) };
+    const r = await render(<ServiceEditor snapshot={snapshot} api={api as any} workers={[worker]} accounts={[account as any]} machines={[{ id: 'm1', name: 'Mac' }]} grants={[]} onSaved={vi.fn()} onClose={vi.fn()} onManageAccounts={vi.fn()} onManageDevices={vi.fn()} />);
+    await act(async () => r.root.findByProps({ testID: 'model-model1' }).props.onPress());
+    await press(r, '保存默认配置');
+    expect(api.update).toHaveBeenCalledWith('s1', 3, expect.objectContaining({ modelId: 'model1' }));
+    expect(JSON.stringify(r.toJSON())).toContain('未保存输入已保留');
+    expect(r.root.findByProps({ testID: 'model-model1' }).props.selected).toBe(true);
+    await press(r, '读取最新版本并保留输入');
+    await press(r, '保存默认配置');
+    expect(api.update).toHaveBeenLastCalledWith('s1', 4, expect.objectContaining({ modelId: 'model1' }));
+    expect(JSON.stringify(r.toJSON())).toContain('仅影响新对话');
+});
+it('requires confirmation when an existing grant lacks the changed engine and uses the observed Claude identity', async () => {
+    const claudeCatalog = { ...catalog, engine: 'claude', accountRef: { kind: 'device-identity', machineId: 'm1', identityId: worker.serviceClaudeIdentity } };
+    const api = { capabilities: vi.fn(async (target) => ({ catalog: target.engine === 'claude' ? claudeCatalog : catalog })), update: vi.fn(async () => ({})) };
+    const grants = [{ id: 'g1', revokedAt: null, scope: { targets: [snapshot.revision.config], expiresAt: null } }];
+    const r = await render(<ServiceEditor snapshot={snapshot} api={api as any} workers={[worker]} accounts={[account as any]} machines={[{ id: 'm1', name: 'Mac' }]} grants={grants as any} onSaved={vi.fn()} onClose={vi.fn()} onManageAccounts={vi.fn()} onManageDevices={vi.fn()} />);
+    await act(async () => r.root.findByProps({ testID: 'target-claude-m1' }).props.onPress());
+    expect(r.root.findAllByType('Text').some((n: any) => n.children.join('') === '额度：未知')).toBe(true);
+    expect(r.root.findAllByType('Button').find((n: any) => n.props.title === '保存默认配置').props.disabled).toBe(true);
+    await act(async () => r.root.findByProps({ testID: 'confirm-new-scope' }).props.onPress());
+    await press(r, '保存默认配置');
+    expect(api.update).toHaveBeenCalledWith('s1', 3, expect.objectContaining({ accountRef: claudeCatalog.accountRef }));
+});
