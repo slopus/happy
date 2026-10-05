@@ -6,7 +6,7 @@ import { createNodePlatformTransport } from './nodePlatformTransport';
 import { createBrowserPersonalTransport } from './personalTransport';
 import { createMemoryServiceStorage } from './storage';
 import type { ExecutionBinding, GrantReceipt, TurnRecord } from '@slopus/happy-wire/ai-services';
-import { binding, fixture, makeReceipt } from './testFixtures';
+import { binding, fixture, makeReceipt, encrypt } from './testFixtures';
 for (const source of ['platform', 'personal'] as const)
     describe(`${source} real scoped HTTP contract`, () => {
         it('recovers an accepted request after refresh without submitting a second native turn', async () => {
@@ -66,5 +66,47 @@ describe('bounded observation', () => {
         finally {
             vi.useRealTimers();
         }
+    });
+});
+
+describe('start submission certainty and concurrent recovery', () => {
+    it('trusts only a matching fresh refusal and keeps persisted response loss uncertain', async () => {
+        for (const marker of [undefined, 'wrong', 'request']) {
+            const f = fixture(), storage = createMemoryServiceStorage();
+            const fetcher: typeof fetch = async (url, init) => String(url).endsWith('/turns')
+                ? Response.json({ error: { code: 'model-unavailable', retryable: false, submission: 'not-submitted', requestId: marker } }, { status: 409 })
+                : f.fetcher(url, init);
+            const transport = createNodePlatformTransport({ appId: 'advisor', serverUrl: 'https://paws.test', receipt: makeReceipt('platform-grant'), storage, fetch: fetcher });
+            await transport.authorize();
+            const input = { binding, requestId: 'request', messages: [{ role: 'user' as const, text: 'hello' }] };
+            await expect(transport.start(input)).rejects.toMatchObject({ code: 'model-unavailable', submission: marker === 'request' ? 'not-submitted' : 'uncertain' });
+            await expect(transport.start(input)).rejects.toMatchObject({ submission: 'uncertain' });
+            transport.dispose();
+        }
+    });
+    it('decrypts the terminal duplicate POST in a shared-storage race with one execution', async () => {
+        const storage = createMemoryServiceStorage(), f = fixture();
+        let posts = 0, reads = 0, executions = 0, ciphertext = '';
+        const record: TurnRecord = { id: 'turn', conversationId: binding.id, requestId: 'request', binding, status: 'completed', actual: { modelId: null, reasoning: null }, createdAt: 1, startedAt: 2, completedAt: 3, error: null };
+        const output = encrypt({ protocol: 'ai-services/1', grantId: 'grant', appId: 'advisor', serviceId: 'service', bindingId: binding.id, requestId: 'request', turnId: 'turn', direction: 'output', sequence: 7, text: 'one encrypted answer' });
+        const fetcher: typeof fetch = async (url, init) => {
+            if (String(url).endsWith('/turns')) {
+                posts++;
+                const input = JSON.parse(String(init?.body));
+                if (!ciphertext) { executions++; ciphertext = input.ciphertext; }
+                expect(input.ciphertext).toBe(ciphertext);
+                return Response.json({ record });
+            }
+            if (String(url).includes('/turns/turn')) { reads++; return Response.json({ record, input: ciphertext, output, sequence: 7 }); }
+            return f.fetcher(url, init);
+        };
+        const t = createNodePlatformTransport({ appId: 'advisor', serverUrl: 'https://paws.test', receipt: makeReceipt('platform-grant'), storage, fetch: fetcher });
+        await t.authorize();
+        const input = { binding, requestId: 'request', messages: [{ role: 'user' as const, text: 'hello' }] };
+        const results = await Promise.all([t.start(input), t.start(input)]);
+        expect(posts).toBe(2); expect(reads).toBe(2); expect(executions).toBe(1);
+        expect(results[0]).toEqual(results[1]);
+        expect(results[0]).toMatchObject({ text: 'one encrypted answer', sequence: 7 });
+        t.dispose();
     });
 });

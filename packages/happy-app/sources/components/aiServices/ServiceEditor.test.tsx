@@ -25,6 +25,7 @@ it('requires confirmation when an existing grant lacks the changed engine and us
     await act(async () => r.root.findByProps({ testID: 'target-claude-m1' }).props.onPress());
     expect(r.root.findAllByType('Text').some((n: any) => n.children.join('') === '额度：未知')).toBe(true);
     expect(r.root.findAllByType('Button').find((n: any) => n.props.title === '保存默认配置').props.disabled).toBe(true);
+    expect(r.root.findByProps({ testID: 'confirm-new-scope' }).props.role).toBe('checkbox');
     await act(async () => r.root.findByProps({ testID: 'confirm-new-scope' }).props.onPress());
     await press(r, '保存默认配置');
     expect(api.update).toHaveBeenCalledWith('s1', 3, expect.objectContaining({ accountRef: claudeCatalog.accountRef }));

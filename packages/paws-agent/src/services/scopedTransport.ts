@@ -78,9 +78,9 @@ export async function serviceRequest<T>(fetcher: typeof fetch, url: string, init
         const response = await fetcher(url, { ...init, signal: combined, redirect: 'error', cache: 'no-store' });
         const data = await response.json();
         if (!response.ok) {
-            const error = ServiceErrorSchema.safeParse(data?.error);
+            const error = ServiceErrorSchema.safeParse({ code: data?.error?.code, retryable: data?.error?.retryable });
             if (error.success)
-                throw new AIServiceClientError(error.data.code, error.data.retryable);
+                throw new AIServiceClientError(error.data.code, error.data.retryable, typeof data.error.requestId === 'string' ? data.error.requestId : undefined, data.error.submission === 'not-submitted' && typeof data.error.requestId === 'string' ? 'not-submitted' : 'uncertain');
             if (data?.error && ['transport-error', 'context-mismatch', 'storage-unavailable', 'disposed', 'aborted', 'observation-expired'].includes(data.error.code) && typeof data.error.retryable === 'boolean')
                 throw new AIServiceClientError(data.error.code, data.error.retryable);
             throw new AIServiceClientError('internal-error');
@@ -263,11 +263,14 @@ export function createScopedServiceTransport(options: ScopedTransportOptions, ki
                     record: unknown;
                 }>(`/v1/apps/ai-services/bindings/${validateIdentifier(binding.id)}/turns`, { requestId, ciphertext: outbox.ciphertext }, call);
                 const row = record(result.record, binding.id, requestId);
+                // A duplicate POST may already be running or complete. Only the encrypted
+                // persisted snapshot is authoritative for its text and sequence.
+                if (row.status !== 'accepted') return await transport.read({ bindingId: binding.id, requestId, turnId: row.id }, call);
                 return { record: row, sequence: 0, text: '', messages };
             }
             catch (error) {
                 if (error instanceof AIServiceClientError)
-                    throw new AIServiceClientError(error.code, error.retryable, requestId);
+                    throw new AIServiceClientError(error.code, error.retryable, requestId, !previous && error.requestId === requestId ? error.submission : 'uncertain');
                 throw error;
             }
         },

@@ -39,9 +39,8 @@ function safeCode(error: unknown): ServiceErrorCode {
     const message = error instanceof Error ? error.message : '';
     const parsed = ServiceErrorCodeSchema.safeParse(message);
     if (parsed.success) return parsed.data;
-    if (message.includes('tool-')) return 'permission-denied';
-    if (message.includes('unsupported-runtime') || message.includes('unsupported-claude-runtime')) return 'protocol-incompatible';
-    if (message.includes('login')) return 'account-login-required';
+    if (['tool-request-denied', 'tool-surface-not-empty'].includes(message)) return 'permission-denied';
+    if (['unsupported-runtime', 'unsupported-claude-runtime'].includes(message)) return 'protocol-incompatible';
     return 'execution-interrupted';
 }
 /** No implicit credentials, machine-default profile, application policy, or cached execution catalog. */

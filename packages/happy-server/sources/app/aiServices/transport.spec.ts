@@ -121,3 +121,14 @@ it('recovers a lost binding-create HTTP response with the same application conve
  await services.store.revokeAuthorization(owner,f.receipt.id);
  expect((await app.inject({method:'GET',url:'/v1/apps/ai-services/conversations/website-chat/binding',headers:{authorization:`Bearer ${f.receipt.credential}`}})).statusCode).not.toBe(200);
 },20000);
+
+for (const code of ['protocol-incompatible', 'account-identity-changed'] as const) it(`preserves ${code} through the actual probe route and store`, async () => {
+ const f=await setup();
+ const reading=services.probes.source.readLive(owner,f.target,f.principal);
+ const result=expect(reading).rejects.toMatchObject({code});
+ const probe=await nextProbe();
+ const response=await req(`/v1/ai-service-worker/${machine}/probes/${probe.id}`,{lease:probe.lease,catalog:null,error:code});
+ expect(response.statusCode,response.body).toBe(200);
+ await result;
+ expect((await ctx.database.aIServiceProbe.findUniqueOrThrow({where:{id:probe.id}})).error).toBe(code);
+});

@@ -1,3 +1,4 @@
+import { codexServiceError } from './nativeServiceErrors';
 /** Dedicated chat-only Codex process. Never attaches to a desktop app-server. */
 import { spawn, execFile } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -75,7 +76,7 @@ export async function runRestrictedCodex(binary: string, home: string, cwd: stri
         if (event.id != null && event.method) { send({ id: event.id, error: { code: -32601, message: 'Tools unavailable' } }); fail(new Error('tool-request-denied')); return; }
         if (event.id != null) {
             const call = pending.get(event.id); if (!call) return;
-            pending.delete(event.id); event.error ? call.reject(new Error('runtime-request-failed')) : call.resolve(event.result); return;
+            pending.delete(event.id); event.error ? call.reject(new Error(codexServiceError(event.error))) : call.resolve(event.result); return;
         }
         if (event.method === 'item/started' && !['userMessage', 'agentMessage', 'reasoning', 'plan'].includes(event.params?.item?.type)) { fail(new Error('tool-request-denied')); return; }
         if (event.method === 'item/agentMessage/delta') {
@@ -84,7 +85,7 @@ export async function runRestrictedCodex(binary: string, home: string, cwd: stri
             onText(text);
         }
         if (event.method === 'turn/completed') {
-            if (event.params?.turn?.status !== 'completed' || !text.trim()) fail(new Error('turn-failed'));
+            if (event.params?.turn?.status !== 'completed' || !text.trim()) fail(new Error(codexServiceError(event.params?.turn?.error)));
             else { finished = true; resolveDone(text); }
         }
     });

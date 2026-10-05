@@ -95,7 +95,7 @@ export function createBrowserPlatformTransport(options: BrowserPlatformOptions):
             }
             catch (error) {
                 if (error instanceof AIServiceClientError)
-                    throw new AIServiceClientError(error.code, error.retryable, requestId);
+                    throw new AIServiceClientError(error.code, error.retryable, requestId, !saved && error.requestId === requestId ? error.submission : 'uncertain');
                 throw error;
             }
         },

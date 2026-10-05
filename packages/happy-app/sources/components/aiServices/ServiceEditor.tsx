@@ -108,7 +108,7 @@ export function ServiceEditor({ snapshot, api, workers, accounts, machines, gran
             </> : null}
         </> : null}
         {scopeChanged ? <AuthorizationSection title="需要补充授权" hint="部分应用未获授权使用此设备、账号或引擎。保存不会扩大这些应用的权限。">
-            <AuthorizationChoice testID="confirm-new-scope" title="我会让受影响的应用重新发起授权" selected={confirmed} disabled={busy} onPress={() => setConfirmed(v => !v)} />
+            <AuthorizationChoice role="checkbox" testID="confirm-new-scope" title="我会让受影响的应用重新发起授权" selected={confirmed} disabled={busy} onPress={() => setConfirmed(v => !v)} />
         </AuthorizationSection> : null}
         {error ? <AuthorizationNotice title={conflict ? '版本冲突' : '保存提示'} message={error} error={conflict} /> : null}
         {conflict ? <RoundButton title="读取最新版本并保留输入" disabled={busy} onPress={() => void rebase()} /> : null}

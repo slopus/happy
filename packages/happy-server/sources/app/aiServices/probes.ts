@@ -1,7 +1,7 @@
 import { serviceTransaction } from './transactions';
 import { randomUUID, randomBytes } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
-import { CapabilityCatalogSchema, ServicePrincipalSchema, ServiceTargetSchema, type CapabilityCatalog, type ServicePrincipal, type ServiceTarget } from '@slopus/happy-wire';
+import { ServiceErrorCodeSchema, CapabilityCatalogSchema, ServicePrincipalSchema, ServiceTargetSchema, type CapabilityCatalog, type ServicePrincipal, type ServiceTarget } from '@slopus/happy-wire';
 import type { TrustedCapabilitySource } from './bindings';
 import { targetKey } from './bindings';
 import { authorizeProbe } from './authority';
@@ -27,7 +27,7 @@ export function createServiceProbes(database: PrismaClient) {
    for (;;) {
     const row = await database.aIServiceProbe.findUniqueOrThrow({ where: { id } });
     if (row.state === 'completed') return CapabilityCatalogSchema.parse(row.catalog);
-    if (row.state === 'failed') throw new AIServiceError(row.error === 'resource-busy' ? 'resource-busy' : row.error === 'account-login-required' ? 'account-login-required' : 'execution-interrupted');
+    if (row.state === 'failed') throw new AIServiceError(ServiceErrorCodeSchema.safeParse(row.error).data ?? 'execution-interrupted');
     if (row.deadline.getTime() <= Date.now()) { await database.aIServiceProbe.updateMany({ where: { id, state: { in: ['queued','running'] } }, data: { state: 'failed', lease: null, error: 'execution-interrupted' } }); deny('machine-offline'); }
     await new Promise(resolve => setTimeout(resolve,100));
    }
@@ -67,7 +67,7 @@ export function createServiceProbes(database: PrismaClient) {
      const parsed = CapabilityCatalogSchema.parse(catalog);
      if (targetKey(parsed) !== targetKey(target) || parsed.observedAt > Date.now() || Date.now()-parsed.observedAt > 60000 || parsed.availability !== 'online') deny('account-identity-changed');
     }
-    await tx.aIServiceProbe.update({ where: { id }, data: { state: catalog ? 'completed' : 'failed', ...(catalog ? { catalog } : { error: error ?? 'execution-interrupted' }), lease: null } });
+    await tx.aIServiceProbe.update({ where: { id }, data: { state: catalog ? 'completed' : 'failed', ...(catalog ? { catalog } : { error: ServiceErrorCodeSchema.safeParse(error).data ?? 'execution-interrupted' }), lease: null } });
     return { accepted: true };
    });
   },

@@ -1,3 +1,4 @@
+import { claudeServiceError } from './nativeServiceErrors';
 /** Claude Code chat with all customization and tool surfaces disabled. */
 import { spawn, execFile } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -42,7 +43,7 @@ export async function runRestrictedClaude(binary: string, cwd: string, messages:
     const fail = (reason: string) => { if (!settled) { settled = true; rejectDone(new Error(reason)); child.kill(); } };
     const update = (value: string) => { text = value; if (Buffer.byteLength(text) > 500_000) fail('output-limit'); else onText(text); };
     child.on('error', () => fail('claude-unavailable'));
-    child.on('exit', () => fail('claude-login-or-runtime-failed'));
+    child.on('exit', () => fail('execution-interrupted'));
     child.stdin.on('error', () => fail('claude-unavailable'));
     child.stderr.resume();
     lines.on('line', line => {
@@ -57,6 +58,7 @@ export async function runRestrictedClaude(binary: string, cwd: string, messages:
             if (event.event?.delta?.type === 'text_delta') update(text + event.event.delta.text);
         }
         if (event.type === 'assistant') {
+            if (event.error) { fail(claudeServiceError(event.error)); return; }
             const content = event.message?.content || [];
             if (content.some((part: any) => part.type === 'tool_use')) { fail('tool-request-denied'); return; }
             const full = content.filter((part: any) => part.type === 'text').map((part: any) => part.text).join('');
@@ -64,7 +66,7 @@ export async function runRestrictedClaude(binary: string, cwd: string, messages:
             if (typeof event.message?.model === 'string') onModel?.(event.message.model);
         }
         if (event.type === 'result') {
-            if (event.is_error || event.subtype !== 'success') { fail('claude-login-or-runtime-failed'); return; }
+            if (event.is_error || event.subtype !== 'success') { fail('execution-interrupted'); return; }
             if (!text && typeof event.result === 'string') update(event.result);
             if (!text.trim()) { fail('empty-reply'); return; }
             settled = true; resolveDone(text);

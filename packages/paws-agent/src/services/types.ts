@@ -3,7 +3,7 @@ export type { AppPolicy, CapabilityCatalog, ExecutionBinding, GrantReceipt, Serv
 export type ServiceSource = 'platform' | 'personal';
 export type ClientErrorCode = ServiceErrorCode | 'transport-error' | 'context-mismatch' | 'storage-unavailable' | 'disposed' | 'aborted' | 'observation-expired';
 export class AIServiceClientError extends Error {
-    constructor(readonly code: ClientErrorCode, readonly retryable = false, readonly requestId?: string) { super(code); this.name = 'AIServiceClientError'; }
+    constructor(readonly code: ClientErrorCode, readonly retryable = false, readonly requestId?: string, readonly submission: 'uncertain' | 'not-submitted' = 'uncertain') { super(code); this.name = 'AIServiceClientError'; }
 }
 export interface ServiceConnection {
     id: string;

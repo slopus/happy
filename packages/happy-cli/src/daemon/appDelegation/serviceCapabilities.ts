@@ -1,3 +1,4 @@
+import { codexServiceError } from './nativeServiceErrors';
 import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { createInterface } from 'node:readline';
@@ -63,7 +64,7 @@ export async function readCodexCapabilities(target: ServiceTarget, binary: strin
         let event: any; try { event = JSON.parse(line); } catch { return; }
         if (event.id != null && event.method) { child.stdin.write(JSON.stringify({ id: event.id, error: { code: -32601, message: 'Tools unavailable' } }) + '\n'); fail(); return; }
         const call = pending.get(event.id); if (!call) return;
-        pending.delete(event.id); event.error ? call.reject(new Error('model-unavailable')) : call.resolve(event.result);
+        pending.delete(event.id); event.error ? call.reject(new Error(codexServiceError(event.error))) : call.resolve(event.result);
     });
     const request = (method: string, params: unknown): Promise<unknown> => new Promise((resolve, reject) => {
         pending.set(++serial, { resolve, reject }); child.stdin.write(JSON.stringify({ id: serial, method, params }) + '\n');

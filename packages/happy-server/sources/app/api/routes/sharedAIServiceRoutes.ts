@@ -58,7 +58,14 @@ export function sharedAIServiceRoutes(app: Fastify, services: SharedAIServices) 
    const p=await authenticate(request), revision=(await store.readService(p.ownerId,p.scope.serviceId)).revision;
    return { catalog:await readTrustedCatalog(probes.source,p.ownerId,revision.config,p) };
   });
-  routes.post('/v1/apps/ai-services/bindings/:bindingId/turns', { bodyLimit:9*1024*1024, schema:{ params:z.object({ bindingId:id }), body:z.object({ requestId:id, ciphertext:z.string().min(60).max(8*1024*1024) }).strict() } }, async request => ({ record:await turns.startBoundTurn(await authenticate(request),request.params.bindingId,request.body.requestId,{ ciphertext:request.body.ciphertext }) }));
+  routes.post('/v1/apps/ai-services/bindings/:bindingId/turns', { bodyLimit:9*1024*1024, schema:{ params:z.object({ bindingId:id }), body:z.object({ requestId:id, ciphertext:z.string().min(60).max(8*1024*1024) }).strict() } }, async (request, reply) => {
+   try { return { record: await turns.startBoundTurn(await authenticate(request), request.params.bindingId, request.body.requestId, { ciphertext: request.body.ciphertext }) }; }
+   catch (error) {
+    if (!(error instanceof AIServiceError)) throw error;
+    // This invocation did not admit a turn. Clients must retain uncertainty for any prior attempt.
+    return reply.code(error.code === 'permission-denied' ? 403 : 409).send({ error: { code: error.code, retryable: error.retryable, submission: 'not-submitted', requestId: request.body.requestId } });
+   }
+  });
   routes.get('/v1/apps/ai-services/bindings/:bindingId/turns', { schema:{ params:z.object({ bindingId:id }), querystring:z.object({ cursor:id.optional() }).strict() } }, async request => turns.readTurns(await authenticate(request),request.params.bindingId,request.query.cursor));
   routes.get('/v1/apps/ai-services/bindings/:bindingId/requests/:requestId', { schema:{ params:z.object({ bindingId:id,requestId:id }) } }, async request => turns.readBoundRequest(await authenticate(request),request.params.bindingId,request.params.requestId));
   routes.get('/v1/apps/ai-services/bindings/:bindingId/turns/:id', { schema:{ params:z.object({ bindingId:id,id }) } }, async request => turns.readBoundTurn(await authenticate(request),request.params.bindingId,request.params.id));

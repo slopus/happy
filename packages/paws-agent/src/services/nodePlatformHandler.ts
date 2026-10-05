@@ -122,7 +122,7 @@ export function createPlatformServiceHandler<Context>(client: AIServiceClient, h
         }
         catch (error) {
             const safe = safeServiceError(error);
-            return { status: safe.code === 'permission-denied' ? 403 : safe.code === 'transport-error' ? 503 : 409, headers, body: { error: { code: safe.code, retryable: safe.retryable } } };
+            return { status: safe.code === 'permission-denied' ? 403 : safe.code === 'transport-error' ? 503 : 409, headers, body: { error: { code: safe.code, retryable: safe.retryable, ...(safe.submission === 'not-submitted' && safe.requestId ? { submission: safe.submission, requestId: safe.requestId } : {}) } } };
         }
     };
 }
