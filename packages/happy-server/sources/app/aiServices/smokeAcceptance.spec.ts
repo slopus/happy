@@ -143,7 +143,17 @@ it('serves a real packaged panel and bridge without exposing the platform receip
 });
 it.skipIf(process.env.PAWS_SMOKE_SERVE!=='1')('holds the isolated browser fixture open',async()=>{
  // Keep announcements alive while the controller operates the public synthetic page.
- const keepAlive=setInterval(()=>void ctx.database.appChatWorker.update({where:{machineId:machine},data:{activeUntil:new Date(Date.now()+45000)}}),10000);
+ const keepAlive=setInterval(async()=>{
+  const response=await worker('announce',{protocol:'ai-services/1',publicKey:Buffer.from(machineKeys.publicKey).toString('base64')});
+  expect(response.statusCode,response.body).toBe(200);
+ },10000);
  console.log('Browser fixture ready: http://127.0.0.1:4193/');
+ await new Promise(resolve=>setTimeout(resolve,46000));
+ const healthy=await app.inject({method:'GET',url:'/v1/ai-services/workers',headers:{authorization:`Bearer ${token}`}});
+ expect(healthy.json().workers.map((value:any)=>value.machineId)).toContain(machine);
+ const binding=await smoke.client.conversations.create({appConversationId:'idle-over-45-seconds'});
+ await smoke.client.turns.start({binding,requestId:'after-idle',messages:[{role:'user',text:'Public idle liveness check'}]});
+ expect((await settle(smoke.client,binding,'after-idle')).record.status).toBe('completed');
+ console.log('Serve idle liveness: actual announce, binding and turn passed after 46 seconds.');
  await new Promise<void>(resolve=>process.once('SIGINT',()=>resolve()));clearInterval(keepAlive);
 },3600000);
