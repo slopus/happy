@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — shared AI services local candidate
+
+- Add public service exports for browser and Node clients. Keep the existing session, authorization and history exports.
+- Bind new conversations to one service revision. Recover accepted turns by their original request ID. Preserve cancellation and source isolation.
+- Keep personal decryption keys on the personal client. Keep platform receipts on the application server.
+- Preserve browser origin checks and stored receipts when a storage migration fails.
+
+Local version `0.3.0` is not a publication record. Real provider and native phone acceptance remain incomplete. See [release preparation](../../docs/releases/shared-ai-services.md).
+
 ## 0.2.0 - 2026-09-20
 
 - feat(sdk): 创建会话时指定清单和 Tag (#611) (e8e77bfe)

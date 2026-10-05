@@ -1,0 +1,411 @@
+{
+  "schema": 1,
+  "status": "unpublished-local-candidate",
+  "productionSwitch": "blocked",
+  "observedAtUtc": "2026-10-05T20:48:56.913036+00:00",
+  "registry": "https://registry.npmjs.org",
+  "registryObservations": [
+    {
+      "package": "@wangjs-jacky/paws-agent",
+      "status": 200,
+      "distTags": {
+        "next": "0.1.0-beta.4",
+        "latest": "0.2.0"
+      },
+      "versions": [
+        "0.1.0-beta.2",
+        "0.1.0-beta.3",
+        "0.1.0-beta.4",
+        "0.1.0",
+        "0.2.0"
+      ]
+    },
+    {
+      "package": "@wangjs-jacky/paws-connect-ui",
+      "status": 404,
+      "interpretation": "No public package metadata returned; this does not prove publish permission."
+    }
+  ],
+  "pawsCodeCommit": "a00d364d74bf5d6101bd4fd789868c0e4b2a8730",
+  "advisorCodeCommit": "19bebe81ed842cc08484102534703b334a4ddab0",
+  "protocol": "ai-services/1",
+  "releaseVersionSelected": false,
+  "finalReview": "pending",
+  "realAcceptance": "incomplete",
+  "dailyUse": "pending",
+  "sourceProvenance": "Local task records associate these artifacts with the commits below. Tarballs contain no gitHead. These are not tagged publication artifacts. Repack and validate the same release commit before publication.",
+  "artifacts": [
+    {
+      "name": "@wangjs-jacky/paws-agent",
+      "version": "0.3.0",
+      "sourceChangeCommit": "548266fb8e0c8c9d20e36b0465f959ed5576bae2",
+      "path": "examples/ai-service-smoke/vendor/wangjs-jacky-paws-agent-0.3.0.tgz",
+      "advisorPath": "vendor/paws/wangjs-jacky-paws-agent-0.3.0.tgz",
+      "bytes": 191009,
+      "sha256": "d95fc5f1bf2700aff7249f8c57a9977cf6f177593bf1130c09fdf26b4dfeaf98",
+      "exports": [
+        ".",
+        "./node",
+        "./browser",
+        "./package.json",
+        "./services",
+        "./services/browser",
+        "./services/node"
+      ],
+      "files": [
+        {
+          "path": "package/dist/browser.cjs",
+          "size": 18928,
+          "sha256": "c4a0c0c7c929303dbaea7627e6b20ea71dec44ed5a8fa37cf27a35677bd18b14"
+        },
+        {
+          "path": "package/dist/encryption-CYxrsYeF.cjs",
+          "size": 4509,
+          "sha256": "3a980d8809890f9441d21571c820b40eee0b7a231842499d33ad16ae36e1219e"
+        },
+        {
+          "path": "package/dist/index.cjs",
+          "size": 780,
+          "sha256": "8636c44d3539d84a27ffc29eff0e855d445dc1b71e1a8e4f6132d5250f139129"
+        },
+        {
+          "path": "package/dist/node.cjs",
+          "size": 1345,
+          "sha256": "2c862e552379b4cbbb9f33ea9331c4ebb8874f906bdf2d992f49383c7e2086b9"
+        },
+        {
+          "path": "package/dist/nodeCredentials-BGQFL8Vl.cjs",
+          "size": 1673,
+          "sha256": "a7232ea0ae69e683d820d440d4c35179e482af91dd7c50221119c060214e1bae"
+        },
+        {
+          "path": "package/dist/nodePlatformTransport-Beb_256V.cjs",
+          "size": 5855,
+          "sha256": "d5e4fe713366690650f392cd4c15e4132b1f423f489b2142000b4b2eb0ab92f7"
+        },
+        {
+          "path": "package/dist/PawsAgentClient-_FclH5ie.cjs",
+          "size": 59612,
+          "sha256": "730198517cee8595b1309c16f0ebd852b77184604a1202d00615eecd2d384348"
+        },
+        {
+          "path": "package/dist/platformTransport-DhbI3mw8.cjs",
+          "size": 13799,
+          "sha256": "b86fd876a2b142c772053fdb91f9cea6ec6a519bb9f295d47e4bee89a6502c84"
+        },
+        {
+          "path": "package/dist/services.browser.cjs",
+          "size": 878,
+          "sha256": "61fe9a1b77f164e37de7c4fd1764b47816d9771a94038403c7c6b614b699ac4e"
+        },
+        {
+          "path": "package/dist/services.cjs",
+          "size": 552,
+          "sha256": "d430ee5929e1c93c2660bfb3806b8a3797fc7cb25cc751e7f6578c5b4929fbf9"
+        },
+        {
+          "path": "package/dist/servicesNode.cjs",
+          "size": 809,
+          "sha256": "f06e3533586ca8b9819f6a6af6e556ce5e7d8303caf05d6a998063c7648bd785"
+        },
+        {
+          "path": "package/dist/storage-BYIWa5pe.cjs",
+          "size": 184280,
+          "sha256": "4454e248f65a84783bc26c6bc21b8ee082548d6111f8dd8f6a36cae552d9055b"
+        },
+        {
+          "path": "package/dist/browser.d.cts",
+          "size": 7810,
+          "sha256": "4447c52dc8f2c7b5b8f8a23fe2785403273c92adea7f8ced1fd8175ddc279361"
+        },
+        {
+          "path": "package/dist/index.d.cts",
+          "size": 11936,
+          "sha256": "b5190ecb992d0c119afbf5aab9c0b2e88ad789ad4d9bf0d095453dc013a1c6c5"
+        },
+        {
+          "path": "package/dist/node.d.cts",
+          "size": 2615,
+          "sha256": "cdbd65a6eaaac2516b16551a99355ddf7aca8ef4fc20da6485f71781b2c244d2"
+        },
+        {
+          "path": "package/dist/scopedTransport-B462AcGa.d.cts",
+          "size": 350,
+          "sha256": "ecc43c1102403b5428ea821ac6167c51f984ba0f93d2a894b0c9177229116e8f"
+        },
+        {
+          "path": "package/dist/services-CKLm-3MO.d.cts",
+          "size": 125933,
+          "sha256": "0fd1a739d3e276445df7d249d4044acc31061c6f43b1c079e97f7424ea5f8aa0"
+        },
+        {
+          "path": "package/dist/services.browser.d.cts",
+          "size": 2086,
+          "sha256": "3367bcc4d46617d558fdea52f700c9e08c57f7aba42751a3d36be462ada24e95"
+        },
+        {
+          "path": "package/dist/services.d.cts",
+          "size": 1003,
+          "sha256": "e2edf648ff7078d291be42e348a70103529e76d1d455c017c34a778f57d5e0bf"
+        },
+        {
+          "path": "package/dist/servicesNode.d.cts",
+          "size": 3041,
+          "sha256": "999caa8f57b749373bdd308c1c5a7c23ad647bfa95ebbc9486c4f478a899f53a"
+        },
+        {
+          "path": "package/package.json",
+          "size": 3503,
+          "sha256": "70880a3ad475b458d1af9b5f0b8c4a924146f0baf268d48df4c65ac4f8fa9687"
+        },
+        {
+          "path": "package/README.md",
+          "size": 16413,
+          "sha256": "ad14d5436068a3318256c27ecdc1c714df24c1b1dc97c1e31f040bf53ae44c0c"
+        },
+        {
+          "path": "package/dist/browser.mjs",
+          "size": 17957,
+          "sha256": "ad0127802dd140517a19f42ea077e741c526e1fd77c26fa2f6175887a461f1ae"
+        },
+        {
+          "path": "package/dist/cli.mjs",
+          "size": 21926,
+          "sha256": "d914dccb1190b3a2d023b534f366e72bb48f9fa72c6f0913b8b5ad45bcf839dc"
+        },
+        {
+          "path": "package/dist/encryption-BsYoKPOz.mjs",
+          "size": 4205,
+          "sha256": "ea525c73098397207c1bbb47a3f15d5426c4ae2c85d20b79358402fac8cc3c46"
+        },
+        {
+          "path": "package/dist/index.mjs",
+          "size": 501,
+          "sha256": "a893c49081c7e66ac1bcae4db289c046e777a2bc037ea420f7cb4847d8114bf3"
+        },
+        {
+          "path": "package/dist/node.mjs",
+          "size": 810,
+          "sha256": "f627a3157e0a042377446de482e51f46065aa645becf882750b535d303a8676f"
+        },
+        {
+          "path": "package/dist/nodeCredentials-BjCy0nu9.mjs",
+          "size": 1578,
+          "sha256": "114e0468e19139f0464bea7b7848035eea48590fb6684dd64c130685720ba995"
+        },
+        {
+          "path": "package/dist/nodePlatformTransport-CxF-R6Yp.mjs",
+          "size": 5821,
+          "sha256": "b359499865c0f9f7ac257945816d1b7450ae785a589993ad480c5447f5ca8ddb"
+        },
+        {
+          "path": "package/bin/paws-agent.mjs",
+          "size": 80,
+          "sha256": "bbebbf2c6556adc4570eff483cf02593e4933095b794b6dde2731d6bb2dfee3d"
+        },
+        {
+          "path": "package/dist/PawsAgentClient-BmNdeT-s.mjs",
+          "size": 59366,
+          "sha256": "ca4d599324a4975ae534a374d33d066fb1569d896621c4a5e2449f5a47612ad9"
+        },
+        {
+          "path": "package/dist/platformTransport-BiqAzfdX.mjs",
+          "size": 13587,
+          "sha256": "fd728fb008bad6a839224674a75fb558c8a55182973ca0d030a373b127aa7346"
+        },
+        {
+          "path": "package/dist/services.browser.mjs",
+          "size": 525,
+          "sha256": "22062027462c8e202becda0bdeadb7a48058e079e87728610375906e35fcc6df"
+        },
+        {
+          "path": "package/dist/services.mjs",
+          "size": 366,
+          "sha256": "d1367c2f43bd4bec545f5c1537aa79d87e45b4e984c1eab575fa0bbb2fa36698"
+        },
+        {
+          "path": "package/dist/servicesNode.mjs",
+          "size": 490,
+          "sha256": "3e7b6a3d558d201203d0bf105d36ba8fb572b0c6df615aac2304044c8f029c80"
+        },
+        {
+          "path": "package/dist/storage-BMwdEWA9.mjs",
+          "size": 183725,
+          "sha256": "65f1b1d32fd4cbef31312111bd375866e41e44e5dd784f6eb9fa4665afc0ce18"
+        },
+        {
+          "path": "package/dist/browser.d.mts",
+          "size": 7810,
+          "sha256": "515b5a219dc3bfae253795218c581da143c762f5a99207dcbcbb5b099aab9b72"
+        },
+        {
+          "path": "package/dist/index.d.mts",
+          "size": 11936,
+          "sha256": "76d08d585264abf8d4b4f7911963924b6d385b3914a3bfc903b24c84a31e0473"
+        },
+        {
+          "path": "package/dist/node.d.mts",
+          "size": 2615,
+          "sha256": "bdde5c3c7f8d49467a56a790d0c1a5793a82789b112506e823cfac63e1eb5edd"
+        },
+        {
+          "path": "package/dist/scopedTransport-DzyFYxVF.d.mts",
+          "size": 350,
+          "sha256": "0a1a3ca64cdb57108212d3b489f6c4600f897c947b25a9218dbab338c27f50f2"
+        },
+        {
+          "path": "package/dist/services-CKLm-3MO.d.mts",
+          "size": 125933,
+          "sha256": "0fd1a739d3e276445df7d249d4044acc31061c6f43b1c079e97f7424ea5f8aa0"
+        },
+        {
+          "path": "package/dist/services.browser.d.mts",
+          "size": 2086,
+          "sha256": "d2c838a0c0af80491b60a743abd933db87f3abc5584fa0f42cacd383c946780d"
+        },
+        {
+          "path": "package/dist/services.d.mts",
+          "size": 1003,
+          "sha256": "d47dba63a46b089bdb81de3b6bd9fa76c34086581c7a759366fdab7c46200f2c"
+        },
+        {
+          "path": "package/dist/servicesNode.d.mts",
+          "size": 3041,
+          "sha256": "172b7d842ba4f4255f0c773362726f2a62d8a62ad3f9657c1f84153a2d3394a4"
+        },
+        {
+          "path": "package/LICENSE",
+          "size": 1081,
+          "sha256": "e251d0448ef3ce023c20ebac9b90a7d8642b1434825838247d6e457668eb3e00"
+        }
+      ]
+    },
+    {
+      "name": "@wangjs-jacky/paws-connect-ui",
+      "version": "0.1.0",
+      "sourceChangeCommit": "8d3b034ca4ac9f3a410f0cad01bc2273da64fc0b",
+      "path": "examples/ai-service-smoke/vendor/wangjs-jacky-paws-connect-ui-0.1.0.tgz",
+      "advisorPath": "vendor/paws/wangjs-jacky-paws-connect-ui-0.1.0.tgz",
+      "bytes": 17102,
+      "sha256": "336608ab2da2c24fca13543df030421de932d3ae18a2b42adba9cde67b3954ce",
+      "exports": [
+        ".",
+        "./panel.css",
+        "./package.json"
+      ],
+      "files": [
+        {
+          "path": "package/dist/index.cjs",
+          "size": 24101,
+          "sha256": "c1a4f44bfab7f28792ebe98b7924a51e83dd645bc1630d5222347898ae6cce44"
+        },
+        {
+          "path": "package/dist/panel.css",
+          "size": 4035,
+          "sha256": "1631c71d14abc20ead7dca965277a11961291cc44ed35cb9e587133099f016a8"
+        },
+        {
+          "path": "package/dist/index.d.cts",
+          "size": 896,
+          "sha256": "72d49579c1b2d63a9efd0c978ff856cab049dcba201721153bc54e254a49df2c"
+        },
+        {
+          "path": "package/package.json",
+          "size": 1322,
+          "sha256": "103f45dac3d1e6bbec879f43383a1a28cddc55bb5eb65f5f89ed4b1b17ae4b7e"
+        },
+        {
+          "path": "package/README.md",
+          "size": 4974,
+          "sha256": "3fb985cf1eb5851757edf62cb013a023a3cf2068acdb30d988ef5d03e56ad74d"
+        },
+        {
+          "path": "package/dist/index.mjs",
+          "size": 24064,
+          "sha256": "55efb243bbed7f0a3c8699ab4c70d2d7a576d0fc3f908456bea282f65aa44161"
+        },
+        {
+          "path": "package/dist/index.d.mts",
+          "size": 896,
+          "sha256": "72d49579c1b2d63a9efd0c978ff856cab049dcba201721153bc54e254a49df2c"
+        },
+        {
+          "path": "package/LICENSE",
+          "size": 1081,
+          "sha256": "e251d0448ef3ce023c20ebac9b90a7d8642b1434825838247d6e457668eb3e00"
+        }
+      ]
+    }
+  ],
+  "localWebExport": {
+    "status": "passed",
+    "codeCommit": "a00d364d74bf5d6101bd4fd789868c0e4b2a8730",
+    "command": "CI=1 APP_ENV=production EXPO_PUBLIC_HAPPY_SERVER_URL=https://47.115.228.20:8443 HAPPY_BUILD_COMMIT_SHA=a00d364d74bf5d6101bd4fd789868c0e4b2a8730 pnpm --dir packages/happy-app exec expo export --platform web --clear --output-dir <isolated-output-directory>",
+    "fileCount": 1014,
+    "totalBytes": 60754684,
+    "fileManifestSha256": "fe47501793188ed4b863cd382c242c924ef13973c56a0f60d9cb9cda7b561bd6",
+    "indexHtmlSha256": "706d46a33b742ec34c2633dd5fee71258d5ee23c365378c31216ef158979cc3d",
+    "entryBundles": [
+      {
+        "path": "_expo/static/js/web/index-2656243a1c0f542bca8ace5ea8406c8f.js",
+        "bytes": 32062,
+        "sha256": "2383e447646c49c2267ff1063f1fb2f6784587857f1bd82ed788a90b91fd09bd"
+      },
+      {
+        "path": "_expo/static/js/web/index-405c0a20c940b8bf83f27fb1cb7fed76.js",
+        "bytes": 34605,
+        "sha256": "2037c28d20cda33209f305fb489e991961f5061440045064fd15d637c1571f07"
+      },
+      {
+        "path": "_expo/static/js/web/index-42fb4e010df6d6bfb04db270e5fc2d77.js",
+        "bytes": 4225,
+        "sha256": "a4ad5d71aff6a6f2f56d49336ac1e6a1ddd809196f6d3cc6437f5a96c4c35ebc"
+      },
+      {
+        "path": "_expo/static/js/web/index-5f5a5aafea1e71d176e9a80d45acef68.js",
+        "bytes": 44221,
+        "sha256": "2d7ec7b321e095fe7109ed43f2f3b5d117bd943ca856dc2a46891c7c49099fe3"
+      },
+      {
+        "path": "_expo/static/js/web/index-91e95adca174c92d2a86636f775b1ce0.js",
+        "bytes": 11690272,
+        "sha256": "021273b3a99bb0e999a97bb3189aacb56a3015a06cee7db0e288d41cc495b21d"
+      },
+      {
+        "path": "_expo/static/js/web/index-DuKHkfLn-7a34246ac3a5a700e8553d7ccd8a7e59.js",
+        "bytes": 2341,
+        "sha256": "67dd7f331650ac10c214c470ee8c220c953cd6a991140d8ee0320ca65d46b7ee"
+      }
+    ],
+    "warning": "Watchman query timed out after 60 seconds. Metro retried with its Node crawler and completed. Existing color-environment warnings were printed. This is an unstamped local export, not an uploaded or deployed release."
+  },
+  "migrations": [
+    {
+      "path": "packages/happy-server/prisma/migrations/20261005000000_ai_services/migration.sql",
+      "sha256": "b426a821fc0dad6524915bc7e5451b82ab035f248859b78a77b061f87ca864a3"
+    },
+    {
+      "path": "packages/happy-server/prisma/migrations/20261005010000_ai_service_execution/migration.sql",
+      "sha256": "8902e820bdcf2d8c79ec81e59994f229fb3dffd425be5a80bae3386f42fce48d"
+    }
+  ],
+  "advisorStaticBuild": {
+    "status": "verified-existing-build",
+    "codeCommit": "e7434b6e53dc4242d6c0bfb36f2b45603fde239a",
+    "scope": "T9 final affected tests and build reused. T10/T11 do not change application source.",
+    "files": [
+      {
+        "path": "public/client.js",
+        "sha256": "27b5fe559af3caf8fdaa00ac742736e0421a232ad9fd78b7e29a1049a2d97c7d"
+      },
+      {
+        "path": "public/paws-sdk.js",
+        "sha256": "cc96e9fc9704b6f3a18d5dd1e47dfa8b62b1b9c33d626620d8f91126b9ec5f2d"
+      },
+      {
+        "path": "public/paws-panel.css",
+        "sha256": "1631c71d14abc20ead7dca965277a11961291cc44ed35cb9e587133099f016a8"
+      }
+    ]
+  }
+}
