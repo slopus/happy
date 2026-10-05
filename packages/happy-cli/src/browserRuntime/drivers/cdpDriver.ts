@@ -38,7 +38,7 @@ import {
     type TabId,
     type WaitPredicate,
 } from '../contracts'
-import { formDigest } from '../policy'
+import { formDigest, originAllowed } from '../policy'
 import { CdpConnection, CdpProtocolError, connectionClosedError } from './cdpConnection'
 import { verifySubmissionRequest } from './submissionCheck'
 import { CHECK_ELEMENT, CLIMB_FRAMES, COLLECT_FRAME, DESCRIBE_ELEMENT, FRAME_HAS_TEXT, HIT_TEST, IN_THIS_DOCUMENT, LABEL_OF, SELECT_CONTENT, SUBMIT_GUARD, type CollectedFrame, type ElementState } from './pageScripts'
@@ -404,7 +404,7 @@ export class CdpDriver implements BrowserDriver {
 
     openTab(url: string, allowedOrigins: string[], opts: DriverOptions): Promise<DriverTabHandle> {
         return this.run(opts, async (op, conn) => {
-            if (!allowedOrigins.includes(originOf(url))) throw originDenied('requested origin is not allowed')
+            if (!originAllowed(allowedOrigins, originOf(url))) throw originDenied('requested origin is not allowed')
             // Every owned tab (and popup) is a window, and windows are what cost browser memory.
             if (!this.windowAvailable()) {
                 throw new BrowserRuntimeError('QUOTA_EXCEEDED', 'agent window limit reached; close a page first', true, false)
@@ -618,7 +618,7 @@ export class CdpDriver implements BrowserDriver {
     private destinationAllowed(url: string, allowedOrigins: string[]): boolean {
         try {
             const parsed = new URL(url)
-            return ['http:', 'https:'].includes(parsed.protocol) && allowedOrigins.includes(parsed.origin)
+            return ['http:', 'https:'].includes(parsed.protocol) && originAllowed(allowedOrigins, parsed.origin)
         } catch {
             return false
         }
@@ -739,7 +739,7 @@ export class CdpDriver implements BrowserDriver {
             const documentGeneration = tab.generation
             const frames = await this.collectFrames(conn, tab)
             const main = frames[0]
-            if (!main || !allowedOrigins.includes(main.origin)) throw originDenied('top-level origin is not allowed')
+            if (!main || !originAllowed(allowedOrigins, main.origin)) throw originDenied('top-level origin is not allowed')
 
             let remainingElements = opts.maxElements ?? DEFAULT_MAX_ELEMENTS
             let remainingText = opts.maxTextChars ?? DEFAULT_MAX_TEXT_CHARS
@@ -754,7 +754,7 @@ export class CdpDriver implements BrowserDriver {
 
             for (const frame of frames) {
                 const frameKey = this.frameKey(tab, frame.frameId)
-                const allowed = !!frame.origin && allowedOrigins.includes(frame.origin)
+                const allowed = !!frame.origin && originAllowed(allowedOrigins, frame.origin)
                 const observed: ObservedFrame = { frameKey, origin: frame.origin, allowed, outOfProcess: frame.outOfProcess }
                 observedFrames.push(observed)
                 if (!allowed) continue
@@ -830,7 +830,7 @@ export class CdpDriver implements BrowserDriver {
             const before = tab.generation
             const frames = await this.collectFrames(conn, tab)
             for (const frame of frames) {
-                if (!frame.origin || !allowedOrigins.includes(frame.origin)) {
+                if (!frame.origin || !originAllowed(allowedOrigins, frame.origin)) {
                     throw originDenied('page contains a frame whose origin is not allowed or cannot be determined')
                 }
             }
@@ -1003,7 +1003,7 @@ export class CdpDriver implements BrowserDriver {
         }
         const frames = await this.collectFrames(conn, tab)
         for (const frame of frames) {
-            if (!frame.origin || !allowedOrigins.includes(frame.origin)) continue
+            if (!frame.origin || !originAllowed(allowedOrigins, frame.origin)) continue
             try {
                 const contextId = await this.isolatedContext(conn, tab, frame.sessionId, frame.frameId, this.stampOf(tab, frame.frameId))
                 const { result } = await conn.send('Runtime.callFunctionOn', {
@@ -1323,7 +1323,7 @@ export class CdpDriver implements BrowserDriver {
         this.popups.set(info.targetId, report)
         if (this.popups.size > MAX_POPUP_REPORTS) this.popups.delete(this.popups.keys().next().value!)
         const pending = !info.url || info.url === 'about:blank'
-        if (!pending && !report.closed && !opener.allowedOrigins.includes(origin)) {
+        if (!pending && !report.closed && !originAllowed(opener.allowedOrigins, origin)) {
             report.closed = true
             conn.send('Target.closeTarget', { targetId: info.targetId }).catch(() => undefined)
         }
@@ -1363,7 +1363,7 @@ export class CdpDriver implements BrowserDriver {
         allowedOrigins: string[],
         op: OpContext,
     ): Promise<{ url: string; documentGeneration: number }> {
-        if (!allowedOrigins.includes(originOf(url))) throw originDenied('requested origin is not allowed')
+        if (!originAllowed(allowedOrigins, originOf(url))) throw originDenied('requested origin is not allowed')
         tab.allowedOrigins = allowedOrigins
         let navigated = false
         let offs: Array<() => void> = []
@@ -1372,7 +1372,7 @@ export class CdpDriver implements BrowserDriver {
                 conn.on('Page.frameNavigated', (params, sessionId) => {
                     if (sessionId !== tab.sessionId || params.frame.parentId) return
                     navigated = true
-                    if (!allowedOrigins.includes(frameOrigin(params.frame))) {
+                    if (!originAllowed(allowedOrigins, frameOrigin(params.frame))) {
                         conn.send('Page.stopLoading', {}, tab.sessionId).catch(() => undefined)
                         reject(originDenied('navigation ended on an origin that is not allowed', false, true))
                     }
@@ -1399,7 +1399,7 @@ export class CdpDriver implements BrowserDriver {
             for (const off of offs) off()
         }
         const { frameTree } = await conn.send('Page.getFrameTree', {}, tab.sessionId)
-        if (!allowedOrigins.includes(frameOrigin(frameTree.frame))) {
+        if (!originAllowed(allowedOrigins, frameOrigin(frameTree.frame))) {
             await conn.send('Page.stopLoading', {}, tab.sessionId).catch(() => undefined)
             throw originDenied('navigation ended on an origin that is not allowed', false, true)
         }
@@ -1535,7 +1535,7 @@ export class CdpDriver implements BrowserDriver {
             .catch(() => { throw staleRef('frame session is gone') })
         const frame = findFrame(frameTree, binding.frameId)
         if (!frame || frame.loaderId !== binding.loaderId) throw staleRef('document changed')
-        if (!tab.allowedOrigins.includes(frameOrigin(frame))) throw originDenied('frame origin is no longer allowed')
+        if (!originAllowed(tab.allowedOrigins, frameOrigin(frame))) throw originDenied('frame origin is no longer allowed')
         const contextId = await this.isolatedContext(conn, tab, binding.sessionId, binding.frameId, binding.stamp)
         const resolved = await conn.send('DOM.resolveNode', { backendNodeId: binding.backendNodeId, executionContextId: contextId }, binding.sessionId)
             .catch(() => { throw staleRef('element is gone') })

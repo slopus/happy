@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { BrowserRuntimeError, type BrowserDriver, type BrowserInstanceId, type DriverOptions, type DriverTabHandle, type ElementDescription, type ElementRef, type FormSubmission, type ObservedElement, type Observation, type ScreenshotResult, type SnapshotId, type TabId, type WaitPredicate } from '../contracts'
-import { formDigest } from '../policy'
+import { formDigest, originAllowed } from '../policy'
 
 export interface FakePage { url: string; title?: string; text?: string; elements?: ObservedElement[]; documentGeneration?: number; frameOrigins?: string[]; formAction?: string; formValues?: Record<string, string>
     /** Form the page's button elements submit (describeRef returns it with its digest) */
@@ -96,14 +96,14 @@ export class FakeBrowserDriver implements BrowserDriver {
     }
     async observe(tabId: TabId, allowedOrigins: string[], opts: DriverOptions & { maxElements?: number; maxTextChars?: number; scopeRef?: ElementRef }): Promise<Observation> {
         await this.delay('observe', opts); this.throwNextFailure('observe'); const page = this.requirePage(tabId); const origin = new URL(page.url).origin
-        const frames = (page.frameOrigins ?? []).map((frameOrigin, index) => ({ frameKey: `frame-${index}`, origin: frameOrigin, allowed: allowedOrigins.includes(frameOrigin), outOfProcess: false }))
-        const elements = (page.elements ?? []).filter((element) => allowedOrigins.includes(element.frameOrigin)).slice(0, opts.maxElements ?? 100)
+        const frames = (page.frameOrigins ?? []).map((frameOrigin, index) => ({ frameKey: `frame-${index}`, origin: frameOrigin, allowed: originAllowed(allowedOrigins, frameOrigin), outOfProcess: false }))
+        const elements = (page.elements ?? []).filter((element) => originAllowed(allowedOrigins, element.frameOrigin)).slice(0, opts.maxElements ?? 100)
         const snapshotId = `snapshot-${randomUUID()}` as SnapshotId
         this.observeCount++
         this.snapshotGenerations.set(snapshotId, page.documentGeneration ?? 1)
         this.snapshotElements.set(snapshotId, new Map(elements.map((element) => [element.ref, structuredClone(element)])))
         await this.afterDispatch('observe')
-        return { snapshotId, tabId, url: page.url, title: page.title ?? '', documentGeneration: page.documentGeneration ?? 1, elements, frames, truncated: false, text: allowedOrigins.includes(origin) ? (page.text ?? '').slice(0, opts.maxTextChars ?? 20_000) : '' }
+        return { snapshotId, tabId, url: page.url, title: page.title ?? '', documentGeneration: page.documentGeneration ?? 1, elements, frames, truncated: false, text: originAllowed(allowedOrigins, origin) ? (page.text ?? '').slice(0, opts.maxTextChars ?? 20_000) : '' }
     }
     async describeRef(tabId: TabId, ref: ElementRef, snapshotId: SnapshotId, opts: DriverOptions): Promise<ElementDescription> {
         await this.delay('describeRef', opts)
@@ -139,7 +139,7 @@ export class FakeBrowserDriver implements BrowserDriver {
         return 'restored'
     }
     async screenshot(tabId: TabId, allowedOrigins: string[], opts: DriverOptions): Promise<ScreenshotResult> {
-        await this.delay('screenshot', opts); this.throwNextFailure('screenshot'); const page = this.requirePage(tabId); if ((page.frameOrigins ?? []).some((origin) => !allowedOrigins.includes(origin))) throw new BrowserRuntimeError('ORIGIN_DENIED', 'A frame origin is not allowed')
+        await this.delay('screenshot', opts); this.throwNextFailure('screenshot'); const page = this.requirePage(tabId); if ((page.frameOrigins ?? []).some((origin) => !originAllowed(allowedOrigins, origin))) throw new BrowserRuntimeError('ORIGIN_DENIED', 'A frame origin is not allowed')
         return { tabId, mimeType: 'image/png', data: Buffer.from('synthetic').toString('base64'), documentGeneration: page.documentGeneration ?? 1, targetId: `target-${tabId}`, capturedAtMs: Date.now() }
     }
     async click(tabId: TabId, ref: ElementRef, snapshotId: SnapshotId, opts: DriverOptions): Promise<void> { this.clickExpectations.push(opts.expect); await this.delay('click', opts); this.throwNextFailure('click'); const page = this.requirePage(tabId); const element = this.snapshotElements.get(snapshotId)?.get(ref); this.assertSnapshot(tabId, snapshotId, page.documentGeneration ?? 1, element); const current = page.elements?.find((candidate) => candidate.ref === ref); if (!current || !sameNode(element!, current)) throw new BrowserRuntimeError('STALE_REF', 'Reference node was replaced', false, false); this.dispatchedSnapshots.push({ tabId, snapshotId, operation: 'click' }); this.record(tabId, `target-${tabId}`, 'click'); await this.afterDispatch('click') }

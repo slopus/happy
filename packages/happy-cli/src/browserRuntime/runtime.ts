@@ -11,7 +11,7 @@ import { approvalPayloadHash, createApproval } from './approvals'
 import { dispatchStep } from './batchWorker'
 import { systemClock, type RuntimeClock } from './clock'
 import { InputLeaseManager } from './inputLease'
-import { approvalBinding, assertAllowedOrigin, assertSiteAllowed, classifySiteAction, classifyUserWait, loginCompleted, payloadHash, redact, type SitePolicy } from './policy'
+import { approvalBinding, assertAllowedOrigin, originAllowed, assertSiteAllowed, classifySiteAction, classifyUserWait, loginCompleted, payloadHash, redact, type SitePolicy } from './policy'
 import { RECLAIMING_SPACE_RESERVE, TaskStore, type SpaceRecord, type StoredTask, type StoreEventInput } from './taskStore'
 import { browserInstanceMatches, inFlightWriteActions } from './recovery'
 import { transitionTask } from './stateMachine'
@@ -335,7 +335,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
             throw new BrowserRuntimeError('OUTCOME_UNKNOWN', 'Page open completed after its execution fence changed', false, true)
         }
         const finalOrigin = await driver.currentOrigin(handle.tabId)
-        if (!grant.allowedOrigins.includes(finalOrigin)) {
+        if (!originAllowed(grant.allowedOrigins, finalOrigin)) {
             await driver.closeTab(handle.tabId, { timeoutMs: 5000 })
             this.leases.release(reservation, task.profileId)
             const current = this.requireTask(task.taskId)
@@ -463,7 +463,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
             throw new BrowserRuntimeError('CONFLICT', 'The tab snapshot is bound to a pending approval')
         const result = await this.driver(task.profileId).observe(req.tabId, this.agentGrant(auth).allowedOrigins, { timeoutMs: 30000,
             maxElements: req.maxElements, scopeRef: req.scopeRef })
-        if (!this.agentGrant(auth).allowedOrigins.includes(new URL(result.url).origin))
+        if (!originAllowed(this.agentGrant(auth).allowedOrigins, new URL(result.url).origin))
             throw new BrowserRuntimeError('ORIGIN_DENIED', 'Observed page origin is not allowed')
         this.latestAgentSnapshots.set(req.tabId, result.snapshotId)
         this.latestAgentUrls.set(req.tabId, result.url)
@@ -2195,7 +2195,7 @@ export class BrowserRuntime implements BrowserRuntimeApi {
                     break
                 }
                 const origin = await driver.currentOrigin(step.tabId)
-                if (!grant.allowedOrigins.includes(origin))
+                if (!originAllowed(grant.allowedOrigins, origin))
                     throw new BrowserRuntimeError('ORIGIN_DENIED', 'Current page origin is not allowed')
                 let leaseEpoch = batchLeases.get(step.tabId)
                 if (leaseEpoch === undefined) {
@@ -2244,8 +2244,8 @@ export class BrowserRuntime implements BrowserRuntimeApi {
                             throw new BrowserRuntimeError('APPROVAL_REQUIRED', 'Driver cannot safely classify referenced actions', false, false)
                         description = await driver.describeRef(step.tabId, effectiveStep.ref as ElementRef, agentSnapshot,
                             { timeoutMs: step.timeoutMs })
-                        if (!grant.allowedOrigins.includes(description.frameOrigin)
-                            || !grant.allowedOrigins.includes(new URL(description.pageUrl).origin))
+                        if (!originAllowed(grant.allowedOrigins, description.frameOrigin)
+                            || !originAllowed(grant.allowedOrigins, new URL(description.pageUrl).origin))
                             throw new BrowserRuntimeError('ORIGIN_DENIED', 'Referenced element origin is not allowed', false, false)
                         // The agent chose this element by its snapshot label; a relabel in place means it chose something else.
                         if (description.currentName !== undefined && (description.role || description.name)
@@ -2391,13 +2391,13 @@ export class BrowserRuntime implements BrowserRuntimeApi {
                     const dispatchResult = await this.dispatch(driver, effectiveStep, grant, controller.signal,
                         step.kind === 'click' && description ? dispatchExpectation(description) : undefined)
                     const finalOrigin = await driver.currentOrigin(step.tabId)
-                    if (!grant.allowedOrigins.includes(finalOrigin))
+                    if (!originAllowed(grant.allowedOrigins, finalOrigin))
                         throw new BrowserRuntimeError('ORIGIN_DENIED', 'Action navigated to a disallowed origin', false, false)
                     const landedUrl = step.kind === 'navigate' && dispatchResult && 'url' in dispatchResult
                         ? dispatchResult.url : undefined
                     const landedWaitReason = landedUrl ? classifyUserWait(landedUrl) : undefined
                     if (step.kind === 'observe' && dispatchResult && 'snapshotId' in dispatchResult) {
-                        if (!grant.allowedOrigins.includes(new URL(dispatchResult.url).origin))
+                        if (!originAllowed(grant.allowedOrigins, new URL(dispatchResult.url).origin))
                             throw new BrowserRuntimeError('ORIGIN_DENIED', 'Observed page origin is not allowed', false, false)
                         this.latestAgentSnapshots.set(step.tabId, dispatchResult.snapshotId)
                         this.latestAgentUrls.set(step.tabId, dispatchResult.url)
@@ -2891,8 +2891,8 @@ function matchesWait(predicate: NonNullable<BatchStep['until']>, observation: Ob
     return observation.elements.some((element) => element.ref === predicate.ref)
 }
 function sanitizeObservation(observation: Observation, allowedOrigins: string[]): Observation {
-    const hasDeniedFrame = observation.frames.some((frame) => !allowedOrigins.includes(frame.origin))
-    return redact({ ...observation, elements: observation.elements.filter((element) => allowedOrigins.includes(element.frameOrigin)),
-        frames: observation.frames.map((frame) => ({ ...frame, allowed: allowedOrigins.includes(frame.origin),
-            ...(!allowedOrigins.includes(frame.origin) ? { text: undefined } : {}) })), ...(hasDeniedFrame ? { text: '' } : {}) })
+    const hasDeniedFrame = observation.frames.some((frame) => !originAllowed(allowedOrigins, frame.origin))
+    return redact({ ...observation, elements: observation.elements.filter((element) => originAllowed(allowedOrigins, element.frameOrigin)),
+        frames: observation.frames.map((frame) => ({ ...frame, allowed: originAllowed(allowedOrigins, frame.origin),
+            ...(!originAllowed(allowedOrigins, frame.origin) ? { text: undefined } : {}) })), ...(hasDeniedFrame ? { text: '' } : {}) })
 }

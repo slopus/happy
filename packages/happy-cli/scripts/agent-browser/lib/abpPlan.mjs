@@ -93,8 +93,12 @@ function fail(field, message) {
 function bareOrigin(value, field) {
   let url;
   try { url = new URL(value); } catch { fail(field, "must be a bare origin such as https://shop.example"); }
-  if (url.origin !== value || !["https:", "http:"].includes(url.protocol)) fail(field, "must be a bare origin such as https://shop.example");
+  if (url.origin !== value || !["https:", "http:"].includes(url.protocol) || url.hostname.includes("*")) fail(field, "must be a bare origin such as https://shop.example");
   return value;
+}
+// A site policy origin: a bare origin, or "*" (every http(s) site; the organization chose "all sites" at install).
+function siteOrigin(value, field) {
+  return value === "*" ? value : bareOrigin(value, field);
 }
 // The Happy (Studio) server the agent logs in to: https, or http only on this host.
 function serverOrigin(value) {
@@ -217,7 +221,7 @@ function validateCommon(merged) {
     return { kid: issuer.kid, publicKeyPem: key.export({ type: "spki", format: "pem" }).toString() };
   });
   if (!Array.isArray(merged.sites)) fail("sites", "must be a JSON array of site policies");
-  merged.sites.forEach((site, index) => bareOrigin(site?.origin, `sites[${index}].origin`));
+  merged.sites.forEach((site, index) => siteOrigin(site?.origin, `sites[${index}].origin`));
   integer(merged.runtimePort, "runtimePort", 1024, 65535);
   integer(merged.maxAgentWindows, "maxAgentWindows", 1, 16);
   integer(merged.retentionDays, "retentionDays", 1, 365);

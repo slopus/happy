@@ -40,7 +40,7 @@ export function formSummary(form: FormSubmission): string {
 export function assertAllowedOrigin(url: string, grant: Pick<AgentGrant, 'allowedOrigins'>): string {
     let origin: string
     try { const parsed = new URL(url); if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('unsupported URL'); origin = parsed.origin } catch { throw new BrowserRuntimeError('ORIGIN_DENIED', 'Invalid navigation URL') }
-    if (!grant.allowedOrigins.includes(origin)) throw new BrowserRuntimeError('ORIGIN_DENIED', 'Origin is not in the task grant')
+    if (!originAllowed(grant.allowedOrigins, origin)) throw new BrowserRuntimeError('ORIGIN_DENIED', 'Origin is not in the task grant')
     return origin
 }
 
@@ -87,18 +87,30 @@ const WRITE_CAPABLE: ReadonlySet<SiteActionKind> = new Set(['submit', 'form-clic
  */
 export type SiteDecision = SiteActionRisk | 'handoff' | 'deny'
 
-function isOrigin(value: string): boolean {
+/**
+ * The site policy origin that admits every http(s) origin. An installer sets it only when the
+ * organization chose "all sites"; exact origins keep their own rules and win over it.
+ */
+export const ANY_ORIGIN = '*'
+
+/** A bare http(s) origin (scheme://host[:port]). */
+function isWebOrigin(value: string): boolean {
     try {
         const url = new URL(value)
-        return ['http:', 'https:'].includes(url.protocol) && url.origin === value
+        // "https://*.example" parses, but would only ever match itself: refuse it rather than let it read as a wildcard.
+        return ['http:', 'https:'].includes(url.protocol) && url.origin === value && !url.hostname.includes('*')
     } catch {
         return false
     }
 }
 
+function isOrigin(value: string): boolean {
+    return value === ANY_ORIGIN || isWebOrigin(value)
+}
+
 const pathPattern = z.string().max(512).regex(/^\/\S*$/)
 const siteSchema = z.object({
-    origin: z.string().refine(isOrigin, 'origin must be scheme://host[:port]'),
+    origin: z.string().refine(isOrigin, 'origin must be scheme://host[:port] or "*" (all sites)'),
     actions: z.array(z.object({
         match: z.object({
             kinds: z.array(z.enum(['navigate', 'link', 'submit', 'form-click', 'click', 'fill'])).min(1).optional(),
@@ -149,8 +161,15 @@ function pathMatches(patterns: string[] | undefined, path: string | undefined): 
     return patterns.some((pattern) => pattern.endsWith('*') ? path.startsWith(pattern.slice(0, -1)) : path === pattern)
 }
 
+/** Whether a grant's or tab's origin list admits this origin. Every origin check goes through here. */
+export function originAllowed(allowedOrigins: readonly string[], origin: string): boolean {
+    return allowedOrigins.includes(origin) ? origin !== ANY_ORIGIN : allowedOrigins.includes(ANY_ORIGIN) && isWebOrigin(origin)
+}
+
+/** The policy of an origin: its own exact entry, else the any-origin entry (web origins only). */
 export function siteFor(sites: SitePolicy[], origin: string): SitePolicy | undefined {
-    return sites.find((site) => site.origin === origin)
+    if (origin === ANY_ORIGIN) return undefined
+    return sites.find((site) => site.origin === origin) ?? (isWebOrigin(origin) ? sites.find((site) => site.origin === ANY_ORIGIN) : undefined)
 }
 
 /** Refuses an origin that has no site policy (openPage, navigate). */

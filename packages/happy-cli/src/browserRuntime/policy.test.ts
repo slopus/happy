@@ -1,7 +1,7 @@
 /** Site classification and form digest safety contracts. */
 import { describe, expect, it } from 'vitest'
 import { BrowserRuntimeError, type BatchStep, type ElementDescription, type ElementRef, type FormSubmission } from './contracts'
-import { assertAllowedOrigin, approvalBinding, classifySiteAction, classifyUserWait, formDigest, formSummary, loginCompleted, parseSitePolicies, redact, type SitePolicy } from './policy'
+import { assertAllowedOrigin, assertSiteAllowed, approvalBinding, classifySiteAction, originAllowed, siteFor, classifyUserWait, formDigest, formSummary, loginCompleted, parseSitePolicies, redact, type SitePolicy } from './policy'
 import { fixtureSitePolicies } from './testing/fixtureSitePolicy'
 
 const step: BatchStep = { stepId: 's' as never, actionId: 'a' as never, tabId: 't' as never, kind: 'click', ref: '@e1' as ElementRef, timeoutMs: 1000 }
@@ -203,3 +203,42 @@ describe('site action policy (D7)', () => {
         expect(loginCompleted([{ origin, actions: [] }], { url: `${origin}/login/2fa`, text: '', elements: [] }, '/login')).toBe(false)
     })
 })
+
+describe('any-origin site policy ("*", chosen explicitly at install)', () => {
+    const anySite = parseSitePolicies([{ origin: '*' }])
+    const described = (over: Partial<ElementDescription> = {}): ElementDescription => ({ ref: '@e1' as ElementRef, role: 'button', name: 'Continue',
+        frameOrigin: 'https://shop.example', pageUrl: 'https://shop.example/cart', formValues: {}, documentGeneration: 1, identity: 'id', ...over })
+
+    it('admits every http(s) origin and nothing opaque or of another scheme', () => {
+        expect(originAllowed(['*'], 'https://shop.example')).toBe(true)
+        expect(originAllowed(['*'], 'http://news.example:8080')).toBe(true)
+        for (const origin of ['', 'null', 'chrome-extension://abc', 'file://', 'data:', '*']) expect(originAllowed(['*'], origin)).toBe(false)
+        expect(originAllowed(['https://shop.example'], 'https://other.example')).toBe(false)
+    })
+
+    it('opens any web page, but never javascript:, data: or about: URLs', () => {
+        expect(() => assertSiteAllowed(anySite, 'https://any.example/path')).not.toThrow()
+        for (const url of ['javascript:alert(1)', 'data:text/html,x', 'about:blank']) expect(() => assertSiteAllowed(anySite, url)).toThrow(BrowserRuntimeError)
+    })
+
+    it('keeps approval for submits and unmatched clicks; navigation and links stay automatic', () => {
+        expect(classifySiteAction(anySite, { ...step, kind: 'navigate', url: 'https://any.example/' } as BatchStep)).toBe('auto')
+        expect(classifySiteAction(anySite, step, described({ linkUrl: 'https://elsewhere.example/a' }))).toBe('auto')
+        expect(classifySiteAction(anySite, step, described({ submitsForm: true, form: { action: 'https://shop.example/pay', method: 'post', opaque: false } as never }))).toBe('requires-approval')
+        expect(classifySiteAction(anySite, step, described())).toBe('requires-approval')
+        expect(classifySiteAction(anySite, step, described({ linkUrl: 'javascript:alert(1)' }))).toBe('deny')
+    })
+
+    it('lets an explicit site policy win over "*" for its own origin', () => {
+        const sites = parseSitePolicies([{ origin: '*' }, { origin: 'https://shop.example', loginCompleteWhen: { urlPrefix: 'https://shop.example/account' } }])
+        expect(siteFor(sites, 'https://shop.example')?.origin).toBe('https://shop.example')
+        expect(siteFor(sites, 'https://other.example')?.origin).toBe('*')
+        expect(siteFor(sites, '')).toBeUndefined()
+    })
+
+    it('rejects a second "*" and wildcards inside an origin', () => {
+        expect(() => parseSitePolicies([{ origin: '*' }, { origin: '*' }])).toThrow(/duplicate/)
+        expect(() => parseSitePolicies([{ origin: 'https://*.example' }])).toThrow()
+    })
+})
+
