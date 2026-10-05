@@ -14,6 +14,10 @@ import { readCodexAccountLaunchState } from '@/codex/codexAccountLaunchState';
 import { CodexAccountLaunch, type AccountApi } from '@/daemon/codexAccountLaunch';
 import { runRestrictedCodex, verifyRestrictedCodex } from './restrictedCodex';
 
+/** T4 composes this runtime with authenticated discovery and turn credential grants. Legacy claims below stay on their original protocol. */
+export { createBoundServiceRuntime } from './executionBinding';
+export type { BoundRuntimeContext, BoundCredentialLease, BoundWorkspace, BoundTurnInput, BoundTurnEvent, BoundServiceRuntime } from './executionBinding';
+
 interface Job { protocol?: number; id: string; conversationId: string; grantId: string; appId: string; machineId: string; expiresAt: string | null; envelope: string; input: string; lease: string }
 const messageSchema = z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(500_000), selection: z.object({ engine: z.enum(['codex', 'claude']), model: z.string().max(100) }).strict().optional(), actualModel: z.string().max(100).optional(), images: z.array(z.string().max(3_000_000).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/)).max(4).optional() }).strict();
 
