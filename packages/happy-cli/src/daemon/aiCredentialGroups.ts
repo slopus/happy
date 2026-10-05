@@ -40,6 +40,8 @@ function request(value:CredentialGroupRequest):NormalizedRequest {
 }
 const principalType=(entry:Pick<Entry,'principalType'>)=>entry.principalType??'user'
 const samePrincipal=(entry:Pick<Entry,'principalType'|'userId'|'machineId'>, request:Pick<NormalizedRequest,'principalType'|'userId'|'machineId'>) => principalType(entry)===request.principalType && (request.principalType==='machine' ? entry.machineId===request.machineId : entry.userId===request.userId)
+/** One user assignment per scope and provider (a new userId replaces it); machine assignments are kept per machine. */
+const sameSlot=(entry:Pick<Entry,'principalType'|'machineId'>, request:Pick<NormalizedRequest,'principalType'|'machineId'>) => principalType(entry)===request.principalType && (request.principalType!=='machine' || entry.machineId===request.machineId)
 function parse(raw:string|null):Journal {
   if(raw===null)return {version:1,entries:[]}
   try {
@@ -52,19 +54,19 @@ function parse(raw:string|null):Journal {
       if (principalType(entry)==='machine' && !id(entry.machineId)) fail('AI_GROUP_JOURNAL_INVALID')
       if(!(entry.payloadDigest===null||typeof entry.payloadDigest==='string'&&/^[a-f0-9]{64}$/.test(entry.payloadDigest))||typeof entry.pending!=='boolean'||![entry.desired,entry.owned,entry.managed??[]].every(items=>Array.isArray(items)&&items.length<=1000&&items.every(id)))fail('AI_GROUP_JOURNAL_INVALID')
     }
-    if(new Set(value.entries.map(e=>JSON.stringify([e.scope,e.provider,principalType(e),principalType(e)==='machine'?e.machineId:e.userId]))).size!==value.entries.length)fail('AI_GROUP_JOURNAL_INVALID')
+    if(new Set(value.entries.map(e=>JSON.stringify([e.scope,e.provider,principalType(e),principalType(e)==='machine'?e.machineId:null]))).size!==value.entries.length)fail('AI_GROUP_JOURNAL_INVALID')
     return value
   }catch{ return fail('AI_GROUP_JOURNAL_INVALID') }
 }
 const receipt=(entry:Entry)=>({version:1 as const,scope:entry.scope, ...(principalType(entry)==='machine' ? {principalType:'machine' as const,machineId:entry.machineId} : {userId:entry.userId}),provider:entry.provider,generation:entry.generation,fingerprint:entry.fingerprint,payloadDigest:entry.payloadDigest,reconciled:!entry.pending})
 export function createCredentialGroupSync(deps:CredentialGroupDeps) {
   async function readReceipt(scope:string,provider:GroupProvider, principal?: Pick<NormalizedRequest,'principalType'|'userId'|'machineId'>) {
-    return parse(await deps.read()).entries.find(e=>e.scope===scope&&e.provider===provider&&(!principal||samePrincipal(e,principal)))
+    return parse(await deps.read()).entries.find(e=>e.scope===scope&&e.provider===provider&&(principal?samePrincipal(e,principal):principalType(e)==='user'))
   }
   async function sync(input:CredentialGroupRequest) {
     const normalized=request(input)
     const journal=parse(await deps.read())
-    const prior=journal.entries.find(e=>e.scope===normalized.scope&&e.provider===normalized.provider&&samePrincipal(e,normalized))
+    const prior=journal.entries.find(e=>e.scope===normalized.scope&&e.provider===normalized.provider&&sameSlot(e,normalized))
     if(prior&&normalized.generation<prior.generation)fail('AI_GROUP_GENERATION_STALE')
     if(prior&&normalized.generation===prior.generation&&(normalized.fingerprint!==prior.fingerprint||!samePrincipal(effectivePrincipal(prior),normalized)))fail('AI_GROUP_GENERATION_CONFLICT')
     if(prior&&normalized.fingerprint===prior.fingerprint&&(normalized.payload===null?null:createHash('sha256').update(normalized.payload).digest('hex'))!==prior.payloadDigest)fail('AI_GROUP_PAYLOAD_CONFLICT')
@@ -77,7 +79,7 @@ export function createCredentialGroupSync(deps:CredentialGroupDeps) {
     const managed=normalized.payload===null?[]:(deps.managedIdentities?.(normalized.provider,normalized.payload)??[]).filter(value=>desired.includes(value))
     const entry:Entry={scope:normalized.scope,principalType:normalized.principalType,userId:normalized.userId,...(normalized.machineId?{machineId:normalized.machineId}:{}),provider:normalized.provider,generation:normalized.generation,fingerprint:normalized.fingerprint,payloadDigest,desired,managed,
       owned:[...new Set([...(prior?.owned??[]),...desired.filter(value=>!before.has(value))])],pending:true}
-    journal.entries=journal.entries.filter(e=>!(e.scope===normalized.scope&&e.provider===normalized.provider&&samePrincipal(e,normalized)))
+    journal.entries=journal.entries.filter(e=>!(e.scope===normalized.scope&&e.provider===normalized.provider&&sameSlot(e,normalized)))
     journal.entries.push(entry)
     await deps.write(JSON.stringify(journal))
     if(normalized.payload!==null)await deps.apply(normalized.provider,normalized.payload,prior?.owned??[])
