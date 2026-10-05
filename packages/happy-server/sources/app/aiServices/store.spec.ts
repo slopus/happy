@@ -30,6 +30,26 @@ describe('AI service persistence and authorization', () => {
     });
     afterAll(async () => { await context?.database.$disconnect(); await context?.pg.close(); });
 
+    it('persists one grant-scoped application conversation through concurrent creates and a lost response', async () => {
+        const service=await create();
+        const grant=await store.registerAuthorization(owner,{id:`${owner}-creation`,kind:'personal-grant',scope:{appId,serviceId:service.id,targets:[{machineId:machine,engine:'codex',accountRef:config.accountRef}],permissions:['chat'],expiresAt:null},allowModelOverride:true,allowReasoningOverride:true});
+        const user:ServicePrincipal={kind:'personal-grant',ownerId:owner,grantId:grant.id,scope:grant.scope};
+        const calls=await Promise.all([1,2].map(()=>store.resolveBinding(user,appId,service.id,{},'app-conversation')));
+        expect(calls[0].id).toBe(calls[1].id);
+        expect(await context.database.aIServiceBinding.count({where:{serviceId:service.id}})).toBe(1);
+        // The accepted response is deliberately discarded. Recovery cannot observe a new default.
+        await store.updateService(owner,service.id,1,{...config,modelId:'native-text'});
+        const offline=createAIServiceStore(context.database,{readLive:async()=>{throw new Error('Recovery must not probe');}});
+        expect(await offline.resolveBinding(user,appId,service.id,{},'app-conversation')).toEqual(calls[0]);
+        expect(await offline.findApplicationBinding(user,appId,'app-conversation')).toEqual(calls[0]);
+        await expect(offline.resolveBinding(user,appId,service.id,{modelId:'native-text'},'app-conversation')).rejects.toMatchObject({code:'invalid-request'});
+        const otherGrant=await store.registerAuthorization(owner,{id:`${owner}-foreign-creation`,kind:'personal-grant',scope:grant.scope,allowModelOverride:false,allowReasoningOverride:false});
+        expect(await offline.findApplicationBinding({...user,grantId:otherGrant.id},appId,'app-conversation')).toBeNull();
+        await store.revokeAuthorization(owner,grant.id);
+        await expect(offline.findApplicationBinding(user,appId,'app-conversation')).rejects.toMatchObject({code:'authorization-revoked'});
+        await expect(offline.resolveBinding(user,appId,service.id,{},'app-conversation')).rejects.toMatchObject({code:'authorization-revoked'});
+    });
+
     it('allows a live daemon probe to save refreshed credentials without holding DB locks', async () => {
         const service = await create();
         const callbackStore = createAIServiceStore(context.database, { readLive: async () => {

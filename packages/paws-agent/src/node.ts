@@ -3,3 +3,4 @@ export {
     createDefaultFileCredentialProvider,
     FileCredentialProvider,
 } from './adapters/nodeCredentials';
+export * from './servicesNode';

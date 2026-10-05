@@ -218,4 +218,33 @@ describe.skipIf(!testUrl)('real PostgreSQL claim and Account/identity lock order
         expect(waitingQuery).toContain('FROM "Account"');
         expect((await first.codexAccountProfile.findUniqueOrThrow({ where: { id: f.profile.id } })).credentialVersion).toBe(2);
     }, 20000);
+    it('deduplicates simultaneous application conversation creation at the real PostgreSQL service-row lock', async () => {
+        const f = await fixture(), paused = barrier();
+        let observations = 0, releaseObservation!: () => void;
+        const bothObserved = new Promise<void>(resolve => { releaseObservation = resolve; });
+        const source = { readLive: async () => {
+            if (++observations === 2) releaseObservation();
+            await bothObserved;
+            return f.source.readLive();
+        } };
+        const firstStore = createAIServiceStore(instrument(first, 'creation-first', async query => {
+            if (query.model === 'aIServiceBinding' && query.method === 'create') await paused.pause();
+        }), source);
+        const secondStore = createAIServiceStore(instrument(second, 'creation-second'), source);
+        const firstCreate = firstStore.resolveBinding(f.principal, f.scope.appId, f.service.id, {}, 'website-conversation');
+        const secondCreate = secondStore.resolveBinding(f.principal, f.scope.appId, f.service.id, {}, 'website-conversation');
+        await paused.reached;
+        let waitingQuery = '';
+        try { waitingQuery = await waitUntilLock('creation-second'); } finally { paused.release(); }
+        const [a,b] = await Promise.all([firstCreate, secondCreate]);
+        expect(waitingQuery).toContain('FROM "AIService"');
+        expect(waitingQuery).toContain('FOR UPDATE');
+        expect(a.id).toBe(b.id);
+        expect(await observer.aIServiceBinding.count({ where: { authorizationId: f.principal.grantId, appConversationId: 'website-conversation' } })).toBe(1);
+        const recovery = createAIServiceStore(second, { readLive: async () => { throw new Error('Recovery must not observe'); } });
+        expect(await recovery.resolveBinding(f.principal, f.scope.appId, f.service.id, {}, 'website-conversation')).toEqual(a);
+        await expect(recovery.resolveBinding(f.principal, f.scope.appId, f.service.id, { modelId: 'native' }, 'website-conversation')).rejects.toMatchObject({ code: 'invalid-request' });
+        expect(observations).toBe(2);
+    }, 20000);
+
 });

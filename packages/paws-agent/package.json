@@ -52,7 +52,37 @@
         "default": "./dist/browser.mjs"
       }
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./services": {
+      "require": {
+        "types": "./dist/services.d.cts",
+        "default": "./dist/services.cjs"
+      },
+      "import": {
+        "types": "./dist/services.d.mts",
+        "default": "./dist/services.mjs"
+      }
+    },
+    "./services/browser": {
+      "require": {
+        "types": "./dist/services.browser.d.cts",
+        "default": "./dist/services.browser.cjs"
+      },
+      "import": {
+        "types": "./dist/services.browser.d.mts",
+        "default": "./dist/services.browser.mjs"
+      }
+    },
+    "./services/node": {
+      "require": {
+        "types": "./dist/servicesNode.d.cts",
+        "default": "./dist/servicesNode.cjs"
+      },
+      "import": {
+        "types": "./dist/servicesNode.d.mts",
+        "default": "./dist/servicesNode.mjs"
+      }
+    }
   },
   "sideEffects": false,
   "files": [
@@ -82,13 +112,15 @@
     "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
+    "@slopus/happy-wire": "workspace:*",
     "@types/node": ">=20",
     "@types/qrcode-terminal": "^0.12.2",
     "pkgroll": "^2.14.2",
     "socket.io": "^4.8.1",
     "tsx": "^4.20.6",
     "typescript": "5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "fake-indexeddb": "^6.2.5"
   },
   "publishConfig": {
     "registry": "https://registry.npmjs.org",

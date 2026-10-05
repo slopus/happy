@@ -1,4 +1,5 @@
 import { PawsAgentClient } from '@wangjs-jacky/paws-agent';
+import { createAIServiceClient, createServiceController, createBrowserPlatformTransport, createBrowserPersonalTransport, createBrowserServiceStorage } from '@wangjs-jacky/paws-agent/services/browser';
 import { BrowserCredentialProvider } from '@wangjs-jacky/paws-agent/browser';
 
 declare global {
@@ -19,5 +20,6 @@ void (async () => {
         credentials,
     });
     await client.dispose();
+    for (const entry of [createAIServiceClient, createServiceController, createBrowserPlatformTransport, createBrowserPersonalTransport, createBrowserServiceStorage]) { if (typeof entry !== 'function') throw new Error('Shared AI browser entry is incomplete'); }
     window.__PAWS_AGENT_VERIFY__ = 'ready';
 })();

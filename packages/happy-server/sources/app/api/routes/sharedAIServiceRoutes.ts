@@ -49,9 +49,10 @@ export function sharedAIServiceRoutes(app: Fastify, services: SharedAIServices) 
    const principal = await authenticate(request);
    return { services: [(await store.readService(principal.ownerId,principal.scope.serviceId)).service], app: await store.readApplication(principal.scope.appId) };
   });
-  routes.post('/v1/apps/ai-services/bindings', { schema: { body:z.object({ overrides:BindingOverridesSchema }).strict() } }, async request => {
-   const p = await authenticate(request); return { binding:await store.resolveBinding(p,p.scope.appId,p.scope.serviceId,request.body.overrides) };
+  routes.post('/v1/apps/ai-services/bindings', { schema: { body:z.object({ overrides:BindingOverridesSchema, appConversationId:id.optional() }).strict() } }, async request => {
+   const p = await authenticate(request); return { binding:await store.resolveBinding(p,p.scope.appId,p.scope.serviceId,request.body.overrides,request.body.appConversationId) };
   });
+  routes.get('/v1/apps/ai-services/conversations/:appConversationId/binding', { schema: { params:z.object({ appConversationId:id }) } }, async request => { const p=await authenticate(request);return { binding:await store.findApplicationBinding(p,p.scope.appId,request.params.appConversationId) }; });
   routes.get('/v1/apps/ai-services/bindings/:bindingId', { schema: { params:z.object({ bindingId:id }) } }, async request => { const p=await authenticate(request); return { binding:await store.readBinding(p,p.scope.appId,request.params.bindingId) }; });
   routes.post('/v1/apps/ai-services/capabilities', async request => {
    const p=await authenticate(request), revision=(await store.readService(p.ownerId,p.scope.serviceId)).revision;

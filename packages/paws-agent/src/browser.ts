@@ -10,3 +10,4 @@ export type {
 } from './auth/browserAccountLink';
 export { startBrowserAppAuthorization, createDelegatedChat, createDelegatedHistoryReader } from './delegation/browserDelegation';
 export type { DelegatedConnection, DelegatedMessage, DelegatedTurn, DelegatedHistoryAccess } from './delegation/browserDelegation';
+export * from './services.browser';

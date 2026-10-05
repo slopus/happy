@@ -105,3 +105,19 @@ it('prevents legacy owner mutations from corrupting shared grant history and ter
  await expect(deleteOwnedAppGrant(owner,f.receipt.id)).rejects.toThrow();
  expect((await ctx.database.appDelegation.findUniqueOrThrow({ where:{ id:f.receipt.id } })).state).toBe('service-ready');
 });
+
+it('recovers a lost binding-create HTTP response with the same application conversation and no second probe',async()=>{
+ const f=await setup();
+ const creating=req('/v1/apps/ai-services/bindings',{overrides:{},appConversationId:'website-chat'},f.receipt.credential);
+ const probe=await nextProbe();await completeProbe(probe,f.target);
+ const first=await creating;expect(first.statusCode,first.body).toBe(200);
+ const again=await req('/v1/apps/ai-services/bindings',{appConversationId:'website-chat',overrides:{}},f.receipt.credential);
+ expect(again.statusCode,again.body).toBe(200);expect(again.json()).toEqual(first.json());
+ const found=await app.inject({method:'GET',url:'/v1/apps/ai-services/conversations/website-chat/binding',headers:{authorization:`Bearer ${f.receipt.credential}`}});
+ expect(found.statusCode,found.body).toBe(200);expect(found.json()).toEqual(first.json());
+ expect(await ctx.database.aIServiceProbe.count({where:{machineId:machine}})).toBe(1);
+ const changed=await req('/v1/apps/ai-services/bindings',{appConversationId:'website-chat',overrides:{modelId:'native'}},f.receipt.credential);
+ expect(changed.json()).toMatchObject({error:{code:'invalid-request'}});
+ await services.store.revokeAuthorization(owner,f.receipt.id);
+ expect((await app.inject({method:'GET',url:'/v1/apps/ai-services/conversations/website-chat/binding',headers:{authorization:`Bearer ${f.receipt.credential}`}})).statusCode).not.toBe(200);
+},20000);

@@ -732,6 +732,8 @@ model AIServiceAuthorization {
 }
 
 model AIServiceBinding {
+    appConversationId String?
+    creationInput Json?
     turns AppChatTurn[]
     id String @id
     ownerId String
@@ -748,6 +750,7 @@ model AIServiceBinding {
     capabilityObservedAt DateTime
     createdAt DateTime @default(now())
     @@index([ownerId, appId, serviceId])
+    @@unique([authorizationId, appId, appConversationId])
 }
 
 // Display cache only. Binding creation always asks the trusted source for a live check.

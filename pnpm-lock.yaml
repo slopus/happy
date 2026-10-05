@@ -1293,12 +1293,18 @@ importers:
         specifier: ^1.0.3
         version: 1.0.3
     devDependencies:
+      '@slopus/happy-wire':
+        specifier: workspace:*
+        version: link:../happy-wire
       '@types/node':
         specifier: '>=20'
         version: 20.19.39
       '@types/qrcode-terminal':
         specifier: ^0.12.2
         version: 0.12.2
+      fake-indexeddb:
+        specifier: ^6.2.5
+        version: 6.2.5
       pkgroll:
         specifier: ^2.14.2
         version: 2.22.0(typescript@5.9.3)

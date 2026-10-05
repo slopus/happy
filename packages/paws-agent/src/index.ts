@@ -42,3 +42,4 @@ export type {
     SpawnSessionResult,
     SupportedAgent,
 } from './client/types';
+export * from './services';

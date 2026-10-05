@@ -94,6 +94,26 @@ export function createBindingStore(database: PrismaClient, source: TrustedCapabi
         }
         return { row, binding };
     }
+    function creationKey(value: string) {
+        if (typeof value !== 'string' || !value.trim() || value.length > 256) deny('invalid-request');
+        return value;
+    }
+    function canonicalInput(value: unknown): string {
+        if (Array.isArray(value)) return '[' + value.map(canonicalInput).join(',') + ']';
+        if (value && typeof value === 'object') return '{' + Object.entries(value).filter(([,v]) => v !== undefined).sort(([a],[b]) => a.localeCompare(b)).map(([k,v]) => JSON.stringify(k) + ':' + canonicalInput(v)).join(',') + '}';
+        return JSON.stringify(value);
+    }
+    async function recoverCreation(tx: Prisma.TransactionClient, principal: ServicePrincipal, appId: string, serviceId: string, appConversationId: string | undefined, options: BindingOverrides) {
+        if (appConversationId === undefined) return null;
+        if (principal.kind === 'owner') deny('permission-denied');
+        // Preserve service -> grant lock order. This also serializes same-key final inserts.
+        await tx.$queryRaw`SELECT "id" FROM "AIService" WHERE "id" = ${serviceId} AND "ownerId" = ${principal.ownerId} FOR UPDATE`;
+        await authorizeServicePrincipal(tx, principal, appId, serviceId);
+        const row = await tx.aIServiceBinding.findFirst({ where: { authorizationId: principal.grantId, appId, appConversationId: creationKey(appConversationId) } });
+        if (!row) return null;
+        if (row.serviceId !== serviceId || canonicalInput(row.creationInput) !== canonicalInput(options)) deny('invalid-request');
+        return (await readStored(tx, principal, appId, row.id)).binding;
+    }
     async function prepareBinding(tx: Prisma.TransactionClient, principal: ServicePrincipal, appId: string, serviceId: string, options: BindingOverrides) {
         const service = await dependencies.lockService(tx, principal.ownerId, serviceId);
         if (!service.enabled) deny('service-disabled');
@@ -136,15 +156,20 @@ export function createBindingStore(database: PrismaClient, source: TrustedCapabi
     }
     return {
         withValidatedBinding,
-        async resolveBinding(principal: ServicePrincipal, appId: string, serviceId: string, input: BindingOverrides): Promise<ExecutionBinding> {
+        async resolveBinding(principal: ServicePrincipal, appId: string, serviceId: string, input: BindingOverrides, appConversationId?: string): Promise<ExecutionBinding> {
             const options = BindingOverridesSchema.safeParse(input);
             if (!options.success) deny('invalid-request');
+            if (appConversationId !== undefined) creationKey(appConversationId);
+            const recovered = await serviceTransaction(database, principal.ownerId, tx => recoverCreation(tx, principal, appId, serviceId, appConversationId, options.data));
+            if (recovered) return recovered;
             // Retry only configuration contention. Never reuse an observation for a different revision.
             for (let attempt = 0; attempt < 3; attempt++) {
                 const before = await serviceTransaction(database, principal.ownerId, tx => prepareBinding(tx, principal, appId, serviceId, options.data));
                 const catalog = await readTrustedCatalog(source, principal.ownerId, before.config, principal);
                 if (!catalog) deny('machine-offline');
                 const result = await serviceTransaction(database, principal.ownerId, async tx => {
+                    const recovered = await recoverCreation(tx, principal, appId, serviceId, appConversationId, options.data);
+                    if (recovered) return recovered;
                     const current = await prepareBinding(tx, principal, appId, serviceId, options.data);
                     if (before.service.revision !== current.service.revision) return null;
                     const { service, revision, config, permissions, grant } = current;
@@ -157,12 +182,22 @@ export function createBindingStore(database: PrismaClient, source: TrustedCapabi
                     await cacheCatalog(tx, principal.ownerId, catalog);
                     await tx.aIServiceBinding.create({ data: { id: binding.id, ownerId: principal.ownerId, appId, serviceId,
                         revision: service.revision, authorizationId: grant?.id, snapshot: binding,
+                        appConversationId, creationInput: appConversationId === undefined ? undefined : options.data,
                         accountFingerprint: revision.accountFingerprint, capabilityObservedAt: new Date(catalog.observedAt) } });
                     return binding;
                 });
                 if (result) return result;
             }
             return deny('revision-conflict');
+        },
+        async findApplicationBinding(principal: ServicePrincipal, appId: string, appConversationId: string): Promise<ExecutionBinding | null> {
+            if (principal.kind === 'owner') deny('permission-denied');
+            creationKey(appConversationId);
+            return serviceTransaction(database, principal.ownerId, async tx => {
+                await authorizeServicePrincipal(tx, principal, appId, principal.scope.serviceId);
+                const row = await tx.aIServiceBinding.findFirst({ where: { authorizationId: principal.grantId, appId, appConversationId } });
+                return row ? (await readStored(tx, principal, appId, row.id)).binding : null;
+            });
         },
         async readBinding(principal: ServicePrincipal, appId: string, id: string): Promise<ExecutionBinding> {
             return serviceTransaction(database, principal.ownerId, async tx => (await readStored(tx, principal, appId, id)).binding);
