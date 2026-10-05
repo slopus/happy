@@ -13,6 +13,7 @@ import type { McpConfigSource } from './mcpConfigSynchronizer';
 import type { CheckpointSessionComposition } from '@/checkpoint/checkpointSessionComposition';
 
 import type { LessonSessionHost } from '@/memory/lessonSessionHost';
+import type { ClaudeTitleBridge } from './claudeOffTurnTitle';
 
 /** Survives SDK generations, but is reset with the actual conversation. */
 export interface ClaudeLessonReviewLifecycle {
@@ -68,6 +69,7 @@ export class Session {
     readonly onModeApplied?: (requestIds: string[] | undefined, executionId: string) => { model: string; effort: string | null } | null;
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     readonly hookSettingsPath: string;
+    readonly offTurnTitle?: ClaudeTitleBridge;
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     readonly jsRuntime: JsRuntime;
     readonly exitAfterFirstTurn: boolean;
@@ -113,6 +115,7 @@ export class Session {
         checkpointComposition?: CheckpointSessionComposition,
         /** Path to temporary settings file with SessionStart hook (required for session tracking) */
         hookSettingsPath: string,
+        offTurnTitle?: ClaudeTitleBridge,
         /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
         jsRuntime?: JsRuntime,
         /** Mode the run loop is starting in. Sets this.mode before the first
@@ -148,6 +151,7 @@ export class Session {
         this.onModeApplied = opts.onModeApplied;
         this.onSessionReset = opts.onSessionReset;
         this.hookSettingsPath = opts.hookSettingsPath;
+        this.offTurnTitle = opts.offTurnTitle;
         this.jsRuntime = opts.jsRuntime ?? 'node';
         this.mode = opts.startingMode ?? 'local';
         this.exitAfterFirstTurn = opts.exitAfterFirstTurn === true;

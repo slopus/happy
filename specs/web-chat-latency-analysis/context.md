@@ -145,3 +145,26 @@ Self-review (2026-10-05): three crash/hang paths fixed, each Red first.
 - The never-awaited job promise could reject unhandled if recording the title threw. It now catches and marks the job failed.
 - `OFF_TURN_TITLE_SCHEMA` is no longer exported.
 Tests: module 38, related files unchanged, build exit0.
+
+## Off-turn title for Claude — 2026-10-05
+
+ethan .294 Claude Haiku 4.5/low first requests (n=5) spent extra round trips on titling, the same pattern as Codex: in 4/5 runs ToolSearch preceded the answer, and 3 of those also called `change_title`. The answer came 2.5-4.7s after ToolSearch. Titles were recorded in only 3/5 sessions. Evidence is in aplus `specs/web-chat-latency-analysis`.
+
+Change:
+- **Shared logic:** `utils/offTurnTitle` holds the job, prompt and parser (structural move from codex/).
+- **Runner:** `claude/claudeOffTurnTitle` is a bridge. claudeRemote provides the options of the query it starts and clears them when that query ends. A run waits for them (45s bound and job signal), then calls the same `query` wrapper with what fixes payer and sandbox: same executable and env, cwd, settingSources, SDK sandbox and permission denies. Everything else is off: `tools: []`, `strictMcpConfig`, no MCP, `{disableAllHooks:true}` settings, `persistSession:false`, `maxTurns:1`, effort low, and a short custom system prompt.
+- **runClaude:** for eligible sessions, `titleCoveredForTurn` replaces the in-turn `appendTitleInstruction`. Eligible means not managed, not a scoped process sandbox, and not run-once. claudeRemote also never provides options for a scoped sandbox or managed run. The initial-prompt path (initialPrompt.ts) is unchanged.
+
+Verification:
+- Tests: module 9, claudeRemote bridge 2, managed boundary 1, and 2 runClaude title tests rewritten for the new intent. The old one asserted the in-turn instruction for every untitled chat; the instruction case is now a run-once host with Saycode prompts off.
+- The runClaude harness mock gained `createChangeTitleHandler`.
+- Mutations caught: removing the scope guard, the managed guard, the clear, or the run-once exclusion each fails a test. The first managed test reached no query and missed the mutation, so it was replaced.
+- Real local Claude Code smoke: Haiku returned a valid Korean title and slug, and no session directory was created.
+- 24 related files / 687 tests pass, build exit0.
+- Not yet run: isolated-daemon Web E2E and an ethan A/B.
+
+Isolated E2E (Claude): separate home `~/.happy-claude-title-iso`, new machineId, dev server. Shared daemons' pid/session counts were unchanged; the isolated tree (9 sessions + 18 children) was terminated and removed afterwards.
+- Web Claude Code/Haiku 4.5/low, 3 new chats.
+- Main turn: no title instruction, 1 model call, 0 tools. Answer 3.26/1.74/2.80s after the prompt record; Web first text 7.9/3.8/4.9s.
+- Titles were recorded off-turn 3/3 with 0 warnings, and no title-query session file was persisted.
+- Descriptive only; the ethan A/B is pending release.

@@ -77,6 +77,32 @@ describe('claudeRemote', () => {
         } finally { prepare.mockRestore(); }
     });
 
+    describe('off-turn title bridge', () => {
+        const bridge = () => ({ provide: vi.fn(), clear: vi.fn(), run: vi.fn() });
+        const run = async (overrides: Record<string, unknown>) => {
+            vi.mocked(query).mockReturnValue({ async *[Symbol.asyncIterator]() { yield { type: 'result', subtype: 'success' }; } } as any);
+            let count = 0;
+            await claudeRemote({ sessionId: null, path: process.cwd(), allowedTools: [], hookSettingsPath: '/tmp/synthetic-settings.json',
+                nextMessage: async () => count++ === 0 ? { message: 'synthetic', mode } : null,
+                onReady: vi.fn(), canCallTool: async () => ({ behavior: 'allow' }) as any, isAborted: () => false,
+                onSessionFound: vi.fn(), onThinkingChange: vi.fn(), onMessage: vi.fn(), ...overrides } as any);
+        };
+
+        it('provides the options the main query started with, then withdraws them when the query ends', async () => {
+            const offTurnTitle = bridge();
+            await run({ offTurnTitle });
+            expect(offTurnTitle.provide).toHaveBeenCalledWith(vi.mocked(query).mock.calls[0][0].options);
+            expect(offTurnTitle.clear).toHaveBeenCalledOnce();
+            expect(offTurnTitle.clear.mock.invocationCallOrder[0]).toBeGreaterThan(offTurnTitle.provide.mock.invocationCallOrder[0]);
+        });
+
+        it('does not provide options for a scoped process sandbox', async () => {
+            const offTurnTitle = bridge();
+            await run({ offTurnTitle, sandboxPolicyMode: 'mandatory', scopeProcessSandbox: { spawn: vi.fn(), close: vi.fn() } });
+            expect(offTurnTitle.provide).not.toHaveBeenCalled();
+        });
+    });
+
     it('reports that the provider never started when mode switching aborts before the first message', async () => {
         const result = await claudeRemote({
             sessionId: null,

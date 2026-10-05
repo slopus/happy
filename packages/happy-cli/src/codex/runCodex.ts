@@ -116,7 +116,8 @@ import {
     resolveCodexSaycodePromptBlocks,
     type CodexEnhancedMode,
 } from './codexPrompt';
-import { createCodexExecTitleRunner, createOffTurnTitleJob, isOffTurnTitleEligible, titleCoveredForTurn } from './codexOffTurnTitle';
+import { createCodexExecTitleRunner, isOffTurnTitleEligible } from './codexOffTurnTitle';
+import { createOffTurnTitleJob, titleCoveredForTurn } from '@/utils/offTurnTitle';
 import { discoverCodexSkillCommands } from './codexSkills';
 import { AGENT_ORCHESTRATION_SYSTEM_PROMPT } from '@/prompt/agentOrchestrationPrompt';
 import { consumeReconnectSessionEnvironment } from '@/daemon/reconnectSessionEnv';

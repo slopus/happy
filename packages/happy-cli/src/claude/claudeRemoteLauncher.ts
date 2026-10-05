@@ -667,6 +667,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         },
                     } : undefined,
                     hookSettingsPath: session.hookSettingsPath,
+                    offTurnTitle: session.offTurnTitle,
                     // SDK sandbox(주로 Bash 경계) 와 CLI 권한 규칙(도구 경계)을
                     // 함께 내려보낸다 — 한쪽만으로는 floor 가 반만 걸린다.
                     permissionsDeny: buildMandatoryRemoteDenyRules(

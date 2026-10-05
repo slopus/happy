@@ -91,6 +91,8 @@ export interface QueryOptions {
      */
     permissionsDeny?: string[]
     spawnClaudeCodeProcess?: Options['spawnClaudeCodeProcess']
+    /** False keeps a side query (e.g. off-turn titling) out of the session files and `--resume` list. */
+    persistSession?: boolean
 }
 
 /**

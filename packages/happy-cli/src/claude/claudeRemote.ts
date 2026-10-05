@@ -21,6 +21,7 @@ const MANAGED_TURN_END_INPUT_BUDGET_MS = 30_000;
 const RUN_ONCE_BACKGROUND_WAIT_BUDGET_MS = 60 * 60_000;
 import { spawn } from 'node:child_process';
 import { bindManagedQueryOptions } from '@/launcher/managedClaudeOptions'
+import type { ClaudeTitleBridge } from './claudeOffTurnTitle'
 import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
 import type { MessageParam } from '@anthropic-ai/sdk/resources'
 import { mapToClaudeMode } from "./utils/permissionMode";
@@ -238,6 +239,8 @@ export async function claudeRemote(opts: {
      */
     onAiAuthObservationReady?: (observation: ClaudeAuthObservation | null) => void,
     exitAfterFirstTurn?: boolean,
+    /** Receives this query's launch options so an off-turn title runs with the same payer and sandbox. */
+    offTurnTitle?: ClaudeTitleBridge,
     /** How long a run-once result may wait on background work before ending anyway. */
     backgroundWaitBudgetMs?: number,
 }) {
@@ -248,6 +251,7 @@ export async function claudeRemote(opts: {
             return processSandbox;
         });
     } finally {
+        opts.offTurnTitle?.clear();
         await processSandbox?.close();
     }
 }
@@ -720,6 +724,10 @@ function readTurnText(content: unknown): string {
         prompt: messages,
         options: sdkOptions,
     });
+    // A scoped process sandbox and a managed run keep the in-turn title: their
+    // boundary is the outer process wrapper or the approved plan, which a
+    // second query would not share.
+    if (!processSandbox && opts.managedRun !== true) opts.offTurnTitle?.provide(sdkOptions);
     const mcpRecovery = new McpRuntimeRecovery(response, { onStatus: opts.onMcpStatus });
     opts.onMcpStatusReaderReady?.(mcpRecovery);
     const mcpConfigSynchronizer = opts.mcpConfig

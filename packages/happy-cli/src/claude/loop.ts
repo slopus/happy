@@ -20,6 +20,7 @@ import type { CheckpointSessionComposition } from '@/checkpoint/checkpointSessio
 // Single unified type with 7 modes - Codex modes mapped at SDK boundary
 export type { PermissionMode } from "@/api/types"
 import type { PermissionMode } from "@/api/types"
+import type { ClaudeTitleBridge } from './claudeOffTurnTitle'
 
 export type ClaudeEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
@@ -86,6 +87,8 @@ interface LoopOptions {
     onModeApplied?: (requestIds: string[] | undefined, executionId: string) => { model: string; effort: string | null } | null
     /** Path to temporary settings file with SessionStart hook (required for session tracking) */
     hookSettingsPath: string
+    /** Off-turn title bridge; claudeRemote provides its launch options to it. */
+    offTurnTitle?: ClaudeTitleBridge
     /** JavaScript runtime to use for spawning Claude Code (default: 'node') */
     jsRuntime?: JsRuntime
     exitAfterFirstTurn?: boolean
@@ -123,6 +126,7 @@ export async function loop(opts: LoopOptions): Promise<number> {
         onModeApplied: opts.onModeApplied,
         onSessionReset: opts.onSessionReset,
         hookSettingsPath: opts.hookSettingsPath,
+        offTurnTitle: opts.offTurnTitle,
         jsRuntime: opts.jsRuntime,
         startingMode: opts.startingMode,
         exitAfterFirstTurn: opts.exitAfterFirstTurn,

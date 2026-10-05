@@ -49,7 +49,7 @@ function stubQuery() {
  * `query` 호출까지만 본다. 그 뒤의 대화 루프는 이 테스트의 관심사가 아니므로
  * 호출이 관측되면 중단한다.
  */
-async function runOnce(input: { managedRun: boolean; env: Record<string, string>; mode?: EnhancedMode }) {
+async function runOnce(input: { managedRun: boolean; env: Record<string, string>; mode?: EnhancedMode; extra?: Record<string, unknown> }) {
     const previous = { ...process.env };
     Object.assign(process.env, input.env);
     try {
@@ -73,6 +73,7 @@ async function runOnce(input: { managedRun: boolean; env: Record<string, string>
             onSessionFound: vi.fn(),
             onThinkingChange: vi.fn(),
             onMessage: vi.fn(),
+            ...input.extra,
         } as never);
     } finally {
         for (const key of Object.keys(input.env)) delete process.env[key];
@@ -86,6 +87,15 @@ describe('the managed boundary at the query call', () => {
         stubQuery();
     });
     afterEach(() => { delete process.env.SAYCODE_PROVIDER_SDK_OPTIONS; });
+
+    it('keeps a managed run’s launch away from the off-turn title bridge', async () => {
+        vi.mocked(query).mockReset();
+        vi.mocked(query).mockReturnValue({ async *[Symbol.asyncIterator]() { yield { type: 'result', subtype: 'success' }; } } as never);
+        const offTurnTitle = { provide: vi.fn(), clear: vi.fn(), run: vi.fn() };
+        await runOnce({ managedRun: true, env: PLAN.env as Record<string, string>, extra: { offTurnTitle } });
+        expect(query).toHaveBeenCalled();
+        expect(offTurnTitle.provide).not.toHaveBeenCalled();
+    });
 
     it('gives the SDK exactly the plan’s boundary in a managed run', async () => {
         await expect(runOnce({ managedRun: true, env: PLAN.env as Record<string, string> }))

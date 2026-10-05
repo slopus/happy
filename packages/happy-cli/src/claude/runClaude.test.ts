@@ -1409,7 +1409,7 @@ describe('runClaude remote JSONL scanner', () => {
         await harness.finish();
     });
 
-    it('appends the change_title instruction to a user message while the chat has no title', async () => {
+    it('leaves the change_title instruction out and hands the off-turn title bridge to the loop for an untitled chat', async () => {
         const harness = await startRemoteRunClaudeHarness();
         harness.sessionClient.hasTitle.mockReturnValue(false);
         await vi.waitFor(() => {
@@ -1421,7 +1421,27 @@ describe('runClaude remote JSONL scanner', () => {
 
         const queued = harness.loopOptions.messageQueue.queue;
         expect(queued).toHaveLength(1);
-        expect(queued[0].message.startsWith('로그인 버튼이 안 눌려')).toBe(true);
+        expect(queued[0].message).toBe('로그인 버튼이 안 눌려');
+        expect(harness.loopOptions.offTurnTitle).toEqual(expect.objectContaining({ provide: expect.any(Function), run: expect.any(Function) }));
+        await harness.finish();
+    });
+
+    it('keeps the change_title instruction for an untitled chat under a mandatory sandbox policy', async () => {
+        process.env.HAPPY_SANDBOX_POLICY_MODE = 'mandatory';
+        process.env.HAPPY_PROJECT_SANDBOX_CONFIG = JSON.stringify({ enabled: true });
+        const harness = await startRemoteRunClaudeHarness();
+        expect(harness.loopOptions.sandboxPolicyMode).toBe('mandatory');
+        harness.sessionClient.hasTitle.mockReturnValue(false);
+        await vi.waitFor(() => {
+            expect(harness.sessionClient.onUserMessage).toHaveBeenCalled();
+        });
+        const userMessageHandler = harness.sessionClient.onUserMessage.mock.calls[0][0];
+
+        await userMessageHandler({ content: { text: '로그인 버튼이 안 눌려' }, meta: {} });
+
+        const queued = harness.loopOptions.messageQueue.queue;
+        expect(queued).toHaveLength(1);
+        expect(queued[0].message).toContain('로그인 버튼이 안 눌려');
         expect(queued[0].message).toContain(TITLE_INSTRUCTION);
         await harness.finish();
     });
@@ -1854,8 +1874,11 @@ describe('runClaude remote JSONL scanner', () => {
         await harness.finish();
     });
 
-    it('still appends the change_title instruction when Saycode prompts are disabled', async () => {
+    it('still appends the change_title instruction on a run-once host, even with Saycode prompts disabled', async () => {
+        process.env.HAPPY_AUTOMATION_RUN_ONCE = '1';
+        process.env.HAPPY_INITIAL_PROMPT = '업무 브리핑';
         const harness = await startRemoteRunClaudeHarness();
+        expect(harness.loopOptions.exitAfterFirstTurn).toBe(true);
         harness.sessionClient.hasTitle.mockReturnValue(false);
         await vi.waitFor(() => {
             expect(harness.sessionClient.onUserMessage).toHaveBeenCalled();
@@ -1868,10 +1891,9 @@ describe('runClaude remote JSONL scanner', () => {
         });
 
         const queued = harness.loopOptions.messageQueue.queue;
-        expect(queued).toHaveLength(1);
-        expect(queued[0].message).toContain('use my own harness');
-        expect(queued[0].message).toContain(TITLE_INSTRUCTION);
-        expect(queued[0].mode.saycodeSystemPromptEnabled).toBe(false);
+        const userTurn = queued.find((entry: any) => entry.message.includes('use my own harness'));
+        expect(userTurn.message).toContain(TITLE_INSTRUCTION);
+        expect(userTurn.mode.saycodeSystemPromptEnabled).toBe(false);
         await harness.finish();
     });
 
