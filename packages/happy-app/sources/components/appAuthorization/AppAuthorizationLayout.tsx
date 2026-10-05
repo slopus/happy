@@ -66,9 +66,9 @@ export function AuthorizationSection({ title, hint, children, radio = false }: {
     </View>;
 }
 
-export function AuthorizationChoice({ title, subtitle, selected, disabled, onPress, icon, testID }: {
+export function AuthorizationChoice({ title, subtitle, selected, disabled, onPress, icon, testID, role = 'radio' }: {
     title: string; subtitle?: string; selected: boolean; disabled?: boolean; onPress: () => void;
-    icon?: React.ComponentProps<typeof Ionicons>['name']; testID?: string;
+    icon?: React.ComponentProps<typeof Ionicons>['name']; testID?: string; role?: 'radio' | 'checkbox';
 }) {
     const styles = authorizationStyles;
     const { theme } = useUnistyles();
@@ -82,7 +82,7 @@ export function AuthorizationChoice({ title, subtitle, selected, disabled, onPre
             }
         },
     } : {};
-    return <Pressable testID={testID} accessibilityRole="radio" accessibilityLabel={title}
+    return <Pressable testID={testID} accessibilityRole={role} accessibilityLabel={title}
         accessibilityState={{ checked: selected, disabled: !!disabled }} disabled={disabled}
         aria-checked={selected}
         {...keyboardProps}

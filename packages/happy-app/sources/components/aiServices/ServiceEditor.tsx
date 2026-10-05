@@ -22,6 +22,12 @@ export function targetDescription(target: ServiceTarget, machines: ServiceMachin
     const account = ref.kind === 'codex-profile' ? accounts.find(a => a.id === ref.id)?.displayName ?? ref.id : `本机登录 ${ref.identityId.slice(0, 19)}…`;
     return `${machine} · ${target.engine === 'codex' ? 'Codex' : 'Claude'} · ${account}`;
 }
+export function availableServiceTargets(workers: AIServiceWorker[], accounts: CodexAccountProfile[]): ServiceTarget[] {
+    return workers.flatMap<ServiceTarget>(worker => worker.serviceProtocol === 'ai-services/1' && worker.servicePublicKey ? [
+        ...accounts.filter(a => a.status !== 'invalid').map(a => ({ machineId: worker.machineId, engine: 'codex' as const, accountRef: { kind: 'codex-profile' as const, id: a.id } })),
+        ...(worker.serviceClaudeIdentity && worker.serviceClaudeObservedAt ? [{ machineId: worker.machineId, engine: 'claude' as const, accountRef: { kind: 'device-identity' as const, machineId: worker.machineId, identityId: worker.serviceClaudeIdentity } }] : []),
+    ] : []);
+}
 const editorStyles = StyleSheet.create(theme => ({ input: { color: theme.colors.text, backgroundColor: theme.colors.surface, borderColor: theme.colors.divider, borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 16 } }));
 export function ServiceEditor({ snapshot, api, workers, accounts, machines, grants, onSaved, onClose, onManageAccounts, onManageDevices }: {
     snapshot: ServiceSnapshot | null; api: AIServicesAPI; workers: AIServiceWorker[]; accounts: CodexAccountProfile[]; machines: ServiceMachine[]; grants: ServiceGrant[];
@@ -46,10 +52,7 @@ export function ServiceEditor({ snapshot, api, workers, accounts, machines, gran
             .catch(e => { if (live) setCatalogError(e instanceof Error ? e.message : '读取能力失败。'); });
         return () => { live = false; };
     }, [api, targetKey, refresh]);
-    const options: ServiceTarget[] = workers.flatMap<ServiceTarget>(worker => [
-        ...accounts.filter(a => a.status !== 'invalid').map(a => ({ machineId: worker.machineId, engine: 'codex' as const, accountRef: { kind: 'codex-profile' as const, id: a.id } })),
-        ...(worker.serviceClaudeIdentity && worker.serviceClaudeObservedAt ? [{ machineId: worker.machineId, engine: 'claude' as const, accountRef: { kind: 'device-identity' as const, machineId: worker.machineId, identityId: worker.serviceClaudeIdentity } }] : []),
-    ]);
+    const options = availableServiceTargets(workers, accounts);
     if (draft && !options.some(t => sameTarget(t, draft))) options.unshift(targetOf(draft));
     const scopeChanged = !!draft && grants.some(g => g.revokedAt === null && (g.scope.expiresAt === null || g.scope.expiresAt > Date.now()) && !g.scope.targets.some(t => sameTarget(t, draft)));
     const model = catalog?.models.find(m => m.id === (draft?.modelId ?? catalog.defaultModelId));
