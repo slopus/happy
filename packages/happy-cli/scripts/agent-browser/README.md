@@ -114,6 +114,9 @@ sudo ./abp-install install --happy-tarball ./buzzni-happy-cli-X.tgz --images /tm
   requests profile `main`, and any other id or a second profile is refused. The generators and
   the stack support several profiles for later releases.
 - `--sites` is the Runtime `sites` array (`[{ "origin": "https://…", "actions": […], "loginCompleteWhen": … }]`).
+  `{ "origin": "*" }` admits every http(s) site (the Studio one-line install's "all sites" choice); exact origins keep
+  their own rules and win over it. Navigation and links stay automatic; submits and clicks without a rule still need
+  approval, and the browser egress firewall still blocks private networks. Wildcards inside an origin are refused.
 - Other options: `--runtime-port` (38700), `--max-agent-windows` (4),
   `--retention-days` (7), `--viewer-origin <tunnel origin>` (needs the viewer stream, S4),
   `--egress-domain` (replaces the proxy's default Claude domains), `--happy-prefix`,

@@ -40,6 +40,14 @@ describe('install options', () => {
         expect(merged.trustedIssuers).toEqual(saved.trustedIssuers)
     })
 
+    it('accepts "*" as the explicit all-sites policy, next to exact sites', () => {
+        const options = mergeInstallOptions(undefined, {
+            machineId: 'machine-1', workspaceId: 'ws-1', profiles: [{ profileId: 'main', principalId: 'user-1' }],
+            issuers: [{ kid: 'k1', publicKeyPem: pem() }], sites: [{ origin: '*' }, ...SITES],
+        })
+        expect(options.sites.map((site: { origin: string }) => site.origin)).toEqual(['*', 'https://shop.example'])
+    })
+
     it('refuses what the Runtime or the stack could not use', () => {
         const bad: Array<[string, Record<string, unknown>]> = [
             ['no profile', { profiles: [] }],
@@ -48,6 +56,7 @@ describe('install options', () => {
             ['no issuer', { issuers: [] }],
             ['non-Ed25519 issuer', { issuers: [{ kid: 'k', publicKeyPem: pem('rsa') }] }],
             ['site with a path', { sites: [{ origin: 'https://shop.example/path' }] }],
+            ['wildcard inside a site origin', { sites: [{ origin: 'https://*.shop.example' }] }],
             ['port 0', { runtimePort: 0 }],
             ['agent profile not configured', { agentProfileId: 'other' }],
             ['non-origin viewer origin', { viewerOrigins: ['tunnel.example'] }],
