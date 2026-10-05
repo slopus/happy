@@ -117,6 +117,31 @@ describe.skipIf(!testUrl)('real PostgreSQL claim and Account/identity lock order
         throw new Error(`No PostgreSQL lock wait for ${name}`);
     }
 
+    it('renews heartbeat liveness while a concurrent claim waits, and rejects expired leases', async () => {
+        const f = await fixture(), turns = createServiceTurns(first, f.store);
+        const turn = await turns.startBoundTurn(f.principal, f.binding.id, 'long-turn', { ciphertext: 'h'.repeat(80) });
+        const job = await turns.claim(f.ownerId, f.machineId);
+        await first.appChatWorker.update({ where: { machineId: f.machineId }, data: { activeUntil: new Date(0) } });
+        const paused = barrier();
+        const heartbeat = instrument(first, 'heartbeat_liveness', async ({ model, method }) => {
+            if (model === 'appChatTurn' && method === 'findUnique') await paused.pause();
+        });
+        const publishing = createServiceTurns(heartbeat, createAIServiceStore(heartbeat, f.source))
+            .publish(f.ownerId, f.machineId, turn.id, { lease: job!.lease });
+        await paused.reached;
+        const claiming = instrument(second, 'claim_during_heartbeat');
+        const claim = createServiceTurns(claiming, createAIServiceStore(claiming, f.source)).claim(f.ownerId, f.machineId);
+        try { expect(await waitUntilLock('claim_during_heartbeat')).toContain('AppChatWorker'); }
+        finally { paused.release(); }
+        expect(await publishing).toEqual({ accepted: true });
+        expect(await claim).toBeNull();
+        expect((await first.appChatWorker.findUniqueOrThrow({ where: { machineId: f.machineId } })).activeUntil.getTime()).toBeGreaterThan(Date.now()+40000);
+        await first.appChatTurn.update({ where: { id: turn.id }, data: { leaseUntil: new Date(0) } });
+        await first.appChatWorker.update({ where: { machineId: f.machineId }, data: { activeUntil: new Date(0) } });
+        await expect(turns.publish(f.ownerId, f.machineId, turn.id, { lease: job!.lease })).rejects.toMatchObject({ code: 'execution-interrupted' });
+        expect((await first.appChatWorker.findUniqueOrThrow({ where: { machineId: f.machineId } })).activeUntil.getTime()).toBe(0);
+    }, 20000);
+
     it.each(['cancel', 'expiry', 'deadline', 'authorization-error'] as const)('does not undo %s after candidate selection', async mode => {
         const f = await fixture();
         const turn = await createServiceTurns(first, f.store).startBoundTurn(f.principal, f.binding.id, mode, { ciphertext: 'x'.repeat(80) });

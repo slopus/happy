@@ -127,6 +127,8 @@ export function createServiceTurns(database: PrismaClient, store: AIServiceStore
   },
   async publish(ownerId: string, machineId: string, id: string, input: { lease: string; output?: string; sequence?: number; status?: 'completed'|'failed'|'cancelled'; actual?: TurnActual; error?: ServiceError }) {
    return serviceTransaction(database, ownerId, async tx => {
+    // Match claim/probe lock order before renewing liveness for this worker.
+    await tx.$queryRaw`SELECT "machineId" FROM "AppChatWorker" WHERE "machineId" = ${machineId} AND "accountId" = ${ownerId} FOR UPDATE`;
     const before = await tx.appChatTurn.findUnique({ where: { id } });
     if (!before?.bindingId) deny('permission-denied');
     await authorizeWorkerBinding(tx,ownerId,machineId,before.bindingId);
@@ -149,6 +151,8 @@ export function createServiceTurns(database: PrismaClient, store: AIServiceStore
     }
     await tx.appChatTurn.update({ where: { id }, data: { ...(input.output ? { output: input.output, sequence: input.sequence } : {}), ...(actual ? { actual } : {}), ...(error ? { serviceError: error } : {}),
      state: input.status ?? row.state, ...(input.status ? { completedAt: new Date(), lease: null, leaseUntil: null } : { leaseUntil: new Date(Date.now()+15000) }) } });
+    // Only an authorized, current lease proves that the worker is still online.
+    await tx.appChatWorker.updateMany({ where: { machineId, accountId: ownerId, serviceProtocol: 'ai-services/1' }, data: { activeUntil: new Date(Date.now()+45000) } });
     return { accepted: true };
    });
   },

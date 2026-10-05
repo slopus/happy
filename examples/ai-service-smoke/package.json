@@ -1,0 +1,12 @@
+{
+  "name": "paws-ai-service-smoke",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "node server.mjs" },
+  "dependencies": {
+    "@wangjs-jacky/paws-agent": "file:vendor/wangjs-jacky-paws-agent-0.3.0.tgz",
+    "@wangjs-jacky/paws-connect-ui": "file:vendor/wangjs-jacky-paws-connect-ui-0.1.0.tgz",
+    "esbuild": "0.25.12"
+  }
+}

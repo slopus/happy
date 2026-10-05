@@ -27,6 +27,13 @@ it('deduplicates turns, fences cancel/completion, and never replays expired leas
  await expect(turns.startBoundTurn(principal,binding.id,'request-1',{ ciphertext:'different'.repeat(20) })).rejects.toMatchObject({ code:'invalid-request' });
  const job = await turns.claim('turn-owner', target.machineId);
  expect(job?.record.id).toBe(a.id);
+ // A healthy long turn can outlive the worker announcement's 45-second TTL.
+ await db.appChatWorker.update({ where: { machineId: target.machineId }, data: { activeUntil: new Date(0) } });
+ await expect(turns.publish('turn-owner', target.machineId, a.id, { lease: 'wrong' })).rejects.toMatchObject({ code: 'execution-interrupted' });
+ expect((await db.appChatWorker.findUniqueOrThrow({ where: { machineId: target.machineId } })).activeUntil.getTime()).toBe(0);
+ await turns.publish('turn-owner', target.machineId, a.id, { lease: job!.lease });
+ expect((await db.appChatWorker.findUniqueOrThrow({ where: { machineId: target.machineId } })).activeUntil.getTime()).toBeGreaterThan(Date.now() + 40000);
+
  await turns.cancelBoundTurn(principal, binding.id, a.id);
  await expect(turns.publish('turn-owner', target.machineId, a.id, { lease: job!.lease, status: 'completed', output: 'c'.repeat(80), sequence: 1 })).rejects.toMatchObject({ code: 'execution-interrupted' });
  expect((await turns.readBoundTurn(principal, binding.id, a.id)).record.status).toBe('cancel-requested');
