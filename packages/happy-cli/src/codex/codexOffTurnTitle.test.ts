@@ -5,6 +5,7 @@ import {
     createCodexExecTitleRunner,
     createOffTurnTitleJob,
     isOffTurnTitleEligible,
+    parseEnabledMcpServerNames,
     parseOffTurnTitle,
     titleCoveredForTurn,
 } from './codexOffTurnTitle';
@@ -146,34 +147,67 @@ describe('isOffTurnTitleEligible', () => {
 
 describe('buildOffTurnTitleExecArgs', () => {
     it('shouldRunAnEphemeralReadOnlyLowEffortExecThatReadsThePromptFromStdin', () => {
-        const args = buildOffTurnTitleExecArgs({ model: 'gpt-6-luna', schemaPath: '/t/schema.json', outputPath: '/t/out.json' });
+        const args = buildOffTurnTitleExecArgs({ model: 'gpt-6-luna', schemaPath: '/t/schema.json', outputPath: '/t/out.json', mcpServerNames: [] });
         expect(args.slice(0, 1)).toEqual(['exec']);
         expect(args).toEqual(expect.arrayContaining(['--ephemeral', '--skip-git-repo-check', '--output-schema', '/t/schema.json', '-o', '/t/out.json']));
         expect(args.join(' ')).toContain('-s read-only');
         expect(args.join(' ')).toContain('-m gpt-6-luna');
         expect(args.join(' ')).toContain('model_reasoning_effort="low"');
-        expect(args.join(' ')).toContain('-c mcp_servers={}');
         expect(args[args.length - 1]).toBe('-');
     });
 
+    it('shouldDisableEachNamedMcpServer', () => {
+        const args = buildOffTurnTitleExecArgs({ schemaPath: '/s', outputPath: '/o', mcpServerNames: ['linear', 'my_tools-2'] });
+        expect(args.join(' ')).toContain('-c mcp_servers.linear.enabled=false -c mcp_servers.my_tools-2.enabled=false');
+    });
+
     it('shouldOmitTheModelFlagForTheDefaultModel', () => {
-        const args = buildOffTurnTitleExecArgs({ schemaPath: '/s', outputPath: '/o' });
+        const args = buildOffTurnTitleExecArgs({ schemaPath: '/s', outputPath: '/o', mcpServerNames: [] });
         expect(args).not.toContain('-m');
     });
 });
 
+describe('parseEnabledMcpServerNames', () => {
+    it('shouldReturnTheEnabledServerNames', () => {
+        expect(parseEnabledMcpServerNames(JSON.stringify([
+            { name: 'linear', enabled: true },
+            { name: 'off', enabled: false },
+            { name: 'legacy' },
+        ]))).toEqual(['linear', 'legacy']);
+        expect(parseEnabledMcpServerNames('[]')).toEqual([]);
+    });
+
+    it('shouldRejectAnEnabledNameThatACliKeyCannotAddress', () => {
+        expect(parseEnabledMcpServerNames(JSON.stringify([{ name: 'dotted.name', enabled: true }]))).toBeNull();
+        expect(parseEnabledMcpServerNames(JSON.stringify([{ name: 'dotted.name', enabled: false }]))).toEqual([]);
+    });
+
+    it('shouldRejectUnreadableOutput', () => {
+        expect(parseEnabledMcpServerNames('not json')).toBeNull();
+        expect(parseEnabledMcpServerNames('{}')).toBeNull();
+        expect(parseEnabledMcpServerNames('[{"enabled":true}]')).toBeNull();
+    });
+});
+
 describe('createCodexExecTitleRunner', () => {
-    async function fakeSpawn(behavior: { exitCode?: number | null; output?: string; hang?: boolean }) {
+    async function fakeSpawn(behavior: { exitCode?: number | null; output?: string; hang?: boolean; mcpList?: string }) {
         const { EventEmitter } = await import('node:events');
         const { PassThrough } = await import('node:stream');
         const { writeFile } = await import('node:fs/promises');
         const calls: { command: string; args: string[]; cwd?: string; stdin: string; killed: boolean }[] = [];
+        const lists: { cwd?: string }[] = [];
         const spawnImpl = vi.fn((command: string, args: string[], options: { cwd?: string }) => {
-            const child = new EventEmitter() as InstanceType<typeof EventEmitter> & { stdin: InstanceType<typeof PassThrough>; stderr: InstanceType<typeof PassThrough>; kill: () => boolean };
+            const child = new EventEmitter() as InstanceType<typeof EventEmitter> & { stdin: InstanceType<typeof PassThrough>; stdout: InstanceType<typeof PassThrough>; stderr: InstanceType<typeof PassThrough>; kill: () => boolean };
+            child.stdout = new PassThrough();
+            child.stderr = new PassThrough();
+            if (args[0] === 'mcp') {
+                lists.push({ cwd: options.cwd });
+                setImmediate(() => { child.stdout.end(behavior.mcpList ?? '[]'); child.emit('close', 0, null); });
+                return child;
+            }
             const call = { command, args, cwd: options.cwd, stdin: '', killed: false };
             calls.push(call);
             child.stdin = new PassThrough();
-            child.stderr = new PassThrough();
             child.stdin.on('data', (chunk: Buffer) => { call.stdin += chunk.toString(); });
             child.kill = () => { call.killed = true; setImmediate(() => child.emit('close', null, 'SIGTERM')); return true; };
             child.stdin.on('finish', async () => {
@@ -184,7 +218,7 @@ describe('createCodexExecTitleRunner', () => {
             });
             return child;
         });
-        return { spawnImpl, calls };
+        return { spawnImpl, calls, lists };
     }
 
     it('shouldPipeThePromptAndReturnTheFinalMessageThenRemoveItsTempDir', async () => {
@@ -197,6 +231,21 @@ describe('createCodexExecTitleRunner', () => {
         expect(calls[0].stdin).toBe('PROMPT');
         expect(calls[0].args).toContain('gpt-6-luna');
         expect(existsSync(calls[0].cwd!)).toBe(false);
+    });
+
+    it('shouldDisableTheListedMcpServersInTheSameDir', async () => {
+        const { spawnImpl, calls, lists } = await fakeSpawn({ output: '{"title":"T"}', mcpList: '[{"name":"linear","enabled":true}]' });
+        const run = createCodexExecTitleRunner({ spawnImpl: spawnImpl as never });
+        await run({ prompt: 'P', signal: new AbortController().signal });
+        expect(lists).toEqual([{ cwd: calls[0].cwd }]);
+        expect(calls[0].args.join(' ')).toContain('-c mcp_servers.linear.enabled=false');
+    });
+
+    it('shouldNotRunExecWhenAnMcpServerCannotBeDisabled', async () => {
+        const { spawnImpl, calls } = await fakeSpawn({ output: '{"title":"T"}', mcpList: '[{"name":"a.b","enabled":true}]' });
+        const run = createCodexExecTitleRunner({ spawnImpl: spawnImpl as never });
+        await expect(run({ prompt: 'P', signal: new AbortController().signal })).rejects.toThrow('MCP server');
+        expect(calls).toHaveLength(0);
     });
 
     it('shouldRejectWhenExecExitsNonZero', async () => {
@@ -250,4 +299,95 @@ describe('titleCoveredForTurn', () => {
         await job.settled();
         expect(titleCoveredForTurn({ hasTitle: false, job, eligible: true, message: 'second' })).toBe(false);
     });
+});
+
+const HAS_CODEX = (await import('node:child_process')).spawnSync('codex', ['--version'], { stdio: 'ignore' }).status === 0;
+
+describe.skipIf(!HAS_CODEX)('createCodexExecTitleRunner with a real codex', () => {
+    /**
+     * Isolated CODEX_HOME whose model provider accepts connections and never
+     * answers, so no tokens are spent and a connection proves the exec got
+     * past config loading. Each MCP server appends to a marker when started.
+     */
+    async function isolatedCodexHome(serverNames: string[]) {
+        const { mkdtemp, readFile } = await import('node:fs/promises');
+        const { writeFile } = await import('node:fs/promises');
+        const { tmpdir } = await import('node:os');
+        const { join } = await import('node:path');
+        const { createServer } = await import('node:net');
+        const home = await mkdtemp(join(tmpdir(), 'happy-codex-title-home-'));
+        const marker = join(home, 'mcp-started');
+        const sockets: import('node:net').Socket[] = [];
+        let connected = false;
+        const server = createServer((socket) => { connected = true; sockets.push(socket); });
+        await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+        const port = (server.address() as import('node:net').AddressInfo).port;
+        const servers = serverNames.map((name) => [
+            `[mcp_servers.${JSON.stringify(name)}]`,
+            'command = "/bin/sh"',
+            `args = ["-c", ${JSON.stringify(`echo ${name} >> '${marker}'; exec sleep 5`)}]`,
+        ].join('\n'));
+        await writeFile(join(home, 'config.toml'), [
+            'model = "gpt-5"',
+            'model_provider = "hold"',
+            '[model_providers.hold]',
+            'name = "hold"',
+            `base_url = "http://127.0.0.1:${port}/v1"`,
+            'wire_api = "responses"',
+            'request_max_retries = 0',
+            'stream_max_retries = 0',
+            ...servers,
+        ].join('\n'));
+        return {
+            home,
+            connected: () => connected,
+            started: () => readFile(marker, 'utf8').catch(() => ''),
+            async dispose() {
+                sockets.forEach((socket) => socket.destroy());
+                server.close();
+                const { rm } = await import('node:fs/promises');
+                await rm(home, { recursive: true, force: true });
+            },
+        };
+    }
+
+    async function withCodexHome<T>(home: string, fn: () => Promise<T>): Promise<T> {
+        const previous = process.env.CODEX_HOME;
+        process.env.CODEX_HOME = home;
+        try { return await fn(); } finally {
+            if (previous === undefined) delete process.env.CODEX_HOME; else process.env.CODEX_HOME = previous;
+        }
+    }
+
+    it('shouldNotStartTheUsersConfiguredMcpServers', async () => {
+        const fixture = await isolatedCodexHome(['probe', 'second_probe']);
+        try {
+            await withCodexHome(fixture.home, async () => {
+                const controller = new AbortController();
+                const pending = createCodexExecTitleRunner({ timeoutMs: 30_000 })({ prompt: 'P', signal: controller.signal });
+                pending.catch(() => {});
+                await vi.waitFor(() => expect(fixture.connected()).toBe(true), { timeout: 20_000, interval: 50 });
+                await new Promise((resolve) => setTimeout(resolve, 500));
+                controller.abort();
+                await expect(pending).rejects.toThrow('aborted');
+            });
+            expect(await fixture.started()).toBe('');
+        } finally {
+            await fixture.dispose();
+        }
+    }, 40_000);
+
+    it('shouldRefuseToRunWhenAnMcpServerNameCannotBeDisabled', async () => {
+        const fixture = await isolatedCodexHome(['dotted.name']);
+        try {
+            await withCodexHome(fixture.home, async () => {
+                const run = createCodexExecTitleRunner({ timeoutMs: 30_000 });
+                await expect(run({ prompt: 'P', signal: new AbortController().signal })).rejects.toThrow('MCP server');
+            });
+            expect(fixture.connected()).toBe(false);
+            expect(await fixture.started()).toBe('');
+        } finally {
+            await fixture.dispose();
+        }
+    }, 40_000);
 });
