@@ -46,7 +46,7 @@ import { enqueueChannelTurn } from '@/channel/channelTurnEnqueue';
 import { projectPath } from '@/projectPath';
 import { join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
-import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { createChangeTitleHandler, startHappyServer } from '@/claude/utils/startHappyServer';
 import { refreshMcpCallerGrantIfExpiring } from '@/aplus/refreshMcpCallerGrant';
 import {
     fetchAplusMcpConfigSnapshot,
@@ -116,6 +116,7 @@ import {
     resolveCodexSaycodePromptBlocks,
     type CodexEnhancedMode,
 } from './codexPrompt';
+import { createCodexExecTitleRunner, createOffTurnTitleJob, isOffTurnTitleEligible, titleCoveredForTurn } from './codexOffTurnTitle';
 import { discoverCodexSkillCommands } from './codexSkills';
 import { AGENT_ORCHESTRATION_SYSTEM_PROMPT } from '@/prompt/agentOrchestrationPrompt';
 import { consumeReconnectSessionEnvironment } from '@/daemon/reconnectSessionEnv';
@@ -1039,6 +1040,14 @@ export async function runCodex(opts: {
         abortInProgress = null;
     }
 
+    // `session` is swapped on offline reconnection, so resolve it at call time.
+    const offTurnTitle = createOffTurnTitleJob({
+        run: createCodexExecTitleRunner(),
+        changeTitle: (title, branchSlug) => createChangeTitleHandler(session)(title, branchSlug),
+        hasTitle: () => session.hasTitle(),
+        log: (message, detail) => logger.warn(message, detail),
+    });
+
     /**
      * Handles session termination and process exit.
      * This is called when the session needs to be completely killed (not just aborted).
@@ -1088,6 +1097,7 @@ export async function runCodex(opts: {
                 await session.close();
             }
 
+            offTurnTitle.cancel();
             // Force close Codex transport (best-effort) so we don't leave stray processes
             try {
                 await client.disconnect();
@@ -2381,7 +2391,17 @@ export async function runCodex(opts: {
                         message: message.message,
                         mode: message.mode,
                         includeAppendSystemPrompt,
-                        hasTitle: session.hasTitle(),
+                        hasTitle: titleCoveredForTurn({
+                            hasTitle: session.hasTitle(),
+                            job: offTurnTitle,
+                            eligible: isOffTurnTitleEligible({
+                                authSource: client.authRecoverySource,
+                                sandboxEnabled: client.sandboxEnabled,
+                                exitAfterFirstTurn,
+                            }),
+                            message: message.message,
+                            model: message.mode.model,
+                        }),
                         ...(lessonRecall?.outcome === 'selected' ? { lessonBlock: lessonRecall.block } : {}),
                         ...(memoryRecall?.reason === 'context_returned' ? { memoryBlock: buildCodexMemoryReferenceBlock(memoryRecall.context) } : {}),
                     });
@@ -2648,6 +2668,7 @@ export async function runCodex(opts: {
                 logger.debug('[codex]: Error while closing session', e);
             }
             logger.debug('[codex]: client.disconnect begin');
+            offTurnTitle.cancel();
             await client.disconnect();
             // Closes the project store this session opened. Its own catch: memory
             // cleanup must not be the thing that fails a shutdown.
