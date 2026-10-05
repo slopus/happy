@@ -104,13 +104,14 @@ function isWebOrigin(value: string): boolean {
     }
 }
 
-function isOrigin(value: string): boolean {
+/** A site policy origin: a bare http(s) origin or "*". */
+export function isSiteOrigin(value: string): boolean {
     return value === ANY_ORIGIN || isWebOrigin(value)
 }
 
 const pathPattern = z.string().max(512).regex(/^\/\S*$/)
 const siteSchema = z.object({
-    origin: z.string().refine(isOrigin, 'origin must be scheme://host[:port] or "*" (all sites)'),
+    origin: z.string().refine(isSiteOrigin, 'origin must be scheme://host[:port] or "*" (all sites)'),
     actions: z.array(z.object({
         match: z.object({
             kinds: z.array(z.enum(['navigate', 'link', 'submit', 'form-click', 'click', 'fill'])).min(1).optional(),

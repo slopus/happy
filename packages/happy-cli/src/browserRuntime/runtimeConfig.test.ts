@@ -105,6 +105,13 @@ describe('parseRuntimeConfig', () => {
 
     it('rejects site origins that are not bare origins', () => {
         expect(() => parseRuntimeConfig({ ...valid(), sites: [{ origin: 'https://shop.example/path' }] })).toThrow(/origin/)
+        expect(() => parseRuntimeConfig({ ...valid(), sites: [{ origin: 'https://*.shop.example' }] })).toThrow(/origin/)
+    })
+
+    it('accepts "*" as the all-sites policy origin, but not as a viewer origin', () => {
+        expect(parseRuntimeConfig({ ...valid(), sites: [{ origin: '*' }, { origin: 'https://shop.example' }] }).sites.map((site) => site.origin))
+            .toEqual(['*', 'https://shop.example'])
+        expect(() => parseRuntimeConfig({ ...valid(), viewerOrigins: ['*'] })).toThrow(/viewerOrigins/)
     })
 
     it('accepts viewer settings: a profile x11vnc address and tunnel origins (D2)', () => {

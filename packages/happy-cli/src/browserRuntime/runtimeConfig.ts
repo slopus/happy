@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs'
 import { z } from 'zod'
 import type { TrustedIssuer } from './auth'
 import type { AuthMode, MachineId, PrincipalId, ProfileId, WorkspaceId } from './contracts'
+import { isSiteOrigin } from './policy'
 import { MAX_SHARED_PROFILES, TENANCY_MODES, sharedProfileId } from './tenancy'
 
 const id = z.string().min(1).max(256)
@@ -45,7 +46,9 @@ const schema = z.object({
     /** Shared machines: users whose profile the operator removed, and when (abp-stack remove-profile). */
     profileTombstones: z.array(z.object({ principalId: id, removedAtMs: z.number().int().nonnegative() }).strict()).max(1024).default([]),
     /** Site policy entries; their action rules are validated by the policy module. */
-    sites: z.array(z.object({ origin }).passthrough()).default([]),
+    sites: z.array(z.object({
+        origin: z.string().refine(isSiteOrigin, 'must be a bare origin such as https://shop.example, or "*" for all sites'),
+    }).passthrough()).default([]),
     runtimeHost: z.string().min(1).default('0.0.0.0'),
     runtimePort: z.number().int().min(1).max(65_535).default(8787),
     brokerSocketPath: z.string().startsWith('/').default('/run/abp/broker.sock'),

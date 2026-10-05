@@ -46,6 +46,8 @@ describe('install options', () => {
             issuers: [{ kid: 'k1', publicKeyPem: pem() }], sites: [{ origin: '*' }, ...SITES],
         })
         expect(options.sites.map((site: { origin: string }) => site.origin)).toEqual(['*', 'https://shop.example'])
+        const config = runtimeConfig(options, { sessionGid: 990, daemonTokenSha256: 'a'.repeat(64) })
+        expect(parseRuntimeConfig(config).sites.map((site) => site.origin)).toEqual(['*', 'https://shop.example'])
     })
 
     it('refuses what the Runtime or the stack could not use', () => {
