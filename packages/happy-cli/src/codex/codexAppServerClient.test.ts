@@ -5541,8 +5541,28 @@ describe('CodexAppServerClient sandbox integration', () => {
                 expect(mockWrapForMcpTransport).toHaveBeenCalledWith('codex', ['exec', '-']);
                 expect(launch?.command).toBe('sh');
                 expect(launch?.args).toEqual(['-c', 'wrapped codex exec -']);
-                if (process.platform === 'darwin') expect(launch?.env.CODEX_SANDBOX).toBe('seatbelt');
             } finally {
+                await client.disconnect();
+            }
+        });
+
+        it.each([
+            ['darwin', undefined, 'seatbelt'],
+            ['linux', 'seatbelt', undefined],
+        ] as const)('applies the app-server seatbelt marker rule on %s', async (platform, inherited, expected) => {
+            const { CodexAppServerClient } = await import('./codexAppServerClient');
+            const client = new CodexAppServerClient(sandboxConfig, undefined, undefined, 'owner-choice');
+            const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+            const originalMarker = process.env.CODEX_SANDBOX;
+            try {
+                await client.connect();
+                Object.defineProperty(process, 'platform', { value: platform });
+                if (inherited === undefined) delete process.env.CODEX_SANDBOX; else process.env.CODEX_SANDBOX = inherited;
+                const launch = await client.prepareSideCommand(['exec', '-']);
+                expect(launch?.env.CODEX_SANDBOX).toBe(expected);
+            } finally {
+                Object.defineProperty(process, 'platform', originalPlatform);
+                if (originalMarker === undefined) delete process.env.CODEX_SANDBOX; else process.env.CODEX_SANDBOX = originalMarker;
                 await client.disconnect();
             }
         });
