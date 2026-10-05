@@ -60,6 +60,7 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
     element.append(root);
     let state = controller.getState(), destroyed = false, busy = false, epoch = 0, remember = false;
     let localError: ClientErrorCode | null = null, notice = '', modal: 'advanced' | 'details' | null = null, opener = '';
+    let focusRecovery: string | null = null;
     let connectAbort: AbortController | null = null;
 
     function node<K extends keyof HTMLElementTagNameMap>(tag: K, text?: string, className?: string): HTMLElementTagNameMap[K] {
@@ -77,8 +78,8 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
         select.value = value; select.addEventListener('change', () => action(select.value)); wrap.append(select); return wrap;
     }
     function findFocus(key: string) { return [...root.querySelectorAll<HTMLElement>('[data-focus]')].find(el => el.dataset.focus === key); }
-    function openModal(value: 'advanced' | 'details') { opener = value; modal = value; render(true); findFocus('close')?.focus(); }
-    function closeModal() { const key = opener; modal = null; render(true); findFocus(key)?.focus(); }
+    function openModal(value: 'advanced' | 'details') { focusRecovery = null; opener = value; modal = value; render(true); findFocus('close')?.focus(); }
+    function closeModal() { focusRecovery = null; const key = opener; modal = null; render(true); findFocus(key)?.focus(); }
     function reconcile(next: ServiceControllerState): boolean {
         if (!next.catalog) return false;
         const overrides: BindingOverrides = { ...next.overrides };
@@ -93,6 +94,7 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
     }
     function run(action: () => Promise<unknown>) {
         if (destroyed || busy) return;
+        if (modal) focusRecovery = (doc.activeElement as HTMLElement | null)?.dataset?.focus ?? null;
         const current = epoch; busy = true; localError = null; notice = ''; render();
         void Promise.resolve().then(() => {
             if (destroyed || current !== epoch) return;
@@ -108,7 +110,7 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
     }
     function switchSource(value: string) {
         if (!sources.includes(value as ServiceSource) || value === state.source) return;
-        epoch++; busy = false; localError = null; notice = ''; modal = null;
+        epoch++; busy = false; localError = null; notice = ''; modal = null; focusRecovery = null;
         try { controller.selectSource(value as ServiceSource); onSourceSelected?.(value as ServiceSource); }
         catch (error) { localError = error instanceof AIServiceClientError ? error.code : 'transport-error'; render(); }
     }
@@ -228,22 +230,29 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
             if (modal === 'advanced') advanced(dialog); else details(dialog);
             backdrop.addEventListener('click', event => { if (event.target === backdrop) closeModal(); }); backdrop.append(dialog); root.append(backdrop);
         }
-        if (active) findFocus(active)?.focus();
+        const target = findFocus(focusRecovery ?? active ?? '');
+        if (target && !target.hasAttribute('disabled')) {
+            target.focus();
+            if (!busy) focusRecovery = null;
+        } else if (modal) findFocus('close')?.focus();
     }
     function keydown(event: KeyboardEvent) {
         if (!modal) return;
         if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
         if (event.key !== 'Tab') return;
+        // A user navigation choice takes precedence over automatic focus recovery.
+        focusRecovery = null;
         const focusable = [...root.querySelectorAll<HTMLElement>('[role="dialog"] button:not(:disabled), [role="dialog"] select:not(:disabled), [role="dialog"] a[href]')];
         const first = focusable[0], last = focusable.at(-1);
         if (event.shiftKey && (doc.activeElement === first || !root.querySelector('[role="dialog"]')?.contains(doc.activeElement))) { event.preventDefault(); last?.focus(); }
         else if (!event.shiftKey && (doc.activeElement === last || !root.querySelector('[role="dialog"]')?.contains(doc.activeElement))) { event.preventDefault(); first?.focus(); }
     }
     doc.addEventListener('keydown', keydown);
+    root.addEventListener('pointerdown', () => { focusRecovery = null; });
     const unsubscribe = controller.subscribe(event => {
         if (destroyed) return;
         if (event.type === 'state') {
-            if (state.source !== event.state.source) { epoch++; busy = false; localError = null; modal = null; }
+            if (state.source !== event.state.source) { epoch++; busy = false; localError = null; modal = null; focusRecovery = null; }
             state = event.state;
             localError = null;
             if (reconcile(state)) return;

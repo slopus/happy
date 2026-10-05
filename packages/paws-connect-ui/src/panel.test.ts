@@ -92,6 +92,16 @@ describe('service panel using the real SDK controller', () => {
         document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
         expect(f.root.querySelector('[role="dialog"]')).toBeNull(); expect(document.activeElement).toBe(opener);
     });
+    it('keeps focus in the dialog during refresh and returns it to the action after completion', async () => {
+        const f = await mounted(); await f.controller.connect(); await f.controller.refresh();
+        button(f.root, '高级设置').click();
+        const action = button(f.root, '更新模型目录'); action.focus(); f.delayRead(); action.click(); await settle();
+        expect(f.root.querySelector('[role="dialog"]')?.contains(document.activeElement)).toBe(true);
+        f.finishRead(); await settle();
+        expect(document.activeElement).toBe(button(f.root, '更新模型目录'));
+        const model = select(f.root, '模型'); model.focus(); change(model, 'catalog-default');
+        expect(document.activeElement).toBe(select(f.root, '模型'));
+    });
     it('unsubscribes on destroy without disposing the host controller or removing host children', async () => {
         const f = await mounted(); const host = document.createElement('p'); host.textContent = 'Host content'; f.root.append(host);
         expect(f.subscriptionCount()).toBe(1);
