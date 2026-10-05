@@ -138,3 +138,10 @@ Isolated Web results, same Mac, Codex/gpt-6-luna/low, fixed OK prompt:
 - New path: 1 model request, no title instruction in the prompt, tools 0. Web first text 3.26 / 3.51 / 3.13s, and the title was recorded off-turn after the fix.
 
 These are descriptive n=1 vs n=3 numbers on a loaded shared Mac, not an A/B. Tests: module 35 and client 146 (6 new) pass, build exit0, and channelClear's 4 pre-existing failures are unchanged.
+
+Self-review (2026-10-05): three crash/hang paths fixed, each Red first.
+- A title exec ignoring SIGTERM hung the job in `running` forever, so the instruction was never restored. It now escalates to SIGKILL after the app-server's 2s grace, with the timer unref'd.
+- An exec exiting before reading its prompt raised an unhandled stdin EPIPE that would kill the session process. A no-op stdin error handler now leaves reporting to the exit code.
+- The never-awaited job promise could reject unhandled if recording the title threw. It now catches and marks the job failed.
+- `OFF_TURN_TITLE_SCHEMA` is no longer exported.
+Tests: module 38, related files unchanged, build exit0.

@@ -29,7 +29,7 @@ const MCP_SERVER_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
  */
 const PLUGIN_SERVER_EXCLUSION = ['-c', 'features.plugins=false', '-c', 'features.apps=false'];
 
-export const OFF_TURN_TITLE_SCHEMA = {
+const OFF_TURN_TITLE_SCHEMA = {
     type: 'object',
     properties: {
         title: { type: 'string' },
@@ -158,7 +158,8 @@ export function createOffTurnTitleJob(deps: OffTurnTitleJobDeps) {
         start(message: string, model: string | undefined): boolean {
             if (state !== 'idle' || deps.hasTitle()) return false;
             state = 'running';
-            settledPromise = execute(message, model);
+            // Nothing awaits this in production; a rejection would be unhandled.
+            settledPromise = execute(message, model).catch((error: unknown) => fail('failed unexpectedly', error));
             return true;
         },
         /** True while the in-turn title instruction can be left out. */
@@ -195,6 +196,8 @@ export function titleCoveredForTurn(input: {
 }
 
 const MAX_ERROR_LINE_LENGTH = 200;
+/** Same grace as the app-server's own shutdown before it escalates to SIGKILL. */
+const KILL_GRACE_MS = 2_000;
 const TOKEN_LIKE_RUN = /[A-Za-z0-9_\-+/=.]{24,}/g;
 
 /**
@@ -226,18 +229,30 @@ async function runCodexCommand(spawnImpl: typeof crossSpawn, prepare: PrepareCod
     });
     let stdout = '';
     child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+    // An exec that exits before reading its prompt fails the write with EPIPE;
+    // unhandled, that stream error would take down the whole session process.
+    // The exit code below already reports the failure.
+    child.stdin?.on('error', () => {});
     let stderr = '';
     child.stderr?.on('data', (chunk: Buffer) => { if (stderr.length < 16_384) stderr += chunk.toString(); });
     const label = `codex ${args[0]}`;
     return new Promise<string>((resolve, reject) => {
         let stopReason: string | null = null;
-        const stop = (reason: string) => { stopReason = reason; child.kill(); };
+        let killTimer: ReturnType<typeof setTimeout> | undefined;
+        const stop = (reason: string) => {
+            if (stopReason) return;
+            stopReason = reason;
+            child.kill('SIGTERM');
+            killTimer = setTimeout(() => child.kill('SIGKILL'), KILL_GRACE_MS);
+            killTimer.unref?.();
+        };
         const onAbort = () => stop('aborted');
         const timer = setTimeout(() => stop(`timed out after ${opts.timeoutMs}ms`), opts.timeoutMs);
         if (opts.signal.aborted) onAbort();
         else opts.signal.addEventListener('abort', onAbort, { once: true });
         const finish = (error?: Error) => {
             clearTimeout(timer);
+            clearTimeout(killTimer);
             opts.signal.removeEventListener('abort', onAbort);
             if (error) reject(error); else resolve(stdout);
         };

@@ -78,6 +78,16 @@ describe('createOffTurnTitleJob', () => {
         expect(job.covers()).toBe(false);
     });
 
+    it('shouldFailInsteadOfRejectingWhenRecordingTheTitleThrows', async () => {
+        const changeTitle = vi.fn(async () => { throw new Error('socket gone'); });
+        const { job, run, log } = setup({ changeTitle });
+        job.start('hello', undefined);
+        run.resolve(JSON.stringify({ title: 'Greeting' }));
+        await expect(job.settled()).resolves.toBeUndefined();
+        expect(job.covers()).toBe(false);
+        expect(log).toHaveBeenCalledWith(expect.stringContaining('failed'), expect.anything());
+    });
+
     it('shouldNotOverwriteATitleThatAppearedWhileRunning', async () => {
         let titled = false;
         const { job, run, changeTitle } = setup({ hasTitle: () => titled });
@@ -283,6 +293,46 @@ describe('createCodexExecTitleRunner', () => {
         expect(String(error)).toContain('Error: refresh failed for <redacted>');
         expect(String(error)).not.toContain('eyJhbGci');
     });
+
+    async function oneShotSpawn(onExec: (child: any) => void) {
+        const { EventEmitter } = await import('node:events');
+        const { PassThrough } = await import('node:stream');
+        const signals: string[] = [];
+        const spawnImpl = vi.fn((_command: string, args: string[]) => {
+            const child = new EventEmitter() as any;
+            child.stdout = new PassThrough();
+            child.stderr = new PassThrough();
+            child.kill = (signal = 'SIGTERM') => { signals.push(signal); child.onKill?.(signal); return true; };
+            if (args.includes('mcp')) {
+                setImmediate(() => { child.stdout.end('[]'); child.emit('close', 0, null); });
+                return child;
+            }
+            child.stdin = new PassThrough();
+            onExec(child);
+            return child;
+        });
+        return { spawnImpl, signals };
+    }
+
+    it('shouldSurviveAStdinWriteErrorFromAnExecThatExitsEarly', async () => {
+        const { spawnImpl } = await oneShotSpawn((child) => {
+            child.stdin.end = () => {
+                process.nextTick(() => child.stdin.emit('error', Object.assign(new Error('write EPIPE'), { code: 'EPIPE' })));
+                setImmediate(() => child.emit('close', 1, null));
+            };
+        });
+        const run = createCodexExecTitleRunner({ spawnImpl: spawnImpl as never });
+        await expect(run({ prompt: 'P', signal: new AbortController().signal })).rejects.toThrow('exited with code 1');
+    });
+
+    it('shouldForceKillAnExecThatIgnoresTermination', async () => {
+        const { spawnImpl, signals } = await oneShotSpawn((child) => {
+            child.onKill = (signal: string) => { if (signal === 'SIGKILL') setImmediate(() => child.emit('close', null, 'SIGKILL')); };
+        });
+        const run = createCodexExecTitleRunner({ spawnImpl: spawnImpl as never, timeoutMs: 20 });
+        await expect(run({ prompt: 'P', signal: new AbortController().signal })).rejects.toThrow('timed out');
+        expect(signals).toEqual(['SIGTERM', 'SIGKILL']);
+    }, 10_000);
 
     it('shouldRejectWhenExecExitsNonZero', async () => {
         const { spawnImpl } = await fakeSpawn({ exitCode: 1 });
