@@ -34,6 +34,7 @@ import axios from 'axios';
 import { encrypt, encodeBase64 } from '@/api/encryption';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
+import { retainCodexAccountHistory, rememberCodexAccountSession } from '@/codex/codexAccountHistory';
 import { startCodexAccountWorkerObserver } from '@/codex/codexAccountWorker';
 
 let sourceHome: string; let daemon: Promise<void>; let savedHome: string | undefined;
@@ -71,6 +72,26 @@ afterEach(async () => {
   await rm(sourceHome, { recursive: true, force: true });
 });
 describe('real daemon Codex spawn paths', () => {
+  it.each([false, true])('starts a cross-account fork with the selected credentials (tmux=%s)', async tmux => {
+    state.tmux = tmux;
+    const root = join(sourceHome, 'codex-session-cache');
+    const native = join(sourceHome, 'native');
+    await mkdir(join(native, 'sessions'), { recursive: true });
+    const history = JSON.stringify({ type: 'session_meta', payload: { id: 'new-fork', forked_from_id: 'original-thread' } }) + '\n';
+    await writeFile(join(native, 'sessions', 'rollout-new-fork.jsonl'), history);
+    await retainCodexAccountHistory(root, 'old-profile', native);
+    await rememberCodexAccountSession(root, 'parent-session', 'old-profile');
+    const spawning = state.handlers.spawnSession({ directory: sourceHome, agent: 'codex', codexSessionGrant: 'g'.repeat(43),
+      parentSessionId: 'parent-session', resumeCodexThreadId: 'new-fork', environmentVariables: { TMUX_SESSION_NAME: 'test' } });
+    await vi.waitFor(() => expect(state.spawned).toHaveLength(1));
+    const env = state.spawned[0];
+    expect(env.HAPPY_CODEX_ACCOUNT_PROFILE_ID).toBe('profile-1');
+    expect(await readFile(join(env.CODEX_HOME, 'sessions', 'rollout-new-fork.jsonl'), 'utf8')).toBe(history);
+    expect(JSON.parse(await readFile(join(env.CODEX_HOME, 'auth.json'), 'utf8')).tokens.account_id).toBe('account');
+    state.control.onHappySessionWebhook('child-session', { hostPid: tmux ? 987602 : 987601, flavor: 'codex', startedBy: 'daemon' });
+    await expect(spawning).resolves.toMatchObject({ type: 'success', sessionId: 'child-session' });
+  });
+
   it('forwards model and effort only to the spawned Codex worker', async () => {
     state.tmux = false;
     const spawning = state.handlers.spawnSession({

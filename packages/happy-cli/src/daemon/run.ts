@@ -705,7 +705,12 @@ export async function startDaemon(): Promise<void> {
           errorMessage: `Failed to spawn session: ${errorMessage}`
         };
       }
-      }, { sourceSessionId: options.parentSessionId, sourceThreadId: options.resumeCodexThreadId });
+      }, {
+        sourceSessionId: options.parentSessionId, sourceThreadId: options.resumeCodexThreadId,
+        // Only a new session created from a native fork may use the selected
+        // account. Resuming an existing session retains its original identity.
+        allowCrossAccountFork: !!(options.parentSessionId && options.resumeCodexThreadId),
+      });
     };
 
     const spawnTrackedHappyProcess = ({

@@ -22,6 +22,7 @@ import { spawn as crossSpawn } from 'cross-spawn';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
 import WebSocket from 'ws';
 import { logger } from '@/ui/logger';
+import { markNativeForkReplay } from './codexImportedUsage';
 import { SESSION_STREAM_MAX_TEXT_BYTES, type SessionTextDelta } from '@slopus/happy-wire';
 import type {
     InitializeParams,
@@ -1451,10 +1452,21 @@ export class CodexAppServerClient {
             developerInstructions: null,
             ephemeral: false,
             threadSource: null,
-            deferGoalContinuation: opts.deferGoalContinuation,
+            // A managed fork must not start new billable work until the replay
+            // boundary is recorded. This also covers the in-chat /fork command.
+            deferGoalContinuation: this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? true : opts.deferGoalContinuation,
         };
 
         const result = await this.request('thread/fork', params) as ForkConversationResponse;
+        if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) {
+            try {
+                if (!this.processEnv.CODEX_HOME) throw new Error('Codex account home unavailable');
+                await markNativeForkReplay(this.processEnv.CODEX_HOME, result.thread.id);
+            } catch (error) {
+                await this.deleteThread({ threadId: result.thread.id }).catch(() => undefined);
+                throw error;
+            }
+        }
         this._threadId = result.thread.id;
         this._turnId = null;
         this.rememberThreadDefaults({

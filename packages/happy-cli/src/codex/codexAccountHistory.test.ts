@@ -129,7 +129,7 @@ async function rollout(home: string, id: string, parent?: string) {
     id, history_mode: 'paginated', ...(parent ? { history_base: { thread_id: parent, end_ordinal_exclusive: 3, end_byte_offset: 100 } } : {}),
   } }) + '\n');
 }
-it.skipIf(!DatabaseSync)('preserves WAL history across retention and restores only a fork and its ancestor indexes', async () => {
+it.skipIf(!DatabaseSync).each([false, true])('preserves WAL history and fork ancestors (cross-account=%s)', async imported => {
   const cache = await temp(); const source = await temp(); const target = await temp();
   for (const [id, parent] of [['parent', undefined], ['fork', 'parent'], ['other', undefined]]) await rollout(source, id!, parent);
   const db = historyDb(source);
@@ -142,7 +142,7 @@ it.skipIf(!DatabaseSync)('preserves WAL history across retention and restores on
     await retainCodexAccountHistory(cache, 'a', source);
   } finally { db.close(); }
   await rememberCodexAccountSession(cache, 'session', 'a');
-  await copyCodexSourceThread(cache, 'session', 'fork', target, 'a');
+  await copyCodexSourceThread(cache, 'session', 'fork', target, 'a', imported);
   expect(await readFile(join(target, 'sessions', 'rollout-parent.jsonl'), 'utf8')).toContain('parent');
   await expect(stat(join(target, 'sessions', 'rollout-other.jsonl'))).rejects.toThrow();
   const restored = new DatabaseSync(join(target, 'thread_history_1.sqlite'), {readOnly:true});
@@ -290,4 +290,14 @@ it.skipIf(!DatabaseSync)('does not resurrect schema objects removed by a newer c
   const before = await readFile(target);
   await expect(retainCodexAccountHistory(cache, 'a', source)).rejects.toThrow('removed index');
   expect(await readFile(target)).toEqual(before);
+});
+
+it('rejects importing an original thread as a cross-account fork', async () => {
+  const cache = await temp(); const source = await temp(); const target = await temp();
+  await mkdir(join(source, 'sessions'));
+  await writeFile(join(source, 'sessions', 'rollout-original.jsonl'), JSON.stringify({ type: 'session_meta', payload: { id: 'original' } }) + '\n');
+  await retainCodexAccountHistory(cache, 'a', source);
+  await rememberCodexAccountSession(cache, 'original-session', 'a');
+  await expect(copyCodexSourceThread(cache, 'original-session', 'original', target, 'a', true)).rejects.toThrow('unavailable');
+  await expect(stat(join(target, 'sessions', 'rollout-original.jsonl'))).rejects.toThrow();
 });

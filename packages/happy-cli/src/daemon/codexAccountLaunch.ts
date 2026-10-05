@@ -18,7 +18,7 @@ export { CODEX_ACCOUNT_UNSET_ENV } from '@/codex/codexAccountConfig';
 
 export type AccountApi = Pick<ApiClient, 'redeemCodexSessionGrant' | 'attachCodexSession' | 'updateCodexAccountCredential' | 'reportCodexAccountQuota' | 'reportCodexAccountStatus'>
   & Partial<Pick<ApiClient, 'reportCodexAccountQuotaProbe' | 'createCodexSessionGrant' | 'readCodexSessionCredential'>>;
-type PrepareOptions = NonNullable<Parameters<typeof prepareCodexHomeWithAuth>[1]> & { historyRoot?: string; sourceSessionId?: string; sourceThreadId?: string; sourceProfileId?: string; resumeExistingSession?: boolean; skipHistory?: boolean };
+type PrepareOptions = NonNullable<Parameters<typeof prepareCodexHomeWithAuth>[1]> & { historyRoot?: string; sourceSessionId?: string; sourceThreadId?: string; sourceProfileId?: string; resumeExistingSession?: boolean; allowCrossAccountFork?: boolean; skipHistory?: boolean };
 const fingerprint = (auth: CodexAccountAuth) => createHash('sha256').update(JSON.stringify(auth)).digest('hex');
 const identityFingerprint = (launchId: string, accountId: string) => createHash('sha256').update(`${launchId}\0${accountId}`).digest('hex');
 
@@ -80,7 +80,9 @@ export class CodexAccountLaunch {
     const historyRoot = options?.historyRoot ?? join(configuration.happyHomeDir, 'codex-session-cache');
     const sourceProfileId = options?.sourceProfileId ?? (options?.sourceSessionId
       ? await getCodexSourceAccountProfileId(historyRoot, options.sourceSessionId) : undefined);
-    if (sourceProfileId && sourceProfileId !== redeemed.profile?.id) {
+    const crossAccountFork = !!(options?.allowCrossAccountFork && !options.resumeExistingSession &&
+      options.sourceSessionId && options.sourceThreadId && sourceProfileId && sourceProfileId !== redeemed.profile?.id);
+    if (sourceProfileId && sourceProfileId !== redeemed.profile?.id && !crossAccountFork) {
       if (!options?.resumeExistingSession || !options.sourceSessionId || !api.createCodexSessionGrant) throw new CodexSourceAccountMismatchError();
       // The relay authorizes this against its original launch audit. Never
       // rebind the machine or import history into another provider account.
@@ -99,7 +101,7 @@ export class CodexAccountLaunch {
       // Fresh sessions need no history. Import only an explicit resume/fork
       // source and its ancestors, never the entire account cache.
       if (!options?.skipHistory && options?.sourceThreadId) {
-        await copyCodexSourceThread(historyRoot, options.sourceSessionId ?? '', options.sourceThreadId, home, redeemed.profile.id);
+        await copyCodexSourceThread(historyRoot, options.sourceSessionId ?? '', options.sourceThreadId, home, crossAccountFork ? sourceProfileId : redeemed.profile.id, crossAccountFork);
       }
       const launch = new CodexAccountLaunch(api, machineId, home, {
         schemaVersion: 1, daemonPid: process.pid, machineId, profileId: redeemed.profile.id, launchId: redeemed.launchId,

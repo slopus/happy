@@ -9,6 +9,8 @@ import { CodexHistorySchemaError } from './codexHistorySchema';
 import { AsyncLock } from '@/utils/lock';
 import { collectCodexUsageSnapshot, type CodexUsageSnapshot } from './codexUsage';
 
+import { readImportedUsageRanges, writeImportedUsageRanges, countRolloutLines, type ImportedUsageRange } from './codexImportedUsage';
+
 const copyLock = new AsyncLock();
 export class CodexSourceHistoryUnavailableError extends Error {
   constructor() { super('Codex source history unavailable. This session has no retained Paws account history on this machine.'); }
@@ -23,14 +25,14 @@ async function privateDirectory(path: string): Promise<void> {
   if (!(await lstat(path)).isDirectory()) throw new Error('Invalid Codex history directory');
   await chmod(path, 0o700);
 }
-async function copyRollouts(source: string, destination: string, accepted: Map<string, number>, parents: Set<string>, index: Awaited<ReturnType<typeof snapshotCodexHistoryIndex>>, threadId?: string): Promise<number> {
+async function copyRollouts(source: string, destination: string, accepted: Map<string, number>, parents: Set<string>, index: Awaited<ReturnType<typeof snapshotCodexHistoryIndex>>, threadId?: string, imported = false, requireFork = false): Promise<number> {
   const sourceStat = await lstat(source).catch(() => null);
   if (!sourceStat?.isDirectory()) return 0;
   let found = 0;
   await privateDirectory(destination);
   for (const entry of await readdir(source, { withFileTypes: true })) {
     const from = join(source, entry.name); const to = join(destination, entry.name);
-    if (entry.isDirectory()) { found += await copyRollouts(from, to, accepted, parents, index, threadId); continue; }
+    if (entry.isDirectory()) { found += await copyRollouts(from, to, accepted, parents, index, threadId, imported, requireFork); continue; }
     if (!entry.isFile() || !/^rollout-[^/\\]+\.jsonl$/.test(entry.name)) continue;
     if (threadId && !entry.name.endsWith(`-${threadId}.jsonl`)) continue;
     const input = await open(from, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
@@ -50,6 +52,10 @@ async function copyRollouts(source: string, destination: string, accepted: Map<s
       const id = typeof header?.id === 'string' ? header.id : threadId;
       if (id && (!/^[A-Za-z0-9_-]{1,128}$/.test(id) || (threadId && id !== threadId))) throw new Error('Invalid Codex history thread identity');
       const parent = header?.history_base?.thread_id;
+      const forkParent = header?.forked_from_id ?? parent;
+      if (requireFork && (typeof forkParent !== 'string' || !forkParent || forkParent === id)) {
+        throw new Error('Cross-account continuation requires a new fork');
+      }
       if (parent !== undefined) {
         if (typeof parent !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(parent)) throw new Error('Invalid Codex history parent');
         parents.add(parent);
@@ -67,11 +73,29 @@ async function copyRollouts(source: string, destination: string, accepted: Map<s
         }
       }
       if (id) accepted.set(id, info.size);
-      if (existing && existing.mtimeMs === info.mtimeMs && existing.size === info.size) continue;
+      const inheritedRanges = await readImportedUsageRanges(from);
+      if (existing && existing.mtimeMs === info.mtimeMs && existing.size === info.size) {
+        continue;
+      }
       const output = await open(temp, 'wx', 0o600);
       try { await pipeline(input.createReadStream({ start: 0, autoClose: false }), output.createWriteStream()); }
       finally { await output.close(); }
       await utimes(temp, info.atime, info.mtime);
+      const incoming: ImportedUsageRange[] = imported ? [[0, await countRolloutLines(temp)]] : inheritedRanges;
+      let ranges = incoming;
+      if (existing && (incoming.length || (await readImportedUsageRanges(to)).length)) {
+        if (existing.size > info.size || !await sameRolloutPrefix(input, to, existing.size)) {
+          throw new Error('Codex history with usage provenance was rewritten');
+        }
+        // Existing bytes keep this account's ownership; only appended bytes
+        // inherit source provenance. A returned ancestor may mix both accounts.
+        const lines = await countRolloutLines(to);
+        ranges = [...await readImportedUsageRanges(to), ...incoming
+          .filter(([, end]) => end > lines)
+          .map(([start, end]): ImportedUsageRange => [Math.max(start, lines), end])];
+      }
+      // Publish accounting provenance before exposing the copied rollout.
+      if (ranges.length) await writeImportedUsageRanges(to, ranges);
       await rename(temp, to);
     } finally { await input.close(); await rm(temp, { force: true }); }
   }
@@ -91,7 +115,7 @@ async function sameRolloutPrefix(source: FileHandle, targetPath: string, size: n
     return true;
   } finally { await target.close(); }
 }
-async function copyNativeHistory(source: string, destination: string, threadId?: string): Promise<number> {
+async function copyNativeHistory(source: string, destination: string, threadId?: string, imported = false): Promise<number> {
   if (!(await lstat(source).catch(() => null))?.isDirectory()) return 0;
   // Paginated Codex history needs its projection as well as the rollout.
   // Snapshot before reading append-only rollout bytes so the index cannot lead them.
@@ -107,7 +131,7 @@ async function copyNativeHistory(source: string, destination: string, threadId?:
     const parents = new Set<string>();
     let found = 0;
     for (const entry of ['sessions', 'archived_sessions']) {
-      found += await copyRollouts(join(source, entry), join(destination, entry), accepted, parents, index, id);
+      found += await copyRollouts(join(source, entry), join(destination, entry), accepted, parents, index, id, imported, imported && id === threadId);
     }
     if (id && found) {
       for (const parent of parents) if (!await copy(parent)) throw new Error('Missing Codex history parent');
@@ -193,7 +217,7 @@ export async function collectRetainedCodexAccountUsage(
 }
 
 /** An explicit owned Paws session is the only bridge across profile caches. */
-export async function copyCodexSourceThread(root: string, sourceSessionId: string, threadId: string, target: string, expectedProfileId?: string): Promise<string> {
+export async function copyCodexSourceThread(root: string, sourceSessionId: string, threadId: string, target: string, expectedProfileId?: string, imported = false): Promise<string> {
   if (!sourceSessionId || !/^[A-Za-z0-9_-]{1,128}$/.test(threadId)) throw new CodexSourceHistoryUnavailableError();
   return copyLock.inLock(async () => {
     try {
@@ -210,7 +234,7 @@ export async function copyCodexSourceThread(root: string, sourceSessionId: strin
             if (ownership.profileId === audit.profileId) await copyNativeHistory(audit.home, cache);
           }
         }
-        const found = await copyNativeHistory(cache, target, threadId);
+        const found = await copyNativeHistory(cache, target, threadId, imported);
         if (!found) throw new Error();
         return audit.profileId;
       });

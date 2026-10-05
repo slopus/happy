@@ -6,10 +6,11 @@ import { CodexAccountLaunch, withCodexAccountLaunch } from './codexAccountLaunch
 import { CodexAccountRequestError } from '@/api/codexAccountTypes';
 import { configuration } from '@/configuration';
 import { cleanupOrphanedCodexAccountHome } from '@/codex/codexAccountWorker';
-import { rememberCodexAccountSession, restoreCodexAccountHistory, retainCodexAccountHistory } from '@/codex/codexAccountHistory';
+import { rememberCodexAccountSession, restoreCodexAccountHistory, retainCodexAccountHistory, getCodexSourceAccountProfileId } from '@/codex/codexAccountHistory';
 import { readCodexAccountLaunchState } from '@/codex/codexAccountLaunchState';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import { collectCodexUsageSnapshot } from '@/codex/codexUsage';
 
 const auth = { tokens: { id_token: 'id-secret', access_token: 'access-secret', refresh_token: 'refresh-secret', account_id: 'account-secret' } };
 const dirs: string[] = [];
@@ -51,6 +52,49 @@ describe('Codex account launch lifecycle', () => {
     try {
       expect(await readFile(join(launch.home, 'sessions', 'rollout-requested.jsonl'), 'utf8')).toBe('requested conversation');
       await expect(stat(join(launch.home, 'sessions', 'rollout-unrelated.jsonl'))).rejects.toThrow();
+    } finally { await launch.finish(); }
+  });
+
+  it('copies a fork to the selected account without transferring credentials or historical usage', async () => {
+    const historyRoot = await home(); const previous = await home();
+    const now = new Date();
+    const datePath = [String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0')];
+    const relative = join('sessions', ...datePath, 'rollout-fork.jsonl');
+    const usage = (tokens: number, total: number, timestamp: string) => JSON.stringify({ timestamp, type: 'event_msg', payload: {
+      type: 'token_count', info: { last_token_usage: { input_tokens: tokens, total_tokens: tokens }, total_token_usage: { input_tokens: total, total_tokens: total } },
+      rate_limits: { secondary: { used_percent: 90, resets_at: Math.floor(Date.now() / 1000) + 86400, window_minutes: 10080 } },
+    } });
+    const original = [JSON.stringify({ timestamp: now.toISOString(), type: 'session_meta', payload: { id: 'fork', forked_from_id: 'parent' } }),
+      JSON.stringify({ type: 'response_item', payload: { role: 'user', content: '完整中文上下文' } }),
+      usage(100, 100, now.toISOString()), ''].join('\n');
+    await mkdir(join(previous, 'sessions', ...datePath), { recursive: true });
+    await writeFile(join(previous, relative), original);
+    await writeFile(join(previous, 'auth.json'), 'source-account-secret');
+    await writeFile(join(previous, 'config.toml'), 'source-config-secret');
+    await retainCodexAccountHistory(historyRoot, 'source-profile', previous);
+    await rememberCodexAccountSession(historyRoot, 'parent-session', 'source-profile');
+    const launch = await CodexAccountLaunch.prepare(api(), 'machine-1', 'g'.repeat(43), {
+      sourceHome: await home(), historyRoot, sourceSessionId: 'parent-session', sourceThreadId: 'fork',
+      ...{ allowCrossAccountFork: true },
+    });
+    const restored = await home();
+    try {
+      expect(launch.profileId).toBe('profile-1');
+      expect(await readFile(join(launch.home, relative), 'utf8')).toBe(original);
+      expect(JSON.parse(await readFile(join(launch.home, 'auth.json'), 'utf8'))).toEqual(auth);
+      expect((await collectCodexUsageSnapshot({ codexHome: launch.home })).latestEvent).toBeNull();
+      await launch.attach('child-session');
+      await writeFile(join(launch.home, relative), original + usage(7, 107, new Date(Date.now() + 10).toISOString()) + '\n');
+      const snapshot = await collectCodexUsageSnapshot({ codexHome: launch.home });
+      expect(snapshot.today?.totalTokens).toBe(7);
+      await launch.finish();
+      await restoreCodexAccountHistory(historyRoot, 'profile-1', restored);
+      expect((await collectCodexUsageSnapshot({ codexHome: restored })).today?.totalTokens).toBe(7);
+      expect(await getCodexSourceAccountProfileId(historyRoot, 'parent-session')).toBe('source-profile');
+      expect(await getCodexSourceAccountProfileId(historyRoot, 'child-session')).toBe('profile-1');
+      const source = await home();
+      await restoreCodexAccountHistory(historyRoot, 'source-profile', source);
+      expect(await readFile(join(source, relative), 'utf8')).toBe(original);
     } finally { await launch.finish(); }
   });
 

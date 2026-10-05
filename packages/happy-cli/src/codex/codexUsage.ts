@@ -6,6 +6,7 @@ import os from 'node:os';
 import { spawn as crossSpawn } from 'cross-spawn';
 
 import { projectPath } from '../projectPath';
+import { readImportedUsageRanges, type ImportedUsageRange } from './codexImportedUsage';
 
 export interface CodexUsageTokenTotals {
     inputTokens: number;
@@ -387,6 +388,7 @@ async function parseCodexUsageFile(
     filePath: string,
     timeZone: string,
     warnings: string[],
+    importedRanges: ImportedUsageRange[] = [],
 ): Promise<ParsedCodexUsageFile | null> {
     const accumulator: CodexUsageFileAccumulator = {
         events: [],
@@ -400,9 +402,15 @@ async function parseCodexUsageFile(
             input: createReadStream(filePath, { encoding: 'utf8' }),
             crlfDelay: Infinity,
         });
+        let lineNumber = 0;
         for await (const line of lines) {
-            addCodexUsageLine(accumulator, line, filePath, timeZone);
+            const imported = importedRanges.some(([start, end]) => lineNumber >= start && lineNumber < end);
+            addCodexUsageLine(accumulator, line, filePath, timeZone, imported);
+            lineNumber++;
         }
+        // The imported prefix was removed exactly; fork replay heuristics must
+        // not discard the new account's first real turns a second time.
+        if (importedRanges.some(([start]) => start === 0)) accumulator.metadata.parentId = undefined;
     } catch (error) {
         warnings.push(`Failed to read ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
         return null;
@@ -456,6 +464,7 @@ function addCodexUsageLine(
     line: string,
     filePath: string,
     timeZone: string,
+    imported = false,
 ): void {
     if (!line.includes('token_count') && !line.includes('session_meta')) {
         return;
@@ -501,6 +510,10 @@ function addCodexUsageLine(
         return;
     }
 
+    if (imported) {
+        if (sessionTotalTokenUsage) accumulator.previousTotals = sessionTotalTokenUsage;
+        return;
+    }
     const dateKey = localDateKey(date, timeZone);
     const rateLimits = toRateLimits(record.payload.rate_limits);
     if (hasUsableRateLimits(rateLimits) && eventTime > accumulator.latestRateLimitsTime) {
@@ -548,11 +561,12 @@ async function parseCodexUsageFilesWithRipgrep(
     timeZone: string,
     warnings: string[],
     commands = defaultRipgrepCommands(),
+    boundaries = new Map<string, ImportedUsageRange[]>(),
 ): Promise<ParsedCodexUsageFile[] | null> {
     const args = [
         '--null',
         '--with-filename',
-        '--no-line-number',
+        '--line-number',
         '--fixed-strings',
         '-e',
         'token_count',
@@ -594,7 +608,12 @@ async function parseCodexUsageFilesWithRipgrep(
                     latestEventTime: 0,
                     latestRateLimitsTime: 0,
                 };
-                addCodexUsageLine(accumulator, line.slice(separator + 1), filePath, timeZone);
+                const numbered = line.slice(separator + 1);
+                const colon = numbered.indexOf(':');
+                const lineNumber = Number(numbered.slice(0, colon)) - 1;
+                if (colon < 1 || !Number.isSafeInteger(lineNumber) || lineNumber < 0) throw new Error('Invalid ripgrep line number');
+                const imported = boundaries.get(filePath)?.some(([start, end]) => lineNumber >= start && lineNumber < end);
+                addCodexUsageLine(accumulator, numbered.slice(colon + 1), filePath, timeZone, imported);
                 accumulators.set(filePath, accumulator);
             }
             const result = await exitPromise;
@@ -605,7 +624,7 @@ async function parseCodexUsageFilesWithRipgrep(
                 return [...accumulators.entries()].map(([filePath, accumulator]) => ({
                     filePath,
                     events: accumulator.events,
-                    metadata: accumulator.metadata,
+                    metadata: boundaries.get(filePath)?.some(([start]) => start === 0) ? { ...accumulator.metadata, parentId: undefined } : accumulator.metadata,
                     latestEvent: accumulator.latestEvent && accumulator.latestRateLimits
                         ? {
                             ...accumulator.latestEvent,
@@ -743,6 +762,11 @@ async function parseCodexUsageFiles(
     warnings: string[],
     ripgrepCommands?: string[],
 ): Promise<ParsedCodexUsageFile[]> {
+    const boundaries = new Map<string, ImportedUsageRange[]>();
+    for (const file of files) {
+        try { boundaries.set(file, await readImportedUsageRanges(file)); }
+        catch { warnings.push(`Invalid imported usage boundary: ${file}`); boundaries.set(file, [[0, Infinity]]); }
+    }
     const totalBytes = (await Promise.all(files.map(async (filePath) => {
         try {
             return (await stat(filePath)).size;
@@ -751,7 +775,7 @@ async function parseCodexUsageFiles(
         }
     }))).reduce((total, size) => total + size, 0);
     if (totalBytes >= 16 * 1024 * 1024) {
-        const ripgrepResults = await parseCodexUsageFilesWithRipgrep(files, timeZone, warnings, ripgrepCommands);
+        const ripgrepResults = await parseCodexUsageFilesWithRipgrep(files, timeZone, warnings, ripgrepCommands, boundaries);
         if (ripgrepResults) {
             return ripgrepResults;
         }
@@ -763,7 +787,7 @@ async function parseCodexUsageFiles(
     await Promise.all(Array.from({ length: workerCount }, async () => {
         while (nextIndex < files.length) {
             const index = nextIndex++;
-            results[index] = await parseCodexUsageFile(files[index], timeZone, warnings);
+            results[index] = await parseCodexUsageFile(files[index], timeZone, warnings, boundaries.get(files[index]));
         }
     }));
     return results.filter((result): result is ParsedCodexUsageFile => !!result);

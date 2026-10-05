@@ -531,6 +531,8 @@ describe('CodexAppServerClient sandbox integration', () => {
         const { CodexAppServerClient } = await import('./codexAppServerClient');
         const requests: MockRpcMessage[] = [];
         let unsafe = false;
+        const accountHome = mkdtempSync(join(tmpdir(), 'codex-account-routing-'));
+        mkdirSync(join(accountHome, 'sessions'));
         mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (message, stdout) => {
             requests.push(message);
             if (message.method === 'config/read') pushJsonLine(stdout, { id: message.id, result: { config: {
@@ -539,10 +541,13 @@ describe('CodexAppServerClient sandbox integration', () => {
                 model_providers: unsafe ? { openai: { env_key: 'CUSTOM_PROVIDER_KEY', base_url: 'https://wrong.invalid' } }
                     : { custom: { env_key: 'CUSTOM_PROVIDER_KEY', base_url: 'https://wrong.invalid' } },
             } } });
-            if (message.method?.startsWith('thread/')) pushJsonLine(stdout, { id: message.id, result: { thread: { id: 'thread-a' }, model: 'gpt-5.5', reasoningEffort: null } });
+            if (message.method === 'thread/fork') {
+                writeFileSync(join(accountHome, 'sessions', 'rollout-thread-fork.jsonl'), JSON.stringify({ type: 'session_meta', payload: { id: 'thread-fork', forked_from_id: 'thread-a' } }) + '\n');
+            }
+            if (message.method?.startsWith('thread/')) pushJsonLine(stdout, { id: message.id, result: { thread: { id: message.method === 'thread/fork' ? 'thread-fork' : 'thread-a' }, model: 'gpt-5.5', reasoningEffort: null } });
         } }));
         const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {
-            HAPPY_CODEX_ACCOUNT_PROFILE_ID: 'profile-a', CUSTOM_PROVIDER_KEY: 'synthetic-secret',
+            CODEX_HOME: accountHome, HAPPY_CODEX_ACCOUNT_PROFILE_ID: 'profile-a', CUSTOM_PROVIDER_KEY: 'synthetic-secret',
             OPENAI_API_KEY: 'synthetic-secret', OPENAI_BASE_URL: 'https://wrong.invalid', CODEX_API_KEY: 'synthetic-secret',
         });
         const call = () => operation === 'start' ? client.startThread({ model: 'gpt-5.5', cwd: '/work', mcpServers: { safe: {} } })
@@ -558,7 +563,7 @@ describe('CodexAppServerClient sandbox integration', () => {
             unsafe = true;
             await expect(call()).rejects.toThrow('Device Environment');
             expect(requests.filter(r => r.method === `thread/${operation}`)).toHaveLength(1);
-        } finally { await client.disconnect(); }
+        } finally { await client.disconnect(); rmSync(accountHome, { recursive: true, force: true }); }
     });
 
     it('falls back to non-sandbox transport when sandbox initialization fails', async () => {
