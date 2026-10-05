@@ -22,6 +22,7 @@ const MAX_TITLE_LENGTH = 200;
 const MAX_MESSAGE_LENGTH = 4000;
 const DEFAULT_TIMEOUT_MS = 45_000;
 const BRANCH_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+){1,3}$/;
+const MCP_SERVER_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 export const OFF_TURN_TITLE_SCHEMA = {
     type: 'object',
@@ -81,14 +82,36 @@ export function isOffTurnTitleEligible(input: {
         && !input.exitAfterFirstTurn;
 }
 
-export function buildOffTurnTitleExecArgs(input: { model?: string; schemaPath: string; outputPath: string }): string[] {
+/**
+ * Names of the enabled MCP servers in `codex mcp list --json` output, or null
+ * when the output is unreadable or a name cannot be addressed by a `-c` key.
+ * Codex deep-merges `-c mcp_servers={}` into the user's table, and it splits
+ * `-c` keys on every dot, so each server is disabled by its own plain name.
+ */
+export function parseEnabledMcpServerNames(raw: string): string[] | null {
+    let value: unknown;
+    try { value = JSON.parse(raw); } catch { return null; }
+    if (!Array.isArray(value)) return null;
+    const names: string[] = [];
+    for (const entry of value) {
+        if (!entry || typeof entry !== 'object') return null;
+        const { name, enabled } = entry as { name?: unknown; enabled?: unknown };
+        if (typeof name !== 'string') return null;
+        if (enabled === false) continue;
+        if (!MCP_SERVER_NAME_PATTERN.test(name)) return null;
+        names.push(name);
+    }
+    return names;
+}
+
+export function buildOffTurnTitleExecArgs(input: { model?: string; schemaPath: string; outputPath: string; mcpServerNames: string[] }): string[] {
     return [
         'exec',
         '--ephemeral',
         '--skip-git-repo-check',
         '-s', 'read-only',
         '-c', 'model_reasoning_effort="low"',
-        '-c', 'mcp_servers={}',
+        ...input.mcpServerNames.flatMap((name) => ['-c', `mcp_servers.${name}.enabled=false`]),
         ...(input.model ? ['-m', input.model] : []),
         '--output-schema', input.schemaPath,
         '-o', input.outputPath,
@@ -164,44 +187,71 @@ export function titleCoveredForTurn(input: {
 }
 
 /**
+ * Runs one codex command in `cwd`, writing `input` to stdin when given, and
+ * resolves with its stdout. It is killed on abort or once `timeoutMs` passes.
+ * stderr is drained but not surfaced: it can carry provider auth detail.
+ */
+function runCodexCommand(spawnImpl: typeof crossSpawn, args: string[], opts: {
+    cwd: string;
+    input?: string;
+    signal: AbortSignal;
+    timeoutMs: number;
+}): Promise<string> {
+    const child = spawnImpl('codex', args, {
+        cwd: opts.cwd,
+        env: process.env,
+        stdio: [opts.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
+    child.stderr?.resume();
+    const label = `codex ${args[0]}`;
+    return new Promise<string>((resolve, reject) => {
+        let stopReason: string | null = null;
+        const stop = (reason: string) => { stopReason = reason; child.kill(); };
+        const onAbort = () => stop('aborted');
+        const timer = setTimeout(() => stop(`timed out after ${opts.timeoutMs}ms`), opts.timeoutMs);
+        if (opts.signal.aborted) onAbort();
+        else opts.signal.addEventListener('abort', onAbort, { once: true });
+        const finish = (error?: Error) => {
+            clearTimeout(timer);
+            opts.signal.removeEventListener('abort', onAbort);
+            if (error) reject(error); else resolve(stdout);
+        };
+        child.once('error', (error) => finish(error));
+        child.once('close', (code: number | null) => {
+            if (stopReason) finish(new Error(`${label} ${stopReason}`));
+            else if (code !== 0) finish(new Error(`${label} exited with code ${code}`));
+            else finish();
+        });
+        if (opts.input !== undefined) child.stdin?.end(opts.input);
+    });
+}
+
+/**
  * Runs the title prompt through `codex exec` in an empty temp dir (no project
  * AGENTS.md), passing the user message on stdin so it never shows in argv.
- * stderr is drained but not surfaced: it can carry provider auth detail.
+ * Every MCP server the user configured is disabled by name first; when one
+ * cannot be, the run fails and the turn keeps the in-turn instruction.
  */
 export function createCodexExecTitleRunner(opts: { timeoutMs?: number; spawnImpl?: typeof crossSpawn } = {}): OffTurnTitleRunner {
     const spawnImpl = opts.spawnImpl ?? crossSpawn;
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     return async ({ prompt, model, signal }) => {
+        const deadline = Date.now() + timeoutMs;
         const dir = await mkdtemp(join(tmpdir(), 'happy-codex-title-'));
         try {
+            const listed = await runCodexCommand(spawnImpl, ['mcp', 'list', '--json'], { cwd: dir, signal, timeoutMs });
+            const mcpServerNames = parseEnabledMcpServerNames(listed);
+            if (!mcpServerNames) throw new Error('codex mcp list has an MCP server that cannot be disabled by name');
             const schemaPath = join(dir, 'schema.json');
             const outputPath = join(dir, 'title.json');
             await writeFile(schemaPath, JSON.stringify(OFF_TURN_TITLE_SCHEMA));
-            const child = spawnImpl('codex', buildOffTurnTitleExecArgs({ model, schemaPath, outputPath }), {
+            await runCodexCommand(spawnImpl, buildOffTurnTitleExecArgs({ model, schemaPath, outputPath, mcpServerNames }), {
                 cwd: dir,
-                env: process.env,
-                stdio: ['pipe', 'ignore', 'pipe'],
-            });
-            child.stderr?.resume();
-            await new Promise<void>((resolve, reject) => {
-                let stopReason: string | null = null;
-                const stop = (reason: string) => { stopReason = reason; child.kill(); };
-                const onAbort = () => stop('aborted');
-                const timer = setTimeout(() => stop(`timed out after ${timeoutMs}ms`), timeoutMs);
-                if (signal.aborted) onAbort();
-                else signal.addEventListener('abort', onAbort, { once: true });
-                const finish = (error?: Error) => {
-                    clearTimeout(timer);
-                    signal.removeEventListener('abort', onAbort);
-                    if (error) reject(error); else resolve();
-                };
-                child.once('error', (error) => finish(error));
-                child.once('close', (code: number | null) => {
-                    if (stopReason) finish(new Error(`codex exec ${stopReason}`));
-                    else if (code !== 0) finish(new Error(`codex exec exited with code ${code}`));
-                    else finish();
-                });
-                child.stdin?.end(prompt);
+                input: prompt,
+                signal,
+                timeoutMs: Math.max(deadline - Date.now(), 0),
             });
             return await readFile(outputPath, 'utf8').catch(() => null);
         } finally {
