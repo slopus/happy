@@ -10,16 +10,16 @@ T0–T10 已通过各自的本地实施评审。[验收矩阵](../verification/s
 
 | 项目 | 已准备内容 | 发布前剩余条件 |
 | --- | --- | --- |
-| Paws | 代码 `a00d364d74bf5d6101bd4fd789868c0e4b2a8730` | 最终评审与真实验收 |
-| 狗头军师 | 代码 `19bebe81ed842cc08484102534703b334a4ddab0` | 真实验收、发布授权与重建 |
+| Paws | 代码 `a7557dc60f2c1d40f27a1ab00732e08c770cf1e8` | 最终评审与真实验收 |
+| 狗头军师 | 代码 `1d5881100cacb4080aa682a6adb30887747872e7` | 真实验收、发布授权与重建 |
 | SDK | 本地 `@wangjs-jacky/paws-agent@0.3.0`，45 个文件 | 按发布时 registry 与仓库规则确定版本 |
 | 公共面板 | 本地 `@wangjs-jacky/paws-connect-ui@0.1.0`，8 个文件 | 确认发布权限和具体发布流程 |
 
-SDK SHA-256：`d95fc5f1bf2700aff7249f8c57a9977cf6f177593bf1130c09fdf26b4dfeaf98`。
+SDK SHA-256：`d3b126c9da01aeb0eef919fba47fc9a2cb561e035864b99d345104751e735f5a`。
 
 面板 SHA-256：`336608ab2da2c24fca13543df030421de932d3ae18a2b42adba9cde67b3954ce`。
 
-包分别对应 SDK 最后修改提交 `548266fb8e0c8c9d20e36b0465f959ed5576bae2` 和面板最后修改提交 `8d3b034ca4ac9f3a410f0cad01bc2273da64fc0b`。这是本地任务记录的来源关联。包内没有 `gitHead`，没有发布 tag，不能把这些提交当作已发布来源证明。
+包分别对应 SDK 最后修改提交 `a7557dc60f2c1d40f27a1ab00732e08c770cf1e8` 和面板最后修改提交 `8d3b034ca4ac9f3a410f0cad01bc2273da64fc0b`。这是本地任务记录的来源关联。包内没有 `gitHead`，没有发布 tag，不能把这些提交当作已发布来源证明。
 
 2026-10-06 的公开 registry 查询返回 SDK `latest=0.2.0`，版本列表没有 `0.3.0`。面板查询返回 404。404 不证明有发布权限。再次查询失败时，应停止版本选择，不能把网络错误当作版本不存在。CLI 的公开 latest 为 `1.3.18`；本分支没有为执行器选择新的发布版本。
 
@@ -56,9 +56,9 @@ SDK SHA-256：`d95fc5f1bf2700aff7249f8c57a9977cf6f177593bf1130c09fdf26b4dfeaf98`
 
 按 Server/schema → worker → Paws 管理与授权界面 → 狗头军师消费者执行。新应用授权和消费者入口应保持未启用，直到受信环境就绪。此仓库没有本次新增的全局一键发布开关。上线人员必须先审阅入口阻断方案。若使用 ingress 隔离，不得阻断旧路由或已有 Paws 绑定的读/取消路径。
 
-Server 有两项追加迁移：`20261005000000_ai_services` 和 `20261005010000_ai_service_execution`。它们新增服务、修订、授权、绑定、能力、probe、业务提示词及执行字段。修订、绑定和提示词不可原地修改。迁移中的应用登记只允许 `https://advisor.paws.rodeo`，权限为 chat/images。它不会登记其他站点。
+Server 有三项追加迁移，按顺序执行：`20261005000000_ai_services`、`20261005010000_ai_service_execution`、`20261006000000_ai_service_conversation_creation`。第三项新增应用会话 ID、创建输入及唯一键，支持原请求恢复。它们新增服务、修订、授权、绑定、能力、probe、业务提示词及执行字段。修订、绑定和提示词不可原地修改。迁移中的应用登记只允许 `https://advisor.paws.rodeo`，权限为 chat/images。它不会登记其他站点。
 
-生产数据库尚未检查或迁移。先核对实际存储类型、已应用迁移、独立备份和恢复演练。PostgreSQL 迁移须由授权操作者执行；不能运行开发用 `migrate dev` 或 reset。PGlite 须核对实际持久目录与既有 standalone migration 入口。保留前置迁移，不只执行两段新 SQL。回退代码时保留新增表、字段和已写数据。
+生产数据库尚未检查或迁移。先核对实际存储类型、已应用迁移、独立备份和恢复演练。PostgreSQL 迁移须由授权操作者执行；不能运行开发用 `migrate dev` 或 reset。PGlite 须核对实际持久目录与既有 standalone migration 入口。保留前置迁移，不只执行三段新 SQL。回退代码时保留新增表、字段和已写数据。
 
 ## 受信环境的门槛
 
@@ -73,7 +73,7 @@ Server 有两项追加迁移：`20261005000000_ai_services` 和 `20261005010000_
 
 本地复跑命令在[验收记录](../verification/shared-ai-services.md)。Server runtime 构建需要 Bun 1.4.2 位于 PATH。安装依赖和构建 wire 后，运行 `pnpm --dir packages/happy-server run build`。不要把临时工具目录写进发布依赖。
 
-最终本地 Web export 使用 T11 清单的 Paws 代码提交，已通过，未上传。输出共有 1,014 个文件，60,754,684 字节。主 bundle SHA-256 为 `021273b3a99bb0e999a97bb3189aacb56a3015a06cee7db0e288d41cc495b21d`。Watchman 查询超时 60 秒后，Metro 自动用 Node crawler 完成构建；还输出了既有颜色环境警告。它检查最终多目标授权源码能否打包，不证明真实提供方或原生手机可用。
+最终修复后的本地 Web export 已通过，未上传。输出共有 1,014 个文件，60,754,700 字节。主 bundle SHA-256 为 `ddf34a462db923cdbe1d9b5d1a93a4791bc7fadea13f59d6413188b9b0da45bd`。本次重新构建包含 checkbox 语义修正的管理界面。候选清单同时保留 T11 导出，但明确标为历史证据。Watchman 超时后，Metro 用 Node crawler 完成构建；既有包 exports 与环境警告仍存在。本地构建不证明真实提供方或原生手机可用。
 
 生产 Web 仍只通过 main 的 `web-production-deploy.yml` 发布到 `https://47.115.228.20:8443`。按 `scripts/deploy-web.sh` 校验 OSS 哈希资源、原子切换和发布 commit。不要复用本地验收构建上线。
 
@@ -88,3 +88,5 @@ Server 有两项追加迁移：`20261005000000_ai_services` 和 `20261005010000_
 完成技术门槛后，机主还需完成一次日常咨询。检查回复、旧历史恢复、图片、执行详情和个人服务。真实旧个人授权、直接 API 和分享也需回归。此时才可记录“技术验收通过，日常使用待确认”或填写实际机主反馈。目前两者均未完成。
 
 只试点狗头军师。知学、缠论需另列批次。MISS 与 Mac Ops 需要独立工具能力设计。本清单不授权迁移其他应用。
+
+迁移清单核对：在 Paws worktree 运行 `node scripts/verify-shared-ai-migrations.mjs`。它对比评审基线以来新增的全部迁移，并逐项校验 SHA-256。此命令不会连接数据库。

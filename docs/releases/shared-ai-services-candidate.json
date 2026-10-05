@@ -26,11 +26,11 @@
       "interpretation": "No public package metadata returned; this does not prove publish permission."
     }
   ],
-  "pawsCodeCommit": "a00d364d74bf5d6101bd4fd789868c0e4b2a8730",
-  "advisorCodeCommit": "19bebe81ed842cc08484102534703b334a4ddab0",
+  "pawsCodeCommit": "a7557dc60f2c1d40f27a1ab00732e08c770cf1e8",
+  "advisorCodeCommit": "1d5881100cacb4080aa682a6adb30887747872e7",
   "protocol": "ai-services/1",
   "releaseVersionSelected": false,
-  "finalReview": "pending",
+  "finalReview": "final-fix-self-review-complete-controller-review-pending",
   "realAcceptance": "incomplete",
   "dailyUse": "pending",
   "sourceProvenance": "Local task records associate these artifacts with the commits below. Tarballs contain no gitHead. These are not tagged publication artifacts. Repack and validate the same release commit before publication.",
@@ -38,11 +38,11 @@
     {
       "name": "@wangjs-jacky/paws-agent",
       "version": "0.3.0",
-      "sourceChangeCommit": "548266fb8e0c8c9d20e36b0465f959ed5576bae2",
+      "sourceChangeCommit": "a7557dc60f2c1d40f27a1ab00732e08c770cf1e8",
       "path": "examples/ai-service-smoke/vendor/wangjs-jacky-paws-agent-0.3.0.tgz",
       "advisorPath": "vendor/paws/wangjs-jacky-paws-agent-0.3.0.tgz",
-      "bytes": 191009,
-      "sha256": "d95fc5f1bf2700aff7249f8c57a9977cf6f177593bf1130c09fdf26b4dfeaf98",
+      "bytes": 191348,
+      "sha256": "d3b126c9da01aeb0eef919fba47fc9a2cb561e035864b99d345104751e735f5a",
       "exports": [
         ".",
         "./node",
@@ -55,8 +55,8 @@
       "files": [
         {
           "path": "package/dist/browser.cjs",
-          "size": 18928,
-          "sha256": "c4a0c0c7c929303dbaea7627e6b20ea71dec44ed5a8fa37cf27a35677bd18b14"
+          "size": 18988,
+          "sha256": "db68e634962350d6d54586559c1b5c7193bf3a8cf22af351150382f49995c826"
         },
         {
           "path": "package/dist/encryption-CYxrsYeF.cjs",
@@ -65,13 +65,13 @@
         },
         {
           "path": "package/dist/index.cjs",
-          "size": 780,
-          "sha256": "8636c44d3539d84a27ffc29eff0e855d445dc1b71e1a8e4f6132d5250f139129"
+          "size": 840,
+          "sha256": "d42cc7ec2dc545846f71733ba5b8db8a29f9d72d404696afb4fb23987729bb18"
         },
         {
           "path": "package/dist/node.cjs",
-          "size": 1345,
-          "sha256": "2c862e552379b4cbbb9f33ea9331c4ebb8874f906bdf2d992f49383c7e2086b9"
+          "size": 1405,
+          "sha256": "7458256277a5681ea95f6e8c0b1cc76cc70058a5a0ec68e6a96799dcff0847ab"
         },
         {
           "path": "package/dist/nodeCredentials-BGQFL8Vl.cjs",
@@ -79,9 +79,9 @@
           "sha256": "a7232ea0ae69e683d820d440d4c35179e482af91dd7c50221119c060214e1bae"
         },
         {
-          "path": "package/dist/nodePlatformTransport-Beb_256V.cjs",
-          "size": 5855,
-          "sha256": "d5e4fe713366690650f392cd4c15e4132b1f423f489b2142000b4b2eb0ab92f7"
+          "path": "package/dist/nodePlatformTransport-1mBTkPEm.cjs",
+          "size": 5979,
+          "sha256": "6886f6e24f2356b4c1cae5ea868ccb08ee92f752e369612dede394a0b1beb1e9"
         },
         {
           "path": "package/dist/PawsAgentClient-_FclH5ie.cjs",
@@ -89,69 +89,64 @@
           "sha256": "730198517cee8595b1309c16f0ebd852b77184604a1202d00615eecd2d384348"
         },
         {
-          "path": "package/dist/platformTransport-DhbI3mw8.cjs",
-          "size": 13799,
-          "sha256": "b86fd876a2b142c772053fdb91f9cea6ec6a519bb9f295d47e4bee89a6502c84"
+          "path": "package/dist/platformTransport-BbHAjXLj.cjs",
+          "size": 13873,
+          "sha256": "d3992d66d901fe0acfca3e27e7b3d6e09b26fbcf8f8fffd1176fde4acf6d79e3"
         },
         {
           "path": "package/dist/services.browser.cjs",
-          "size": 878,
-          "sha256": "61fe9a1b77f164e37de7c4fd1764b47816d9771a94038403c7c6b614b699ac4e"
+          "size": 938,
+          "sha256": "1f1329f8600561139a514a0b87b7a6e5964557a267a82f6547b7e3656e034c7a"
         },
         {
           "path": "package/dist/services.cjs",
-          "size": 552,
-          "sha256": "d430ee5929e1c93c2660bfb3806b8a3797fc7cb25cc751e7f6578c5b4929fbf9"
+          "size": 612,
+          "sha256": "12e15b6dd12dd4193d3146245bf493032e0663b067cbf7cef363592e1495a165"
         },
         {
           "path": "package/dist/servicesNode.cjs",
-          "size": 809,
-          "sha256": "f06e3533586ca8b9819f6a6af6e556ce5e7d8303caf05d6a998063c7648bd785"
+          "size": 869,
+          "sha256": "011803720cd53eeab9c0d77dd75a9006511dff6b459216b603a9e4c4c640a5e4"
         },
         {
-          "path": "package/dist/storage-BYIWa5pe.cjs",
-          "size": 184280,
-          "sha256": "4454e248f65a84783bc26c6bc21b8ee082548d6111f8dd8f6a36cae552d9055b"
+          "path": "package/dist/storage-Cxngvnao.cjs",
+          "size": 184789,
+          "sha256": "66385a2520261875ec6eb28c1eead0f47ac5345089d99b17a2dd85da9d2dc7bc"
         },
         {
           "path": "package/dist/browser.d.cts",
-          "size": 7810,
-          "sha256": "4447c52dc8f2c7b5b8f8a23fe2785403273c92adea7f8ced1fd8175ddc279361"
+          "size": 7799,
+          "sha256": "0170e9d96c140334f85762395bd3595c429c7146fff461215d0eaecb4351cb4e"
         },
         {
           "path": "package/dist/index.d.cts",
-          "size": 11936,
-          "sha256": "b5190ecb992d0c119afbf5aab9c0b2e88ad789ad4d9bf0d095453dc013a1c6c5"
+          "size": 11966,
+          "sha256": "0d3b6cf099cfb4fa902e3efc4374fddeed5bda932409ff7da3f14fb719b6f3e8"
         },
         {
           "path": "package/dist/node.d.cts",
-          "size": 2615,
-          "sha256": "cdbd65a6eaaac2516b16551a99355ddf7aca8ef4fc20da6485f71781b2c244d2"
+          "size": 2596,
+          "sha256": "81cb12b393fae30a78cd2ef1dec4eaefe53e159845b92e2509d8fece9748c9bf"
         },
         {
-          "path": "package/dist/scopedTransport-B462AcGa.d.cts",
-          "size": 350,
-          "sha256": "ecc43c1102403b5428ea821ac6167c51f984ba0f93d2a894b0c9177229116e8f"
-        },
-        {
-          "path": "package/dist/services-CKLm-3MO.d.cts",
-          "size": 125933,
-          "sha256": "0fd1a739d3e276445df7d249d4044acc31061c6f43b1c079e97f7424ea5f8aa0"
+          "path": "package/dist/services-Dxu8HoDu.d.cts",
+          "size": 126377,
+          "sha256": "3c8d52c1c5658f9a55ca739d1ebf77c45fe218f9a33c0eb943851698bf9d03d1"
         },
         {
           "path": "package/dist/services.browser.d.cts",
-          "size": 2086,
-          "sha256": "3367bcc4d46617d558fdea52f700c9e08c57f7aba42751a3d36be462ada24e95"
+          "size": 2067,
+          "sha256": "ae1f79fe2f9dfabad77ca5901d40afa87fa362ed3383920ba3d4e22892cc5b05"
         },
         {
           "path": "package/dist/services.d.cts",
-          "size": 1003,
-          "sha256": "e2edf648ff7078d291be42e348a70103529e76d1d455c017c34a778f57d5e0bf"
+          "size": 1033,
+          "sha256": "6de188c85c8173b6cbcd90e8e09aed064262177180917a3ed721211fc95305ca"
         },
         {
           "path": "package/dist/servicesNode.d.cts",
-          "size": 3041,
-          "sha256": "999caa8f57b749373bdd308c1c5a7c23ad647bfa95ebbc9486c4f478a899f53a"
+          "size": 3022,
+          "sha256": "534a1fbd334cfe23a1d461db066070457d55fd36a3c92bb10cf7d1a314b7e948"
         },
         {
           "path": "package/package.json",
@@ -165,8 +160,8 @@
         },
         {
           "path": "package/dist/browser.mjs",
-          "size": 17957,
-          "sha256": "ad0127802dd140517a19f42ea077e741c526e1fd77c26fa2f6175887a461f1ae"
+          "size": 17987,
+          "sha256": "8a8ba6abcd39d2f5817b016cbc2c9ede7250abdf0d7621bba256b2feadda2280"
         },
         {
           "path": "package/dist/cli.mjs",
@@ -180,13 +175,13 @@
         },
         {
           "path": "package/dist/index.mjs",
-          "size": 501,
-          "sha256": "a893c49081c7e66ac1bcae4db289c046e777a2bc037ea420f7cb4847d8114bf3"
+          "size": 531,
+          "sha256": "f4178433022405371747ed4bbe87ca89b822f99b523960f78f800ffc815a1bcd"
         },
         {
           "path": "package/dist/node.mjs",
-          "size": 810,
-          "sha256": "f627a3157e0a042377446de482e51f46065aa645becf882750b535d303a8676f"
+          "size": 840,
+          "sha256": "5e33d28823a13924160e1f9e0f46576de65ccafaa96cb69492e97dc48f7f4a4f"
         },
         {
           "path": "package/dist/nodeCredentials-BjCy0nu9.mjs",
@@ -194,9 +189,9 @@
           "sha256": "114e0468e19139f0464bea7b7848035eea48590fb6684dd64c130685720ba995"
         },
         {
-          "path": "package/dist/nodePlatformTransport-CxF-R6Yp.mjs",
-          "size": 5821,
-          "sha256": "b359499865c0f9f7ac257945816d1b7450ae785a589993ad480c5447f5ca8ddb"
+          "path": "package/dist/nodePlatformTransport-D8Uqh7Rq.mjs",
+          "size": 5945,
+          "sha256": "f98ed12b62f66b21696c9379d72ee8b15224b0e834b6be799224a0f91b5c019a"
         },
         {
           "path": "package/bin/paws-agent.mjs",
@@ -209,69 +204,64 @@
           "sha256": "ca4d599324a4975ae534a374d33d066fb1569d896621c4a5e2449f5a47612ad9"
         },
         {
-          "path": "package/dist/platformTransport-BiqAzfdX.mjs",
-          "size": 13587,
-          "sha256": "fd728fb008bad6a839224674a75fb558c8a55182973ca0d030a373b127aa7346"
+          "path": "package/dist/platformTransport-tfwqRlQ3.mjs",
+          "size": 13661,
+          "sha256": "b3c4df65251e9515bfb5b98fc43276bd05ce924b365e62df3a68872560eb45cf"
         },
         {
           "path": "package/dist/services.browser.mjs",
-          "size": 525,
-          "sha256": "22062027462c8e202becda0bdeadb7a48058e079e87728610375906e35fcc6df"
+          "size": 555,
+          "sha256": "d27568fb70b051ef9489c128235fb394e74d3f6ac408535dac4ae6fd1ed9f875"
         },
         {
           "path": "package/dist/services.mjs",
-          "size": 366,
-          "sha256": "d1367c2f43bd4bec545f5c1537aa79d87e45b4e984c1eab575fa0bbb2fa36698"
+          "size": 396,
+          "sha256": "cb97baf61a4a809735b6849f06208f3af4cd7a1fa3d7c603aa34684626bc5040"
         },
         {
           "path": "package/dist/servicesNode.mjs",
-          "size": 490,
-          "sha256": "3e7b6a3d558d201203d0bf105d36ba8fb572b0c6df615aac2304044c8f029c80"
+          "size": 520,
+          "sha256": "440241e139a8f74a6936d8341b370dfd9bcf961c08bd2700695bbceef661267a"
         },
         {
-          "path": "package/dist/storage-BMwdEWA9.mjs",
-          "size": 183725,
-          "sha256": "65f1b1d32fd4cbef31312111bd375866e41e44e5dd784f6eb9fa4665afc0ce18"
+          "path": "package/dist/storage-DV8eFVyT.mjs",
+          "size": 184234,
+          "sha256": "588e690032b231aa3a335d68b0d5b492eae8cb50ef8cc59e36da78840860cb22"
         },
         {
           "path": "package/dist/browser.d.mts",
-          "size": 7810,
-          "sha256": "515b5a219dc3bfae253795218c581da143c762f5a99207dcbcbb5b099aab9b72"
+          "size": 7799,
+          "sha256": "360a4c4dc51a1db2538a68a7138a7f4e72ae7533b883bec7cddee9045acd8953"
         },
         {
           "path": "package/dist/index.d.mts",
-          "size": 11936,
-          "sha256": "76d08d585264abf8d4b4f7911963924b6d385b3914a3bfc903b24c84a31e0473"
+          "size": 11966,
+          "sha256": "05efbd9cfa8a131099641078c33adffb59c65526809198122614ed6384addc31"
         },
         {
           "path": "package/dist/node.d.mts",
-          "size": 2615,
-          "sha256": "bdde5c3c7f8d49467a56a790d0c1a5793a82789b112506e823cfac63e1eb5edd"
+          "size": 2596,
+          "sha256": "caeb6b24a97b92b5a73ef1e70d778abd941e5fff3cfdfbf929b0f95a80dbf7cd"
         },
         {
-          "path": "package/dist/scopedTransport-DzyFYxVF.d.mts",
-          "size": 350,
-          "sha256": "0a1a3ca64cdb57108212d3b489f6c4600f897c947b25a9218dbab338c27f50f2"
-        },
-        {
-          "path": "package/dist/services-CKLm-3MO.d.mts",
-          "size": 125933,
-          "sha256": "0fd1a739d3e276445df7d249d4044acc31061c6f43b1c079e97f7424ea5f8aa0"
+          "path": "package/dist/services-Dxu8HoDu.d.mts",
+          "size": 126377,
+          "sha256": "3c8d52c1c5658f9a55ca739d1ebf77c45fe218f9a33c0eb943851698bf9d03d1"
         },
         {
           "path": "package/dist/services.browser.d.mts",
-          "size": 2086,
-          "sha256": "d2c838a0c0af80491b60a743abd933db87f3abc5584fa0f42cacd383c946780d"
+          "size": 2067,
+          "sha256": "a2f89d69ea7e9f31118b704a0f640198619b4bda11d0c7701b8134e81911e429"
         },
         {
           "path": "package/dist/services.d.mts",
-          "size": 1003,
-          "sha256": "d47dba63a46b089bdb81de3b6bd9fa76c34086581c7a759366fdab7c46200f2c"
+          "size": 1033,
+          "sha256": "8f8ee8e6025d0d41d3cc28e37ed2d4e885dfe1da4a8b54f3d13bc95cd658dd58"
         },
         {
           "path": "package/dist/servicesNode.d.mts",
-          "size": 3041,
-          "sha256": "172b7d842ba4f4255f0c773362726f2a62d8a62ad3f9657c1f84153a2d3394a4"
+          "size": 3022,
+          "sha256": "a2d81f40f25f28874d0edd7896fce55ece2deb532cbbe77547aa012dfaedac09"
         },
         {
           "path": "package/LICENSE",
@@ -338,6 +328,130 @@
     }
   ],
   "localWebExport": {
+    "status": "passed-final-fix-export",
+    "codeCommit": "a7557dc60f2c1d40f27a1ab00732e08c770cf1e8",
+    "command": "CI=1 APP_ENV=production EXPO_PUBLIC_HAPPY_SERVER_URL=https://47.115.228.20:8443 pnpm --dir packages/happy-app exec expo export --platform web --clear --output-dir ../../.superpowers/sdd/2026-10-05-paws-shared-ai-service/final-web-export",
+    "fileCount": 1014,
+    "totalBytes": 60754700,
+    "fileManifestSha256": "eaa156e6c7dcb294ebe2ec617bc90dd931611c04513a2b64257402cb294efc90",
+    "indexHtmlSha256": "853ff058c2f93e4051008510b02ada1e1875e10621903c9c9114b6a0602f2d07",
+    "entryBundles": [
+      {
+        "path": "_expo/static/js/web/index-2656243a1c0f542bca8ace5ea8406c8f.js",
+        "bytes": 32062,
+        "sha256": "2383e447646c49c2267ff1063f1fb2f6784587857f1bd82ed788a90b91fd09bd"
+      },
+      {
+        "path": "_expo/static/js/web/index-405c0a20c940b8bf83f27fb1cb7fed76.js",
+        "bytes": 34605,
+        "sha256": "2037c28d20cda33209f305fb489e991961f5061440045064fd15d637c1571f07"
+      },
+      {
+        "path": "_expo/static/js/web/index-42fb4e010df6d6bfb04db270e5fc2d77.js",
+        "bytes": 4225,
+        "sha256": "a4ad5d71aff6a6f2f56d49336ac1e6a1ddd809196f6d3cc6437f5a96c4c35ebc"
+      },
+      {
+        "path": "_expo/static/js/web/index-5f5a5aafea1e71d176e9a80d45acef68.js",
+        "bytes": 44221,
+        "sha256": "2d7ec7b321e095fe7109ed43f2f3b5d117bd943ca856dc2a46891c7c49099fe3"
+      },
+      {
+        "path": "_expo/static/js/web/index-DuKHkfLn-7a34246ac3a5a700e8553d7ccd8a7e59.js",
+        "bytes": 2341,
+        "sha256": "67dd7f331650ac10c214c470ee8c220c953cd6a991140d8ee0320ca65d46b7ee"
+      },
+      {
+        "path": "_expo/static/js/web/index-f39a20d128fc59a2ca2ef2f759c42184.js",
+        "bytes": 11690288,
+        "sha256": "ddf34a462db923cdbe1d9b5d1a93a4791bc7fadea13f59d6413188b9b0da45bd"
+      }
+    ],
+    "warning": "Local unstamped export from final modified App source. No upload or deployment. Watchman timed out and Metro used Node fallback; existing package export and environment warnings remain."
+  },
+  "migrations": [
+    {
+      "path": "packages/happy-server/prisma/migrations/20261005000000_ai_services/migration.sql",
+      "sha256": "b426a821fc0dad6524915bc7e5451b82ab035f248859b78a77b061f87ca864a3"
+    },
+    {
+      "path": "packages/happy-server/prisma/migrations/20261005010000_ai_service_execution/migration.sql",
+      "sha256": "8902e820bdcf2d8c79ec81e59994f229fb3dffd425be5a80bae3386f42fce48d"
+    },
+    {
+      "path": "packages/happy-server/prisma/migrations/20261006000000_ai_service_conversation_creation/migration.sql",
+      "sha256": "b90158a45b09eff6baa4c99ea88832901e84e604725a8e957e42a362ed33dc70"
+    }
+  ],
+  "advisorStaticBuild": {
+    "status": "passed-final-fix-build",
+    "codeCommit": "1d5881100cacb4080aa682a6adb30887747872e7",
+    "scope": "Final code rebuilt with refreshed installed SDK. Final journal tests and adapter tests passed.",
+    "files": [
+      {
+        "path": "public/client.js",
+        "sha256": "c36f86acae6cc519da39275fd071768fd1239ab44d3458c856945bae51266687"
+      },
+      {
+        "path": "public/paws-sdk.js",
+        "sha256": "cc96e9fc9704b6f3a18d5dd1e47dfa8b62b1b9c33d626620d8f91126b9ec5f2d"
+      },
+      {
+        "path": "public/paws-panel.css",
+        "sha256": "1631c71d14abc20ead7dca965277a11961291cc44ed35cb9e587133099f016a8"
+      }
+    ]
+  },
+  "migrationInventoryBase": "f1fec57f212cf9ce8b4bd2788a3a955a3f93ea46",
+  "migrationInventoryCheck": "node scripts/verify-shared-ai-migrations.mjs",
+  "finalFixValidation": {
+    "sdkTests": 27,
+    "nativeProcessAndBindingTests": 32,
+    "serverRouteStoreTests": 13,
+    "packedSdkRouteRerun": 5,
+    "serviceEditorTests": 2,
+    "advisorSuite": {
+      "passed": 94,
+      "skipped": 1
+    },
+    "advisorFinalTargeted": {
+      "journal": 41,
+      "adapter": 20
+    },
+    "typechecks": [
+      "SDK",
+      "CLI",
+      "Server"
+    ],
+    "builds": [
+      "SDK",
+      "CLI",
+      "Server Bun1.4.2",
+      "advisor",
+      "actual second-app browser bundle in packed route harness"
+    ],
+    "realProvider": "NOT EXECUTED",
+    "nativePhone": "NOT EXECUTED",
+    "personalAndFullLegacy": "NOT EXECUTED",
+    "browser": {
+      "operator": "controller",
+      "provider": "Ego",
+      "scope": "final advisor synthetic mobile Web390x844",
+      "receipts": [
+        "kkiFJb",
+        "A26DKm",
+        "vbjDfP",
+        "LUUBmS"
+      ],
+      "checks": [
+        "aggregate local rejection keeps editable draft and attachments; turn POST count unchanged",
+        "remove attachments and retry succeeds",
+        "fresh model refusal releases capacity",
+        "accepted response loss recovers with one original POST"
+      ]
+    }
+  },
+  "previousLocalWebExport": {
     "status": "passed",
     "codeCommit": "a00d364d74bf5d6101bd4fd789868c0e4b2a8730",
     "command": "CI=1 APP_ENV=production EXPO_PUBLIC_HAPPY_SERVER_URL=https://47.115.228.20:8443 HAPPY_BUILD_COMMIT_SHA=a00d364d74bf5d6101bd4fd789868c0e4b2a8730 pnpm --dir packages/happy-app exec expo export --platform web --clear --output-dir <isolated-output-directory>",
@@ -377,35 +491,7 @@
         "sha256": "67dd7f331650ac10c214c470ee8c220c953cd6a991140d8ee0320ca65d46b7ee"
       }
     ],
-    "warning": "Watchman query timed out after 60 seconds. Metro retried with its Node crawler and completed. Existing color-environment warnings were printed. This is an unstamped local export, not an uploaded or deployed release."
-  },
-  "migrations": [
-    {
-      "path": "packages/happy-server/prisma/migrations/20261005000000_ai_services/migration.sql",
-      "sha256": "b426a821fc0dad6524915bc7e5451b82ab035f248859b78a77b061f87ca864a3"
-    },
-    {
-      "path": "packages/happy-server/prisma/migrations/20261005010000_ai_service_execution/migration.sql",
-      "sha256": "8902e820bdcf2d8c79ec81e59994f229fb3dffd425be5a80bae3386f42fce48d"
-    }
-  ],
-  "advisorStaticBuild": {
-    "status": "verified-existing-build",
-    "codeCommit": "e7434b6e53dc4242d6c0bfb36f2b45603fde239a",
-    "scope": "T9 final affected tests and build reused. T10/T11 do not change application source.",
-    "files": [
-      {
-        "path": "public/client.js",
-        "sha256": "27b5fe559af3caf8fdaa00ac742736e0421a232ad9fd78b7e29a1049a2d97c7d"
-      },
-      {
-        "path": "public/paws-sdk.js",
-        "sha256": "cc96e9fc9704b6f3a18d5dd1e47dfa8b62b1b9c33d626620d8f91126b9ec5f2d"
-      },
-      {
-        "path": "public/paws-panel.css",
-        "sha256": "1631c71d14abc20ead7dca965277a11961291cc44ed35cb9e587133099f016a8"
-      }
-    ]
+    "warning": "Watchman query timed out after 60 seconds. Metro retried with its Node crawler and completed. Existing color-environment warnings were printed. This is an unstamped local export, not an uploaded or deployed release.",
+    "evidenceScope": "Historical T11 export; does not cover final ServiceEditor change."
   }
 }
