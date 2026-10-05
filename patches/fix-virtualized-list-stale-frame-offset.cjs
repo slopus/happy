@@ -17,6 +17,7 @@
  */
 const fs = require('node:fs');
 const path = require('node:path');
+const { createRequire } = require('node:module');
 
 const replacements = [
     [`  _highestMeasuredCellIndex = 0;
@@ -126,13 +127,14 @@ function patchVirtualizedLists(nodeModulesRoots = [
     for (const root of nodeModulesRoots) {
         const reactNative = path.join(root, 'react-native');
         if (!fs.existsSync(path.join(reactNative, 'package.json'))) continue;
-        // The copy react-native itself loads: nested first, then hoisted. An
-        // installed react-native without either means the layout changed.
-        const packageRoot = [
-            path.join(fs.realpathSync(reactNative), 'node_modules/@react-native/virtualized-lists'),
-            path.join(root, '@react-native/virtualized-lists'),
-        ].find(candidate => fs.existsSync(path.join(candidate, 'package.json')));
-        if (!packageRoot) {
+        // Resolve from react-native's real location so Node finds the copy it
+        // loads in nested, hoisted, and pnpm isolated dependency layouts.
+        const requireFromReactNative = createRequire(fs.realpathSync(path.join(reactNative, 'package.json')));
+        let packageRoot;
+        try {
+            packageRoot = path.dirname(requireFromReactNative.resolve('@react-native/virtualized-lists/package.json'));
+        } catch (error) {
+            if (error.code !== 'MODULE_NOT_FOUND') throw error;
             throw new Error('[patch] react-native is installed without @react-native/virtualized-lists; review fix-virtualized-list-stale-frame-offset.cjs');
         }
         files.add(fs.realpathSync(path.join(packageRoot, 'Lists/ListMetricsAggregator.js')));

@@ -178,10 +178,14 @@ function installation(t, layoutName) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'virtualized-lists-patch-'));
     t.after(() => fs.rmSync(directory, { recursive: true, force: true }));
     const root = path.join(directory, 'node_modules');
-    const reactNative = path.join(root, 'react-native');
+    const reactNative = layoutName === 'isolated'
+        ? path.join(root, '.pnpm/react-native@0.83.1/node_modules/react-native')
+        : path.join(root, 'react-native');
     const packageRoot = layoutName === 'nested'
         ? path.join(reactNative, 'node_modules/@react-native/virtualized-lists')
-        : path.join(root, '@react-native/virtualized-lists');
+        : layoutName === 'isolated'
+            ? path.join(root, '.pnpm/@react-native+virtualized-lists@0.83.1/node_modules/@react-native/virtualized-lists')
+            : path.join(root, '@react-native/virtualized-lists');
     fs.mkdirSync(reactNative, { recursive: true });
     fs.writeFileSync(path.join(reactNative, 'package.json'), '{"name":"react-native","version":"0.83.1"}');
     if (layoutName !== 'missing') {
@@ -189,11 +193,17 @@ function installation(t, layoutName) {
         fs.writeFileSync(path.join(packageRoot, 'package.json'), '{"name":"@react-native/virtualized-lists","version":"0.83.1"}');
         fs.writeFileSync(path.join(packageRoot, 'Lists/ListMetricsAggregator.js'), upstreamSource());
     }
+    if (layoutName === 'isolated') {
+        fs.symlinkSync(reactNative, path.join(root, 'react-native'), 'dir');
+        const dependencyLink = path.join(path.dirname(reactNative), '@react-native/virtualized-lists');
+        fs.mkdirSync(path.dirname(dependencyLink), { recursive: true });
+        fs.symlinkSync(packageRoot, dependencyLink, 'dir');
+    }
     return { roots: [root], file: path.join(packageRoot, 'Lists/ListMetricsAggregator.js') };
 }
 
 test('patches the copy react-native loads once and fails on drifted or missing source', t => {
-    for (const layoutName of ['hoisted', 'nested']) {
+    for (const layoutName of ['hoisted', 'nested', 'isolated']) {
         const { roots, file } = installation(t, layoutName);
         assert.deepEqual(patchVirtualizedLists(roots), { installed: 1, changed: 1 });
         assert.equal(fs.readFileSync(file, 'utf8'), patchSource(upstreamSource()));
