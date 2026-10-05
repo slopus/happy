@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { BrowserBridge, deriveBrowserSetupPairingToken, type BrowserSetupPolicy } from './browserBridge'
+import { CHROME_WEB_STORE_EXTENSION_ID } from './browserNativeHostRegistration'
 
 const SCOPE = /^bv1_[A-Za-z0-9_-]{32}$/
 const TTL = 5 * 60 * 1000
@@ -12,6 +13,7 @@ export interface LocalBrowserSetupStatus {
     extensionId: string
     extensionVersion: string
     optionsUrl?: string
+    storeExtensionId: string
 }
 
 /** Trusted daemon service; native config never crosses the public progress DTO. */
@@ -36,13 +38,17 @@ export class BrowserLocalSetup {
     }
     private metadata() {
         const extension = this.options.extension()
-        return { extensionDirectory: extension.directory, extensionId: extension.id, extensionVersion: extension.version }
+        return { extensionDirectory: extension.directory, extensionId: extension.id, extensionVersion: extension.version, storeExtensionId: CHROME_WEB_STORE_EXTENSION_ID }
     }
-    begin(viewerKey: string, profile: string): Promise<LocalBrowserSetupStatus & { operationId: string; optionsUrl: string }> {
+    /** `extensionId` picks which install opens the setup page: the bundled one (default) or the Web Store listing. */
+    begin(viewerKey: string, profile: string, extensionId?: string): Promise<LocalBrowserSetupStatus & { operationId: string; optionsUrl: string }> {
         return this.exclusive(async () => {
             this.scope(viewerKey)
             if (!profile.trim() || profile.length > 128 || /[\x00-\x1f]/.test(profile)) throw new Error('INVALID_PROFILE')
             const metadata = this.metadata()
+            const target = extensionId ?? metadata.extensionId
+            // The daemon cannot see which store version Chrome installed; callers send the store ID only once it supports setup pairing (>= 0.2.0).
+            if (target !== metadata.extensionId && target !== CHROME_WEB_STORE_EXTENSION_ID) throw new Error('INVALID_EXTENSION')
             const operation: Operation = { id: randomBytes(24).toString('base64url'), profile, expires: this.now() + TTL, consumed: false }
             const policy = this.options.bridge.getSetupPolicy()
             policy[viewerKey] = { pairingId: operation.id, profile }
@@ -51,7 +57,7 @@ export class BrowserLocalSetup {
             this.options.bridge.setSetupPolicy(policy)
             this.operations.set(viewerKey, operation)
             return { state: 'waiting', operationId: operation.id, profile, ...metadata,
-                optionsUrl: `chrome-extension://${metadata.extensionId}/src/options.html?setup=${operation.id}` }
+                optionsUrl: `chrome-extension://${target}/src/options.html?setup=${operation.id}` }
         })
     }
     consume(operationId: string): Promise<{ token: string; port: number; host: string; viewerKey: string; pairingId: string; profile: string }> {

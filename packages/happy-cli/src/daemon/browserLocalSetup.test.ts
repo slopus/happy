@@ -115,6 +115,14 @@ describe('trusted local browser setup', () => {
         expire()
         expect((await setup.status(alice)).state).toBe('waiting')
     })
+    it('opens setup in the Chrome Web Store extension when asked and refuses any other extension', async () => {
+        const { setup } = fixture()
+        const store = await setup.begin(alice, 'My Chrome', 'oonefemjapkafdiibkllemkjdlmmblbc')
+        expect(store.optionsUrl).toBe(`chrome-extension://oonefemjapkafdiibkllemkjdlmmblbc/src/options.html?setup=${store.operationId}`)
+        expect(store.storeExtensionId).toBe('oonefemjapkafdiibkllemkjdlmmblbc')
+        await expect(setup.begin(alice, 'My Chrome', 'abcdefghijklmnopabcdefghijklmnop')).rejects.toThrow('INVALID_EXTENSION')
+        expect((await setup.begin(alice, 'My Chrome')).optionsUrl).toContain('chrome-extension://emaponnolfbhnoaabgiebjmbdlmoifke/')
+    })
     it('fails closed if durable permission cannot be written', async () => {
         const bridge = new BrowserBridge({ authToken: baseToken })
         const setup = new BrowserLocalSetup({ bridge, readToken: async () => baseToken, port: 41777,

@@ -42,6 +42,9 @@ describe('browserBridgeServer', () => {
             expect(JSON.parse(result)).toEqual({ ok: true, config: { token: 'scoped-test-token', pairingId: id } })
             expect(consume).toEqual([id])
             good.close()
+            const store = connect('chrome-extension://oonefemjapkafdiibkllemkjdlmmblbc')
+            expect(JSON.parse(await new Promise<string>(resolve => store.on('message', raw => resolve(raw.toString()))))).toMatchObject({ ok: true })
+            store.close()
         } finally { await server.stop() }
     })
     let bridge: BrowserBridge

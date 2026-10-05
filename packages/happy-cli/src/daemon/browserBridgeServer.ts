@@ -13,6 +13,9 @@ import type { AddressInfo } from 'node:net'
 import type { BrowserBridge } from './browserBridge'
 import { logger } from '@/ui/logger'
 import { DEFAULT_BROWSER_BRIDGE_PORT } from './browserBridgeConfig'
+import { CHROME_WEB_STORE_EXTENSION_ID } from './browserNativeHostRegistration'
+
+const SETUP_ORIGINS = new Set(['emaponnolfbhnoaabgiebjmbdlmoifke', CHROME_WEB_STORE_EXTENSION_ID].map(id => `chrome-extension://${id}`))
 
 export { DEFAULT_BROWSER_BRIDGE_PORT, resolveBrowserBridgeHost } from './browserBridgeConfig'
 
@@ -53,7 +56,7 @@ export function startBrowserBridgeServer({ bridge, port, host = '127.0.0.1', con
             if (url.pathname === '/setup-pair') {
                 const operationId = url.searchParams.get('operationId') ?? ''
                 if (!consumeSetup || host !== '127.0.0.1' || request.socket.remoteAddress !== '127.0.0.1'
-                    || request.headers.origin !== 'chrome-extension://emaponnolfbhnoaabgiebjmbdlmoifke'
+                    || !SETUP_ORIGINS.has(request.headers.origin ?? '')
                     || [...url.searchParams.keys()].join(',') !== 'operationId'
                     || !/^[A-Za-z0-9_-]{32}$/.test(operationId)) {
                     socket.close(4403, 'setup exchange refused'); return

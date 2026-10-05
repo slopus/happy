@@ -47,6 +47,9 @@ export function resolveBrowserNativeHostManifestPath({ platform, homeDir }: {
     return null
 }
 
+/** The same extension published on the Chrome Web Store; users install it there instead of loading the bundle unpacked. */
+export const CHROME_WEB_STORE_EXTENSION_ID = 'oonefemjapkafdiibkllemkjdlmmblbc'
+
 export function buildBrowserNativeHostManifest({ extensionId, helperPath }: {
     extensionId: string
     helperPath: string
@@ -59,7 +62,7 @@ export function buildBrowserNativeHostManifest({ extensionId, helperPath }: {
         description: 'Provides local Happy Browser Bridge pairing settings',
         path: helperPath,
         type: 'stdio' as const,
-        allowed_origins: [`chrome-extension://${extensionId}/`],
+        allowed_origins: [...new Set([extensionId, CHROME_WEB_STORE_EXTENSION_ID])].map(id => `chrome-extension://${id}/`),
     }
 }
 

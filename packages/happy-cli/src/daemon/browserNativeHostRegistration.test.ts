@@ -74,7 +74,7 @@ describe('browser native host registration', () => {
         })).toBeNull()
     })
 
-    it('allows only the fixed Happy extension origin', () => {
+    it('allows only the bundled Happy extension and its Chrome Web Store listing', () => {
         expect(buildBrowserNativeHostManifest({
             extensionId: EXTENSION_ID,
             helperPath: '/opt/happy/bin/happy-browser-native-host.mjs',
@@ -83,7 +83,7 @@ describe('browser native host registration', () => {
             description: 'Provides local Happy Browser Bridge pairing settings',
             path: '/opt/happy/bin/happy-browser-native-host.mjs',
             type: 'stdio',
-            allowed_origins: [`chrome-extension://${EXTENSION_ID}/`],
+            allowed_origins: [`chrome-extension://${EXTENSION_ID}/`, 'chrome-extension://oonefemjapkafdiibkllemkjdlmmblbc/'],
         })
     })
 
@@ -112,6 +112,7 @@ describe('browser native host registration', () => {
         expect(await readFile(second!, 'utf8')).toBe(firstContents)
         expect(JSON.parse(firstContents).allowed_origins).toEqual([
             `chrome-extension://${EXTENSION_ID}/`,
+            'chrome-extension://oonefemjapkafdiibkllemkjdlmmblbc/',
         ])
     })
 })
