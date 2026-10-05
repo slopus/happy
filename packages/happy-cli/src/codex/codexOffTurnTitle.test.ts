@@ -134,14 +134,10 @@ describe('parseOffTurnTitle', () => {
 });
 
 describe('isOffTurnTitleEligible', () => {
-    it('shouldAllowOnlyPlainLoginUnsandboxedInteractiveSessions', () => {
-        expect(isOffTurnTitleEligible({ authSource: 'cli-login', sandboxEnabled: false, exitAfterFirstTurn: false })).toBe(true);
-        expect(isOffTurnTitleEligible({ authSource: 'custom-home', sandboxEnabled: false, exitAfterFirstTurn: false })).toBe(true);
-        expect(isOffTurnTitleEligible({ authSource: 'managed', sandboxEnabled: false, exitAfterFirstTurn: false })).toBe(false);
-        expect(isOffTurnTitleEligible({ authSource: 'multi-auth', sandboxEnabled: false, exitAfterFirstTurn: false })).toBe(false);
-        expect(isOffTurnTitleEligible({ authSource: 'unknown', sandboxEnabled: false, exitAfterFirstTurn: false })).toBe(false);
-        expect(isOffTurnTitleEligible({ authSource: 'cli-login', sandboxEnabled: true, exitAfterFirstTurn: false })).toBe(false);
-        expect(isOffTurnTitleEligible({ authSource: 'cli-login', sandboxEnabled: false, exitAfterFirstTurn: true })).toBe(false);
+    it('shouldAllowInteractiveSessionsWhoseAppServerPermitsASideCommand', () => {
+        expect(isOffTurnTitleEligible({ sideCommandAllowed: true, exitAfterFirstTurn: false })).toBe(true);
+        expect(isOffTurnTitleEligible({ sideCommandAllowed: false, exitAfterFirstTurn: false })).toBe(false);
+        expect(isOffTurnTitleEligible({ sideCommandAllowed: true, exitAfterFirstTurn: true })).toBe(false);
     });
 });
 
@@ -153,6 +149,7 @@ describe('buildOffTurnTitleExecArgs', () => {
         expect(args.join(' ')).toContain('-s read-only');
         expect(args.join(' ')).toContain('-m gpt-6-luna');
         expect(args.join(' ')).toContain('model_reasoning_effort="low"');
+        expect(args.join(' ')).toContain('-c features.plugins=false -c features.apps=false');
         expect(args[args.length - 1]).toBe('-');
     });
 
@@ -190,17 +187,19 @@ describe('parseEnabledMcpServerNames', () => {
 });
 
 describe('createCodexExecTitleRunner', () => {
-    async function fakeSpawn(behavior: { exitCode?: number | null; output?: string; hang?: boolean; mcpList?: string }) {
+    async function fakeSpawn(behavior: { exitCode?: number | null; output?: string; hang?: boolean; mcpList?: string; stderr?: string }) {
         const { EventEmitter } = await import('node:events');
         const { PassThrough } = await import('node:stream');
         const { writeFile } = await import('node:fs/promises');
         const calls: { command: string; args: string[]; cwd?: string; stdin: string; killed: boolean }[] = [];
         const lists: { cwd?: string }[] = [];
+        const calls0: { command: string; args: string[]; env?: Record<string, string> }[] = [];
         const spawnImpl = vi.fn((command: string, args: string[], options: { cwd?: string }) => {
             const child = new EventEmitter() as InstanceType<typeof EventEmitter> & { stdin: InstanceType<typeof PassThrough>; stdout: InstanceType<typeof PassThrough>; stderr: InstanceType<typeof PassThrough>; kill: () => boolean };
             child.stdout = new PassThrough();
             child.stderr = new PassThrough();
-            if (args[0] === 'mcp') {
+            calls0.push({ command, args, env: (options as { env?: Record<string, string> }).env });
+            if (args.includes('mcp')) {
                 lists.push({ cwd: options.cwd });
                 setImmediate(() => { child.stdout.end(behavior.mcpList ?? '[]'); child.emit('close', 0, null); });
                 return child;
@@ -214,12 +213,31 @@ describe('createCodexExecTitleRunner', () => {
                 if (behavior.hang) return;
                 const out = args[args.indexOf('-o') + 1];
                 if (behavior.output !== undefined) await writeFile(out, behavior.output);
+                if (behavior.stderr) child.stderr.write(behavior.stderr);
+                await new Promise((resolve) => setImmediate(resolve));
                 child.emit('close', behavior.exitCode ?? 0, null);
             });
             return child;
         });
-        return { spawnImpl, calls, lists };
+        return { spawnImpl, calls, lists, calls0 };
     }
+
+    it('shouldLaunchEveryCommandThroughThePreparedLaunch', async () => {
+        const { spawnImpl, calls0 } = await fakeSpawn({ output: '{"title":"T"}' });
+        const prepare = vi.fn(async (args: string[]) => ({ command: 'wrapped', args: ['--', ...args], env: { MARK: 'same-payer' } }));
+        const run = createCodexExecTitleRunner({ spawnImpl: spawnImpl as never, prepare });
+        await run({ prompt: 'P', signal: new AbortController().signal });
+        expect(prepare.mock.calls.map(([args]) => args[0])).toEqual(['mcp', 'exec']);
+        expect(calls0.map((call) => call.command)).toEqual(['wrapped', 'wrapped']);
+        expect(calls0.every((call) => call.env?.MARK === 'same-payer')).toBe(true);
+    });
+
+    it('shouldFailWithoutSpawningWhenNoLaunchIsAvailable', async () => {
+        const { spawnImpl } = await fakeSpawn({ output: '{"title":"T"}' });
+        const run = createCodexExecTitleRunner({ spawnImpl: spawnImpl as never, prepare: async () => null });
+        await expect(run({ prompt: 'P', signal: new AbortController().signal })).rejects.toThrow('unavailable');
+        expect(spawnImpl).not.toHaveBeenCalled();
+    });
 
     it('shouldPipeThePromptAndReturnTheFinalMessageThenRemoveItsTempDir', async () => {
         const { existsSync } = await import('node:fs');
@@ -239,6 +257,9 @@ describe('createCodexExecTitleRunner', () => {
         await run({ prompt: 'P', signal: new AbortController().signal });
         expect(lists).toEqual([{ cwd: calls[0].cwd }]);
         expect(calls[0].args.join(' ')).toContain('-c mcp_servers.linear.enabled=false');
+        // Plugin and app servers are not config tables; `enabled=false` on them breaks config loading.
+        const listArgs = spawnImpl.mock.calls.find(([, args]) => (args as string[]).includes('mcp'))![1] as string[];
+        expect(listArgs).toEqual(['mcp', 'list', '-c', 'features.plugins=false', '-c', 'features.apps=false', '--json']);
     });
 
     it('shouldNotRunExecWhenAnMcpServerCannotBeDisabled', async () => {
@@ -246,6 +267,21 @@ describe('createCodexExecTitleRunner', () => {
         const run = createCodexExecTitleRunner({ spawnImpl: spawnImpl as never });
         await expect(run({ prompt: 'P', signal: new AbortController().signal })).rejects.toThrow('MCP server');
         expect(calls).toHaveLength(0);
+    });
+
+    it('shouldNameTheCodexErrorLineWithoutLongSecretsWhenExecFails', async () => {
+        const { spawnImpl } = await fakeSpawn({ exitCode: 1, stderr: 'warming up\nError loading config.toml: invalid transport in `mcp_servers.cua_repl`\nauth sk-abcdefghijklmnopqrstuvwxyz0123456789\n' });
+        const run = createCodexExecTitleRunner({ spawnImpl: spawnImpl as never });
+        await expect(run({ prompt: 'P', signal: new AbortController().signal }))
+            .rejects.toThrow('exited with code 1: Error loading config.toml: invalid transport in `mcp_servers.cua_repl`');
+    });
+
+    it('shouldRedactTokenLikeRunsInTheReportedErrorLine', async () => {
+        const { spawnImpl } = await fakeSpawn({ exitCode: 1, stderr: 'Error: refresh failed for eyJhbGciOiJIUzI1NiJ9abcdefghijklmnop\n' });
+        const run = createCodexExecTitleRunner({ spawnImpl: spawnImpl as never });
+        const error = await run({ prompt: 'P', signal: new AbortController().signal }).catch((e: Error) => e);
+        expect(String(error)).toContain('Error: refresh failed for <redacted>');
+        expect(String(error)).not.toContain('eyJhbGci');
     });
 
     it('shouldRejectWhenExecExitsNonZero', async () => {

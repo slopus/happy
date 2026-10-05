@@ -1042,7 +1042,8 @@ export async function runCodex(opts: {
 
     // `session` is swapped on offline reconnection, so resolve it at call time.
     const offTurnTitle = createOffTurnTitleJob({
-        run: createCodexExecTitleRunner(),
+        // Same payer and sandbox as the app-server; `client` is assigned before any turn runs.
+        run: createCodexExecTitleRunner({ prepare: (args) => client.prepareSideCommand(args) }),
         changeTitle: (title, branchSlug) => createChangeTitleHandler(session)(title, branchSlug),
         hasTitle: () => session.hasTitle(),
         log: (message, detail) => logger.warn(message, detail),
@@ -2395,8 +2396,7 @@ export async function runCodex(opts: {
                             hasTitle: session.hasTitle(),
                             job: offTurnTitle,
                             eligible: isOffTurnTitleEligible({
-                                authSource: client.authRecoverySource,
-                                sandboxEnabled: client.sandboxEnabled,
+                                sideCommandAllowed: client.sideCommandAllowed,
                                 exitAfterFirstTurn,
                             }),
                             message: message.message,

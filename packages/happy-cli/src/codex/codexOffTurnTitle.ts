@@ -6,8 +6,6 @@ import { spawn as crossSpawn } from 'cross-spawn';
 
 import { BRANCH_SLUG_SPEC } from '@/utils/branchSlugSpec';
 
-import type { CodexAuthSource } from './codexAuthRecovery';
-
 /**
  * Titles a new Codex chat outside the user's turn.
  *
@@ -23,6 +21,13 @@ const MAX_MESSAGE_LENGTH = 4000;
 const DEFAULT_TIMEOUT_MS = 45_000;
 const BRANCH_SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+){1,3}$/;
 const MCP_SERVER_NAME_PATTERN = /^[A-Za-z0-9_-]+$/;
+/**
+ * Plugin- and app-provided MCP servers are listed by `codex mcp list` but are
+ * not tables in config.toml, so `-c mcp_servers.<name>.enabled=false` on one
+ * creates a server without a transport and Codex refuses to load its config.
+ * Turning both features off leaves only config-defined servers to disable.
+ */
+const PLUGIN_SERVER_EXCLUSION = ['-c', 'features.plugins=false', '-c', 'features.apps=false'];
 
 export const OFF_TURN_TITLE_SCHEMA = {
     type: 'object',
@@ -67,20 +72,22 @@ export function parseOffTurnTitle(raw: string | null): { title: string; branchSl
 }
 
 /**
- * Only sessions whose app-server runs with the user's own Codex login and no
- * wrapping sandbox: a plain `codex exec` then has the same payer and the same
- * permissions as the user running Codex themselves. Managed/multi-auth
- * providers and sandboxed or run-once hosts keep the in-turn instruction.
+ * The title exec runs with the app-server's own payer and sandbox (see
+ * CodexAppServerClient.prepareSideCommand), so it is allowed wherever a side
+ * command is. Run-once hosts keep the in-turn instruction: they may exit
+ * before a parallel title lands.
  */
 export function isOffTurnTitleEligible(input: {
-    authSource: CodexAuthSource;
-    sandboxEnabled: boolean;
+    sideCommandAllowed: boolean;
     exitAfterFirstTurn: boolean;
 }): boolean {
-    return (input.authSource === 'cli-login' || input.authSource === 'custom-home')
-        && !input.sandboxEnabled
-        && !input.exitAfterFirstTurn;
+    return input.sideCommandAllowed && !input.exitAfterFirstTurn;
 }
+
+export type CodexCommandLaunch = { command: string; args: string[]; env: NodeJS.ProcessEnv };
+export type PrepareCodexCommand = (args: string[]) => Promise<CodexCommandLaunch | null>;
+
+const plainCodexCommand: PrepareCodexCommand = async (args) => ({ command: 'codex', args, env: process.env });
 
 /**
  * Names of the enabled MCP servers in `codex mcp list --json` output, or null
@@ -107,6 +114,7 @@ export function parseEnabledMcpServerNames(raw: string): string[] | null {
 export function buildOffTurnTitleExecArgs(input: { model?: string; schemaPath: string; outputPath: string; mcpServerNames: string[] }): string[] {
     return [
         'exec',
+        ...PLUGIN_SERVER_EXCLUSION,
         '--ephemeral',
         '--skip-git-repo-check',
         '-s', 'read-only',
@@ -186,25 +194,40 @@ export function titleCoveredForTurn(input: {
     return input.job.covers();
 }
 
+const MAX_ERROR_LINE_LENGTH = 200;
+const TOKEN_LIKE_RUN = /[A-Za-z0-9_\-+/=.]{24,}/g;
+
+/**
+ * The first `Error...` line of a failed command, for the warn log. Other
+ * stderr is dropped and long token-like runs are masked: stderr can carry
+ * provider auth detail.
+ */
+function reportableErrorLine(stderr: string): string | null {
+    const line = stderr.split('\n').map((value) => value.trim()).find((value) => value.startsWith('Error'));
+    return line ? line.replace(TOKEN_LIKE_RUN, '<redacted>').slice(0, MAX_ERROR_LINE_LENGTH) : null;
+}
+
 /**
  * Runs one codex command in `cwd`, writing `input` to stdin when given, and
  * resolves with its stdout. It is killed on abort or once `timeoutMs` passes.
- * stderr is drained but not surfaced: it can carry provider auth detail.
  */
-function runCodexCommand(spawnImpl: typeof crossSpawn, args: string[], opts: {
+async function runCodexCommand(spawnImpl: typeof crossSpawn, prepare: PrepareCodexCommand, args: string[], opts: {
     cwd: string;
     input?: string;
     signal: AbortSignal;
     timeoutMs: number;
 }): Promise<string> {
-    const child = spawnImpl('codex', args, {
+    const launch = await prepare(args);
+    if (!launch) throw new Error(`codex ${args[0]} launch unavailable`);
+    const child = spawnImpl(launch.command, launch.args, {
         cwd: opts.cwd,
-        env: process.env,
+        env: launch.env,
         stdio: [opts.input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     });
     let stdout = '';
     child.stdout?.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-    child.stderr?.resume();
+    let stderr = '';
+    child.stderr?.on('data', (chunk: Buffer) => { if (stderr.length < 16_384) stderr += chunk.toString(); });
     const label = `codex ${args[0]}`;
     return new Promise<string>((resolve, reject) => {
         let stopReason: string | null = null;
@@ -221,7 +244,10 @@ function runCodexCommand(spawnImpl: typeof crossSpawn, args: string[], opts: {
         child.once('error', (error) => finish(error));
         child.once('close', (code: number | null) => {
             if (stopReason) finish(new Error(`${label} ${stopReason}`));
-            else if (code !== 0) finish(new Error(`${label} exited with code ${code}`));
+            else if (code !== 0) {
+                const detail = reportableErrorLine(stderr);
+                finish(new Error(`${label} exited with code ${code}${detail ? `: ${detail}` : ''}`));
+            }
             else finish();
         });
         if (opts.input !== undefined) child.stdin?.end(opts.input);
@@ -234,20 +260,21 @@ function runCodexCommand(spawnImpl: typeof crossSpawn, args: string[], opts: {
  * Every MCP server the user configured is disabled by name first; when one
  * cannot be, the run fails and the turn keeps the in-turn instruction.
  */
-export function createCodexExecTitleRunner(opts: { timeoutMs?: number; spawnImpl?: typeof crossSpawn } = {}): OffTurnTitleRunner {
+export function createCodexExecTitleRunner(opts: { timeoutMs?: number; spawnImpl?: typeof crossSpawn; prepare?: PrepareCodexCommand } = {}): OffTurnTitleRunner {
     const spawnImpl = opts.spawnImpl ?? crossSpawn;
+    const prepare = opts.prepare ?? plainCodexCommand;
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     return async ({ prompt, model, signal }) => {
         const deadline = Date.now() + timeoutMs;
         const dir = await mkdtemp(join(tmpdir(), 'happy-codex-title-'));
         try {
-            const listed = await runCodexCommand(spawnImpl, ['mcp', 'list', '--json'], { cwd: dir, signal, timeoutMs });
+            const listed = await runCodexCommand(spawnImpl, prepare, ['mcp', 'list', ...PLUGIN_SERVER_EXCLUSION, '--json'], { cwd: dir, signal, timeoutMs });
             const mcpServerNames = parseEnabledMcpServerNames(listed);
             if (!mcpServerNames) throw new Error('codex mcp list has an MCP server that cannot be disabled by name');
             const schemaPath = join(dir, 'schema.json');
             const outputPath = join(dir, 'title.json');
             await writeFile(schemaPath, JSON.stringify(OFF_TURN_TITLE_SCHEMA));
-            await runCodexCommand(spawnImpl, buildOffTurnTitleExecArgs({ model, schemaPath, outputPath, mcpServerNames }), {
+            await runCodexCommand(spawnImpl, prepare, buildOffTurnTitleExecArgs({ model, schemaPath, outputPath, mcpServerNames }), {
                 cwd: dir,
                 input: prompt,
                 signal,
