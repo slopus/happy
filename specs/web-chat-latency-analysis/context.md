@@ -118,3 +118,30 @@ Current main additionally contains #695/c602837a server stream write timing and 
 #690 adds the first future exercise of DOCKER_PAT-gated Docker Hub multi-arch image publication and abp-images.json generation before npm publish. The workflow was inspected: absent credentials warn and still publish CLI without the manifest, causing one-line install to refuse that release. No image publishing, credential availability, public pull or generated-manifest acceptance has been verified in this increment. Tag approval must cover image publication as well as npm latest; release acceptance must distinguish CLI registry smoke from image/manifest success. No secrets were read, no tag/publish/runtime changes.
 
 #696 original-head CLI Smoke Test37187902232 all5 jobs passed. Documentation-only scope correction requires diff validation; previous candidate results are preserved with their exact scope.
+
+## Off-turn Codex title — 2026-10-05
+
+ethan .289 first requests (5/5) showed Codex spending three model requests per new chat: find the deferred change_title tool, call it, then answer (extra 4.2-7.4s after the first tool call; native exec 1 request/2.8s). Cause: `codexPrompt.ts` appends `CHANGE_TITLE_INSTRUCTION` while the session has no title. Evidence lives in aplus-dev-studio `specs/web-chat-latency-analysis` (#4732).
+
+Change: `codexOffTurnTitle.ts` runs `codex exec --ephemeral -s read-only -c mcp_servers.<name>.enabled=false --output-schema` (one override per server from `codex mcp list --json`; `-c mcp_servers={}` is deep-merged and starts them anyway, and a name a dotted `-c` key cannot address fails the run) (session model, low effort, prompt on stdin, empty temp cwd, 45s timeout) in parallel with the first eligible turn and records the result through the existing locked `createChangeTitleHandler`. That turn omits the instruction. Eligibility: app-server auth source `cli-login`/`custom-home`, no wrapping sandbox, not run-once. Managed/multi-auth/unknown providers, sandboxed hosts and run-once automation keep the in-turn instruction. A failed, timed-out or unparseable run is logged (warn) and stops covering, so the next turn restores the instruction. A title that appears while running is never overwritten. Session shutdown cancels the run. `session` is resolved at call time because offline reconnection swaps it.
+
+Verification: Red then Green, 23 module tests. Mutations removing the eligibility gate, the late-title guard or failure uncovering are each caught. CLI build exit0. Related files codexPrompt23/lessonProposal34/shutdown29/startHappyServer31 pass. runCodex.channelClear has 4 failures that reproduce identically on clean origin/main (pre-existing). Real local Codex0.160.0 smoke: valid Korean title + slug in 6.8s off the critical path. Not yet verified: isolated-daemon/Web end-to-end and the ethan A/B; no latency claim yet.
+
+## Off-turn title — isolated daemon E2E and parity fix (2026-10-05)
+
+An isolated install (`~/.happy-offturn-title-iso`, new machineId, dev server; shared daemons' pid/session counts unchanged before and after) showed the first gate excluded real hosts: this Mac and all 6 ethan sessions run with `Sandbox enabled`, and this Mac also uses the multi-auth proxy. The title exec now launches through `CodexAppServerClient.prepareSideCommand`: same multi-auth proxy account and env, same sandbox wrapper and seatbelt marker as the app-server. It is refused only for managed providers, mandatory sandboxes, or before connect, and run-once hosts stay excluded.
+
+The first sandboxed run answered without the title round trips but the title exec exited 1. A temporary stderr capture in the isolated bundle only showed `Error loading config.toml: invalid transport in mcp_servers.cua_repl`. `codex mcp list` includes plugin/app servers that are not config tables, and `enabled=false` on them creates a transport-less server. Both commands now pass `-c features.plugins=false -c features.apps=false`, which leaves only config-defined servers to disable. A failed command now reports its first `Error` line with long token-like runs masked, in place of a bare exit code.
+
+Isolated Web results, same Mac, Codex/gpt-6-luna/low, fixed OK prompt:
+- Old gate: 3 model requests, Web first text 36.99s.
+- New path: 1 model request, no title instruction in the prompt, tools 0. Web first text 3.26 / 3.51 / 3.13s, and the title was recorded off-turn after the fix.
+
+These are descriptive n=1 vs n=3 numbers on a loaded shared Mac, not an A/B. Tests: module 35 and client 146 (6 new) pass, build exit0, and channelClear's 4 pre-existing failures are unchanged.
+
+Self-review (2026-10-05): three crash/hang paths fixed, each Red first.
+- A title exec ignoring SIGTERM hung the job in `running` forever, so the instruction was never restored. It now escalates to SIGKILL after the app-server's 2s grace, with the timer unref'd.
+- An exec exiting before reading its prompt raised an unhandled stdin EPIPE that would kill the session process. A no-op stdin error handler now leaves reporting to the exit code.
+- The never-awaited job promise could reject unhandled if recording the title threw. It now catches and marks the job failed.
+- `OFF_TURN_TITLE_SCHEMA` is no longer exported.
+Tests: module 38, related files unchanged, build exit0.

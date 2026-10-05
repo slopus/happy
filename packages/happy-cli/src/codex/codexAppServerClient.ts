@@ -1919,6 +1919,38 @@ export class CodexAppServerClient {
         return await this.request('thread/goal/clear', params) as ThreadGoalClearResponse;
     }
 
+    /**
+     * Whether a short side `codex` command may run beside this app-server.
+     * Managed providers carry run-specific tool boundaries and mandatory
+     * sandboxes guard shared machines, so neither gets a second process.
+     */
+    get sideCommandAllowed(): boolean {
+        return !this.managedProviderArgs && this.sandboxPolicyMode !== 'mandatory';
+    }
+
+    /**
+     * Launch for a short side `codex` command with this app-server's payer and
+     * sandbox: the multi-auth proxy account when one was chosen, and the same
+     * sandbox wrapper and seatbelt marker when the app-server is wrapped.
+     * Null until connected or when side commands are not allowed.
+     */
+    async prepareSideCommand(args: string[]): Promise<{ command: string; args: string[]; env: Record<string, string> } | null> {
+        if (!this.connected || !this.sideCommandAllowed) return null;
+        const env: Record<string, string> = {};
+        for (const [key, value] of Object.entries(this.multiAuthProxy?.env ?? process.env)) {
+            if (typeof value === 'string') env[key] = value;
+        }
+        if (this.sandboxEnabled && process.platform === 'darwin') {
+            env.CODEX_SANDBOX = 'seatbelt';
+        } else if (this.sandboxEnabled && process.platform === 'linux' && env.CODEX_SANDBOX === 'seatbelt') {
+            delete env.CODEX_SANDBOX;
+        }
+        const fullArgs = [...(this.multiAuthProxy?.args ?? []), ...args];
+        if (!this.sandboxEnabled) return { command: 'codex', args: fullArgs, env };
+        const wrapped = await wrapForMcpTransport('codex', fullArgs);
+        return { command: wrapped.command, args: wrapped.args, env };
+    }
+
     get authRecoverySource(): CodexAuthSource {
         if (this.managedProviderArgs || this.sandboxPolicyMode === 'mandatory') return 'managed';
         if (this.multiAuthProxy) return 'multi-auth';

@@ -5497,6 +5497,98 @@ describe('CodexAppServerClient sandbox integration', () => {
 
         await client.disconnect();
     });
+
+    describe('prepareSideCommand', () => {
+        it('launches plain codex with the app-server environment when there is no proxy or sandbox', async () => {
+            const { CodexAppServerClient } = await import('./codexAppServerClient');
+            const client = new CodexAppServerClient();
+            try {
+                await client.connect();
+                const launch = await client.prepareSideCommand(['mcp', 'list', '--json']);
+                expect(launch).toEqual({ command: 'codex', args: ['mcp', 'list', '--json'], env: expect.objectContaining({ PATH: process.env.PATH }) });
+                expect(mockWrapForMcpTransport).not.toHaveBeenCalled();
+            } finally {
+                await client.disconnect();
+            }
+        });
+
+        it('routes through the same multi-auth proxy account as the app-server', async () => {
+            mockPrepareCodexMultiAuthProxy.mockResolvedValue({
+                args: ['-c', 'model_provider="codex-multi-auth-runtime-proxy"'],
+                env: { PATH: '/usr/bin', OPENAI_API_KEY: 'local-client-key' },
+                cleanup: mockProxyCleanup,
+            });
+            const { CodexAppServerClient } = await import('./codexAppServerClient');
+            const client = new CodexAppServerClient();
+            try {
+                await client.connect();
+                const launch = await client.prepareSideCommand(['exec', '-']);
+                expect(launch?.args).toEqual(['-c', 'model_provider="codex-multi-auth-runtime-proxy"', 'exec', '-']);
+                expect(launch?.env.OPENAI_API_KEY).toBe('local-client-key');
+            } finally {
+                await client.disconnect();
+            }
+        });
+
+        it('wraps the side command in the same sandbox as the app-server', async () => {
+            const { CodexAppServerClient } = await import('./codexAppServerClient');
+            const client = new CodexAppServerClient(sandboxConfig, undefined, undefined, 'owner-choice');
+            try {
+                await client.connect();
+                mockWrapForMcpTransport.mockClear();
+                mockWrapForMcpTransport.mockResolvedValue({ command: 'sh', args: ['-c', 'wrapped codex exec -'] });
+                const launch = await client.prepareSideCommand(['exec', '-']);
+                expect(mockWrapForMcpTransport).toHaveBeenCalledWith('codex', ['exec', '-']);
+                expect(launch?.command).toBe('sh');
+                expect(launch?.args).toEqual(['-c', 'wrapped codex exec -']);
+            } finally {
+                await client.disconnect();
+            }
+        });
+
+        it.each([
+            ['darwin', undefined, 'seatbelt'],
+            ['linux', 'seatbelt', undefined],
+        ] as const)('applies the app-server seatbelt marker rule on %s', async (platform, inherited, expected) => {
+            const { CodexAppServerClient } = await import('./codexAppServerClient');
+            const client = new CodexAppServerClient(sandboxConfig, undefined, undefined, 'owner-choice');
+            const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+            const originalMarker = process.env.CODEX_SANDBOX;
+            try {
+                await client.connect();
+                Object.defineProperty(process, 'platform', { value: platform });
+                if (inherited === undefined) delete process.env.CODEX_SANDBOX; else process.env.CODEX_SANDBOX = inherited;
+                const launch = await client.prepareSideCommand(['exec', '-']);
+                expect(launch?.env.CODEX_SANDBOX).toBe(expected);
+            } finally {
+                Object.defineProperty(process, 'platform', originalPlatform);
+                if (originalMarker === undefined) delete process.env.CODEX_SANDBOX; else process.env.CODEX_SANDBOX = originalMarker;
+                await client.disconnect();
+            }
+        });
+
+        it.each([
+            ['a managed provider', [undefined, 'owner-choice', ['-c', 'managed-provider']]],
+            ['a mandatory sandbox policy', [sandboxConfig, 'mandatory', undefined]],
+        ] as const)('refuses for %s', async (_label, [config, policy, managedArgs]) => {
+            const { CodexAppServerClient } = await import('./codexAppServerClient');
+            const client = new CodexAppServerClient(config, undefined, undefined, policy, managedArgs ? [...managedArgs] : undefined);
+            expect(client.sideCommandAllowed).toBe(false);
+            try {
+                await client.connect();
+                expect(await client.prepareSideCommand(['exec', '-'])).toBeNull();
+            } finally {
+                await client.disconnect();
+            }
+        });
+
+        it('refuses before the app-server is connected', async () => {
+            const { CodexAppServerClient } = await import('./codexAppServerClient');
+            const client = new CodexAppServerClient();
+            expect(client.sideCommandAllowed).toBe(true);
+            expect(await client.prepareSideCommand(['exec', '-'])).toBeNull();
+        });
+    });
 });
 
 /**
