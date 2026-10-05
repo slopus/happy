@@ -651,6 +651,19 @@ describe('ApiMachineClient socket reconnection', () => {
         expect(runtime.groupReceipt).toHaveBeenCalledWith('company','claude');
     });
 
+    it('routes machine-scoped group receipts without changing the legacy status request', async () => {
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        const groupReceipt = vi.fn(async () => ({ reconciled: true }));
+        const runtime = { groupReceipt, status: vi.fn(async () => ({ installed: false })) };
+        client.setRPCHandlers({ spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn(), portRegistry: {} as any, aiCredentialRuntime: runtime as any });
+        const handler = (client as any).rpcHandlerManager.registerHandler.mock.calls.find(([method]: [string]) => method === 'ai-credential:status')?.[1];
+
+        await handler({ provider: 'claude', groupScope: 'company', principalType: 'machine', machineId: 'machine-1' });
+
+        expect(groupReceipt).toHaveBeenCalledWith('company', 'claude', { principalType: 'machine', machineId: 'machine-1' });
+        expect(runtime.status).not.toHaveBeenCalled();
+    });
+
     it('exposes additive credential capability without receiving credentials', async () => {
         const client = new ApiMachineClient('fake-token', makeMachine());
         const capabilities = vi.fn(() => ({ version: 1, applyModes: ['merge', 'replace'] }));

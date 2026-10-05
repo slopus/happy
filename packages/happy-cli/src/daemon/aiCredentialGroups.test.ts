@@ -72,4 +72,23 @@ describe('scoped credential group synchronization',()=>{
     expect(await sync.authorize(request.scope,request.userId,'shared')).toBe(false)
   })
 
+  it('keeps a machine principal separate from user assignments and returns a machine receipt',async()=>{
+    const {sync,input,deps}=setup()
+    const machine={version:1 as const,scope:'company',principalType:'machine' as const,machineId:'machine-1',provider:'claude' as const,generation:1,fingerprint:'c'.repeat(64),payload:'["shared"]'}
+    await sync.sync(input(1,'["user-account"]'))
+    await expect(sync.sync(machine)).resolves.toMatchObject({
+      scope:'company',principalType:'machine',machineId:'machine-1',generation:1,reconciled:true,
+    })
+    expect(await sync.receipt('company','claude',{principalType:'machine',machineId:'machine-1',userId:'machine-1'})).toMatchObject({
+      principalType:'machine',machineId:'machine-1',payloadDigest:expect.any(String),
+    })
+    expect(await sync.receipt('company','claude')).toMatchObject({userId:'user'})
+    expect(deps.apply).toHaveBeenCalledTimes(2)
+  })
+
+  it('rejects a machine principal that carries a user id',async()=>{
+    const {sync}=setup()
+    await expect(sync.sync({version:1,scope:'company',principalType:'machine',machineId:'machine-1',userId:'user',provider:'claude',generation:1,fingerprint:'c'.repeat(64),payload:null} as never)).rejects.toThrow('AI_GROUP_INVALID_INPUT')
+  })
+
 })

@@ -1055,7 +1055,10 @@ export class ApiMachineClient {
         ));
         this.rpcHandlerManager.registerHandler('ai-credential:status', async (params): Promise<unknown> => (
             params?.groupScope && (params.provider === 'claude' || params.provider === 'codex')
-                ? aiCredentialRuntime.groupReceipt(params.groupScope, params.provider) : aiCredentialRuntime.status(params)
+                ? params.principalType === 'machine' && typeof params.machineId === 'string'
+                    ? aiCredentialRuntime.groupReceipt(params.groupScope, params.provider, { principalType: 'machine', machineId: params.machineId })
+                    : aiCredentialRuntime.groupReceipt(params.groupScope, params.provider)
+                : aiCredentialRuntime.status(params)
         ));
         this.rpcHandlerManager.registerHandler('ai-credential:verify', (params) => aiCredentialRuntime.verify(params));
         this.rpcHandlerManager.registerHandler('ai-credential:rotation', (params) => (
