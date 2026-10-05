@@ -40,6 +40,16 @@ describe('machineServerLane', () => {
         for (const method of CONTENT_CAPABLE) expect(lane.allows(method), method).toBe(false);
     });
 
+    // D4-2: metadata the web server needs for a strict machine, each answering a
+    // fixed shape with no file content, listing or command output.
+    it('admits the seven metadata methods, 22 in all', () => {
+        for (const method of ['workspace-path-stat', 'workspace-git-info', 'preview-liveness', 'listening-ports',
+            'container-runtime-status', 'gh-auth-status', 'machine-info']) {
+            expect(SERVER_LANE_METHODS.has(method), method).toBe(true);
+        }
+        expect(SERVER_LANE_METHODS.size).toBe(22);
+    });
+
     it('lists no content-capable method', () => {
         for (const method of CONTENT_CAPABLE) expect(SERVER_LANE_METHODS.has(method), method).toBe(false);
     });
