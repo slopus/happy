@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 import { AI_SERVICES_PROTOCOL, CapabilityCatalogSchema, type CapabilityCatalog, type ExecutionBinding, type ServiceTarget } from '@slopus/happy-wire';
+import type { RuntimeProcessGuard } from './runtimeProcessState';
 import { codexRestrictedArgs, verifyRestrictedCodex } from './restrictedCodex';
 import { verifyRestrictedClaude, restrictedClaudeEnv } from './restrictedClaude';
 
@@ -44,9 +45,11 @@ const nativeModelSchema = z.object({ model: z.string().min(1), displayName: z.st
     supportedReasoningEfforts: z.array(z.object({ reasoningEffort: z.string().min(1) })), defaultReasoningEffort: z.string().nullable() });
 const modelPageSchema = z.object({ data: z.array(nativeModelSchema), nextCursor: z.string().nullable().optional() });
 /** Read-only app-server session. No thread or turn is created. */
-export async function readCodexCapabilities(target: ServiceTarget, binary: string, home: string, cwd: string, signal: AbortSignal, onSpawn?: (pid: number) => Promise<void>): Promise<CapabilityCatalog> {
+export async function readCodexCapabilities(target: ServiceTarget, binary: string, home: string, cwd: string, signal: AbortSignal, onSpawn?: (pid: number) => Promise<void>, processGuard?: RuntimeProcessGuard): Promise<CapabilityCatalog> {
     if (target.engine !== 'codex') throw new Error('account-identity-changed');
     if (!await verifyRestrictedCodex(binary)) throw new Error('protocol-incompatible');
+    signal.throwIfAborted();
+    const generation = await processGuard?.beforeSpawn();
     signal.throwIfAborted();
     const child = spawn(binary, codexRestrictedArgs(null), { cwd, env: { PATH: process.env.PATH, HOME: cwd, TMPDIR: cwd, CODEX_HOME: home }, stdio: ['pipe', 'pipe', 'pipe'] });
     child.stderr.resume();
@@ -69,6 +72,7 @@ export async function readCodexCapabilities(target: ServiceTarget, binary: strin
     const timer = setTimeout(fail, 15000);
     try {
         if (!child.pid) throw new Error('machine-offline');
+        if (processGuard && generation) await processGuard.spawned(generation, child.pid);
         await onSpawn?.(child.pid);
         signal.throwIfAborted();
         await request('initialize', { clientInfo: { name: 'paws_service_discovery', version: '1' }, capabilities: { experimentalApi: true } });

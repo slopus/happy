@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline';
 import { promisify } from 'node:util';
 import { parseAppChatSelection } from '@slopus/happy-wire';
 import { advisorPrompt } from './advisorPrompt';
+import type { RuntimeProcessGuard } from './runtimeProcessState';
 import type { ServiceReasoning } from '@slopus/happy-wire';
 export interface RestrictedServiceOptions { systemPrompt: string; reasoning: ServiceReasoning; onReasoning?: (value: string) => void }
 
@@ -37,11 +38,13 @@ export function codexRestrictedArgs(model: string | null, reasoning?: ServiceRea
     return args;
 }
 
-export async function runRestrictedCodex(binary: string, home: string, cwd: string, messages: ChatMessage[], signal: AbortSignal, onText: (text: string) => void, onSpawn?: (pid: number) => Promise<void>, model: string | null = 'gpt-6-astra', onModel?: (model: string) => void, options?: RestrictedServiceOptions): Promise<string> {
+export async function runRestrictedCodex(binary: string, home: string, cwd: string, messages: ChatMessage[], signal: AbortSignal, onText: (text: string) => void, onSpawn?: (pid: number) => Promise<void>, model: string | null = 'gpt-6-astra', onModel?: (model: string) => void, options?: RestrictedServiceOptions, processGuard?: RuntimeProcessGuard): Promise<string> {
     if (!options) parseAppChatSelection({ engine: 'codex', model });
     if (!await verifyRestrictedCodex(binary)) throw new Error('unsupported-runtime');
     signal.throwIfAborted();
     const args = codexRestrictedArgs(model, options?.reasoning);
+    const generation = await processGuard?.beforeSpawn();
+    signal.throwIfAborted();
     const child = spawn(binary, args, { cwd, env: { PATH: process.env.PATH, HOME: cwd, TMPDIR: cwd, CODEX_HOME: home }, stdio: ['pipe', 'pipe', 'pipe'] });
     let serial = 0;
     let text = '';
@@ -90,6 +93,7 @@ export async function runRestrictedCodex(binary: string, home: string, cwd: stri
     const timeout = setTimeout(() => fail(new Error('turn-timeout')), 180_000);
     try {
         if (!child.pid) throw new Error('runtime-unavailable');
+        if (processGuard && generation) await processGuard.spawned(generation, child.pid);
         await onSpawn?.(child.pid);
         signal.throwIfAborted();
         await request('initialize', { clientInfo: { name: 'paws_delegated_chat', version: '1' }, capabilities: { experimentalApi: true } });

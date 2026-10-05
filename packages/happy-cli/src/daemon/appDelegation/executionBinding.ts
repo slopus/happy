@@ -3,10 +3,11 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
 import { ExecutionBindingSchema, ServiceTargetSchema, ServiceErrorCodeSchema, TurnResultSchema, type CapabilityCatalog, type ExecutionBinding, type ServiceTarget, type TurnActual, type TurnResult, type ServiceErrorCode } from '@slopus/happy-wire';
 import type { CodexAccountLaunch } from '@/daemon/codexAccountLaunch';
-import { loadApplicationPolicy, type TrustedApplicationLoader } from './applicationPolicy';
+import { loadApplicationPolicy, type TrustedApplicationLoader, type TrustedBusinessPromptResolver } from './applicationPolicy';
 import { readClaudeCapabilities, readCodexCapabilities, sameServiceTarget, validateBoundCapabilities, verifyClaudeIdentity } from './serviceCapabilities';
 import { runRestrictedCodex } from './restrictedCodex';
 import { runRestrictedClaude } from './restrictedClaude';
+import { createRuntimeProcessGuard, type RuntimeProcessGuard } from './runtimeProcessState';
 
 export interface BoundWorkspace { root: string; cwd: string; codexHome: string }
 export type BoundCredentialLease =
@@ -21,6 +22,7 @@ export interface BoundRuntimeContext {
     /** T4 verifies the persisted binding and current grant. Discovery authority cannot substitute for this call. */
     acquireTurn(binding: ExecutionBinding, workspace: BoundWorkspace, signal: AbortSignal): Promise<BoundCredentialLease>;
     loadApplication: TrustedApplicationLoader;
+    resolveBusinessPrompt: TrustedBusinessPromptResolver;
 }
 const identifier = z.string().min(1).max(256);
 const inputSchema = z.object({ id: identifier, conversationId: identifier, requestId: identifier, createdAt: z.number().int().nonnegative(),
@@ -44,10 +46,10 @@ function safeCode(error: unknown): ServiceErrorCode {
 }
 /** No implicit credentials, machine-default profile, application policy, or cached execution catalog. */
 export function createBoundServiceRuntime(context: BoundRuntimeContext): BoundServiceRuntime {
-    if (!isAbsolute(context.workspaceRoot) || !context.machineId || typeof context.acquireDiscovery !== 'function' || typeof context.acquireTurn !== 'function' || typeof context.loadApplication !== 'function') throw new Error('permission-denied');
+    if (!isAbsolute(context.workspaceRoot) || !context.machineId || typeof context.acquireDiscovery !== 'function' || typeof context.acquireTurn !== 'function' || typeof context.loadApplication !== 'function' || typeof context.resolveBusinessPrompt !== 'function') throw new Error('permission-denied');
     let busy = false;
     const withLease = async <T>(target: ServiceTarget, acquire: (paths: BoundWorkspace) => Promise<BoundCredentialLease>, signal: AbortSignal,
-        use: (lease: BoundCredentialLease, paths: BoundWorkspace, onSpawn: (pid: number) => Promise<void>) => Promise<T>): Promise<T> => {
+        use: (lease: BoundCredentialLease, paths: BoundWorkspace, onSpawn: (pid: number) => Promise<void>, processGuard: RuntimeProcessGuard) => Promise<T>): Promise<T> => {
         if (target.machineId !== context.machineId) throw new Error('permission-denied');
         if (busy) throw new Error('resource-busy');
         busy = true;
@@ -69,7 +71,7 @@ export function createBoundServiceRuntime(context: BoundRuntimeContext): BoundSe
                 await writeFile(join(root, '.runtime-started'), '1', { mode: 0o600 });
                 await writeFile(join(root, '.runtime-pid'), String(pid), { mode: 0o600 });
                 if (lease?.engine === 'codex') lease.launch.trackProcess(pid);
-            });
+            }, createRuntimeProcessGuard(root));
         } finally {
             try {
                 if (paths) {
@@ -84,15 +86,15 @@ export function createBoundServiceRuntime(context: BoundRuntimeContext): BoundSe
             } finally { busy = false; }
         }
     };
-    const discover = (target: ServiceTarget, lease: BoundCredentialLease, paths: BoundWorkspace, signal: AbortSignal, onSpawn: (pid: number) => Promise<void>) => lease.engine === 'codex'
-        ? readCodexCapabilities(target, lease.binary, lease.launch.home, paths.cwd, signal, onSpawn)
+    const discover = (target: ServiceTarget, lease: BoundCredentialLease, paths: BoundWorkspace, signal: AbortSignal, onSpawn: (pid: number) => Promise<void>, processGuard: RuntimeProcessGuard) => lease.engine === 'codex'
+        ? readCodexCapabilities(target, lease.binary, lease.launch.home, paths.cwd, signal, onSpawn, processGuard)
         : readClaudeCapabilities(target, lease.binary, lease.env, paths.cwd, signal);
     return {
         async readServiceCapabilities(target, signal = AbortSignal.timeout(20000)) {
             // A binding is structurally a target. Strip only its extra snapshot fields.
             const parsed = ServiceTargetSchema.safeParse({ machineId: target.machineId, engine: target.engine, accountRef: target.accountRef });
             if (!parsed.success) throw new Error('invalid-service-config');
-            try { return await withLease(parsed.data, paths => context.acquireDiscovery(parsed.data, paths, signal), signal, (lease, paths, onSpawn) => discover(parsed.data, lease, paths, signal, onSpawn)); }
+            try { return await withLease(parsed.data, paths => context.acquireDiscovery(parsed.data, paths, signal), signal, (lease, paths, onSpawn, processGuard) => discover(parsed.data, lease, paths, signal, onSpawn, processGuard)); }
             catch (error) { throw new Error(safeCode(error)); }
         },
         async executeBoundTurn(binding, input, signal, onEvent) {
@@ -107,13 +109,13 @@ export function createBoundServiceRuntime(context: BoundRuntimeContext): BoundSe
                 if (value.trim() && value.length <= 256) { actual[field] = value; onEvent({ type: 'actual', actual: { ...actual } }); }
             };
             try {
-                const { systemPrompt } = await loadApplicationPolicy(bound.appId, bound.permissions, context.loadApplication);
-                await withLease(bound, paths => context.acquireTurn(bound, paths, signal), signal, async (lease, paths, onSpawn) => {
-                    const catalog = await discover(bound, lease, paths, signal, onSpawn);
+                const { systemPrompt } = await loadApplicationPolicy(bound.appId, bound.permissions, context.loadApplication, context.resolveBusinessPrompt);
+                await withLease(bound, paths => context.acquireTurn(bound, paths, signal), signal, async (lease, paths, onSpawn, processGuard) => {
+                    const catalog = await discover(bound, lease, paths, signal, onSpawn, processGuard);
                     validateBoundCapabilities(bound, catalog, turn.messages.some(message => !!message.images?.length));
                     const options = { systemPrompt, reasoning: bound.reasoning, onReasoning: (value: string) => report('reasoning', value) };
                     const onText = (text: string) => onEvent({ type: 'text', text });
-                    if (lease.engine === 'codex') await runRestrictedCodex(lease.binary, lease.launch.home, paths.cwd, turn.messages, signal, onText, onSpawn, bound.requestedModel, value => report('modelId', value), options);
+                    if (lease.engine === 'codex') await runRestrictedCodex(lease.binary, lease.launch.home, paths.cwd, turn.messages, signal, onText, onSpawn, bound.requestedModel, value => report('modelId', value), options, processGuard);
                     else await runRestrictedClaude(lease.binary, paths.cwd, turn.messages, signal, onText, bound.requestedModel, value => report('modelId', value), {
                         ...options, env: lease.env, verifyIdentity: () => verifyClaudeIdentity(bound, lease.binary, lease.env, paths.cwd, signal),
                     });
