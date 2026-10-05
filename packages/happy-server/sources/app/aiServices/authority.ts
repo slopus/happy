@@ -1,3 +1,4 @@
+import { lockServiceAccount } from './transactions';
 import type { Prisma } from '@prisma/client';
 import { ServicePrincipalSchema, ServiceTargetSchema, type ServicePrincipal, type ServiceTarget } from '@slopus/happy-wire';
 import { authorizeServicePrincipal, targetKey } from './bindings';
@@ -5,6 +6,7 @@ import { verifyServiceIdentity } from './store';
 import { authorizeWorkerBinding } from './turns';
 import { deny } from './errors';
 export async function authorizeProbe(tx: Prisma.TransactionClient, principal: ServicePrincipal, target: ServiceTarget, fingerprint?: string) {
+ await lockServiceAccount(tx, principal.ownerId);
  if (principal.kind !== 'owner') {
   await authorizeServicePrincipal(tx,principal,principal.scope.appId,principal.scope.serviceId);
   if (!principal.scope.targets.some(value => targetKey(value) === targetKey(target))) deny('permission-denied');
@@ -16,6 +18,7 @@ export async function authorizeProbe(tx: Prisma.TransactionClient, principal: Se
 }
 export type ServiceCredentialAuthority = { kind: 'probe'|'turn'; id: string; lease: string };
 export async function authorizeServiceCredential(tx: Prisma.TransactionClient, ownerId: string, machineId: string, authority: ServiceCredentialAuthority) {
+ await lockServiceAccount(tx, ownerId);
  if (authority.kind === 'probe') {
   const probe = await tx.aIServiceProbe.findFirst({ where: { id: authority.id, ownerId, machineId, lease: authority.lease, state: 'running', deadline: { gt: new Date() } } });
   if (!probe) deny('execution-interrupted');

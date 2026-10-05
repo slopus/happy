@@ -74,8 +74,14 @@ export function createServiceGrants(database: PrismaClient, store: AIServiceStor
                 const credential = `paws_service.${id}.${secret}`, digest = serviceDigest(credential);
                 if (grant.credentialDigest && grant.credentialDigest !== digest) deny('permission-denied');
                 if (!['service-approved', 'service-redeemed'].includes(pairing.state)) deny('permission-denied');
-                await tx.aIServiceAuthorization.update({ where: { id }, data: { credentialDigest: digest } });
-                await tx.appDelegation.update({ where: { id }, data: { state: 'service-redeemed' } });
+                // First redemption makes the credential usable atomically. A retry
+                // must be read-only: turn start holds grant SHARE before delegation,
+                // so updating the grant while holding delegation would invert locks.
+                if (pairing.state === 'service-approved') {
+                    if (grant.credentialDigest) deny('permission-denied');
+                    await tx.aIServiceAuthorization.update({ where: { id }, data: { credentialDigest: digest } });
+                    await tx.appDelegation.update({ where: { id }, data: { state: 'service-redeemed' } });
+                } else if (grant.credentialDigest !== digest) deny('permission-denied');
                 // The recipient assembles GrantReceipt only after local decryption. No clear key exists here.
                 return { state: 'authorized' as const, id, protocol: 'ai-services/1' as const, envelope: pairing.appEnvelope,
                     grant: ServiceGrantSchema.parse({ id: grant.id, ownerId: grant.ownerId, kind: grant.kind, protocol: 'ai-services/1', scope: grant.scope, createdAt: grant.createdAt.getTime(), revokedAt: null }) };

@@ -50,6 +50,9 @@ it('keeps personal keys sealed with retryable exact-secret redemption and regist
  await expect(grants.authenticate(token)).rejects.toMatchObject({ code:'permission-denied' });
  const row=await ctx.database.aIServiceAuthorization.findUniqueOrThrow({ where:{ id:pairing.id } });
  expect(JSON.stringify(row)).not.toContain(messageKey);
+ await expect(grants.redeemPersonalPairing(pairing.id,origin,'wrong-proof',credential)).rejects.toMatchObject({ code:'authorization-expired' });
+ await store.revokeAuthorization('grants-owner',pairing.id);
+ await expect(grants.redeemPersonalPairing(pairing.id,origin,verifier,credential)).rejects.toMatchObject({ code:'authorization-revoked' });
 });
 it('loads immutable business prompts for a second app and rejects unknown revisions',async()=>{
  await store.registerBusinessPrompt({ id:'summarizer',version:'1' },'Summarize the supplied text in one sentence.');

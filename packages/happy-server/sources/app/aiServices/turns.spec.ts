@@ -44,6 +44,14 @@ it('deduplicates turns, fences cancel/completion, and never replays expired leas
  if(raced.record.status === 'cancel-requested') await turns.publish('turn-owner',target.machineId,second.id,{ lease:secondJob!.lease,status:'cancelled' });
  expect(['completed','cancelled']).toContain((await turns.readBoundTurn(principal,binding.id,second.id)).record.status);
  expect((await turns.readTurns(principal,binding.id,a.id)).turns.map(turn=>turn.record.id)).toEqual([second.id]);
+ const cancelled = await turns.startBoundTurn(principal,binding.id,'cancel-before-claim',{ ciphertext:'f'.repeat(80) });
+ await turns.cancelBoundTurn(principal,binding.id,cancelled.id);
+ expect(await turns.claim('turn-owner',target.machineId)).toBeNull();
+ expect((await turns.readBoundTurn(principal,binding.id,cancelled.id)).record.status).toBe('cancelled');
+ const expired = await turns.startBoundTurn(principal,binding.id,'expire-before-claim',{ ciphertext:'g'.repeat(80) });
+ await db.appChatTurn.update({ where:{ id:expired.id },data:{ deadline:new Date(0) } });
+ expect(await turns.claim('turn-owner',target.machineId)).toBeNull();
+ expect((await turns.readBoundTurn(principal,binding.id,expired.id)).record.status).toBe('interrupted');
  const racing = createAIServiceStore(db, { readLive: async () => {
   await store.revokeAuthorization('turn-owner', receipt.id);
   return { ...target, protocol: 'ai-services/1', observedAt: Date.now(), availability: 'online', completeness: 'complete', defaultModelId: 'm', models: [{ id: 'm', name: 'M', supportsImages: false, reasoning: { supportsDefault: true, values: [], defaultValue: null } }] };

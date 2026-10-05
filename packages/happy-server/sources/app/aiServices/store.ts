@@ -1,3 +1,4 @@
+import { serviceTransaction } from './transactions';
 import { randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { z } from 'zod';
@@ -51,7 +52,7 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
     }
     const verifyIdentity = verifyServiceIdentity;
     async function observeConfig(ownerId: string, config: ServiceConfig) {
-        const identity = await database.$transaction(tx => verifyIdentity(tx, ownerId, config, undefined, null, true));
+        const identity = await serviceTransaction(database, ownerId, tx => verifyIdentity(tx, ownerId, config, undefined, null, true));
         const catalog = config.engine === 'claude' || config.modelId !== null || config.reasoning.mode === 'explicit'
             ? await readTrustedCatalog(source, ownerId, config) : null;
         if (config.engine === 'claude' && !catalog) deny('account-not-found');
@@ -72,7 +73,7 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
             const parsed = CreateServiceSchema.safeParse(input);
             if (!parsed.success) deny('invalid-service-config');
             const observation = await observeConfig(ownerId, parsed.data.config);
-            return database.$transaction(async tx => {
+            return serviceTransaction(database, ownerId, async tx => {
                 const { fingerprint } = await verifyIdentity(tx, ownerId, parsed.data.config, observation.fingerprint, observation.catalog);
                 if (observation.catalog) await cacheCatalog(tx, ownerId, observation.catalog);
                 const service = await tx.aIService.create({ data: { id: randomUUID(), ownerId, name: parsed.data.name, enabled: parsed.data.enabled ?? true,
@@ -83,9 +84,9 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
         async updateService(ownerId: string, id: string, expectedRevision: number, input: ServiceConfig): Promise<ServiceRevision> {
             const parsed = ServiceConfigSchema.safeParse(input);
             if (!parsed.success) deny('invalid-service-config');
-            await database.$transaction(async tx => { const service = await lockService(tx, ownerId, id); requireRevision(service.revision, expectedRevision); });
+            await serviceTransaction(database, ownerId, async tx => { const service = await lockService(tx, ownerId, id); requireRevision(service.revision, expectedRevision); });
             const observation = await observeConfig(ownerId, parsed.data);
-            return database.$transaction(async tx => {
+            return serviceTransaction(database, ownerId, async tx => {
                 const service = await lockService(tx, ownerId, id);
                 requireRevision(service.revision, expectedRevision);
                 const { fingerprint } = await verifyIdentity(tx, ownerId, parsed.data, observation.fingerprint, observation.catalog);
@@ -101,7 +102,7 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
             return rows.map(row => ServiceRefSchema.parse(row));
         },
         async readService(ownerId: string, id: string): Promise<{ service: ServiceRef; revision: ServiceRevision }> {
-            return database.$transaction(async tx => {
+            return serviceTransaction(database, ownerId, async tx => {
                 const row = await lockService(tx, ownerId, id);
                 const revision = await tx.aIServiceRevision.findUniqueOrThrow({ where: { serviceId_revision: { serviceId: id, revision: row.revision } } });
                 return { service: ServiceRefSchema.parse({ id, ownerId, name: row.name, enabled: row.enabled, revision: row.revision }),
@@ -116,14 +117,14 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
         async updateServiceMetadata(ownerId: string, id: string, expectedRevision: number, input: z.infer<typeof ServiceMetadataSchema>): Promise<ServiceRef> {
             const parsed = ServiceMetadataSchema.safeParse(input);
             if (!parsed.success) deny('invalid-request');
-            return database.$transaction(async tx => {
+            return serviceTransaction(database, ownerId, async tx => {
                 const row = await lockService(tx, ownerId, id); requireRevision(row.revision, expectedRevision);
                 const updated = await tx.aIService.update({ where: { id }, data: parsed.data });
                 return ServiceRefSchema.parse({ id, ownerId, name: updated.name, enabled: updated.enabled, revision: updated.revision });
             });
         },
         async deleteService(ownerId: string, id: string, expectedRevision: number): Promise<void> {
-            await database.$transaction(async tx => {
+            await serviceTransaction(database, ownerId, async tx => {
                 const row = await lockService(tx, ownerId, id); requireRevision(row.revision, expectedRevision);
                 await tx.aIService.update({ where: { id }, data: { enabled: false, deletedAt: new Date() } });
             });
@@ -134,7 +135,7 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
             if (!parsed.success) deny('invalid-request');
             const data = parsed.data;
             const observations = await Promise.all(data.scope.targets.map(target => observeConfig(ownerId, { ...target, modelId: null, reasoning: { mode: 'default' } })));
-            return database.$transaction(async tx => {
+            return serviceTransaction(database, ownerId, async tx => {
                 const service = await lockService(tx, ownerId, data.scope.serviceId);
                 if (!service.enabled) deny('service-disabled');
                 const policy = await createApplicationRegistry(tx).readApplication(data.scope.appId);
@@ -151,7 +152,7 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
             });
         },
         async listServiceAuthorizations(ownerId: string, serviceId: string): Promise<ServiceGrant[]> {
-            return database.$transaction(async tx => {
+            return serviceTransaction(database, ownerId, async tx => {
                 await lockService(tx, ownerId, serviceId);
                 const rows = await tx.aIServiceAuthorization.findMany({ where: { ownerId, serviceId }, orderBy: { createdAt: 'asc' } });
                 return rows.map(row => ServiceGrantSchema.parse({ id: row.id, ownerId, kind: row.kind, protocol: 'ai-services/1', scope: row.scope,
@@ -159,7 +160,7 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
             });
         },
         async revokeAuthorization(ownerId: string, id: string): Promise<void> {
-            await database.$transaction(async tx => {
+            await serviceTransaction(database, ownerId, async tx => {
                 const result = await tx.aIServiceAuthorization.updateMany({ where: { id, ownerId }, data: { revokedAt: new Date() } });
                 if (result.count !== 1) deny('permission-denied');
                 await tx.appChatTurn.updateMany({ where: { binding: { authorizationId: id }, state: 'accepted' }, data: { state: 'cancelled', completedAt: new Date() } });

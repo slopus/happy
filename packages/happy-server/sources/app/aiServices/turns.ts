@@ -1,3 +1,4 @@
+import { lockServiceAccount, serviceTransaction } from './transactions';
 import { randomBytes, randomUUID } from 'node:crypto';
 import type { PrismaClient, Prisma, AppChatTurn } from '@prisma/client';
 import { ExecutionBindingSchema, ServicePrincipalSchema, TurnRecordSchema, TurnActualSchema, ServiceErrorSchema, type ServicePrincipal, type ExecutionBinding, type TurnRecord, type TurnActual, type ServiceError } from '@slopus/happy-wire';
@@ -11,6 +12,7 @@ export function boundTurnRecord(row: AppChatTurn, binding: ExecutionBinding): Tu
   completedAt: row.completedAt?.getTime() ?? null, error: row.serviceError });
 }
 export async function authorizeWorkerBinding(tx: Prisma.TransactionClient, ownerId: string, machineId: string, bindingId: string) {
+ await lockServiceAccount(tx, ownerId);
  const row = await tx.aIServiceBinding.findFirst({ where: { id: bindingId, ownerId } });
  if (!row?.authorizationId) deny('permission-denied');
  const binding = ExecutionBindingSchema.parse(row.snapshot);
@@ -84,7 +86,7 @@ export function createServiceTurns(database: PrismaClient, store: AIServiceStore
   async cancelBoundTurn(principal: ServicePrincipal, bindingId: string, id: string) {
    const user = scoped(principal);
    await store.readBinding(user, user.scope.appId, bindingId);
-   return database.$transaction(async tx => {
+   return serviceTransaction(database, user.ownerId, async tx => {
     await authorizeServicePrincipal(tx, user, user.scope.appId, user.scope.serviceId);
     await lockTurn(tx,id);
     const row = await tx.appChatTurn.findFirst({ where: { id, bindingId } });
@@ -97,7 +99,7 @@ export function createServiceTurns(database: PrismaClient, store: AIServiceStore
   async claim(ownerId: string, machineId: string) {
    // Expiration takes only turn-row locks; commit it before taking authorization locks.
    await database.$transaction(tx => expire(tx,machineId));
-   return database.$transaction(async tx => {
+   return serviceTransaction(database, ownerId, async tx => {
     await tx.$queryRaw`SELECT "machineId" FROM "AppChatWorker" WHERE "machineId" = ${machineId} AND "accountId" = ${ownerId} FOR UPDATE`;
     if (!await tx.machine.findFirst({ where: { id: machineId, accountId: ownerId } })) deny('permission-denied');
     if (await tx.appChatTurn.count({ where: { binding: { ownerId, snapshot: { path: ['machineId'], equals: machineId } }, state: { in: ['running','cancel-requested'] } } })) return null;
@@ -105,9 +107,17 @@ export function createServiceTurns(database: PrismaClient, store: AIServiceStore
     for (const row of candidates) {
      let auth;
      try { auth = await authorizeWorkerBinding(tx,ownerId,machineId,row.bindingId!); }
-     catch { await tx.appChatTurn.update({ where: { id: row.id }, data: { state: 'interrupted', completedAt: new Date(), serviceError: { code: 'authorization-revoked', retryable: false } } }); continue; }
+     catch { await tx.appChatTurn.updateMany({ where: { id: row.id, state: 'accepted' }, data: { state: 'interrupted', completedAt: new Date(), serviceError: { code: 'authorization-revoked', retryable: false } } }); continue; }
+     // Take the turn lock after authorization, then compare current state and UTC
+     // database time. No deadline check occurs before a possible row-lock wait.
+     await lockTurn(tx, row.id);
      const lease = randomBytes(32).toString('base64url');
-     const updated = await tx.appChatTurn.update({ where: { id: row.id }, data: { state: 'running', startedAt: new Date(), lease, leaseUntil: new Date(Date.now()+15000) } });
+     const [updated] = await tx.$queryRaw<AppChatTurn[]>`UPDATE "AppChatTurn"
+      SET "state" = 'running', "startedAt" = (clock_timestamp() AT TIME ZONE 'UTC'), "lease" = ${lease},
+          "leaseUntil" = (clock_timestamp() AT TIME ZONE 'UTC') + interval '15 seconds'
+      WHERE "id" = ${row.id} AND "state" = 'accepted' AND "deadline" > (clock_timestamp() AT TIME ZONE 'UTC')
+      RETURNING *`;
+     if (!updated) continue;
      const envelopes = auth.grant.machineEnvelopes as Record<string,string> | null;
      if (!envelopes?.[machineId]) deny('permission-denied');
      return { record: boundTurnRecord(updated,auth.binding), lease, input: row.input, envelope: envelopes[machineId], kind: auth.grant.kind, grantId: auth.grant.id, ownerId, scope: auth.grant.scope };
@@ -116,7 +126,7 @@ export function createServiceTurns(database: PrismaClient, store: AIServiceStore
    });
   },
   async publish(ownerId: string, machineId: string, id: string, input: { lease: string; output?: string; sequence?: number; status?: 'completed'|'failed'|'cancelled'; actual?: TurnActual; error?: ServiceError }) {
-   return database.$transaction(async tx => {
+   return serviceTransaction(database, ownerId, async tx => {
     const before = await tx.appChatTurn.findUnique({ where: { id } });
     if (!before?.bindingId) deny('permission-denied');
     await authorizeWorkerBinding(tx,ownerId,machineId,before.bindingId);

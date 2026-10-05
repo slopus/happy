@@ -1,3 +1,4 @@
+import { serviceTransaction } from './transactions';
 import { randomUUID, randomBytes } from 'node:crypto';
 import type { PrismaClient } from '@prisma/client';
 import { CapabilityCatalogSchema, ServicePrincipalSchema, ServiceTargetSchema, type CapabilityCatalog, type ServicePrincipal, type ServiceTarget } from '@slopus/happy-wire';
@@ -11,7 +12,7 @@ export function createServiceProbes(database: PrismaClient) {
    const principal = ServicePrincipalSchema.parse(authority);
    if (principal.ownerId !== ownerId) deny('permission-denied');
    const id = randomUUID();
-   await database.$transaction(async tx => {
+   await serviceTransaction(database, ownerId, async tx => {
     await tx.$queryRaw`SELECT "machineId" FROM "AppChatWorker" WHERE "machineId" = ${target.machineId} AND "accountId" = ${ownerId} FOR UPDATE`;
     await tx.aIServiceProbe.updateMany({ where: { machineId: target.machineId, state: { in: ['queued','running'] }, deadline: { lte: new Date() } }, data: { state: 'failed', lease: null, error: 'execution-interrupted' } });
     const identity = await authorizeProbe(tx,principal,target);
@@ -43,7 +44,7 @@ export function createServiceProbes(database: PrismaClient) {
    return { protocol: 'ai-services/1' };
   },
   async claim(ownerId: string, machineId: string) {
-   return database.$transaction(async tx => {
+   return serviceTransaction(database, ownerId, async tx => {
     await tx.$queryRaw`SELECT "machineId" FROM "AppChatWorker" WHERE "machineId" = ${machineId} AND "accountId" = ${ownerId} FOR UPDATE`;
     if (!await tx.machine.findFirst({ where: { id: machineId, accountId: ownerId } })) deny('permission-denied');
     const row = await tx.aIServiceProbe.findFirst({ where: { ownerId, machineId, state: 'queued', deadline: { gt: new Date() } }, orderBy: { createdAt: 'asc' } });
@@ -56,7 +57,7 @@ export function createServiceProbes(database: PrismaClient) {
    });
   },
   async publish(ownerId: string, machineId: string, id: string, lease: string, catalog: CapabilityCatalog | null, error?: string) {
-   return database.$transaction(async tx => {
+   return serviceTransaction(database, ownerId, async tx => {
     await tx.$queryRaw`SELECT "id" FROM "AIServiceProbe" WHERE "id" = ${id} FOR UPDATE`;
     const row = await tx.aIServiceProbe.findFirst({ where: { id, ownerId, machineId, state: 'running', lease, deadline: { gt: new Date() } } });
     if (!row) deny('execution-interrupted');

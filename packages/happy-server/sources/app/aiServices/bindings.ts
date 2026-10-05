@@ -1,3 +1,4 @@
+import { serviceTransaction } from './transactions';
 import { randomUUID } from 'node:crypto';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import {
@@ -112,7 +113,7 @@ export function createBindingStore(database: PrismaClient, source: TrustedCapabi
     }
     async function withValidatedBinding<T>(principal: ServicePrincipal, appId: string, id: string,
         persist: (tx: Prisma.TransactionClient, binding: ExecutionBinding) => Promise<T>, live = true): Promise<T> {
-        const preflight = await database.$transaction(async tx => {
+        const preflight = await serviceTransaction(database, principal.ownerId, async tx => {
             const stored = await readStored(tx, principal, appId, id);
             const service = await dependencies.lockService(tx, principal.ownerId, stored.row.serviceId);
             if (!service.enabled) deny('service-disabled');
@@ -121,7 +122,7 @@ export function createBindingStore(database: PrismaClient, source: TrustedCapabi
         });
         const catalog = live ? await readTrustedCatalog(source, principal.ownerId, preflight.binding, principal) : null;
         if (live && !catalog) deny('machine-offline');
-        return database.$transaction(async tx => {
+        return serviceTransaction(database, principal.ownerId, async tx => {
             const { row, binding } = await readStored(tx, principal, appId, id);
             const service = await dependencies.lockService(tx, principal.ownerId, row.serviceId);
             if (!service.enabled) deny('service-disabled');
@@ -140,10 +141,10 @@ export function createBindingStore(database: PrismaClient, source: TrustedCapabi
             if (!options.success) deny('invalid-request');
             // Retry only configuration contention. Never reuse an observation for a different revision.
             for (let attempt = 0; attempt < 3; attempt++) {
-                const before = await database.$transaction(tx => prepareBinding(tx, principal, appId, serviceId, options.data));
+                const before = await serviceTransaction(database, principal.ownerId, tx => prepareBinding(tx, principal, appId, serviceId, options.data));
                 const catalog = await readTrustedCatalog(source, principal.ownerId, before.config, principal);
                 if (!catalog) deny('machine-offline');
-                const result = await database.$transaction(async tx => {
+                const result = await serviceTransaction(database, principal.ownerId, async tx => {
                     const current = await prepareBinding(tx, principal, appId, serviceId, options.data);
                     if (before.service.revision !== current.service.revision) return null;
                     const { service, revision, config, permissions, grant } = current;
@@ -164,7 +165,7 @@ export function createBindingStore(database: PrismaClient, source: TrustedCapabi
             return deny('revision-conflict');
         },
         async readBinding(principal: ServicePrincipal, appId: string, id: string): Promise<ExecutionBinding> {
-            return database.$transaction(async tx => (await readStored(tx, principal, appId, id)).binding);
+            return serviceTransaction(database, principal.ownerId, async tx => (await readStored(tx, principal, appId, id)).binding);
         },
         async validateBinding(principal: ServicePrincipal, appId: string, id: string): Promise<ExecutionBinding> {
             return withValidatedBinding(principal, appId, id, async (_tx, binding) => binding);
