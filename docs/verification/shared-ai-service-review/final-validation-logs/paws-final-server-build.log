@@ -1,0 +1,12 @@
+
+> happy-server-self-host@1.1.11 build /Users/jacky/jacky-github/happy--shared-ai-services/packages/happy-server
+> pnpm run typecheck && node scripts/build-runtime.cjs
+
+
+> happy-server-self-host@1.1.11 typecheck /Users/jacky/jacky-github/happy--shared-ai-services/packages/happy-server
+> tsc --noEmit
+
+Bundled 143 modules in 67ms
+
+  standalone.mjs  1.12 MB  (entry point)
+

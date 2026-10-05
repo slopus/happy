@@ -1,0 +1,10 @@
+
+ RUN  v3.2.4 /Users/jacky/jacky-github/happy--shared-ai-services/packages/happy-app
+
+ ✓ sources/components/aiServices/ServiceEditor.test.tsx (2 tests) 113ms
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  05:24:58
+   Duration  3.97s (transform 729ms, setup 0ms, collect 1.93s, tests 113ms, environment 0ms, prepare 579ms)
+

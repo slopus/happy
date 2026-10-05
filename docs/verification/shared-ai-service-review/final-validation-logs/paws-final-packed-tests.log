@@ -1,0 +1,17 @@
+
+ RUN  v3.2.4 /Users/jacky/jacky-github/happy--shared-ai-services/packages/happy-server
+
+stdout | sources/app/aiServices/smokeAcceptance.spec.ts > serves a real packaged panel and bridge without exposing the platform receipt
+Synthetic second app: http://127.0.0.1:49781 (actual routes; no native provider).
+
+ ✓ sources/app/aiServices/smokeAcceptance.spec.ts (6 tests | 1 skipped) 6952ms
+   ✓ executes both packaged applications and rejects foreign bindings, owner APIs, origins and tool permissions  1138ms
+   ✓ keeps old bindings while new defaults change and rejects unsupported reasoning  756ms
+   ✓ recovers before and after acceptance losses with zero duplicate executions, and fences cancellation  1444ms
+   ✓ fails closed for offline, login loss, quota and revocation without changing payer or binding  665ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed | 1 skipped (6)
+   Start at  05:26:58
+   Duration  9.19s (transform 252ms, setup 0ms, collect 801ms, tests 6.95s, environment 0ms, prepare 381ms)
+

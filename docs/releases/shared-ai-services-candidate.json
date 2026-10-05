@@ -30,7 +30,7 @@
   "advisorCodeCommit": "c66c820a2a26a9450abc212928590181b7c5d683",
   "protocol": "ai-services/1",
   "releaseVersionSelected": false,
-  "finalReview": "certainty-remediation-self-review-complete-controller-review-pending",
+  "finalReview": "independent-review-passed-under-shared-storage-contract",
   "realAcceptance": "incomplete",
   "dailyUse": "pending",
   "sourceProvenance": "Local task records associate these artifacts with the commits below. Tarballs contain no gitHead. These are not tagged publication artifacts. Repack and validate the same release commit before publication.",
@@ -551,5 +551,13 @@
     "upgrade": "Stop/reload every pre-fix candidate client before enabling this SDK. Mixed old/new submission protocol is unsupported. Unpublished/undeployed feature only.",
     "retention": "Retain immutable admission outcome for as long as its outbox/request can be retried. No lease expiry or silent evidence reclamation.",
     "legacy": "Outboxes with no admissionOwner are conservatively uncertain."
+  },
+  "independentReview": {
+    "date": "2026-10-06",
+    "pawsReviewedHead": "776172ba82677abae7cf67e2fbf3135c9b17fbfe",
+    "advisorReviewedHead": "ab19e0ebd243fbfbe9e1e37359b1023f2a14c233",
+    "result": "all-raised-code-findings-addressed-no-new-critical-or-important",
+    "report": "../verification/shared-ai-service-review/certainty-re-review.md",
+    "productionApproved": false
   }
 }

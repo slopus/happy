@@ -1,0 +1,10 @@
+
+ RUN  v3.2.4 /Users/jacky/jacky-github/happy--shared-ai-services/packages/paws-agent
+
+ ✓ src/services/submission.test.ts (17 tests) 56ms
+
+ Test Files  1 passed (1)
+      Tests  17 passed (17)
+   Start at  05:51:10
+   Duration  1.81s (transform 171ms, setup 0ms, collect 293ms, tests 56ms, environment 0ms, prepare 186ms)
+

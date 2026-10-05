@@ -1,0 +1,28 @@
+✔ platform default uses SDK with stable requests, mode, images and no local spawn (576.664041ms)
+✔ bridge denies unauthenticated, CSRF, foreign conversation and supplied subjects before SDK (164.477958ms)
+✔ durable storage keeps the winner across racing handles and reopen (22.199958ms)
+✔ legacy history requires consent; bridge cannot bypass migration or upload foreign history (115.308ms)
+✔ lost-create and lost-turn responses recover separately after restart; legacy switch keeps Paws transport (211.702958ms)
+✔ packed SDK durable recovery after lost POST (accepted=false) (225.434625ms)
+✔ packed SDK durable recovery after lost POST (accepted=true) (42.120458ms)
+✔ caller application ID retries preserve the original creation; identity and configuration conflicts disclose no binding (202.065625ms)
+✔ bridge retains one active turn per user, image limits, cancellation and truthful refresh state (51.897625ms)
+✔ private platform config rejects world-readable secrets, personal grants and public HTTP (2.698875ms)
+✔ deleted application IDs cannot be reassigned to another user or recover their old upstream binding (324.996916ms)
+✔ policy rejection precedes reservation and leaves explanatory state across restart (38.91575ms)
+✔ fresh SDK admission rejection is terminal; retry, read and cancel remain local after restart (83.027084ms)
+✔ an uncertain prior submission stays recoverable when later policy or SDK errors are nonretryable (12.08675ms)
+✔ HTTP rejection releases capacity and permits stop and delete without an upstream turn ID (255.762ms)
+✔ packed SDK preflight rejects new-image before reservation and permits clean text (52.833292ms)
+✔ packed SDK preflight rejects history-image before reservation and permits clean text (81.387625ms)
+✔ packed SDK preflight rejects outside-grant-scope before reservation and permits clean text (31.911666ms)
+✔ packed SDK preflight rejects missing-binding before reservation and permits clean text (32.947209ms)
+✔ packed SDK preflight rejects changed-binding before reservation and permits clean text (78.421167ms)
+ℹ tests 20
+ℹ suites 0
+ℹ pass 20
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3383.288583

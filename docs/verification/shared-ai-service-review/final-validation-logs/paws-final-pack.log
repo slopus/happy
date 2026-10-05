@@ -1,0 +1,46 @@
+📦  @wangjs-jacky/paws-agent@0.3.0
+Tarball Contents
+bin/paws-agent.mjs
+dist/browser.cjs
+dist/browser.d.cts
+dist/browser.d.mts
+dist/browser.mjs
+dist/cli.mjs
+dist/encryption-BsYoKPOz.mjs
+dist/encryption-CYxrsYeF.cjs
+dist/index.cjs
+dist/index.d.cts
+dist/index.d.mts
+dist/index.mjs
+dist/node.cjs
+dist/node.d.cts
+dist/node.d.mts
+dist/node.mjs
+dist/nodeCredentials-BGQFL8Vl.cjs
+dist/nodeCredentials-BjCy0nu9.mjs
+dist/nodePlatformTransport-1mBTkPEm.cjs
+dist/nodePlatformTransport-D8Uqh7Rq.mjs
+dist/PawsAgentClient-_FclH5ie.cjs
+dist/PawsAgentClient-BmNdeT-s.mjs
+dist/platformTransport-BbHAjXLj.cjs
+dist/platformTransport-tfwqRlQ3.mjs
+dist/services-Dxu8HoDu.d.cts
+dist/services-Dxu8HoDu.d.mts
+dist/services.browser.cjs
+dist/services.browser.d.cts
+dist/services.browser.d.mts
+dist/services.browser.mjs
+dist/services.cjs
+dist/services.d.cts
+dist/services.d.mts
+dist/services.mjs
+dist/servicesNode.cjs
+dist/servicesNode.d.cts
+dist/servicesNode.d.mts
+dist/servicesNode.mjs
+dist/storage-Cxngvnao.cjs
+dist/storage-DV8eFVyT.mjs
+package.json
+README.md
+Tarball Details
+/Users/jacky/jacky-github/happy--shared-ai-services/examples/ai-service-smoke/vendor/wangjs-jacky-paws-agent-0.3.0.tgz
