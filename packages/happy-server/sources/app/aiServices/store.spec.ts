@@ -30,6 +30,40 @@ describe('AI service persistence and authorization', () => {
     });
     afterAll(async () => { await context?.database.$disconnect(); await context?.pg.close(); });
 
+    it('allows a live daemon probe to save refreshed credentials without holding DB locks', async () => {
+        const service = await create();
+        const callbackStore = createAIServiceStore(context.database, { readLive: async () => {
+            await context.database.$transaction(async tx => {
+                await tx.codexAccountProfile.update({ where: { id: profile }, data: { credentialVersion: { increment: 1 } } });
+            });
+            return catalog;
+        } });
+        const binding = await callbackStore.resolveBinding(principal(), appId, service.id, {});
+        expect(binding.accountRef).toEqual(config.accountRef);
+        expect((await context.database.codexAccountProfile.findUniqueOrThrow({ where: { id: profile } })).credentialVersion).toBe(2);
+    }, 10000);
+
+    it.each(['revoke', 'identity', 'default'] as const)('revalidates %s changes made during a DB-callback probe', async change => {
+        const service = await create();
+        const grant = await store.registerAuthorization(owner, { id: `${owner}-race`, kind: 'personal-grant', scope: { appId, serviceId: service.id, targets: [ { machineId: machine, engine: 'codex', accountRef: config.accountRef } ], permissions: ['chat'], expiresAt: null }, allowModelOverride: true, allowReasoningOverride: true });
+        const user: ServicePrincipal = { kind: 'personal-grant', ownerId: owner, grantId: grant.id, scope: grant.scope };
+        let changed = false;
+        const racing = createAIServiceStore(context.database, { readLive: async () => {
+            if (!changed) {
+                changed = true;
+                if (change === 'revoke') await store.revokeAuthorization(owner, grant.id);
+                if (change === 'identity') await context.database.codexAccountProfile.update({ where: { id: profile }, data: { externalAccountFingerprint: 'replaced' } });
+                if (change === 'default') await store.updateService(owner, service.id, 1, { ...config, modelId: 'native-text' });
+            }
+            return catalog;
+        } });
+        if (change === 'default') expect(await racing.resolveBinding(user, appId, service.id, {})).toMatchObject({ revision: 2, requestedModel: 'native-text' });
+        else {
+            await expect(racing.resolveBinding(user, appId, service.id, {})).rejects.toMatchObject({ code: change === 'revoke' ? 'authorization-revoked' : 'account-identity-changed' });
+            expect(await context.database.aIServiceBinding.count({ where: { serviceId: service.id } })).toBe(0);
+        }
+    });
+
     it('commits one concurrent revision update and preserves revision history', async () => {
         const service = await create();
         const results = await Promise.allSettled(['native-default', 'native-text'].map(modelId => store.updateService(owner, service.id, 1, { ...config, modelId })));
@@ -86,7 +120,7 @@ describe('AI service persistence and authorization', () => {
         const grant = await store.registerAuthorization(owner, { id: `${owner}-grant`, kind: 'platform-grant', scope: { appId, serviceId: service.id, targets: [{ machineId: machine, engine: 'codex', accountRef: { kind: 'codex-profile', id: profile } }], permissions: ['chat'], expiresAt: null }, allowModelOverride: true, allowReasoningOverride: true });
         await context.database.machine.create({ data: { id: `${machine}-two`, accountId: owner, metadata: 'encrypted' } });
         await store.updateService(owner, service.id, 1, { ...config, machineId: `${machine}-two` });
-        await expect(store.resolveBinding({ kind: 'platform-grant', ownerId: owner, grantId: grant.id, scope: grant.scope }, appId, service.id, {})).rejects.toMatchObject({ code: 'permission-denied' });
+        await expect(store.resolveBinding({ kind: 'platform-grant', ownerId: owner, grantId: grant.id, scope: grant.scope }, appId, service.id, {})).rejects.toMatchObject({ code: 'consent-required' });
     });
     it('rejects Cartesian target combinations and expired authorizations', async () => {
         const service = await create();
@@ -100,7 +134,7 @@ describe('AI service persistence and authorization', () => {
         const user: ServicePrincipal = { kind: 'personal-grant', ownerId: owner, grantId: grant.id, scope: grant.scope };
         const binding = await store.resolveBinding(user, appId, service.id, {});
         await store.updateService(owner, service.id, 1, { ...config, accountRef: { kind: 'codex-profile', id: secondProfile } });
-        await expect(store.resolveBinding(user, appId, service.id, {})).rejects.toMatchObject({ code: 'permission-denied' });
+        await expect(store.resolveBinding(user, appId, service.id, {})).rejects.toMatchObject({ code: 'consent-required' });
         expect(await store.validateBinding(user, appId, binding.id)).toEqual(binding);
         await context.database.aIServiceAuthorization.update({ where: { id: grant.id }, data: { expiresAt: new Date(0) } });
         await expect(store.validateBinding(user, appId, binding.id)).rejects.toMatchObject({ code: 'authorization-expired' });

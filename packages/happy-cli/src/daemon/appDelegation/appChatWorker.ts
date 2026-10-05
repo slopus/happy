@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { parseAppChatSelection, type AppChatSelection } from '@slopus/happy-wire';
 import { runRestrictedClaude, verifyRestrictedClaude } from './restrictedClaude';
+import { createSharedServiceWorker } from './sharedServiceWorker';
 import { acquireMachineLock } from './workerLock';
 import { configuration } from '@/configuration';
 import { logger } from '@/ui/logger';
@@ -37,6 +38,7 @@ export function startAppChatWorker(token: string, machine: Machine): () => void 
     const request = async <T>(path: string, body: unknown, method = 'POST', cleanup = false): Promise<T> => {
         const response = await fetch(`${configuration.serverUrl}/v1/${path}`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: cleanup ? AbortSignal.timeout(7000) : AbortSignal.any([lifetime.signal, AbortSignal.timeout(7000)]), redirect: 'error' });
         const data = await response.json() as any;
+        if (response.status === 404 && path.startsWith('ai-service-worker/')) throw new Error('shared-protocol-unavailable');
         if (!response.ok) throw new Error(response.status === 409 && data.error === 'codex-account-unbound' ? 'codex-account-unbound' : 'authorization-unavailable');
         return data as T;
     };
@@ -48,6 +50,7 @@ export function startAppChatWorker(token: string, machine: Machine): () => void 
         reportCodexAccountQuota: (id, data) => request(`codex-accounts/${id}/quota-snapshot`, data, 'PUT', true),
         reportCodexAccountStatus: (id, data) => request(`codex-accounts/${id}/status`, data, 'PUT', true),
     };
+    const shared = createSharedServiceWorker({ machine, request, api, recoveryRoot: join(configuration.happyHomeDir, 'ai-service-credentials', createHash('sha256').update(machine.id).digest('hex')), lifetime: lifetime.signal, codexBinary: binary, claudeBinary });
     const recoverCredentials = () => recoverAppChatCredentialJobs(recoveryRoot, machine.id, api, activeHomes);
     const execute = async (job: Job) => {
         const control = new AbortController(); active = control;
@@ -131,11 +134,12 @@ export function startAppChatWorker(token: string, machine: Machine): () => void 
                     throw new Error('credential-recovery-pending');
                 }
                 recoveryWarning = false;
+                try { if (await shared.tick()) continue; } catch (error) { if (!(error instanceof Error) || error.message !== 'shared-protocol-unavailable') throw error; }
                 const { job } = await request<{ job: Job | null }>(`app-worker/${encodeURIComponent(machine.id)}/claim`, { protocol: 3, engines });
                 if (job) await execute(job);
             } catch { /* Failed claim leaves no running turn; retry after bounded delay. */ }
             if (!lifetime.signal.aborted) await new Promise<void>(resolve => {
-                const timer = setTimeout(done, 5000);
+                const timer = setTimeout(done, 1000);
                 function done() { clearTimeout(timer); lifetime.signal.removeEventListener('abort', done); resolve(); }
                 lifetime.signal.addEventListener('abort', done, { once: true });
             });

@@ -20,15 +20,7 @@ const AuthorizationInputSchema = z.object({ id: z.string().min(1).max(256), kind
     scope: ServiceGrantScopeSchema, allowModelOverride: z.boolean(), allowReasoningOverride: z.boolean() }).strict();
 export type AuthorizationInput = z.infer<typeof AuthorizationInputSchema>;
 
-export function createAIServiceStore(database: PrismaClient, source?: TrustedCapabilitySource) {
-    const registry = createApplicationRegistry(database);
-    async function lockService(tx: Prisma.TransactionClient, ownerId: string, serviceId: string) {
-        await tx.$queryRaw`SELECT "id" FROM "AIService" WHERE "id" = ${serviceId} AND "ownerId" = ${ownerId} FOR UPDATE`;
-        const service = await tx.aIService.findFirst({ where: { id: serviceId, ownerId, deletedAt: null } });
-        if (!service) deny('service-not-found');
-        return service;
-    }
-    async function verifyIdentity(tx: Prisma.TransactionClient, ownerId: string, config: ServiceTarget, expectedFingerprint?: string): Promise<{ fingerprint: string; catalog: CapabilityCatalog | null }> {
+export async function verifyServiceIdentity(tx: Prisma.TransactionClient, ownerId: string, config: ServiceTarget, expectedFingerprint?: string, observation?: CapabilityCatalog | null, preflight = false): Promise<{ fingerprint: string; catalog: CapabilityCatalog | null }> {
         // Lock current identity rows through commit. Deletion cannot race a successful binding.
         await tx.$queryRaw`SELECT "id" FROM "Machine" WHERE "id" = ${config.machineId} AND "accountId" = ${ownerId} FOR SHARE`;
         if (!await tx.machine.findFirst({ where: { id: config.machineId, accountId: ownerId }, select: { id: true } })) deny('permission-denied');
@@ -41,23 +33,33 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
             if (profile.status !== 'available') deny('account-login-required');
             fingerprint = profile.externalAccountFingerprint;
         } else {
-            catalog = await readTrustedCatalog(source, ownerId, config);
-            if (!catalog) deny('account-not-found');
+            catalog = observation ?? null;
+            if (!preflight && !catalog) deny('account-not-found');
             fingerprint = config.accountRef.identityId;
         }
         if (expectedFingerprint !== undefined && fingerprint !== expectedFingerprint) deny('account-identity-changed');
         return { fingerprint, catalog };
     }
-    async function verifyConfig(tx: Prisma.TransactionClient, ownerId: string, config: ServiceConfig): Promise<string> {
-        const identity = await verifyIdentity(tx, ownerId, config);
-        let catalog = identity.catalog;
+
+export function createAIServiceStore(database: PrismaClient, source?: TrustedCapabilitySource) {
+    const registry = createApplicationRegistry(database);
+    async function lockService(tx: Prisma.TransactionClient, ownerId: string, serviceId: string) {
+        await tx.$queryRaw`SELECT "id" FROM "AIService" WHERE "id" = ${serviceId} AND "ownerId" = ${ownerId} FOR UPDATE`;
+        const service = await tx.aIService.findFirst({ where: { id: serviceId, ownerId, deletedAt: null } });
+        if (!service) deny('service-not-found');
+        return service;
+    }
+    const verifyIdentity = verifyServiceIdentity;
+    async function observeConfig(ownerId: string, config: ServiceConfig) {
+        const identity = await database.$transaction(tx => verifyIdentity(tx, ownerId, config, undefined, null, true));
+        const catalog = config.engine === 'claude' || config.modelId !== null || config.reasoning.mode === 'explicit'
+            ? await readTrustedCatalog(source, ownerId, config) : null;
+        if (config.engine === 'claude' && !catalog) deny('account-not-found');
         if (config.modelId !== null || config.reasoning.mode === 'explicit') {
-            catalog ??= await readTrustedCatalog(source, ownerId, config);
             if (!catalog) deny('machine-offline');
             validateCatalogOptions(catalog, config.modelId, config.reasoning, ['chat']);
         }
-        if (catalog) await cacheCatalog(tx, ownerId, catalog);
-        return identity.fingerprint;
+        return { fingerprint: identity.fingerprint, catalog };
     }
     function requireRevision(actual: number, expected: number) {
         if (!Number.isSafeInteger(expected) || expected < 1) deny('invalid-request');
@@ -69,8 +71,10 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
         async createService(ownerId: string, input: CreateServiceInput): Promise<ServiceRef> {
             const parsed = CreateServiceSchema.safeParse(input);
             if (!parsed.success) deny('invalid-service-config');
+            const observation = await observeConfig(ownerId, parsed.data.config);
             return database.$transaction(async tx => {
-                const fingerprint = await verifyConfig(tx, ownerId, parsed.data.config);
+                const { fingerprint } = await verifyIdentity(tx, ownerId, parsed.data.config, observation.fingerprint, observation.catalog);
+                if (observation.catalog) await cacheCatalog(tx, ownerId, observation.catalog);
                 const service = await tx.aIService.create({ data: { id: randomUUID(), ownerId, name: parsed.data.name, enabled: parsed.data.enabled ?? true,
                     revisions: { create: { revision: 1, config: parsed.data.config, accountFingerprint: fingerprint } } } });
                 return ServiceRefSchema.parse({ id: service.id, ownerId, name: service.name, enabled: service.enabled, revision: 1 });
@@ -79,10 +83,13 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
         async updateService(ownerId: string, id: string, expectedRevision: number, input: ServiceConfig): Promise<ServiceRevision> {
             const parsed = ServiceConfigSchema.safeParse(input);
             if (!parsed.success) deny('invalid-service-config');
+            await database.$transaction(async tx => { const service = await lockService(tx, ownerId, id); requireRevision(service.revision, expectedRevision); });
+            const observation = await observeConfig(ownerId, parsed.data);
             return database.$transaction(async tx => {
                 const service = await lockService(tx, ownerId, id);
                 requireRevision(service.revision, expectedRevision);
-                const fingerprint = await verifyConfig(tx, ownerId, parsed.data);
+                const { fingerprint } = await verifyIdentity(tx, ownerId, parsed.data, observation.fingerprint, observation.catalog);
+                if (observation.catalog) await cacheCatalog(tx, ownerId, observation.catalog);
                 const updated = await tx.aIService.updateMany({ where: { id, ownerId, revision: expectedRevision, deletedAt: null }, data: { revision: { increment: 1 } } });
                 if (updated.count !== 1) deny('revision-conflict');
                 const row = await tx.aIServiceRevision.create({ data: { serviceId: id, revision: expectedRevision + 1, config: parsed.data, accountFingerprint: fingerprint } });
@@ -122,22 +129,25 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
             });
         },
         /** Trusted T4 issuance only. This method does not authenticate a grant credential. */
-        async registerAuthorization(ownerId: string, input: AuthorizationInput): Promise<ServiceGrant> {
+        async registerAuthorization(ownerId: string, input: AuthorizationInput, persist?: (tx: Prisma.TransactionClient, grant: ServiceGrant) => Promise<void>): Promise<ServiceGrant> {
             const parsed = AuthorizationInputSchema.safeParse(input);
             if (!parsed.success) deny('invalid-request');
             const data = parsed.data;
+            const observations = await Promise.all(data.scope.targets.map(target => observeConfig(ownerId, { ...target, modelId: null, reasoning: { mode: 'default' } })));
             return database.$transaction(async tx => {
                 const service = await lockService(tx, ownerId, data.scope.serviceId);
                 if (!service.enabled) deny('service-disabled');
                 const policy = await createApplicationRegistry(tx).readApplication(data.scope.appId);
                 if (data.scope.permissions.some(permission => !policy.capabilities.includes(permission))) deny('permission-denied');
                 if (data.scope.expiresAt !== null && data.scope.expiresAt <= Date.now()) deny('authorization-expired');
-                for (const target of data.scope.targets) await verifyIdentity(tx, ownerId, target);
+                for (let i = 0; i < data.scope.targets.length; i++) await verifyIdentity(tx, ownerId, data.scope.targets[i], observations[i].fingerprint, observations[i].catalog);
                 const row = await tx.aIServiceAuthorization.create({ data: { id: data.id, ownerId, appId: data.scope.appId,
                     serviceId: data.scope.serviceId, kind: data.kind, scope: data.scope,
                     expiresAt: data.scope.expiresAt === null ? null : new Date(data.scope.expiresAt),
                     allowModelOverride: data.allowModelOverride, allowReasoningOverride: data.allowReasoningOverride } });
-                return ServiceGrantSchema.parse({ id: row.id, ownerId, kind: row.kind, protocol: 'ai-services/1', scope: row.scope, createdAt: row.createdAt.getTime(), revokedAt: null });
+                const grant = ServiceGrantSchema.parse({ id: row.id, ownerId, kind: row.kind, protocol: 'ai-services/1', scope: row.scope, createdAt: row.createdAt.getTime(), revokedAt: null });
+                await persist?.(tx, grant);
+                return grant;
             });
         },
         async listServiceAuthorizations(ownerId: string, serviceId: string): Promise<ServiceGrant[]> {
@@ -149,8 +159,12 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
             });
         },
         async revokeAuthorization(ownerId: string, id: string): Promise<void> {
-            const result = await database.aIServiceAuthorization.updateMany({ where: { id, ownerId }, data: { revokedAt: new Date() } });
-            if (result.count !== 1) deny('permission-denied');
+            await database.$transaction(async tx => {
+                const result = await tx.aIServiceAuthorization.updateMany({ where: { id, ownerId }, data: { revokedAt: new Date() } });
+                if (result.count !== 1) deny('permission-denied');
+                await tx.appChatTurn.updateMany({ where: { binding: { authorizationId: id }, state: 'accepted' }, data: { state: 'cancelled', completedAt: new Date() } });
+                await tx.appChatTurn.updateMany({ where: { binding: { authorizationId: id }, state: 'running' }, data: { state: 'cancel-requested' } });
+            });
         },
     };
 }

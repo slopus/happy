@@ -2,12 +2,15 @@ import { z } from 'zod';
 import { ServiceConfigSchema } from '@slopus/happy-wire';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
 import type { Fastify } from '../types';
-import { db } from '@/storage/db';
+import { sharedAIServices, type SharedAIServices } from '@/app/aiServices/composition';
+import { sharedAIServiceRoutes } from './sharedAIServiceRoutes';
 import { createAIServiceStore, CreateServiceSchema, ServiceMetadataSchema, AIServiceError, type AIServiceStore } from '@/app/aiServices/store';
 
 const expectedRevision = z.number().int().positive();
 const params = z.object({ id: z.string().min(1).max(256) }).strict();
-export function aiServiceRoutes(app: Fastify, store: AIServiceStore = createAIServiceStore(db)) {
+export function aiServiceRoutes(app: Fastify, store: AIServiceStore = sharedAIServices.store, services?: SharedAIServices) {
+    const composition = services ?? (store === sharedAIServices.store ? sharedAIServices : undefined);
+    if (composition) sharedAIServiceRoutes(app, composition);
     app.register(async instance => {
         const routes = instance.withTypeProvider<ZodTypeProvider>();
         routes.addHook('onRequest', async (_request, reply) => { reply.header('Cache-Control', 'no-store'); });
@@ -34,6 +37,6 @@ export function aiServiceRoutes(app: Fastify, store: AIServiceStore = createAISe
             await store.deleteService(request.userId, request.params.id, request.body.expectedRevision); return { deleted: true };
         });
         // T4 replaces this handler with credential authentication. Owner tokens and query fields are not app grants.
-        routes.get('/v1/apps/services', async (_request, reply) => reply.code(401).send({ error: { code: 'permission-denied', retryable: false } }));
+        if (!composition) routes.get('/v1/apps/services', async (_request, reply) => reply.code(401).send({ error: { code: 'permission-denied', retryable: false } }));
     });
 }
