@@ -24,6 +24,8 @@ Create the controller with `@wangjs-jacky/paws-agent/services/browser`. Pass onl
 
 The initial page has no model questionnaire. Default options follow the service defaults. A native catalog default does not prove the service's configured model or strength. Advanced settings use explicit model IDs and the selected model's native reasoning values. The panel clears invalid model and reasoning overrides when the catalog changes. The panel does not expose permission choices because controller state does not expose the grant and app permission intersection.
 
+A host can supply a reasoning override without a model override. The panel keeps that value because the configured service model is unknown. Advanced settings show the current reasoning override as unverified in a disabled field. The panel offers no new reasoning choices until a model is selected. The user can explicitly restore service defaults to clear the override.
+
 Overrides affect new conversations. The host must keep existing conversation bindings. Actual model and reasoning values come from turn records. The panel cannot infer these values from the connection or catalog.
 
 A ready connection proves authorization only. Use the check action to read live capabilities. The panel maps stable SDK/T1 error codes to recovery messages. It does not change source, account, engine, device, or payer after an error.
@@ -63,6 +65,6 @@ pnpm fixture:build
 python3 -m http.server 4186 --bind 127.0.0.1 --directory fixture-dist
 ```
 
-Open `http://127.0.0.1:4186/?case=initial`. The fixture uses fake transport data through the real SDK controller. It does not contact a provider. Its controls simulate approval and a catalog change. Use `?case=pending`, `?case=ready`, `?case=limited`, or one of the recovery code names shown in the scenario menu. Add `&theme=dark` for a dark system theme. Storage warnings are simulated status data; they do not test real browser storage denial.
+Open `http://127.0.0.1:4186/?case=initial`. The fixture uses fake transport data through the real SDK controller. It does not contact a provider. Its controls simulate approval and a catalog change. Use `?case=pending`, `?case=ready`, `?case=reasoning-only`, `?case=limited`, or one of the recovery code names shown in the scenario menu. Add `&theme=dark` for a dark system theme. Storage warnings are simulated status data; they do not test real browser storage denial.
 
 Fixture files are excluded from package exports and packed runtime files. Browser acceptance uses Ego. Real mobile approval and provider availability require separate integration acceptance.

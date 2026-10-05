@@ -83,10 +83,12 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
     function reconcile(next: ServiceControllerState): boolean {
         if (!next.catalog) return false;
         const overrides: BindingOverrides = { ...next.overrides };
-        const model = next.catalog.models.find(m => m.id === overrides.modelId);
+        const modelId = overrides.modelId;
+        const model = next.catalog.models.find(m => m.id === modelId);
         let changed = false;
         if (overrides.modelId && !model) { delete overrides.modelId; changed = true; }
-        if (overrides.reasoning?.mode === 'explicit' && (!model || !model.reasoning.values.includes(overrides.reasoning.value))) {
+        // Without an explicit model, the service's configured model is unknown.
+        if (modelId && overrides.reasoning?.mode === 'explicit' && (!model || !model.reasoning.values.includes(overrides.reasoning.value))) {
             delete overrides.reasoning; changed = true;
         }
         if (changed) { notice = '模型目录已改变。已清除失效的覆盖设置。'; controller.setOverrides(overrides); }
@@ -158,8 +160,11 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
         dialog.append(node('p', '只影响新对话。连接时无需重新选择模型或推理强度。'));
         const available = state.connection !== null && state.catalog?.availability === 'online' && !busy;
         const selectedModel = state.catalog?.models.find(m => m.id === state.overrides.modelId);
+        const reasoningValue = state.overrides.reasoning?.mode === 'explicit' ? state.overrides.reasoning.value : '';
+        const unverifiedReasoning = !selectedModel && reasoningValue ? [{ value: reasoningValue, label: `当前覆盖：${reasoningValue}（未验证）` }] : [];
         dialog.append(field('模型', 'model', [{ value: '', label: '跟随服务默认配置' }, ...(state.catalog?.models ?? []).map(m => ({ value: m.id, label: m.name }))], state.overrides.modelId ?? '', !available, setModel));
-        dialog.append(field('推理强度', 'reasoning', [{ value: '', label: '跟随服务默认配置' }, ...(selectedModel?.reasoning.values ?? []).map(value => ({ value, label: value }))], state.overrides.reasoning?.mode === 'explicit' ? state.overrides.reasoning.value : '', !available || !selectedModel?.reasoning.values.length, setReasoning));
+        dialog.append(field('推理强度', 'reasoning', [{ value: '', label: '跟随服务默认配置' }, ...unverifiedReasoning, ...(selectedModel?.reasoning.values ?? []).map(value => ({ value, label: value }))], reasoningValue, !available || !selectedModel?.reasoning.values.length, setReasoning));
+        if (unverifiedReasoning.length) dialog.append(node('p', `保留推理强度覆盖：${reasoningValue}。服务模型未提供，尚未验证支持情况。`));
         if (!state.catalog) dialog.append(node('p', '先连接服务，再更新模型目录。'));
         else if (!selectedModel) dialog.append(node('p', '选择明确的模型后，可查看它支持的原生推理强度。服务默认模型尚未提供。'));
         else if (!selectedModel.reasoning.values.length) dialog.append(node('p', '此模型未提供可选推理强度。'));

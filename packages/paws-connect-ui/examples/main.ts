@@ -9,7 +9,7 @@ const theme = params.get('theme') === 'dark' ? 'dark' : 'light';
 const root = document.querySelector<HTMLElement>('#panel')!;
 root.dataset.fixtureTheme = theme;
 const panel = mountServicePanel(root, { controller: fixture.controller, appearance: { title: '共享 AI 服务', theme, ownerManagementUrl: new URL('approval.html', location.href).href } });
-const scenarios = ['initial', 'ready', 'pending', 'machine-offline', 'account-login-required', 'quota-exhausted', 'authorization-revoked', 'authorization-expired', 'protocol-incompatible', 'limited', 'remember-unavailable', 'session-unavailable'];
+const scenarios = ['initial', 'ready', 'reasoning-only', 'pending', 'machine-offline', 'account-login-required', 'quota-exhausted', 'authorization-revoked', 'authorization-expired', 'protocol-incompatible', 'limited', 'remember-unavailable', 'session-unavailable'];
 const selector = document.querySelector<HTMLSelectElement>('#scenario')!;
 for (const name of scenarios) { const option = document.createElement('option'); option.value = name; option.textContent = name; selector.append(option); }
 selector.value = scenario;
@@ -34,8 +34,10 @@ async function initialize() {
     }
     if (scenario === 'remember-unavailable' || scenario === 'session-unavailable') fixture.setStorageWarning(scenario);
     if (scenario === 'limited') fixture.setCatalog({ ...syntheticCatalog, completeness: 'limited' });
-    if (['initial', 'ready', 'limited', 'remember-unavailable', 'session-unavailable'].includes(scenario)) {
-        await fixture.controller.connect(); await fixture.controller.refresh(); return;
+    if (['initial', 'ready', 'reasoning-only', 'limited', 'remember-unavailable', 'session-unavailable'].includes(scenario)) {
+        await fixture.controller.connect(); await fixture.controller.refresh();
+        if (scenario === 'reasoning-only') fixture.controller.setOverrides({ reasoning: { mode: 'explicit', value: 'high' } });
+        return;
     }
     fixture.setError(scenario as ClientErrorCode);
     await fixture.controller.connect();

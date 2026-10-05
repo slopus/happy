@@ -3,8 +3,9 @@ import { mountServicePanel } from './panel';
 import { createSyntheticController, syntheticCatalog } from '../examples/synthetic';
 const cleanups: (() => void)[] = [];
 afterEach(() => { cleanups.splice(0).reverse().forEach(fn => fn()); document.body.replaceChildren(); });
-async function mounted() {
+async function mounted(prepare?: (fixture: ReturnType<typeof createSyntheticController>) => Promise<void>) {
     const f = createSyntheticController();
+    await prepare?.(f);
     const subscribe = f.controller.subscribe;
     let subscriptions = 0;
     f.controller.subscribe = listener => {
@@ -70,6 +71,27 @@ describe('service panel using the real SDK controller', () => {
         expect(f.controller.getState().overrides.modelId).toBeUndefined();
         expect(f.controller.getState().overrides.reasoning).toBeUndefined();
         expect(select(f.root, '模型').value).toBe('');
+    });
+    it('preserves a host reasoning-only override on mount and refresh without inventing its model', async () => {
+        const f = await mounted(async f => {
+            await f.controller.connect(); await f.controller.refresh();
+            f.controller.setOverrides({ reasoning: { mode: 'explicit', value: 'high' } });
+        });
+        expect(f.controller.getState().overrides).toEqual({ reasoning: { mode: 'explicit', value: 'high' } });
+        expect(f.root.textContent).toContain('推理强度覆盖：high');
+        button(f.root, '高级设置').click();
+        expect(select(f.root, '模型').value).toBe('');
+        expect(select(f.root, '推理强度').value).toBe('high');
+        expect(select(f.root, '推理强度').disabled).toBe(true);
+        expect(f.root.querySelector('[role="dialog"]')?.textContent).toContain('尚未验证支持情况');
+        // Even a catalog default that cannot support high is not the configured service model.
+        f.setCatalog({ ...syntheticCatalog, defaultModelId: 'basic' });
+        await f.controller.refresh();
+        expect(f.controller.getState().overrides).toEqual({ reasoning: { mode: 'explicit', value: 'high' } });
+        expect(select(f.root, '推理强度').value).toBe('high');
+        button(f.root, '恢复服务默认配置').click();
+        expect(f.controller.getState().overrides).toEqual({});
+        expect(select(f.root, '推理强度').value).toBe('');
     });
     it('offers only native model-specific parameters and rejects forged change events', async () => {
         const f = await mounted(); await f.controller.connect(); await f.controller.refresh();
