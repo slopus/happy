@@ -80,7 +80,7 @@ describe('start submission certainty and concurrent recovery', () => {
             await transport.authorize();
             const input = { binding, requestId: 'request', messages: [{ role: 'user' as const, text: 'hello' }] };
             await expect(transport.start(input)).rejects.toMatchObject({ code: 'model-unavailable', submission: marker === 'request' ? 'not-submitted' : 'uncertain' });
-            await expect(transport.start(input)).rejects.toMatchObject({ submission: 'uncertain' });
+            await expect(transport.start(input)).rejects.toMatchObject({ submission: marker === 'request' ? 'not-submitted' : 'uncertain' });
             transport.dispose();
         }
     });

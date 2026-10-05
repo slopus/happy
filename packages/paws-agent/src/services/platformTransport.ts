@@ -1,3 +1,4 @@
+import { beginSubmission, type SubmissionProvenance } from './submission';
 import { ExecutionBindingSchema, TurnRecordSchema, CapabilityCatalogSchema, AppPolicySchema, ServiceRefSchema } from '@slopus/happy-wire/ai-services';
 import { canonical, serviceRequest, validateIdentifier, validateMessages, validateOverrides } from './scopedTransport';
 import { AIServiceClientError, type AIServiceTransport, type CallOptions, type TurnLocator, type TurnSnapshot } from './types';
@@ -68,7 +69,8 @@ export function createBrowserPlatformTransport(options: BrowserPlatformOptions):
             const binding = parseBinding(input.binding), messages = validateMessages(input.messages), requestId = input.requestId ?? crypto.randomUUID();
             validateIdentifier(requestId);
             const key = `bridge-outbox:${binding.id}:${requestId}`, digest = canonical(messages);
-            const saved = await options.storage.get<{
+            const attemptId = crypto.randomUUID();
+            const saved = await options.storage.get<SubmissionProvenance & {
                 requestId: string;
                 digest: string;
             }>(key);
@@ -77,9 +79,10 @@ export function createBrowserPlatformTransport(options: BrowserPlatformOptions):
             const hash = Array.from(sha256(new TextEncoder().encode(digest)), b => b.toString(16).padStart(2, '0')).join('');
             if (saved && saved.digest !== hash)
                 throw new AIServiceClientError('invalid-request');
-            const outbox = await options.storage.putIfAbsent(key, { requestId, digest: hash });
+            const outbox = await options.storage.putIfAbsent(key, { requestId, digest: hash, admissionOwner: attemptId });
             if (outbox.digest !== hash)
                 throw new AIServiceClientError('invalid-request');
+            const submission = await beginSubmission(options.storage, key, outbox, attemptId, requestId);
             try {
                 if (saved) {
                     try {
@@ -94,9 +97,7 @@ export function createBrowserPlatformTransport(options: BrowserPlatformOptions):
                 return snapshot(data, { bindingId: binding.id, requestId });
             }
             catch (error) {
-                if (error instanceof AIServiceClientError)
-                    throw new AIServiceClientError(error.code, error.retryable, requestId, !saved && error.requestId === requestId ? error.submission : 'uncertain');
-                throw error;
+                throw await submission.failure(error);
             }
         },
         async read(locator, opts) { const basePath = `/bindings/${validateIdentifier(locator.bindingId)}`; const path = locator.turnId ? `${basePath}/turns/${validateIdentifier(locator.turnId)}` : locator.requestId ? `${basePath}/requests/${validateIdentifier(locator.requestId)}` : null; if (!path)

@@ -1,3 +1,4 @@
+import { beginSubmission, type SubmissionProvenance } from './submission';
 import nacl from 'tweetnacl';
 import { sha256 } from '@noble/hashes/sha256';
 import { AppPolicySchema, CapabilityCatalogSchema, ExecutionBindingSchema, GrantReceiptSchema, ServiceErrorSchema, ServiceRefSchema, TurnRecordSchema } from '@slopus/happy-wire/ai-services';
@@ -95,7 +96,7 @@ export async function serviceRequest<T>(fetcher: typeof fetch, url: string, init
         throw new AIServiceClientError('transport-error', true);
     }
 }
-export interface OutboxEnvelope {
+export interface OutboxEnvelope extends SubmissionProvenance {
     requestId: string;
     bindingId: string;
     grantId: string;
@@ -236,6 +237,7 @@ export function createScopedServiceTransport(options: ScopedTransportOptions, ki
             if (messages.some(m => m.images?.length) && !binding.permissions.includes('images'))
                 throw new AIServiceClientError('permission-denied');
             const digest = encodeBase64(sha256(new TextEncoder().encode(canonical(messages)))), key = `outbox:${binding.id}:${requestId}`;
+            const attemptId = globalThis.crypto.randomUUID();
             const previous = await options.storage.get<OutboxEnvelope>(key);
             let outbox = previous;
             if (previous && (previous.digest !== digest || previous.grantId !== r.id || previous.bindingId !== binding.id || previous.requestId !== requestId))
@@ -245,10 +247,11 @@ export function createScopedServiceTransport(options: ScopedTransportOptions, ki
                 const ciphertext = encodeBase64(new Uint8Array([...nonce, ...nacl.secretbox(new TextEncoder().encode(JSON.stringify(plain)), nonce, decodeBase64(r.messageKey))]));
                 if (ciphertext.length > 8 * 1024 * 1024)
                     throw new AIServiceClientError('invalid-request');
-                outbox = await options.storage.putIfAbsent(key, { requestId, bindingId: binding.id, grantId: r.id, digest, ciphertext });
+                outbox = await options.storage.putIfAbsent(key, { requestId, bindingId: binding.id, grantId: r.id, digest, ciphertext, admissionOwner: attemptId });
                 if (outbox.digest !== digest || outbox.grantId !== r.id)
                     throw new AIServiceClientError('invalid-request');
             }
+            const submission = await beginSubmission(options.storage, key, outbox, attemptId, requestId);
             try {
                 if (previous) {
                     try {
@@ -269,9 +272,7 @@ export function createScopedServiceTransport(options: ScopedTransportOptions, ki
                 return { record: row, sequence: 0, text: '', messages };
             }
             catch (error) {
-                if (error instanceof AIServiceClientError)
-                    throw new AIServiceClientError(error.code, error.retryable, requestId, !previous && error.requestId === requestId ? error.submission : 'uncertain');
-                throw error;
+                throw await submission.failure(error);
             }
         },
         async read(locator, call) { const base = `/v1/apps/ai-services/bindings/${validateIdentifier(locator.bindingId)}`; const path = locator.turnId ? `${base}/turns/${validateIdentifier(locator.turnId)}` : locator.requestId ? `${base}/requests/${validateIdentifier(locator.requestId)}` : null; if (!path)

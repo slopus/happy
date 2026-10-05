@@ -13,6 +13,7 @@ export type StorageInvalidation = 'forget' | 'logout' | 'revoke';
 export interface ServiceStorage {
     get<T>(key: string): Promise<T | null>;
     set(key: string, value: unknown): Promise<void>;
+    /** Atomic across every handle sharing this scope: retain and return one winner. */
     putIfAbsent<T>(key: string, value: T): Promise<T>;
     remove(key: string): Promise<void>;
     clear(reason: StorageInvalidation): Promise<void>;
@@ -170,8 +171,21 @@ export function createBrowserServiceStorage(options: BrowserStorageOptions): Ser
                     tx.onabort = tx.onerror = () => reject(new AIServiceClientError('storage-unavailable'));
                 });
             }
-            await write(key, value);
-            return structuredClone(value);
+            // get() can await IndexedDB discovery. Recheck session/memory and
+            // insert synchronously, with no await between the read and write.
+            // Separate instances in this tab therefore retain the same winner.
+            try {
+                assertOpen();
+                if (session) {
+                    const raw = session.getItem(prefix + key);
+                    if (raw !== null) return JSON.parse(raw) as T;
+                    session.setItem(prefix + key, JSON.stringify(value));
+                } else {
+                    if (memory.has(key)) return structuredClone(memory.get(key)) as T;
+                    memory.set(key, structuredClone(value));
+                }
+                return structuredClone(value);
+            } catch { throw new AIServiceClientError('storage-unavailable'); }
         }),
         remove: key => serial(async () => { assertOpen(); session?.removeItem(prefix + key); memory.delete(key); if (persistentAvailable)
             await idb('readwrite', s => s.delete(prefix + key)); }),
