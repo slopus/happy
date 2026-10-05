@@ -1,4 +1,4 @@
-import { it, expect } from 'vitest';
+import { it, expect, vi } from 'vitest';
 import { createAIServiceClient } from './client';
 import { createNodePlatformTransport } from './nodePlatformTransport';
 import { createPlatformServiceHandler } from './nodePlatformHandler';
@@ -31,3 +31,12 @@ it('requires host login and conversation ownership before every upstream bridge 
     node.dispose();
 });
 it('refuses a cross-origin application bridge', () => expect(() => createBrowserPlatformTransport({ appId: 'advisor', baseUrl: 'https://foreign.test', origin: 'https://app.test', storage: createMemoryServiceStorage() })).toThrow());
+
+it('rejects a caller-supplied foreign origin when an actual page location exists', () => {
+    vi.stubGlobal('location', { origin: 'https://actual-app.test' });
+    try {
+        expect(() => createBrowserPlatformTransport({ appId: 'advisor', origin: 'https://foreign.test', baseUrl: 'https://foreign.test/api/ai', storage: createMemoryServiceStorage() })).toThrowError(expect.objectContaining({ code: 'permission-denied' }));
+        const transport = createBrowserPlatformTransport({ appId: 'advisor', baseUrl: '/api/ai', storage: createMemoryServiceStorage() });
+        transport.dispose();
+    } finally { vi.unstubAllGlobals(); }
+});

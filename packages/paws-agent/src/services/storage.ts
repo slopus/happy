@@ -51,6 +51,7 @@ export function createBrowserServiceStorage(options: BrowserStorageOptions): Ser
     const channel = Channel ? new Channel('paws-ai-services:' + subjectPrefix) : null;
     const listeners = new Set<(reason: StorageInvalidation) => void>();
     let persistentAvailable = Boolean(factory);
+    let hasRememberedMaterial = false;
     let disposed = false, db: IDBDatabase | null = null;
     let queue = Promise.resolve();
     function assertOpen() { if (disposed)
@@ -98,6 +99,7 @@ export function createBrowserServiceStorage(options: BrowserStorageOptions): Ser
                     const saved = await idb<T | undefined>('readonly', store => store.get(prefix + key));
                     if (saved !== undefined) {
                         status = { mode: 'remember', warning: null };
+                        hasRememberedMaterial = true;
                         return saved;
                     }
                 } catch {
@@ -178,38 +180,65 @@ export function createBrowserServiceStorage(options: BrowserStorageOptions): Ser
         remember: enabled => serial(async () => {
             assertOpen();
             if (enabled) {
+                const wasRemembered = hasRememberedMaterial || status.mode === 'remember';
+                let committed = false;
                 try {
+                    const originals = sessionKeys(prefix).map(key => ({ key, raw: session!.getItem(key)! }));
+                    const entries: [string, unknown][] = originals.map(({key, raw}) => [key, JSON.parse(raw)]);
+                    for (const [key, value] of memory) entries.push([prefix + key, value]);
                     persistentAvailable = Boolean(factory);
-                    await database();
-                    for (const key of sessionKeys(prefix)) {
-                        const value = JSON.parse(session!.getItem(key)!);
-                        await idb('readwrite', s => s.put(value, key));
-                        session!.removeItem(key);
-                    }
-                    for (const [key, value] of memory)
-                        await idb('readwrite', s => s.put(value, prefix + key));
-                    memory.clear();
+                    const databaseHandle = await database();
+                    // All copies commit together. A synchronous put error must also abort queued writes.
+                    await new Promise<void>((resolve, reject) => {
+                        const tx = databaseHandle.transaction('connections', 'readwrite');
+                        const store = tx.objectStore('connections');
+                        tx.oncomplete = () => resolve();
+                        tx.onabort = tx.onerror = () => reject(new AIServiceClientError('storage-unavailable'));
+                        try { for (const [key, value] of entries) store.put(value, key); }
+                        catch { tx.abort(); reject(new AIServiceClientError('storage-unavailable')); }
+                    });
+                    committed = true;
+                    hasRememberedMaterial = true;
                     status = { mode: 'remember', warning: null };
+                    // Another storage instance can update this tab during the transaction. Keep newer values.
+                    for (const {key, raw} of originals) if (session!.getItem(key) === raw) session!.removeItem(key);
+                    memory.clear();
                 }
                 catch {
+                    // Existing durable material or a committed copy must not become a silent session fallback.
+                    if (committed || wasRemembered) throw new AIServiceClientError('storage-unavailable');
                     persistentAvailable = false;
                     status = { mode: session ? 'session' : 'memory', warning: 'remember-unavailable' };
                 }
             }
             else {
-                if (factory) {
-                    const keys = await idb<IDBValidKey[]>('readonly', s => s.getAllKeys());
-                    for (const key of keys)
-                        if (typeof key === 'string' && key.startsWith(prefix)) {
+                if (persistentAvailable) {
+                    try {
+                        const keys = (await idb<IDBValidKey[]>('readonly', s => s.getAllKeys()))
+                            .filter((key): key is string => typeof key === 'string' && key.startsWith(prefix));
+                        if (keys.length) {
+                            hasRememberedMaterial = true;
+                            status = { mode: 'remember', warning: null };
+                        }
+                        for (const key of keys) {
                             const value = await idb('readonly', s => s.get(key));
-                            if (session)
-                                session.setItem(key, JSON.stringify(value));
-                            else
-                                memory.set(key.slice(prefix.length), value);
+                            if (session) session.setItem(key, JSON.stringify(value));
+                            else memory.set(key.slice(prefix.length), value);
                             await idb('readwrite', s => s.delete(key));
                         }
+                    }
+                    catch {
+                        if (hasRememberedMaterial || status.mode === 'remember') throw new AIServiceClientError('storage-unavailable');
+                        persistentAvailable = false;
+                        status = { mode: session ? 'session' : 'memory', warning: 'remember-unavailable' };
+                        return { ...status };
+                    }
                 }
-                status = { mode: session ? 'session' : 'memory', warning: session ? null : 'session-unavailable' };
+                else if (hasRememberedMaterial || status.mode === 'remember') {
+                    throw new AIServiceClientError('storage-unavailable');
+                }
+                hasRememberedMaterial = false;
+                status = { mode: session ? 'session' : 'memory', warning: persistentAvailable ? (session ? null : 'session-unavailable') : (status.warning ?? 'remember-unavailable') };
             }
             return { ...status };
         }),

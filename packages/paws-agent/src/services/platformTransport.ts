@@ -12,7 +12,10 @@ export interface BrowserPlatformOptions {
 }
 /** Application same-origin bridge. It accepts no Paws bearer or message key. Host must enforce login and ownership. */
 export function createBrowserPlatformTransport(options: BrowserPlatformOptions): AIServiceTransport {
-    const origin = options.origin ?? globalThis.location?.origin;
+    const pageLocation = globalThis.location;
+    if (pageLocation && options.origin !== undefined && options.origin !== pageLocation.origin)
+        throw new AIServiceClientError('permission-denied');
+    const origin = pageLocation?.origin ?? options.origin;
     if (!origin)
         throw new AIServiceClientError('invalid-request');
     const base = new URL(options.baseUrl, origin);
