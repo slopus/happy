@@ -68,6 +68,10 @@ model Account {
     InteractivePreview InteractivePreview[]
     AppDelegation AppDelegation[]
     AppChatWorker AppChatWorker[]
+    aiServices AIService[]
+    aiServiceAuthorizations AIServiceAuthorization[]
+    aiServiceBindings AIServiceBinding[]
+    aiServiceCapabilitySnapshots AIServiceCapabilitySnapshot[]
 }
 
 model TerminalAuthRequest {
@@ -653,4 +657,89 @@ model AppChatTurn {
     createdAt DateTime @default(now())
     @@index([conversationId, createdAt])
     @@index([state, createdAt])
+}
+
+// Safe configuration and audit data only. Authentication stays in existing tables.
+model AIService {
+    id String @id @default(uuid())
+    ownerId String
+    owner Account @relation(fields: [ownerId], references: [id])
+    name String
+    enabled Boolean @default(true)
+    revision Int @default(1)
+    deletedAt DateTime?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    revisions AIServiceRevision[]
+    authorizations AIServiceAuthorization[]
+    @@index([ownerId, createdAt])
+}
+
+model AIServiceRevision {
+    serviceId String
+    service AIService @relation(fields: [serviceId], references: [id])
+    revision Int
+    config Json
+    accountFingerprint String
+    createdAt DateTime @default(now())
+    bindings AIServiceBinding[]
+    @@id([serviceId, revision])
+}
+
+model AIServiceApplication {
+    appId String @id
+    policy Json
+    enabled Boolean @default(true)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    authorizations AIServiceAuthorization[]
+    bindings AIServiceBinding[]
+}
+
+// T4 adds issuance and credential digests. This relation contains no credentials.
+model AIServiceAuthorization {
+    id String @id
+    ownerId String
+    owner Account @relation(fields: [ownerId], references: [id])
+    appId String
+    app AIServiceApplication @relation(fields: [appId], references: [appId])
+    serviceId String
+    service AIService @relation(fields: [serviceId], references: [id])
+    kind String
+    scope Json
+    allowModelOverride Boolean @default(false)
+    allowReasoningOverride Boolean @default(false)
+    expiresAt DateTime?
+    revokedAt DateTime?
+    createdAt DateTime @default(now())
+    bindings AIServiceBinding[]
+    @@index([ownerId, appId, serviceId])
+}
+
+model AIServiceBinding {
+    id String @id
+    ownerId String
+    owner Account @relation(fields: [ownerId], references: [id])
+    appId String
+    app AIServiceApplication @relation(fields: [appId], references: [appId])
+    serviceId String
+    revision Int
+    serviceRevision AIServiceRevision @relation(fields: [serviceId, revision], references: [serviceId, revision])
+    authorizationId String?
+    authorization AIServiceAuthorization? @relation(fields: [authorizationId], references: [id])
+    snapshot Json
+    accountFingerprint String
+    capabilityObservedAt DateTime
+    createdAt DateTime @default(now())
+    @@index([ownerId, appId, serviceId])
+}
+
+// Display cache only. Binding creation always asks the trusted source for a live check.
+model AIServiceCapabilitySnapshot {
+    ownerId String
+    owner Account @relation(fields: [ownerId], references: [id])
+    targetKey String
+    catalog Json
+    observedAt DateTime
+    @@id([ownerId, targetKey])
 }
