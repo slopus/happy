@@ -50,7 +50,7 @@ type Slot = { number: number; email: string; organizationUuid?: string; usageSta
 
 // A stateful stand-in for cswap. `marked` keeps managed metadata like the token runtime; an
 // unmarked build drops it, as upstream does.
-function fakeMachine(initial: Slot[], activeAccountNumber: number | null, options: { runtime?: 'marked' | 'unmarked' | 'missing'; ignoreForce?: boolean; tokenRuntimeStatus?: string; files?: Map<string, string>; binding?: false; env?: Record<string, string>; capabilities?: Record<string, unknown>; listFails?: boolean; clock?: { now: number }; advanceOnExport?: number; advanceOnNonceWrite?: number; durability?: 'missing' | 'file-fails' | 'directory-fails' } = {}) {
+function fakeMachine(initial: Slot[], activeAccountNumber: number | null, options: { runtime?: 'marked' | 'unmarked' | 'missing'; ignoreForce?: boolean; tokenRuntimeStatus?: string; files?: Map<string, string>; binding?: false; env?: Record<string, string>; capabilities?: Record<string, unknown>; listFails?: boolean; clock?: { now: number }; advanceOnExport?: number; advanceOnNonceWrite?: number; durability?: 'missing' | 'file-fails' | 'directory-fails'; machineId?: string } = {}) {
   const kind = options.runtime ?? 'marked'
   const state = { slots: [...initial], active: activeAccountNumber }
   const calls: Array<{ command: string; args: string[] }> = []
@@ -92,7 +92,7 @@ function fakeMachine(initial: Slot[], activeAccountNumber: number | null, option
     return { stdout: '', stderr: '' }
   })
   const runtime = createAiCredentialRuntime({
-    homeDir: '/home/operator', now: () => options.clock?.now ?? NOW, env: options.env ?? {}, execFile,
+    homeDir: '/home/operator', machineId: options.machineId, now: () => options.clock?.now ?? NOW, env: options.env ?? {}, execFile,
     ...(options.binding === false ? {} : { setupTokenBinding: studioVerifier() }),
     ...(options.durability === 'missing' ? {} : {
       syncFile: async (path: string) => { syncEvents.push('file:' + path); if (options.durability === 'file-fails') throw new Error('sync failed') },
@@ -308,6 +308,16 @@ describe('managed Claude setup-token runtime', () => {
 
   it('advertises setup-token capability only for the marked runtime', async () => {
     expect(await fakeMachine([], null).runtime.capabilities()).toMatchObject({ setupTokenVersion: 1, setupTokenStatusVersion: 1 })
+  })
+
+  it('advertises shared-machine capability and binds machine group sync to this daemon', async () => {
+    const { runtime } = fakeMachine([], null, { machineId: 'machine-1' })
+    expect(await runtime.capabilities('machine-1')).toHaveProperty('sharedMachineAssignmentVersion', 1)
+    const { userId: _userId, ...userSync } = sync(1, payload(managed(A, 1, fakeToken('machine'))))
+    const machineSync = { ...userSync, principalType: 'machine' as const, machineId: 'machine-1' }
+    await expect(runtime.groupSync(machineSync)).resolves.toMatchObject({ principalType: 'machine', machineId: 'machine-1', reconciled: true })
+    await expect(runtime.groupReceipt('company-1', 'claude', { principalType: 'machine', machineId: 'machine-1' })).resolves.toMatchObject({ principalType: 'machine', machineId: 'machine-1', reconciled: true })
+    await expect(runtime.groupSync({ ...machineSync, machineId: 'other-machine' })).rejects.toThrow('AI_GROUP_MACHINE_MISMATCH')
   })
 
   it('reports secret-free setup-token status separately from usage', async () => {

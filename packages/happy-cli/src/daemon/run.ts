@@ -4208,6 +4208,7 @@ export async function startDaemon(): Promise<void> {
     // Setup-token session binding is verifiable only against the daemon's own trusted Studio origin.
     const trustedStudioOrigin = readTrustedStudioOrigin(process.env);
     const aiCredentialRuntime = createNodeAiCredentialRuntime(claudeSwapSupervisor, process.env, os.homedir(), {
+      machineId,
       setupTokenBinding: trustedStudioOrigin ? createSetupTokenBindingVerifier({ origin: trustedStudioOrigin, machineId }) : undefined,
     });
     const personalProbeTimer = setInterval(() => {

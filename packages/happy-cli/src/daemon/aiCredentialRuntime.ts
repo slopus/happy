@@ -106,6 +106,8 @@ type Supervisor = {
 
 export type AiCredentialRuntimeDependencies = {
   homeDir: string
+  /** Happy machine identity used to bind server-side machine principal mutations. */
+  machineId?: string
   now(): number
   env: Record<string, string | undefined>
   execFile(command: string, args: string[], options?: CommandOptions): Promise<AiCredentialCommandResult>
@@ -1542,6 +1544,9 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
   async function groupSync(input: CredentialGroupRequest) {
     if (input?.provider === 'claude') cancelPersonal()
     return serialize(() => withSafeErrors('AI_GROUP_SYNC_FAILED', async () => {
+      if (input?.principalType === 'machine' && (!deps.machineId || input.machineId !== deps.machineId)) {
+        throw new AiCredentialRuntimeError('AI_GROUP_MACHINE_MISMATCH')
+      }
       // The journal snapshots cswap before applying, so the runtime gate must come first.
       if (input?.provider === 'claude' && typeof input.payload === 'string' && containsManagedSetupTokens(input.payload)
         && !await setupTokenRuntimeSupported()) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
@@ -2098,7 +2103,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
-  return { launchSession, personalSchedulerTick, stopPersonalScheduler, tokenProbe, collectorProbe, capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex') => serialize(() => groups.receipt(scope, selected)), purge, status, verify, rotation, sessionEnvironment, capabilities: async (machineId?: string) => { const setupToken = await setupTokenRuntimeSupported(); const collector = Boolean(machineId) && await collectorCapability(); const personal = await tokenProbeCapability(); return { version: 1, ...(personal ? { tokenProbeVersion: 1 } : {}), ...(collector ? { collectorProbeVersion: 1 } : {}), groupAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
+  return { launchSession, personalSchedulerTick, stopPersonalScheduler, tokenProbe, collectorProbe, capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex', principal?: { principalType: 'machine'; machineId: string }) => serialize(() => groups.receipt(scope, selected, principal ? { ...principal, userId: principal.machineId } : undefined)), purge, status, verify, rotation, sessionEnvironment, capabilities: async (machineId?: string) => { const setupToken = await setupTokenRuntimeSupported(); const collector = Boolean(machineId) && await collectorCapability(); const personal = await tokenProbeCapability(); return { version: 1, ...(personal ? { tokenProbeVersion: 1 } : {}), ...(collector ? { collectorProbeVersion: 1 } : {}), groupAssignmentVersion: 1, sharedMachineAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
     // Managed setup-token import with metadata verification, only on the marked cswap token runtime.
     ...(setupToken ? { setupTokenVersion: 1, setupTokenStatusVersion: 1 } : {}),
     // Advertised only when a server-signed binding proof can actually be verified here.
@@ -2507,7 +2512,7 @@ export function createNodeAiCredentialRuntime(
   supervisor: Supervisor,
   env: Record<string, string | undefined> = process.env,
   homeDir: string = homedir(),
-  options: Pick<AiCredentialRuntimeDependencies, 'setupTokenBinding'> = {},
+  options: Pick<AiCredentialRuntimeDependencies, 'setupTokenBinding'|'machineId'> = {},
 ) {
   return createAiCredentialRuntime({
     ...options,
