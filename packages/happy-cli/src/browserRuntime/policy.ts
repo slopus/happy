@@ -40,7 +40,7 @@ export function formSummary(form: FormSubmission): string {
 export function assertAllowedOrigin(url: string, grant: Pick<AgentGrant, 'allowedOrigins'>): string {
     let origin: string
     try { const parsed = new URL(url); if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('unsupported URL'); origin = parsed.origin } catch { throw new BrowserRuntimeError('ORIGIN_DENIED', 'Invalid navigation URL') }
-    if (!grant.allowedOrigins.includes(origin)) throw new BrowserRuntimeError('ORIGIN_DENIED', 'Origin is not in the task grant')
+    if (!originAllowed(grant.allowedOrigins, origin)) throw new BrowserRuntimeError('ORIGIN_DENIED', 'Origin is not in the task grant')
     return origin
 }
 
@@ -147,6 +147,11 @@ function pathMatches(patterns: string[] | undefined, path: string | undefined): 
     if (!patterns) return true
     if (path === undefined) return false
     return patterns.some((pattern) => pattern.endsWith('*') ? path.startsWith(pattern.slice(0, -1)) : path === pattern)
+}
+
+/** Whether a grant's or tab's origin list admits this origin. Every origin check goes through here. */
+export function originAllowed(allowedOrigins: readonly string[], origin: string): boolean {
+    return allowedOrigins.includes(origin)
 }
 
 export function siteFor(sites: SitePolicy[], origin: string): SitePolicy | undefined {
