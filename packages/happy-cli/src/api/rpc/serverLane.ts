@@ -28,6 +28,15 @@ export const SERVER_LANE_METHODS: ReadonlySet<string> = new Set([
     'allocate-port',
     'get-port',
     'release-port',
+    // D4-2 metadata (daemon/machineMetadataMethods): fixed shapes, no file
+    // content, listing or command output.
+    'workspace-path-stat',
+    'workspace-git-info',
+    'preview-liveness',
+    'listening-ports',
+    'container-runtime-status',
+    'gh-auth-status',
+    'machine-info',
 ]);
 
 /**
