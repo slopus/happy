@@ -1,0 +1,39 @@
+{
+  "name": "@wangjs-jacky/paws-connect-ui",
+  "version": "0.1.0",
+  "description": "Native DOM panel for shared AI service connections",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "import": { "types": "./dist/index.d.mts", "default": "./dist/index.mjs" },
+      "require": { "types": "./dist/index.d.cts", "default": "./dist/index.cjs" }
+    },
+    "./panel.css": "./dist/panel.css",
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "README.md"],
+  "sideEffects": ["**/*.css"],
+  "scripts": {
+    "build": "tsc --noEmit && pkgroll && node -e \"require('node:fs').copyFileSync('src/panel.css','dist/panel.css')\"",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "fixture:build": "node examples/build.mjs"
+  },
+  "dependencies": { "qrcode": "^1.5.4" },
+  "peerDependencies": { "@wangjs-jacky/paws-agent": "^0.3.0" },
+  "devDependencies": {
+    "@wangjs-jacky/paws-agent": "workspace:*",
+    "@types/qrcode": "^1.5.6",
+    "esbuild": "^0.27.2",
+    "jsdom": "^26.1.0",
+    "pkgroll": "^2.14.2",
+    "typescript": "5.9.3",
+    "vitest": "^3.2.4"
+  },
+  "publishConfig": { "access": "public" },
+  "packageManager": "pnpm@10.11.0"
+}

@@ -1,0 +1,55 @@
+/* Hosts provide semantic tokens. System colors are neutral fallbacks. */
+.paws-service-panel {
+    color: var(--paws-service-text, CanvasText);
+    background: var(--paws-service-surface, Canvas);
+    font: var(--paws-service-font, 1rem/1.55 system-ui, sans-serif);
+    border: 1px solid var(--paws-service-border, GrayText);
+    border-radius: var(--paws-service-radius, 1rem);
+    color-scheme: light dark;
+    isolation: isolate;
+}
+.paws-service-panel[data-theme="light"] { color-scheme: light; }
+.paws-service-panel[data-theme="dark"] { color-scheme: dark; }
+.paws-service-panel *, .paws-service-panel *::before, .paws-service-panel *::after { box-sizing: border-box; }
+.paws-service-content { padding: clamp(1rem, 4vw, 1.75rem); }
+.paws-service-panel h2, .paws-service-panel h3 { line-height: 1.3; margin: 0 0 .75rem; }
+.paws-service-panel h2 { font-size: 1.35rem; }
+.paws-service-panel h3 { font-size: 1.05rem; }
+.paws-service-panel p { margin: .65rem 0; overflow-wrap: anywhere; }
+.paws-service-panel button, .paws-service-panel a, .paws-service-panel select {
+    font: inherit;
+    color: var(--paws-service-text, CanvasText);
+    background: var(--paws-service-control, ButtonFace);
+    border: 1px solid var(--paws-service-border, GrayText);
+    border-radius: .6rem;
+    min-height: 2.75rem;
+    padding: .55rem .8rem;
+}
+.paws-service-panel button, .paws-service-panel a { cursor: pointer; }
+.paws-service-panel a { display: inline-flex; align-items: center; text-decoration: underline; }
+.paws-service-panel button:hover:not(:disabled), .paws-service-panel a:hover {
+    background: var(--paws-service-control-hover, Highlight);
+    color: var(--paws-service-control-hover-text, HighlightText);
+}
+.paws-service-panel button:disabled, .paws-service-panel select:disabled { opacity: .6; cursor: default; }
+.paws-service-panel :focus-visible { outline: 3px solid var(--paws-service-focus, Highlight); outline-offset: 3px; }
+.paws-service-field { display: grid; gap: .35rem; margin: 1rem 0; font-weight: 600; }
+.paws-service-field select { width: 100%; font-weight: 400; }
+.paws-service-status, .paws-service-defaults { padding: 1rem; margin: 1rem 0; background: var(--paws-service-inset, ButtonFace); border-radius: .75rem; }
+.paws-service-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin: 1rem 0; }
+.paws-service-defaults button { margin: .5rem .5rem 0 0; }
+.paws-service-remember { display: flex; gap: .6rem; align-items: center; margin: 1rem 0; }
+.paws-service-remember input { width: 1.15rem; height: 1.15rem; }
+.paws-service-warning { border-inline-start: 3px solid var(--paws-service-border, GrayText); padding-inline-start: .75rem; }
+.paws-service-qr { display: block; width: min(15rem, 100%); height: auto; margin: 1rem auto; color-scheme: light; color: CanvasText; background: Canvas; shape-rendering: crispEdges; }
+.paws-service-backdrop { position: fixed; inset: 0; z-index: var(--paws-service-modal-z, 1000); display: grid; place-items: center; background: var(--paws-service-backdrop, color-mix(in srgb, CanvasText 40%, transparent)); padding: 1rem; }
+.paws-service-dialog { background: var(--paws-service-surface, Canvas); color: var(--paws-service-text, CanvasText); border: 1px solid var(--paws-service-border, GrayText); border-radius: 1rem; width: min(100%, 34rem); max-height: calc(100dvh - 2rem); padding: 1.25rem; overflow-y: auto; overscroll-behavior: contain; }
+.paws-service-dialog-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.paws-service-dialog-header h3 { margin: 0; }
+.paws-service-dialog dl { display: grid; grid-template-columns: minmax(6rem, 1fr) minmax(0, 2fr); gap: .7rem; }
+.paws-service-dialog dt { font-weight: 600; }
+.paws-service-dialog dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 640px) {
+    .paws-service-backdrop { place-items: end center; padding: 0; }
+    .paws-service-dialog { width: 100%; max-height: 85dvh; border-radius: 1rem 1rem 0 0; padding-bottom: max(1.25rem, env(safe-area-inset-bottom)); }
+}
