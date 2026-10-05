@@ -16,7 +16,7 @@
 
 | 包 | SHA-256 |
 | --- | --- |
-| `wangjs-jacky-paws-agent-0.3.0.tgz` | `d3b126c9da01aeb0eef919fba47fc9a2cb561e035864b99d345104751e735f5a` |
+| `wangjs-jacky-paws-agent-0.3.0.tgz` | `184e901a14a7115b29ffd4f0707f768d2595d9daf9b6ae0047b81fa96ba10613` |
 | `wangjs-jacky-paws-connect-ui-0.1.0.tgz` | `336608ab2da2c24fca13543df030421de932d3ae18a2b42adba9cde67b3954ce` |
 
 ## A1–A12
@@ -136,3 +136,11 @@ Server typecheck 通过。Bun 1.4.2 构建运行包通过（143 个模块）。�
 - `[lose]` 接受后丢失响应，输入保持锁定。恢复后只有一个原 turn POST，一条匹配的用户消息和对应回答，没有重复执行。
 
 已报告的 capture receipt 后缀为 `kkiFJb`、`A26DKm`、`vbjDfP`、`LUUBmS`。最初在SDK初始化后安装的 fetch 观察器未覆盖SDK保存的 fetch，不作为网络证据；最终的初始化前观察器取代该指标。真实个人授权、提供方与原生手机仍未执行。
+
+## 并发确定性修复（2026-10-06）
+
+代码：Paws `00a426aaeb59cb70a12efd627646150fe141bea4`；狗头军师 `c66c820a2a26a9450abc212928590181b7c5d683`。当前SDK SHA-256为 `184e901a14a7115b29ffd4f0707f768d2595d9daf9b6ae0047b81fa96ba10613`，共43个普通文件。数量从最终tarball和候选清单的files数组生成；已逐文件核对两个消费者安装目录和lockfile完整性。此前45个文件的发布描述已更正。
+
+SDK原始套件43项通过；增加存储失败回归后，最终submission套件17项通过，其中16项与前次重叠。狗头军师全套101项通过、1项跳过。实际路由与已安装SDK验收5项通过、1项serve-only跳过。SDK、狗头军师和第二应用bundle构建通过；SDK与Server类型检查通过。本轮全部命令输出已保存。前一轮SDK27项和CLI32项只存在工具会话输出，没有对应保留日志；不将它们描述为已归档日志。
+
+未修改的App源码继续使用前次完整Web导出证据。本轮未重建App或原生代码，没有重新打开浏览器。此前Ego截图只覆盖此前候选的UI行为，不作为新并发协议的验收。真实提供方、原生手机、完整个人/旧链路与机主日常使用仍为NOT EXECUTED；发布、部署和推广继续阻断。
