@@ -691,7 +691,11 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     const accepted = envelope.accounts.filter((_account: unknown, index: number) => verification.accounts[index]?.ok)
       .map((account: { email: string }) => ({ ...account, disabled: before.accounts.find(existing =>
         claudeListAccountIdentity(existing) === claudeListAccountIdentity(account))?.disabled }))
-    if (accepted.length === 0) throw new AiCredentialRuntimeError('CLAUDE_APPLY_RELOGIN_REQUIRED')
+    if (accepted.length === 0) {
+      // Keep request rejection reasons observable without exposing identities or provider output.
+      deps.warn?.(`Claude repair preflight rejected: ${JSON.stringify(verification.accounts.map(({ account, ok, errorKind }) => ({ account, ok, errorKind })))}`)
+      throw new AiCredentialRuntimeError('CLAUDE_APPLY_RELOGIN_REQUIRED')
+    }
     return { before, envelope: { ...envelope, accounts: accepted }, requested, verification }
   }
 
@@ -2519,7 +2523,7 @@ export function createNodeAiCredentialRuntime(
     homeDir,
     now: Date.now,
     env,
-    execFile: (command, args, options) => runAiCredentialCommand(command, args, options, options?.terminateProcessTree ? crossSpawn as typeof spawn : spawn),
+    execFile: (command, args, options) => runAiCredentialCommand(command, args, options),
     readFile: (path) => readFile(path, 'utf8'),
     readdir: (path) => readdir(path),
     syncFile: async (path) => { const file = await open(path, 'r+'); try { await file.sync() } finally { await file.close() } },
@@ -2539,7 +2543,8 @@ export function runAiCredentialCommand(
   command: string,
   args: string[],
   options: CommandOptions = {},
-  spawnCommand: typeof spawn = spawn,
+  // Windows npm installs expose .cmd shims; native spawn cannot resolve them.
+  spawnCommand: typeof spawn = process.platform === 'win32' || options.terminateProcessTree ? crossSpawn as typeof spawn : spawn,
 ): Promise<AiCredentialCommandResult> {
   return new Promise((resolve, reject) => {
     if (options.signal?.aborted) { reject(new AiCredentialRuntimeError('COMMAND_CANCELLED')); return }
@@ -2562,7 +2567,8 @@ export function runAiCredentialCommand(
       settled = true
       options.signal?.removeEventListener('abort', abort)
       if (timeout) clearTimeout(timeout)
-      if (options.terminateProcessTree && child.pid) {
+      // A Windows npm shim owns a shell wrapper as well as the actual CLI process.
+      if ((options.terminateProcessTree || process.platform === 'win32') && child.pid) {
         if (process.platform === 'win32') {
           const killer = spawnCommand('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore', windowsHide: true })
           const killTimeout = setTimeout(() => { killer.kill('SIGKILL'); child.kill('SIGKILL'); reject(new AiCredentialRuntimeError('COMMAND_TREE_TERMINATION_FAILED')) }, 5_000)

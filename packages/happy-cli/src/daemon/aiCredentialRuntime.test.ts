@@ -1,4 +1,4 @@
-import { mkdtemp, readFile as readTestFile, rm as removeTestDirectory } from 'node:fs/promises'
+import { mkdtemp, readFile as readTestFile, rm as removeTestDirectory, writeFile as writeTestFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import type { spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
@@ -361,6 +361,28 @@ describe('AI credential machine runtime', () => {
     expect(await runtime.apply({ provider: 'claude', applyMode: 'merge', payload: claudeOauthPayload([{ email: 'disabled@example.com' }]) }))
       .toMatchObject({ reloginRequiredAccountCount: 0, credentialRepairFailedAccountCount: 0 })
     expect(execFile.mock.calls.some(([command, args]) => command === 'claude' || args[0] === 'import')).toBe(false)
+  })
+
+  it.each([
+    ['429 rate limit private-provider-text', 'RATE_LIMITED'],
+    ['401 authentication_error private-provider-text', 'AUTHENTICATION_FAILED'],
+  ])('records a redacted repair rejection reason for %s without importing', async (stderr, errorKind) => {
+    const warn = vi.fn()
+    const { runtime, execFile } = setup({ warn })
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => command === 'claude'
+      ? { stdout: '', stderr, exitCode: 1 }
+      : original(command, args, options))
+    await expect(runtime.apply({ provider: 'claude', applyMode: 'repair',
+      payload: claudeOauthPayload([{ email: 'owner@example.com' }]),
+      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 },
+    })).rejects.toMatchObject({ kind: 'CLAUDE_APPLY_RELOGIN_REQUIRED' })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(errorKind))
+    const diagnostic = warn.mock.calls.flat().join(' ')
+    expect(diagnostic).not.toContain('owner@example.com')
+    expect(diagnostic).not.toContain('oauth-1')
+    expect(diagnostic).not.toContain('private-provider-text')
+    expect(execFile.mock.calls.some(([, args]) => args[0] === 'import' || args[0] === 'switch')).toBe(false)
   })
 
   it('does not import rejected repair credentials or claim a newer bundle was applied', async () => {
@@ -3379,4 +3401,46 @@ describe('cswap collector command options', () => {
     const source = await readTestFile(join(__dirname, 'aiCredentialRuntime.ts'), 'utf8')
     expect(source).toMatch(/invoke: async \(args, input\) => \(await deps\.execFile\('cswap', args, \{\s*input, \.\.\.cswapCollectorCommandOptions\(args\), environment: deps\.env,/)
   })
+})
+
+
+// Native Windows owns npm launcher/PATHEXT behavior; a Unix spawn mock cannot reproduce it.
+it.skipIf(process.platform !== 'win32')('runs npm credential-manager shims with literal arguments on Windows', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'happy npm manager '))
+  const script = join(directory, 'manager.cjs')
+  const marker = join(directory, 'must-not-exist')
+  const args = ['list', '--json', 'space value', `& echo unsafe > "${marker}"`, '%HAPPY_SHIM_ARG%', 'quote"value']
+  try {
+    await writeTestFile(script, 'process.stdout.write(JSON.stringify(process.argv.slice(2)))')
+    await writeTestFile(join(directory, 'happy-test-manager.cmd'), `@echo off\r\n"${process.execPath}" "${script}" %*\r\n`)
+    const environment: NodeJS.ProcessEnv = { ...process.env, HAPPY_SHIM_ARG: 'must-not-expand', PATH: `${directory};${process.env.PATH ?? process.env.Path ?? ''}` }
+    delete environment.Path
+    const result = await runAiCredentialCommand('happy-test-manager', args, { environment })
+    expect(JSON.parse(result.stdout)).toEqual(args)
+    await expect(readTestFile(marker)).rejects.toMatchObject({ code: 'ENOENT' })
+  } finally {
+    await removeTestDirectory(directory, { recursive: true, force: true })
+  }
+})
+
+
+it.skipIf(process.platform !== 'win32')('terminates a timed-out npm shim child on Windows', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'happy npm timeout '))
+  const script = join(directory, 'wait.cjs')
+  const pidFile = join(directory, 'pid')
+  let pid: number | undefined
+  try {
+    await writeTestFile(script, 'require("node:fs").writeFileSync(process.argv[2],String(process.pid));setInterval(()=>{},1000)')
+    await writeTestFile(join(directory, 'happy-test-manager.cmd'), `@echo off\r\n"${process.execPath}" "${script}" %*\r\n`)
+    const environment: NodeJS.ProcessEnv = { ...process.env, PATH: `${directory};${process.env.PATH ?? process.env.Path ?? ''}` }
+    delete environment.Path
+    await expect(runAiCredentialCommand('happy-test-manager', [pidFile], { environment, timeoutMs: 1200 }))
+      .rejects.toMatchObject({ kind: 'COMMAND_TIMED_OUT' })
+    pid = Number(await readTestFile(pidFile, 'utf8'))
+    expect(() => process.kill(pid!, 0)).toThrow()
+  } finally {
+    // This PID belongs only to the temporary fixture, including when the regression fails.
+    if (pid) { try { process.kill(pid, 'SIGKILL') } catch {} }
+    await removeTestDirectory(directory, { recursive: true, force: true })
+  }
 })
