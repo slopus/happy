@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { installRpcPeerDiagnostics, withRpcPeerDiagnostics } from './rpcPeerDiagnostics';
 const id = '12345678-1234-4123-8123-123456789abc';
-afterEach(() => { vi.unstubAllEnvs(); vi.useRealTimers(); });
-function fixture() {
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); vi.useRealTimers(); });
+function fixture(withRawMessage = false, advanceRawMessage?: () => void) {
  const log = vi.fn();
- const adapter = { uid: 'local', doPublish: vi.fn(async (_m: any) => '1-0'), onMessage: vi.fn((_m: any) => {}), close: vi.fn() };
+ const adapter: any = { uid: 'local', doPublish: vi.fn(async (_m: any) => '1-0'), onMessage: vi.fn((_m: any) => {}), close: vi.fn() };
+ if (withRawMessage) adapter.onRawMessage = function (message: any, ...args: any[]) { advanceRawMessage?.(); return this.onMessage(message, ...args); };
  installRpcPeerDiagnostics(adapter, log);
  return {adapter, log};
 }
@@ -13,6 +14,21 @@ describe('peer boundary diagnostics', () => {
   const {adapter,log}=fixture(); const message={type:7,data:{requestId:'req',opts:{rooms:['private']}}};
   expect(await withRpcPeerDiagnostics(id,()=>adapter.doPublish(message))).toBe('1-0');
   expect(message.data).not.toHaveProperty('rpcPeer'); expect(log).not.toHaveBeenCalled(); adapter.close();
+ });
+
+ it('records raw decode boundaries before response consumption', async () => {
+  vi.stubEnv('HAPPY_RPC_PEER_DIAGNOSTICS','1');
+  let now = 0;
+  vi.spyOn(performance, 'now').mockImplementation(() => now);
+  const {adapter,log}=fixture(true);
+  await withRpcPeerDiagnostics(id,()=>adapter.doPublish({type:7,data:{requestId:'req'}}));
+  now = 25;
+  await adapter.onRawMessage({type:8,uid:'peer',data:{requestId:'req'}});
+  const stages = log.mock.calls.map(([r])=>r.stage);
+  expect(stages).toEqual(['request-publish-start','request-publish-done','response-decode-done','response-consume']);
+  expect(log.mock.calls[2][0].elapsedMs).toBe(25);
+  expect(log.mock.calls[3][0].elapsedMs).toBeGreaterThanOrEqual(log.mock.calls[2][0].elapsedMs);
+  adapter.close();
  });
  it('correlates publish and response consumption without logging rooms or socket data', async () => {
   vi.stubEnv('HAPPY_RPC_PEER_DIAGNOSTICS','1');
@@ -50,6 +66,20 @@ describe('peer boundary diagnostics', () => {
   expect(peerLog.mock.calls.every(([r])=>r.lookupId===correlation.lookupId)).toBe(true);
   expect(new Set(caller.log.mock.calls.map(([r])=>r.lookupId)).size).toBe(2);
   caller.adapter.close();peer.close();
+ });
+
+ it('records raw decode boundaries before peer request handling', async () => {
+  vi.stubEnv('HAPPY_RPC_PEER_DIAGNOSTICS','1');
+  let now = 0;
+  vi.spyOn(performance, 'now').mockImplementation(() => now);
+  const {adapter: caller,log: callerLog}=fixture(true), {adapter: peer,log: peerLog}=fixture(true,()=>{ now = 25; });
+  await withRpcPeerDiagnostics(id,()=>caller.doPublish({type:7,data:{requestId:'req'}}));
+  const lookupId = callerLog.mock.calls.find(([r])=>r.stage==='request-publish-start')![0].lookupId;
+  await peer.onRawMessage({type:7,uid:'caller',data:{requestId:'req',rpcPeer:{rpcId:id,lookupId}}});
+  expect(peerLog.mock.calls.map(([r])=>r.stage)).toEqual(['request-decode-done','request-consume']);
+  expect(peerLog.mock.calls[0][0].elapsedMs).toBe(25);
+  expect(peerLog.mock.calls[1][0].elapsedMs).toBeGreaterThanOrEqual(peerLog.mock.calls[0][0].elapsedMs);
+  caller.close();peer.close();
  });
  it('bounds admission to ten observations per minute and expires stale response matching', async () => {
   vi.useFakeTimers();vi.stubEnv('HAPPY_RPC_PEER_DIAGNOSTICS','1');const {adapter,log}=fixture();
