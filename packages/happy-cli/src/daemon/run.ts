@@ -58,7 +58,7 @@ import { decideResumeCredentials, readStagedTokenFromHomeDir, tokensShareIdentit
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { preflightDaemonControlServer, startDaemonControlServer } from './controlServer';
 import { BrowserBridge } from './browserBridge';
-import { BrowserLocalSetup } from './browserLocalSetup';
+import { BrowserLocalSetup, shouldEnableBrowserLocalSetup } from './browserLocalSetup';
 import { readBrowserSetupPolicy, writeBrowserSetupPolicy, localBrowserExtensionMetadata } from './browserLocalSetupStore';
 import { BrowserSessionBrokerClient } from './browserSessionBrokerContract';
 import { getDaemonTerminalSessionCount } from './daemonTerminalSessions';
@@ -3545,9 +3545,7 @@ export async function startDaemon(): Promise<void> {
     // Prepare/migrate the token before exposing the helper manifest. Chrome
     // can launch the helper as soon as the manifest exists, and must not race
     // legacy-token migration by creating a different machine-wide token.
-    const nativeMessaging = standaloneWindows
-      ? { token: randomUUID(), manifestPath: null }
-      : await prepareBrowserNativeMessaging({
+    const nativeMessaging = await prepareBrowserNativeMessaging({
       readToken: () => readOrCreateBrowserBridgeToken(configuration.browserBridgeTokenFile, {
         migrateFrom: configuration.legacyBrowserBridgeTokenFile
       }),
@@ -3592,8 +3590,10 @@ export async function startDaemon(): Promise<void> {
     });
     // Offered only while this daemon owns the bridge port: another daemon's extension connection
     // could otherwise complete a pairing this daemon reports and revokes.
-    let browserLocalSetup = browserSetupPolicy !== null && !standaloneWindows
-      && resolveBrowserBridgeHost(process.env) === '127.0.0.1'
+    let browserLocalSetup = shouldEnableBrowserLocalSetup({
+      policy: browserSetupPolicy,
+      host: resolveBrowserBridgeHost(process.env),
+    })
       ? new BrowserLocalSetup({
         bridge: browserBridge, readToken: async () => nativeMessaging.token,
         port: DEFAULT_BROWSER_BRIDGE_PORT, extension: localBrowserExtensionMetadata,
@@ -3601,7 +3601,7 @@ export async function startDaemon(): Promise<void> {
       }) : undefined;
     let stopBrowserBridge: () => Promise<void> = async () => {};
     try {
-      if (!standaloneWindows && browserSetupPolicy !== null) {
+      if (browserSetupPolicy !== null) {
         const bridgeHost = resolveBrowserBridgeHost(process.env);
         const setupCandidate = browserLocalSetup;
         const bridgeServer = await startBrowserBridgeServer({

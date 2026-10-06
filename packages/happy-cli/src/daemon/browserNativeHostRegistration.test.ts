@@ -67,11 +67,11 @@ describe('browser native host registration', () => {
         })).toBe(`/home/happy/.config/google-chrome/NativeMessagingHosts/${HOST_FILE}`)
     })
 
-    it('does not register a Chrome host on unsupported platforms', () => {
+    it('resolves the Windows manifest path used by the per-user registry entry', () => {
         expect(resolveBrowserNativeHostManifestPath({
             platform: 'win32',
             homeDir: 'C:\\Users\\happy',
-        })).toBeNull()
+        })).toBe(`C:\\Users\\happy\\AppData\\Local\\Saycode\\NativeMessagingHosts\\${HOST_FILE}`)
     })
 
     it('allows only the bundled Happy extension and its Chrome Web Store listing', () => {
@@ -114,5 +114,25 @@ describe('browser native host registration', () => {
             `chrome-extension://${EXTENSION_ID}/`,
             'chrome-extension://oonefemjapkafdiibkllemkjdlmmblbc/',
         ])
+    })
+
+    it('registers the Windows manifest in HKCU without replacing sibling hosts', async () => {
+        const homeDir = await mkdtemp(join(tmpdir(), 'happy-native-host-win-'))
+        tempDirs.push(homeDir)
+        const registrations: Array<{ name: string; manifestPath: string }> = []
+
+        const manifestPath = await registerBrowserNativeHost({
+            platform: 'win32',
+            homeDir,
+            extensionId: EXTENSION_ID,
+            helperPath: 'C:\\Program Files\\Saycode\\happy-browser-native-host.mjs',
+            registry: {
+                setManifestPath: async (name, path) => { registrations.push({ name, manifestPath: path }) },
+            },
+        })
+
+        expect(manifestPath).toBe(join(homeDir, 'AppData', 'Local', 'Saycode', 'NativeMessagingHosts', HOST_FILE))
+        expect(registrations).toEqual([{ name: 'ai.saycode.happy_browser', manifestPath }])
+        expect(JSON.parse(await readFile(manifestPath!, 'utf8')).path).toBe('C:\\Program Files\\Saycode\\happy-browser-native-host.mjs')
     })
 })

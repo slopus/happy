@@ -78,7 +78,7 @@ function setup(
       return { stdout: '{"version":1,"encrypted":false,"accounts":[{}]}', stderr: '' }
     }
     if (command === 'cswap' && args[0] === '--version') {
-      return { stdout: 'claude-swap 0.25.0', stderr: '' }
+      return { stdout: 'claude-swap 0.27.0b1', stderr: '' }
     }
     if (command === 'cswap' && args[0] === 'list') {
       return {
@@ -1793,7 +1793,7 @@ describe('AI credential machine runtime', () => {
       let activated = false
       const execFile = vi.fn(async (command: string, args: string[]) => {
         if (command === 'cswap' && args[0] === '--version') {
-          return { stdout: 'cswap 0.25.0', stderr: '' }
+          return { stdout: 'cswap 0.27.0b1', stderr: '' }
         }
         if (command === 'cswap' && args[0] === 'switch') {
           // Import resolves by identity, so exported slot 1 is local slot 7.
@@ -1838,7 +1838,7 @@ describe('AI credential machine runtime', () => {
       let activationAttempted = false
       const execFile = vi.fn(async (command: string, args: string[]) => {
         if (command === 'cswap' && args[0] === '--version') {
-          return { stdout: 'cswap 0.25.0', stderr: '' }
+          return { stdout: 'cswap 0.27.0b1', stderr: '' }
         }
         if (command === 'cswap' && args[0] === 'switch') {
           activationAttempted = true
@@ -1909,7 +1909,7 @@ describe('AI credential machine runtime', () => {
     let switched = false
     const execFile = vi.fn(async (command: string, args: string[]) => {
       if (command === 'cswap' && args[0] === '--version') {
-        return { stdout: 'cswap 0.25.0', stderr: '' }
+          return { stdout: 'cswap 0.27.0b1', stderr: '' }
       }
       if (command === 'cswap' && args[0] === 'list') {
         return {
@@ -1953,7 +1953,7 @@ describe('AI credential machine runtime', () => {
     let activeAccountNumber = 1
     const execFile = vi.fn(async (command: string, args: string[]) => {
       if (command === 'cswap' && args[0] === '--version') {
-        return { stdout: 'cswap 0.25.0', stderr: '' }
+          return { stdout: 'cswap 0.27.0b1', stderr: '' }
       }
       if (command === 'cswap' && args[0] === 'list') {
         return {
@@ -2004,7 +2004,7 @@ describe('AI credential machine runtime', () => {
       options?: { input?: string },
     ) => {
       if (command === 'cswap' && args[0] === '--version') {
-        return { stdout: 'cswap 0.25.0', stderr: '' }
+          return { stdout: 'cswap 0.27.0b1', stderr: '' }
       }
       if (command === 'cswap' && args[0] === 'list') {
         return {
@@ -2057,7 +2057,7 @@ describe('AI credential machine runtime', () => {
       options?: { input?: string },
     ) => {
       if (command === 'cswap' && args[0] === '--version') {
-        return { stdout: 'cswap 0.25.0', stderr: '' }
+          return { stdout: 'cswap 0.27.0b1', stderr: '' }
       }
       if (command === 'cswap' && args[0] === 'list') {
         return {
@@ -2120,7 +2120,7 @@ describe('AI credential machine runtime', () => {
     }))
     const execFile = vi.fn(async (command: string, args: string[]) => {
       if (command === 'cswap' && args[0] === '--version') {
-        return { stdout: 'cswap 0.25.0', stderr: '' }
+          return { stdout: 'cswap 0.27.0b1', stderr: '' }
       }
       if (command === 'cswap' && args[0] === 'list') {
         return {
@@ -2144,7 +2144,7 @@ describe('AI credential machine runtime', () => {
     let switched = false
     const execFile = vi.fn(async (command: string, args: string[]) => {
       if (command === 'cswap' && args[0] === '--version') {
-        return { stdout: 'cswap 0.25.0', stderr: '' }
+          return { stdout: 'cswap 0.27.0b1', stderr: '' }
       }
       if (command === 'cswap' && args[0] === 'switch') switched = true
       if (command === 'cswap' && args[0] === 'list') {
@@ -2187,7 +2187,7 @@ describe('AI credential machine runtime', () => {
       options?: { input?: string },
     ) => {
       if (command === 'cswap' && args[0] === '--version') {
-        return { stdout: 'cswap 0.25.0', stderr: '' }
+          return { stdout: 'cswap 0.27.0b1', stderr: '' }
       }
       if (command === 'cswap' && args[0] === 'list') {
         return {
@@ -2238,7 +2238,7 @@ describe('AI credential machine runtime', () => {
   it('rejects imported Claude credentials when every account requires login', async () => {
     const execFile = vi.fn(async (command: string, args: string[]) => {
       if (command === 'cswap' && args[0] === '--version') {
-        return { stdout: 'cswap 0.25.0', stderr: '' }
+        return { stdout: 'cswap 0.27.0b1', stderr: '' }
       }
       if (command === 'cswap' && args[0] === 'list') {
         return {
@@ -2281,7 +2281,7 @@ describe('AI credential machine runtime', () => {
     await runtime.apply({ provider: 'claude', payload: '{}' })
 
     expect(execFile).toHaveBeenCalledWith('uv', [
-      'tool', 'install', 'claude-swap==0.25.0', '--python', '>=3.12', '--force',
+      'tool', 'install', 'claude-swap==0.27.0b1', '--python', '>=3.12', '--force',
     ], expect.anything())
   })
 
@@ -2315,11 +2315,11 @@ describe('AI credential machine runtime', () => {
     await runtime.apply({ provider: 'claude', payload: '{}' })
 
     expect(execFile).toHaveBeenCalledWith('uv', [
-      'tool', 'install', 'claude-swap==0.25.0', '--python', physical, '--force',
+      'tool', 'install', 'claude-swap==0.27.0b1', '--python', physical, '--force',
     ], expect.anything())
   })
 
-  it.each(['cswap 0.25.0', 'cswap 0.26.0', 'claude-swap 0.27.0b1'])('keeps installed %s instead of downgrading to the pin', async version => {
+  it.each(['cswap 0.27.0b1', 'cswap 0.28.0', 'claude-swap 0.27.0'])('keeps installed %s instead of downgrading to the pin', async version => {
     const base = setup().execFile
     const execFile = vi.fn(async (command: string, args: string[], options?: object) => (
       command === 'cswap' && args[0] === '--version' ? { stdout: version, stderr: '' } : base(command, args, options)))
@@ -2351,7 +2351,7 @@ describe('AI credential machine runtime', () => {
   it('does not accept a version string that merely contains the managed version', async () => {
     const execFile = vi.fn(async (command: string, args: string[]) => {
       if (command === 'cswap' && args[0] === '--version') {
-        return { stdout: 'claude-swap 0.25.0-beta.1', stderr: '' }
+        return { stdout: 'claude-swap 0.27.0b0', stderr: '' }
       }
       if (command === 'cswap' && args[0] === 'list') {
         return { stdout: configuredClaudeList, stderr: '' }
@@ -2363,7 +2363,7 @@ describe('AI credential machine runtime', () => {
     await runtime.apply({ provider: 'claude', payload: '{}' })
 
     expect(execFile).toHaveBeenCalledWith('uv', [
-      'tool', 'install', 'claude-swap==0.25.0', '--python', '>=3.12', '--force',
+      'tool', 'install', 'claude-swap==0.27.0b1', '--python', '>=3.12', '--force',
     ], expect.anything())
   })
 
@@ -2566,7 +2566,7 @@ describe('AI credential machine runtime', () => {
     }
     const execFile = vi.fn(async (command: string, args: string[]) => {
       if (command === 'cswap' && args[0] === '--version') {
-        return { stdout: 'claude-swap 0.25.0', stderr: '' }
+        return { stdout: 'claude-swap 0.27.0b1', stderr: '' }
       }
       if (command === 'cswap' && args[0] === 'list') {
         events.push('verify')
@@ -3156,7 +3156,7 @@ describe('org deployment provenance (specs/agent-ai-source-routing observation i
   function workingClaudeExecFile(options: { failVerification?: boolean } = {}) {
     let activated = false
     return vi.fn(async (command: string, args: string[]): Promise<AiCredentialCommandResult> => {
-      if (command === 'cswap' && args[0] === '--version') return { stdout: 'cswap 0.25.0', stderr: '' }
+      if (command === 'cswap' && args[0] === '--version') return { stdout: 'cswap 0.27.0b1', stderr: '' }
       if (command === 'cswap' && args[0] === 'switch') activated = true
       if (command === 'cswap' && args[0] === 'list') {
         return {
