@@ -691,7 +691,11 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     const accepted = envelope.accounts.filter((_account: unknown, index: number) => verification.accounts[index]?.ok)
       .map((account: { email: string }) => ({ ...account, disabled: before.accounts.find(existing =>
         claudeListAccountIdentity(existing) === claudeListAccountIdentity(account))?.disabled }))
-    if (accepted.length === 0) throw new AiCredentialRuntimeError('CLAUDE_APPLY_RELOGIN_REQUIRED')
+    if (accepted.length === 0) {
+      // Keep request rejection reasons observable without exposing identities or provider output.
+      deps.warn?.(`Claude repair preflight rejected: ${JSON.stringify(verification.accounts.map(({ account, ok, errorKind }) => ({ account, ok, errorKind })))}`)
+      throw new AiCredentialRuntimeError('CLAUDE_APPLY_RELOGIN_REQUIRED')
+    }
     return { before, envelope: { ...envelope, accounts: accepted }, requested, verification }
   }
 

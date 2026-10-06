@@ -363,6 +363,28 @@ describe('AI credential machine runtime', () => {
     expect(execFile.mock.calls.some(([command, args]) => command === 'claude' || args[0] === 'import')).toBe(false)
   })
 
+  it.each([
+    ['429 rate limit private-provider-text', 'RATE_LIMITED'],
+    ['401 authentication_error private-provider-text', 'AUTHENTICATION_FAILED'],
+  ])('records a redacted repair rejection reason for %s without importing', async (stderr, errorKind) => {
+    const warn = vi.fn()
+    const { runtime, execFile } = setup({ warn })
+    const original = execFile.getMockImplementation()!
+    execFile.mockImplementation(async (command, args, options) => command === 'claude'
+      ? { stdout: '', stderr, exitCode: 1 }
+      : original(command, args, options))
+    await expect(runtime.apply({ provider: 'claude', applyMode: 'repair',
+      payload: claudeOauthPayload([{ email: 'owner@example.com' }]),
+      provenance: { companyId: 'company-1', bundleId: 'bundle-1', bundleVersion: 2 },
+    })).rejects.toMatchObject({ kind: 'CLAUDE_APPLY_RELOGIN_REQUIRED' })
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining(errorKind))
+    const diagnostic = warn.mock.calls.flat().join(' ')
+    expect(diagnostic).not.toContain('owner@example.com')
+    expect(diagnostic).not.toContain('oauth-1')
+    expect(diagnostic).not.toContain('private-provider-text')
+    expect(execFile.mock.calls.some(([, args]) => args[0] === 'import' || args[0] === 'switch')).toBe(false)
+  })
+
   it('does not import rejected repair credentials or claim a newer bundle was applied', async () => {
     const { runtime, files, execFile } = setup()
     const prior = JSON.stringify({ version: 1, claude: { state: 'applied', generation: 1,
