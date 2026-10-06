@@ -78,6 +78,25 @@ it('keeps the latest platform authorization usable when an older restore is abor
     expect(controller.getState()).toMatchObject({ status: 'ready', connection: { id: 'latest' } });
     controller.dispose();
 });
+
+it('does not let an old panel restore overwrite a newer chat connection', async () => {
+    const waiting: ((value: Response) => void)[] = [];
+    const storage = createMemoryServiceStorage();
+    const client = createAIServiceClient({ appId: 'advisor', transport: createBrowserPlatformTransport({
+        appId: 'advisor', baseUrl: '/api/ai', origin: 'https://app.test', storage,
+        fetch: async () => new Promise<Response>(resolve => { waiting.push(resolve); }),
+    }) });
+    const controller = createServiceController(client, storage);
+    const old = controller.restore().catch(error => error.code);
+    await vi.waitFor(() => expect(waiting.length).toBe(1));
+    const chat = client.connections.authorize();
+    await vi.waitFor(() => expect(waiting.length).toBe(2));
+    const reply = () => Response.json({ id: 'active', appId: 'advisor', source: 'platform', serviceId: 'default', expiresAt: null });
+    waiting[1](reply()); await chat;
+    waiting[0](reply()); await old;
+    expect(controller.getState()).toMatchObject({ status: 'ready', connection: { id: 'active' }, error: null });
+    controller.dispose();
+});
 it('keeps credentials out of state, changes only new-conversation overrides, and makes no idle polls', async () => {
     vi.useFakeTimers();
     try {

@@ -69,15 +69,18 @@ export function createServiceController(client: AIServiceClient | ServiceClients
         const active = selected();
         state = { ...state, status: 'authorizing', pending: null, error: null };
         emit();
+        let authorizationStarted = false;
         try {
             if (options.remember !== undefined)
                 state.storage = await storage.remember?.(options.remember) ?? storage.getStatus();
             const receipt = options.receipt ?? (state.source === 'personal' ? await storage.get<GrantReceipt>('connection') ?? undefined : undefined);
+            authorizationStarted = true;
             const connection = await active.connections.authorize({ receipt, signal, onPending: pending => { if (current !== generation || disposed)
                     return; state = { ...state, pending }; emit(); options.onPending?.(pending); } });
             if (disposed || current !== generation)
                 return;
-            state = { ...state, status: 'ready', connection, pending: null, error: null, storage: storage.getStatus() };
+            // Client events own connection state, including newer calls made by the host.
+            state = { ...state, storage: storage.getStatus() };
             emit();
             return connection;
         }
@@ -85,6 +88,7 @@ export function createServiceController(client: AIServiceClient | ServiceClients
             if (disposed || current !== generation)
                 return;
             const safe = safeServiceError(error);
+            if (authorizationStarted) throw safe;
             const status: ServiceControllerStatus = ['machine-offline', 'account-login-required', 'quota-exhausted', 'authorization-revoked', 'authorization-expired', 'protocol-incompatible'].includes(safe.code) ? safe.code as ServiceControllerStatus : safe.code === 'aborted' ? 'disconnected' : 'error';
             state = { ...state, status, pending: null, connection: null, error: { code: safe.code, retryable: safe.retryable }, storage: storage.getStatus() };
             emit();
