@@ -197,7 +197,7 @@ export type Machine = {
  */
 export const MessageMetaSchema = z.object({
   sentFrom: z.string().optional(), // Source identifier
-  sendMode: z.enum(['queue', 'steer']).optional(),
+  sendMode: z.enum(['queue', 'steer']).catch('queue').optional(),
   // Any string is accepted so a newer app can name a mode this CLI does not
   // know yet without the whole message failing safeParse and being dropped.
   // Each harness validates the value itself and falls back with a warning.

@@ -1,6 +1,6 @@
 import * as z from 'zod';
 
-export const MessageSendModeSchema = z.enum(['queue', 'steer']);
+export const MessageSendModeSchema = z.enum(['queue', 'steer']).catch('queue');
 export type MessageSendMode = z.infer<typeof MessageSendModeSchema>;
 
 export const MessageMetaSchema = z.object({

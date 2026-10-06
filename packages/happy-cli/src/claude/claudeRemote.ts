@@ -405,6 +405,7 @@ export async function claudeRemote(opts: {
                 const hasPendingInput = pendingInputs.size > 0 || (message.queued_turn_count ?? 0) > 0;
                 turnActive = hasPendingInput;
                 updateThinking(hasPendingInput);
+                const waitToAbort = inputWait.controller;
                 logger.debug('[claudeRemote] Result received');
 
                 // Fire-and-forget: unavailable for API key / Bedrock / Vertex
@@ -430,7 +431,7 @@ export async function claudeRemote(opts: {
                 }
                 providerAuthFailed = false;
 
-                inputWait.controller?.abort();
+                waitToAbort?.abort();
                 inputWait.wake?.();
                 if (endAfterTurn && !hasPendingInput) messages.end();
             }

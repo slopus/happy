@@ -11,4 +11,8 @@ describe('MessageMetaSchema', () => {
         expect(parsed.permissionMode).toBe('team-custom-mode');
         expect(parsed.model).toBe('custom-model');
     });
+
+    it('keeps unknown future send modes as Queue', () => {
+        expect(MessageMetaSchema.parse({ sendMode: 'future-mode' }).sendMode).toBe('queue');
+    });
 });
