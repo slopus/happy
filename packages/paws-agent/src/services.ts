@@ -1,4 +1,5 @@
 export * from './services/types';
+export * from './services/profiles';
 export { createAIServiceClient } from './services/client';
 export type { AIServiceClient } from './services/client';
 export { createServiceController } from './services/controller';
