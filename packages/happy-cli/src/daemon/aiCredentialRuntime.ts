@@ -41,7 +41,7 @@ import {
 } from './claudeSetupToken'
 
 const MAX_PAYLOAD_BYTES = 1024 * 1024
-const CLAUDE_SWAP_VERSION = '0.25.0'
+const CLAUDE_SWAP_VERSION = '0.27.0b1'
 const CLAUDE_STATUS_TIMEOUT_MS = 120_000
 // Keep readable historical bundles separate from supported installed runtimes.
 // Bundles from supported runtimes are readable; parseCodexMultiAuthBundle still

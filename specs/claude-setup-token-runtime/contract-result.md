@@ -26,7 +26,7 @@ Only then does the daemon add `setupTokenVersion:1` and `setupTokenStatusVersion
 Numeric versions are not evidence. The name `setupTokenVersion` is confirmed across Studio, Desktop and Happy.
 
 On an unmarked, failing or missing cswap, a managed payload fails with `CLAUDE_SETUP_TOKEN_UNSUPPORTED` before the journal snapshot and before
-`ensureClaudeSwap`. Nothing is installed or written. `ensureClaudeSwap` never downgrades an installed build ≥ 0.25.0.
+`ensureClaudeSwap`. Nothing is installed or written. `ensureClaudeSwap` never downgrades an installed build ≥ 0.27.0b1.
 
 ## Apply semantics
 
@@ -731,3 +731,27 @@ base ec5c82428; the complete local viewerProxy file rerun passed29tests. This do
 convert that failed CI to success or establish the timing cause. No unrelated viewer
 implementation/test was changed. The final test-only follow-up's latest-head CI is
 tracked in PR #684.
+
+## SayCode runtime release candidate — 2026-10-07
+
+Provider `0.27.0b1` is the exact marked artifact candidate. Its capability contract
+requires `version:1`, `artifact:'saycode-setup-token-runtime-v1'`, and
+`managedAccountMetadata:true`; the provider worktree's related suite passed 1,567
+tests and the isolated installed-wheel smoke verified marker, managed import/status/
+replacement/export, org collector replay fencing, personal generation CAS, budget
+metadata, and rotation fail-closed behavior. The provider full suite had one
+environment-only `ps` start-time failure because this runner denies `ps` with EPERM;
+the token-runtime and package tests passed.
+
+Happy candidate `1.1.10-aplus.297` pins `claude-swap==0.27.0b1` in both runtime
+repair and postinstall companion setup. The installed-version gate compares the
+numeric version and `a/b/rc` prerelease rank so `0.27.0b0` is rejected while
+`0.27.0b1` and stable/newer versions are retained. Happy typecheck, the three
+managed-runtime/installer suites (307 tests, 2 skipped), build, prepared package,
+and the exact tarball guard/install smoke passed. Tarball SHA-256:
+`d75a89693472fd3f3de0ac49986b586e219879c5adede322496c26dcd8e48f8a`.
+
+No provider branch push, GitHub Release, PyPI publish, Happy push/merge, tag push,
+or npm publish has been performed. Those external mutations remain a separate
+approval checkpoint; the artifact and tag must be verified again immediately
+before execution.

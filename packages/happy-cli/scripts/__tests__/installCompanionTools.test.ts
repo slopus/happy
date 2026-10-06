@@ -124,9 +124,10 @@ describe('CLAUDE_SWAP_VERSION', () => {
     });
 
     it('is the version ensureClaudeSwap accepts from `cswap --version`', () => {
-        expect(cswapAtLeastPinned(parseCswapVersion(`cswap ${CLAUDE_SWAP_VERSION}`))).toBe(true);
-        expect(cswapAtLeastPinned(parseCswapVersion('cswap 0.27.0b1'))).toBe(true);
-        expect(cswapAtLeastPinned(parseCswapVersion('cswap 0.24.0'))).toBe(false);
+      expect(cswapAtLeastPinned(parseCswapVersion(`cswap ${CLAUDE_SWAP_VERSION}`))).toBe(true);
+      expect(cswapAtLeastPinned(parseCswapVersion('cswap 0.27.0'))).toBe(true);
+      expect(cswapAtLeastPinned(parseCswapVersion('cswap 0.27.0b0'))).toBe(false);
+      expect(cswapAtLeastPinned(parseCswapVersion('cswap 0.26.0'))).toBe(false);
     });
 });
 
