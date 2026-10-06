@@ -1,4 +1,5 @@
-import { AIServiceClientError, type AIServiceTransport, type ObserveOptions, type TurnObservationEvent, type TurnSubscription, type TurnSnapshot } from './types';
+import { AIServiceClientError, type AIServiceTransport, type ObserveOptions, type ServiceConnection, type TurnObservationEvent, type TurnSubscription, type TurnSnapshot } from './types';
+export type ServiceConnectionEvent = { type: 'connected'; connection: ServiceConnection } | { type: 'disconnected' } | { type: 'error'; error: AIServiceClientError };
 export function safeServiceError(error: unknown): AIServiceClientError { return error instanceof AIServiceClientError ? error : new AIServiceClientError('transport-error', true); }
 export function waitForServicePoll(ms: number, signal: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
@@ -19,6 +20,9 @@ export function createAIServiceClient({ appId, transport }: {
         throw new AIServiceClientError('permission-denied');
     let disposed = false;
     const subscriptions = new Set<AbortController>();
+    const connectionListeners = new Set<(event: ServiceConnectionEvent) => void>();
+    let connectionEpoch = 0;
+    const connectionChanged = (event: ServiceConnectionEvent) => { if (!disposed) for (const listener of connectionListeners) listener(event); };
     const open = () => { if (disposed)
         throw new AIServiceClientError('disposed'); };
     const terminal = (snapshot: TurnSnapshot) => ['completed', 'failed', 'cancelled', 'interrupted'].includes(snapshot.record.status);
@@ -27,12 +31,25 @@ export function createAIServiceClient({ appId, transport }: {
         services: { list: (...args: Parameters<AIServiceTransport['list']>) => { open(); return transport.list(...args); } },
         capabilities: { read: (...args: Parameters<AIServiceTransport['readCapabilities']>) => { open(); return transport.readCapabilities(...args); } },
         connections: {
-            authorize: (...args: Parameters<AIServiceTransport['authorize']>) => { open(); return transport.authorize(...args); },
-            disconnect() { open(); for (const controller of subscriptions)
-                controller.abort(); transport.disconnect(); },
+            async authorize(...args: Parameters<AIServiceTransport['authorize']>) {
+                open(); const epoch = connectionEpoch;
+                try {
+                    const connection = await transport.authorize(...args);
+                    if (disposed || epoch !== connectionEpoch) throw new AIServiceClientError('aborted');
+                    connectionChanged({ type: 'connected', connection }); return connection;
+                } catch (error) {
+                    const safe = safeServiceError(error);
+                    if (!disposed && epoch === connectionEpoch) connectionChanged({ type: 'error', error: safe });
+                    throw safe;
+                }
+            },
+            /** Observe connection changes made by either the panel or the host app. No credentials are emitted. */
+            subscribe(listener: (event: ServiceConnectionEvent) => void) { open(); connectionListeners.add(listener); return () => { connectionListeners.delete(listener); }; },
+            disconnect() { open(); connectionEpoch++; for (const controller of subscriptions)
+                controller.abort(); transport.disconnect(); connectionChanged({ type: 'disconnected' }); },
             async revoke(...args: Parameters<NonNullable<AIServiceTransport['revoke']>>) { open(); if (!transport.revoke)
-                throw new AIServiceClientError('permission-denied'); await transport.revoke(...args); for (const controller of subscriptions)
-                controller.abort(); transport.disconnect(); },
+                throw new AIServiceClientError('permission-denied'); await transport.revoke(...args); connectionEpoch++; for (const controller of subscriptions)
+                controller.abort(); transport.disconnect(); connectionChanged({ type: 'disconnected' }); },
         },
         conversations: { create: (...args: Parameters<AIServiceTransport['createConversation']>) => { open(); return transport.createConversation(...args); }, find: (...args: Parameters<AIServiceTransport['findConversation']>) => { open(); return transport.findConversation(...args); } },
         turns: {
@@ -100,7 +117,7 @@ export function createAIServiceClient({ appId, transport }: {
             },
         },
         dispose() { if (disposed)
-            return; disposed = true; for (const controller of subscriptions)
+            return; disposed = true; connectionEpoch++; connectionListeners.clear(); for (const controller of subscriptions)
             controller.abort(); subscriptions.clear(); transport.dispose(); },
     };
 }

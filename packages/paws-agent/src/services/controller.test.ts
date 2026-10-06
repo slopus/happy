@@ -5,6 +5,53 @@ import { createNodePlatformTransport } from './nodePlatformTransport';
 import { createBrowserPersonalTransport } from './personalTransport';
 import { createMemoryServiceStorage, createBrowserServiceStorage } from './storage';
 import { fixture, makeReceipt } from './testFixtures';
+import { createBrowserPlatformTransport } from './platformTransport';
+
+it('keeps the panel connected when a platform chat restores its client directly', async () => {
+    const storage = createMemoryServiceStorage();
+    const client = createAIServiceClient({ appId: 'advisor', transport: createBrowserPlatformTransport({
+        appId: 'advisor', baseUrl: '/api/ai', origin: 'https://app.test', storage,
+        fetch: async () => Response.json({ id: 'platform', appId: 'advisor', source: 'platform', serviceId: 'default', expiresAt: null }),
+    }) });
+    const controller = createServiceController(client, storage);
+    await controller.connect();
+    await controller.disconnect();
+    expect(controller.getState().status).toBe('disconnected');
+    await client.connections.authorize();
+    expect(controller.getState()).toMatchObject({ status: 'ready', connection: { id: 'platform' } });
+    client.connections.disconnect();
+    expect(controller.getState()).toMatchObject({ status: 'disconnected', connection: null });
+    controller.dispose();
+});
+
+it('shows a failed platform chat authorization in the same controller state', async () => {
+    const storage = createMemoryServiceStorage();
+    const client = createAIServiceClient({ appId: 'advisor', transport: createBrowserPlatformTransport({
+        appId: 'advisor', baseUrl: '/api/ai', origin: 'https://app.test', storage,
+        fetch: async () => { throw new TypeError('offline'); },
+    }) });
+    const controller = createServiceController(client, storage);
+    await expect(client.connections.authorize()).rejects.toMatchObject({ code: 'transport-error' });
+    expect(controller.getState()).toMatchObject({ status: 'error', connection: null, error: { code: 'transport-error' } });
+    controller.dispose();
+});
+
+it('does not reconnect the panel when an authorization finishes after disconnect', async () => {
+    let release!: (value: Response) => void;
+    const response = new Promise<Response>(resolve => { release = resolve; });
+    const storage = createMemoryServiceStorage();
+    const client = createAIServiceClient({ appId: 'advisor', transport: createBrowserPlatformTransport({
+        appId: 'advisor', baseUrl: '/api/ai', origin: 'https://app.test', storage, fetch: () => response,
+    }) });
+    const controller = createServiceController({ platform: client, personal: undefined }, storage);
+    const pending = client.connections.authorize();
+    const rejected = expect(pending).rejects.toMatchObject({ code: 'aborted' });
+    await controller.disconnect();
+    release(Response.json({ id: 'late', appId: 'advisor', source: 'platform', serviceId: 'default', expiresAt: null }));
+    await rejected;
+    expect(controller.getState()).toMatchObject({ status: 'disconnected', connection: null });
+    controller.dispose();
+});
 it('keeps credentials out of state, changes only new-conversation overrides, and makes no idle polls', async () => {
     vi.useFakeTimers();
     try {

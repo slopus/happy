@@ -44,6 +44,20 @@ export function createServiceController(client: AIServiceClient | ServiceClients
     const unsubscribe = storage.subscribe?.(reason => { if (disposed)
         return; reset(); state.storage = storage.getStatus(); emit(); for (const listener of listeners)
         listener({ type: 'invalidated', reason }); });
+    const connectionSubscriptions = Object.values(clients).flatMap(client => client ? [client.connections.subscribe(event => {
+        if (disposed || client.source !== state.source) return;
+        if (event.type === 'connected') {
+            const same = state.connection?.id === event.connection.id && state.connection?.serviceId === event.connection.serviceId;
+            state = { ...state, status: 'ready', connection: event.connection, pending: null, error: null, catalog: same ? state.catalog : null };
+        } else if (event.type === 'disconnected') {
+            state = { ...state, status: 'disconnected', connection: null, pending: null, catalog: null, error: null };
+        } else {
+            const safe = event.error;
+            const status: ServiceControllerStatus = ['machine-offline', 'account-login-required', 'quota-exhausted', 'authorization-revoked', 'authorization-expired', 'protocol-incompatible'].includes(safe.code) ? safe.code as ServiceControllerStatus : safe.code === 'aborted' ? 'disconnected' : 'error';
+            state = { ...state, status, connection: null, pending: null, catalog: null, error: { code: safe.code, retryable: safe.retryable } };
+        }
+        emit();
+    })] : []);
     async function connect(options: AuthorizeOptions & {
         remember?: boolean;
     } = {}) {
@@ -120,7 +134,7 @@ export function createServiceController(client: AIServiceClient | ServiceClients
         createConversation(appConversationId?: string) { open(); if (state.status !== 'ready')
             throw new AIServiceClientError('consent-required'); return selected().conversations.create({ appConversationId, overrides: structuredClone(state.overrides) }); },
         dispose() { if (disposed)
-            return; disposed = true; generation++; authorization?.abort(); unsubscribe?.(); listeners.clear(); for (const c of Object.values(clients))
+            return; disposed = true; generation++; authorization?.abort(); unsubscribe?.(); for (const unsubscribeConnection of connectionSubscriptions) unsubscribeConnection(); listeners.clear(); for (const c of Object.values(clients))
             c?.dispose(); storage.dispose(); },
     };
 }
