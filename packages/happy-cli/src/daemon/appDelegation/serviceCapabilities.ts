@@ -38,11 +38,17 @@ export async function readClaudeCapabilities(target: ServiceTarget, binary: stri
     const section = modelStart < 0 ? '' : stdout.slice(modelStart).split(/\n\s{2,}--[\w-]|\n\s{2,}-\w/)[0];
     // Help exposes finite native aliases, not account entitlement or per-model effort support.
     const aliases = [...new Set([...section.matchAll(/'(opus|sonnet|haiku|fable)'/g)].map(match => match[1]))];
+    const permissionStart = stdout.indexOf('--permission-mode <mode>');
+    const permissionSection = permissionStart < 0 ? '' : stdout.slice(permissionStart).split(/\n\s{2,}--[\w-]|\n\s{2,}-\w/)[0];
+    const supportsYolo = permissionSection.includes('"bypassPermissions"') && stdout.includes('--tools') && stdout.includes('--safe-mode');
     return CapabilityCatalogSchema.parse({ machineId: target.machineId, engine: target.engine, accountRef: target.accountRef, protocol: AI_SERVICES_PROTOCOL, observedAt: Date.now(), availability: 'online', completeness: 'limited', defaultModelId: null,
-        models: aliases.map(id => ({ id, name: id, supportsImages: false, reasoning: { supportsDefault: true, values: [], defaultValue: null } })) });
+        execution: { permissionModes: supportsYolo ? ['chat-only', 'yolo'] : ['chat-only'], serviceTiers: ['default'] },
+        models: aliases.map(id => ({ id, name: id, supportsImages: false, serviceTiers: ['default'], reasoning: { supportsDefault: true, values: [], defaultValue: null } })) });
 }
+const nativeServiceTiersSchema = z.array(z.object({ id: z.string().min(1) }));
 const nativeModelSchema = z.object({ model: z.string().min(1), displayName: z.string().min(1), isDefault: z.boolean(), hidden: z.boolean().optional(),
     inputModalities: z.array(z.string()).optional(), input_modalities: z.array(z.string()).optional(),
+    serviceTiers: nativeServiceTiersSchema.optional(), service_tiers: nativeServiceTiersSchema.optional(),
     supportedReasoningEfforts: z.array(z.object({ reasoningEffort: z.string().min(1) })), defaultReasoningEffort: z.string().nullable() });
 const modelPageSchema = z.object({ data: z.array(nativeModelSchema), nextCursor: z.string().nullable().optional() });
 /** Read-only app-server session. No thread or turn is created. */
@@ -87,6 +93,7 @@ export async function readCodexCapabilities(target: ServiceTarget, binary: strin
                 if (model.hidden) continue;
                 const values = [...new Set(model.supportedReasoningEfforts.map(option => option.reasoningEffort))];
                 models.push({ id: model.model, name: model.displayName, supportsImages: (model.inputModalities ?? model.input_modalities ?? []).includes('image'),
+                    serviceTiers: (model.serviceTiers ?? model.service_tiers ?? []).some(tier => tier.id === 'priority') ? ['default', 'fast'] : ['default'],
                     reasoning: { supportsDefault: true, values, defaultValue: model.defaultReasoningEffort } });
                 if (model.isDefault) defaultModelId = model.model;
             }
@@ -95,7 +102,8 @@ export async function readCodexCapabilities(target: ServiceTarget, binary: strin
             if (cursor) cursors.add(cursor);
         } while (cursor);
         signal.throwIfAborted();
-        return CapabilityCatalogSchema.parse({ machineId: target.machineId, engine: target.engine, accountRef: target.accountRef, protocol: AI_SERVICES_PROTOCOL, observedAt: Date.now(), availability: 'online', completeness: 'complete', models, defaultModelId });
+        return CapabilityCatalogSchema.parse({ machineId: target.machineId, engine: target.engine, accountRef: target.accountRef, protocol: AI_SERVICES_PROTOCOL, observedAt: Date.now(), availability: 'online', completeness: 'complete', models, defaultModelId,
+            execution: { permissionModes: ['chat-only', 'read-only', 'yolo'], serviceTiers: models.some(model => model.serviceTiers?.includes('fast')) ? ['default', 'fast'] : ['default'] } });
     } finally {
         clearTimeout(timer); signal.removeEventListener('abort', abort); child.kill(); lines.close();
         await new Promise<void>(resolve => {
@@ -112,9 +120,13 @@ export function validateBoundCapabilities(binding: ExecutionBinding, value: unkn
     if (!sameServiceTarget(binding, catalog)) throw new Error('account-identity-changed');
     if (catalog.availability !== 'online' || catalog.observedAt > Date.now() || Date.now() - catalog.observedAt > 60000) throw new Error('machine-offline');
     if (!binding.permissions.includes('chat') || (hasImages && !binding.permissions.includes('images'))) throw new Error('permission-denied');
+    const permissionMode = binding.permissionMode ?? 'chat-only';
+    if (permissionMode !== 'chat-only' && !binding.permissions.includes('tools')) throw new Error('permission-denied');
+    if (permissionMode !== 'chat-only' && !catalog.execution?.permissionModes.includes(permissionMode)) throw new Error('parameter-unsupported');
     const model = catalog.models.find(model => model.id === (binding.requestedModel ?? catalog.defaultModelId));
     if (!model) throw new Error('model-unavailable');
     if ((hasImages || binding.permissions.includes('images')) && !model.supportsImages) throw new Error('parameter-unsupported');
     if (binding.reasoning.mode === 'default' ? !model.reasoning.supportsDefault : !model.reasoning.values.includes(binding.reasoning.value)) throw new Error('parameter-unsupported');
+    if (binding.serviceTier === 'fast' && (!catalog.execution?.serviceTiers.includes('fast') || !model.serviceTiers?.includes('fast'))) throw new Error('parameter-unsupported');
     return catalog;
 }

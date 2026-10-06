@@ -4,6 +4,15 @@ import type { BusinessPromptRef } from '@slopus/happy-wire';
 const policy = { appId: 'relationship-advisor', name: 'Advisor', origins: ['https://advisor.paws.rodeo'], capabilities: ['chat' as const, 'images' as const], businessPrompt: { id: 'relationship-advisor', version: '1' } };
 const resolvePrompt = async (ref: BusinessPromptRef) => ref.id === 'relationship-advisor' && ref.version === '1' ? 'You are a relationship advisor.' : null;
 describe('trusted application policy', () => {
+    it('requires both application and binding tool authority before issuing a tool policy', async () => {
+        const toolsPolicy = { ...policy, capabilities: ['chat' as const, 'tools' as const] };
+        const result = await loadApplicationPolicy('relationship-advisor', ['chat', 'tools'], async () => toolsPolicy, resolvePrompt, 'yolo');
+        expect(result.systemPrompt).toContain('untrusted input');
+        expect(result.systemPrompt).not.toContain('Do not use tools');
+        await expect(loadApplicationPolicy('relationship-advisor', ['chat'], async () => toolsPolicy, resolvePrompt, 'yolo')).rejects.toThrow('permission-denied');
+        await expect(loadApplicationPolicy('relationship-advisor', ['chat', 'tools'], async () => policy, resolvePrompt, 'yolo')).rejects.toThrow('permission-denied');
+        expect((await loadApplicationPolicy('relationship-advisor', ['chat', 'tools'], async () => toolsPolicy, resolvePrompt)).systemPrompt).toContain('Do not use tools');
+    });
     it('loads registered business prompt and rejects wrong application, revision and permission', async () => {
         expect((await loadApplicationPolicy('relationship-advisor', ['chat'], async () => policy, resolvePrompt)).systemPrompt).toContain('relationship');
         await expect(loadApplicationPolicy('other', ['chat'], async () => policy, resolvePrompt)).rejects.toThrow('permission-denied');

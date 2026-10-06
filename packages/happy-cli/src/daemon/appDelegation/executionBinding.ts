@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, rm, writeFile, access, readdir } from 'node:fs/promises';
 import { isAbsolute, join, resolve } from 'node:path';
 import { z } from 'zod';
-import { ExecutionBindingSchema, ServiceTargetSchema, ServiceErrorCodeSchema, TurnResultSchema, type CapabilityCatalog, type ExecutionBinding, type ServiceTarget, type TurnActual, type TurnResult, type ServiceErrorCode } from '@slopus/happy-wire';
+import { ExecutionBindingSchema, ServiceTargetSchema, ServiceErrorCodeSchema, ServicePermissionModeSchema, TurnResultSchema, type CapabilityCatalog, type ExecutionBinding, type ServiceTarget, type TurnActual, type TurnResult, type ServiceErrorCode } from '@slopus/happy-wire';
 import type { CodexAccountLaunch } from '@/daemon/codexAccountLaunch';
 import { loadApplicationPolicy, type TrustedApplicationLoader, type TrustedBusinessPromptResolver } from './applicationPolicy';
 import { readClaudeCapabilities, readCodexCapabilities, sameServiceTarget, validateBoundCapabilities, verifyClaudeIdentity } from './serviceCapabilities';
@@ -102,17 +102,25 @@ export function createBoundServiceRuntime(context: BoundRuntimeContext): BoundSe
             if (!parsedBinding.success || !parsedInput.success || Buffer.byteLength(JSON.stringify(input.messages)) > 12000000) throw new Error('invalid-request');
             const bound = parsedBinding.data, turn = parsedInput.data;
             const startedAt = Date.now();
-            const actual: TurnActual = { modelId: null, reasoning: null };
+            const actual: TurnActual = { modelId: null, reasoning: null,
+                ...(bound.permissionMode === undefined ? {} : { permissionMode: null }),
+                ...(bound.serviceTier === undefined ? {} : { serviceTier: null }) };
             let status: TurnResult['status'] = 'completed', error: TurnResult['error'] = null;
-            const report = (field: keyof TurnActual, value: string) => {
+            const report = <K extends keyof TurnActual>(field: K, value: NonNullable<TurnActual[K]>) => {
                 if (value.trim() && value.length <= 256) { actual[field] = value; onEvent({ type: 'actual', actual: { ...actual } }); }
             };
             try {
-                const { systemPrompt } = await loadApplicationPolicy(bound.appId, bound.permissions, context.loadApplication, context.resolveBusinessPrompt);
+                const { systemPrompt } = await loadApplicationPolicy(bound.appId, bound.permissions, context.loadApplication, context.resolveBusinessPrompt, bound.permissionMode);
                 await withLease(bound, paths => context.acquireTurn(bound, paths, signal), signal, async (lease, paths, onSpawn, processGuard) => {
                     const catalog = await discover(bound, lease, paths, signal, onSpawn, processGuard);
                     validateBoundCapabilities(bound, catalog, turn.messages.some(message => !!message.images?.length));
-                    const options = { systemPrompt, reasoning: bound.reasoning, onReasoning: (value: string) => report('reasoning', value) };
+                    const options = { systemPrompt, reasoning: bound.reasoning, permissionMode: bound.permissionMode, serviceTier: bound.serviceTier,
+                        onReasoning: (value: string) => report('reasoning', value),
+                        onPermissionMode: (value: string) => {
+                            const parsed = ServicePermissionModeSchema.safeParse(value);
+                            if (bound.permissionMode !== undefined && parsed.success) report('permissionMode', parsed.data);
+                        },
+                        onServiceTier: (value: string) => { if (bound.serviceTier !== undefined) report('serviceTier', value); } };
                     const onText = (text: string) => onEvent({ type: 'text', text });
                     if (lease.engine === 'codex') await runRestrictedCodex(lease.binary, lease.launch.home, paths.cwd, turn.messages, signal, onText, onSpawn, bound.requestedModel, value => report('modelId', value), options, processGuard);
                     else await runRestrictedClaude(lease.binary, paths.cwd, turn.messages, signal, onText, bound.requestedModel, value => report('modelId', value), {

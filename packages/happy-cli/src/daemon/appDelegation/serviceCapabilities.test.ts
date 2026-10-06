@@ -15,6 +15,26 @@ async function executable(code: string) {
     return { root, binary };
 }
 describe('live service capabilities', () => {
+    it('advertises Fast only from native priority service-tier evidence', async () => {
+        const f = await executable(`const rl=require('readline');if(process.argv.includes('--version')){console.log('codex-cli 0.159.3');process.exit(0)}rl.createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.id==null)return;console.log(JSON.stringify({id:m.id,result:m.method==='model/list'?{data:[{model:'fast-native',displayName:'Fast native',isDefault:true,serviceTiers:[{id:'priority',name:'Fast'}],supportedReasoningEfforts:[],defaultReasoningEffort:null},{model:'unknown-native',displayName:'Unknown',isDefault:false,supportedReasoningEfforts:[],defaultReasoningEffort:null}],nextCursor:null}:{}}))});`);
+        const catalog = await readCodexCapabilities(codex, f.binary, join(f.root, 'private'), f.root, new AbortController().signal);
+        expect(catalog.execution).toEqual({ permissionModes: ['chat-only', 'read-only', 'yolo'], serviceTiers: ['default', 'fast'] });
+        expect(catalog.models.map(model => model.serviceTiers)).toEqual([['default', 'fast'], ['default']]);
+        const binding: ExecutionBinding = { ...codex, id: 'binding', appId: 'app', serviceId: 'svc', revision: 1, requestedModel: 'fast-native', reasoning: { mode: 'default' }, permissions: ['chat', 'tools'], permissionMode: 'yolo', serviceTier: 'fast' };
+        expect(() => validateBoundCapabilities(binding, catalog, false)).not.toThrow();
+        expect(() => validateBoundCapabilities({ ...binding, requestedModel: 'unknown-native' }, catalog, false)).toThrow('parameter-unsupported');
+        expect(() => validateBoundCapabilities({ ...binding, permissions: ['chat'] }, catalog, false)).toThrow('permission-denied');
+        expect(() => validateBoundCapabilities(binding, { ...catalog, execution: undefined }, false)).toThrow('parameter-unsupported');
+    });
+    it('exposes Claude YOLO only when the verified CLI reports its native permission option', async () => {
+        const f = await executable(`if(process.argv.includes('--version'))console.log('2.1.251 (Claude Code)');else if(process.argv.includes('status'))console.log(${JSON.stringify(JSON.stringify(login))});else if(process.argv.includes('--help'))console.log('--model <model> aliases \\'sonnet\\'\\n  --permission-mode <mode> (choices: "dontAsk", "bypassPermissions")\\n  --tools <tools...>\\n  --safe-mode');`);
+        const target: ServiceTarget = { engine: 'claude', machineId: 'machine', accountRef: { kind: 'device-identity', machineId: 'machine', identityId: claudeIdentityId(login) } };
+        const catalog = await readClaudeCapabilities(target, f.binary, { PATH: process.env.PATH, HOME: f.root }, f.root, new AbortController().signal);
+        expect(catalog.execution).toEqual({ permissionModes: ['chat-only', 'yolo'], serviceTiers: ['default'] });
+        const binding: ExecutionBinding = { ...target, id: 'binding', appId: 'app', serviceId: 'svc', revision: 1, requestedModel: 'sonnet', reasoning: { mode: 'default' }, permissions: ['chat', 'tools'], permissionMode: 'read-only' };
+        expect(() => validateBoundCapabilities(binding, catalog, false)).toThrow('parameter-unsupported');
+        expect(() => validateBoundCapabilities({ ...binding, permissionMode: 'yolo', serviceTier: 'fast' }, catalog, false)).toThrow('parameter-unsupported');
+    });
     it('reads paginated native models in the exact private Codex home without starting a turn', async () => {
         const f = await executable(`const fs=require('fs'),rl=require('readline');if(process.argv.includes('--version')){console.log('codex-cli 0.159.3');process.exit(0)};fs.writeFileSync(process.cwd()+'/env.json',JSON.stringify({home:process.env.CODEX_HOME,openai:process.env.OPENAI_API_KEY}));rl.createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(line);if(m.id==null)return;let result={};if(m.method==='model/list'){result=m.params.cursor?{data:[{id:'second',model:'second',displayName:'Second',isDefault:false,inputModalities:['text'],supportedReasoningEfforts:[],defaultReasoningEffort:null}],nextCursor:null}:{data:[{id:'native',model:'native',displayName:'Native',isDefault:true,inputModalities:['text','image'],supportedReasoningEfforts:[{reasoningEffort:'high',description:'High'}],defaultReasoningEffort:'high'}],nextCursor:'page2'}}else if(m.method!=='initialize'){process.exit(9)}console.log(JSON.stringify({id:m.id,result}))});`);
         const catalog = await readCodexCapabilities(codex, f.binary, join(f.root, 'private'), f.root, new AbortController().signal);
