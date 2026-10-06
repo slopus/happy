@@ -17,6 +17,7 @@ import { appAuthorizationProtocol, sealServiceConsent, appAuthorizationRequest, 
 import { createAIServicesAPI, type AIServiceWorker, type ServicePairing, type ServiceSnapshot } from '@/sync/apiAIServices';
 import { listCodexAccounts, type CodexAccountProfile } from '@/sync/apiCodexAccounts';
 import { ServiceConsent } from '@/components/aiServices/ServiceConsent';
+import { createServiceAuthorizationLogin, serviceAuthorizationLoginParams } from '@/auth/serviceAuthorizationLogin';
 
 export default function AuthorizeApp() {
     const { protocol, id } = useLocalSearchParams<{ protocol?: string; id: string }>();
@@ -34,7 +35,8 @@ function AuthorizeService({ id }: { id: string }) {
     const [error, setError] = React.useState('');
     React.useEffect(() => {
         let live = true; setData(null); setError('');
-        if (!api || !credentials || !id || !/^[0-9a-f-]{36}$/.test(id)) { setError('请登录 Paws 并使用有效授权链接。'); return; }
+        if (!createServiceAuthorizationLogin(id)) { setError('授权链接无效。请回原应用重新连接。'); return; }
+        if (!api || !credentials) return;
         void Promise.all([api.pairing(id), api.list().then(r => Promise.all(r.services.map(s => api.read(s.id)))), api.workers(), listCodexAccounts(credentials)])
             .then(([pairing, services, workers, accounts]) => { if (live) setData({ pairing, services, workers: workers.workers, accounts: accounts.profiles }); })
             .catch(e => { if (live) setError(e.message); });
@@ -42,8 +44,16 @@ function AuthorizeService({ id }: { id: string }) {
     }, [api, id]);
     return <AppAuthorizationLayout>
         <Stack.Screen options={{ title: '授权 AI 服务' }} />
+        {!credentials && !error ? <>
+            <AuthorizationNotice title="登录 Paws 后确认授权" message="请登录已有的 Paws 账号。登录成功后会返回此授权请求，供你核对并确认。" />
+            <RoundButton title="登录 Paws" style={authorizationStyles.button} textStyle={authorizationStyles.buttonText} onPress={() => {
+                const intent = createServiceAuthorizationLogin(id);
+                if (intent) router.push({ pathname: '/restore', params: serviceAuthorizationLoginParams(intent) } as never);
+            }} />
+            <RoundButton title="取消" display="inverted" onPress={() => router.replace('/')} />
+        </> : null}
         {error ? <AuthorizationNotice title="无法读取授权请求" message={error} error /> : null}
-        {!data && !error ? <ActivityIndicator accessibilityLabel="正在读取授权请求" /> : null}
+        {credentials && !data && !error ? <ActivityIndicator accessibilityLabel="正在读取授权请求" /> : null}
         {data && api ? <ServiceConsent pairing={data.pairing} services={data.services} workers={data.workers} accounts={data.accounts} machines={machines} api={api}
             onManage={() => router.push('/settings/ai-services' as never)}
             onApprove={async (service, scope) => {

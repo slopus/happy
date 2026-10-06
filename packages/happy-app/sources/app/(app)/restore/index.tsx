@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, useWindowDimensions } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { RoundButton } from '@/components/RoundButton';
 import { Typography } from '@/constants/Typography';
@@ -12,6 +12,7 @@ import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { QRCode } from '@/components/qr/QRCode';
 import { getRestoreLayout } from '@/utils/restoreLayout';
+import { hasServiceAuthorizationLogin, parseServiceAuthorizationLogin, serviceAuthorizationLoginParams, serviceAuthorizationReturnPath } from '@/auth/serviceAuthorizationLogin';
 
 const stylesheet = StyleSheet.create((theme) => ({
     scrollView: {
@@ -100,9 +101,14 @@ export default function Restore() {
     const styles = stylesheet;
     const auth = useAuth();
     const router = useRouter();
+    const params = useLocalSearchParams();
+    const serviceLogin = parseServiceAuthorizationLogin(params);
+    const serviceLoginRequested = hasServiceAuthorizationLogin(params);
+    const returnPath = serviceAuthorizationReturnPath(serviceLogin);
     const [authReady, setAuthReady] = useState(false);
     const [, setWaitingDots] = useState(0);
     const isCancelledRef = useRef(false);
+    const loginAbortRef = useRef<AbortController | null>(null);
     const { width: viewportWidth } = useWindowDimensions();
     const isDesktop = getRestoreLayout(viewportWidth) === 'desktop';
 
@@ -110,16 +116,23 @@ export default function Restore() {
     const keypair = React.useMemo(() => generateAuthKeyPair(), []);
 
     // Start QR authentication when component mounts
-    useEffect(() => {
+    useFocusEffect(React.useCallback(() => {
+        if (serviceLoginRequested && !returnPath) return;
         if (auth.isAuthenticated) {
-            router.replace('/');
+            router.replace((returnPath ?? '/') as never);
             return;
         }
+        isCancelledRef.current = false;
+        let cancelled = false;
+        const loginAbort = new AbortController();
+        loginAbortRef.current = loginAbort;
+        const isCancelled = () => cancelled || isCancelledRef.current;
 
         const startQRAuth = async () => {
             try {
                 // Send authentication request
                 const success = await authQRStart(keypair);
+                if (isCancelled()) return;
                 if (!success) {
                     Modal.alert(t('common.error'), t('errors.authenticationFailed'));
                     return;
@@ -130,28 +143,30 @@ export default function Restore() {
                 // Start waiting for authentication
                 const credentials = await authQRWait(
                     keypair,
-                    (dots) => setWaitingDots(dots),
-                    () => isCancelledRef.current
+                    (dots) => { if (!isCancelled()) setWaitingDots(dots); },
+                    isCancelled
                 );
 
-                if (credentials && !isCancelledRef.current) {
+                if (credentials && !isCancelled()) {
                     // Convert secret bytes to base64url string for login
                     const secretString = encodeBase64(credentials.secret, 'base64url');
-                    await auth.login(credentials.token, secretString);
-                    if (!isCancelledRef.current) {
-                        router.replace('/');
+                    if (serviceLoginRequested && !serviceAuthorizationReturnPath(serviceLogin)) return;
+                    if (serviceLogin) await auth.login(credentials.token, secretString, { serviceAuthorization: serviceLogin, signal: loginAbort.signal });
+                    else await auth.login(credentials.token, secretString);
+                    if (!isCancelled()) {
+                        router.replace((serviceAuthorizationReturnPath(serviceLogin) ?? '/') as never);
                     }
-                } else if (!isCancelledRef.current) {
+                } else if (!isCancelled()) {
                     Modal.alert(t('common.error'), t('errors.authenticationFailed'));
                 }
 
             } catch (error) {
-                if (!isCancelledRef.current) {
+                if (!isCancelled()) {
                     console.error('QR Auth error:', error);
                     Modal.alert(t('common.error'), t('errors.authenticationFailed'));
                 }
             } finally {
-                if (!isCancelledRef.current) {
+                if (!isCancelled()) {
                     setAuthReady(false);
                 }
             }
@@ -161,9 +176,21 @@ export default function Restore() {
 
         // Cleanup function
         return () => {
-            isCancelledRef.current = true;
+            cancelled = true;
+            loginAbort.abort();
         };
-    }, [auth.isAuthenticated, keypair, router]);
+    }, [auth.isAuthenticated, keypair, router, serviceLoginRequested, returnPath, params.serviceAuthorizationStartedAt]));
+
+    const cancelServiceLogin = () => {
+        isCancelledRef.current = true;
+        loginAbortRef.current?.abort();
+        router.replace((returnPath ?? '/') as never);
+    };
+
+    if (serviceLoginRequested && !returnPath) return <View style={styles.container}>
+        <Text style={styles.secondInstructionText}>授权链接已过期或无效。请回原应用重新连接。</Text>
+        <RoundButton title="返回 Paws" onPress={() => router.replace('/')} />
+    </View>;
 
     return (
         <ScrollView style={styles.scrollView} contentContainerStyle={{ flexGrow: 1 }}>
@@ -193,6 +220,7 @@ export default function Restore() {
                         </Text>
                     </View>
                     <View testID="restore-device-qr-panel" style={styles.qrPanel}>
+                        {serviceLogin ? <Text style={styles.secondInstructionText}>在同一部手机上操作时，请使用账号密钥登录。登录成功后会返回此授权请求。</Text> : null}
                         <View style={styles.qrFrame}>
                             {!authReady && (
                                 <ActivityIndicator size="small" color={theme.colors.text} />
@@ -209,14 +237,17 @@ export default function Restore() {
                             )}
                         </View>
                         <RoundButton
-                            title="Restore with Secret Key Instead"
+                            title={serviceLogin ? '使用账号密钥登录' : 'Restore with Secret Key Instead'}
                             display="inverted"
                             size="normal"
                             style={styles.restoreAction}
                             onPress={() => {
-                                router.push('/restore/manual');
+                                isCancelledRef.current = true;
+                                loginAbortRef.current?.abort();
+                                router.push(serviceLogin ? { pathname: '/restore/manual', params: serviceAuthorizationLoginParams(serviceLogin) } as never : '/restore/manual');
                             }}
                         />
+                        {serviceLogin ? <RoundButton title="取消登录" display="inverted" onPress={cancelServiceLogin} /> : null}
                     </View>
                 </View>
             </View>

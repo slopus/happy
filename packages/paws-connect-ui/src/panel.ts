@@ -154,7 +154,7 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
         controller.setOverrides(overrides);
     }
     function qr(payload: string) {
-        // qrUrl is a deep-link payload, never an image URL.
+        // Encode the authorization link itself, never load it as an image URL.
         const url = new URL(payload); if (!['paws:', 'https:', 'http:'].includes(url.protocol) || payload.length > 2048) throw new Error('invalid QR URL');
         const code = QRCode.create(payload, { errorCorrectionLevel: 'M' });
         const svg = doc.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -227,7 +227,7 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
             if (state.pending) {
                 const approvalUrl = safeWebUrl(state.pending.approvalUrl);
                 if (approvalUrl) content.append(link('在此设备授权', approvalUrl));
-                try { content.append(qr(state.pending.qrUrl), node('p', '用 Paws 扫描二维码，在原设备确认授权。')); }
+                try { content.append(qr(state.pending.qrUrl), node('p', '用手机相机扫码，在 Paws 网页确认')); }
                 catch { content.append(node('p', '二维码不可用。请使用同设备授权链接。')); }
                 content.append(node('p', `授权请求到期：${new Date(state.pending.expiresAt).toLocaleString()}`));
             }

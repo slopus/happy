@@ -16,8 +16,22 @@ it('prefills the service and shows the full consent scope, separate from browser
     for (const text of ['狗头军师', '私人助理', 'Mac · Codex · Work', '不包含终端、文件系统或浏览器操作', '记住连接', '授权有效期']) expect(output).toContain(text);
     expect(r.root.findAllByProps({ testID: 'consent-tools' })).toHaveLength(0);
     await press(r, '允许连接');
-    expect(approve).toHaveBeenCalledWith(snapshot, expect.objectContaining({ targets: [{ machineId: 'm1', engine: 'codex', accountRef: snapshot.revision.config.accountRef }], permissions: ['chat'], expiresAt: expect.any(Number) }));
+    expect(approve).toHaveBeenCalledWith(snapshot, expect.objectContaining({ targets: [{ machineId: 'm1', engine: 'codex', accountRef: snapshot.revision.config.accountRef }], permissions: ['chat'], expiresAt: null }));
     expect(JSON.stringify(approve.mock.calls[0])).not.toContain('remember');
+});
+it.each([1, 7, 30])('uses a limited lifetime only when the owner selects %s days', async days => {
+    const approve = vi.fn();
+    const r = await render(<ServiceConsent pairing={pairing as any} services={[snapshot]} workers={[worker]} accounts={[account as any]} machines={[]} api={{ capabilities: async () => ({ catalog }) } as any} onApprove={approve} onManage={vi.fn()} />);
+    const unlimited = r.root.findByProps({ testID: 'consent-duration-unlimited' });
+    expect(unlimited.props.selected).toBe(true);
+    expect(JSON.stringify(r.toJSON())).toContain('有效期：直到撤销');
+    await act(async () => r.root.findByProps({ testID: `consent-duration-${days}` }).props.onPress());
+    expect(JSON.stringify(r.toJSON())).toContain(`有效期：${days} 天`);
+    const before = Date.now();
+    await press(r, '允许连接');
+    expect(approve.mock.calls[0][1].expiresAt).toBeGreaterThanOrEqual(before + days * 86400_000);
+    expect(approve.mock.calls[0][1].expiresAt).toBeLessThanOrEqual(Date.now() + days * 86400_000);
+    expect(approve.mock.calls[0][1].permissions).toEqual(['chat']);
 });
 it('keeps tool permission unchecked when the requesting application supports tools', async () => {
     const approve = vi.fn();

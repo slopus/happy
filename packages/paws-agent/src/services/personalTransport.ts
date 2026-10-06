@@ -52,7 +52,8 @@ export function createBrowserPersonalTransport(options: PersonalTransportOptions
             pending = { id: value.id, expiresAt: value.expiresAt, verifier, credential, secretKey: encodeBase64(pair.secretKey) };
             await options.storage.set('pending-authorization', pending);
         }
-        input.onPending?.({ id: pending.id, expiresAt: pending.expiresAt, approvalUrl: `${web}/apps/authorize?id=${encodeURIComponent(pending.id)}&protocol=ai-services%2F1`, qrUrl: `paws:///apps/authorize?id=${encodeURIComponent(pending.id)}&protocol=ai-services%2F1` });
+        const approvalUrl = `${web}/apps/authorize?id=${encodeURIComponent(pending.id)}&protocol=ai-services%2F1`;
+        input.onPending?.({ id: pending.id, expiresAt: pending.expiresAt, approvalUrl, qrUrl: approvalUrl });
         try {
             while (Date.now() < pending.expiresAt) {
                 const result = await pairingRequest<{
