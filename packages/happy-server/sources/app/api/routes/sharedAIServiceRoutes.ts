@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { ZodTypeProvider } from 'fastify-type-provider-zod';
-import { ServiceGrantScopeSchema, CapabilityCatalogSchema, ServiceTargetSchema, ServiceErrorSchema, TurnActualSchema, ServiceErrorCodeSchema } from '@slopus/happy-wire';
+import { ServiceGrantScopeSchema, CapabilityCatalogSchema, ServiceTargetSchema, ServiceErrorSchema, TurnActualSchema, ServiceErrorCodeSchema, type CapabilityCatalog } from '@slopus/happy-wire';
 import type { Fastify } from '../types';
 import type { SharedAIServices } from '@/app/aiServices/composition';
 import { BindingOverridesSchema, readTrustedCatalog } from '@/app/aiServices/bindings';
@@ -11,6 +11,17 @@ import { deny, AIServiceError } from '@/app/aiServices/errors';
 const id = z.string().min(1).max(256), secret = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
 const envelope = z.string().min(80).max(16384);
 const authority = z.object({ kind: z.enum(['probe','turn']), id, lease: secret }).strict();
+const ownerCapabilitiesRequest = z.preprocess(value => {
+ if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+ const { executionPresets, ...target } = value as Record<string, unknown>;
+ return { target, executionPresets };
+}, z.object({ target: ServiceTargetSchema, executionPresets: z.boolean().optional() }).strict());
+/** ai-services/1 clients with strict readers must opt into additional capability fields. */
+function clientCatalog(catalog: CapabilityCatalog | null, executionPresets?: boolean): CapabilityCatalog | null {
+ if (!catalog || executionPresets) return catalog;
+ const { execution: _execution, ...legacy } = catalog;
+ return { ...legacy, models: legacy.models.map(({ serviceTiers: _tiers, ...model }) => model) };
+}
 export function sharedAIServiceRoutes(app: Fastify, services: SharedAIServices) {
  const { database, store, grants, turns, probes } = services;
  app.register(async instance => {
@@ -25,7 +36,7 @@ export function sharedAIServiceRoutes(app: Fastify, services: SharedAIServices) 
   const authenticate = async (request: { headers: { authorization?: string; origin?: string } }) => grants.authenticate(request.headers.authorization?.replace(/^Bearer /,'') ?? '',request.headers.origin);
   routes.get('/v1/ai-services/protocol', async () => ({ protocol: 'ai-services/1', personalPairing: true, legacyProtocols: [1,2,3] }));
   routes.get('/v1/ai-services/workers', { preHandler: app.authenticate }, async request => ({ workers: await database.appChatWorker.findMany({ where: { accountId: request.userId, serviceProtocol: 'ai-services/1', activeUntil: { gt: new Date() } }, select: { machineId: true, serviceProtocol: true, servicePublicKey: true, serviceClaudeIdentity: true, serviceClaudeObservedAt: true } }) }));
-  routes.post('/v1/ai-services/capabilities', { preHandler: app.authenticate, schema: { body: ServiceTargetSchema } }, async request => ({ catalog: await readTrustedCatalog(probes.source,request.userId,request.body) }));
+  routes.post('/v1/ai-services/capabilities', { preHandler: app.authenticate, schema: { body: ownerCapabilitiesRequest } }, async request => ({ catalog: clientCatalog(await readTrustedCatalog(probes.source,request.userId,request.body.target),request.body.executionPresets) }));
   routes.get('/v1/ai-services/applications/:appId', { preHandler: app.authenticate, schema: { params: z.object({ appId: id }) } }, async request => ({ app: await store.readApplication(request.params.appId) }));
   routes.get('/v1/ai-services/bindings/:id', { preHandler: app.authenticate, schema: { params: z.object({ id }) } }, async request => { const row=await database.aIServiceBinding.findFirst({ where:{ id:request.params.id,ownerId:request.userId },select:{ appId:true } });if(!row)deny('permission-denied');return { binding:await store.readBinding({ kind:'owner',ownerId:request.userId },row.appId,request.params.id) }; });
   routes.get('/v1/ai-services/:serviceId/turns', { preHandler: app.authenticate, schema: { params: z.object({ serviceId: id }) } }, async request => {
@@ -52,11 +63,12 @@ export function sharedAIServiceRoutes(app: Fastify, services: SharedAIServices) 
   routes.post('/v1/apps/ai-services/bindings', { schema: { body:z.object({ overrides:BindingOverridesSchema, appConversationId:id.optional() }).strict() } }, async request => {
    const p = await authenticate(request); return { binding:await store.resolveBinding(p,p.scope.appId,p.scope.serviceId,request.body.overrides,request.body.appConversationId) };
   });
+  routes.get('/v1/apps/ai-services/configuration', async request => store.readConfiguration(await authenticate(request)));
   routes.get('/v1/apps/ai-services/conversations/:appConversationId/binding', { schema: { params:z.object({ appConversationId:id }) } }, async request => { const p=await authenticate(request);return { binding:await store.findApplicationBinding(p,p.scope.appId,request.params.appConversationId) }; });
   routes.get('/v1/apps/ai-services/bindings/:bindingId', { schema: { params:z.object({ bindingId:id }) } }, async request => { const p=await authenticate(request); return { binding:await store.readBinding(p,p.scope.appId,request.params.bindingId) }; });
-  routes.post('/v1/apps/ai-services/capabilities', async request => {
+  routes.post('/v1/apps/ai-services/capabilities', { schema: { body: z.object({ target: ServiceTargetSchema.optional(), executionPresets: z.boolean().optional() }).strict().optional() } }, async request => {
    const p=await authenticate(request), revision=(await store.readService(p.ownerId,p.scope.serviceId)).revision;
-   return { catalog:await readTrustedCatalog(probes.source,p.ownerId,revision.config,p) };
+   return { catalog:clientCatalog(await readTrustedCatalog(probes.source,p.ownerId,request.body?.target ?? revision.config,p),request.body?.executionPresets) };
   });
   routes.post('/v1/apps/ai-services/bindings/:bindingId/turns', { bodyLimit:9*1024*1024, schema:{ params:z.object({ bindingId:id }), body:z.object({ requestId:id, ciphertext:z.string().min(60).max(8*1024*1024) }).strict() } }, async (request, reply) => {
    try { return { record: await turns.startBoundTurn(await authenticate(request), request.params.bindingId, request.body.requestId, { ciphertext: request.body.ciphertext }) }; }

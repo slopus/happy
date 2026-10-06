@@ -713,6 +713,7 @@ model AIServiceApplication {
 model AIServiceAuthorization {
     credentialDigest String?
     machineEnvelopes Json?
+    targetFingerprints Json?
     id String @id
     ownerId String
     owner Account @relation(fields: [ownerId], references: [id])

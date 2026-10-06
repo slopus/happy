@@ -4,6 +4,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { CapabilityCatalog, ServiceConfig, ServicePrincipal } from '@slopus/happy-wire';
 import { createAIServiceStore } from './store';
 import { createTestDatabase } from './testDatabase';
+import { authorizeProbe } from './authority';
 
 const appId = 'relationship-advisor';
 describe('AI service persistence and authorization', () => {
@@ -29,6 +30,96 @@ describe('AI service persistence and authorization', () => {
         store = createAIServiceStore(context.database, { readLive: async () => catalog });
     });
     afterAll(async () => { await context?.database.$disconnect(); await context?.pg.close(); });
+
+    it('selects an approved target and retains its authorized account identity', async () => {
+        const second = { machineId: machine, engine: 'codex' as const, accountRef: { kind: 'codex-profile' as const, id: profile + '-second' } };
+        await context.database.codexAccountProfile.create({ data: { id: second.accountRef.id, accountId: owner, displayName: 'Second', externalAccountFingerprint: 'identity-B', credential: Buffer.from('unused') } });
+        store = createAIServiceStore(context.database, { readLive: async (_owner, target) => ({ ...catalog!, ...target, observedAt: Date.now() }) });
+        const service = await create();
+        const grant = await store.registerAuthorization(owner, { id: owner + '-targets', kind: 'personal-grant', scope: { appId, serviceId: service.id, targets: [{ machineId: machine, engine: 'codex', accountRef: config.accountRef }, second], permissions: ['chat'], expiresAt: null }, allowModelOverride: true, allowReasoningOverride: true });
+        const user: ServicePrincipal = { kind: 'personal-grant', ownerId: owner, grantId: grant.id, scope: grant.scope };
+        const chosen = await store.resolveBinding(user, appId, service.id, { target: second } as any);
+        expect(chosen.accountRef).toEqual(second.accountRef);
+        await context.database.codexAccountProfile.update({ where: { id: second.accountRef.id }, data: { externalAccountFingerprint: 'replaced-B' } });
+        await expect(store.resolveBinding(user, appId, service.id, { target: second } as any)).rejects.toMatchObject({ code: 'account-identity-changed' });
+        await expect(store.resolveBinding(user, appId, service.id, { target: { ...second, machineId: 'foreign' } } as any)).rejects.toMatchObject({ code: 'consent-required' });
+    });
+
+    it('requires tools authorization and advertised Fast support for an execution preset', async () => {
+        const app = await context.database.aIServiceApplication.findUniqueOrThrow({ where: { appId } });
+        await context.database.aIServiceApplication.update({ where: { appId }, data: { policy: { ...(app.policy as object), capabilities: ['chat', 'images', 'tools'] } } });
+        catalog = { ...catalog!, execution: { permissionModes: ['chat-only', 'yolo'], serviceTiers: ['default', 'fast'] }, models: catalog!.models.map(model => ({ ...model, serviceTiers: ['default', 'fast'] })) } as CapabilityCatalog;
+        const service = await create();
+        const scope = { appId, serviceId: service.id, targets: [{ machineId: machine, engine: 'codex' as const, accountRef: config.accountRef }], permissions: ['chat', 'tools'] as ('chat'|'tools')[], expiresAt: null };
+        const grant = await store.registerAuthorization(owner, { id: owner + '-tools', kind: 'platform-grant', scope, allowModelOverride: true, allowReasoningOverride: true });
+        const user: ServicePrincipal = { kind: 'platform-grant', ownerId: owner, grantId: grant.id, scope: grant.scope };
+        const options = { permissionMode: 'yolo', serviceTier: 'fast' } as const;
+        const binding = await store.resolveBinding(user, appId, service.id, options);
+        expect(binding).toMatchObject(options);
+        const narrow = await store.registerAuthorization(owner, { id: owner + '-text', kind: 'platform-grant', scope: { ...scope, permissions: ['chat'] }, allowModelOverride: true, allowReasoningOverride: true });
+        await expect(store.resolveBinding({ ...user, grantId: narrow.id, scope: narrow.scope }, appId, service.id, options as any)).rejects.toMatchObject({ code: 'permission-denied' });
+        catalog = { ...catalog!, models: catalog!.models.map(model => ({ ...model, serviceTiers: ['default'] })) };
+        await expect(store.resolveBinding(user, appId, service.id, options as any)).rejects.toMatchObject({ code: 'parameter-unsupported' });
+        await expect(store.validateBinding(user, appId, binding.id)).rejects.toMatchObject({ code: 'parameter-unsupported' });
+    });
+
+    it('checks the original approved account fingerprint before authorizing capability discovery', async () => {
+        const second = { machineId: machine, engine: 'codex' as const, accountRef: { kind: 'codex-profile' as const, id: profile + '-probe' } };
+        await context.database.codexAccountProfile.create({ data: { id: second.accountRef.id, accountId: owner, displayName: 'Probe account', externalAccountFingerprint: 'probe-original', credential: Buffer.from('unused') } });
+        const service = await create();
+        const grant = await store.registerAuthorization(owner, { id: owner + '-probe-auth', kind: 'personal-grant', scope: { appId, serviceId: service.id, targets: [{ machineId: machine, engine: 'codex', accountRef: config.accountRef }, second], permissions: ['chat'], expiresAt: null }, allowModelOverride: true, allowReasoningOverride: true });
+        const user: ServicePrincipal = { kind: 'personal-grant', ownerId: owner, grantId: grant.id, scope: grant.scope };
+        await context.database.codexAccountProfile.update({ where: { id: second.accountRef.id }, data: { externalAccountFingerprint: 'probe-replaced' } });
+        await expect(context.database.$transaction(tx => authorizeProbe(tx, user, second))).rejects.toMatchObject({ code: 'account-identity-changed' });
+        await expect(store.updateAuthorizationScope(owner, grant.id, { scope: grant.scope, allowModelOverride: true, allowReasoningOverride: true })).rejects.toMatchObject({ code: 'account-identity-changed' });
+    });
+
+    it('resets incompatible model and reasoning defaults when an approved engine changes', async () => {
+        const claude = { machineId: machine, engine: 'claude' as const, accountRef: { kind: 'device-identity' as const, machineId: machine, identityId: 'claude-test' } };
+        const codexCatalog = catalog!;
+        store = createAIServiceStore(context.database, { readLive: async (_owner, target) => target.engine === 'codex' ? { ...codexCatalog, observedAt: Date.now() } : {
+            ...claude, protocol: 'ai-services/1', observedAt: Date.now(), availability: 'online', completeness: 'limited', defaultModelId: 'sonnet',
+            models: [{ id: 'sonnet', name: 'Sonnet', supportsImages: false, reasoning: { supportsDefault: true, values: [], defaultValue: null } }],
+        } });
+        const service = await store.createService(owner, { name: 'Different engines', config: { ...config, modelId: 'native-default', reasoning: { mode: 'explicit', value: 'native-high' } } });
+        const grant = await store.registerAuthorization(owner, { id: owner + '-engines', kind: 'personal-grant', scope: { appId, serviceId: service.id, targets: [{ machineId: machine, engine: 'codex', accountRef: config.accountRef }, claude], permissions: ['chat', 'images'], expiresAt: null }, allowModelOverride: true, allowReasoningOverride: true });
+        const user: ServicePrincipal = { kind: 'personal-grant', ownerId: owner, grantId: grant.id, scope: grant.scope };
+        expect(await store.resolveBinding(user, appId, service.id, { target: claude })).toMatchObject({ engine: 'claude', requestedModel: null, reasoning: { mode: 'default' }, permissions: ['chat'] });
+        await expect(store.resolveBinding(user, appId, service.id, { target: claude, permissions: ['chat', 'images'] })).rejects.toMatchObject({ code: 'parameter-unsupported' });
+    });
+
+    it('derives implicit permissions from the selected text model and chat-only mode without weakening explicit requests', async () => {
+        const app = await context.database.aIServiceApplication.findUniqueOrThrow({ where: { appId } });
+        await context.database.aIServiceApplication.update({ where: { appId }, data: { policy: { ...(app.policy as object), capabilities: ['chat', 'images', 'tools'] } } });
+        const service = await create();
+        const grant = await store.registerAuthorization(owner, { id: owner + '-implicit', kind: 'personal-grant', scope: { appId, serviceId: service.id, targets: [{ machineId: machine, engine: 'codex', accountRef: config.accountRef }], permissions: ['chat', 'images', 'tools'], expiresAt: null }, allowModelOverride: true, allowReasoningOverride: true });
+        const user: ServicePrincipal = { kind: 'personal-grant', ownerId: owner, grantId: grant.id, scope: grant.scope };
+        expect(await store.resolveBinding(user, appId, service.id, { modelId: 'native-text' })).toMatchObject({ permissions: ['chat'] });
+        await expect(store.resolveBinding(user, appId, service.id, { modelId: 'native-text', permissions: ['chat', 'images'] })).rejects.toMatchObject({ code: 'parameter-unsupported' });
+        expect(await store.resolveBinding(user, appId, service.id, { modelId: 'native-default' })).toMatchObject({ permissions: ['chat', 'images'] });
+    });
+
+    it('keeps legacy grants on their default target and filters invalid extra directory targets', async () => {
+        const second = { machineId: machine, engine: 'codex' as const, accountRef: { kind: 'codex-profile' as const, id: profile + '-legacy' } };
+        await context.database.codexAccountProfile.create({ data: { id: second.accountRef.id, accountId: owner, displayName: 'Legacy extra', externalAccountFingerprint: 'legacy-extra', credential: Buffer.from('unused') } });
+        const service = await create();
+        const grant = await store.registerAuthorization(owner, { id: owner + '-legacy-targets', kind: 'personal-grant', scope: { appId, serviceId: service.id, targets: [{ machineId: machine, engine: 'codex', accountRef: config.accountRef }, second], permissions: ['chat'], expiresAt: null }, allowModelOverride: true, allowReasoningOverride: true });
+        const user: ServicePrincipal = { kind: 'personal-grant', ownerId: owner, grantId: grant.id, scope: grant.scope };
+        expect((await store.readConfiguration(user)).targets).toHaveLength(2);
+        await context.database.codexAccountProfile.update({ where: { id: profile }, data: { externalAccountFingerprint: 'temporarily-unavailable-default' } });
+        const directory = await store.readConfiguration(user);
+        expect(directory.defaults).toEqual(config);
+        expect(directory.targets.map(item => item.target)).toEqual([second]);
+        await context.database.codexAccountProfile.update({ where: { id: profile }, data: { externalAccountFingerprint: 'identity-A' } });
+        await context.database.codexAccountProfile.update({ where: { id: second.accountRef.id }, data: { externalAccountFingerprint: 'changed-extra' } });
+        expect((await store.readConfiguration(user)).targets.map(item => item.target.accountRef)).toEqual([config.accountRef]);
+        await context.database.$executeRaw`UPDATE "AIServiceAuthorization" SET "targetFingerprints" = NULL WHERE "id" = ${grant.id}`;
+        expect(await store.resolveBinding(user, appId, service.id, {})).toMatchObject({ accountRef: config.accountRef });
+        await expect(store.resolveBinding(user, appId, service.id, { target: second })).rejects.toMatchObject({ code: 'consent-required' });
+        await expect(context.database.$transaction(tx => authorizeProbe(tx, user, second))).rejects.toMatchObject({ code: 'consent-required' });
+        await context.database.codexAccountProfile.update({ where: { id: profile }, data: { externalAccountFingerprint: 'changed-default' } });
+        await expect(store.readConfiguration(user)).rejects.toMatchObject({ code: 'account-identity-changed' });
+    });
 
     it('persists one grant-scoped application conversation through concurrent creates and a lost response', async () => {
         const service=await create();
@@ -269,6 +360,25 @@ describe('AI service persistence and authorization', () => {
 });
 
 describe('additive AI service migration', () => {
+    it('adds nullable target fingerprints while retaining grants written by an older server', async () => {
+        const { pg, database } = await createTestDatabase(true);
+        try {
+            await database.account.create({ data: { id: 'migration-owner', publicKey: 'migration-owner' } });
+            await database.machine.create({ data: { id: 'migration-machine', accountId: 'migration-owner', metadata: 'encrypted' } });
+            await database.codexAccountProfile.create({ data: { id: 'migration-profile', accountId: 'migration-owner', displayName: 'Migration', externalAccountFingerprint: 'migration-identity', credential: Buffer.from('unused') } });
+            await pg.exec(readFileSync(resolve('prisma/migrations/20261005000000_ai_services/migration.sql'), 'utf8'));
+            const target = { engine: 'codex' as const, machineId: 'migration-machine', accountRef: { kind: 'codex-profile' as const, id: 'migration-profile' } };
+            const service = await createAIServiceStore(database).createService('migration-owner', { name: 'Migration', config: { ...target, modelId: null, reasoning: { mode: 'default' } } });
+            const scope = { appId, serviceId: service.id, targets: [target], permissions: ['chat'], expiresAt: null };
+            const insertOldGrant = (id: string) => pg.query('INSERT INTO "AIServiceAuthorization" (id,"ownerId","appId","serviceId",kind,scope) VALUES ($1,$2,$3,$4,$5,$6)', [id, 'migration-owner', appId, service.id, 'personal-grant', JSON.stringify(scope)]);
+            await insertOldGrant('before-upgrade');
+            await pg.exec(readFileSync(resolve('prisma/migrations/20261007000000_ai_service_target_fingerprints/migration.sql'), 'utf8'));
+            await insertOldGrant('after-upgrade');
+            expect((await pg.query('SELECT id,scope,"targetFingerprints" FROM "AIServiceAuthorization" ORDER BY id')).rows).toEqual([
+                { id: 'after-upgrade', scope, targetFingerprints: null }, { id: 'before-upgrade', scope, targetFingerprints: null },
+            ]);
+        } finally { await database.$disconnect(); await pg.close(); }
+    }, 120000);
     it('upgrades a populated old database and preserves old and new data when old writers resume', async () => {
         const { pg, database } = await createTestDatabase(true);
         try {

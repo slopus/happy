@@ -16,6 +16,7 @@ export async function authorizeWorkerBinding(tx: Prisma.TransactionClient, owner
  const row = await tx.aIServiceBinding.findFirst({ where: { id: bindingId, ownerId } });
  if (!row?.authorizationId) deny('permission-denied');
  const binding = ExecutionBindingSchema.parse(row.snapshot);
+ if ((binding.permissionMode ?? 'chat-only') !== 'chat-only' && !binding.permissions.includes('tools')) deny('permission-denied');
  if (binding.machineId !== machineId) deny('permission-denied');
  const grant = await tx.aIServiceAuthorization.findUnique({ where: { id: row.authorizationId } });
  if (!grant) deny('authorization-revoked');

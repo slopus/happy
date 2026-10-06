@@ -16,6 +16,7 @@ import { enableAuthentication } from '@/app/api/utils/enableAuthentication';
 import { auth } from '@/app/auth/auth';
 import { revokeAppGrant, deleteOwnedAppGrant } from '@/app/appDelegation/appDelegation';
 import { initEncrypt } from '@/modules/encrypt';
+import { sealServiceEnvelope } from './grants';
 let ctx:Awaited<ReturnType<typeof createTestDatabase>>, app:Fastify, services:ReturnType<typeof createSharedAIServices>, token:string, owner:string,machine:string,seq=0;
 const native=(account='native-A',access='access-one')=>({ OPENAI_API_KEY:null,tokens:{ account_id:account,access_token:access,refresh_token:'refresh-fixture',id_token:'id-fixture' },last_refresh:'2026-10-05T00:00:00.000Z' });
 const req=(path:string,body:unknown={},bearer=token)=>app.inject({ method:'POST',url:path,payload:body as any,headers:{ authorization:`Bearer ${bearer}` } });
@@ -43,10 +44,81 @@ async function nextProbe() {
  for(let i=0;i<200;i++) { const response=await req(`/v1/ai-service-worker/${machine}/claim`);expect(response.statusCode,response.body).toBe(200);if(response.json().probe)return response.json().probe;await new Promise(r=>setTimeout(r,10)); }
  throw new Error('No probe');
 }
-async function completeProbe(probe:any,target:any) {
- const catalog={ ...target,protocol:'ai-services/1',observedAt:Date.now(),availability:'online',completeness:'complete',defaultModelId:'native',models:[{ id:'native',name:'Native',supportsImages:false,reasoning:{ supportsDefault:true,values:[],defaultValue:null } }] };
+async function completeProbe(probe:any,target:any,executionPresets=false) {
+ const catalog={ ...target,protocol:'ai-services/1',observedAt:Date.now(),availability:'online',completeness:'complete',defaultModelId:'native',
+  ...(executionPresets?{execution:{permissionModes:['chat-only','yolo'],serviceTiers:['default','fast']}}:{}),
+  models:[{ id:'native',name:'Native',supportsImages:false,reasoning:{ supportsDefault:true,values:[],defaultValue:null },...(executionPresets?{serviceTiers:['default','fast']}:{}) }] };
  const response=await req(`/v1/ai-service-worker/${machine}/probes/${probe.id}`,{ lease:probe.lease,catalog });expect(response.statusCode,response.body).toBe(200);
 }
+it('returns execution capabilities only when an owner or scoped client opts into the extension',async()=>{
+ const f=await setup();
+ for(const ownerRequest of [true,false])for(const executionPresets of [false,true]){
+  const body=ownerRequest?{...f.target,...(executionPresets?{executionPresets:true}:{})}:{...(executionPresets?{executionPresets:true}:{})};
+  const reading=req(ownerRequest?'/v1/ai-services/capabilities':'/v1/apps/ai-services/capabilities',body,ownerRequest?token:f.receipt.credential);
+  await completeProbe(await nextProbe(),f.target,true);
+  const response=await reading;expect(response.statusCode,response.body).toBe(200);
+  const catalog=response.json().catalog;
+  expect(catalog.execution).toEqual(executionPresets?{permissionModes:['chat-only','yolo'],serviceTiers:['default','fast']}:undefined);
+  expect(catalog.models[0].serviceTiers).toEqual(executionPresets?['default','fast']:undefined);
+  expect(Object.keys(catalog).sort()).toEqual(['accountRef','availability','completeness','defaultModelId','engine',...(executionPresets?['execution']:[]),'machineId','models','observedAt','protocol'].sort());
+ }
+},20000);
+it('returns a scoped configuration directory without encrypted metadata or outside accounts', async () => {
+ const f=await setup();
+ await codexAccountStore.upload(owner,native('outside-account'));
+ await ctx.database.machine.create({data:{id:machine+'-outside',accountId:owner,metadata:'private-machine-metadata'}});
+ const response=await app.inject({method:'GET',url:'/v1/apps/ai-services/configuration',headers:{authorization:`Bearer ${f.receipt.credential}`}});
+ expect(response.statusCode,response.body).toBe(200);
+ expect(response.json()).toEqual({service:f.service,defaults:{...f.target,modelId:null,reasoning:{mode:'default'}},targets:[{target:f.target,machineName:machine,accountName:f.profile.displayName}],permissions:['chat'],allowModelOverride:true,allowReasoningOverride:true});
+ for(const secret of ['sealed','private-machine-metadata','credential','outside-account',machine+'-outside'])expect(response.body).not.toContain(secret);
+ expect((await app.inject({method:'GET',url:'/v1/apps/ai-services/configuration',headers:{authorization:`Bearer ${token}`}})).statusCode).toBe(403);
+});
+it('accepts a scoped target for capability discovery and rejects a foreign tuple before queuing a probe',async()=>{
+ const f=await setup();
+ const pending=req('/v1/apps/ai-services/capabilities',{target:f.target},f.receipt.credential);
+ const probe=await nextProbe();await completeProbe(probe,f.target);
+ const response=await pending;expect(response.statusCode,response.body).toBe(200);expect(response.json().catalog.accountRef).toEqual(f.target.accountRef);
+ const foreign=await req('/v1/apps/ai-services/capabilities',{target:{...f.target,machineId:machine+'-outside'}},f.receipt.credential);
+ expect(foreign.statusCode,foreign.body).toBe(403);
+ expect(await ctx.database.aIServiceProbe.count({where:{ownerId:owner}})).toBe(1);
+});
+it('upgrades an existing grant and its machine envelopes atomically while old bindings keep working',async()=>{
+ const machineKeys=nacl.box.keyPair();
+ await req(`/v1/ai-service-worker/${machine}/announce`,{protocol:'ai-services/1',publicKey:Buffer.from(machineKeys.publicKey).toString('base64')});
+ const f=await setup();
+ const creating=services.store.resolveBinding(f.principal,'relationship-advisor',f.service.id,{});
+ await completeProbe(await nextProbe(),f.target);const binding=await creating;
+ const appPolicy=await ctx.database.aIServiceApplication.findUniqueOrThrow({where:{appId:'relationship-advisor'}});
+ await ctx.database.aIServiceApplication.update({where:{appId:'relationship-advisor'},data:{policy:{...(appPolicy.policy as object),capabilities:['chat','images','tools']}}});
+ const scope={...f.receipt.scope,permissions:['chat','tools'] as ('chat'|'tools')[]};
+ const input={scope,allowModelOverride:true,allowReasoningOverride:true};
+ const before=await ctx.database.aIServiceAuthorization.findUniqueOrThrow({where:{id:f.receipt.id}});
+ await expect(services.store.updateAuthorizationScope(owner,f.receipt.id,input)).rejects.toMatchObject({code:'invalid-request'});
+ await expect(services.store.updateAuthorizationScope(owner,f.receipt.id,input,async()=>{})).rejects.toMatchObject({code:'invalid-request'});
+ await expect(services.store.updateAuthorizationScope(owner,f.receipt.id,{...input,scope:{...scope,permissions:['tools']}},async()=>{})).rejects.toMatchObject({code:'permission-denied'});
+ const replacement=(await codexAccountStore.upload(owner,native('unapproved-upgrade-target'))).profile;
+ await expect(services.store.updateAuthorizationScope(owner,f.receipt.id,{...input,scope:{...scope,targets:[{...f.target,accountRef:{kind:'codex-profile',id:replacement.id}}]}},async()=>{})).rejects.toMatchObject({code:'permission-denied'});
+ await expect(services.store.updateAuthorizationScope(owner,f.receipt.id,input,async tx=>{
+  await tx.aIServiceAuthorization.update({where:{id:f.receipt.id},data:{machineEnvelopes:{[machine]:'changed-in-rolled-back-transaction'}}});
+  throw new Error('sealing-failed');
+ })).rejects.toThrow('sealing-failed');
+ expect(await ctx.database.aIServiceAuthorization.findUniqueOrThrow({where:{id:f.receipt.id}})).toEqual(before);
+ const upgraded=await services.store.updateAuthorizationScope(owner,f.receipt.id,input,async(tx,grant)=>{
+  const envelope=sealServiceEnvelope({protocol:grant.protocol,grantId:grant.id,ownerId:owner,appId:scope.appId,serviceId:scope.serviceId,scope:grant.scope,machineId:machine,messageKey:f.receipt.messageKey},Buffer.from(machineKeys.publicKey).toString('base64'));
+  await tx.aIServiceAuthorization.update({where:{id:grant.id},data:{machineEnvelopes:{[machine]:envelope}}});
+ });
+ expect(upgraded).toMatchObject({id:f.receipt.id,scope});
+ expect((await ctx.database.aIServiceAuthorization.findUniqueOrThrow({where:{id:f.receipt.id}})).credentialDigest).toBe(before.credentialDigest);
+ const principal=await services.grants.authenticate(f.receipt.credential);
+ expect(await services.store.readBinding(principal,'relationship-advisor',binding.id)).toEqual(binding);
+ const starting=services.turns.startBoundTurn(principal,binding.id,'after-upgrade',{ciphertext:'x'.repeat(80)});
+ await completeProbe(await nextProbe(),f.target);const record=await starting;
+ const job=(await req(`/v1/ai-service-worker/${machine}/claim`)).json().job;
+ expect(job.record.id).toBe(record.id);expect(job.scope).toEqual(scope);
+ const sealed=Buffer.from(job.envelope,'base64');
+ const opened=nacl.box.open(sealed.subarray(56),sealed.subarray(32,56),sealed.subarray(0,32),machineKeys.secretKey);
+ expect(JSON.parse(Buffer.from(opened!).toString())).toMatchObject({scope,messageKey:f.receipt.messageKey,grantId:f.receipt.id});
+},20000);
 it('authenticates actual callback transport, pins profile after default change, redeems latest refresh, and preserves legacy default grants',async()=>{
  const f=await setup();
  expect((await app.inject({ method:'GET',url:'/v1/ai-services',headers:{ authorization:`Bearer ${f.receipt.credential}` } })).statusCode).toBe(401);
