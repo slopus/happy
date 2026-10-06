@@ -4,7 +4,47 @@ import { createBrowserPersonalTransport } from './personalTransport';
 import { createMemoryServiceStorage } from './storage';
 import { encodeBase64, decodeBase64, getRandomBytes } from '../crypto/encryption';
 import { makeReceipt, fixture } from './testFixtures';
-import type { GrantReceipt } from './types';
+import type { GrantReceipt, AuthorizationPending } from './types';
+it('uses the same HTTPS authorization request for the QR and same-device link', async () => {
+    const storage = createMemoryServiceStorage();
+    const id = '00000000-0000-0000-0000-000000000001';
+    let pending: AuthorizationPending | undefined;
+    const transport = createBrowserPersonalTransport({ appId: 'advisor', serverUrl: 'https://paws.test', webUrl: 'https://web.test', origin: 'https://app.test', storage,
+        fetch: async url => {
+            if (String(url).endsWith('/pairings')) return Response.json({ id, protocol: 'ai-services/1', expiresAt: Date.now() + 60000 });
+            throw new TypeError('stop synthetic polling');
+        } });
+    await expect(transport.authorize({ onPending: value => { pending = value; } })).rejects.toMatchObject({ code: 'transport-error' });
+    expect(pending?.qrUrl).toBe(pending?.approvalUrl);
+    const url = new URL(pending!.qrUrl);
+    expect(url.origin + url.pathname).toBe('https://web.test/apps/authorize');
+    expect([...url.searchParams]).toEqual([['id', id], ['protocol', 'ai-services/1']]);
+    transport.dispose();
+});
+it('starts a new pairing after cancellation instead of reusing the old proof or QR', async () => {
+    const storage = createMemoryServiceStorage();
+    let serial = 0, claimed!: () => void;
+    const ids: string[] = [];
+    const transport = createBrowserPersonalTransport({ appId: 'advisor', serverUrl: 'https://paws.test', webUrl: 'https://web.test', origin: 'https://app.test', storage,
+        fetch: async (url, init) => {
+            if (String(url).endsWith('/pairings')) return Response.json({ id: `pairing-${++serial}`, protocol: 'ai-services/1', expiresAt: Date.now() + 60000 });
+            claimed();
+            return new Promise<Response>((_, reject) => init!.signal!.addEventListener('abort', () => reject(new Error('aborted')), { once: true }));
+        } });
+    let previousProof: string | undefined;
+    for (let attempt = 0; attempt < 2; attempt++) {
+        const started = new Promise<void>(resolve => { claimed = resolve; });
+        const pending = transport.authorize({ onPending: value => { ids.push(value.id); } });
+        const stopped = expect(pending).rejects.toMatchObject({ code: 'aborted' });
+        await started;
+        const proof = (await storage.get<{ verifier: string }>('pending-authorization'))!.verifier;
+        expect(proof).not.toBe(previousProof); previousProof = proof;
+        transport.disconnect(); await stopped;
+        expect(await storage.get('pending-authorization')).toBeNull();
+    }
+    expect(ids).toEqual(['pairing-1', 'pairing-2']);
+    transport.dispose();
+});
 it('assembles the personal receipt only after checking the recipient-sealed identity and scope', async () => {
     const storage = createMemoryServiceStorage(), scoped = fixture();
     let publicKey!: Uint8Array, secret = '', lost = true;

@@ -13,7 +13,7 @@ export function ServiceConsent({ pairing, services, workers, accounts, machines,
     onApprove: (service: ServiceSnapshot, scope: ServiceGrantScope) => Promise<void>; onManage: () => void;
 }) {
     const [selected, setSelected] = React.useState(() => services.find(s => s.service.enabled)?.service.id ?? '');
-    const [days, setDays] = React.useState<number | null>(1);
+    const [days, setDays] = React.useState<number | null>(null);
     const [images, setImages] = React.useState(false);
     const [tools, setTools] = React.useState(false);
     const [catalog, setCatalog] = React.useState<CapabilityCatalog | null>(null);
@@ -113,8 +113,9 @@ export function ServiceConsent({ pairing, services, workers, accounts, machines,
             {canTools ? <AuthorizationChoice testID="consent-tools" role="checkbox" title={t('aiServiceConsent.allowTools')} subtitle={t('aiServiceConsent.toolsDescription')} selected={tools} disabled={busy} onPress={() => { if (!busy) setTools(v => !v); }} /> : null}
         </AuthorizationSection>
         <AuthorizationSection title="授权有效期" radio>
-            {([1, 7, null] as const).map(d => <AuthorizationChoice key={String(d)} title={d === null ? '直到撤销' : `${d} 天`} selected={days === d} disabled={busy} onPress={() => setDays(d)} />)}
+            {([null, 1, 7, 30] as const).map(d => <AuthorizationChoice key={String(d)} testID={`consent-duration-${d === null ? 'unlimited' : d}`} title={d === null ? '直到撤销' : `${d} 天`} selected={days === d} disabled={busy} onPress={() => setDays(d)} />)}
         </AuthorizationSection>
+        <Text style={styles.body}>{`有效期：${days === null ? '直到撤销' : `${days} 天`}`}</Text>
         <Text style={styles.body}>记住连接由发起应用的浏览器单独选择。它只决定是否在此浏览器保存连接，不会延长授权有效期。公共设备请勿记住连接。</Text>
         {pairing.expiresAt <= now ? <AuthorizationNotice title="请求已过期" message="请从应用重新发起连接。" error /> : null}
         {error ? <AuthorizationNotice title="无法授权" message={error} error /> : null}

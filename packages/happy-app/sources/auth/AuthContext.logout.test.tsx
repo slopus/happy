@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { act } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 // react-test-renderer does not publish TypeScript declarations with the package.
 // @ts-expect-error The test only needs the small create/unmount surface typed below.
@@ -22,16 +22,20 @@ const mocks = vi.hoisted(() => ({
     confirm: vi.fn(async () => true),
     retireAccountPush: vi.fn(async () => undefined),
     retryAccountPushCleanup: vi.fn(async () => undefined),
+    saveAccountCredentials: vi.fn(async () => ({ key: 'restored-account' })),
+    replace: vi.fn(),
+    webReplace: vi.fn(),
+    platform: { OS: 'native' },
 }));
 
-vi.mock('react-native', () => ({ Platform: { OS: 'native' }, AppState: { addEventListener: vi.fn(() => ({ remove: vi.fn() })) } }));
-vi.mock('expo-router', () => ({ router: { replace: vi.fn() } }));
+vi.mock('react-native', () => ({ Platform: mocks.platform, AppState: { addEventListener: vi.fn(() => ({ remove: vi.fn() })) } }));
+vi.mock('expo-router', () => ({ router: { replace: mocks.replace } }));
 vi.mock('@/sync/serverConfig', () => ({ getServerUrl: () => 'https://paws.example' }));
 vi.mock('@/sync/apiSocket', () => ({ apiSocket: { disconnect: mocks.disconnect } }));
 vi.mock('@/auth/accounts', () => ({
     validateSavedAccount: mocks.validateSavedAccount,
     selectSavedAccount: mocks.selectSavedAccount,
-    saveAccountCredentials: vi.fn(),
+    saveAccountCredentials: mocks.saveAccountCredentials,
     logoutSavedAccount: mocks.logoutSavedAccount,
 }));
 vi.mock('@/auth/accountRuntime', () => ({
@@ -69,13 +73,17 @@ vi.mock('@/track', () => ({ trackLogout: vi.fn() }));
 vi.mock('@/sync/publicSessionShareQueueRuntime', () => ({ clearPublicSessionShareJobs: vi.fn() }));
 vi.mock('@/sync/messageStagingQueueRuntime', () => ({ clearMessageStagingQueue: vi.fn() }));
 
-import { AuthProvider, getCurrentAuth } from './AuthContext';
+import { AuthProvider, getCurrentAuth, useAuth } from './AuthContext';
+import { createServiceAuthorizationLogin, serviceAuthorizationReturnPath } from './serviceAuthorizationLogin';
 
 describe('AuthProvider logout', () => {
     beforeEach(() => {
         vi.clearAllMocks();
+        (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
         mocks.composeDraft.images = [];
+        mocks.platform.OS = 'native';
     });
+    afterEach(() => { vi.unstubAllGlobals(); });
 
     it('clears the encrypted session warm cache with the rest of local account data', async () => {
         let renderer: any;
@@ -152,6 +160,51 @@ describe('AuthProvider logout', () => {
         expect(mocks.reload).not.toHaveBeenCalled();
         expect(mocks.composeDraft.images).toEqual([{ id: 'unsent-image' }]);
         expect(getCurrentAuth()?.isAuthenticated).toBe(true);
+        await act(async () => renderer.unmount());
+    });
+
+    it.each([false, true])('reloads a previously logged-out account at the explicit service consent only (%s)', async serviceLogin => {
+        mocks.platform.OS = 'web';
+        vi.stubGlobal('window', { location: { replace: mocks.webReplace }, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+        vi.stubGlobal('document', { addEventListener: vi.fn(), removeEventListener: vi.fn() });
+        let renderer: any, auth!: ReturnType<typeof useAuth>;
+        const Capture = () => { auth = useAuth(); return null; };
+        await act(async () => { renderer = TestRenderer.create(<AuthProvider initialCredentials={null}><Capture /></AuthProvider>); });
+        expect(auth.isAuthenticated).toBe(false);
+        const intent = createServiceAuthorizationLogin('00000000-0000-0000-0000-000000000001')!;
+        await act(async () => {
+            if (serviceLogin) await auth.login('token', 'secret', { serviceAuthorization: intent });
+            else await auth.login('token', 'secret');
+        });
+        expect(mocks.selectSavedAccount).toHaveBeenCalledWith('restored-account');
+        expect(mocks.webReplace).toHaveBeenCalledWith(serviceLogin ? serviceAuthorizationReturnPath(intent) : '/');
+        expect(mocks.replace).not.toHaveBeenCalled(); expect(mocks.reload).not.toHaveBeenCalled();
+        await act(async () => renderer.unmount());
+    });
+
+    it('rejects an injected external login destination while keeping ordinary account activation', async () => {
+        let renderer: any, auth!: ReturnType<typeof useAuth>;
+        const Capture = () => { auth = useAuth(); return null; };
+        await act(async () => { renderer = TestRenderer.create(<AuthProvider initialCredentials={null}><Capture /></AuthProvider>); });
+        await act(async () => { await auth.login('token', 'secret', { serviceAuthorization: 'https://evil.example' } as any); });
+        expect(mocks.replace).toHaveBeenCalledWith('/');
+        expect(mocks.replace).not.toHaveBeenCalledWith('https://evil.example');
+        await act(async () => renderer.unmount());
+    });
+
+    it.each(['save', 'validate'])('does not activate a cancelled service login while %s is pending', async stage => {
+        let renderer: any, auth!: ReturnType<typeof useAuth>, finish!: () => void;
+        const Capture = () => { auth = useAuth(); return null; };
+        await act(async () => { renderer = TestRenderer.create(<AuthProvider initialCredentials={null}><Capture /></AuthProvider>); });
+        const pause = new Promise<void>(resolve => { finish = resolve; });
+        if (stage === 'save') mocks.saveAccountCredentials.mockImplementationOnce(async () => { await pause; return { key: 'cancelled-account' }; });
+        else mocks.validateSavedAccount.mockImplementationOnce(async () => { await pause; });
+        const controller = new AbortController();
+        let pending!: Promise<void>;
+        await act(async () => { pending = auth.login('token', 'secret', { serviceAuthorization: createServiceAuthorizationLogin('00000000-0000-0000-0000-000000000001')!, signal: controller.signal }); });
+        controller.abort();
+        await act(async () => { finish(); await pending; });
+        expect(mocks.selectSavedAccount).not.toHaveBeenCalled(); expect(mocks.freezeAccountRuntime).not.toHaveBeenCalled(); expect(mocks.replace).not.toHaveBeenCalled();
         await act(async () => renderer.unmount());
     });
 });

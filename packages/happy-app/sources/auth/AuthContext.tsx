@@ -21,11 +21,13 @@ import { clearSessionWarmCache } from '@/sync/sessionWarmCache';
 import { clearLocalHistoryCaches } from '@/sync/localHistoryStore';
 import { clearFirstSubmissionScope } from '@/sync/firstSubmissionScope';
 import { sessionTextStream } from '@/sync/sessionTextStream';
+import { serviceAuthorizationReturnPath, type ServiceAuthorizationLogin } from './serviceAuthorizationLogin';
 
+type LoginOptions = { serviceAuthorization: ServiceAuthorizationLogin; signal?: AbortSignal };
 interface AuthContextType {
     isAuthenticated: boolean;
     credentials: AuthCredentials | null;
-    login: (token: string, secret: string) => Promise<void>;
+    login: (token: string, secret: string, options?: LoginOptions) => Promise<void>;
     logout: () => Promise<void>;
     switchAccount: (key: string, sessionId?: string) => Promise<void>;
 }
@@ -70,14 +72,15 @@ export function AuthProvider({ children, initialCredentials }: { children: React
         if (!credentials || !token || !selected) return;
         await retireAccountPush({ accountKey: selected.key, serverUrl: getServerUrl(), pushToken: token, token: credentials.token });
     };
-    const switchAccount = async (key: string, sessionId?: string) => {
-        if (busy.current || transitionRef.current) return;
+    const activateAccount = async (key: string, sessionId?: string, serviceAuthorization?: ServiceAuthorizationLogin, signal?: AbortSignal) => {
+        if (busy.current || transitionRef.current || signal?.aborted) return;
         if (sessionId && !/^[a-zA-Z0-9_-]{1,128}$/.test(sessionId)) throw new Error('Invalid session');
         await validateSavedAccount(key);
+        if (signal?.aborted) return;
         if (useComposeDraft.getState().images.length && !await Modal.confirm(t('accounts.switch'), t('accounts.attachmentWarning'))) return;
-        if (busy.current || transitionRef.current) return;
+        if (busy.current || transitionRef.current || signal?.aborted) return;
         let committed = false;
-        const path = sessionId ? `/session/${encodeURIComponent(sessionId)}` : '/';
+        const path = serviceAuthorizationReturnPath(serviceAuthorization) ?? (sessionId ? `/session/${encodeURIComponent(sessionId)}` : '/');
         transitionRef.current = async () => {
             if (!committed) {
                 await unregisterOldPush();
@@ -91,6 +94,7 @@ export function AuthProvider({ children, initialCredentials }: { children: React
         freeze();
         await retryTransition();
     };
+    const switchAccount = (key: string, sessionId?: string) => activateAccount(key, sessionId);
 
     useEffect(() => {
         const cleanupPush = () => { if (accountRuntimeCurrent()) void retryAccountPushCleanup().catch(() => undefined); };
@@ -125,10 +129,11 @@ export function AuthProvider({ children, initialCredentials }: { children: React
         setCurrentAuth(credentials ? { isAuthenticated, credentials, login, logout, switchAccount } : null);
     }, [isAuthenticated, credentials]);
 
-    const login = async (token: string, secret: string) => {
+    const login = async (token: string, secret: string, options?: LoginOptions) => {
+        if (options?.signal?.aborted) return;
         const newCredentials: AuthCredentials = { token, secret };
         const account = await saveAccountCredentials(newCredentials, getServerUrl());
-        await switchAccount(account.key);
+        await activateAccount(account.key, undefined, options?.serviceAuthorization, options?.signal);
     };
 
     const logout = async () => {

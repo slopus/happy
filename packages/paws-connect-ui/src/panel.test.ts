@@ -48,6 +48,7 @@ describe('service panel using the real SDK controller', () => {
         button(f.root, '连接').click(); await settle();
         expect(f.root.querySelector('svg[aria-label="授权二维码"]')).not.toBeNull();
         expect(f.root.querySelector('a')?.textContent).toBe('在此设备授权');
+        expect(f.root.textContent).toContain('用手机相机扫码，在 Paws 网页确认');
         f.approve(); await settle();
         button(f.root, '断开连接'); button(f.root, '忘记此连接');
         expect(f.root.textContent).not.toMatch(/新对话设置|调整模型|推理强度/);

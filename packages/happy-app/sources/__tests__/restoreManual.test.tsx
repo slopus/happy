@@ -2,6 +2,7 @@ import * as React from 'react';
 import { act } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import RestoreManual from '@/app/(app)/restore/manual';
+import { createServiceAuthorizationLogin, serviceAuthorizationLoginParams, serviceAuthorizationReturnPath } from '@/auth/serviceAuthorizationLogin';
 
 // react-test-renderer 没有随包发布 TypeScript 声明。
 // @ts-expect-error 测试只使用 create/unmount 所需的最小接口。
@@ -15,6 +16,8 @@ const mocks = vi.hoisted(() => ({
     login: vi.fn(),
     normalizeSecretKey: vi.fn(),
     replace: vi.fn(),
+    params: {} as Record<string, unknown>,
+    focused: true,
 }));
 
 vi.mock('react-native', () => ({
@@ -25,6 +28,8 @@ vi.mock('react-native', () => ({
 }));
 vi.mock('expo-router', () => ({
     useRouter: () => ({ replace: mocks.replace }),
+    useLocalSearchParams: () => mocks.params,
+    useFocusEffect: (callback: () => void) => React.useEffect(() => mocks.focused ? callback() : undefined, [callback, mocks.focused]),
 }));
 vi.mock('@/auth/AuthContext', () => ({
     useAuth: () => ({
@@ -79,6 +84,8 @@ describe('密钥恢复页', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mocks.isAuthenticated = false;
+        mocks.params = {};
+        mocks.focused = true;
         mocks.normalizeSecretKey.mockReturnValue('normalized-key');
         mocks.decodeBase64.mockReturnValue(new Uint8Array(32));
         mocks.authGetToken.mockResolvedValue('token');
@@ -147,5 +154,60 @@ describe('密钥恢复页', () => {
         });
 
         expect(mocks.replace).toHaveBeenCalledWith('/');
+    });
+
+    it.each([false, true])('returns service login to the same authorization, including an authenticated revisit (%s)', async authenticated => {
+        const intent = createServiceAuthorizationLogin('00000000-0000-0000-0000-000000000001')!;
+        mocks.params = serviceAuthorizationLoginParams(intent);
+        mocks.isAuthenticated = authenticated;
+        act(() => renderer.update(<RestoreManual />));
+        if (!authenticated) {
+            act(() => renderer.root.findByType('TextInput').props.onChangeText('formatted-key'));
+            const button = renderer.root.findAllByType('RoundButton').find((node: any) => node.props.title === 'connect.restoreAccount');
+            await act(async () => { await button.props.action(); });
+            expect(mocks.login).toHaveBeenCalledWith('token', 'normalized-key', { serviceAuthorization: intent, signal: expect.any(AbortSignal) });
+        }
+        expect(mocks.replace).toHaveBeenCalledWith(serviceAuthorizationReturnPath(intent));
+        expect(mocks.replace).not.toHaveBeenCalledWith('/');
+    });
+
+    it('cancels an unfinished service login without logging in when its token arrives', async () => {
+        const intent = createServiceAuthorizationLogin('00000000-0000-0000-0000-000000000001')!;
+        mocks.params = serviceAuthorizationLoginParams(intent);
+        let finish!: (token: string) => void;
+        mocks.authGetToken.mockReturnValue(new Promise<string>(resolve => { finish = resolve; }));
+        act(() => renderer.update(<RestoreManual />));
+        act(() => renderer.root.findByType('TextInput').props.onChangeText('formatted-key'));
+        let pending!: Promise<void>;
+        await act(async () => { pending = renderer.root.findAllByType('RoundButton').find((node: any) => node.props.action).props.action(); });
+        act(() => renderer.root.findAllByType('RoundButton').find((node: any) => node.props.title === '取消登录').props.onPress());
+        await act(async () => { finish('late-token'); await pending; });
+        expect(mocks.login).not.toHaveBeenCalled();
+        expect(mocks.replace).toHaveBeenCalledWith(serviceAuthorizationReturnPath(intent));
+    });
+
+    it('does not follow an external returnTo parameter', async () => {
+        mocks.params = { returnTo: 'https://evil.example' };
+        mocks.isAuthenticated = true;
+        act(() => renderer.update(<RestoreManual />));
+        expect(mocks.replace).toHaveBeenCalledWith('/');
+        expect(mocks.replace).not.toHaveBeenCalledWith('https://evil.example');
+    });
+
+    it.each(['replaced', 'blurred'])('ignores an old token result after the authorization request is %s', async change => {
+        const first = createServiceAuthorizationLogin('00000000-0000-0000-0000-000000000001')!;
+        const next = createServiceAuthorizationLogin('00000000-0000-0000-0000-000000000002')!;
+        mocks.params = serviceAuthorizationLoginParams(first);
+        let finish!: (token: string) => void;
+        mocks.authGetToken.mockReturnValue(new Promise<string>(resolve => { finish = resolve; }));
+        act(() => renderer.update(<RestoreManual />));
+        act(() => renderer.root.findByType('TextInput').props.onChangeText('formatted-key'));
+        let pending!: Promise<void>;
+        await act(async () => { pending = renderer.root.findAllByType('RoundButton').find((node: any) => node.props.action).props.action(); });
+        if (change === 'replaced') mocks.params = serviceAuthorizationLoginParams(next);
+        else mocks.focused = false;
+        act(() => renderer.update(<RestoreManual />));
+        await act(async () => { finish('old-token'); await pending; });
+        expect(mocks.login).not.toHaveBeenCalled(); expect(mocks.replace).not.toHaveBeenCalled();
     });
 });

@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, Text, TextInput, ScrollView } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { RoundButton } from '@/components/RoundButton';
 import { Typography } from '@/constants/Typography';
@@ -11,6 +11,7 @@ import { layout } from '@/components/layout';
 import { Modal } from '@/modal';
 import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { hasServiceAuthorizationLogin, parseServiceAuthorizationLogin, serviceAuthorizationReturnPath } from '@/auth/serviceAuthorizationLogin';
 
 const stylesheet = StyleSheet.create((theme) => ({
     scrollView: {
@@ -51,17 +52,34 @@ export default function Restore() {
     const styles = stylesheet;
     const auth = useAuth();
     const router = useRouter();
+    const params = useLocalSearchParams();
+    const serviceLogin = parseServiceAuthorizationLogin(params);
+    const serviceLoginRequested = hasServiceAuthorizationLogin(params);
+    const returnPath = serviceAuthorizationReturnPath(serviceLogin);
     const [restoreKey, setRestoreKey] = useState('');
     const restoreInFlightRef = useRef(false);
+    const cancelledRef = useRef(false);
+    const loginGeneration = useRef(0);
+    const loginAbortRef = useRef<AbortController | null>(null);
 
-    useEffect(() => {
-        if (auth.isAuthenticated) {
-            router.replace('/');
+    useFocusEffect(React.useCallback(() => {
+        loginGeneration.current++; cancelledRef.current = false; restoreInFlightRef.current = false;
+        const abort = new AbortController(); loginAbortRef.current = abort;
+        return () => { loginGeneration.current++; cancelledRef.current = true; abort.abort(); };
+    }, [params.serviceAuthorizationId, params.serviceAuthorizationProtocol, params.serviceAuthorizationStartedAt]));
+
+    useFocusEffect(React.useCallback(() => {
+        if (auth.isAuthenticated && (!serviceLoginRequested || returnPath)) {
+            router.replace((returnPath ?? '/') as never);
         }
-    }, [auth.isAuthenticated, router]);
+    }, [auth.isAuthenticated, router, serviceLoginRequested, returnPath]));
 
     const handleRestore = async () => {
         if (restoreInFlightRef.current) {
+            return;
+        }
+        if (serviceLoginRequested && !serviceAuthorizationReturnPath(serviceLogin)) {
+            Modal.alert(t('common.error'), '授权链接已过期或无效。请回原应用重新连接。');
             return;
         }
 
@@ -73,6 +91,8 @@ export default function Restore() {
         }
 
         restoreInFlightRef.current = true;
+        const generation = loginGeneration.current;
+        const isCurrent = () => !cancelledRef.current && generation === loginGeneration.current;
         try {
             // Normalize the key (handles both base64url and formatted input)
             const normalizedKey = normalizeSecretKey(trimmedKey);
@@ -85,24 +105,36 @@ export default function Restore() {
 
             // Get token from secret
             const token = await authGetToken(secretBytes);
+            if (!isCurrent()) return;
             if (!token) {
                 throw new Error('Failed to authenticate with provided key');
             }
+            if (serviceLoginRequested && !serviceAuthorizationReturnPath(serviceLogin)) {
+                Modal.alert(t('common.error'), '授权链接已过期或无效。请回原应用重新连接。');
+                return;
+            }
 
             // Login with new credentials
-            await auth.login(token, normalizedKey);
+            if (serviceLogin) await auth.login(token, normalizedKey, { serviceAuthorization: serviceLogin, signal: loginAbortRef.current!.signal });
+            else await auth.login(token, normalizedKey);
 
-            // 恢复页有两层历史记录，replace 能让成功态立即收口到应用首页；
-            // 两个恢复路由也会在已登录时自动重定向，覆盖浏览器返回与刷新。
-            router.replace('/');
+            // Match AuthContext's reload destination; a service login returns to
+            // its consent page, while an ordinary restore still opens home.
+            if (isCurrent()) router.replace((serviceAuthorizationReturnPath(serviceLogin) ?? '/') as never);
 
         } catch (error) {
+            if (!isCurrent()) return;
             console.error('Restore error:', error);
             Modal.alert(t('common.error'), t('connect.invalidSecretKey'));
         } finally {
-            restoreInFlightRef.current = false;
+            if (generation === loginGeneration.current) restoreInFlightRef.current = false;
         }
     };
+
+    if (serviceLoginRequested && !returnPath) return <View style={styles.container}>
+        <Text style={styles.instructionText}>授权链接已过期或无效。请回原应用重新连接。</Text>
+        <RoundButton title="返回 Paws" onPress={() => router.replace('/')} />
+    </View>;
 
     return (
         <ScrollView style={styles.scrollView}>
@@ -130,6 +162,11 @@ export default function Restore() {
                         title={t('connect.restoreAccount')}
                         action={handleRestore}
                     />
+                    {serviceLogin ? <RoundButton title="取消登录" display="inverted" onPress={() => {
+                        cancelledRef.current = true;
+                        loginAbortRef.current?.abort();
+                        router.replace((returnPath ?? '/') as never);
+                    }} /> : null}
                 </View>
             </View>
         </ScrollView>
