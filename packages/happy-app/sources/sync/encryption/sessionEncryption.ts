@@ -4,6 +4,15 @@ import { ApiMessage } from '../apiTypes';
 import { DecryptedMessage, Metadata, MetadataSchema, AgentState, AgentStateSchema } from '../storageTypes';
 import { EncryptionCache } from './encryptionCache';
 import { Decryptor, Encryptor } from './encryptor';
+import { Platform } from 'react-native';
+
+async function yieldToBrowser(): Promise<void> {
+    const scheduler = (globalThis as typeof globalThis & {
+        scheduler?: { yield?: () => Promise<void> };
+    }).scheduler;
+    if (scheduler?.yield) await scheduler.yield();
+    else await new Promise<void>(resolve => setTimeout(resolve, 0));
+}
 
 export class SessionEncryption {
     private sessionId: string;
@@ -58,17 +67,33 @@ export class SessionEncryption {
             }
         }
 
-        // Batch decrypt uncached messages
-        if (toDecrypt.length > 0) {
-            const encrypted = toDecrypt.map(item =>
+        // Promise.all alone does not yield the main thread: decoding the entire
+        // history window and preparing every AES operation is synchronous.
+        // Bound that work on Web, then yield a task (not another microtask) so
+        // scrolling, input and paint can run between batches. Native keeps its
+        // existing bridge batch behavior.
+        const batchSize = Platform.OS === 'web' ? 16 : Math.max(1, toDecrypt.length);
+        const decryptedForCache: DecryptedMessage[] = [];
+        let lastYieldAt = Date.now();
+        for (let offset = 0; offset < toDecrypt.length; offset += batchSize) {
+            // Give pending input a turn after the first batch. Thereafter use
+            // a time budget so cheap rows do not pay a clamped timer per batch
+            // on browsers without scheduler.yield.
+            if (Platform.OS === 'web' && offset > 0
+                && (offset === batchSize || Date.now() - lastYieldAt >= 8)) {
+                await yieldToBrowser();
+                lastYieldAt = Date.now();
+            }
+            const batch = toDecrypt.slice(offset, offset + batchSize);
+            const encrypted = batch.map(item =>
                 decodeBase64(item.message.content.c, 'base64')
             );
             
             const decrypted = await this.encryptor.decrypt(encrypted);
 
-            for (let i = 0; i < toDecrypt.length; i++) {
+            for (let i = 0; i < batch.length; i++) {
                 const decryptedData = decrypted[i];
-                const { message, index } = toDecrypt[i];
+                const { message, index } = batch[i];
 
                 if (decryptedData) {
                     const result: DecryptedMessage = {
@@ -78,7 +103,7 @@ export class SessionEncryption {
                         content: decryptedData,
                         createdAt: message.createdAt,
                     };
-                    this.cache.setCachedMessage(message.id, result);
+                    decryptedForCache.push(result);
                     results[index] = result;
                 } else {
                     const result: DecryptedMessage = {
@@ -88,9 +113,24 @@ export class SessionEncryption {
                         content: null,
                         createdAt: message.createdAt,
                     };
-                    this.cache.setCachedMessage(message.id, result);
+                    decryptedForCache.push(result);
                     results[index] = result;
                 }
+            }
+        }
+
+        // Preserve rejection semantics: malformed ciphertext or a rejecting
+        // decryptor must not leave earlier encrypted batches in the cache.
+        // Cache insertion/eviction is also bounded so a large window does not
+        // replace the crypto stall with one long cache-maintenance task.
+        lastYieldAt = Date.now();
+        for (let offset = 0; offset < decryptedForCache.length; offset += batchSize) {
+            if (offset > 0 && Platform.OS === 'web' && Date.now() - lastYieldAt >= 8) {
+                await yieldToBrowser();
+                lastYieldAt = Date.now();
+            }
+            for (const result of decryptedForCache.slice(offset, offset + batchSize)) {
+                this.cache.setCachedMessage(result.id, result);
             }
         }
 
