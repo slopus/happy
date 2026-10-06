@@ -3,6 +3,8 @@ import { AIServiceClientError, type BindingOverrides, type ClientErrorCode, type
 
 export interface ServicePanelAppearance {
     title?: string;
+    /** Hide the visible title when the host already provides a heading. */
+    showTitle?: boolean;
     theme?: 'auto' | 'light' | 'dark';
     /** Supply only sources for which the host has configured a client. */
     sources?: ServiceSource[];
@@ -42,7 +44,15 @@ const errors: Record<ClientErrorCode, string> = {
     'aborted': '操作已取消。',
     'observation-expired': '观察已停止。请重新检查状态。',
 };
-const sourceNames: Record<ServiceSource, string> = { platform: '平台服务', personal: '个人服务' };
+const platformErrors: Partial<Record<ClientErrorCode, string>> = {
+    'authorization-expired': '默认服务连接已过期。请重试。',
+    'authorization-revoked': '默认服务访问权限已失效。请重试。',
+    'consent-required': '默认服务尚未就绪。请重试。',
+    'permission-denied': '默认服务拒绝了请求。请联系服务维护者。',
+    'context-mismatch': '服务响应与当前连接不匹配。请重试。',
+    'storage-unavailable': '无法准备默认服务。请重试。',
+};
+const sourceNames: Record<ServiceSource, string> = { platform: '默认服务', personal: '个人服务' };
 let nextId = 0;
 function safeWebUrl(value?: string): string | null {
     if (!value) return null;
@@ -78,7 +88,10 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
         select.value = value; select.addEventListener('change', () => action(select.value)); wrap.append(select); return wrap;
     }
     function findFocus(key: string) { return [...root.querySelectorAll<HTMLElement>('[data-focus]')].find(el => el.dataset.focus === key); }
-    function openModal(value: 'advanced' | 'details') { focusRecovery = null; opener = value; modal = value; render(true); findFocus('close')?.focus(); }
+    function openModal(value: 'advanced' | 'details') {
+        focusRecovery = null; opener = value; modal = value; render(true); findFocus('close')?.focus();
+        if (value === 'advanced' && state.connection && !state.catalog) run(() => controller.refresh());
+    }
     function closeModal() { focusRecovery = null; const key = opener; modal = null; render(true); findFocus(key)?.focus(); }
     function reconcile(next: ServiceControllerState): boolean {
         if (!next.catalog) return false;
@@ -96,7 +109,7 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
     }
     function run(action: () => Promise<unknown>) {
         if (destroyed || busy) return;
-        if (modal) focusRecovery = (doc.activeElement as HTMLElement | null)?.dataset?.focus ?? null;
+        if (root.contains(doc.activeElement)) focusRecovery = (doc.activeElement as HTMLElement | null)?.dataset?.focus ?? null;
         const current = epoch; busy = true; localError = null; notice = ''; render();
         void Promise.resolve().then(() => {
             if (destroyed || current !== epoch) return;
@@ -110,6 +123,15 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
         const signal = connectAbort.signal;
         run(() => controller.connect({ remember, signal }));
     }
+    function retryPlatform() {
+        const current = epoch;
+        run(async () => {
+            await controller.restore();
+            if (destroyed || current !== epoch || state.source !== 'platform') return;
+            await controller.refresh();
+        });
+    }
+    function errorMessage(code: ClientErrorCode) { return state.source === 'platform' ? platformErrors[code] ?? errors[code] : errors[code]; }
     function switchSource(value: string) {
         if (!sources.includes(value as ServiceSource) || value === state.source) return;
         epoch++; busy = false; localError = null; notice = ''; modal = null; focusRecovery = null;
@@ -145,19 +167,22 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
     function details(dialog: HTMLElement) {
         const list = node('dl');
         const rows = [
-            ['来源', sourceNames[state.source]], ['服务标识', state.connection?.serviceId ?? '尚未连接'],
-            ['授权到期', state.connection?.expiresAt ? new Date(state.connection.expiresAt).toLocaleString() : '未提供到期时间'],
+            ['来源', sourceNames[state.source]],
             ['执行引擎', state.catalog?.engine ?? '尚未读取'], ['执行设备', state.catalog?.machineId ?? '尚未读取'],
             ['目录状态', state.catalog ? `${state.catalog.availability === 'online' ? '在线' : '离线'} / ${state.catalog.completeness === 'complete' ? '完整' : '有限'}` : '尚未读取'],
             ['目录观测时间', state.catalog ? new Date(state.catalog.observedAt).toLocaleString() : '尚未读取'],
+        ];
+        if (state.source === 'personal') rows.push(
+            ['服务标识', state.connection?.serviceId ?? '尚未连接'],
+            ['授权到期', state.connection?.expiresAt ? new Date(state.connection.expiresAt).toLocaleString() : '未提供到期时间'],
             ['实际模型', '未知。请读取原对话的执行记录。'], ['实际推理强度', '未知。请读取原对话的执行记录。'],
             ['连接存储', state.storage.mode === 'remember' ? '已记住' : state.storage.mode === 'session' ? '当前浏览器会话' : '当前页面内存'],
-        ];
+        );
         for (const [label, value] of rows) list.append(node('dt', label), node('dd', value));
         dialog.append(list, node('p', '来源和覆盖设置只影响新对话。原对话保留原绑定。'));
     }
     function advanced(dialog: HTMLElement) {
-        dialog.append(node('p', '只影响新对话。连接时无需重新选择模型或推理强度。'));
+        dialog.append(node('p', '设置用于新对话。默认跟随服务配置。'));
         const available = state.connection !== null && state.catalog?.availability === 'online' && !busy;
         const selectedModel = state.catalog?.models.find(m => m.id === state.overrides.modelId);
         const reasoningValue = state.overrides.reasoning?.mode === 'explicit' ? state.overrides.reasoning.value : '';
@@ -165,14 +190,14 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
         dialog.append(field('模型', 'model', [{ value: '', label: '跟随服务默认配置' }, ...(state.catalog?.models ?? []).map(m => ({ value: m.id, label: m.name }))], state.overrides.modelId ?? '', !available, setModel));
         dialog.append(field('推理强度', 'reasoning', [{ value: '', label: '跟随服务默认配置' }, ...unverifiedReasoning, ...(selectedModel?.reasoning.values ?? []).map(value => ({ value, label: value }))], reasoningValue, !available || !selectedModel?.reasoning.values.length, setReasoning));
         if (unverifiedReasoning.length) dialog.append(node('p', `保留推理强度覆盖：${reasoningValue}。服务模型未提供，尚未验证支持情况。`));
-        if (!state.catalog) dialog.append(node('p', '先连接服务，再更新模型目录。'));
+        if (!state.catalog) dialog.append(node('p', state.connection ? (busy ? '正在读取模型目录…' : '尚未读取模型目录。请更新模型目录。') : state.source === 'platform' ? '正在准备默认服务…' : '先连接服务，再更新模型目录。'));
         else if (!selectedModel) dialog.append(node('p', '选择明确的模型后，可查看它支持的原生推理强度。服务默认模型尚未提供。'));
         else if (!selectedModel.reasoning.values.length) dialog.append(node('p', '此模型未提供可选推理强度。'));
         if (state.catalog?.availability === 'offline') dialog.append(node('p', '设备离线。目录仅供查看。'));
         if (state.catalog?.completeness === 'limited') dialog.append(node('p', '目录信息有限。执行时仍需检查模型和参数。'));
         dialog.append(button('更新模型目录', 'refresh-catalog', () => run(() => controller.refresh()), busy || !state.connection));
         dialog.append(button('恢复服务默认配置', 'reset-overrides', () => controller.setOverrides({}), busy));
-        dialog.append(node('p', '问答授权不包含终端、文件系统或浏览器操作。'));
+        if (state.source === 'personal') dialog.append(node('p', '问答授权不包含终端、文件系统或浏览器操作。'));
     }
     function render(preserveContent = false) {
         if (destroyed) return;
@@ -180,41 +205,52 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
         const active = activeElement && root.contains(activeElement) ? activeElement.dataset?.focus : undefined;
         const content = node('div', undefined, 'paws-service-content'); content.inert = Boolean(modal);
         if (modal) content.setAttribute('aria-hidden', 'true');
-        const heading = node('h2', appearance.title ?? 'AI 服务');
-        content.append(heading, field('服务来源', 'source', sources.map(source => ({ value: source, label: sourceNames[source] })), state.source, false, switchSource));
-        content.append(node('p', state.source === 'platform' ? '由平台提供执行服务。' : '由你授权的设备和账号提供执行服务。'));
+        const platform = state.source === 'platform';
+        if (appearance.showTitle !== false) content.append(node('h2', appearance.title ?? 'AI 服务'));
+        if (sources.length > 1) content.append(field('服务来源', 'source', sources.map(source => ({ value: source, label: sourceNames[source] })), state.source, false, switchSource));
+        content.append(node(platform ? 'h3' : 'p', platform ? '默认服务' : '由你授权的设备和账号提供执行服务。'));
         const status = node('div', undefined, 'paws-service-status'); status.setAttribute('role', 'status'); status.setAttribute('aria-live', 'polite');
-        const errorCode = localError ?? state.error?.code;
-        if (errorCode) { status.dataset.errorCode = errorCode; status.append(node('strong', errors[errorCode])); }
-        else status.append(node('strong', state.status === 'ready' ? '已授权连接' : state.status === 'authorizing' ? '等待授权' : state.status === 'disconnected' ? '尚未连接' : errors[state.status as ClientErrorCode] ?? '请检查服务状态。'));
-        if (state.status === 'ready') status.append(node('p', '已授权连接不代表执行端当前可用。可重新检查状态。'));
+        const statusError = state.status === 'error' ? 'internal-error' : state.status in errors ? state.status as ClientErrorCode : null;
+        const errorCode = localError ?? state.error?.code ?? statusError ?? (platform && state.status === 'ready' && state.catalog?.availability === 'offline' ? 'machine-offline' : null);
+        if (errorCode) { status.dataset.errorCode = errorCode; status.append(node('strong', errorMessage(errorCode))); }
+        else if (platform) status.append(node('strong', state.status === 'ready' ? (state.catalog?.availability === 'online' ? '可用' : '已连接') : '正在准备默认服务…'));
+        else status.append(node('strong', state.status === 'ready' ? '已授权连接' : state.status === 'authorizing' ? '等待授权' : '尚未连接'));
+        if (!platform && state.status === 'ready') status.append(node('p', '已授权连接不代表执行端当前可用。可重新检查状态。'));
         if (busy && state.status !== 'authorizing') status.append(node('p', '正在处理…'));
         if (notice) status.append(node('p', notice));
         content.append(status);
-        if (state.pending) {
-            const approvalUrl = safeWebUrl(state.pending.approvalUrl);
-            if (approvalUrl) content.append(link('在此设备授权', approvalUrl));
-            try { content.append(qr(state.pending.qrUrl), node('p', '用 Paws 扫描二维码，在原设备确认授权。')); }
-            catch { content.append(node('p', '二维码不可用。请使用同设备授权链接。')); }
-            content.append(node('p', `授权请求到期：${new Date(state.pending.expiresAt).toLocaleString()}`));
+        if (platform) {
+            if (errorCode) content.append(button('重试', 'retry', retryPlatform, busy || errorCode === 'disposed'));
+        } else {
+            if (state.pending) {
+                const approvalUrl = safeWebUrl(state.pending.approvalUrl);
+                if (approvalUrl) content.append(link('在此设备授权', approvalUrl));
+                try { content.append(qr(state.pending.qrUrl), node('p', '用 Paws 扫描二维码，在原设备确认授权。')); }
+                catch { content.append(node('p', '二维码不可用。请使用同设备授权链接。')); }
+                content.append(node('p', `授权请求到期：${new Date(state.pending.expiresAt).toLocaleString()}`));
+            }
+            const actions = node('div', undefined, 'paws-service-actions');
+            if (state.status === 'authorizing') actions.append(button('取消授权', 'cancel', () => { epoch++; busy = false; run(() => controller.disconnect()); }));
+            else if (state.status !== 'ready' && !state.connection) actions.append(button(errorCode ? '重新连接' : '连接', 'connect', connect, busy || errorCode === 'disposed'));
+            if (state.connection) actions.append(button('重新检查状态', 'refresh', () => run(() => controller.refresh()), busy), button('断开连接', 'disconnect', () => run(() => controller.disconnect()), busy));
+            actions.append(button('忘记此连接', 'forget', () => run(async () => {
+                const current = epoch;
+                await controller.disconnect('forget');
+                if (!destroyed && current === epoch) notice = '已忘记本地连接。远端授权仍需在授权管理中撤销。';
+            }), busy));
+            const ownerUrl = safeWebUrl(appearance.ownerManagementUrl);
+            if (ownerUrl) actions.append(link('管理授权', ownerUrl));
+            else content.append(node('p', '如需撤销远端授权，请打开服务所有者的授权管理页。'));
+            content.append(actions, node('p', '断开连接会保留本地授权。忘记此连接不会撤销远端授权。'));
+            if (state.status !== 'authorizing') {
+                const label = node('label', undefined, 'paws-service-remember'), input = node('input'); input.type = 'checkbox'; input.checked = remember; input.disabled = busy; input.dataset.focus = 'remember';
+                input.addEventListener('change', () => { remember = input.checked; }); label.append(input, doc.createTextNode('下次连接时记住此设备的授权')); content.append(label);
+            }
+            if (state.storage.warning) content.append(node('p', state.storage.warning === 'remember-unavailable' ? '无法记住授权。仅保留在当前浏览器会话或页面中。未确认旧持久数据已删除。' : '浏览器会话存储不可用。连接仅保留在当前页面内存中。', 'paws-service-warning'));
         }
-        const actions = node('div', undefined, 'paws-service-actions');
-        if (state.status === 'authorizing') actions.append(button('取消授权', 'cancel', () => { epoch++; busy = false; run(() => controller.disconnect()); }));
-        else if (state.status !== 'ready' && !state.connection) actions.append(button(errorCode ? '重新连接' : '连接', 'connect', connect, busy || errorCode === 'disposed'));
-        if (state.connection) actions.append(button('重新检查状态', 'refresh', () => run(() => controller.refresh()), busy), button('断开连接', 'disconnect', () => run(() => controller.disconnect()), busy));
-        actions.append(button('忘记此连接', 'forget', () => run(async () => { await controller.disconnect('forget'); notice = '已忘记本地连接。远端授权仍需在授权管理中撤销。'; }), busy));
-        const ownerUrl = safeWebUrl(appearance.ownerManagementUrl);
-        if (ownerUrl) actions.append(link('管理授权', ownerUrl));
-        else content.append(node('p', '如需撤销远端授权，请打开服务所有者的授权管理页。'));
-        content.append(actions, node('p', '断开连接会保留本地授权。忘记此连接不会撤销远端授权。'));
-        if (state.source === 'personal' && state.status !== 'authorizing') {
-            const label = node('label', undefined, 'paws-service-remember'), input = node('input'); input.type = 'checkbox'; input.checked = remember; input.disabled = busy; input.dataset.focus = 'remember';
-            input.addEventListener('change', () => { remember = input.checked; }); label.append(input, doc.createTextNode('下次连接时记住此设备的授权')); content.append(label);
-        }
-        if (state.storage.warning) content.append(node('p', state.storage.warning === 'remember-unavailable' ? '无法记住授权。仅保留在当前浏览器会话或页面中。未确认旧持久数据已删除。' : '浏览器会话存储不可用。连接仅保留在当前页面内存中。', 'paws-service-warning'));
         const summary = node('div', undefined, 'paws-service-defaults');
-        summary.append(node('h3', '新对话设置'), node('p', state.overrides.modelId ? `模型覆盖：${state.catalog?.models.find(m => m.id === state.overrides.modelId)?.name ?? state.overrides.modelId}` : '模型：跟随服务默认配置'), node('p', state.overrides.reasoning?.mode === 'explicit' ? `推理强度覆盖：${state.overrides.reasoning.value}` : '推理强度：跟随服务默认配置'), node('p', '服务默认值由服务所有者管理。实际值以执行记录为准。'));
-        summary.append(button('高级设置', 'advanced', () => openModal('advanced')), button('状态与详情', 'details', () => openModal('details'))); content.append(summary);
+        summary.append(node('h3', '新对话设置'), node('p', state.overrides.modelId ? `模型覆盖：${state.catalog?.models.find(m => m.id === state.overrides.modelId)?.name ?? state.overrides.modelId}` : '模型：跟随服务默认配置'), node('p', state.overrides.reasoning?.mode === 'explicit' ? `推理强度覆盖：${state.overrides.reasoning.value}` : '推理强度：跟随服务默认配置'), node('p', '设置用于新对话。'));
+        summary.append(button('调整模型', 'advanced', () => openModal('advanced')), button('服务详情', 'details', () => openModal('details'))); content.append(summary);
         const previous = preserveContent ? root.querySelector<HTMLElement>('.paws-service-content') : null;
         if (previous) {
             previous.inert = Boolean(modal);
@@ -224,11 +260,11 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
         if (modal) {
             const backdrop = node('div', undefined, 'paws-service-backdrop'), dialog = node('div', undefined, 'paws-service-dialog');
             dialog.setAttribute('role', 'dialog'); dialog.setAttribute('aria-modal', 'true'); dialog.setAttribute('aria-labelledby', `${id}-dialog-title`);
-            const title = node('h3', modal === 'advanced' ? '高级设置' : '状态与详情'); title.id = `${id}-dialog-title`;
+            const title = node('h3', modal === 'advanced' ? '调整模型' : '服务详情'); title.id = `${id}-dialog-title`;
             const header = node('div', undefined, 'paws-service-dialog-header'); header.append(title, button('关闭', 'close', closeModal)); dialog.append(header);
             if (errorCode || notice) {
                 const message = node('div', undefined, 'paws-service-status'); message.setAttribute('role', 'status');
-                if (errorCode) { message.dataset.errorCode = errorCode; message.append(node('p', errors[errorCode])); }
+                if (errorCode) { message.dataset.errorCode = errorCode; message.append(node('p', errorMessage(errorCode))); }
                 if (notice) message.append(node('p', notice));
                 dialog.append(message);
             }
@@ -240,13 +276,13 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
             target.focus();
             if (!busy) focusRecovery = null;
         } else if (modal) findFocus('close')?.focus();
+        else if (!busy && focusRecovery === 'retry') { focusRecovery = null; findFocus('advanced')?.focus(); }
     }
     function keydown(event: KeyboardEvent) {
+        if (event.key === 'Tab') focusRecovery = null;
         if (!modal) return;
         if (event.key === 'Escape') { event.preventDefault(); closeModal(); return; }
         if (event.key !== 'Tab') return;
-        // A user navigation choice takes precedence over automatic focus recovery.
-        focusRecovery = null;
         const focusable = [...root.querySelectorAll<HTMLElement>('[role="dialog"] button:not(:disabled), [role="dialog"] select:not(:disabled), [role="dialog"] a[href]')];
         const first = focusable[0], last = focusable.at(-1);
         if (event.shiftKey && (doc.activeElement === first || !root.querySelector('[role="dialog"]')?.contains(doc.activeElement))) { event.preventDefault(); last?.focus(); }
@@ -257,12 +293,12 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
     const unsubscribe = controller.subscribe(event => {
         if (destroyed) return;
         if (event.type === 'state') {
-            if (state.source !== event.state.source) { epoch++; busy = false; localError = null; modal = null; focusRecovery = null; }
+            if (state.source !== event.state.source) { epoch++; busy = false; localError = null; notice = ''; modal = null; focusRecovery = null; }
             state = event.state;
             localError = null;
             if (reconcile(state)) return;
             render();
-        } else { notice = '本地授权已被清除。请重新连接。'; render(); }
+        } else { notice = state.source === 'platform' ? '' : '本地授权已被清除。请重新连接。'; render(); }
     });
     return { destroy() {
         if (destroyed) return;
