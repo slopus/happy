@@ -40,6 +40,8 @@ import { initEncrypt } from '@/modules/encrypt';
 const example = resolve('../../examples/ai-service-smoke');
 let ctx: Awaited<ReturnType<typeof createTestDatabase>>, services: ReturnType<typeof createSharedAIServices>, app: Fastify, smoke: SmokeApp, sdk: InstalledSDK, token: string, url: string, service: ServiceRef;
 let stopped = false, loop: Promise<void>, fault: ServiceErrorCode | null = null;
+let workerFailure: unknown;
+let policyBarrier: { requestId: string; entered: (job: ClaimedTurn) => void; resume: Promise<void>; release: () => void } | null = null;
 const machineKeys = nacl.box.keyPair();
 const owner = 'smoke-owner', machine = 'smoke-machine', receipts = new Map<string, GrantReceipt>(), clients = new Map<string, AIServiceClient>(), executions = new Map<string, number>();
 const target = { machineId: machine, engine: 'codex' as const, accountRef: { kind: 'codex-profile' as const, id: 'smoke-profile' } };
@@ -58,7 +60,6 @@ async function runWorker() {
                 throw new Error(response.body);
         }
         if (job) {
-            executions.set(job.record.id, (executions.get(job.record.id) || 0) + 1);
             const sealed = Buffer.from(job.envelope, 'base64'), opened = nacl.box.open(sealed.subarray(56), sealed.subarray(32, 56), sealed.subarray(0, 32), machineKeys.secretKey);
             if (!opened)
                 throw new Error('Invalid synthetic worker envelope');
@@ -69,9 +70,25 @@ async function runWorker() {
             if (!plain)
                 throw new Error('Invalid synthetic envelope');
             const messages: ServiceMessage[] = JSON.parse(Buffer.from(plain).toString()).messages;
+            if (policyBarrier?.requestId === job.record.requestId) {
+                const barrier = policyBarrier;
+                barrier.entered(job);
+                await barrier.resume;
+            }
             const policy = await worker('policy', { kind: 'turn', id: job.record.id, lease: job.lease });
+            if (policy.statusCode === 409 && policy.json().error?.code === 'execution-interrupted') {
+                const cancelled = await ctx.database.appChatTurn.findUniqueOrThrow({ where: { id: job.record.id } });
+                // Cancellation can win after claim but before policy. Acknowledge
+                // only this lease; expired leases and other policy failures stay fatal.
+                if (cancelled.state === 'cancel-requested' && cancelled.lease === job.lease) {
+                    const response = await worker(`turns/${job.record.id}`, { lease: job.lease, status: 'cancelled' });
+                    expect(response.statusCode, response.body).toBe(200);
+                    continue;
+                }
+            }
             expect(policy.statusCode, policy.body).toBe(200);
             expect(policy.json().policy.appId).toBe(job.record.binding.appId);
+            executions.set(job.record.id, (executions.get(job.record.id) || 0) + 1);
             if (messages.at(-1)!.text.includes('[slow]')) {
                 for (let i = 0; i < 80; i++) {
                     await new Promise(r => setTimeout(r, 100));
@@ -90,6 +107,7 @@ async function runWorker() {
     }
 }
 async function settle(client: AIServiceClient, binding: ExecutionBinding, requestId: string) { for (let i = 0; i < 150; i++) {
+    if (workerFailure) throw workerFailure;
     const value = await client.turns.read({ bindingId: binding.id, requestId });
     if (['completed', 'cancelled', 'failed', 'interrupted'].includes(value.record.status))
         return value;
@@ -114,7 +132,7 @@ beforeAll(async () => {
     url = 'http://127.0.0.1:' + (app.server.address() as AddressInfo).port;
     token = await auth.createToken(owner);
     expect((await worker('announce', { protocol: 'ai-services/1', publicKey: Buffer.from(machineKeys.publicKey).toString('base64') })).statusCode).toBe(200);
-    loop = runWorker();
+    loop = runWorker().catch(error => { workerFailure = error; });
     service = await services.store.createService(owner, { name: 'Synthetic shared service', config });
     const registry = createApplicationRegistry(ctx.database), businessPrompt = { id: 'smoke-summary', version: '1' };
     await registry.registerBusinessPrompt(businessPrompt, '请用一句话概括公开测试文本。');
@@ -130,8 +148,20 @@ beforeAll(async () => {
     const { startSmokeApp } = await import(pathToFileURL(resolve(example, 'server.mjs')).href);
     smoke = await startSmokeApp({ serverUrl: url, receipt: receipts.get('ai-service-smoke')!, port: process.env.PAWS_SMOKE_SERVE === '1' ? 4193 : 0 });
 }, 120000);
-afterAll(async () => { stopped = true; await loop; await smoke?.close(); for (const c of clients.values())
-    c.dispose(); await app?.close(); await ctx?.database.$disconnect(); await ctx?.pg.close(); });
+afterAll(async () => {
+    stopped = true;
+    policyBarrier?.release();
+    try {
+        await loop;
+        if (workerFailure) throw workerFailure;
+    } finally {
+        await smoke?.close();
+        for (const c of clients.values()) c.dispose();
+        await app?.close(); await ctx?.database.$disconnect(); await ctx?.pg.close();
+    }
+});
+// These HTTP + PGlite integration flows share CI CPU with the other workspaces.
+// Match the transport integration budget without retrying failed assertions.
 it('executes both packaged applications and rejects foreign bindings, owner APIs, origins and tool permissions', async () => {
     const advisor = clients.get('relationship-advisor')!, second = clients.get('ai-service-smoke')!;
     const first = await advisor.conversations.create({ appConversationId: 'advisor-only' });
@@ -150,7 +180,7 @@ it('executes both packaged applications and rejects foreign bindings, owner APIs
     expect((await fetch(url + '/v1/apps/services', { headers: { authorization: `Bearer ${credential}`, origin: 'https://foreign.example' } })).status).toBe(403);
     await expect(second.conversations.create({ overrides: { permissions: ['terminal' as never] } })).rejects.toMatchObject({ code: 'invalid-request' });
     expect((await second.conversations.find('advisor-only'))).toBeNull();
-});
+}, 20_000);
 it('keeps old bindings while new defaults change and rejects unsupported reasoning', async () => {
     const client = clients.get('ai-service-smoke')!, old = await client.conversations.create({ appConversationId: 'old-default' });
     await services.store.updateService(owner, service.id, 1, { ...config, modelId: 'synthetic-b', reasoning: { mode: 'explicit', value: 'high' } });
@@ -161,7 +191,7 @@ it('keeps old bindings while new defaults change and rejects unsupported reasoni
     expect(next.requestedModel).toBe('synthetic-b');
     expect((await client.conversations.find('old-default'))!.id).toBe(old.id);
     await expect(client.conversations.create({ overrides: { reasoning: { mode: 'explicit', value: 'unsupported' } } })).rejects.toMatchObject({ code: 'parameter-unsupported' });
-});
+}, 20_000);
 it('recovers before and after acceptance losses with zero duplicate executions, and fences cancellation', async () => {
     const client = clients.get('ai-service-smoke')!, binding = await client.conversations.create({ appConversationId: 'recovery' });
     for (const phase of ['before', 'after']) {
@@ -193,7 +223,36 @@ it('recovers before and after acceptance losses with zero duplicate executions, 
     const final = await settle(client, binding, 'stop-race');
     expect(final.record.status).toBe('cancelled');
     expect(executions.get(final.record.id) || 0).toBeLessThanOrEqual(1);
-});
+}, 20_000);
+it('settles cancellation between claim and policy without execution and keeps the worker available', async () => {
+    const client = clients.get('ai-service-smoke')!;
+    const binding = await client.conversations.create({ appConversationId: 'cancel-before-policy' });
+    let entered!: (job: ClaimedTurn) => void, release!: () => void;
+    const claimed = new Promise<ClaimedTurn>(resolve => { entered = resolve; });
+    const resume = new Promise<void>(resolve => { release = resolve; });
+    policyBarrier = { requestId: 'cancel-before-policy', entered, resume, release };
+    try {
+        const start = await client.turns.start({ binding, requestId: 'cancel-before-policy', messages: [{ role: 'user', text: 'Cancel before execution' }] });
+        const job = await claimed;
+        expect(job.record.id).toBe(start.record.id);
+        await client.turns.cancel({ bindingId: binding.id, turnId: start.record.id });
+        expect(await ctx.database.appChatTurn.findUniqueOrThrow({ where: { id: start.record.id } })).toMatchObject({ state: 'cancel-requested', lease: job.lease });
+        const policy = await worker('policy', { kind: 'turn', id: job.record.id, lease: job.lease });
+        expect(policy.statusCode).toBe(409);
+        expect(policy.json()).toEqual({ error: { code: 'execution-interrupted', retryable: false } });
+        release();
+        const cancelled = await settle(client, binding, 'cancel-before-policy');
+        expect(cancelled.record.status).toBe('cancelled');
+        expect(executions.get(start.record.id) || 0).toBe(0);
+        await client.turns.start({ binding, requestId: 'after-policy-cancellation', messages: [{ role: 'user', text: 'Worker still available' }] });
+        const next = await settle(client, binding, 'after-policy-cancellation');
+        expect(next.record.status).toBe('completed');
+        expect(executions.get(next.record.id)).toBe(1);
+    } finally {
+        release();
+        policyBarrier = null;
+    }
+}, 20_000);
 it('fails closed for offline, login loss, quota and revocation without changing payer or binding', async () => {
     const client = clients.get('ai-service-smoke')!, binding = await client.conversations.create({ appConversationId: 'failures' });
     await ctx.database.appChatWorker.update({ where: { machineId: machine }, data: { activeUntil: new Date(0) } });
@@ -212,7 +271,7 @@ it('fails closed for offline, login loss, quota and revocation without changing 
     await services.store.revokeAuthorization(owner, receipts.get('relationship-advisor')!.id);
     await expect(clients.get('relationship-advisor')!.services.list()).rejects.toMatchObject({ code: 'authorization-revoked' });
     expect(await ctx.database.appChatTurn.count({ where: { requestId: { in: ['offline', 'login'] } } })).toBe(0);
-});
+}, 20_000);
 it('serves a real packaged panel and bridge without exposing the platform receipt', async () => {
     const page = await fetch(smoke.url), cookie = page.headers.get('set-cookie')!.split(';')[0];
     expect(await page.text()).toContain('第二应用');
@@ -225,7 +284,7 @@ it('serves a real packaged panel and bridge without exposing the platform receip
     expect(await connection.text()).not.toContain('messageKey');
     expect((await fetch(smoke.url + '/api/service/connection')).status).toBe(403);
     console.log('Synthetic second app: ' + smoke.url + ' (actual routes; no native provider).');
-});
+}, 20_000);
 it.skipIf(process.env.PAWS_SMOKE_SERVE !== '1')('holds the isolated browser fixture open', async () => {
     // Keep announcements alive while the controller operates the public synthetic page.
     const keepAlive = setInterval(async () => {
