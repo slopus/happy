@@ -184,7 +184,7 @@ describe('AI credential machine runtime', () => {
           expect(JSON.parse(files.get(`${home}/.claude/.credentials.json`)!).claudeAiOauth.accessToken).toBe('oauth-2')
           return { stdout: JSON.stringify({ type: 'result', is_error: false, result: 'SHARED_AI_OK' }), stderr: '', exitCode: 0 }
         }
-        expect(JSON.parse(files.get(`${home}/.codex/auth.json`)!).account_id).toBe('account-b')
+        expect(JSON.parse(files.get(`${home}/.codex/auth.json`)!).tokens.account_id).toBe('account-b')
         return { stdout: JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'SHARED_AI_OK' } }) + '\n' + JSON.stringify({ type: 'turn.completed' }), stderr: '', exitCode: 0 }
       }
       return original(command, args, options)
@@ -655,7 +655,7 @@ describe('AI credential machine runtime', () => {
     execFile.mockImplementation(async (command, args, options) => {
       if (command === 'codex' && args[0] === 'exec') {
         const auth = JSON.parse(files.get(`${options?.environment?.HOME}/.codex/auth.json`)!)
-        const bad = auth.access_token === 'local-token' ? kind !== 'ok' : kind === 'invalid-shared'
+        const bad = auth.tokens.access_token === 'local-token' ? kind !== 'ok' : kind === 'invalid-shared'
         if (bad) return { exitCode: 1, stdout: '', stderr: kind === 'network' ? 'network error' : '401 unauthorized' }
         return { exitCode: 0, stderr: '', stdout: JSON.stringify({ type: 'item.completed', item: { type: 'agent_message', text: 'SHARED_AI_OK' } }) + '\n' + JSON.stringify({ type: 'turn.completed' }) }
       }
