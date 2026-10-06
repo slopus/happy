@@ -6,6 +6,7 @@ import {
     closeClaudeTurnWithStatus,
     mapClaudeLogMessageToSessionEnvelopes,
 } from './sessionProtocolMapper';
+import { SDKToLogConverter } from './sdkToLogConverter';
 
 describe('mapClaudeLogMessageToSessionEnvelopes', () => {
     it('maps user text to a user text envelope', () => {
@@ -760,5 +761,158 @@ describe('channel correlation on runs that produce no text', () => {
         const ordinary = mapClaudeLogMessageToSessionEnvelopes({ ...assistantText, uuid: 'b-2' }, state);
         const start = ordinary.envelopes.find((envelope) => (envelope.ev as { t: string }).t === 'turn-start');
         expect(start?.ev).toEqual({ t: 'turn-start' });
+    });
+
+    it('reuses the channel request for the turn after a background task notification', () => {
+        const state = { currentTurnId: null, pendingRequestId: 'core-req-bg' };
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'bg-assistant',
+            message: {
+                role: 'assistant',
+                content: [{ type: 'tool_use', id: 'tool-bg', name: 'Agent', input: { run_in_background: true } }],
+            },
+        } as any, state);
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user',
+            uuid: 'bg-result',
+            message: {
+                role: 'user',
+                content: [{
+                    type: 'tool_result',
+                    tool_use_id: 'tool-bg',
+                    content: 'Async agent launched successfully.\nagentId: task-bg-1',
+                }],
+            },
+        } as any, state);
+        expect(result.envelopes).toEqual(expect.arrayContaining([
+            expect.objectContaining({ ev: { t: 'tool-call-end', call: 'tool-bg', backgroundTaskId: 'task-bg-1' } }),
+        ]));
+        closeClaudeTurnWithStatus(state, 'completed');
+
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user',
+            uuid: 'bg-notification',
+            happyTaskNotification: true,
+            message: {
+                role: 'user',
+                content: '<task-notification>\n<task-id>task-bg-1</task-id>\n<tool-use-id>tool-bg</tool-use-id>\n<status>completed</status>\n</task-notification>',
+            },
+        } as any, state);
+        const resumed = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant',
+            uuid: 'bg-follow-up',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'background work is complete' }] },
+        } as any, state);
+        expect(resumed.envelopes.find((item) => item.ev.t === 'turn-start')?.ev)
+            .toMatchObject({ t: 'turn-start', requestId: 'core-req-bg' });
+    });
+
+    it('correlates a hidden Task launch before dropping its parent tool envelope', () => {
+        const state = { currentTurnId: null, pendingRequestId: 'core-req-task' };
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant', uuid: 'task-assistant',
+            message: { role: 'assistant', content: [{ type: 'tool_use', id: 'tool-task', name: 'Task', input: { run_in_background: true } }] },
+        } as any, state);
+        const result = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user', uuid: 'task-result',
+            message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool-task', content: 'Async agent launched successfully.\nagentId: task-hidden-1' }] },
+        } as any, state);
+        expect(result.envelopes.some((item) => item.ev.t === 'tool-call-end')).toBe(false);
+        closeClaudeTurnWithStatus(state, 'completed');
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user', uuid: 'task-notification', happyTaskNotification: true,
+            message: { role: 'user', content: '<task-notification><task-id>task-hidden-1</task-id></task-notification>' },
+        } as any, state);
+        const resumed = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant', uuid: 'task-follow-up',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'hidden task complete' }] },
+        } as any, state);
+        expect(resumed.envelopes.find((item) => item.ev.t === 'turn-start')?.ev)
+            .toMatchObject({ t: 'turn-start', requestId: 'core-req-task' });
+    });
+
+    it('does not attach an unrelated task notification to an ordinary turn', () => {
+        const state = { currentTurnId: null };
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user', uuid: 'unknown-notification', happyTaskNotification: true,
+            message: { role: 'user', content: '<task-notification><task-id>unknown</task-id></task-notification>' },
+        } as any, state);
+        const resumed = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant', uuid: 'ordinary-follow-up',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'ordinary' }] },
+        } as any, state);
+        expect(resumed.envelopes.find((item) => item.ev.t === 'turn-start')?.ev).toEqual({ t: 'turn-start' });
+    });
+
+    // Claude Code consumes a notification that arrives while idle as a plain `user` row (string
+    // content, `origin.kind: task-notification`) — no attachment row, so no scanner marker. The
+    // SDK reports the same completion as a `system`/`task_notification` message on its own stream.
+    const idleNotificationContent = '<task-notification>\n<task-id>task-idle-1</task-id>\n'
+        + '<tool-use-id>tool-idle</tool-use-id>\n<status>completed</status>\n</task-notification>';
+    const idleNotificationRow = {
+        type: 'user',
+        uuid: 'idle-notification',
+        isSidechain: false,
+        origin: { kind: 'task-notification', producer: 'session-task' },
+        message: { role: 'user', content: idleNotificationContent },
+    };
+    const launchBackgroundTaskAndClose = (requestId: string) => {
+        const state = { currentTurnId: null, pendingRequestId: requestId };
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant', uuid: 'idle-launch',
+            message: { role: 'assistant', content: [{ type: 'tool_use', id: 'tool-idle', name: 'Agent', input: { run_in_background: true } }] },
+        } as any, state);
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'user', uuid: 'idle-launch-result',
+            message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool-idle', content: 'Async agent launched successfully.\nagentId: task-idle-1' }] },
+        } as any, state);
+        closeClaudeTurnWithStatus(state, 'completed');
+        return state;
+    };
+    const followUpTurnStart = (state: Parameters<typeof mapClaudeLogMessageToSessionEnvelopes>[1]) => {
+        const resumed = mapClaudeLogMessageToSessionEnvelopes({
+            type: 'assistant', uuid: 'idle-follow-up',
+            message: { role: 'assistant', content: [{ type: 'text', text: 'background work is complete' }] },
+        } as any, state);
+        return resumed.envelopes.find((item) => item.ev.t === 'turn-start')?.ev;
+    };
+
+    it('reuses the channel request when the SDK reports an idle background task notification', () => {
+        const state = launchBackgroundTaskAndClose('core-req-idle-sdk');
+        const converter = new SDKToLogConverter({ sessionId: 'session-idle', cwd: process.cwd(), gitBranch: 'main', version: 'test' });
+        const notification = converter.convert({
+            type: 'system',
+            subtype: 'task_notification',
+            task_id: 'task-idle-1',
+            tool_use_id: 'tool-idle',
+            status: 'completed',
+            output_file: '/tmp/task-idle-1.output',
+            summary: 'Agent finished',
+            uuid: 'sdk-idle-notification',
+            session_id: 'session-idle',
+        } as any);
+        mapClaudeLogMessageToSessionEnvelopes(notification as any, state);
+
+        expect(followUpTurnStart(state)).toEqual({ t: 'turn-start', requestId: 'core-req-idle-sdk' });
+    });
+
+    it('reuses the channel request from an idle task notification row', () => {
+        const state = launchBackgroundTaskAndClose('core-req-idle-row');
+        mapClaudeLogMessageToSessionEnvelopes(idleNotificationRow as any, state);
+
+        expect(followUpTurnStart(state)).toEqual({ t: 'turn-start', requestId: 'core-req-idle-row' });
+    });
+
+    it('keeps the re-armed request when the idle row follows the SDK notification', () => {
+        const state = launchBackgroundTaskAndClose('core-req-idle-both');
+        mapClaudeLogMessageToSessionEnvelopes({
+            type: 'system', subtype: 'task_notification', uuid: 'sdk-idle-both', task_id: 'task-idle-1', tool_use_id: 'tool-idle',
+        } as any, state);
+        const row = mapClaudeLogMessageToSessionEnvelopes(idleNotificationRow as any, state);
+
+        // An empty turn here would answer the channel request before the provider's follow-up.
+        expect(row.envelopes.map((item) => item.ev.t)).toEqual(['text']);
+        expect(followUpTurnStart(state)).toEqual({ t: 'turn-start', requestId: 'core-req-idle-both' });
     });
 });

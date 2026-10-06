@@ -23,6 +23,8 @@ export type ClaudeSessionProtocolState = {
     pendingRequestId?: string | null;
     /** The request the currently open turn answers; re-stamped on its `turn-end`. */
     currentRequestId?: string | null;
+    /** Background task id/tool call id → the channel request that launched it. */
+    backgroundTaskRequestIds?: Map<string, string>;
     uuidToProviderSubagent?: Map<string, string>;
     taskPromptToSubagents?: Map<string, string[]>;
     providerSubagentToSessionSubagent?: Map<string, string>;
@@ -112,6 +114,42 @@ function extractBackgroundTaskId(content: unknown): string | undefined {
     const agent = text.match(/^\s*agentId:\s*([A-Za-z0-9_-]+)/m);
     if (agent) return agent[1];
     return undefined;
+}
+
+function extractTaskNotificationIds(content: unknown): { taskId?: string; toolUseId?: string } {
+    if (typeof content !== 'string') return {};
+    const taskId = content.match(/<task-id>\s*([^<\s]+)\s*<\/task-id>/i)?.[1];
+    const toolUseId = content.match(/<tool-use-id>\s*([^<\s]+)\s*<\/tool-use-id>/i)?.[1];
+    return {
+        ...(taskId ? { taskId } : {}),
+        ...(toolUseId ? { toolUseId } : {}),
+    };
+}
+
+function rememberBackgroundTaskRequest(state: ClaudeSessionProtocolState, id: string, requestId: string): void {
+    const entries = state.backgroundTaskRequestIds ?? new Map<string, string>();
+    state.backgroundTaskRequestIds = entries;
+    entries.set(id, requestId);
+    while (entries.size > 200) {
+        const oldest = entries.keys().next();
+        if (oldest.done) break;
+        entries.delete(oldest.value);
+    }
+}
+
+/**
+ * A background task launched while answering a channel request has reported back. Claude Code
+ * answers it with a turn of its own once idle, so that turn answers the same request. Re-arm only
+ * the request whose own launch produced this task; an unknown notification stays an in-app event.
+ */
+function rearmBackgroundTaskRequest(state: ClaudeSessionProtocolState, ids: { taskId?: string; toolUseId?: string }): void {
+    const requests = state.backgroundTaskRequestIds;
+    const requestId = (ids.taskId ? requests?.get(ids.taskId) : undefined)
+        ?? (ids.toolUseId ? requests?.get(ids.toolUseId) : undefined);
+    if (!requestId) return;
+    if (!state.currentTurnId && !state.pendingRequestId) state.pendingRequestId = requestId;
+    if (ids.taskId) requests?.delete(ids.taskId);
+    if (ids.toolUseId) requests?.delete(ids.toolUseId);
 }
 
 function isSubagentTool(name: string): boolean {
@@ -643,6 +681,16 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
     }
 
     if (message.type === 'system') {
+        // The SDK's own report of a finished background task. It precedes the provider's
+        // follow-up turn on the same ordered stream; the transcript row of an idle notification
+        // reaches us only through the scanner, which can be late.
+        const notification = message as { subtype?: unknown; task_id?: unknown; tool_use_id?: unknown };
+        if (notification.subtype === 'task_notification') {
+            rearmBackgroundTaskRequest(state, {
+                ...(typeof notification.task_id === 'string' ? { taskId: notification.task_id } : {}),
+                ...(typeof notification.tool_use_id === 'string' ? { toolUseId: notification.tool_use_id } : {}),
+            });
+        }
         return {
             currentTurnId: state.currentTurnId,
             envelopes,
@@ -752,6 +800,7 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
             // (specs/midturn-task-notification-sync R2). Emit the user text
             // and leave the turn state untouched.
             if ((message as { happyTaskNotification?: unknown }).happyTaskNotification === true) {
+                rearmBackgroundTaskRequest(state, extractTaskNotificationIds(message.message.content));
                 envelopes.push(createEnvelope('user', { t: 'text', text: message.message.content }, { claudeUuid }));
                 return {
                     currentTurnId: state.currentTurnId,
@@ -762,6 +811,13 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                 const turnId = ensureTurn(state, envelopes);
                 maybeEmitSubagentStart(state, turnId, subagent, envelopes);
                 envelopes.push(createEnvelope('agent', { t: 'text', text: message.message.content }, { turn: turnId, subagent, claudeUuid }));
+            } else if ((message as { origin?: { kind?: unknown } }).origin?.kind === 'task-notification') {
+                // A notification consumed while idle starts the provider's follow-up turn. Close
+                // what is open as any user row does, but never open-and-close an empty turn for a
+                // waiting request: that would answer it before the follow-up does.
+                if (state.currentTurnId) closeTurn(state, 'completed', envelopes);
+                rearmBackgroundTaskRequest(state, extractTaskNotificationIds(message.message.content));
+                envelopes.push(createEnvelope('user', { t: 'text', text: message.message.content }, { claudeUuid }));
             } else {
                 closeTurn(state, 'completed', envelopes);
                 envelopes.push(createEnvelope('user', { t: 'text', text: message.message.content }, { claudeUuid }));
@@ -805,6 +861,16 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
         for (const block of blocks) {
             if (block.type === 'tool_result' && typeof block.tool_use_id === 'string' && block.tool_use_id.length > 0) {
                 const sessionSubagentForToolResult = getSessionSubagentIdForProviderSubagent(state, block.tool_use_id);
+                const redacted = shouldRedact(getToolNameById(block.tool_use_id));
+                const backgroundTaskId = redacted
+                    ? undefined
+                    : extractBackgroundTaskId((block as { content?: unknown }).content);
+                // Task parent calls are hidden from the transcript, but their result still carries
+                // the launch id needed to correlate the later notification.
+                if (backgroundTaskId && state.currentRequestId) {
+                    rememberBackgroundTaskRequest(state, backgroundTaskId, state.currentRequestId);
+                    rememberBackgroundTaskRequest(state, block.tool_use_id, state.currentRequestId);
+                }
                 if (!message.isSidechain) {
                     if (getHiddenParentToolCalls(state).has(block.tool_use_id)) {
                         if (sessionSubagentForToolResult) {
@@ -817,16 +883,9 @@ function mapClaudeLogMessageToSessionEnvelopesInternal(
                         maybeEmitSubagentStop(state, turnId, sessionSubagentForToolResult, envelopes);
                     }
                 }
-                const redacted = shouldRedact(getToolNameById(block.tool_use_id));
                 const images = redacted
                     ? undefined
                     : extractToolResultImages((block as { content?: unknown }).content);
-                // Same redact gate as the images above: one rule for the whole
-                // result body. Redacted tools do not launch background jobs, so
-                // honouring the gate costs the indicator nothing.
-                const backgroundTaskId = redacted
-                    ? undefined
-                    : extractBackgroundTaskId((block as { content?: unknown }).content);
                 envelopes.push(createEnvelope('agent', {
                     t: 'tool-call-end',
                     call: block.tool_use_id,
