@@ -16,6 +16,13 @@ export interface LocalBrowserSetupStatus {
     storeExtensionId: string
 }
 
+export function shouldEnableBrowserLocalSetup({ policy, host }: {
+    policy: BrowserSetupPolicy | null
+    host: string
+}): boolean {
+    return policy !== null && host === '127.0.0.1'
+}
+
 /** Trusted daemon service; native config never crosses the public progress DTO. */
 export class BrowserLocalSetup {
     private readonly operations = new Map<string, Operation>()

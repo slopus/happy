@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events'
 import { describe, expect, it } from 'vitest'
 import { BrowserBridge } from './browserBridge'
-import { BrowserLocalSetup } from './browserLocalSetup'
+import { BrowserLocalSetup, shouldEnableBrowserLocalSetup } from './browserLocalSetup'
 import { startDaemonControlServer } from './controlServer'
 import { startBrowserBridgeServer } from './browserBridgeServer'
 import { WebSocket } from 'ws'
@@ -29,6 +29,12 @@ function fixture() {
     return { bridge, setup, policies, expire: () => { now += 300001 } }
 }
 describe('trusted local browser setup', () => {
+    it('enables local setup for standalone Windows loopback bridges', () => {
+        expect(shouldEnableBrowserLocalSetup({ policy: {}, host: '127.0.0.1' })).toBe(true)
+        expect(shouldEnableBrowserLocalSetup({ policy: null, host: '127.0.0.1' })).toBe(false)
+        expect(shouldEnableBrowserLocalSetup({ policy: {}, host: '0.0.0.0' })).toBe(false)
+    })
+
     it('authenticates real control HTTP and round-trips a read-only command over the actual websocket bridge', async () => {
         const { setup, bridge } = fixture()
         const listener = await startBrowserBridgeServer({ bridge, port: 0 })
