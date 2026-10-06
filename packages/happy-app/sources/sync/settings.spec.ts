@@ -191,6 +191,7 @@ describe('settings', () => {
                 experiments: false,
                 alwaysShowContextSize: false,
                 agentInputEnterToSend: true,
+                agentInputSendMode: 'queue',
                 avatarStyle: 'brutalist',
                 avatarMonochrome: false,
                 sessionListGrouping: 'flat',

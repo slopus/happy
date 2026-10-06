@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 // Shared message metadata schema
 export const MessageMetaSchema = z.object({
+    sendMode: z.enum(['queue', 'steer']).optional(),
     sentFrom: z.string().optional(), // Source identifier
     // Capability at send time, inside the encrypted payload. New history can
     // resume waiting after reconnect without holding pre-receipt-era messages.

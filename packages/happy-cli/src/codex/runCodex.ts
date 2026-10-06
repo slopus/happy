@@ -226,6 +226,7 @@ export async function runCodex(opts: {
         }
     });
     session = initialSession;
+    session.updateMetadata((meta) => ({ ...meta, supportsSteering: true }));
 
     // On reconnect, un-archive the session and skip replaying old messages.
     if (reconnectSessionId) {
@@ -338,6 +339,7 @@ export async function runCodex(opts: {
             mode: enhancedMode,
             queue: messageQueue,
             attachments: attachmentsForThisMessage,
+            sendMode: message.meta?.sendMode ?? settings.codexDefaultSendMode,
         });
         if (enqueueResult === 'clear') {
             logger.debug('[Codex] /clear command pushed to isolated queue');
@@ -939,6 +941,8 @@ export async function runCodex(opts: {
                 messageBuffer.addMessage(message.message, 'user');
             }
 
+            const steeringController = new AbortController();
+            let steeringPump: Promise<void> | null = null;
             try {
                 // Map permission mode to approval policy and sandbox.
                 // With app-server, these are per-turn — no restart needed on mode change.
@@ -1004,6 +1008,42 @@ export async function runCodex(opts: {
                     sandbox: executionPolicy.sandbox,
                     effort: message.mode.effort,
                     extraInputItems: imageInputs.inputItems,
+                    onTurnStarted: () => {
+                        steeringPump = (async () => {
+                            while (!steeringController.signal.aborted) {
+                                const input = await messageQueue.waitForSteeringMessage(message.hash, steeringController.signal);
+                                if (!input) return;
+                                const restore = () => messageQueue.unshift(input.message, input.mode, input);
+                                if (steeringController.signal.aborted) { restore(); return; }
+                                let steeringImages;
+                                try {
+                                    steeringImages = await prepareCodexImageInputItems(input.attachments, { sessionId: session.sessionId });
+                                } catch {
+                                    restore();
+                                    return;
+                                }
+                                if (steeringController.signal.aborted) { restore(); return; }
+                                if (steeringImages.inputItems.length === 0 && !input.message.trim()) {
+                                    session.sendSessionEvent({ type: 'message', message: 'No supported images were available to send to Codex.' });
+                                    continue;
+                                }
+                                try {
+                                    if (!await client.steerTurn(input.message, steeringImages.inputItems)) {
+                                        restore();
+                                        session.sendSessionEvent({ type: 'message', message: 'Codex could not steer this turn; the message will run next.' });
+                                        return;
+                                    }
+                                    messageBuffer.addMessage(input.message, 'user');
+                                    logger.debug('[Codex] Steering input accepted by the active turn');
+                                } catch {
+                                    // The server may already have accepted it. Do not replay
+                                    // an uncertain send into a later turn with side effects.
+                                    session.sendSessionEvent({ type: 'message', message: 'Could not confirm delivery of the steering message. Check the conversation before retrying.' });
+                                    return;
+                                }
+                            }
+                        })();
+                    },
                 });
                 first = false;
                 if (includeAppendSystemPrompt) {
@@ -1021,6 +1061,8 @@ export async function runCodex(opts: {
                 messageBuffer.addMessage('Process exited unexpectedly', 'status');
                 session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
             } finally {
+                steeringController.abort();
+                await steeringPump;
                 // Reset permission handler, reasoning processor, and diff processor
                 permissionHandler.reset();
                 reasoningProcessor.abort();  // Use abort to properly finish any in-progress tool calls

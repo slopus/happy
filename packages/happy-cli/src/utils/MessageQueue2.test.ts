@@ -415,6 +415,32 @@ describe('MessageQueue2', () => {
         });
     });
 
+    it('steers past queued input without merging the two delivery modes', async () => {
+        const queue = new MessageQueue2<string>((mode) => mode);
+        queue.push('next turn', 'same');
+        queue.push('guide this turn', 'same', undefined, 'steer');
+        queue.push('later', 'same');
+
+        expect(await queue.waitForSteeringMessage('same')).toMatchObject({
+            message: 'guide this turn', sendMode: 'steer',
+        });
+        expect(await queue.waitForMessagesAndGetAsString()).toMatchObject({
+            message: 'next turn\nlater', sendMode: 'queue',
+        });
+    });
+
+    it('does not steer past a mode change or consume on an aborted wait', async () => {
+        const queue = new MessageQueue2<string>((mode) => mode);
+        queue.push('new model', 'other');
+        queue.push('steer', 'same', undefined, 'steer');
+        const controller = new AbortController();
+        const waiting = queue.waitForSteeringMessage('same', controller.signal);
+        controller.abort();
+        expect(await waiting).toBeNull();
+        expect(await queue.waitForMessagesAndGetAsString()).toMatchObject({ message: 'new model' });
+        expect(await queue.waitForMessagesAndGetAsString()).toMatchObject({ message: 'steer' });
+    });
+
     it('pushIsolated notifies waiters', async () => {
         const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
         const pending = queue.waitForMessagesAndGetAsString();

@@ -112,6 +112,55 @@ describe('claudeRemote', () => {
         expect(query).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ resume: 'fixture-session' }) }));
     });
 
+    it('sends steering input with now priority and queued input after the result', async () => {
+        const received: any[] = [];
+        vi.mocked(query).mockImplementation(({ prompt }) => ({
+            async *[Symbol.asyncIterator]() {
+                const input = (prompt as AsyncIterable<any>)[Symbol.asyncIterator]();
+                received.push((await input.next()).value);
+                received.push((await input.next()).value);
+                yield {
+                    type: 'result', subtype: 'success', is_error: false,
+                    user_message_uuids: received.map((message) => message.uuid), queued_turn_count: 0,
+                };
+                received.push((await input.next()).value);
+                yield {
+                    type: 'result', subtype: 'success', is_error: false,
+                    user_message_uuids: [received[2].uuid], queued_turn_count: 0,
+                };
+            },
+        } as any));
+        let initial = false;
+        let steered = false;
+        let queued = false;
+        const nextMessage = vi.fn((signal?: AbortSignal, onlySteer?: boolean) => {
+            if (!initial) {
+                initial = true;
+                return Promise.resolve({ message: 'Original', mode });
+            }
+            if (onlySteer && !steered) {
+                steered = true;
+                return Promise.resolve({ message: 'Guide', mode });
+            }
+            if (onlySteer) return new Promise<null>((resolve) => signal?.addEventListener('abort', () => resolve(null), { once: true }));
+            if (!queued) {
+                queued = true;
+                return Promise.resolve({ message: 'Next turn', mode });
+            }
+            return Promise.resolve(null);
+        });
+
+        await claudeRemote({
+            sessionId: null, path: '/fixture/project', allowedTools: [], hookSettingsPath: '/fixture/settings.json',
+            nextMessage, onReady: vi.fn(), onMessage: vi.fn(),
+            canCallTool: async () => ({ behavior: 'allow', updatedInput: {} }),
+            isAborted: () => false, onSessionFound: vi.fn(),
+        });
+        expect(received.map((message) => message.message.content)).toEqual(['Original', 'Guide', 'Next turn']);
+        expect(received[1].priority).toBe('now');
+        expect(received[2].priority).toBeUndefined();
+    });
+
     it('does not interpret ordinary assistant text or a successful result as an auth failure', async () => {
         const callbacks = await runMessages([
             { ...authAssistant, error: undefined },
@@ -134,7 +183,7 @@ describe('claudeRemote', () => {
             canCallTool: async () => ({ behavior: 'allow', updatedInput: {} }),
             isAborted: () => false, onSessionFound: vi.fn(), onMessage: vi.fn(),
         })).rejects.toBe(failure);
-        expect(nextMessage).toHaveBeenCalledOnce();
+        expect(nextMessage).toHaveBeenCalledTimes(prompt === '/clear' ? 1 : 2);
     });
 
     it('does not report successful compaction after a provider auth failure', async () => {

@@ -1,4 +1,5 @@
 import { logger } from "@/ui/logger";
+import type { MessageSendMode } from '@slopus/happy-wire';
 
 export type PendingAttachment = { data: Uint8Array; mimeType: string; name: string };
 
@@ -9,7 +10,17 @@ interface QueueItem<T> {
     isolate?: boolean; // If true, this message must be processed alone
     /** Decoded image attachments owned by *this* message (per-message ownership). */
     attachments?: PendingAttachment[];
+    sendMode?: MessageSendMode;
 }
+
+export type MessageBatch<T> = {
+    message: string;
+    mode: T;
+    hash: string;
+    isolate: boolean;
+    attachments?: PendingAttachment[];
+    sendMode?: MessageSendMode;
+};
 
 /**
  * A mode-aware message queue that stores messages with their modes.
@@ -42,7 +53,7 @@ export class MessageQueue2<T> {
      * Push a message to the queue with a mode and an optional list of
      * attachments that travel with this message.
      */
-    push(message: string, mode: T, attachments?: PendingAttachment[]): void {
+    push(message: string, mode: T, attachments?: PendingAttachment[], sendMode: MessageSendMode = 'queue'): void {
         if (this.closed) {
             throw new Error('Cannot push to closed queue');
         }
@@ -56,6 +67,7 @@ export class MessageQueue2<T> {
             modeHash,
             isolate: false,
             attachments,
+            sendMode,
         });
 
         // Trigger message handler if set
@@ -188,7 +200,7 @@ export class MessageQueue2<T> {
     /**
      * Push a message to the beginning of the queue with a mode.
      */
-    unshift(message: string, mode: T): void {
+    unshift(message: string, mode: T, options: Partial<Pick<MessageBatch<T>, 'attachments' | 'isolate' | 'sendMode'>> = {}): void {
         if (this.closed) {
             throw new Error('Cannot unshift to closed queue');
         }
@@ -200,7 +212,9 @@ export class MessageQueue2<T> {
             message,
             mode,
             modeHash,
-            isolate: false
+            isolate: options.isolate ?? false,
+            attachments: options.attachments,
+            sendMode: options.sendMode,
         });
 
         // Trigger message handler if set
@@ -264,7 +278,8 @@ export class MessageQueue2<T> {
      * Wait for messages and return all messages with the same mode as a single string
      * Returns { message: string, mode: T } or null if aborted/closed
      */
-    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<{ message: string, mode: T, isolate: boolean, hash: string, attachments?: PendingAttachment[] } | null> {
+    async waitForMessagesAndGetAsString(abortSignal?: AbortSignal): Promise<MessageBatch<T> | null> {
+        if (abortSignal?.aborted) return null;
         // If we have messages, return them immediately
         if (this.queue.length > 0) {
             return this.collectBatch();
@@ -285,10 +300,32 @@ export class MessageQueue2<T> {
         return this.collectBatch();
     }
 
+    /** Take only steering input for this turn; queued input stays in place. */
+    async waitForSteeringMessage(modeHash: string, abortSignal?: AbortSignal): Promise<MessageBatch<T> | null> {
+        const findIndex = () => {
+            for (let i = 0; i < this.queue.length; i++) {
+                const item = this.queue[i];
+                // Never steer across a settings change or an isolated command.
+                if (item.isolate || item.modeHash !== modeHash) return -1;
+                if (item.sendMode === 'steer') return i;
+            }
+            return -1;
+        };
+        while (!this.closed && !abortSignal?.aborted) {
+            const index = findIndex();
+            if (index >= 0) {
+                const [item] = this.queue.splice(index, 1);
+                return { ...item, hash: item.modeHash, isolate: false };
+            }
+            if (!await this.waitForMessages(abortSignal, () => findIndex() >= 0)) return null;
+        }
+        return null;
+    }
+
     /**
      * Collect a batch of messages with the same mode, respecting isolation requirements
      */
-    private collectBatch(): { message: string, mode: T, hash: string, isolate: boolean, attachments?: PendingAttachment[] } | null {
+    private collectBatch(): MessageBatch<T> | null {
         if (this.queue.length === 0) {
             return null;
         }
@@ -310,6 +347,7 @@ export class MessageQueue2<T> {
             // Collect all messages with the same mode until we hit an isolated message
             while (this.queue.length > 0 &&
                 this.queue[0].modeHash === targetModeHash &&
+                (this.queue[0].sendMode ?? 'queue') === (firstItem.sendMode ?? 'queue') &&
                 !this.queue[0].isolate) {
                 const item = this.queue.shift()!;
                 sameModeMessages.push(item.message);
@@ -327,13 +365,14 @@ export class MessageQueue2<T> {
             hash: targetModeHash,
             isolate,
             attachments: collectedAttachments.length > 0 ? collectedAttachments : undefined,
+            sendMode: firstItem.sendMode,
         };
     }
 
     /**
      * Wait for messages to arrive
      */
-    private waitForMessages(abortSignal?: AbortSignal): Promise<boolean> {
+    private waitForMessages(abortSignal?: AbortSignal, hasMessages: () => boolean = () => this.queue.length > 0): Promise<boolean> {
         return new Promise((resolve) => {
             let abortHandler: (() => void) | null = null;
 
@@ -359,7 +398,7 @@ export class MessageQueue2<T> {
             };
 
             // Check again in case messages arrived or queue closed while setting up
-            if (this.queue.length > 0) {
+            if (hasMessages()) {
                 if (abortHandler && abortSignal) {
                     abortSignal.removeEventListener('abort', abortHandler);
                 }

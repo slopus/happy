@@ -16,6 +16,7 @@ import { fromRateLimitEvent, windowsFromGetUsage, type UnboundRateLimit, type Us
 import type { UsageLimitWindow } from "@/api/types";
 import { pluginsFromArgs } from './utils/pluginsFromArgs';
 import { claudeProviderAuthMessage } from './utils/providerAuth';
+import { randomUUID } from 'node:crypto';
 
 export async function claudeRemote(opts: {
 
@@ -36,8 +37,8 @@ export async function claudeRemote(opts: {
     jsRuntime?: JsRuntime,
 
     // Dynamic parameters
-    nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode } | null>,
-    onReady: (status?: 'failed') => void | Promise<void>,
+    nextMessage: (signal?: AbortSignal, onlySteer?: boolean) => Promise<{ message: MessageParam['content'], mode: EnhancedMode, restore?: () => void } | null>,
+    onReady: (status?: 'failed', hasPendingInput?: boolean) => void | Promise<void>,
     isAborted: (toolCallId: string) => boolean,
 
     // Callbacks
@@ -159,16 +160,23 @@ export async function claudeRemote(opts: {
         }
     };
 
-    // Push initial message
-    let messages = new PushableAsyncIterable<SDKUserMessage>();
-    messages.push({
-        type: 'user',
-        parent_tool_use_id: null,
-        message: {
-            role: 'user',
-            content: initial.message,
-        },
-    });
+    const messages = new PushableAsyncIterable<SDKUserMessage>();
+    const pendingInputs = new Set<string>();
+    const consumedInputs = new Set<string>();
+    let turnActive = false;
+    const pushInput = (content: MessageParam['content'], steer = false) => {
+        const uuid = randomUUID();
+        pendingInputs.add(uuid);
+        try {
+            messages.push({ type: 'user', uuid, parent_tool_use_id: null, message: { role: 'user', content }, ...(steer ? { priority: 'now' as const } : {}) });
+            turnActive = true;
+            updateThinking(true);
+        } catch (error) {
+            pendingInputs.delete(uuid);
+            throw error;
+        }
+    };
+    pushInput(initial.message);
 
     // Start the loop
     const response = query({
@@ -182,6 +190,51 @@ export async function claudeRemote(opts: {
             setPermissionMode: (mode: string) => response.setPermissionMode(mode as any),
         });
     }
+
+    const inputController = new AbortController();
+    const inputWait = { controller: null as AbortController | null, wake: null as (() => void) | null };
+    let endAfterTurn = false;
+    let inputError: unknown = null;
+    // One consumer switches between steering-only input during a turn and
+    // ordinary queued input when idle. Results cancel the current wait so the
+    // consumer can re-evaluate that choice without leaving an orphan waiter.
+    const inputPump = (async () => {
+        while (!inputController.signal.aborted) {
+            // Result receipts echo at most 64 inputs. Bound outstanding input.
+            if (pendingInputs.size >= 32) {
+                logger.debug('[claudeRemote] Waiting for pending input acknowledgements');
+                await new Promise<void>((resolve) => { inputWait.wake = resolve; });
+                inputWait.wake = null;
+                continue;
+            }
+            const waitController = new AbortController();
+            inputWait.controller = waitController;
+            const next = await opts.nextMessage(
+                AbortSignal.any([inputController.signal, waitController.signal]),
+                turnActive,
+            );
+            if (inputController.signal.aborted || waitController.signal.aborted) {
+                next?.restore?.();
+                continue;
+            }
+            if (!next) {
+                endAfterTurn = true;
+                if (!turnActive) messages.end();
+                return;
+            }
+            mode = next.mode;
+            try {
+                pushInput(next.message, turnActive);
+            } catch (error) {
+                next.restore?.();
+                throw error;
+            }
+        }
+    })().catch((error) => {
+        inputError = error;
+        endAfterTurn = true;
+        if (!turnActive) messages.end();
+    });
 
     // Plan rate-limit accumulation: events are buffered and flushed once per
     // result (coalescing agent-state writes to at most one per turn). The seed
@@ -263,6 +316,13 @@ export async function claudeRemote(opts: {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
         for await (const message of response) {
+            const receipts = message as SDKMessage & {
+                user_message_uuid?: string;
+                user_message_uuids?: string[];
+            };
+            const inputIds = receipts.user_message_uuids?.length
+                ? receipts.user_message_uuids : [receipts.user_message_uuid];
+            for (const id of inputIds) if (id && pendingInputs.has(id)) consumedInputs.add(id);
             const authMessage = claudeProviderAuthMessage(message);
             if (authMessage && !providerAuthFailed) {
                 providerAuthFailed = true;
@@ -335,7 +395,16 @@ export async function claudeRemote(opts: {
 
             // Handle result messages
             if (message.type === 'result') {
-                updateThinking(false);
+                // Older producers omit input UUID echoes. Their result is the
+                // only completion signal, so release the locally tracked sends.
+                if (!receipts.user_message_uuid && !receipts.user_message_uuids?.length) {
+                    pendingInputs.clear();
+                }
+                for (const id of consumedInputs) pendingInputs.delete(id);
+                consumedInputs.clear();
+                const hasPendingInput = pendingInputs.size > 0 || (message.queued_turn_count ?? 0) > 0;
+                turnActive = hasPendingInput;
+                updateThinking(hasPendingInput);
                 logger.debug('[claudeRemote] Result received');
 
                 // Fire-and-forget: unavailable for API key / Bedrock / Vertex
@@ -353,25 +422,17 @@ export async function claudeRemote(opts: {
 
                 // Send ready event
                 if (providerAuthFailed) {
-                    await opts.onReady('failed');
+                    if (hasPendingInput) await opts.onReady('failed', true);
+                    else await opts.onReady('failed');
                 } else {
-                    await opts.onReady();
+                    if (hasPendingInput) await opts.onReady(undefined, true);
+                    else await opts.onReady();
                 }
                 providerAuthFailed = false;
 
-                // Wait for next user message without blocking the message loop.
-                // Background task messages (task_started, task_progress, task_notification)
-                // continue flowing through while we wait for user input.
-                opts.nextMessage().then((next) => {
-                    if (!next) {
-                        messages.end();
-                    } else {
-                        mode = next.mode;
-                        messages.push({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: next.message } });
-                    }
-                }).catch(() => {
-                    messages.end();
-                });
+                inputWait.controller?.abort();
+                inputWait.wake?.();
+                if (endAfterTurn && !hasPendingInput) messages.end();
             }
 
             // Handle tool result
@@ -387,6 +448,7 @@ export async function claudeRemote(opts: {
                 }
             }
         }
+        if (inputError) throw inputError;
     } catch (e) {
         if (e instanceof AbortError) {
             logger.debug(`[claudeRemote] Aborted`);
@@ -395,6 +457,10 @@ export async function claudeRemote(opts: {
             throw e;
         }
     } finally {
+        inputController.abort();
+        inputWait.wake?.();
+        await inputPump;
+        messages.end();
         updateThinking(false);
     }
 }

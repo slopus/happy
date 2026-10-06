@@ -473,6 +473,13 @@ export const en: TranslationStructure = {
     },
 
     agentInput: {
+        sendMode: {
+            title: 'SEND FOLLOW-UPS',
+            queue: 'Queue',
+            queueDescription: 'Send after the current turn finishes',
+            steer: 'Steer',
+            steerDescription: 'Guide the current turn while it runs',
+        },
         permissionMode: {
             title: 'PERMISSION MODE',
             auto: 'asks when unsure',

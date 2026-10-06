@@ -456,6 +456,13 @@ export const zhHans: TranslationStructure = {
     },
 
     agentInput: {
+        sendMode: {
+            title: '后续消息发送方式',
+            queue: '排队',
+            queueDescription: '当前轮结束后发送',
+            steer: '引导',
+            steerDescription: '当前轮运行时直接引导',
+        },
         permissionMode: {
             title: '权限模式',
             auto: '自行判断，不确定时询问',

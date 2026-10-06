@@ -197,6 +197,7 @@ export type Machine = {
  */
 export const MessageMetaSchema = z.object({
   sentFrom: z.string().optional(), // Source identifier
+  sendMode: z.enum(['queue', 'steer']).optional(),
   // Any string is accepted so a newer app can name a mode this CLI does not
   // know yet without the whole message failing safeParse and being dropped.
   // Each harness validates the value itself and falls back with a warning.
@@ -293,6 +294,8 @@ export const MessageContentSchema = z.union([UserMessageSchema, AgentMessageSche
 export type MessageContent = z.infer<typeof MessageContentSchema>
 
 export type Metadata = {
+  /** This CLI can deliver follow-ups into a compatible active turn. */
+  supportsSteering?: boolean,
   /**
    * ACP session config option value (normalized for UI metadata consumers).
    */

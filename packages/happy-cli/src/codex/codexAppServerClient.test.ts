@@ -755,6 +755,51 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('steers the active turn with its expected ID and treats an RPC rejection as non-delivery', async () => {
+        const requests: MockRpcMessage[] = [];
+        const proc = createMockProcess({
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, {
+                        id: msg.id,
+                        result: { thread: { id: 'thread-steer', path: '/tmp/thread-steer' } },
+                    }), 0);
+                }
+                if (msg.method === 'turn/start' && msg.id != null) {
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, result: { turn: { id: 'turn-steer' } } }), 0);
+                }
+                if (msg.method === 'turn/steer' && msg.id != null) {
+                    const result = requests.filter((request) => request.method === 'turn/steer').length === 1
+                        ? { result: { turnId: 'turn-steer' } }
+                        : { error: { code: -32000, message: 'turn finished' } };
+                    setTimeout(() => pushJsonLine(stdout, { id: msg.id, ...result }), 0);
+                }
+            },
+        });
+        mockSpawn.mockImplementation(() => proc);
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        await client.connect();
+        await client.startThread({ model: 'gpt-test', cwd: '/tmp/project', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+        let turnStarted!: () => void;
+        const started = new Promise<void>((resolve) => { turnStarted = resolve; });
+        const running = client.sendTurnAndWait('Original', { onTurnStarted: turnStarted });
+        await started;
+
+        expect(await client.steerTurn('Guide')).toBe(true);
+        expect(requests.find((request) => request.method === 'turn/steer')?.params).toEqual({
+            threadId: 'thread-steer', expectedTurnId: 'turn-steer', input: [{ type: 'text', text: 'Guide' }],
+        });
+        expect(await client.steerTurn('Too late')).toBe(false);
+        pushJsonLine(proc.stdout, {
+            method: 'turn/completed',
+            params: { threadId: 'thread-steer', turn: { id: 'turn-steer', items: [], status: 'completed', error: null } },
+        });
+        await running;
+        await client.disconnect();
+    });
+
     it('sends extra localImage input items and omits empty text for image-only turns', async () => {
         const requests: MockRpcMessage[] = [];
         const proc = createMockProcess({

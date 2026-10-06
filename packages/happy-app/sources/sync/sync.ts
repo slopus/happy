@@ -109,6 +109,7 @@ type OutboxMessage = {
 };
 
 type SendMessageOptions = {
+    sendMode?: 'queue' | 'steer';
     displayText?: string;
     source?: MessageSentSource;
     /** Optional image attachments to send before the text message. */
@@ -730,6 +731,7 @@ class Sync {
 
     /** True means accepted into the outbox, not necessarily delivered to the agent. */
     async sendMessage(sessionId: string, text: string, options?: SendMessageOptions): Promise<boolean> {
+        const sendMode = options?.sendMode ?? 'queue';
         const accountEncryption = this.encryption;
         const canSend = () => !options?.signal?.aborted && this.encryption === accountEncryption
             && (options?.isCurrent?.() ?? true);
@@ -887,6 +889,7 @@ class Sync {
             },
             meta: {
                 sentFrom,
+                ...(sendingSession.metadata?.supportsSteering === true ? { sendMode } : {}),
                 ...resolveMessageDeliveryMeta(sendingSession, source === 'new_session', hasPendingUserMessage),
                 appendSystemPrompt: systemPrompt,
                 ...(modeMeta.permissionMode !== undefined ? { permissionMode: modeMeta.permissionMode } : {}),

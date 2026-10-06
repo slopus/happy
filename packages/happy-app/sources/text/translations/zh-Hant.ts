@@ -455,6 +455,13 @@ export const zhHant: TranslationStructure = {
     },
 
     agentInput: {
+        sendMode: {
+            title: '後續訊息傳送方式',
+            queue: '排隊',
+            queueDescription: '目前回合結束後傳送',
+            steer: '引導',
+            steerDescription: '目前回合執行時直接引導',
+        },
         permissionMode: {
             title: '權限模式',
             auto: '自行判斷，不確定時詢問',

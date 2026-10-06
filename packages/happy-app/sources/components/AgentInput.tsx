@@ -22,7 +22,7 @@ import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useLayoutDimensions } from '@/utils/responsive';
-import { useSetting } from '@/sync/storage';
+import { useSetting, useSettingMutable } from '@/sync/storage';
 import { hackMode, hackModes } from '@/sync/modeHacks';
 import { getPermissionModeMenuLabel, getPermissionModeShortLabel } from '@/utils/permissionModeLabels';
 import { getUsageLimitDisplayPercentage, getUsageLimitRows, formatUsageLimitResetTime, type UsageLimitsLike } from '@/utils/sessionStatusBar';
@@ -369,6 +369,19 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingHorizontal: 0,
     },
     mobileActionButtonsContainer: MOBILE_ACTION_ROW_GEOMETRY,
+    mobileSendModeButton: {
+        alignSelf: 'flex-end',
+        minHeight: 28,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 8,
+    },
+    mobileSendModeText: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        ...Typography.default('semiBold'),
+    },
     mobileActionMiddle: MOBILE_MIDDLE_GEOMETRY,
     mobileIconButton: MOBILE_ICON_ACTION_GEOMETRY,
     mobileModelMenuFrame: MOBILE_MODEL_MENU_GEOMETRY.frame,
@@ -846,6 +859,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const useNativeSettingsMenus = shouldUseExpoNativeSettingsMenu(Platform.OS, runningOnMac);
     const activeSendIconColor = compactMobileComposer ? theme.colors.text : theme.colors.button.primary.tint;
     const isSendBlocked = props.blockSend ?? false;
+    const [sendMode, setSendMode] = useSettingMutable('agentInputSendMode');
+    const showSendMode = compactMobileComposer && props.metadata?.supportsSteering === true;
 
     // `hasText` drives only the send-button appearance/enabled state. It's
     // updated via startTransition from the keystroke handler so a busy reducer
@@ -1188,7 +1203,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // The compact composer has separate controls for permission, model, and
     // effort. Keep a single popup state so only one selection surface is ever
     // visible, including while we dismiss the keyboard on mobile.
-    type ComposerPicker = 'permission' | 'model' | 'effort';
+    type ComposerPicker = 'permission' | 'model' | 'effort' | 'sendMode';
     const [openPicker, setOpenPicker] = React.useState<ComposerPicker | null>(null);
     const pickerOpeningRef = React.useRef<ComposerPicker | null>(null);
     const pickerKeyboardSubscriptionRef = React.useRef<ReturnType<typeof Keyboard.addListener> | null>(null);
@@ -1870,16 +1885,27 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 {/* A full-window sheet rather than an overlay inside the
                     composer: Android clips an overlay to the composer's bounds,
                     which left its list unscrollable and taps outside it dead. */}
-                {compactMobileComposer && !useNativeSettingsMenus && openPicker && (
+                {compactMobileComposer && openPicker && (!useNativeSettingsMenus || openPicker === 'sendMode') && (
                     <PickerSheet
                         visible
                         title={openPicker === 'permission'
                             ? (isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title'))
                             : openPicker === 'model'
                                 ? t('agentInput.model.title')
-                                : t('agentInput.effort.title')}
+                                : openPicker === 'effort'
+                                    ? t('agentInput.effort.title')
+                                    : t('agentInput.sendMode.title')}
                         onClose={closePicker}
                     >
+                        {openPicker === 'sendMode' && (['queue', 'steer'] as const).map((mode) => (
+                            <PickerSheetOption
+                                key={mode}
+                                label={t(`agentInput.sendMode.${mode}`)}
+                                description={t(`agentInput.sendMode.${mode}Description`)}
+                                selected={sendMode === mode}
+                                onPress={() => { setSendMode(mode); closePicker(); }}
+                            />
+                        ))}
                         {openPicker === 'permission' && availableModes.map((mode) => (
                             <PickerSheetOption
                                 key={mode.key}
@@ -2002,6 +2028,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             lineHeight={compactMobileComposer ? MOBILE_COMPOSER_METRICS.inputLineHeight : undefined}
                         />
                     </View>
+
+                    {showSendMode && (
+                        <BubblePressable
+                            onPress={() => handlePickerPress('sendMode')}
+                            style={styles.mobileSendModeButton}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('agentInput.sendMode.title')}
+                            accessibilityValue={{ text: t(`agentInput.sendMode.${sendMode}`) }}
+                        >
+                            <Text style={styles.mobileSendModeText}>{t(`agentInput.sendMode.${sendMode}`)}</Text>
+                            <Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} />
+                        </BubblePressable>
+                    )}
 
                     {compactMobileComposer ? (
                     /* The action order mirrors the expanded Home composer:
