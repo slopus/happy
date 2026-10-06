@@ -29,6 +29,16 @@ it('rejects cross-binding, cross-app and cross-machine ciphertext before native 
  expect(()=>decodeServiceJob({ ...machine,id:'other' },f.job)).toThrow('permission-denied');
  expect(()=>decodeServiceJob(machine,{ ...f.job,record:{ ...f.job.record,binding:{ ...binding,accountRef:{ kind:'codex-profile',id:'unauthorized' } } } })).toThrow('permission-denied');
 });
+it('accepts the same scoped account after JSONB reorders keys and still rejects a different account',()=>{
+ const f=jobFixture();
+ f.job.scope={ ...f.job.scope,targets:[{ machineId:target.machineId,engine:target.engine,accountRef:{ id:target.accountRef.id,kind:target.accountRef.kind } }] };
+ expect(Object.keys(f.job.scope.targets[0].accountRef)).toEqual(['id','kind']);
+ expect(Object.keys(f.job.record.binding.accountRef)).toEqual(['kind','id']);
+ expect(decodeServiceJob(machine,f.job).messages).toEqual(f.payload.messages);
+ expect(()=>decodeServiceJob(machine,{ ...f.job,record:{ ...f.job.record,binding:{ ...binding,accountRef:{ id:'other-account',kind:'codex-profile' } } } })).toThrow('permission-denied');
+ expect(()=>decodeServiceJob(machine,{ ...f.job,record:{ ...f.job.record,binding:{ ...binding,machineId:'other-machine' } } })).toThrow('permission-denied');
+ expect(()=>decodeServiceJob(machine,{ ...f.job,record:{ ...f.job.record,binding:{ ...binding,engine:'claude',accountRef:{ kind:'device-identity',machineId:machine.id,identityId:'other-runtime' } } } })).toThrow('permission-denied');
+});
 it('composes authenticated probe and turn acquisition, dynamic policy, encrypted output and private credential cleanup',async()=>{
  const root=await mkdtemp(join(tmpdir(),'shared-worker-'));roots.push(root);const binary=join(root,'codex'),audit=join(root,'audit');
  await writeFile(binary,`#!/usr/bin/env node
@@ -37,12 +47,13 @@ rl.createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(li
  const claude=join(root,'claude'),login={ loggedIn:true,authMethod:'oauth',apiProvider:'firstParty',email:'fixture@example.test',orgId:'fixture-org',tokens:'never-publish' };
  await writeFile(claude,'#!/usr/bin/env node\nconsole.log('+JSON.stringify(JSON.stringify({ loggedIn:true,authMethod:'oauth',apiProvider:'firstParty',email:'fixture@example.test',orgId:'fixture-org',tokens:'never-publish' }))+');',{ mode:0o700 });
  const f=jobFixture(),calls:{ path:string;body:any }[]=[],saved:any[]=[];let phase=0;
+ f.job.scope={ ...f.job.scope,targets:[{ machineId:target.machineId,engine:target.engine,accountRef:{ id:target.accountRef.id,kind:target.accountRef.kind } }] };
  const worker=createSharedServiceWorker({ machine,recoveryRoot:join(root,'jobs'),lifetime:new AbortController().signal,codexBinary:binary,claudeBinary:claude,
   request:async <T>(path:string,body:any):Promise<T>=>{
    calls.push({ path,body });
    if(path.endsWith('/announce'))return {} as T;
    if(path.endsWith('/claim'))return (phase++ === 0 ? { probe:{ id:'probe',lease:'p'.repeat(43),target,deadline:Date.now()+20000 },job:null } : { probe:null,job:f.job }) as T;
-   if(path.endsWith('/authority'))return { target } as T;
+   if(path.endsWith('/authority'))return { target:{ accountRef:{ id:target.accountRef.id,kind:target.accountRef.kind },engine:target.engine,machineId:target.machineId } } as T;
    if(path.endsWith('/credential'))return { grant:'g'.repeat(43) } as T;
    if(path.endsWith('/policy'))return { policy:{ appId:'summary-app',name:'Summary',origins:['https://summary.example'],capabilities:['chat'],businessPrompt:{ id:'summary',version:'1' } },ref:{ id:'summary',version:'1' },prompt:'Summarize the supplied topic in one sentence.' } as T;
    return { accepted:true } as T;

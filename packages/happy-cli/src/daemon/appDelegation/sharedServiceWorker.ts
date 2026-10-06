@@ -3,7 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import { claudeIdentityId } from './serviceCapabilities';
+import { claudeIdentityId, sameServiceTarget } from './serviceCapabilities';
 import { restrictedClaudeEnv } from './restrictedClaude';
 import { homedir } from 'node:os';
 import nacl from 'tweetnacl';
@@ -29,8 +29,7 @@ export function decodeServiceJob(machine: Machine, job: SharedServiceJob) {
  const envelope=JSON.parse(Buffer.from(opened).toString('utf8'));
  const binding=job.record.binding;
  if (envelope.protocol !== 'ai-services/1' || envelope.grantId !== job.grantId || envelope.ownerId !== job.ownerId || envelope.appId !== binding.appId || envelope.serviceId !== binding.serviceId || envelope.machineId !== machine.id || binding.machineId !== machine.id || JSON.stringify(ServiceGrantScopeSchema.parse(envelope.scope)) !== JSON.stringify(ServiceGrantScopeSchema.parse(job.scope))) throw new Error('permission-denied');
- const sameTarget=(target:ServiceTarget)=>JSON.stringify([target.machineId,target.engine,target.accountRef]) === JSON.stringify([binding.machineId,binding.engine,binding.accountRef]);
- if (!job.scope.targets.some(sameTarget) || binding.permissions.some(value=>!job.scope.permissions.includes(value))) throw new Error('permission-denied');
+ if (!job.scope.targets.some(target=>sameServiceTarget(target,binding)) || binding.permissions.some(value=>!job.scope.permissions.includes(value))) throw new Error('permission-denied');
  if (job.scope.expiresAt !== null && job.scope.expiresAt <= Date.now()) throw new Error('authorization-expired');
  const key=decodeBase64(envelope.messageKey);
  if (key.length !== 32) throw new Error('permission-denied');
@@ -51,7 +50,7 @@ export function createSharedServiceWorker(context: { machine: Machine; request: 
   if (!authority) throw new Error('permission-denied');
   signal.throwIfAborted();
   const verified=await request<{ target:ServiceTarget }>(`${path}/authority`,authority);
-  if (JSON.stringify({ machineId:target.machineId,engine:target.engine,accountRef:target.accountRef }) !== JSON.stringify(verified.target)) throw new Error('account-identity-changed');
+  if (!sameServiceTarget(target,verified.target)) throw new Error('account-identity-changed');
   if (target.engine === 'claude') return { engine:'claude',target,binary:context.claudeBinary,env:nativeClaudeEnv };
   const grant=await request<{ grant:string }>(`${path}/credential`,authority);
   const launch=await CodexAccountLaunch.prepare(api,machine.id,grant.grant,{ sourceHome:workspace.cwd,createTempDir:()=>workspace.codexHome,skipHistory:true });
