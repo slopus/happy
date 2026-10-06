@@ -42,10 +42,10 @@ export function installRpcPeerDiagnostics(target: object, report: (row: Correlat
         observations.set(key, entry);
         return entry;
     };
-    const emit = (entry: Observation, stage: string) => {
-        if (closed || !enabled() || performance.now() - entry.at >= 60_000 || entry.stages.has(stage)) return;
+    const emit = (entry: Observation, stage: string, observedAt = performance.now()) => {
+        if (closed || !enabled() || observedAt - entry.at >= 60_000 || entry.stages.has(stage)) return;
         entry.stages.add(stage);
-        try { report({ rpcId: entry.rpcId, lookupId: entry.lookupId, stage, elapsedMs: Math.max(0, performance.now() - entry.at) }); } catch { /* Diagnostics cannot break the bus. */ }
+        try { report({ rpcId: entry.rpcId, lookupId: entry.lookupId, stage, elapsedMs: Math.max(0, observedAt - entry.at) }); } catch { /* Diagnostics cannot break the bus. */ }
     };
     adapter.doPublish = (message: Message) => {
         if (closed || !enabled()) return publish(message);
@@ -68,7 +68,7 @@ export function installRpcPeerDiagnostics(target: object, report: (row: Correlat
         if (message.type === 8) {
             const entry = observations.get(key);
             if (entry) {
-                if (rawStartedAt !== undefined) emit(entry, 'response-decode-done');
+                if (rawStartedAt !== undefined) emit(entry, 'response-decode-done', rawStartedAt);
                 emit(entry, 'response-consume');
             }
             return consume(message, ...args);
