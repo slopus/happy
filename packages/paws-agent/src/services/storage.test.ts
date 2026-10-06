@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { IDBFactory, IDBObjectStore, IDBDatabase } from 'fake-indexeddb';
-import { createBrowserServiceStorage } from './storage';
+import { createBrowserServiceStorage, createMemoryServiceStorage } from './storage';
 class Session implements Storage {
     private values = new Map<string, string>();
     get length() { return this.values.size; }
@@ -11,6 +11,60 @@ class Session implements Storage {
     setItem(k: string, v: string) { this.values.set(k, v); }
 }
 const options = { appId: 'advisor', origin: 'https://app.test', subject: 'user', connectionId: 'personal' };
+describe('locking service storage', () => {
+    it.each([false, true])('ends the current handle and restores only explicitly remembered data (remember=%s)', async remember => {
+        const indexedDB = new IDBFactory(), session = new Session();
+        const storage = createBrowserServiceStorage({ ...options, sessionStorage: session, indexedDB, broadcastChannel: null });
+        let restored: ReturnType<typeof createBrowserServiceStorage> | undefined;
+        try {
+            await storage.set('connection', { id: 'original-grant' });
+            await storage.set('journal-key', { id: 'original-key' });
+            if (remember) await storage.remember!(true);
+            await storage.lock!();
+            expect(session.length).toBe(0);
+            await expect(storage.get('connection')).rejects.toMatchObject({ code: 'disposed' });
+            await expect(storage.set('connection', { id: 'late-write' })).rejects.toMatchObject({ code: 'disposed' });
+            restored = createBrowserServiceStorage({ ...options, sessionStorage: session, indexedDB, broadcastChannel: null });
+            expect(await restored.get('connection')).toEqual(remember ? { id: 'original-grant' } : null);
+            expect(await restored.get('journal-key')).toEqual(remember ? { id: 'original-key' } : null);
+            await restored.clear('forget');
+            expect(await restored.get('connection')).toBeNull();
+            expect(await restored.get('journal-key')).toBeNull();
+        } finally { storage.dispose(); restored?.dispose(); }
+    });
+    it('clears an unremembered memory connection on lock', async () => {
+        const storage = createMemoryServiceStorage();
+        await storage.set('connection', { id: 'temporary' });
+        await storage.lock!();
+        await expect(storage.get('connection')).rejects.toMatchObject({ code: 'disposed' });
+        storage.dispose();
+    });
+    it('locks every connection for the subject in other tabs without locking another subject', async () => {
+        const indexedDB = new IDBFactory(), session = new Session();
+        const a = createBrowserServiceStorage({ ...options, sessionStorage: new Session(), indexedDB });
+        const b = createBrowserServiceStorage({ ...options, connectionId: 'second', sessionStorage: session, indexedDB });
+        const temporary = createBrowserServiceStorage({ ...options, connectionId: 'temporary', sessionStorage: session, indexedDB });
+        const other = createBrowserServiceStorage({ ...options, subject: 'someone-else', sessionStorage: session, indexedDB });
+        let restored: ReturnType<typeof createBrowserServiceStorage> | undefined;
+        try {
+            await b.set('connection', { id: 'second-grant' });
+            await b.remember!(true);
+            await temporary.set('connection', { id: 'temporary-grant' });
+            await other.set('connection', { id: 'other-user-grant' });
+            const notified = new Promise<string>(resolve => b.subscribe!(resolve));
+            const temporaryNotified = new Promise<string>(resolve => temporary.subscribe!(resolve));
+            await a.lock!();
+            expect(await notified).toBe('lock');
+            expect(await temporaryNotified).toBe('lock');
+            await expect(b.get('connection')).rejects.toMatchObject({ code: 'disposed' });
+            await expect(temporary.get('connection')).rejects.toMatchObject({ code: 'disposed' });
+            expect(session.length).toBe(1);
+            expect(await other.get('connection')).toEqual({ id: 'other-user-grant' });
+            restored = createBrowserServiceStorage({ ...options, connectionId: 'second', sessionStorage: new Session(), indexedDB, broadcastChannel: null });
+            expect(await restored.get('connection')).toEqual({ id: 'second-grant' });
+        } finally { a.dispose(); b.dispose(); temporary.dispose(); other.dispose(); restored?.dispose(); }
+    });
+});
 describe('scoped browser connection storage', () => {
     it('restores only the same origin, app, login subject and connection', async () => {
         const session = new Session();

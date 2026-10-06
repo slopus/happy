@@ -6,6 +6,104 @@ import { createBrowserPersonalTransport } from './personalTransport';
 import { createMemoryServiceStorage, createBrowserServiceStorage } from './storage';
 import { fixture, makeReceipt } from './testFixtures';
 import { createBrowserPlatformTransport } from './platformTransport';
+import { IDBFactory } from 'fake-indexeddb';
+
+function sessionStorage(): Storage {
+    const values = new Map<string, string>();
+    return { get length() { return values.size; }, clear: () => values.clear(), key: i => [...values.keys()][i] ?? null,
+        getItem: key => values.get(key) ?? null, setItem: (key, value) => { values.set(key, value); }, removeItem: key => { values.delete(key); } };
+}
+
+it.each([false, true])('restores a personal connection after lock only when remembered (%s)', async remember => {
+    const indexedDB = new IDBFactory(), session = sessionStorage();
+    const options = { appId: 'advisor', origin: 'https://app.test', subject: 'user', connectionId: 'personal', sessionStorage: session, indexedDB, broadcastChannel: null };
+    const storage = createBrowserServiceStorage(options), f = fixture();
+    const makeClient = (saved: typeof storage) => createAIServiceClient({ appId: 'advisor', transport: createBrowserPersonalTransport({ appId: 'advisor', serverUrl: 'https://paws.test', webUrl: 'https://web.test', origin: 'https://app.test', storage: saved, fetch: f.fetcher }) });
+    const client = makeClient(storage), controller = createServiceController(client, storage);
+    let restored: ReturnType<typeof createServiceController> | undefined;
+    try {
+        await controller.connect({ receipt: makeReceipt('personal-grant'), remember });
+        controller.setOverrides({ modelId: 'private-preference' });
+        await controller.lock();
+        expect(controller.getState()).toMatchObject({ status: 'disconnected', connection: null, catalog: null, overrides: {} });
+        await expect(controller.restore()).rejects.toMatchObject({ code: 'disposed' });
+        await expect(client.connections.authorize()).rejects.toMatchObject({ code: 'disposed' });
+        const saved = createBrowserServiceStorage(options);
+        restored = createServiceController(makeClient(saved), saved);
+        // The host must verify /api/me before constructing this new instance.
+        if (remember) {
+            await restored.restore();
+            expect(restored.getState()).toMatchObject({ status: 'ready', connection: { id: 'grant' } });
+            await restored.disconnect('forget');
+        }
+        expect(await saved.get('connection')).toBeNull();
+    } finally { controller.dispose(); restored?.dispose(); }
+});
+
+it('locks connected controllers in other tabs and aborts their active observations', async () => {
+    const options = { appId: 'advisor', origin: 'https://app.test', subject: 'lock-test', connectionId: 'platform', indexedDB: null };
+    let readSignal: AbortSignal | undefined;
+    const fetcher: typeof fetch = async (url, init) => {
+        if (String(url).endsWith('/connection')) return Response.json({ id: 'platform', appId: 'advisor', source: 'platform', serviceId: 'default', expiresAt: null });
+        readSignal = init!.signal!;
+        return new Promise((_, reject) => readSignal!.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }));
+    };
+    const a = createBrowserServiceStorage({ ...options, sessionStorage: sessionStorage() });
+    const b = createBrowserServiceStorage({ ...options, sessionStorage: sessionStorage() });
+    const makeClient = (storage: typeof a) => createAIServiceClient({ appId: 'advisor', transport: createBrowserPlatformTransport({ appId: 'advisor', baseUrl: '/api/ai', origin: options.origin, storage, fetch: fetcher }) });
+    const first = createServiceController(makeClient(a), a), secondClient = makeClient(b), second = createServiceController(secondClient, b);
+    const events: unknown[] = [];
+    try {
+        await first.connect(); await second.connect();
+        const observation = secondClient.turns.observe({ bindingId: 'binding', turnId: 'turn' }, event => events.push(event));
+        await vi.waitFor(() => expect(readSignal).toBeDefined());
+        await first.lock();
+        await vi.waitFor(() => expect(second.getState().status).toBe('disconnected'));
+        await observation.done;
+        expect(readSignal!.aborted).toBe(true);
+        expect(events).toEqual([]);
+        await expect(second.restore()).rejects.toMatchObject({ code: 'disposed' });
+    } finally { first.dispose(); second.dispose(); }
+});
+
+it.each([false, true])('locks a pending remembered pairing without retaining its temporary secret (host disposes=%s)', async disposeOnLock => {
+    const indexedDB = new IDBFactory(), options = { appId: 'advisor', origin: 'https://app.test', subject: 'user', connectionId: 'pending', indexedDB, broadcastChannel: null };
+    const storage = createBrowserServiceStorage({ ...options, sessionStorage: sessionStorage() });
+    let pairingSignal: AbortSignal | undefined;
+    const fetcher: typeof fetch = async (url, init) => {
+        if (String(url).endsWith('/pairings')) return Response.json({ id: 'pending', expiresAt: Date.now() + 60000, protocol: 'ai-services/1' });
+        pairingSignal = init!.signal!;
+        return new Promise((_, reject) => pairingSignal!.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true }));
+    };
+    const client = createAIServiceClient({ appId: 'advisor', transport: createBrowserPersonalTransport({ appId: 'advisor', serverUrl: 'https://paws.test', webUrl: 'https://web.test', origin: options.origin, storage, fetch: fetcher }) });
+    const controller = createServiceController(client, storage);
+    let fresh: ReturnType<typeof createBrowserServiceStorage> | undefined;
+    try {
+        const pending = controller.connect({ remember: true });
+        await vi.waitFor(() => expect(pairingSignal).toBeDefined());
+        if (disposeOnLock) controller.subscribe(event => { if (event.type === 'invalidated' && event.reason === 'lock') controller.dispose(); });
+        await controller.lock();
+        await pending;
+        expect(pairingSignal!.aborted).toBe(true);
+        expect(controller.getState()).toMatchObject({ status: 'disconnected', connection: null, pending: null });
+        fresh = createBrowserServiceStorage({ ...options, sessionStorage: sessionStorage() });
+        expect(await fresh.get('pending-authorization')).toBeNull();
+        expect(await fresh.get('connection')).toBeNull();
+    } finally { controller.dispose(); fresh?.dispose(); }
+});
+
+it.each(['state', 'invalidated'])('finishes transient cleanup when the host disposes the controller on the %s event', async eventType => {
+    const session = sessionStorage(), options = { appId: 'advisor', origin: 'https://app.test', subject: 'user', connectionId: 'personal', sessionStorage: session, indexedDB: null };
+    const storage = createBrowserServiceStorage(options), f = fixture();
+    const client = createAIServiceClient({ appId: 'advisor', transport: createBrowserPersonalTransport({ appId: 'advisor', serverUrl: 'https://paws.test', webUrl: 'https://web.test', origin: options.origin, storage, fetch: f.fetcher }) });
+    const controller = createServiceController(client, storage);
+    try {
+        await controller.connect({ receipt: makeReceipt('personal-grant') });
+        controller.subscribe(event => { if (event.type === eventType && (event.type === 'invalidated' ? event.reason === 'lock' : event.state.status === 'disconnected')) controller.dispose(); });
+        await expect(controller.lock()).resolves.toBeUndefined();
+        expect(session.length).toBe(0);
+    } finally { controller.dispose(); }
+});
 
 it('keeps the panel connected when a platform chat restores its client directly', async () => {
     const storage = createMemoryServiceStorage();

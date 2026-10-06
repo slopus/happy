@@ -29,10 +29,10 @@ export type ServiceClients = Partial<Record<ServiceSource, AIServiceClient>>;
 export function createServiceController(client: AIServiceClient | ServiceClients, storage: ServiceStorage) {
     const clients: ServiceClients = 'source' in client ? { [client.source]: client } : client;
     let state: ServiceControllerState = { source: clients.platform ? 'platform' : 'personal', status: 'disconnected', connection: null, pending: null, catalog: null, overrides: {}, error: null, storage: storage.getStatus() };
-    let disposed = false, generation = 0, authorization: AbortController | null = null;
+    let disposed = false, locked = false, generation = 0, authorization: AbortController | null = null;
     const listeners = new Set<(event: ServiceControllerEvent) => void>();
     const snapshot = () => structuredClone(state);
-    const open = () => { if (disposed)
+    const open = () => { if (disposed || locked)
         throw new AIServiceClientError('disposed'); };
     const emit = () => { if (!disposed)
         for (const listener of listeners)
@@ -41,11 +41,18 @@ export function createServiceController(client: AIServiceClient | ServiceClients
         throw new AIServiceClientError('consent-required'); return value; };
     function reset() { generation++; authorization?.abort(); authorization = null; for (const c of Object.values(clients))
         c?.connections.disconnect(); state = { ...state, status: 'disconnected', connection: null, pending: null, catalog: null, error: null }; }
+    function lockConnections() {
+        if (locked) return;
+        locked = true;
+        reset();
+        state = { ...state, overrides: {} };
+        for (const client of Object.values(clients)) client?.dispose();
+    }
     const unsubscribe = storage.subscribe?.(reason => { if (disposed)
-        return; reset(); state.storage = storage.getStatus(); emit(); for (const listener of listeners)
+        return; if (reason === 'lock') lockConnections(); else if (!locked) reset(); state.storage = storage.getStatus(); emit(); for (const listener of listeners)
         listener({ type: 'invalidated', reason }); });
     const connectionSubscriptions = Object.values(clients).flatMap(client => client ? [client.connections.subscribe(event => {
-        if (disposed || client.source !== state.source) return;
+        if (disposed || locked || client.source !== state.source) return;
         if (event.type === 'connected') {
             const same = state.connection?.id === event.connection.id && state.connection?.serviceId === event.connection.serviceId;
             state = { ...state, status: 'ready', connection: event.connection, pending: null, error: null, catalog: same ? state.catalog : null };
@@ -130,6 +137,16 @@ export function createServiceController(client: AIServiceClient | ServiceClients
                 await storage.clear(reason);
             else
                 await storage.remove('pending-authorization');
+            state.storage = storage.getStatus();
+            emit();
+        },
+        /** End this login's handles. After verifying the host subject again, create a new controller and storage to restore. */
+        async lock() {
+            open();
+            lockConnections();
+            const cleanup = storage.lock ? storage.lock() : storage.clear('logout');
+            emit();
+            await cleanup;
             state.storage = storage.getStatus();
             emit();
         },

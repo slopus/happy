@@ -9,14 +9,16 @@ export interface StorageStatus {
     mode: 'session' | 'remember' | 'memory';
     warning: 'remember-unavailable' | 'session-unavailable' | null;
 }
-export type StorageInvalidation = 'forget' | 'logout' | 'revoke';
+export type StorageInvalidation = 'forget' | 'logout' | 'revoke' | 'lock';
 export interface ServiceStorage {
     get<T>(key: string): Promise<T | null>;
     set(key: string, value: unknown): Promise<void>;
     /** Atomic across every handle sharing this scope: retain and return one winner. */
     putIfAbsent<T>(key: string, value: T): Promise<T>;
     remove(key: string): Promise<void>;
-    clear(reason: StorageInvalidation): Promise<void>;
+    clear(reason: Exclude<StorageInvalidation, 'lock'>): Promise<void>;
+    /** End this handle and clear transient data. Explicitly remembered data stays available to a new verified subject handle. */
+    lock?(): Promise<void>;
     remember?(enabled: boolean): Promise<StorageStatus>;
     getStatus(): StorageStatus;
     subscribe?(listener: (reason: StorageInvalidation) => void): () => void;
@@ -25,8 +27,10 @@ export interface ServiceStorage {
 /** Node hosts should supply a durable database implementation for platform outboxes. */
 export function createMemoryServiceStorage(): ServiceStorage {
     const values = new Map<string, unknown>();
-    return { async get<T>(key: string) { return values.has(key) ? structuredClone(values.get(key)) as T : null; }, async set(key, value) { values.set(key, structuredClone(value)); }, async putIfAbsent<T>(key: string, value: T) { if (!values.has(key))
-            values.set(key, structuredClone(value)); return structuredClone(values.get(key)) as T; }, async remove(key) { values.delete(key); }, async clear() { values.clear(); }, getStatus: () => ({ mode: 'memory', warning: null }), dispose() { values.clear(); } };
+    let locked = false;
+    const open = () => { if (locked) throw new AIServiceClientError('disposed'); };
+    return { async get<T>(key: string) { open(); return values.has(key) ? structuredClone(values.get(key)) as T : null; }, async set(key, value) { open(); values.set(key, structuredClone(value)); }, async putIfAbsent<T>(key: string, value: T) { open(); if (!values.has(key))
+            values.set(key, structuredClone(value)); return structuredClone(values.get(key)) as T; }, async remove(key) { values.delete(key); }, async clear() { values.clear(); }, async lock() { locked = true; values.clear(); }, getStatus: () => ({ mode: 'memory', warning: null }), dispose() { locked = true; values.clear(); } };
 }
 export interface BrowserStorageOptions extends StorageScope {
     sessionStorage?: Storage;
@@ -53,9 +57,9 @@ export function createBrowserServiceStorage(options: BrowserStorageOptions): Ser
     const listeners = new Set<(reason: StorageInvalidation) => void>();
     let persistentAvailable = Boolean(factory);
     let hasRememberedMaterial = false;
-    let disposed = false, db: IDBDatabase | null = null;
+    let disposed = false, locked = false, db: IDBDatabase | null = null;
     let queue = Promise.resolve();
-    function assertOpen() { if (disposed)
+    function assertOpen() { if (disposed || locked)
         throw new AIServiceClientError('disposed'); }
     async function database() {
         if (db)
@@ -130,11 +134,11 @@ export function createBrowserServiceStorage(options: BrowserStorageOptions): Ser
         }
     }
     async function clearLocal(reason: StorageInvalidation) {
-        const start = reason === 'logout' ? subjectPrefix : prefix;
+        const start = reason === 'logout' || reason === 'lock' ? subjectPrefix : prefix;
         for (const key of sessionKeys(start))
             session!.removeItem(key);
         memory.clear();
-        if (persistentAvailable) {
+        if (reason !== 'lock' && persistentAvailable) {
             const keys = await idb<IDBValidKey[]>('readonly', s => s.getAllKeys());
             for (const key of keys)
                 if (typeof key === 'string' && key.startsWith(start))
@@ -142,18 +146,32 @@ export function createBrowserServiceStorage(options: BrowserStorageOptions): Ser
         }
     }
     function serial<T>(run: () => Promise<T>): Promise<T> { const task = queue.then(run); queue = task.then(() => undefined, () => undefined); return task; }
+    function serialOpen<T>(run: () => Promise<T>): Promise<T> { return serial(async () => { assertOpen(); const result = await run(); assertOpen(); return result; }); }
+    function beginLock(broadcast = false): Promise<void> {
+        if (locked || disposed) return Promise.resolve();
+        locked = true;
+        const cleanup = serial(() => clearLocal('lock'));
+        // Queue cleanup and notify other tabs before a host listener can dispose this handle.
+        if (broadcast) channel?.postMessage({ reason: 'lock', connectionId: options.connectionId });
+        for (const listener of listeners) listener('lock');
+        return cleanup;
+    }
     channel?.addEventListener('message', onMessage);
     function onMessage(event: MessageEvent) {
         const value = event.data;
-        if (!value || !['forget', 'logout', 'revoke'].includes(value.reason) || (value.reason !== 'logout' && value.connectionId !== options.connectionId))
+        if (!value || !['forget', 'logout', 'revoke', 'lock'].includes(value.reason) || (!['logout', 'lock'].includes(value.reason) && value.connectionId !== options.connectionId))
             return;
+        if (value.reason === 'lock') {
+            void beginLock().catch(() => undefined);
+            return;
+        }
         void serial(async () => { await clearLocal(value.reason); for (const listener of listeners)
             listener(value.reason); }).catch(() => { for (const listener of listeners)
             listener(value.reason); });
     }
     return {
-        get: key => serial(() => get(key)), set: (key, value) => serial(() => write(key, value)),
-        putIfAbsent: <T>(key: string, value: T) => serial(async () => {
+        get: key => serialOpen(() => get(key)), set: (key, value) => serialOpen(() => write(key, value)),
+        putIfAbsent: <T>(key: string, value: T) => serialOpen(async () => {
             assertOpen();
             if (status.mode !== 'remember') {
                 const existing = await get<T>(key);
@@ -187,11 +205,23 @@ export function createBrowserServiceStorage(options: BrowserStorageOptions): Ser
                 return structuredClone(value);
             } catch { throw new AIServiceClientError('storage-unavailable'); }
         }),
-        remove: key => serial(async () => { assertOpen(); session?.removeItem(prefix + key); memory.delete(key); if (persistentAvailable)
-            await idb('readwrite', s => s.delete(prefix + key)); }),
-        clear: reason => serial(async () => { assertOpen(); await clearLocal(reason); channel?.postMessage({ reason, connectionId: options.connectionId }); for (const listener of listeners)
+        // Deletion remains safe after lock, including pending authorization cleanup.
+        remove: key => {
+            if (disposed) return Promise.reject(new AIServiceClientError('disposed'));
+            return serial(async () => {
+                session?.removeItem(prefix + key); memory.delete(key);
+                // A deletion accepted before dispose must finish, especially pairing cleanup on lock.
+                try { if (persistentAvailable) await idb('readwrite', s => s.delete(prefix + key)); }
+                finally { if (disposed) { db?.close(); db = null; } }
+            });
+        },
+        clear: reason => serial(async () => { if (disposed) throw new AIServiceClientError('disposed'); await clearLocal(reason); channel?.postMessage({ reason, connectionId: options.connectionId }); for (const listener of listeners)
             listener(reason); }),
-        remember: enabled => serial(async () => {
+        lock: async () => {
+            assertOpen();
+            await beginLock(true);
+        },
+        remember: enabled => serialOpen(async () => {
             assertOpen();
             if (enabled) {
                 const wasRemembered = hasRememberedMaterial || status.mode === 'remember';
@@ -257,6 +287,6 @@ export function createBrowserServiceStorage(options: BrowserStorageOptions): Ser
             return { ...status };
         }),
         getStatus: () => ({ ...status }), subscribe: listener => { assertOpen(); listeners.add(listener); return () => listeners.delete(listener); },
-        dispose() { disposed = true; channel?.removeEventListener('message', onMessage); channel?.close(); db?.close(); listeners.clear(); memory.clear(); },
+        dispose() { disposed = true; channel?.removeEventListener('message', onMessage); channel?.close(); db?.close(); db = null; listeners.clear(); memory.clear(); },
     };
 }
