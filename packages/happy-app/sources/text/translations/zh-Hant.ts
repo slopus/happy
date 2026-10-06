@@ -17,6 +17,12 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHant: TranslationStructure = {
+    aiServiceConsent: {
+        chatOnlyHint: "僅允許問答。不包含終端機、檔案系統或瀏覽器操作。",
+        toolsHint: "允許在已授權裝置上使用工具。實際操作受應用程式權限設定限制。",
+        allowTools: "允許使用工具",
+        toolsDescription: "選用。工具可存取檔案、執行命令或操作瀏覽器。只有勾選後才授予工具權限。",
+    },
     appConversations: {
         openConversation: "查看會話",
         openHint: "在 Paws 中查看這則會話",

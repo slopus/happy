@@ -5,6 +5,7 @@ import type { CodexAccountProfile } from '@/sync/apiCodexAccounts';
 import type { AIServicesAPI, AIServiceWorker, ServicePairing, ServiceSnapshot } from '@/sync/apiAIServices';
 import { AuthorizationChoice, AuthorizationNotice, AuthorizationSection, authorizationStyles as styles } from '@/components/appAuthorization/AppAuthorizationLayout';
 import { RoundButton } from '@/components/RoundButton';
+import { t } from '@/text';
 import { availableServiceTargets, sameTarget, targetDescription, targetOf, type ServiceMachine } from './ServiceEditor';
 
 export function ServiceConsent({ pairing, services, workers, accounts, machines, api, onApprove, onManage }: {
@@ -14,6 +15,7 @@ export function ServiceConsent({ pairing, services, workers, accounts, machines,
     const [selected, setSelected] = React.useState(() => services.find(s => s.service.enabled)?.service.id ?? '');
     const [days, setDays] = React.useState<number | null>(1);
     const [images, setImages] = React.useState(false);
+    const [tools, setTools] = React.useState(false);
     const [catalog, setCatalog] = React.useState<CapabilityCatalog | null>(null);
     const [error, setError] = React.useState('');
     const [busy, setBusy] = React.useState(false);
@@ -26,12 +28,14 @@ export function ServiceConsent({ pairing, services, workers, accounts, machines,
     const probeLock = React.useRef(false);
     const lock = React.useRef(false);
     const chosen = services.find(s => s.service.id === selected);
+    const canTools = pairing.app.capabilities.includes('tools');
     React.useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
     React.useEffect(() => {
-        let live = true; setCatalog(null); setImages(false); setError(''); setExtras([]); setObservations({}); setChecking(false); probeLock.current = false; probeGeneration.current++;
+        let live = true; setCatalog(null); setImages(false); setTools(false); setError(''); setExtras([]); setObservations({}); setChecking(false); probeLock.current = false; probeGeneration.current++;
         if (chosen) void api.capabilities(targetOf(chosen.revision.config)).then(r => { if (live && sameTarget(r.catalog, chosen.revision.config)) setCatalog(r.catalog); }).catch(e => { if (live) setError(e instanceof Error ? e.message : '无法验证设备能力。'); });
         return () => { live = false; probeGeneration.current++; };
     }, [api, chosen]);
+    React.useEffect(() => { setTools(false); }, [pairing.id, pairing.app.appId, canTools]);
     const model = catalog?.models.find(m => m.id === (chosen?.revision.config.modelId ?? catalog.defaultModelId));
     const candidates = availableServiceTargets(workers, accounts).filter(t => !chosen || !sameTarget(t, chosen.revision.config));
     const keyOf = (target: ServiceTarget) => JSON.stringify(target);
@@ -63,7 +67,10 @@ export function ServiceConsent({ pairing, services, workers, accounts, machines,
         if (!chosen || !ready || !extrasReady || (images && !canImages) || checking || pairing.expiresAt <= Date.now() || lock.current) return;
         lock.current = true; setBusy(true); setError('');
         try {
-            await onApprove(chosen, { appId: pairing.app.appId, serviceId: chosen.service.id, targets: [targetOf(chosen.revision.config), ...extras], permissions: images && canImages ? ['chat', 'images'] : ['chat'], expiresAt: days === null ? null : Date.now() + days * 86400_000 });
+            const permissions: ServiceGrantScope['permissions'] = ['chat'];
+            if (images && canImages) permissions.push('images');
+            if (tools && canTools) permissions.push('tools');
+            await onApprove(chosen, { appId: pairing.app.appId, serviceId: chosen.service.id, targets: [targetOf(chosen.revision.config), ...extras], permissions, expiresAt: days === null ? null : Date.now() + days * 86400_000 });
             setApproved(true);
         } catch (e) { setError(e instanceof Error ? e.message : '授权失败。请重试。'); }
         finally { lock.current = false; setBusy(false); }
@@ -100,9 +107,10 @@ export function ServiceConsent({ pairing, services, workers, accounts, machines,
                     onPress={() => { if (!disabled) setExtras(values => values.some(t => sameTarget(t, target)) ? values.filter(t => !sameTarget(t, target)) : [...values, target]); }} />;
             })}
         </AuthorizationSection> : null}
-        <AuthorizationSection title="权限" hint="仅允许问答。不包含终端、文件系统或浏览器操作。">
+        <AuthorizationSection title="权限" hint={tools && canTools ? t('aiServiceConsent.toolsHint') : t('aiServiceConsent.chatOnlyHint')}>
             <Text style={styles.body}>文字问答：允许</Text>
             {pairing.app.capabilities.includes('images') ? <AuthorizationChoice testID="consent-images" role="checkbox" title="允许图片输入" subtitle={canImages ? '可选。点击后加入本次授权。' : '图片能力未验证或不支持。'} selected={images} disabled={busy || (!images && !canImages)} onPress={() => setImages(v => !v)} /> : null}
+            {canTools ? <AuthorizationChoice testID="consent-tools" role="checkbox" title={t('aiServiceConsent.allowTools')} subtitle={t('aiServiceConsent.toolsDescription')} selected={tools} disabled={busy} onPress={() => { if (!busy) setTools(v => !v); }} /> : null}
         </AuthorizationSection>
         <AuthorizationSection title="授权有效期" radio>
             {([1, 7, null] as const).map(d => <AuthorizationChoice key={String(d)} title={d === null ? '直到撤销' : `${d} 天`} selected={days === d} disabled={busy} onPress={() => setDays(d)} />)}

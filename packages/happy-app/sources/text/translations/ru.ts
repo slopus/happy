@@ -26,6 +26,12 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const ru: TranslationStructure = {
+    aiServiceConsent: {
+        chatOnlyHint: "Разрешены только вопросы и ответы. Операции с терминалом, файловой системой и браузером исключены.",
+        toolsHint: "Инструменты разрешены на одобренных устройствах. Выполнение ограничено настройками разрешений приложения.",
+        allowTools: "Разрешить инструменты",
+        toolsDescription: "Необязательно. Инструменты могут обращаться к файлам, выполнять команды или управлять браузером. Отметьте этот пункт, чтобы разрешить инструменты.",
+    },
     appConversations: {
         openConversation: "Посмотреть чат",
         openHint: "Посмотреть этот чат в Paws",

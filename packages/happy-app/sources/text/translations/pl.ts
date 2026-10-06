@@ -26,6 +26,12 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const pl: TranslationStructure = {
+    aiServiceConsent: {
+        chatOnlyHint: "Dozwolone są tylko pytania i odpowiedzi. Nie obejmuje to obsługi terminala, systemu plików ani przeglądarki.",
+        toolsHint: "Narzędzia są dozwolone na zatwierdzonych urządzeniach. Wykonywanie operacji podlega ustawieniom uprawnień aplikacji.",
+        allowTools: "Zezwól na narzędzia",
+        toolsDescription: "Opcjonalnie. Narzędzia mogą uzyskiwać dostęp do plików, uruchamiać polecenia lub obsługiwać przeglądarkę. Zaznacz tę opcję, aby nadać uprawnienia do narzędzi.",
+    },
     appConversations: {
         openConversation: "Wyświetl rozmowę",
         openHint: "Wyświetl tę rozmowę w Paws",
