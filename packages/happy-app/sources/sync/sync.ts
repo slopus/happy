@@ -64,6 +64,7 @@ import { UserProfile } from './friendTypes';
 import { resolveControlHandoffDirection } from './controlHandoff';
 import { resolveMessageDeliveryMeta, resolveMessageModeMeta, UnsupportedPermissionModeError } from './messageMeta';
 import type { AttachmentPreview, UploadedAttachment } from './attachmentTypes';
+import type { MessageMeta } from './typesMessageMeta';
 import { requestAttachmentUpload, uploadEncryptedBlob } from './apiAttachments';
 import { encryptBlob } from '@/encryption/blob';
 import { readFileBytes } from '@/utils/readFileBytes';
@@ -109,7 +110,7 @@ type OutboxMessage = {
 };
 
 type SendMessageOptions = {
-    sendMode?: 'queue' | 'steer';
+    sendMode?: MessageMeta['sendMode'];
     displayText?: string;
     source?: MessageSentSource;
     /** Optional image attachments to send before the text message. */

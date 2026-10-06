@@ -63,7 +63,7 @@ describe('claudeRemote', () => {
         expect(callbacks.onCompletionEvent).toHaveBeenCalledOnce();
         expect(callbacks.onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('claude auth login'));
         expect(callbacks.onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('host'));
-        expect(callbacks.onReady).toHaveBeenCalledWith('failed');
+        expect(callbacks.onReady).toHaveBeenCalledWith('failed', false);
         expect(query).toHaveBeenCalledOnce();
     });
 
@@ -72,7 +72,7 @@ describe('claudeRemote', () => {
             { type: 'result', subtype: 'error_during_execution', is_error: true, errors: [expired] },
         ]);
         expect(callbacks.onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('claude auth login'));
-        expect(callbacks.onReady).toHaveBeenCalledWith('failed');
+        expect(callbacks.onReady).toHaveBeenCalledWith('failed', false);
     });
 
     it('allows a later user retry in the same session without replaying the failed prompt', async () => {
@@ -106,7 +106,7 @@ describe('claudeRemote', () => {
             expect.objectContaining({ message: { role: 'user', content: 'Original prompt' } }),
             expect.objectContaining({ message: { role: 'user', content: 'User retry after login' } }),
         ]);
-        expect(onReady.mock.calls).toEqual([['failed'], []]);
+        expect(onReady.mock.calls).toEqual([['failed', false], [undefined, false]]);
         expect(onCompletionEvent).toHaveBeenCalledOnce();
         expect(query).toHaveBeenCalledOnce();
         expect(query).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ resume: 'fixture-session' }) }));
@@ -167,7 +167,7 @@ describe('claudeRemote', () => {
             { type: 'result', subtype: 'success', is_error: false, result: expired },
         ]);
         expect(callbacks.onCompletionEvent).not.toHaveBeenCalled();
-        expect(callbacks.onReady).toHaveBeenCalledWith();
+        expect(callbacks.onReady).toHaveBeenCalledWith(undefined, false);
     });
 
     it.each(['/clear', 'Ordinary prompt'])('awaits the async ready callback for %s', async prompt => {

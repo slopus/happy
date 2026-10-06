@@ -43,8 +43,6 @@ interface Settings {
   machineIdConfirmedByServer?: boolean
   daemonAutoStartWhenRunningHappy?: boolean
   chromeMode?: boolean
-  /** Local fallback for mobile clients that do not send a follow-up mode yet. */
-  codexDefaultSendMode?: 'queue' | 'steer'
   sandboxConfig?: SandboxConfig
   serverUrl?: string
   webappUrl?: string

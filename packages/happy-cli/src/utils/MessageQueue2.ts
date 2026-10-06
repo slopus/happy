@@ -1,5 +1,7 @@
 import { logger } from "@/ui/logger";
-import type { MessageSendMode } from '@slopus/happy-wire';
+import type { MessageMeta } from '@slopus/happy-wire';
+
+type MessageSendMode = NonNullable<MessageMeta['sendMode']>;
 
 export type PendingAttachment = { data: Uint8Array; mimeType: string; name: string };
 
@@ -13,13 +15,9 @@ interface QueueItem<T> {
     sendMode?: MessageSendMode;
 }
 
-export type MessageBatch<T> = {
-    message: string;
-    mode: T;
+export type MessageBatch<T> = Omit<QueueItem<T>, 'modeHash' | 'isolate'> & {
     hash: string;
     isolate: boolean;
-    attachments?: PendingAttachment[];
-    sendMode?: MessageSendMode;
 };
 
 /**
@@ -200,7 +198,7 @@ export class MessageQueue2<T> {
     /**
      * Push a message to the beginning of the queue with a mode.
      */
-    unshift(message: string, mode: T, options: Partial<Pick<MessageBatch<T>, 'attachments' | 'isolate' | 'sendMode'>> = {}): void {
+    unshift(message: string, mode: T, options: Pick<QueueItem<T>, 'attachments' | 'isolate' | 'sendMode'> = {}): void {
         if (this.closed) {
             throw new Error('Cannot unshift to closed queue');
         }

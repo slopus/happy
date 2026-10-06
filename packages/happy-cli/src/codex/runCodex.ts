@@ -13,7 +13,7 @@ import { Credentials, readSettings } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
-import { MessageQueue2, type PendingAttachment } from '@/utils/MessageQueue2';
+import { MessageQueue2, type MessageBatch } from '@/utils/MessageQueue2';
 import { projectPath } from '@/projectPath';
 import { join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
@@ -339,7 +339,7 @@ export async function runCodex(opts: {
             mode: enhancedMode,
             queue: messageQueue,
             attachments: attachmentsForThisMessage,
-            sendMode: message.meta?.sendMode ?? settings.codexDefaultSendMode,
+            sendMode: message.meta?.sendMode,
         });
         if (enqueueResult === 'clear') {
             logger.debug('[Codex] /clear command pushed to isolated queue');
@@ -877,11 +877,11 @@ export async function runCodex(opts: {
             }));
         }
 
-        let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = null;
+        let pending: MessageBatch<EnhancedMode> | null = null;
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
-            let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = pending;
+            let message: MessageBatch<EnhancedMode> | null = pending;
             pending = null;
             if (!message) {
                 // Capture the current signal to distinguish idle-abort from queue close

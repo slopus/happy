@@ -47,6 +47,11 @@ describe('settings', () => {
             });
         });
 
+        it('queues an unknown future send mode without resetting other settings', () => {
+            expect(settingsParse({ agentInputSendMode: 'future-mode', viewInline: true }))
+                .toMatchObject({ agentInputSendMode: 'queue', viewInline: true });
+        });
+
         it('should handle partial settings and merge with defaults', () => {
             const partialSettings = {
                 viewInline: true

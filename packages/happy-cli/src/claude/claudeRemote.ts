@@ -422,13 +422,7 @@ export async function claudeRemote(opts: {
                 }
 
                 // Send ready event
-                if (providerAuthFailed) {
-                    if (hasPendingInput) await opts.onReady('failed', true);
-                    else await opts.onReady('failed');
-                } else {
-                    if (hasPendingInput) await opts.onReady(undefined, true);
-                    else await opts.onReady();
-                }
+                await opts.onReady(providerAuthFailed ? 'failed' : undefined, hasPendingInput);
                 providerAuthFailed = false;
 
                 waitToAbort?.abort();

@@ -19,7 +19,7 @@ import { getToolName } from "./utils/getToolName";
 import { getAskUserQuestionToolCallIds } from "./utils/questionNotification";
 import { launchFailureMessage } from "./utils/launchFailureMessage";
 import { cleanupStdinAfterInk } from "@/utils/terminalStdinCleanup";
-import type { MessageParam, ContentBlockParam } from '@anthropic-ai/sdk/resources';
+import type { ContentBlockParam } from '@anthropic-ai/sdk/resources';
 import type { MessageBatch } from '@/utils/MessageQueue2';
 
 interface PermissionsField {
