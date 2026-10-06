@@ -226,6 +226,7 @@ import type { ServerAutomationTransport } from '@/daemon/automations/serverAutom
 import type { PendingAutomationReport } from '@/daemon/automations/serverAutomationRuntimeStore';
 import type { SessionFollowupTransport } from '@/daemon/automations/sessionFollowupRunner';
 import type { AiCredentialRuntime } from '@/daemon/aiCredentialRuntime';
+import { createSetupTokenAssignmentRecipient, setupTokenRecipientCapability } from '@/daemon/setupTokenAssignmentWire';
 import type { AutonomousQualityGateRpcHandlers } from '@/daemon/autonomousQualityGateRpc';
 import type { CheckpointRpcHandlers } from '@/checkpoint/checkpointRpc';
 
@@ -678,6 +679,27 @@ async function withCodexAppServerClient<T>(handler: (client: CodexAppServerClien
 /** How long a keep-alive capability update may await the server before another may start. */
 const CAPABILITY_UPDATE_WAIT_MS = 2 * 60_000;
 
+/** The legacy group-sync lane may carry OAuth/Codex payloads, never managed setup-token plaintext. */
+function isLegacyManagedSetupTokenPayload(value: unknown): boolean {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+    const input = value as { provider?: unknown; payload?: unknown };
+    if (input.provider !== 'claude' || typeof input.payload !== 'string') return false;
+    try {
+        const parsed = JSON.parse(input.payload) as { accounts?: unknown };
+        return Array.isArray(parsed.accounts) && parsed.accounts.some((account) => (
+            !!account && typeof account === 'object' && !Array.isArray(account)
+            && ((account as { credentialType?: unknown }).credentialType === 'setup_token'
+                || typeof (account as { managedAccountId?: unknown }).managedAccountId === 'string')
+        ));
+    } catch {
+        return false;
+    }
+}
+
+function setupTokenAssignmentKillSwitchEnabled(): boolean {
+    return ['1', 'true', 'on'].includes((process.env.APLUS_SETUP_TOKEN_ASSIGNMENT_KILL_SWITCH ?? '').toLowerCase());
+}
+
 export class ApiMachineClient {
     private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
     /** Set when the managed credential ended; suppresses every reconnect. */
@@ -720,6 +742,8 @@ export class ApiMachineClient {
     private serverAutomationCache: ServerAutomationCache | null = null;
     private serverAutomationSyncInFlight: Promise<void> | null = null;
     private rpcHandlerManager: RpcHandlerManager;
+    /** Per API socket incarnation recipient; the secret never leaves this process. */
+    private readonly setupTokenAssignmentRecipient = createSetupTokenAssignmentRecipient();
     /**
      * The machine's only resource sampler. It measures nothing until something
      * subscribes and stops again when the last subscription goes away, so an
@@ -1059,11 +1083,31 @@ export class ApiMachineClient {
         ));
         this.rpcHandlerManager.registerHandler('ai-credential:token-probe', params => aiCredentialRuntime.tokenProbe(params), { customerBound: true });
         this.rpcHandlerManager.registerHandler('ai-credential:collector-probe', params => aiCredentialRuntime.collectorProbe(params, this.machine.id), { customerBound: true });
-        this.rpcHandlerManager.registerHandler('ai-credential:capabilities', () => aiCredentialRuntime.capabilities(this.machine.id));
+        this.rpcHandlerManager.registerHandler('ai-credential:capabilities', async () => {
+            const capabilities = await aiCredentialRuntime.capabilities(this.machine.id);
+            if (!setupTokenAssignmentKillSwitchEnabled()
+                && capabilities.setupTokenVersion === 1 && capabilities.setupTokenStatusVersion === 1) {
+                return {
+                    ...capabilities,
+                    setupTokenAssignmentVersion: 1,
+                    setupTokenSealedPayloadVersion: 1,
+                    setupTokenRecipient: setupTokenRecipientCapability(this.setupTokenAssignmentRecipient),
+                };
+            }
+            return capabilities;
+        });
         this.rpcHandlerManager.registerHandler('ai-credential:apply', (params) => (
             aiCredentialRuntime.apply(params)
         ));
-        this.rpcHandlerManager.registerHandler('ai-credential:group-sync', (params) => aiCredentialRuntime.groupSync(params));
+        this.rpcHandlerManager.registerHandler('ai-credential:group-sync', (params) => {
+            if (isLegacyManagedSetupTokenPayload(params)) throw new Error('AI_GROUP_SETUP_TOKEN_REQUIRES_SEALED_RPC');
+            return aiCredentialRuntime.groupSync(params);
+        });
+        this.rpcHandlerManager.registerHandler(
+            'ai-credential:setup-token-group-sync',
+            (params) => aiCredentialRuntime.setupTokenGroupSync(params, this.machine.id, this.setupTokenAssignmentRecipient),
+            { customerBound: true },
+        );
         this.rpcHandlerManager.registerHandler('ai-credential:purge', (params) => (
             aiCredentialRuntime.purge(params)
         ));

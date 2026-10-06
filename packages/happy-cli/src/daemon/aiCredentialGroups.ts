@@ -8,16 +8,22 @@ export type CredentialGroupRequest = {
   generation: number
   fingerprint: string
   payload: string | null
+  /** Setup-token wire: the provider bundle generation (equal to `generation`) and the Studio lease it applies. */
+  assignmentGeneration?: number
+  leaseId?: string
 } & ({ principalType?: 'user'; userId: string; machineId?: never } | { principalType: 'machine'; machineId: string; userId?: never })
-type NormalizedRequest = { version:1; scope:string; principalType:'user'|'machine'; userId:string; machineId?:string; provider:GroupProvider; generation:number; fingerprint:string; payload:string|null }
+type NormalizedRequest = { version:1; scope:string; principalType:'user'|'machine'; userId:string; machineId?:string; provider:GroupProvider; generation:number; fingerprint:string; payload:string|null; assignmentGeneration?:number; leaseId?:string }
+export type AppliedCredentialReceipt = { managedAccountId:string; credentialGeneration:number }
 /** `managed`: the desired identities that are org-managed setup-tokens (absent in older journals). */
-type Entry = Omit<NormalizedRequest,'version'|'payload'> & { desired:string[]; owned:string[]; pending:boolean; payloadDigest:string|null; managed?:string[] }
+type Entry = Omit<NormalizedRequest,'version'|'payload'> & { desired:string[]; owned:string[]; pending:boolean; payloadDigest:string|null; managed?:string[]; appliedCredentials?:AppliedCredentialReceipt[] }
 type Journal = { version:1; entries:Entry[] }
 export type CredentialGroupDeps = {
   read():Promise<string|null>; write(value:string):Promise<void>
   snapshot(provider:GroupProvider):Promise<string[]>
   incoming(provider:GroupProvider,payload:string):string[]
   managedIdentities?(provider:GroupProvider,payload:string):string[]
+  /** Secret-free receipt projection for setup-token rows applied by this operation. */
+  appliedCredentials?(provider:GroupProvider,payload:string,applied:unknown):AppliedCredentialReceipt[]
   /** `owned` are identities this scope installed earlier: the only slots it may replace. */
   apply(provider:GroupProvider,payload:string,owned:string[]):Promise<unknown>
   remove(provider:GroupProvider,identities:string[]):Promise<void>
@@ -27,7 +33,9 @@ const id=(value:unknown)=>typeof value==='string'&&value.length>0&&value.length<
 function request(value:CredentialGroupRequest):NormalizedRequest {
   if(!value||value.version!==1||!id(value.scope)
     ||!['claude','codex'].includes(value.provider)||!Number.isSafeInteger(value.generation)||value.generation<1
-    ||!(/^[a-f0-9]{64}$/).test(value.fingerprint)||!(value.payload===null||typeof value.payload==='string'&&Buffer.byteLength(value.payload)<=1024*1024))fail('AI_GROUP_INVALID_INPUT')
+    ||!(/^[a-f0-9]{64}$/).test(value.fingerprint)||!(value.payload===null||typeof value.payload==='string'&&Buffer.byteLength(value.payload)<=1024*1024)
+    ||(value.assignmentGeneration!==undefined&&(!Number.isSafeInteger(value.assignmentGeneration)||value.assignmentGeneration!==value.generation))
+    ||(value.leaseId!==undefined&&!/^[A-Za-z0-9_-]{1,128}$/.test(value.leaseId)))fail('AI_GROUP_INVALID_INPUT')
   const principalType=value.principalType??'user'
   if(principalType==='machine') {
     const machineId=value.machineId
@@ -42,6 +50,11 @@ const principalType=(entry:Pick<Entry,'principalType'>)=>entry.principalType??'u
 const samePrincipal=(entry:Pick<Entry,'principalType'|'userId'|'machineId'>, request:Pick<NormalizedRequest,'principalType'|'userId'|'machineId'>) => principalType(entry)===request.principalType && (request.principalType==='machine' ? entry.machineId===request.machineId : entry.userId===request.userId)
 /** One user assignment per scope and provider (a new userId replaces it); machine assignments are kept per machine. */
 const sameSlot=(entry:Pick<Entry,'principalType'|'machineId'>, request:Pick<NormalizedRequest,'principalType'|'machineId'>) => principalType(entry)===request.principalType && (request.principalType!=='machine' || entry.machineId===request.machineId)
+function validAppliedCredentials(values:unknown):values is AppliedCredentialReceipt[] {
+  return Array.isArray(values)&&values.length<=500
+    &&values.every(value=>value&&id(value.managedAccountId)&&Number.isSafeInteger(value.credentialGeneration)&&value.credentialGeneration>=1)
+    &&new Set(values.map(value=>value.managedAccountId)).size===values.length
+}
 function parse(raw:string|null):Journal {
   if(raw===null)return {version:1,entries:[]}
   try {
@@ -53,12 +66,14 @@ function parse(raw:string|null):Journal {
       request({...candidate,version:1,payload:null} as CredentialGroupRequest)
       if (principalType(entry)==='machine' && !id(entry.machineId)) fail('AI_GROUP_JOURNAL_INVALID')
       if(!(entry.payloadDigest===null||typeof entry.payloadDigest==='string'&&/^[a-f0-9]{64}$/.test(entry.payloadDigest))||typeof entry.pending!=='boolean'||![entry.desired,entry.owned,entry.managed??[]].every(items=>Array.isArray(items)&&items.length<=1000&&items.every(id)))fail('AI_GROUP_JOURNAL_INVALID')
+      if(entry.appliedCredentials!==undefined&&!validAppliedCredentials(entry.appliedCredentials))fail('AI_GROUP_JOURNAL_INVALID')
     }
     if(new Set(value.entries.map(e=>JSON.stringify([e.scope,e.provider,principalType(e),principalType(e)==='machine'?e.machineId:null]))).size!==value.entries.length)fail('AI_GROUP_JOURNAL_INVALID')
     return value
   }catch{ return fail('AI_GROUP_JOURNAL_INVALID') }
 }
-const receipt=(entry:Entry)=>({version:1 as const,scope:entry.scope, ...(principalType(entry)==='machine' ? {principalType:'machine' as const,machineId:entry.machineId} : {userId:entry.userId}),provider:entry.provider,generation:entry.generation,fingerprint:entry.fingerprint,payloadDigest:entry.payloadDigest,reconciled:!entry.pending})
+const receipt=(entry:Entry)=>({version:1 as const,scope:entry.scope, ...(principalType(entry)==='machine' ? {principalType:'machine' as const,machineId:entry.machineId} : {userId:entry.userId}),provider:entry.provider,generation:entry.generation,fingerprint:entry.fingerprint,payloadDigest:entry.payloadDigest,reconciled:!entry.pending,
+  assignmentGeneration:entry.assignmentGeneration??entry.generation,leaseId:entry.leaseId??null,appliedCredentials:[...(entry.appliedCredentials??[])]})
 export function createCredentialGroupSync(deps:CredentialGroupDeps) {
   async function readReceipt(scope:string,provider:GroupProvider, principal?: Pick<NormalizedRequest,'principalType'|'userId'|'machineId'>) {
     return parse(await deps.read()).entries.find(e=>e.scope===scope&&e.provider===provider&&(principal?samePrincipal(e,principal):principalType(e)==='user'))
@@ -69,20 +84,26 @@ export function createCredentialGroupSync(deps:CredentialGroupDeps) {
     const prior=journal.entries.find(e=>e.scope===normalized.scope&&e.provider===normalized.provider&&sameSlot(e,normalized))
     if(prior&&normalized.generation<prior.generation)fail('AI_GROUP_GENERATION_STALE')
     if(prior&&normalized.generation===prior.generation&&(normalized.fingerprint!==prior.fingerprint||!samePrincipal(effectivePrincipal(prior),normalized)))fail('AI_GROUP_GENERATION_CONFLICT')
+    if(prior&&normalized.generation===prior.generation&&normalized.fingerprint===prior.fingerprint&&(normalized.leaseId??null)!==(prior.leaseId??null))fail('AI_GROUP_LEASE_CONFLICT')
     if(prior&&normalized.fingerprint===prior.fingerprint&&(normalized.payload===null?null:createHash('sha256').update(normalized.payload).digest('hex'))!==prior.payloadDigest)fail('AI_GROUP_PAYLOAD_CONFLICT')
-    if(prior&&!prior.pending&&normalized.fingerprint===prior.fingerprint&&samePrincipal(effectivePrincipal(prior),normalized)){prior.generation=normalized.generation;await deps.write(JSON.stringify(journal));return receipt(prior)}
+    if(prior&&!prior.pending&&normalized.fingerprint===prior.fingerprint&&samePrincipal(effectivePrincipal(prior),normalized)){prior.generation=normalized.generation;prior.assignmentGeneration=normalized.assignmentGeneration??normalized.generation;prior.leaseId=normalized.leaseId;await deps.write(JSON.stringify(journal));return receipt(prior)}
     const payloadDigest=normalized.payload===null?null:createHash('sha256').update(normalized.payload).digest('hex')
     if(prior&&normalized.fingerprint===prior.fingerprint&&payloadDigest!==prior.payloadDigest)fail('AI_GROUP_PAYLOAD_CONFLICT')
     const before=new Set(await deps.snapshot(normalized.provider))
     const desired=normalized.payload===null?[]:[...new Set(deps.incoming(normalized.provider,normalized.payload))]
     if(desired.length>500||desired.some(value=>!id(value)))fail('AI_GROUP_INVALID_INPUT')
     const managed=normalized.payload===null?[]:(deps.managedIdentities?.(normalized.provider,normalized.payload)??[]).filter(value=>desired.includes(value))
-    const entry:Entry={scope:normalized.scope,principalType:normalized.principalType,userId:normalized.userId,...(normalized.machineId?{machineId:normalized.machineId}:{}),provider:normalized.provider,generation:normalized.generation,fingerprint:normalized.fingerprint,payloadDigest,desired,managed,
+    const entry:Entry={scope:normalized.scope,principalType:normalized.principalType,userId:normalized.userId,...(normalized.machineId?{machineId:normalized.machineId}:{}),provider:normalized.provider,generation:normalized.generation,assignmentGeneration:normalized.assignmentGeneration??normalized.generation,leaseId:normalized.leaseId,fingerprint:normalized.fingerprint,payloadDigest,desired,managed,appliedCredentials:[],
       owned:[...new Set([...(prior?.owned??[]),...desired.filter(value=>!before.has(value))])],pending:true}
     journal.entries=journal.entries.filter(e=>!(e.scope===normalized.scope&&e.provider===normalized.provider&&sameSlot(e,normalized)))
     journal.entries.push(entry)
     await deps.write(JSON.stringify(journal))
-    if(normalized.payload!==null)await deps.apply(normalized.provider,normalized.payload,prior?.owned??[])
+    if(normalized.payload!==null) {
+      const applied=await deps.apply(normalized.provider,normalized.payload,prior?.owned??[])
+      const appliedCredentials=deps.appliedCredentials?.(normalized.provider,normalized.payload,applied)??[]
+      if(!validAppliedCredentials(appliedCredentials))fail('AI_GROUP_INVALID_PAYLOAD')
+      entry.appliedCredentials=appliedCredentials
+    }
     const after=new Set(await deps.snapshot(normalized.provider))
     if(desired.some(identity=>!after.has(identity)))fail('AI_GROUP_INSTALL_INCOMPLETE')
     const related=journal.entries.filter(e=>e.provider===normalized.provider)

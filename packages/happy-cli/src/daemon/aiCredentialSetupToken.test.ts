@@ -11,6 +11,7 @@ import {
   captureSaycodeAgentEnvironment, honorsManagedAiCredentials, overlayManagedCredentialEnvironment, readSetupTokenResumeSelection, verifyAiAuthSelection,
 } from './sessionEnv'
 import { managedSetupTokenEmail, managedSetupTokenId, setupTokenGroupIdentity, setupTokenRuntimeStatus } from './claudeSetupToken'
+import { createSetupTokenAssignmentRecipient, sealSetupTokenAssignment } from './setupTokenAssignmentWire'
 
 vi.mock('cross-spawn', () => ({ spawn: vi.fn(() => ({ pid: 123 })) }))
 
@@ -119,6 +120,53 @@ const stored = (id: string, generation: number, token: string, extra: Partial<Sl
   const { number: _n, ...account } = managed(id, generation, token)
   return { number: 2, usageStatus: 'unavailable', ...account, ...extra }
 }
+
+describe('sealed setup-token group assignment', () => {
+  it('opens a real sealed assignment, records correlation, and rejects a mismatched outer context', async () => {
+    const machine = fakeMachine([], null)
+    const recipient = createSetupTokenAssignmentRecipient()
+    const assignment = {
+      version: 1 as const,
+      scope: 'company-1',
+      userId: 'user-1',
+      machineId: 'machine-1',
+      provider: 'claude' as const,
+      generation: 1,
+      fingerprint: '1'.padStart(64, '0'),
+      leaseId: 'lease-1',
+      expiresAt: NOW + 10_000,
+      payload: payload(managed(A, 1, fakeToken('sealed'))),
+    }
+    const sealedPayload = sealSetupTokenAssignment(assignment, recipient.publicKey)
+    const receipt = await machine.runtime.setupTokenGroupSync({
+      version: 1, scope: assignment.scope, userId: assignment.userId, provider: assignment.provider,
+      credentialType: 'setup_token', machineId: assignment.machineId, generation: assignment.generation,
+      fingerprint: assignment.fingerprint, payload: null, sealedPayload,
+    }, 'machine-1', recipient)
+    expect(receipt).toMatchObject({ assignmentGeneration: 1, leaseId: 'lease-1', appliedCredentials: [{ managedAccountId: A, credentialGeneration: 1 }] })
+    await expect(machine.runtime.setupTokenGroupSync({
+      version: 1, scope: 'other-company', userId: assignment.userId, provider: assignment.provider,
+      credentialType: 'setup_token', machineId: assignment.machineId, generation: assignment.generation,
+      fingerprint: assignment.fingerprint, payload: null, sealedPayload,
+    }, 'machine-1', recipient)).rejects.toThrow('AI_GROUP_CONTEXT_CONFLICT')
+  })
+
+  it('fails closed on the assignment kill switch before probing or changing credentials', async () => {
+    const machine = fakeMachine([], null, { env: { APLUS_SETUP_TOKEN_ASSIGNMENT_KILL_SWITCH: 'on' } })
+    const recipient = createSetupTokenAssignmentRecipient()
+    const assignment = {
+      version: 1 as const, scope: 'company-1', userId: 'user-1', machineId: 'machine-1', provider: 'claude' as const,
+      generation: 1, fingerprint: '1'.padStart(64, '0'), leaseId: 'lease-1', expiresAt: NOW + 10_000,
+      payload: payload(managed(A, 1, fakeToken('disabled'))),
+    }
+    await expect(machine.runtime.setupTokenGroupSync({
+      version: 1, scope: assignment.scope, userId: assignment.userId, provider: assignment.provider,
+      credentialType: 'setup_token', machineId: assignment.machineId, generation: assignment.generation,
+      fingerprint: assignment.fingerprint, payload: null, sealedPayload: sealSetupTokenAssignment(assignment, recipient.publicKey),
+    }, 'machine-1', recipient)).rejects.toThrow('CLAUDE_SETUP_TOKEN_ASSIGNMENT_DISABLED')
+    expect(machine.calls).toEqual([])
+  })
+})
 
 describe('managed Claude setup-token runtime', () => {
   it.each(['plain', 'tmux'] as const)('refuses a default Claude %s launch when assignment arrives during preparation', async (adapter) => {
@@ -252,6 +300,10 @@ describe('managed Claude setup-token runtime', () => {
     const { runtime, calls, state } = fakeMachine([], null)
     const receipt = await runtime.groupSync(sync(1, payload(managed(A, 1, fakeToken('a')), { ...managed(B, 1, fakeToken('b')), number: 2 })))
     expect(receipt.reconciled).toBe(true)
+    expect(receipt.appliedCredentials).toEqual([
+      { managedAccountId: A, credentialGeneration: 1 },
+      { managedAccountId: B, credentialGeneration: 1 },
+    ])
     expect(state.slots.map(slot => [slot.managedAccountId, slot.credentialGeneration])).toEqual([[A, 1], [B, 1]])
     expect(state.active).toBe(1)
     expect(inference(calls)).toEqual([])

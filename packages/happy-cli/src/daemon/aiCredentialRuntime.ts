@@ -34,6 +34,7 @@ import {
 import { SETUP_TOKEN_BINDING_ENV, formatSetupTokenBinding, overlayManagedCredentialEnvironment, type AiAuthSelection, type SetupTokenBinding } from './sessionEnv'
 import { readTrustedStudioOrigin, type SetupTokenBindingVerifier } from './setupTokenBindingProof'
 import { CLAUDE_AUTH_OVERRIDE_ENV_KEYS } from '@/claude/utils/claudeAuthOverrideEnv'
+import { openSetupTokenAssignment, type SetupTokenAssignmentRecipient } from './setupTokenAssignmentWire'
 import { HAPPY_AI_AUTH_SOURCE_ENV } from '@/usage/aiAuthSource'
 import {
   cswapAtLeastPinned, isManagedSetupTokenAccount, managedSetupTokenEmail, managedSetupTokenId, parseCswapVersion, sameManagedSetupToken,
@@ -1538,6 +1539,25 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     managedIdentities: (selected, payload) => selected !== 'claude' ? [] : (JSON.parse(payload).accounts as Array<Record<string, unknown>>)
       .filter(account => account?.credentialType === 'setup_token' && typeof account.managedAccountId === 'string')
       .map(account => setupTokenGroupIdentity(account.managedAccountId as string)),
+    appliedCredentials: (selected, payload, applied) => {
+      if (selected !== 'claude') return []
+      const managedPairs = (accounts: unknown) => (Array.isArray(accounts) ? accounts : [])
+        .filter((account): account is Record<string, unknown> => isObject(account) && account.credentialType === 'setup_token'
+          && typeof account.managedAccountId === 'string' && Number.isSafeInteger(account.credentialGeneration) && Number(account.credentialGeneration) >= 1)
+        .map(account => ({ managedAccountId: account.managedAccountId as string, credentialGeneration: account.credentialGeneration as number }))
+      const key = (pair: { managedAccountId: string; credentialGeneration: number }) => `${pair.managedAccountId}:${pair.credentialGeneration}`
+      const expected = managedPairs(JSON.parse(payload).accounts).map(key)
+      // Only cswap's verified import proves what was applied; the requested payload never does.
+      const verified = isObject(applied) && Array.isArray(applied.verifiedAccounts) ? managedPairs(applied.verifiedAccounts) : null
+      if (expected.length > 0 && !verified) throw new AiCredentialRuntimeError('AI_GROUP_RECEIPT_INVALID')
+      const result = verified ?? []
+      const actual = result.map(key)
+      if (new Set(expected).size !== expected.length || new Set(actual).size !== actual.length
+        || expected.length !== actual.length || expected.some(pair => !actual.includes(pair))) {
+        throw new AiCredentialRuntimeError('AI_GROUP_RECEIPT_INVALID')
+      }
+      return result
+    },
     apply: async (selected, payload, owned) => {
       const marker = await readTrialMarker()
       if (marker.leases[selected] || (selected === 'claude' && marker.leases.zai)) throw new AiCredentialRuntimeError('AI_CREDENTIAL_MERGE_UNSUPPORTED')
@@ -1556,6 +1576,42 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
         && !await setupTokenRuntimeSupported()) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
       return groups.sync(input)
     }))
+  }
+
+  /** Opens the customer-key relayed NaCl assignment and then uses the normal scoped journal path. */
+  async function setupTokenGroupSync(input: unknown, machineId: string, recipient: SetupTokenAssignmentRecipient) {
+    return withSafeErrors('AI_GROUP_SYNC_FAILED', async () => {
+      const value = input as Record<string, unknown> | null
+      if (!isObject(value) || value.version !== 1 || value.provider !== 'claude' || value.credentialType !== 'setup_token'
+        || value.payload !== null || value.machineId !== machineId || typeof value.machineId !== 'string'
+        || typeof value.sealedPayload !== 'object' || value.sealedPayload === null || Array.isArray(value.sealedPayload)) {
+        throw new AiCredentialRuntimeError('AI_GROUP_INVALID_INPUT')
+      }
+      if (['1', 'true', 'on'].includes((deps.env.APLUS_SETUP_TOKEN_ASSIGNMENT_KILL_SWITCH ?? '').toLowerCase())) {
+        throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_ASSIGNMENT_DISABLED')
+      }
+      if (!await setupTokenRuntimeSupported()) throw new AiCredentialRuntimeError('CLAUDE_SETUP_TOKEN_UNSUPPORTED')
+      let context: ReturnType<typeof openSetupTokenAssignment>
+      try {
+        context = openSetupTokenAssignment(value.sealedPayload, recipient, deps.now())
+      } catch (error) {
+        if (error instanceof Error && /^SETUP_TOKEN_/.test(error.message)) {
+          throw new AiCredentialRuntimeError(error.message)
+        }
+        throw error
+      }
+      if (context.scope !== value.scope || context.userId !== value.userId || context.machineId !== value.machineId
+        || context.provider !== value.provider || context.generation !== value.generation || context.fingerprint !== value.fingerprint
+        || context.leaseId.length === 0
+        || ('leaseId' in value && (typeof value.leaseId !== 'string' || value.leaseId !== context.leaseId))
+        || ('assignmentGeneration' in value && (value.assignmentGeneration !== context.generation))) {
+        throw new AiCredentialRuntimeError('AI_GROUP_CONTEXT_CONFLICT')
+      }
+      return groupSync({
+        version: 1, scope: context.scope, userId: context.userId, provider: 'claude', generation: context.generation,
+        assignmentGeneration: context.generation, fingerprint: context.fingerprint, leaseId: context.leaseId, payload: context.payload,
+      })
+    })
   }
 
   async function purgeManagedProvider(selected: AiCredentialProvider): Promise<void> {
@@ -2107,7 +2163,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     })
   }
 
-  return { launchSession, personalSchedulerTick, stopPersonalScheduler, tokenProbe, collectorProbe, capture, apply, groupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex', principal?: { principalType: 'machine'; machineId: string }) => serialize(() => groups.receipt(scope, selected, principal ? { ...principal, userId: principal.machineId } : undefined)), purge, status, verify, rotation, sessionEnvironment, capabilities: async (machineId?: string) => { const setupToken = await setupTokenRuntimeSupported(); const collector = Boolean(machineId) && await collectorCapability(); const personal = await tokenProbeCapability(); return { version: 1, ...(personal ? { tokenProbeVersion: 1 } : {}), ...(collector ? { collectorProbeVersion: 1 } : {}), groupAssignmentVersion: 1, sharedMachineAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
+  return { launchSession, personalSchedulerTick, stopPersonalScheduler, tokenProbe, collectorProbe, capture, apply, groupSync, setupTokenGroupSync, groupReceipt: (scope: string, selected: 'claude' | 'codex', principal?: { principalType: 'machine'; machineId: string }) => serialize(() => groups.receipt(scope, selected, principal ? { ...principal, userId: principal.machineId } : undefined)), purge, status, verify, rotation, sessionEnvironment, capabilities: async (machineId?: string) => { const setupToken = await setupTokenRuntimeSupported(); const collector = Boolean(machineId) && await collectorCapability(); const personal = await tokenProbeCapability(); return { version: 1, ...(personal ? { tokenProbeVersion: 1 } : {}), ...(collector ? { collectorProbeVersion: 1 } : {}), groupAssignmentVersion: 1, sharedMachineAssignmentVersion: 1, activeSelectionVersion: 1, verificationVersion: 1, verificationScopes: ['accounts', 'active'], applyModes: ['merge', 'replace', 'repair'],
     // Managed setup-token import with metadata verification, only on the marked cswap token runtime.
     ...(setupToken ? { setupTokenVersion: 1, setupTokenStatusVersion: 1 } : {}),
     // Advertised only when a server-signed binding proof can actually be verified here.

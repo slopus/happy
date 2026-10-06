@@ -639,13 +639,23 @@ describe('ApiMachineClient socket reconnection', () => {
         expect(writeFile).not.toHaveBeenCalled();
     });
 
-    it('routes group mutation separately and retains legacy status while exposing only group receipts',async()=>{
+    it('keeps legacy group-sync compatible and routes managed setup-token assignments to the bound lane',async()=>{
         const client=new ApiMachineClient('fake-token',makeMachine());
-        const runtime={groupSync:vi.fn(async value=>value),groupReceipt:vi.fn(async()=>({reconciled:true})),status:vi.fn(async()=>({installed:false}))};
+        const runtime={groupSync:vi.fn(async value=>value),setupTokenGroupSync:vi.fn(async value=>value),groupReceipt:vi.fn(async()=>({reconciled:true})),status:vi.fn(async()=>({installed:false}))};
         client.setRPCHandlers({spawnSession:vi.fn(),stopSession:vi.fn(),requestShutdown:vi.fn(),portRegistry:{} as any,aiCredentialRuntime:runtime as any});
         const handler=(method:string)=>(client as any).rpcHandlerManager.registerHandler.mock.calls.find(([name]:[string])=>name===method)[1];
-        const input={version:1,scope:'company',provider:'claude'};
+        const input={version:1,scope:'company',provider:'claude',payload:JSON.stringify({accounts:[{credentialType:'oauth',email:'oauth@example.com'}]})};
         await handler('ai-credential:group-sync')(input);expect(runtime.groupSync).toHaveBeenCalledWith(input);
+        const groupRegistration=(client as any).rpcHandlerManager.registerHandler.mock.calls
+            .find(([method]:[string])=>method==='ai-credential:group-sync');
+        expect(groupRegistration?.[2]).toBeUndefined();
+        await expect(Promise.resolve().then(() => handler('ai-credential:group-sync')({ ...input, provider:'claude', payload:JSON.stringify({accounts:[{credentialType:'setup_token',managedAccountId:'managed-1'}]}) })))
+            .rejects.toThrow('AI_GROUP_SETUP_TOKEN_REQUIRES_SEALED_RPC');
+        const setupRegistration=(client as any).rpcHandlerManager.registerHandler.mock.calls
+            .find(([method]:[string])=>method==='ai-credential:setup-token-group-sync');
+        expect(setupRegistration?.[2]).toEqual({customerBound:true});
+        await handler('ai-credential:setup-token-group-sync')({ version:1 });
+        expect(runtime.setupTokenGroupSync).toHaveBeenCalledWith({ version:1 }, expect.any(String), expect.objectContaining({ keyId: expect.any(String) }));
         await handler('ai-credential:status')({provider:'claude'});expect(runtime.status).toHaveBeenCalledWith({provider:'claude'});
         expect(await handler('ai-credential:status')({provider:'claude',groupScope:'company'})).toEqual({reconciled:true});
         expect(runtime.groupReceipt).toHaveBeenCalledWith('company','claude');
@@ -674,9 +684,27 @@ describe('ApiMachineClient socket reconnection', () => {
         });
         const handler = (client as any).rpcHandlerManager.registerHandler.mock.calls
             .find(([method]: [string]) => method === 'ai-credential:capabilities')?.[1];
-        expect(handler({})).toEqual({ version: 1, applyModes: ['merge', 'replace'] });
+        await expect(handler({})).resolves.toEqual({ version: 1, applyModes: ['merge', 'replace'] });
         // The handler passes this machine's id so collector capability can be machine-scoped.
         expect(capabilities).toHaveBeenCalledWith(expect.any(String));
+    });
+
+    it('advertises a sealed assignment recipient only for supported runtimes and rotates it per client incarnation', async () => {
+        const runtime = {
+            capabilities: vi.fn(async () => ({ version: 1, setupTokenVersion: 1, setupTokenStatusVersion: 1 })),
+            setupTokenGroupSync: vi.fn(), groupSync: vi.fn(), status: vi.fn(), groupReceipt: vi.fn(),
+        } as any;
+        const makeClient = () => {
+            const client = new ApiMachineClient('fake-token', makeMachine());
+            client.setRPCHandlers({ spawnSession: vi.fn(), stopSession: vi.fn(), requestShutdown: vi.fn(), portRegistry: {} as any, aiCredentialRuntime: runtime });
+            return (client as any).rpcHandlerManager.registerHandler.mock.calls
+                .find(([method]: [string]) => method === 'ai-credential:capabilities')[1] as () => Promise<Record<string, unknown>>;
+        };
+        const first = await makeClient()();
+        const second = await makeClient()();
+        expect(first).toMatchObject({ setupTokenAssignmentVersion: 1, setupTokenSealedPayloadVersion: 1, setupTokenRecipient: { keyId: expect.any(String), publicKey: expect.any(String) } });
+        expect(second).toMatchObject({ setupTokenRecipient: { keyId: expect.any(String), publicKey: expect.any(String) } });
+        expect((first.setupTokenRecipient as { keyId: string }).keyId).not.toBe((second.setupTokenRecipient as { keyId: string }).keyId);
     });
 
     it('rejects malformed additional directories before spawning', async () => {
