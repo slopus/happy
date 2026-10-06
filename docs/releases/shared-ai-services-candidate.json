@@ -1,0 +1,563 @@
+{
+  "schema": 1,
+  "status": "unpublished-local-candidate",
+  "productionSwitch": "blocked",
+  "observedAtUtc": "2026-10-05T20:48:56.913036+00:00",
+  "registry": "https://registry.npmjs.org",
+  "registryObservations": [
+    {
+      "package": "@wangjs-jacky/paws-agent",
+      "status": 200,
+      "distTags": {
+        "next": "0.1.0-beta.4",
+        "latest": "0.2.0"
+      },
+      "versions": [
+        "0.1.0-beta.2",
+        "0.1.0-beta.3",
+        "0.1.0-beta.4",
+        "0.1.0",
+        "0.2.0"
+      ]
+    },
+    {
+      "package": "@wangjs-jacky/paws-connect-ui",
+      "status": 404,
+      "interpretation": "No public package metadata returned; this does not prove publish permission."
+    }
+  ],
+  "pawsCodeCommit": "00a426aaeb59cb70a12efd627646150fe141bea4",
+  "advisorCodeCommit": "c66c820a2a26a9450abc212928590181b7c5d683",
+  "protocol": "ai-services/1",
+  "releaseVersionSelected": false,
+  "finalReview": "independent-review-passed-under-shared-storage-contract",
+  "realAcceptance": "incomplete",
+  "dailyUse": "pending",
+  "sourceProvenance": "Local task records associate these artifacts with the commits below. Tarballs contain no gitHead. These are not tagged publication artifacts. Repack and validate the same release commit before publication.",
+  "artifacts": [
+    {
+      "name": "@wangjs-jacky/paws-agent",
+      "version": "0.3.0",
+      "sourceChangeCommit": "00a426aaeb59cb70a12efd627646150fe141bea4",
+      "path": "examples/ai-service-smoke/vendor/wangjs-jacky-paws-agent-0.3.0.tgz",
+      "advisorPath": "vendor/paws/wangjs-jacky-paws-agent-0.3.0.tgz",
+      "bytes": 192311,
+      "sha256": "184e901a14a7115b29ffd4f0707f768d2595d9daf9b6ae0047b81fa96ba10613",
+      "exports": [
+        ".",
+        "./node",
+        "./browser",
+        "./package.json",
+        "./services",
+        "./services/browser",
+        "./services/node"
+      ],
+      "files": [
+        {
+          "path": "package/dist/browser.cjs",
+          "size": 18988,
+          "sha256": "ca7e3411271e2619ee8fdd007153d8077edd88ee467421d8ef139cae361ac3c2"
+        },
+        {
+          "path": "package/dist/encryption-CYxrsYeF.cjs",
+          "size": 4509,
+          "sha256": "3a980d8809890f9441d21571c820b40eee0b7a231842499d33ad16ae36e1219e"
+        },
+        {
+          "path": "package/dist/index.cjs",
+          "size": 840,
+          "sha256": "7ceec8b8fa200148d5d2ab5d03ca419324280f923e171ff5567773949e9c84d9"
+        },
+        {
+          "path": "package/dist/node.cjs",
+          "size": 1405,
+          "sha256": "b62257c3e5a965511f4aae732a7cd7eeac9ff16c502c5ec9e53b74f8deb9e5ec"
+        },
+        {
+          "path": "package/dist/nodeCredentials-BGQFL8Vl.cjs",
+          "size": 1673,
+          "sha256": "a7232ea0ae69e683d820d440d4c35179e482af91dd7c50221119c060214e1bae"
+        },
+        {
+          "path": "package/dist/nodePlatformTransport-GRMX5VZp.cjs",
+          "size": 5979,
+          "sha256": "c02dbf4211c9e44aba350c35b2c236f023a2e2fffd2686bb0706ad9af6f27951"
+        },
+        {
+          "path": "package/dist/PawsAgentClient-_FclH5ie.cjs",
+          "size": 59612,
+          "sha256": "730198517cee8595b1309c16f0ebd852b77184604a1202d00615eecd2d384348"
+        },
+        {
+          "path": "package/dist/platformTransport-BuvydTJK.cjs",
+          "size": 13856,
+          "sha256": "46f7f9ba444d973df0d736de8ae47319635d9d7d9bbf33c869921d76510b6a34"
+        },
+        {
+          "path": "package/dist/services.browser.cjs",
+          "size": 938,
+          "sha256": "68481deacd4c566d2d4cc299e7825e70409c70ec0fb4dbe1de31f8e1fa398142"
+        },
+        {
+          "path": "package/dist/services.cjs",
+          "size": 612,
+          "sha256": "d13d8183b5eb81fe0b5d8836a037873297a73efba4b31d38ecb11030a2ac9e0d"
+        },
+        {
+          "path": "package/dist/servicesNode.cjs",
+          "size": 869,
+          "sha256": "75e35d777667a689fc7b312875b45bb8ef82885015b801aec981524d798e1beb"
+        },
+        {
+          "path": "package/dist/storage-B2G4iLQx.cjs",
+          "size": 186829,
+          "sha256": "f7fed0d9a8c600c85b9257eec6ae95a76a4fd33a7e42415db266fd25d7030c7c"
+        },
+        {
+          "path": "package/dist/browser.d.cts",
+          "size": 7799,
+          "sha256": "a2ca1a0d734cf5823b5ab80828c885c4fb32a06d9ec670dad1f2623898632013"
+        },
+        {
+          "path": "package/dist/index.d.cts",
+          "size": 11966,
+          "sha256": "5803565e1a0f65d481aa26c1662575ea9f7fb9216df85edaaeb6d0ba991843a2"
+        },
+        {
+          "path": "package/dist/node.d.cts",
+          "size": 2596,
+          "sha256": "8f1e95084ef866bd3d754d63b9ba68c8b461d033344f30538f88609e5bdc74ec"
+        },
+        {
+          "path": "package/dist/services-DDAGY5gF.d.cts",
+          "size": 126465,
+          "sha256": "aba3b71b3bf34626b7ddf1b5cec9163d8d010c41c786b47052a9c2cbf1de9efc"
+        },
+        {
+          "path": "package/dist/services.browser.d.cts",
+          "size": 2067,
+          "sha256": "c1b9dacdae59bee9d9c61a81054e122def32557b5dfc4bd94062314bf7b0c1fd"
+        },
+        {
+          "path": "package/dist/services.d.cts",
+          "size": 1033,
+          "sha256": "5f8f29a9ee0de4346572bcbc6865f6a2e6f9e09e4aac1d963268c08e3cfd433c"
+        },
+        {
+          "path": "package/dist/servicesNode.d.cts",
+          "size": 3022,
+          "sha256": "be19e1cc35619960793cc47a2410ad145bab3aefecfb645f3c925b59427da6b9"
+        },
+        {
+          "path": "package/package.json",
+          "size": 3503,
+          "sha256": "70880a3ad475b458d1af9b5f0b8c4a924146f0baf268d48df4c65ac4f8fa9687"
+        },
+        {
+          "path": "package/README.md",
+          "size": 16413,
+          "sha256": "ad14d5436068a3318256c27ecdc1c714df24c1b1dc97c1e31f040bf53ae44c0c"
+        },
+        {
+          "path": "package/dist/browser.mjs",
+          "size": 17987,
+          "sha256": "25ff3d3326750373a4f7c64ca7c998ca774dcdec6ddac8f09251a9b616e0ff58"
+        },
+        {
+          "path": "package/dist/cli.mjs",
+          "size": 21926,
+          "sha256": "d914dccb1190b3a2d023b534f366e72bb48f9fa72c6f0913b8b5ad45bcf839dc"
+        },
+        {
+          "path": "package/dist/encryption-BsYoKPOz.mjs",
+          "size": 4205,
+          "sha256": "ea525c73098397207c1bbb47a3f15d5426c4ae2c85d20b79358402fac8cc3c46"
+        },
+        {
+          "path": "package/dist/index.mjs",
+          "size": 531,
+          "sha256": "49cff5e69a581aea91191b843b90bbe7e280380dd1e19fc218f04c4ad20c38a1"
+        },
+        {
+          "path": "package/dist/node.mjs",
+          "size": 840,
+          "sha256": "531d4083843d50edb1fbe55ccdc43b3ebae075f97d51b02b11d89f03ccb1e8c6"
+        },
+        {
+          "path": "package/dist/nodeCredentials-BjCy0nu9.mjs",
+          "size": 1578,
+          "sha256": "114e0468e19139f0464bea7b7848035eea48590fb6684dd64c130685720ba995"
+        },
+        {
+          "path": "package/dist/nodePlatformTransport-fnhG_iNw.mjs",
+          "size": 5945,
+          "sha256": "b04a893367a31104a62dfafa71268fc492827f5cca596ff49ed13baf1fa19183"
+        },
+        {
+          "path": "package/bin/paws-agent.mjs",
+          "size": 80,
+          "sha256": "bbebbf2c6556adc4570eff483cf02593e4933095b794b6dde2731d6bb2dfee3d"
+        },
+        {
+          "path": "package/dist/PawsAgentClient-BmNdeT-s.mjs",
+          "size": 59366,
+          "sha256": "ca4d599324a4975ae534a374d33d066fb1569d896621c4a5e2449f5a47612ad9"
+        },
+        {
+          "path": "package/dist/platformTransport-xKbQcJtq.mjs",
+          "size": 13674,
+          "sha256": "bc639e01a77ba13916341cd638166cfca194bcf2aec91bb3461c2c1cf97123d2"
+        },
+        {
+          "path": "package/dist/services.browser.mjs",
+          "size": 555,
+          "sha256": "8bb891932f85bceceb7fc419bd8e0807874b62d40d3490d867405ba5bdc99410"
+        },
+        {
+          "path": "package/dist/services.mjs",
+          "size": 396,
+          "sha256": "87544c0668f5fbb0b068c683800bdae2ac5df097add3ca5e397e1cde47cd365f"
+        },
+        {
+          "path": "package/dist/servicesNode.mjs",
+          "size": 520,
+          "sha256": "9611b3c6b715978ae4415bd695b267db5c60b5ec87867ed6b082c2a6c12f29fa"
+        },
+        {
+          "path": "package/dist/storage-CkzSFCvW.mjs",
+          "size": 186253,
+          "sha256": "a547d286b62fabde7fba88a73ab2ef07302b4cd2ecc76a52012bd5f84c92b580"
+        },
+        {
+          "path": "package/dist/browser.d.mts",
+          "size": 7799,
+          "sha256": "edf28628aba6d7733208672f19b1a8c111c4aa5f823d34cd45393520eabe15c1"
+        },
+        {
+          "path": "package/dist/index.d.mts",
+          "size": 11966,
+          "sha256": "0984bbd7029abdfb63ecf1272270a1f824c3b91eae2b5481baab1176313267ed"
+        },
+        {
+          "path": "package/dist/node.d.mts",
+          "size": 2596,
+          "sha256": "1276cd8834c4a0e6d680a94da2fc158a1fd3df68b8502ae9b70324b6f07e6121"
+        },
+        {
+          "path": "package/dist/services-DDAGY5gF.d.mts",
+          "size": 126465,
+          "sha256": "aba3b71b3bf34626b7ddf1b5cec9163d8d010c41c786b47052a9c2cbf1de9efc"
+        },
+        {
+          "path": "package/dist/services.browser.d.mts",
+          "size": 2067,
+          "sha256": "8941975dc5580af37b41730beb5f91384cca60a68cc75d3e0c9dea6672a9b752"
+        },
+        {
+          "path": "package/dist/services.d.mts",
+          "size": 1033,
+          "sha256": "87d059a0f23614b12928c372ebf27a90f8af513dde87017be9a734dabd131d9c"
+        },
+        {
+          "path": "package/dist/servicesNode.d.mts",
+          "size": 3022,
+          "sha256": "b86b146382c0a97bffd82feaff7df564c94137a96886a4e0668510841c22957e"
+        },
+        {
+          "path": "package/LICENSE",
+          "size": 1081,
+          "sha256": "e251d0448ef3ce023c20ebac9b90a7d8642b1434825838247d6e457668eb3e00"
+        }
+      ],
+      "fileCount": 43
+    },
+    {
+      "name": "@wangjs-jacky/paws-connect-ui",
+      "version": "0.1.0",
+      "sourceChangeCommit": "8d3b034ca4ac9f3a410f0cad01bc2273da64fc0b",
+      "path": "examples/ai-service-smoke/vendor/wangjs-jacky-paws-connect-ui-0.1.0.tgz",
+      "advisorPath": "vendor/paws/wangjs-jacky-paws-connect-ui-0.1.0.tgz",
+      "bytes": 17102,
+      "sha256": "336608ab2da2c24fca13543df030421de932d3ae18a2b42adba9cde67b3954ce",
+      "exports": [
+        ".",
+        "./panel.css",
+        "./package.json"
+      ],
+      "files": [
+        {
+          "path": "package/dist/index.cjs",
+          "size": 24101,
+          "sha256": "c1a4f44bfab7f28792ebe98b7924a51e83dd645bc1630d5222347898ae6cce44"
+        },
+        {
+          "path": "package/dist/panel.css",
+          "size": 4035,
+          "sha256": "1631c71d14abc20ead7dca965277a11961291cc44ed35cb9e587133099f016a8"
+        },
+        {
+          "path": "package/dist/index.d.cts",
+          "size": 896,
+          "sha256": "72d49579c1b2d63a9efd0c978ff856cab049dcba201721153bc54e254a49df2c"
+        },
+        {
+          "path": "package/package.json",
+          "size": 1322,
+          "sha256": "103f45dac3d1e6bbec879f43383a1a28cddc55bb5eb65f5f89ed4b1b17ae4b7e"
+        },
+        {
+          "path": "package/README.md",
+          "size": 4974,
+          "sha256": "3fb985cf1eb5851757edf62cb013a023a3cf2068acdb30d988ef5d03e56ad74d"
+        },
+        {
+          "path": "package/dist/index.mjs",
+          "size": 24064,
+          "sha256": "55efb243bbed7f0a3c8699ab4c70d2d7a576d0fc3f908456bea282f65aa44161"
+        },
+        {
+          "path": "package/dist/index.d.mts",
+          "size": 896,
+          "sha256": "72d49579c1b2d63a9efd0c978ff856cab049dcba201721153bc54e254a49df2c"
+        },
+        {
+          "path": "package/LICENSE",
+          "size": 1081,
+          "sha256": "e251d0448ef3ce023c20ebac9b90a7d8642b1434825838247d6e457668eb3e00"
+        }
+      ],
+      "fileCount": 8
+    }
+  ],
+  "localWebExport": {
+    "status": "passed-final-fix-export",
+    "codeCommit": "a7557dc60f2c1d40f27a1ab00732e08c770cf1e8",
+    "command": "CI=1 APP_ENV=production EXPO_PUBLIC_HAPPY_SERVER_URL=https://47.115.228.20:8443 pnpm --dir packages/happy-app exec expo export --platform web --clear --output-dir ../../.superpowers/sdd/2026-10-05-paws-shared-ai-service/final-web-export",
+    "fileCount": 1014,
+    "totalBytes": 60754700,
+    "fileManifestSha256": "eaa156e6c7dcb294ebe2ec617bc90dd931611c04513a2b64257402cb294efc90",
+    "indexHtmlSha256": "853ff058c2f93e4051008510b02ada1e1875e10621903c9c9114b6a0602f2d07",
+    "entryBundles": [
+      {
+        "path": "_expo/static/js/web/index-2656243a1c0f542bca8ace5ea8406c8f.js",
+        "bytes": 32062,
+        "sha256": "2383e447646c49c2267ff1063f1fb2f6784587857f1bd82ed788a90b91fd09bd"
+      },
+      {
+        "path": "_expo/static/js/web/index-405c0a20c940b8bf83f27fb1cb7fed76.js",
+        "bytes": 34605,
+        "sha256": "2037c28d20cda33209f305fb489e991961f5061440045064fd15d637c1571f07"
+      },
+      {
+        "path": "_expo/static/js/web/index-42fb4e010df6d6bfb04db270e5fc2d77.js",
+        "bytes": 4225,
+        "sha256": "a4ad5d71aff6a6f2f56d49336ac1e6a1ddd809196f6d3cc6437f5a96c4c35ebc"
+      },
+      {
+        "path": "_expo/static/js/web/index-5f5a5aafea1e71d176e9a80d45acef68.js",
+        "bytes": 44221,
+        "sha256": "2d7ec7b321e095fe7109ed43f2f3b5d117bd943ca856dc2a46891c7c49099fe3"
+      },
+      {
+        "path": "_expo/static/js/web/index-DuKHkfLn-7a34246ac3a5a700e8553d7ccd8a7e59.js",
+        "bytes": 2341,
+        "sha256": "67dd7f331650ac10c214c470ee8c220c953cd6a991140d8ee0320ca65d46b7ee"
+      },
+      {
+        "path": "_expo/static/js/web/index-f39a20d128fc59a2ca2ef2f759c42184.js",
+        "bytes": 11690288,
+        "sha256": "ddf34a462db923cdbe1d9b5d1a93a4791bc7fadea13f59d6413188b9b0da45bd"
+      }
+    ],
+    "warning": "Local unstamped export from final modified App source. No upload or deployment. Watchman timed out and Metro used Node fallback; existing package export and environment warnings remain.",
+    "evidenceScope": "Retained final-fix export for unchanged App source at a7557dc6. App has no paws-agent dependency. No App/native rebuild in certainty remediation."
+  },
+  "migrations": [
+    {
+      "path": "packages/happy-server/prisma/migrations/20261005000000_ai_services/migration.sql",
+      "sha256": "b426a821fc0dad6524915bc7e5451b82ab035f248859b78a77b061f87ca864a3"
+    },
+    {
+      "path": "packages/happy-server/prisma/migrations/20261005010000_ai_service_execution/migration.sql",
+      "sha256": "8902e820bdcf2d8c79ec81e59994f229fb3dffd425be5a80bae3386f42fce48d"
+    },
+    {
+      "path": "packages/happy-server/prisma/migrations/20261006000000_ai_service_conversation_creation/migration.sql",
+      "sha256": "b90158a45b09eff6baa4c99ea88832901e84e604725a8e957e42a362ed33dc70"
+    }
+  ],
+  "advisorStaticBuild": {
+    "status": "passed-certainty-remediation-build",
+    "codeCommit": "c66c820a2a26a9450abc212928590181b7c5d683",
+    "scope": "Rebuilt with final concurrent-admission SDK. Full advisor suite101passed/1skipped, including six installed-SDK/journal race cases.",
+    "files": [
+      {
+        "path": "public/client.js",
+        "sha256": "66b169ffb6819a56c7a18cc8e410eb737951700c6972addc7564cb3301892022"
+      },
+      {
+        "path": "public/paws-sdk.js",
+        "sha256": "cc96e9fc9704b6f3a18d5dd1e47dfa8b62b1b9c33d626620d8f91126b9ec5f2d"
+      },
+      {
+        "path": "public/paws-panel.css",
+        "sha256": "1631c71d14abc20ead7dca965277a11961291cc44ed35cb9e587133099f016a8"
+      }
+    ]
+  },
+  "migrationInventoryBase": "f1fec57f212cf9ce8b4bd2788a3a955a3f93ea46",
+  "migrationInventoryCheck": "node scripts/verify-shared-ai-migrations.mjs",
+  "finalFixValidation": {
+    "sdkTests": 27,
+    "nativeProcessAndBindingTests": 32,
+    "serverRouteStoreTests": 13,
+    "packedSdkRouteRerun": 5,
+    "serviceEditorTests": 2,
+    "advisorSuite": {
+      "passed": 94,
+      "skipped": 1
+    },
+    "advisorFinalTargeted": {
+      "journal": 41,
+      "adapter": 20
+    },
+    "typechecks": [
+      "SDK",
+      "CLI",
+      "Server"
+    ],
+    "builds": [
+      "SDK",
+      "CLI",
+      "Server Bun1.4.2",
+      "advisor",
+      "actual second-app browser bundle in packed route harness"
+    ],
+    "realProvider": "NOT EXECUTED",
+    "nativePhone": "NOT EXECUTED",
+    "personalAndFullLegacy": "NOT EXECUTED",
+    "browser": {
+      "operator": "controller",
+      "provider": "Ego",
+      "scope": "final advisor synthetic mobile Web390x844",
+      "receipts": [
+        "kkiFJb",
+        "A26DKm",
+        "vbjDfP",
+        "LUUBmS"
+      ],
+      "checks": [
+        "aggregate local rejection keeps editable draft and attachments; turn POST count unchanged",
+        "remove attachments and retry succeeds",
+        "fresh model refusal releases capacity",
+        "accepted response loss recovers with one original POST"
+      ],
+      "evidenceScope": "Prior d3b126c9 SDK candidate and prior advisor build; retained UI evidence, not evidence for the new SDK concurrency protocol. No browser rerun."
+    },
+    "evidenceScope": "Prior final-fix candidate, before certainty remediation. Old SDK27/CLI32 outputs were transcript-only, not retained log files."
+  },
+  "previousLocalWebExport": {
+    "status": "passed",
+    "codeCommit": "a00d364d74bf5d6101bd4fd789868c0e4b2a8730",
+    "command": "CI=1 APP_ENV=production EXPO_PUBLIC_HAPPY_SERVER_URL=https://47.115.228.20:8443 HAPPY_BUILD_COMMIT_SHA=a00d364d74bf5d6101bd4fd789868c0e4b2a8730 pnpm --dir packages/happy-app exec expo export --platform web --clear --output-dir <isolated-output-directory>",
+    "fileCount": 1014,
+    "totalBytes": 60754684,
+    "fileManifestSha256": "fe47501793188ed4b863cd382c242c924ef13973c56a0f60d9cb9cda7b561bd6",
+    "indexHtmlSha256": "706d46a33b742ec34c2633dd5fee71258d5ee23c365378c31216ef158979cc3d",
+    "entryBundles": [
+      {
+        "path": "_expo/static/js/web/index-2656243a1c0f542bca8ace5ea8406c8f.js",
+        "bytes": 32062,
+        "sha256": "2383e447646c49c2267ff1063f1fb2f6784587857f1bd82ed788a90b91fd09bd"
+      },
+      {
+        "path": "_expo/static/js/web/index-405c0a20c940b8bf83f27fb1cb7fed76.js",
+        "bytes": 34605,
+        "sha256": "2037c28d20cda33209f305fb489e991961f5061440045064fd15d637c1571f07"
+      },
+      {
+        "path": "_expo/static/js/web/index-42fb4e010df6d6bfb04db270e5fc2d77.js",
+        "bytes": 4225,
+        "sha256": "a4ad5d71aff6a6f2f56d49336ac1e6a1ddd809196f6d3cc6437f5a96c4c35ebc"
+      },
+      {
+        "path": "_expo/static/js/web/index-5f5a5aafea1e71d176e9a80d45acef68.js",
+        "bytes": 44221,
+        "sha256": "2d7ec7b321e095fe7109ed43f2f3b5d117bd943ca856dc2a46891c7c49099fe3"
+      },
+      {
+        "path": "_expo/static/js/web/index-91e95adca174c92d2a86636f775b1ce0.js",
+        "bytes": 11690272,
+        "sha256": "021273b3a99bb0e999a97bb3189aacb56a3015a06cee7db0e288d41cc495b21d"
+      },
+      {
+        "path": "_expo/static/js/web/index-DuKHkfLn-7a34246ac3a5a700e8553d7ccd8a7e59.js",
+        "bytes": 2341,
+        "sha256": "67dd7f331650ac10c214c470ee8c220c953cd6a991140d8ee0320ca65d46b7ee"
+      }
+    ],
+    "warning": "Watchman query timed out after 60 seconds. Metro retried with its Node crawler and completed. Existing color-environment warnings were printed. This is an unstamped local export, not an uploaded or deployed release.",
+    "evidenceScope": "Historical T11 export; does not cover final ServiceEditor change."
+  },
+  "certaintyFixValidation": {
+    "sdkServices": {
+      "passed": 43,
+      "log": "sdk-services.log"
+    },
+    "sdkFinalSubmission": {
+      "passed": 17,
+      "overlapWithServices": 16,
+      "log": "sdk-submission-final.log"
+    },
+    "advisor": {
+      "passed": 101,
+      "skipped": 1,
+      "log": "advisor-tests.log"
+    },
+    "actualRoutesPackedSDK": {
+      "passed": 5,
+      "skipped": 1,
+      "log": "packed-route-smoke.log"
+    },
+    "builds": [
+      "SDK tsc/pkgroll",
+      "advisor final bundle",
+      "actual second-app bundle in route harness"
+    ],
+    "typechecks": [
+      "SDK",
+      "Server"
+    ],
+    "red": [
+      "unchanged independent reproducer false not-submitted",
+      "six installed ESM+real journal cases fail before package refresh"
+    ],
+    "green": [
+      "unchanged reproducer both uncertain, original pending retained",
+      "all six installed ESM+real journal cases pass across personal/platform/two SQLite handles"
+    ],
+    "fileCountsDerivedFromTar": {
+      "@wangjs-jacky/paws-agent": 43,
+      "@wangjs-jacky/paws-connect-ui": 8
+    },
+    "realProvider": "NOT EXECUTED",
+    "nativePhone": "NOT EXECUTED",
+    "fullPersonalLegacy": "NOT EXECUTED",
+    "dailyUse": "NOT EXECUTED"
+  },
+  "submissionCoordination": {
+    "storage": "All clients submitting the same bindingId/requestId must share the same durable ServiceStorage namespace and atomic putIfAbsent implementation. Disconnected stores do not coordinate.",
+    "supported": "Single-service host SQLite scope; SDK browser session scope within a tab; remembered shared IndexedDB scope; shared memory for isolated tests only.",
+    "upgrade": "Stop/reload every pre-fix candidate client before enabling this SDK. Mixed old/new submission protocol is unsupported. Unpublished/undeployed feature only.",
+    "retention": "Retain immutable admission outcome for as long as its outbox/request can be retried. No lease expiry or silent evidence reclamation.",
+    "legacy": "Outboxes with no admissionOwner are conservatively uncertain."
+  },
+  "independentReview": {
+    "date": "2026-10-06",
+    "pawsReviewedHead": "776172ba82677abae7cf67e2fbf3135c9b17fbfe",
+    "advisorReviewedHead": "ab19e0ebd243fbfbe9e1e37359b1023f2a14c233",
+    "result": "all-raised-code-findings-addressed-no-new-critical-or-important",
+    "report": "../verification/shared-ai-service-review/certainty-re-review.md",
+    "productionApproved": false
+  }
+}

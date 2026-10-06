@@ -1,10 +1,8 @@
 import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
-import { PGlite } from '@electric-sql/pglite';
-import { PrismaPGlite } from 'pglite-prisma-adapter';
-import { Prisma, PrismaClient } from '@prisma/client';
+import type { PGlite } from '@electric-sql/pglite';
+import { createTestDatabase } from '@/app/aiServices/testDatabase';
+import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
 
 const state = vi.hoisted(() => ({ db: null as unknown as PrismaClient }));
 vi.mock('@/storage/db', () => ({ get db() { return state.db; } }));
@@ -16,23 +14,11 @@ const secret = 'a'.repeat(43);
 const credential = 'b'.repeat(43);
 
 beforeAll(async () => {
-    engine = new PGlite();
-    // Ephemeral test schema from generated Prisma metadata; no production migration.
-    for (const name of ['Account', 'Machine']) {
-        const model = Prisma.dmmf.datamodel.models.find(m => m.name === name)!;
-        const fields = model.fields.filter(f => f.kind !== 'object').map(field => {
-            const sqlType = ({ String: 'TEXT', Int: 'INTEGER', BigInt: 'BIGINT', Boolean: 'BOOLEAN', DateTime: 'TIMESTAMP(3)', Bytes: 'BYTEA', Json: 'JSONB', Float: 'DOUBLE PRECISION' } as Record<string, string>)[field.type];
-            let value = '';
-            if (field.default !== undefined && (typeof field.default !== 'object' || field.default === null)) value = ` DEFAULT '${String(field.default).replace(/'/g, "''")}'`;
-            if (field.default && typeof field.default === 'object' && 'name' in field.default && field.default.name === 'now') value = ' DEFAULT CURRENT_TIMESTAMP';
-            return `"${field.dbName ?? field.name}" ${sqlType}${field.isList ? '[]' : ''}${field.isId ? ' PRIMARY KEY' : field.isUnique ? ' UNIQUE' : ''}${field.isRequired ? ' NOT NULL' : ''}${value}`;
-        });
-        await engine.exec(`CREATE TABLE "${model.dbName ?? name}" (${fields.join(',')})`);
-    }
-    await engine.exec(await readFile(resolve('prisma/migrations/20261003010000_app_delegation/migration.sql'), 'utf8'));
-    await engine.exec(await readFile(resolve('prisma/migrations/20261003080000_app_chat_models/migration.sql'), 'utf8'));
-    state.db = new PrismaClient({ adapter: new PrismaPGlite(engine) });
+    const context = await createTestDatabase();
+    engine = context.pg;
+    state.db = context.database;
     await state.db.account.create({ data: { id: owner, publicKey: 'test' } });
+    await state.db.codexAccountProfile.create({ data: { id: 'managed-test-profile', accountId: owner, displayName: 'Test', externalAccountFingerprint: 'test-identity', credential: Buffer.from('encrypted') } });
     await state.db.machine.create({ data: { id: machineId, accountId: owner, metadata: 'encrypted', defaultCodexAccountProfileId: 'managed-test-profile' } });
 }, 30_000);
 afterAll(async () => { await state.db?.$disconnect(); await engine?.close(); });

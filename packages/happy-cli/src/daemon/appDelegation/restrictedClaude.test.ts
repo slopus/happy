@@ -36,3 +36,16 @@ describe('restricted Claude Code process', () => {
     }, 15_000);
     it('refuses arbitrary model/flag injection before spawn', () => expect(() => claudeChatArgs('--dangerously-skip-permissions')).toThrow());
 });
+
+for (const [native, expected] of [['rate_limit','quota-exhausted'],['model_not_found','model-unavailable'],['authentication_failed','account-login-required'],['unknown','execution-interrupted']]) {
+    it(`sanitizes Claude assistant error ${native}`, async () => {
+        const f = await fixture([{ type: 'assistant', error: native, message: { content: [{ type: 'text', text: 'private login quota /secret/path' }] } }]);
+        const text: string[] = [];
+        await expect(runRestrictedClaude(f.binary, f.cwd, [{ role: 'user', text: 'hi' }], new AbortController().signal, value => text.push(value), 'sonnet')).rejects.toThrow(expected);
+        expect(text).toEqual([]);
+    });
+}
+it('does not infer login or quota from Claude result diagnostics', async () => {
+    const f = await fixture([{type:'result',subtype:'error_during_execution',is_error:true,errors:['login rate_limit private token']}]);
+    await expect(runRestrictedClaude(f.binary,f.cwd,[{role:'user',text:'hi'}],new AbortController().signal,()=>{},'sonnet')).rejects.toThrow('execution-interrupted');
+});

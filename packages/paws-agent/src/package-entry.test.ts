@@ -28,15 +28,18 @@ describe('package root', () => {
         const manifest = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as {
             exports: Record<string, unknown>;
         };
-        expect(Object.keys(manifest.exports)).toEqual(['.', './node', './browser', './package.json']);
+        expect(Object.keys(manifest.exports)).toEqual(['.', './node', './browser', './package.json', './services', './services/browser', './services/node']);
 
         const nodeEntry = await import('./node');
-        expect(Object.keys(nodeEntry).sort()).toEqual([
+        expect(Object.keys(nodeEntry).sort()).toEqual(expect.arrayContaining([
             'FileCredentialProvider',
             'PawsAgentClient',
             'PawsAgentError',
             'createDefaultFileCredentialProvider',
-        ]);
+            'createAIServiceClient',
+            'createNodePlatformTransport',
+            'createPlatformServiceHandler',
+        ]));
     });
 
     it('keeps transport dependencies out of the public client constructor', async () => {

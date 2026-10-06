@@ -1,0 +1,22 @@
+
+ RUN  v3.2.4 /Users/jacky/jacky-github/happy--shared-ai-services/packages/happy-server
+
+ ✓ sources/app/aiServices/turns.spec.ts (1 test) 7814ms
+   ✓ deduplicates turns, fences cancel/completion, and never replays expired leases  4097ms
+ ✓ sources/app/aiServices/transport.spec.ts (7 tests) 8952ms
+   ✓ authenticates actual callback transport, pins profile after default change, redeems latest refresh, and preserves legacy default grants  1605ms
+   ✓ recovers a lost binding-create HTTP response with the same application conversation and no second probe  390ms
+stdout | sources/app/aiServices/smokeAcceptance.spec.ts > serves a real packaged panel and bridge without exposing the platform receipt
+Synthetic second app: http://127.0.0.1:64921 (actual routes; no native provider).
+
+ ✓ sources/app/aiServices/smokeAcceptance.spec.ts (6 tests | 1 skipped) 11824ms
+   ✓ executes both packaged applications and rejects foreign bindings, owner APIs, origins and tool permissions  1587ms
+   ✓ keeps old bindings while new defaults change and rejects unsupported reasoning  846ms
+   ✓ recovers before and after acceptance losses with zero duplicate executions, and fences cancellation  1303ms
+   ✓ fails closed for offline, login loss, quota and revocation without changing payer or binding  608ms
+
+ Test Files  3 passed (3)
+      Tests  13 passed | 1 skipped (14)
+   Start at  05:24:59
+   Duration  15.90s (transform 1.65s, setup 0ms, collect 5.26s, tests 28.59s, environment 0ms, prepare 1.32s)
+

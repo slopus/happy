@@ -12,9 +12,51 @@ import { encodeBase64, decodeBase64 } from '@/encryption/base64';
 import { encryptBox } from '@/encryption/libsodium';
 import { sync } from '@/sync/sync';
 import { useAllMachines } from '@/sync/storage';
-import { appAuthorizationRequest, type AppAuthorizationRequest } from '@/sync/apiAppDelegation';
+import { appAuthorizationProtocol, sealServiceConsent, appAuthorizationRequest, type AppAuthorizationRequest } from '@/sync/apiAppDelegation';
+
+import { createAIServicesAPI, type AIServiceWorker, type ServicePairing, type ServiceSnapshot } from '@/sync/apiAIServices';
+import { listCodexAccounts, type CodexAccountProfile } from '@/sync/apiCodexAccounts';
+import { ServiceConsent } from '@/components/aiServices/ServiceConsent';
 
 export default function AuthorizeApp() {
+    const { protocol, id } = useLocalSearchParams<{ protocol?: string; id: string }>();
+    const kind = appAuthorizationProtocol(protocol);
+    if (kind === 'unsupported') return <AppAuthorizationLayout><AuthorizationNotice title="不支持此授权协议" message="请更新 Paws，或从应用重新连接。" error /></AppAuthorizationLayout>;
+    return kind === 'ai-services/1' ? <AuthorizeService key={id} id={id} /> : <AuthorizeLegacyApp />;
+}
+
+function AuthorizeService({ id }: { id: string }) {
+    const { credentials } = useAuth();
+    const router = useRouter();
+    const machines = useAllMachines({ includeOffline: true }).map(m => ({ id: m.id, name: m.metadata?.displayName || m.metadata?.host || m.id }));
+    const api = React.useMemo(() => credentials ? createAIServicesAPI(credentials.token) : null, [credentials?.token]);
+    const [data, setData] = React.useState<{ pairing: ServicePairing; services: ServiceSnapshot[]; workers: AIServiceWorker[]; accounts: CodexAccountProfile[] } | null>(null);
+    const [error, setError] = React.useState('');
+    React.useEffect(() => {
+        let live = true; setData(null); setError('');
+        if (!api || !credentials || !id || !/^[0-9a-f-]{36}$/.test(id)) { setError('请登录 Paws 并使用有效授权链接。'); return; }
+        void Promise.all([api.pairing(id), api.list().then(r => Promise.all(r.services.map(s => api.read(s.id)))), api.workers(), listCodexAccounts(credentials)])
+            .then(([pairing, services, workers, accounts]) => { if (live) setData({ pairing, services, workers: workers.workers, accounts: accounts.profiles }); })
+            .catch(e => { if (live) setError(e.message); });
+        return () => { live = false; };
+    }, [api, id]);
+    return <AppAuthorizationLayout>
+        <Stack.Screen options={{ title: '授权 AI 服务' }} />
+        {error ? <AuthorizationNotice title="无法读取授权请求" message={error} error /> : null}
+        {!data && !error ? <ActivityIndicator accessibilityLabel="正在读取授权请求" /> : null}
+        {data && api ? <ServiceConsent pairing={data.pairing} services={data.services} workers={data.workers} accounts={data.accounts} machines={machines} api={api}
+            onManage={() => router.push('/settings/ai-services' as never)}
+            onApprove={async (service, scope) => {
+                // Do not approve a silently changed default or stale recipient key.
+                const [latest, workers] = await Promise.all([api.read(service.service.id), api.workers()]);
+                if (latest.service.revision !== service.service.revision || !latest.service.enabled) throw new Error('服务配置已改变。请从应用重新发起授权并核对配置。');
+                const envelopes = await sealServiceConsent({ pairing: data.pairing, service: latest.service, scope, workers: workers.workers });
+                await api.approve(data.pairing.id, envelopes);
+            }} /> : null}
+    </AppAuthorizationLayout>;
+}
+
+function AuthorizeLegacyApp() {
     const { id } = useLocalSearchParams<{ id: string }>();
     const { credentials } = useAuth();
     const machines = useAllMachines({ includeOffline: true });

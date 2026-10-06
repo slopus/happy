@@ -1,18 +1,26 @@
 /** Bounded leased worker for application-owned chats; independent of unrestricted RPC. */
-import { access, readFile, mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
 import { parseAppChatSelection, type AppChatSelection } from '@slopus/happy-wire';
 import { runRestrictedClaude, verifyRestrictedClaude } from './restrictedClaude';
-import { acquireMachineLock, processAlive } from './workerLock';
+import { createSharedServiceWorker } from './sharedServiceWorker';
+import { acquireMachineLock } from './workerLock';
 import { configuration } from '@/configuration';
 import { logger } from '@/ui/logger';
 import type { Machine } from '@/api/types';
 import { decodeBase64, decrypt, decryptLegacy, encodeBase64, encryptLegacy } from '@/api/encryption';
-import { readCodexAccountLaunchState } from '@/codex/codexAccountLaunchState';
+import { recoverAppChatCredentialJobs } from './credentialRecovery';
+import { createRuntimeProcessGuard } from './runtimeProcessState';
 import { CodexAccountLaunch, type AccountApi } from '@/daemon/codexAccountLaunch';
 import { runRestrictedCodex, verifyRestrictedCodex } from './restrictedCodex';
+
+/** T4 composes this runtime with authenticated discovery and turn credential grants. Legacy claims below stay on their original protocol. */
+export { createBoundServiceRuntime } from './executionBinding';
+export { recoverAppChatCredentialJobs } from './credentialRecovery';
+export type { TrustedApplicationLoader, TrustedBusinessPromptResolver } from './applicationPolicy';
+export type { BoundRuntimeContext, BoundCredentialLease, BoundWorkspace, BoundTurnInput, BoundTurnEvent, BoundServiceRuntime } from './executionBinding';
 
 interface Job { protocol?: number; id: string; conversationId: string; grantId: string; appId: string; machineId: string; expiresAt: string | null; envelope: string; input: string; lease: string }
 const messageSchema = z.object({ role: z.enum(['user', 'assistant']), text: z.string().max(500_000), selection: z.object({ engine: z.enum(['codex', 'claude']), model: z.string().max(100) }).strict().optional(), actualModel: z.string().max(100).optional(), images: z.array(z.string().max(3_000_000).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/)).max(4).optional() }).strict();
@@ -30,6 +38,7 @@ export function startAppChatWorker(token: string, machine: Machine): () => void 
     const request = async <T>(path: string, body: unknown, method = 'POST', cleanup = false): Promise<T> => {
         const response = await fetch(`${configuration.serverUrl}/v1/${path}`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: cleanup ? AbortSignal.timeout(7000) : AbortSignal.any([lifetime.signal, AbortSignal.timeout(7000)]), redirect: 'error' });
         const data = await response.json() as any;
+        if (response.status === 404 && path.startsWith('ai-service-worker/')) throw new Error('shared-protocol-unavailable');
         if (!response.ok) throw new Error(response.status === 409 && data.error === 'codex-account-unbound' ? 'codex-account-unbound' : 'authorization-unavailable');
         return data as T;
     };
@@ -41,31 +50,8 @@ export function startAppChatWorker(token: string, machine: Machine): () => void 
         reportCodexAccountQuota: (id, data) => request(`codex-accounts/${id}/quota-snapshot`, data, 'PUT', true),
         reportCodexAccountStatus: (id, data) => request(`codex-accounts/${id}/status`, data, 'PUT', true),
     };
-    const recoverCredentials = async (): Promise<boolean> => {
-        if ([...activeHomes].some(home => home.startsWith(recoveryRoot))) return false;
-        await mkdir(recoveryRoot, { recursive: true, mode: 0o700 });
-        for (const entry of await readdir(recoveryRoot, { withFileTypes: true })) {
-            if (!entry.isDirectory() || !entry.name.startsWith('job-')) continue;
-            const root = join(recoveryRoot, entry.name), home = join(root, 'codex');
-            try {
-                const state = await readCodexAccountLaunchState(home);
-                if (state.machineId !== machine.id) return false;
-                if (state.daemonPid !== process.pid && processAlive(state.daemonPid)) return false;
-                const started = await access(join(root, '.runtime-started')).then(() => true, () => false);
-                if (started) {
-                    const runtimePid = Number(await readFile(join(root, '.runtime-pid'), 'utf8'));
-                    if (processAlive(runtimePid)) return false;
-                }
-                await CodexAccountLaunch.recover(api, home, state).syncProbeCredential();
-                await rm(root, { recursive: true, force: true });
-            } catch (error) {
-                const started = await access(join(root, '.runtime-started')).then(() => true, () => false);
-                if (!started && (error as NodeJS.ErrnoException)?.code === 'ENOENT') { await rm(root, { recursive: true, force: true }); continue; }
-                return false;
-            } // Never discard an unsaved refresh or start another refresh.
-        }
-        return true;
-    };
+    const shared = createSharedServiceWorker({ machine, request, api, recoveryRoot: join(configuration.happyHomeDir, 'ai-service-credentials', createHash('sha256').update(machine.id).digest('hex')), lifetime: lifetime.signal, codexBinary: binary, claudeBinary });
+    const recoverCredentials = () => recoverAppChatCredentialJobs(recoveryRoot, machine.id, api, activeHomes);
     const execute = async (job: Job) => {
         const control = new AbortController(); active = control;
         const stop = () => control.abort(); lifetime.signal.addEventListener('abort', stop, { once: true });
@@ -108,7 +94,7 @@ export function startAppChatWorker(token: string, machine: Machine): () => void 
                 launch = await CodexAccountLaunch.prepare(api, machine.id, grant.grant, { sourceHome: cwd, createTempDir: () => home, skipHistory: true });
                 await publish({}); control.signal.throwIfAborted();
                 await writeFile(join(root, '.runtime-started'), '1', { mode: 0o600 });
-                latest = await runRestrictedCodex(binary, home, cwd, messages, control.signal, text => { latest = text; }, async pid => { await writeFile(join(root!, '.runtime-pid'), String(pid), { mode: 0o600 }); }, selection.model, model => { actualModel = model; });
+                latest = await runRestrictedCodex(binary, home, cwd, messages, control.signal, text => { latest = text; }, async pid => { await writeFile(join(root!, '.runtime-pid'), String(pid), { mode: 0o600 }); }, selection.model, model => { actualModel = model; }, undefined, createRuntimeProcessGuard(root));
             }
             clearInterval(heartbeat); heartbeat = undefined; await flushing;
             control.signal.throwIfAborted();
@@ -148,11 +134,12 @@ export function startAppChatWorker(token: string, machine: Machine): () => void 
                     throw new Error('credential-recovery-pending');
                 }
                 recoveryWarning = false;
+                try { if (await shared.tick()) continue; } catch (error) { if (!(error instanceof Error) || error.message !== 'shared-protocol-unavailable') throw error; }
                 const { job } = await request<{ job: Job | null }>(`app-worker/${encodeURIComponent(machine.id)}/claim`, { protocol: 3, engines });
                 if (job) await execute(job);
             } catch { /* Failed claim leaves no running turn; retry after bounded delay. */ }
             if (!lifetime.signal.aborted) await new Promise<void>(resolve => {
-                const timer = setTimeout(done, 5000);
+                const timer = setTimeout(done, 1000);
                 function done() { clearTimeout(timer); lifetime.signal.removeEventListener('abort', done); resolve(); }
                 lifetime.signal.addEventListener('abort', done, { once: true });
             });

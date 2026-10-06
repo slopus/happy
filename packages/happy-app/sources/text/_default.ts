@@ -15,6 +15,12 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const en = {
+    aiServiceConsent: {
+        chatOnlyHint: "Only questions and answers are allowed. Terminal, file system, and browser operations are excluded.",
+        toolsHint: "Tools are allowed on the approved devices. Execution remains subject to the application permission settings.",
+        allowTools: "Allow tools",
+        toolsDescription: "Optional. Tools can access files, run commands, or operate a browser. Select this option to grant tool permission.",
+    },
     appConversations: {
         openConversation: 'View conversation',
         openHint: "View this conversation in Paws",

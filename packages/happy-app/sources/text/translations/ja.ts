@@ -18,6 +18,12 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const ja: TranslationStructure = {
+    aiServiceConsent: {
+        chatOnlyHint: "質問と回答のみを許可します。ターミナル、ファイルシステム、ブラウザーの操作は含みません。",
+        toolsHint: "許可したデバイスでツールを使用できます。実行はアプリの権限設定に従います。",
+        allowTools: "ツールの使用を許可",
+        toolsDescription: "任意。ツールはファイルへのアクセス、コマンドの実行、ブラウザーの操作ができます。選択した場合のみツールの権限を付与します。",
+    },
     appConversations: {
         openConversation: "会話を表示",
         openHint: "この会話を Paws で表示",

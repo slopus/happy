@@ -42,11 +42,12 @@ if (providedTarball) {
     listing = archive.stdout.trim().split(/\r?\n/).filter(Boolean);
 } else {
     await run('pnpm', ['run', 'build']);
-    const packed = await run('npm', [
-        'pack', '--json', '--ignore-scripts', '--pack-destination', workspace,
+    // pnpm rewrites workspace development dependencies in the immutable artifact.
+    const packed = await run('pnpm', [
+        'pack', '--json', '--config.ignore-scripts=true', '--pack-destination', workspace,
     ]);
-    const packResult = JSON.parse(packed.stdout)[0];
-    tarball = join(workspace, packResult.filename);
+    const packResult = JSON.parse(packed.stdout);
+    tarball = resolve(workspace, packResult.filename);
     listing = packResult.files.map(file => `package/${file.path}`);
 }
 

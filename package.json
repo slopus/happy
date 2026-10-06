@@ -43,6 +43,7 @@
         "packages": [
             "packages/happy-app",
             "packages/paws-agent",
+            "packages/paws-connect-ui",
             "packages/happy-cli",
             "packages/happy-server",
             "packages/happy-wire",

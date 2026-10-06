@@ -84,7 +84,7 @@ export async function redeemAppPairing(id: string, verifier: string, credential:
 
 export async function revokeAppGrant(accountId: string, id: string) {
     return inTx(async tx => {
-        const grant = await tx.appDelegation.findFirst({ where: { id, accountId } });
+        const grant = await tx.appDelegation.findFirst({ where: { id, accountId, protocol: { lte: 3 } } });
         if (!grant) return denied();
         await tx.appDelegation.update({ where: { id }, data: { state: 'revoked', credentialHash: null } });
         await tx.appChatTurn.updateMany({ where: { conversation: { grantId: id }, state: { in: ['queued', 'running'] } }, data: { state: 'cancelled', lease: null, leaseUntil: null } });
@@ -198,7 +198,7 @@ export async function deleteAppConversation(token: string, id: string) {
 export async function ownerAppConversations(accountId: string, cursor?: string) {
     return inTx(async tx => {
         const anchor = cursor ? await tx.appChatConversation.findFirst({
-            where: { id: cursor, grant: { accountId } },
+            where: { id: cursor, grant: { accountId, protocol: { lte: 3 } } },
             select: { id: true, createdAt: true, turns: { take: 1, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { createdAt: true } } },
         }) : null;
         if (cursor && !anchor) return denied();
@@ -211,7 +211,7 @@ export async function ownerAppConversations(accountId: string, cursor?: string) 
                 SELECT "state", "createdAt", "deadline", "leaseUntil" FROM "AppChatTurn"
                 WHERE "conversationId" = c."id" ORDER BY "createdAt" DESC, "id" DESC LIMIT 1
             ) t ON TRUE
-            WHERE g."accountId" = ${accountId} ${boundary}
+            WHERE g."accountId" = ${accountId} AND g."protocol" <= 3 ${boundary}
             ORDER BY "lastActivityAt" DESC, c."id" DESC LIMIT 51
         `);
         const conversations = rows.slice(0, 50).map(row => ({
@@ -228,7 +228,7 @@ export async function ownerAppConversations(accountId: string, cursor?: string) 
 /** Explicit owner deletion releases retained history and fences any in-flight worker by cascade. */
 export async function deleteOwnedAppGrant(accountId: string, id: string) {
     return inTx(async tx => {
-        const grant = await tx.appDelegation.findFirst({ where: { id, accountId } });
+        const grant = await tx.appDelegation.findFirst({ where: { id, accountId, protocol: { lte: 3 } } });
         if (!grant) return denied();
         await tx.appDelegation.delete({ where: { id } });
         return { deleted: true };

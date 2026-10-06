@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>第二应用 · Paws 验收</title>
+<link rel="stylesheet" href="/panel.css">
+<style>:root{color-scheme:light dark;font-family:system-ui,sans-serif}body{max-width:760px;margin:auto;padding:24px}button,textarea{font:inherit}button{min-height:44px;margin:4px}textarea{box-sizing:border-box;width:100%;min-height:88px}pre{white-space:pre-wrap;overflow-wrap:anywhere}#panel{margin-block:16px}</style>
+<h1>第二应用 · 简短摘要</h1><p>本地合成验收。不会调用真实模型。请勿输入私人资料。</p>
+<button id="settings">AI 服务设置</button><button id="new">新对话</button><button id="recover">同步原回合</button><button id="stop">停止原回合</button>
+<div id="panel"></div><form id="form"><label for="input">待摘要文本</label><textarea id="input" required>这是一段公开的合成测试文本。</textarea><button id="send">发送</button></form>
+<p id="status" role="status"></p><pre id="answer"></pre><details><summary>执行记录</summary><pre id="record"></pre></details>
+<script type="module">
+import {createAIServiceClient,createBrowserPlatformTransport,createBrowserServiceStorage,createServiceController} from '@wangjs-jacky/paws-agent/services/browser';
+import {mountServicePanel} from '@wangjs-jacky/paws-connect-ui';
+const appId='ai-service-smoke',storage=createBrowserServiceStorage({appId,origin:location.origin,subject:'synthetic-user',connectionId:'platform'});
+const client=createAIServiceClient({appId,transport:createBrowserPlatformTransport({appId,baseUrl:'/api/service',storage,headers:()=>({'X-Smoke-App':appId})})});
+const controller=createServiceController(client,storage);
+const panel=mountServicePanel(document.querySelector('#panel'),{controller,appearance:{title:'AI 服务',theme:'light'}});
+let binding=null,locator=null;
+const show=s=>{locator={bindingId:s.record.binding.id,requestId:s.record.requestId,turnId:s.record.id};document.querySelector('#answer').textContent=s.text;document.querySelector('#status').textContent=s.record.status;document.querySelector('#record').textContent=JSON.stringify(s.record,null,2);};
+const act=work=>Promise.resolve().then(work).catch(e=>{document.querySelector('#status').textContent=e.code||'操作未完成';});
+document.querySelector('#settings').onclick=()=>document.querySelector('#panel button')?.focus();
+document.querySelector('#new').onclick=()=>{binding=null;locator=null;document.querySelector('#answer').textContent='';document.querySelector('#record').textContent='';document.querySelector('#status').textContent='下一条消息使用新配置';};
+document.querySelector('#form').onsubmit=e=>{e.preventDefault();void act(async()=>{const send=document.querySelector('#send');send.disabled=true;try{binding??=await client.conversations.create({appConversationId:crypto.randomUUID(),overrides:controller.getState().overrides});const requestId=crypto.randomUUID();locator={bindingId:binding.id,requestId};show(await client.turns.start({binding,requestId,messages:[{role:'user',text:'请用一句话概括：'+document.querySelector('#input').value}]}));}finally{send.disabled=false;}});};
+document.querySelector('#recover').onclick=()=>act(async()=>{if(locator)show(await client.turns.read(locator));});
+document.querySelector('#stop').onclick=()=>act(async()=>{if(locator?.turnId){await client.turns.cancel(locator);show(await client.turns.read(locator));}});
+void act(async()=>{await controller.connect();await controller.refresh();document.querySelector('#status').textContent='已连接合成平台服务';});
+</script></html>

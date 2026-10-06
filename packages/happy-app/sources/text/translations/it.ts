@@ -15,6 +15,12 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const it: TranslationStructure = {
+    aiServiceConsent: {
+        chatOnlyHint: "Sono consentite solo domande e risposte. Sono escluse le operazioni su terminale, file system e browser.",
+        toolsHint: "Gli strumenti sono consentiti sui dispositivi autorizzati. L’esecuzione è soggetta alle impostazioni dei permessi dell’applicazione.",
+        allowTools: "Consenti gli strumenti",
+        toolsDescription: "Facoltativo. Gli strumenti possono accedere ai file, eseguire comandi o controllare un browser. Seleziona questa opzione per concedere il permesso di usare gli strumenti.",
+    },
     appConversations: {
         openConversation: "Visualizza conversazione",
         openHint: "Visualizza questa conversazione in Paws",

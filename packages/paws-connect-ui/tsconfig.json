@@ -1,0 +1,8 @@
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"], "strict": true,
+    "declaration": true, "skipLibCheck": true, "types": [], "noEmit": true
+  },
+  "include": ["src/index.ts", "src/panel.ts"]
+}

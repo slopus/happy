@@ -1,0 +1,11 @@
+import { build } from 'esbuild';
+import { mkdir, copyFile, rm } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+const packageDir = fileURLToPath(new URL('../', import.meta.url));
+const output = new URL('../fixture-dist/', import.meta.url);
+await rm(output, { recursive: true, force: true });
+await mkdir(output, { recursive: true });
+await build({ absWorkingDir: packageDir, entryPoints: ['examples/main.ts'], bundle: true, platform: 'browser', format: 'iife', outfile: fileURLToPath(new URL('bundle.js', output)), logLevel: 'info' });
+for (const name of ['index.html', 'approval.html']) await copyFile(new URL(name, import.meta.url), new URL(name, output));
+await copyFile(new URL('../dist/panel.css', import.meta.url), new URL('panel.css', output));
+console.log(`Public synthetic fixture: ${fileURLToPath(output)}`);

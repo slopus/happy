@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>共享 AI 服务面板 · 合成示例</title>
+<link rel="stylesheet" href="./panel.css">
+<style>
+:root { font: 16px/1.55 system-ui,sans-serif; color: CanvasText; background: Canvas; }
+body { margin: 0; padding: clamp(1rem, 4vw, 2rem); }
+main { max-width: 46rem; margin: auto; }
+h1 { font-size: 1.5rem; margin-bottom: .5rem; }
+.fixture-tools { display: flex; flex-wrap: wrap; gap: .5rem; margin: 1rem 0 1.5rem; }
+.fixture-tools label { display: flex; align-items: center; gap: .5rem; }
+.fixture-tools button, .fixture-tools select { font: inherit; min-height: 2.75rem; border: 1px solid GrayText; border-radius: .5rem; padding: .5rem; color: ButtonText; background: ButtonFace; max-width: 100%; }
+.fixture-tools :focus-visible { outline: 3px solid Highlight; outline-offset: 2px; }
+#panel { --paws-service-text: CanvasText; --paws-service-surface: Canvas; --paws-service-inset: ButtonFace; --paws-service-control: ButtonFace; --paws-service-control-hover: Highlight; --paws-service-control-hover-text: HighlightText; --paws-service-border: GrayText; --paws-service-focus: Highlight; }
+@media(max-width:640px) { .fixture-tools label { width:100%; flex-wrap:wrap; } }
+</style>
+</head>
+<body>
+<main>
+<h1>共享服务面板 · 合成示例</h1>
+<p>只使用公开合成数据。不会调用服务、保存凭据或执行模型请求。下方工具仅用于验证面板。</p>
+<div class="fixture-tools">
+<label>场景 <select id="scenario" aria-label="合成场景"></select></label>
+<button id="theme" type="button">切换主题</button>
+<button id="approve" type="button">模拟授权完成</button>
+<button id="catalog-change" type="button">移除默认目录模型</button>
+<button id="destroy" type="button">卸载面板</button>
+</div>
+<div id="panel"></div>
+<p>“移除默认目录模型”用于检查失效覆盖设置。先连接，再在高级设置中选择 Catalog native default 和 high。</p>
+<p>二维码使用合成的 Paws 深链接。它不证明手机授权已通过。授权管理链接只打开本示例的说明页。</p>
+</main>
+<script src="./bundle.js"></script>
+</body>
+</html>

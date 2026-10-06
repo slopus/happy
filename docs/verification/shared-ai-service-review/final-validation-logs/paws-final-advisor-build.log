@@ -1,0 +1,4 @@
+
+> relationship-advisor-service@0.2.0 build
+> node scripts/build-paws-sdk.mjs && node scripts/build-client.mjs
+

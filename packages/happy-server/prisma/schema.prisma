@@ -68,6 +68,10 @@ model Account {
     InteractivePreview InteractivePreview[]
     AppDelegation AppDelegation[]
     AppChatWorker AppChatWorker[]
+    aiServices AIService[]
+    aiServiceAuthorizations AIServiceAuthorization[]
+    aiServiceBindings AIServiceBinding[]
+    aiServiceCapabilitySnapshots AIServiceCapabilitySnapshot[]
 }
 
 model TerminalAuthRequest {
@@ -440,6 +444,7 @@ model CodexQuotaSnapshot {
 // Redeemed grants retain only non-secret launch audit data after profile deletion.
 // The grant value itself is never stored; only its SHA-256 digest is persisted.
 model CodexSessionGrant {
+    serviceAuthority Json?
     id String @id @default(uuid())
     accountId String
     account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -621,6 +626,10 @@ model AppDelegation {
 }
 
 model AppChatWorker {
+    serviceProtocol String?
+    servicePublicKey String?
+    serviceClaudeIdentity String?
+    serviceClaudeObservedAt DateTime?
     engines Json @default("[]")
     machineId String @id
     accountId String
@@ -639,6 +648,14 @@ model AppChatConversation {
 }
 
 model AppChatTurn {
+    bindingId String?
+    binding AIServiceBinding? @relation(fields: [bindingId], references: [id])
+    requestId String?
+    actual Json?
+    serviceError Json?
+    startedAt DateTime?
+    completedAt DateTime?
+    @@unique([bindingId, requestId])
     minimumProtocol Int @default(1)
     id String @id
     conversationId String
@@ -653,4 +670,120 @@ model AppChatTurn {
     createdAt DateTime @default(now())
     @@index([conversationId, createdAt])
     @@index([state, createdAt])
+}
+
+// Safe service configuration and immutable audit data.
+model AIService {
+    id String @id @default(uuid())
+    ownerId String
+    owner Account @relation(fields: [ownerId], references: [id])
+    name String
+    enabled Boolean @default(true)
+    revision Int @default(1)
+    deletedAt DateTime?
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    revisions AIServiceRevision[]
+    authorizations AIServiceAuthorization[]
+    @@index([ownerId, createdAt])
+}
+
+model AIServiceRevision {
+    serviceId String
+    service AIService @relation(fields: [serviceId], references: [id])
+    revision Int
+    config Json
+    accountFingerprint String
+    createdAt DateTime @default(now())
+    bindings AIServiceBinding[]
+    @@id([serviceId, revision])
+}
+
+model AIServiceApplication {
+    appId String @id
+    policy Json
+    enabled Boolean @default(true)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    authorizations AIServiceAuthorization[]
+    bindings AIServiceBinding[]
+}
+
+// Scoped bearer digests and recipient-sealed keys. No clear key or native credential is stored here.
+model AIServiceAuthorization {
+    credentialDigest String?
+    machineEnvelopes Json?
+    targetFingerprints Json?
+    id String @id
+    ownerId String
+    owner Account @relation(fields: [ownerId], references: [id])
+    appId String
+    app AIServiceApplication @relation(fields: [appId], references: [appId])
+    serviceId String
+    service AIService @relation(fields: [serviceId], references: [id])
+    kind String
+    scope Json
+    allowModelOverride Boolean @default(false)
+    allowReasoningOverride Boolean @default(false)
+    expiresAt DateTime?
+    revokedAt DateTime?
+    createdAt DateTime @default(now())
+    bindings AIServiceBinding[]
+    @@index([ownerId, appId, serviceId])
+}
+
+model AIServiceBinding {
+    appConversationId String?
+    creationInput Json?
+    turns AppChatTurn[]
+    id String @id
+    ownerId String
+    owner Account @relation(fields: [ownerId], references: [id])
+    appId String
+    app AIServiceApplication @relation(fields: [appId], references: [appId])
+    serviceId String
+    revision Int
+    serviceRevision AIServiceRevision @relation(fields: [serviceId, revision], references: [serviceId, revision])
+    authorizationId String?
+    authorization AIServiceAuthorization? @relation(fields: [authorizationId], references: [id])
+    snapshot Json
+    accountFingerprint String
+    capabilityObservedAt DateTime
+    createdAt DateTime @default(now())
+    @@index([ownerId, appId, serviceId])
+    @@unique([authorizationId, appId, appConversationId])
+}
+
+// Display cache only. Binding creation always asks the trusted source for a live check.
+model AIServiceCapabilitySnapshot {
+    ownerId String
+    owner Account @relation(fields: [ownerId], references: [id])
+    targetKey String
+    catalog Json
+    observedAt DateTime
+    @@id([ownerId, targetKey])
+}
+
+// Discovery jobs carry no message key or model input. They are never replayed.
+model AIServiceProbe {
+    id String @id
+    ownerId String
+    machineId String
+    principal Json
+    target Json
+    fingerprint String
+    state String @default("queued")
+    lease String?
+    deadline DateTime
+    catalog Json?
+    error String?
+    createdAt DateTime @default(now())
+    @@index([machineId, state, createdAt])
+}
+
+model AIServiceBusinessPrompt {
+    id String
+    version String
+    body String
+    @@id([id, version])
 }

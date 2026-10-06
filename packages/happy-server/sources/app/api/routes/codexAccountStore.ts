@@ -11,6 +11,8 @@ import {
     type CreateCodexGrantResponse, type RedeemCodexGrantResponse, type ListCodexAccountsResponse,
 } from './codexAccountTypes';
 
+import { authorizeServiceCredential, type ServiceCredentialAuthority } from '@/app/aiServices/authority';
+
 type Tx = Prisma.TransactionClient;
 export class CodexAccountError extends Error {
     constructor(public readonly status: number, public readonly code: string) { super(code); }
@@ -108,6 +110,20 @@ async function migrateLegacy(tx: Tx, accountId: string): Promise<ListCodexAccoun
     return 'completed';
 }
 
+/** Internal only. The target comes from persisted probe/turn authority, never caller profile IDs. */
+export async function createServiceCodexGrant(tx: Tx, accountId: string, machineId: string, authority: ServiceCredentialAuthority): Promise<CreateCodexGrantResponse> {
+    const target = await authorizeServiceCredential(tx, accountId, machineId, authority);
+    if (target.engine !== 'codex') return fail(403, 'grant-unavailable');
+    const profile = await ownedProfile(tx, accountId, target.accountRef.id);
+    const machine = await ownedMachine(tx, accountId, machineId);
+    const grant = randomBytes(32).toString('base64url'), expiresAt = new Date(Date.now() + CODEX_GRANT_TTL_MS);
+    await tx.codexSessionGrant.create({ data: { accountId, machineId, codexAccountProfileId: profile.id,
+        displayNameSnapshot: profile.displayName, credentialVersion: profile.credentialVersion, lastCredentialVersion: profile.credentialVersion,
+        bindingVersion: machine.codexAccountBindingVersion, digest: digest(grant), expiresAt, serviceAuthority: authority } });
+    await audit(tx, accountId, `service-${authority.kind}-grant`, profile.id, machineId, profile.credentialVersion);
+    return { grant, expiresAt: expiresAt.toISOString(), profile: { id: profile.id, displayName: profile.displayName, credentialVersion: profile.credentialVersion } };
+}
+
 export const codexAccountStore = {
     async list(accountId: string): Promise<ListCodexAccountsResponse> {
         return transaction(accountId, async (tx) => {
@@ -186,8 +202,11 @@ export const codexAccountStore = {
             if (!grant) return fail(409, 'grant-unavailable');
             const machine = await tx.machine.findFirst({ where: { id: machineId, accountId } });
             const profile = await tx.codexAccountProfile.findFirst({ where: { id: grant.codexAccountProfileId, accountId } });
-            if (!machine || !profile || profile.status !== 'available' || profile.credentialVersion !== grant.credentialVersion) return fail(409, 'grant-unavailable');
-            if (grant.sourceSessionId) {
+            if (!machine || !profile || profile.status !== 'available' || (!grant.serviceAuthority && profile.credentialVersion !== grant.credentialVersion)) return fail(409, 'grant-unavailable');
+            if (grant.serviceAuthority) {
+                const target = await authorizeServiceCredential(tx, accountId, machineId, grant.serviceAuthority as ServiceCredentialAuthority);
+                if (target.engine !== 'codex' || target.accountRef.id !== profile.id) return fail(409, 'grant-unavailable');
+            } else if (grant.sourceSessionId) {
                 // Resume stays pinned to an owned session and its previous
                 // redeemed launch, independently of the default for new work.
                 const session = await tx.session.findFirst({ where: { id: grant.sourceSessionId, accountId } });
@@ -200,16 +219,16 @@ export const codexAccountStore = {
                 return fail(409, 'grant-unavailable');
             }
             const auth = codexAuthSchema.parse(JSON.parse(decryptString(path(accountId, profile.id), profile.credential)));
-            const consumed = await tx.codexSessionGrant.updateMany({ where: { id: grant.id, redeemedAt: null, expiresAt: { gt: new Date() } }, data: { redeemedAt: new Date() } });
+            const consumed = await tx.codexSessionGrant.updateMany({ where: { id: grant.id, redeemedAt: null, expiresAt: { gt: new Date() } }, data: { redeemedAt: new Date(), ...(grant.serviceAuthority ? { credentialVersion: profile.credentialVersion, lastCredentialVersion: profile.credentialVersion } : {}) } });
             if (consumed.count !== 1) return fail(409, 'grant-unavailable');
             await audit(tx, accountId, 'grant-redeem', profile.id, machineId, profile.credentialVersion);
-            return { auth, launchId: grant.id, profile: { id: profile.id, displayName: grant.displayNameSnapshot, credentialVersion: grant.credentialVersion } };
+            return { auth, launchId: grant.id, profile: { id: profile.id, displayName: grant.displayNameSnapshot, credentialVersion: profile.credentialVersion } };
         });
     },
     async registerSession(accountId: string, launchId: string, machineId: string, sourceSessionId: string) {
         return transaction(accountId, async (tx) => {
             const launch = await tx.codexSessionGrant.findFirst({ where: { id: launchId, accountId, machineId, redeemedAt: { not: null } } });
-            if (!launch || (launch.sourceSessionId && launch.sourceSessionId !== sourceSessionId)) return fail(409, 'launch-unavailable');
+            if (!launch || launch.serviceAuthority || (launch.sourceSessionId && launch.sourceSessionId !== sourceSessionId)) return fail(409, 'launch-unavailable');
             const session = await tx.session.findFirst({ where: { id: sourceSessionId, accountId } });
             if (!session) return fail(409, 'session-unavailable');
             await ownedMachine(tx, accountId, machineId);

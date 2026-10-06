@@ -1,0 +1,16 @@
+
+ RUN  v3.2.4 /Users/jacky/jacky-github/happy--shared-ai-services/packages/paws-agent
+
+ ✓ src/services/storage.test.ts (9 tests) 253ms
+ ✓ src/services/controller.test.ts (3 tests) 80ms
+ ✓ src/services/client.test.ts (3 tests) 117ms
+ ✓ src/services/platformTransport.test.ts (3 tests) 131ms
+ ✓ src/services/personalTransport.test.ts (2 tests) 155ms
+ ✓ src/services/transportContract.test.ts (7 tests) 197ms
+ ✓ src/services/submission.test.ts (16 tests) 367ms
+
+ Test Files  7 passed (7)
+      Tests  43 passed (43)
+   Start at  05:48:22
+   Duration  2.43s (transform 754ms, setup 0ms, collect 3.96s, tests 1.30s, environment 1ms, prepare 2.11s)
+

@@ -5,7 +5,8 @@
     "moduleResolution": "bundler",
     "lib": [
       "es2020",
-      "es2022"
+      "es2022",
+      "dom"
     ],
     "rootDir": "src",
     "declaration": true,

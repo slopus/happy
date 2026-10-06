@@ -1,0 +1,148 @@
+✖ installed personal transport and real journal keep pending after accepted-first (51.878875ms)
+✖ installed personal transport and real journal keep pending after refusing-creator (7.141709ms)
+✖ installed platform transport and real journal keep pending after accepted-first (3.663917ms)
+✖ installed platform transport and real journal keep pending after refusing-creator (3.212292ms)
+✖ installed node-sqlite transport and real journal keep pending after accepted-first (10.401041ms)
+✖ installed node-sqlite transport and real journal keep pending after refusing-creator (17.065209ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 0
+ℹ fail 6
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 276.808542
+
+✖ failing tests:
+
+test at test/submission-certainty.test.mjs:16:119
+✖ installed personal transport and real journal keep pending after accepted-first (51.878875ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      'uncertain',
+  +   'not-submitted'
+  -   'uncertain'
+    ]
+  
+      at TestContext.<anonymous> (file:///Users/jacky/jacky-github/relationship-advisor--paws-services/test/submission-certainty.test.mjs:57:9)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'uncertain', 'not-submitted' ],
+    expected: [ 'uncertain', 'uncertain' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/submission-certainty.test.mjs:16:119
+✖ installed personal transport and real journal keep pending after refusing-creator (7.141709ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   'not-submitted',
+      'uncertain',
+  -   'uncertain'
+    ]
+  
+      at TestContext.<anonymous> (file:///Users/jacky/jacky-github/relationship-advisor--paws-services/test/submission-certainty.test.mjs:57:9)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'not-submitted', 'uncertain' ],
+    expected: [ 'uncertain', 'uncertain' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/submission-certainty.test.mjs:16:119
+✖ installed platform transport and real journal keep pending after accepted-first (3.663917ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      'uncertain',
+  +   'not-submitted'
+  -   'uncertain'
+    ]
+  
+      at TestContext.<anonymous> (file:///Users/jacky/jacky-github/relationship-advisor--paws-services/test/submission-certainty.test.mjs:57:9)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'uncertain', 'not-submitted' ],
+    expected: [ 'uncertain', 'uncertain' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/submission-certainty.test.mjs:16:119
+✖ installed platform transport and real journal keep pending after refusing-creator (3.212292ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   'not-submitted',
+      'uncertain',
+  -   'uncertain'
+    ]
+  
+      at TestContext.<anonymous> (file:///Users/jacky/jacky-github/relationship-advisor--paws-services/test/submission-certainty.test.mjs:57:9)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'not-submitted', 'uncertain' ],
+    expected: [ 'uncertain', 'uncertain' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/submission-certainty.test.mjs:16:119
+✖ installed node-sqlite transport and real journal keep pending after accepted-first (10.401041ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+      'uncertain',
+  +   'not-submitted'
+  -   'uncertain'
+    ]
+  
+      at TestContext.<anonymous> (file:///Users/jacky/jacky-github/relationship-advisor--paws-services/test/submission-certainty.test.mjs:57:9)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'uncertain', 'not-submitted' ],
+    expected: [ 'uncertain', 'uncertain' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at test/submission-certainty.test.mjs:16:119
+✖ installed node-sqlite transport and real journal keep pending after refusing-creator (17.065209ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+  
+    [
+  +   'not-submitted',
+      'uncertain',
+  -   'uncertain'
+    ]
+  
+      at TestContext.<anonymous> (file:///Users/jacky/jacky-github/relationship-advisor--paws-services/test/submission-certainty.test.mjs:57:9)
+      at async Test.run (node:internal/test_runner/test:1404:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: [ 'not-submitted', 'uncertain' ],
+    expected: [ 'uncertain', 'uncertain' ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }

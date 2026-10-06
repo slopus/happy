@@ -1,0 +1,5 @@
+# Local structured native error evidence
+
+Codex binary reported `codex-cli 0.159.3`. `codex app-server generate-json-schema --out /tmp/paws-final-codex-schema` generated schemas locally. No provider call was made. The retained TurnCompletedNotification schema SHA-256 is `016870158603b0f84bd9f8f65f927161c9fd5128e5ec632087616462dc44e085`. `TurnError.codexErrorInfo` includes usageLimitExceeded, rateLimitExceeded, unauthorized, contextWindowExceeded and badRequest. JSON-RPC numeric codes -32601 and -32602 are handled as method/protocol and parameter failures. Unsupported fields and arbitrary diagnostic messages remain generic.
+
+Installed Claude agent SDK package version: `0.3.259`. Its sdk.d.ts defines SDKAssistantMessage.error as SDKAssistantMessageError. The allowlist used here is authentication_failed, rate_limit, model_not_found and invalid_request. Result.errors diagnostic text is not classified. Native supported-version gates remain Codex0.159.3 and ClaudeCode2.1.251. Fixtures exercise actual child processes. No real Claude login/provider execution was performed.
