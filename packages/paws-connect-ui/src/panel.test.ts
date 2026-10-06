@@ -28,6 +28,14 @@ function change(el: HTMLSelectElement, value: string) { el.value = value; el.dis
 const settle = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
 
 describe('service panel using the real SDK controller', () => {
+    it('connection-only recovery does not probe a broken default target', async () => {
+        const f = await mounted(undefined, {connectionOnly:true});
+        const restore=vi.spyOn(f.controller,'restore');
+        const refresh=vi.spyOn(f.controller,'refresh').mockRejectedValue(new Error('default target unavailable'));
+        f.controller.selectSource('personal');button(f.root,'连接').click();await settle();f.approve();await settle();
+        button(f.root,'重新检查状态').click();await settle();
+        expect(restore).toHaveBeenCalledOnce();expect(refresh).not.toHaveBeenCalled();
+    });
     it('supports connection management without global model settings', async () => {
         const f = await mounted(undefined, { connectionOnly: true });
         expect(select(f.root, '服务来源').value).toBe('platform');

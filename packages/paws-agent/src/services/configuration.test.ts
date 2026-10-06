@@ -8,7 +8,7 @@ import { binding, fixture, makeReceipt } from './testFixtures';
 import { validateOverrides } from './scopedTransport';
 const receipt = makeReceipt('platform-grant'), target = receipt.scope.targets[0];
 const configuration = { service: { id: 'service', ownerId: 'owner', name: 'AI', enabled: true, revision: 1 }, allowModelOverride: true, allowReasoningOverride: true, defaults: { ...target, modelId: null, reasoning: { mode: 'default' } }, targets: [{ target, machineName: 'My Mac', accountName: 'Main' }], permissions: ['chat'] };
-const catalog = { ...target, protocol: 'ai-services/1', observedAt: Date.now(), availability: 'online', completeness: 'complete', models: [], defaultModelId: null };
+const catalog = {execution:{permissionModes:['chat-only'],serviceTiers:['default']}, ...target, protocol: 'ai-services/1', observedAt: Date.now(), availability: 'online', completeness: 'complete', models: [], defaultModelId: null };
 function setup(mismatch = false) {
  const base = fixture(), calls: any[] = [];
  const node = createAIServiceClient({ appId: 'advisor', transport: createNodePlatformTransport({ appId: 'advisor', receipt, serverUrl: 'https://paws.test', storage: createMemoryServiceStorage(), fetch: async (url, init) => {
@@ -23,7 +23,7 @@ function setup(mismatch = false) {
   const response=await handler({method:init?.method??'GET',path:new URL(String(url)).pathname.replace('/ai',''),body:init?.body?JSON.parse(String(init.body)):undefined},{});
   return Response.json(response.body,{status:response.status});
  }})});
- return {node,browser,calls};
+ return {node,browser,calls,handler};
 }
 it('uses the same scoped directory and target capabilities through the platform bridge',async()=>{
  const {node,browser,calls}=setup(); await browser.connections.authorize();
@@ -43,4 +43,12 @@ it('validates all execution settings and refuses raw runtime parameters',()=>{
  expect(validateOverrides(value as any)).toEqual(value);
  expect(()=>validateOverrides({...value,serviceTier:'priority'} as any)).toThrow();
  expect(()=>validateOverrides({...value,cwd:'/tmp'} as any)).toThrow();
+});
+
+it('keeps capability reads from an already open legacy platform page compatible',async()=>{
+ const {node,handler}=setup();await node.connections.authorize();
+ const old=await handler({method:'POST',path:'/capabilities',body:{}},{});
+ expect(old.status).toBe(200);expect((old.body as any).catalog).not.toHaveProperty('execution');
+ const next=await handler({method:'POST',path:'/capabilities',body:{executionPresets:true}},{});
+ expect((next.body as any).catalog.execution).toEqual(catalog.execution);node.dispose();
 });

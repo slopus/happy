@@ -45,7 +45,8 @@ export function createPlatformServiceHandler<Context>(client: AIServiceClient, h
             if (request.method === 'GET' && parts.length === 1 && ['connection', 'services', 'configuration'].includes(parts[0]))
                 operation = { operation: parts[0] as 'connection' | 'services' | 'configuration' };
             else if (request.method === 'POST' && parts.length === 1 && parts[0] === 'capabilities') {
-                const b = strict(['target']);
+                const b = strict(['target','executionPresets']);
+                if (b.executionPresets !== undefined && typeof b.executionPresets !== 'boolean') throw new AIServiceClientError('invalid-request');
                 if (b.target !== undefined && !ServiceTargetSchema.safeParse(b.target).success) throw new AIServiceClientError('invalid-request');
                 operation = { operation: 'capabilities' };
             }
@@ -87,9 +88,14 @@ export function createPlatformServiceHandler<Context>(client: AIServiceClient, h
                 case 'configuration':
                     result = await client.services.configuration(signal);
                     break;
-                case 'capabilities':
-                    result = { catalog: await client.capabilities.read({...signal, ...((body as any).target ? {target: (body as any).target} : {})}) };
+                case 'capabilities': {
+                    const catalog = await client.capabilities.read({...signal, ...((body as any).target ? {target: (body as any).target} : {})});
+                    if (catalog && (body as any).executionPresets !== true) {
+                        const {execution, ...legacy}=catalog;
+                        result={catalog:{...legacy,models:legacy.models.map(({serviceTiers,...model})=>model)}};
+                    } else result={catalog};
                     break;
+                }
                 case 'create': {
                     const b = body as Record<string, any>;
                     const binding = await client.conversations.create({ appConversationId: b.appConversationId, overrides: validateOverrides(b.overrides) }, signal);

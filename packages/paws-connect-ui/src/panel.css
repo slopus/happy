@@ -22,7 +22,7 @@
     background: var(--paws-service-control, ButtonFace);
     border: 1px solid var(--paws-service-border, GrayText);
     border-radius: .6rem;
-    min-height: 2.75rem;
+    min-height: max(44px, 2.75rem);
     padding: .55rem .8rem;
 }
 .paws-service-panel button, .paws-service-panel a { cursor: pointer; }
@@ -87,8 +87,8 @@
 .paws-service-rows .paws-service-rows-field { min-width: 0; max-width: 100%; }
 .paws-service-rows .paws-service-rows-model { flex: 1 1 8rem; }
 .paws-service-rows button, .paws-service-rows select {
-    min-width: 2.75rem;
-    min-height: 2.75rem;
+    min-width: max(44px, 2.75rem);
+    min-height: max(44px, 2.75rem);
     max-width: 100%;
     color: inherit;
     font: inherit;
@@ -114,7 +114,7 @@
     background: var(--paws-service-control, ButtonFace);
     border: 1px solid var(--paws-service-border, GrayText);
 }
-.paws-service-rows .paws-service-rows-device-label { display: flex; align-items: center; gap: .4rem; min-height: 2.75rem; padding: .5rem .7rem; }
+.paws-service-rows .paws-service-rows-device-label { display: flex; align-items: center; gap: .4rem; min-height: max(44px, 2.75rem); padding: .5rem .7rem; }
 .paws-service-rows .paws-service-rows-device-label > span:first-of-type { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .paws-service-rows .paws-service-rows-chevron { margin-inline-start: auto; }
 .paws-service-rows .paws-service-rows-device select { position: absolute; inset: 0; opacity: 0; }

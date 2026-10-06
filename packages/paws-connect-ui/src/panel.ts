@@ -130,7 +130,7 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
         run(async () => {
             await controller.restore();
             if (destroyed || current !== epoch || state.source !== 'platform') return;
-            await controller.refresh();
+            if (!appearance.connectionOnly) await controller.refresh();
         });
     }
     function errorMessage(code: ClientErrorCode) { return state.source === 'platform' ? platformErrors[code] ?? errors[code] : errors[code]; }
@@ -234,7 +234,7 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
             const actions = node('div', undefined, 'paws-service-actions');
             if (state.status === 'authorizing') actions.append(button('取消授权', 'cancel', () => { epoch++; busy = false; run(() => controller.disconnect()); }));
             else if (state.status !== 'ready' && !state.connection) actions.append(button(errorCode ? '重新连接' : '连接', 'connect', connect, busy || errorCode === 'disposed'));
-            if (state.connection) actions.append(button('重新检查状态', 'refresh', () => run(() => controller.refresh()), busy), button('断开连接', 'disconnect', () => run(() => controller.disconnect()), busy));
+            if (state.connection) actions.append(button('重新检查状态', 'refresh', () => run(() => appearance.connectionOnly ? controller.restore() : controller.refresh()), busy), button('断开连接', 'disconnect', () => run(() => controller.disconnect()), busy));
             actions.append(button('忘记此连接', 'forget', () => run(async () => {
                 const current = epoch;
                 await controller.disconnect('forget');
