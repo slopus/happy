@@ -83,7 +83,7 @@ describe('shared account one-shot verification', () => {
     const result = await verifyLocalAiAccounts(deps, 'codex', [{ accountId: 'shared-id' }], [local])
     expect(result.accounts[0]).toMatchObject({ ok: true, model: 'gpt-6-luna' })
     expect(vi.mocked(deps.execFile).mock.calls[0][1]).toEqual(expect.arrayContaining(['exec', '--ephemeral', '--json', 'gpt-6-luna', 'model_reasoning_effort="low"']))
-    expect(JSON.parse(files.get('/tmp/probe/.codex/auth.json')!)).toEqual({ auth_mode: 'chatgptAuthTokens', access_token: 'shared-access', account_id: 'shared-id' })
+    expect(JSON.parse(files.get('/tmp/probe/.codex/auth.json')!)).toEqual({ auth_mode: 'chatgptAuthTokens', OPENAI_API_KEY: null, last_refresh: '1970-01-01T00:00:01.000Z', tokens: { id_token: 'shared-access', access_token: 'shared-access', refresh_token: '', account_id: 'shared-id' } })
     expect(files.get('/tmp/probe/.codex/auth.json')).not.toContain('shared-refresh')
     vi.mocked(deps.execFile).mockResolvedValue({ stdout: '{"type":"turn.completed"}', stderr: '', exitCode: 0 })
     expect((await verifyLocalAiAccounts(deps, 'codex', [{ accountId: 'shared-id' }], [local])).accounts[0].ok).toBe(false)
@@ -99,6 +99,14 @@ describe('shared account one-shot verification', () => {
     const result = await verifyLocalAiAccounts(deps, 'claude', [{ email: account.email }], [account])
     expect(result.accounts[0]).toMatchObject({ ok: false, errorKind: 'AUTHENTICATION_FAILED' })
     expect(JSON.stringify(result)).not.toContain('synthetic-secret')
+  })
+  it.each(["You've hit your usage limit.", 'You’ve hit your usage limit.'])('classifies Codex usage exhaustion without retrying another model: %s', async (message) => {
+    const { deps } = setup()
+    vi.mocked(deps.execFile).mockResolvedValue({ stdout: JSON.stringify({ type: 'turn.failed', error: { message } }), stderr: '', exitCode: 1 })
+    const local = { accountId: 'shared-id', accessToken: 'shared-access' }
+    const result = await verifyLocalAiAccounts(deps, 'codex', [{ accountId: 'shared-id' }], [local])
+    expect(result.accounts[0]).toMatchObject({ ok: false, errorKind: 'RATE_LIMITED' })
+    expect(deps.execFile).toHaveBeenCalledTimes(1)
   })
   it('falls back only for an explicitly unavailable model, never for authentication failure', async () => {
     const { deps } = setup()

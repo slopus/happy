@@ -39,7 +39,7 @@ function unavailableModel(response: AiCredentialCommandResult): boolean {
 function requestError(response: AiCredentialCommandResult): string {
   const text = `${response.stderr}\n${response.stdout}`
   if (/unauthorized|authentication[_ ]error|invalid[_ ](?:token|grant)|\b401\b/i.test(text)) return 'AUTHENTICATION_FAILED'
-  if (/rate[_ -]?limit|quota|\b429\b/i.test(text)) return 'RATE_LIMITED'
+  if (/rate[_ -]?limit|usage[_ -]?limit|quota|\b429\b/i.test(text)) return 'RATE_LIMITED'
   if (/unknown (?:option|argument)|unexpected argument|unrecognized (?:option|argument)/i.test(text)) return 'CLI_UPDATE_REQUIRED'
   if (/ECONN|ENOTFOUND|ETIMEDOUT|fetch failed|network error/i.test(text)) return 'NETWORK_ERROR'
   return unavailableModel(response) ? 'MODEL_UNAVAILABLE' : 'REQUEST_FAILED'
@@ -82,7 +82,9 @@ export async function verifyLocalAiAccounts(
         }
       } else {
         if (typeof account.accessToken !== 'string' || typeof account.accountId !== 'string') throw new Error('missing local OAuth credential')
-        await deps.writeFile(join(config, 'auth.json'), JSON.stringify({ auth_mode: 'chatgptAuthTokens', access_token: account.accessToken, account_id: account.accountId }), { mode: 0o600 })
+        // Match Codex external-token storage: nested tokens and last_refresh are
+        // required to obtain a bearer token. An empty refresh token prevents rotation.
+        await deps.writeFile(join(config, 'auth.json'), JSON.stringify({ auth_mode: 'chatgptAuthTokens', OPENAI_API_KEY: null, last_refresh: new Date(deps.now()).toISOString(), tokens: { id_token: account.accessToken, access_token: account.accessToken, refresh_token: '', account_id: account.accountId } }), { mode: 0o600 })
       }
       const run = () => {
         const remainingMs = budgetMs - (deps.now() - started)
