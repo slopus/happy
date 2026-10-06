@@ -107,9 +107,9 @@ P 表示 Paws worktree；A 表示狗头军师 worktree。Stage 1 已创建 basel
 - [ ] 在隔离作用域通过正规流程登记账号和执行器。需要所有者登录或手机操作时给出具体入口；不迁移原始认证文件，不重启生产 daemon 来试验。
 - [ ] 配置验收应用的明确 origin、业务提示词、chat/images 与平台受限授权。测试 origin 只登记在验收环境，不扩大生产允许来源。
 - [ ] 核对真实 worker 在线、能力目录、授权作用域和原生产环境不变。若某项无法隔离，保持阻塞，先补齐受信环境条件。
-- [ ] 独立评审隔离证据和恢复记录，提交脱敏文档。
+- [x] 独立评审隔离证据和恢复记录，提交脱敏文档。
 
-**执行状态（2026-10-06）：**隔离 Server、53 项迁移、两份冷备份和独立恢复演练已通过。新管理 Web 和私有 HTTPS 已启动；正常信任的普通 DNS IPv4 请求通过。应用验收 origin、提示词和 chat/images 已核对。独立 Ego 的普通 HTTPS URL 返回 ERR_CONNECTION_CLOSED；浏览器受信入口仍未通过。真实所有者、worker、中央凭据链、平台授权与原生手机仍未验证，相关 checkbox 保持未完成。详见 `docs/verification/shared-ai-pilot/environment.md`。Task 2 未通过；独立评审待执行。
+**执行状态（2026-10-06）：**隔离 Server、53 项迁移、两份冷备份和独立恢复演练已通过。新管理 Web 和私有 HTTPS 已启动；正常信任的普通 DNS IPv4 请求通过。应用验收 origin、提示词和 chat/images 已核对。独立 Ego 的普通 HTTPS URL 返回 ERR_CONNECTION_CLOSED；浏览器受信入口仍未通过。真实所有者、worker、中央凭据链、平台授权与原生手机仍未验证，相关 checkbox 保持未完成。详见 `docs/verification/shared-ai-pilot/environment.md`。Task 2 未通过；已交付准备工作通过独立评审，两项脚本问题已修复并通过复核。评审记录见 `docs/verification/shared-ai-pilot/stage-1-review.md`。
 
 **通过条件：**独立环境能连通真实执行器；有可审计的精确账号凭据路径。此时仍未切换狗头军师生产默认服务。
 
