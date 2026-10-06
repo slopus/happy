@@ -1,9 +1,10 @@
+import { ServiceTargetSchema } from '@slopus/happy-wire/ai-services';
 import type { AIServiceClient } from './client';
 import { safeServiceError } from './client';
 import { AIServiceClientError, type ExecutionBinding } from './types';
 import { validateIdentifier, validateMessages, validateOverrides } from './scopedTransport';
 export interface PlatformOperation {
-    operation: 'connection' | 'services' | 'capabilities' | 'create' | 'find' | 'start' | 'read' | 'cancel' | 'revoke';
+    operation: 'connection' | 'services' | 'configuration' | 'capabilities' | 'create' | 'find' | 'start' | 'read' | 'cancel' | 'revoke';
     bindingId?: string;
     turnId?: string;
     requestId?: string;
@@ -41,10 +42,11 @@ export function createPlatformServiceHandler<Context>(client: AIServiceClient, h
             const strict = (keys: string[]) => { if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(k => !keys.includes(k)))
                 throw new AIServiceClientError('invalid-request'); return body as Record<string, any>; };
             let operation: PlatformOperation;
-            if (request.method === 'GET' && parts.length === 1 && ['connection', 'services'].includes(parts[0]))
-                operation = { operation: parts[0] as 'connection' | 'services' };
+            if (request.method === 'GET' && parts.length === 1 && ['connection', 'services', 'configuration'].includes(parts[0]))
+                operation = { operation: parts[0] as 'connection' | 'services' | 'configuration' };
             else if (request.method === 'POST' && parts.length === 1 && parts[0] === 'capabilities') {
-                strict([]);
+                const b = strict(['target']);
+                if (b.target !== undefined && !ServiceTargetSchema.safeParse(b.target).success) throw new AIServiceClientError('invalid-request');
                 operation = { operation: 'capabilities' };
             }
             else if (request.method === 'POST' && parts.length === 1 && parts[0] === 'conversations') {
@@ -82,8 +84,11 @@ export function createPlatformServiceHandler<Context>(client: AIServiceClient, h
                 case 'services':
                     result = await client.services.list(signal);
                     break;
+                case 'configuration':
+                    result = await client.services.configuration(signal);
+                    break;
                 case 'capabilities':
-                    result = { catalog: await client.capabilities.read(signal) };
+                    result = { catalog: await client.capabilities.read({...signal, ...((body as any).target ? {target: (body as any).target} : {})}) };
                     break;
                 case 'create': {
                     const b = body as Record<string, any>;

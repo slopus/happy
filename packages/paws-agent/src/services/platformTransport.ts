@@ -1,5 +1,5 @@
 import { beginSubmission, type SubmissionProvenance } from './submission';
-import { ExecutionBindingSchema, TurnRecordSchema, CapabilityCatalogSchema, AppPolicySchema, ServiceRefSchema } from '@slopus/happy-wire/ai-services';
+import { ServiceConfigurationSchema, ServiceTargetSchema, ExecutionBindingSchema, TurnRecordSchema, CapabilityCatalogSchema, AppPolicySchema, ServiceRefSchema } from '@slopus/happy-wire/ai-services';
 import { canonical, serviceRequest, validateIdentifier, validateMessages, validateOverrides } from './scopedTransport';
 import { AIServiceClientError, type AIServiceTransport, type CallOptions, type TurnLocator, type TurnSnapshot } from './types';
 import type { ServiceStorage } from './storage';
@@ -60,9 +60,10 @@ export function createBrowserPlatformTransport(options: BrowserPlatformOptions):
         async list(opts) { const data = await call<any>('/services', undefined, opts), app = AppPolicySchema.safeParse(data.app); if (!app.success || app.data.appId !== options.appId || !Array.isArray(data.services))
             throw new AIServiceClientError('context-mismatch'); return { app: app.data, services: data.services.map((s: unknown) => { const parsed = ServiceRefSchema.safeParse(s); if (!parsed.success)
                 throw new AIServiceClientError('context-mismatch'); return parsed.data; }) }; },
-        async readCapabilities(opts) { const data = await call<any>('/capabilities', {}, opts); if (data.catalog === null)
+        async configuration(opts) { const data = ServiceConfigurationSchema.safeParse(await call('/configuration', undefined, opts)); if (!data.success) throw new AIServiceClientError('context-mismatch'); return data.data; },
+        async readCapabilities(opts) { if (opts?.target !== undefined && !ServiceTargetSchema.safeParse(opts.target).success) throw new AIServiceClientError('invalid-request'); const data = await call<any>('/capabilities', opts?.target ? {target:opts.target} : {}, opts); if (data.catalog === null)
             return null; const parsed = CapabilityCatalogSchema.safeParse(data.catalog); if (!parsed.success)
-            throw new AIServiceClientError('context-mismatch'); return parsed.data; },
+            throw new AIServiceClientError('context-mismatch'); if (opts?.target && canonical([opts.target.machineId,opts.target.engine,opts.target.accountRef]) !== canonical([parsed.data.machineId,parsed.data.engine,parsed.data.accountRef])) throw new AIServiceClientError('context-mismatch'); return parsed.data; },
         async createConversation(input = {}, opts) { const overrides = validateOverrides(input.overrides); if (input.appConversationId !== undefined)
             validateIdentifier(input.appConversationId); const data = await call<any>('/conversations', { overrides, ...(input.appConversationId === undefined ? {} : { appConversationId: input.appConversationId }) }, opts); return parseBinding(data.binding); },
         async findConversation(id, opts) { const data = await call<any>(`/conversations/${validateIdentifier(id)}/binding`, undefined, opts); return data.binding === null ? null : parseBinding(data.binding); },

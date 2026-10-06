@@ -1,5 +1,5 @@
-import type { AppPolicy, CapabilityCatalog, ExecutionBinding, GrantReceipt, ServiceErrorCode, ServicePermission, ServiceReasoning, ServiceRef, TurnRecord } from '@slopus/happy-wire/ai-services';
-export type { AppPolicy, CapabilityCatalog, ExecutionBinding, GrantReceipt, ServiceGrant, ServiceErrorCode, ServicePermission, ServiceReasoning, ServiceRef, TurnRecord, TurnActual } from '@slopus/happy-wire/ai-services';
+import type { AppPolicy, CapabilityCatalog, ExecutionBinding, GrantReceipt, ServiceErrorCode, ServicePermission, ServiceReasoning, ServiceRef, ServiceTarget, ServicePermissionMode, ServiceTier, ServiceConfiguration, ServiceConfig, TurnRecord } from '@slopus/happy-wire/ai-services';
+export type { AppPolicy, CapabilityCatalog, ExecutionBinding, GrantReceipt, ServiceGrant, ServiceErrorCode, ServicePermission, ServiceReasoning, ServiceRef, ServiceTarget, ServicePermissionMode, ServiceTier, ServiceConfiguration, ServiceConfig, TurnRecord, TurnActual } from '@slopus/happy-wire/ai-services';
 export type ServiceSource = 'platform' | 'personal';
 export type ClientErrorCode = ServiceErrorCode | 'transport-error' | 'context-mismatch' | 'storage-unavailable' | 'disposed' | 'aborted' | 'observation-expired';
 export class AIServiceClientError extends Error {
@@ -18,6 +18,9 @@ export interface ServiceMessage {
     images?: string[];
 }
 export interface BindingOverrides {
+    target?: ServiceTarget;
+    permissionMode?: ServicePermissionMode;
+    serviceTier?: ServiceTier;
     modelId?: string | null;
     reasoning?: ServiceReasoning;
     permissions?: ServicePermission[];
@@ -56,6 +59,7 @@ export interface AuthorizeOptions {
 export interface CallOptions {
     signal?: AbortSignal;
 }
+export interface CapabilityReadOptions extends CallOptions { target?: ServiceTarget; }
 export interface ServiceList {
     services: ServiceRef[];
     app: AppPolicy;
@@ -65,7 +69,8 @@ export interface AIServiceTransport {
     readonly source: ServiceSource;
     authorize(options?: AuthorizeOptions): Promise<ServiceConnection>;
     list(options?: CallOptions): Promise<ServiceList>;
-    readCapabilities(options?: CallOptions): Promise<CapabilityCatalog | null>;
+    configuration?(options?: CallOptions): Promise<ServiceConfiguration>;
+    readCapabilities(options?: CapabilityReadOptions): Promise<CapabilityCatalog | null>;
     createConversation(input?: CreateConversationInput, options?: CallOptions): Promise<ExecutionBinding>;
     findConversation(appConversationId: string, options?: CallOptions): Promise<ExecutionBinding | null>;
     start(input: StartTurnInput, options?: CallOptions): Promise<TurnSnapshot>;

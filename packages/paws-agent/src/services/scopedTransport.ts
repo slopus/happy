@@ -1,7 +1,7 @@
 import { beginSubmission, type SubmissionProvenance } from './submission';
 import nacl from 'tweetnacl';
 import { sha256 } from '@noble/hashes/sha256';
-import { AppPolicySchema, CapabilityCatalogSchema, ExecutionBindingSchema, GrantReceiptSchema, ServiceErrorSchema, ServiceRefSchema, TurnRecordSchema } from '@slopus/happy-wire/ai-services';
+import { AppPolicySchema, ServiceConfigurationSchema, ServiceTargetSchema, ServicePermissionModeSchema, ServiceTierSchema, CapabilityCatalogSchema, ExecutionBindingSchema, GrantReceiptSchema, ServiceErrorSchema, ServiceRefSchema, TurnRecordSchema } from '@slopus/happy-wire/ai-services';
 import { decodeBase64, encodeBase64, getRandomBytes } from '../crypto/encryption';
 import { AIServiceClientError, type AIServiceTransport, type CallOptions, type GrantReceipt, type ExecutionBinding, type ServiceMessage, type StartTurnInput, type TurnLocator, type TurnSnapshot, type BindingOverrides } from './types';
 import type { ServiceStorage } from './storage';
@@ -31,13 +31,15 @@ export function validateMessages(input: unknown): ServiceMessage[] {
     return messages;
 }
 export function validateOverrides(value: BindingOverrides = {}): BindingOverrides {
-    if (!value || Object.keys(value).some(k => !['modelId', 'reasoning', 'permissions'].includes(k)))
+    if (!value || Object.keys(value).some(k => !['modelId', 'reasoning', 'permissions', 'target', 'permissionMode', 'serviceTier'].includes(k)))
         throw new AIServiceClientError('invalid-request');
     if (value.modelId !== undefined && value.modelId !== null)
         validateIdentifier(value.modelId);
     if (value.reasoning !== undefined && (value.reasoning.mode === 'default' ? Object.keys(value.reasoning).length !== 1 : value.reasoning.mode !== 'explicit' || typeof value.reasoning.value !== 'string' || !value.reasoning.value.trim() || value.reasoning.value.length > 256 || Object.keys(value.reasoning).length !== 2))
         throw new AIServiceClientError('invalid-request');
-    if (value.permissions !== undefined && (!Array.isArray(value.permissions) || !value.permissions.length || value.permissions.length > 2 || new Set(value.permissions).size !== value.permissions.length || value.permissions.some(p => !['chat', 'images'].includes(p))))
+    if (value.permissions !== undefined && (!Array.isArray(value.permissions) || !value.permissions.length || value.permissions.length > 3 || new Set(value.permissions).size !== value.permissions.length || value.permissions.some(p => !['chat', 'images', 'tools'].includes(p))))
+        throw new AIServiceClientError('invalid-request');
+    if (value.target !== undefined && !ServiceTargetSchema.safeParse(value.target).success || value.permissionMode !== undefined && !ServicePermissionModeSchema.safeParse(value.permissionMode).success || value.serviceTier !== undefined && !ServiceTierSchema.safeParse(value.serviceTier).success)
         throw new AIServiceClientError('invalid-request');
     return structuredClone(value);
 }
@@ -219,11 +221,21 @@ export function createScopedServiceTransport(options: ScopedTransportOptions, ki
         }>('/v1/apps/services', undefined, call), r = connectionReceipt(), policy = AppPolicySchema.safeParse(data.app); if (!policy.success || policy.data.appId !== options.appId || !Array.isArray(data.services))
             throw new AIServiceClientError('context-mismatch'); const services = data.services.map(s => { const parsed = ServiceRefSchema.safeParse(s); if (!parsed.success || parsed.data.id !== r.scope.serviceId || parsed.data.ownerId !== r.ownerId)
             throw new AIServiceClientError('context-mismatch'); return parsed.data; }); return { services, app: policy.data }; },
-        async readCapabilities(call) { const data = await request<{
+        async configuration(call) {
+            const data = ServiceConfigurationSchema.safeParse(await request('/v1/apps/ai-services/configuration', undefined, call)), r = connectionReceipt();
+            const key = (t: {machineId:string;engine:string;accountRef:unknown}) => canonical([t.machineId,t.engine,t.accountRef]);
+            if (!data.success || data.data.service.id !== r.scope.serviceId || data.data.service.ownerId !== r.ownerId || data.data.permissions.some(p => !r.scope.permissions.includes(p)) || !r.scope.targets.some(t => key(t) === key(data.data.defaults)) || data.data.targets.some(item => !r.scope.targets.some(t => key(t) === key(item.target))))
+                throw new AIServiceClientError('context-mismatch');
+            return data.data;
+        },
+        async readCapabilities(call) {
+            if (call?.target !== undefined && !ServiceTargetSchema.safeParse(call.target).success) throw new AIServiceClientError('invalid-request');
+            const targetKey = (t: {machineId:string;engine:string;accountRef:unknown}) => canonical([t.machineId,t.engine,t.accountRef]);
+            if (call?.target && !connectionReceipt().scope.targets.some(t => targetKey(t) === targetKey(call.target!))) throw new AIServiceClientError('permission-denied'); const data = await request<{
             catalog: unknown;
-        }>('/v1/apps/ai-services/capabilities', {}, call); if (data.catalog === null)
+        }>('/v1/apps/ai-services/capabilities', call?.target ? {target:call.target} : {}, call); if (data.catalog === null)
             return null; const parsed = CapabilityCatalogSchema.safeParse(data.catalog), r = connectionReceipt(); if (!parsed.success || !r.scope.targets.some(t => canonical([t.machineId, t.engine, t.accountRef]) === canonical([parsed.data.machineId, parsed.data.engine, parsed.data.accountRef])))
-            throw new AIServiceClientError('context-mismatch'); return parsed.data; },
+            throw new AIServiceClientError('context-mismatch'); if (call?.target && targetKey(call.target) !== targetKey(parsed.data)) throw new AIServiceClientError('context-mismatch'); return parsed.data; },
         async createConversation(input = {}, call) { const overrides = validateOverrides(input.overrides); if (input.appConversationId !== undefined)
             validateIdentifier(input.appConversationId); const result = await request<{
             binding: unknown;

@@ -23,10 +23,10 @@ export const ServiceReasoningSchema = z.discriminatedUnion('mode', [
 ]);
 export type ServiceReasoning = z.infer<typeof ServiceReasoningSchema>;
 
-/** These capabilities allow question answering and image input only. */
-export const ServicePermissionSchema = z.enum(['chat', 'images']);
+/** Tools require an explicit application capability and an explicit scoped grant. */
+export const ServicePermissionSchema = z.enum(['chat', 'images', 'tools']);
 export type ServicePermission = z.infer<typeof ServicePermissionSchema>;
-export const ServicePermissionsSchema = z.array(ServicePermissionSchema).min(1).max(2)
+export const ServicePermissionsSchema = z.array(ServicePermissionSchema).min(1).max(3)
     .refine(values => new Set(values).size === values.length, 'permissions must be unique');
 
 const CodexTargetSchema = z.object({
@@ -44,7 +44,12 @@ export const ServiceTargetSchema = z.discriminatedUnion('engine', [CodexTargetSc
     .refine(matchesDeviceIdentity, { message: 'account identity belongs to another device', path: ['accountRef', 'machineId'] });
 export type ServiceTarget = z.infer<typeof ServiceTargetSchema>;
 
-const configFields = { modelId: IdentifierSchema.nullable(), reasoning: ServiceReasoningSchema };
+export const ServicePermissionModeSchema = z.enum(['chat-only', 'read-only', 'yolo']);
+export type ServicePermissionMode = z.infer<typeof ServicePermissionModeSchema>;
+export const ServiceTierSchema = z.enum(['default', 'fast']);
+export type ServiceTier = z.infer<typeof ServiceTierSchema>;
+const executionOptions = { permissionMode: ServicePermissionModeSchema.optional(), serviceTier: ServiceTierSchema.optional() };
+const configFields = { modelId: IdentifierSchema.nullable(), reasoning: ServiceReasoningSchema, ...executionOptions };
 export const ServiceConfigSchema = z.discriminatedUnion('engine', [
     CodexTargetSchema.extend(configFields).strict(), ClaudeTargetSchema.extend(configFields).strict(),
 ]).refine(matchesDeviceIdentity, { message: 'account identity belongs to another device', path: ['accountRef', 'machineId'] });
@@ -56,6 +61,14 @@ export const ServiceRefSchema = z.object({
 }).strict();
 export type ServiceRef = z.infer<typeof ServiceRefSchema>;
 
+/** Safe, scoped configuration metadata. It contains no credentials or execution paths. */
+export const ServiceConfigurationSchema = z.object({
+    service: ServiceRefSchema, defaults: ServiceConfigSchema,
+    targets: z.array(z.object({ target: ServiceTargetSchema, machineName: IdentifierSchema, accountName: IdentifierSchema }).strict()).min(1).max(64),
+    permissions: ServicePermissionsSchema,
+}).strict();
+export type ServiceConfiguration = z.infer<typeof ServiceConfigurationSchema>;
+
 export const ServiceRevisionSchema = z.object({
     serviceId: IdentifierSchema, revision: RevisionSchema, config: ServiceConfigSchema, createdAt: TimestampSchema,
 }).strict();
@@ -63,7 +76,7 @@ export type ServiceRevision = z.infer<typeof ServiceRevisionSchema>;
 
 const bindingFields = {
     id: IdentifierSchema, appId: IdentifierSchema, serviceId: IdentifierSchema, revision: RevisionSchema,
-    requestedModel: IdentifierSchema.nullable(), reasoning: ServiceReasoningSchema, permissions: ServicePermissionsSchema,
+    requestedModel: IdentifierSchema.nullable(), reasoning: ServiceReasoningSchema, permissions: ServicePermissionsSchema, ...executionOptions,
 };
 /** A binding fixes identity, not the current authentication token. Null requests the runtime default. */
 export const ExecutionBindingSchema = z.discriminatedUnion('engine', [
@@ -78,6 +91,7 @@ export const ModelReasoningCapabilitySchema = z.object({
 export type ModelReasoningCapability = z.infer<typeof ModelReasoningCapabilitySchema>;
 export const ServiceModelCapabilitySchema = z.object({
     id: IdentifierSchema, name: IdentifierSchema, supportsImages: z.boolean(), reasoning: ModelReasoningCapabilitySchema,
+    serviceTiers: z.array(ServiceTierSchema).max(2).optional(),
 }).strict();
 export type ServiceModelCapability = z.infer<typeof ServiceModelCapabilitySchema>;
 
@@ -85,6 +99,7 @@ const catalogFields = {
     protocol: AIServiceProtocolSchema, observedAt: TimestampSchema,
     availability: z.enum(['online', 'offline']), completeness: z.enum(['complete', 'limited']),
     models: z.array(ServiceModelCapabilitySchema).max(1024), defaultModelId: IdentifierSchema.nullable(),
+    execution: z.object({ permissionModes: z.array(ServicePermissionModeSchema).min(1).max(3), serviceTiers: z.array(ServiceTierSchema).min(1).max(2) }).strict().optional(),
 };
 /** Offline observations are display data. Execution requires a new capability check. */
 export const CapabilityCatalogSchema = z.discriminatedUnion('engine', [
@@ -109,7 +124,7 @@ export type TerminalTurnStatus = z.infer<typeof TerminalTurnStatusSchema>;
 export const TurnStatusSchema = z.enum(['accepted', 'running', 'cancel-requested', ...TerminalTurnStatusSchema.options]);
 export type TurnStatus = z.infer<typeof TurnStatusSchema>;
 /** Null means the executor did not report the value. Requested values are never substituted. */
-export const TurnActualSchema = z.object({ modelId: IdentifierSchema.nullable(), reasoning: IdentifierSchema.nullable() }).strict();
+export const TurnActualSchema = z.object({ modelId: IdentifierSchema.nullable(), reasoning: IdentifierSchema.nullable(), permissionMode: ServicePermissionModeSchema.nullable().optional(), serviceTier: IdentifierSchema.nullable().optional() }).strict();
 export type TurnActual = z.infer<typeof TurnActualSchema>;
 
 const TurnRecordObjectSchema = z.object({

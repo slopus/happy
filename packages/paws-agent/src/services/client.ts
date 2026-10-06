@@ -28,7 +28,7 @@ export function createAIServiceClient({ appId, transport }: {
     const terminal = (snapshot: TurnSnapshot) => ['completed', 'failed', 'cancelled', 'interrupted'].includes(snapshot.record.status);
     return {
         appId, source: transport.source,
-        services: { list: (...args: Parameters<AIServiceTransport['list']>) => { open(); return transport.list(...args); } },
+        services: { configuration: (...args: Parameters<NonNullable<AIServiceTransport['configuration']>>) => { open(); if (!transport.configuration) return Promise.reject(new AIServiceClientError('protocol-incompatible')); return transport.configuration(...args); }, list: (...args: Parameters<AIServiceTransport['list']>) => { open(); return transport.list(...args); } },
         capabilities: { read: (...args: Parameters<AIServiceTransport['readCapabilities']>) => { open(); return transport.readCapabilities(...args); } },
         connections: {
             async authorize(...args: Parameters<AIServiceTransport['authorize']>) {

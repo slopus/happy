@@ -33,6 +33,14 @@ const policy = {
 };
 
 describe('AI service configuration', () => {
+    it('carries execution presets without changing legacy configurations', () => {
+        const preset = { ...codex, permissionMode: 'yolo', serviceTier: 'fast' };
+        expect(wire.ServiceConfigSchema.safeParse(preset).success).toBe(true);
+        expect(wire.ExecutionBindingSchema.safeParse({ ...binding, permissions: ['chat', 'tools'], permissionMode: 'yolo', serviceTier: 'fast' }).success).toBe(true);
+        expect(wire.ServiceGrantScopeSchema.safeParse({ ...scope, permissions: ['chat', 'tools'] }).success).toBe(true);
+        expect(wire.parseServiceConfig(codex)).toEqual(codex);
+        expect(wire.ServiceConfigSchema.safeParse({ ...preset, permissionMode: 'anything' }).success).toBe(false);
+    });
     it('accepts engine-native account references without credentials', () => {
         expect(wire.parseServiceConfig(codex)).toEqual(codex);
         expect(wire.parseServiceConfig(claude)).toEqual(claude);
