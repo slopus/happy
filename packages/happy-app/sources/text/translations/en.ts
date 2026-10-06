@@ -1,4 +1,4 @@
-import type { TranslationStructure } from '../_default';
+import { en as defaultEnglish, type TranslationStructure } from '../_default';
 
 /**
  * English plural helper function
@@ -473,13 +473,7 @@ export const en: TranslationStructure = {
     },
 
     agentInput: {
-        sendMode: {
-            title: 'SEND FOLLOW-UPS',
-            queue: 'Queue',
-            queueDescription: 'Send after the current turn finishes',
-            steer: 'Steer',
-            steerDescription: 'Guide the current turn while it runs',
-        },
+        sendMode: defaultEnglish.agentInput.sendMode,
         permissionMode: {
             title: 'PERMISSION MODE',
             auto: 'asks when unsure',

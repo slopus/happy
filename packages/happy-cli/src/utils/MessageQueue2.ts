@@ -18,6 +18,7 @@ interface QueueItem<T> {
 export type MessageBatch<T> = Omit<QueueItem<T>, 'modeHash' | 'isolate'> & {
     hash: string;
     isolate: boolean;
+    restore: () => void;
 };
 
 /**
@@ -198,7 +199,7 @@ export class MessageQueue2<T> {
     /**
      * Push a message to the beginning of the queue with a mode.
      */
-    unshift(message: string, mode: T, options: Pick<QueueItem<T>, 'attachments' | 'isolate' | 'sendMode'> = {}): void {
+    unshift(message: string, mode: T): void {
         if (this.closed) {
             throw new Error('Cannot unshift to closed queue');
         }
@@ -210,9 +211,7 @@ export class MessageQueue2<T> {
             message,
             mode,
             modeHash,
-            isolate: options.isolate ?? false,
-            attachments: options.attachments,
-            sendMode: options.sendMode,
+            isolate: false
         });
 
         // Trigger message handler if set
@@ -299,12 +298,12 @@ export class MessageQueue2<T> {
     }
 
     /** Take only steering input for this turn; queued input stays in place. */
-    async waitForSteeringMessage(modeHash: string, abortSignal?: AbortSignal): Promise<MessageBatch<T> | null> {
+    async waitForSteeringMessage(modeHash: string, abortSignal?: AbortSignal, isCompatible: (mode: T) => boolean = () => true): Promise<MessageBatch<T> | null> {
         const findIndex = () => {
             for (let i = 0; i < this.queue.length; i++) {
                 const item = this.queue[i];
                 // Never steer across a settings change or an isolated command.
-                if (item.isolate || item.modeHash !== modeHash) return -1;
+                if (item.isolate || item.modeHash !== modeHash || !isCompatible(item.mode)) return -1;
                 if (item.sendMode === 'steer') return i;
             }
             return -1;
@@ -313,7 +312,7 @@ export class MessageQueue2<T> {
             const index = findIndex();
             if (index >= 0) {
                 const [item] = this.queue.splice(index, 1);
-                return { ...item, hash: item.modeHash, isolate: false };
+                return { ...item, hash: item.modeHash, isolate: false, restore: this.createRestore([item], index) };
             }
             if (!await this.waitForMessages(abortSignal, () => findIndex() >= 0)) return null;
         }
@@ -330,6 +329,7 @@ export class MessageQueue2<T> {
 
         const firstItem = this.queue[0];
         const sameModeMessages: string[] = [];
+        const items: QueueItem<T>[] = [];
         const collectedAttachments: PendingAttachment[] = [];
         let mode = firstItem.mode;
         let isolate = firstItem.isolate ?? false;
@@ -338,6 +338,7 @@ export class MessageQueue2<T> {
         // If the first message requires isolation, only process it alone
         if (firstItem.isolate) {
             const item = this.queue.shift()!;
+            items.push(item);
             sameModeMessages.push(item.message);
             if (item.attachments) collectedAttachments.push(...item.attachments);
             logger.debug(`[MessageQueue2] Collected isolated message with mode hash: ${targetModeHash}`);
@@ -348,6 +349,7 @@ export class MessageQueue2<T> {
                 (this.queue[0].sendMode ?? 'queue') === (firstItem.sendMode ?? 'queue') &&
                 !this.queue[0].isolate) {
                 const item = this.queue.shift()!;
+                items.push(item);
                 sameModeMessages.push(item.message);
                 if (item.attachments) collectedAttachments.push(...item.attachments);
             }
@@ -364,6 +366,20 @@ export class MessageQueue2<T> {
             isolate,
             attachments: collectedAttachments.length > 0 ? collectedAttachments : undefined,
             sendMode: firstItem.sendMode,
+            restore: this.createRestore(items, 0),
+        };
+    }
+
+    private createRestore(items: QueueItem<T>[], index: number): () => void {
+        const queue = this.queue;
+        let restored = false;
+        return () => {
+            if (restored || this.closed || this.queue !== queue) return;
+            restored = true;
+            queue.splice(index, 0, ...items);
+            const waiter = this.waiter;
+            this.waiter = null;
+            waiter?.(true);
         };
     }
 

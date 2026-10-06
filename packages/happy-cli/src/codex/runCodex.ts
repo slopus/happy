@@ -1013,23 +1013,22 @@ export async function runCodex(opts: {
                             while (!steeringController.signal.aborted) {
                                 const input = await messageQueue.waitForSteeringMessage(message.hash, steeringController.signal);
                                 if (!input) return;
-                                const restore = () => messageQueue.unshift(input.message, input.mode, input);
-                                if (steeringController.signal.aborted) { restore(); return; }
+                                if (steeringController.signal.aborted) { input.restore(); return; }
                                 let steeringImages;
                                 try {
                                     steeringImages = await prepareCodexImageInputItems(input.attachments, { sessionId: session.sessionId });
                                 } catch {
-                                    restore();
+                                    input.restore();
                                     return;
                                 }
-                                if (steeringController.signal.aborted) { restore(); return; }
+                                if (steeringController.signal.aborted) { input.restore(); return; }
                                 if (steeringImages.inputItems.length === 0 && !input.message.trim()) {
                                     session.sendSessionEvent({ type: 'message', message: 'No supported images were available to send to Codex.' });
                                     continue;
                                 }
                                 try {
                                     if (!await client.steerTurn(input.message, steeringImages.inputItems)) {
-                                        restore();
+                                        input.restore();
                                         session.sendSessionEvent({ type: 'message', message: 'Codex could not steer this turn; the message will run next.' });
                                         return;
                                     }

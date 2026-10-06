@@ -429,12 +429,32 @@ describe('MessageQueue2', () => {
         });
     });
 
-    it('does not steer past a mode change or consume on an aborted wait', async () => {
-        const queue = new MessageQueue2<string>((mode) => mode);
+    it('restores a rejected steer in order with its original fields, once, unless cleared', async () => {
+        const queue = new MessageQueue2<string>(mode => mode);
+        queue.push('queued', 'same');
+        queue.push('also queued', 'same');
+        queue.push('steer', 'same', [{ data: new Uint8Array([1]), mimeType: 'image/png', name: 'image' }], 'steer');
+        const original = queue.queue[2];
+        const input = (await queue.waitForSteeringMessage('same'))!;
+        queue.push('later', 'same');
+        input.restore();
+        input.restore();
+        expect(queue.queue.map(item => item.message)).toEqual(['queued', 'also queued', 'steer', 'later']);
+        expect(queue.queue[2]).toBe(original);
+        (await queue.waitForMessagesAndGetAsString())!.restore();
+        expect(queue.queue.map(item => item.message)).toEqual(['queued', 'also queued', 'steer', 'later']);
+        const retry = (await queue.waitForSteeringMessage('same'))!;
+        queue.pushIsolateAndClear('/clear', 'same');
+        retry.restore();
+        expect(queue.queue.map(item => item.message)).toEqual(['/clear']);
+    });
+
+    it.each([false, true])('does not steer past changed settings, including hot settings (%s)', async hotSetting => {
+        const queue = new MessageQueue2<string>((mode) => hotSetting ? 'same' : mode);
         queue.push('new model', 'other');
         queue.push('steer', 'same', undefined, 'steer');
         const controller = new AbortController();
-        const waiting = queue.waitForSteeringMessage('same', controller.signal);
+        const waiting = queue.waitForSteeringMessage('same', controller.signal, mode => !hotSetting || mode === 'same');
         controller.abort();
         expect(await waiting).toBeNull();
         expect(await queue.waitForMessagesAndGetAsString()).toMatchObject({ message: 'new model' });

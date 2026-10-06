@@ -329,7 +329,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             pending = null;
                         } else {
                             msg = onlySteer && modeHash
-                                ? await session.queue.waitForSteeringMessage(modeHash, waitSignal)
+                                ? await session.queue.waitForSteeringMessage(modeHash, waitSignal, candidate => candidate.permissionMode === mode?.permissionMode)
                                 : await session.queue.waitForMessagesAndGetAsString(waitSignal);
                             if (msg && ((modeHash && msg.hash !== modeHash) || msg.isolate)) {
                                 logger.debug('[remote]: mode has changed, pending message');
@@ -377,14 +377,14 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                 return {
                                     message: contentBlocks,
                                     mode: msg.mode,
-                                    restore: () => session.queue.unshift(msg.message, msg.mode, msg),
+                                    restore: msg.restore,
                                 };
                             }
 
                             return {
                                 message: msg.message,
                                 mode: msg.mode,
-                                restore: () => session.queue.unshift(msg.message, msg.mode, msg),
+                                restore: msg.restore,
                             }
                         }
 
@@ -431,13 +431,13 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         logger.debug('[remote]: Session reset');
                         session.clearSessionId();
                     },
-                    onReady: async (status, hasPendingInput = false) => {
+                    onReady: async (status) => {
                         // Assistant messages are queued until the next tick. Deliver
                         // them before closing an auth-failed turn, or the close can
                         // run before the mapper has even opened that turn.
                         if (status === 'failed') await messageQueue.flush();
                         session.client.closeClaudeSessionTurn(status ?? 'completed');
-                        if (status !== 'failed' && !hasPendingInput && !pending && session.queue.size() === 0) {
+                        if (status !== 'failed' && !session.thinking && !pending && session.queue.size() === 0) {
                             session.api.push().sendSessionNotification({
                                 kind: 'done',
                                 metadata: session.client.getMetadata(),

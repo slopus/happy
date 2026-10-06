@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { claudeRemote } from './claudeRemote';
 import { query } from '@/claude/sdk';
 import type { EnhancedMode } from './loop';
+import { MessageQueue2 } from '@/utils/MessageQueue2';
 
 // No provider process, credentials, transcript watcher, or real log files.
 vi.mock('@/lib', () => ({ logger: { debug: vi.fn(), debugLargeJson: vi.fn() } }));
@@ -32,10 +33,14 @@ describe('claudeRemote', () => {
         message: { role: 'assistant', content: [{ type: 'text', text: expired }] },
     };
 
-    async function runMessages(sdkMessages: unknown[]) {
-        vi.mocked(query).mockReturnValue({
-            async *[Symbol.asyncIterator]() { yield* sdkMessages; },
-        } as any);
+    async function runMessages(sdkMessages: any[], missingReceipts = false) {
+        vi.mocked(query).mockImplementation(({ prompt }) => ({
+            async *[Symbol.asyncIterator]() {
+                const { value: input } = await (prompt as AsyncIterable<any>)[Symbol.asyncIterator]().next();
+                for (const message of sdkMessages) yield message.type === 'result' && !missingReceipts
+                    ? { ...message, user_message_uuids: [input.uuid] } : message;
+            },
+        } as any));
         const onReady = vi.fn();
         const onCompletionEvent = vi.fn();
         const onMessage = vi.fn();
@@ -63,16 +68,16 @@ describe('claudeRemote', () => {
         expect(callbacks.onCompletionEvent).toHaveBeenCalledOnce();
         expect(callbacks.onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('claude auth login'));
         expect(callbacks.onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('host'));
-        expect(callbacks.onReady).toHaveBeenCalledWith('failed', false);
+        expect(callbacks.onReady).toHaveBeenCalledWith('failed');
         expect(query).toHaveBeenCalledOnce();
     });
 
     it('recognizes the result-only SDK error surface', async () => {
         const callbacks = await runMessages([
             { type: 'result', subtype: 'error_during_execution', is_error: true, errors: [expired] },
-        ]);
+        ], true);
         expect(callbacks.onCompletionEvent).toHaveBeenCalledWith(expect.stringContaining('claude auth login'));
-        expect(callbacks.onReady).toHaveBeenCalledWith('failed', false);
+        expect(callbacks.onReady).toHaveBeenCalledWith('failed');
     });
 
     it('allows a later user retry in the same session without replaying the failed prompt', async () => {
@@ -82,11 +87,11 @@ describe('claudeRemote', () => {
                 const input = (prompt as AsyncIterable<unknown>)[Symbol.asyncIterator]();
                 received.push((await input.next()).value);
                 yield authAssistant;
-                yield { type: 'result', subtype: 'success', is_error: true, result: expired };
+                yield { type: 'result', subtype: 'success', is_error: true, result: expired, user_message_uuids: [(received[0] as any).uuid] };
                 // Models the host login being fixed before the user sends a new prompt.
                 received.push((await input.next()).value);
                 yield { ...authAssistant, error: undefined, message: { role: 'assistant', content: [{ type: 'text', text: 'Recovered' }] } };
-                yield { type: 'result', subtype: 'success', is_error: false, result: 'Recovered' };
+                yield { type: 'result', subtype: 'success', is_error: false, result: 'Recovered', user_message_uuids: [(received[1] as any).uuid] };
                 expect((await input.next()).done).toBe(true);
             },
         } as any));
@@ -106,18 +111,22 @@ describe('claudeRemote', () => {
             expect.objectContaining({ message: { role: 'user', content: 'Original prompt' } }),
             expect.objectContaining({ message: { role: 'user', content: 'User retry after login' } }),
         ]);
-        expect(onReady.mock.calls).toEqual([['failed', false], [undefined, false]]);
+        expect(onReady.mock.calls).toEqual([['failed'], []]);
         expect(onCompletionEvent).toHaveBeenCalledOnce();
         expect(query).toHaveBeenCalledOnce();
         expect(query).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ resume: 'fixture-session' }) }));
     });
 
-    it('sends steering input with now priority and queued input after the result', async () => {
+    it('folds steering input with next priority and keeps queued input until the result', async () => {
+        const queue = new MessageQueue2<EnhancedMode>(() => 'same');
+        queue.push('Original', mode);
         const received: any[] = [];
         vi.mocked(query).mockImplementation(({ prompt }) => ({
             async *[Symbol.asyncIterator]() {
                 const input = (prompt as AsyncIterable<any>)[Symbol.asyncIterator]();
                 received.push((await input.next()).value);
+                queue.push('Next turn', mode);
+                queue.push('Guide', mode, undefined, 'steer');
                 received.push((await input.next()).value);
                 yield {
                     type: 'result', subtype: 'success', is_error: false,
@@ -130,35 +139,16 @@ describe('claudeRemote', () => {
                 };
             },
         } as any));
-        let initial = false;
-        let steered = false;
-        let queued = false;
-        const nextMessage = vi.fn((signal?: AbortSignal, onlySteer?: boolean) => {
-            if (!initial) {
-                initial = true;
-                return Promise.resolve({ message: 'Original', mode });
-            }
-            if (onlySteer && !steered) {
-                steered = true;
-                return Promise.resolve({ message: 'Guide', mode });
-            }
-            if (onlySteer) return new Promise<null>((resolve) => signal?.addEventListener('abort', () => resolve(null), { once: true }));
-            if (!queued) {
-                queued = true;
-                return Promise.resolve({ message: 'Next turn', mode });
-            }
-            return Promise.resolve(null);
-        });
-
         await claudeRemote({
             sessionId: null, path: '/fixture/project', allowedTools: [], hookSettingsPath: '/fixture/settings.json',
-            nextMessage, onReady: vi.fn(), onMessage: vi.fn(),
+            nextMessage: (signal, steer) => steer ? queue.waitForSteeringMessage('same', signal) : queue.waitForMessagesAndGetAsString(signal),
+            onReady: vi.fn(), onMessage: vi.fn(),
             canCallTool: async () => ({ behavior: 'allow', updatedInput: {} }),
             isAborted: () => false, onSessionFound: vi.fn(),
         });
         expect(received.map((message) => message.message.content)).toEqual(['Original', 'Guide', 'Next turn']);
-        expect(received[1].priority).toBe('now');
-        expect(received[2].priority).toBeUndefined();
+        expect(received[1].priority).toBe('next');
+        expect(received[2].priority).toBe('later');
     });
 
     it('does not interpret ordinary assistant text or a successful result as an auth failure', async () => {
@@ -167,7 +157,7 @@ describe('claudeRemote', () => {
             { type: 'result', subtype: 'success', is_error: false, result: expired },
         ]);
         expect(callbacks.onCompletionEvent).not.toHaveBeenCalled();
-        expect(callbacks.onReady).toHaveBeenCalledWith(undefined, false);
+        expect(callbacks.onReady).toHaveBeenCalledWith();
     });
 
     it.each(['/clear', 'Ordinary prompt'])('awaits the async ready callback for %s', async prompt => {
@@ -183,7 +173,7 @@ describe('claudeRemote', () => {
             canCallTool: async () => ({ behavior: 'allow', updatedInput: {} }),
             isAborted: () => false, onSessionFound: vi.fn(), onMessage: vi.fn(),
         })).rejects.toBe(failure);
-        expect(nextMessage).toHaveBeenCalledTimes(prompt === '/clear' ? 1 : 2);
+        expect(nextMessage).toHaveBeenCalledOnce();
     });
 
     it('does not report successful compaction after a provider auth failure', async () => {

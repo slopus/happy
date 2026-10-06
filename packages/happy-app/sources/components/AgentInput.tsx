@@ -369,18 +369,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingHorizontal: 0,
     },
     mobileActionButtonsContainer: MOBILE_ACTION_ROW_GEOMETRY,
-    mobileSendModeButton: {
+    mobileSendModes: {
         alignSelf: 'flex-end',
         minHeight: 28,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
+        gap: 12,
         paddingHorizontal: 8,
-    },
-    mobileSendModeText: {
-        fontSize: 12,
-        color: theme.colors.textSecondary,
-        ...Typography.default('semiBold'),
     },
     mobileActionMiddle: MOBILE_MIDDLE_GEOMETRY,
     mobileIconButton: MOBILE_ICON_ACTION_GEOMETRY,
@@ -1203,7 +1198,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // The compact composer has separate controls for permission, model, and
     // effort. Keep a single popup state so only one selection surface is ever
     // visible, including while we dismiss the keyboard on mobile.
-    type ComposerPicker = 'permission' | 'model' | 'effort' | 'sendMode';
+    type ComposerPicker = 'permission' | 'model' | 'effort';
     const [openPicker, setOpenPicker] = React.useState<ComposerPicker | null>(null);
     const pickerOpeningRef = React.useRef<ComposerPicker | null>(null);
     const pickerKeyboardSubscriptionRef = React.useRef<ReturnType<typeof Keyboard.addListener> | null>(null);
@@ -1885,27 +1880,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 {/* A full-window sheet rather than an overlay inside the
                     composer: Android clips an overlay to the composer's bounds,
                     which left its list unscrollable and taps outside it dead. */}
-                {compactMobileComposer && openPicker && (!useNativeSettingsMenus || openPicker === 'sendMode') && (
+                {compactMobileComposer && !useNativeSettingsMenus && openPicker && (
                     <PickerSheet
                         visible
                         title={openPicker === 'permission'
                             ? (isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title'))
                             : openPicker === 'model'
                                 ? t('agentInput.model.title')
-                                : openPicker === 'effort'
-                                    ? t('agentInput.effort.title')
-                                    : t('agentInput.sendMode.title')}
+                                : t('agentInput.effort.title')}
                         onClose={closePicker}
                     >
-                        {openPicker === 'sendMode' && (['queue', 'steer'] as const).map((mode) => (
-                            <PickerSheetOption
-                                key={mode}
-                                label={t(`agentInput.sendMode.${mode}`)}
-                                description={t(`agentInput.sendMode.${mode}Description`)}
-                                selected={sendMode === mode}
-                                onPress={() => { setSendMode(mode); closePicker(); }}
-                            />
-                        ))}
                         {openPicker === 'permission' && availableModes.map((mode) => (
                             <PickerSheetOption
                                 key={mode.key}
@@ -2030,16 +2014,23 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     </View>
 
                     {showSendMode && (
-                        <BubblePressable
-                            onPress={() => handlePickerPress('sendMode')}
-                            style={styles.mobileSendModeButton}
-                            accessibilityRole="button"
-                            accessibilityLabel={t('agentInput.sendMode.title')}
-                            accessibilityValue={{ text: t(`agentInput.sendMode.${sendMode}`) }}
-                        >
-                            <Text style={styles.mobileSendModeText}>{t(`agentInput.sendMode.${sendMode}`)}</Text>
-                            <Ionicons name="chevron-down" size={12} color={theme.colors.textSecondary} />
-                        </BubblePressable>
+                        <View style={styles.mobileSendModes}>
+                            {(['queue', 'steer'] as const).map(mode => (
+                                <BubblePressable
+                                    key={mode}
+                                    onPress={() => setSendMode(mode)}
+                                    hitSlop={6}
+                                    accessibilityRole="radio"
+                                    accessibilityState={{ selected: sendMode === mode }}
+                                    accessibilityLabel={`${t('agentInput.sendMode.title')}: ${t(`agentInput.sendMode.${mode}`)}`}
+                                    accessibilityHint={t(`agentInput.sendMode.${mode}Description`)}
+                                >
+                                    <Text style={[styles.mobileModeText, { color: sendMode === mode ? theme.colors.text : theme.colors.textSecondary }]}>
+                                        {t(`agentInput.sendMode.${mode}`)}
+                                    </Text>
+                                </BubblePressable>
+                            ))}
+                        </View>
                     )}
 
                     {compactMobileComposer ? (
