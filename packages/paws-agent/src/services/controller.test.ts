@@ -52,6 +52,32 @@ it('does not reconnect the panel when an authorization finishes after disconnect
     expect(controller.getState()).toMatchObject({ status: 'disconnected', connection: null });
     controller.dispose();
 });
+
+it('keeps the latest platform authorization usable when an older restore is aborted', async () => {
+    const waiting: ((value: Response) => void)[] = [];
+    const storage = createMemoryServiceStorage();
+    const client = createAIServiceClient({ appId: 'advisor', transport: createBrowserPlatformTransport({
+        appId: 'advisor', baseUrl: '/api/ai', origin: 'https://app.test', storage,
+        fetch: async (url, options) => {
+            if (String(url).endsWith('/capabilities')) return Response.json({ catalog: null });
+            return new Promise<Response>((resolve, reject) => {
+                waiting.push(resolve);
+                options?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+            });
+        },
+    }) });
+    const controller = createServiceController(client, storage);
+    const first = controller.restore();
+    await vi.waitFor(() => expect(waiting.length).toBe(1));
+    const second = controller.restore();
+    await vi.waitFor(() => expect(waiting.length).toBe(2));
+    await first;
+    waiting[1](Response.json({ id: 'latest', appId: 'advisor', source: 'platform', serviceId: 'default', expiresAt: null }));
+    await second;
+    await expect(controller.refresh()).resolves.toBeNull();
+    expect(controller.getState()).toMatchObject({ status: 'ready', connection: { id: 'latest' } });
+    controller.dispose();
+});
 it('keeps credentials out of state, changes only new-conversation overrides, and makes no idle polls', async () => {
     vi.useFakeTimers();
     try {

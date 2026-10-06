@@ -32,7 +32,7 @@ export function createAIServiceClient({ appId, transport }: {
         capabilities: { read: (...args: Parameters<AIServiceTransport['readCapabilities']>) => { open(); return transport.readCapabilities(...args); } },
         connections: {
             async authorize(...args: Parameters<AIServiceTransport['authorize']>) {
-                open(); const epoch = connectionEpoch;
+                open(); const epoch = ++connectionEpoch;
                 try {
                     const connection = await transport.authorize(...args);
                     if (disposed || epoch !== connectionEpoch) throw new AIServiceClientError('aborted');

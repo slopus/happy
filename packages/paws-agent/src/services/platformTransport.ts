@@ -22,7 +22,7 @@ export function createBrowserPlatformTransport(options: BrowserPlatformOptions):
     const base = new URL(options.baseUrl, origin);
     if (base.origin !== origin || base.username || base.password || base.hash || base.search)
         throw new AIServiceClientError('permission-denied');
-    let active = false, disposed = false, lifetime = new AbortController();
+    let active = false, disposed = false, lifetime = new AbortController(), authorizationEpoch = 0;
     const sequences = new Map<string, {
         sequence: number;
         text: string;
@@ -46,14 +46,15 @@ export function createBrowserPlatformTransport(options: BrowserPlatformOptions):
     const transport: AIServiceTransport = {
         appId: options.appId, source: 'platform',
         async authorize(input = {}) { if (input.receipt)
-            throw new AIServiceClientError('permission-denied'); active = true; try {
+            throw new AIServiceClientError('permission-denied'); const epoch = ++authorizationEpoch; active = true; try {
             const result = await call<any>('/connection', undefined, input);
+            if (disposed || epoch !== authorizationEpoch) throw new AIServiceClientError('aborted');
             if (result.source !== 'platform' || result.appId !== options.appId || typeof result.id !== 'string' || typeof result.serviceId !== 'string' || result.expiresAt !== null && !Number.isFinite(result.expiresAt) || Object.keys(result).some(k => !['id', 'source', 'appId', 'serviceId', 'expiresAt'].includes(k)))
                 throw new AIServiceClientError('context-mismatch');
             return result;
         }
         catch (error) {
-            active = false;
+            if (epoch === authorizationEpoch) active = false;
             throw error;
         } },
         async list(opts) { const data = await call<any>('/services', undefined, opts), app = AppPolicySchema.safeParse(data.app); if (!app.success || app.data.appId !== options.appId || !Array.isArray(data.services))
@@ -104,7 +105,7 @@ export function createBrowserPlatformTransport(options: BrowserPlatformOptions):
             throw new AIServiceClientError('invalid-request'); return snapshot(await call<TurnSnapshot>(path, undefined, opts), locator); },
         cancel(locator, opts) { return call(`/bindings/${validateIdentifier(locator.bindingId)}/turns/${validateIdentifier(locator.turnId)}/cancel`, {}, opts); },
         async revoke(opts) { await call('/revoke', {}, opts); },
-        disconnect() { active = false; lifetime.abort(); lifetime = new AbortController(); sequences.clear(); },
+        disconnect() { authorizationEpoch++; active = false; lifetime.abort(); lifetime = new AbortController(); sequences.clear(); },
         dispose() { if (disposed)
             return; transport.disconnect(); disposed = true; lifetime.abort(); },
     };
