@@ -25,6 +25,7 @@ import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
 import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 import { detectCLIAvailability } from '@/utils/detectCLI';
+import { detectAgentModelCatalogs } from '@/utils/agentModelCatalog';
 import { buildResumeLaunch } from '@/resume/handleResumeCommand';
 import { detectResumeSupport } from '@/resume/localHappyAgentAuth';
 import { encodeBase64, decodeBase64, decrypt } from '@/api/encryption';
@@ -48,6 +49,7 @@ function shellescape(s: string): string {
 // is visually distinct from the stable one in the machine list (they otherwise
 // share the same hostname and look identical).
 const hostSuffix = process.env.HAPPY_VARIANT === 'dev' ? '-dev' : '';
+const initialCliAvailability = detectCLIAvailability();
 export const initialMachineMetadata: MachineMetadata = {
   host: os.hostname() + hostSuffix,
   platform: os.platform(),
@@ -55,7 +57,8 @@ export const initialMachineMetadata: MachineMetadata = {
   homeDir: os.homedir(),
   happyHomeDir: configuration.happyHomeDir,
   happyLibDir: projectPath(),
-  cliAvailability: detectCLIAvailability(),
+  cliAvailability: initialCliAvailability,
+  agentModels: detectAgentModelCatalogs(initialCliAvailability),
   resumeSupport: { ...detectResumeSupport(), rpcAvailable: true },
 };
 
