@@ -5,6 +5,8 @@ export interface ServicePanelAppearance {
     title?: string;
     /** Hide the visible title when the host already provides a heading. */
     showTitle?: boolean;
+    /** Manage connections only when the host supplies per-application setting rows. */
+    connectionOnly?: boolean;
     theme?: 'auto' | 'light' | 'dark';
     /** Supply only sources for which the host has configured a client. */
     sources?: ServiceSource[];
@@ -248,9 +250,11 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
             }
             if (state.storage.warning) content.append(node('p', state.storage.warning === 'remember-unavailable' ? '无法记住授权。仅保留在当前浏览器会话或页面中。未确认旧持久数据已删除。' : '浏览器会话存储不可用。连接仅保留在当前页面内存中。', 'paws-service-warning'));
         }
-        const summary = node('div', undefined, 'paws-service-defaults');
-        summary.append(node('h3', '新对话设置'), node('p', state.overrides.modelId ? `模型覆盖：${state.catalog?.models.find(m => m.id === state.overrides.modelId)?.name ?? state.overrides.modelId}` : '模型：跟随服务默认配置'), node('p', state.overrides.reasoning?.mode === 'explicit' ? `推理强度覆盖：${state.overrides.reasoning.value}` : '推理强度：跟随服务默认配置'), node('p', '设置用于新对话。'));
-        summary.append(button('调整模型', 'advanced', () => openModal('advanced')), button('服务详情', 'details', () => openModal('details'))); content.append(summary);
+        if (!appearance.connectionOnly) {
+            const summary = node('div', undefined, 'paws-service-defaults');
+            summary.append(node('h3', '新对话设置'), node('p', state.overrides.modelId ? `模型覆盖：${state.catalog?.models.find(m => m.id === state.overrides.modelId)?.name ?? state.overrides.modelId}` : '模型：跟随服务默认配置'), node('p', state.overrides.reasoning?.mode === 'explicit' ? `推理强度覆盖：${state.overrides.reasoning.value}` : '推理强度：跟随服务默认配置'), node('p', '设置用于新对话。'));
+            summary.append(button('调整模型', 'advanced', () => openModal('advanced')), button('服务详情', 'details', () => openModal('details'))); content.append(summary);
+        }
         const previous = preserveContent ? root.querySelector<HTMLElement>('.paws-service-content') : null;
         if (previous) {
             previous.inert = Boolean(modal);
@@ -276,7 +280,7 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
             target.focus();
             if (!busy) focusRecovery = null;
         } else if (modal) findFocus('close')?.focus();
-        else if (!busy && focusRecovery === 'retry') { focusRecovery = null; findFocus('advanced')?.focus(); }
+        else if (!busy && focusRecovery === 'retry') { focusRecovery = null; findFocus(appearance.connectionOnly ? 'source' : 'advanced')?.focus(); }
     }
     function keydown(event: KeyboardEvent) {
         if (event.key === 'Tab') focusRecovery = null;
@@ -296,7 +300,7 @@ export function mountServicePanel(element: HTMLElement, { controller, appearance
             if (state.source !== event.state.source) { epoch++; busy = false; localError = null; notice = ''; modal = null; focusRecovery = null; }
             state = event.state;
             localError = null;
-            if (reconcile(state)) return;
+            if (!appearance.connectionOnly && reconcile(state)) return;
             render();
         } else { notice = state.source === 'platform' ? '' : '本地授权已被清除。请重新连接。'; render(); }
     });

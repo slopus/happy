@@ -28,6 +28,22 @@ function change(el: HTMLSelectElement, value: string) { el.value = value; el.dis
 const settle = async () => { for (let i = 0; i < 8; i++) await Promise.resolve(); };
 
 describe('service panel using the real SDK controller', () => {
+    it('supports connection management without global model settings', async () => {
+        const f = await mounted(undefined, { connectionOnly: true });
+        expect(select(f.root, '服务来源').value).toBe('platform');
+        expect(f.root.textContent).not.toMatch(/新对话设置|模型|推理强度/);
+        f.controller.setOverrides({ modelId: 'stored-draft' });
+        await f.controller.connect(); await f.controller.refresh();
+        expect(f.controller.getState().overrides.modelId).toBe('stored-draft');
+        change(select(f.root, '服务来源'), 'personal');
+        expect(f.root.querySelector('input[type="checkbox"]')).not.toBeNull();
+        button(f.root, '连接').click(); await settle();
+        expect(f.root.querySelector('svg[aria-label="授权二维码"]')).not.toBeNull();
+        expect(f.root.querySelector('a')?.textContent).toBe('在此设备授权');
+        f.approve(); await settle();
+        button(f.root, '断开连接'); button(f.root, '忘记此连接');
+        expect(f.root.textContent).not.toMatch(/新对话设置|调整模型|推理强度/);
+    });
     it('shows a single default service without manual authorization controls or a nested heading', async () => {
         const { root } = await mounted(undefined, { sources: ['platform'], showTitle: false });
         expect(root.querySelector('h2')).toBeNull();
