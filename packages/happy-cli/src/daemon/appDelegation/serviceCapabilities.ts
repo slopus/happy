@@ -6,7 +6,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod';
 import { AI_SERVICES_PROTOCOL, CapabilityCatalogSchema, type CapabilityCatalog, type ExecutionBinding, type ServiceTarget } from '@slopus/happy-wire';
 import type { RuntimeProcessGuard } from './runtimeProcessState';
-import { codexRestrictedArgs, verifyRestrictedCodex } from './restrictedCodex';
+import { codexRestrictedArgs, restrictedCodexEnv, verifyRestrictedCodex } from './restrictedCodex';
 import { verifyRestrictedClaude, restrictedClaudeEnv } from './restrictedClaude';
 
 export function sameServiceTarget(a: ServiceTarget, b: ServiceTarget): boolean {
@@ -52,7 +52,7 @@ export async function readCodexCapabilities(target: ServiceTarget, binary: strin
     signal.throwIfAborted();
     const generation = await processGuard?.beforeSpawn();
     signal.throwIfAborted();
-    const child = spawn(binary, codexRestrictedArgs(null), { cwd, env: { PATH: process.env.PATH, HOME: cwd, TMPDIR: cwd, CODEX_HOME: home }, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(binary, codexRestrictedArgs(null), { cwd, env: restrictedCodexEnv(home, cwd), stdio: ['pipe', 'pipe', 'pipe'] });
     child.stderr.resume();
     const lines = createInterface({ input: child.stdout });
     let serial = 0;

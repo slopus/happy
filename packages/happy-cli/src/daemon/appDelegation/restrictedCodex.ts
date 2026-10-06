@@ -10,6 +10,14 @@ import type { ServiceReasoning } from '@slopus/happy-wire';
 export interface RestrictedServiceOptions { systemPrompt: string; reasoning: ServiceReasoning; onReasoning?: (value: string) => void }
 
 export interface ChatMessage { role: 'user' | 'assistant'; text: string; images?: string[] }
+/** Preserve the private identity and forward only the operator's explicit Codex proxy. */
+export function restrictedCodexEnv(home: string, cwd: string, environment: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+    const proxy = environment.HAPPY_CODEX_PROXY_URL || environment.CODEX_PROXY_URL;
+    return {
+        PATH: environment.PATH, HOME: cwd, TMPDIR: cwd, CODEX_HOME: home,
+        ...(proxy ? { HTTP_PROXY: proxy, HTTPS_PROXY: proxy, http_proxy: proxy, https_proxy: proxy } : {}),
+    };
+}
 const verifiedVersions = new Set(['0.159.3']);
 export async function verifyRestrictedCodex(binary: string): Promise<boolean> {
     try {
@@ -46,7 +54,7 @@ export async function runRestrictedCodex(binary: string, home: string, cwd: stri
     const args = codexRestrictedArgs(model, options?.reasoning);
     const generation = await processGuard?.beforeSpawn();
     signal.throwIfAborted();
-    const child = spawn(binary, args, { cwd, env: { PATH: process.env.PATH, HOME: cwd, TMPDIR: cwd, CODEX_HOME: home }, stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn(binary, args, { cwd, env: restrictedCodexEnv(home, cwd), stdio: ['pipe', 'pipe', 'pipe'] });
     let serial = 0;
     let text = '';
     let finished = false;
