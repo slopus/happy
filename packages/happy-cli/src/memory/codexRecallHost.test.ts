@@ -38,6 +38,12 @@ function fixture(workerBody?: string) {
 const turn = (extra = {}) => ({ threadId: 'native-thread', prompt: 'original request', resumed: false, signal: new AbortController().signal, ...extra });
 
 describe('Codex event-memory host', () => {
+    it('does not open a project memory host without an authenticated project path', async () => {
+        const { options } = fixture();
+        expect(await prepareCodexRecallHost({ ...options, projectPath: null })).toBeNull();
+        expect(options.deps.resolveEntry).not.toHaveBeenCalled();
+    });
+
     it('gates account, sandbox, capability and artifacts without disabling legacy hooks', async () => {
         const { options, root } = fixture();
         for (const changes of [{ accountOwned: false }, { sandboxEnabled: false }, { sandboxPolicyMode: 'mandatory' as const }]) {

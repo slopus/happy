@@ -84,7 +84,8 @@ export async function prepareCodexIngestHost(input: {
     accountOwned: boolean;
     sandboxEnabled: boolean;
     sandboxPolicyMode: SandboxPolicyMode;
-    projectPath: string;
+    /** Null means this session has no authenticated project scope. */
+    projectPath: string | null;
     env: NodeJS.ProcessEnv;
     report?: (result: CodexIngestResult) => void;
     // Host/test-only dependencies and bounds, never exposed through a model-facing RPC.
@@ -92,6 +93,8 @@ export async function prepareCodexIngestHost(input: {
     prepareBudgetMs?: number;
     budgetMs?: number;
 }): Promise<CodexIngestHost | null> {
+    // Never create a project event store from a personal Chat workspace path.
+    if (!input.projectPath) return null;
     if (!input.accountOwned || !input.sandboxEnabled || input.sandboxPolicyMode !== 'owner-choice') return null;
     const deps = { ...productionDeps, ...input.deps };
     const projectPath = input.projectPath;

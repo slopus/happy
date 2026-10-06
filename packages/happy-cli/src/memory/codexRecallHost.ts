@@ -51,7 +51,8 @@ export async function prepareCodexRecallHost(input: {
     accountOwned: boolean;
     sandboxEnabled: boolean;
     sandboxPolicyMode: SandboxPolicyMode;
-    projectPath: string;
+    /** Null means this session has no authenticated project scope. */
+    projectPath: string | null;
     env: NodeJS.ProcessEnv;
     report?: (result: { event: HookKind; reason: RecallHostReason; contextChars: number }) => void;
     // Dependency injection and budgets are host/test-only, not an RPC surface.
@@ -60,6 +61,9 @@ export async function prepareCodexRecallHost(input: {
     prepareBudgetMs?: number;
     now?: () => number;
 }): Promise<CodexRecallHost | null> {
+    // A personal Chat's cwd is a workspace location, not permission to open a
+    // project memory store. The caller must resolve the project binding first.
+    if (!input.projectPath) return null;
     // Mandatory/shared machines need actor-bound brokerage, not account-process authority alone.
     if (!input.accountOwned || !input.sandboxEnabled || input.sandboxPolicyMode !== 'owner-choice') return null;
     const deps = { ...productionDeps, ...input.deps };

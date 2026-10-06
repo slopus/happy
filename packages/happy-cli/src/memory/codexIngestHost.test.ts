@@ -34,6 +34,12 @@ const request = (root: string, throughTurnId = 'turn-1', threadId = 'native-thre
 });
 
 describe('Codex completed-turn memory host', () => {
+    it('does not open a project memory host without an authenticated project path', async () => {
+        const { options } = fixture();
+        expect(await prepareCodexIngestHost({ ...options, projectPath: null })).toBeNull();
+        expect(options.deps.resolveEntry).not.toHaveBeenCalled();
+    });
+
     it('gates account ownership, sandbox policy, installed artifacts and completed-only capability', async () => {
         const { root, entry, options } = fixture();
         for (const changes of [{ accountOwned: false }, { sandboxEnabled: false }, { sandboxPolicyMode: 'mandatory' as const }]) {

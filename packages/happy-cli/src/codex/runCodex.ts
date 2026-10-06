@@ -108,6 +108,7 @@ import { readLessonOwner } from '@/memory/lessonOwnerMarker';
 import type { LessonTurnKind } from '@/memory/lessonTurnEvidence';
 import { createLessonTurnObservations } from '@/memory/lessonTurnObservations';
 import type { LessonTurnHost } from '@/memory/lessonTurnHost';
+import { resolveSessionMemoryScope } from '@/memory/memoryScope';
 import {
     buildCodexDeveloperInstructions,
     buildCodexTurnPrompt,
@@ -1213,11 +1214,17 @@ export async function runCodex(opts: {
     // Start Context 
     //
 
+    const memoryScope = resolveSessionMemoryScope({
+        env: recallHostEnvironment,
+        projectPath: recallProjectPath,
+        sessionId: session.sessionId,
+    });
+    const projectMemoryPath = memoryScope.kind === 'project' ? memoryScope.projectPath : null;
     const recallHost = await prepareCodexRecallHost({
         accountOwned: opts.principal.kind === 'account',
         sandboxEnabled: checkpointComposition.sandboxConfig?.enabled === true,
         sandboxPolicyMode,
-        projectPath: recallProjectPath,
+        projectPath: projectMemoryPath,
         env: recallHostEnvironment,
         report: ({ event, reason, contextChars }) => logger.debug('[CodexMemoryHost]', { event, reason, contextChars }),
     });
@@ -1226,7 +1233,7 @@ export async function runCodex(opts: {
         accountOwned: opts.principal.kind === 'account',
         sandboxEnabled: checkpointComposition.sandboxConfig?.enabled === true,
         sandboxPolicyMode,
-        projectPath: recallProjectPath,
+        projectPath: projectMemoryPath,
         env: recallHostEnvironment,
         report: result => logger.debug('[CodexMemoryIngest]', result),
     });
