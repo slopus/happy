@@ -2,7 +2,7 @@
 'use strict';
 /** Fixed root-owned launcher. stdin: metadata NUL, then argc NUL-delimited argv, then SDK stdin. */
 const { spawn, execFileSync } = require('node:child_process');
-const { lstatSync, realpathSync } = require('node:fs');
+const { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync } = require('node:fs');
 const path = require('node:path');
 
 const allowed = new Set(['LANG', 'LC_ALL', 'LC_CTYPE', 'TERM', 'TZ', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'CLAUDE_CODE_ENTRYPOINT', 'ANTHROPIC_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL', 'CLAUDE_CODE_MAX_OUTPUT_TOKENS', 'MAX_THINKING_TOKENS', 'SAYCODE_MCP_SOCKET', 'SAYCODE_MCP_TOKEN']);
@@ -13,6 +13,27 @@ function filterEnv(input) {
         HTTPS_PROXY: 'http://127.0.0.1:3128', HTTP_PROXY: 'http://127.0.0.1:3128',
         https_proxy: 'http://127.0.0.1:3128', http_proxy: 'http://127.0.0.1:3128',
         CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', DISABLE_AUTOUPDATER: '1' };
+}
+/** Written by `abp-install claude-login --token-file` (a `claude setup-token` token): agent-sbx only, 0600. */
+const STORED_TOKEN = '/home/agent-sbx/.claude/abp-oauth-token';
+const AUTH_KEYS = ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'];
+/** A session that brings no credential gets the stored token; a file that is not private and well formed is refused aloud. */
+function withStoredToken(env, file, warn) {
+    if (AUTH_KEYS.some(key => env[key])) return env;
+    let fd;
+    try { fd = openSync(file, constants.O_RDONLY | constants.O_NOFOLLOW); } catch (error) {
+        if (error.code !== 'ENOENT') warn(`ignoring ${file}: ${error.code === 'ELOOP' ? 'a symlink' : error.code}`);
+        return env;
+    }
+    try {
+        const stat = fstatSync(fd);
+        if (!stat.isFile() || stat.uid !== process.getuid() || (stat.mode & 0o077) !== 0) { warn(`ignoring ${file}: must be a regular file of agent-sbx with mode 0600`); return env; }
+        if (stat.size > 4096) { warn(`ignoring ${file}: too large`); return env; }
+        const buffer = Buffer.alloc(stat.size);
+        const token = buffer.subarray(0, readSync(fd, buffer, 0, stat.size, 0)).toString('utf8').trim();
+        if (!/^[A-Za-z0-9._-]{20,2048}$/.test(token)) { warn(`ignoring ${file}: not a single token`); return env; }
+        return { ...env, CLAUDE_CODE_OAUTH_TOKEN: token };
+    } finally { closeSync(fd); }
 }
 function validate(meta, args) {
     if (!meta || meta.version !== 1 || !Number.isSafeInteger(meta.argc) || meta.argc < 1 || meta.argc > 65536 || args.length !== meta.argc || !args[0].startsWith('/') || !path.isAbsolute(meta.cwd) || !meta.env || typeof meta.env !== 'object') throw Error();
@@ -76,7 +97,8 @@ function main() {
                 if (args.length !== meta.argc) continue;
                 const argv = bwrapArgs(meta, args);
                 process.stdin.pause(); process.stdin.removeListener('data', consume); clearTimeout(deadline);
-                child = spawn('/usr/bin/bwrap', argv, { env: filterEnv(meta.env), stdio: ['pipe', 'inherit', 'inherit'] });
+                const env = withStoredToken(filterEnv(meta.env), STORED_TOKEN, message => process.stderr.write(`claude-sbx-launch: ${message}\n`));
+                child = spawn('/usr/bin/bwrap', argv, { env, stdio: ['pipe', 'inherit', 'inherit'] });
                 child.stdin.on('error', () => {});
                 child.once('error', () => process.exit(125));
                 child.once('exit', code => { clearInterval(watch); process.exit(code ?? 125); });
@@ -89,5 +111,5 @@ function main() {
     process.stdin.on('data', consume);
     process.stdin.on('end', () => { if (!child) stop(); });
 }
-module.exports = { filterEnv, validate, normalizeRestrictions, bwrapArgs };
+module.exports = { filterEnv, withStoredToken, validate, normalizeRestrictions, bwrapArgs };
 if (require.main === module) { try { main(); } catch { process.exit(125); } }

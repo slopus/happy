@@ -577,6 +577,39 @@ describe('abp-install claude-login', () => {
     })
 })
 
+describe('abp-install claude-login --token-file (a claude setup-token token, no interactive login)', () => {
+    const token = 'sk-ant-oat01-' + 'b'.repeat(40)
+    const tokenFile = (content: string) => { const dir = mkdtempSync(join(tmpdir(), 'abp-token-')); const file = join(dir, 'token'); writeFileSync(file, content); return file }
+
+    it('stores the token for agent-sbx only, written as agent-sbx, and never prints it', () => {
+        const result = bash('abp-install', ['--dry-run', 'claude-login', '--token-file', tokenFile(`${token}\n`)])
+        expect(result.status).toBe(0)
+        expect(result.stdout).toContain('+ sudo -u agent-sbx')
+        expect(result.stdout).toContain('/home/agent-sbx/.claude/abp-oauth-token')
+        expect(result.stdout).not.toMatch(/\/login/)
+        expect(result.stdout + result.stderr).not.toContain(token)
+    })
+
+    it('refuses a missing file or anything but a single token, without printing it', () => {
+        expect(bash('abp-install', ['--dry-run', 'claude-login', '--token-file', '/nonexistent/token']).status).not.toBe(0)
+        for (const content of ['two words here-and-more-text', '', 'short']) {
+            const result = bash('abp-install', ['--dry-run', 'claude-login', '--token-file', tokenFile(content)])
+            expect(result.status).not.toBe(0)
+            expect(result.stderr).toMatch(/token/)
+        }
+    })
+
+    it('removes a stored token so the interactive login is used again', () => {
+        const result = bash('abp-install', ['--dry-run', 'claude-login', '--remove-token'])
+        expect(result.status).toBe(0)
+        expect(result.stdout).toMatch(/\+ sudo -u agent-sbx rm -f \/home\/agent-sbx\/\.claude\/abp-oauth-token/)
+    })
+
+    it('rejects an unknown option', () => {
+        expect(bash('abp-install', ['--dry-run', 'claude-login', '--bogus']).status).not.toBe(0)
+    })
+})
+
 describe('abp-install systemd-resolved (the egress proxy resolves only through it)', () => {
     /** systemctl stub: `is-enabled` prints the given state, `is-active` succeeds per `active`, everything else is echoed. */
     const withSystemctl = (state: string, { active = true, installed = true } = {}) => spawnSync('bash', ['-c', `set -euo pipefail; source "$1"; DRY_RUN=0

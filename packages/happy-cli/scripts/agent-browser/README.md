@@ -142,6 +142,20 @@ sudo ./abp-install install --happy-tarball ./buzzni-happy-cli-X.tgz --images /tm
   `sudo -u agent-sbx env HOME=/home/agent-sbx CLAUDE_CONFIG_DIR=/home/agent-sbx/.claude
   HTTPS_PROXY=http://127.0.0.1:3128 <happy prefix>/lib/node_modules/@buzzni/happy-cli/node_modules/@anthropic-ai/claude-agent-sdk-linux-<arch>/claude`.
 
+  Without a login screen: create a long-lived token once with `claude setup-token` (on any machine) and store it:
+
+  ```sh
+  sudo ./abp-install claude-login --token-file token.txt   # one token can serve several machines
+  sudo ./abp-install claude-login --remove-token           # back to the interactive login
+  ```
+
+  It is written as agent-sbx to `/home/agent-sbx/.claude/abp-oauth-token` (0600; root never writes into that
+  home). `claude-sbx-launch` passes it as `CLAUDE_CODE_OAUTH_TOKEN` only to a session that brings no credential
+  of its own (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`), and refuses — with a line
+  on its stderr — a file that is a symlink, not agent-sbx's, readable by others, or not a single token. The token
+  does not rotate, so unlike a copied login it cannot log another holder out; usage counts against the account
+  that created it.
+
 ## Verify
 
 ```sh

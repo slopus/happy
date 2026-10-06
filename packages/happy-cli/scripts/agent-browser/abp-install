@@ -7,6 +7,8 @@
 #   abp-install [--dry-run] [install] [options]   install or update (root; --dry-run prints every action)
 #   abp-install check                             verify the installed machine (root)
 #   abp-install claude-login                      log agent-sbx in to Claude (interactive, through the proxy)
+#   abp-install claude-login --token-file <file>  store a `claude setup-token` token for agent-sbx instead (no login screen;
+#                                                 one token can serve several machines). --remove-token deletes it
 #
 # Installer options:
 #   --happy-tarball <tgz>     install this Happy package (npm pack) under the Happy prefix
@@ -725,8 +727,42 @@ claude_binary() {
 
 # Claude keeps its login in /home/agent-sbx/.claude (the sandbox's only writable home). The owner
 # firewall lets agent-sbx reach only the loopback CONNECT proxy, so the login goes through it too.
+# The launcher (claude-sbx-launch) reads it as agent-sbx when a session brings no credential of its own.
+CLAUDE_TOKEN_FILE=/home/agent-sbx/.claude/abp-oauth-token
+
+# store_claude_token <file>: validate as root, write as agent-sbx (root never writes into agent-sbx's home).
+store_claude_token() {
+    local source=$1 token
+    [ -r "$source" ] || die "cannot read the token file $source"
+    token=$(tr -d '\r\n' <"$source")
+    # Characters by pattern, length by bash: BSD grep caps {m,n} at 255.
+    if [ "${#token}" -lt 20 ] || [ "${#token}" -gt 2048 ] || ! printf '%s' "$token" | LC_ALL=C grep -Eq '^[A-Za-z0-9._-]+$'; then
+        die "$source does not hold a single token (create one with: claude setup-token)"
+    fi
+    case "$token" in sk-ant-oat*) ;; *) warn "the token does not look like a claude setup-token token (sk-ant-oat…); storing it anyway" ;; esac
+    if [ "$DRY_RUN" = 0 ]; then
+        [ "$(id -u)" = 0 ] || die "run as root"
+        id agent-sbx >/dev/null 2>&1 || die "agent-sbx does not exist (install first)"
+    fi
+    run sudo -u agent-sbx install -d -m 0700 /home/agent-sbx/.claude
+    # shellcheck disable=SC2016 # the inner sh gets the path as $1
+    if [ "$DRY_RUN" = 1 ]; then
+        printf '+ %s < (token)\n' "$(quote sudo -u agent-sbx sh -c 'umask 077; cat >"$1.new" && mv -f "$1.new" "$1"' sh "$CLAUDE_TOKEN_FILE")"
+    else
+        printf '%s\n' "$token" | sudo -u agent-sbx sh -c 'umask 077; cat >"$1.new" && mv -f "$1.new" "$1"' sh "$CLAUDE_TOKEN_FILE"
+    fi
+    say "stored the token for agent-sbx ($CLAUDE_TOKEN_FILE); new chats use it unless they bring their own credential"
+}
+
 main_claude_login() {
     local prefix=$HAPPY_PREFIX binary
+    case "${1:-}" in
+        --token-file) [ $# -eq 2 ] || die "--token-file needs a file"; store_claude_token "$2"; return ;;
+        --remove-token) [ $# -eq 1 ] || die "--remove-token takes no value"
+            run sudo -u agent-sbx rm -f "$CLAUDE_TOKEN_FILE"; say "removed the stored token"; return ;;
+        "") ;;
+        *) die "unknown claude-login option $1 (use --token-file <file> or --remove-token)" ;;
+    esac
     if [ -r "$INSTALL_JSON" ]; then
         prefix=$("$NODE" -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).happyPrefix || "")' "$INSTALL_JSON")
         [ -n "$prefix" ] || prefix=$HAPPY_PREFIX
@@ -839,6 +875,6 @@ command=install
 case "${1:-}" in install | check | claude-login) command=$1; shift ;; esac
 case "$command" in
     check) main_check ;;
-    claude-login) main_claude_login ;;
+    claude-login) main_claude_login "$@" ;;
     *) main_install "$@" ;;
 esac
