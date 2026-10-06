@@ -7,7 +7,7 @@ import { createMemoryServiceStorage } from './storage';
 import { binding, fixture, makeReceipt } from './testFixtures';
 import { validateOverrides } from './scopedTransport';
 const receipt = makeReceipt('platform-grant'), target = receipt.scope.targets[0];
-const configuration = { service: { id: 'service', ownerId: 'owner', name: 'AI', enabled: true, revision: 1 }, defaults: { ...target, modelId: null, reasoning: { mode: 'default' } }, targets: [{ target, machineName: 'My Mac', accountName: 'Main' }], permissions: ['chat'] };
+const configuration = { service: { id: 'service', ownerId: 'owner', name: 'AI', enabled: true, revision: 1 }, allowModelOverride: true, allowReasoningOverride: true, defaults: { ...target, modelId: null, reasoning: { mode: 'default' } }, targets: [{ target, machineName: 'My Mac', accountName: 'Main' }], permissions: ['chat'] };
 const catalog = { ...target, protocol: 'ai-services/1', observedAt: Date.now(), availability: 'online', completeness: 'complete', models: [], defaultModelId: null };
 function setup(mismatch = false) {
  const base = fixture(), calls: any[] = [];
@@ -29,7 +29,7 @@ it('uses the same scoped directory and target capabilities through the platform 
  const {node,browser,calls}=setup(); await browser.connections.authorize();
  expect(await browser.services.configuration()).toEqual(configuration);
  expect(await browser.capabilities.read({target})).toEqual(catalog);
- expect(calls.find(x=>x.path.endsWith('/capabilities')).body).toEqual({target});
+ expect(calls.find(x=>x.path.endsWith('/capabilities')).body).toEqual({target,executionPresets:true});
  browser.dispose();node.dispose();
 });
 it('rejects directory and capability targets outside the grant scope',async()=>{

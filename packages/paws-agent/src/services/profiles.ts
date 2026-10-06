@@ -12,6 +12,8 @@ export interface ServiceProfileValue {
     serviceTier?: ServiceTier;
 }
 export interface ServiceProfileRow extends ServiceProfileSlot {
+    allowModelOverride?: boolean;
+    allowReasoningOverride?: boolean;
     loading?: boolean;
     error?: string;
     value: ServiceProfileValue;
@@ -112,6 +114,10 @@ export function createServiceProfiles(options: ServiceProfilesOptions): ServiceP
     function checkPermission(configuration: ServiceConfiguration, value: ServiceProfileValue) {
         if (value.permissionMode && value.permissionMode !== 'chat-only' && !configuration.permissions.includes('tools')) fail('permission-denied');
     }
+    function fixedOptions(configuration: ServiceConfiguration, value: ServiceProfileValue): ServiceProfileValue {
+        const sameEngine=value.target?.engine===configuration.defaults.engine;
+        return {...value,...(!configuration.allowModelOverride ? {modelId:sameEngine?configuration.defaults.modelId:null} : {}),...(!configuration.allowReasoningOverride ? {reasoning:sameEngine?configuration.defaults.reasoning:{mode:'default' as const}} : {})};
+    }
     async function load(value: ReturnType<typeof capture>) {
         const parsed = ServiceConfigurationSchema.safeParse(await value.client.services.configuration());
         if (!current(value)) return fail('context-mismatch');
@@ -125,7 +131,7 @@ export function createServiceProfiles(options: ServiceProfilesOptions): ServiceP
         const stored = (saved as ServiceProfilesRecord | null | undefined)?.slots ?? {};
         const defaults: ServiceProfileValue = { target: targetOf(configuration.defaults), modelId: configuration.defaults.modelId,
             reasoning: configuration.defaults.reasoning, permissionMode: configuration.defaults.permissionMode ?? 'chat-only', serviceTier: configuration.defaults.serviceTier ?? 'default' };
-        const rows: ServiceProfileRow[] = slots.map(slot => ({ ...slot, value: profileValue(Object.hasOwn(stored, slot.id) ? stored[slot.id] : {}, defaults), targets: structuredClone(configuration.targets), catalog: null }));
+        const rows: ServiceProfileRow[] = slots.map(slot => ({ ...slot, value: fixedOptions(configuration,profileValue(Object.hasOwn(stored, slot.id) ? stored[slot.id] : {}, defaults)), allowModelOverride:configuration.allowModelOverride, allowReasoningOverride:configuration.allowReasoningOverride, targets: structuredClone(configuration.targets), catalog: null }));
         return { configuration, rows };
     }
     function probe(value: NonNullable<typeof context>, target: ServiceTarget, generation: number) {
@@ -192,8 +198,9 @@ export function createServiceProfiles(options: ServiceProfilesOptions): ServiceP
         },
         update(id, patch) {
             const value = requireDraft(), row = slotRow(id);
+            if (Object.hasOwn(patch,'modelId') && !value.configuration.allowModelOverride || Object.hasOwn(patch,'reasoning') && !value.configuration.allowReasoningOverride) fail('permission-denied');
             let next = profileValue(patch, row.value);
-            if (next.target && row.value.target && targetKey(next.target) !== targetKey(row.value.target)) next = { target: next.target, ...nativeDefaults };
+            if (next.target && row.value.target && targetKey(next.target) !== targetKey(row.value.target)) next = fixedOptions(value.configuration,{ target: next.target, ...nativeDefaults });
             checkTarget(value.configuration, next);
             checkPermission(value.configuration, next);
             const changed = targetKey(next.target!) !== targetKey(row.value.target!);
@@ -219,7 +226,10 @@ export function createServiceProfiles(options: ServiceProfilesOptions): ServiceP
         async getOverrides(id) {
             if (!slots.some(slot => slot.id === id)) return fail('invalid-request');
             const value = capture(), loaded = await load(value), row = loaded.rows.find(row => row.id === id)!;
-            checkTarget(loaded.configuration, row.value); checkPermission(loaded.configuration, row.value); return structuredClone(row.value);
+            checkTarget(loaded.configuration, row.value); checkPermission(loaded.configuration, row.value); const overrides=structuredClone(row.value);
+            if(!loaded.configuration.allowModelOverride)delete overrides.modelId;
+            if(!loaded.configuration.allowReasoningOverride)delete overrides.reasoning;
+            return overrides;
         },
         dispose() { if (disposed) return; disposed = true; invalidate(); listeners.clear(); context = null; baseline = []; state.rows = []; },
     };

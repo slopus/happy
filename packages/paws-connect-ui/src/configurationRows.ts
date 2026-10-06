@@ -12,6 +12,8 @@ export interface ConfigurationRow {
     id: string;
     name: string;
     description?: string;
+    allowModelOverride?: boolean;
+    allowReasoningOverride?: boolean;
     loading?: boolean;
     error?: string;
     value: ConfigurationRowValue;
@@ -109,8 +111,8 @@ export function mountServiceConfigurationRows(
         const defaultModel = catalog?.models.find(model => model.id === catalog.defaultModelId);
         const defaultLabel = catalog?.defaultModelId ? `默认 · ${defaultModel?.name ?? catalog.defaultModelId}` : '默认模型';
         const modelChoices: Choice[] = [{ value: '', label: defaultLabel }, ...(catalog?.models.map(model => ({ value: model.id, label: model.name })) ?? [])];
-        controls.append(field(row, 'model', '模型', modelChoices, modelId, modelId, disabled, value => emit({
-            modelId: value || null, reasoning: { mode: 'default' },
+        controls.append(field(row, 'model', '模型', modelChoices, modelId, modelId, disabled || row.allowModelOverride === false, value => emit({
+            modelId: value || null, ...(row.allowReasoningOverride === false ? {} : {reasoning: { mode: 'default' as const }}),
             serviceTier: supportsFast(value) ? row.value.serviceTier ?? 'default' : 'default',
         })));
         const reasoning = row.value.reasoning?.mode === 'explicit' ? row.value.reasoning.value : '';
@@ -120,7 +122,7 @@ export function mountServiceConfigurationRows(
         }
         reasoningChoices.push(...(effectiveModel?.reasoning.values.map(value => ({ value, label: value })) ?? []));
         if (!reasoningChoices.length) reasoningChoices.push({ value: '', label: '默认 · 不可用', disabled: true });
-        controls.append(field(row, 'reasoning', '推理强度', reasoningChoices, reasoning, reasoning || '默认', disabled || !effectiveModel,
+        controls.append(field(row, 'reasoning', '推理强度', reasoningChoices, reasoning, reasoning || '默认', disabled || !effectiveModel || row.allowReasoningOverride === false,
             value => emit({ reasoning: value ? { mode: 'explicit', value } : { mode: 'default' } })));
         const fastSupported = supportsFast(modelId);
         if (fastSupported) {
@@ -139,7 +141,7 @@ export function mountServiceConfigurationRows(
         const targetValue = targetIndex >= 0 ? String(targetIndex) : target ? 'unavailable' : '';
         const targetField = field(row, 'device', '执行设备与账号', targetChoices, targetValue, target?.machineId ?? '执行设备', !!row.loading || !row.targets.length, value => {
             const selected = row.targets[Number(value)];
-            if (selected) emit({ target: selected.target, modelId: null, reasoning: { mode: 'default' }, permissionMode: 'chat-only', serviceTier: 'default' });
+            if (selected) emit({ target: selected.target, ...(row.allowModelOverride === false ? {} : {modelId: null}), ...(row.allowReasoningOverride === false ? {} : {reasoning: {mode:'default' as const}}), permissionMode: 'chat-only', serviceTier: 'default' });
         });
         const targetName = targetIndex >= 0 ? row.targets[targetIndex].machineName : target ? `${target.machineId} · 不可用` : row.targets.length ? '选择执行设备' : '暂无执行设备';
         const deviceLabel = node('span', 'paws-service-rows-device-label'); deviceLabel.setAttribute('aria-hidden', 'true');

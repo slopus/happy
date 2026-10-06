@@ -8,7 +8,7 @@ const first: ServiceTarget = { machineId: 'first', engine: 'codex', accountRef: 
 const second: ServiceTarget = { machineId: 'second', engine: 'codex', accountRef: { kind: 'codex-profile', id: 'account-b' } };
 function directory(modelId = 'configured-model'): ServiceConfiguration {
     return { service: { id: 'service', ownerId: 'owner', name: 'AI', enabled: true, revision: 1 },
-        defaults: { ...first, modelId, reasoning: { mode: 'explicit', value: 'high' }, permissionMode: 'read-only', serviceTier: 'fast' },
+        allowModelOverride: true, allowReasoningOverride: true, defaults: { ...first, modelId, reasoning: { mode: 'explicit', value: 'high' }, permissionMode: 'read-only', serviceTier: 'fast' },
         targets: [{ target: first, machineName: 'First Mac', accountName: 'Account A' }, { target: second, machineName: 'Second Mac', accountName: 'Account B' }], permissions: ['chat', 'tools'] };
 }
 function catalog(target: ServiceTarget, defaultModelId = 'configured-model'): CapabilityCatalog {
@@ -162,4 +162,17 @@ it('rejects unavailable model settings before writing any slot', async () => {
     await expect(f.profiles.save()).rejects.toMatchObject({ code: 'model-unavailable' });
     expect(f.writes).toHaveLength(0);
     f.profiles.dispose();
+});
+
+it('keeps fixed model and reasoning grants usable without sending forbidden overrides', async () => {
+ const f=setup(); f.configuration(async()=>({...directory(),allowModelOverride:false,allowReasoningOverride:false}));
+ await f.profiles.begin();
+ expect(f.profiles.getState().rows[0].allowModelOverride).toBe(false);
+ expect(()=>f.profiles.update('reply',{modelId:'other-model'})).toThrowError(expect.objectContaining({code:'permission-denied'}));
+ f.profiles.update('reply',{target:second});
+ expect(f.profiles.getState().rows[0].value.modelId).toBe('configured-model');
+ expect(f.profiles.getState().rows[0].value.reasoning).toEqual({mode:'explicit',value:'high'});
+ const overrides=await f.profiles.getOverrides('reply');
+ expect(overrides).not.toHaveProperty('modelId');expect(overrides).not.toHaveProperty('reasoning');
+ f.profiles.dispose();
 });

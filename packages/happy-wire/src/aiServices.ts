@@ -64,6 +64,7 @@ export type ServiceRef = z.infer<typeof ServiceRefSchema>;
 /** Safe, scoped configuration metadata. It contains no credentials or execution paths. */
 export const ServiceConfigurationSchema = z.object({
     service: ServiceRefSchema, defaults: ServiceConfigSchema,
+    allowModelOverride: z.boolean(), allowReasoningOverride: z.boolean(),
     targets: z.array(z.object({ target: ServiceTargetSchema, machineName: IdentifierSchema, accountName: IdentifierSchema }).strict()).min(1).max(64),
     permissions: ServicePermissionsSchema,
 }).strict();

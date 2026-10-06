@@ -233,7 +233,7 @@ export function createScopedServiceTransport(options: ScopedTransportOptions, ki
             const targetKey = (t: {machineId:string;engine:string;accountRef:unknown}) => canonical([t.machineId,t.engine,t.accountRef]);
             if (call?.target && !connectionReceipt().scope.targets.some(t => targetKey(t) === targetKey(call.target!))) throw new AIServiceClientError('permission-denied'); const data = await request<{
             catalog: unknown;
-        }>('/v1/apps/ai-services/capabilities', call?.target ? {target:call.target} : {}, call); if (data.catalog === null)
+        }>('/v1/apps/ai-services/capabilities', {executionPresets:true, ...(call?.target ? {target:call.target} : {})}, call); if (data.catalog === null)
             return null; const parsed = CapabilityCatalogSchema.safeParse(data.catalog), r = connectionReceipt(); if (!parsed.success || !r.scope.targets.some(t => canonical([t.machineId, t.engine, t.accountRef]) === canonical([parsed.data.machineId, parsed.data.engine, parsed.data.accountRef])))
             throw new AIServiceClientError('context-mismatch'); if (call?.target && targetKey(call.target) !== targetKey(parsed.data)) throw new AIServiceClientError('context-mismatch'); return parsed.data; },
         async createConversation(input = {}, call) { const overrides = validateOverrides(input.overrides); if (input.appConversationId !== undefined)

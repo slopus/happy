@@ -7,4 +7,4 @@ export type { ServiceController, ServiceControllerEvent, ServiceControllerState,
 export { createMemoryServiceStorage } from './services/storage';
 export type { ServiceStorage, StorageScope, StorageStatus, StorageInvalidation } from './services/storage';
 
-export { validateMessages as validateServiceMessages } from './services/scopedTransport';
+export { validateMessages as validateServiceMessages, validateOverrides as validateServiceOverrides } from './services/scopedTransport';
