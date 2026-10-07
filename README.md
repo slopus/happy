@@ -6,7 +6,7 @@
 
 </div>
 
-https://github.com/user-attachments/assets/d193098c-4c60-440b-b91e-274a76d923d5
+https://github.com/user-attachments/assets/b3580704-f9e0-441e-80be-3f83f6a08ab5
 
 <p align="center">
 <a href="https://happy.engineering/#download"><img width="245" height="56" alt="Download Desktop for macOS, Windows, and Linux" src="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/download-desktop.svg" /></a>
