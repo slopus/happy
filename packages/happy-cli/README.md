@@ -1,9 +1,5 @@
 # Happy
 
-> **Happy is now a desktop app.** The original Happy CLI (`happy` on npm, formerly `happy-coder`) is in maintenance mode: it keeps working and still gets critical fixes, but new features ship in the [Happy desktop app](https://happy.engineering/). The Happy mobile app works with both.
->
-> Your existing CLI login and daemon keep working alongside the desktop app; you don't have to uninstall anything. The `happy` command in your terminal still runs the original CLI.
-
 Code on the go — control AI coding agents from your phone, browser, or terminal.
 
 Free. Open source. Code anywhere.
