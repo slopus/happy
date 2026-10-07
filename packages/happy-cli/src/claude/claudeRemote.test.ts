@@ -117,7 +117,7 @@ describe('claudeRemote', () => {
         expect(query).toHaveBeenCalledWith(expect.objectContaining({ options: expect.objectContaining({ resume: 'fixture-session' }) }));
     });
 
-    it('folds steering input with next priority and keeps queued input until the result', async () => {
+    it('interrupts for steering input and keeps queued input until steering completes', async () => {
         const queue = new MessageQueue2<EnhancedMode>(() => 'same');
         queue.push('Original', mode);
         const received: any[] = [];
@@ -130,7 +130,12 @@ describe('claudeRemote', () => {
                 received.push((await input.next()).value);
                 yield {
                     type: 'result', subtype: 'success', is_error: false,
-                    user_message_uuids: received.map((message) => message.uuid), queued_turn_count: 0,
+                    user_message_uuids: [received[0].uuid], queued_turn_count: 1,
+                };
+                expect(queue.queue.map(item => item.message)).toEqual(['Next turn']);
+                yield {
+                    type: 'result', subtype: 'success', is_error: false,
+                    user_message_uuids: [received[1].uuid], queued_turn_count: 0,
                 };
                 received.push((await input.next()).value);
                 yield {
@@ -147,7 +152,7 @@ describe('claudeRemote', () => {
             isAborted: () => false, onSessionFound: vi.fn(),
         });
         expect(received.map((message) => message.message.content)).toEqual(['Original', 'Guide', 'Next turn']);
-        expect(received[1].priority).toBe('next');
+        expect(received[1].priority).toBe('now');
         expect(received[2].priority).toBe('later');
     });
 

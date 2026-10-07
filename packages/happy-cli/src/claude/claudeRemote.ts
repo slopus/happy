@@ -173,7 +173,7 @@ export async function claudeRemote(opts: {
                     mode = next.mode;
                     const uuid = randomUUID();
                     pendingInputs.add(uuid);
-                    const priority = turnActive ? 'next' : 'later';
+                    const priority = turnActive ? 'now' : 'later';
                     turnActive = true;
                     updateThinking(true);
                     yield { type: 'user', uuid, parent_tool_use_id: null, message: { role: 'user', content: next.message }, priority };

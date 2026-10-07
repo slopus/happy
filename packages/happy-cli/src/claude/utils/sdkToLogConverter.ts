@@ -54,6 +54,11 @@ export class SDKToLogConverter {
     private sidechainLastUUID = new Map<string, string>();
     private contextWindowByModel = new Map<string, number>();
 
+    private contextWindowModelKey(model: string): string {
+        return model.replace(/\[1m\]$/i, '').replace(/^anthropic\//, '')
+            .replace(/^(claude-(?:opus|sonnet|fable)-\d+)\.(\d+)/, '$1-$2');
+    }
+
     constructor(
         context: Omit<ConversionContext, 'parentUuid'>,
         responses?: PermissionResponseLookup
@@ -97,7 +102,7 @@ export class SDKToLogConverter {
             return message
         }
         const model = typeof message.model === 'string' ? message.model : undefined
-        const contextWindow = model ? this.contextWindowByModel.get(model) : undefined
+        const contextWindow = model ? this.contextWindowByModel.get(this.contextWindowModelKey(model)) : undefined
         if (!contextWindow) {
             return message
         }
@@ -223,7 +228,7 @@ export class SDKToLogConverter {
                 for (const [model, usage] of Object.entries(resultMsg.modelUsage ?? {})) {
                     const contextWindow = usage?.contextWindow
                     if (typeof contextWindow === 'number' && Number.isFinite(contextWindow) && contextWindow > 0) {
-                        this.contextWindowByModel.set(model, contextWindow)
+                        this.contextWindowByModel.set(this.contextWindowModelKey(model), contextWindow)
                     }
                 }
                 break
