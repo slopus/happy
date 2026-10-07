@@ -715,6 +715,22 @@ export const ca: TranslationStructure = {
         close: 'Tanca el xat lateral',
     },
 
+    sideQuestion: {
+        title: 'Pregunta al marge',
+        subtitle: 'Resposta basada en aquest xat — res d’aquí no s’afegeix a la conversa.',
+        placeholder: 'Pregunta sobre aquest xat…',
+        followUpPlaceholder: 'Fes una altra pregunta…',
+        send: 'Pregunta',
+        close: 'Tanca',
+        answering: 'Claude està responent…',
+        noAnswer: 'Claude no té cap resposta.',
+        terminalMode: 'Aquesta sessió s’està executant al terminal. Fes servir /btw allà o envia un missatge des de l’app per prendre’n el control.',
+        notStarted: 'Claude encara no s’està executant en aquesta sessió. Envia primer un missatge — després, /btw funciona fins i tot mentre Claude està ocupat.',
+        cliOutdated: 'Aquesta sessió fa servir un Happy CLI anterior a /btw. Actualitza el CLI en aquell ordinador si encara no ho has fet i després reinicia la sessió.',
+        offline: 'Aquesta sessió està fora de línia.',
+        failed: ({ error }: { error: string }) => `No s’ha pogut obtenir una resposta: ${error}`,
+    },
+
     settingsVoice: {
         // Voice settings screen
         languageTitle: 'Idioma',

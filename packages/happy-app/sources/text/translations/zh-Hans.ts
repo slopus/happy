@@ -716,6 +716,22 @@ export const zhHans: TranslationStructure = {
         close: '关闭侧边聊天',
     },
 
+    sideQuestion: {
+        title: '顺便提问',
+        subtitle: '基于此聊天作答——这里的内容不会加入对话。',
+        placeholder: '询问关于此聊天的问题…',
+        followUpPlaceholder: '继续追问…',
+        send: '提问',
+        close: '关闭',
+        answering: 'Claude 正在回答…',
+        noAnswer: 'Claude 没有给出回答。',
+        terminalMode: '此会话正在终端中运行。请在终端中使用 /btw，或从应用发送一条消息以接管控制。',
+        notStarted: '此会话中的 Claude 尚未运行。请先发送一条消息——之后即使 Claude 正忙，也可以使用 /btw。',
+        cliOutdated: '此会话运行的 Happy CLI 早于 /btw。如尚未更新，请在那台电脑上更新 CLI，然后重新启动此会话。',
+        offline: '此会话已离线。',
+        failed: ({ error }: { error: string }) => `无法获取回答：${error}`,
+    },
+
     settingsVoice: {
         // Voice settings screen
         languageTitle: '语言',
