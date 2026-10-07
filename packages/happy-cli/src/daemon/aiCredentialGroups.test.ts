@@ -125,3 +125,27 @@ describe('scoped credential group synchronization',()=>{
   })
 
 })
+
+describe('lost local accounts after reinstallation', () => {
+  it.each(['claude', 'codex'] as const)('restores missing %s accounts from the same assignment while preserving personal accounts', async provider => {
+    const { sync, input, installed, deps, restart } = setup()
+    const request = { ...input(1, '["shared-a","shared-b"]'), provider }
+    await sync.sync(request)
+    installed.delete('shared-a')
+    const resumed = restart()
+    await expect(resumed.sync(request)).resolves.toMatchObject({ reconciled: true })
+    expect(installed.has('shared-a')).toBe(true)
+    expect(installed.has('personal')).toBe(true)
+    expect(deps.apply).toHaveBeenCalledTimes(2)
+    await resumed.sync({ ...request, generation: 2, fingerprint: 'b'.repeat(64), payload: null })
+    expect([...installed]).toEqual(['personal'])
+  })
+})
+
+it('preserves assignment generation and the new lease when reusing a complete local pool', async () => {
+  const { sync, input } = setup()
+  const first = { ...input(1, '["shared"]'), assignmentGeneration: 1, leaseId: 'lease-first' }
+  await sync.sync(first)
+  const next = { ...first, generation: 2, assignmentGeneration: 2, leaseId: 'lease-next' }
+  await expect(sync.sync(next)).resolves.toMatchObject({ generation: 2, assignmentGeneration: 2, leaseId: 'lease-next', reconciled: true })
+})

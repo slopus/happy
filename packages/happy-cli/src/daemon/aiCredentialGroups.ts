@@ -86,7 +86,12 @@ export function createCredentialGroupSync(deps:CredentialGroupDeps) {
     if(prior&&normalized.generation===prior.generation&&(normalized.fingerprint!==prior.fingerprint||!samePrincipal(effectivePrincipal(prior),normalized)))fail('AI_GROUP_GENERATION_CONFLICT')
     if(prior&&normalized.generation===prior.generation&&normalized.fingerprint===prior.fingerprint&&(normalized.leaseId??null)!==(prior.leaseId??null))fail('AI_GROUP_LEASE_CONFLICT')
     if(prior&&normalized.fingerprint===prior.fingerprint&&(normalized.payload===null?null:createHash('sha256').update(normalized.payload).digest('hex'))!==prior.payloadDigest)fail('AI_GROUP_PAYLOAD_CONFLICT')
-    if(prior&&!prior.pending&&normalized.fingerprint===prior.fingerprint&&samePrincipal(effectivePrincipal(prior),normalized)){prior.generation=normalized.generation;prior.assignmentGeneration=normalized.assignmentGeneration??normalized.generation;prior.leaseId=normalized.leaseId;await deps.write(JSON.stringify(journal));return receipt(prior)}
+    if(prior&&!prior.pending&&normalized.fingerprint===prior.fingerprint&&samePrincipal(effectivePrincipal(prior),normalized)){
+      // A reinstall can preserve the journal while losing the account manager's pool.
+      // Reuse the receipt only when its desired accounts still exist locally.
+      const installed=new Set(prior.desired.length?await deps.snapshot(normalized.provider):[])
+      if(prior.desired.every(identity=>installed.has(identity))){prior.generation=normalized.generation;prior.assignmentGeneration=normalized.assignmentGeneration??normalized.generation;prior.leaseId=normalized.leaseId;await deps.write(JSON.stringify(journal));return receipt(prior)}
+    }
     const payloadDigest=normalized.payload===null?null:createHash('sha256').update(normalized.payload).digest('hex')
     if(prior&&normalized.fingerprint===prior.fingerprint&&payloadDigest!==prior.payloadDigest)fail('AI_GROUP_PAYLOAD_CONFLICT')
     const before=new Set(await deps.snapshot(normalized.provider))
