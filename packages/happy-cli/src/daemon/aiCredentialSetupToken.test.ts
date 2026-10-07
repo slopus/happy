@@ -151,6 +151,35 @@ describe('sealed setup-token group assignment', () => {
     }, 'machine-1', recipient)).rejects.toThrow('AI_GROUP_CONTEXT_CONFLICT')
   })
 
+  it('treats a replayed sealed assignment as idempotent and refuses an older generation or a different lease', async () => {
+    const machine = fakeMachine([], null)
+    const recipient = createSetupTokenAssignmentRecipient()
+    const assignment = (generation: number, leaseId: string) => ({
+      version: 1 as const, scope: 'company-1', userId: 'user-1', machineId: 'machine-1', provider: 'claude' as const,
+      generation, fingerprint: '1'.padStart(64, '0'), leaseId, expiresAt: NOW + 10_000,
+      payload: payload(managed(A, 1, fakeToken('replay'))),
+    })
+    const relay = (value: ReturnType<typeof assignment>) => machine.runtime.setupTokenGroupSync({
+      version: 1, scope: value.scope, userId: value.userId, provider: value.provider, credentialType: 'setup_token',
+      machineId: value.machineId, generation: value.generation, fingerprint: value.fingerprint, payload: null,
+      sealedPayload: sealSetupTokenAssignment(value, recipient.publicKey),
+    }, 'machine-1', recipient)
+    const first = await relay(assignment(2, 'lease-1'))
+    expect(first).toMatchObject({ reconciled: true, assignmentGeneration: 2, leaseId: 'lease-1', appliedCredentials: [{ managedAccountId: A, credentialGeneration: 1 }] })
+    // Same snapshot, same lease: Desktop may retry after a lost response.
+    expect(await relay(assignment(2, 'lease-1'))).toMatchObject({ reconciled: true, assignmentGeneration: 2, leaseId: 'lease-1' })
+    // The runtime masks journal-specific codes as a generic sync failure, so prove the refusal
+    // happened at the journal: neither attempt may import or rewrite a cswap credential.
+    const cswapWrites = () => machine.calls.filter(call => call.command === 'cswap' && !['--version', 'token-runtime', 'list', 'export'].includes(call.args[0]!)).length
+    const writesBefore = cswapWrites()
+    expect(writesBefore).toBeGreaterThan(0) // the first relay really imported, so the counter can see a write
+    await expect(relay(assignment(2, 'lease-2'))).rejects.toThrow('AI_GROUP_SYNC_FAILED')
+    await expect(relay(assignment(1, 'lease-0'))).rejects.toThrow('AI_GROUP_SYNC_FAILED')
+    expect(cswapWrites()).toBe(writesBefore)
+    // The daemon's recorded receipt is still the first lease's, so Studio's status check cannot be satisfied by a stale lease.
+    expect(await machine.runtime.groupReceipt('company-1', 'claude')).toMatchObject({ assignmentGeneration: 2, leaseId: 'lease-1' })
+  })
+
   it('fails closed on the assignment kill switch before probing or changing credentials', async () => {
     const machine = fakeMachine([], null, { env: { APLUS_SETUP_TOKEN_ASSIGNMENT_KILL_SWITCH: 'on' } })
     const recipient = createSetupTokenAssignmentRecipient()

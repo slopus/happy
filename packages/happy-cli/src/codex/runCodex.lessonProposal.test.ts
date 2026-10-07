@@ -260,6 +260,9 @@ describe('Codex foreground lesson proposal wiring', () => {
         fixture.aborted = false;
         vi.stubEnv('HAPPY_AUTOMATION_RUN_ONCE', '1');
         vi.stubEnv('HAPPY_INITIAL_PROMPT', 'Original foreground request');
+        // A personal foreground session has no authenticated project binding (#731). Clear any binding
+        // inherited from the shell that runs the test (e.g. a Happy session) so the expectation holds everywhere.
+        vi.stubEnv('HAPPY_CHECKPOINT_SPAWN_CONTEXT', undefined);
         const memory = await import('@/memory/codexRecallHost');
         const recall = vi.fn(async () => ({ reason, context: 'Historical memory reference', startupIncluded: true as const }));
         const markSubmitted = vi.fn();
