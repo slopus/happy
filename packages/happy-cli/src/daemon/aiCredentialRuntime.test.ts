@@ -2281,7 +2281,7 @@ describe('AI credential machine runtime', () => {
     await runtime.apply({ provider: 'claude', payload: '{}' })
 
     expect(execFile).toHaveBeenCalledWith('uv', [
-      'tool', 'install', 'claude-swap==0.27.0b1', '--python', '>=3.12', '--force',
+      'tool', 'install', 'saycode-claude-swap==0.27.0b2', '--python', '>=3.12', '--force',
     ], expect.anything())
   })
 
@@ -2315,7 +2315,7 @@ describe('AI credential machine runtime', () => {
     await runtime.apply({ provider: 'claude', payload: '{}' })
 
     expect(execFile).toHaveBeenCalledWith('uv', [
-      'tool', 'install', 'claude-swap==0.27.0b1', '--python', physical, '--force',
+      'tool', 'install', 'saycode-claude-swap==0.27.0b2', '--python', physical, '--force',
     ], expect.anything())
   })
 
@@ -2363,7 +2363,7 @@ describe('AI credential machine runtime', () => {
     await runtime.apply({ provider: 'claude', payload: '{}' })
 
     expect(execFile).toHaveBeenCalledWith('uv', [
-      'tool', 'install', 'claude-swap==0.27.0b1', '--python', '>=3.12', '--force',
+      'tool', 'install', 'saycode-claude-swap==0.27.0b2', '--python', '>=3.12', '--force',
     ], expect.anything())
   })
 

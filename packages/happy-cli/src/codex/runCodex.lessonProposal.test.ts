@@ -268,7 +268,9 @@ describe('Codex foreground lesson proposal wiring', () => {
         const { runCodex } = await import('./runCodex');
         await runCodex({ principal: { kind: 'account', credentials: { token: 'test-token' } as never },
             noSandbox: true, lessons: { turn: null, review, sessionKind: 'foreground' } });
-        expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ accountOwned: true, projectPath: process.cwd() }));
+        // Personal foreground sessions lack authenticated checkpoint context,
+        // so their provider memory stays session-scoped even when a cwd exists.
+        expect(prepare).toHaveBeenCalledWith(expect.objectContaining({ accountOwned: true, projectPath: null }));
         expect(recall).toHaveBeenCalledWith(expect.objectContaining({ threadId: 'thread', prompt: 'Original foreground request', resumed: false }));
         expect(fixture.startThread.mock.invocationCallOrder[0]).toBeLessThan(recall.mock.invocationCallOrder[0]);
         if (reason === 'context_returned') {

@@ -42,7 +42,8 @@ import {
 } from './claudeSetupToken'
 
 const MAX_PAYLOAD_BYTES = 1024 * 1024
-const CLAUDE_SWAP_VERSION = '0.27.0b1'
+const CLAUDE_SWAP_PACKAGE = 'saycode-claude-swap'
+const CLAUDE_SWAP_VERSION = '0.27.0b2'
 const CLAUDE_STATUS_TIMEOUT_MS = 120_000
 // Keep readable historical bundles separate from supported installed runtimes.
 // Bundles from supported runtimes are readable; parseCodexMultiAuthBundle still
@@ -475,7 +476,7 @@ export function createAiCredentialRuntime(deps: AiCredentialRuntimeDependencies)
     // A newer installed build is kept: replacing it with the pin would be a silent downgrade.
     if (!cswapAtLeastPinned(await installedClaudeSwapVersion())) {
       await deps.execFile('uv', [
-        'tool', 'install', `claude-swap==${CLAUDE_SWAP_VERSION}`,
+        'tool', 'install', `${CLAUDE_SWAP_PACKAGE}==${CLAUDE_SWAP_VERSION}`,
         '--python', python, '--force',
       ], { timeoutMs: 300_000 })
     }

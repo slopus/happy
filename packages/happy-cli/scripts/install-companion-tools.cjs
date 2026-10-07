@@ -43,7 +43,8 @@ const IS_WINDOWS = process.platform === 'win32';
 // Codex policy matches src/utils/codexMultiAuthVersions.ts; Claude matches aiCredentialRuntime.ts.
 const CODEX_MULTI_AUTH_VERSION = '2.16.0';
 const MINIMUM_CODEX_MULTI_AUTH_VERSION = '2.16.0';
-const CLAUDE_SWAP_VERSION = '0.27.0b1';
+const CLAUDE_SWAP_PACKAGE = 'saycode-claude-swap';
+const CLAUDE_SWAP_VERSION = '0.27.0b2';
 
 // An unbounded child here would hang `npm install -g happy` itself. Matches the
 // timeoutMs aiCredentialRuntime uses for these same two install commands — a
@@ -146,13 +147,13 @@ function main() {
         installTool(codexMultiAuth, 'npm', ['install', '-g', codexMultiAuth]);
     }
     if (shouldInstallUvTools(process.env)) {
-        const claudeSwap = `claude-swap==${CLAUDE_SWAP_VERSION}`;
+        const claudeSwap = `${CLAUDE_SWAP_PACKAGE}==${CLAUDE_SWAP_VERSION}`;
         // `--python` mirrors ensureClaudeSwap so both resolve the same runtime.
         installTool(claudeSwap, 'uv', ['tool', 'install', claudeSwap, '--python', '>=3.12']);
     } else {
         console.warn(
             '[happy-cli postinstall] running under sudo — skipping claude-swap, which uv ' +
-            `would install into root's home. Run as yourself: uv tool install claude-swap==${CLAUDE_SWAP_VERSION}`
+            `would install into root's home. Run as yourself: uv tool install ${CLAUDE_SWAP_PACKAGE}==${CLAUDE_SWAP_VERSION}`
         );
     }
 }
@@ -165,6 +166,7 @@ module.exports = {
     shouldInstallUvTools,
     shellQuote,
     CODEX_MULTI_AUTH_VERSION,
+    CLAUDE_SWAP_PACKAGE,
     CLAUDE_SWAP_VERSION,
     COMPANION_INSTALL_TIMEOUT_MS,
 };

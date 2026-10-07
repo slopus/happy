@@ -16,6 +16,7 @@ const {
     shouldInstallUvTools,
     shellQuote,
     CODEX_MULTI_AUTH_VERSION,
+    CLAUDE_SWAP_PACKAGE,
     CLAUDE_SWAP_VERSION,
     COMPANION_INSTALL_TIMEOUT_MS,
 } = require(SCRIPT);
@@ -142,7 +143,7 @@ describe('shellQuote', () => {
     it('leaves ordinary arguments alone', () => {
         expect(shellQuote('install')).toBe('install');
         expect(shellQuote('-g')).toBe('-g');
-        expect(shellQuote(`claude-swap==${CLAUDE_SWAP_VERSION}`)).toBe(`claude-swap==${CLAUDE_SWAP_VERSION}`);
+        expect(shellQuote(`${CLAUDE_SWAP_PACKAGE}==${CLAUDE_SWAP_VERSION}`)).toBe(`${CLAUDE_SWAP_PACKAGE}==${CLAUDE_SWAP_VERSION}`);
     });
 
     it('escapes an embedded single quote', () => {

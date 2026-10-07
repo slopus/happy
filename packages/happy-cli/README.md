@@ -12,7 +12,7 @@ npm install -g happy
 
 Installing or updating Happy also installs the two companion CLIs its credential
 runtime drives: `codex-multi-auth` goes into npm's global prefix next to `happy`
-itself, and `claude-swap` is installed with uv, which puts the `claude-swap` and
+itself, and `saycode-claude-swap` is installed with uv, which puts the `claude-swap` and
 `cswap` commands in uv's tool bin directory — Happy looks for them there even
 when that directory is not on your `PATH`. Both are installed at the exact
 versions Happy requires rather than the newest, because Happy checks those
