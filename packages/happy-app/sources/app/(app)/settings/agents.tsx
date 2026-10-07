@@ -46,6 +46,7 @@ const agentLabels: Record<AgentKey, string> = {
     claude: getHarnessName('claude'),
     codex: getHarnessName('codex'),
     gemini: getHarnessName('gemini'),
+    opencode: getHarnessName('opencode'),
     openclaw: getHarnessName('openclaw'),
     agy: getHarnessName('agy'),
 };
