@@ -97,6 +97,97 @@ export function parseArgsFromContent(content: unknown): Record<string, unknown> 
 }
 
 /**
+ * Parse tool-call args from a `tool_call` / `tool_call_update` SessionUpdate.
+ *
+ * Per ACP spec (`ToolCall.rawInput` / `ToolCallUpdate.rawInput`), the tool's
+ * invocation parameters live on `rawInput`. The `content` field holds the
+ * tool's *output*. Older agents pre-dating the `rawInput` field sometimes
+ * stashed args inside `content`, so we keep that fallback for backwards
+ * compatibility.
+ */
+export function parseToolArgs(update: SessionUpdate): Record<string, unknown> {
+  const rawInput = (update as { rawInput?: unknown }).rawInput;
+  if (rawInput !== undefined && rawInput !== null) {
+    if (typeof rawInput === 'object' && !Array.isArray(rawInput)) {
+      return rawInput as Record<string, unknown>;
+    }
+    return { value: rawInput };
+  }
+  return parseArgsFromContent(update.content);
+}
+
+/**
+ * Render a minimal unified-diff-style string from an ACP `Diff` content item.
+ *
+ * Downstream consumers (e.g. `GeminiDiffProcessor`) treat `fs-edit.diff` as
+ * an opaque string and compare it across edits; we only need a stable
+ * textual representation, not a real `diff(1)` patch.
+ */
+export function formatToolCallDiff(path: string, oldText: string, newText: string): string {
+  const header = path ? `--- ${path}\n+++ ${path}\n` : '';
+  if (!oldText && !newText) {
+    return header;
+  }
+  const oldLines = oldText.split('\n').map((line) => `-${line}`).join('\n');
+  const newLines = newText.split('\n').map((line) => `+${line}`).join('\n');
+  return `${header}${oldLines}\n${newLines}`;
+}
+
+/**
+ * Emit structured AgentMessages for the subtyped items inside a
+ * `ToolCall.content` / `ToolCallUpdate.content` array.
+ *
+ * Per ACP spec, `content` is `Array<ToolCallContent>` where each item is
+ * tagged with `type: 'content' | 'diff' | 'terminal'`:
+ * - `diff`   → emit `fs-edit { path, diff }` so the existing fs-edit pipeline
+ *               (e.g. `GeminiDiffProcessor`) renders it as a real edit.
+ * - `terminal` → emit `event { name: 'tool_terminal_ref' }` carrying the
+ *                 referenced terminalId for downstream consumers.
+ * - `content` → no extra emit; the `ContentBlock` stays inside the
+ *                transparent `tool-result.result` passthrough.
+ *
+ * The original `tool-result` AgentMessage is left untouched, so any existing
+ * consumer that reads `result` verbatim keeps working.
+ */
+export function emitToolContentItems(
+  toolCallId: string,
+  toolName: string,
+  content: unknown,
+  ctx: HandlerContext,
+): void {
+  if (!Array.isArray(content)) return;
+
+  for (const item of content) {
+    if (!item || typeof item !== 'object') continue;
+    const tagged = item as { type?: unknown };
+
+    if (tagged.type === 'diff') {
+      const diff = item as { path?: unknown; oldText?: unknown; newText?: unknown };
+      const path = typeof diff.path === 'string' ? diff.path : '';
+      const newText = typeof diff.newText === 'string' ? diff.newText : '';
+      const oldText = typeof diff.oldText === 'string' ? diff.oldText : '';
+      ctx.emit({
+        type: 'fs-edit',
+        description: path ? `Edit ${path}` : 'File edit',
+        diff: formatToolCallDiff(path, oldText, newText),
+        path: path || undefined,
+      });
+    } else if (tagged.type === 'terminal') {
+      const terminal = item as { terminalId?: unknown };
+      const terminalId = typeof terminal.terminalId === 'string' ? terminal.terminalId : undefined;
+      if (terminalId) {
+        ctx.emit({
+          type: 'event',
+          name: 'tool_terminal_ref',
+          payload: { toolCallId, toolName, terminalId },
+        });
+      }
+    }
+    // type === 'content': the ContentBlock stays inside tool-result.result.
+  }
+}
+
+/**
  * Extract error detail from update content
  */
 export function extractErrorDetail(content: unknown): string | undefined {
@@ -293,8 +384,9 @@ export function startToolCall(
   // Emit running status
   ctx.emit({ type: 'status', status: 'running' });
 
-  // Parse args and emit tool-call event
-  const args = parseArgsFromContent(update.content);
+  // Parse args from the spec-correct `rawInput` field with a content-based
+  // fallback for older agents — see parseToolArgs for details.
+  const args = parseToolArgs(update);
 
   // Extract locations if present
   if (update.locations && Array.isArray(update.locations)) {
@@ -344,6 +436,10 @@ export function completeToolCall(
     result: content,
     callId: toolCallId,
   });
+
+  // Surface subtyped items (diff / terminal) from `content` as structured
+  // AgentMessages on top of the raw passthrough above.
+  emitToolContentItems(toolCallId, toolKindStr, content, ctx);
 
   // If no more active tool calls, emit idle
   if (ctx.activeToolCalls.size === 0) {
