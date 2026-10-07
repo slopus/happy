@@ -12,12 +12,9 @@ https://github.com/user-attachments/assets/d193098c-4c60-440b-b91e-274a76d923d5
 <a href="https://happy.engineering/#download"><img width="245" height="56" alt="Download Desktop for macOS, Windows, and Linux" src="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/download-desktop.svg" /></a>
 </p>
 
-<table align="center">
-<tr>
-<td align="center"><a href="https://apps.apple.com/us/app/happy-claude-code-client/id6748571505"><img width="135" height="39" alt="Download on the App Store" src="https://github.com/user-attachments/assets/45e31a11-cf6b-40a2-a083-6dc8d1f01291" /></a><br>★★★★★ <b>4.9</b> · 1,000+ ratings</td>
-<td align="center"><a href="https://play.google.com/store/apps/details?id=com.ex3ndr.happy"><img width="135" height="39" alt="Get it on Google Play" src="https://github.com/user-attachments/assets/acbba639-858f-4c74-85c7-92a4096efbf5" /></a><br>★★★★★ <b>5.0</b> · 3.1k+ reviews</td>
-</tr>
-</table>
+<p align="center">
+<a href="https://apps.apple.com/us/app/happy-claude-code-client/id6748571505"><img width="150" height="56" alt="Download on the App Store. Rated 4.9 stars from 1,000+ ratings" src="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/app-store-rating.svg" /></a>&nbsp;&nbsp;&nbsp;<a href="https://play.google.com/store/apps/details?id=com.ex3ndr.happy"><img width="150" height="56" alt="Get it on Google Play. Rated 5.0 stars from 3.1k+ reviews" src="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/google-play-rating.svg" /></a>
+</p>
 
 ## What you get
 
