@@ -64,8 +64,8 @@ Use these descriptions (each under 140 characters):
 | ---------------------------- | ------------------------------------------------------------------------ |
 | `01-models.png`              | Happy's Android model picker with OpenAI, Claude and Grok providers.     |
 | `02-sessions.png`            | Happy's Android session list organized across projects.                  |
-| `03-desktop.png` (phone)     | Happy's desktop companion showing a workspace and conversation.          |
-| `03-companion.png` (tablets) | Project changes available through Happy's connected desktop companion.   |
+| `03-desktop.png` (phone)     | The Happy desktop app showing a workspace and conversation.              |
+| `03-companion.png` (tablets) | Project changes available through the connected Happy desktop app.       |
 | `04-multiplayer.png`         | A Happy conversation with fictional participant contributions.           |
 | `05-source.png`              | A public source file displayed in Happy's native Android changes viewer. |
 

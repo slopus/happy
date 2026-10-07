@@ -12,7 +12,7 @@ Happy: Codex & Claude Code App
 ## Short description
 
 ```
-Run Claude Code and Codex on your computer. Steer and approve from your phone.
+Companion to the Happy desktop app. Steer Claude Code, Codex, and Grok anywhere.
 ```
 
 ## Full description
@@ -23,7 +23,7 @@ Paste as plain text with the paragraph breaks preserved.
 ```
 Keep your coding agents within reach.
 
-Happy connects your phone to Claude Code and Codex running on your own computer. Start a task, follow its progress, answer questions and review changes from wherever you are.
+Happy is the companion to the Happy desktop app. It connects your phone to Claude Code, Codex, and Grok running on your own computer. Start a task, follow its progress, answer questions and review changes from wherever you are.
 
 When an agent stops to ask for permission or a decision, you can answer from your phone. It carries on in the same session, with the same repository, tools and context.
 
@@ -37,14 +37,14 @@ What you can do from your phone
 • Browse sessions by project and keep drafts in sync across devices
 
 How to connect
-1. Install Happy Desktop from happy.engineering.
+1. Install the Happy desktop app from happy.engineering.
 2. Create an account in this app. No email address or password needed.
-3. On your computer, choose Connect phone and scan the QR code it shows.
+3. In Happy on your computer, open Settings → Mobile Access and scan the QR code it shows.
 
-Prefer the terminal? Install the CLI with npm install -g happy, start an agent with happy claude or happy codex, and scan the QR code it shows.
+Prefer the terminal? The original Happy CLI works with this app too: install it with npm install -g happy, start an agent with happy claude or happy codex, and scan the QR code it shows.
 
 What you need
-• A computer running Happy Desktop or the Happy CLI
+• A computer running the Happy desktop app or the original Happy CLI
 • Access to the coding agents you use, through your existing subscription or API key
 
 Private by design
@@ -53,7 +53,7 @@ Sessions are end-to-end encrypted, and your encryption keys stay on your devices
 Open source
 Happy is MIT-licensed. Read the source, build your own version or host your own server.
 
-Happy is an independent project, not affiliated with or endorsed by Anthropic or OpenAI. Claude and Claude Code are trademarks of Anthropic. Codex is a trademark of OpenAI.
+Happy is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, or xAI. Claude and Claude Code are trademarks of Anthropic. Codex is a trademark of OpenAI. Grok is a trademark of xAI.
 ```
 
 ## Graphics
@@ -78,8 +78,8 @@ is supplied. [logo.png](logo.png) is the current Happy logo.
 | --- | --- |
 | 01-models.png | Happy's Android model picker with OpenAI, Claude and Grok providers. |
 | 02-sessions.png | Happy's Android session list organized across projects. |
-| 03-desktop.png (phone) | Happy's desktop companion showing a workspace and conversation. |
-| 03-companion.png (tablets) | Project changes available through Happy's connected desktop companion. |
+| 03-desktop.png (phone) | The Happy desktop app showing a workspace and conversation. |
+| 03-companion.png (tablets) | Project changes available through the connected Happy desktop app. |
 | 04-multiplayer.png | A Happy conversation with fictional participant contributions. |
 | 05-source.png | A public source file displayed in Happy's native Android changes viewer. |
 
