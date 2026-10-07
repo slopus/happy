@@ -1,6 +1,6 @@
 <div align="center">
 
-<h1>Any Model. Your Team.<br><em>Happy Harness.</em></h1>
+<h1>Any Model. Your Subscription.<br><em>Happy Harness.</em></h1>
 
 <p>Free and open source</p>
 
@@ -20,14 +20,14 @@ https://github.com/user-attachments/assets/b3580704-f9e0-441e-80be-3f83f6a08ab5
 
 1. **Multi-provider within one session.** Astra, Fable, and Grok in the same
    session. Switch models in the middle of a task or delegate to subagents.
-2. **Natively multiplayer.** Invite a colleague or a friend into the session.
-   You both watch the same agent work, and either of you can steer it.
-3. **Reuse current subscriptions.** Sign in with the Claude, Codex, and Grok
+2. **Reuse current subscriptions.** Sign in with the Claude, Codex, and Grok
    plans you already pay for. Happy adds a harness, not another bill.
-4. **Open source MIT.** It runs on your own hardware and your projects stay
+3. **Open source MIT.** It runs on your own hardware and your projects stay
    ordinary folders. Read the code, fork it, ship your own build.
-5. **End-to-end encrypted mobile app.** Left your desk? The same sessions are
+4. **End-to-end encrypted mobile app.** Left your desk? The same sessions are
    already on your phone, and what moves between your devices is encrypted.
+5. **Natively multiplayer.** Invite a colleague or a friend into the session.
+   You both watch the same agent work, and either of you can steer it.
 
 #### Resources
 
