@@ -1,7 +1,7 @@
 # Happy store listing copy
 
 The complete listing fields now live in separate platform documents directly
-inside `marketing/`:
+inside `packages/happy-app/marketing/`:
 
 - [App Store — app_store.md](app_store.md)
 - [Google Play — google_play.md](google_play.md)

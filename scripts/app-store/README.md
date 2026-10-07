@@ -47,7 +47,7 @@ desktop widths intentionally clip only the right edge by about 25.5%/10.4%,
 without upscaling. Do not use the tall, mostly empty alternate desktop shot.
 
 For App Store Connect's **6.5-inch iPhone slot**, use the selected exports in
-`marketing/app-store/en-US/iphone-6.5-inch-1284x2778/`. Regenerate with
+`packages/happy-app/marketing/app-store/en-US/iphone-6.5-inch-1284x2778/`. Regenerate with
 `python3 scripts/app-store/export-iphone-65.py` (Pillow required), using `--out`
 for a fresh output directory. This fits the full 1320 × 2868 composition into
 1284 × 2778 with proportional downsampling and matching cream side padding;
@@ -86,9 +86,9 @@ only the five final opaque RGB PNGs with an embedded sRGB profile.
    screen/headline geometry. The source assets remain unchanged.
 6. Keep curated raw inputs, intermediate renders, contact sheets, and provenance
    manifests ignored under `.context/`. After selection, track only one final
-   five-PNG set per device under `marketing/app-store/en-US/iphone/` and
-   `marketing/app-store/en-US/ipad/`. The 6.5-inch iPhone compatibility export
-   lives in `marketing/app-store/en-US/iphone-6.5-inch-1284x2778/` so each Apple
+   five-PNG set per device under `packages/happy-app/marketing/app-store/en-US/iphone/` and
+   `packages/happy-app/marketing/app-store/en-US/ipad/`. The 6.5-inch iPhone compatibility export
+   lives in `packages/happy-app/marketing/app-store/en-US/iphone-6.5-inch-1284x2778/` so each Apple
    upload slot has an explicit destination. Replace the selected set deliberately;
    remove superseded names such as the version-1 `03-continuity.png` when
    selecting version-2 `03-desktop.png`. Earlier drafts remain in Git history,

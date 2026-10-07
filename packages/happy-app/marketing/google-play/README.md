@@ -13,8 +13,8 @@ or stretched phone UI. Five images per target fit Play's eight-image limit.
 
 ## Reproduce
 
-See [native setup](../../scripts/app-store/ANDROID.md) and
-[capture/composition instructions](../../scripts/app-store/README.md).
+See [native setup](../../../../scripts/app-store/ANDROID.md) and
+[capture/composition instructions](../../../../scripts/app-store/README.md).
 The explicit navigation plans live in `scripts/app-store/plans/`. After the
 local native setup and scenario are ready, run the matching capture plan, then
 `pnpm screenshots:compose` with its generated manifest and a fresh output path.
@@ -38,7 +38,7 @@ small-tablet landscape header. These were fixed in the actual app and the Androi
 sets retaken. The latest tablet set also uses the real width-aware layout: wide
 windows show the sidebar, while narrow windows use one column. Rotation and
 keyboard behavior were verified on the native 7-inch target without reloading.
-See [the product observations and fixes](../../scripts/app-store/OBSERVATIONS.md).
+See [the product observations and fixes](../../../../scripts/app-store/OBSERVATIONS.md).
 The capture does not patch app rendering or edit screenshot pixels to conceal bugs.
 
 The isolated debug harness supplies fictional projects and scripted Agent

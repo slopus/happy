@@ -20,7 +20,7 @@ the right (25.48% of its width on iPhone, 10.37% on iPad).
 ## Regenerate
 
 The capture/composition instructions and fixture boundaries live in
-[scripts/app-store/README.md](../../scripts/app-store/README.md).
+[scripts/app-store/README.md](../../../../scripts/app-store/README.md).
 The generator, licensed frame assets, and selected output belong to this mobile
 repository. Desktop recording tools remain in `happy-desktop`. Nothing in this
 marketing directory is imported by the production app, and no store upload is

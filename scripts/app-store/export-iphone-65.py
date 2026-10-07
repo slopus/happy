@@ -25,12 +25,12 @@ BACKGROUND = (245, 240, 231)
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--source", type=Path, default=ROOT / "marketing/app-store/en-US/iphone"
+        "--source", type=Path, default=ROOT / "packages/happy-app/marketing/app-store/en-US/iphone"
     )
     parser.add_argument(
         "--out",
         type=Path,
-        default=ROOT / "marketing/app-store/en-US/iphone-6.5-inch-1284x2778",
+        default=ROOT / "packages/happy-app/marketing/app-store/en-US/iphone-6.5-inch-1284x2778",
     )
     args = parser.parse_args()
     images = []
