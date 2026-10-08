@@ -3,16 +3,23 @@ import * as Updates from 'expo-updates';
 import { tracking } from './tracking';
 import type { Metadata, Session } from '@/sync/storageTypes';
 import type { MessageModeMeta } from '@/sync/messageMeta';
-import { messageSentSessionProperties } from './messageSentProperties';
+import { Platform } from 'react-native';
+import { isTauri } from '@/utils/isTauri';
+import { messageSentClient, messageSentSessionProperties } from './messageSentProperties';
+import { providerAccountHash } from './providerAccountHash';
 
 // Re-export tracking for direct access
 export { tracking } from './tracking';
+
+/** Keys `provider_account_hash`; set with the account, cleared on logout. */
+let providerAccountKey: Uint8Array | null = null;
 
 /**
  * Initialize tracking with an anonymous user ID.
  * Should be called once during auth initialization.
  */
-export function initializeTracking(anonymousUserId: string) {
+export function initializeTracking(anonymousUserId: string, accountKey: Uint8Array) {
+    providerAccountKey = accountKey;
     tracking?.identify(anonymousUserId, { name: anonymousUserId });
 }
 
@@ -28,6 +35,7 @@ export function trackAccountRestored() {
 }
 
 export function trackLogout() {
+    providerAccountKey = null;
     tracking?.reset();
 }
 
@@ -49,13 +57,23 @@ export function trackSessionSwitched(session: Pick<Session, 'id' | 'createdAt' |
 
 export type MessageSentSource = 'chat' | 'new_session' | 'option' | 'question' | 'voice';
 
-export function trackMessageSent(source: MessageSentSource, metadata?: Metadata | null, mode?: MessageModeMeta | null) {
-    tracking?.capture('message_sent', {
-        ...messageSentSessionProperties(metadata, mode),
+export function trackMessageSent(
+    source: MessageSentSource,
+    metadata?: Metadata | null,
+    mode?: MessageModeMeta | null,
+    machinePlatform?: string | null,
+) {
+    if (!tracking) return;
+    const key = providerAccountKey;
+    tracking.capture('message_sent', {
+        ...messageSentSessionProperties(
+            messageSentClient(Platform.OS, isTauri()),
+            metadata,
+            mode,
+            machinePlatform,
+            key ? (providerId) => providerAccountHash(key, providerId) : undefined,
+        ),
         source,
-        session_agent: metadata?.flavor === 'gpt' || metadata?.flavor === 'openai'
-            ? 'codex'
-            : metadata?.flavor ?? null,
         session_started_source: metadata?.startedBy === 'daemon' || metadata?.startedFromDaemon === true
             ? 'daemon'
             : metadata?.startedBy === 'terminal' || metadata?.startedFromDaemon === false

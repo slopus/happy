@@ -11,6 +11,13 @@ describe('Rig wire contract', () => {
     expect(RigBotSchema.parse({ ...bot, future: true })).toHaveProperty('future', true);
   });
 
+  it('carries the system bot key, null for user bots and absent from older Happy Agents', () => {
+    const bot = { id: 'bot-1', name: 'Chief of Staff', username: 'chief', workspaceId: 'workspace-1', orderKey: '1' };
+    expect(RigBotSchema.parse({ ...bot, systemKey: 'chief_of_staff' }).systemKey).toBe('chief_of_staff');
+    expect(RigBotSchema.parse({ ...bot, systemKey: null }).systemKey).toBeNull();
+    expect(RigBotSchema.parse(bot)).not.toHaveProperty('systemKey');
+  });
+
   it('accepts native Rig message selection codes and provider qualification', () => {
     expect(MessageMetaSchema.parse({
       expectsAcceptance: true,
@@ -116,5 +123,11 @@ describe('Rig wire contract', () => {
     expect(cleared.draft).toBeNull();
     expect(cleared.draftUpdatedAt).toBe(1_758_262_000_001);
 
+    // Task depth is optional, and a bad value drops only itself.
+    expect(RigMetadataV1Schema.parse({ ...payload, depth: 2 }).depth).toBe(2);
+    expect(parsed.depth).toBeUndefined();
+    for (const depth of [-1, 1.5, '2']) {
+      expect(RigMetadataV1Schema.parse({ ...payload, depth }).depth).toBeUndefined();
+    }
   });
 });

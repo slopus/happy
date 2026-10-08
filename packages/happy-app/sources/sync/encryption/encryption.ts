@@ -22,17 +22,21 @@ export class Encryption {
         // Derive anonymous ID
         const anonID = encodeHex((await deriveKey(masterSecret, 'Happy Coder', ['analytics', 'id']))).slice(0, 16).toLowerCase();
 
+        // Derive the key that hashes provider account ids for analytics
+        const providerAccountKey = await deriveKey(masterSecret, 'Happy Coder', ['analytics', 'provider-account']);
+
         // Derive master blob key for legacy sessions (those with no per-session dataKey)
         const masterBlobKey = await deriveKey(masterSecret, 'Happy Blobs', ['master']);
 
         // Create encryption
-        return new Encryption(anonID, masterSecret, contentKeyPair, masterBlobKey);
+        return new Encryption(anonID, providerAccountKey, masterSecret, contentKeyPair, masterBlobKey);
     }
 
     private readonly legacyEncryption: SecretBoxEncryption;
     private readonly contentKeyPair: sodium.KeyPair;
     private readonly masterBlobKey: Uint8Array;
     readonly anonID: string;
+    readonly providerAccountKey: Uint8Array;
     readonly contentDataKey: Uint8Array;
 
     // Session and machine encryption management
@@ -42,8 +46,9 @@ export class Encryption {
     private sessionDataKeys = new Map<string, Uint8Array>();
     private cache: EncryptionCache;
 
-    private constructor(anonID: string, masterSecret: Uint8Array, contentKeyPair: sodium.KeyPair, masterBlobKey: Uint8Array) {
+    private constructor(anonID: string, providerAccountKey: Uint8Array, masterSecret: Uint8Array, contentKeyPair: sodium.KeyPair, masterBlobKey: Uint8Array) {
         this.anonID = anonID;
+        this.providerAccountKey = providerAccountKey;
         this.contentKeyPair = contentKeyPair;
         this.legacyEncryption = new SecretBoxEncryption(masterSecret);
         this.masterBlobKey = masterBlobKey;
