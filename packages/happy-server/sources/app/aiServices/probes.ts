@@ -11,22 +11,44 @@ export function createServiceProbes(database: PrismaClient) {
   async readLive(ownerId, target, authority = { kind: 'owner', ownerId }) {
    const principal = ServicePrincipalSchema.parse(authority);
    if (principal.ownerId !== ownerId) deny('permission-denied');
-   const id = randomUUID();
-   await serviceTransaction(database, ownerId, async tx => {
+   let id: string = randomUUID();
+   const cached = await serviceTransaction(database, ownerId, async tx => {
     await tx.$queryRaw`SELECT "machineId" FROM "AppChatWorker" WHERE "machineId" = ${target.machineId} AND "accountId" = ${ownerId} FOR UPDATE`;
     await tx.aIServiceProbe.updateMany({ where: { machineId: target.machineId, state: { in: ['queued','running'] }, deadline: { lte: new Date() } }, data: { state: 'failed', lease: null, error: 'execution-interrupted' } });
     const identity = await authorizeProbe(tx,principal,target);
     const worker = await tx.appChatWorker.findFirst({ where: { machineId: target.machineId, accountId: ownerId, serviceProtocol: 'ai-services/1', activeUntil: { gt: new Date() } } });
     if (!worker) deny('machine-offline');
+    // A catalog is descriptive data, never authorization. Reuse only a recent
+    // trusted observation for this exact owner/target/account fingerprint, after
+    // the caller's CURRENT grant and worker liveness have been checked above.
+    // Claude identity is device-local: its preflight fingerprint is not a fresh
+    // login observation. Preserve live discovery for that engine.
+    const recent = target.engine === 'codex' ? await tx.aIServiceProbe.findFirst({ where: { ownerId, machineId: target.machineId,
+     target: { equals: ServiceTargetSchema.parse(target) }, fingerprint: identity.fingerprint,
+     state: 'completed', createdAt: { gt: new Date(Date.now()-60000) } }, orderBy: { createdAt: 'desc' } }) : null;
+    const catalog = CapabilityCatalogSchema.safeParse(recent?.catalog);
+    if (catalog.success && catalog.data.availability === 'online' && targetKey(catalog.data) === targetKey(target)
+     && catalog.data.observedAt <= Date.now() && Date.now()-catalog.data.observedAt < 60000) return catalog.data;
+    // Concurrent reads by the same principal share one probe. Different grants
+    // cannot lend each other execution authority or keep a revoked probe alive.
+    const pending = await tx.aIServiceProbe.findFirst({ where: { ownerId, machineId: target.machineId,
+     target: { equals: ServiceTargetSchema.parse(target) }, principal: { equals: principal }, fingerprint: identity.fingerprint,
+     state: { in: ['queued','running'] }, deadline: { gt: new Date() } } });
+    if (pending) { id = pending.id; return null; }
     if (await tx.appChatTurn.count({ where: { state: { in: ['running','cancel-requested'] }, OR: [{ binding: { ownerId, snapshot: { path: ['machineId'], equals: target.machineId } } }, { conversation: { grant: { accountId: ownerId, machineId: target.machineId } } }] } })) deny('resource-busy');
     await tx.aIServiceProbe.deleteMany({ where: { deadline: { lt: new Date(Date.now()-60000) } } });
     if (await tx.aIServiceProbe.count({ where: { ownerId, machineId: target.machineId, deadline: { gt: new Date() }, state: { in: ['queued','running'] } } })) deny('resource-busy');
     await tx.aIServiceProbe.create({ data: { id, ownerId, machineId: target.machineId, target: { machineId: target.machineId, engine: target.engine, accountRef: target.accountRef }, principal, fingerprint: identity.fingerprint, deadline: new Date(Date.now()+25000) } });
+    return null;
    });
+   if (cached) return cached;
    // Polling never holds a transaction or device/identity lock. Credential callbacks can commit.
    for (;;) {
     const row = await database.aIServiceProbe.findUniqueOrThrow({ where: { id } });
-    if (row.state === 'completed') return CapabilityCatalogSchema.parse(row.catalog);
+    if (row.state === 'completed') {
+     await serviceTransaction(database, ownerId, tx => authorizeProbe(tx,principal,target,row.fingerprint));
+     return CapabilityCatalogSchema.parse(row.catalog);
+    }
     if (row.state === 'failed') throw new AIServiceError(ServiceErrorCodeSchema.safeParse(row.error).data ?? 'execution-interrupted');
     if (row.deadline.getTime() <= Date.now()) { await database.aIServiceProbe.updateMany({ where: { id, state: { in: ['queued','running'] } }, data: { state: 'failed', lease: null, error: 'execution-interrupted' } }); deny('machine-offline'); }
     await new Promise(resolve => setTimeout(resolve,100));

@@ -719,6 +719,7 @@ export async function startDaemon(): Promise<void> {
       }
       }, {
         sourceSessionId: options.parentSessionId, sourceThreadId: options.resumeCodexThreadId,
+        inheritConfiguration: !options.nativeApplicationPolicy,
         sourceProfileId: options.nativeApplicationPolicy?.binding.engine === 'codex' ? options.nativeApplicationPolicy.binding.accountRef.id : undefined,
         // Only a new session created from a native fork may use the selected
         // account. Resuming an existing session retains its original identity.
@@ -1046,6 +1047,7 @@ export async function startDaemon(): Promise<void> {
         }, {
           sourceSessionId: happySessionId,
           resumeExistingSession: true,
+          inheritConfiguration: !applicationPolicy,
           sourceThreadId: metadata.codexThreadId,
           sourceProfileId: metadata.codexAccountProfileId,
         });

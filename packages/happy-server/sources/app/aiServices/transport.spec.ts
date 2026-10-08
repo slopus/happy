@@ -58,7 +58,7 @@ it('returns execution capabilities only when an owner or scoped client opts into
  for(const ownerRequest of [true,false])for(const executionPresets of [false,true]){
   const body=ownerRequest?{...f.target,...(executionPresets?{executionPresets:true}:{})}:{...(executionPresets?{executionPresets:true}:{})};
   const reading=req(ownerRequest?'/v1/ai-services/capabilities':'/v1/apps/ai-services/capabilities',body,ownerRequest?token:f.receipt.credential);
-  await completeProbe(await nextProbe(),f.target,true);
+  if(ownerRequest && !executionPresets) await completeProbe(await nextProbe(),f.target,true);
   const response=await reading;expect(response.statusCode,response.body).toBe(200);
   const catalog=response.json().catalog;
   expect(catalog.execution).toEqual(executionPresets?{permissionModes:['chat-only','yolo'],serviceTiers:['default','fast']}:undefined);
@@ -115,7 +115,7 @@ it('upgrades an existing grant and its machine envelopes atomically while old bi
  const principal=await services.grants.authenticate(f.receipt.credential);
  expect(await services.store.readBinding(principal,'relationship-advisor',binding.id)).toEqual(binding);
  const starting=services.turns.startBoundTurn(principal,binding.id,'after-upgrade',{ciphertext:'x'.repeat(80)});
- await completeProbe(await nextProbe(),f.target);const record=await starting;
+ const record=await starting;
  const job=(await req(`/v1/ai-service-worker/${machine}/claim`)).json().job;
  expect(job.record.id).toBe(record.id);expect(job.scope).toEqual(scope);
  const sealed=Buffer.from(job.envelope,'base64');
@@ -140,7 +140,7 @@ it('authenticates actual callback transport, pins profile after default change, 
  const binding=await resolving;expect(binding.accountRef).toEqual(f.target.accountRef);
  const legacy=await codexAccountStore.createGrant(owner,machine);expect(legacy.profile.id).toBe(other.id);
  const starting=services.turns.startBoundTurn(f.principal,binding.id,'request-1',{ ciphertext:'x'.repeat(80) });
- const turnProbe=await nextProbe();await completeProbe(turnProbe,f.target);const record=await starting;
+ const record=await starting;
  const claim=(await req(`/v1/ai-service-worker/${machine}/claim`)).json();expect(claim.job.record.id).toBe(record.id);
  const grant=await req(`/v1/ai-service-worker/${machine}/credential`,{ kind:'turn',id:record.id,lease:claim.job.lease });expect(grant.statusCode,grant.body).toBe(200);expect(grant.json().profile.id).toBe(f.profile.id);
  // Discovery IDs cannot masquerade as turns or resolve an application prompt.
@@ -218,7 +218,7 @@ it('accepts native encrypted screenshots through real routes, retains legacy lim
  const f=await setup(),resolving=services.store.resolveBinding(f.principal,'relationship-advisor',f.service.id,{});
  await completeProbe(await nextProbe(),f.target);const binding=await resolving;
  const starting=services.turns.startBoundTurn(f.principal,binding.id,'image-request',{ciphertext:'i'.repeat(80)});
- await completeProbe(await nextProbe(),f.target);const turn=await starting;
+ const turn=await starting;
  const job=(await req(`/v1/ai-service-worker/${machine}/claim`)).json().job;
  const sessionId=`image-${binding.id}`;
  await ctx.database.session.create({data:{id:sessionId,accountId:owner,tag:`app-service:${binding.id}`,metadata:'encrypted'}});
@@ -253,7 +253,7 @@ it('registers only the owned native session of a live service turn and retains t
  const probeLaunch=(await req('/v1/codex-session-grants/redeem',{machineId:machine,grant:probeGrant.grant})).json();
  await completeProbe(probe,f.target);const binding=await resolving;
  const starting=services.turns.startBoundTurn(f.principal,binding.id,'native-launch-registration',{ciphertext:'x'.repeat(80)});
- const turnProbe=await nextProbe();await completeProbe(turnProbe,f.target);const record=await starting;
+ const record=await starting;
  const job=(await req(`/v1/ai-service-worker/${machine}/claim`)).json().job;
  const grant=(await req(`/v1/ai-service-worker/${machine}/credential`,{kind:'turn',id:record.id,lease:job.lease})).json();
  const launch=(await req('/v1/codex-session-grants/redeem',{machineId:machine,grant:grant.grant})).json();

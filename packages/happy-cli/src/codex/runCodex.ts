@@ -1226,7 +1226,9 @@ export async function runCodex(opts: {
         logger.debug('[codex]: client.connect begin');
         await client.connect();
         logger.debug('[codex]: client.connect done');
-        try {
+        // Application bindings already pin a server-validated model and effort.
+        // Ordinary Paws sessions still load the editable model picker catalog.
+        if (!applicationPolicy) try {
             const models: Model[] = [];
             let cursor: string | null = null;
             do {

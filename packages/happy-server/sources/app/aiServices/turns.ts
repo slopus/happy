@@ -70,7 +70,12 @@ export function createServiceTurns(database: PrismaClient, store: AIServiceStore
     await tx.appChatConversation.upsert({ where: { id: bindingId }, create: { id: bindingId, grantId: user.grantId }, update: {} });
     const row = await tx.appChatTurn.create({ data: { id: randomUUID(), bindingId, conversationId: bindingId, requestId, input: envelope.ciphertext, state: 'accepted', sessionId: mapped.sessionId, minimumProtocol: 5, deadline: new Date(Date.now()+240000) } });
     return boundTurnRecord(row, binding);
-   });
+   // Codex bindings have immutable, validated execution options. Recheck live
+   // authorization/identity and worker liveness, then submit directly. A separate
+   // model/list process on every message adds latency without proving entitlement
+   // to the subsequent turn; the native provider still rejects unavailable models.
+   // Claude's device-local identity continues to require live observation.
+   }, binding.engine !== 'codex');
   },
   async readBoundRequest(principal: ServicePrincipal, bindingId: string, requestId: string) {
    const user = scoped(principal), binding = await store.readBinding(user, user.scope.appId, bindingId);

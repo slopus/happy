@@ -21,7 +21,9 @@ it('deduplicates turns, fences cancel/completion, and never replays expired leas
  const receipt = await grants.issueServiceGrant('turn-owner', 'relationship-advisor', service.id, { appId: 'relationship-advisor', serviceId: service.id, targets: [target], permissions: ['chat'], expiresAt: null });
  const principal = await grants.authenticate(receipt.credential);
  const binding = await store.resolveBinding(principal, 'relationship-advisor', service.id, {});
- const turns = createServiceTurns(db, store);
+ // Once a Codex binding exists, sending does not need a second discovery process.
+ const directStore = createAIServiceStore(db, { readLive: async () => { throw new Error('unexpected discovery on send'); } });
+ const turns = createServiceTurns(db, directStore);
  await db.appChatWorker.update({where:{machineId:target.machineId},data:{nativeSessions:false}});
  await expect(turns.startBoundTurn(principal,binding.id,'unsupported',{ciphertext:'c'.repeat(80)})).rejects.toMatchObject({code:'protocol-incompatible'});
  await db.appChatWorker.update({where:{machineId:target.machineId},data:{nativeSessions:true}});
@@ -103,10 +105,19 @@ it('deduplicates turns, fences cancel/completion, and never replays expired leas
  }
  await expect(db.aIServiceBinding.update({where:{id:binding.id},data:{sessionId:'other-session'}})).rejects.toThrow('immutable');
  await expect(db.aIServiceBinding.update({where:{id:binding.id},data:{snapshot:{bad:true}}})).rejects.toThrow('immutable');
- const racing = createAIServiceStore(db, { readLive: async () => {
+ await db.codexAccountProfile.update({where:{id:'turn-profile'},data:{externalAccountFingerprint:'replacement'}});
+ await expect(turns.startBoundTurn(principal,binding.id,'changed-account',{ciphertext:'r'.repeat(80)})).rejects.toMatchObject({code:'account-identity-changed'});
+ await db.codexAccountProfile.update({where:{id:'turn-profile'},data:{externalAccountFingerprint:'A'}});
+ await db.aIService.update({where:{id:service.id},data:{enabled:false}});
+ await expect(turns.startBoundTurn(principal,binding.id,'disabled',{ciphertext:'r'.repeat(80)})).rejects.toMatchObject({code:'service-disabled'});
+ await db.aIService.update({where:{id:service.id},data:{enabled:true}});
+ // Revoke after the preliminary binding read: the submission transaction must
+ // still reject it, even without a catalog request between those two operations.
+ const racing = {...directStore, readBinding: async (...args:Parameters<typeof store.readBinding>) => {
+  const value=await directStore.readBinding(...args);
   await store.revokeAuthorization('turn-owner', receipt.id);
-  return { ...target, protocol: 'ai-services/1', observedAt: Date.now(), availability: 'online', completeness: 'complete', defaultModelId: 'm', models: [{ id: 'm', name: 'M', supportsImages: false, reasoning: { supportsDefault: true, values: [], defaultValue: null } }] };
- } });
+  return value;
+ }};
  await expect(createServiceTurns(db,racing).startBoundTurn(principal,binding.id,'request-race',{ ciphertext:'r'.repeat(80) })).rejects.toMatchObject({ code:'authorization-revoked' });
  expect(await db.appChatTurn.count({ where:{ bindingId:binding.id,requestId:'request-race' } })).toBe(0);
 

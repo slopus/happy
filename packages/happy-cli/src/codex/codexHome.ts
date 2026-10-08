@@ -68,6 +68,8 @@ export async function prepareCodexHomeWithAuth(authJson: string, opts: {
     env?: NodeJS.ProcessEnv;
     homeDir?: string;
     createTempDir?: () => string;
+    /** Application bindings supply their own policy; do not inherit host MCP/config. */
+    inheritConfiguration?: boolean;
 } = {}): Promise<string> {
     const sourceHome = opts.sourceHome ?? resolveCodexHome({ env: opts.env, homeDir: opts.homeDir });
     const tempHome = opts.createTempDir?.() ?? tmp.dirSync({ prefix: 'happy-codex-home-' }).name;
@@ -76,7 +78,7 @@ export async function prepareCodexHomeWithAuth(authJson: string, opts: {
         await mkdir(tempHome, { recursive: true, mode: 0o700 });
         await chmod(tempHome, 0o700);
 
-        if (await sourceExists(sourceHome)) {
+        if (opts.inheritConfiguration !== false && await sourceExists(sourceHome)) {
             const entries = await readdir(sourceHome, { withFileTypes: true });
             for (const entry of entries) {
                 if (entry.name === 'auth.json' || !shouldInheritCodexHomeEntry(entry.name)) {

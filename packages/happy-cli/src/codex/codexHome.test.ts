@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, writeFile, stat, symlink } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, writeFile, stat, symlink, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -25,6 +25,23 @@ describe('resolveCodexHome', () => {
 });
 
 describe('prepareCodexHomeWithAuth', () => {
+    it('isolates application launches from host MCP, skills and instructions while retaining the selected login', async () => {
+        const sourceHome = await makeTempDir('codex-app-source-');
+        let home: string | undefined;
+        try {
+            await writeFile(join(sourceHome, 'config.toml'), '[mcp_servers.host]\ncommand="host-only"');
+            await writeFile(join(sourceHome, 'AGENTS.md'), 'host instructions');
+            await mkdir(join(sourceHome, 'skills'));
+            await writeFile(join(sourceHome, 'auth.json'), 'host-login');
+            home = await prepareCodexHomeWithAuth('selected-login', { sourceHome, inheritConfiguration: false });
+            expect(await readdir(home)).toEqual(['auth.json']);
+            expect(await readFile(join(home, 'auth.json'), 'utf8')).toBe('selected-login');
+            expect(await readFile(join(sourceHome, 'auth.json'), 'utf8')).toBe('host-login');
+        } finally {
+            await rm(sourceHome, { recursive: true, force: true });
+            if (home) await rm(home, { recursive: true, force: true });
+        }
+    });
     it('writes private auth without overwriting a pre-existing auth symlink', async () => {
         const sourceHome = await makeTempDir('codex-source-');
         await writeFile(join(sourceHome, 'auth.json'), 'global-original');
