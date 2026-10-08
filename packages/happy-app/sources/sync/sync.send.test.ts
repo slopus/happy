@@ -101,6 +101,17 @@ afterEach(() => {
 });
 
 describe('first message session hydration', () => {
+    it('hydrates sessions beyond the first page', async () => {
+        const first = await sessionRecord('first');
+        const older = await sessionRecord('older');
+        fetchMock.mockResolvedValueOnce({ ok: true, json: async () => ({ sessions: [first], nextCursor: 'cursor_v1_first' }) })
+            .mockResolvedValueOnce({ ok: true, json: async () => ({ sessions: [older], nextCursor: null }) });
+        await engine.fetchSessions();
+        expect(Object.keys(mocks.state.sessions).sort()).toEqual(['first', 'older']);
+        expect(fetchMock.mock.calls[1][0]).toContain('cursor=cursor_v1_first');
+        expect(engine.encryption.getSessionEncryption('older')).toBeTruthy();
+    });
+
     it.each([false, true])('sends a new top-of-list session despite an unrelated corrupt record (legacy=%s)', async (legacy) => {
         const target = await sessionRecord('new-session', legacy);
         const unrelated = { ...await sessionRecord('old-session'), metadata: 'not valid base64!' };

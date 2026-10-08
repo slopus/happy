@@ -375,6 +375,10 @@ describe('CodexAppServerClient sandbox integration', () => {
             onRequest: (msg, stdout) => {
                 secondProcessRequests.push(msg);
 
+                if (msg.method === 'thread/read' && msg.id != null) {
+                    pushJsonLine(stdout, { id: msg.id, result: { thread: { id: 'thread-1', path: '/tmp/thread-1' } } });
+                }
+
                 if (msg.method === 'thread/resume' && msg.id != null) {
                     setTimeout(() => {
                         pushJsonLine(stdout, {
@@ -452,7 +456,7 @@ describe('CodexAppServerClient sandbox integration', () => {
         const resumeRequest = secondProcessRequests.find((msg) => msg.method === 'thread/resume');
         expect(resumeRequest?.params).toEqual(expect.objectContaining({
             threadId: 'thread-1',
-            model: 'gpt-test',
+            model: null,
             cwd: '/tmp/project',
             approvalPolicy: 'on-request',
             sandbox: 'read-only',
@@ -511,6 +515,10 @@ describe('CodexAppServerClient sandbox integration', () => {
             onRequest: (msg, stdout) => {
                 secondProcessRequests.push(msg);
 
+                if (msg.method === 'thread/read' && msg.id != null) {
+                    pushJsonLine(stdout, { id: msg.id, result: { thread: { id: 'thread-stuck-interrupt', path: '/tmp/thread-stuck-interrupt' } } });
+                }
+
                 if (msg.method === 'thread/resume' && msg.id != null) {
                     setTimeout(() => {
                         pushJsonLine(stdout, {
@@ -567,6 +575,59 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(secondProcessRequests.some((msg) => msg.method === 'thread/resume')).toBe(true);
 
         await client.disconnect();
+    });
+
+    it('unarchives before resuming and preserves the native model instead of a cached default', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        (client as any).threadDefaults = { model: 'gpt-default' };
+        const request = vi.spyOn(client as any, 'request')
+            .mockResolvedValueOnce({ thread: { path: '/home/.codex/archived_sessions/thread.jsonl' } })
+            .mockResolvedValueOnce({})
+            .mockResolvedValueOnce({ thread: { id: 'native' }, model: 'deepseek-chat' });
+        expect(await client.resumeThread({ threadId: 'native' })).toEqual({ threadId: 'native', model: 'deepseek-chat' });
+        expect(request.mock.calls.map(([method]) => method)).toEqual(['thread/read', 'thread/unarchive', 'thread/resume']);
+        expect(request.mock.calls[2][1]).toMatchObject({ threadId: 'native', model: null, modelProvider: null });
+    });
+
+    it('pages turns and their items without loading a provider thread', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const request = vi.spyOn(client as any, 'request')
+            .mockResolvedValueOnce({ thread: { id: 'native', historyMode: 'paginated' } })
+            .mockResolvedValueOnce({ data: [{ id: 'turn', items: [] }], nextCursor: 'turn-page' })
+            .mockResolvedValueOnce({ data: [{ item: { type: 'userMessage', id: 'user' } }], nextCursor: 'item-page' })
+            .mockResolvedValueOnce({ data: [{ item: { type: 'agentMessage', id: 'agent' } }], nextCursor: null })
+            .mockResolvedValueOnce({ data: [{ id: 'older', items: [] }], nextCursor: null })
+            .mockResolvedValueOnce({ data: [], nextCursor: null });
+        const thread = await client.readThreadHistory('native');
+        expect(thread.turns?.map(turn => turn.id)).toEqual(['turn', 'older']);
+        expect(thread.turns?.[0].items.map(item => item.id)).toEqual(['user', 'agent']);
+        expect(request.mock.calls[3][1]).toMatchObject({ cursor: 'item-page', turnId: 'turn' });
+        expect(request.mock.calls[4][1]).toMatchObject({ cursor: 'turn-page' });
+        expect(request.mock.calls.some(([method]) => method === 'thread/start' || method === 'thread/resume')).toBe(false);
+    });
+
+    it('explicitly includes every model provider when listing history', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const request = vi.spyOn(client as any, 'request').mockResolvedValue({ data: [], nextCursor: null });
+        await client.listThreads();
+        expect(request).toHaveBeenCalledWith('thread/list', expect.objectContaining({ modelProviders: [] }));
+    });
+
+    it('restores history with current defaults when its old provider has been removed', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const request = vi.spyOn(client as any, 'request')
+            .mockResolvedValueOnce({ thread: { id: 'native', model: 'old-model' } })
+            .mockRejectedValueOnce(new Error('Model provider `removed` not found'))
+            .mockResolvedValueOnce({ config: { model: 'current-model' } })
+            .mockResolvedValueOnce({ thread: { id: 'native' }, model: 'current-model' });
+        expect(await client.resumeThread({ threadId: 'native' })).toEqual({ threadId: 'native', model: 'current-model' });
+        expect(request.mock.calls[3]).toEqual(['thread/resume', expect.objectContaining({
+            threadId: 'native', model: 'current-model', modelProvider: 'openai',
+        })]);
     });
 
     it('forks, reads, and rolls back Codex threads through app-server RPC', async () => {

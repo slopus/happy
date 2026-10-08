@@ -14,7 +14,8 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession, markSessionStopped } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession, markSessionStopped, readSettings } from '@/persistence';
+import { syncCodexHistory } from '@/codex/syncHistory';
 import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
@@ -762,6 +763,13 @@ export async function startDaemon(): Promise<void> {
 
     const resumeSessionAttempt = async (happySessionId: string, options?: ResumeSessionOptions): Promise<SpawnSessionResult> => {
       try {
+        const local = readPersistedSessions();
+        const parentThreadId = local[happySessionId]?.metadata.codexParentThreadId;
+        if (parentThreadId) {
+          const parent = Object.entries(local).find(([id, record]) => id !== happySessionId && record.metadata.codexThreadId === parentThreadId);
+          if (!parent) return { type: 'error', errorMessage: `This subagent continues through parent Codex thread ${parentThreadId}. Sync its history first.` };
+          return resumeSessionAttempt(parent[0]);
+        }
         const conflict = resumeConflict(happySessionId);
         if (conflict) return conflict;
         const tracked = findTrackedSessionById(happySessionId);
@@ -770,7 +778,7 @@ export async function startDaemon(): Promise<void> {
         // here. That is not a reason to refuse: the client can supply the
         // session's own key and metadata, which is everything the child needs
         // to reattach. Tracked state wins when present because it is live.
-        const fallback = options?.fallback;
+        const fallback = options?.fallback ?? readPersistedSessions()[happySessionId];
         const encryption = tracked?.encryption ?? (fallback
           ? {
             encryptionKey: decodeBase64(fallback.encryptionKey),
@@ -1033,6 +1041,17 @@ export async function startDaemon(): Promise<void> {
     // Connect to server
     apiMachine.connect();
 
+    let historySyncRunning = false;
+    const syncHistory = async () => {
+      if (historySyncRunning || !(await readSettings()).codexHistorySync) return;
+      historySyncRunning = true;
+      try { logger.debug('[Codex history]', await syncCodexHistory(credentials, machineId)); }
+      catch (error) { logger.debug('[Codex history] Sync unavailable', { errorName: error instanceof Error ? error.name : typeof error }); }
+      finally { historySyncRunning = false; }
+    };
+    void syncHistory();
+    const historySyncInterval = setInterval(() => void syncHistory(), 5 * 60_000);
+
     // Every 60 seconds:
     // 1. Prune stale sessions
     // 2. Check if daemon needs update
@@ -1136,6 +1155,7 @@ export async function startDaemon(): Promise<void> {
       logger.debug(`[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
 
       // Clear health check interval
+      clearInterval(historySyncInterval);
       if (restartOnStaleVersionAndHeartbeat) {
         clearInterval(restartOnStaleVersionAndHeartbeat);
         logger.debug('[DAEMON RUN] Health check interval cleared');

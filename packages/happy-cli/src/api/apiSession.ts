@@ -247,7 +247,7 @@ export class ApiSessionClient extends EventEmitter {
     private readonly receiveSync: InvalidateSync;
     private reconnectCapabilityHeld = false;
 
-    constructor(token: string, session: Session) {
+    constructor(token: string, session: Session, opts: { connect?: boolean } = {}) {
         super()
         this.token = token;
         this.sessionId = session.id;
@@ -389,9 +389,11 @@ export class ApiSessionClient extends EventEmitter {
         // Connect (after short delay to give a time to add handlers)
         //
 
-        retainReconnectCapabilityMonitor();
-        this.reconnectCapabilityHeld = true;
-        this.socket.connect();
+        if (opts.connect !== false) {
+            retainReconnectCapabilityMonitor();
+            this.reconnectCapabilityHeld = true;
+            this.socket.connect();
+        }
     }
 
     onUserMessage(callback: (data: UserMessage) => void) {

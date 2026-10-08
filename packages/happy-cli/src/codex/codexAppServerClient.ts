@@ -36,6 +36,7 @@ import type {
     ThreadGoalClearParams,
     ThreadGoalClearResponse,
     Thread,
+    ThreadTurn,
     InterruptConversationParams,
     ReviewDecision,
     EventMsg,
@@ -831,10 +832,11 @@ export class CodexAppServerClient {
             throw new Error('No thread available to resume.');
         }
 
+        const { thread } = await this.readThread({ threadId, includeTurns: false });
         const defaults = this.threadDefaults ?? {};
         const params: ResumeConversationParams = {
             threadId,
-            model: opts?.model ?? defaults.model ?? null,
+            model: opts?.model && opts.model !== thread.model ? opts.model : null,
             modelProvider: null,
             cwd: opts?.cwd ?? defaults.cwd ?? process.cwd(),
             approvalPolicy: opts?.approvalPolicy ?? defaults.approvalPolicy ?? null,
@@ -845,12 +847,27 @@ export class CodexAppServerClient {
             persistExtendedHistory: true,
         };
 
-        const result = await this.request('thread/resume', params) as ResumeConversationResponse;
+        if (thread.path?.split(/[\\/]/).includes('archived_sessions')) {
+            await this.unarchiveThread(threadId);
+        }
+        let result: ResumeConversationResponse;
+        try {
+            result = await this.request('thread/resume', params) as ResumeConversationResponse;
+        } catch (error) {
+            if (!(error instanceof Error) || !/Model provider .+ not found/i.test(error.message)) throw error;
+            const { config } = await this.request('config/read', { includeLayers: false, cwd: params.cwd }) as {
+                config: { model?: string; model_provider?: string };
+            };
+            result = await this.request('thread/resume', { ...params,
+                model: opts?.model && opts.model !== thread.model ? opts.model : config.model ?? thread.model ?? null,
+                modelProvider: config.model_provider ?? 'openai',
+            }) as ResumeConversationResponse;
+        }
         this._threadId = result.thread.id;
         this._turnId = null;
         this.rawSubagentActivitySignaturesByItemId.clear();
         this.rememberThreadDefaults({
-            model: opts?.model ?? defaults.model,
+            model: result.model,
             cwd: opts?.cwd ?? defaults.cwd,
             approvalPolicy: opts?.approvalPolicy ?? defaults.approvalPolicy,
             sandbox: opts?.sandbox ?? defaults.sandbox,
@@ -906,6 +923,55 @@ export class CodexAppServerClient {
             includeTurns: opts.includeTurns ?? true,
         };
         return await this.request('thread/read', params) as ReadConversationResponse;
+    }
+
+    async listThreads(opts: {
+        cursor?: string;
+        archived?: boolean;
+        sourceKinds?: string[];
+        modelProviders?: string[];
+        ancestorThreadId?: string;
+        useStateDbOnly?: boolean;
+        limit?: number;
+    } = {}): Promise<{ data: Thread[]; nextCursor: string | null }> {
+        return await this.request('thread/list', {
+            ...opts, limit: opts.limit ?? 100, modelProviders: opts.modelProviders ?? [],
+        }) as { data: Thread[]; nextCursor: string | null };
+    }
+
+    async unarchiveThread(threadId: string): Promise<void> {
+        await this.request('thread/unarchive', { threadId });
+    }
+
+    /** Read persisted history without starting or subscribing to a thread. */
+    async readThreadHistory(threadId: string): Promise<Thread> {
+        const { thread } = await this.readThread({ threadId, includeTurns: false });
+        if (thread.historyMode !== 'paginated') {
+            return (await this.readThread({ threadId, includeTurns: true })).thread;
+        }
+        const turns: ThreadTurn[] = [];
+        let cursor: string | null = null;
+        do {
+            const page = await this.request('thread/turns/list', {
+                threadId, cursor, limit: 100, sortDirection: 'asc', itemsView: 'notLoaded',
+            }) as { data: ThreadTurn[]; nextCursor: string | null };
+            for (const turn of page.data) {
+                turn.items = [];
+                let itemCursor: string | null = null;
+                do {
+                    const items = await this.request('thread/items/list', {
+                        threadId, turnId: turn.id, cursor: itemCursor, limit: 100, sortDirection: 'asc',
+                    }) as { data: Array<{ item: ThreadTurn['items'][number] }>; nextCursor: string | null };
+                    turn.items.push(...items.data.map(entry => entry.item));
+                    if (items.nextCursor && items.nextCursor === itemCursor) throw new Error('Codex item pagination stalled');
+                    itemCursor = items.nextCursor;
+                } while (itemCursor);
+            }
+            turns.push(...page.data);
+            if (page.nextCursor && page.nextCursor === cursor) throw new Error('Codex history pagination stalled');
+            cursor = page.nextCursor;
+        } while (cursor);
+        return { ...thread, turns };
     }
 
     async rollbackThread(opts: {

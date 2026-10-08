@@ -829,16 +829,24 @@ export async function runCodex(opts: {
         logger.debug('[codex]: client.connect done');
 
         if (opts.resumeThreadId) {
-            await resumeExistingThread({
+            const resumed = await resumeExistingThread({
                 client,
                 session,
                 messageBuffer,
                 threadId: opts.resumeThreadId,
                 cwd: process.cwd(),
                 mcpServers,
+                model: opts.model,
                 // Side chats start empty — keep the resume notice out of the UI.
                 announce: !isSideChat,
             });
+            remoteModeState.currentModel = resumed.model;
+            remoteModeState.currentEffort = opts.effort;
+            session.updateMetadata(meta => ({
+                ...meta, currentModelCode: resumed.model,
+                models: meta.models?.some(model => model.code === resumed.model) ? meta.models
+                    : [...(meta.models ?? []), { code: resumed.model, value: resumed.model }],
+            }));
             first = false;
             appendSystemPromptInjected = true;
         }

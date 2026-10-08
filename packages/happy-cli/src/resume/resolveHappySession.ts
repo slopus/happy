@@ -18,7 +18,7 @@ export const ResumableMetadataSchema = z.object({
     codexThreadId: z.string().optional(),
 }).passthrough();
 
-type RawSession = {
+export type RawSession = {
     id: string;
     active: boolean;
     metadata: string;
@@ -96,7 +96,7 @@ function readAgentCredentials() {
     return credentials;
 }
 
-function resolveSessionEncryption(session: RawSession, credentials: LocalHappyAgentCredentials): RecordEncryption {
+export function resolveSessionEncryption(session: RawSession, credentials: LocalHappyAgentCredentials): RecordEncryption {
     if (session.dataEncryptionKey) {
         const encrypted = decodeBase64(session.dataEncryptionKey);
         const sessionKey = decryptBoxBundle(encrypted.slice(1), credentials.contentKeyPair.secretKey);

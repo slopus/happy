@@ -1261,20 +1261,7 @@ class Sync {
         const avatarsBeforeFetch = storage.getState().sessions;
 
         const API_ENDPOINT = getServerUrl();
-        const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
-            headers: {
-                'Authorization': `Bearer ${this.credentials.token}`,
-                'Content-Type': 'application/json',
-                'X-Happy-Client': getHappyClientId(),
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to fetch sessions: ${response.status}`);
-        }
-
-        const data = await response.json();
-        const sessions = data.sessions as Array<{
+        const sessions: Array<{
             id: string;
             tag: string;
             seq: number;
@@ -1291,7 +1278,26 @@ class Sync {
             createdAt: number;
             updatedAt: number;
             lastMessage: ApiMessage | null;
-        }>;
+        }> = [];
+        let cursor: string | null = null;
+        do {
+            const headers = {
+                'Authorization': `Bearer ${this.credentials.token}`,
+                'Content-Type': 'application/json',
+                'X-Happy-Client': getHappyClientId(),
+            };
+            const query: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
+            let response: Response = await fetch(`${API_ENDPOINT}/v2/sessions?limit=200${query}`, { headers });
+            // Older self-hosted servers can still provide their original list.
+            if (response.status === 404 && !cursor) {
+                response = await fetch(`${API_ENDPOINT}/v1/sessions`, { headers });
+            }
+            if (!response.ok) throw new Error(`Failed to fetch sessions: ${response.status}`);
+            const data: { sessions: typeof sessions; nextCursor?: string | null } = await response.json();
+            sessions.push(...data.sessions);
+            if (data.nextCursor && data.nextCursor === cursor) throw new Error('Session pagination stalled');
+            cursor = data.nextCursor ?? null;
+        } while (cursor);
 
         // Initialize all session encryptions first
         const sessionKeys = new Map<string, Uint8Array | null>();
