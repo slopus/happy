@@ -6,6 +6,7 @@ import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
 import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
+import { orderFetchedMessages } from './orderFetchedMessages';
 // Circular at module level (ops.ts imports sync) but safe: both sides only
 // touch each other's exports at runtime, never during module initialization.
 import { sessionSetAgentModes } from './ops';
@@ -2440,7 +2441,7 @@ class Sync {
         };
         assertPreloadActive();
         if (messages.length === 0) return;
-        const decryptedMessages = await encryption.decryptMessages(messages);
+        const decryptedMessages = await encryption.decryptMessages(orderFetchedMessages(messages));
         assertPreloadActive();
         const normalizedMessages: NormalizedMessage[] = [];
         for (let i = 0; i < decryptedMessages.length; i++) {
