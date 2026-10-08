@@ -768,6 +768,9 @@ export async function startDaemon(): Promise<void> {
         if (parentThreadId) {
           const parent = Object.entries(local).find(([id, record]) => id !== happySessionId && record.metadata.codexThreadId === parentThreadId);
           if (!parent) return { type: 'error', errorMessage: `This subagent continues through parent Codex thread ${parentThreadId}. Sync its history first.` };
+          if (parent[1].metadata.hostPid && isPidAlive(parent[1].metadata.hostPid)) {
+            return { type: 'success', sessionId: parent[0] };
+          }
           return resumeSessionAttempt(parent[0]);
         }
         const conflict = resumeConflict(happySessionId);
