@@ -200,10 +200,15 @@ export async function syncCodexHistory(credentials: Credentials, machineId: stri
                         if (checkpoint.turns.includes(turn.id) || isCodexTurnInProgress(turn)) continue;
                         const envelopes = await buildCodexThreadBackfillEnvelopes({
                             thread: { turns: [historyTurn(turn, Number(thread.createdAt) * 1000)] },
+                            strictImageUpload: true,
                             uploadLocalImage: (attachment, opts) => images.uploadLocalImageAttachmentEnvelope(attachment, opts),
                         });
-                        const messages = envelopes.map((envelope, index) => {
-                            const localId = createHash('sha256').update(`${tag}:${turn.id}:${index}`).digest('hex');
+                        const occurrences = new Map<string, number>();
+                        const messages = envelopes.map(envelope => {
+                            const key = JSON.stringify([envelope.codexItemId, envelope.subagent, envelope.role, envelope.ev.t]);
+                            const index = occurrences.get(key) ?? 0;
+                            occurrences.set(key, index + 1);
+                            const localId = createHash('sha256').update(`${tag}:${turn.id}:${key}:${index}`).digest('hex');
                             return { localId, content: encodeBase64(encrypt(session.encryptionKey, session.encryptionVariant, {
                                 role: 'session', content: { ...envelope, id: localId }, meta: { sentFrom: 'cli' },
                             })) };
