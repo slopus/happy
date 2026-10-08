@@ -367,6 +367,19 @@ describe('resolveMessageModeMeta', () => {
         expect(meta).toEqual({ model: null });
     });
 
+    it('never sends the claude code-default model to a session with no pick', () => {
+        // The code default seeds new sessions only. Sending it here would move
+        // every running session onto whatever model the default names next.
+        const meta = resolveMessageModeMeta({
+            permissionMode: null,
+            modelMode: null,
+            effortLevel: null,
+            metadata: { flavor: 'claude' },
+        } as any, { agentDefaultOverrides: {} });
+
+        expect(meta).toEqual({});
+    });
+
     it('sends canonical Rig selection metadata using mode code rather than semantic kind', () => {
         const meta = resolveMessageModeMeta({
             permissionMode: 'auto',
