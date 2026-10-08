@@ -159,6 +159,8 @@ describe('modelModeOptions', () => {
             'claude-opus-5-5[1m]',
             'claude-opus-5',
             'claude-opus-5[1m]',
+            'claude-sonnet-5-5',
+            'claude-sonnet-5-5[1m]',
             'claude-sonnet-5',
         ]);
         expect(models.map((model) => model.name)).toEqual([
@@ -168,6 +170,8 @@ describe('modelModeOptions', () => {
             'Opus 5.5 [1M]',
             'Opus 5',
             'Opus 5 [1M]',
+            'Sonnet 5.5',
+            'Sonnet 5.5 [1M]',
             'Sonnet 5',
         ]);
         // No `default model` row, and no alias keys: an alias would silently
@@ -202,7 +206,7 @@ describe('modelModeOptions', () => {
     it('offers claude the SDK effort union for every model', () => {
         // Claude's scale belongs to the SDK, not the model: an unreachable level
         // is silently downgraded, so every model gets the same list.
-        for (const model of ['claude-fable-5-1', 'claude-fable-5', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5']) {
+        for (const model of ['claude-fable-5-1', 'claude-fable-5', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5', 'claude-sonnet-5']) {
             const keys = getEffortLevelsForModel('claude', model).map((level) => level.key);
             expect(keys).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
             // Claude's floor is `low`; there is no off.
