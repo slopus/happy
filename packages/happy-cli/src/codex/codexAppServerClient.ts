@@ -943,6 +943,13 @@ export class CodexAppServerClient {
         await this.request('thread/unarchive', { threadId });
     }
 
+    async archiveThread(threadId: string): Promise<void> {
+        const { thread } = await this.readThread({ threadId, includeTurns: false });
+        if (!thread.path?.split(/[\\/]/).includes('archived_sessions')) {
+            await this.request('thread/archive', { threadId });
+        }
+    }
+
     /** Read persisted history without starting or subscribing to a thread. */
     async readThreadHistory(threadId: string): Promise<Thread> {
         const { thread } = await this.readThread({ threadId, includeTurns: false });

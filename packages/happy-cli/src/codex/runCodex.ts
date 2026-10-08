@@ -481,7 +481,7 @@ export async function runCodex(opts: {
             if (session) {
                 session.updateMetadata((currentMetadata) => ({
                     ...currentMetadata,
-                    lifecycleState: 'archived',
+                    lifecycleState: currentMetadata.codexArchived ? 'archived' : 'stopped',
                     lifecycleStateSince: Date.now(),
                     archivedBy: 'cli',
                     archiveReason: 'User terminated'
@@ -843,7 +843,7 @@ export async function runCodex(opts: {
             remoteModeState.currentModel = resumed.model;
             remoteModeState.currentEffort = opts.effort;
             session.updateMetadata(meta => ({
-                ...meta, currentModelCode: resumed.model,
+                ...meta, currentModelCode: resumed.model, codexArchived: false,
                 models: meta.models?.some(model => model.code === resumed.model) ? meta.models
                     : [...(meta.models ?? []), { code: resumed.model, value: resumed.model }],
             }));
@@ -971,6 +971,7 @@ export async function runCodex(opts: {
                     session.updateMetadata((currentMetadata) => ({
                         ...currentMetadata,
                         codexThreadId: startedThread.threadId,
+                        codexArchived: false,
                     }));
                 }
 

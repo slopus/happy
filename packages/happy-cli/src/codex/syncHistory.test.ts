@@ -21,7 +21,18 @@ vi.mock('@/ui/logger', () => ({ logger: { debug: vi.fn() } }));
 vi.mock('@/utils/createSessionMetadata', () => ({ createSessionMetadata: () => ({ metadata: { machineId: 'machine' } }) }));
 vi.mock('axios', () => ({ default: { get: mock.get, post: mock.post, isAxiosError: () => false } }));
 vi.mock('@/api/api', () => ({ ApiClient: { create: async () => ({ getOrCreateSession: mock.create, deactivateSession: vi.fn().mockResolvedValue(true) }) } }));
-vi.mock('@/api/apiSession', () => ({ ApiSessionClient: class { close = vi.fn(); uploadLocalImageAttachmentEnvelope = vi.fn(); } }));
+vi.mock('@/api/apiSession', () => ({ ApiSessionClient: class {
+    constructor(private token: string, private session: any) {}
+    close = vi.fn(); uploadLocalImageAttachmentEnvelope = vi.fn();
+    async updateMetadata(update: (metadata: any) => any) {
+        const metadata = update(this.session.metadata);
+        const metadataVersion = (this.session.metadataVersion ?? 0) + 1;
+        const raw = mock.remote.find(row => row.id === this.session.id);
+        raw.metadata = encodeBase64(encrypt(this.session.encryptionKey, this.session.encryptionVariant, metadata));
+        raw.metadataVersion = metadataVersion;
+        return { metadata, metadataVersion };
+    }
+} }));
 vi.mock('./codexAppServerClient', () => ({ CodexAppServerClient: class {
     connect = vi.fn(); disconnect = vi.fn(); listThreads = mock.list; readThreadHistory = mock.read;
 } }));
@@ -94,4 +105,18 @@ it('discovers children with empty previews and saves their parent for continuati
     expect(mock.records['happy-child'].metadata.codexParentThreadId).toBe(thread.id);
     expect(mock.records['happy-id'].metadata.codexParentThreadId).toBeUndefined();
     expect(mock.create).toHaveBeenCalledTimes(2);
+});
+
+it('mirrors archive and unarchive even with unchanged timestamps and after Happy attachment', async () => {
+    await syncCodexHistory(credentials, 'machine');
+    expect(mock.records['happy-id'].metadata.codexArchived).toBe(true);
+    mock.records['happy-id'].codexHistory!.attached = true;
+    mock.list.mockImplementation(async ({ archived, ancestorThreadId }) => ({ data: !archived && !ancestorThreadId ? [thread] : [], nextCursor: null }));
+    await syncCodexHistory(credentials, 'machine');
+    expect(mock.records['happy-id'].metadata).toMatchObject({ codexArchived: false, lifecycleState: 'stopped' });
+    mock.list.mockImplementation(async ({ archived, ancestorThreadId }) => ({ data: archived && !ancestorThreadId ? [thread] : [], nextCursor: null }));
+    await syncCodexHistory(credentials, 'machine');
+    expect(mock.records['happy-id'].metadata.codexArchived).toBe(true);
+    expect(mock.create).toHaveBeenCalledTimes(1);
+    expect(mock.post).toHaveBeenCalledTimes(1);
 });

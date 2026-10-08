@@ -1,7 +1,7 @@
 # Native Codex history
 
-`happy codex history` imports local Codex threads into Happy's archived session
-list, including archived threads, other directories and subagent threads.
+`happy codex history` imports local Codex threads into Happy's session list,
+including archived threads, other directories and subagent threads.
 It uses the same Codex binary and `CODEX_HOME` as `happy codex`. Discovery and
 history reads do not start agent threads. Imported messages and attachments use
 Happy's normal session encryption.
@@ -9,7 +9,12 @@ Happy's normal session encryption.
 - `happy codex history --watch` also enables discovery every five minutes in the daemon.
 - `happy codex history --stop` disables automatic discovery without removing history.
 
-Reveal archived sessions in the app to browse imported conversations. Resume
+Archive state follows Codex: unarchived threads stay in the normal list even
+without a Happy process; only native archived threads enter the archive. The
+phone's Archive action archives Codex too. Native archive/unarchive changes are
+mirrored on the next sync. Connection status is independent of archive status.
+
+Resume
 uses the original native thread ID and working directory; an archived native
 thread is unarchived only when resumed. Its stored model and provider are retained.
 Subagent records that Codex does not allow direct input to resume their parent

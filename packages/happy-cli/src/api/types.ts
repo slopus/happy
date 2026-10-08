@@ -317,6 +317,7 @@ export type Metadata = {
   gitBranch?: string,
   claudeSessionId?: string, // Claude Code session ID
   codexThreadId?: string, // Codex app-server thread ID
+  codexArchived?: boolean, // Mirrors Codex, independent of backend connectivity
   codexParentThreadId?: string, // Subagent records continue through their parent
   tools?: string[],
   slashCommands?: string[],

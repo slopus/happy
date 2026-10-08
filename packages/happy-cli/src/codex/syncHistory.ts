@@ -55,6 +55,51 @@ function persistHistory(session: Session, checkpoint: NonNullable<PersistedSessi
         : savedSession(session, checkpoint));
 }
 
+/** Publish a mirror of native state without attaching a provider or its RPCs. */
+export async function mirrorCodexArchive(credentials: Credentials, session: Session, archived: boolean, force = false): Promise<Session> {
+    if (!force && session.metadata.codexArchived === archived && (session.metadata.lifecycleState === 'archived') === archived) return session;
+    const writer = new ApiSessionClient(credentials.token, session, { metadataOnly: true });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+        const snapshot = await Promise.race([
+            writer.updateMetadata(metadata => ({ ...metadata, codexArchived: archived,
+                lifecycleState: archived ? 'archived' : metadata.lifecycleState === 'running' ? 'running' : 'stopped',
+                lifecycleStateSince: Date.now() })),
+            new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Archive metadata sync timed out')), 15_000); }),
+        ]);
+        if (snapshot.metadata.codexArchived !== archived) throw new Error('Archive metadata sync failed');
+        return { ...session, ...snapshot };
+    } finally {
+        clearTimeout(timer);
+        await writer.close();
+    }
+}
+
+export async function setCodexArchive(credentials: Credentials, sessionId: string, threadId: string, archived: boolean) {
+    const record = readPersistedSessions()[sessionId];
+    if (!record) throw new Error('Session encryption data unavailable; sync Codex history first');
+    if (record.metadata.codexThreadId && record.metadata.codexThreadId !== threadId) throw new Error('Codex thread does not match this session');
+    const client = new CodexAppServerClient();
+    await client.connect();
+    try {
+        for (let attempt = 0; ; attempt++) {
+            try {
+                if (archived) await client.archiveThread(threadId); else await client.unarchiveThread(threadId);
+                break;
+            } catch (error) {
+                if (!archived || attempt >= 10 || !(error instanceof Error) || !/active writer|writer lock/i.test(error.message)) throw error;
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
+        }
+        const mirrored = await mirrorCodexArchive(credentials, {
+            ...record, id: sessionId, encryptionKey: decodeBase64(record.encryptionKey), agentState: null,
+            metadata: { ...record.metadata, codexThreadId: threadId },
+        }, archived, true);
+        persistSession(sessionId, { ...record, metadata: mirrored.metadata, metadataVersion: mirrored.metadataVersion });
+        return { success: true };
+    } finally { await client.disconnect(); }
+}
+
 async function fetchSessions(token: string): Promise<RawSession[]> {
     const sessions: RawSession[] = [];
     let cursor: string | null = null;
@@ -96,7 +141,7 @@ export async function syncCodexHistory(credentials: Credentials, machineId: stri
         const api = await ApiClient.create(credentials);
         const records = readPersistedSessions(true);
         const remote = new Map((await fetchSessions(credentials.token)).map(session => [session.id, session]));
-        const existing = new Set<string>();
+        const existing = new Map<string, { id: string; record: PersistedSession }>();
         const account = readLocalHappyAgentCredentials();
         for (const raw of remote.values()) {
             try {
@@ -108,7 +153,11 @@ export async function syncCodexHistory(credentials: Credentials, machineId: stri
                 if (!encryption) { stats.unreadable++; continue; }
                 const metadata = decrypt(encryption.key, encryption.variant, decodeBase64(raw.metadata));
                 if (typeof metadata?.codexThreadId === 'string') {
-                    existing.add(metadata.codexThreadId);
+                    existing.set(metadata.codexThreadId, { id: raw.id, record: {
+                        ...local, encryptionKey: encodeBase64(encryption.key), encryptionVariant: encryption.variant,
+                        metadata, seq: raw.seq, metadataVersion: raw.metadataVersion, agentStateVersion: raw.agentStateVersion,
+                        savedAt: local?.savedAt ?? Date.now(),
+                    } });
                     if (local && !local.metadata.codexThreadId) {
                         persistSession(raw.id, { ...local, metadata: { ...local.metadata, codexThreadId: metadata.codexThreadId } });
                     }
@@ -129,6 +178,7 @@ export async function syncCodexHistory(credentials: Credentials, machineId: stri
                     throw new Error('Codex must support ancestorThreadId to discover child history');
                 }
                 for (const thread of page.data) threads.set(thread.id, { ...thread,
+                    historyArchived: archived,
                     historyParentThreadId: threads.get(thread.id)?.historyParentThreadId ?? ancestorThreadId });
                 if (page.nextCursor && page.nextCursor === cursor) throw new Error('Codex session pagination stalled');
                 cursor = page.nextCursor;
@@ -146,25 +196,33 @@ export async function syncCodexHistory(credentials: Credentials, machineId: stri
         const syncThread = async (thread: Thread) => {
             stats.discovered++;
             try {
-                const known = imported.get(thread.id);
+                const known = imported.get(thread.id) ?? existing.get(thread.id);
                 const progress = known?.record.codexHistory;
                 const parentThreadId = typeof thread.historyParentThreadId === 'string' ? thread.historyParentThreadId
                     : thread.canAcceptDirectInput === false && typeof thread.parentThreadId === 'string' ? thread.parentThreadId : undefined;
-                if (known && known.record.metadata.codexParentThreadId !== parentThreadId) {
-                    known.record.metadata = { ...known.record.metadata, codexParentThreadId: parentThreadId };
-                    persistHistory({ ...known.record, id: known.id,
-                        encryptionKey: decodeBase64(known.record.encryptionKey), agentState: null }, progress!);
-                }
-                if (known && !remote.has(known.id)) {
+                if (progress && known && !remote.has(known.id)) {
                     persistSession(known.id, { ...known.record, codexHistory: { ...progress!, deleted: true } });
                     stats.skipped++;
                     return;
                 }
-                if (progress?.deleted || progress?.attached) {
+                if (progress?.deleted) {
                     stats.skipped++;
                     return;
                 }
-                if (!known && existing.has(thread.id)) { stats.existing++; return; }
+                if (known) {
+                    const raw = remote.get(known.id)!;
+                    // Always read the current ciphertext, including after attachment.
+                    const mirrored = await mirrorCodexArchive(credentials, {
+                        id: known.id, seq: raw.seq, metadataVersion: raw.metadataVersion,
+                        agentStateVersion: raw.agentStateVersion, agentState: null,
+                        metadata: decrypt(decodeBase64(known.record.encryptionKey), known.record.encryptionVariant, decodeBase64(raw.metadata)),
+                        encryptionKey: decodeBase64(known.record.encryptionKey), encryptionVariant: known.record.encryptionVariant,
+                    }, thread.historyArchived === true);
+                    known.record = { ...known.record, metadata: { ...mirrored.metadata, codexParentThreadId: parentThreadId },
+                        metadataVersion: mirrored.metadataVersion, seq: mirrored.seq };
+                    persistSession(known.id, known.record);
+                    if (!progress || progress.attached) { stats.existing++; return; }
+                }
                 const updatedAt = Number(thread.updatedAt) * 1000;
                 if (progress?.updatedAt === updatedAt) { stats.skipped++; return; }
                 const history = await client.readThreadHistory(thread.id);
@@ -182,7 +240,8 @@ export async function syncCodexHistory(credentials: Credentials, machineId: stri
                         ...base, path: history.cwd, hostPid: 0, codexThreadId: thread.id,
                         codexParentThreadId: parentThreadId,
                         name: String(thread.name || thread.preview || `Codex ${thread.id.slice(0, 8)}`).split('\n')[0],
-                        lifecycleState: 'archived', lifecycleStateSince: updatedAt,
+                        codexArchived: thread.historyArchived === true,
+                        lifecycleState: thread.historyArchived ? 'archived' : 'stopped', lifecycleStateSince: updatedAt,
                         lastMeaningfulMessageAt: updatedAt,
                         currentModelCode: typeof thread.model === 'string' ? thread.model : undefined,
                         models: typeof thread.model === 'string' ? [{ code: thread.model, value: thread.model }] : undefined,

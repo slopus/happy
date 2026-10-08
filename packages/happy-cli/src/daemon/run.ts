@@ -15,7 +15,7 @@ import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession, markSessionStopped, readSettings } from '@/persistence';
-import { syncCodexHistory } from '@/codex/syncHistory';
+import { syncCodexHistory, setCodexArchive } from '@/codex/syncHistory';
 import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
@@ -1037,6 +1037,7 @@ export async function startDaemon(): Promise<void> {
     apiMachine.setRPCHandlers({
       spawnSession,
       resumeSession,
+      setCodexArchive: (sessionId, threadId, archived) => setCodexArchive(credentials, sessionId, threadId, archived),
       stopSession,
       requestShutdown: () => requestShutdown('happy-app')
     });
