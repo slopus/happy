@@ -490,7 +490,7 @@ export function readPersistedSessions(includeExpired = false): Record<string, Pe
         sessions[id] = session;
         continue;
       }
-      if (includeExpired || session.codexHistory || now - lastAliveAt(session) < SESSION_MAX_AGE_MS) {
+      if (includeExpired || session.codexHistory || typeof session.metadata?.codexArchived === 'boolean' || now - lastAliveAt(session) < SESSION_MAX_AGE_MS) {
         sessions[id] = session;
       }
     }
