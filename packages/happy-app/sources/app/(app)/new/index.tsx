@@ -55,6 +55,7 @@ import {
     machineChoiceAgentAvailable,
     resolveAgentMachine,
     resolveChoiceAgent,
+    resolveNewSessionAgent,
     resolveWorktreeCreationMachine,
 } from '@/sync/machineChoices';
 import {
@@ -807,7 +808,9 @@ function NewSessionScreen() {
         selectedProjectId: s.selectedProjectId,
         setProjectId: s.setProjectId,
         agentType: s.agentType,
+        agentPicked: s.agentPicked,
         setAgentType: s.setAgentType,
+        pickAgentType: s.pickAgentType,
         permissionMode: s.permissionMode,
         setPermissionMode: s.setPermissionMode,
         modelMode: s.modelMode,
@@ -867,7 +870,7 @@ function NewSessionScreen() {
         () => findMachineChoice(machineChoices, selectedMachineId),
         [machineChoices, selectedMachineId],
     );
-    const selectedAgent = resolveChoiceAgent(selectedChoice, draftAgent);
+    const selectedAgent = resolveNewSessionAgent(selectedChoice, draftAgent, draft.agentPicked);
     const selectedMachine = React.useMemo(
         () => resolveAgentMachine(selectedChoice, selectedAgent),
         [selectedAgent, selectedChoice],
@@ -1388,7 +1391,7 @@ function NewSessionScreen() {
                 break;
             case 'agent':
                 if (availableAgents.some((candidate) => candidate.key === key)) {
-                    setSelectedAgent(key as NewSessionAgentType);
+                    draft.pickAgentType(key as NewSessionAgentType);
                 }
                 break;
             case 'model': {
@@ -1421,13 +1424,13 @@ function NewSessionScreen() {
         activePicker,
         availableAgents,
         closePicker,
+        draft.pickAgentType,
         draft.setEffortLevel,
         draft.setModelMode,
         draft.setPermissionMode,
         effortLevels,
         modelModes,
         permissionModes,
-        setSelectedAgent,
         setSelectedMachineId,
         setWorktreeKey,
     ]);
@@ -1698,6 +1701,8 @@ function NewSessionScreen() {
                     const currentDraft = useNewSessionDraft.getState();
                     if (currentDraft.input === draftState.input) currentDraft.setInput('');
                     if (currentDraft.attachments === attachments) currentDraft.setAttachments([]);
+                    // The pick was for this session; the next composer starts from Happy again.
+                    currentDraft.clearAgentPick();
 
                     router.back();
                     navigateToSession(result.sessionId);

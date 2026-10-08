@@ -64,6 +64,27 @@ describe('useNewSessionDraft', () => {
         expect(useNewSessionDraft.getState().agentType).toBe(agentType);
     });
 
+    it('starts every launch without a harness pick, whatever harness was saved', async () => {
+        mockPersistence.draft = persistedDraft({ agentType: 'claude' });
+        const { useNewSessionDraft } = await import('./useNewSessionDraft');
+        expect(useNewSessionDraft.getState().agentPicked).toBe(false);
+    });
+
+    it('marks a harness tapped in the composer as picked until the pick is cleared', async () => {
+        const { useNewSessionDraft } = await import('./useNewSessionDraft');
+
+        useNewSessionDraft.getState().setAgentType('rig');
+        expect(useNewSessionDraft.getState().agentPicked).toBe(false);
+
+        useNewSessionDraft.getState().pickAgentType('claude');
+        expect(useNewSessionDraft.getState()).toMatchObject({ agentType: 'claude', agentPicked: true });
+        expect(mockPersistence.saved.at(-1)).toMatchObject({ agentType: 'claude' });
+        expect(mockPersistence.saved.at(-1)).not.toHaveProperty('agentPicked');
+
+        useNewSessionDraft.getState().clearAgentPick();
+        expect(useNewSessionDraft.getState()).toMatchObject({ agentType: 'claude', agentPicked: false });
+    });
+
     it('loads persisted permission, model, and effort defaults', async () => {
         mockPersistence.draft = persistedDraft({
             permissionMode: 'yolo',

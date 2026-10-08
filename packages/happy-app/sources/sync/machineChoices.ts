@@ -193,6 +193,24 @@ export function resolveChoiceAgent(
 }
 
 /**
+ * The agent a new session on this computer starts with.
+ *
+ * Happy, whenever the computer has Happy Agent, reachable right now or not. The draft's stored
+ * agent cannot be trusted to say otherwise: for nearly everyone it is Claude Code only because that
+ * was the default before they installed the desktop app. A harness picked in this composer
+ * (`picked`) is honoured instead, for the session it starts. Without Happy Agent this is
+ * `resolveChoiceAgent`, unchanged.
+ */
+export function resolveNewSessionAgent(
+    choice: MachineChoice | null,
+    agent: NewSessionAgentType,
+    picked: boolean,
+): NewSessionAgentType {
+    if (!picked && machineChoiceAgentAvailable(choice, 'rig')) return 'rig';
+    return resolveChoiceAgent(choice, agent);
+}
+
+/**
  * The daemon that runs this agent on this computer.
  *
  * Null is a refusal: a computer without the daemon an agent needs is told so, rather than having

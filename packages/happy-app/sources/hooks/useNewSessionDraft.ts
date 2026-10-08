@@ -27,6 +27,12 @@ interface NewSessionDraftState {
      */
     selectedProjectId: string | null;
     agentType: NewSessionAgentType;
+    /**
+     * The person picked `agentType` in the composer for the session they are about to start.
+     * Without a pick, a computer with Happy Agent starts Happy whatever `agentType` says. Kept in
+     * memory only and cleared once that session starts, so the next composer offers Happy again.
+     */
+    agentPicked: boolean;
     permissionMode: PermissionModeKey | null;
     modelMode: string | null;
     effortLevel: string | null;
@@ -59,6 +65,9 @@ interface NewSessionDraftState {
     /** Names a catalog project as the place, in place of whatever directory was chosen before. */
     setProjectId: (id: string | null) => void;
     setAgentType: (agent: NewSessionAgentType) => void;
+    /** The person's own harness choice in the composer; see `agentPicked`. */
+    pickAgentType: (agent: NewSessionAgentType) => void;
+    clearAgentPick: () => void;
     setPermissionMode: (mode: PermissionModeKey) => void;
     setModelMode: (mode: string) => void;
     setEffortLevel: (level: string) => void;
@@ -99,6 +108,7 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     selectedPath: initial?.selectedPath ?? null,
     selectedProjectId: initial?.selectedProjectId ?? null,
     agentType: initial?.agentType ?? 'claude',
+    agentPicked: false,
     permissionMode: initial?.permissionMode ?? null,
     modelMode: initial?.modelMode ?? null,
     effortLevel: initial?.effortLevel ?? null,
@@ -116,6 +126,8 @@ export const useNewSessionDraft = create<NewSessionDraftState>()((set, get) => (
     setPath: (path) => { set({ selectedPath: path, selectedProjectId: null, worktreeKey: null }); persist(get()); },
     setProjectId: (id) => { set({ selectedProjectId: id, selectedPath: null, worktreeKey: null }); persist(get()); },
     setAgentType: (agent) => { set({ agentType: agent }); persist(get()); },
+    pickAgentType: (agent) => { set({ agentType: agent, agentPicked: true }); persist(get()); },
+    clearAgentPick: () => { set({ agentPicked: false }); },
     setPermissionMode: (mode) => { set({ permissionMode: mode }); persist(get()); },
     setModelMode: (mode) => { set({ modelMode: mode }); persist(get()); },
     setEffortLevel: (level) => { set({ effortLevel: level }); persist(get()); },

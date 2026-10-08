@@ -6,6 +6,7 @@ import {
     machineChoiceAgentAvailable,
     resolveAgentMachine,
     resolveChoiceAgent,
+    resolveNewSessionAgent,
     resolveWorktreeCreationMachine,
 } from './machineChoices';
 import type { Machine } from './storageTypes';
@@ -244,5 +245,34 @@ describe('a computer that is asleep', () => {
     it('still offers Happy Agent, which the send path refuses later with a reason', () => {
         expect(machineChoiceAgentAvailable(offline, 'rig')).toBe(true);
         expect(resolveAgentMachine(offline, 'rig')?.id).toBe(RIG);
+    });
+});
+
+describe('the harness a new session starts with', () => {
+    it('is Happy on a computer with Happy Agent, even when the draft still says Claude Code', () => {
+        const paired = collectMachineChoices([cli(), rig()])[0];
+        expect(resolveNewSessionAgent(paired, 'claude', false)).toBe('rig');
+        expect(resolveNewSessionAgent(paired, 'codex', false)).toBe('rig');
+    });
+
+    it('is Happy while Happy Agent is offline too', () => {
+        const asleep = collectMachineChoices([cli(), rig(RIG, CLI, { active: false })])[0];
+        expect(resolveNewSessionAgent(asleep, 'claude', false)).toBe('rig');
+    });
+
+    it('is whatever the person picked in the composer', () => {
+        const paired = collectMachineChoices([cli(), rig()])[0];
+        expect(resolveNewSessionAgent(paired, 'claude', true)).toBe('claude');
+        expect(resolveNewSessionAgent(paired, 'codex', true)).toBe('codex');
+    });
+
+    it('is unchanged on a computer without Happy Agent', () => {
+        const alone = collectMachineChoices([cli()])[0];
+        for (const picked of [false, true]) {
+            expect(resolveNewSessionAgent(alone, 'claude', picked)).toBe('claude');
+            expect(resolveNewSessionAgent(alone, 'codex', picked)).toBe('codex');
+            expect(resolveNewSessionAgent(alone, 'rig', picked)).toBe(resolveChoiceAgent(alone, 'rig'));
+        }
+        expect(resolveNewSessionAgent(null, 'claude', false)).toBe('claude');
     });
 });

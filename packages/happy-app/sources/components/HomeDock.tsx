@@ -48,7 +48,7 @@ import {
     collectMachineChoices,
     findMachineChoice,
     listMachineChoiceAvailableAgents,
-    resolveChoiceAgent,
+    resolveNewSessionAgent,
     resolveWorktreeCreationMachine,
 } from '@/sync/machineChoices';
 import type { Session } from '@/sync/storageTypes';
@@ -702,6 +702,7 @@ export const HomeDock = React.memo(({
     const [sheetPage, setSheetPage] = React.useState<PickerPage | null>(null);
     const { selectedImages, attachImages, removeImage, clearImages } = useImagePicker();
     const agentType = useNewSessionDraft((state) => state.agentType);
+    const agentPicked = useNewSessionDraft((state) => state.agentPicked);
     const selectedMachineId = useNewSessionDraft((state) => state.selectedMachineId);
     const selectedPath = useNewSessionDraft((state) => state.selectedPath);
     const draftProjectId = useNewSessionDraft((state) => state.selectedProjectId);
@@ -721,6 +722,7 @@ export const HomeDock = React.memo(({
     const setMachineId = useNewSessionDraft((state) => state.setMachineId);
     const renameMachineId = useNewSessionDraft((state) => state.renameMachineId);
     const setAgentType = useNewSessionDraft((state) => state.setAgentType);
+    const pickAgentType = useNewSessionDraft((state) => state.pickAgentType);
     const setPath = useNewSessionDraft((state) => state.setPath);
     const setProjectId = useNewSessionDraft((state) => state.setProjectId);
     const setSessionType = useNewSessionDraft((state) => state.setSessionType);
@@ -937,7 +939,7 @@ export const HomeDock = React.memo(({
         }))
     ), [selectedChoice]);
     const hasAvailableHarness = availableAgents.length > 0;
-    const resolvedAgentType = resolveChoiceAgent(selectedChoice, agentType);
+    const resolvedAgentType = resolveNewSessionAgent(selectedChoice, agentType, agentPicked);
     const defaults = React.useMemo(() => rigCreation
         ? {
             permissionMode: rigCreation.defaultPermissionMode ?? '',
@@ -1242,7 +1244,8 @@ export const HomeDock = React.memo(({
         closeFocusMode();
     }, [closeFocusMode, closePicker, isSubmitting, refuse, sheetPage]);
 
-    const selectAgent = React.useCallback((agent: NewSessionAgentType) => {
+    // `picked` is a tap in the harness picker; every other caller only follows the resolution.
+    const selectAgent = React.useCallback((agent: NewSessionAgentType, picked = false) => {
         const nextRigCreation = agent === 'rig' ? rigSelectionCreation : null;
         const nextDefaults = nextRigCreation
             ? {
@@ -1253,11 +1256,12 @@ export const HomeDock = React.memo(({
             : resolveAgentDefaultConfig(defaultOverrides, agent, happyCliVersion);
         // Choosing Happy Agent no longer moves the machine selection: the computer already covers
         // both daemons, and switching it under the person was what made the picker show two.
-        setAgentType(agent);
+        if (picked) pickAgentType(agent);
+        else setAgentType(agent);
         setPermissionMode(nextDefaults.permissionMode);
         setModelMode(nextDefaults.modelMode);
         if (nextDefaults.effortLevel) setEffortLevel(nextDefaults.effortLevel);
-    }, [defaultOverrides, happyCliVersion, rigSelectionCreation, setAgentType, setEffortLevel, setModelMode, setPermissionMode]);
+    }, [defaultOverrides, happyCliVersion, pickAgentType, rigSelectionCreation, setAgentType, setEffortLevel, setModelMode, setPermissionMode]);
 
     React.useEffect(() => {
         if (resolvedAgentType !== agentType) {
@@ -1437,7 +1441,7 @@ export const HomeDock = React.memo(({
                 title: 'Harness',
                 sections: [{ key: 'agent', title: 'Harness', options: availableAgents }],
                 selectedKey: agentType,
-                onSelect: (key) => selectAgent(key as NewSessionAgentType),
+                onSelect: (key) => selectAgent(key as NewSessionAgentType, true),
             };
         }
         if (setting === 'model') {
