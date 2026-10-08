@@ -18,6 +18,10 @@ html.happy-app-zoomed {
 html.happy-app-zoomed body {
     width: calc(100vw / var(--happy-app-zoom));
     height: calc(100vh / var(--happy-app-zoom));
+    /* 100vh is the height with mobile browser toolbars hidden (Android Chrome's
+       address bar), so the bottom of the app, the tab bar included, sat below
+       the visible area. dvh follows the toolbars; 100vh stays as the fallback. */
+    height: calc(100dvh / var(--happy-app-zoom));
     transform-origin: top left;
 }
 
