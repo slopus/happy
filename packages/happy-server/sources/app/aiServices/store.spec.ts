@@ -84,7 +84,7 @@ describe('AI service persistence and authorization', () => {
         const service = await store.createService(owner, { name: 'Different engines', config: { ...config, modelId: 'native-default', reasoning: { mode: 'explicit', value: 'native-high' } } });
         const grant = await store.registerAuthorization(owner, { id: owner + '-engines', kind: 'personal-grant', scope: { appId, serviceId: service.id, targets: [{ machineId: machine, engine: 'codex', accountRef: config.accountRef }, claude], permissions: ['chat', 'images'], expiresAt: null }, allowModelOverride: true, allowReasoningOverride: true });
         const user: ServicePrincipal = { kind: 'personal-grant', ownerId: owner, grantId: grant.id, scope: grant.scope };
-        expect(await store.resolveBinding(user, appId, service.id, { target: claude })).toMatchObject({ engine: 'claude', requestedModel: null, reasoning: { mode: 'default' }, permissions: ['chat'] });
+        expect(await store.resolveBinding(user, appId, service.id, { target: claude })).toMatchObject({ engine: 'claude', requestedModel: 'sonnet', reasoning: { mode: 'default' }, permissions: ['chat'] });
         await expect(store.resolveBinding(user, appId, service.id, { target: claude, permissions: ['chat', 'images'] })).rejects.toMatchObject({ code: 'parameter-unsupported' });
     });
 
@@ -199,12 +199,12 @@ describe('AI service persistence and authorization', () => {
         const service = await create();
         const first = await store.resolveBinding(principal(), appId, service.id, {});
         const [, binding] = await Promise.all([
-            store.updateService(owner, service.id, 1, { ...config, modelId: 'native-default', reasoning: { mode: 'explicit', value: 'native-high' } }),
+            store.updateService(owner, service.id, 1, { ...config, modelId: 'native-text', reasoning: { mode: 'default' } }),
             store.resolveBinding(principal(), appId, service.id, {}),
         ]);
         expect([1, 2]).toContain(binding.revision);
-        expect(binding.requestedModel).toBe(binding.revision === 1 ? null : 'native-default');
-        expect(binding.reasoning).toEqual(binding.revision === 1 ? { mode: 'default' } : { mode: 'explicit', value: 'native-high' });
+        expect(binding.requestedModel).toBe(binding.revision === 1 ? 'native-default' : 'native-text');
+        expect(binding.reasoning).toEqual(binding.revision === 1 ? { mode: 'explicit', value: 'native-high' } : { mode: 'default' });
         expect(await store.readBinding(principal(), appId, first.id)).toEqual(first);
         await expect(store.readBinding(principal(), 'unknown-app', first.id)).rejects.toMatchObject({ code: 'permission-denied' });
         await expect(context.database.aIServiceBinding.update({ where: { id: first.id }, data: { snapshot: { changed: true } } })).rejects.toThrow();
@@ -272,13 +272,14 @@ describe('AI service persistence and authorization', () => {
         await expect(store.resolveBinding(principal(), appId, service.id, { modelId: 'native-default' })).rejects.toBeDefined();
         expect(await context.database.aIServiceBinding.count({ where: { serviceId: service.id } })).toBe(0);
     });
-    it('validates native models, reasoning and images without substituting runtime defaults', async () => {
+    it('pins trusted default model and reasoning while rejecting unsupported options', async () => {
         const service = await create();
         await expect(store.resolveBinding(principal(), appId, service.id, { modelId: 'unknown' })).rejects.toMatchObject({ code: 'model-unavailable' });
         await expect(store.resolveBinding(principal(), appId, service.id, { reasoning: { mode: 'explicit', value: 'invented' } })).rejects.toMatchObject({ code: 'parameter-unsupported' });
         await expect(store.resolveBinding(principal(), appId, service.id, { modelId: 'native-text', permissions: ['chat', 'images'] })).rejects.toMatchObject({ code: 'parameter-unsupported' });
         const binding = await store.resolveBinding(principal(), appId, service.id, {});
-        expect(binding.requestedModel).toBeNull();
+        expect(binding.requestedModel).toBe('native-default');
+        expect(binding.reasoning).toEqual({ mode: 'explicit', value: 'native-high' });
         const cached = await context.database.aIServiceCapabilitySnapshot.findFirstOrThrow({ where: { ownerId: owner } });
         expect(cached.observedAt.getTime()).toBe(catalog!.observedAt);
     });
@@ -323,7 +324,7 @@ describe('AI service persistence and authorization', () => {
             expect(await context.database.aIServiceBinding.count({ where: { serviceId: service.id } })).toBe(0);
         } else {
             const binding = await store.resolveBinding(user, appId, service.id, { reasoning: { mode: 'explicit', value: 'native-low' } });
-            expect(binding).toMatchObject({ revision: 1, requestedModel: null, reasoning: { mode: 'explicit', value: 'native-low' } });
+            expect(binding).toMatchObject({ revision: 1, requestedModel: 'native-default', reasoning: { mode: 'explicit', value: 'native-low' } });
             expect(await store.validateBinding(user, appId, binding.id)).toEqual(binding);
         }
         expect((await store.readRevision(owner, service.id, 1)).config.reasoning).toEqual({ mode: 'explicit', value: 'native-high' });

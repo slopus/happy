@@ -22,18 +22,25 @@ vi.mock('./AppConnectionsMenu', () => ({ AppConnectionsMenu: 'AppConnectionsMenu
 vi.mock('./ActiveSessionsGroupCompact', () => ({ CompactSessionRow: (props: any) => React.createElement('CompactSessionRow', props) }));
 
 describe('application session directory', () => {
-    it('uses native rows for live and archived sessions while preserving legacy navigation and excluding ordinary sessions', async () => {
+    it('automatically collects completed and archived rows into expandable history, and restores continued turns', async () => {
         const application = { appId: 'advisor', bindingId: 'binding' };
         mocks.rows = [
-            { type: 'active-sessions', sessions: [{ id: 'ordinary', name: 'advisor' }, { id: 'native', application }] },
+            { type: 'active-sessions', sessions: [{ id: 'ordinary', name: 'advisor' }, { id: 'native', application, state: 'running' }, { id: 'completed', application, state: 'completed' }, { id: 'draft', application, state: 'completed', hasDraft: true }, { id: 'permission', application, state: 'permission_required' }] },
             { type: 'header', title: 'Yesterday' },
             { type: 'session', session: { id: 'archived', application, archived: true } },
         ];
         let renderer: any;
         await act(async () => { renderer = TestRenderer.create(<AppConversationsSidebar />); });
         const rows = renderer.root.findAllByType('CompactSessionRow');
-        expect(rows.map((row: any) => row.props.session.id)).toEqual(['native', 'archived']);
-        expect(rows[0].props.selected).toBe(true);
+        expect(rows.map((row: any) => row.props.session.id)).toEqual(['native', 'draft', 'permission']);
+        const toggle = () => renderer.root.findAllByProps({ testID: 'app-history-toggle-advisor' }).find((node: any) => node.type === 'Pressable');
+        act(() => toggle().props.onPress());
+        expect(renderer.root.findAllByType('CompactSessionRow').map((row: any) => row.props.session.id)).toEqual(['native', 'draft', 'permission', 'completed', 'archived']);
+        act(() => toggle().props.onPress());
+        mocks.rows = [{ type: 'active-sessions', sessions: [{ id: 'completed', application, state: 'running' }] }];
+        await act(async () => { renderer.update(<AppConversationsSidebar />); });
+        expect(renderer.root.findAllByType('CompactSessionRow').map((row: any) => row.props.session.id)).toEqual(['completed']);
+
         const legacy = renderer.root.findAllByProps({ testID: 'app-conversation-legacy' }).find((node: any) => node.type === 'Pressable');
         act(() => legacy.props.onPress());
         expect(mocks.navigate).toHaveBeenCalledWith('/apps/conversations/legacy');

@@ -52,6 +52,7 @@ export function AppConversationsSidebar({ visible = true, showTitle = true, onNa
     const machines = useAllMachines({ includeOffline: true });
     const { theme } = useUnistyles();
     const { width } = useWindowDimensions();
+    const [expandedHistory, setExpandedHistory] = React.useState<Record<string, boolean>>({});
     const [cursor, setCursor] = React.useState<string | null>(null);
     const [revision, setRevision] = React.useState(0);
     const [snapshot, setSnapshot] = React.useState<{ token: string; server: string; grants: AppAuthorizationGrant[]; directory: AppConversationDirectory } | null>(null);
@@ -84,7 +85,7 @@ export function AppConversationsSidebar({ visible = true, showTitle = true, onNa
     };
     const closeMenu = () => { setMenu(null); setTimeout(() => trigger.current?.focus?.(), 0); };
 
-    React.useEffect(() => { setCursor(null); setSnapshot(null); setMenu(null); setError(false); }, [token, server]);
+    React.useEffect(() => { setCursor(null); setSnapshot(null); setMenu(null); setError(false); setExpandedHistory({}); }, [token, server]);
     React.useEffect(() => {
         if (!token || !visible) return;
         let disposed = false;
@@ -138,6 +139,12 @@ export function AppConversationsSidebar({ visible = true, showTitle = true, onNa
             {groups.map(appId => {
                 const app = appInfo(appId);
                 const appSessions = nativeSessions.filter(session => session.application?.appId === appId);
+                // Completed application turns belong in history even while their
+                // processor remains online for safe followups. Never stop execution
+                // as a side effect of organizing this directory.
+                const inHistory = (session: typeof appSessions[number]) => session.archived || (session.state === 'completed' && !session.hasDraft);
+                const currentSessions = appSessions.filter(session => !inHistory(session));
+                const historySessions = appSessions.filter(inHistory);
                 const ids = new Set(grants.filter(grant => grant.appId === appId).map(grant => grant.id));
                 const conversations = directory.conversations.filter(conversation => ids.has(conversation.grantId));
                 return <View key={appId} testID={`app-conversations-group-${appId}`}>
@@ -149,9 +156,21 @@ export function AppConversationsSidebar({ visible = true, showTitle = true, onNa
                             <Ionicons name="ellipsis-horizontal" size={18} color={theme.colors.textSecondary} />
                         </Pressable>
                     </View>
-                    {appSessions.map(session => <CompactSessionRow key={session.id} session={session}
+                    {currentSessions.map(session => <CompactSessionRow key={session.id} session={session}
                         selected={pathname === `/session/${encodeURIComponent(session.id)}` || pathname.startsWith(`/session/${encodeURIComponent(session.id)}/`)}
                         showLocation testID={`app-native-session-${session.id}`} />)}
+                    {historySessions.length > 0 ? <View>
+                        <Pressable accessibilityRole="button" accessibilityLabel={t('sessionHistory.title')}
+                            accessibilityState={{ expanded: !!expandedHistory[appId] }} testID={`app-history-toggle-${appId}`}
+                            onPress={() => setExpandedHistory(value => ({ ...value, [appId]: !value[appId] }))}
+                            style={({ pressed }) => [styles.groupHeader, pressed && styles.pressed]}>
+                            <Text style={styles.secondary}>{t('sessionHistory.title')} · {historySessions.length}</Text>
+                            <Ionicons name={expandedHistory[appId] ? 'chevron-up' : 'chevron-down'} size={16} color={theme.colors.textSecondary} />
+                        </Pressable>
+                        {expandedHistory[appId] ? historySessions.map(session => <CompactSessionRow key={session.id} session={session}
+                            selected={pathname === `/session/${encodeURIComponent(session.id)}` || pathname.startsWith(`/session/${encodeURIComponent(session.id)}/`)}
+                            showLocation testID={`app-native-session-${session.id}`} />) : null}
+                    </View> : null}
                     {!conversations.length && !appSessions.length ? <Text style={styles.emptyGroup}>{t('appConversations.noConversations')}</Text> : conversations.map(conversation => {
                         const grant = grants.find(value => value.id === conversation.grantId)!;
                         const state = conversation.turns[0]?.state;

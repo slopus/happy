@@ -206,9 +206,13 @@ export function createBindingStore(database: PrismaClient, source: TrustedCapabi
                     if (before.service.revision !== current.service.revision) return null;
                     const { service, config, grant, fingerprint } = current;
                     await dependencies.verifyIdentity(tx, principal.ownerId, config, before.fingerprint, catalog);
-                    const requestedModel = config.modelId;
-                    const reasoning = config.reasoning;
-                    const model = catalog.models.find(value => value.id === (requestedModel ?? catalog.defaultModelId));
+                    // Freeze the same trusted defaults the service picker displays. A null
+                    // request must not silently pick a different local CLI config.
+                    const requestedModel = config.modelId ?? catalog.defaultModelId;
+                    const model = catalog.models.find(value => value.id === requestedModel);
+                    const reasoning: ServiceReasoning = config.reasoning.mode === 'default' && model?.reasoning.defaultValue
+                        ? { mode: 'explicit', value: model.reasoning.defaultValue }
+                        : config.reasoning;
                     const permissions = options.data.permissions === undefined
                         ? current.permissions.filter(permission => permission !== 'images' || model?.supportsImages)
                         : current.permissions;
