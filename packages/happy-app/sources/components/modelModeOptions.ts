@@ -181,6 +181,7 @@ export function getClaudeModelModes(): ModelMode[] {
 export function getCodexModelModes(): ModelMode[] {
     return [
         { key: 'gpt-6-astra', name: 'GPT-6 Astra', description: 'most capable', providerId: 'openai', providerName: 'OpenAI' },
+        { key: 'gpt-6.1-sol', name: 'GPT-6.1 Sol', description: null, providerId: 'openai', providerName: 'OpenAI' },
         { key: 'gpt-6-sol', name: 'GPT-6 Sol', description: null, providerId: 'openai', providerName: 'OpenAI' },
         { key: 'gpt-6-luna', name: 'GPT-6 Luna', description: null, providerId: 'openai', providerName: 'OpenAI' },
         { key: 'gpt-5.6-sol', name: 'GPT-5.6 Sol', description: null, providerId: 'openai', providerName: 'OpenAI' },
@@ -539,6 +540,7 @@ const AGY_EFFORTS_BY_MODEL: Record<string, readonly string[]> = {
 // offers it rather than deciding for you.
 const CODEX_EFFORTS_BY_MODEL: Record<string, readonly string[]> = {
     'gpt-6-astra': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
+    'gpt-6.1-sol': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     'gpt-6-sol': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     'gpt-6-luna': ['low', 'medium', 'high', 'xhigh', 'max'],
     'gpt-5.6-sol': ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
