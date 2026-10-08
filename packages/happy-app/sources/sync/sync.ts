@@ -937,7 +937,7 @@ class Sync {
             rigComposerClear(sessionId);
         }
         options?.onAccepted?.();
-        trackMessageSent(source, session.metadata);
+        trackMessageSent(source, session.metadata, modeMeta);
 
         // Stamp local activity time so the (opt-in) activity sort bubbles this session
         // up on user action only — not on background agent output.

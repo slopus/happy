@@ -2,6 +2,8 @@ import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 import { tracking } from './tracking';
 import type { Metadata, Session } from '@/sync/storageTypes';
+import type { MessageModeMeta } from '@/sync/messageMeta';
+import { messageSentSessionProperties } from './messageSentProperties';
 
 // Re-export tracking for direct access
 export { tracking } from './tracking';
@@ -47,8 +49,9 @@ export function trackSessionSwitched(session: Pick<Session, 'id' | 'createdAt' |
 
 export type MessageSentSource = 'chat' | 'new_session' | 'option' | 'question' | 'voice';
 
-export function trackMessageSent(source: MessageSentSource, metadata?: Metadata | null) {
+export function trackMessageSent(source: MessageSentSource, metadata?: Metadata | null, mode?: MessageModeMeta | null) {
     tracking?.capture('message_sent', {
+        ...messageSentSessionProperties(metadata, mode),
         source,
         session_agent: metadata?.flavor === 'gpt' || metadata?.flavor === 'openai'
             ? 'codex'
