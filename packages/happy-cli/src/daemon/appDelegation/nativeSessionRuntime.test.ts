@@ -2,14 +2,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createNativeSessionRuntime, nativeTranscript, type NativeMessage, type NativeSessionHooks } from './nativeSessionRuntime';
+import { createNativeSessionRuntime, nativeTranscript, type NativeMessage, type NativeSessionHooks, type NativeTextDelta } from './nativeSessionRuntime';
 import type { ExecutionBinding } from '@slopus/happy-wire';
 const roots:string[]=[];
 afterEach(async()=>{await Promise.all(roots.splice(0).map(path=>rm(path,{recursive:true,force:true})));});
 const binding={id:'binding',serviceId:'service',revision:1,appId:'advisor',machineId:'machine',engine:'codex',accountRef:{kind:'codex-profile',id:'precise'},requestedModel:'model',reasoning:{mode:'explicit',value:'medium'},permissions:['chat'],permissionMode:'chat-only'} as ExecutionBinding;
 async function fixture() {
  const root=await mkdtemp(join(tmpdir(),'paws-native-'));roots.push(root);
- const phases:string[]=[];
+ const phases:string[]=[],textsObserved:string[]=[];
  const messages:NativeMessage[]=[];const listeners=new Set<(message:NativeMessage)=>void>();
  let active=true,running=false,starts=0,sends=0,dropResponse=false;
  const append=(content:unknown,localId:string|null=null)=>{const message={id:String(messages.length+1),seq:messages.length+1,content,localId};messages.push(message);for(const consume of listeners)consume(message);};
@@ -22,8 +22,8 @@ async function fixture() {
   send:async input=>{sends++;append({role:'user',content:{type:'text',text:input.text}},input.localId);event({t:'turn-start',localIds:[input.localId]},input.localId);event({t:'text',text:'answer'},input.localId);event({t:'turn-end',status:'completed'},input.localId);if(dropResponse)throw Error('lost acknowledgment');},cancel:async()=>{throw Error('must not cancel another surface');},
  };
  const runtime=createNativeSessionRuntime({hooks,root,machineId:'machine',readyTimeoutMs:20,pollMs:1});
- const execute=(requestId:string,sessionId?:string,signal=new AbortController().signal)=>runtime.execute(binding,{id:requestId,requestId,conversationId:'conversation',createdAt:0,messages:[{role:'user',text:requestId}]},{sessionId,systemPrompt:'policy',codexSessionGrant:'exact-grant',attach:async()=>{}},signal,event=>{if(event.type==='phase')phases.push(event.phase);});
- return {runtime,hooks,execute,phases,messages,append,event,setActive:(value:boolean)=>{active=value;},setRunning:(value:boolean)=>{running=value;},drop:()=>{dropResponse=true;},counts:()=>({starts,sends})};
+ const execute=(requestId:string,sessionId?:string,signal=new AbortController().signal)=>runtime.execute(binding,{id:requestId,requestId,conversationId:'conversation',createdAt:0,messages:[{role:'user',text:requestId}]},{sessionId,systemPrompt:'policy',codexSessionGrant:'exact-grant',attach:async()=>{}},signal,event=>{if(event.type==='phase')phases.push(event.phase);else if(event.type==='text')textsObserved.push(event.text);});
+ return {runtime,hooks,execute,phases,textsObserved,messages,append,event,setActive:(value:boolean)=>{active=value;},setRunning:(value:boolean)=>{running=value;},drop:()=>{dropResponse=true;},counts:()=>({starts,sends})};
 }
 describe('native application sessions',()=>{
  it('spawns once, sends only new input, then reuses the same session',async()=>{const f=await fixture();expect((await f.execute('first')).sessionId).toBe('session');await f.execute('second','session');expect(f.counts()).toEqual({starts:1,sends:2});expect(nativeTranscript(f.messages).filter(m=>m.role==='user').map(m=>m.text)).toEqual(['first','second']);});
@@ -123,4 +123,27 @@ it('carries approved legacy context and images in one first native submission on
  await execute('next','session');expect(submitted).toHaveLength(2);
  expect(submitted[1].text).toBe('continue using the old answer');
  expect(submitted[1].images?.map(image=>Buffer.from(image.bytes).toString())).toEqual(['b']);
+});
+
+it('shows matching provisional text before completion and keeps durable text authoritative',async()=>{
+ const f=await fixture();let stream:((event:NativeTextDelta)=>void)|undefined;
+ const watch=f.hooks.watch;f.hooks.watch=async(id,options)=>{stream=options.onTextDelta;return watch(id,options);};
+ f.hooks.send=async input=>{
+  f.append({role:'user',content:{type:'text',text:input.text}},input.localId);
+  f.event({t:'turn-start',localIds:[input.localId]},input.localId);
+  stream?.({turnId:'another-turn',itemId:'item',text:'must not leak'});
+  expect(f.textsObserved).toEqual([]);
+  stream?.({turnId:input.localId,itemId:'item',text:'early'});
+  expect(f.textsObserved).toEqual(['early']);
+  stream?.({turnId:input.localId,itemId:'item',text:'early answer'});
+  f.append({role:'session',content:{type:'session',data:{role:'agent',turn:input.localId,codexItemId:'item',ev:{t:'text',text:'canonical answer'}}}});
+  stream?.({turnId:input.localId,itemId:'item',text:'stale delta'});
+  expect(f.textsObserved.at(-1)).toBe('canonical answer');
+  stream?.({turnId:input.localId,itemId:'unpersisted',text:'unfinished extra'});
+  f.event({t:'turn-end',status:'completed'},input.localId);
+  const before=f.textsObserved.length;
+  stream?.({turnId:input.localId,itemId:'late',text:'after completion'});
+  expect(f.textsObserved).toHaveLength(before);
+ };
+ expect((await f.execute('stream','session')).text).toBe('canonical answer');
 });

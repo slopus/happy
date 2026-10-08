@@ -1,6 +1,6 @@
 import { deflateSync } from 'node:zlib';
 import { NATIVE_SNAPSHOT_PLAINTEXT_MAX_BYTES, NATIVE_SNAPSHOT_CIPHERTEXT_MAX_BYTES } from '@slopus/happy-wire';
-import type { NativeMessage } from './nativeSessionRuntime';
+import type { NativeMessage, NativeTextDelta } from './nativeSessionRuntime';
 import { afterEach, it, expect } from 'vitest';
 import { mkdtemp, writeFile, rm, readdir, readFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -60,17 +60,28 @@ rl.createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(li
  const f=jobFixture(),calls:{ path:string;body:any }[]=[],saved:any[]=[];let phase=0,rejectSize=false;
  f.job.scope={ ...f.job.scope,targets:[{ machineId:target.machineId,engine:target.engine,accountRef:{ id:target.accountRef.id,kind:target.accountRef.kind } }] };
  if(image)f.job.input=encodeBase64(encryptLegacy({...f.payload,messages:[{...f.payload.messages[0],images:[image]}]},f.key));
- const nativeMessages:NativeMessage[]=[];let consumer:((message:NativeMessage)=>void)|undefined,nativePrompt='';
+ const nativeMessages:NativeMessage[]=[];let consumer:((message:NativeMessage)=>void)|undefined,stream:((event:NativeTextDelta)=>void)|undefined,nativePrompt='';
+ let partialPublished!:()=>void;const partial=new Promise<void>(resolve=>{partialPublished=resolve;});
  const append=(content:unknown,localId:string|null=null)=>{const message={id:String(nativeMessages.length+1),seq:nativeMessages.length+1,localId,content};nativeMessages.push(message);consumer?.(message);};
  const worker=createSharedServiceWorker({ machine,recoveryRoot:join(root,'jobs'),lifetime:new AbortController().signal,codexBinary:binary,claudeBinary:claude,
   nativeSessionHooks:{connect:async()=>{},get:async()=>({id:'native-session',active:true,metadata:{machineId:machine.id,application:{appId:binding.appId,bindingId:binding.id},codexAccountProfileId:'exact-profile',currentModelCode:'native'},agentState:{}}),
    start:async input=>{nativePrompt=input.systemPrompt;expect(input.codexSessionGrant).toBe('g'.repeat(43));append({role:'agent',content:{type:'event',data:{type:'ready'}}});return {type:'success',sessionId:'native-session'};},
    historyPage:async(_id,{afterSeq})=>({messages:nativeMessages.filter(message=>message.seq>afterSeq),hasMore:false}),
-   watch:async(_id,options)=>{consumer=message=>{if(message.seq>options.afterSeq)options.onMessage(message);};nativeMessages.forEach(consumer);return {sync:async()=>{},unsubscribe:()=>{consumer=undefined;}};},
+   watch:async(_id,options)=>{stream=options.onTextDelta;consumer=message=>{if(message.seq>options.afterSeq)options.onMessage(message);};nativeMessages.forEach(consumer);return {sync:async()=>{},unsubscribe:()=>{consumer=undefined;}};},
    readImage:async()=>image!,
-   send:async input=>{if(image)append({role:'session',content:{type:'session',data:{role:'user',ev:{t:'file',ref:'sessions/native-session/attachments/screenshot.enc',mimeType:'image/png'}}}},input.localId+':image:0');append({role:'user',content:{type:'text',text:input.text}},input.localId);for(const ev of [{t:'turn-start',localIds:[input.localId]},{t:'text',text:'Summary answer'}])append({role:'session',content:{type:'session',data:{role:'agent',turn:'native-turn',ev}}});if(image)await new Promise(resolve=>setTimeout(resolve,3200));append({role:'session',content:{type:'session',data:{role:'agent',turn:'native-turn',ev:{t:'turn-end',status:'completed'}}}});},cancel:async()=>{}},
+   send:async input=>{if(image)append({role:'session',content:{type:'session',data:{role:'user',ev:{t:'file',ref:'sessions/native-session/attachments/screenshot.enc',mimeType:'image/png'}}}},input.localId+':image:0');append({role:'user',content:{type:'text',text:input.text}},input.localId);append({role:'session',content:{type:'session',data:{role:'agent',turn:'native-turn',ev:{t:'turn-start',localIds:[input.localId]}}}});
+    if(!image){
+     for(let index=1;index<=100;index++)stream?.({turnId:'native-turn',itemId:'answer',text:`Partial ${index}`});
+     let timeout:ReturnType<typeof setTimeout>|undefined;
+     try{await Promise.race([partial,new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('stream did not publish before completion')),1000);})]);}finally{clearTimeout(timeout);}
+     const updates=calls.filter(call=>call.path.endsWith('/turns/turn')&&call.body.output);
+     expect(updates).toHaveLength(1);expect(decryptLegacy(decodeBase64(updates[0].body.output),f.key)).toMatchObject({text:'Partial 100',historyComplete:false});
+     expect(calls.some(call=>call.body.status==='completed')).toBe(false);
+    }
+    append({role:'session',content:{type:'session',data:{role:'agent',turn:'native-turn',codexItemId:'answer',ev:{t:'text',text:'Summary answer'}}}});if(image)await new Promise(resolve=>setTimeout(resolve,3200));append({role:'session',content:{type:'session',data:{role:'agent',turn:'native-turn',ev:{t:'turn-end',status:'completed'}}}});},cancel:async()=>{}},
   request:async <T>(path:string,body:any):Promise<T>=>{
    calls.push({ path,body });
+   if(path.endsWith('/turns/turn')&&body.output&&!body.status)partialPublished();
    if(rejectSize && path.endsWith('/turns/turn') && body.status){rejectSize=false;throw new Error('snapshot-too-large');}
    if(path.endsWith('/announce'))return {} as T;
    if(path.endsWith('/history/claim'))return {history:{id:binding.id,sessionId:'native-session',binding,grantId:f.job.grantId,ownerId:f.job.ownerId,scope:f.job.scope,envelope:f.job.envelope,requestId:'history-request'}} as T;

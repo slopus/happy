@@ -86,7 +86,7 @@ export function createSharedServiceWorker(context: { machine: Machine; request: 
  async function execute(job:SharedServiceJob) {
   const control=new AbortController(), abort=()=>control.abort(); lifetime.addEventListener('abort',abort,{ once:true });
   authority={ kind:'turn',id:job.record.id,lease:job.lease };
-  let latest='',sequence=job.sequence??0,flushing:Promise<unknown>=Promise.resolve(),heartbeat:NodeJS.Timeout|undefined;
+  let latest='',sequence=job.sequence??0,flushing:Promise<unknown>=Promise.resolve(),heartbeat:NodeJS.Timeout|undefined,textFlush:NodeJS.Timeout|undefined;
   let key:Uint8Array|undefined, phase:NativePhase|undefined;
   let messages:NativeConversationMessage[]|undefined, terminalObserved=false;
   const publish=(body:object)=>request(`${path}/turns/${job.record.id}`,{ lease:job.lease,...(phase ? {phase}:{}),...body });
@@ -95,6 +95,18 @@ export function createSharedServiceWorker(context: { machine: Machine; request: 
    let output=encode();
    try{await publish({...body,output,sequence});}
    catch(error){if(!(error instanceof Error)||error.message!=='snapshot-too-large')throw error;output=encode(false,true);await publish({...body,output,sequence});}
+  };
+  const scheduleText=():void=>{
+   if(textFlush || terminalObserved || control.signal.aborted)return;
+   textFlush=setTimeout(()=>{
+    let publishedText:string|undefined;
+    flushing=flushing.then(async()=>{
+     if(control.signal.aborted)return;
+     publishedText=latest;await publish({output:encode(false),sequence});
+    }).catch(()=>control.abort()).finally(()=>{
+     textFlush=undefined;if(latest!==publishedText)scheduleText();
+    });
+   },250);
   };
   try {
    const decoded=decodeServiceJob(machine,job); key=decoded.key;
@@ -115,20 +127,20 @@ export function createSharedServiceWorker(context: { machine: Machine; request: 
    const grant=job.record.binding.engine==='codex' ? await request<{grant:string}>(`${path}/credential`,authority):undefined;
    const result=await native.execute(job.record.binding,{id:job.record.id,conversationId:job.record.conversationId,requestId:job.record.requestId,createdAt:job.record.createdAt,messages:decoded.messages},
     {sessionId:job.record.sessionId,codexSessionGrant:grant?.grant,systemPrompt,attach:async id=>{await request(`${path}/turns/${job.record.id}/session`,{lease:job.lease,sessionId:id});}},control.signal,event=>{
-     if(event.type==='text')latest=event.text;
+     if(event.type==='text'){if(latest!==event.text){latest=event.text;scheduleText();}}
      else if(event.type==='messages')messages=event.messages;
      else {phase=event.phase;flushing=flushing.then(()=>publish({})).catch(()=>control.abort());}
     });
    terminalObserved=true;latest=result.text;messages=result.messages;
 
-   clearInterval(heartbeat); heartbeat=undefined; await flushing;
+   clearInterval(heartbeat); heartbeat=undefined;clearTimeout(textFlush);textFlush=undefined; await flushing;
    await publishTerminal({ status:result.status,actual:result.actual,...(result.status!=='completed' ? {error:{code:'execution-interrupted',retryable:false}} : {}) });
   } catch(error) {
    control.abort(); await flushing;
    if(terminalObserved || error instanceof Error && error.message==='native-execution-pending'){phase='recovering';await publish({}).catch(()=>undefined);return;}
    const parsed=ServiceErrorCodeSchema.safeParse(error instanceof Error ? error.message : '');
    await publish({ status:'failed',error:{ code:parsed.success ? parsed.data : 'execution-interrupted',retryable:false } }).catch(()=>undefined);
-  } finally { if (heartbeat) clearInterval(heartbeat); await flushing; authority=null; policyData=null; lifetime.removeEventListener('abort',abort); }
+  } finally { if (heartbeat) clearInterval(heartbeat);clearTimeout(textFlush); await flushing; authority=null; policyData=null; lifetime.removeEventListener('abort',abort); }
  }
  return {
   async tickHistory():Promise<void> {

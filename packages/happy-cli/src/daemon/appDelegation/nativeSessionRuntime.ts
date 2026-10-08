@@ -9,6 +9,7 @@ import type { ExecutionBinding, TurnActual } from '@slopus/happy-wire';
 import type { BoundTurnInput } from './executionBinding';
 
 export type NativePhase = 'connecting'|'preparing'|'starting'|'resuming'|'submitted'|'generating'|'recovering';
+export type NativeTextDelta = { turnId:string; itemId:string; text:string };
 export type NativeMessage = { id:string; seq:number; localId:string|null; content:unknown };
 export type NativeSession = { id:string; active:boolean; metadata:unknown; agentState:unknown };
 export type NativeConversationMessage = { id:string; seq:number; role:'user'|'assistant'; text:string; images?:string[]; attachments?:Array<{ref:string;mimeType:string}> };
@@ -16,7 +17,7 @@ export interface NativeSessionHooks {
  connect():Promise<void>;
  get(sessionId:string):Promise<NativeSession>;
  historyPage(sessionId:string,options:{afterSeq:number;limit:number;signal?:AbortSignal}):Promise<{messages:NativeMessage[];hasMore:boolean}>;
- watch(sessionId:string,options:{afterSeq:number;onMessage:(message:NativeMessage)=>void;onError:(error:Error)=>void;signal?:AbortSignal}):Promise<{sync():Promise<void>;unsubscribe():void}>;
+ watch(sessionId:string,options:{afterSeq:number;onMessage:(message:NativeMessage)=>void;onTextDelta?:(event:NativeTextDelta)=>void;onError:(error:Error)=>void;signal?:AbortSignal}):Promise<{sync():Promise<void>;unsubscribe():void}>;
  send(input:{sessionId:string;localId:string;text:string;images?:Array<{name:string;mimeType:string;bytes:Uint8Array}>;meta?:Record<string,unknown>;configuration?:{model?:string|null;effort?:'none'|'minimal'|'low'|'medium'|'high'|'xhigh'|'max'|'ultra'|null};signal?:AbortSignal}):Promise<unknown>;
  /** Must enforce the complete binding on creation AND resume; never default credentials. */
  start(input:{binding:ExecutionBinding;sessionId?:string;codexSessionGrant?:string;systemPrompt:string;directory:string}):Promise<{type:'success';sessionId:string}|{type:'error';errorMessage:string}>;
@@ -173,7 +174,9 @@ export function createNativeSessionRuntime(context:{hooks:NativeSessionHooks;roo
    transcript.push({id:journal.localId,seq:journal.afterSeq+1,role:'user',text:input.text,...(input.images?{images:input.images}:{})});
    onEvent({type:'messages',messages:transcript});
    let userSeq:number|undefined,turnId:string|undefined,status:'completed'|'failed'|'cancelled'|undefined;
-   const texts=new Map<string,string>();let resolveDone!:()=>void,rejectDone!:(error:unknown)=>void;
+   const texts=new Map<string,string>(),durableTexts=new Map<string,string>();
+   const emitText=()=>onEvent({type:'text',text:[...texts.values()].join('\n\n')});
+   let resolveDone!:()=>void,rejectDone!:(error:unknown)=>void;
    const done=new Promise<void>((resolve,reject)=>{resolveDone=resolve;rejectDone=reject;});done.catch(()=>{});
    const consume=(message:NativeMessage)=>{
     if(message.localId===journal.localId && object(message.content).role==='user')userSeq=message.seq;
@@ -181,10 +184,13 @@ export function createNativeSessionRuntime(context:{hooks:NativeSessionHooks;roo
     if(envelope.role!=='agent'||envelope.subagent)return;
     if(!turnId && userSeq!==undefined && message.seq>userSeq && envelope.ev?.t==='turn-start' && Array.isArray(envelope.ev.localIds) && envelope.ev.localIds.includes(journal.localId)){turnId=envelope.turn;phase('generating');}
     if(!turnId || envelope.turn!==turnId)return;
-    if(envelope.ev?.t==='text' && !envelope.ev.thinking && typeof envelope.ev.text==='string'){texts.set(envelope.codexItemId||envelope.id||message.id,envelope.ev.text);onEvent({type:'text',text:[...texts.values()].join('\n\n')});}
+    if(envelope.ev?.t==='text' && !envelope.ev.thinking && typeof envelope.ev.text==='string'){const id=envelope.codexItemId||envelope.id||message.id;durableTexts.set(id,envelope.ev.text);texts.set(id,envelope.ev.text);emitText();}
     if(envelope.ev?.t==='turn-end' && ['completed','failed','cancelled'].includes(envelope.ev.status)){status=envelope.ev.status;resolveDone();}
    };
-   const watch=await hooks.watch(sessionId,{afterSeq:journal.afterSeq,signal,onMessage:consume,onError:rejectDone});
+   const watch=await hooks.watch(sessionId,{afterSeq:journal.afterSeq,signal,onMessage:consume,onTextDelta:event=>{
+    if(status || !turnId || event.turnId!==turnId || durableTexts.has(event.itemId))return;
+    texts.set(event.itemId,event.text);emitText();
+   },onError:rejectDone});
    const abort=()=>{rejectDone(signal.reason||new Error('execution-interrupted'));};
    signal.addEventListener('abort',abort,{once:true});
    try {
@@ -200,7 +206,7 @@ export function createNativeSessionRuntime(context:{hooks:NativeSessionHooks;roo
     await done;
     const final=await hooks.get(sessionId);assertNativeBinding(final,binding);const metadata=object(final.metadata);
     const actual:TurnActual={modelId:typeof metadata.currentModelCode==='string'?metadata.currentModelCode:null,reasoning:typeof metadata.currentThoughtLevelCode==='string'?metadata.currentThoughtLevelCode:null};
-    return {sessionId,status:status!,text:[...texts.values()].join('\n\n'),messages:transcript,actual};
+    return {sessionId,status:status!,text:[...durableTexts.values()].join('\n\n'),messages:transcript,actual};
    }finally{signal.removeEventListener('abort',abort);watch.unsubscribe();}
    }catch(error){if(journal.submitted && !isBindingFailure(error))throw new Error('native-execution-pending',{cause:error});throw error;}
   }

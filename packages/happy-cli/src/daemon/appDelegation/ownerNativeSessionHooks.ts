@@ -42,7 +42,20 @@ export function createOwnerNativeSessionHooks(input: {
         connect: () => client.connect(),
         get: sessionId => client.sessions.get(sessionId),
         historyPage: (sessionId, options) => client.messages.historyPage(sessionId, options),
-        watch: (sessionId, options) => client.messages.watch(sessionId, options),
+        async watch(sessionId, options) {
+            // Reuse the SDK's authenticated stream alongside its durable watcher.
+            const stopStream = client.subscribe(event => {
+                if (event.type === 'text-delta' && event.sessionId === sessionId && !options.signal?.aborted) {
+                    options.onTextDelta?.(event);
+                }
+            });
+            options.signal?.addEventListener('abort', stopStream, { once: true });
+            const cleanup = () => { stopStream(); options.signal?.removeEventListener('abort', stopStream); };
+            try {
+                const watch = await client.messages.watch(sessionId, options);
+                return { sync: () => watch.sync(), unsubscribe: () => { cleanup(); watch.unsubscribe(); } };
+            } catch (error) { cleanup(); throw error; }
+        },
         send: message => client.messages.send(message),
         async readImage(sessionId, ref, mimeType) {
             const prefix = `sessions/${sessionId}/attachments/`;

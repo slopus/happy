@@ -84,6 +84,21 @@ async function fixture(variant: 'legacy' | 'dataKey') {
 }
 
 describe('owner native SDK bridge', () => {
+    it.each(['legacy', 'dataKey'] as const)('forwards encrypted %s text snapshots and releases the existing SDK subscription', async variant => {
+        const f = await fixture(variant);
+        const seen: string[] = [], control = new AbortController();
+        const watch = await f.hooks.watch('owner-session', { afterSeq: 0, onMessage: () => {}, onError: error => { throw error; }, signal: control.signal,
+            onTextDelta: event => seen.push(event.text) });
+        const emit = (text: string) => f.io.emit('session-stream', { sid: 'owner-session', content: { t: 'encrypted', c: f.seal({ type: 'text-delta', turnId: 'turn', itemId: 'item', delta: text, text }) } });
+        emit('early');
+        await vi.waitFor(() => expect(seen).toEqual(['early']));
+        control.abort();
+        emit('after abort');
+        await new Promise(resolve => setTimeout(resolve, 30));
+        expect(seen).toEqual(['early']);
+        watch.unsubscribe();
+    });
+
     it('sends twelve consented context images in one native user batch and rejects thirteen',async()=>{
         const f=await fixture('dataKey');
         const images=Array.from({length:12},(_,index)=>({name:`image-${index}`,mimeType:'image/png',bytes:f.png}));
