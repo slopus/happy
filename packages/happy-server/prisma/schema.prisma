@@ -626,6 +626,7 @@ model AppDelegation {
 }
 
 model AppChatWorker {
+    nativeSessions Boolean @default(false)
     serviceProtocol String?
     servicePublicKey String?
     serviceClaudeIdentity String?
@@ -648,6 +649,8 @@ model AppChatConversation {
 }
 
 model AppChatTurn {
+    sessionId String?
+    phase String?
     bindingId String?
     binding AIServiceBinding? @relation(fields: [bindingId], references: [id])
     requestId String?
@@ -733,6 +736,11 @@ model AIServiceAuthorization {
 }
 
 model AIServiceBinding {
+    historyRequests AIServiceHistoryRequest[]
+    sessionId String? @unique
+    historyRequestId String?
+    historyDeadline DateTime?
+    historyCiphertext String?
     appConversationId String?
     creationInput Json?
     turns AppChatTurn[]
@@ -786,4 +794,18 @@ model AIServiceBusinessPrompt {
     version String
     body String
     @@id([id, version])
+}
+
+// Short-lived request-specific encrypted snapshots; bindings retain immutable execution authority.
+model AIServiceHistoryRequest {
+    id String @id
+    bindingId String
+    binding AIServiceBinding @relation(fields: [bindingId], references: [id])
+    sessionId String
+    state String @default("queued")
+    ciphertext String?
+    error String?
+    deadline DateTime
+    createdAt DateTime @default(now())
+    @@index([bindingId, state, deadline])
 }

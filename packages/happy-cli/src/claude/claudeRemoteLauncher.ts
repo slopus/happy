@@ -1,3 +1,4 @@
+import { nativeLaunchPolicy } from '@/daemon/appDelegation/nativeLaunchPolicy';
 import { render } from "ink";
 import { Session } from "./session";
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
@@ -93,6 +94,7 @@ export async function claudeRemoteLauncher(session: Session, onProcessorReady?: 
     }
 
     async function doSwitch() {
+        if (nativeLaunchPolicy()) throw new Error('Application sessions require the bound remote processor');
         logger.debug('[remote]: doSwitch');
         if (!exitReason) {
             exitReason = 'switch';
@@ -286,12 +288,14 @@ export async function claudeRemoteLauncher(session: Session, onProcessorReady?: 
         hash: string;
         isolate: boolean;
         attachments?: PendingAttachment[];
+        localIds?: string[];
     };
 
     const prepareRemoteMessage = (msg: QueuedClaudeMessage): {
         message: MessageParam['content'];
         mode: EnhancedMode;
     } => {
+        session.client.acceptClaudeInput(msg.localIds ?? []);
         permissionHandler.handleModeChange(msg.mode.permissionMode);
         const attachments = msg.attachments ?? [];
         if (attachments.length === 0) {
@@ -433,12 +437,12 @@ export async function claudeRemoteLauncher(session: Session, onProcessorReady?: 
                         logger.debug('[remote]: Session reset');
                         session.clearSessionId();
                     },
-                    onReady: () => {
+                    onReady: (status = 'completed') => {
                         const completedMedia = mediaAwaitingCleanup;
                         mediaAwaitingCleanup = [];
                         void cleanupMediaAttachments(completedMedia);
-                        session.client.closeClaudeSessionTurn('completed');
-                        if (!pending && session.queue.size() === 0) {
+                        session.client.closeClaudeSessionTurn(status);
+                        if (status === 'completed' && !pending && session.queue.size() === 0) {
                             session.api.push().sendSessionNotification({
                                 kind: 'done',
                                 metadata: session.client.getMetadata(),

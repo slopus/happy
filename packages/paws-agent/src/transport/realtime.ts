@@ -1,7 +1,7 @@
 import { io } from 'socket.io-client';
 import { PawsAgentError } from '../client/errors';
 import { PawsAgentEvents } from '../client/events';
-import type { AgentLogger, CredentialProvider, ReconnectPolicy } from '../client/types';
+import type { AgentLogger, ClientCredentialProvider, ReconnectPolicy } from '../client/types';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from '../crypto/encryption';
 import { RecordEncryptionStore, type RecordEncryption } from '../crypto/records';
 
@@ -32,7 +32,7 @@ export class PawsRealtimeTransport {
 
     constructor(private readonly options: {
         serverUrl: string;
-        credentials: CredentialProvider;
+        credentials: ClientCredentialProvider;
         encryption: RecordEncryptionStore;
         events: PawsAgentEvents;
         resync: () => Promise<unknown>;

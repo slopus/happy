@@ -45,6 +45,7 @@ export interface ServiceProfilesState {
     saving: boolean;
     rows: ServiceProfileRow[];
     error: ClientErrorCode | null;
+    errorStage?: 'configuration' | 'save' | null;
 }
 export interface ServiceProfiles {
     begin(): Promise<void>;
@@ -81,7 +82,7 @@ function profileValue(value: unknown, defaults: ServiceProfileValue): ServicePro
 export function createServiceProfiles(options: ServiceProfilesOptions): ServiceProfiles {
     const slots = structuredClone(options.slots);
     if (!slots.length || new Set(slots.map(slot => slot.id)).size !== slots.length || slots.some(slot => !slot.id?.trim() || !slot.name?.trim())) fail('invalid-request');
-    let state: ServiceProfilesState = { source: null, serviceId: null, connectionId: null, editing: false, loading: false, saving: false, rows: [], error: null };
+    let state: ServiceProfilesState = { source: null, serviceId: null, connectionId: null, editing: false, loading: false, saving: false, rows: [], error: null, errorStage: null };
     let baseline: ServiceProfileRow[] = [], disposed = false, epoch = 0, lifetime = new AbortController();
     let context: { client: ServiceProfilesClient; scope: ServiceProfilesScope; configuration: ServiceConfiguration } | null = null;
     const listeners = new Set<(state: ServiceProfilesState) => void>();
@@ -183,7 +184,7 @@ export function createServiceProfiles(options: ServiceProfilesOptions): ServiceP
             open(); if (state.saving) fail('resource-busy');
             const value = capture(); invalidate(); const generation = epoch;
             context = null; baseline = [];
-            state = { ...value.scope, editing: true, loading: true, saving: false, rows: [], error: null }; emit();
+            state = { ...value.scope, editing: true, loading: true, saving: false, rows: [], error: null, errorStage: null }; emit();
             try {
                 const loaded = await load(value);
                 if (disposed || generation !== epoch || !current(value)) return;
@@ -193,7 +194,7 @@ export function createServiceProfiles(options: ServiceProfilesOptions): ServiceP
                 baseline = structuredClone(state.rows); state.loading = false; emit();
             } catch (error) {
                 if (disposed || generation !== epoch || !current(value)) return;
-                state.loading = false; state.error = safeServiceError(error).code; emit(); throw safeServiceError(error);
+                state.loading = false; state.error = safeServiceError(error).code; state.errorStage = 'configuration'; emit(); throw safeServiceError(error);
             }
         },
         update(id, patch) {
@@ -212,17 +213,17 @@ export function createServiceProfiles(options: ServiceProfilesOptions): ServiceP
             const value = requireDraft(), generation = epoch;
             for (const row of state.rows) validateRow(row, value.configuration);
             const record: ServiceProfilesRecord = { version: 1, slots: Object.fromEntries(state.rows.map(row => [row.id, structuredClone(row.value)])) };
-            state.saving = true; state.error = null; emit();
+            state.saving = true; state.error = null; state.errorStage = null; emit();
             try {
                 await options.write(structuredClone(value.scope), record);
                 if (disposed || generation !== epoch || !current(value)) return;
                 baseline = structuredClone(state.rows); state.editing = false;
             } catch {
-                if (!disposed && generation === epoch && current(value)) state.error = 'storage-unavailable';
+                if (!disposed && generation === epoch && current(value)) { state.error = 'storage-unavailable'; state.errorStage = 'save'; }
                 return fail('storage-unavailable');
             } finally { if (!disposed && generation === epoch) { state.saving = false; emit(); } }
         },
-        cancel() { open(); if (state.saving) fail('resource-busy'); invalidate(); state.rows = structuredClone(baseline); state.editing = false; state.loading = false; state.error = null; emit(); },
+        cancel() { open(); if (state.saving) fail('resource-busy'); invalidate(); state.rows = structuredClone(baseline); state.editing = false; state.loading = false; state.error = null; state.errorStage = null; emit(); },
         async getOverrides(id) {
             if (!slots.some(slot => slot.id === id)) return fail('invalid-request');
             const value = capture(), loaded = await load(value), row = loaded.rows.find(row => row.id === id)!;

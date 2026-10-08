@@ -1,3 +1,6 @@
+import { nativeClaudeOptions } from '@/daemon/appDelegation/nativeProviderPolicy';
+import { nativeLaunchPolicy, nativeClaudeExecutable } from '@/daemon/appDelegation/nativeLaunchPolicy';
+import { restrictedClaudeEnv } from '@/daemon/appDelegation/restrictedClaude';
 /**
  * Query wrapper around official @anthropic-ai/claude-agent-sdk
  * Maps internal QueryOptions to official SDK Options
@@ -47,6 +50,11 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
         effort: opts?.effort,
     }
 
+    const applicationPolicy = nativeLaunchPolicy();
+    if (applicationPolicy) {
+        Object.assign(sdkOptions, nativeClaudeOptions(applicationPolicy, nativeClaudeExecutable()));
+    }
+
     // Map abort signal -> AbortController
     if (opts?.abort) {
         const controller = new AbortController()
@@ -62,7 +70,7 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
     // session. See slopus/happy#1202.
     // Claude-specific proxy/CA isolation (HAPPY_CLAUDE_PROXY_URL et al.),
     // mirroring the Codex-side buildCodexProcessEnv().
-    const env = buildClaudeProcessEnv()
+    const env = applicationPolicy ? restrictedClaudeEnv(process.env) : buildClaudeProcessEnv()
     env.CLAUDE_CODE_ENTRYPOINT = resolveHappyEntrypoint(process.env.CLAUDE_CODE_ENTRYPOINT)
     if (opts?.mcpServers && Object.keys(opts.mcpServers).length > 0) {
         ensureLocalProxyBypass(env)
@@ -70,7 +78,7 @@ export function query(params: { prompt: QueryPrompt; options?: QueryOptions }): 
     sdkOptions.env = env
 
     // Map canCallTool -> canUseTool
-    if (opts?.canCallTool) {
+    if (!applicationPolicy && opts?.canCallTool) {
         const callback = opts.canCallTool
         sdkOptions.canUseTool = async (toolName, input, options) => {
             return callback(toolName, input, options)

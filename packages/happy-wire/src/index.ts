@@ -11,3 +11,4 @@ export * from './interactivePreviewPrompt';
 export * from './toolFailure';
 export * from './appChat';
 export * from './aiServices';
+export * from './applicationSession';

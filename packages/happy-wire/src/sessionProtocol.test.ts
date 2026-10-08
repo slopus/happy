@@ -458,3 +458,9 @@ describe('createEnvelope', () => {
     expect(() => createEnvelope('user', { t: 'service', text: 'internal event' })).toThrow();
   });
 });
+
+it('links native turn-start to accepted user localIds without changing old events', () => {
+  expect(sessionEventSchema.parse({t:'turn-start'})).toEqual({t:'turn-start'});
+  expect(sessionEventSchema.parse({t:'turn-start',localIds:['accepted-user-1','accepted-user-2']})).toEqual({t:'turn-start',localIds:['accepted-user-1','accepted-user-2']});
+  expect(sessionEventSchema.safeParse({t:'turn-start',localIds:['']}).success).toBe(false);
+});

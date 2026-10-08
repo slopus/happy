@@ -1,5 +1,5 @@
 import { PawsAgentError } from '../client/errors';
-import type { SessionOrganization, SessionOrganizationInput, SessionOrganizationCatalog, PawsCredentials } from '../client/types';
+import type { SessionOrganization, SessionOrganizationInput, SessionOrganizationCatalog, PawsCredentials, ClientCredentials } from '../client/types';
 import { decodeBase64, encodeBase64, encryptLegacy, decryptLegacy } from '../crypto/encryption';
 import type { PawsHttpTransport } from '../transport/http';
 
@@ -17,6 +17,10 @@ export function validateOrganization(input: SessionOrganizationInput): void {
     for (const [value, limit] of [[input.tagIds, 100], [input.tagNames, 80]] as const) {
         if (value !== undefined && (!Array.isArray(value) || value.length > 100 || value.some(v => !text(v, limit)))) invalid('Invalid tags');
     }
+}
+function requireOwnerCredentials(credentials: ClientCredentials): PawsCredentials {
+    if ('resolveRecordKey' in credentials) throw new PawsAgentError('FORBIDDEN', 'Account settings require owner credentials');
+    return credentials;
 }
 function decodeSettings(value: unknown, credentials: PawsCredentials): ObjectValue {
     if (value === null) return {};
@@ -57,13 +61,14 @@ export class SessionOrganizationStore {
     private async read() {
         const snapshot = await this.http.getWithCredentials<{ settings: string | null; settingsVersion: number }>('/v1/account/settings');
         if (!Number.isSafeInteger(snapshot.data?.settingsVersion) || snapshot.data.settingsVersion < 0) fail('Malformed settings version');
-        const settings = decodeSettings(snapshot.data.settings, snapshot.credentials);
-        return { ...snapshot, settings, organization: organization(settings) };
+        const credentials = requireOwnerCredentials(snapshot.credentials);
+        const settings = decodeSettings(snapshot.data.settings, credentials);
+        return { ...snapshot, credentials, settings, organization: organization(settings) };
     }
     async get(): Promise<SessionOrganizationCatalog> { return (await this.read()).organization; }
-    async set(sessionId: string, input: SessionOrganizationInput, credentials: PawsCredentials): Promise<SessionOrganization> {
+    async set(sessionId: string, input: SessionOrganizationInput, credentials: ClientCredentials): Promise<SessionOrganization> {
         validateOrganization(input);
-        const owner = encodeBase64(credentials.secret);
+        const owner = encodeBase64(requireOwnerCredentials(credentials).secret);
         for (let attempt = 0; attempt < 4; attempt++) {
             const snapshot = await this.read();
             const identity = encodeBase64(snapshot.credentials.secret);

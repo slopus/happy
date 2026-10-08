@@ -76,7 +76,7 @@ export class PawsAgentClient {
         this.sessions = sessions;
         this.messagesImpl = new MessagesResourceImpl(http, sessions, this.encryption, error => {
             if (!this.disposed) this.events.emit({ type: 'error', error });
-        });
+        }, options.maxImagesPerMessage === 12 ? 12 : 4);
         this.messages = this.messagesImpl;
         this.requests = new RequestsResourceImpl(this.realtime, sessions);
     }

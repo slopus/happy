@@ -1,3 +1,4 @@
+import type { NativeSessionHooks } from './nativeSessionRuntime';
 /** Bounded leased worker for application-owned chats; independent of unrestricted RPC. */
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
@@ -27,7 +28,7 @@ const messageSchema = z.object({ role: z.enum(['user', 'assistant']), text: z.st
 
 const activeHomes = new Set<string>();
 
-export function startAppChatWorker(token: string, machine: Machine): () => void {
+export function startAppChatWorker(token: string, machine: Machine, nativeSessionHooks?: NativeSessionHooks): () => void {
     const lifetime = new AbortController();
     let active: AbortController | null = null;
     let recoveryWarning = false;
@@ -37,7 +38,10 @@ export function startAppChatWorker(token: string, machine: Machine): () => void 
     const binary = configuredBinary && isAbsolute(configuredBinary) ? configuredBinary : 'codex';
     const request = async <T>(path: string, body: unknown, method = 'POST', cleanup = false): Promise<T> => {
         const response = await fetch(`${configuration.serverUrl}/v1/${path}`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: cleanup ? AbortSignal.timeout(7000) : AbortSignal.any([lifetime.signal, AbortSignal.timeout(7000)]), redirect: 'error' });
+        if (response.status === 413) throw new Error('snapshot-too-large');
         const data = await response.json() as any;
+        const validation = typeof data?.message === 'string' ? data.message : '';
+        if (!response.ok && (data?.error?.code === 'snapshot-too-large' || response.status === 400 && /output|ciphertext/.test(validation) && /too big|too_big|maximum|max.*characters/i.test(validation))) throw new Error('snapshot-too-large');
         if (response.status === 404 && path.startsWith('ai-service-worker/')) throw new Error('shared-protocol-unavailable');
         if (!response.ok) throw new Error(response.status === 409 && data.error === 'codex-account-unbound' ? 'codex-account-unbound' : 'authorization-unavailable');
         return data as T;
@@ -50,7 +54,7 @@ export function startAppChatWorker(token: string, machine: Machine): () => void 
         reportCodexAccountQuota: (id, data) => request(`codex-accounts/${id}/quota-snapshot`, data, 'PUT', true),
         reportCodexAccountStatus: (id, data) => request(`codex-accounts/${id}/status`, data, 'PUT', true),
     };
-    const shared = createSharedServiceWorker({ machine, request, api, recoveryRoot: join(configuration.happyHomeDir, 'ai-service-credentials', createHash('sha256').update(machine.id).digest('hex')), lifetime: lifetime.signal, codexBinary: binary, claudeBinary });
+    const shared = createSharedServiceWorker({ machine, request, api, recoveryRoot: join(configuration.happyHomeDir, 'ai-service-credentials', createHash('sha256').update(machine.id).digest('hex')), lifetime: lifetime.signal, codexBinary: binary, claudeBinary, nativeSessionHooks });
     const recoverCredentials = () => recoverAppChatCredentialJobs(recoveryRoot, machine.id, api, activeHomes);
     const execute = async (job: Job) => {
         const control = new AbortController(); active = control;
@@ -119,13 +123,15 @@ export function startAppChatWorker(token: string, machine: Machine): () => void 
         if (configuredBinary && !isAbsolute(configuredBinary)) return;
         const readiness = await Promise.all([verifyRestrictedCodex(binary), verifyRestrictedClaude(claudeBinary)]);
         engines = ['codex', 'claude'].filter((_, index) => readiness[index]);
-        if (!engines.length) return;
+        if (!engines.length && !nativeSessionHooks) return;
         let release: (() => Promise<void>) | null = null;
         while (!lifetime.signal.aborted && !release) {
             release = await acquireMachineLock(machine.id, () => lifetime.abort());
             if (!release) await new Promise(resolve => setTimeout(resolve, 1000));
         }
         if (!release) return;
+        let historyBusy=false;
+        const historyTimer=setInterval(()=>{if(historyBusy||lifetime.signal.aborted)return;historyBusy=true;void shared.tickHistory().catch(()=>undefined).finally(()=>{historyBusy=false;});},1000);
         try { while (!lifetime.signal.aborted) {
             try {
                 if (!await recoverCredentials()) {
@@ -143,7 +149,7 @@ export function startAppChatWorker(token: string, machine: Machine): () => void 
                 function done() { clearTimeout(timer); lifetime.signal.removeEventListener('abort', done); resolve(); }
                 lifetime.signal.addEventListener('abort', done, { once: true });
             });
-        } } finally { await release(); }
+        } } finally { clearInterval(historyTimer); await release(); }
     })();
     return () => { lifetime.abort(); active?.abort(); };
 }

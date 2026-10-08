@@ -4,14 +4,14 @@ import { readConfiguration } from './configuration';
 import { PawsAgentError } from '../client/errors';
 import type {
     Machine,
-    PawsCredentials,
+    ClientCredentials,
     ResumeSessionInput,
     Session,
     SessionsResource,
     SpawnSessionInput,
     SpawnSessionResult,
 } from '../client/types';
-import { decryptRecordField, RecordEncryptionStore, resolveRecordEncryption } from '../crypto/records';
+import { decryptRecordField, RecordEncryptionStore, resolveRecordEncryption, tryResolveRecordEncryption } from '../crypto/records';
 import type { PawsHttpTransport } from '../transport/http';
 import type { PawsRealtimeTransport } from '../transport/realtime';
 
@@ -42,7 +42,10 @@ export class SessionsResourceImpl implements SessionsResource {
     async list(options: { active?: boolean } = {}): Promise<Session[]> {
         const path = options.active ? '/v2/sessions/active' : '/v1/sessions';
         const snapshot = await this.transport.getWithCredentials<{ sessions: RawSession[] }>(path);
-        return snapshot.data.sessions.map(record => this.decodeSession(record, snapshot.credentials));
+        return snapshot.data.sessions.flatMap(record => {
+            const encryption = tryResolveRecordEncryption(record, snapshot.credentials, 'session');
+            return encryption ? [this.decodeSession(record, snapshot.credentials, encryption)] : [];
+        });
     }
 
     async get(sessionId: string): Promise<Session> {
@@ -56,8 +59,7 @@ export class SessionsResourceImpl implements SessionsResource {
         return this.decodeSession(snapshot.data.session, snapshot.credentials);
     }
 
-    private decodeSession(record: RawSession, credentials: PawsCredentials): Session {
-        const encryption = resolveRecordEncryption(record, credentials, 'session');
+    private decodeSession(record: RawSession, credentials: ClientCredentials, encryption = resolveRecordEncryption(record, credentials, 'session')): Session {
         this.encryption.setSession(record.id, encryption);
         const session: Session = {
             id: record.id, seq: record.seq, createdAt: record.createdAt, updatedAt: record.updatedAt,
@@ -148,6 +150,11 @@ export class SessionsResourceImpl implements SessionsResource {
         if (result?.success !== true) {
             throw new PawsAgentError('PROTOCOL_UNSUPPORTED', 'Session did not acknowledge termination');
         }
+    }
+
+    async cancel(sessionId: string): Promise<void> {
+        await this.get(sessionId); // Verify current ownership and resolver scope even for cached keys.
+        await this.realtime.sessionRpc(sessionId, 'abort', {});
     }
 
     async stop(sessionId: string): Promise<void> {

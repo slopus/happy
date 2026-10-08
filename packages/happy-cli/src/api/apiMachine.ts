@@ -1,3 +1,4 @@
+import type { NativeSessionHooks } from '@/daemon/appDelegation/nativeSessionRuntime';
 /**
  * WebSocket client for machine/daemon communication with Happy server
  * Similar to ApiSessionClient but for machine-scoped connections
@@ -150,6 +151,8 @@ async function deleteFailedCodexTakeoverFork(threadId: string, sourceSessionId: 
 }
 
 export class ApiMachineClient {
+    private nativeSessionHooks?: NativeSessionHooks;
+    setNativeSessionHooks(hooks: NativeSessionHooks): void { this.nativeSessionHooks = hooks; }
     private stopAppChatWorker: (() => void) | null = null;
     private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
     private keepAliveInterval: NodeJS.Timeout | null = null;
@@ -658,7 +661,7 @@ export class ApiMachineClient {
         this.socket.on('connect', () => {
             logger.debug('[API MACHINE] Connected to server');
             this.stopAppChatWorker?.();
-            this.stopAppChatWorker = startAppChatWorker(this.token, this.machine);
+            this.stopAppChatWorker = startAppChatWorker(this.token, this.machine, this.nativeSessionHooks);
 
             if (this.reconnectInterval) {
                 clearInterval(this.reconnectInterval);

@@ -1,7 +1,7 @@
-import type { AppPolicy, CapabilityCatalog, ExecutionBinding, GrantReceipt, ServiceErrorCode, ServicePermission, ServiceReasoning, ServiceRef, ServiceTarget, ServicePermissionMode, ServiceTier, ServiceConfiguration, ServiceConfig, TurnRecord } from '@slopus/happy-wire/ai-services';
-export type { AppPolicy, CapabilityCatalog, ExecutionBinding, GrantReceipt, ServiceGrant, ServiceErrorCode, ServicePermission, ServiceReasoning, ServiceRef, ServiceTarget, ServicePermissionMode, ServiceTier, ServiceConfiguration, ServiceConfig, TurnRecord, TurnActual } from '@slopus/happy-wire/ai-services';
+import type { AppPolicy, CapabilityCatalog, ExecutionBinding, GrantReceipt, ServiceErrorCode, ServicePermission, ServiceReasoning, ServiceRef, ServiceTarget, ServicePermissionMode, ServiceTier, ServiceConfiguration, ServiceConfig, TurnRecord, TurnPhase, NativeSnapshotError } from '@slopus/happy-wire/ai-services';
+export type { AppPolicy, CapabilityCatalog, ExecutionBinding, GrantReceipt, ServiceGrant, ServiceErrorCode, ServicePermission, ServiceReasoning, ServiceRef, ServiceTarget, ServicePermissionMode, ServiceTier, ServiceConfiguration, ServiceConfig, TurnRecord, TurnActual, TurnPhase } from '@slopus/happy-wire/ai-services';
 export type ServiceSource = 'platform' | 'personal';
-export type ClientErrorCode = ServiceErrorCode | 'transport-error' | 'context-mismatch' | 'storage-unavailable' | 'disposed' | 'aborted' | 'observation-expired';
+export type ClientErrorCode = ServiceErrorCode | 'transport-error' | 'context-mismatch' | 'storage-unavailable' | 'disposed' | 'aborted' | 'observation-expired' | 'snapshot-too-large';
 export class AIServiceClientError extends Error {
     constructor(readonly code: ClientErrorCode, readonly retryable = false, readonly requestId?: string, readonly submission: 'uncertain' | 'not-submitted' = 'uncertain') { super(code); this.name = 'AIServiceClientError'; }
 }
@@ -13,9 +13,17 @@ export interface ServiceConnection {
     expiresAt: number | null;
 }
 export interface ServiceMessage {
+    id?: string;
+    seq?: number;
     role: 'user' | 'assistant';
     text: string;
     images?: string[];
+}
+export interface ConversationSnapshot {
+    sessionId: string | null;
+    messages: ServiceMessage[];
+    active: boolean;
+    phase?: TurnPhase;
 }
 export interface BindingOverrides {
     target?: ServiceTarget;
@@ -40,6 +48,9 @@ export interface TurnLocator {
     requestId?: string;
 }
 export interface TurnSnapshot {
+    /** False for request-only/heartbeat snapshots. Omission means authoritative history. */
+    historyComplete?: false;
+    snapshotError?: NativeSnapshotError;
     record: TurnRecord;
     sequence: number;
     text: string;
@@ -73,6 +84,7 @@ export interface AIServiceTransport {
     readCapabilities(options?: CapabilityReadOptions): Promise<CapabilityCatalog | null>;
     createConversation(input?: CreateConversationInput, options?: CallOptions): Promise<ExecutionBinding>;
     findConversation(appConversationId: string, options?: CallOptions): Promise<ExecutionBinding | null>;
+    readConversation?(bindingId: string, options?: CallOptions): Promise<ConversationSnapshot>;
     start(input: StartTurnInput, options?: CallOptions): Promise<TurnSnapshot>;
     read(locator: TurnLocator, options?: CallOptions): Promise<TurnSnapshot>;
     cancel(locator: TurnLocator & {

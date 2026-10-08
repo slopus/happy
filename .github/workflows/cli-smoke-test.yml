@@ -6,12 +6,16 @@ on:
     paths:
       - 'packages/happy-cli/**'
       - 'packages/happy-server/**'
+      - 'packages/paws-agent/**'
+      - 'packages/happy-wire/**'
       - '.github/workflows/cli-smoke-test.yml'
   pull_request:
     branches: [ main ]
     paths:
       - 'packages/happy-cli/**'
       - 'packages/happy-server/**'
+      - 'packages/paws-agent/**'
+      - 'packages/happy-wire/**'
       - '.github/workflows/cli-smoke-test.yml'
   workflow_dispatch:
 
@@ -38,8 +42,10 @@ jobs:
     - name: Install dependencies
       run: pnpm install --frozen-lockfile
 
-    - name: Build package
-      run: pnpm --filter @wangjs-jacky/paws build
+    - name: Build SDK and CLI
+      run: |
+        pnpm --filter @wangjs-jacky/paws-agent build
+        pnpm --filter @wangjs-jacky/paws build
 
     # `happy server` resolves the self-host runtime and bundled webapp from
     # happy-server-self-host. The server package is JS/TS and lets npm install
@@ -51,14 +57,16 @@ jobs:
 
     - name: Pack packages
       run: |
+        pnpm --filter @wangjs-jacky/paws-agent pack --pack-destination packages/paws-agent
         pnpm --filter @wangjs-jacky/paws pack --pack-destination packages/happy-cli
         pnpm --filter happy-server-self-host pack --pack-destination packages/happy-server
 
     - name: Install packed packages globally
       run: |
         HAPPY_PACKAGE_FILE=$(ls packages/happy-cli/*.tgz)
+        PAWS_AGENT_PACKAGE_FILE=$(ls packages/paws-agent/*.tgz)
         SERVER_PACKAGE_FILE=$(ls packages/happy-server/*.tgz)
-        npm install -g "./$SERVER_PACKAGE_FILE" "./$HAPPY_PACKAGE_FILE"
+        npm install -g "./$SERVER_PACKAGE_FILE" "./$PAWS_AGENT_PACKAGE_FILE" "./$HAPPY_PACKAGE_FILE"
 
     - name: Test binary execution
       run: |
@@ -133,16 +141,20 @@ jobs:
     - name: Install dependencies
       run: pnpm install --frozen-lockfile
 
-    - name: Build package
-      run: pnpm --filter @wangjs-jacky/paws build
+    - name: Build SDK and CLI
+      run: |
+        pnpm --filter @wangjs-jacky/paws-agent build
+        pnpm --filter @wangjs-jacky/paws build
 
-    - name: Pack package
-      run: pnpm --filter @wangjs-jacky/paws pack --pack-destination packages/happy-cli
+    - name: Pack SDK and CLI
+      run: |
+        pnpm --filter @wangjs-jacky/paws-agent pack --pack-destination packages/paws-agent
+        pnpm --filter @wangjs-jacky/paws pack --pack-destination packages/happy-cli
 
     - name: Install packed package globally
       shell: cmd
       run: |
-        for %%f in (packages\happy-cli\*.tgz) do npm install -g "%%f"
+        for %%s in (packages\paws-agent\*.tgz) do for %%f in (packages\happy-cli\*.tgz) do npm install -g "%%s" "%%f"
 
     - name: Debug npm global installation structure
       shell: cmd

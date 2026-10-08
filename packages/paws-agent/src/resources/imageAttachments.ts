@@ -3,9 +3,9 @@ import { PawsAgentError } from '../client/errors';
 import type { ImageAttachmentInput } from '../client/types';
 import { deriveKey, getRandomBytes } from '../crypto/encryption';
 
-export function snapshotImages(images: ImageAttachmentInput[] = []): ImageAttachmentInput[] {
-    if (!Array.isArray(images) || images.length > 4) {
-        throw new PawsAgentError('INVALID_ARGUMENT', 'At most four images can be sent');
+export function snapshotImages(images: ImageAttachmentInput[] = [], maxImages: 4 | 12 = 4): ImageAttachmentInput[] {
+    if (!Array.isArray(images) || images.length > maxImages) {
+        throw new PawsAgentError('INVALID_ARGUMENT', `At most ${maxImages} images can be sent`);
     }
     for (const image of images) {
         if (!image || typeof image.name !== 'string' || !image.name.trim()

@@ -37,6 +37,7 @@ describe('useVisibleSessionListViewData', () => {
             { type: 'active-sessions', sessions: [
                 { id: 'online', active: true, archived: false },
                 { id: 'disconnected', active: false, archived: false },
+                { id: 'app', application: { appId: 'advisor', bindingId: 'binding' } },
             ] },
             { type: 'project-group', displayPath: '~/paws', machine: { id: 'mac' } },
             { type: 'session', session: { id: 'archived', archived: true } },

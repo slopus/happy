@@ -1,3 +1,6 @@
+import { type NativeLaunchPolicy } from '@/daemon/appDelegation/nativeLaunchPolicy';
+import { restrictedCodexEnv, verifyRestrictedCodex } from '@/daemon/appDelegation/restrictedCodex';
+import { nativeCodexConfig, nativeCodexRequest } from '@/daemon/appDelegation/nativeProviderPolicy';
 /**
  * Codex App Server Client — drives Codex via the v2 JSON-RPC protocol
  * (`codex app-server`), replacing the legacy MCP-based CodexMcpClient.
@@ -403,6 +406,7 @@ export class CodexAppServerClient {
         sandboxConfig?: SandboxConfig,
         private readonly connection: CodexAppServerConnection = { type: 'spawn' },
         private readonly processEnv: NodeJS.ProcessEnv = process.env,
+        private readonly applicationPolicy?: NativeLaunchPolicy,
     ) {
         this.sandboxConfig = sandboxConfig;
     }
@@ -1030,10 +1034,14 @@ export class CodexAppServerClient {
     }
 
     private async openLocalProcessTransport(codexCommand: string): Promise<void> {
+        if (this.applicationPolicy && !await verifyRestrictedCodex(codexCommand)) throw new Error('unsupported-runtime');
         let command = codexCommand;
         let args = ['app-server', '--listen', 'stdio://', '-c', `service_tier=\"${this.serviceTier}\"`];
         if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) {
             for (const [key, value] of Object.entries(CODEX_ACCOUNT_CONFIG)) args.push('-c', `${key}=${JSON.stringify(value)}`);
+        }
+        if (this.applicationPolicy) {
+            for (const [key, value] of Object.entries((this.applicationPolicy ? nativeCodexConfig(this.applicationPolicy) : {}))) args.push('-c', `${key}=${JSON.stringify(value)}`);
         }
         this.sandboxEnabled = false;
 
@@ -1052,7 +1060,9 @@ export class CodexAppServerClient {
         }
 
         // Build env — same filtering as the old MCP client, with Codex-specific proxy isolation.
-        const env = buildCodexProcessEnv(this.processEnv);
+        const env = this.applicationPolicy
+            ? restrictedCodexEnv(this.processEnv.CODEX_HOME!, this.applicationPolicy.directory, this.processEnv)
+            : buildCodexProcessEnv(this.processEnv);
         // Mute noisy rollout list logging
         const filter = 'codex_core::rollout::list=off';
         if (!env.RUST_LOG) {
@@ -1306,7 +1316,7 @@ export class CodexAppServerClient {
     }
 
     private buildThreadConfig(mcpServers?: Record<string, unknown>): Record<string, unknown> | null {
-        const config = { ...(mcpServers ? { mcp_servers: mcpServers } : {}),
+        const config = { ...(this.applicationPolicy ? nativeCodexConfig(this.applicationPolicy) : {}), ...(mcpServers ? { mcp_servers: mcpServers } : {}),
             ...(this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? CODEX_ACCOUNT_CONFIG : {}) };
         return Object.keys(config).length ? config : null;
     }
@@ -2075,6 +2085,10 @@ export class CodexAppServerClient {
     private static readonly REQUEST_TIMEOUT_MS = 30_000;
 
     private request(method: string, params?: unknown, timeoutMs?: number, signal?: AbortSignal): Promise<unknown> {
+        if (this.applicationPolicy && ['thread/start', 'thread/resume', 'thread/fork', 'turn/start'].includes(method)) {
+            params = nativeCodexRequest(this.applicationPolicy, method, (params ?? {}) as Record<string, unknown>);
+        }
+
         const timeout = timeoutMs ?? CodexAppServerClient.REQUEST_TIMEOUT_MS;
         return new Promise((resolve, reject) => {
             if (signal?.aborted) {
@@ -2361,6 +2375,7 @@ export class CodexAppServerClient {
     }
 
     private async handleApproval(params: Parameters<ApprovalHandler>[0]): Promise<ReviewDecision> {
+        if (this.applicationPolicy && this.applicationPolicy.binding.permissionMode !== 'yolo') return 'denied';
         if (this.approvalHandler) {
             try {
                 return await this.approvalHandler(params);

@@ -8,7 +8,7 @@ describe('MessagesResource', () => {
         const key = Uint8Array.from({ length: 32 }, (_, index) => index);
         const encryption = new RecordEncryptionStore();
         encryption.setSession('session-1', { key, variant: 'legacy' });
-        const transport = { post: vi.fn().mockResolvedValue({ messages: [] }) };
+        const transport = { post: vi.fn().mockResolvedValue({ messages: [] }), getCredentials: async () => ({ token: 'fixture', secret: key }) };
         const sessions = { get: vi.fn().mockResolvedValue({ active: true, metadata: {} }) };
         const messages = new MessagesResourceImpl(transport as never, sessions as never, encryption);
 

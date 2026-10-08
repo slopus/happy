@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+/** Native snapshots include data URLs plus the encrypted/base64 transport envelope. */
+export const NATIVE_SNAPSHOT_PLAINTEXT_MAX_BYTES = 8 * 1024 * 1024;
+export const NATIVE_SNAPSHOT_CIPHERTEXT_MAX_BYTES = 12 * 1024 * 1024;
+export const NativeSnapshotErrorSchema = z.literal('snapshot-too-large');
+export type NativeSnapshotError = z.infer<typeof NativeSnapshotErrorSchema>;
+
 export const AI_SERVICES_PROTOCOL = 'ai-services/1' as const;
 export const AIServiceProtocolSchema = z.literal(AI_SERVICES_PROTOCOL);
 export type AIServiceProtocol = z.infer<typeof AIServiceProtocolSchema>;
@@ -128,9 +134,13 @@ export type TurnStatus = z.infer<typeof TurnStatusSchema>;
 export const TurnActualSchema = z.object({ modelId: IdentifierSchema.nullable(), reasoning: IdentifierSchema.nullable(), permissionMode: ServicePermissionModeSchema.nullable().optional(), serviceTier: IdentifierSchema.nullable().optional() }).strict();
 export type TurnActual = z.infer<typeof TurnActualSchema>;
 
+export const TurnPhaseSchema = z.enum(['connecting', 'preparing', 'starting', 'resuming', 'submitted', 'generating', 'recovering']);
+export type TurnPhase = z.infer<typeof TurnPhaseSchema>;
+
 const TurnRecordObjectSchema = z.object({
     id: IdentifierSchema, conversationId: IdentifierSchema, requestId: IdentifierSchema,
     binding: ExecutionBindingSchema, status: TurnStatusSchema, actual: TurnActualSchema,
+    sessionId: IdentifierSchema.nullable().optional(), phase: TurnPhaseSchema.optional(),
     createdAt: TimestampSchema, startedAt: TimestampSchema.nullable(), completedAt: TimestampSchema.nullable(),
     error: ServiceErrorSchema.nullable(),
 }).strict();

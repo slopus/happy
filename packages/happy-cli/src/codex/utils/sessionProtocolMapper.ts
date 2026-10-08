@@ -19,6 +19,7 @@ import {
 import type { McpAppBindingRegistry } from '../mcpApps/McpAppBindingRegistry';
 
 export type CodexTurnState = {
+    localIds?: string[];
     currentTurnId: string | null;
     threadId?: string;
     mcpAppBindingRegistry?: McpAppBindingRegistry;
@@ -862,7 +863,7 @@ export function mapCodexMcpMessageToSessionEnvelopes(message: Record<string, unk
     if (type === 'task_started') {
         const providerTurnId = eventTurnId;
         const turnId = providerTurnId ?? createId();
-        const turnStart = createEnvelope('agent', { t: 'turn-start' }, {
+        const turnStart = createEnvelope('agent', { t: 'turn-start', ...(state.localIds?.length ? { localIds: state.localIds } : {}) }, {
             ...(providerTurnId ? { id: `${providerTurnId}:start` } : {}),
             turn: turnId,
         });

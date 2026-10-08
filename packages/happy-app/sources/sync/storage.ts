@@ -9,7 +9,7 @@ function useDeepEqual<T>(selector: (state: StorageState) => T): (state: StorageS
         return equal(prev.current, next) ? prev.current! : (prev.current = next);
     };
 }
-import { Session, Machine, GitStatus } from "./storageTypes";
+import { Session, Machine, GitStatus, Metadata } from "./storageTypes";
 import { createSessionApplyBase, type SessionApplyOptions } from "./sessionApply";
 import type { GitStatusFiles } from "./gitStatusFiles";
 import type { ProjectFilesList } from "./projectFiles";
@@ -107,6 +107,7 @@ export interface SessionRowData {
     id: string;
     name: string;
     subtitle: string;
+    application?: Metadata['application'];
     avatarId: string;
     flavor: string | null;
     state: SessionState;
@@ -135,6 +136,7 @@ export function buildSessionRowData(session: Session, unreadSessionIds?: Set<str
 
     return {
         id: session.id,
+        application: session.metadata?.application,
         name: getSessionName(session),
         subtitle: getSessionSubtitle(session),
         avatarId: getSessionAvatarId(session),

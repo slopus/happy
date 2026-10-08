@@ -3,7 +3,9 @@ import { ActivityIndicator, AppState, Platform, Pressable, ScrollView, Text, Vie
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useAuth } from '@/auth/AuthContext';
-import { useAllMachines } from '@/sync/storage';
+import { useAllMachines, useSessionListViewData } from '@/sync/storage';
+import { isApplicationSession } from '@slopus/happy-wire';
+import { CompactSessionRow } from './ActiveSessionsGroupCompact';
 import { getServerUrl } from '@/sync/serverConfig';
 import { appAuthorizationRequest, isAppGrantActive, type AppAuthorizationGrant, type AppConversationDirectory } from '@/sync/apiAppDelegation';
 import { Typography } from '@/constants/Typography';
@@ -43,6 +45,10 @@ export function AppConversationsSidebar({ visible = true, showTitle = true, onNa
         const path = `/apps/conversations/${encodeURIComponent(id)}`;
         if (onNavigate) onNavigate(path); else router.navigate(path as any);
     };
+    const sessionList = useSessionListViewData();
+    const nativeSessions = React.useMemo(() => (sessionList ?? []).flatMap(item =>
+        item.type === 'active-sessions' ? item.sessions : item.type === 'session' ? [item.session] : []
+    ).filter(row => isApplicationSession(row)).sort((a, b) => (b.activityAt ?? b.updatedAt ?? 0) - (a.activityAt ?? a.updatedAt ?? 0)), [sessionList]);
     const machines = useAllMachines({ includeOffline: true });
     const { theme } = useUnistyles();
     const { width } = useWindowDimensions();
@@ -60,7 +66,7 @@ export function AppConversationsSidebar({ visible = true, showTitle = true, onNa
     const data = snapshot?.token === token && snapshot?.server === server ? snapshot : null;
     const grants = data?.grants ?? [];
     const directory = data?.directory ?? emptyDirectory;
-    const groups = [...new Set(grants.map(grant => grant.appId))];
+    const groups = [...new Set([...grants.map(grant => grant.appId), ...nativeSessions.map(session => session.application!.appId)])];
     const selectedGrants = grants.filter(grant => grant.appId === menu?.appId);
     const deviceName = (id: string | null) => {
         const machine = machines.find(value => value.id === id);
@@ -131,6 +137,7 @@ export function AppConversationsSidebar({ visible = true, showTitle = true, onNa
             {!loading && !error && !groups.length ? <View style={styles.notice}><Text style={styles.title}>{t('appConversations.empty')}</Text><Text style={styles.secondary}>{t('appConversations.emptyHint')}</Text></View> : null}
             {groups.map(appId => {
                 const app = appInfo(appId);
+                const appSessions = nativeSessions.filter(session => session.application?.appId === appId);
                 const ids = new Set(grants.filter(grant => grant.appId === appId).map(grant => grant.id));
                 const conversations = directory.conversations.filter(conversation => ids.has(conversation.grantId));
                 return <View key={appId} testID={`app-conversations-group-${appId}`}>
@@ -142,7 +149,10 @@ export function AppConversationsSidebar({ visible = true, showTitle = true, onNa
                             <Ionicons name="ellipsis-horizontal" size={18} color={theme.colors.textSecondary} />
                         </Pressable>
                     </View>
-                    {!conversations.length ? <Text style={styles.emptyGroup}>{t('appConversations.noConversations')}</Text> : conversations.map(conversation => {
+                    {appSessions.map(session => <CompactSessionRow key={session.id} session={session}
+                        selected={pathname === `/session/${encodeURIComponent(session.id)}` || pathname.startsWith(`/session/${encodeURIComponent(session.id)}/`)}
+                        showLocation testID={`app-native-session-${session.id}`} />)}
+                    {!conversations.length && !appSessions.length ? <Text style={styles.emptyGroup}>{t('appConversations.noConversations')}</Text> : conversations.map(conversation => {
                         const grant = grants.find(value => value.id === conversation.grantId)!;
                         const state = conversation.turns[0]?.state;
                         return <Pressable key={conversation.id} accessibilityRole="button" accessibilityLabel={`${t('appConversations.openConversation')} · ${new Date(conversation.createdAt).toLocaleString()}`} accessibilityHint={t('appConversations.openHint')} aria-pressed={pathname === `/apps/conversations/${conversation.id}`} accessibilityState={{ selected: pathname === `/apps/conversations/${conversation.id}` }} onPress={() => openConversation(conversation.id)} style={({ pressed }) => [styles.row, pathname === `/apps/conversations/${conversation.id}` && styles.selected, pressed && styles.pressed]} testID={`app-conversation-${conversation.id}`}>

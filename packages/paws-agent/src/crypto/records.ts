@@ -1,4 +1,4 @@
-import type { PawsCredentials } from '../client/types';
+import type { ClientCredentials } from '../client/types';
 import { PawsAgentError } from '../client/errors';
 import {
     decodeBase64,
@@ -14,9 +14,28 @@ export type RecordEncryption = {
 
 export function resolveRecordEncryption(
     record: { id: string; dataEncryptionKey: string | null },
-    credentials: PawsCredentials,
+    credentials: ClientCredentials,
     recordType: 'machine' | 'session',
 ): RecordEncryption {
+    const encryption = tryResolveRecordEncryption(record, credentials, recordType);
+    if (!encryption) throw new PawsAgentError('FORBIDDEN', 'Record key is outside the trusted process scope');
+    return encryption;
+}
+
+export function tryResolveRecordEncryption(
+    record: { id: string; dataEncryptionKey: string | null },
+    credentials: ClientCredentials,
+    recordType: 'machine' | 'session',
+): RecordEncryption | null {
+    if ('resolveRecordKey' in credentials) {
+        const value = credentials.resolveRecordKey({ id: record.id, dataEncryptionKey: record.dataEncryptionKey, type: recordType });
+        if (!value) return null;
+        const variant = record.dataEncryptionKey ? 'dataKey' : 'legacy';
+        if (value.key.length !== 32 || value.variant !== variant) {
+            throw new PawsAgentError('DECRYPTION_FAILED', 'Trusted record key does not match the encryption variant');
+        }
+        return { key: new Uint8Array(value.key), variant };
+    }
     if (!record.dataEncryptionKey) {
         return { key: credentials.secret, variant: 'legacy' };
     }
@@ -39,9 +58,11 @@ export function decryptRecordField(
         return null;
     }
     const bytes = decodeBase64(encrypted);
-    return encryption.variant === 'dataKey'
+    const value = encryption.variant === 'dataKey'
         ? decryptWithDataKey(bytes, encryption.key)
         : decryptLegacy(bytes, encryption.key);
+    if (value === null) throw new PawsAgentError('DECRYPTION_FAILED', 'Unable to decrypt record field');
+    return value;
 }
 
 export class RecordEncryptionStore {

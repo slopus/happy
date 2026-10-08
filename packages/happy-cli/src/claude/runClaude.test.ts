@@ -165,7 +165,7 @@ describe('runClaude remote JSONL scanner', () => {
             sendClaudeSessionMessage: vi.fn(), onFileEvent: vi.fn(), on: vi.fn(), trackAttachmentDownload: vi.fn(),
             drainAttachmentsForUserMessage: vi.fn(async () => []), downloadAndDecryptAttachment: vi.fn(),
             getMetadata: vi.fn(() => ({})), updateAgentState: vi.fn(), sendSessionDeath: vi.fn(),
-            keepAlive: vi.fn(), closeClaudeSessionTurn: vi.fn(),
+            keepAlive: vi.fn(), acceptClaudeInput: vi.fn(), closeClaudeSessionTurn: vi.fn(),
             flush: vi.fn(async () => {}), close: vi.fn(async () => {}),
             rpcHandlerManager: { registerHandler: vi.fn((name, handler) => handlers.set(name, handler)) },
             onUserMessage: vi.fn((handler: (message: any) => void) => { registeredUserHandler = handler; order.push('handler'); }),

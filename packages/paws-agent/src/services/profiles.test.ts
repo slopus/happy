@@ -125,9 +125,12 @@ it('keeps drafts open when the atomic persistence write fails', async () => {
     f.profiles.update('reply', { modelId: 'other-model' });
     const failure = vi.spyOn(f.saved, 'set').mockImplementation(() => { throw Error('disk full'); });
     await expect(f.profiles.save()).rejects.toMatchObject({ code: 'storage-unavailable' });
-    expect(f.profiles.getState()).toMatchObject({ editing: true, saving: false, rows: [{ value: { modelId: 'other-model' } }, {}] });
+    expect(f.profiles.getState()).toMatchObject({ editing: true, saving: false, error: 'storage-unavailable', errorStage: 'save', rows: [{ value: { modelId: 'other-model' } }, {}] });
     expect((await f.profiles.getOverrides('reply')).modelId).toBe('configured-model');
-    failure.mockRestore(); f.profiles.dispose();
+    failure.mockRestore();
+    await f.profiles.save();
+    expect(f.profiles.getState()).toMatchObject({ editing: false, saving: false, error: null, errorStage: null });
+    f.profiles.dispose();
 });
 
 it('filters tool modes by the grant and still lets a user repair an unavailable saved mode', async () => {

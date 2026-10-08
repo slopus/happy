@@ -42,6 +42,7 @@ const errors: Record<ClientErrorCode, string> = {
     'transport-error': '无法连接服务。请检查网络后重试。',
     'context-mismatch': '响应与原连接不匹配。请重新连接原服务。',
     'storage-unavailable': '无法保存连接。请检查浏览器存储设置。',
+    'snapshot-too-large': '对话内容超过同步限制。请在 Paws 中查看完整对话。',
     'disposed': '连接控制器已关闭。请重新打开此页面。',
     'aborted': '操作已取消。',
     'observation-expired': '观察已停止。请重新检查状态。',

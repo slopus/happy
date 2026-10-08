@@ -1,3 +1,8 @@
+import { ExecutionBindingSchema } from '@slopus/happy-wire';
+import { NativeLaunchPolicyStore, NATIVE_POLICY_ENV, type NativeLaunchPolicy } from './appDelegation/nativeLaunchPolicy';
+import { createOwnerNativeSessionHooks } from './appDelegation/ownerNativeSessionHooks';
+import { nativeSessionReconnectEnvironment } from './appDelegation/nativeSessionReconnect';
+import { verifyClaudeIdentity } from './appDelegation/serviceCapabilities';
 import fs from 'fs/promises';
 import os from 'os';
 import axios from 'axios';
@@ -47,7 +52,7 @@ import {
   type StartupTraceWriter,
 } from './sessionStartupTrace';
 
-type TracedSpawnSessionOptions = SpawnSessionOptions & { traceId?: string };
+type TracedSpawnSessionOptions = SpawnSessionOptions & { traceId?: string; nativeApplicationPolicy?: NativeLaunchPolicy; nativeReconnectEnvironment?: Record<string, string> };
 
 /** Shell-escape a string for safe interpolation into tmux commands. */
 function shellescape(s: string): string {
@@ -263,6 +268,7 @@ export async function startDaemon(): Promise<void> {
     // Ensure auth and machine registration BEFORE anything else
     const { credentials, machineId } = await authAndSetupMachineIfNeeded();
     const api = await ApiClient.create(credentials);
+    const nativePolicyStore = new NativeLaunchPolicyStore(join(configuration.happyHomeDir, 'native-application-policies'));
     logger.debug('[DAEMON RUN] Auth and machine setup complete');
 
     // Setup state - key by PID
@@ -437,6 +443,7 @@ export async function startDaemon(): Promise<void> {
           ...(options.environmentVariables ?? {}),
         };
         delete extraEnv.HAPPY_SESSION_STARTUP_TRACE_ID;
+        delete extraEnv[NATIVE_POLICY_ENV];
         if (options.parentSessionId) {
           extraEnv.HAPPY_FORKED_FROM_SESSION_ID = options.parentSessionId;
         }
@@ -487,6 +494,11 @@ export async function startDaemon(): Promise<void> {
             type: 'error',
             errorMessage
           };
+        }
+
+        if (options.nativeApplicationPolicy) {
+          Object.assign(extraEnv, options.nativeReconnectEnvironment);
+          extraEnv[NATIVE_POLICY_ENV] = JSON.stringify(options.nativeApplicationPolicy);
         }
 
         // Check if tmux is available and should be used
@@ -707,6 +719,7 @@ export async function startDaemon(): Promise<void> {
       }
       }, {
         sourceSessionId: options.parentSessionId, sourceThreadId: options.resumeCodexThreadId,
+        sourceProfileId: options.nativeApplicationPolicy?.binding.engine === 'codex' ? options.nativeApplicationPolicy.binding.accountRef.id : undefined,
         // Only a new session created from a native fork may use the selected
         // account. Resuming an existing session retains its original identity.
         allowCrossAccountFork: !!(options.parentSessionId && options.resumeCodexThreadId),
@@ -922,6 +935,16 @@ export async function startDaemon(): Promise<void> {
           tracked.encryption.metadataVersion = serverSnapshot.metadataVersion;
         }
 
+        const applicationPolicy = await nativePolicyStore.forSession(happySessionId, metadata);
+        if (applicationPolicy) {
+          if (applicationPolicy.binding.machineId !== machineId || metadata.path !== applicationPolicy.directory) throw new Error('Application session binding changed');
+          // UI overrides never replace the exact bound policy or source account.
+          options = { ...options, model: undefined, effort: undefined, permissionMode: undefined,
+            codexSessionGrant: applicationPolicy.binding.engine === 'codex'
+              ? (await api.createCodexSessionGrant({ machineId, sourceSessionId: happySessionId })).grant : undefined };
+          if (applicationPolicy.binding.engine === 'claude') await verifyClaudeIdentity(applicationPolicy.binding, 'claude', process.env, applicationPolicy.directory, AbortSignal.timeout(5000));
+        }
+
         // Codex does not persist a rollout until the first turn. A ready-only
         // session therefore has an ID but nothing native to resume. Prove it
         // unused from the relay, never from a missing local file or stale cache.
@@ -1004,6 +1027,7 @@ export async function startDaemon(): Promise<void> {
         }
         const env = {
             ...process.env,
+            ...(applicationPolicy ? { [NATIVE_POLICY_ENV]: JSON.stringify(applicationPolicy) } : {}),
             HAPPY_RECONNECT_SESSION_ID: happySessionId,
             HAPPY_RECONNECT_ENCRYPTION_KEY: encodeBase64(tracked.encryption!.encryptionKey),
             HAPPY_RECONNECT_ENCRYPTION_VARIANT: tracked.encryption!.encryptionVariant,
@@ -1166,6 +1190,35 @@ export async function startDaemon(): Promise<void> {
 
     // Create realtime machine session
     const apiMachine = api.machineSyncClient(machine);
+    const nativeHooks = createOwnerNativeSessionHooks({
+      serverUrl: configuration.serverUrl, credentials, machine,
+      resolveSessionEncryption: id => findTrackedSessionById(id)?.encryption ?? null,
+      start: async input => {
+        try {
+          if (input.binding.machineId !== machineId) throw new Error('permission-denied');
+          if (input.sessionId) {
+            const tracked = findTrackedSessionById(input.sessionId);
+            if (!tracked?.happySessionMetadataFromLocalWebhook) throw new Error('Native session is not tracked');
+            const policy = await nativePolicyStore.forSession(input.sessionId, tracked.happySessionMetadataFromLocalWebhook);
+            if (!policy || JSON.stringify(policy.binding) !== JSON.stringify(ExecutionBindingSchema.parse(input.binding)) || policy.systemPrompt !== input.systemPrompt) throw new Error('Application policy changed');
+            const resumed = await resumeSession(input.sessionId);
+            return resumed.type === 'requestToApproveDirectoryCreation' ? { type: 'error', errorMessage: 'Native session directory unavailable' } : resumed;
+          }
+          const policy: NativeLaunchPolicy = { binding: input.binding, systemPrompt: input.systemPrompt, directory: input.directory };
+          if (input.binding.engine === 'codex' && !input.codexSessionGrant) throw new Error('Exact Codex account grant required');
+          if (input.binding.engine === 'claude') await verifyClaudeIdentity(input.binding, 'claude', process.env, input.directory, AbortSignal.timeout(5000));
+          await nativePolicyStore.save(policy);
+          const environmentVariables = nativeSessionReconnectEnvironment(policy,
+            [...sessionIdToFinishedSession.values(), ...pidToTrackedSession.values()],
+            pid => { try { process.kill(pid, 0); return true; } catch { return false; } });
+          const result = await spawnSession({ directory: input.directory, agent: input.binding.engine, codexSessionGrant: input.codexSessionGrant, nativeApplicationPolicy: policy, nativeReconnectEnvironment: environmentVariables });
+          if (result.type === 'success') await nativePolicyStore.save({ ...policy, sessionId: result.sessionId });
+          return result.type === 'requestToApproveDirectoryCreation' ? { type: 'error', errorMessage: 'Native session directory unavailable' } : result;
+        } catch (error) { return { type: 'error', errorMessage: error instanceof Error ? error.message : 'Native launch failed' }; }
+      },
+    });
+    apiMachine.setNativeSessionHooks(nativeHooks);
+
 
     let lastCodexUsageScanAt = 0;
     let lastImmediateCodexUsageScanAt = 0;
@@ -1330,6 +1383,7 @@ export async function startDaemon(): Promise<void> {
         // leaving nothing running once we also exit.
         await Promise.allSettled(Array.from(codexLaunches.values(), launch => launch.sync()));
         await drainCodexFinalizers();
+        await nativeHooks.dispose();
         apiMachine.shutdown();
         await stopControlServer();
         await cleanupDaemonState();
@@ -1411,6 +1465,7 @@ export async function startDaemon(): Promise<void> {
       // Give time for metadata update to send
       await new Promise(resolve => setTimeout(resolve, 100));
 
+      await nativeHooks.dispose();
       apiMachine.shutdown();
       await stopControlServer();
       await cleanupDaemonState();

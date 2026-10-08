@@ -9,6 +9,7 @@ import { io, Socket } from 'socket.io-client'
 import { AgentState, ClientToServerEvents, FileEventMessage, FileEventMessageSchema, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
 import { decodeBase64, decryptBlob, encryptBlob, decrypt, encodeBase64, encrypt } from './encryption';
 import { requestAttachmentUpload, uploadEncryptedBlob, uploadMediaFile } from './attachmentUpload';
+import { openAttachmentDownload } from './attachmentDownload';
 import { detectHonorMotionPhoto, SessionTextDeltaSchema, SESSION_STREAM_MAX_CIPHERTEXT_LENGTH, type SessionTextDelta, type MotionPhotoVideo } from '@slopus/happy-wire';
 import { backoff, delay } from '@/utils/time';
 import { configuration } from '@/configuration';
@@ -38,39 +39,6 @@ import type { ResolvedPreviewWorkspace } from '@/previews/previewWorkspace';
 
 function redactPresignedUrl(url: string): string {
     return url.replace(/([?&](?:X-Amz-Signature|Signature)=)[^&]+/g, '$1<redacted>');
-}
-
-function responsePreview(data: unknown): string | undefined {
-    if (!data) return undefined;
-    const text = Buffer.isBuffer(data)
-        ? data.toString('utf8')
-        : data instanceof ArrayBuffer
-            ? Buffer.from(data).toString('utf8')
-            : ArrayBuffer.isView(data)
-                ? Buffer.from(data.buffer, data.byteOffset, data.byteLength).toString('utf8')
-                : typeof data === 'string'
-                    ? data
-                    : JSON.stringify(data);
-    return text.slice(0, 500);
-}
-
-function enrichAttachmentDownloadError(error: unknown, phase: string, url: string): Error {
-    if (axios.isAxiosError(error)) {
-        const status = error.response?.status;
-        const statusText = error.response?.statusText;
-        const preview = responsePreview(error.response?.data);
-        const details = [
-            `attachment ${phase} failed`,
-            status ? `status=${status}` : undefined,
-            statusText ? `statusText=${statusText}` : undefined,
-            `url=${url}`,
-            preview ? `body=${preview}` : undefined,
-        ].filter(Boolean).join(' ');
-        const enriched = new Error(details);
-        enriched.cause = error;
-        return enriched;
-    }
-    return error instanceof Error ? error : new Error(String(error));
 }
 
 /**
@@ -285,7 +253,7 @@ export class ApiSessionClient extends EventEmitter {
                     }
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(data.body.message.content.c));
                     logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
-                    this.routeIncomingMessage(body);
+                    this.routeIncomingMessage(body, data.body.message.localId);
                     this.lastSeq = messageSeq;
                 } else if (data.body.t === 'update-session') {
                     if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
@@ -399,46 +367,8 @@ export class ApiSessionClient extends EventEmitter {
      * X-Amz-* / Signature query params instead.
      */
     private async openAttachmentDownload(ref: string, timeoutMs: number): Promise<Response> {
-        const requestUrl = `${configuration.serverUrl}/v1/sessions/${this.sessionId}/attachments/request-download`;
-        let requestRes;
-        try {
-            requestRes = await axios.post(
-                requestUrl,
-                { ref },
-                {
-                    headers: { 'Authorization': `Bearer ${this.token}`, 'Content-Type': 'application/json' },
-                    timeout: 30000,
-                },
-            );
-        } catch (error) {
-            throw enrichAttachmentDownloadError(error, 'request-download', requestUrl);
-        }
-        const downloadUrl = requestRes.data?.downloadUrl;
-        if (typeof downloadUrl !== 'string') {
-            throw new Error('request-download returned no downloadUrl');
-        }
-
-        const isPresignedS3 = /[?&](X-Amz-Algorithm|X-Amz-Signature|X-Amz-Credential|Signature|Expires)=/.test(downloadUrl);
-        const headers: Record<string, string> = {};
-        if (!isPresignedS3) {
-            headers['Authorization'] = `Bearer ${this.token}`;
-        }
-        const abort = AbortSignal.timeout(timeoutMs);
-        let response: Response;
-        try {
-            response = await fetch(downloadUrl, {
-                headers,
-                signal: abort,
-            });
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            throw new Error(`attachment download network error: ${message}`);
-        }
-        if (!response.ok) {
-            const body = await response.text().catch(() => '');
-            throw new Error(`attachment download failed: ${response.status}${body ? ` ${body}` : ''}`);
-        }
-        return response;
+        return openAttachmentDownload({ serverUrl: configuration.serverUrl, sessionId: this.sessionId,
+            token: this.token, ref, timeoutMs });
     }
 
     /**
@@ -589,9 +519,11 @@ export class ApiSessionClient extends EventEmitter {
         };
     }
 
-    private routeIncomingMessage(message: unknown) {
+    private routeIncomingMessage(message: unknown, localId?: string | null) {
         const userResult = UserMessageSchema.safeParse(message);
         if (userResult.success) {
+            // Never trust a localId supplied inside encrypted user content.
+            userResult.data.localId = localId ?? undefined;
             if (this.pendingMessageCallback) {
                 this.pendingMessageCallback(userResult.data);
             } else {
@@ -653,7 +585,7 @@ export class ApiSessionClient extends EventEmitter {
 
                 try {
                     const body = decrypt(this.encryptionKey, this.encryptionVariant, decodeBase64(message.content.c));
-                    this.routeIncomingMessage(body);
+                    this.routeIncomingMessage(body, message.localId);
                 } catch (error) {
                     logger.debug('[API] Failed to decrypt fetched message', {
                         sessionId: this.sessionId,
@@ -727,10 +659,11 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
-    /**
-     * Send message to session
-     * @param body - Message body (can be MessageContent or raw content for agent messages)
-     */
+    /** Link each accepted native input batch to the next durable Claude turn. */
+    acceptClaudeInput(localIds: string[]): void {
+        (this.claudeSessionProtocolState.acceptedLocalIds ??= []).push(localIds);
+    }
+
     sendClaudeSessionMessage(body: RawJSONLines) {
         const mapped = mapClaudeLogMessageToSessionEnvelopes(body, this.claudeSessionProtocolState);
         this.claudeSessionProtocolState.currentTurnId = mapped.currentTurnId;

@@ -56,7 +56,9 @@ jobs:
       - run: pnpm install --frozen-lockfile
       # Workspace consumers typecheck against the SDK's generated public declarations.
       - run: pnpm --filter @wangjs-jacky/paws-agent build
-      - run: pnpm -r --if-present typecheck
+      # Chrome's pretypecheck rebuilds SDK dist; finish that before other consumers read it.
+      - run: pnpm --filter @wangjs-jacky/paws-agent-chrome typecheck
+      - run: pnpm -r --filter '!@wangjs-jacky/paws-agent-chrome' --if-present typecheck
       # This independent consumer uses locked tarballs, not workspace package links.
       - run: npm ci --prefix examples/ai-service-smoke --ignore-scripts --no-audit --no-fund
       - run: pnpm -r --workspace-concurrency=4 --if-present test -- --run

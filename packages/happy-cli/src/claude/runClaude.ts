@@ -1,3 +1,4 @@
+import { nativeLaunchPolicy } from '@/daemon/appDelegation/nativeLaunchPolicy';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
 
@@ -87,7 +88,13 @@ export async function runClaude(
     logger.debug(`[CLAUDE] This is the Claude agent, NOT Gemini`);
     
     const workingDirectory = process.cwd();
-    const sessionTag = randomUUID();
+    const applicationPolicy = nativeLaunchPolicy();
+    const sessionTag = applicationPolicy ? `app-service:${applicationPolicy.binding.id}` : randomUUID();
+    if (applicationPolicy) {
+        options.startingMode = 'remote';
+        options.model = applicationPolicy.binding.requestedModel ?? undefined;
+        options.permissionMode = applicationPolicy.binding.permissionMode === 'yolo' ? 'yolo' : 'plan';
+    }
 
     // Log environment info at startup
     logger.debugLargeJson('[START] Happy process started', getEnvironmentInfo());
@@ -154,6 +161,7 @@ export async function runClaude(
         lifecycleState: 'running',
         lifecycleStateSince: Date.now(),
         flavor: 'claude',
+        ...(applicationPolicy ? { application: { appId: applicationPolicy.binding.appId, bindingId: applicationPolicy.binding.id } } : {}),
         sandbox: sandboxConfig?.enabled ? sandboxConfig : null,
         dangerouslySkipPermissions,
         ...(forkedFromSessionId ? { parentSessionId: forkedFromSessionId } : {}),
@@ -187,6 +195,7 @@ export async function runClaude(
 
     // Handle server unreachable case - run Claude locally with hot reconnection
     // Note: connectionState.notifyOffline() was already called by api.ts with error details
+    if (!response && applicationPolicy) throw new Error('Native application session requires server connectivity');
     if (!response) {
         let offlineSessionId: string | null = null;
 
@@ -539,6 +548,7 @@ export async function runClaude(
     // download from enqueueing behind a later /clear or /compact command.
     let userMessageProcessing: Promise<void> = Promise.resolve();
     session.onUserMessage((message) => {
+        if (applicationPolicy) message.meta = undefined;
 
         // Stamp the prompt so the remote-mode JSONL scanner can dedupe
         // it later — the SDK is about to write this same text to disk
@@ -662,7 +672,7 @@ export async function runClaude(
             }
 
             // Check for special commands before processing
-            const specialCommand = parseSpecialCommand(message.content.text);
+            const specialCommand = parseSpecialCommand(applicationPolicy ? '' : message.content.text);
 
             if (specialCommand.type === 'compact') {
                 logger.debug('[start] Detected /compact command');
@@ -760,7 +770,7 @@ export async function runClaude(
                 disallowedTools: messageDisallowedTools,
                 effort: messageEffort,
             };
-            messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage);
+            messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage, message.localId);
             logger.debugLargeJson('User message pushed to queue:', message)
         });
 

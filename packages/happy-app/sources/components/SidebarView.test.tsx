@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
     helpTriggerFocus: vi.fn(),
     navigate: vi.fn(),
     pathname: '/',
+    session: null as any,
     openCommandPalette: vi.fn(),
     openSettings: vi.fn(),
     openActivity: vi.fn(),
@@ -92,6 +93,7 @@ vi.mock('react-native-unistyles', () => ({
 }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('@/sync/storage', () => ({
+    useSession: () => mocks.session,
     useRealtimeStatus: () => 'connected',
     useProfile: () => null,
     useLocalSetting: () => [],
@@ -682,3 +684,19 @@ it('opens application conversations inside Paws and keeps the sidebar for select
     expect(root.findAllByType('AppConversationsSidebar')).toHaveLength(0);
     act(() => renderer.unmount());
 });
+
+for (const desktop of [true, false]) {
+    it(`keeps native application session selected on ${desktop ? 'desktop' : 'mobile'}`, () => {
+        mocks.pathname = '/session/app-native';
+        mocks.session = { metadata: { application: { appId: 'advisor', bindingId: 'binding' } } };
+        let renderer: any;
+        act(() => { renderer = TestRenderer.create(<SidebarView desktopDensity={desktop} desktopPrimaryNavigation={desktop} />); });
+        const rail = renderer.root.findAllByProps({ testID: 'sidebar-app-conversations-button' }).find((node: any) => node.type === 'Pressable');
+        expect(rail.props.accessibilityState.selected).toBe(true);
+        expect(renderer.root.findAllByType('AppConversationsSidebar')).toHaveLength(1);
+        act(() => { mocks.pathname = '/session/ordinary'; mocks.session = { metadata: { path: 'advisor' } }; renderer.update(<SidebarView desktopDensity={desktop} desktopPrimaryNavigation={desktop} desktopSecondaryWidth={300} />); });
+        expect(renderer.root.findAllByType('AppConversationsSidebar')).toHaveLength(0);
+        act(() => renderer.unmount());
+        mocks.session = null; mocks.pathname = '/';
+    });
+}

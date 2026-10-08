@@ -1,3 +1,4 @@
+import { nativeLaunchPolicy, nativeCodexMode } from '@/daemon/appDelegation/nativeLaunchPolicy';
 import { immediateCodexCommandEnvelopes } from './codexImmediateCommand';
 import { createCodexSteerHandler, type CodexSteerRequest, type CodexSteerResponse } from './codexSteerRpc';
 import { render } from "ink";
@@ -359,7 +360,9 @@ export async function runCodex(opts: {
     // Define session
     //
 
-    const sessionTag = randomUUID();
+    const applicationPolicy = nativeLaunchPolicy();
+    const boundMode = applicationPolicy ? nativeCodexMode(applicationPolicy) : undefined;
+    const sessionTag = applicationPolicy ? `app-service:${applicationPolicy.binding.id}` : randomUUID();
 
     // Set backend for offline warnings (before any API calls)
     connectionState.setBackend('Codex');
@@ -394,10 +397,10 @@ export async function runCodex(opts: {
     // Create session
     //
 
-    const initialPermissionMode = opts.permissionMode ?? DEFAULT_CODEX_PERMISSION_MODE;
+    const initialPermissionMode = boundMode?.permissionMode ?? opts.permissionMode ?? DEFAULT_CODEX_PERMISSION_MODE;
     let discoveredSkills: string[] = [];
     try {
-        discoveredSkills = listCodexSkillNames({ cwd: process.cwd() });
+        discoveredSkills = applicationPolicy ? [] : listCodexSkillNames({ cwd: process.cwd() });
     } catch (error) {
         logger.debug('[codex] Failed to discover local skills', error);
     }
@@ -437,6 +440,7 @@ export async function runCodex(opts: {
     let codexPawsOriginToken = hydratedMetadata.codexPawsOriginToken ?? randomUUID();
     const metadata = {
         ...hydratedMetadata,
+        ...(applicationPolicy ? { application: { appId: applicationPolicy.binding.appId, bindingId: applicationPolicy.binding.id } } : {}),
         ...codexAccountSessionMetadata(),
         capabilities: { ...hydratedMetadata.capabilities, codexSteer: true, codexCredentialRecovery: Boolean(process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID && process.env.CODEX_HOME
             && basename(process.env.CODEX_HOME).startsWith('happy-codex-home-')) },
@@ -462,6 +466,8 @@ export async function runCodex(opts: {
     } else {
         response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     }
+
+    if (!response && applicationPolicy) throw new Error('Native application session requires server connectivity');
 
     // Handle server unreachable case - create offline stub with hot reconnection
     let session: ApiSessionClient;
@@ -536,12 +542,12 @@ export async function runCodex(opts: {
 
     // Track current overrides to apply per message
     // Use shared PermissionMode type from api/types for cross-agent compatibility
-    let baselineModel: string | undefined = opts.model;
-    let baselineEffort: ReasoningEffort | undefined = opts.effort;
+    let baselineModel: string | undefined = boundMode?.model ?? opts.model;
+    let baselineEffort: ReasoningEffort | undefined = boundMode?.effort ?? opts.effort;
     let currentPermissionMode: PermissionMode | undefined = initialPermissionMode;
     let currentModel: string | undefined = baselineModel;
     let currentEffort: ReasoningEffort | undefined = baselineEffort;
-    let currentFastMode = false;
+    let currentFastMode = boundMode?.fast ?? false;
     let currentAppendSystemPrompt: string | undefined = undefined;
     let codexModelCatalog: Model[] | null = null;
 
@@ -636,6 +642,7 @@ export async function runCodex(opts: {
         logger.debug('[Codex] Failed to process remote user message:', error);
     });
     session.onUserMessage((message) => {
+        if (applicationPolicy) message.meta = undefined; // Trusted binding fixes configuration for every surface.
         // Claim every file attachment that arrived strictly before this text.
         // New file events from this point on belong to the next user message.
         const attachmentsForThisMessagePromise = session.drainAttachmentsForUserMessage();
@@ -711,6 +718,11 @@ export async function runCodex(opts: {
                 effort: messageEffort,
                 fast: messageFastMode,
             };
+            if (applicationPolicy) {
+                messageQueue.push(message.content.text, enhancedMode, attachmentsForThisMessage, message.localId);
+                void queuedMessageStatus.sync();
+                return;
+            }
             const enqueueResult = enqueueCodexUserText({
                 text: message.content.text,
                 mode: enhancedMode,
@@ -725,6 +737,7 @@ export async function runCodex(opts: {
         });
     });
     let thinking = false;
+    let acceptedLocalIds: string[] | undefined;
     let currentTurnId: string | null = null;
     let codexStartedSubagents = new Set<string>();
     let codexActiveSubagents = new Set<string>();
@@ -937,7 +950,7 @@ export async function runCodex(opts: {
     //
 
     session.processorStarting?.();
-    client = new CodexAppServerClient(sandboxConfig, resolveCodexAppServerConnection());
+    client = new CodexAppServerClient(applicationPolicy ? undefined : sandboxConfig, applicationPolicy ? { type: 'spawn' } : resolveCodexAppServerConnection(), process.env, applicationPolicy);
     const steerHandler = createCodexSteerHandler({
         client: {
             steerTurn: (text, expectedTurnId, images, clientUserMessageId) => client.steerTurn(
@@ -1120,6 +1133,7 @@ export async function runCodex(opts: {
         if (msg.type !== 'agent_reasoning_delta' && msg.type !== 'agent_reasoning' && msg.type !== 'agent_reasoning_section_break' && msg.type !== 'turn_diff') {
             const mapped = mapCodexMcpMessageToSessionEnvelopes(msg, {
                 currentTurnId,
+                localIds: acceptedLocalIds,
                 ...(client.threadId ? { threadId: client.threadId } : {}),
                 mcpAppBindingRegistry,
                 startedSubagents: codexStartedSubagents,
@@ -1134,6 +1148,7 @@ export async function runCodex(opts: {
             for (const envelope of mapped.envelopes) {
                 session.sendSessionProtocolMessage(envelope);
                 if (!envelope.subagent && envelope.ev.t === 'turn-start') {
+                    acceptedLocalIds = undefined;
                     void queuedMessageStatus.release();
                 }
             }
@@ -1189,7 +1204,7 @@ export async function runCodex(opts: {
     // codex would otherwise fail to start the MCP server, the change_title tool would
     // not be visible to the model, and the model would improvise with shell echoes.
     const bridgeEntrypoint = join(projectPath(), 'bin', 'happy-mcp.mjs');
-    const mcpServers = {
+    const mcpServers = applicationPolicy ? {} : {
         happy: {
             command: process.execPath,
             args: ['--no-warnings', '--no-deprecation', bridgeEntrypoint, '--url', happyServer.url]
@@ -1331,6 +1346,7 @@ export async function runCodex(opts: {
         };
 
         const ensureCodexThread = async (mode: EnhancedMode) => {
+            if (boundMode) mode = boundMode;
             await client.setServiceTier(mode.fast ? 'fast' : 'standard');
             const executionPolicy = resolveExecutionPolicyForMode(mode);
             if (!client.hasActiveThread()) {
@@ -1369,6 +1385,7 @@ export async function runCodex(opts: {
         };
 
         const ensureExistingCodexThread = async (mode: EnhancedMode) => {
+            if (boundMode) mode = boundMode;
             await client.setServiceTier(mode.fast ? 'fast' : 'standard');
             const existingThreadId = client.threadId ?? session.getMetadata()?.codexThreadId;
             if (!existingThreadId) {
@@ -1531,7 +1548,7 @@ export async function runCodex(opts: {
             ].join('\n');
         };
 
-        let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = null;
+        let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[]; localIds?: string[] } | null = null;
 
         const sendImmediateCommandResponse = (responseText: string) => {
             // Local slash commands have their own Paws lifecycle, independent of
@@ -1574,13 +1591,14 @@ export async function runCodex(opts: {
             attachments?: PendingAttachment[];
         }) => {
             try {
+                if (boundMode) opts.mode = boundMode;
                 const { executionPolicy } = await ensureCodexThread(opts.mode);
                 const includeSkillPathResolutionInstruction = skillPathResolutionInstruction.shouldIncludeInPrompt();
 
                 const includeAppendSystemPrompt = Boolean(
                     opts.mode.appendSystemPrompt && !appendSystemPromptInjected,
                 );
-                const turnPrompt = buildCodexTurnPrompt({
+                const turnPrompt = applicationPolicy ? opts.prompt : buildCodexTurnPrompt({
                     message: opts.prompt,
                     mode: opts.mode,
                     includeAppendSystemPrompt,
@@ -1669,7 +1687,7 @@ export async function runCodex(opts: {
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
-            let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[] } | null = pending;
+            let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string; attachments?: PendingAttachment[]; localIds?: string[] } | null = pending;
             pending = null;
             if (!message) {
                 // Capture the current signal to distinguish idle-abort from queue close
@@ -1694,7 +1712,8 @@ export async function runCodex(opts: {
 
             void queuedMessageStatus.begin();
             try {
-                const specialCommand = parseSpecialCommand(message.message);
+                acceptedLocalIds = message.localIds;
+                const specialCommand = parseSpecialCommand(applicationPolicy ? '' : message.message);
                 if (specialCommand.type && specialCommand.type !== 'plan') {
                     await cleanupMediaAttachments((message.attachments ?? []).filter(isMediaAttachment));
                 }

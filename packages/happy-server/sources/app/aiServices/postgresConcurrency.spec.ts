@@ -103,7 +103,7 @@ describe.skipIf(!testUrl)('real PostgreSQL claim and Account/identity lock order
             await tx.appDelegation.create({ data: { id: grant.id, appId: scope.appId, accountId: ownerId, protocol: 4, state: 'service-ready', publicKey: '', challengeHash: '', requestExpiresAt: new Date() } });
         });
         const principal = { kind: 'personal-grant', ownerId, grantId: grant.id, scope } satisfies ServicePrincipal;
-        await first.appChatWorker.create({ data: { machineId, accountId: ownerId, protocol: 3, serviceProtocol: 'ai-services/1', activeUntil: new Date(Date.now() + 60000) } });
+        await first.appChatWorker.create({ data: { machineId, accountId: ownerId, protocol: 3, serviceProtocol: 'ai-services/1', nativeSessions: true, activeUntil: new Date(Date.now() + 60000) } });
         const binding = await store.resolveBinding(principal, scope.appId, service.id, {});
         return { ownerId, machineId, target, config, source, store, service, scope, principal, binding, profile, auth, launch };
     }

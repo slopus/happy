@@ -1,20 +1,20 @@
 import axios, { type AxiosInstance } from 'axios';
 import { normalizeHttpError, PawsAgentError } from '../client/errors';
-import type { CredentialProvider, PawsCredentials } from '../client/types';
+import type { ClientCredentialProvider, ClientCredentials, PawsCredentials } from '../client/types';
 import { parseAttachmentUpload } from './attachmentUpload';
 
 const COMPATIBILITY_CLIENT = 'paws-agent-sdk/0.1.0';
 
 export class PawsHttpTransport {
     private readonly serverUrl: string;
-    private readonly credentials: CredentialProvider;
+    private readonly credentials: ClientCredentialProvider;
     private readonly client: AxiosInstance;
     private readonly abortController = new AbortController();
     private disposed = false;
 
     constructor(options: {
         serverUrl: string;
-        credentials: CredentialProvider;
+        credentials: ClientCredentialProvider;
         client?: AxiosInstance;
     }) {
         const serverUrl = options.serverUrl.trim().replace(/\/+$/, '');
@@ -26,7 +26,7 @@ export class PawsHttpTransport {
         this.client = options.client ?? axios;
     }
 
-    async getCredentials(): Promise<PawsCredentials> {
+    async getCredentials(): Promise<ClientCredentials> {
         this.ensureActive();
         const credentials = await this.credentials.getCredentials();
         if (!credentials) {
@@ -39,7 +39,7 @@ export class PawsHttpTransport {
         return (await this.getWithCredentials<T>(path, options)).data;
     }
 
-    async getWithCredentials<T>(path: string, options: { signal?: AbortSignal } = {}): Promise<{ data: T; credentials: PawsCredentials }> {
+    async getWithCredentials<T>(path: string, options: { signal?: AbortSignal } = {}): Promise<{ data: T; credentials: ClientCredentials }> {
         const signal = options.signal ? AbortSignal.any([options.signal, this.abortController.signal]) : this.abortController.signal;
         try {
             signal.throwIfAborted();
@@ -65,6 +65,7 @@ export class PawsHttpTransport {
             signal.throwIfAborted();
             const credentials = await this.getCredentials();
             if (options.expectedCredentials && (credentials.token !== options.expectedCredentials.token
+                || 'resolveRecordKey' in credentials
                 || credentials.secret.length !== options.expectedCredentials.secret.length
                 || credentials.secret.some((byte, i) => byte !== options.expectedCredentials!.secret[i]))) {
                 throw new PawsAgentError('AUTH_EXPIRED', 'Account changed before settings update');
@@ -149,7 +150,7 @@ export class PawsHttpTransport {
         return this.serverUrl + path;
     }
 
-    private headers(credentials: PawsCredentials): Record<string, string> {
+    private headers(credentials: ClientCredentials): Record<string, string> {
         return {
             Authorization: `Bearer ${credentials.token}`,
             'X-Happy-Client': COMPATIBILITY_CLIENT,

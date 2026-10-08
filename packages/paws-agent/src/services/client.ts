@@ -51,7 +51,7 @@ export function createAIServiceClient({ appId, transport }: {
                 throw new AIServiceClientError('permission-denied'); await transport.revoke(...args); connectionEpoch++; for (const controller of subscriptions)
                 controller.abort(); transport.disconnect(); connectionChanged({ type: 'disconnected' }); },
         },
-        conversations: { create: (...args: Parameters<AIServiceTransport['createConversation']>) => { open(); return transport.createConversation(...args); }, find: (...args: Parameters<AIServiceTransport['findConversation']>) => { open(); return transport.findConversation(...args); } },
+        conversations: { read: (...args: Parameters<NonNullable<AIServiceTransport['readConversation']>>) => { open(); if (!transport.readConversation) return Promise.reject(new AIServiceClientError('protocol-incompatible')); return transport.readConversation(...args); }, create: (...args: Parameters<AIServiceTransport['createConversation']>) => { open(); return transport.createConversation(...args); }, find: (...args: Parameters<AIServiceTransport['findConversation']>) => { open(); return transport.findConversation(...args); } },
         turns: {
             start: (...args: Parameters<AIServiceTransport['start']>) => { open(); return transport.start(...args); },
             read: (...args: Parameters<AIServiceTransport['read']>) => { open(); return transport.read(...args); },

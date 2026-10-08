@@ -25,6 +25,7 @@ export class MessagesResourceImpl implements MessagesResource {
         private readonly sessions: SessionsResourceImpl,
         private readonly encryption: RecordEncryptionStore,
         private readonly report: (error: PawsAgentError) => void = () => {},
+        private readonly maxImagesPerMessage: 4 | 12 = 4,
     ) {}
 
     async history(sessionId: string, options: MessageHistoryOptions = {}): Promise<Message[]> {
@@ -116,7 +117,7 @@ export class MessagesResourceImpl implements MessagesResource {
             throw new PawsAgentError('INVALID_ARGUMENT', 'sessionId is required');
         }
         const configuration = configurationMeta(input.configuration);
-        const images = snapshotImages(input.images);
+        const images = snapshotImages(input.images, this.maxImagesPerMessage);
         const checkCancelled = () => {
             if (input.signal?.aborted) throw new PawsAgentError('CONNECTION_LOST', 'Message send cancelled');
         };
@@ -177,7 +178,8 @@ export class MessagesResourceImpl implements MessagesResource {
 
     private async getEncryption(sessionId: string) {
         let encryption = this.encryption.getSession(sessionId);
-        if (!encryption) {
+        const credentials = await this.transport.getCredentials();
+        if (!encryption || 'resolveRecordKey' in credentials) {
             await this.sessions.get(sessionId);
             encryption = this.encryption.getSession(sessionId);
         }

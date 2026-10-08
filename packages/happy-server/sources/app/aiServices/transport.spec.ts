@@ -1,3 +1,6 @@
+import { deflateSync } from 'node:zlib';
+import { randomBytes } from 'node:crypto';
+import { NATIVE_SNAPSHOT_CIPHERTEXT_MAX_BYTES } from '@slopus/happy-wire';
 import { beforeAll, afterAll, beforeEach, it, expect, vi } from 'vitest';
 import type { PrismaClient } from '@prisma/client';
 import fastify from 'fastify';
@@ -29,7 +32,7 @@ beforeAll(async()=>{
 beforeEach(async()=>{
  owner=`transport-${++seq}`;machine=`${owner}-machine`;await ctx.database.account.create({ data:{ id:owner,publicKey:owner } });
  await ctx.database.machine.create({ data:{ id:machine,accountId:owner,metadata:'sealed' } });token=await auth.createToken(owner);
- expect((await req(`/v1/ai-service-worker/${machine}/announce`,{ protocol:'ai-services/1',publicKey:Buffer.from(nacl.box.keyPair().publicKey).toString('base64') })).statusCode).toBe(200);
+ expect((await req(`/v1/ai-service-worker/${machine}/announce`,{ protocol:'ai-services/1',nativeSessions:true,publicKey:Buffer.from(nacl.box.keyPair().publicKey).toString('base64') })).statusCode).toBe(200);
 });
 afterAll(async()=>{ await app.close();await ctx.database.$disconnect();await ctx.pg.close(); });
 async function setup() {
@@ -84,7 +87,7 @@ it('accepts a scoped target for capability discovery and rejects a foreign tuple
 });
 it('upgrades an existing grant and its machine envelopes atomically while old bindings keep working',async()=>{
  const machineKeys=nacl.box.keyPair();
- await req(`/v1/ai-service-worker/${machine}/announce`,{protocol:'ai-services/1',publicKey:Buffer.from(machineKeys.publicKey).toString('base64')});
+ await req(`/v1/ai-service-worker/${machine}/announce`,{protocol:'ai-services/1',nativeSessions:true,publicKey:Buffer.from(machineKeys.publicKey).toString('base64')});
  const f=await setup();
  const creating=services.store.resolveBinding(f.principal,'relationship-advisor',f.service.id,{});
  await completeProbe(await nextProbe(),f.target);const binding=await creating;
@@ -160,14 +163,14 @@ it('revocation during a queued native probe denies credentials and atomic bindin
 
 it('exposes safe daemon-observed Claude identity only to its owner',async()=>{
  const f=await setup(),identityId='claude:'+ 'a'.repeat(64);
- const published=await req(`/v1/ai-service-worker/${machine}/announce`,{ protocol:'ai-services/1',publicKey:Buffer.from(nacl.box.keyPair().publicKey).toString('base64'),claudeIdentity:{ identityId,observedAt:Date.now() } });
+ const published=await req(`/v1/ai-service-worker/${machine}/announce`,{ protocol:'ai-services/1',nativeSessions:true,publicKey:Buffer.from(nacl.box.keyPair().publicKey).toString('base64'),claudeIdentity:{ identityId,observedAt:Date.now() } });
  expect(published.statusCode,published.body).toBe(200);
  const own=await app.inject({ method:'GET',url:'/v1/ai-services/workers',headers:{ authorization:`Bearer ${token}` } });
  expect(own.json().workers).toEqual([expect.objectContaining({ machineId:machine,serviceClaudeIdentity:identityId })]);
  expect(own.body).not.toContain('tokens');expect(own.body).not.toContain('email');
  expect((await app.inject({ method:'GET',url:'/v1/ai-services/workers',headers:{ authorization:`Bearer ${f.receipt.credential}` } })).statusCode).toBe(401);
  const foreign=await auth.createToken('foreign');
- expect((await req(`/v1/ai-service-worker/${machine}/announce`,{ protocol:'ai-services/1',publicKey:Buffer.from(nacl.box.keyPair().publicKey).toString('base64') },foreign)).statusCode).toBe(403);
+ expect((await req(`/v1/ai-service-worker/${machine}/announce`,{ protocol:'ai-services/1',nativeSessions:true,publicKey:Buffer.from(nacl.box.keyPair().publicKey).toString('base64') },foreign)).statusCode).toBe(403);
  expect((await app.inject({ method:'GET',url:'/v1/ai-services/workers',headers:{ authorization:`Bearer ${foreign}` } })).json()).toEqual({ workers:[] });
 });
 
@@ -204,3 +207,67 @@ for (const code of ['protocol-incompatible', 'account-identity-changed'] as cons
  await result;
  expect((await ctx.database.aIServiceProbe.findUniqueOrThrow({where:{id:probe.id}})).error).toBe(code);
 });
+
+function screenshotFixture():string {
+ const chunk=(type:string,data:Buffer)=>{const body=Buffer.concat([Buffer.from(type),data]);let crc=0xffffffff;for(const byte of body){crc^=byte;for(let bit=0;bit<8;bit++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}const length=Buffer.alloc(4),checksum=Buffer.alloc(4);length.writeUInt32BE(data.length);checksum.writeUInt32BE((crc^0xffffffff)>>>0);return Buffer.concat([length,body,checksum]);};
+ const header=Buffer.alloc(13);header.writeUInt32BE(512,0);header.writeUInt32BE(512,4);header[8]=8;header[9]=2;
+ const scanlines=Buffer.alloc((512*3+1)*512);for(let row=0;row<512;row++)randomBytes(512*3).copy(scanlines,row*(512*3+1)+1);
+ return 'data:image/png;base64,'+Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(scanlines)),chunk('IEND',Buffer.alloc(0))]).toString('base64');
+}
+it('accepts native encrypted screenshots through real routes, retains legacy limits and accounts exact bytes',async()=>{
+ const f=await setup(),resolving=services.store.resolveBinding(f.principal,'relationship-advisor',f.service.id,{});
+ await completeProbe(await nextProbe(),f.target);const binding=await resolving;
+ const starting=services.turns.startBoundTurn(f.principal,binding.id,'image-request',{ciphertext:'i'.repeat(80)});
+ await completeProbe(await nextProbe(),f.target);const turn=await starting;
+ const job=(await req(`/v1/ai-service-worker/${machine}/claim`)).json().job;
+ const sessionId=`image-${binding.id}`;
+ await ctx.database.session.create({data:{id:sessionId,accountId:owner,tag:`app-service:${binding.id}`,metadata:'encrypted'}});
+ expect((await req(`/v1/ai-service-worker/${machine}/turns/${turn.id}/session`,{lease:job.lease,sessionId})).statusCode).toBe(200);
+ const image=screenshotFixture(),messages=[{role:'user',text:'Inspect screenshots',images:[image,image,image,image]}];
+ const seal=(payload:unknown)=>{const nonce=randomBytes(24);return Buffer.concat([nonce,Buffer.from(nacl.secretbox(Buffer.from(JSON.stringify(payload)),nonce,Buffer.from(f.receipt.messageKey,'base64')))]).toString('base64');};
+ const context={protocol:'ai-services/1',grantId:f.receipt.id,appId:binding.appId,serviceId:binding.serviceId,bindingId:binding.id};
+ const output=seal({...context,requestId:'image-request',turnId:turn.id,direction:'output',sequence:1,messages,text:'Screenshot answer'});
+ expect(Buffer.byteLength(output)).toBeGreaterThan(5*1024*1024);
+ await ctx.database.appChatTurn.update({where:{id:turn.id},data:{minimumProtocol:4}});
+ expect((await req(`/v1/ai-service-worker/${machine}/turns/${turn.id}`,{lease:job.lease,status:'completed',sequence:1,output})).statusCode).toBe(413);
+ await ctx.database.appChatTurn.update({where:{id:turn.id},data:{minimumProtocol:5}});
+ const published=await req(`/v1/ai-service-worker/${machine}/turns/${turn.id}`,{lease:job.lease,status:'completed',sequence:1,output});
+ expect(published.statusCode,published.body).toBe(200);
+ expect((await services.turns.readBoundTurn(f.principal,binding.id,turn.id)).output).toBe(output);
+ const reading=app.inject({method:'GET',url:`/v1/apps/ai-services/bindings/${binding.id}/session`,headers:{authorization:`Bearer ${f.receipt.credential}`}});
+ let history:any;
+ for(let i=0;i<100&&!history;i++){history=(await req(`/v1/ai-service-worker/${machine}/history/claim`)).json().history;if(!history)await new Promise(r=>setTimeout(r,5));}
+ expect(history?.sessionId).toBe(sessionId);
+ const ciphertext=seal({...context,requestId:history.requestId,direction:'session-history',sessionId,messages,active:false});
+ expect((await req(`/v1/ai-service-worker/${machine}/history/${binding.id}`,{requestId:history.requestId,sessionId,ciphertext})).statusCode).toBe(200);
+ expect((await reading).json().ciphertext).toBe(ciphertext);
+ expect((await ctx.database.appDelegation.findUniqueOrThrow({where:{id:f.receipt.id}})).storedBytes).toBe(80+Buffer.byteLength(output)+Buffer.byteLength(ciphertext));
+ const tooLarge=await req(`/v1/ai-service-worker/${machine}/history/${binding.id}`,{requestId:'over-limit',sessionId,ciphertext:'A'.repeat(NATIVE_SNAPSHOT_CIPHERTEXT_MAX_BYTES+1)});
+ expect(tooLarge.statusCode).toBe(413);
+},30000);
+
+it('registers only the owned native session of a live service turn and retains the launch for owner resume', async () => {
+ const f=await setup(),resolving=services.store.resolveBinding(f.principal,'relationship-advisor',f.service.id,{});
+ const probe=await nextProbe();
+ const probeGrant=(await req(`/v1/ai-service-worker/${machine}/credential`,{kind:'probe',id:probe.id,lease:probe.lease})).json();
+ const probeLaunch=(await req('/v1/codex-session-grants/redeem',{machineId:machine,grant:probeGrant.grant})).json();
+ await completeProbe(probe,f.target);const binding=await resolving;
+ const starting=services.turns.startBoundTurn(f.principal,binding.id,'native-launch-registration',{ciphertext:'x'.repeat(80)});
+ const turnProbe=await nextProbe();await completeProbe(turnProbe,f.target);const record=await starting;
+ const job=(await req(`/v1/ai-service-worker/${machine}/claim`)).json().job;
+ const grant=(await req(`/v1/ai-service-worker/${machine}/credential`,{kind:'turn',id:record.id,lease:job.lease})).json();
+ const launch=(await req('/v1/codex-session-grants/redeem',{machineId:machine,grant:grant.grant})).json();
+ const session=await ctx.database.session.create({data:{accountId:owner,tag:`app-service:${binding.id}`,metadata:'sealed'}});
+ const ordinary=await ctx.database.session.create({data:{accountId:owner,tag:'ordinary-session',metadata:'sealed'}});
+ const register=(launchId:string,sourceSessionId=session.id,target=machine,bearer=token)=>req(`/v1/codex-session-grants/${launchId}/session`,{machineId:target,sourceSessionId},bearer);
+ expect((await register(probeLaunch.launchId)).statusCode).not.toBe(200);
+ expect((await register(launch.launchId,ordinary.id)).statusCode).not.toBe(200);
+ expect((await register(launch.launchId,session.id,'foreign-machine')).statusCode).not.toBe(200);
+ expect((await register(launch.launchId,session.id,machine,await auth.createToken('foreign-owner'))).statusCode).not.toBe(200);
+ const attached=await register(launch.launchId);expect(attached.statusCode,attached.body).toBe(200);
+ expect((await register(launch.launchId)).statusCode).toBe(200);
+ expect((await register(launch.launchId,ordinary.id)).statusCode).not.toBe(200);
+ const resume=await codexAccountStore.createGrant(owner,machine,session.id);expect(resume.profile.id).toBe(f.profile.id);
+ await ctx.database.appChatTurn.update({where:{id:record.id},data:{leaseUntil:new Date(0)}});
+ expect((await register(launch.launchId)).statusCode).not.toBe(200);
+},20000);

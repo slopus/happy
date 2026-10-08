@@ -236,3 +236,11 @@ describe('service errors and protocol negotiation', () => {
             .toEqual({ protocol: 'ai-services/1', scope: 'service:chat' });
     });
 });
+
+it('preserves legacy turns while validating native session location and phase', () => {
+    expect(wire.TurnRecordSchema.parse(turn)).toEqual(turn);
+    expect(wire.TurnRecordSchema.parse({...turn,sessionId:null,phase:'connecting'})).toMatchObject({sessionId:null,phase:'connecting'});
+    expect(wire.TurnRecordSchema.parse({...turn,sessionId:'native',phase:'recovering'})).toMatchObject({sessionId:'native',phase:'recovering'});
+    expect(wire.TurnRecordSchema.safeParse({...turn,sessionId:' '}).success).toBe(false);
+    expect(wire.TurnRecordSchema.safeParse({...turn,phase:'fake'}).success).toBe(false);
+});

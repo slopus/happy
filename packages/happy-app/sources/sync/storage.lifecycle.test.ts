@@ -52,6 +52,7 @@ vi.mock('@/components/tools/knownTools', () => ({
 }));
 
 import { storage } from './storage';
+import { MetadataSchema } from './storageTypes';
 import { normalizeRawMessage } from './typesRaw';
 import * as persistence from './persistence';
 
@@ -213,4 +214,20 @@ describe('storage session lifecycle', () => {
         expect(result.hasReadyEvent).toBe(true);
         expect(storage.getState().sessions['session-1']?.thinking).toBe(true);
     });
+});
+
+it('preserves application identity across schema parsing, archived projection and resume updates', () => {
+    const application = { appId: 'relationship-advisor', bindingId: 'binding-1' };
+    const metadata = MetadataSchema.parse({ path: '/same-as-ordinary', host: 'mac', application, lifecycleState: 'archived' });
+    expect(metadata.application).toEqual(application);
+    const session = { id: 'native-app', seq: 0, createdAt: 1, updatedAt: 1, active: false, activeAt: 1,
+        metadata, metadataVersion: 1, agentState: null, agentStateVersion: 0, thinking: false, thinkingAt: 0 };
+    storage.getState().applySessions([session]);
+    expect(storage.getState().sessionListViewData).toContainEqual(expect.objectContaining({
+        type: 'session', session: expect.objectContaining({ id: 'native-app', application }),
+    }));
+    storage.getState().applySessions([{ ...session, active: true, metadataVersion: 2,
+        metadata: MetadataSchema.parse({ ...metadata, summary: { text: 'Renamed', updatedAt: 2 }, lifecycleState: 'active', hostPid: 123 }) }]);
+    const rows = storage.getState().sessionListViewData!.flatMap(item => item.type === 'active-sessions' ? item.sessions : []);
+    expect(rows).toContainEqual(expect.objectContaining({ id: 'native-app', application, name: 'Renamed' }));
 });

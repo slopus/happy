@@ -131,7 +131,7 @@ beforeAll(async () => {
     await app.listen({ port: 0, host: '127.0.0.1' });
     url = 'http://127.0.0.1:' + (app.server.address() as AddressInfo).port;
     token = await auth.createToken(owner);
-    expect((await worker('announce', { protocol: 'ai-services/1', publicKey: Buffer.from(machineKeys.publicKey).toString('base64') })).statusCode).toBe(200);
+    expect((await worker('announce', { protocol: 'ai-services/1', nativeSessions: true, publicKey: Buffer.from(machineKeys.publicKey).toString('base64') })).statusCode).toBe(200);
     loop = runWorker().catch(error => { workerFailure = error; });
     service = await services.store.createService(owner, { name: 'Synthetic shared service', config });
     const registry = createApplicationRegistry(ctx.database), businessPrompt = { id: 'smoke-summary', version: '1' };
@@ -257,7 +257,7 @@ it('fails closed for offline, login loss, quota and revocation without changing 
     const client = clients.get('ai-service-smoke')!, binding = await client.conversations.create({ appConversationId: 'failures' });
     await ctx.database.appChatWorker.update({ where: { machineId: machine }, data: { activeUntil: new Date(0) } });
     await expect(client.turns.start({ binding, requestId: 'offline', messages: [{ role: 'user', text: 'Offline' }] })).rejects.toMatchObject({ code: 'machine-offline', submission: 'not-submitted', requestId: 'offline' });
-    await worker('announce', { protocol: 'ai-services/1', publicKey: Buffer.from(machineKeys.publicKey).toString('base64') });
+    await worker('announce', { protocol: 'ai-services/1', nativeSessions: true, publicKey: Buffer.from(machineKeys.publicKey).toString('base64') });
     fault = 'quota-exhausted';
     await client.turns.start({ binding, requestId: 'quota', messages: [{ role: 'user', text: 'Quota' }] });
     const quota = await settle(client, binding, 'quota');
@@ -288,7 +288,7 @@ it('serves a real packaged panel and bridge without exposing the platform receip
 it.skipIf(process.env.PAWS_SMOKE_SERVE !== '1')('holds the isolated browser fixture open', async () => {
     // Keep announcements alive while the controller operates the public synthetic page.
     const keepAlive = setInterval(async () => {
-        const response = await worker('announce', { protocol: 'ai-services/1', publicKey: Buffer.from(machineKeys.publicKey).toString('base64') });
+        const response = await worker('announce', { protocol: 'ai-services/1', nativeSessions: true, publicKey: Buffer.from(machineKeys.publicKey).toString('base64') });
         expect(response.statusCode, response.body).toBe(200);
     }, 10000);
     console.log('Browser fixture ready: http://127.0.0.1:4193/');

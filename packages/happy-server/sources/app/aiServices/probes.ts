@@ -35,11 +35,11 @@ export function createServiceProbes(database: PrismaClient) {
  };
  return {
   source,
-  async announce(ownerId: string, machineId: string, publicKey: string, claudeIdentity?: { identityId: string; observedAt: number } | null) {
+  async announce(ownerId: string, machineId: string, publicKey: string, claudeIdentity?: { identityId: string; observedAt: number } | null, nativeSessions = false) {
    if (Buffer.from(publicKey,'base64').length !== 32) deny('invalid-request');
    if (!await database.machine.findFirst({ where: { id: machineId, accountId: ownerId } })) deny('permission-denied');
    if (claudeIdentity && (!/^claude:[a-f0-9]{64}$/.test(claudeIdentity.identityId) || claudeIdentity.observedAt > Date.now() || Date.now()-claudeIdentity.observedAt > 60000)) deny('invalid-request');
-   const identity = { serviceClaudeIdentity: claudeIdentity?.identityId ?? null, serviceClaudeObservedAt: claudeIdentity ? new Date(claudeIdentity.observedAt) : null };
+   const identity = { nativeSessions, serviceClaudeIdentity: claudeIdentity?.identityId ?? null, serviceClaudeObservedAt: claudeIdentity ? new Date(claudeIdentity.observedAt) : null };
    await database.appChatWorker.upsert({ where: { machineId }, create: { ...identity, machineId, accountId: ownerId, protocol: 3, serviceProtocol: 'ai-services/1', servicePublicKey: publicKey, activeUntil: new Date(Date.now()+45000) }, update: { ...identity, serviceProtocol: 'ai-services/1', servicePublicKey: publicKey, activeUntil: new Date(Date.now()+45000) } });
    return { protocol: 'ai-services/1' };
   },

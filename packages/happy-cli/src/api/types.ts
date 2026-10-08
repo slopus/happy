@@ -286,6 +286,7 @@ export const UserMessageSchema = z.object({
     type: z.literal('text'),
     text: z.string()
   }),
+  localId: z.string().optional(), // Trusted relay message id, assigned by the receive path
   localKey: z.string().optional(), // Mobile messages include this
   meta: MessageMetaSchema.optional()
 })
@@ -361,6 +362,7 @@ export const MessageContentSchema = z.union([UserMessageSchema, AgentMessageSche
 export type MessageContent = z.infer<typeof MessageContentSchema>
 
 export type Metadata = {
+  application?: { appId: string; bindingId: string };
   /**
    * ACP session config option value (normalized for UI metadata consumers).
    */

@@ -228,10 +228,24 @@ export const codexAccountStore = {
     async registerSession(accountId: string, launchId: string, machineId: string, sourceSessionId: string) {
         return transaction(accountId, async (tx) => {
             const launch = await tx.codexSessionGrant.findFirst({ where: { id: launchId, accountId, machineId, redeemedAt: { not: null } } });
-            if (!launch || launch.serviceAuthority || (launch.sourceSessionId && launch.sourceSessionId !== sourceSessionId)) return fail(409, 'launch-unavailable');
+            if (!launch || (launch.sourceSessionId && launch.sourceSessionId !== sourceSessionId)) return fail(409, 'launch-unavailable');
             const session = await tx.session.findFirst({ where: { id: sourceSessionId, accountId } });
             if (!session) return fail(409, 'session-unavailable');
             await ownedMachine(tx, accountId, machineId);
+            if (launch.serviceAuthority) {
+                // Native spawn registers its account before attaching the turn's session mapping.
+                // Discovery and legacy service grants must never become resumable session grants.
+                const authority = launch.serviceAuthority as ServiceCredentialAuthority;
+                if (authority.kind !== 'turn') return fail(409, 'launch-unavailable');
+                const target = await authorizeServiceCredential(tx, accountId, machineId, authority);
+                const turn = await tx.appChatTurn.findUnique({ where: { id: authority.id } });
+                if (target.engine !== 'codex' || target.accountRef.id !== launch.codexAccountProfileId
+                    || !turn?.bindingId || turn.minimumProtocol !== 5) return fail(409, 'launch-unavailable');
+                const binding = await tx.aIServiceBinding.findFirst({ where: { id: turn.bindingId, ownerId: accountId } });
+                if (!binding || session.tag !== `app-service:${binding.id}`
+                    || (binding.sessionId && binding.sessionId !== sourceSessionId)
+                    || (turn.sessionId && turn.sessionId !== sourceSessionId)) return fail(409, 'session-unavailable');
+            }
             await tx.codexSessionGrant.update({ where: { id: launchId }, data: { sourceSessionId } });
             await audit(tx, accountId, 'session-register', launch.codexAccountProfileId, machineId, launch.credentialVersion);
             return { success: true as const };

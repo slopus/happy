@@ -6,7 +6,7 @@ import type {
     Machine,
     MachinesResource,
 } from '../client/types';
-import { decryptRecordField, RecordEncryptionStore, resolveRecordEncryption } from '../crypto/records';
+import { decryptRecordField, RecordEncryptionStore, tryResolveRecordEncryption } from '../crypto/records';
 import type { PawsHttpTransport } from '../transport/http';
 import type { PawsRealtimeTransport } from '../transport/realtime';
 
@@ -36,10 +36,11 @@ export class MachinesResourceImpl implements MachinesResource {
         const records = snapshot.data;
         const credentials = snapshot.credentials;
 
-        const machines = records.map(record => {
-            const encryption = resolveRecordEncryption(record, credentials, 'machine');
+        const machines = records.flatMap(record => {
+            const encryption = tryResolveRecordEncryption(record, credentials, 'machine');
+            if (!encryption) return [];
             this.encryption.setMachine(record.id, encryption);
-            return {
+            return [{
                 id: record.id,
                 seq: record.seq,
                 createdAt: record.createdAt,
@@ -50,7 +51,7 @@ export class MachinesResourceImpl implements MachinesResource {
                 metadataVersion: record.metadataVersion,
                 daemonState: decryptRecordField(record.daemonState, encryption),
                 daemonStateVersion: record.daemonStateVersion,
-            } satisfies Machine;
+            } satisfies Machine];
         });
 
         return options.active ? machines.filter(machine => machine.active) : machines;

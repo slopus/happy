@@ -34,7 +34,7 @@ export async function verifyRestrictedCodex(binary: string): Promise<boolean> {
     } catch { return false; }
 }
 
-export function codexRestrictedArgs(model: string | null, reasoning?: ServiceReasoning, execution?: Pick<RestrictedServiceOptions, 'permissionMode' | 'serviceTier'>): string[] {
+export function codexRestrictedConfig(model: string | null, reasoning?: ServiceReasoning, execution?: Pick<RestrictedServiceOptions, 'permissionMode' | 'serviceTier'>): Record<string, unknown> {
     const tools = execution?.permissionMode === 'read-only' || execution?.permissionMode === 'yolo';
     const config: Record<string, unknown> = {
         'features.code_mode': false, 'features.code_mode_host': false, 'features.view_image': tools,
@@ -52,6 +52,10 @@ export function codexRestrictedArgs(model: string | null, reasoning?: ServiceRea
         'features.memories': false, web_search: execution?.permissionMode === 'yolo' ? 'live' : 'disabled', project_doc_max_bytes: 0,
         ...(execution?.serviceTier ? { service_tier: execution.serviceTier === 'fast' ? 'fast' : 'standard' } : {}),
     };
+    return config;
+}
+export function codexRestrictedArgs(model: string | null, reasoning?: ServiceReasoning, execution?: Pick<RestrictedServiceOptions, 'permissionMode' | 'serviceTier'>): string[] {
+    const config = codexRestrictedConfig(model, reasoning, execution);
     const args = ['app-server', '--stdio'];
     for (const [key, value] of Object.entries(config)) args.push('-c', `${key}=${typeof value === 'object' && value !== null ? '{' + Object.entries(value).map(([k, v]) => k + '=' + JSON.stringify(v)).join(',') + '}' : JSON.stringify(value)}`);
     return args;

@@ -15,3 +15,25 @@ export function serviceTransaction<T>(database: PrismaClient, ownerId: string, o
         return operation(tx);
     });
 }
+
+/** Lock a grant's shared budget and reclaim expired history across all its bindings.
+ * The retention grace outlives every live reader. SQL aggregates deleted bytes in the
+ * database instead of loading ciphertext into the process; no other grant is touched.
+ * Call before taking turn-row locks, matching admission and publication lock order.
+ */
+export async function lockServiceQuota(tx: Prisma.TransactionClient, grantId: string): Promise<void> {
+    await tx.$queryRaw`SELECT "id" FROM "AppDelegation" WHERE "id" = ${grantId} FOR UPDATE`;
+    const cutoff = new Date(Date.now() - 60000);
+    await tx.$executeRaw`WITH expired AS (
+        DELETE FROM "AIServiceHistoryRequest" AS request
+        USING "AIServiceBinding" AS binding
+        WHERE request."bindingId" = binding."id"
+            AND binding."authorizationId" = ${grantId}
+            AND request."deadline" < ${cutoff}
+        RETURNING octet_length(request."ciphertext") AS bytes
+    ), released AS (
+        SELECT COALESCE(SUM(bytes), 0)::integer AS bytes FROM expired
+    )
+    UPDATE "AppDelegation" AS storage SET "storedBytes" = storage."storedBytes" - released.bytes
+    FROM released WHERE storage."id" = ${grantId} AND released.bytes > 0`;
+}

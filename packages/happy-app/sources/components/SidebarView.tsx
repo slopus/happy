@@ -1,10 +1,11 @@
 import * as React from 'react';
+import { isApplicationSession } from '@slopus/happy-wire';
 import { Text, View, Pressable, ScrollView, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useNavigation, usePathname } from 'expo-router';
 import { DrawerActions } from '@react-navigation/native';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
-import { useRealtimeStatus, useProfile, useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
+import { useRealtimeStatus, useSession, useProfile, useLocalSetting, useLocalSettingMutable } from '@/sync/storage';
 import { useReducedTransparency } from '@/hooks/useReducedTransparency';
 import { getDisplayName } from '@/sync/profile';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
@@ -385,8 +386,11 @@ export const SidebarView = React.memo(({
     const pathname = usePathname();
     const mobileNavigation = !desktopDensity;
     const railNavigation = desktopPrimaryNavigation || mobileNavigation;
-    const [appConversationsActive, setAppConversationsActive] = React.useState(pathname.startsWith('/apps/conversations'));
-    React.useEffect(() => { setAppConversationsActive(pathname.startsWith('/apps/conversations')); }, [pathname]);
+    const routeSessionId = pathname.match(/^\/session\/([^/]+)/)?.[1];
+    const routeSession = useSession(routeSessionId ? decodeURIComponent(routeSessionId) : '');
+    const applicationRoute = pathname.startsWith('/apps/conversations') || isApplicationSession(routeSession?.metadata);
+    const [appConversationsActive, setAppConversationsActive] = React.useState(applicationRoute);
+    React.useEffect(() => { setAppConversationsActive(applicationRoute); }, [pathname, applicationRoute]);
     const [mobilePanel, setMobilePanel] = React.useState<'sessions' | 'advisor'>(pathname === '/relationship-advisor' ? 'advisor' : 'sessions');
     React.useEffect(() => {
         setMobilePanel(pathname === '/relationship-advisor' ? 'advisor' : 'sessions');

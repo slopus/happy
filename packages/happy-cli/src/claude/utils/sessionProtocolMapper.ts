@@ -7,6 +7,7 @@ import {
 } from '@slopus/happy-wire';
 
 export type ClaudeSessionProtocolState = {
+    acceptedLocalIds?: string[][];
     currentTurnId: string | null;
     uuidToProviderSubagent?: Map<string, string>;
     taskPromptToSubagents?: Map<string, string[]>;
@@ -398,7 +399,8 @@ function ensureTurn(state: ClaudeSessionProtocolState, envelopes: SessionEnvelop
     }
 
     const turnId = createId();
-    envelopes.push(createEnvelope('agent', { t: 'turn-start' }, { turn: turnId }));
+    const localIds = state.acceptedLocalIds?.shift();
+    envelopes.push(createEnvelope('agent', { t: 'turn-start', ...(localIds?.length ? { localIds } : {}) }, { turn: turnId }));
     state.currentTurnId = turnId;
     return turnId;
 }
@@ -478,6 +480,9 @@ export function closeClaudeTurnWithStatus(
     status: SessionTurnEndStatus,
 ): ClaudeMapperResult {
     const envelopes: SessionEnvelope[] = [];
+    // An accepted request owns a terminal even when the provider emitted no assistant output.
+    // Consume exactly its batch; later accepted inputs remain queued for their own turns.
+    if (!state.currentTurnId && state.acceptedLocalIds?.length) ensureTurn(state, envelopes);
     closeTurn(state, status, envelopes);
     return {
         currentTurnId: state.currentTurnId,

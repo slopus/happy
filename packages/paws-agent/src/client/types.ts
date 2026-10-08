@@ -9,7 +9,21 @@ export type PawsCredentials = {
     };
 };
 
-export interface CredentialProvider {
+/** Keys supplied by a trusted owner process, scoped to the records it can operate.
+ * This callback stays in-process; the server still verifies token ownership. */
+export type TrustedRecordKeyCredentials = {
+    token: string;
+    resolveRecordKey(record: { id: string; type: 'machine' | 'session'; dataEncryptionKey: string | null }):
+        { key: Uint8Array; variant: 'legacy' | 'dataKey' } | null;
+};
+export type ClientCredentials = PawsCredentials | TrustedRecordKeyCredentials;
+export interface ClientCredentialProvider {
+    getCredentials(): Promise<ClientCredentials | null>;
+    setCredentials?(credentials: PawsCredentials): Promise<void>;
+    clearCredentials?(): Promise<void>;
+}
+
+export interface CredentialProvider extends ClientCredentialProvider {
     getCredentials(): Promise<PawsCredentials | null>;
     setCredentials(credentials: PawsCredentials): Promise<void>;
     clearCredentials(): Promise<void>;
@@ -208,6 +222,9 @@ export interface SessionsResource {
     resume(input: ResumeSessionInput): Promise<SpawnSessionResult>;
     /** End the execution process, retaining history for resume. */
     terminate(sessionId: string): Promise<void>;
+    /** Request interruption of the active turn, retaining the execution process.
+     * Acknowledgment is not proof of cancellation; wait for the durable turn-end. */
+    cancel(sessionId: string): Promise<void>;
     stop(sessionId: string): Promise<void>;
 }
 
@@ -255,7 +272,9 @@ export type PawsAgentEventListener = (event: PawsAgentEvent) => void;
 
 export type PawsAgentClientOptions = {
     serverUrl: string;
-    credentials: CredentialProvider;
+    credentials: ClientCredentialProvider;
+    /** Native service migration can carry twelve images; normal sends default to four. */
+    maxImagesPerMessage?: 4 | 12;
     storage?: AgentStorage;
     logger?: AgentLogger;
     reconnect?: ReconnectPolicy;

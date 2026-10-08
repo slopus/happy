@@ -1,3 +1,7 @@
+import type { SessionTurnEndStatus } from '@slopus/happy-wire';
+import { nativeLaunchPolicy, nativeClaudeExecutable } from '@/daemon/appDelegation/nativeLaunchPolicy';
+import { verifyClaudeIdentity } from '@/daemon/appDelegation/serviceCapabilities';
+import { verifyRestrictedClaude } from '@/daemon/appDelegation/restrictedClaude';
 import { EnhancedMode } from "./loop";
 import { query, type QueryOptions, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
 import type { MessageParam } from '@anthropic-ai/sdk/resources'
@@ -37,7 +41,7 @@ export async function claudeRemote(opts: {
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: MessageParam['content'], mode: EnhancedMode } | null>,
-    onReady: () => void,
+    onReady: (status?: SessionTurnEndStatus) => void,
     isAborted: (toolCallId: string) => boolean,
 
     // Callbacks
@@ -49,9 +53,15 @@ export async function claudeRemote(opts: {
     onSDKMetadata?: (metadata: { tools?: string[]; slashCommands?: string[]; mcpServers?: { name: string; status: string }[]; skills?: string[] }) => void
 }) {
 
+    const applicationPolicy = nativeLaunchPolicy();
+    if (applicationPolicy) {
+        if (!await verifyRestrictedClaude(nativeClaudeExecutable())) throw new Error('unsupported-claude-runtime');
+        await verifyClaudeIdentity(applicationPolicy.binding, nativeClaudeExecutable(), process.env, opts.path, opts.signal ?? new AbortController().signal);
+    }
     // Check if session is valid
     let startFrom = opts.sessionId;
     if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path)) {
+        if (applicationPolicy) throw new Error('Native Claude session history is unavailable');
         startFrom = null;
     }
     
@@ -82,14 +92,15 @@ export async function claudeRemote(opts: {
     }
 
     // Set environment variables for Claude Code SDK
-    if (opts.claudeEnvVars) {
+    if (!applicationPolicy && opts.claudeEnvVars) {
         Object.entries(opts.claudeEnvVars).forEach(([key, value]) => {
             process.env[key] = value;
         });
     }
 
     // Get initial message
-    const initial = await opts.nextMessage();
+    // Application sessions must initialize the processor before accepting their first durable input.
+    const initial = applicationPolicy ? { message: '', mode: { permissionMode: applicationPolicy.binding.permissionMode === 'yolo' ? 'yolo' : 'plan', model: applicationPolicy.binding.requestedModel ?? undefined } as EnhancedMode } : await opts.nextMessage();
     if (!initial) { // No initial message - exit
         return;
     }
@@ -98,7 +109,7 @@ export async function claudeRemote(opts: {
     const initialText = typeof initial.message === 'string'
         ? initial.message
         : (initial.message.find((b) => b.type === 'text') as { type: 'text'; text: string } | undefined)?.text ?? '';
-    const specialCommand = parseSpecialCommand(initialText);
+    const specialCommand = parseSpecialCommand(applicationPolicy ? '' : initialText);
 
     // Handle /clear command
     if (specialCommand.type === 'clear') {
@@ -156,7 +167,7 @@ export async function claudeRemote(opts: {
 
     // Push initial message
     let messages = new PushableAsyncIterable<SDKUserMessage>();
-    messages.push({
+    if (!applicationPolicy) messages.push({
         type: 'user',
         parent_tool_use_id: null,
         message: {
@@ -174,17 +185,23 @@ export async function claudeRemote(opts: {
     // Expose query control methods to permission handler
     if (opts.onQueryReady) {
         opts.onQueryReady({
-            setPermissionMode: (mode: string) => response.setPermissionMode(mode as any),
+            setPermissionMode: (mode: string) => response.setPermissionMode(applicationPolicy ? (applicationPolicy.binding.permissionMode === 'yolo' ? 'bypassPermissions' : 'dontAsk') : mode as any),
         });
     }
 
-    updateThinking(true);
+    updateThinking(!applicationPolicy);
     try {
         // query() constructs the SDK client synchronously. Only its initialize
         // response proves that the real child/backend has started and accepts
         // the already-installed streaming input/permission handlers.
         await response.initializationResult();
         opts.onProcessorReady?.();
+        if (applicationPolicy) {
+            void opts.nextMessage().then(next => {
+                if (!next) messages.end();
+                else { mode = next.mode; updateThinking(true); messages.push({ type: 'user', parent_tool_use_id: null, message: { role: 'user', content: next.message } }); }
+            }).catch(() => messages.end());
+        }
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
         for await (const message of response) {
@@ -205,6 +222,7 @@ export async function claudeRemote(opts: {
                 updateThinking(true);
 
                 const systemInit = message as SDKSystemMessage;
+                if (applicationPolicy && ((applicationPolicy.binding.permissionMode !== 'yolo' && systemInit.tools?.length) || systemInit.mcp_servers?.length)) throw new Error('tool-surface-not-empty');
 
                 // Session id is still in memory, wait until session file is written to disk
                 // Start a watcher for to detect the session id
@@ -254,8 +272,8 @@ export async function claudeRemote(opts: {
                     isCompactCommand = false;
                 }
 
-                // Send ready event
-                opts.onReady();
+                // A provider result is terminal even when there was no assistant output.
+                opts.onReady(message.is_error || message.subtype !== 'success' ? 'failed' : 'completed');
 
                 // Wait for next user message without blocking the message loop.
                 // Background task messages (task_started, task_progress, task_notification)

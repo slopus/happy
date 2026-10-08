@@ -110,6 +110,7 @@ export const sessionFileEventSchema = z.object({
 
 export const sessionTurnStartEventSchema = z.object({
   t: z.literal('turn-start'),
+  localIds: z.array(z.string().min(1).max(256)).max(1000).optional(),
 });
 
 export const sessionStartEventSchema = z.object({

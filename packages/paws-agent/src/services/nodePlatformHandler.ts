@@ -4,7 +4,7 @@ import { safeServiceError } from './client';
 import { AIServiceClientError, type ExecutionBinding } from './types';
 import { validateIdentifier, validateMessages, validateOverrides } from './scopedTransport';
 export interface PlatformOperation {
-    operation: 'connection' | 'services' | 'configuration' | 'capabilities' | 'create' | 'find' | 'start' | 'read' | 'cancel' | 'revoke';
+    operation: 'connection' | 'services' | 'configuration' | 'capabilities' | 'create' | 'find' | 'history' | 'start' | 'read' | 'cancel' | 'revoke';
     bindingId?: string;
     turnId?: string;
     requestId?: string;
@@ -58,6 +58,8 @@ export function createPlatformServiceHandler<Context>(client: AIServiceClient, h
             }
             else if (request.method === 'GET' && parts.length === 3 && parts[0] === 'conversations' && parts[2] === 'binding')
                 operation = { operation: 'find', appConversationId: parts[1] };
+            else if (parts[0] === 'bindings' && parts[2] === 'session' && parts.length === 3 && request.method === 'GET')
+                operation = { operation: 'history', bindingId: parts[1] };
             else if (parts[0] === 'bindings' && parts[2] === 'turns' && parts.length === 3 && request.method === 'POST') {
                 const b = strict(['messages', 'requestId']);
                 validateIdentifier(b.requestId);
@@ -116,6 +118,12 @@ export function createPlatformServiceHandler<Context>(client: AIServiceClient, h
                     if (binding.id !== operation.bindingId || binding.appId !== client.appId)
                         throw new AIServiceClientError('permission-denied');
                     result = await client.turns.start({ binding, requestId: b.requestId, messages: validateMessages(b.messages) }, signal);
+                    break;
+                }
+                case 'history': {
+                    const binding = await host.resolveBinding(operation.bindingId!, context);
+                    if(binding.id !== operation.bindingId || binding.appId !== client.appId) throw new AIServiceClientError('permission-denied');
+                    result = await client.conversations.read(operation.bindingId!, signal);
                     break;
                 }
                 case 'read':
