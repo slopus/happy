@@ -221,6 +221,7 @@ describe('modelModeOptions', () => {
     it('uses code defaults for agent defaults', () => {
         expect(getDefaultPermissionModeKey('claude')).toBe('auto');
         expect(getDefaultModelKey('claude')).toBe('claude-opus-5');
+        expect(getDefaultModelKey('claude', '1.2.6-beta.0')).toBe('claude-opus-5-5');
         expect(getDefaultEffortKey('claude')).toBe('medium');
         expect(getDefaultPermissionModeKey('codex')).toBe('auto');
         expect(getDefaultModelKey('codex')).toBe('gpt-5.6-sol');

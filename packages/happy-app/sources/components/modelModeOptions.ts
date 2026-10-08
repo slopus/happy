@@ -497,8 +497,8 @@ export function resolveCurrentOption<T extends ModeOption>(
     return null;
 }
 
-export function getDefaultModelKey(flavor: AgentFlavor): string {
-    return getCodeAgentDefaults(flavor).modelMode;
+export function getDefaultModelKey(flavor: AgentFlavor, cliVersion?: string | null): string {
+    return getCodeAgentDefaults(flavor, cliVersion).modelMode;
 }
 
 export function getDefaultPermissionModeKey(flavor: AgentFlavor): string {
