@@ -582,10 +582,10 @@ describe('CodexAppServerClient sandbox integration', () => {
         const client = new CodexAppServerClient();
         (client as any).threadDefaults = { model: 'gpt-default' };
         const request = vi.spyOn(client as any, 'request')
-            .mockResolvedValueOnce({ thread: { path: '/home/.codex/archived_sessions/thread.jsonl' } })
+            .mockResolvedValueOnce({ thread: { path: '/home/.codex/archived_sessions/thread.jsonl', model: 'deepseek-chat' } })
             .mockResolvedValueOnce({})
             .mockResolvedValueOnce({ thread: { id: 'native' }, model: 'deepseek-chat' });
-        expect(await client.resumeThread({ threadId: 'native' })).toEqual({ threadId: 'native', model: 'deepseek-chat' });
+        expect(await client.resumeThread({ threadId: 'native', model: 'deepseek-chat' })).toEqual({ threadId: 'native', model: 'deepseek-chat' });
         expect(request.mock.calls.map(([method]) => method)).toEqual(['thread/read', 'thread/unarchive', 'thread/resume']);
         expect(request.mock.calls[2][1]).toMatchObject({ threadId: 'native', model: null, modelProvider: null });
     });
@@ -624,7 +624,7 @@ describe('CodexAppServerClient sandbox integration', () => {
             .mockRejectedValueOnce(new Error('Model provider `removed` not found'))
             .mockResolvedValueOnce({ config: { model: 'current-model' } })
             .mockResolvedValueOnce({ thread: { id: 'native' }, model: 'current-model' });
-        expect(await client.resumeThread({ threadId: 'native' })).toEqual({ threadId: 'native', model: 'current-model' });
+        expect(await client.resumeThread({ threadId: 'native', model: 'old-model' })).toEqual({ threadId: 'native', model: 'current-model' });
         expect(request.mock.calls[3]).toEqual(['thread/resume', expect.objectContaining({
             threadId: 'native', model: 'current-model', modelProvider: 'openai',
         })]);
