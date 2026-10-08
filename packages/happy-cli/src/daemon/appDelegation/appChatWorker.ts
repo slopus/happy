@@ -43,7 +43,12 @@ export function startAppChatWorker(token: string, machine: Machine, nativeSessio
         const validation = typeof data?.message === 'string' ? data.message : '';
         if (!response.ok && (data?.error?.code === 'snapshot-too-large' || response.status === 400 && /output|ciphertext/.test(validation) && /too big|too_big|maximum|max.*characters/i.test(validation))) throw new Error('snapshot-too-large');
         if (response.status === 404 && path.startsWith('ai-service-worker/')) throw new Error('shared-protocol-unavailable');
-        if (!response.ok) throw new Error(response.status === 409 && data.error === 'codex-account-unbound' ? 'codex-account-unbound' : 'authorization-unavailable');
+        if (!response.ok) {
+            const error=new Error(response.status === 409 && data.error === 'codex-account-unbound' ? 'codex-account-unbound' : 'authorization-unavailable');
+            const code=typeof data?.error==='string' ? data.error : data?.error?.code;
+            if(path.includes('/history/'))Object.assign(error,{code:`history-http-${response.status}-${typeof code==='string' && /^[A-Za-z0-9_-]{1,80}$/.test(code) ? code : 'unknown'}`});
+            throw error;
+        }
         return data as T;
     };
     const recoveryRoot = join(configuration.happyHomeDir, 'app-chat-credentials', createHash('sha256').update(machine.id).digest('hex'));
@@ -131,7 +136,14 @@ export function startAppChatWorker(token: string, machine: Machine, nativeSessio
         }
         if (!release) return;
         let historyBusy=false;
-        const historyTimer=setInterval(()=>{if(historyBusy||lifetime.signal.aborted)return;historyBusy=true;void shared.tickHistory().catch(()=>undefined).finally(()=>{historyBusy=false;});},1000);
+        const historyTimer=setInterval(()=>{if(historyBusy||lifetime.signal.aborted)return;historyBusy=true;void shared.tickHistory().catch(error=>{
+            const value=error instanceof Error ? error : undefined;
+            const code=(value as Error & {code?:unknown})?.code ?? value?.message;
+            logger.debug('[APP CHAT] Native history sync failed',{
+                errorCode:typeof code==='string' && /^[A-Za-z0-9_-]{1,80}$/.test(code) ? code : 'history-sync-failed',
+                stackFrames:value?.stack?.split('\n').slice(1,4).filter(line=>/^\s+at /.test(line)),
+            });
+        }).finally(()=>{historyBusy=false;});},1000);
         try { while (!lifetime.signal.aborted) {
             try {
                 if (!await recoverCredentials()) {

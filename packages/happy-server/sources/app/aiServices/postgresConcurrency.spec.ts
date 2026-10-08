@@ -16,6 +16,7 @@ import { createServiceTurns } from './turns';
 import { createServiceGrants, serviceDigest } from './grants';
 import { codexAccountStore, createServiceCodexGrant } from '@/app/api/routes/codexAccountStore';
 import { initEncrypt } from '@/modules/encrypt';
+import { lockServiceQuota } from './transactions';
 
 const testUrl = process.env.PAWS_TEST_POSTGRES_URL;
 function barrier() {
@@ -116,6 +117,22 @@ describe.skipIf(!testUrl)('real PostgreSQL claim and Account/identity lock order
         }
         throw new Error(`No PostgreSQL lock wait for ${name}`);
     }
+
+    it('retains live history while reclaiming expired quota in Asia/Shanghai', async () => {
+        const f = await fixture();
+        await first.aIServiceHistoryRequest.createMany({ data: [
+            { id: 'live-history', bindingId: f.binding.id, sessionId: 'native', state: 'running', deadline: new Date(Date.now() + 20000) },
+            { id: 'expired-history', bindingId: f.binding.id, sessionId: 'native', state: 'completed', ciphertext: 'x'.repeat(80), deadline: new Date(Date.now() - 120000) },
+        ] });
+        await first.appDelegation.update({ where: { id: f.principal.grantId }, data: { storedBytes: 80 } });
+        await first.$transaction(async tx => {
+            await tx.$executeRaw`SET LOCAL TIME ZONE 'Asia/Shanghai'`;
+            await lockServiceQuota(tx, f.principal.grantId);
+            expect(await tx.aIServiceHistoryRequest.findUnique({ where: { id: 'live-history' } })).not.toBeNull();
+            expect(await tx.aIServiceHistoryRequest.findUnique({ where: { id: 'expired-history' } })).toBeNull();
+            expect((await tx.appDelegation.findUniqueOrThrow({ where: { id: f.principal.grantId } })).storedBytes).toBe(0);
+        });
+    });
 
     it('renews heartbeat liveness while a concurrent claim waits, and rejects expired leases', async () => {
         const f = await fixture(), turns = createServiceTurns(first, f.store);

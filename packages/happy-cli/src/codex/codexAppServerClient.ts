@@ -409,6 +409,7 @@ export class CodexAppServerClient {
         private readonly applicationPolicy?: NativeLaunchPolicy,
     ) {
         this.sandboxConfig = sandboxConfig;
+        this.serviceTier = applicationPolicy?.binding.serviceTier === 'fast' ? 'fast' : 'standard';
     }
 
     get threadId(): string | null {
@@ -1630,16 +1631,22 @@ export class CodexAppServerClient {
             return true;
         } catch (error) {
             logger.warn('[CodexAppServer] Failed to resume thread after reconnect', error);
-            this._threadId = null;
-            this.threadDefaults = null;
-            return false;
+            // A failed resume must not turn the next message into a new conversation.
+            throw error;
         }
     }
 
     async setServiceTier(tier: 'standard' | 'fast'): Promise<boolean> {
         if (tier === this.serviceTier) return false;
+        const previousTier = this.serviceTier;
         this.serviceTier = tier;
-        return await this.reconnectAndResumeThread();
+        try {
+            return await this.reconnectAndResumeThread();
+        } catch (error) {
+            // Retry the same thread on the next request, including the tier transition.
+            this.serviceTier = previousTier;
+            throw error;
+        }
     }
 
     // ─── Turn management ────────────────────────────────────────

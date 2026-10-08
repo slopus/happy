@@ -778,6 +778,47 @@ describe('CodexAppServerClient sandbox integration', () => {
         await client.disconnect();
     });
 
+    it('does not restart an already resumed native fast thread for the same service tier', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const policy = { binding: { serviceTier: 'fast' } } as any;
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {}, policy);
+        const reconnect = vi.spyOn(client, 'reconnectAndResumeThread').mockResolvedValue(true);
+        await expect(client.setServiceTier('fast')).resolves.toBe(false);
+        expect(reconnect).not.toHaveBeenCalled();
+    });
+
+    it('keeps the original thread when service-tier resume fails and retries it instead of starting another', async () => {
+        const requests: MockRpcMessage[] = [];
+        let resumeAttempt = 0;
+        mockSpawn.mockImplementation(() => createMockProcess({
+            pid: 999999,
+            onRequest: (msg, stdout) => {
+                requests.push(msg);
+                if (msg.method === 'thread/resume' && msg.id != null) {
+                    resumeAttempt += 1;
+                    setTimeout(() => pushJsonLine(stdout, resumeAttempt === 2
+                        ? { id: msg.id, error: { code: -32000, message: 'resume unavailable' } }
+                        : { id: msg.id, result: { thread: { id: 'original-thread' }, model: 'gpt-test', reasoningEffort: null } }), 0);
+                }
+            },
+        }));
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient(undefined, { type: 'spawn' }, {});
+        try {
+            await client.connect();
+            await client.resumeThread({ threadId: 'original-thread' });
+            await expect(client.setServiceTier('fast')).rejects.toThrow('resume unavailable');
+            expect(client.threadId).toBe('original-thread');
+            await expect(client.setServiceTier('fast')).resolves.toBe(true);
+            expect(client.threadId).toBe('original-thread');
+            expect(requests.filter(request => request.method === 'thread/resume').map(request => request.params.threadId))
+                .toEqual(['original-thread', 'original-thread', 'original-thread']);
+            expect(requests.some(request => request.method === 'thread/start')).toBe(false);
+        } finally {
+            await client.disconnect();
+        }
+    });
+
     it('reconnects and resumes the same thread after forced restart timeout', async () => {
         const firstProcessRequests: MockRpcMessage[] = [];
         const secondProcessRequests: MockRpcMessage[] = [];

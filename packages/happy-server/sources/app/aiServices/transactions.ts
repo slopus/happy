@@ -29,7 +29,7 @@ export async function lockServiceQuota(tx: Prisma.TransactionClient, grantId: st
         USING "AIServiceBinding" AS binding
         WHERE request."bindingId" = binding."id"
             AND binding."authorizationId" = ${grantId}
-            AND request."deadline" < ${cutoff}
+            AND request."deadline" < (${cutoff}::timestamptz AT TIME ZONE 'UTC')
         RETURNING octet_length(request."ciphertext") AS bytes
     ), released AS (
         SELECT COALESCE(SUM(bytes), 0)::integer AS bytes FROM expired
