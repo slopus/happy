@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { rigMetadataFixture } from '@/sync/__testdata__/rigMetadata';
 import type { Metadata } from '@/sync/storageTypes';
-import { messageSentClient, messageSentSessionProperties } from './messageSentProperties';
+import { messageSentClient, messageSentHarness, messageSentSessionProperties } from './messageSentProperties';
 
 const props = (
     metadata: Metadata | null | undefined,
@@ -124,6 +124,25 @@ describe('messageSentSessionProperties', () => {
         const metadata = { path: '/repo', host: 'mac', flavor: 'claude' } as Metadata;
         expect(props(metadata, {})).toMatchObject({ model: null, effort: null });
         expect(props(null, undefined).session_client).toBeNull();
+    });
+});
+
+describe('messageSentHarness', () => {
+    const cli = (flavor?: string | null) => ({ path: '/r', host: 'h', flavor } as Metadata);
+
+    it('names the CLI agent from an allowlist, folding gpt and openai into codex', () => {
+        for (const flavor of ['claude', 'codex', 'gemini', 'agy', 'opencode', 'openclaw', 'acp']) {
+            expect(messageSentHarness(cli(flavor))).toBe(flavor);
+        }
+        expect(messageSentHarness(cli('gpt'))).toBe('codex');
+        expect(messageSentHarness(cli('openai'))).toBe('codex');
+        expect(messageSentHarness(cli('my_secret_agent'))).toBe('other');
+    });
+
+    it('never reports a Happy Agent flavor, which is the provider account id', () => {
+        expect(messageSentHarness({ ...rigMetadataFixture, flavor: 'claude_extra' })).toBeNull();
+        expect(messageSentHarness(cli(null))).toBeNull();
+        expect(messageSentHarness(null)).toBeNull();
     });
 });
 

@@ -95,6 +95,23 @@ function messageSentTarget(metadata: Metadata | null | undefined): MessageSentTa
     return bot.systemKey === 'chief_of_staff' ? 'chief_of_staff' : 'bot';
 }
 
+export type MessageSentHarness = 'claude' | 'codex' | 'gemini' | 'agy' | 'opencode' | 'openclaw' | 'acp' | 'other';
+
+const CLI_HARNESSES = new Set<string>(['claude', 'codex', 'gemini', 'agy', 'opencode', 'openclaw', 'acp']);
+
+/**
+ * Which agent a Happy CLI session runs, a phone-only extra. Happy Agent sessions
+ * report null: their `flavor` is the provider account id, which never leaves the
+ * device (`model_provider_kind` and `provider_account_hash` cover them).
+ */
+export function messageSentHarness(metadata: Metadata | null | undefined): MessageSentHarness | null {
+    if (!metadata || isRigMetadata(metadata)) return null;
+    const flavor = metadata.flavor?.trim().toLowerCase();
+    if (!flavor) return null;
+    if (flavor === 'gpt' || flavor === 'openai') return 'codex';
+    return CLI_HARNESSES.has(flavor) ? flavor as MessageSentHarness : 'other';
+}
+
 /** Happy Agent writes the session OS as `darwin 25.6.0`, the CLI as bare `darwin`. */
 function agentOs(value: string | null | undefined): AgentOs | null {
     const platform = value?.trim().split(/\s+/)[0]?.toLowerCase();

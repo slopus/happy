@@ -5,7 +5,7 @@ import type { Metadata, Session } from '@/sync/storageTypes';
 import type { MessageModeMeta } from '@/sync/messageMeta';
 import { Platform } from 'react-native';
 import { isTauri } from '@/utils/isTauri';
-import { messageSentClient, messageSentSessionProperties } from './messageSentProperties';
+import { messageSentClient, messageSentHarness, messageSentSessionProperties } from './messageSentProperties';
 import { providerAccountHash } from './providerAccountHash';
 
 // Re-export tracking for direct access
@@ -74,6 +74,7 @@ export function trackMessageSent(
             key ? (providerId) => providerAccountHash(key, providerId) : undefined,
         ),
         source,
+        harness: messageSentHarness(metadata),
         session_started_source: metadata?.startedBy === 'daemon' || metadata?.startedFromDaemon === true
             ? 'daemon'
             : metadata?.startedBy === 'terminal' || metadata?.startedFromDaemon === false
