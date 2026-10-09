@@ -698,7 +698,7 @@ export async function sessionRequestArchiveMetadata(
 }
 
 export async function sessionRestoreMetadata(
-    session: Pick<Session, 'id' | 'metadata' | 'metadataVersion'>,
+    session: Pick<Session, 'id' | 'metadata' | 'metadataVersion'> & Partial<Pick<Session, 'agentState'>>,
 ): Promise<{ version: number; metadata: Metadata }> {
     if (!session.metadata) {
         throw new Error('Session metadata is unavailable');
@@ -707,7 +707,7 @@ export async function sessionRestoreMetadata(
         session.id,
         session.metadata,
         session.metadataVersion,
-        metadata => markSessionRestored(metadata, Date.now()),
+        metadata => markSessionRestored(metadata, Date.now(), session.agentState?.turnStatus),
     );
 }
 

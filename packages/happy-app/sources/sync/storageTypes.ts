@@ -78,6 +78,12 @@ export const MetadataSchema = z.object({
     lifecycleStateSince: z.number().optional(),
     archivedBy: z.string().optional(),
     archiveReason: z.string().optional(),
+    // Restoring an auto-archived application keeps this completed turn visible;
+    // the next completed turn is archived again. Never controls the processor.
+    applicationArchiveRestoredThrough: z.object({
+        updatedAt: z.number(),
+        turnId: z.string().optional(),
+    }).optional(),
     /**
      * Lineage for sessions created via the fork / duplicate flow.
      * `parentSessionId` is the Happy session this one was branched from.
@@ -149,6 +155,7 @@ export interface Session {
     presence: "online" | number, // "online" when active, timestamp when last seen
     todos?: TodoItem[];
     draft?: string | null; // Local draft message, not synced to server
+    hasPendingLocalMessages?: boolean; // Local staging queue / unconfirmed submission, not synced to server
     permissionMode?: string | null; // Local permission mode key, not synced to server
     modelMode?: string | null; // Local model key, not synced to server
     effortLevel?: string | null; // Local effort level key, not synced to server

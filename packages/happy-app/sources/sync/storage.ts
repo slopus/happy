@@ -177,6 +177,7 @@ interface StorageState {
     purchases: Purchases;
     profile: Profile;
     sessions: Record<string, Session>;
+    pendingMessageSessionIds: Set<string>;
     sessionsData: SessionListItem[] | null;  // Legacy - to be removed
     sessionListViewData: SessionListViewItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
@@ -231,6 +232,7 @@ interface StorageState {
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
+    applyPendingMessageSessions: (sessionIds: Set<string>) => void;
     updateSessionPermissionMode: (sessionId: string, mode: string | null) => void;
     updateSessionModelMode: (sessionId: string, mode: string | null) => void;
     updateSessionEffortLevel: (sessionId: string, level: string | null) => void;
@@ -266,9 +268,8 @@ function buildSessionListViewData(
     sessions: Record<string, Session>,
     unreadSessionIds?: Set<string>,
 ): SessionListViewItem[] {
-    // Lifecycle metadata owns archive membership; transport `active` only
-    // represents online presence. Disconnected but resumable sessions stay in
-    // the regular list instead of being mislabeled as archived.
+    // Explicit lifecycle archives and completed application turns share archive
+    // membership. Transport presence alone never implies an archive.
     const regularSessions: Session[] = [];
     const archivedSessions: Session[] = [];
 
@@ -379,6 +380,7 @@ export const storage = create<StorageState>()((set, get) => {
         purchases,
         profile,
         sessions: {},
+        pendingMessageSessionIds: new Set<string>(),
         machines: {},
         artifacts: {},  // Initialize artifacts
         friends: {},  // Initialize relationships cache
@@ -485,6 +487,7 @@ export const storage = create<StorageState>()((set, get) => {
                     ...session,
                     presence,
                     draft: existingSession ? existingDraft ?? null : savedDraft ?? session.draft ?? null,
+                    hasPendingLocalMessages: state.pendingMessageSessionIds.has(session.id),
                     permissionMode: existingSession ? existingSession.permissionMode ?? null : resolvedPermissionMode,
                     modelMode: existingSession ? existingSession.modelMode ?? null : resolvedModelMode,
                     effortLevel: existingSession ? existingSession.effortLevel ?? null : resolvedEffortLevel,
@@ -774,6 +777,9 @@ export const storage = create<StorageState>()((set, get) => {
                 return {
                     ...state,
                     sessions: updatedSessions,
+                    ...(session && isSessionArchived(session) !== isSessionArchived(updatedSessions[sessionId]) ? {
+                        sessionListViewData: buildSessionListViewData(updatedSessions, state.unreadSessionIds),
+                    } : {}),
                     sessionMessages: {
                         ...state.sessionMessages,
                         [sessionId]: {
@@ -1063,6 +1069,24 @@ export const storage = create<StorageState>()((set, get) => {
                 ...updates
             };
         }),
+        applyPendingMessageSessions: (sessionIds) => set((state) => {
+            if (sessionIds.size === state.pendingMessageSessionIds.size
+                && [...sessionIds].every(id => state.pendingMessageSessionIds.has(id))) return state;
+            const sessions = { ...state.sessions };
+            let membershipChanged = false;
+            for (const id of new Set([...state.pendingMessageSessionIds, ...sessionIds])) {
+                const session = sessions[id];
+                if (!session || !!session.hasPendingLocalMessages === sessionIds.has(id)) continue;
+                const updated = { ...session, hasPendingLocalMessages: sessionIds.has(id) };
+                membershipChanged ||= isSessionArchived(session) !== isSessionArchived(updated);
+                sessions[id] = updated;
+            }
+            return {
+                sessions,
+                pendingMessageSessionIds: new Set(sessionIds),
+                ...(membershipChanged ? { sessionListViewData: buildSessionListViewData(sessions, state.unreadSessionIds) } : {}),
+            };
+        }),
         updateSessionDraft: (sessionId: string, draft: string | null) => set((state) => {
             const session = state.sessions[sessionId];
 
@@ -1090,7 +1114,9 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: updatedSessions,
-                sessionListViewData: !!session.draft?.trim() === !!normalizedDraft
+                sessionListViewData: isSessionArchived(session) !== isSessionArchived(updatedSessions[sessionId])
+                    ? buildSessionListViewData(updatedSessions, state.unreadSessionIds)
+                    : !!session.draft?.trim() === !!normalizedDraft
                     ? state.sessionListViewData
                     : state.sessionListViewData?.map(item => {
                         // Keep unread and all other derived flags intact.

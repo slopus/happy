@@ -52,7 +52,8 @@ vi.mock('@/components/tools/knownTools', () => ({
 }));
 
 import { storage } from './storage';
-import { MetadataSchema } from './storageTypes';
+import { AgentStateSchema, MetadataSchema } from './storageTypes';
+import { markSessionRestored } from '@/utils/sessionLifecycle';
 import { normalizeRawMessage } from './typesRaw';
 import * as persistence from './persistence';
 
@@ -72,6 +73,7 @@ describe('storage session lifecycle', () => {
     beforeEach(() => {
         storage.setState({
             sessions: {},
+            pendingMessageSessionIds: new Set(),
             sessionsData: null,
             sessionListViewData: null,
             sessionMessages: {},
@@ -230,4 +232,69 @@ it('preserves application identity across schema parsing, archived projection an
         metadata: MetadataSchema.parse({ ...metadata, summary: { text: 'Renamed', updatedAt: 2 }, lifecycleState: 'active', hostPid: 123 }) }]);
     const rows = storage.getState().sessionListViewData!.flatMap(item => item.type === 'active-sessions' ? item.sessions : []);
     expect(rows).toContainEqual(expect.objectContaining({ id: 'native-app', application, name: 'Renamed' }));
+});
+
+it('moves warm application turns into the actual archive projection, survives reload and preserves followups', () => {
+    const metadata = MetadataSchema.parse({ path: '/app', host: 'mac', lifecycleState: 'running', application: { appId: 'advisor', bindingId: 'b' } });
+    const completed = AgentStateSchema.parse({ turnStatus: { status: 'completed', turnId: 'one', updatedAt: 10 } });
+    const session = { id: 'warm-app', seq: 1, createdAt: 1, updatedAt: 10, active: true, activeAt: Date.now(),
+        metadata, metadataVersion: 1, agentState: completed, agentStateVersion: 1, thinking: false, thinkingAt: 0 };
+    const archivedRow = () => storage.getState().sessionListViewData?.find(item => item.type === 'session' && item.session.id === session.id);
+    const currentRows = () => storage.getState().sessionListViewData?.flatMap(item => item.type === 'active-sessions' ? item.sessions : []) ?? [];
+    storage.getState().applySessions([session], { replace: true });
+    expect(archivedRow()).toMatchObject({ session: { archived: true, active: true } });
+    expect(currentRows()).toHaveLength(0);
+    // Reloading the same persisted data retains archive membership, without a browser side effect.
+    storage.getState().applySessions([JSON.parse(JSON.stringify(session))], { replace: true });
+    expect(archivedRow()).toBeDefined();
+    storage.getState().updateSessionDraft(session.id, 'next question');
+    expect(archivedRow()).toBeUndefined();
+    expect(currentRows()).toEqual([expect.objectContaining({ id: session.id, archived: false, hasDraft: true })]);
+    storage.getState().updateSessionDraft(session.id, null);
+    expect(archivedRow()).toBeDefined();
+    const restored = MetadataSchema.parse(markSessionRestored(metadata, 20, completed.turnStatus));
+    storage.getState().applySessions([{ ...session, metadata: restored, metadataVersion: 2 }]);
+    expect(archivedRow()).toBeUndefined();
+    storage.getState().applySessions([{ ...session, metadata: restored, metadataVersion: 2, agentStateVersion: 2,
+        agentState: { turnStatus: { status: 'running', turnId: 'two', updatedAt: 30 } } }]);
+    expect(archivedRow()).toBeUndefined();
+    storage.getState().applySessions([{ ...session, metadata: restored, metadataVersion: 2, agentStateVersion: 3,
+        agentState: { turnStatus: { status: 'completed', turnId: 'two', updatedAt: 40 } } }]);
+    expect(archivedRow()).toMatchObject({ session: { archived: true, active: true } });
+});
+
+it('rebuilds archive rows when ready arrives after the durable completed outcome', () => {
+    const metadata = MetadataSchema.parse({ path: '/app', host: 'mac', application: { appId: 'advisor', bindingId: 'b' } });
+    storage.getState().applySessions([{ id: 'ready-later', seq: 1, createdAt: 1, updatedAt: 10, active: true, activeAt: Date.now(),
+        metadata, metadataVersion: 1, agentState: { turnStatus: { status: 'completed', turnId: 'one', updatedAt: 10 } },
+        agentStateVersion: 1, thinking: true, thinkingAt: 5 }], { replace: true });
+    expect(storage.getState().sessionListViewData?.[0]).toMatchObject({ type: 'active-sessions' });
+    storage.getState().applyMessages('ready-later', [{ id: 'ready', localId: null, createdAt: 10,
+        role: 'event', content: { type: 'ready' }, isSidechain: false }]);
+    expect(storage.getState().sessionListViewData).toContainEqual(expect.objectContaining({
+        type: 'session', session: expect.objectContaining({ id: 'ready-later', archived: true, active: true }),
+    }));
+    expect(storage.getState().sessionListViewData?.some(item => item.type === 'active-sessions')).toBe(false);
+});
+
+it('keeps locally staged input current across session reloads and delayed hydration', () => {
+    const metadata = MetadataSchema.parse({ path: '/app', host: 'mac', application: { appId: 'advisor', bindingId: 'b' } });
+    const session = { id: 'pending-app', seq: 1, createdAt: 1, updatedAt: 10, active: false, activeAt: 1,
+        metadata, metadataVersion: 1, agentState: AgentStateSchema.parse({ turnStatus: { status: 'completed', turnId: 'one', updatedAt: 10 } }),
+        agentStateVersion: 1, thinking: false, thinkingAt: 0 };
+    const row = () => storage.getState().sessionListViewData?.flatMap(item => item.type === 'session' ? [item.session]
+        : item.type === 'active-sessions' ? item.sessions : []).find(item => item.id === session.id);
+    storage.getState().applyPendingMessageSessions(new Set([session.id]));
+    storage.getState().applySessions([session], { replace: true });
+    expect(row()).toMatchObject({ archived: false });
+    storage.getState().applySessions([JSON.parse(JSON.stringify(session))], { replace: true });
+    expect(row()).toMatchObject({ archived: false });
+    storage.getState().applyPendingMessageSessions(new Set());
+    expect(row()).toMatchObject({ archived: true });
+    storage.getState().applyPendingMessageSessions(new Set([session.id]));
+    expect(row()).toMatchObject({ archived: false });
+    const currentState = storage.getState();
+    storage.getState().applyPendingMessageSessions(new Set([session.id]));
+    expect(storage.getState()).toBe(currentState); // Queue/storage subscriptions must settle without recursion.
+    storage.getState().applyPendingMessageSessions(new Set());
 });

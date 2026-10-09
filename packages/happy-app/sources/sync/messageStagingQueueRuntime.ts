@@ -1,7 +1,7 @@
 import { v4 as uuid } from 'uuid';
 import { accountRuntimeCurrent } from '@/auth/accountRuntime';
 import { resolveSessionState } from '@/utils/sessionUtils';
-import { isSessionArchived } from '@/utils/sessionLifecycle';
+import { isArchivedLifecycleState } from '@/utils/sessionLifecycle';
 import { createMessageStagingQueue } from './messageStagingQueue';
 import { clearMessageStagingStorage, initializeMessageStagingPersistence, messageStagingPersistence } from './messageStagingQueuePersistence';
 import { storage } from './storage';
@@ -19,7 +19,7 @@ export const messageStagingQueue = createMessageStagingQueue({
         const resolved = resolveSessionState(session);
         return {
             connected: accountRuntimeCurrent() && !!sync.getCredentials()
-                && !isSessionArchived(session) && state.socketStatus === 'connected' && resolved.isConnected,
+                && !isArchivedLifecycleState(session.metadata?.lifecycleState) && state.socketStatus === 'connected' && resolved.isConnected,
             state: resolved.state,
             turnId: session.agentState?.turnStatus?.turnId,
             terminal: ['completed', 'cancelled', 'failed'].includes(session.agentState?.turnStatus?.status ?? ''),
@@ -52,6 +52,15 @@ export const messageStagingQueue = createMessageStagingQueue({
         if (!accountRuntimeCurrent() || sync.getCredentials() !== credentials) throw new Error('Account changed');
         return sessionSteer(message.sessionId, { text: message.text, expectedTurnId, clientMessageId: message.id, images });
     },
+});
+
+// A transport acknowledgement is not proof that the next turn has run. Keep
+// both staged messages (including failures) and submission barriers visible.
+messageStagingQueue.subscribe(() => {
+    const snapshot = messageStagingQueue.getSnapshot();
+    storage.getState().applyPendingMessageSessions(new Set([
+        ...snapshot.messages.map(message => message.sessionId), ...Object.keys(snapshot.barriers),
+    ]));
 });
 
 let ready: Promise<void> | undefined;

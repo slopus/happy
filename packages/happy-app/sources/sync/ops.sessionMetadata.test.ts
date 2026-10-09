@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { sessionUpdateMetadata } from './ops';
+import { sessionRestoreMetadata, sessionUpdateMetadata } from './ops';
 
 const mocks = vi.hoisted(() => ({
     encryptRaw: vi.fn(async (metadata: unknown) => `encrypted:${JSON.stringify(metadata)}`),
@@ -52,6 +52,18 @@ describe('sessionUpdateMetadata', () => {
             version: 3,
             metadata: { path: '/repo', host: 'mac', summary: { text: 'New title', updatedAt: 123 } },
         });
+    });
+
+    it('persists an application restore for the observed turn through metadata conflict recovery', async () => {
+        const metadata = { path: '/app', host: 'mac', application: { appId: 'advisor', bindingId: 'b' } };
+        mocks.emitWithAck.mockResolvedValueOnce({ result: 'version-mismatch', version: 2,
+            metadata: `encrypted:${JSON.stringify({ ...metadata, summary: { text: 'new title', updatedAt: 11 } })}` });
+        mocks.emitWithAck.mockImplementationOnce(async (_event, request) => ({ result: 'success', version: 3, metadata: request.metadata }));
+        const result = await sessionRestoreMetadata({ id: 'app', metadata, metadataVersion: 1,
+            agentState: { turnStatus: { status: 'completed', turnId: 'observed', updatedAt: 10 } } });
+        expect(result.metadata.applicationArchiveRestoredThrough).toEqual({ turnId: 'observed', updatedAt: 10 });
+        expect(result.metadata.summary?.text).toBe('new title');
+        expect(mocks.emitWithAck.mock.calls.map(([method]) => method)).toEqual(['update-metadata', 'update-metadata']);
     });
 
     it('retries after a metadata version mismatch using the latest server metadata', async () => {

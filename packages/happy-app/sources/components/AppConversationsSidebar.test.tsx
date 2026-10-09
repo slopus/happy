@@ -1,18 +1,24 @@
 import * as React from 'react';
 import { act } from 'react';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 // @ts-expect-error react-test-renderer has no declarations
 import TestRenderer from 'react-test-renderer';
 import { AppConversationsSidebar } from './AppConversationsSidebar';
 
-const mocks = vi.hoisted(() => ({ navigate: vi.fn(), rows: [] as any[], token: 'owner' }));
-vi.mock('react-native', () => ({ ActivityIndicator: 'ActivityIndicator', AppState: { currentState: 'active', addEventListener: () => ({ remove() {} }) }, Platform: { OS: 'web' }, Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text', View: 'View', useWindowDimensions: () => ({ width: 400 }) }));
+const mocks = vi.hoisted(() => ({ navigate: vi.fn(), rows: [] as any[], token: 'owner',
+    onAppStateChange: undefined as undefined | ((state: string) => void),
+    request: vi.fn(async (_token: string, path: string) => path === '' ? { grants: [{ id: 'grant', appId: 'advisor', machineId: null }] } : { conversations: [{ id: 'legacy', grantId: 'grant', createdAt: 1, lastActivityAt: 1, turns: [] }], nextCursor: null }),
+}));
+vi.mock('react-native', () => ({ ActivityIndicator: 'ActivityIndicator', AppState: { currentState: 'active', addEventListener: (_event: string, listener: (state: string) => void) => {
+    mocks.onAppStateChange = listener;
+    return { remove() { mocks.onAppStateChange = undefined; } };
+} }, Platform: { OS: 'web' }, Pressable: 'Pressable', ScrollView: 'ScrollView', Text: 'Text', View: 'View', useWindowDimensions: () => ({ width: 400 }) }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 vi.mock('react-native-unistyles', () => ({ StyleSheet: { create: (f: any) => f({ colors: {} }) }, useUnistyles: () => ({ theme: { colors: {} } }) }));
 vi.mock('@/auth/AuthContext', () => ({ useAuth: () => ({ credentials: { token: mocks.token } }) }));
 vi.mock('@/sync/storage', () => ({ useAllMachines: () => [], useSessionListViewData: () => mocks.rows }));
 vi.mock('@/sync/serverConfig', () => ({ getServerUrl: () => 'https://paws.test' }));
-vi.mock('@/sync/apiAppDelegation', () => ({ isAppGrantActive: () => true, appAuthorizationRequest: async (_token: string, path: string) => path === '' ? { grants: [{ id: 'grant', appId: 'advisor', machineId: null }] } : { conversations: [{ id: 'legacy', grantId: 'grant', createdAt: 1, lastActivityAt: 1, turns: [] }], nextCursor: null } }));
+vi.mock('@/sync/apiAppDelegation', () => ({ isAppGrantActive: () => true, appAuthorizationRequest: mocks.request }));
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
 vi.mock('@/modal', () => ({ Modal: {} }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
@@ -22,10 +28,50 @@ vi.mock('./AppConnectionsMenu', () => ({ AppConnectionsMenu: 'AppConnectionsMenu
 vi.mock('./ActiveSessionsGroupCompact', () => ({ CompactSessionRow: (props: any) => React.createElement('CompactSessionRow', props) }));
 
 describe('application session directory', () => {
+    beforeEach(() => { mocks.request.mockClear(); mocks.rows = []; });
+    afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+
+    it('does not poll while idle, but refreshes on foreground and explicit refresh', async () => {
+        vi.useFakeTimers();
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<AppConversationsSidebar />); });
+        expect(mocks.request).toHaveBeenCalledTimes(2);
+        await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+        expect(mocks.request).toHaveBeenCalledTimes(2);
+        await act(async () => { mocks.onAppStateChange?.('active'); });
+        expect(mocks.request).toHaveBeenCalledTimes(4);
+        await act(async () => { renderer.root.findAllByProps({ accessibilityLabel: 'appConversations.refresh' })
+            .find((node: any) => node.type === 'Pressable').props.onPress(); });
+        expect(mocks.request).toHaveBeenCalledTimes(6);
+        act(() => renderer.unmount());
+        expect(mocks.onAppStateChange).toBeUndefined();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
+    it('loads a background-opened web panel on visibility and cleans up listeners when hidden', async () => {
+        const page = Object.assign(new EventTarget(), { hidden: true });
+        vi.stubGlobal('document', page);
+        let renderer: any;
+        await act(async () => { renderer = TestRenderer.create(<AppConversationsSidebar />); });
+        expect(mocks.request).not.toHaveBeenCalled();
+        await act(async () => {
+            page.hidden = false;
+            page.dispatchEvent(new Event('visibilitychange'));
+            mocks.onAppStateChange?.('active'); // The same foreground transition coalesces in-flight requests.
+        });
+        expect(mocks.request).toHaveBeenCalledTimes(2);
+        await act(async () => { renderer.update(<AppConversationsSidebar visible={false} />); });
+        await act(async () => { page.dispatchEvent(new Event('visibilitychange')); });
+        expect(mocks.request).toHaveBeenCalledTimes(2);
+        expect(mocks.onAppStateChange).toBeUndefined();
+        act(() => renderer.unmount());
+    });
+
     it('automatically collects completed and archived rows into expandable history, and restores continued turns', async () => {
         const application = { appId: 'advisor', bindingId: 'binding' };
         mocks.rows = [
-            { type: 'active-sessions', sessions: [{ id: 'ordinary', name: 'advisor' }, { id: 'native', application, state: 'running' }, { id: 'completed', application, state: 'completed' }, { id: 'draft', application, state: 'completed', hasDraft: true }, { id: 'permission', application, state: 'permission_required' }] },
+            { type: 'active-sessions', sessions: [{ id: 'ordinary', name: 'advisor' }, { id: 'native', application, state: 'running' }, { id: 'draft', application, state: 'completed', hasDraft: true }, { id: 'permission', application, state: 'permission_required' }] },
+            { type: 'session', session: { id: 'completed', application, state: 'completed', archived: true } },
             { type: 'header', title: 'Yesterday' },
             { type: 'session', session: { id: 'archived', application, archived: true } },
         ];
@@ -37,7 +83,8 @@ describe('application session directory', () => {
         act(() => toggle().props.onPress());
         expect(renderer.root.findAllByType('CompactSessionRow').map((row: any) => row.props.session.id)).toEqual(['native', 'draft', 'permission', 'completed', 'archived']);
         act(() => toggle().props.onPress());
-        mocks.rows = [{ type: 'active-sessions', sessions: [{ id: 'completed', application, state: 'running' }] }];
+        // An explicitly restored completed turn stays current, even before a followup.
+        mocks.rows = [{ type: 'active-sessions', sessions: [{ id: 'completed', application, state: 'completed', archived: false }] }];
         await act(async () => { renderer.update(<AppConversationsSidebar />); });
         expect(renderer.root.findAllByType('CompactSessionRow').map((row: any) => row.props.session.id)).toEqual(['completed']);
 

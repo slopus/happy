@@ -109,9 +109,18 @@ export function AppConversationsSidebar({ visible = true, showTitle = true, onNa
             }
         };
         void load();
-        const timer = setInterval(() => void load(), 10_000);
+        // Native session state already arrives through sync. Fetch the legacy
+        // directory on entry/foreground or explicit actions, never on a timer.
         const subscription = AppState.addEventListener('change', state => { if (state === 'active') void load(); });
-        return () => { disposed = true; controller.abort(); clearInterval(timer); subscription.remove(); };
+        const documentTarget = Platform.OS === 'web' && typeof document !== 'undefined' ? document : undefined;
+        const onVisibilityChange = () => { if (!documentTarget?.hidden) void load(); };
+        documentTarget?.addEventListener('visibilitychange', onVisibilityChange);
+        return () => {
+            disposed = true;
+            controller.abort();
+            subscription.remove();
+            documentTarget?.removeEventListener('visibilitychange', onVisibilityChange);
+        };
     }, [token, server, cursor, revision, visible]);
 
     const changeGrant = async (grant: AppAuthorizationGrant, remove: boolean) => {
@@ -139,10 +148,9 @@ export function AppConversationsSidebar({ visible = true, showTitle = true, onNa
             {groups.map(appId => {
                 const app = appInfo(appId);
                 const appSessions = nativeSessions.filter(session => session.application?.appId === appId);
-                // Completed application turns belong in history even while their
-                // processor remains online for safe followups. Never stop execution
-                // as a side effect of organizing this directory.
-                const inHistory = (session: typeof appSessions[number]) => session.archived || (session.state === 'completed' && !session.hasDraft);
+                // Use the same archive policy as history, row actions and storage,
+                // including an explicit restore of the current completed turn.
+                const inHistory = (session: typeof appSessions[number]) => session.archived;
                 const currentSessions = appSessions.filter(session => !inHistory(session));
                 const historySessions = appSessions.filter(inHistory);
                 const ids = new Set(grants.filter(grant => grant.appId === appId).map(grant => grant.id));
