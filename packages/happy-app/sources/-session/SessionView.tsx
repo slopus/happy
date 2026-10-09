@@ -976,6 +976,7 @@ export function SessionViewLoaded({
                     // allowed to continue its turn.
                     const accepted = await sync.sendMessage(sessionId, liveMessage, {
                         source: 'chat',
+                        sendMode: storage.getState().settings.agentInputSendMode,
                         attachments,
                         awaitDelivery: communicationsToDismiss.length > 0,
                         onAccepted: () => {

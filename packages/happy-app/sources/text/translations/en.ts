@@ -1,4 +1,4 @@
-import type { TranslationStructure } from '../_default';
+import { en as defaultEnglish, type TranslationStructure } from '../_default';
 
 /**
  * English plural helper function
@@ -473,6 +473,7 @@ export const en: TranslationStructure = {
     },
 
     agentInput: {
+        sendMode: defaultEnglish.agentInput.sendMode,
         permissionMode: {
             title: 'PERMISSION MODE',
             auto: 'asks when unsure',

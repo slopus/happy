@@ -471,6 +471,7 @@ export const ru: TranslationStructure = {
     },
 
     agentInput: {
+        sendMode: en.agentInput.sendMode,
         permissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ',
             auto: 'решает сам, спрашивает при сомнении',

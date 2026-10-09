@@ -22,7 +22,7 @@ import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useLayoutDimensions } from '@/utils/responsive';
-import { useSetting } from '@/sync/storage';
+import { useSetting, useSettingMutable } from '@/sync/storage';
 import { hackMode, hackModes } from '@/sync/modeHacks';
 import { getPermissionModeMenuLabel, getPermissionModeShortLabel } from '@/utils/permissionModeLabels';
 import { getUsageLimitDisplayPercentage, getUsageLimitRows, formatUsageLimitResetTime, type UsageLimitsLike } from '@/utils/sessionStatusBar';
@@ -369,6 +369,14 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingHorizontal: 0,
     },
     mobileActionButtonsContainer: MOBILE_ACTION_ROW_GEOMETRY,
+    mobileSendModes: {
+        alignSelf: 'flex-end',
+        minHeight: 28,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        paddingHorizontal: 8,
+    },
     mobileActionMiddle: MOBILE_MIDDLE_GEOMETRY,
     mobileIconButton: MOBILE_ICON_ACTION_GEOMETRY,
     mobileModelMenuFrame: MOBILE_MODEL_MENU_GEOMETRY.frame,
@@ -846,6 +854,8 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const useNativeSettingsMenus = shouldUseExpoNativeSettingsMenu(Platform.OS, runningOnMac);
     const activeSendIconColor = compactMobileComposer ? theme.colors.text : theme.colors.button.primary.tint;
     const isSendBlocked = props.blockSend ?? false;
+    const [sendMode, setSendMode] = useSettingMutable('agentInputSendMode');
+    const showSendMode = compactMobileComposer && props.metadata?.supportsSteering === true;
 
     // `hasText` drives only the send-button appearance/enabled state. It's
     // updated via startTransition from the keystroke handler so a busy reducer
@@ -2002,6 +2012,26 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             lineHeight={compactMobileComposer ? MOBILE_COMPOSER_METRICS.inputLineHeight : undefined}
                         />
                     </View>
+
+                    {showSendMode && (
+                        <View style={styles.mobileSendModes}>
+                            {(['queue', 'steer'] as const).map(mode => (
+                                <BubblePressable
+                                    key={mode}
+                                    onPress={() => setSendMode(mode)}
+                                    hitSlop={6}
+                                    accessibilityRole="radio"
+                                    accessibilityState={{ selected: sendMode === mode }}
+                                    accessibilityLabel={`${t('agentInput.sendMode.title')}: ${t(`agentInput.sendMode.${mode}`)}`}
+                                    accessibilityHint={t(`agentInput.sendMode.${mode}Description`)}
+                                >
+                                    <Text style={[styles.mobileModeText, { color: sendMode === mode ? theme.colors.text : theme.colors.textSecondary }]}>
+                                        {t(`agentInput.sendMode.${mode}`)}
+                                    </Text>
+                                </BubblePressable>
+                            ))}
+                        </View>
+                    )}
 
                     {compactMobileComposer ? (
                     /* The action order mirrors the expanded Home composer:

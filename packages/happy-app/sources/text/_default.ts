@@ -478,6 +478,13 @@ export const en = {
     },
 
     agentInput: {
+        sendMode: {
+            title: 'SEND FOLLOW-UPS',
+            queue: 'Queue',
+            queueDescription: 'Send after the current turn finishes',
+            steer: 'Steer',
+            steerDescription: 'Guide the current turn while it runs',
+        },
         permissionMode: {
             // Modes are named with one untranslated word so they fit the
             // composer chip; these strings describe them under that name.
