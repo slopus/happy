@@ -1,13 +1,14 @@
 import * as React from 'react';
-import { Linking, Platform, Pressable, ScrollView, Text, View } from 'react-native';
+import { AccessibilityInfo, BackHandler, Platform, Pressable, ScrollView, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { RoundButton } from '../RoundButton';
 import { TerminalBlock } from './TerminalBlock';
 import { OnboardingHeader } from './OnboardingHeader';
+import { OnboardingScreen } from './OnboardingScreen';
+import { ChecklistRow, LinkComputerContent, type LinkChecklistStep } from './OnboardingContent';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { useAllMachines, useLocalSettingMutable } from '@/sync/storage';
 import { collectMachineChoices } from '@/sync/machineChoices';
@@ -15,87 +16,17 @@ import { Modal } from '@/modal';
 import { trackConnectAttempt } from '@/track';
 import { t } from '@/text';
 import { getServerInfo } from '@/sync/serverConfig';
-import { openExternalUrl } from '@/utils/openExternalUrl';
-
-const DESKTOP_URL = 'https://happy.engineering';
 
 /**
- * Where somebody stuck on this screen can turn, and to whom. The same list
- * the desktop app offers during its own setup.
- */
-const HELP_ISSUES = { label: () => t('onboarding.helpIssues'), url: 'https://github.com/slopus/happy/issues' };
-const HELP_DISCORD = { label: () => t('onboarding.helpDiscord'), url: 'https://discord.gg/fX9WBAhyfD' };
-const HELP_LINKS: readonly { label: () => string; url: string }[] = Platform.OS === 'android'
-    // Android's native alert shows at most three buttons and drops the rest,
-    // Cancel included, so it gets the two public places plus Cancel.
-    ? [HELP_DISCORD, HELP_ISSUES]
-    : [
-        HELP_DISCORD,
-        { label: () => t('onboarding.helpBra1nDump'), url: 'https://x.com/bra1n_dump' },
-        { label: () => t('onboarding.helpEx3ndr'), url: 'https://x.com/Ex3NDR' },
-        HELP_ISSUES,
-    ];
-
-/**
- * How long to keep saying "connected" after a successful scan while the linked
+ * How long to keep the button busy after a successful scan while the linked
  * machine syncs in. The screen underneath swaps itself out the moment the
  * machine arrives; this only bounds how long the button stays busy if it never
  * does.
  */
 const MACHINE_ARRIVAL_TIMEOUT_MS = 10_000;
 
-/** Room kept under the checklist so the corner button never covers its last row. */
-const GET_HELP_RESERVED_HEIGHT = 56;
-const SCROLL_BOTTOM_PADDING = 48;
-
-type ChecklistRowProps = {
-    checked: boolean;
-    title: React.ReactNode;
-    /** Tapping the row toggles it. Rows without this are read-only. */
-    onToggle?: () => void;
-    /** Stays visible when the completion checkbox changes. */
-    children?: React.ReactNode;
-};
-
-/**
- * Completion changes only the checkbox; instructions and layout stay put.
- */
-const ChecklistRow = React.memo(function ChecklistRow({
-    checked,
-    title,
-    onToggle,
-    children,
-}: ChecklistRowProps) {
-    const { theme } = useUnistyles();
-    const box = (
-        <Ionicons
-            name={checked ? 'checkmark-circle' : 'ellipse-outline'}
-            size={26}
-            color={checked ? theme.colors.success : theme.colors.textSecondary}
-        />
-    );
-    return (
-        <View style={styles.row}>
-            <Pressable
-                onPress={onToggle}
-                disabled={!onToggle}
-                accessibilityRole={onToggle ? 'checkbox' : undefined}
-                accessibilityState={onToggle ? { checked } : undefined}
-                hitSlop={8}
-                style={styles.rowHead}
-            >
-                <View style={styles.box}>{box}</View>
-                <Text style={styles.rowTitle}>{title}</Text>
-            </Pressable>
-            {children ? (
-                <View style={styles.rowBody}>{children}</View>
-            ) : null}
-        </View>
-    );
-});
-
-function useScanActions(onSuccess: () => void) {
-    const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal({ onSuccess });
+function useScanActions(options: { onSuccess: () => void; onError?: () => void }) {
+    const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal(options);
 
     const scan = React.useCallback(() => {
         trackConnectAttempt();
@@ -122,237 +53,186 @@ function useScanActions(onSuccess: () => void) {
 }
 
 /**
- * The link-your-computer checklist. `link` is the first run: nothing is
- * linked yet, two preparation boxes and the pairing actions. `offline` is
- * the list once a computer is linked but none can be reached: the install
- * box is already ticked and the job is to get Happy running again.
+ * A scan that went through, kept busy until the linked machine syncs in and
+ * the screen is replaced. One that never brings a machine in gets its button
+ * back after a while, so a person is not stuck on a spinner with nothing to tap.
  */
-export const LinkComputerChecklist = React.memo(function LinkComputerChecklist({
-    variant,
-    onShowArchived,
-    bottomInset = 0,
-}: {
-    variant: 'link' | 'offline';
-    /** Archive-only accounts keep a way to their archive while offline. */
-    onShowArchived?: () => void;
-    /** Extra room under the content for anything floating over it. */
-    bottomInset?: number;
-}) {
-    const router = useRouter();
-    const machines = useAllMachines({ includeOffline: true });
-    const choices = React.useMemo(() => collectMachineChoices(machines), [machines]);
-    const [ticked, setTicked] = useLocalSettingMutable('linkComputerChecklist');
+function useApproved() {
     const [approved, setApproved] = React.useState(false);
-    const { scan, pasteLink, isLoading } = useScanActions(() => setApproved(true));
-
-    // A scan that never brings a machine in gets its button back after a
-    // while, so a person is not stuck on a spinner with nothing to tap.
     React.useEffect(() => {
         if (!approved) return;
         const timer = setTimeout(() => setApproved(false), MACHINE_ARRIVAL_TIMEOUT_MS);
         return () => clearTimeout(timer);
     }, [approved]);
+    return [approved, setApproved] as const;
+}
 
-    const toggle = React.useCallback((key: 'install' | 'open') => {
-        setTicked({ ...ticked, [key]: !ticked[key] });
-    }, [setTicked, ticked]);
+/**
+ * The checklist once a computer is linked but none can be reached: the
+ * install box is already ticked and the job is to get Happy running again.
+ */
+export const LinkComputerChecklist = React.memo(function LinkComputerChecklist({
+    onShowArchived,
+}: {
+    /** Archive-only accounts keep a way to their archive while offline. */
+    onShowArchived?: () => void;
+}) {
+    const router = useRouter();
+    const machines = useAllMachines({ includeOffline: true });
+    const choices = React.useMemo(() => collectMachineChoices(machines), [machines]);
+    const [approved, setApproved] = useApproved();
+    const scanOptions = React.useMemo(() => ({ onSuccess: () => setApproved(true) }), [setApproved]);
+    const { scan, isLoading } = useScanActions(scanOptions);
 
     const busy = isLoading || approved;
     const canScan = Platform.OS !== 'web';
 
-    const openDesktopSite = React.useCallback(() => {
-        void Linking.openURL(DESKTOP_URL);
-    }, []);
-
-    const downloadLine = (
-        <Text style={styles.body}>
-            {t('onboarding.installBodyPrefix')}
-            <Text style={styles.link} accessibilityRole="link" onPress={openDesktopSite}>
-                {t('onboarding.installBodyLink')}
-            </Text>
-            {t('onboarding.installBodySuffix')}
-        </Text>
-    );
-
-    const scanActions = (
-        <View style={[styles.actions, styles.scanActions]}>
-            {canScan ? (
-                <View style={styles.button}>
-                    <RoundButton
-                        title={approved ? t('onboarding.connecting') : t('onboarding.scanButton')}
-                        loading={busy}
-                        onPress={scan}
+    const title = choices.length === 1
+        ? t('onboarding.offlineTitleOne', { name: choices[0].name })
+        : t('onboarding.offlineTitleMany');
+    const linked = choices.length === 1
+        ? t('onboarding.offlineLinkedStep', { name: choices[0].name })
+        : t('onboarding.offlineLinkedStepMany', { count: choices.length });
+    return (
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+            <View style={styles.content}>
+                <Text style={styles.title}>{title}</Text>
+                <ChecklistRow checked title={linked} />
+                <ChecklistRow checked={false} title={t('onboarding.offlineOpenStep')}>
+                    <Text style={styles.body}>{t('onboarding.offlineOpenBody')}</Text>
+                    <TerminalBlock
+                        style={styles.terminal}
+                        lines={[{ kind: 'command', text: t('onboarding.terminalRun') }]}
                     />
-                </View>
-            ) : null}
-            <View style={styles.button}>
-                <RoundButton
-                    size="normal"
-                    display={canScan ? 'inverted' : 'default'}
-                    title={t('onboarding.pasteLink')}
-                    disabled={busy}
-                    onPress={() => { void pasteLink(); }}
-                />
-            </View>
-        </View>
-    );
-
-    if (variant === 'offline') {
-        const title = choices.length === 1
-            ? t('onboarding.offlineTitleOne', { name: choices[0].name })
-            : t('onboarding.offlineTitleMany');
-        const linked = choices.length === 1
-            ? t('onboarding.offlineLinkedStep', { name: choices[0].name })
-            : t('onboarding.offlineLinkedStepMany', { count: choices.length });
-        return (
-            <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: SCROLL_BOTTOM_PADDING + bottomInset }]} keyboardShouldPersistTaps="handled">
-                <View style={styles.content}>
-                    <Text style={styles.title}>{title}</Text>
-                    <ChecklistRow checked title={linked} />
-                    <ChecklistRow checked={false} title={t('onboarding.offlineOpenStep')}>
-                        <Text style={styles.body}>{t('onboarding.offlineOpenBody')}</Text>
-                        <TerminalBlock
-                            style={styles.terminal}
-                            lines={[{ kind: 'command', text: t('onboarding.terminalRun') }]}
+                </ChecklistRow>
+                <View style={styles.actions}>
+                    <View style={styles.button}>
+                        <RoundButton
+                            title={t('onboarding.offlineTroubleshoot')}
+                            onPress={() => router.push('/troubleshoot')}
                         />
-                    </ChecklistRow>
-                    <View style={styles.actions}>
+                    </View>
+                    {canScan ? (
                         <View style={styles.button}>
                             <RoundButton
-                                title={t('onboarding.offlineTroubleshoot')}
-                                onPress={() => router.push('/troubleshoot')}
+                                size="normal"
+                                display="inverted"
+                                title={approved ? t('onboarding.linking') : t('onboarding.linkAnother')}
+                                loading={busy}
+                                onPress={scan}
                             />
                         </View>
-                        {canScan ? (
-                            <View style={styles.button}>
-                                <RoundButton
-                                    size="normal"
-                                    display="inverted"
-                                    title={approved ? t('onboarding.connecting') : t('onboarding.linkAnother')}
-                                    loading={busy}
-                                    onPress={scan}
-                                />
-                            </View>
-                        ) : null}
-                        {onShowArchived ? (
-                            <View style={styles.button}>
-                                <RoundButton
-                                    size="normal"
-                                    display="inverted"
-                                    title={t('sidebar.showArchived')}
-                                    onPress={onShowArchived}
-                                />
-                            </View>
-                        ) : null}
-                    </View>
+                    ) : null}
+                    {onShowArchived ? (
+                        <View style={styles.button}>
+                            <RoundButton
+                                size="normal"
+                                display="inverted"
+                                title={t('sidebar.showArchived')}
+                                onPress={onShowArchived}
+                            />
+                        </View>
+                    ) : null}
                 </View>
-            </ScrollView>
-        );
-    }
-
-    return (
-        <ScrollView contentContainerStyle={[styles.scroll, styles.scrollCentered, { paddingBottom: SCROLL_BOTTOM_PADDING + bottomInset }]} keyboardShouldPersistTaps="handled">
-            <View style={styles.content}>
-                <ChecklistRow
-                    checked={!!ticked.install}
-                    title={t('onboarding.installStep')}
-                    onToggle={() => toggle('install')}
-                >
-                    {downloadLine}
-                </ChecklistRow>
-                <ChecklistRow
-                    checked={!!ticked.open}
-                    title={t('onboarding.openStep')}
-                    onToggle={() => toggle('open')}
-                >
-                    <Text style={styles.body}>{t('onboarding.openBody')}</Text>
-                </ChecklistRow>
-                {scanActions}
-                {approved ? (
-                    <Text style={[styles.body, styles.connected]}>{t('onboarding.connected')}</Text>
-                ) : null}
             </View>
         </ScrollView>
     );
 });
 
 /**
- * Somewhere to turn without leaving the step you are stuck on. The options
- * arrive as the app's ordinary alert — a native sheet on a phone, the web
- * modal in a browser — so this adds a corner button, not a new surface.
- */
-export const GetHelpButton = React.memo(function GetHelpButton() {
-    const { theme } = useUnistyles();
-
-    const openHelp = React.useCallback(() => {
-        const links = HELP_LINKS.map((link) => ({
-            text: link.label(),
-            onPress: () => { void openExternalUrl(link.url); },
-        }));
-        const cancel = { text: t('common.cancel'), style: 'cancel' as const };
-        Modal.alert(
-            t('onboarding.getHelp'),
-            t('onboarding.helpMessage'),
-            // Android fills its slots by position (neutral, negative,
-            // positive), so Cancel goes in the middle to land on negative.
-            Platform.OS === 'android' ? [links[0], cancel, links[1]] : [...links, cancel],
-        );
-    }, []);
-
-    return (
-        <Pressable
-            onPress={openHelp}
-            accessibilityRole="button"
-            accessibilityLabel={t('onboarding.getHelp')}
-            hitSlop={8}
-            style={({ pressed }) => [styles.getHelp, pressed && styles.getHelpPressed]}
-        >
-            <Ionicons name="help-circle-outline" size={17} color={theme.colors.textSecondary} />
-            <Text style={styles.getHelpText}>{t('onboarding.getHelp')}</Text>
-        </Pressable>
-    );
-});
-
-/**
- * The first-run screen: the checklist under its own header, in place of the
- * session list and its dock. Shown at the home route once the account exists
- * and no machine has been linked yet.
+ * The first-run screen, in place of the session list and its dock. Shown at
+ * the home route once the account exists and no machine has been linked yet.
+ * Scanning opens once both boxes are ticked. A link in flight keeps the button
+ * busy until the linked machine arrives and the session list replaces this
+ * screen; a failed one says so on the line above the button. There is no way
+ * back from here: the account exists, and the only way on is a linked computer.
  */
 export const OnboardingLinkComputer = React.memo(function OnboardingLinkComputer() {
     const router = useRouter();
     const { theme } = useUnistyles();
-    const insets = useSafeAreaInsets();
     const serverInfo = getServerInfo();
+    const [ticked, setTicked] = useLocalSettingMutable('linkComputerChecklist');
+    const [approved, setApproved] = useApproved();
+    const [error, setError] = React.useState<string | null>(null);
+    const scanOptions = React.useMemo(() => ({
+        onSuccess: () => setApproved(true),
+        onError: () => setError(t('onboarding.linkFailed')),
+    }), [setApproved]);
+    const { scan, pasteLink, isLoading } = useScanActions(scanOptions);
+
+    const busy = isLoading || approved;
+    const ready = !!ticked.install && !!ticked.open;
+
+    // Android's back button would leave the app from here; swipe-back is off
+    // in the layout. Only while focused, so the gear's settings still close.
+    useFocusEffect(React.useCallback(() => {
+        const subscription = BackHandler.addEventListener('hardwareBackPress', () => true);
+        return () => subscription.remove();
+    }, []));
+
+    React.useEffect(() => {
+        if (error) AccessibilityInfo.announceForAccessibility(error);
+    }, [error]);
+
+    const toggle = React.useCallback((step: LinkChecklistStep) => {
+        setTicked({ ...ticked, [step]: !ticked[step] });
+    }, [setTicked, ticked]);
+
+    const startScan = React.useCallback(() => {
+        setError(null);
+        scan();
+    }, [scan]);
+
+    const startPaste = React.useCallback(() => {
+        setError(null);
+        void pasteLink();
+    }, [pasteLink]);
+
     return (
-        <View style={styles.root}>
-            <OnboardingHeader
-                title={t('onboarding.linkTitle')}
-                subtitle={serverInfo.isCustom ? serverInfo.hostname + (serverInfo.port ? `:${serverInfo.port}` : '') : undefined}
-                headerRight={() => (
-                    <Pressable
-                        onPress={() => router.push('/onboarding/settings')}
-                        hitSlop={15}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('onboarding.settingsTitle')}
-                        style={styles.headerButton}
-                    >
-                        <Ionicons name="settings-outline" size={22} color={theme.colors.header.tint} />
-                    </Pressable>
-                )}
-            />
-            <LinkComputerChecklist variant="link" bottomInset={GET_HELP_RESERVED_HEIGHT} />
-            <View style={[styles.getHelpCorner, { bottom: insets.bottom + 12 }]} pointerEvents="box-none">
-                <GetHelpButton />
-            </View>
-        </View>
+        <OnboardingScreen
+            header={
+                <OnboardingHeader
+                    subtitle={serverInfo.isCustom ? serverInfo.hostname + (serverInfo.port ? `:${serverInfo.port}` : '') : undefined}
+                    headerRight={() => (
+                        <Pressable
+                            onPress={() => router.push('/onboarding/settings')}
+                            hitSlop={15}
+                            accessibilityRole="button"
+                            accessibilityLabel={t('onboarding.settingsTitle')}
+                            style={styles.headerButton}
+                        >
+                            <Ionicons name="settings-outline" size={22} color={theme.colors.header.tint} />
+                        </Pressable>
+                    )}
+                />
+            }
+            content={
+                <LinkComputerContent
+                    ticked={ticked}
+                    onToggle={toggle}
+                    disabled={busy}
+                    error={error}
+                />
+            }
+            primary={
+                <RoundButton
+                    title={t('onboarding.scanButton')}
+                    loadingTitle={t('onboarding.linking')}
+                    loading={busy}
+                    disabled={busy || !ready}
+                    onPress={startScan}
+                />
+            }
+            secondary={{
+                title: t('onboarding.pasteLink'),
+                onPress: startPaste,
+                disabled: busy,
+            }}
+        />
     );
 });
 
 const styles = StyleSheet.create((theme) => ({
-    root: {
-        flex: 1,
-        backgroundColor: theme.colors.groupped.background,
-    },
     headerButton: {
         width: 32,
         height: 32,
@@ -362,35 +242,7 @@ const styles = StyleSheet.create((theme) => ({
     scroll: {
         alignItems: 'center',
         paddingTop: 16,
-    },
-    // The checklist and its actions sit together mid-screen; when they
-    // outgrow the screen the list scrolls from the top as usual.
-    scrollCentered: {
-        flexGrow: 1,
-        justifyContent: 'center',
-    },
-    // Sits over the checklist rather than under it, so a short list keeps the
-    // button at the bottom of the screen instead of floating mid-page.
-    getHelpCorner: {
-        position: 'absolute',
-        right: 16,
-        alignItems: 'flex-end',
-    },
-    getHelp: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 6,
-        minHeight: 36,
-        paddingHorizontal: 12,
-        borderRadius: 18,
-    },
-    getHelpPressed: {
-        backgroundColor: theme.colors.surfacePressedOverlay,
-    },
-    getHelpText: {
-        ...Typography.default('semiBold'),
-        fontSize: 15,
-        color: theme.colors.textSecondary,
+        paddingBottom: 48,
     },
     content: {
         width: '100%',
@@ -405,41 +257,11 @@ const styles = StyleSheet.create((theme) => ({
         marginBottom: 16,
         paddingHorizontal: 4,
     },
-    row: {
-        marginBottom: 20,
-    },
-    rowHead: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 12,
-        minHeight: 32,
-    },
-    box: {
-        width: 26,
-        height: 26,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    rowTitle: {
-        ...Typography.default('semiBold'),
-        flex: 1,
-        fontSize: 17,
-        lineHeight: 22,
-        color: theme.colors.text,
-    },
-    rowBody: {
-        paddingLeft: 38,
-        paddingTop: 6,
-    },
     body: {
         ...Typography.default(),
         fontSize: 15,
         lineHeight: 21,
         color: theme.colors.textSecondary,
-    },
-    link: {
-        color: theme.colors.text,
-        textDecorationLine: 'underline',
     },
     terminal: {
         marginTop: 12,
@@ -448,17 +270,9 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'flex-start',
         marginTop: 6,
     },
-    scanActions: {
-        alignItems: 'center',
-        marginTop: 36,
-    },
     button: {
         width: 260,
         maxWidth: '100%',
         marginBottom: 8,
-    },
-    connected: {
-        textAlign: 'center',
-        color: theme.colors.success,
     },
 }));

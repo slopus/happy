@@ -57,7 +57,12 @@ export default function RootLayout() {
                 name="index"
                 options={{
                     headerShown: false,
-                    headerTitle: ''
+                    headerTitle: '',
+                    // Home hosts the first-run screens, which have nowhere to
+                    // go back to. Android's back button is held by the link
+                    // screen itself.
+                    gestureEnabled: false,
+                    fullScreenGestureEnabled: false,
                 }}
             />
             <Stack.Screen

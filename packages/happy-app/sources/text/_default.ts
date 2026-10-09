@@ -922,11 +922,13 @@ export const en = {
         // First run on phones: create an account, then link a computer from
         // one checklist. The same checklist is the home empty state whenever
         // no computer is reachable.
-        headline: 'Run Claude Code and Codex from your phone',
-        tagline: 'End-to-end encrypted. No email, no password.',
+        headline: 'Claude, Codex, Grok\nin your pocket',
+        propEncrypted: 'End-to-end encrypted',
+        propNoPassword: 'No email, no password',
+        propOpenSource: 'Open source, MIT license',
         createAccount: 'Create account',
-        restoreExisting: 'Restore an existing account',
-        linkTitle: 'Link your computer',
+        restoreExisting: 'Restore existing account',
+        linkTitle: 'Link Your Computer',
         installStep: 'Install Happy on your computer',
         installBodyPrefix: 'Download Happy from ',
         installBodyLink: 'happy.engineering',
@@ -934,16 +936,17 @@ export const en = {
         terminalComment: '# Prefer the terminal?',
         terminalInstall: 'npm install -g happy',
         terminalRun: 'happy',
-        openStep: 'Open Happy and choose Connect phone',
-        openBody: 'During onboarding on your computer, choose Connect phone and a QR code appears.',
+        // No-break spaces keep the button name on one line.
+        openStep: 'Open Happy and choose Link\u00A0Mobile\u00A0App',
+        openBody: 'It’s the last step of setup on your computer. A QR code appears there.',
         scanStep: 'Scan the QR code',
         scanButton: 'Scan QR code',
-        pasteLink: 'Paste link instead',
+        pasteLink: 'Can’t scan QR code? Paste link instead',
         pasteLinkTitle: 'Paste link',
         pasteLinkMessage: 'On your computer, choose Copy auth link, then paste it here.',
-        pasteLinkConfirm: 'Connect',
-        connecting: 'Connecting…',
-        connected: 'Connected. Opening your sessions…',
+        pasteLinkConfirm: 'Link',
+        linking: 'Linking…',
+        linkFailed: 'Couldn’t link. Scan the code again.',
         // Same checklist when every linked computer is offline.
         offlineTitleOne: ({ name }: { name: string }) => `${name} is offline`,
         offlineTitleMany: 'Your computers are offline',
@@ -953,7 +956,7 @@ export const en = {
         offlineOpenBody: 'Open Happy Desktop, or run happy in a terminal. This screen updates as soon as it connects.',
         offlineTroubleshoot: 'Troubleshoot',
         linkAnother: 'Link another computer',
-        // Get help, bottom right of the link screen.
+        // Get help, bottom right of both first-run screens.
         getHelp: 'Get help',
         helpMessage: 'Stuck? Come ask us.',
         helpDiscord: 'Ask on Discord',
