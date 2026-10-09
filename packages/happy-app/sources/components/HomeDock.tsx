@@ -702,7 +702,7 @@ export const HomeDock = React.memo(({
     const [sheetPage, setSheetPage] = React.useState<PickerPage | null>(null);
     const { selectedImages, attachImages, removeImage, clearImages } = useImagePicker();
     const agentType = useNewSessionDraft((state) => state.agentType);
-    const agentPicked = useNewSessionDraft((state) => state.agentPicked);
+    const pickedAgentType = useNewSessionDraft((state) => state.pickedAgentType);
     const selectedMachineId = useNewSessionDraft((state) => state.selectedMachineId);
     const selectedPath = useNewSessionDraft((state) => state.selectedPath);
     const draftProjectId = useNewSessionDraft((state) => state.selectedProjectId);
@@ -939,7 +939,7 @@ export const HomeDock = React.memo(({
         }))
     ), [selectedChoice]);
     const hasAvailableHarness = availableAgents.length > 0;
-    const resolvedAgentType = resolveNewSessionAgent(selectedChoice, agentType, agentPicked);
+    const resolvedAgentType = resolveNewSessionAgent(selectedChoice, agentType, pickedAgentType);
     const defaults = React.useMemo(() => rigCreation
         ? {
             permissionMode: rigCreation.defaultPermissionMode ?? '',
@@ -1244,7 +1244,8 @@ export const HomeDock = React.memo(({
         closeFocusMode();
     }, [closeFocusMode, closePicker, isSubmitting, refuse, sheetPage]);
 
-    // `picked` is a tap in the harness picker; every other caller only follows the resolution.
+    // `picked` is the person choosing the harness (the picker, or a project only Happy can open);
+    // the resolution effect below only follows what the computer can run and never sets a pick.
     const selectAgent = React.useCallback((agent: NewSessionAgentType, picked = false) => {
         const nextRigCreation = agent === 'rig' ? rigSelectionCreation : null;
         const nextDefaults = nextRigCreation
@@ -1416,7 +1417,7 @@ export const HomeDock = React.memo(({
                         // Nothing here knows this project's folder, so it is named by identity and
                         // the harness moves to the only one that can resolve it.
                         setProjectId(projectId);
-                        selectAgent('rig');
+                        selectAgent('rig', true);
                         return;
                     }
                     setPath(key);

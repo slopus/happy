@@ -197,7 +197,7 @@ function createDraft(overrides: Record<string, unknown> = {}) {
         selectedMachineId: 'machine-1',
         selectedPath: '~/project',
         agentType: 'codex',
-        agentPicked: false,
+        pickedAgentType: null,
         permissionMode: null,
         modelMode: null,
         effortLevel: null,
@@ -212,7 +212,6 @@ function createDraft(overrides: Record<string, unknown> = {}) {
         setBotName: vi.fn(),
         setCreatesBot: vi.fn(),
         rollBotFaces: vi.fn(),
-        clearAgentPick: vi.fn(),
         ...overrides,
     };
 }
@@ -425,7 +424,7 @@ describe('useStartSessionFromDraft', () => {
         mocks.draft = createDraft({
             selectedMachineId: 'machine-cli',
             agentType: 'codex',
-            agentPicked: true,
+            pickedAgentType: 'codex',
         });
 
         const { startSession } = useStartSessionFromDraft();
@@ -484,22 +483,37 @@ describe('useStartSessionFromDraft', () => {
             expect(mocks.machineSpawnNewSession).not.toHaveBeenCalled();
         });
 
-        it('starts the harness tapped in the composer, then lets the next composer offer Happy again', async () => {
+        it('starts the harness last tapped in the composer, and the next session too', async () => {
             mocks.machines = pairedMachines();
-            mocks.draft = createDraft({ selectedMachineId: 'machine-cli', agentType: 'claude', agentPicked: true });
+            mocks.draft = createDraft({ selectedMachineId: 'machine-cli', agentType: 'claude', pickedAgentType: 'claude' });
+
+            const { startSession } = useStartSessionFromDraft();
+
+            await expect(startSession()).resolves.toBe(true);
+            await expect(startSession()).resolves.toBe(true);
+
+            expect(mocks.machineSpawnNewSession).toHaveBeenCalledTimes(2);
+            for (const call of mocks.machineSpawnNewSession.mock.calls) {
+                expect(call[0]).toMatchObject({ machineId: 'machine-cli', agent: 'claude' });
+            }
+            expect(mocks.draft.pickedAgentType).toBe('claude');
+        });
+
+        it('starts Happy when the composer pick is a harness this computer lacks', async () => {
+            mocks.machines = pairedMachines();
+            mocks.draft = createDraft({ selectedMachineId: 'machine-cli', agentType: 'agy', pickedAgentType: 'agy' });
 
             const { startSession } = useStartSessionFromDraft();
 
             await expect(startSession()).resolves.toBe(true);
 
             expect(mocks.machineSpawnNewSession).toHaveBeenCalledWith(expect.objectContaining({
-                machineId: 'machine-cli',
-                agent: 'claude',
+                machineId: 'machine-rig',
+                agent: 'rig',
             }));
-            expect(mocks.draft.clearAgentPick).toHaveBeenCalled();
         });
 
-        it('keeps the harness of the chat a new chat is made like, and the composer pick with it', async () => {
+        it('keeps the harness of the chat a new chat is made like', async () => {
             mocks.machines = pairedMachines();
             mocks.draft = createDraft({ selectedMachineId: 'machine-cli', agentType: 'rig' });
 
@@ -515,7 +529,6 @@ describe('useStartSessionFromDraft', () => {
                 machineId: 'machine-cli',
                 agent: 'codex',
             }));
-            expect(mocks.draft.clearAgentPick).not.toHaveBeenCalled();
         });
     });
 

@@ -447,7 +447,7 @@ const ProjectRow = React.memo(({ project }: {
         if (place.projectId) {
             // Happy Agent's projects are catalog identities: a worktree's
             // directory says nothing about where its project lives.
-            draft.setAgentType('rig');
+            draft.pickAgentType('rig');
             draft.setProjectId(place.projectId);
         } else {
             draft.setPath(place.path);

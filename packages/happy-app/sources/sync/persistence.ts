@@ -27,6 +27,12 @@ export interface NewSessionDraft {
      */
     selectedProjectId: string | null;
     agentType: NewSessionAgentType;
+    /**
+     * The harness the person last tapped in the composer, kept until they tap another. Null for a
+     * draft saved before picks were remembered, whose `agentType` is mostly the old implicit
+     * Claude Code default rather than a choice. Optional so those drafts still parse.
+     */
+    pickedAgentType?: NewSessionAgentType | null;
     permissionMode: PermissionModeKey | null;
     modelMode: string | null;
     effortLevel: string | null;
@@ -185,6 +191,12 @@ export function saveRigComposerDraft(sessionId: string, draft: RigComposerDraftS
     else mmkv.set(key, JSON.stringify(draft));
 }
 
+const NEW_SESSION_AGENT_TYPES: readonly NewSessionAgentType[] = ['claude', 'codex', 'gemini', 'openclaw', 'agy', 'rig'];
+
+function parseNewSessionAgentType(value: unknown): NewSessionAgentType | null {
+    return NEW_SESSION_AGENT_TYPES.find((agent) => agent === value) ?? null;
+}
+
 export function loadNewSessionDraft(): NewSessionDraft | null {
     const raw = mmkv.getString(NEW_SESSION_DRAFT_KEY);
     if (!raw) {
@@ -200,9 +212,8 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
         const selectedMachineId = typeof parsed.selectedMachineId === 'string' ? parsed.selectedMachineId : null;
         const selectedPath = typeof parsed.selectedPath === 'string' ? parsed.selectedPath : null;
         const selectedProjectId = typeof parsed.selectedProjectId === 'string' ? parsed.selectedProjectId : null;
-        const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini' || parsed.agentType === 'openclaw' || parsed.agentType === 'agy' || parsed.agentType === 'rig'
-            ? parsed.agentType
-            : 'claude';
+        const agentType: NewSessionAgentType = parseNewSessionAgentType(parsed.agentType) ?? 'claude';
+        const pickedAgentType = parseNewSessionAgentType(parsed.pickedAgentType);
         const permissionMode: PermissionModeKey | null = typeof parsed.permissionMode === 'string'
             ? parsed.permissionMode
             : null;
@@ -218,6 +229,7 @@ export function loadNewSessionDraft(): NewSessionDraft | null {
             selectedPath,
             selectedProjectId,
             agentType,
+            pickedAgentType,
             permissionMode,
             modelMode,
             effortLevel,

@@ -808,7 +808,7 @@ function NewSessionScreen() {
         selectedProjectId: s.selectedProjectId,
         setProjectId: s.setProjectId,
         agentType: s.agentType,
-        agentPicked: s.agentPicked,
+        pickedAgentType: s.pickedAgentType,
         setAgentType: s.setAgentType,
         pickAgentType: s.pickAgentType,
         permissionMode: s.permissionMode,
@@ -870,7 +870,7 @@ function NewSessionScreen() {
         () => findMachineChoice(machineChoices, selectedMachineId),
         [machineChoices, selectedMachineId],
     );
-    const selectedAgent = resolveNewSessionAgent(selectedChoice, draftAgent, draft.agentPicked);
+    const selectedAgent = resolveNewSessionAgent(selectedChoice, draftAgent, draft.pickedAgentType);
     const selectedMachine = React.useMemo(
         () => resolveAgentMachine(selectedChoice, selectedAgent),
         [selectedAgent, selectedChoice],
@@ -1201,10 +1201,10 @@ function NewSessionScreen() {
     const selectProjectPlace = React.useCallback((projectId: string) => {
         setDraftProjectId(projectId);
         if (availableAgents.some((candidate) => candidate.key === 'rig')) {
-            setSelectedAgent('rig');
+            draft.pickAgentType('rig');
         }
         closePicker();
-    }, [availableAgents, closePicker, setDraftProjectId, setSelectedAgent]);
+    }, [availableAgents, closePicker, draft.pickAgentType, setDraftProjectId]);
 
     const toggleConfig = React.useCallback(() => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -1701,8 +1701,6 @@ function NewSessionScreen() {
                     const currentDraft = useNewSessionDraft.getState();
                     if (currentDraft.input === draftState.input) currentDraft.setInput('');
                     if (currentDraft.attachments === attachments) currentDraft.setAttachments([]);
-                    // The pick was for this session; the next composer starts from Happy again.
-                    currentDraft.clearAgentPick();
 
                     router.back();
                     navigateToSession(result.sessionId);
