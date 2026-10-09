@@ -98,7 +98,7 @@ describe('agent defaults', () => {
     });
 
     it('does not gate other agents\' default models on the CLI version', () => {
-        expect(getCodeAgentDefaults('codex', '1.2.0').modelMode).toBe('gpt-5.6-sol');
+        expect(getCodeAgentDefaults('codex', '1.2.0').modelMode).toBe('gpt-6.1-sol');
         expect(getCodeAgentDefaults('agy').modelMode).toBe('Gemini 3.8 Flash');
     });
 

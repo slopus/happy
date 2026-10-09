@@ -120,8 +120,8 @@ function isAppServerAvailable(): boolean {
         return false;
     }
     const { major, minor } = version;
-    // app-server available in recent versions
-    return major > 0 || minor >= 100;
+    // GPT-6.1 Sol, Happy's default Codex model, requires Codex 0.153.0+.
+    return major > 0 || minor >= 153;
 }
 
 function isGoalActionsAvailable(): boolean {
@@ -597,8 +597,8 @@ export class CodexAppServerClient {
 
         if (!isAppServerAvailable()) {
             throw new Error(
-                'Codex CLI is not installed\n\n' +
-                'Please install Codex CLI using one of these methods:\n\n' +
+                'Codex CLI 0.153.0 or newer is required\n\n' +
+                'Please install or update Codex CLI using one of these methods:\n\n' +
                 'Option 1 - npm (recommended):\n  npm install -g @openai/codex\n\n' +
                 'Option 2 - Homebrew (macOS):\n  brew install --cask codex\n\n' +
                 'Alternatively, use Claude Code:\n  happy claude',

@@ -253,7 +253,7 @@ describe('modelModeOptions', () => {
         expect(getDefaultModelKey('claude', '1.2.6-beta.0')).toBe('claude-opus-5-5');
         expect(getDefaultEffortKey('claude')).toBe('medium');
         expect(getDefaultPermissionModeKey('codex')).toBe('auto');
-        expect(getDefaultModelKey('codex')).toBe('gpt-5.6-sol');
+        expect(getDefaultModelKey('codex')).toBe('gpt-6.1-sol');
         expect(getDefaultEffortKey('codex')).toBe('medium');
         expect(getDefaultPermissionModeKey('agy')).toBe('default');
         expect(getDefaultModelKey('agy')).toBe('Gemini 3.8 Flash');

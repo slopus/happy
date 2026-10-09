@@ -118,7 +118,7 @@ describe('CodexAppServerClient sandbox integration', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         process.env.RUST_LOG = originalRustLog;
-        mockExecSync.mockReturnValue('codex-cli 0.107.0');
+        mockExecSync.mockReturnValue('codex-cli 0.153.0');
         mockInitializeSandbox.mockResolvedValue(mockSandboxCleanup);
         mockWrapForMcpTransport.mockResolvedValue({ command: 'sh', args: ['-c', 'wrapped codex app-server'] });
         mockSpawn.mockImplementation(() => createMockProcess());
@@ -136,6 +136,22 @@ describe('CodexAppServerClient sandbox integration', () => {
 
         mockExecSync.mockReturnValue('codex-cli 0.130.0');
         expect(new CodexAppServerClient().supportsGoalActions()).toBe(false);
+    });
+
+    it('requires Codex 0.153.0 or newer', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+
+        mockExecSync.mockReturnValue('codex-cli 0.152.9');
+        await expect(new CodexAppServerClient().connect()).rejects.toThrow(
+            'Codex CLI 0.153.0 or newer is required',
+        );
+        expect(mockSpawn).not.toHaveBeenCalled();
+
+        mockExecSync.mockReturnValue('codex-cli 0.153.0');
+        const client = new CodexAppServerClient();
+        await client.connect();
+        expect(mockSpawn).toHaveBeenCalled();
+        await client.disconnect();
     });
 
     it('wraps transport when sandbox is enabled', async () => {
