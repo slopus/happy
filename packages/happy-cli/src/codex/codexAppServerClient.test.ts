@@ -1,3 +1,4 @@
+import { CODEX_ACCOUNT_CONFIG, CODEX_ACCOUNT_HTTP_PROVIDER, CODEX_ACCOUNT_PROVIDER, CODEX_ACCOUNT_OVERRIDES } from './codexAccountConfig';
 import { createServer, type Server } from 'node:http';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -513,7 +514,7 @@ describe('CodexAppServerClient sandbox integration', () => {
         process.env.HAPPY_CODEX_ACCOUNT_PROFILE_ID = 'profile-a';
         mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (message, stdout) => {
             if (message.method === 'config/read') pushJsonLine(stdout, { id: message.id, result: { config: {
-                model_provider: 'openai', cli_auth_credentials_store: 'file', forced_login_method: 'chatgpt', chatgpt_base_url: 'https://chatgpt.com/backend-api',
+                ...CODEX_ACCOUNT_CONFIG, model_providers: { [CODEX_ACCOUNT_PROVIDER]: CODEX_ACCOUNT_HTTP_PROVIDER },
             } } });
         } }));
         try {
@@ -536,10 +537,8 @@ describe('CodexAppServerClient sandbox integration', () => {
         mockSpawn.mockImplementation(() => createMockProcess({ onRequest: (message, stdout) => {
             requests.push(message);
             if (message.method === 'config/read') pushJsonLine(stdout, { id: message.id, result: { config: {
-                model_provider: 'openai', cli_auth_credentials_store: 'file', forced_login_method: 'chatgpt',
-                chatgpt_base_url: 'https://chatgpt.com/backend-api',
-                model_providers: unsafe ? { openai: { env_key: 'CUSTOM_PROVIDER_KEY', base_url: 'https://wrong.invalid' } }
-                    : { custom: { env_key: 'CUSTOM_PROVIDER_KEY', base_url: 'https://wrong.invalid' } },
+                ...CODEX_ACCOUNT_CONFIG,
+                model_providers: { [CODEX_ACCOUNT_PROVIDER]: { ...CODEX_ACCOUNT_HTTP_PROVIDER, ...(unsafe ? { env_key: 'CUSTOM_PROVIDER_KEY' } : {}) } },
             } } });
             if (message.method === 'thread/fork') {
                 writeFileSync(join(accountHome, 'sessions', 'rollout-thread-fork.jsonl'), JSON.stringify({ type: 'session_meta', payload: { id: 'thread-fork', forked_from_id: 'thread-a' } }) + '\n');
@@ -555,11 +554,11 @@ describe('CodexAppServerClient sandbox integration', () => {
                 : client.forkThread({ threadId: 'thread-a', cwd: '/work' });
         try {
             await client.connect();
-            expect(mockSpawn.mock.calls.at(-1)?.[1]).toEqual(expect.arrayContaining(['model_provider="openai"', 'forced_login_method="chatgpt"', 'chatgpt_base_url="https://chatgpt.com/backend-api"']));
+            expect(mockSpawn.mock.calls.at(-1)?.[1]).toEqual(expect.arrayContaining([`model_provider="${CODEX_ACCOUNT_PROVIDER}"`, `model_providers.${CODEX_ACCOUNT_PROVIDER}.supports_websockets=false`, 'forced_login_method="chatgpt"', 'chatgpt_base_url="https://chatgpt.com/backend-api"']));
             expect(mockSpawn.mock.calls.at(-1)?.[2].env.OPENAI_API_KEY).toBeUndefined();
             expect(mockSpawn.mock.calls.at(-1)?.[2].env.OPENAI_BASE_URL).toBeUndefined();
             await call();
-            expect(requests.find(r => r.method === `thread/${operation}`)?.params).toMatchObject({ modelProvider: 'openai' });
+            expect(requests.find(r => r.method === `thread/${operation}`)?.params).toMatchObject({ modelProvider: CODEX_ACCOUNT_PROVIDER, config: expect.objectContaining(CODEX_ACCOUNT_OVERRIDES) });
             unsafe = true;
             await expect(call()).rejects.toThrow('Device Environment');
             expect(requests.filter(r => r.method === `thread/${operation}`)).toHaveLength(1);

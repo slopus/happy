@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { copyCodexSourceThread, rememberCodexAccountSession, retainCodexAccountHistory, restoreCodexAccountHistory } from './codexAccountHistory';
 import { collectCodexUsageSnapshot } from './codexUsage';
 import { CodexAppServerClient } from './codexAppServerClient';
-import { CODEX_ACCOUNT_CONFIG } from './codexAccountConfig';
+import { CODEX_ACCOUNT_CONFIG, CODEX_ACCOUNT_PROVIDER, CODEX_ACCOUNT_HTTP_PROVIDER } from './codexAccountConfig';
 import { withCodexAccountThread } from './codexAccountThread';
 
 const dirs: string[] = [];
@@ -71,7 +71,7 @@ it('marks managed direct forks (including /fork) before allowing new turns', asy
   const { target } = await importedFixture();
   const client = new CodexAppServerClient(undefined, { type: 'spawn' }, { CODEX_HOME: target, HAPPY_CODEX_ACCOUNT_PROFILE_ID: 'b' });
   const request = vi.spyOn(client as any, 'request').mockImplementation(async (...args: unknown[]) => {
-    if (args[0] === 'config/read') return { config: CODEX_ACCOUNT_CONFIG };
+    if (args[0] === 'config/read') return { config: { ...CODEX_ACCOUNT_CONFIG, model_providers: { [CODEX_ACCOUNT_PROVIDER]: CODEX_ACCOUNT_HTTP_PROVIDER } } };
     if (args[0] !== 'thread/fork') throw new Error('Unexpected RPC');
     await writeFile(join(target, folder, 'rollout-direct.jsonl'), header('direct', 'fork') + '\n' + usage(100, 100) + '\n');
     return { thread: { id: 'direct' }, model: 'test-model' };

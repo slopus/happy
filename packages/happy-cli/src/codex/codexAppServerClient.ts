@@ -79,7 +79,7 @@ import type { SandboxConfig } from '@/persistence';
 import { initializeSandbox, wrapForMcpTransport } from '@/sandbox/manager';
 import packageJson from '../../package.json';
 import { CodexMcpAppAdapter } from './mcpApps/CodexMcpAppAdapter';
-import { assertCodexAccountConfig, CODEX_ACCOUNT_CONFIG, CODEX_ACCOUNT_CONFIG_ERROR, CODEX_ACCOUNT_UNSET_ENV } from './codexAccountConfig';
+import { assertCodexAccountConfig, CODEX_ACCOUNT_OVERRIDES, CODEX_ACCOUNT_PROVIDER, CODEX_ACCOUNT_CONFIG_ERROR, CODEX_ACCOUNT_UNSET_ENV } from './codexAccountConfig';
 
 type PendingRequest = {
     resolve: (result: unknown) => void;
@@ -1039,7 +1039,7 @@ export class CodexAppServerClient {
         let command = codexCommand;
         let args = ['app-server', '--listen', 'stdio://', '-c', `service_tier=\"${this.serviceTier}\"`];
         if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) {
-            for (const [key, value] of Object.entries(CODEX_ACCOUNT_CONFIG)) args.push('-c', `${key}=${JSON.stringify(value)}`);
+            for (const [key, value] of Object.entries(CODEX_ACCOUNT_OVERRIDES)) args.push('-c', `${key}=${JSON.stringify(value)}`);
         }
         if (this.applicationPolicy) {
             for (const [key, value] of Object.entries((this.applicationPolicy ? nativeCodexConfig(this.applicationPolicy) : {}))) args.push('-c', `${key}=${JSON.stringify(value)}`);
@@ -1318,7 +1318,7 @@ export class CodexAppServerClient {
 
     private buildThreadConfig(mcpServers?: Record<string, unknown>): Record<string, unknown> | null {
         const config = { ...(this.applicationPolicy ? nativeCodexConfig(this.applicationPolicy) : {}), ...(mcpServers ? { mcp_servers: mcpServers } : {}),
-            ...(this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? CODEX_ACCOUNT_CONFIG : {}) };
+            ...(this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? CODEX_ACCOUNT_OVERRIDES : {}) };
         return Object.keys(config).length ? config : null;
     }
 
@@ -1367,7 +1367,7 @@ export class CodexAppServerClient {
         if (this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID) await this.assertAccountConfig(opts.cwd);
         const params: NewConversationParams = {
             model: opts.model ?? null,
-            modelProvider: this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? 'openai' : null,
+            modelProvider: this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? CODEX_ACCOUNT_PROVIDER : null,
             profile: null,
             cwd: opts.cwd ?? process.cwd(),
             approvalPolicy: opts.approvalPolicy ?? null,
@@ -1412,7 +1412,7 @@ export class CodexAppServerClient {
         const params: ResumeConversationParams = {
             threadId,
             model: opts?.model ?? defaults.model ?? null,
-            modelProvider: this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? 'openai' : null,
+            modelProvider: this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? CODEX_ACCOUNT_PROVIDER : null,
             cwd: opts?.cwd ?? defaults.cwd ?? process.cwd(),
             approvalPolicy: opts?.approvalPolicy ?? defaults.approvalPolicy ?? null,
             sandbox: opts?.sandbox ?? defaults.sandbox ?? null,
@@ -1454,7 +1454,7 @@ export class CodexAppServerClient {
             ...(opts.lastTurnId ? { lastTurnId: opts.lastTurnId } : {}),
             ...(opts.beforeTurnId ? { beforeTurnId: opts.beforeTurnId } : {}),
             model: opts.model ?? defaults.model ?? null,
-            modelProvider: this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? 'openai' : null,
+            modelProvider: this.processEnv.HAPPY_CODEX_ACCOUNT_PROFILE_ID ? CODEX_ACCOUNT_PROVIDER : null,
             cwd: opts.cwd ?? defaults.cwd ?? process.cwd(),
             approvalPolicy: opts.approvalPolicy ?? defaults.approvalPolicy ?? null,
             sandbox: opts.sandbox ?? defaults.sandbox ?? null,
