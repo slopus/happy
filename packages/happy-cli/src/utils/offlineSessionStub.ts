@@ -31,8 +31,18 @@ import type { ApiSessionClient } from '@/api/apiSession';
  * session = api.sessionSyncClient(response);
  * ```
  */
+type OfflineRegistrations = {
+    userMessageHandler: Parameters<ApiSessionClient['onUserMessage']>[0] | null;
+    rpcHandlers: Map<string, (...args: any[]) => any>;
+};
+
+const offlineRegistrations = new WeakMap<object, OfflineRegistrations>();
+
 export function createOfflineSessionStub(sessionTag: string): ApiSessionClient {
-    return {
+    // Backends register their handlers once, on whatever session they hold at
+    // startup. Record them so they can be attached to the real session later.
+    const registrations: OfflineRegistrations = { userMessageHandler: null, rpcHandlers: new Map() };
+    const stub = {
         sessionId: `offline-${sessionTag}`,
         sendCodexMessage: () => {},
         sendAgentMessage: () => {},
@@ -46,9 +56,31 @@ export function createOfflineSessionStub(sessionTag: string): ApiSessionClient {
         close: async () => {},
         updateMetadata: () => {},
         updateAgentState: () => {},
-        onUserMessage: () => {},
+        onUserMessage: (handler: OfflineRegistrations['userMessageHandler']) => {
+            registrations.userMessageHandler = handler;
+        },
         rpcHandlerManager: {
-            registerHandler: () => {}
+            registerHandler: (method: string, handler: (...args: any[]) => any) => {
+                registrations.rpcHandlers.set(method, handler);
+            }
         }
-    } as unknown as ApiSessionClient;
+    };
+    offlineRegistrations.set(stub, registrations);
+    return stub as unknown as ApiSessionClient;
+}
+
+/**
+ * Attaches the handlers registered on an offline stub to the real session that
+ * replaces it after reconnection. Without this, the real session would have no
+ * user-message listener and no RPC handlers (abort, kill, ...).
+ */
+export function transferOfflineRegistrations(stub: ApiSessionClient, session: ApiSessionClient): void {
+    const registrations = offlineRegistrations.get(stub);
+    if (!registrations) return;
+    for (const [method, handler] of registrations.rpcHandlers) {
+        session.rpcHandlerManager.registerHandler(method, handler);
+    }
+    if (registrations.userMessageHandler) {
+        session.onUserMessage(registrations.userMessageHandler);
+    }
 }
