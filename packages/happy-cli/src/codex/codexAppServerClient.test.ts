@@ -101,6 +101,27 @@ function createMockProcess(opts?: {
     return proc;
 }
 
+function createSharedDaemon(parents: Record<string, string | null> = {}) {
+    const socket = new (require('events').EventEmitter)();
+    const sent: MockRpcMessage[] = [];
+    socket.readyState = 1;
+    socket.close = vi.fn();
+    socket.send = (data: string) => {
+        const msg = JSON.parse(data); sent.push(msg);
+        if (msg.id != null && msg.method) {
+            const id = msg.params?.threadId ?? 'root';
+            const result = msg.method === 'initialize' ? { userAgent: 'daemon' }
+                : msg.method === 'thread/unsubscribe' ? { status: 'unsubscribed' }
+                : { thread: { id, parentThreadId: parents[id] ?? null }, model: 'gpt-test' };
+            queueMicrotask(() => socket.emit('message', Buffer.from(JSON.stringify({ id: msg.id, result }))));
+        }
+    };
+    mockExistsSync.mockReturnValue(true);
+    mockWebSocket.mockImplementation(() => { queueMicrotask(() => socket.emit('open')); return socket; });
+    return { socket, sent, push: (method: string, params: unknown, id?: number) =>
+        socket.emit('message', Buffer.from(JSON.stringify({ method, params, ...(id != null ? { id } : {}) }))) };
+}
+
 async function waitFor(predicate: () => boolean, timeoutMs: number = 1000): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (!predicate()) {
@@ -173,7 +194,7 @@ describe('CodexAppServerClient sandbox integration', () => {
             threadId: 'native-thread', model: 'gpt-test',
         });
         socket.emit('message', Buffer.from(JSON.stringify({
-            method: 'codex/event/agent_message', params: { msg: { type: 'agent_message', message: 'hello' } },
+            method: 'codex/event/agent_message', params: { threadId: 'native-thread', msg: { type: 'agent_message', message: 'hello' } },
         })));
         socket.emit('message', Buffer.from(JSON.stringify({
             id: 100, method: 'item/commandExecution/requestApproval',
@@ -181,8 +202,8 @@ describe('CodexAppServerClient sandbox integration', () => {
         })));
         await waitFor(() => sent.some(msg => msg.id === 100 && msg.result));
         expect(sent).toContainEqual({ jsonrpc: '2.0', id: 100, result: { decision: 'accept' } });
-        expect(events).toHaveBeenCalledWith({ type: 'agent_message', message: 'hello' });
-        expect(notifications).toHaveBeenCalledWith('codex/event/agent_message', { msg: { type: 'agent_message', message: 'hello' } });
+        expect(events).toHaveBeenCalledWith({ type: 'agent_message', message: 'hello', native_thread_id: 'native-thread' });
+        expect(notifications).toHaveBeenCalledWith('codex/event/agent_message', { threadId: 'native-thread', msg: { type: 'agent_message', message: 'hello' } });
         expect(mockSpawn).not.toHaveBeenCalled();
         await client.disconnect();
         expect(socket.close).toHaveBeenCalledOnce();
@@ -209,6 +230,46 @@ describe('CodexAppServerClient sandbox integration', () => {
         const { CodexAppServerClient } = await import('./codexAppServerClient');
         await expect(new CodexAppServerClient().connect({ sharedOnly: true })).rejects.toThrow('daemon is unavailable');
         expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
+    it('keeps its own descendants and rejects globally subscribed foreign agents and approvals', async () => {
+        const { socket, sent, push } = createSharedDaemon({ child: 'root', grandchild: 'child', foreign: 'other-root' });
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events = vi.fn(); const approvals = vi.fn(async () => 'approved' as const);
+        client.setEventHandler(events); client.setApprovalHandler(approvals);
+        await client.connect(); await client.resumeThread({ threadId: 'root' });
+        (client as any)._turnId = 'main-turn';
+        for (const threadId of ['foreign', 'grandchild']) {
+            push('turn/started', { threadId, turn: { id: `${threadId}-turn` } });
+            push('item/completed', { threadId, turnId: `${threadId}-turn`, item: { type: 'agentMessage', id: '1', text: threadId, phase: 'final_answer' } });
+            push('item/commandExecution/requestApproval', { threadId, itemId: '2', command: 'pwd' }, threadId === 'foreign' ? 91 : 92);
+        }
+        await waitFor(() => approvals.mock.calls.length === 1 && events.mock.calls.length === 1);
+        expect(events).toHaveBeenCalledWith(expect.objectContaining({ message: 'grandchild', subagent: 'grandchild', native_thread_id: 'grandchild' }));
+        expect(approvals).toHaveBeenCalledWith(expect.objectContaining({ threadId: 'grandchild' }));
+        expect(sent.some(msg => msg.id === 91 && msg.result)).toBe(false);
+        expect(sent).toContainEqual(expect.objectContaining({ method: 'thread/unsubscribe', params: { threadId: 'foreign' } }));
+        expect((client as any)._turnId).toBe('main-turn');
+        client.clearThreadState();
+        push('item/completed', { threadId: 'root', item: { type: 'agentMessage', id: '3', text: 'old context' } });
+        expect(events).toHaveBeenCalledOnce();
+        expect(sent).toContainEqual(expect.objectContaining({ method: 'thread/unsubscribe', params: { threadId: 'root' } }));
+        expect(sent).toContainEqual(expect.objectContaining({ method: 'thread/unsubscribe', params: { threadId: 'grandchild' } }));
+        await client.disconnect(); expect(socket.close).toHaveBeenCalledOnce();
+    });
+
+    it('never responds to another thread approval on a history-only watcher', async () => {
+        const { sent, push } = createSharedDaemon();
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const approvals = vi.fn(); client.setApprovalHandler(approvals);
+        await client.connect({ sharedOnly: true });
+        push('item/commandExecution/requestApproval', { threadId: 'foreign', itemId: 'cmd', command: 'pwd' }, 90);
+        await waitFor(() => sent.some(msg => msg.method === 'thread/unsubscribe'));
+        expect(approvals).not.toHaveBeenCalled();
+        expect(sent.some(msg => msg.id === 90 && msg.result)).toBe(false);
+        await client.disconnect();
     });
 
     it('ignores another daemon thread becoming idle without hiding global notifications from the watcher', async () => {

@@ -807,7 +807,8 @@ export async function runCodex(opts: {
             codexCollabReceiverThreadIdsByCall = mapped.collabReceiverThreadIdsByCall;
             codexCollabToolByCall = mapped.collabToolByCall;
             for (const envelope of mapped.envelopes) {
-                session.sendSessionProtocolMessage(envelope);
+                session.sendSessionProtocolMessage({ ...envelope,
+                    ...(typeof msg.native_thread_id === 'string' ? { codexThreadId: msg.native_thread_id } : {}) });
             }
         }
     });

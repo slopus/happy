@@ -219,6 +219,12 @@ function normalizeRawFileChangeList(changes: unknown): LegacyPatchChanges | unde
 export class CodexAppServerClient {
     private daemonSocket: WebSocket | null = null;
     private notificationHandler?: (method: string, params: any) => void;
+    private threadParents = new Map<string, string | null>();
+    private threadFamilyChecks = new Map<string, Promise<boolean>>();
+    private threadSubscriptions = new Set<string>();
+    private detachedThreads = new Set<string>();
+    private threadScopeEpoch = 0;
+    private eventThreadId: string | null = null;
     private process: ChildProcess | null = null;
     private readline: ReadlineInterface | null = null;
     private nextId = 1;
@@ -343,7 +349,7 @@ export class CodexAppServerClient {
         }
 
         if (aborted) {
-            this.eventHandler?.({
+            this.emitEvent({
                 type: 'turn_aborted',
                 ...(turnId ? { turn_id: turnId } : {}),
                 ...(status ? { status } : {}),
@@ -352,7 +358,7 @@ export class CodexAppServerClient {
             return;
         }
 
-        this.eventHandler?.({
+        this.emitEvent({
             type: 'task_complete',
             ...(turnId ? { turn_id: turnId } : {}),
             ...(status ? { status } : {}),
@@ -371,7 +377,7 @@ export class CodexAppServerClient {
                 this._turnId = turnId;
             }
             this.markPendingTurnStarted(turnId);
-            this.eventHandler?.({
+            this.emitEvent({
                 type: 'task_started',
                 ...(turnId ? { turn_id: turnId } : {}),
             });
@@ -401,7 +407,7 @@ export class CodexAppServerClient {
                 ? params.threadId
                 : (typeof params?.goal?.threadId === 'string' ? params.goal.threadId : undefined);
             const turnId = typeof params?.turnId === 'string' ? params.turnId : null;
-            this.eventHandler?.({
+            this.emitEvent({
                 type: 'thread_goal_updated',
                 ...(threadId ? { thread_id: threadId, threadId } : {}),
                 ...(turnId ? { turn_id: turnId, turnId } : {}),
@@ -412,7 +418,7 @@ export class CodexAppServerClient {
 
         if (method === 'thread/goal/cleared') {
             const threadId = typeof params?.threadId === 'string' ? params.threadId : undefined;
-            this.eventHandler?.({
+            this.emitEvent({
                 type: 'thread_goal_cleared',
                 ...(threadId ? { thread_id: threadId, threadId } : {}),
             });
@@ -422,7 +428,7 @@ export class CodexAppServerClient {
         if (method === 'thread/tokenUsage/updated') {
             const tokenUsage = params?.tokenUsage;
             if (tokenUsage && typeof tokenUsage === 'object') {
-                this.eventHandler?.({
+                this.emitEvent({
                     type: 'token_count',
                     ...tokenUsage,
                 });
@@ -440,7 +446,7 @@ export class CodexAppServerClient {
             // Scoped the same way as the approval request for this item, so
             // the app can attach the permission card to the tool call.
             const callId = itemId ? formatScopedItemKey(stringOrNull(params?.threadId) ?? this._threadId, itemId) : '';
-            this.eventHandler?.({
+            this.emitEvent({
                 type: 'exec_command_begin',
                 call_id: callId,
                 callId,
@@ -454,7 +460,7 @@ export class CodexAppServerClient {
         if (method === 'item/completed' && item.type === 'commandExecution') {
             const itemId = typeof item.id === 'string' ? item.id : '';
             const callId = itemId ? formatScopedItemKey(stringOrNull(params?.threadId) ?? this._threadId, itemId) : '';
-            this.eventHandler?.({
+            this.emitEvent({
                 type: 'exec_command_end',
                 call_id: callId,
                 callId,
@@ -479,7 +485,7 @@ export class CodexAppServerClient {
             }
 
             if (method === 'item/started') {
-                this.eventHandler?.({
+                this.emitEvent({
                     type: 'patch_apply_begin',
                     call_id: itemKey,
                     callId: itemKey,
@@ -489,7 +495,7 @@ export class CodexAppServerClient {
             }
 
             if (method === 'item/completed') {
-                this.eventHandler?.({
+                this.emitEvent({
                     type: 'patch_apply_end',
                     call_id: itemKey,
                     callId: itemKey,
@@ -523,7 +529,7 @@ export class CodexAppServerClient {
             };
 
             if (method === 'item/started') {
-                this.eventHandler?.({
+                this.emitEvent({
                     type: 'collab_agent_begin',
                     ...payload,
                 });
@@ -531,7 +537,7 @@ export class CodexAppServerClient {
             }
 
             if (method === 'item/completed') {
-                this.eventHandler?.({
+                this.emitEvent({
                     type: 'collab_agent_end',
                     ...payload,
                 });
@@ -560,7 +566,7 @@ export class CodexAppServerClient {
                     signatures.add(signature);
                     this.rawSubagentActivitySignaturesByItemId.set(itemKey, signatures);
                 }
-                this.eventHandler?.({
+                this.emitEvent({
                     type: 'subagent_activity',
                     item_id: item.id,
                     kind: item.kind,
@@ -576,7 +582,7 @@ export class CodexAppServerClient {
         if (method === 'item/completed' && item.type === 'agentMessage') {
             const text = typeof item.text === 'string' ? item.text : '';
             if (text.length > 0) {
-                this.eventHandler?.({
+                this.emitEvent({
                     type: 'agent_message',
                     message: text,
                     item_id: item.id,
@@ -584,7 +590,7 @@ export class CodexAppServerClient {
                 });
             }
 
-            if (item.phase === 'final_answer' && this.pendingTurnCompletion) {
+            if (item.phase === 'final_answer' && this.pendingTurnCompletion && (!this.eventThreadId || this.eventThreadId === this._threadId)) {
                 this.emitRawTurnCompletion(
                     this.extractTurnId(params),
                     'completed',
@@ -608,6 +614,10 @@ export class CodexAppServerClient {
 
     async connect(opts: { sharedOnly?: boolean } = {}): Promise<void> {
         if (this.connected) return;
+        this.threadScopeEpoch++;
+        this.threadFamilyChecks.clear();
+        this.threadSubscriptions.clear();
+        this.detachedThreads.clear();
 
         const socketPath = join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'app-server-control', 'app-server-control.sock');
         if (!this.sandboxConfig?.enabled && existsSync(socketPath)) {
@@ -795,6 +805,11 @@ export class CodexAppServerClient {
 
         this.process = null;
         this.connected = false;
+        this.threadScopeEpoch++;
+        this.threadFamilyChecks.clear();
+        this.threadParents.clear();
+        this.threadSubscriptions.clear();
+        this.detachedThreads.clear();
         this._turnId = null;
         this.notificationProtocol = 'unknown';
         this.completedTurnIds.clear();
@@ -872,7 +887,7 @@ export class CodexAppServerClient {
         };
 
         const result = await this.request('thread/start', params) as NewConversationResponse;
-        this._threadId = result.thread.id;
+        this.selectThread(result.thread.id);
         this._turnId = null;
         this.rawSubagentActivitySignaturesByItemId.clear();
         this.rememberThreadDefaults(opts);
@@ -924,7 +939,7 @@ export class CodexAppServerClient {
                 modelProvider: config.model_provider ?? 'openai',
             }) as ResumeConversationResponse;
         }
-        this._threadId = result.thread.id;
+        this.selectThread(result.thread.id);
         this._turnId = null;
         this.rawSubagentActivitySignaturesByItemId.clear();
         this.rememberThreadDefaults({
@@ -962,7 +977,7 @@ export class CodexAppServerClient {
         };
 
         const result = await this.request('thread/fork', params) as ForkConversationResponse;
-        this._threadId = result.thread.id;
+        this.selectThread(result.thread.id);
         this._turnId = null;
         this.rememberThreadDefaults({
             model: opts.model ?? defaults.model,
@@ -1200,7 +1215,7 @@ export class CodexAppServerClient {
         logger.warn(`[CodexAppServer] interrupt did not settle turn in ${gracePeriodMs}ms; force-restarting app-server`);
         const pendingTurnId = this.pendingTurnCompletion?.turnId ?? this._turnId;
         if (this.pendingTurnCompletion) {
-            this.eventHandler?.({
+            this.emitEvent({
                 type: 'turn_aborted',
                 reason: 'interrupted',
                 ...(pendingTurnId ? { turn_id: pendingTurnId } : {}),
@@ -1348,7 +1363,7 @@ export class CodexAppServerClient {
             `[CodexAppServer] Clearing thread state: thread=${this._threadId ?? 'none'} turn=${this._turnId ?? 'none'}`,
         );
         this.resolvePendingTurn(true);
-        this._threadId = null;
+        this.selectThread(null);
         this._turnId = null;
         this.threadDefaults = null;
         this.completedTurnIds.clear();
@@ -1357,6 +1372,70 @@ export class CodexAppServerClient {
     }
 
     // ─── JSON-RPC transport ─────────────────────────────────────
+
+    private detachThread(threadId: string): void {
+        if (!this.usesSharedDaemon || this.detachedThreads.has(threadId)) return;
+        this.detachedThreads.add(threadId);
+        void this.request('thread/unsubscribe', { threadId }).catch(() => {});
+    }
+
+    private selectThread(threadId: string | null): void {
+        if (this._threadId === threadId) { if (threadId) this.threadSubscriptions.add(threadId); return; }
+        for (const subscribed of this.threadSubscriptions) this.detachThread(subscribed);
+        this._threadId = threadId;
+        this.threadScopeEpoch++;
+        this.threadFamilyChecks.clear();
+        this.threadSubscriptions.clear();
+        if (threadId) { this.threadSubscriptions.add(threadId); this.detachedThreads.delete(threadId); }
+    }
+
+    private messageThreadId(params: any): string | null {
+        return stringOrNull(params?.threadId) ?? stringOrNull(params?.conversationId)
+            ?? stringOrNull(params?.thread_id) ?? stringOrNull(params?.thread?.id);
+    }
+
+    private async isThreadDescendant(threadId: string, root: string): Promise<boolean> {
+        const seen = new Set<string>();
+        let id: string | null = threadId;
+        while (id && id !== root) {
+            if (seen.has(id)) return false;
+            seen.add(id);
+            if (!this.threadParents.has(id)) {
+                const { thread } = await this.readThread({ threadId: id, includeTurns: false });
+                if (thread.id !== id) throw new Error('Codex returned an unexpected thread');
+                this.threadParents.set(id, stringOrNull(thread.parentThreadId));
+            }
+            id = this.threadParents.get(id) ?? null;
+        }
+        return id === root;
+    }
+
+    private routeThreadMessage(threadId: string | null, deliver: () => void): void {
+        // A shared daemon auto-subscribes every connection to newly spawned agents.
+        if (!this.usesSharedDaemon || (this._threadId && threadId === this._threadId)) { deliver(); return; }
+        if (!threadId) return;
+        const root = this._threadId;
+        if (!root) { this.detachThread(threadId); return; }
+        const epoch = this.threadScopeEpoch;
+        let check = this.threadFamilyChecks.get(threadId);
+        if (!check) {
+            check = this.isThreadDescendant(threadId, root);
+            this.threadFamilyChecks.set(threadId, check);
+        }
+        void check.then(allowed => {
+            if (!this.connected || this._threadId !== root || this.threadScopeEpoch !== epoch) return;
+            if (!allowed) { this.detachThread(threadId); return; }
+            this.threadSubscriptions.add(threadId);
+            deliver();
+        }).catch(() => { if (this.threadFamilyChecks.get(threadId) === check) this.threadFamilyChecks.delete(threadId); });
+    }
+
+    private emitEvent(msg: EventMsg): void {
+        this.eventHandler?.(this.usesSharedDaemon ? {
+            ...msg, native_thread_id: this.eventThreadId ?? this._threadId,
+            ...(this.eventThreadId && this.eventThreadId !== this._threadId ? { subagent: this.eventThreadId } : {}),
+        } : msg);
+    }
 
     /** Default timeout for RPC requests (ms). */
     private static readonly REQUEST_TIMEOUT_MS = 30_000;
@@ -1432,6 +1511,9 @@ export class CodexAppServerClient {
                 if (msg.error) {
                     pending.reject(new Error(`${pending.method}: ${msg.error.message} (code=${msg.error.code})`));
                 } else {
+                    // Bind before the next frame, which can arrive in the same packet.
+                    if (['thread/start', 'thread/resume', 'thread/fork'].includes(pending.method)
+                        && typeof msg.result?.thread?.id === 'string') this.selectThread(msg.result.thread.id);
                     pending.resolve(msg.result);
                 }
             }
@@ -1440,8 +1522,10 @@ export class CodexAppServerClient {
 
         // Server → client request (approvals)
         if (msg.id != null && msg.method) {
-            this.handleServerRequest(msg.id, msg.method, msg.params).catch((err) => {
-                logger.debug('[CodexAppServer] Error handling server request:', err);
+            this.routeThreadMessage(this.messageThreadId(msg.params), () => {
+                void this.handleServerRequest(msg.id, msg.method, msg.params).catch((err) => {
+                    logger.debug('[CodexAppServer] Error handling server request:', err);
+                });
             });
             return;
         }
@@ -1449,7 +1533,20 @@ export class CodexAppServerClient {
         // Notification (no id)
         if (msg.method) {
             this.notificationHandler?.(msg.method, msg.params);
-            this.handleNotification(msg.method, msg.params);
+            if (msg.method === 'thread/started' && msg.params?.thread?.id) {
+                this.threadParents.set(msg.params.thread.id, stringOrNull(msg.params.thread.parentThreadId));
+            }
+            const threadId = this.messageThreadId(msg.params);
+            const deliver = () => {
+                if (this.usesSharedDaemon && threadId !== this._threadId
+                    && (msg.method.startsWith('turn/') || ['task_started', 'task_complete', 'turn_aborted'].includes(msg.params?.msg?.type))) return;
+                this.eventThreadId = this.usesSharedDaemon ? threadId : null;
+                try { this.handleNotification(msg.method, msg.params); }
+                finally { this.eventThreadId = null; }
+            };
+            if (msg.method.startsWith('thread/')) deliver();
+            else if (threadId || /^(item\/|turn\/|hook\/|rawResponse|codex\/event)/.test(msg.method)) this.routeThreadMessage(threadId, deliver);
+            else deliver();
             return;
         }
 
@@ -1650,8 +1747,8 @@ export class CodexAppServerClient {
 
     private handleNotification(method: string, params: any): void {
         // Daemon lifecycle events are global; item events may belong to subagents.
-        const threadId = params?.threadId ?? params?.thread?.id;
-        if (method.startsWith('thread/') && this._threadId && threadId && threadId !== this._threadId) return;
+        const threadId = this.messageThreadId(params);
+        if (method.startsWith('thread/') && threadId && threadId !== this._threadId) return;
         // codex/event notifications: either `codex/event` or `codex/event/<type>`
         if (method === 'codex/event' || method.startsWith('codex/event/')) {
             this.notificationProtocol = 'legacy';
@@ -1665,7 +1762,7 @@ export class CodexAppServerClient {
                     this.markPendingTurnStarted(msg.turn_id ?? msg.turnId ?? null);
                 }
                 // Fire event handler first (so consumer processes the event)
-                this.eventHandler?.(msg);
+                this.emitEvent(msg);
                 // Then resolve turn completion promise
                 if (msg.type === 'task_complete' || msg.type === 'turn_aborted') {
                     const turnId = msg.turn_id ?? msg.turnId ?? null;
