@@ -1258,7 +1258,7 @@ class Sync {
 
     private fetchSessions = async () => {
         if (!this.credentials) return;
-        const avatarsBeforeFetch = storage.getState().sessions;
+        const avatarsBeforeFetch = { ...storage.getState().sessions };
 
         const API_ENDPOINT = getServerUrl();
         const sessions: Array<{
@@ -1280,6 +1280,7 @@ class Sync {
             lastMessage: ApiMessage | null;
         }> = [];
         let cursor: string | null = null;
+        let completeCatalog = true;
         do {
             const headers = {
                 'Authorization': `Bearer ${this.credentials.token}`,
@@ -1290,6 +1291,7 @@ class Sync {
             let response: Response = await fetch(`${API_ENDPOINT}/v2/sessions?limit=200${query}`, { headers });
             // Older self-hosted servers can still provide their original list.
             if (response.status === 404 && !cursor) {
+                completeCatalog = false; // The legacy endpoint may return only 150 rows.
                 response = await fetch(`${API_ENDPOINT}/v1/sessions`, { headers });
             }
             if (!response.ok) throw new Error(`Failed to fetch sessions: ${response.status}`);
@@ -1366,6 +1368,16 @@ class Sync {
         // - Gated on `active`: a dead session can never send the clearing
         //   ephemeral, so a preserved `true` would otherwise be immortal.
         const current = storage.getState().sessions;
+        if (completeCatalog) {
+            const remoteIds = new Set(sessions.map(session => session.id));
+            for (const [id, before] of Object.entries(avatarsBeforeFetch)) {
+                // Preserve records created or updated while the full catalog was loading.
+                if (!remoteIds.has(id) && current[id] === before) {
+                    storage.getState().deleteSession(id);
+                    this.encryption.removeSessionEncryption(id);
+                }
+            }
+        }
         this.applySessions(decryptedSessions.map(s => ({
             ...s,
             // A live replacement or removal received during this fetch wins over its snapshot.
