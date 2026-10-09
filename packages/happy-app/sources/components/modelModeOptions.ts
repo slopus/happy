@@ -170,10 +170,10 @@ export function getGeminiPermissionModes(translate: Translate): PermissionMode[]
 // which gateways, Bedrock, Vertex and Foundry can refuse. Saved `[1m]` keys are
 // mapped onto these rows by retireModelMode.
 //
-// Sonnet 5.5 and Haiku 5.5 are newer than the Claude Code bundled with the
-// Agent SDK at happy-cli's floor (0.3.283 → 2.1.283). That build still runs
-// them, but treats an unknown model as 200K and compacts early; Sonnet 5.5 is
-// in the table from 2.1.287 and Haiku 5.5 from 2.1.293.
+// Sonnet 5.5 and Haiku 5.5 are in that table from Claude Code 2.1.287 and
+// 2.1.293. happy-cli now requires Agent SDK 0.3.295 (2.1.295), but an older
+// install can still carry 0.3.283 (2.1.283), which runs them as unknown
+// models: at 200K, compacting early.
 export function getClaudeModelModes(): ModelMode[] {
     return [
         { key: 'claude-fable-5-1', name: 'Fable 5.1', description: '1M context', providerId: 'anthropic', providerName: 'Anthropic' },
