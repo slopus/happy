@@ -23,6 +23,7 @@ if (args[0] === 'ossutil' && args[1] === 'set-props') {
 }
 
 if (args[0] === 'ossutil' && args[1] === 'api' && args[2] === 'list-objects-v2') {
+  if (process.env.FAKE_FAIL_LIST_PREFIX === flag('--prefix')) process.exit(1);
   const keys = Object.keys(state).filter((key) => key.startsWith(flag('--prefix'))).sort();
   const start = args.includes('--continuation-token') ? Number(flag('--continuation-token')) : 0;
   const page = keys.slice(start, start + 1000).map((key) => ({
@@ -80,8 +81,11 @@ if (source.startsWith('oss://')) {
 
 const targetPrefix = strip(destination);
 if (process.env.FAKE_FAIL_DEST_PREFIX && targetPrefix.startsWith(process.env.FAKE_FAIL_DEST_PREFIX)) process.exit(1);
+const selection = args.includes('--files-from-raw')
+  ? new Set(fs.readFileSync(flag('--files-from-raw'), 'utf8').split('\n')) : null;
 let copied = 0;
 for (const file of files) {
+  if (selection && !selection.has(file.relative)) continue;
   const key = recursive ? targetPrefix + file.relative : targetPrefix;
   if (args.includes('--checksum') && JSON.stringify(state[key]) === JSON.stringify(file.value)) continue;
   const copyWithoutProps = source.startsWith('oss://') &&
@@ -94,6 +98,10 @@ for (const file of files) {
   }
   if (!source.startsWith('oss://') && args.includes('--content-type')) {
     state[key].contentType = flag('--content-type');
+  }
+  if (source.startsWith('oss://') && selection) {
+    fs.appendFileSync(process.env.FAKE_ALIYUN_LOG, `COPIED ${key}\n`);
+    if (process.env.FAKE_CORRUPT_COPY_KEY === key) state[key].md5 = '0'.repeat(32);
   }
   if (key.startsWith('manifests/') && !source.startsWith('oss://') && !recursive) {
     state[key].text = fs.readFileSync(source, 'utf8');

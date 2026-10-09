@@ -149,4 +149,58 @@ if (require.main === module) {
   }
 }
 
-module.exports = { syncDirectory };
+/** Compare one paginated listing locally instead of asking recursive cp to
+ * check every remote object. The release source was verified by syncDirectory.
+ * Existing public aliases may change, but no old asset is removed.
+ */
+function syncPublicDirectory(sourceDirectory, bucket, sourcePrefix, destinationPrefix, options = {}) {
+  const startedAt = Date.now();
+  if (![sourcePrefix, destinationPrefix].every(prefix => prefix.endsWith('/'))) {
+    throw new Error('OSS prefixes must end with /');
+  }
+  const source = path.resolve(sourceDirectory);
+  const files = localFiles(source).map(filePath => ({
+    path: filePath,
+    relativePath: path.relative(source, filePath).split(path.sep).join('/'),
+    size: fs.statSync(filePath).size,
+    ...fileChecksums(filePath),
+  }));
+  const existing = listObjects(bucket, destinationPrefix);
+  const changed = files.filter(file => !matches(existing.get(destinationPrefix + file.relativePath), file));
+  if (changed.length) {
+    const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'paws-oss-copy-'));
+    try {
+      if (changed.some(file => /[\r\n]/.test(file.relativePath))) {
+        throw new Error('OSS copy list cannot represent newline-containing paths');
+      }
+      const selection = path.join(temporary, 'files.txt');
+      fs.writeFileSync(selection, changed.map(file => file.relativePath).join('\n') + '\n');
+      aliyun(['ossutil', 'cp', '-r', `oss://${bucket}/${sourcePrefix}`, `oss://${bucket}/${destinationPrefix}`,
+        '--files-from-raw', selection, '--copy-props', 'metadata', '--job', '4',
+        '--force', '--endpoint', endpoint, '--addressing-style', addressingStyle], true);
+      // OSS-to-OSS cp can omit explicitly supplied properties. Set them after
+      // copying only changed objects; unchanged assets retain their properties.
+      if (options.contentType) {
+        for (const file of changed) {
+          aliyun(['ossutil', 'set-props', `oss://${bucket}/${destinationPrefix}${file.relativePath}`,
+            '--content-type', options.contentType, '--cache-control', options.cacheControl,
+            '--metadata-directive', 'update', '--force', '--endpoint', endpoint,
+            '--addressing-style', addressingStyle], true);
+        }
+      }
+    } finally {
+      fs.rmSync(temporary, { recursive: true, force: true });
+    }
+  }
+  // No writes means the first listing already proves the expected checksums.
+  const verified = changed.length ? listObjects(bucket, destinationPrefix) : existing;
+  for (const file of files) {
+    if (!matches(verified.get(destinationPrefix + file.relativePath), file)) {
+      throw new Error(`OSS public object failed checksum verification: ${destinationPrefix}${file.relativePath}`);
+    }
+  }
+  console.log(`OSS public sync ${destinationPrefix}: ${changed.length} copied, ${files.length - changed.length} reused (${Date.now() - startedAt} ms)`);
+  return { copiedFiles: changed.length, reusedFiles: files.length - changed.length };
+}
+
+module.exports = { syncDirectory, syncPublicDirectory };

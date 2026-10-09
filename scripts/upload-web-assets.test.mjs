@@ -73,7 +73,8 @@ test('uploads immutable release once, then copies live assets inside OSS', async
         assert.equal(state['canvaskit.wasm'].md5, state[`${releasePrefix}canvaskit.wasm`].md5);
         assert.equal(state['canvaskit.wasm'].cacheControl, 'no-cache');
         assert.equal(state['canvaskit.wasm'].contentType, 'application/wasm');
-        assert.match(result.log, /ossutil cp -r .*web\/releases\/.*--checksum/);
+        assert.match(result.log, /ossutil cp -r .*web\/releases\/.*--files-from-raw .*--copy-props metadata --job 4/);
+        assert.doesNotMatch(result.log, /--checksum/);
         assert.match(result.log, /canvaskit\.wasm.*--copy-props none.*--content-type application\/wasm/);
         assert.match(result.log, /ossutil set-props .*canvaskit\.wasm.*--cache-control no-cache.*--metadata-directive update/);
         assert.match(result.log, /metadata\.json.*--cache-control no-cache/);
@@ -93,6 +94,8 @@ test('retry reuses an already verified immutable release', async () => {
         assert.equal(retry.status, 0, retry.stderr);
         assert.match(retry.stdout, /0 uploaded/);
         assert.doesNotMatch(retry.log, /ossutil cp -r \/tmp\/paws-oss-upload-/);
+        assert.doesNotMatch(retry.log, /ossutil cp -r oss:/);
+        assert.doesNotMatch(retry.log, /ossutil set-props .*desktop-skins/);
     } finally {
         await rm(fixture.directory, { recursive: true, force: true });
     }
@@ -215,4 +218,69 @@ test('large bundles use bounded multipart uploads and reuse only matching checks
     } finally {
         await rm(fixture.directory, { recursive: true, force: true });
     }
+});
+
+test('a new release copies only changed public objects and retains old asset URLs', async () => {
+    const fixture = await createFixture();
+    try {
+        assert.equal((await runUpload(fixture)).status, 0);
+        const state = JSON.parse(await readFile(fixture.statePath, 'utf8'));
+        state['assets/retained-old.png'] = { size: 3, md5: 'a'.repeat(32) };
+        await writeFile(fixture.statePath, JSON.stringify(state));
+        await writeFile(join(fixture.dist, '.paws-release-revision'), 'b'.repeat(40));
+        await writeFile(join(fixture.dist, '_expo', 'static', 'app.js'), 'changed');
+        await writeFile(join(fixture.dist, '_expo', 'static', '[route] #chunk.js'), 'new');
+        await writeFile(fixture.logPath, '');
+        const result = await runUpload(fixture);
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /OSS public sync _expo\/: 2 copied, 0 reused/);
+        assert.match(result.stdout, /OSS public sync assets\/: 0 copied, 1 reused/);
+        const copied = result.log.split('\n').filter(line => line.startsWith('COPIED '));
+        assert.deepEqual(copied.sort(), ['COPIED _expo/static/[route] #chunk.js', 'COPIED _expo/static/app.js']);
+        const final = JSON.parse(await readFile(fixture.statePath, 'utf8'));
+        assert.ok(final['assets/retained-old.png']);
+        assert.equal(final['_expo/static/app.js'].md5, createHash('md5').update('changed').digest('hex'));
+        assert.equal(final['_expo/static/app.js'].cacheControl, 'public,max-age=31536000,immutable');
+    } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+test('1001 unchanged public assets require only paginated listings and no copy commands', async () => {
+    const fixture = await createFixture();
+    try {
+        const state = {};
+        for (let i = 0; i < 1001; i++) {
+            const name = `image-${i}.png`;
+            await writeFile(join(fixture.dist, 'assets', name), String(i));
+            state[`assets/${name}`] = { size: String(i).length, md5: createHash('md5').update(String(i)).digest('hex') };
+        }
+        state['assets/fonts/Ionicons.abc.ttf'] = { size: 4, md5: createHash('md5').update('font').digest('hex') };
+        await writeFile(fixture.statePath, JSON.stringify(state));
+        const result = await runUpload(fixture);
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /OSS public sync assets\/: 0 copied, 1002 reused/);
+        const listCalls = result.log.split('\n').filter(line => /--prefix assets\/ --max-keys/.test(line));
+        assert.equal(listCalls.length, 2);
+        assert.match(listCalls[1], /--continuation-token 1000/);
+        assert.doesNotMatch(result.log, /COPIED assets\//);
+        assert.doesNotMatch(result.log, /ossutil cp .*oss:\/\/test-web-bucket\/assets\//);
+    } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+test('public listing failures abort instead of treating existing objects as absent', async () => {
+    const fixture = await createFixture();
+    try {
+        const result = await runUpload(fixture, { FAKE_FAIL_LIST_PREFIX: '_expo/' });
+        assert.notEqual(result.status, 0);
+        assert.doesNotMatch(result.log, /COPIED /);
+    } finally { await rm(fixture.directory, { recursive: true, force: true }); }
+});
+
+test('public checksum verification catches corruption after a delta copy', async () => {
+    const fixture = await createFixture();
+    try {
+        const result = await runUpload(fixture, { FAKE_CORRUPT_COPY_KEY: '_expo/static/app.js' });
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, /OSS public object failed checksum verification/);
+        assert.doesNotMatch(result.stdout, /等待公开 HTTP/);
+    } finally { await rm(fixture.directory, { recursive: true, force: true }); }
 });

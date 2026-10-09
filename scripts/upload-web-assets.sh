@@ -38,7 +38,6 @@ for (const skin of manifest.skins) {
 skin_count="$(find "$DIST_DIR/desktop-skins" -type f | wc -l | tr -d '[:space:]')"
 skin_expected_count="$(printf '%s\n' "$skin_specs_text" | wc -l | tr -d '[:space:]')"
 [[ "$skin_count" == "$skin_expected_count" ]] || { echo '错误：桌面皮肤背景资源数量不正确。' >&2; exit 1; }
-skin_paths=()
 while IFS= read -r skin_relative; do
     skin_id="${skin_relative%%/*}"
     expected_name="${skin_relative#*/}"
@@ -51,7 +50,6 @@ while IFS= read -r skin_relative; do
     skin_hash_prefix="${BASH_REMATCH[1]}"
     skin_hash="$(shasum -a 256 "$skin_path" | cut -d ' ' -f 1)"
     [[ "${skin_hash:0:16}" == "$skin_hash_prefix" ]] || { echo "错误：$skin_id 背景文件名与内容 SHA-256 不一致。" >&2; exit 1; }
-    skin_paths+=("$skin_path")
 done <<< "$skin_specs_text"
 
 if ! command -v aliyun >/dev/null 2>&1 || ! aliyun ossutil --help >/dev/null 2>&1; then
@@ -69,14 +67,6 @@ upload_directory() {
         node scripts/oss-upload-sync.cjs "$source_dir" "$OSS_BUCKET" \
             "${destination#"oss://$OSS_BUCKET/"}" "$cache_control"
     fi
-}
-
-copy_directory_with_checksum() {
-    local source="$1"
-    local destination="$2"
-    echo "==> OSS 内部复用 $source 到 $destination"
-    aliyun ossutil cp -r "$source" "$destination" --checksum --force \
-        --endpoint "$OSS_UPLOAD_ENDPOINT" --addressing-style "$OSS_ADDRESSING_STYLE"
 }
 
 upload_file() {
@@ -105,21 +95,20 @@ upload_directory \
     "oss://$OSS_BUCKET/web/releases/$RELEASE_REVISION/" \
     "$IMMUTABLE_CACHE_CONTROL"
 
-if [[ -d "$DIST_DIR/_expo" ]]; then
-    copy_directory_with_checksum \
-        "oss://$OSS_BUCKET/web/releases/$RELEASE_REVISION/_expo/" \
-        "oss://$OSS_BUCKET/_expo/"
-fi
-if [[ -d "$DIST_DIR/assets" ]]; then
-    copy_directory_with_checksum \
-        "oss://$OSS_BUCKET/web/releases/$RELEASE_REVISION/assets/" \
-        "oss://$OSS_BUCKET/assets/"
-fi
-for skin_path in "${skin_paths[@]}"; do
-    skin_name="${skin_path##*/}"
-    skin_id="$(basename "$(dirname "$skin_path")")"
-    upload_file "$skin_path" "oss://$OSS_BUCKET/desktop-skins/$skin_id/$skin_name" "$IMMUTABLE_CACHE_CONTROL" "image/webp"
-done
+# One listing per public prefix (plus pagination), local checksum comparison,
+# then copy only the delta. Do not recursively inspect every object via cp.
+node - "$DIST_DIR" "$OSS_BUCKET" "$RELEASE_REVISION" <<'NODE'
+const fs = require('node:fs');
+const path = require('node:path');
+const { syncPublicDirectory } = require('./scripts/oss-upload-sync.cjs');
+const [dist, bucket, revision] = process.argv.slice(2);
+for (const directory of ['_expo', 'assets', 'desktop-skins']) {
+    const source = path.join(dist, directory);
+    if (!fs.existsSync(source)) continue;
+    syncPublicDirectory(source, bucket, `web/releases/${revision}/${directory}/`, `${directory}/`,
+        directory === 'desktop-skins' ? { contentType: 'image/webp', cacheControl: 'public,max-age=31536000,immutable' } : {});
+}
+NODE
 
 for source_file in "$DIST_DIR/.well-known"/*; do
     [[ -f "$source_file" ]] || continue
