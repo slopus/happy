@@ -5,6 +5,7 @@ type Draft = {
     selectedMachineId: string | null;
     selectedPath: string | null;
     agentType: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy' | 'rig';
+    pickedAgentType?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy' | 'rig' | null;
     permissionMode: string | null;
     modelMode: string | null;
     effortLevel: string | null;
@@ -64,25 +65,37 @@ describe('useNewSessionDraft', () => {
         expect(useNewSessionDraft.getState().agentType).toBe(agentType);
     });
 
-    it('starts every launch without a harness pick, whatever harness was saved', async () => {
+    it('treats a draft saved before picks were remembered as having no pick', async () => {
+        // Its claude is mostly the old implicit default, so Happy should still win.
         mockPersistence.draft = persistedDraft({ agentType: 'claude' });
         const { useNewSessionDraft } = await import('./useNewSessionDraft');
-        expect(useNewSessionDraft.getState().agentPicked).toBe(false);
+        expect(useNewSessionDraft.getState().pickedAgentType).toBeNull();
     });
 
-    it('marks a harness tapped in the composer as picked until the pick is cleared', async () => {
+    it('persists a harness tapped in the composer', async () => {
         const { useNewSessionDraft } = await import('./useNewSessionDraft');
 
-        useNewSessionDraft.getState().setAgentType('rig');
-        expect(useNewSessionDraft.getState().agentPicked).toBe(false);
+        useNewSessionDraft.getState().pickAgentType('codex');
+        expect(useNewSessionDraft.getState()).toMatchObject({ agentType: 'codex', pickedAgentType: 'codex' });
+        expect(mockPersistence.saved.at(-1)).toMatchObject({ agentType: 'codex', pickedAgentType: 'codex' });
+    });
 
-        useNewSessionDraft.getState().pickAgentType('claude');
-        expect(useNewSessionDraft.getState()).toMatchObject({ agentType: 'claude', agentPicked: true });
-        expect(mockPersistence.saved.at(-1)).toMatchObject({ agentType: 'claude' });
-        expect(mockPersistence.saved.at(-1)).not.toHaveProperty('agentPicked');
+    it('restores the pick after a reload', async () => {
+        const first = await import('./useNewSessionDraft');
+        first.useNewSessionDraft.getState().pickAgentType('codex');
 
-        useNewSessionDraft.getState().clearAgentPick();
-        expect(useNewSessionDraft.getState()).toMatchObject({ agentType: 'claude', agentPicked: false });
+        vi.resetModules();
+        const { useNewSessionDraft } = await import('./useNewSessionDraft');
+        expect(useNewSessionDraft.getState()).toMatchObject({ agentType: 'codex', pickedAgentType: 'codex' });
+    });
+
+    it('keeps the pick when the composer follows a computer to a different harness', async () => {
+        const { useNewSessionDraft } = await import('./useNewSessionDraft');
+
+        useNewSessionDraft.getState().pickAgentType('codex');
+        useNewSessionDraft.getState().setAgentType('claude');
+        expect(useNewSessionDraft.getState()).toMatchObject({ agentType: 'claude', pickedAgentType: 'codex' });
+        expect(mockPersistence.saved.at(-1)).toMatchObject({ agentType: 'claude', pickedAgentType: 'codex' });
     });
 
     it('loads persisted permission, model, and effort defaults', async () => {

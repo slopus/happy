@@ -321,8 +321,9 @@ export function useStartSessionFromDraft() {
         // at launch time so a stale Claude selection cannot spawn Claude while
         // the selected computer only reports Codex (the Android 1.7.0 regression).
         // A bot is Happy Agent's to make whatever harness the draft last chose. A caller that names
-        // the agent (a new chat like an existing one) has picked it, as has a tap in the composer.
-        const agentPicked = draftOverrides.agentType !== undefined || draftStore.agentPicked;
+        // the agent (a new chat like an existing one) has picked it for this start alone; otherwise
+        // the pick is the harness last tapped in the composer, which outlives this session.
+        const pickedAgentType = draftOverrides.agentType ?? draftStore.pickedAgentType;
         const createsBot = draft.createsBot;
         const botName = draft.botName.trim();
         const botFaceSeed = draft.botFaceSeeds[draft.botFaceSlot];
@@ -331,7 +332,7 @@ export function useStartSessionFromDraft() {
             Modal.alert(t('common.error'), botNameProblem);
             return false;
         }
-        const agentType = createsBot ? 'rig' : resolveNewSessionAgent(choice, draft.agentType, agentPicked);
+        const agentType = createsBot ? 'rig' : resolveNewSessionAgent(choice, draft.agentType, pickedAgentType);
         const agentChanged = agentType !== draft.agentType;
         const machine = resolveAgentMachine(choice, agentType);
         if (!machine) {
@@ -743,8 +744,6 @@ export function useStartSessionFromDraft() {
                 if (currentDraft.input === draft.input) currentDraft.setInput('');
                 if (currentDraft.attachments === attachments) currentDraft.setAttachments([]);
             }
-            // The pick was for this session; the next composer starts from Happy again.
-            if (draftOverrides.agentType === undefined) currentDraft.clearAgentPick();
             (openSession ?? navigateToSession)(sessionId);
             return true;
         } catch (error) {
