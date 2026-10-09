@@ -15,7 +15,8 @@ import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readPersistedSessions, persistSession, markSessionStopped, readSettings } from '@/persistence';
-import { syncCodexHistory, setCodexArchive } from '@/codex/syncHistory';
+import { syncCodexHistory, setCodexArchive, isCodexSessionActiveSince } from '@/codex/syncHistory';
+import { CodexAppServerClient } from '@/codex/codexAppServerClient';
 import type { PersistedSession } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
@@ -1046,15 +1047,44 @@ export async function startDaemon(): Promise<void> {
     apiMachine.connect();
 
     let historySyncRunning = false;
+    let nextFullHistorySync = 0;
+    let historySyncTimer: ReturnType<typeof setTimeout> | undefined;
+    const historyNotifications = new CodexAppServerClient();
+    const autoResumed = new Map<string, number>();
     const syncHistory = async () => {
-      if (historySyncRunning || !(await readSettings()).codexHistorySync) return;
+      if (historySyncRunning) return;
       historySyncRunning = true;
-      try { logger.debug('[Codex history]', await syncCodexHistory(credentials, machineId)); }
+      try {
+        if (!(await readSettings()).codexHistorySync) { await historyNotifications.disconnect(); return; }
+        // Watching must never launch another Codex process.
+        await historyNotifications.connect({ sharedOnly: true }).catch(() => {});
+        const today = new Date().setHours(0, 0, 0, 0);
+        const full = Date.now() >= nextFullHistorySync;
+        if (full) nextFullHistorySync = Date.now() + 5 * 60_000;
+        logger.debug('[Codex history]', await syncCodexHistory(credentials, machineId, full ? {} : { since: today }));
+        if (historyNotifications.usesSharedDaemon) {
+          for (const [id, record] of Object.entries(readPersistedSessions())) {
+            if (record.metadata.machineId !== machineId || !isCodexSessionActiveSince(record, today)) continue;
+            const activity = record.metadata.lastMeaningfulMessageAt!;
+            if ((autoResumed.get(id) ?? 0) >= activity) continue;
+            const result = await resumeSession(id);
+            if (result.type === 'success') autoResumed.set(id, activity);
+            else logger.debug('[Codex history] Auto-resume unavailable', { sessionId: id });
+          }
+        }
+      }
       catch (error) { logger.debug('[Codex history] Sync unavailable', { errorName: error instanceof Error ? error.name : typeof error }); }
       finally { historySyncRunning = false; }
     };
+    historyNotifications.setNotificationHandler(method => {
+      if (!['thread/started', 'thread/name/updated', 'thread/status/changed', 'thread/archived', 'thread/unarchived'].includes(method)) return;
+      if (method !== 'thread/started' && method !== 'thread/status/changed') nextFullHistorySync = 0;
+      if (historySyncTimer) return;
+      historySyncTimer = setTimeout(() => { historySyncTimer = undefined; void syncHistory(); }, 1000);
+    });
     void syncHistory();
-    const historySyncInterval = setInterval(() => void syncHistory(), 5 * 60_000);
+    // External CLI processes do not broadcast through the shared daemon.
+    const historySyncInterval = setInterval(() => void syncHistory(), 30_000);
 
     // Every 60 seconds:
     // 1. Prune stale sessions
@@ -1160,6 +1190,8 @@ export async function startDaemon(): Promise<void> {
 
       // Clear health check interval
       clearInterval(historySyncInterval);
+      clearTimeout(historySyncTimer);
+      await historyNotifications.disconnect();
       if (restartOnStaleVersionAndHeartbeat) {
         clearInterval(restartOnStaleVersionAndHeartbeat);
         logger.debug('[DAEMON RUN] Health check interval cleared');

@@ -28,6 +28,13 @@ export function codexHistoryKey(credentials: Credentials, tag: string): Uint8Arr
         : new Uint8Array(createHmac('sha256', credentials.encryption.machineKey).update(tag).digest());
 }
 
+export function isCodexSessionActiveSince(record: PersistedSession, since: number): boolean {
+    const metadata = record.metadata;
+    return Boolean(!record.codexHistory?.deleted && metadata.codexThreadId
+        && !metadata.codexParentThreadId && metadata.codexArchived === false
+        && (metadata.lastMeaningfulMessageAt ?? 0) >= since);
+}
+
 /** Keep user-visible summaries; raw reasoning remains only in the native rollout. */
 export function historyTurn(turn: ThreadTurn, fallbackTime: number): ThreadTurn {
     return {
@@ -57,15 +64,28 @@ function persistHistory(session: Session, checkpoint: NonNullable<PersistedSessi
 }
 
 /** Publish a mirror of native state without attaching a provider or its RPCs. */
-export async function mirrorCodexArchive(credentials: Credentials, session: Session, archived: boolean, force = false, threadId = session.metadata.codexThreadId): Promise<Session> {
+export async function mirrorCodexArchive(credentials: Credentials, session: Session, archived: boolean, force = false, threadId = session.metadata.codexThreadId, thread?: Thread): Promise<Session> {
     // /clear keeps archive metadata but deliberately removes the thread ID.
     if (!session.metadata.codexThreadId && typeof session.metadata.codexArchived === 'boolean') threadId = undefined;
-    if (!force && session.metadata.codexThreadId === threadId && session.metadata.codexArchived === archived && (session.metadata.lifecycleState === 'archived') === archived) return session;
+    const name = thread && threadId ? String(thread.name || thread.preview || `Codex ${threadId.slice(0, 8)}`).split('\n')[0] : undefined;
+    const nativeActivity = thread && threadId ? Number(thread.recencyAt ?? thread.updatedAt) * 1000 : 0;
+    const activity = Math.max(session.metadata.lastMeaningfulMessageAt ?? 0, Number.isFinite(nativeActivity) ? nativeActivity : 0);
+    const mirrorSummary = name && (!session.metadata.summary?.text || session.metadata.summary.text === session.metadata.name);
+    if (!force && session.metadata.codexThreadId === threadId && session.metadata.codexArchived === archived
+        && (session.metadata.lifecycleState === 'archived') === archived && (!name || session.metadata.name === name)
+        && (!mirrorSummary || session.metadata.summary?.text === name) && activity === (session.metadata.lastMeaningfulMessageAt ?? 0)) return session;
     const writer = new ApiSessionClient(credentials.token, session, { metadataOnly: true });
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
         const snapshot = await Promise.race([
-            writer.updateMetadata(metadata => ({ ...metadata, ...(threadId ? { codexThreadId: threadId } : {}), codexArchived: archived,
+            writer.updateMetadata(metadata => ({ ...metadata,
+                ...(threadId && (metadata.codexThreadId || typeof metadata.codexArchived !== 'boolean') ? { codexThreadId: threadId } : {}),
+                codexArchived: archived,
+                ...(name ? { name } : {}),
+                // Existing phones read summary; keep a separately chosen Happy title.
+                ...(mirrorSummary && (!metadata.summary?.text || metadata.summary.text === metadata.name)
+                    ? { summary: { text: name, updatedAt: activity } } : {}),
+                ...(activity ? { lastMeaningfulMessageAt: Math.max(activity, metadata.lastMeaningfulMessageAt ?? 0) } : {}),
                 lifecycleState: archived ? 'archived' : metadata.lifecycleState === 'running' ? 'running' : 'stopped',
                 lifecycleStateSince: Date.now() })),
             new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Archive metadata sync timed out')), 15_000); }),
@@ -120,7 +140,8 @@ async function fetchSessions(token: string): Promise<RawSession[]> {
 }
 
 /** Opt-in discovery and encrypted backfill. Never starts a provider thread. */
-export async function syncCodexHistory(credentials: Credentials, machineId: string) {
+export async function syncCodexHistory(credentials: Credentials, machineId: string, options: { since?: number } = {}) {
+    const since = options.since;
     const stats = { discovered: 0, imported: 0, existing: 0, updated: 0, skipped: 0, failed: 0, unreadable: 0 };
     await mkdir(configuration.happyHomeDir, { recursive: true });
     const lockPath = join(configuration.happyHomeDir, 'codex-history.lock');
@@ -136,7 +157,7 @@ export async function syncCodexHistory(credentials: Credentials, machineId: stri
             if ((error as NodeJS.ErrnoException).code !== 'ESRCH') return stats;
         }
         await unlink(lockPath);
-        return syncCodexHistory(credentials, machineId);
+        return syncCodexHistory(credentials, machineId, options);
     }
     const client = new CodexAppServerClient();
     try {
@@ -176,20 +197,24 @@ export async function syncCodexHistory(credentials: Credentials, machineId: stri
             let cursor: string | null = null;
             do {
                 const page = await client.listThreads({ archived, ancestorThreadId,
-                    useStateDbOnly: !!ancestorThreadId, sourceKinds: SOURCE_KINDS, cursor: cursor ?? undefined });
+                    sortKey: 'updated_at', sortDirection: 'desc',
+                    useStateDbOnly: !!ancestorThreadId,
+                    sourceKinds: since ? ['cli', 'vscode', 'exec', 'appServer', 'unknown'] : SOURCE_KINDS,
+                    cursor: cursor ?? undefined });
                 if (ancestorThreadId && page.data.some(thread => thread.id === ancestorThreadId)) {
                     throw new Error('Codex must support ancestorThreadId to discover child history');
                 }
-                for (const thread of page.data) threads.set(thread.id, { ...thread,
+                for (const thread of page.data.filter(thread => !since || Number(thread.updatedAt) * 1000 >= since)) threads.set(thread.id, { ...thread,
                     historyArchived: archived,
                     historyParentThreadId: threads.get(thread.id)?.historyParentThreadId ?? ancestorThreadId });
                 if (page.nextCursor && page.nextCursor === cursor) throw new Error('Codex session pagination stalled');
                 cursor = page.nextCursor;
+                if (since && page.data.some(thread => Number(thread.updatedAt) * 1000 < since)) break;
             } while (cursor);
         };
         for (const archived of [false, true]) await list(archived);
         // Codex hides empty previews in its normal list. Descendant queries include them.
-        const roots = [...threads.keys()];
+        const roots = since ? [] : [...threads.keys()];
         await Promise.all(Array.from({ length: Math.min(8, roots.length) }, async () => {
             while (roots.length) {
                 const root = roots.shift()!;
@@ -220,7 +245,7 @@ export async function syncCodexHistory(credentials: Credentials, machineId: stri
                         agentStateVersion: raw.agentStateVersion, agentState: null,
                         metadata: decrypt(decodeBase64(known.record.encryptionKey), known.record.encryptionVariant, decodeBase64(raw.metadata)),
                         encryptionKey: decodeBase64(known.record.encryptionKey), encryptionVariant: known.record.encryptionVariant,
-                    }, thread.historyArchived === true, false, thread.id);
+                    }, thread.historyArchived === true, false, thread.id, thread);
                     known.record = { ...known.record, metadata: { ...mirrored.metadata, codexParentThreadId: parentThreadId },
                         metadataVersion: mirrored.metadataVersion, seq: mirrored.seq };
                     persistSession(known.id, known.record);
@@ -251,7 +276,7 @@ export async function syncCodexHistory(credentials: Credentials, machineId: stri
                     },
                 });
                 if (!session?.metadata) throw new Error('Could not create history session');
-                session = await mirrorCodexArchive(credentials, session, thread.historyArchived === true, false, thread.id);
+                session = await mirrorCodexArchive(credentials, session, thread.historyArchived === true, false, thread.id, thread);
                 const savedProgress = records[session.id]?.codexHistory;
                 if (!known && savedProgress) {
                     persistHistory(session, savedProgress);

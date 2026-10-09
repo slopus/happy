@@ -164,6 +164,8 @@ describe('CodexAppServerClient sandbox integration', () => {
         const { CodexAppServerClient } = await import('./codexAppServerClient');
         const client = new CodexAppServerClient();
         const events = vi.fn();
+        const notifications = vi.fn();
+        client.setNotificationHandler(notifications);
         client.setEventHandler(events);
         client.setApprovalHandler(async () => 'approved');
         await client.connect();
@@ -180,6 +182,7 @@ describe('CodexAppServerClient sandbox integration', () => {
         await waitFor(() => sent.some(msg => msg.id === 100 && msg.result));
         expect(sent).toContainEqual({ jsonrpc: '2.0', id: 100, result: { decision: 'accept' } });
         expect(events).toHaveBeenCalledWith({ type: 'agent_message', message: 'hello' });
+        expect(notifications).toHaveBeenCalledWith('codex/event/agent_message', { msg: { type: 'agent_message', message: 'hello' } });
         expect(mockSpawn).not.toHaveBeenCalled();
         await client.disconnect();
         expect(socket.close).toHaveBeenCalledOnce();
@@ -200,6 +203,29 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(socket.terminate).toHaveBeenCalledOnce();
         expect(mockSpawn).toHaveBeenCalledOnce();
         await client.disconnect();
+    });
+
+    it('never spawns Codex when a shared-only watcher has no native daemon', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        await expect(new CodexAppServerClient().connect({ sharedOnly: true })).rejects.toThrow('daemon is unavailable');
+        expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
+    it('ignores another daemon thread becoming idle without hiding global notifications from the watcher', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events = vi.fn();
+        const notifications = vi.fn();
+        client.setEventHandler(events);
+        client.setNotificationHandler(notifications);
+        (client as any)._threadId = 'mine';
+        (client as any)._turnId = 'my-turn';
+        (client as any).pendingTurnCompletion = { turnId: 'my-turn', started: true, resolve: vi.fn() };
+        (client as any).handleLine(JSON.stringify({ method: 'thread/status/changed', params: { threadId: 'other', status: { type: 'idle' } } }));
+        expect(notifications).toHaveBeenCalledOnce();
+        expect(events).not.toHaveBeenCalled();
+        expect((client as any)._turnId).toBe('my-turn');
+        expect((client as any).pendingTurnCompletion).not.toBeNull();
     });
 
     it('reports goal action support for Codex versions with goal action requests', async () => {

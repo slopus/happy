@@ -6,8 +6,15 @@ It uses the same Codex binary and `CODEX_HOME` as `happy codex`. Discovery and
 history reads do not start agent threads. Imported messages and attachments use
 Happy's normal session encryption.
 
-- `happy codex history --watch` also enables discovery every five minutes in the daemon.
+- `happy codex history --watch` mirrors native titles and activity. Native daemon
+  events trigger sync; a 30-second check also finds sessions created by other CLI
+  processes. Full history discovery runs every five minutes.
 - `happy codex history --stop` disables automatic discovery without removing history.
+
+When a shared Codex daemon is available, watching automatically connects today's
+unarchived primary conversations to Happy, using the computer's local day.
+It joins the original threads without sending prompts or starting another Codex
+process. Native archived threads and deleted imports are excluded.
 
 Archive state follows Codex: unarchived threads stay in the normal list even
 without a Happy process; only native archived threads enter the archive. The

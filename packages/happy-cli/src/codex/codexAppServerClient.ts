@@ -218,6 +218,7 @@ function normalizeRawFileChangeList(changes: unknown): LegacyPatchChanges | unde
 
 export class CodexAppServerClient {
     private daemonSocket: WebSocket | null = null;
+    private notificationHandler?: (method: string, params: any) => void;
     private process: ChildProcess | null = null;
     private readline: ReadlineInterface | null = null;
     private nextId = 1;
@@ -599,7 +600,13 @@ export class CodexAppServerClient {
 
     // ─── Lifecycle ──────────────────────────────────────────────
 
-    async connect(): Promise<void> {
+    get usesSharedDaemon(): boolean { return this.daemonSocket?.readyState === WebSocket.OPEN; }
+
+    setNotificationHandler(handler: (method: string, params: any) => void): void {
+        this.notificationHandler = handler;
+    }
+
+    async connect(opts: { sharedOnly?: boolean } = {}): Promise<void> {
         if (this.connected) return;
 
         const socketPath = join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'app-server-control', 'app-server-control.sock');
@@ -642,6 +649,7 @@ export class CodexAppServerClient {
             }
         }
 
+        if (opts.sharedOnly) throw new Error('Native Codex daemon is unavailable');
         if (!isAppServerAvailable()) {
             throw new Error(
                 'Codex CLI is not installed\n\n' +
@@ -986,6 +994,8 @@ export class CodexAppServerClient {
         ancestorThreadId?: string;
         useStateDbOnly?: boolean;
         limit?: number;
+        sortKey?: 'updated_at';
+        sortDirection?: 'desc';
     } = {}): Promise<{ data: Thread[]; nextCursor: string | null }> {
         return await this.request('thread/list', {
             ...opts, limit: opts.limit ?? 100, modelProviders: opts.modelProviders ?? [],
@@ -1438,6 +1448,7 @@ export class CodexAppServerClient {
 
         // Notification (no id)
         if (msg.method) {
+            this.notificationHandler?.(msg.method, msg.params);
             this.handleNotification(msg.method, msg.params);
             return;
         }
@@ -1638,6 +1649,9 @@ export class CodexAppServerClient {
     }
 
     private handleNotification(method: string, params: any): void {
+        // Daemon lifecycle events are global; item events may belong to subagents.
+        const threadId = params?.threadId ?? params?.thread?.id;
+        if (method.startsWith('thread/') && this._threadId && threadId && threadId !== this._threadId) return;
         // codex/event notifications: either `codex/event` or `codex/event/<type>`
         if (method === 'codex/event' || method.startsWith('codex/event/')) {
             this.notificationProtocol = 'legacy';
