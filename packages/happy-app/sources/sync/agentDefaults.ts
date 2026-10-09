@@ -32,7 +32,7 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
     // Auto is the reviewed everyday mode for both shipped code agents. The
     // old CLI fallback is applied only when a machine version is known below;
     // a user override is kept separate and is never rewritten here.
-    claude: { permissionMode: 'auto', modelMode: 'claude-opus-5', effortLevel: 'medium' },
+    claude: { permissionMode: 'auto', modelMode: 'claude-opus-5-5', effortLevel: 'medium' },
     codex: { permissionMode: 'auto', modelMode: 'gpt-5.6-sol', effortLevel: 'medium' },
     gemini: { permissionMode: 'default', modelMode: 'gemini-2.5-pro', effortLevel: null },
     openclaw: { permissionMode: 'default', modelMode: 'default', effortLevel: null },
@@ -43,6 +43,11 @@ const codeAgentDefaults: Record<AgentKey, AgentDefaultConfig> = {
 // Keep this with the code-default resolver so every spawn/send consumer uses
 // the same compatibility boundary as the picker catalog.
 export const CLI_VERSION_WITH_AUTO = '1.2.1-beta.2';
+
+// Opus 5.5 needs Agent SDK >= 0.3.280 (bundled Claude Code 2.1.280); older
+// bundled copies get a 400. 1.2.6-beta.0 is the first happy-cli to require it.
+export const CLI_VERSION_WITH_OPUS_5_5 = '1.2.6-beta.0';
+const CLAUDE_MODEL_BEFORE_OPUS_5_5 = 'claude-opus-5';
 
 function resolveCodeDefaultPermissionMode(
     permissionMode: string,
@@ -59,6 +64,25 @@ function resolveCodeDefaultPermissionMode(
         : 'default';
 }
 
+// The opposite of the auto gate on an unknown version: a missing or mangled
+// version keeps the old model, because guessing wrong here leaves a session
+// whose every turn fails rather than one that asks more often.
+function resolveCodeDefaultModelMode(
+    agent: AgentKey,
+    modelMode: string,
+    cliVersion: string | null | undefined,
+): string {
+    if (agent !== 'claude' || modelMode !== 'claude-opus-5-5') {
+        return modelMode;
+    }
+    if (!cliVersion || !isWellFormedVersion(cliVersion)) {
+        return CLAUDE_MODEL_BEFORE_OPUS_5_5;
+    }
+    return compareVersionsWithPrerelease(cliVersion, CLI_VERSION_WITH_OPUS_5_5) >= 0
+        ? modelMode
+        : CLAUDE_MODEL_BEFORE_OPUS_5_5;
+}
+
 export function normalizeAgentKey(flavor: string | null | undefined): AgentKey {
     if (flavor === 'codex' || flavor === 'gemini' || flavor === 'openclaw' || flavor === 'agy') {
         return flavor;
@@ -70,11 +94,13 @@ export function getCodeAgentDefaults(
     flavor: string | null | undefined,
     cliVersion?: string | null,
 ): AgentDefaultConfig {
-    const defaults = codeAgentDefaults[normalizeAgentKey(flavor)];
+    const agent = normalizeAgentKey(flavor);
+    const defaults = codeAgentDefaults[agent];
     const permissionMode = resolveCodeDefaultPermissionMode(defaults.permissionMode, cliVersion);
-    return permissionMode === defaults.permissionMode
+    const modelMode = resolveCodeDefaultModelMode(agent, defaults.modelMode, cliVersion);
+    return permissionMode === defaults.permissionMode && modelMode === defaults.modelMode
         ? defaults
-        : { ...defaults, permissionMode };
+        : { ...defaults, permissionMode, modelMode };
 }
 
 /**
