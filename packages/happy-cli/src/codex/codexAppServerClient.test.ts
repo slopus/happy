@@ -7,12 +7,25 @@ const {
     mockWrapForMcpTransport,
     mockSandboxCleanup,
     mockSpawn,
+    mockExistsSync,
+    mockWebSocket,
 } = vi.hoisted(() => ({
     mockExecSync: vi.fn(),
     mockInitializeSandbox: vi.fn(),
     mockWrapForMcpTransport: vi.fn(),
     mockSandboxCleanup: vi.fn(),
     mockSpawn: vi.fn(),
+    mockExistsSync: vi.fn(),
+    mockWebSocket: vi.fn(),
+}));
+
+vi.mock('node:fs', async (importOriginal) => ({
+    ...await importOriginal<typeof import('node:fs')>(),
+    existsSync: mockExistsSync,
+}));
+
+vi.mock('ws', () => ({
+    default: Object.assign(function (...args: unknown[]) { return mockWebSocket(...args); }, { OPEN: 1 }),
 }));
 
 vi.mock('node:child_process', () => ({
@@ -117,6 +130,7 @@ describe('CodexAppServerClient sandbox integration', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mockExistsSync.mockReturnValue(false);
         process.env.RUST_LOG = originalRustLog;
         mockExecSync.mockReturnValue('codex-cli 0.107.0');
         mockInitializeSandbox.mockResolvedValue(mockSandboxCleanup);
@@ -126,6 +140,66 @@ describe('CodexAppServerClient sandbox integration', () => {
 
     afterAll(() => {
         process.env.RUST_LOG = originalRustLog;
+    });
+
+    it('resumes through the shared daemon and routes events and approvals without owning its process', async () => {
+        const socket = new (require('events').EventEmitter)();
+        socket.readyState = 1;
+        socket.close = vi.fn();
+        const sent: MockRpcMessage[] = [];
+        socket.send = vi.fn((data: string) => {
+            const msg = JSON.parse(data);
+            sent.push(msg);
+            const result = msg.method === 'initialize' ? { userAgent: 'Codex Desktop' }
+                : { thread: { id: 'native-thread', model: 'gpt-test', turns: [] }, model: 'gpt-test' };
+            if (msg.method && msg.id != null) {
+                queueMicrotask(() => socket.emit('message', Buffer.from(JSON.stringify({ id: msg.id, result }))));
+            }
+        });
+        mockExistsSync.mockReturnValue(true);
+        mockWebSocket.mockImplementation(() => {
+            queueMicrotask(() => socket.emit('open'));
+            return socket;
+        });
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events = vi.fn();
+        client.setEventHandler(events);
+        client.setApprovalHandler(async () => 'approved');
+        await client.connect();
+        await expect(client.resumeThread({ threadId: 'native-thread' })).resolves.toEqual({
+            threadId: 'native-thread', model: 'gpt-test',
+        });
+        socket.emit('message', Buffer.from(JSON.stringify({
+            method: 'codex/event/agent_message', params: { msg: { type: 'agent_message', message: 'hello' } },
+        })));
+        socket.emit('message', Buffer.from(JSON.stringify({
+            id: 100, method: 'item/commandExecution/requestApproval',
+            params: { threadId: 'native-thread', itemId: 'cmd', command: ['pwd'] },
+        })));
+        await waitFor(() => sent.some(msg => msg.id === 100 && msg.result));
+        expect(sent).toContainEqual({ jsonrpc: '2.0', id: 100, result: { decision: 'accept' } });
+        expect(events).toHaveBeenCalledWith({ type: 'agent_message', message: 'hello' });
+        expect(mockSpawn).not.toHaveBeenCalled();
+        await client.disconnect();
+        expect(socket.close).toHaveBeenCalledOnce();
+    });
+
+    it('falls back to stdio when the daemon socket is stale', async () => {
+        const socket = new (require('events').EventEmitter)();
+        socket.readyState = 3;
+        socket.terminate = vi.fn();
+        mockExistsSync.mockReturnValue(true);
+        mockWebSocket.mockImplementation(() => {
+            queueMicrotask(() => socket.emit('error', new Error('ECONNREFUSED')));
+            return socket;
+        });
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        await client.connect();
+        expect(socket.terminate).toHaveBeenCalledOnce();
+        expect(mockSpawn).toHaveBeenCalledOnce();
+        await client.disconnect();
     });
 
     it('reports goal action support for Codex versions with goal action requests', async () => {

@@ -2,7 +2,7 @@
  * Codex App Server Client — drives Codex via the v2 JSON-RPC protocol
  * (`codex app-server`), replacing the legacy MCP-based CodexMcpClient.
  *
- * Protocol: JSON-RPC 2.0 over stdio (newline-delimited JSON).
+ * Protocol: JSON-RPC 2.0 over the shared daemon's Unix WebSocket or stdio.
  * Reference: codex-rs/app-server/README.md in the openai/codex repo.
  *
  * WARNING: @openai/codex-sdk (v0.118.0) exists but only wraps `codex exec`
@@ -16,6 +16,11 @@
 import { execSync, type ChildProcess } from 'node:child_process';
 import { spawn as crossSpawn } from 'cross-spawn';
 import { createInterface, type Interface as ReadlineInterface } from 'node:readline';
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { createConnection } from 'node:net';
+import WebSocket from 'ws';
 import { logger } from '@/ui/logger';
 import type {
     InitializeParams,
@@ -212,6 +217,7 @@ function normalizeRawFileChangeList(changes: unknown): LegacyPatchChanges | unde
 }
 
 export class CodexAppServerClient {
+    private daemonSocket: WebSocket | null = null;
     private process: ChildProcess | null = null;
     private readline: ReadlineInterface | null = null;
     private nextId = 1;
@@ -596,6 +602,46 @@ export class CodexAppServerClient {
     async connect(): Promise<void> {
         if (this.connected) return;
 
+        const socketPath = join(process.env.CODEX_HOME ?? join(homedir(), '.codex'), 'app-server-control', 'app-server-control.sock');
+        if (!this.sandboxConfig?.enabled && existsSync(socketPath)) {
+            const socket = new WebSocket('ws://localhost/', {
+                createConnection: () => createConnection(socketPath), handshakeTimeout: 2000,
+            });
+            try {
+                await new Promise<void>((resolve, reject) => {
+                    socket.once('open', resolve);
+                    socket.once('error', reject);
+                });
+            } catch {
+                socket.terminate();
+            }
+            if (socket.readyState === WebSocket.OPEN) {
+                this.daemonSocket = socket;
+                const epoch = ++this.processEpoch;
+                socket.on('message', data => { if (this.daemonSocket === socket) this.handleLine(data.toString(), epoch); });
+                socket.on('close', () => {
+                    if (this.daemonSocket !== socket) return;
+                    this.daemonSocket = null;
+                    this.connected = false;
+                    for (const [id, request] of this.pending) {
+                        if (request.epoch !== epoch) continue;
+                        request.reject(new Error(`Codex daemon disconnected during ${request.method}`));
+                        this.pending.delete(id);
+                    }
+                    this.resolvePendingTurn(true);
+                });
+                socket.on('error', error => logger.debug('[CodexAppServer] Daemon socket error', error.message));
+                try {
+                    await this.initializeConnection();
+                    logger.debug('[CodexAppServer] Connected to shared daemon');
+                    return;
+                } catch (error) {
+                    logger.debug('[CodexAppServer] Daemon initialization failed; falling back to stdio', error);
+                    await this.disconnectInternal();
+                }
+            }
+        }
+
         if (!isAppServerAvailable()) {
             throw new Error(
                 'Codex CLI is not installed\n\n' +
@@ -688,7 +734,10 @@ export class CodexAppServerClient {
             this.handleLine(line, epoch);
         });
 
-        // Perform initialize handshake
+        await this.initializeConnection();
+    }
+
+    private async initializeConnection(): Promise<void> {
         const initParams: InitializeParams = {
             clientInfo: {
                 name: 'happy-codex',
@@ -706,7 +755,11 @@ export class CodexAppServerClient {
     }
 
     private async disconnectInternal(opts?: { preserveThreadState?: boolean }): Promise<void> {
-        if (!this.connected && !this.process) return;
+        if (!this.connected && !this.process && !this.daemonSocket) return;
+
+        const socket = this.daemonSocket;
+        this.daemonSocket = null;
+        socket?.close(); // The shared daemon and other clients remain running.
 
         const proc = this.process;
         const pid = proc?.pid;
@@ -1301,7 +1354,7 @@ export class CodexAppServerClient {
     private request(method: string, params?: unknown, timeoutMs?: number): Promise<unknown> {
         const timeout = timeoutMs ?? CodexAppServerClient.REQUEST_TIMEOUT_MS;
         return new Promise((resolve, reject) => {
-            if (!this.process?.stdin?.writable) {
+            if (!this.process?.stdin?.writable && this.daemonSocket?.readyState !== WebSocket.OPEN) {
                 reject(new Error(`Cannot send ${method}: stdin not writable`));
                 return;
             }
@@ -1322,21 +1375,24 @@ export class CodexAppServerClient {
             const msg: JsonRpcRequest = { jsonrpc: '2.0', id, method, params };
             const line = JSON.stringify(msg) + '\n';
             logger.debug(`[CodexAppServer] → ${method} (id=${id})`);
-            this.process.stdin.write(line);
+            if (this.daemonSocket) this.daemonSocket.send(JSON.stringify(msg));
+            else this.process!.stdin!.write(line);
         });
     }
 
     private notify(method: string, params?: unknown): void {
-        if (!this.process?.stdin?.writable) return;
+        if (!this.process?.stdin?.writable && this.daemonSocket?.readyState !== WebSocket.OPEN) return;
         const msg: JsonRpcRequest = { jsonrpc: '2.0', method, params };
-        this.process.stdin.write(JSON.stringify(msg) + '\n');
+        if (this.daemonSocket) this.daemonSocket.send(JSON.stringify(msg));
+        else this.process!.stdin!.write(JSON.stringify(msg) + '\n');
         logger.debug(`[CodexAppServer] → ${method} (notification)`);
     }
 
     private respond(id: number, result: unknown): void {
-        if (!this.process?.stdin?.writable) return;
+        if (!this.process?.stdin?.writable && this.daemonSocket?.readyState !== WebSocket.OPEN) return;
         const msg: JsonRpcResponse = { jsonrpc: '2.0', id, result };
-        this.process.stdin.write(JSON.stringify(msg) + '\n');
+        if (this.daemonSocket) this.daemonSocket.send(JSON.stringify(msg));
+        else this.process!.stdin!.write(JSON.stringify(msg) + '\n');
         logger.debug(`[CodexAppServer] → response (id=${id})`);
     }
 
