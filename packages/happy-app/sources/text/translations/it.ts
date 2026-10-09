@@ -400,6 +400,8 @@ export const it: TranslationStructure = {
         resumeSessionMissingMachine: 'This session is missing its machine metadata, so it cannot be resumed.',
         resumeSessionMissingBackendId: 'This session does not have a resumable Claude or Codex identifier.',
         resumeSessionUnexpectedDirectoryPrompt: 'Resume cannot create directories. Start the session manually from its original path.',
+        restartSession: 'Riavvia sessione',
+        restartSessionCouldNotStop: 'Impossibile arrestare la sessione per riavviarla. È ancora in esecuzione.',
         killSessionSubtitle: 'Termina immediatamente la sessione',
         archiveSessionSubtitle: 'Archivia questa sessione e fermala',
         metadata: 'Metadati',
