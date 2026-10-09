@@ -189,6 +189,10 @@ test('daily workflow uses 03:17 CST, an independent shared mutex, main-only appl
   assert.equal(retention.jobs.cleanup.if, "github.ref == 'refs/heads/main'");
   assert.equal(retention.on.workflow_dispatch.inputs.dry_run.default, true);
   const steps = retention.jobs.cleanup.steps;
+  assert.doesNotMatch(JSON.stringify(retention.jobs.cleanup.env), /\$\{\{\s*(?:runner|job|steps|env)\./, 'job env cannot use runner/step contexts');
+  const cleanupStep = steps.find(s => s.env?.RETENTION_MODE);
+  assert.equal(cleanupStep.env.PAWS_WEB_RETENTION_REPORT_DIR, '${{ runner.temp }}/web-retention-report');
+  assert.equal(steps.at(-1).with.path, '${{ runner.temp }}/web-retention-report');
   const step = steps.find(s => s.env?.RETENTION_MODE);
   assert.match(step.env.RETENTION_MODE, /event_name == 'schedule' && '--apply'/);
   assert.match(step.run, /cleanup-web-assets.cjs/);

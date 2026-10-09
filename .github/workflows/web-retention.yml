@@ -31,7 +31,6 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       PAWS_WEB_RETENTION_LOCK: paws-web-production
-      PAWS_WEB_RETENTION_REPORT_DIR: ${{ runner.temp }}/web-retention-report
       ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_ID }}
       ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_SECRET }}
       ALIBABA_CLOUD_REGION_ID: cn-hangzhou
@@ -63,6 +62,7 @@ jobs:
             --region cn-hangzhou
       - name: Retain five Web releases and their dependencies
         env:
+          PAWS_WEB_RETENTION_REPORT_DIR: ${{ runner.temp }}/web-retention-report
           RETENTION_MODE: ${{ github.event_name == 'schedule' && '--apply' || inputs.dry_run && '--dry-run' || '--apply' }}
         run: node scripts/cleanup-web-assets.cjs "$RETENTION_MODE"
       - name: Preserve plan, deletion receipts and verification
@@ -70,6 +70,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: web-retention-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ env.PAWS_WEB_RETENTION_REPORT_DIR }}
+          path: ${{ runner.temp }}/web-retention-report
           if-no-files-found: warn
           retention-days: 30
