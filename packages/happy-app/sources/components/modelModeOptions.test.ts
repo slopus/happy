@@ -149,7 +149,8 @@ describe('modelModeOptions', () => {
             'my-workspace-model',
         ]);
         expect(models).toHaveLength(7);
-        expect(includeConfiguredModel('claude', models, 'my-workspace-model')).toBe(models);
+        expect(includeConfiguredModel('gemini', models, 'my-workspace-model')).toBe(models);
+        expect(includeConfiguredModel('openclaw', models, 'my-workspace-model')).toBe(models);
     });
 
     it('only offers the current-generation claude models', () => {
@@ -158,28 +159,56 @@ describe('modelModeOptions', () => {
             'claude-fable-5-1',
             'claude-fable-5',
             'claude-opus-5-5',
-            'claude-opus-5-5[1m]',
             'claude-opus-5',
-            'claude-opus-5[1m]',
             'claude-sonnet-5-5',
-            'claude-sonnet-5-5[1m]',
-            'claude-sonnet-5',
+            'claude-haiku-5-5',
         ]);
         expect(models.map((model) => model.name)).toEqual([
             'Fable 5.1',
             'Fable 5',
             'Opus 5.5',
-            'Opus 5.5 [1M]',
             'Opus 5',
-            'Opus 5 [1M]',
             'Sonnet 5.5',
-            'Sonnet 5.5 [1M]',
-            'Sonnet 5',
+            'Haiku 5.5',
         ]);
         // No `default model` row, and no alias keys: an alias would silently
         // resolve to an older model than the row claims.
         expect(models.some((model) => model.key === 'default')).toBe(false);
         expect(models.some((model) => ['opus', 'sonnet', 'fable', 'haiku'].includes(model.key))).toBe(false);
+        // One row per model: each is 1M-native, so a `[1m]` twin runs the same thing.
+        expect(models.some((model) => model.key.endsWith('[1m]'))).toBe(false);
+    });
+
+    it('keeps a saved claude model that left the list as its own row', () => {
+        // Sonnet 5 still runs; a user who saved it stays on it instead of the
+        // new-session picker falling through to the head of the list.
+        const models = getClaudeModelModes();
+        const withSaved = includeConfiguredModel('claude', models, 'claude-sonnet-5');
+
+        expect(withSaved).toHaveLength(models.length + 1);
+        expect(withSaved[withSaved.length - 1]).toEqual({
+            key: 'claude-sonnet-5',
+            name: 'Sonnet 5',
+            description: 'saved model',
+        });
+        expect(getAvailableModels('claude', null, translate, 'claude-sonnet-5').map((model) => model.key))
+            .toContain('claude-sonnet-5');
+        // A flavorless session is a Claude session.
+        expect(includeConfiguredModel(undefined, models, 'claude-sonnet-5')).toEqual(withSaved);
+        expect(includeConfiguredModel('claude', models, 'claude-opus-5-5')).toBe(models);
+        expect(includeConfiguredModel('claude', models, 'default')).toBe(models);
+    });
+
+    it.each([
+        ['claude-opus-5-5[1m]', 'claude-opus-5-5'],
+        ['claude-opus-5[1m]', 'claude-opus-5'],
+        ['claude-sonnet-5-5[1m]', 'claude-sonnet-5-5'],
+    ])('resolves a saved %s onto the %s row without adding one', (saved, row) => {
+        const models = getAvailableModels('claude', null, translate, saved);
+
+        expect(models).toEqual(getClaudeModelModes());
+        expect(models.some((model) => model.key === saved)).toBe(false);
+        expect(models.some((model) => model.key === row)).toBe(true);
     });
 
     it('offers every codex model the levels its own registry publishes', () => {
@@ -210,7 +239,7 @@ describe('modelModeOptions', () => {
     it('offers claude the SDK effort union for every model', () => {
         // Claude's scale belongs to the SDK, not the model: an unreachable level
         // is silently downgraded, so every model gets the same list.
-        for (const model of ['claude-fable-5-1', 'claude-fable-5', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5', 'claude-sonnet-5']) {
+        for (const model of ['claude-fable-5-1', 'claude-fable-5', 'claude-opus-5-5', 'claude-opus-5', 'claude-sonnet-5-5', 'claude-haiku-5-5']) {
             const keys = getEffortLevelsForModel('claude', model).map((level) => level.key);
             expect(keys).toEqual(['low', 'medium', 'high', 'xhigh', 'max']);
             // Claude's floor is `low`; there is no off.

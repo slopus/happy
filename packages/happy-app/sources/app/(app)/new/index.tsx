@@ -77,7 +77,7 @@ import {
     cancelPendingPickerOpenState,
     resolvePickerToggleAction,
 } from '@/utils/newSessionPickerInteraction';
-import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
+import { getCodeAgentDefaults, resolveAgentDefaultConfig, retireModelMode } from '@/sync/agentDefaults';
 import { delay } from '@/utils/time';
 import {
     buildRigSpawnConfiguration,
@@ -1147,7 +1147,7 @@ function NewSessionScreen() {
         ]));
 
         setModelIndex(findPreferredModeIndex(modelModes, [
-            draft.modelMode,
+            retireModelMode(selectedAgent, draft.modelMode),
             effectiveAgentDefaults.modelMode,
         ]));
 

@@ -62,6 +62,7 @@ vi.mock('@/sync/agentDefaults', () => ({
         modelMode: 'default',
         effortLevel: null,
     }),
+    retireModelMode: (_agentType: string, modelMode: string | null | undefined) => modelMode,
 }));
 
 vi.mock('@/sync/ops', () => ({

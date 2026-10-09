@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { storage, useAllMachines, useSetting } from '@/sync/storage';
-import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
+import { getCodeAgentDefaults, resolveAgentDefaultConfig, retireModelMode } from '@/sync/agentDefaults';
 import {
     machineSpawnNewSession,
     machineStopSession,
@@ -393,7 +393,7 @@ export function useStartSessionFromDraft() {
             ),
             agentChanged
                 ? [defaults.modelMode]
-                : [draft.modelMode, defaults.modelMode],
+                : [retireModelMode(agentType, draft.modelMode), defaults.modelMode],
         );
         const effortDefault = rigCreation?.defaultEffortForModel(model?.key)
             ?? defaults.effortLevel;

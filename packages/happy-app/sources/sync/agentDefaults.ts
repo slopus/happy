@@ -122,15 +122,49 @@ export function retirePermissionMode<T extends string | null | undefined>(mode: 
     return mode ? RETIRED_PERMISSION_MODES[mode] ?? mode : mode;
 }
 
+/**
+ * Claude model keys that were offered once and are no longer listed, mapped to
+ * the row that runs the same thing. Each `[1m]` row duplicated a model that is
+ * 1M-native in Claude Code's model table, so the plain ID gets the same window
+ * without the context-1m beta header the suffix adds. (Opus is in that table on
+ * every Claude Code happy-cli bundles; Sonnet 5.5 from 2.1.287, before which
+ * its plain ID runs at 200K.) Without this a saved `[1m]` key matches no row,
+ * and the new-session picker falls through to the head of the list.
+ *
+ * Only exact equivalents belong here. A model that left the list but is still
+ * its own model (Sonnet 5) is not mapped to a different one; the picker keeps
+ * it as a saved row instead (includeConfiguredModel).
+ */
+const RETIRED_CLAUDE_MODEL_MODES: Record<string, string> = {
+    'claude-opus-5-5[1m]': 'claude-opus-5-5',
+    'claude-opus-5[1m]': 'claude-opus-5',
+    'claude-sonnet-5-5[1m]': 'claude-sonnet-5-5',
+};
+
+/**
+ * Maps a stored model key onto the row that now stands for it. Claude only:
+ * other harnesses, Happy Agent's included, own their model keys.
+ */
+export function retireModelMode<T extends string | null | undefined>(
+    flavor: string | null | undefined,
+    mode: T,
+): T | string {
+    if (!mode || flavor === 'rig' || normalizeAgentKey(flavor) !== 'claude') {
+        return mode;
+    }
+    return RETIRED_CLAUDE_MODEL_MODES[mode] ?? mode;
+}
+
 export function getAgentDefaultOverride(
     overrides: AgentDefaultOverrides | null | undefined,
     flavor: string | null | undefined,
 ): AgentDefaultOverride {
     const override = overrides?.[normalizeAgentKey(flavor)] ?? {};
     const permissionMode = retirePermissionMode(override.permissionMode);
-    return permissionMode === override.permissionMode
+    const modelMode = retireModelMode(flavor, override.modelMode);
+    return permissionMode === override.permissionMode && modelMode === override.modelMode
         ? override
-        : { ...override, permissionMode };
+        : { ...override, permissionMode, modelMode };
 }
 
 export function resolveAgentDefaultConfig(
