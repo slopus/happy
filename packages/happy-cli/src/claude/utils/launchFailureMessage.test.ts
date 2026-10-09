@@ -48,6 +48,29 @@ describe('launchFailureMessage', () => {
         });
     });
 
+    describe('a model the bundled Claude Code is too old for', () => {
+        const hint = 'App sessions use the Claude Code bundled with Happy; update it with `npm i -g happy@latest`.';
+
+        it('points at updating Happy, since `claude update` does not touch the bundled copy', () => {
+            // Verbatim from the Agent SDK 0.3.260 remote path asked for claude-opus-5-5.
+            const error = new Error(
+                "Claude Code returned an error result: API Error: 400 Claude Code 2.1.260 does not support this model; version 2.1.280 or newer is required. Run 'claude update', or update the Claude desktop app, then try again."
+            );
+            expect(launchFailureMessage(error)).toBe(
+                "Process exited unexpectedly: Claude Code returned an error result: API Error: 400 Claude Code 2.1.260 does not support this model; version 2.1.280 or newer is required. Run 'claude update', or update the Claude desktop app, then try again. " + hint
+            );
+        });
+
+        it('keeps the hint when the detail itself is truncated', () => {
+            const error = new Error(`version 2.1.280 or newer is required ${'z'.repeat(MAX_LAUNCH_FAILURE_DETAIL)}`);
+            expect(launchFailureMessage(error).endsWith(`… ${hint}`)).toBe(true);
+        });
+
+        it('leaves unrelated failures without the hint', () => {
+            expect(launchFailureMessage(new Error('spawn ENOENT'))).not.toContain('happy@latest');
+        });
+    });
+
     describe('long messages are truncated', () => {
         it('caps the detail and marks the cut', () => {
             const result = launchFailureMessage(new Error('x'.repeat(MAX_LAUNCH_FAILURE_DETAIL + 50)));
