@@ -361,7 +361,6 @@ export const SettingsView = React.memo(function SettingsView() {
             </ItemGroup>
 
             <ItemGroup title={t('settings.connectedAccounts')}>
-                <Item title="AI 服务" subtitle="管理模型、账号、设备与应用授权" icon={<Ionicons name="hardware-chip-outline" size={29} color={theme.colors.accent} />} onPress={() => router.push('/settings/ai-services' as any)} testID="ai-services-settings-entry" />
                 <Item title="已授权应用" subtitle="管理应用对话权限和执行设备" icon={<Ionicons name="shield-checkmark-outline" size={29} color={theme.colors.accent} />} onPress={() => router.push('/settings/authorized-apps' as any)} />
                 <Item
                     title={t('interactivePreviews.title')}

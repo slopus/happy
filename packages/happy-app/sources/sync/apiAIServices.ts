@@ -53,6 +53,7 @@ export function createAIServicesAPI(token: string) {
     }
     const id = encodeURIComponent;
     return {
+        grants: () => request('/authorizations', z.object({ grants: z.array(ServiceGrantSchema) })),
         list: () => request('', z.object({ services: z.array(ServiceRefSchema) })),
         read: (serviceId: string) => request(`/${id(serviceId)}`, snapshotSchema),
         create: (name: string, config: ServiceConfig) => request('', z.object({ service: ServiceRefSchema }), 'POST', { name, config: ServiceConfigSchema.parse(config) }),

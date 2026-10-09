@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { t } from '@/text';
 import { Text, TextInput, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import type { CapabilityCatalog, ServiceConfig, ServiceGrant, ServiceTarget } from '@slopus/happy-wire';
@@ -29,13 +30,14 @@ export function availableServiceTargets(workers: AIServiceWorker[], accounts: Co
     ] : []);
 }
 const editorStyles = StyleSheet.create(theme => ({ input: { color: theme.colors.text, backgroundColor: theme.colors.surface, borderColor: theme.colors.divider, borderWidth: 1, borderRadius: 12, padding: 14, fontSize: 16 } }));
-export function ServiceEditor({ snapshot, api, workers, accounts, machines, grants, onSaved, onClose, onManageAccounts, onManageDevices }: {
+export function ServiceEditor({ snapshot, api, workers, accounts, machines, grants, onSaved, onClose, onManageAccounts, onManageDevices, onConfigured, initialConfig }: {
     snapshot: ServiceSnapshot | null; api: AIServicesAPI; workers: AIServiceWorker[]; accounts: CodexAccountProfile[]; machines: ServiceMachine[]; grants: ServiceGrant[];
+    onConfigured?: (config: ServiceConfig) => void; initialConfig?: ServiceConfig;
     onSaved: () => void | Promise<void>; onClose: () => void; onManageAccounts: () => void; onManageDevices: () => void;
 }) {
     const { theme } = useUnistyles();
     const [name, setName] = React.useState(snapshot?.service.name ?? '');
-    const [draft, setDraft] = React.useState<ServiceConfig | null>(snapshot?.revision.config ?? null);
+    const [draft, setDraft] = React.useState<ServiceConfig | null>(initialConfig ?? snapshot?.revision.config ?? null);
     const [revision, setRevision] = React.useState(snapshot?.service.revision ?? 0);
     const [catalog, setCatalog] = React.useState<CapabilityCatalog | null>(null);
     const [catalogError, setCatalogError] = React.useState('');
@@ -62,6 +64,7 @@ export function ServiceEditor({ snapshot, api, workers, accounts, machines, gran
         if (!draft || !valid || (scopeChanged && !confirmed) || lock.current || conflict) return;
         lock.current = true; setBusy(true); setError('');
         try {
+            if (onConfigured) { onConfigured(draft); return; }
             if (snapshot) await api.update(snapshot.service.id, revision, draft);
             else await api.create(name.trim(), draft);
             await onSaved();
@@ -80,9 +83,9 @@ export function ServiceEditor({ snapshot, api, workers, accounts, machines, gran
         finally { lock.current = false; setBusy(false); }
     }
     return <View style={styles.section}>
-        <Text style={styles.heading}>{snapshot ? `编辑 ${snapshot.service.name}` : '新建 AI 服务'}</Text>
+        <Text style={styles.heading}>{t('connectedApps.configure')}</Text>
         <Text style={styles.body}>默认配置仅影响新对话。原对话继续使用原绑定。账号凭据更新仍使用同一账号的最新版本。</Text>
-        {!snapshot ? <TextInput accessibilityLabel="服务名称" placeholder="服务名称" placeholderTextColor={theme.colors.textSecondary} value={name} onChangeText={setName} maxLength={256} editable={!busy} style={editorStyles.input} /> : <Text style={styles.small}>当前编辑版本：{revision}</Text>}
+        {!snapshot && !onConfigured ? <TextInput accessibilityLabel="服务名称" placeholder="服务名称" placeholderTextColor={theme.colors.textSecondary} value={name} onChangeText={setName} maxLength={256} editable={!busy} style={editorStyles.input} /> : null}
         <AuthorizationSection title="设备、引擎与账号" hint="选择已有账号。此操作不会修改设备的默认账号。" radio>
             {options.map(target => <AuthorizationChoice key={JSON.stringify(target)} testID={`target-${target.engine}-${target.machineId}${target.accountRef.kind === 'codex-profile' ? `-${target.accountRef.id}` : ''}`}
                 title={targetDescription(target, machines, accounts)} selected={!!draft && sameTarget(target, draft)} disabled={busy}
@@ -113,8 +116,8 @@ export function ServiceEditor({ snapshot, api, workers, accounts, machines, gran
         {error ? <AuthorizationNotice title={conflict ? '版本冲突' : '保存提示'} message={error} error={conflict} /> : null}
         {conflict ? <RoundButton title="读取最新版本并保留输入" disabled={busy} onPress={() => void rebase()} /> : null}
         <View style={styles.actions}>
-            <RoundButton title="返回服务列表" display="inverted" disabled={busy} onPress={onClose} />
-            <RoundButton title={snapshot ? '保存默认配置' : '创建服务'} disabled={busy || !valid || conflict || (!snapshot && !name.trim()) || (scopeChanged && !confirmed)} loading={busy} onPress={() => void save()} />
+            <RoundButton title={t('connectedApps.back')} display="inverted" disabled={busy} onPress={onClose} />
+            <RoundButton title={onConfigured ? t('connectedApps.continue') : t('common.save')} disabled={busy || !valid || conflict || (!snapshot && !onConfigured && !name.trim()) || (scopeChanged && !confirmed)} loading={busy} onPress={() => void save()} />
         </View>
     </View>;
 }

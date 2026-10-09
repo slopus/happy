@@ -17,7 +17,6 @@ import { codexAccountRoutes } from '@/app/api/routes/codexAccountRoutes';
 import { codexAccountStore } from '@/app/api/routes/codexAccountStore';
 import { enableAuthentication } from '@/app/api/utils/enableAuthentication';
 import { auth } from '@/app/auth/auth';
-import { revokeAppGrant, deleteOwnedAppGrant } from '@/app/appDelegation/appDelegation';
 import { initEncrypt } from '@/modules/encrypt';
 import { sealServiceEnvelope } from './grants';
 let ctx:Awaited<ReturnType<typeof createTestDatabase>>, app:Fastify, services:ReturnType<typeof createSharedAIServices>, token:string, owner:string,machine:string,seq=0;
@@ -202,11 +201,18 @@ it('exposes safe daemon-observed Claude identity only to its owner',async()=>{
  expect((await app.inject({ method:'GET',url:'/v1/ai-services/workers',headers:{ authorization:`Bearer ${foreign}` } })).json()).toEqual({ workers:[] });
 });
 
-it('prevents legacy owner mutations from corrupting shared grant history and terminal states',async()=>{
+it('lists only the owner service grants and leaves retired authorization endpoints unavailable',async()=>{
  const f=await setup();
- await expect(revokeAppGrant(owner,f.receipt.id)).rejects.toThrow();
- await expect(deleteOwnedAppGrant(owner,f.receipt.id)).rejects.toThrow();
- expect((await ctx.database.appDelegation.findUniqueOrThrow({ where:{ id:f.receipt.id } })).state).toBe('service-ready');
+ const own=await app.inject({method:'GET',url:'/v1/ai-services/authorizations',headers:{authorization:`Bearer ${token}`}});
+ expect(own.statusCode).toBe(200);
+ expect(own.json().grants).toEqual(expect.arrayContaining([expect.objectContaining({id:f.receipt.id,protocol:'ai-services/1'})]));
+ expect(own.body).not.toContain(f.receipt.credential);
+ const foreign=await auth.createToken('foreign');
+ expect((await app.inject({method:'GET',url:'/v1/ai-services/authorizations',headers:{authorization:`Bearer ${foreign}`}})).json()).toEqual({grants:[]});
+ expect((await app.inject({method:'GET',url:'/v1/ai-services/authorizations'})).statusCode).toBe(401);
+ for(const url of ['/v1/app-authorizations','/v1/apps/connection','/v1/apps/conversations']) {
+  expect((await app.inject({method:'GET',url,headers:{authorization:`Bearer ${token}`}})).statusCode).toBe(404);
+ }
 });
 
 it('recovers a lost binding-create HTTP response with the same application conversation and no second probe',async()=>{

@@ -241,6 +241,12 @@ export function createAIServiceStore(database: PrismaClient, source?: TrustedCap
                 return grant;
             });
         },
+        /** Lists only the authenticated owner's grants, including revoked connections. */
+        async listAuthorizations(ownerId: string): Promise<ServiceGrant[]> {
+            const rows = await database.aIServiceAuthorization.findMany({ where: { ownerId }, orderBy: { createdAt: 'desc' } });
+            return rows.map(row => ServiceGrantSchema.parse({ id: row.id, ownerId, kind: row.kind, protocol: 'ai-services/1', scope: row.scope,
+                createdAt: row.createdAt.getTime(), revokedAt: row.revokedAt?.getTime() ?? null }));
+        },
         async listServiceAuthorizations(ownerId: string, serviceId: string): Promise<ServiceGrant[]> {
             return serviceTransaction(database, ownerId, async tx => {
                 await lockService(tx, ownerId, serviceId);

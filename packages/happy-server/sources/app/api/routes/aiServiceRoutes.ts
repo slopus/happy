@@ -25,6 +25,7 @@ export function aiServiceRoutes(app: Fastify, store: AIServiceStore = sharedAISe
             const status = frameworkError.statusCode === 413 ? 413 : frameworkError.validation || frameworkError.statusCode === 400 ? 400 : 500;
             return reply.code(status).send({ error: { code: status === 500 ? 'internal-error' : 'invalid-request', retryable: false } });
         });
+        routes.get('/v1/ai-services/authorizations', { preHandler: app.authenticate }, async request => ({ grants: await store.listAuthorizations(request.userId) }));
         routes.get('/v1/ai-services', { preHandler: app.authenticate }, async request => ({ services: await store.listServices(request.userId) }));
         routes.post('/v1/ai-services', { bodyLimit: 8192, preHandler: app.authenticate, schema: { body: CreateServiceSchema } }, async (request, reply) => {
             return reply.code(201).send({ service: await store.createService(request.userId, request.body) });

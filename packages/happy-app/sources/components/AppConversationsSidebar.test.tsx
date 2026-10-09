@@ -18,54 +18,16 @@ vi.mock('react-native-unistyles', () => ({ StyleSheet: { create: (f: any) => f({
 vi.mock('@/auth/AuthContext', () => ({ useAuth: () => ({ credentials: { token: mocks.token } }) }));
 vi.mock('@/sync/storage', () => ({ useAllMachines: () => [], useSessionListViewData: () => mocks.rows }));
 vi.mock('@/sync/serverConfig', () => ({ getServerUrl: () => 'https://paws.test' }));
-vi.mock('@/sync/apiAppDelegation', () => ({ isAppGrantActive: () => true, appAuthorizationRequest: mocks.request }));
 vi.mock('@/constants/Typography', () => ({ Typography: { default: () => ({}) } }));
 vi.mock('@/modal', () => ({ Modal: {} }));
 vi.mock('@/text', () => ({ t: (key: string) => key }));
 vi.mock('expo-router', () => ({ usePathname: () => '/session/native', useRouter: () => ({ navigate: mocks.navigate }) }));
 vi.mock('@/utils/openExternalUrl', () => ({ openExternalUrl: vi.fn() }));
-vi.mock('./AppConnectionsMenu', () => ({ AppConnectionsMenu: 'AppConnectionsMenu' }));
 vi.mock('./ActiveSessionsGroupCompact', () => ({ CompactSessionRow: (props: any) => React.createElement('CompactSessionRow', props) }));
 
 describe('application session directory', () => {
     beforeEach(() => { mocks.request.mockClear(); mocks.rows = []; });
     afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
-
-    it('does not poll while idle, but refreshes on foreground and explicit refresh', async () => {
-        vi.useFakeTimers();
-        let renderer: any;
-        await act(async () => { renderer = TestRenderer.create(<AppConversationsSidebar />); });
-        expect(mocks.request).toHaveBeenCalledTimes(2);
-        await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
-        expect(mocks.request).toHaveBeenCalledTimes(2);
-        await act(async () => { mocks.onAppStateChange?.('active'); });
-        expect(mocks.request).toHaveBeenCalledTimes(4);
-        await act(async () => { renderer.root.findAllByProps({ accessibilityLabel: 'appConversations.refresh' })
-            .find((node: any) => node.type === 'Pressable').props.onPress(); });
-        expect(mocks.request).toHaveBeenCalledTimes(6);
-        act(() => renderer.unmount());
-        expect(mocks.onAppStateChange).toBeUndefined();
-        expect(vi.getTimerCount()).toBe(0);
-    });
-
-    it('loads a background-opened web panel on visibility and cleans up listeners when hidden', async () => {
-        const page = Object.assign(new EventTarget(), { hidden: true });
-        vi.stubGlobal('document', page);
-        let renderer: any;
-        await act(async () => { renderer = TestRenderer.create(<AppConversationsSidebar />); });
-        expect(mocks.request).not.toHaveBeenCalled();
-        await act(async () => {
-            page.hidden = false;
-            page.dispatchEvent(new Event('visibilitychange'));
-            mocks.onAppStateChange?.('active'); // The same foreground transition coalesces in-flight requests.
-        });
-        expect(mocks.request).toHaveBeenCalledTimes(2);
-        await act(async () => { renderer.update(<AppConversationsSidebar visible={false} />); });
-        await act(async () => { page.dispatchEvent(new Event('visibilitychange')); });
-        expect(mocks.request).toHaveBeenCalledTimes(2);
-        expect(mocks.onAppStateChange).toBeUndefined();
-        act(() => renderer.unmount());
-    });
 
     it('automatically collects completed and archived rows into expandable history, and restores continued turns', async () => {
         const application = { appId: 'advisor', bindingId: 'binding' };
@@ -88,9 +50,7 @@ describe('application session directory', () => {
         await act(async () => { renderer.update(<AppConversationsSidebar />); });
         expect(renderer.root.findAllByType('CompactSessionRow').map((row: any) => row.props.session.id)).toEqual(['completed']);
 
-        const legacy = renderer.root.findAllByProps({ testID: 'app-conversation-legacy' }).find((node: any) => node.type === 'Pressable');
-        act(() => legacy.props.onPress());
-        expect(mocks.navigate).toHaveBeenCalledWith('/apps/conversations/legacy');
+        expect(renderer.root.findAllByProps({ testID: 'app-conversation-legacy' })).toHaveLength(0);
         act(() => renderer.unmount());
     });
 });
