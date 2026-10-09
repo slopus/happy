@@ -9,7 +9,7 @@ import { DiffProcessor } from './utils/diffProcessor';
 import { randomUUID } from 'node:crypto';
 import { execSync } from 'node:child_process';
 import { logger } from '@/ui/logger';
-import { Credentials, readSettings } from '@/persistence';
+import { Credentials, readSettings, readPersistedSessions } from '@/persistence';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
@@ -189,6 +189,11 @@ export async function runCodex(opts: {
     let response: ApiSession | null;
     if (reconnectSessionId && reconnectKeyBase64 && reconnectVariant) {
         logger.debug(`[START] Reconnecting to existing session ${reconnectSessionId}`);
+        // Keep the provider identity and user metadata even if native resume fails.
+        Object.assign(metadata, {
+            ...readPersistedSessions()[reconnectSessionId]?.metadata, ...metadata,
+            ...(opts.resumeThreadId ? { codexThreadId: opts.resumeThreadId } : {}),
+        });
         response = {
             id: reconnectSessionId,
             seq: parseInt(reconnectSeq || '0', 10),

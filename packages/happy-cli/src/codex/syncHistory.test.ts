@@ -120,3 +120,29 @@ it('mirrors archive and unarchive even with unchanged timestamps and after Happy
     expect(mock.create).toHaveBeenCalledTimes(1);
     expect(mock.post).toHaveBeenCalledTimes(1);
 });
+
+it('repairs a missing remote thread identifier from its trusted import mapping without replaying history', async () => {
+    await syncCodexHistory(credentials, 'machine');
+    const saved = mock.records['happy-id'];
+    const metadata = { ...saved.metadata };
+    delete metadata.codexThreadId;
+    delete metadata.codexArchived;
+    mock.remote[0].metadata = encodeBase64(encrypt(Buffer.from(saved.encryptionKey, 'base64'), 'dataKey', metadata));
+    saved.codexHistory!.attached = true;
+    await syncCodexHistory(credentials, 'machine');
+    expect(mock.records['happy-id'].metadata.codexThreadId).toBe(thread.id);
+    expect(mock.create).toHaveBeenCalledTimes(1);
+    expect(mock.post).toHaveBeenCalledTimes(1);
+});
+
+it('preserves an intentional clear that keeps native archive metadata', async () => {
+    await syncCodexHistory(credentials, 'machine');
+    const saved = mock.records['happy-id'];
+    const metadata = { ...saved.metadata };
+    delete metadata.codexThreadId;
+    mock.remote[0].metadata = encodeBase64(encrypt(Buffer.from(saved.encryptionKey, 'base64'), 'dataKey', metadata));
+    saved.codexHistory!.attached = true;
+    await syncCodexHistory(credentials, 'machine');
+    expect(mock.records['happy-id'].metadata.codexThreadId).toBeUndefined();
+    expect(mock.post).toHaveBeenCalledTimes(1);
+});

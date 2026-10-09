@@ -51,18 +51,21 @@ function savedSession(session: Session, codexHistory: NonNullable<PersistedSessi
 function persistHistory(session: Session, checkpoint: NonNullable<PersistedSession['codexHistory']>) {
     const latest = readPersistedSessions()[session.id];
     persistSession(session.id, latest?.codexHistory?.attached
-        ? { ...latest, codexHistory: { ...checkpoint, attached: true } }
+        ? { ...latest, metadata: { ...latest.metadata, ...(session.metadata.codexThreadId ? { codexThreadId: session.metadata.codexThreadId } : {}) },
+            metadataVersion: Math.max(latest.metadataVersion, session.metadataVersion), codexHistory: { ...checkpoint, attached: true } }
         : savedSession(session, checkpoint));
 }
 
 /** Publish a mirror of native state without attaching a provider or its RPCs. */
-export async function mirrorCodexArchive(credentials: Credentials, session: Session, archived: boolean, force = false): Promise<Session> {
-    if (!force && session.metadata.codexArchived === archived && (session.metadata.lifecycleState === 'archived') === archived) return session;
+export async function mirrorCodexArchive(credentials: Credentials, session: Session, archived: boolean, force = false, threadId = session.metadata.codexThreadId): Promise<Session> {
+    // /clear keeps archive metadata but deliberately removes the thread ID.
+    if (!session.metadata.codexThreadId && typeof session.metadata.codexArchived === 'boolean') threadId = undefined;
+    if (!force && session.metadata.codexThreadId === threadId && session.metadata.codexArchived === archived && (session.metadata.lifecycleState === 'archived') === archived) return session;
     const writer = new ApiSessionClient(credentials.token, session, { metadataOnly: true });
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
         const snapshot = await Promise.race([
-            writer.updateMetadata(metadata => ({ ...metadata, codexArchived: archived,
+            writer.updateMetadata(metadata => ({ ...metadata, ...(threadId ? { codexThreadId: threadId } : {}), codexArchived: archived,
                 lifecycleState: archived ? 'archived' : metadata.lifecycleState === 'running' ? 'running' : 'stopped',
                 lifecycleStateSince: Date.now() })),
             new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Archive metadata sync timed out')), 15_000); }),
@@ -217,7 +220,7 @@ export async function syncCodexHistory(credentials: Credentials, machineId: stri
                         agentStateVersion: raw.agentStateVersion, agentState: null,
                         metadata: decrypt(decodeBase64(known.record.encryptionKey), known.record.encryptionVariant, decodeBase64(raw.metadata)),
                         encryptionKey: decodeBase64(known.record.encryptionKey), encryptionVariant: known.record.encryptionVariant,
-                    }, thread.historyArchived === true);
+                    }, thread.historyArchived === true, false, thread.id);
                     known.record = { ...known.record, metadata: { ...mirrored.metadata, codexParentThreadId: parentThreadId },
                         metadataVersion: mirrored.metadataVersion, seq: mirrored.seq };
                     persistSession(known.id, known.record);
@@ -228,7 +231,7 @@ export async function syncCodexHistory(credentials: Credentials, machineId: stri
                 const history = await client.readThreadHistory(thread.id);
                 if (!history.cwd) throw new Error('Native thread has no directory');
                 const tag = `codex-history:${machineId}:${thread.id}`;
-                const session = known ? {
+                let session = known ? {
                     ...remote.get(known.id)!, id: known.id,
                     metadata: known.record.metadata,
                     encryptionKey: decodeBase64(known.record.encryptionKey),
@@ -248,6 +251,13 @@ export async function syncCodexHistory(credentials: Credentials, machineId: stri
                     },
                 });
                 if (!session?.metadata) throw new Error('Could not create history session');
+                session = await mirrorCodexArchive(credentials, session, thread.historyArchived === true, false, thread.id);
+                const savedProgress = records[session.id]?.codexHistory;
+                if (!known && savedProgress) {
+                    persistHistory(session, savedProgress);
+                    stats.existing++;
+                    return;
+                }
                 const checkpoint = { updatedAt: progress?.updatedAt ?? 0, turns: [...(progress?.turns ?? [])] };
                 persistHistory(session, checkpoint);
                 if ((!known || remote.get(known.id)?.active) && !await api.deactivateSession(session.id)) {
