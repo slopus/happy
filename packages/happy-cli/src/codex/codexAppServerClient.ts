@@ -597,6 +597,9 @@ export class CodexAppServerClient {
     ): void {
         const aborted = status === 'cancelled' || status === 'canceled' || status === 'aborted' || status === 'interrupted';
 
+        // A timed-out turn may acknowledge its interrupt after a new start
+        // request, before that request has supplied its own turnId.
+        if (turnId && this.completedTurnIds.has(turnId)) return;
         if (turnId && this._turnId && turnId !== this._turnId) return;
         this.flushTextStreams();
         this.clearTextStreams();
@@ -604,9 +607,6 @@ export class CodexAppServerClient {
         this.tryResolvePendingTurn(aborted, turnId, source);
         this._turnId = null;
 
-        if (turnId && this.completedTurnIds.has(turnId)) {
-            return;
-        }
         if (turnId) {
             this.completedTurnIds.add(turnId);
         }
@@ -1721,6 +1721,10 @@ export class CodexAppServerClient {
         const error = `${label} timed out after ${timeoutMs}ms without progress`;
         logger.warn(`[CodexAppServer] ${error} — treating as failed abort`);
 
+        // Capture and interrupt the native turn before clearing its identity.
+        // sendTurnAndWait already waits for pendingInterrupt, so a follow-up
+        // cannot race the old turn's interrupt request.
+        void this.interruptTurn();
         this.resolvePendingTurn(true);
         this.clearTextStreams();
         this._turnId = null;
@@ -2400,6 +2404,11 @@ export class CodexAppServerClient {
             this.notificationProtocol = 'legacy';
             const msg = params?.msg;
             if (msg) {
+                if (msg.type === 'task_complete' || msg.type === 'turn_aborted') {
+                    const turnId = msg.turn_id ?? msg.turnId ?? null;
+                    if (turnId && this.completedTurnIds.has(turnId)) return;
+                    if (turnId && this._turnId && turnId !== this._turnId) return;
+                }
                 if (msg.type === 'user_message' && this.suppressPawsSteerEcho({
                     content: msg.content,
                     itemId: msg.item_id ?? msg.itemId,

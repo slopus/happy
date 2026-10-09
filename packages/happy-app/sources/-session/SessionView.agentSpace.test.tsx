@@ -245,10 +245,10 @@ vi.mock('@/components/ChatList', async () => {
     const ReactModule = await import('react');
     const { useSubagentInspector } = await import('@/components/subagent/SubagentInspectorContext');
     return {
-        ChatList: () => {
+        ChatList: (props: { followLatestRequest?: number }) => {
             const inspector = useSubagentInspector();
             mocks.openSubagent = inspector?.open;
-            return ReactModule.createElement('ChatList');
+            return ReactModule.createElement('ChatList', props);
         },
     };
 });
@@ -637,21 +637,35 @@ describe('SessionView Agent-space boundary', () => {
         act(() => renderer.unmount());
     });
 
-    it('requires the latest history window before continuing a failed turn', async () => {
+    it('opens the latest history without submitting, then permits continuation after verification', async () => {
         mocks.isDataReady = true;
         mocks.statusState = 'failed';
         mocks.session.agentState = { turnStatus: { status: 'failed', updatedAt: 1, turnId: 'turn-1' } };
+        mocks.sessionMessages = [{ kind: 'user-text', id: 'original', localId: 'original', createdAt: 0, text: 'original task' }];
         mocks.isAtLatest = false;
         mocks.hasMoreNewer = true;
         mocks.verifiedOwnerEpoch = null;
+        const Focus = mocks.focusContext.Provider;
+        const tree = (focused: boolean) => <Focus value={focused}><SessionView id="session-1" /></Focus>;
         let renderer: any;
-        await act(async () => { renderer = TestRenderer.create(<SessionView id="session-1" />); });
+        await act(async () => { renderer = TestRenderer.create(tree(true)); });
 
         const continueButton = renderer.root.findByProps({ testID: 'failed-session-continue-button' });
-        expect(continueButton.props.disabled).toBe(true);
+        expect(continueButton.props.disabled).toBe(false);
         expect(continueButton.findByType('Text').children).toContain('session.failedContinueViewLatest');
         await act(async () => { continueButton.props.onPress(); });
         expect(mocks.sendMessage).not.toHaveBeenCalled();
+        expect(renderer.root.findByType('ChatList').props.followLatestRequest).toBe(1);
+        mocks.isAtLatest = true;
+        mocks.hasMoreNewer = false;
+        await act(async () => { renderer.update(tree(false)); });
+        expect(renderer.root.findByProps({ testID: 'failed-session-continue-button' }).props.disabled).toBe(true);
+        mocks.verifiedOwnerEpoch = 1;
+        await act(async () => { renderer.update(tree(true)); });
+        const readyButton = renderer.root.findByProps({ testID: 'failed-session-continue-button' });
+        expect(readyButton.props.disabled).toBe(false);
+        await act(async () => { readyButton.props.onPress(); });
+        expect(mocks.sendMessage).toHaveBeenCalledTimes(1);
         act(() => renderer.unmount());
     });
 

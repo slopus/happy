@@ -1716,6 +1716,10 @@ function SessionViewLoaded({
     const handleSend = React.useCallback(() => submitComposer('queue'), [submitComposer]);
 
     const handleContinueFailedTurn = React.useCallback(() => {
+        if (failedHistoryBehind && !failedHistoryLoading && !failedContinueQueued && !sendInFlight.current) {
+            setFollowLatestRequest(value => value + 1);
+            return;
+        }
         if (failedHistoryLoading && newerError && !failedHistoryBehind) {
             if (sendInFlight.current) return;
             sendInFlight.current = true;
@@ -2129,12 +2133,12 @@ function InactiveArchivedHint(props: {
                     testID="failed-session-continue-button"
                     accessibilityRole="button"
                     onPress={props.onContinueFailed}
-                    disabled={props.continuingFailed || props.continueFailedQueued || (props.continueFailedHistoryLoading && !props.continueFailedHistoryError) || props.continueFailedHistoryBehind}
+                    disabled={props.continuingFailed || props.continueFailedQueued || (props.continueFailedHistoryLoading && !props.continueFailedHistoryError)}
                     style={({ pressed }) => ({
                         height: 40,
                         borderRadius: 10,
                         backgroundColor: theme.colors.button.primary.background,
-                        opacity: props.continuingFailed || props.continueFailedQueued || (props.continueFailedHistoryLoading && !props.continueFailedHistoryError) || props.continueFailedHistoryBehind ? 0.6 : pressed ? 0.8 : 1,
+                        opacity: props.continuingFailed || props.continueFailedQueued || (props.continueFailedHistoryLoading && !props.continueFailedHistoryError) ? 0.6 : pressed ? 0.8 : 1,
                         alignItems: 'center',
                         justifyContent: 'center',
                         marginHorizontal: 8,

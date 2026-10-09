@@ -705,7 +705,7 @@ export const ConversationTranscript = React.memo((props: ConversationTranscriptP
         const request = props.followLatestRequest ?? 0;
         if (request === followLatestRequestRef.current) return;
         followLatestRequestRef.current = request;
-        if (Platform.OS === 'web') void scrollToBottom();
+        void scrollToBottom();
     }, [props.followLatestRequest, scrollToBottom]);
     const onContentSizeChange = React.useCallback((_width: number, height: number) => {
         const boundary = boundaryAttemptKey('older');

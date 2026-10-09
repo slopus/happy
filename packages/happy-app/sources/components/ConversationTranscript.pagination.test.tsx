@@ -1617,6 +1617,20 @@ describe('ConversationTranscript older history pagination', () => {
         act(() => renderer.unmount());
     });
 
+    it.each(['web', 'ios', 'android'])('handles an explicit latest request from a historical window on %s', async (platform) => {
+        (Platform as any).OS = platform;
+        const jump = vi.fn(async () => {});
+        let renderer: any;
+        const render = (request: number) => <ConversationTranscript metadata={null}
+            sessionId="failed-recovery" messages={[userMessage('old')]} isAtLatest={false}
+            onJumpToLatest={jump} followLatestRequest={request} />;
+        await act(async () => { renderer = TestRenderer.create(render(0)); });
+        expect(jump).not.toHaveBeenCalled();
+        await act(async () => { renderer.update(render(1)); });
+        expect(jump).toHaveBeenCalledOnce();
+        act(() => renderer.unmount());
+    });
+
     it('selects latest before scrolling from a historical window', async () => {
         let finish!: () => void;
         const jump = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
