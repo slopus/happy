@@ -218,6 +218,7 @@ describe('ApiMachineClient socket reconnection', () => {
                 }
                 socketHandlers[event].push(handler);
             }),
+            off: vi.fn((event: string, handler: SocketHandler) => {socketHandlers[event]=(socketHandlers[event]||[]).filter(value=>value!==handler);}),
             emit: vi.fn(),
             emitWithAck: vi.fn(),
             close: vi.fn(),
@@ -235,6 +236,21 @@ describe('ApiMachineClient socket reconnection', () => {
     afterEach(() => {
         vi.useRealTimers();
         vi.restoreAllMocks();
+    });
+
+    it('removes work-wake subscriptions on reconnect, disconnect and shutdown', () => {
+        const client = new ApiMachineClient('fake-token', makeMachine());
+        client.connect();
+        emitSocketEvent('connect');
+        expect(socketHandlers.ephemeral).toHaveLength(1);
+        emitSocketEvent('connect');
+        expect(socketHandlers.ephemeral).toHaveLength(1);
+        emitSocketEvent('disconnect', 'test');
+        expect(socketHandlers.ephemeral).toHaveLength(0);
+        emitSocketEvent('connect');
+        expect(socketHandlers.ephemeral).toHaveLength(1);
+        client.shutdown();
+        expect(socketHandlers.ephemeral).toHaveLength(0);
     });
 
     it('retries after initial socket connection error', async () => {

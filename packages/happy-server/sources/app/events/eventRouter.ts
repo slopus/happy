@@ -38,6 +38,7 @@ export type RecipientFilter =
     | { type: 'all-interested-in-session'; sessionId: string }
     | { type: 'user-scoped-only' }
     | { type: 'machine-scoped-only'; machineId: string }  // For update-machine: sends to user-scoped + only the specific machine
+    | { type: 'machine-only'; machineId: string }
     | { type: 'all-user-authenticated-connections' };
 
 // === UPDATE EVENT TYPES (Persistent) ===
@@ -164,6 +165,9 @@ export type UpdateEvent = {
 // === EPHEMERAL EVENT TYPES (Transient) ===
 
 export type EphemeralEvent = {
+    type: 'ai-service-work-available';
+    machineId: string;
+} | {
     type: 'activity';
     id: string;
     active: boolean;
@@ -314,6 +318,8 @@ class EventRouter {
             case 'all-interested-in-session':
                 // Union: session watchers + user-scoped (Socket.IO deduplicates)
                 return [`user:${userId}:session:${filter.sessionId}`, `user:${userId}:user-scoped`];
+            case 'machine-only':
+                return [`user:${userId}:machine:${filter.machineId}`];
             case 'machine-scoped-only':
                 // Union: specific machine + user-scoped
                 return [`user:${userId}:machine:${filter.machineId}`, `user:${userId}:user-scoped`];

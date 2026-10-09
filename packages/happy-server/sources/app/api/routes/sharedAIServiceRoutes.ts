@@ -75,7 +75,12 @@ export function sharedAIServiceRoutes(app: Fastify, services: SharedAIServices) 
    return { catalog:clientCatalog(await readTrustedCatalog(probes.source,p.ownerId,request.body?.target ?? revision.config,p),request.body?.executionPresets) };
   });
   routes.post('/v1/apps/ai-services/bindings/:bindingId/turns', { bodyLimit:9*1024*1024, schema:{ params:z.object({ bindingId:id }), body:z.object({ requestId:id, ciphertext:z.string().min(60).max(8*1024*1024) }).strict() } }, async (request, reply) => {
-   try { return { record: await turns.startBoundTurn(await authenticate(request), request.params.bindingId, request.body.requestId, { ciphertext: request.body.ciphertext }) }; }
+   try {
+    const principal=await authenticate(request);
+    const record=await turns.startBoundTurn(principal, request.params.bindingId, request.body.requestId, { ciphertext: request.body.ciphertext });
+    services.notifyWork(principal.ownerId,record.binding.machineId);
+    return {record};
+   }
    catch (error) {
     if (!(error instanceof AIServiceError)) throw error;
     // This invocation did not admit a turn. Clients must retain uncertainty for any prior attempt.

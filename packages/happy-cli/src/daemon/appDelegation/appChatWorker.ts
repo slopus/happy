@@ -1,3 +1,4 @@
+import { createWorkerWake } from './workerWake';
 import type { NativeSessionHooks } from './nativeSessionRuntime';
 /** Bounded leased worker for application-owned chats; independent of unrestricted RPC. */
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
@@ -28,8 +29,11 @@ const messageSchema = z.object({ role: z.enum(['user', 'assistant']), text: z.st
 
 const activeHomes = new Set<string>();
 
-export function startAppChatWorker(token: string, machine: Machine, nativeSessionHooks?: NativeSessionHooks): () => void {
+export function startAppChatWorker(token: string, machine: Machine, nativeSessionHooks?: NativeSessionHooks, subscribeWake?: (wake:()=>void)=>(()=>void)): () => void {
     const lifetime = new AbortController();
+    const wake=createWorkerWake(lifetime.signal);
+    const unsubscribeWake=subscribeWake?.(()=>wake.notify());
+    lifetime.signal.addEventListener('abort',()=>unsubscribeWake?.(),{once:true});
     let active: AbortController | null = null;
     let recoveryWarning = false;
     const configuredBinary = process.env.HAPPY_CODEX_PATH?.trim();
@@ -156,11 +160,7 @@ export function startAppChatWorker(token: string, machine: Machine, nativeSessio
                 const { job } = await request<{ job: Job | null }>(`app-worker/${encodeURIComponent(machine.id)}/claim`, { protocol: 3, engines });
                 if (job) await execute(job);
             } catch { /* Failed claim leaves no running turn; retry after bounded delay. */ }
-            if (!lifetime.signal.aborted) await new Promise<void>(resolve => {
-                const timer = setTimeout(done, 1000);
-                function done() { clearTimeout(timer); lifetime.signal.removeEventListener('abort', done); resolve(); }
-                lifetime.signal.addEventListener('abort', done, { once: true });
-            });
+            await wake.wait();
         } } finally { clearInterval(historyTimer); await release(); }
     })();
     return () => { lifetime.abort(); active?.abort(); };

@@ -101,7 +101,8 @@ rl.createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(li
   api:{ redeemCodexSessionGrant:async()=>({ auth:{ tokens:{ id_token:'fixture-id',access_token:'fixture-access',refresh_token:'fixture-refresh',account_id:'fixture-account' } },launchId:'launch',profile:{ id:'exact-profile',displayName:'Exact',credentialVersion:3 } }),attachCodexSession:async()=>({ success:true as const }),updateCodexAccountCredential:async(id,input)=>{ saved.push({ id,input });return { profile:{ id,status:'available' as const,displayName:'Exact',credentialVersion:4 } }; },reportCodexAccountQuota:async()=>({ accepted:true }),reportCodexAccountStatus:async()=>({ profile:{ id:'exact-profile',status:'available' as const,displayName:'Exact',credentialVersion:3 } }) }
  });
  expect(await worker.tick()).toBe(true);expect(await worker.tick()).toBe(true);
- const announced=calls.find(call=>call.path.endsWith('/announce'))!.body;expect(announced.claudeIdentity.identityId).toBe(claudeIdentityId(login));expect(JSON.stringify(announced)).not.toContain('fixture@example.test');expect(JSON.stringify(announced)).not.toContain('never-publish');
+ expect(calls.find(call=>call.path.endsWith('/announce'))!.body.claudeIdentity).toBeNull();
+ const announced=calls.find(call=>call.path.endsWith('/announce')&&call.body.claudeIdentity)!.body;expect(announced.claudeIdentity.identityId).toBe(claudeIdentityId(login));expect(JSON.stringify(announced)).not.toContain('fixture@example.test');expect(JSON.stringify(announced)).not.toContain('never-publish');
  const acquisitions=calls.filter(call=>call.path.endsWith('/credential')).map(call=>call.body.kind);expect(acquisitions).toEqual(['probe','turn']);
  const published=calls.find(call=>call.path.endsWith('/turns/turn') && call.body.status === 'completed');expect(published).toBeDefined();
  expect(published!.body.output).not.toContain('Summary answer');expect(decryptLegacy(decodeBase64(published!.body.output),f.key)).toMatchObject({ text:'Summary answer',bindingId:'binding',requestId:'request',direction:'output' });
@@ -137,4 +138,34 @@ it('compacts an over-cap native snapshot explicitly without losing its terminal 
  expect(decryptLegacy(decodeBase64(output),key)).toEqual({direction:'output',text:'Native execution completed.',messages:[],snapshotError:'snapshot-too-large'});
  const history=encodeNativeServiceSnapshot({direction:'session-history',sessionId:'native',active:false,messages},key);
  expect(decryptLegacy(decodeBase64(history),key)).toMatchObject({sessionId:'native',active:false,messages:[],snapshotError:'snapshot-too-large'});
+});
+
+it('claims Codex work while a Claude login check is blocked and never publishes after shutdown',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'shared-identity-'));roots.push(root);
+ const binary=join(root,'claude'),started=join(root,'started');
+ await writeFile(binary,`#!/usr/bin/env node
+require('fs').appendFileSync(${JSON.stringify(started)},'started\\n');setTimeout(()=>console.log('{}'),30000);`,{mode:0o700});
+ const control=new AbortController(),calls:{path:string;body:any}[]=[];
+ const worker=createSharedServiceWorker({machine,request:async<T>(path:string,body:any)=>{calls.push({path,body});return {probe:null,job:null} as T;},api:{} as any,recoveryRoot:join(root,'jobs'),lifetime:control.signal,codexBinary:'unused',claudeBinary:binary});
+ try{
+  await worker.tick();
+  await vi.waitFor(async()=>expect(await readFile(started,'utf8')).toContain('started'),{timeout:4000});
+  await Promise.race([worker.tick(),new Promise((_,reject)=>setTimeout(()=>reject(Error('Codex claim blocked by Claude')),500))]);
+  expect(calls.filter(call=>call.path.endsWith('/claim'))).toHaveLength(2);
+  expect(calls.filter(call=>call.path.endsWith('/announce')).every(call=>call.body.claudeIdentity===null)).toBe(true);
+  expect((await readFile(started,'utf8')).trim().split('\n')).toHaveLength(1);
+ }finally{control.abort();}
+ await expect(worker.tick()).rejects.toThrow();
+});
+
+it('publishes a completed Claude check while the Codex claim is still in flight',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'shared-identity-announcement-'));roots.push(root);
+ const binary=join(root,'claude'),login={loggedIn:true,authMethod:'oauth',apiProvider:'firstParty',email:'fixture@example.test',orgId:'fixture-org'};
+ await writeFile(binary,'#!/usr/bin/env node\nconsole.log('+JSON.stringify(JSON.stringify(login))+');',{mode:0o700});
+ let release!:()=>void;const gate=new Promise<void>(resolve=>{release=resolve;});
+ const control=new AbortController(),announcements:any[]=[];
+ const worker=createSharedServiceWorker({machine,request:async<T>(path:string,body:any)=>{if(path.endsWith('/announce'))announcements.push(body);if(path.endsWith('/claim'))await gate;return {probe:null,job:null} as T;},api:{} as any,recoveryRoot:join(root,'jobs'),lifetime:control.signal,codexBinary:'unused',claudeBinary:binary});
+ let done=false;const tick=worker.tick().then(()=>{done=true;});
+ try{await vi.waitFor(()=>expect(announcements.some(value=>value.claudeIdentity?.identityId===claudeIdentityId(login))).toBe(true),{timeout:4000});expect(done).toBe(false);}
+ finally{release();await tick;control.abort();}
 });

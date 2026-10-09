@@ -26,7 +26,10 @@ const native=(account='native-A',access='access-one')=>({ OPENAI_API_KEY:null,to
 it('long polls phase changes and rejects authorization revoked while waiting', async () => {
  const f=await setup(),resolving=services.store.resolveBinding(f.principal,'relationship-advisor',f.service.id,{});
  await completeProbe(await nextProbe(),f.target);const binding=await resolving;
- const turn=await services.turns.startBoundTurn(f.principal,binding.id,'observed',{ciphertext:'x'.repeat(80)});
+ const hints=vi.spyOn(services,'notifyWork');
+ const accepted=await req(`/v1/apps/ai-services/bindings/${binding.id}/turns`,{requestId:'observed',ciphertext:'x'.repeat(80)},f.receipt.credential);
+ expect(accepted.statusCode).toBe(200);const turn=accepted.json().record;
+ expect(hints).toHaveBeenCalledWith(owner,machine);hints.mockRestore();
  const job=(await req(`/v1/ai-service-worker/${machine}/claim`)).json().job;
  const path=`/v1/apps/ai-services/bindings/${binding.id}/turns/${turn.id}`;
  const read=(suffix='')=>app.inject({method:'GET',url:path+suffix,headers:{authorization:`Bearer ${f.receipt.credential}`}});

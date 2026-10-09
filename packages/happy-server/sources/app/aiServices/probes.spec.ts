@@ -19,7 +19,8 @@ it('shares same-principal discovery and reuses fresh results without caching aut
  const catalog:CapabilityCatalog={...target,protocol:'ai-services/1',observedAt:Date.now(),availability:'online',completeness:'complete',defaultModelId:'m',models:[{id:'m',name:'M',supportsImages:false,reasoning:{supportsDefault:true,values:[],defaultValue:null}}]};
  const store=createAIServiceStore(db,{readLive:async()=>catalog});
  const service=await store.createService(owner,{name:'Service',config:{...target,modelId:null,reasoning:{mode:'default'}}});
- const probes=createServiceProbes(db);
+ const notifications:Array<Promise<number>>=[];
+ const probes=createServiceProbes(db,(ownerId,machineId)=>{expect(ownerId).toBe(owner);expect(machineId).toBe(target.machineId);notifications.push(db.aIServiceProbe.count({where:{ownerId,machineId}}));});
  await probes.announce(owner,target.machineId,Buffer.from(nacl.box.keyPair().publicKey).toString('base64'),null,true);
  const grants=createServiceGrants(db,store);
  const receipt=await grants.issueServiceGrant(owner,'relationship-advisor',service.id,{appId:'relationship-advisor',serviceId:service.id,targets:[target],permissions:['chat'],expiresAt:null});
@@ -32,8 +33,11 @@ it('shares same-principal discovery and reuses fresh results without caching aut
  await probes.publish(owner,target.machineId,job!.id,job!.lease,catalog);
  expect(await outcome).toEqual({value:[catalog,catalog]});
  expect(await db.aIServiceProbe.count({where:{ownerId:owner}})).toBe(1);
+ expect(notifications.length).toBeGreaterThan(0);expect((await Promise.all(notifications)).every(count=>count===1)).toBe(true);
+ const notificationCount=notifications.length;
  expect(await probes.source.readLive(owner,target,principal)).toEqual(catalog);
  expect(await probes.claim(owner,target.machineId)).toBeNull();
+ expect(notifications).toHaveLength(notificationCount);
  // Worker liveness and account identity are checked even when a catalog exists.
  await db.appChatWorker.update({where:{machineId:target.machineId},data:{activeUntil:new Date(0)}});
  await expect(probes.source.readLive(owner,target,principal)).rejects.toMatchObject({code:'machine-offline'});

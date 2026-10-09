@@ -60,7 +60,16 @@ export function createSharedServiceWorker(context: { machine: Machine; request: 
  let authority: Authority | null=null;
  let claudeIdentity: { identityId:string; observedAt:number } | null=null;
  let identityCheckedAt=0;
+ let identityRefresh:Promise<void>|null=null;
  let policyData: { policy:AppPolicy; ref:BusinessPromptRef; prompt:string } | null=null;
+ let announcing:Promise<void>=Promise.resolve();
+ const announce=()=>{
+  const next=announcing.then(async()=>{
+   lifetime.throwIfAborted();
+   await request(`${path}/announce`,{protocol:'ai-services/1',nativeSessions:!!context.nativeSessionHooks,publicKey:Buffer.from(serviceMachineKey(machine).publicKey).toString('base64'),claudeIdentity});
+  });
+  announcing=next.catch(()=>{});return next;
+ };
  const nativeClaudeEnv: NodeJS.ProcessEnv={ HOME:homedir(),PATH:process.env.PATH,LANG:process.env.LANG,TMPDIR:process.env.TMPDIR };
  const acquire=async (target:ServiceTarget,workspace:BoundWorkspace,signal:AbortSignal):Promise<BoundCredentialLease> => {
   if (!authority) throw new Error('permission-denied');
@@ -168,15 +177,24 @@ export function createSharedServiceWorker(context: { machine: Machine; request: 
    lifetime.throwIfAborted();
    // Both roots are recovered while holding the one machine lock, before any native observation.
    if (!await recoverAppChatCredentialJobs(context.recoveryRoot,machine.id,api)) throw new Error('resource-busy');
-   if (Date.now()-identityCheckedAt > 30000) {
+   if (!identityRefresh && Date.now()-identityCheckedAt > 30000) {
     identityCheckedAt=Date.now();claudeIdentity=null;
-    try {
-     const cwd=join(context.recoveryRoot,'identity');await mkdir(cwd,{ recursive:true,mode:0o700 });
-     const { stdout }=await promisify(execFile)(context.claudeBinary,['auth','status','--json'],{ cwd,env:restrictedClaudeEnv(nativeClaudeEnv),signal:lifetime,timeout:5000,maxBuffer:65536 });
-     claudeIdentity={ identityId:claudeIdentityId(JSON.parse(stdout)),observedAt:Date.now() };
-    } catch { /* Never return login JSON, email, tokens, or an invented identity. */ }
+    // Discovery metadata must not hold Codex claims behind a different engine's
+    // login command. Announce no Claude identity until a fresh check succeeds.
+    identityRefresh=(async()=>{
+     try {
+      const cwd=join(context.recoveryRoot,'identity');await mkdir(cwd,{ recursive:true,mode:0o700 });
+      lifetime.throwIfAborted();
+      const { stdout }=await promisify(execFile)(context.claudeBinary,['auth','status','--json'],{ cwd,env:restrictedClaudeEnv(nativeClaudeEnv),signal:lifetime,timeout:5000,maxBuffer:65536 });
+      lifetime.throwIfAborted();
+      claudeIdentity={ identityId:claudeIdentityId(JSON.parse(stdout)),observedAt:Date.now() };
+      // A long Codex turn must not prevent the newly observed Claude identity
+      // from becoming visible. Serialize announcements and read identity at send.
+      await announce();
+     } catch { /* Never publish login JSON, stale identity, email or tokens. */ }
+    })().finally(()=>{identityRefresh=null;});
    }
-   await request(`${path}/announce`,{ protocol:'ai-services/1',nativeSessions:!!context.nativeSessionHooks,publicKey:Buffer.from(serviceMachineKey(machine).publicKey).toString('base64'),claudeIdentity });
+   await announce();
    const { probe,job }=await request<{ probe:Probe|null;job:SharedServiceJob|null }>(`${path}/claim`,{});
    if (probe) {
     authority={ kind:'probe',id:probe.id,lease:probe.lease };

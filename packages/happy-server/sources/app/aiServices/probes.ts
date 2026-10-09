@@ -6,7 +6,7 @@ import type { TrustedCapabilitySource } from './bindings';
 import { targetKey } from './bindings';
 import { authorizeProbe } from './authority';
 import { deny, AIServiceError } from './errors';
-export function createServiceProbes(database: PrismaClient) {
+export function createServiceProbes(database: PrismaClient, notifyWork: (ownerId:string,machineId:string)=>void = ()=>{}) {
  const source: TrustedCapabilitySource = {
   async readLive(ownerId, target, authority = { kind: 'owner', ownerId }) {
    const principal = ServicePrincipalSchema.parse(authority);
@@ -42,6 +42,8 @@ export function createServiceProbes(database: PrismaClient) {
     return null;
    });
    if (cached) return cached;
+   // The transaction has committed before a daemon can act on the hint.
+   notifyWork(ownerId,target.machineId);
    // Polling never holds a transaction or device/identity lock. Credential callbacks can commit.
    for (;;) {
     const row = await database.aIServiceProbe.findUniqueOrThrow({ where: { id } });

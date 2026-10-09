@@ -55,6 +55,7 @@ function traceIdFromParams(value: unknown): string | undefined {
 }
 
 interface ServerToDaemonEvents {
+    ephemeral: (data: {type?:string;machineId?:string}|null) => void;
     update: (data: Update) => void;
     'rpc-request': (data: { method: string, params: string }, callback: (response: string) => void) => void;
     'rpc-registered': (data: { method: string }) => void;
@@ -661,7 +662,14 @@ export class ApiMachineClient {
         this.socket.on('connect', () => {
             logger.debug('[API MACHINE] Connected to server');
             this.stopAppChatWorker?.();
-            this.stopAppChatWorker = startAppChatWorker(this.token, this.machine, this.nativeSessionHooks);
+            this.stopAppChatWorker = startAppChatWorker(this.token, this.machine, this.nativeSessionHooks, wake => {
+                const socket=this.socket;
+                const listener=(event: {type?:string;machineId?:string}|null)=>{
+                    if(event?.type==='ai-service-work-available' && event.machineId===this.machine.id)wake();
+                };
+                socket.on('ephemeral',listener);
+                return ()=>{socket.off('ephemeral',listener);};
+            });
 
             if (this.reconnectInterval) {
                 clearInterval(this.reconnectInterval);
