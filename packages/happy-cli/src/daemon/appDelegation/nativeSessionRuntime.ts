@@ -153,14 +153,26 @@ export function createNativeSessionRuntime(context:{hooks:NativeSessionHooks;roo
     if(result.type!=='success'||result.sessionId!==sessionId)throw new Error('execution-interrupted');
    }
    if(!journal.submitted && journal.readyAfterSeq!==undefined) {
-    let ready=false,watchError:Error|undefined;
+    let ready=false,watchError:Error|undefined,wake=()=>{};
     const baseline=journal.readyAfterSeq;
-    const watch=await hooks.watch(sessionId,{afterSeq:baseline,signal,onMessage:message=>{const content=object(message.content);if(message.seq>baseline && content.role==='agent' && content.content?.type==='event' && content.content.data?.type==='ready')ready=true;},onError:error=>{watchError=error;}});
+    const watch=await hooks.watch(sessionId,{afterSeq:baseline,signal,onMessage:message=>{const content=object(message.content);if(message.seq>baseline && content.role==='agent' && content.content?.type==='event' && content.content.data?.type==='ready'){ready=true;wake();}},onError:error=>{watchError=error;wake();}});
+    const aborted=()=>wake();signal.addEventListener('abort',aborted,{once:true});
     try {
      const deadline=Date.now()+(context.readyTimeoutMs??60000);
-     while(true){signal.throwIfAborted();if(watchError)throw watchError;session=await hooks.get(sessionId);assertNativeBinding(session,binding);if(ready && session.active)break;if(Date.now()>deadline)throw new Error('resource-busy');await new Promise(resolve=>setTimeout(resolve,context.pollMs??250));}
+     while(true){
+      // Arm before the read: a ready event arriving during get must not be lost.
+      const changed=new Promise<void>(resolve=>{wake=resolve;});
+      signal.throwIfAborted();if(watchError)throw watchError;
+      session=await hooks.get(sessionId);assertNativeBinding(session,binding);
+      signal.throwIfAborted();if(watchError)throw watchError;
+      if(ready && session.active)break;
+      if(Date.now()>=deadline)throw new Error('resource-busy');
+      let timer:ReturnType<typeof setTimeout>|undefined;
+      try{await Promise.race([changed,new Promise<void>(resolve=>{timer=setTimeout(resolve,Math.min(context.pollMs??250,Math.max(0,deadline-Date.now())));})]);}
+      finally{clearTimeout(timer);}
+     }
      delete journal.readyAfterSeq;await save(path,journal);
-    }finally{watch.unsubscribe();}
+    }finally{signal.removeEventListener('abort',aborted);watch.unsubscribe();}
    }
    const all=await readNativeHistory(hooks,sessionId,signal);
    if(journal.afterSeq===undefined){journal.afterSeq=all.at(-1)?.seq||0;await save(path,journal);}

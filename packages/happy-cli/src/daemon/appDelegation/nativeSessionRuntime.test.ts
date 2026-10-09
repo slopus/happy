@@ -1,13 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createNativeSessionRuntime, nativeTranscript, type NativeMessage, type NativeSessionHooks, type NativeTextDelta } from './nativeSessionRuntime';
 import type { ExecutionBinding } from '@slopus/happy-wire';
 const roots:string[]=[];
-afterEach(async()=>{await Promise.all(roots.splice(0).map(path=>rm(path,{recursive:true,force:true})));});
+afterEach(async()=>{vi.restoreAllMocks();await Promise.all(roots.splice(0).map(path=>rm(path,{recursive:true,force:true})));});
 const binding={id:'binding',serviceId:'service',revision:1,appId:'advisor',machineId:'machine',engine:'codex',accountRef:{kind:'codex-profile',id:'precise'},requestedModel:'model',reasoning:{mode:'explicit',value:'medium'},permissions:['chat'],permissionMode:'chat-only'} as ExecutionBinding;
-async function fixture() {
+async function fixture(timing:{pollMs?:number;readyTimeoutMs?:number}={}) {
  const root=await mkdtemp(join(tmpdir(),'paws-native-'));roots.push(root);
  const phases:string[]=[],textsObserved:string[]=[];
  const messages:NativeMessage[]=[];const listeners=new Set<(message:NativeMessage)=>void>();
@@ -21,11 +21,33 @@ async function fixture() {
   start:async input=>{expect(input.binding.accountRef).toEqual({kind:'codex-profile',id:'precise'});expect(input.binding.permissionMode).toBe('chat-only');starts++;active=true;append({role:'agent',content:{type:'event',data:{type:'ready'}}});return {type:'success',sessionId:'session'};},
   send:async input=>{sends++;append({role:'user',content:{type:'text',text:input.text}},input.localId);event({t:'turn-start',localIds:[input.localId]},input.localId);event({t:'text',text:'answer'},input.localId);event({t:'turn-end',status:'completed'},input.localId);if(dropResponse)throw Error('lost acknowledgment');},cancel:async()=>{throw Error('must not cancel another surface');},
  };
- const runtime=createNativeSessionRuntime({hooks,root,machineId:'machine',readyTimeoutMs:20,pollMs:1});
+ const runtime=createNativeSessionRuntime({hooks,root,machineId:'machine',readyTimeoutMs:20,pollMs:1,...timing});
  const execute=(requestId:string,sessionId?:string,signal=new AbortController().signal)=>runtime.execute(binding,{id:requestId,requestId,conversationId:'conversation',createdAt:0,messages:[{role:'user',text:requestId}]},{sessionId,systemPrompt:'policy',codexSessionGrant:'exact-grant',attach:async()=>{}},signal,event=>{if(event.type==='phase')phases.push(event.phase);else if(event.type==='text')textsObserved.push(event.text);});
  return {runtime,hooks,execute,phases,textsObserved,messages,append,event,setActive:(value:boolean)=>{active=value;},setRunning:(value:boolean)=>{running=value;},drop:()=>{dropResponse=true;},counts:()=>({starts,sends})};
 }
 describe('native application sessions',()=>{
+ it.each(['ready','error','abort','changed-binding'] as const)('wakes readiness polling immediately on %s, retaining binding and abort checks',async outcome=>{
+  const f=await fixture({pollMs:10000,readyTimeoutMs:20000}),control=new AbortController();
+  const start=f.hooks.start,watch=f.hooks.watch,get=f.hooks.get;
+  let readyWatch:Parameters<NativeSessionHooks['watch']>[1]|undefined,changed=false,unsubscribed=0;
+  f.hooks.start=async input=>{const result=await start(input);f.messages.length=0;return result;};
+  f.hooks.watch=async(id,options)=>{readyWatch=options;const sub=await watch(id,options);return {...sub,unsubscribe:()=>{unsubscribed++;sub.unsubscribe();}};};
+  f.hooks.get=async id=>({...await get(id),...(changed?{metadata:{machineId:'another-machine'}}:{})});
+  const timeout=setTimeout,clear=vi.spyOn(globalThis,'clearTimeout');let poll:ReturnType<typeof setTimeout>|undefined;
+  vi.spyOn(globalThis,'setTimeout').mockImplementation(((callback:(...args:unknown[])=>void,delay?:number,...args:unknown[])=>{
+   const timer=timeout(()=>callback(...args),delay);
+   if(delay===10000){poll=timer;queueMicrotask(()=>{
+    if(outcome==='abort')control.abort(new Error('cancelled-before-send'));
+    else if(outcome==='error')readyWatch!.onError(new Error('watch-disconnected'));
+    else {changed=outcome==='changed-binding';f.append({role:'agent',content:{type:'event',data:{type:'ready'}}});}
+   });}
+   return timer;
+  }) as typeof setTimeout);
+  const result=f.execute('first',undefined,control.signal);
+  if(outcome==='ready'){expect((await result).text).toBe('answer');expect(f.counts().sends).toBe(1);}
+  else {await expect(result).rejects.toThrow(outcome==='error'?'watch-disconnected':outcome==='abort'?'cancelled-before-send':'permission-denied');expect(f.counts().sends).toBe(0);}
+  expect(poll).toBeDefined();expect(clear).toHaveBeenCalledWith(poll);expect(unsubscribed).toBe(outcome==='ready'?2:1);
+ });
  it('spawns once, sends only new input, then reuses the same session',async()=>{const f=await fixture();expect((await f.execute('first')).sessionId).toBe('session');await f.execute('second','session');expect(f.counts()).toEqual({starts:1,sends:2});expect(nativeTranscript(f.messages).filter(m=>m.role==='user').map(m=>m.text)).toEqual(['first','second']);});
  it('resumes the bound session after exit preserving exact identity and permissions',async()=>{const f=await fixture();await f.execute('first');f.setActive(false);await f.execute('second','session');expect(f.counts().starts).toBe(2);});
  it('reconciles dropped send response and repeated request without resending',async()=>{const f=await fixture();f.drop();expect((await f.execute('first')).text).toBe('answer');expect((await f.execute('first','session')).text).toBe('answer');expect(f.counts()).toEqual({starts:1,sends:1});});

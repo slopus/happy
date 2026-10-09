@@ -71,11 +71,15 @@ export function createAIServiceClient({ appId, transport }: {
                     controller.abort();
                 const deadline = Date.now() + maxDuration;
                 let sequence = options.afterSequence ?? -1, signature = '', failures = 0;
+                let cursor: string | undefined, turnId = options.turnId;
+                let waitingSupported = true;
                 const done = (async () => {
                     try {
                         while (!controller.signal.aborted && Date.now() < deadline) {
                             try {
-                                const snapshot = await transport.read(options, { signal: controller.signal });
+                                const previousCursor = cursor;
+                                const readStarted = Date.now();
+                                const snapshot = await transport.read({ ...options, ...(turnId ? { turnId } : {}) }, { signal: controller.signal, ...(cursor ? { waitForChange: cursor } : {}) });
                                 if (controller.signal.aborted)
                                     return;
                                 if (snapshot.sequence < sequence)
@@ -89,11 +93,21 @@ export function createAIServiceClient({ appId, transport }: {
                                 if (terminal(snapshot))
                                     return;
                                 failures = 0;
+                                turnId = snapshot.record.id;
+                                cursor = waitingSupported ? snapshot.observationCursor : undefined;
+                                // New servers wait for changes; older servers omit the cursor
+                                // and retain the existing polling/backoff behavior.
+                                if (cursor && (cursor !== previousCursor || Date.now() - readStarted >= interval)) continue;
                             }
                             catch (error) {
                                 if (controller.signal.aborted)
                                     return;
                                 const safe = safeServiceError(error);
+                                if (cursor && safe.retryable && safe.code === 'transport-error') {
+                                    cursor = undefined;
+                                    waitingSupported = false;
+                                    continue;
+                                }
                                 listener({ type: 'error', error: safe });
                                 if (!safe.retryable || ++failures >= 5)
                                     return;

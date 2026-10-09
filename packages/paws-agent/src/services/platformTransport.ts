@@ -39,10 +39,12 @@ export function createBrowserPlatformTransport(options: BrowserPlatformOptions):
     };
     function parseBinding(value: unknown, id?: string) { const b = ExecutionBindingSchema.safeParse(value); if (!b.success || b.data.appId !== options.appId || (id !== undefined && b.data.id !== id))
         throw new AIServiceClientError('context-mismatch'); return b.data; }
-    function snapshot(value: TurnSnapshot, locator: TurnLocator) { const row = TurnRecordSchema.safeParse(value?.record); if (!row.success)
+    function snapshot(value: TurnSnapshot, locator: TurnLocator) {
+        if (value?.observationCursor !== undefined && (typeof value.observationCursor !== 'string' || !/^[a-f0-9]{64}$/.test(value.observationCursor))) throw new AIServiceClientError('context-mismatch');
+        const row = TurnRecordSchema.safeParse(value?.record); if (!row.success)
         throw new AIServiceClientError('context-mismatch'); parseBinding(row.data.binding, locator.bindingId); if (row.data.conversationId !== locator.bindingId || (locator.turnId && row.data.id !== locator.turnId) || (locator.requestId && row.data.requestId !== locator.requestId) || !Number.isSafeInteger(value.sequence) || value.sequence < 0 || typeof value.text !== 'string')
         throw new AIServiceClientError('context-mismatch'); const messages = validateHistoryMessages(value.messages); if(value.historyComplete !== undefined && value.historyComplete !== false) throw new AIServiceClientError('context-mismatch'); if(value.snapshotError !== undefined && (!NativeSnapshotErrorSchema.safeParse(value.snapshotError).success || messages.length || !row.data.sessionId)) throw new AIServiceClientError('context-mismatch'); const last = sequences.get(row.data.id); if (last && (value.sequence < last.sequence || value.sequence === last.sequence && value.text !== last.text))
-        throw new AIServiceClientError('context-mismatch'); sequences.set(row.data.id, { sequence: value.sequence, text: value.text }); return { record: row.data, sequence: value.sequence, text: value.text, messages, ...(value.historyComplete === false ? {historyComplete:false as const} : {}), ...(value.snapshotError ? {snapshotError:value.snapshotError} : {}) }; }
+        throw new AIServiceClientError('context-mismatch'); sequences.set(row.data.id, { sequence: value.sequence, text: value.text }); return { ...(value.observationCursor ? {observationCursor:value.observationCursor} : {}), record: row.data, sequence: value.sequence, text: value.text, messages, ...(value.historyComplete === false ? {historyComplete:false as const} : {}), ...(value.snapshotError ? {snapshotError:value.snapshotError} : {}) }; }
     const transport: AIServiceTransport = {
         appId: options.appId, source: 'platform',
         async authorize(input = {}) { if (input.receipt)
@@ -103,7 +105,9 @@ export function createBrowserPlatformTransport(options: BrowserPlatformOptions):
                 throw await submission.failure(error);
             }
         },
-        async read(locator, opts) { const basePath = `/bindings/${validateIdentifier(locator.bindingId)}`; const path = locator.turnId ? `${basePath}/turns/${validateIdentifier(locator.turnId)}` : locator.requestId ? `${basePath}/requests/${validateIdentifier(locator.requestId)}` : null; if (!path)
+        async read(locator, opts) {
+            if (opts?.waitForChange && !/^[a-f0-9]{64}$/.test(opts.waitForChange)) throw new AIServiceClientError('invalid-request');
+            const basePath = `/bindings/${validateIdentifier(locator.bindingId)}`; const path = locator.turnId ? `${basePath}/turns/${validateIdentifier(locator.turnId)}${opts?.waitForChange ? '/changes/' + opts.waitForChange : ''}` : locator.requestId ? `${basePath}/requests/${validateIdentifier(locator.requestId)}` : null; if (!path)
             throw new AIServiceClientError('invalid-request'); return snapshot(await call<TurnSnapshot>(path, undefined, opts), locator); },
         cancel(locator, opts) { return call(`/bindings/${validateIdentifier(locator.bindingId)}/turns/${validateIdentifier(locator.turnId)}/cancel`, {}, opts); },
         async revoke(opts) { await call('/revoke', {}, opts); },

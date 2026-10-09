@@ -320,13 +320,18 @@ export function createScopedServiceTransport(options: ScopedTransportOptions, ki
                 throw await submission.failure(error);
             }
         },
-        async read(locator, call) { const base = `/v1/apps/ai-services/bindings/${validateIdentifier(locator.bindingId)}`; const path = locator.turnId ? `${base}/turns/${validateIdentifier(locator.turnId)}` : locator.requestId ? `${base}/requests/${validateIdentifier(locator.requestId)}` : null; if (!path)
+        async read(locator, call) {
+            if (call?.waitForChange && !/^[a-f0-9]{64}$/.test(call.waitForChange)) throw new AIServiceClientError('invalid-request');
+            const base = `/v1/apps/ai-services/bindings/${validateIdentifier(locator.bindingId)}`; const path = locator.turnId ? `${base}/turns/${validateIdentifier(locator.turnId)}?observe=1${call?.waitForChange ? '&after=' + call.waitForChange : ''}` : locator.requestId ? `${base}/requests/${validateIdentifier(locator.requestId)}` : null; if (!path)
             throw new AIServiceClientError('invalid-request'); const value = await request<{
             record: unknown;
             input: string;
             output: string | null;
             sequence: number;
-        }>(path, undefined, call); return snapshot(value, locator); },
+            observationCursor?: string;
+        }>(path, undefined, call);
+            if (value.observationCursor !== undefined && !/^[a-f0-9]{64}$/.test(value.observationCursor)) throw new AIServiceClientError('context-mismatch');
+            return { ...snapshot(value, locator), ...(value.observationCursor ? { observationCursor: value.observationCursor } : {}) }; },
         async cancel(locator, call) { const result = await request<{
             cancellationRequested: boolean;
             upstreamRetractionGuaranteed: false;

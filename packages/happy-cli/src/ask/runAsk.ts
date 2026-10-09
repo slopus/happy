@@ -6,7 +6,7 @@ import { ApiClient } from '@/api/api';
 import type { ApiSessionClient } from '@/api/apiSession';
 import type { UserMessage } from '@/api/types';
 import { AcpSessionManager } from '@/agent/acp/AcpSessionManager';
-import { initialMachineMetadata } from '@/daemon/run';
+import { initialMachineMetadata } from '@/daemon/machineMetadata';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { registerKillSessionHandler } from '@/claude/registerKillSessionHandler';
 import { encodeBase64 } from '@/api/encryption';

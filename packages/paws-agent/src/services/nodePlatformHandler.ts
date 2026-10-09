@@ -42,6 +42,7 @@ export function createPlatformServiceHandler<Context>(client: AIServiceClient, h
             const strict = (keys: string[]) => { if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(k => !keys.includes(k)))
                 throw new AIServiceClientError('invalid-request'); return body as Record<string, any>; };
             let operation: PlatformOperation;
+            let waitForChange: string | undefined;
             if (request.method === 'GET' && parts.length === 1 && ['connection', 'services', 'configuration'].includes(parts[0]))
                 operation = { operation: parts[0] as 'connection' | 'services' | 'configuration' };
             else if (request.method === 'POST' && parts.length === 1 && parts[0] === 'capabilities') {
@@ -64,6 +65,10 @@ export function createPlatformServiceHandler<Context>(client: AIServiceClient, h
                 const b = strict(['messages', 'requestId']);
                 validateIdentifier(b.requestId);
                 operation = { operation: 'start', bindingId: parts[1], requestId: b.requestId };
+            }
+            else if (request.method === 'GET' && parts.length === 6 && parts[0] === 'bindings' && parts[2] === 'turns' && parts[4] === 'changes' && /^[a-f0-9]{64}$/.test(parts[5])) {
+                operation = { operation: 'read', bindingId: parts[1], turnId: parts[3] };
+                waitForChange = parts[5];
             }
             else if (parts[0] === 'bindings' && ['turns', 'requests'].includes(parts[2]) && parts.length === 4 && request.method === 'GET')
                 operation = { operation: 'read', bindingId: parts[1], ...(parts[2] === 'turns' ? { turnId: parts[3] } : { requestId: parts[3] }) };
@@ -127,7 +132,9 @@ export function createPlatformServiceHandler<Context>(client: AIServiceClient, h
                     break;
                 }
                 case 'read':
-                    result = await client.turns.read({ bindingId: operation.bindingId!, turnId: operation.turnId, requestId: operation.requestId }, signal);
+                    result = await client.turns.read({ bindingId: operation.bindingId!, turnId: operation.turnId, requestId: operation.requestId }, { ...signal, ...(waitForChange ? { waitForChange } : {}) });
+                    // A host session/ownership may have changed while awaiting upstream.
+                    if (!await host.authorize(operation, context)) throw new AIServiceClientError('permission-denied');
                     break;
                 case 'cancel':
                     result = await client.turns.cancel({ bindingId: operation.bindingId!, turnId: operation.turnId! }, signal);

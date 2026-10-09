@@ -48,6 +48,8 @@ export interface TurnLocator {
     requestId?: string;
 }
 export interface TurnSnapshot {
+    /** Opaque change cursor from servers supporting authorized long polling. */
+    observationCursor?: string;
     /** False for request-only/heartbeat snapshots. Omission means authoritative history. */
     historyComplete?: false;
     snapshotError?: NativeSnapshotError;
@@ -86,7 +88,7 @@ export interface AIServiceTransport {
     findConversation(appConversationId: string, options?: CallOptions): Promise<ExecutionBinding | null>;
     readConversation?(bindingId: string, options?: CallOptions): Promise<ConversationSnapshot>;
     start(input: StartTurnInput, options?: CallOptions): Promise<TurnSnapshot>;
-    read(locator: TurnLocator, options?: CallOptions): Promise<TurnSnapshot>;
+    read(locator: TurnLocator, options?: CallOptions & { waitForChange?: string }): Promise<TurnSnapshot>;
     cancel(locator: TurnLocator & {
         turnId: string;
     }, options?: CallOptions): Promise<{

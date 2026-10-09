@@ -3,14 +3,11 @@ import { configuration } from "@/configuration";
 import { randomBytes } from "node:crypto";
 import tweetnacl from 'tweetnacl';
 import axios from 'axios';
-import { displayQRCode } from "./qrcode";
 import { delay } from "@/utils/time";
 import { writeCredentialsLegacy, readCredentials, updateSettings, Credentials, writeCredentialsDataKey } from "@/persistence";
 import { generateWebAuthUrl } from "@/api/webAuth";
 import { openBrowser } from "@/utils/browser";
-import { AuthSelector, AuthMethod } from "./ink/AuthSelector";
-import { render } from 'ink';
-import React from 'react';
+import type { AuthMethod } from "./ink/AuthSelector";
 import { randomUUID } from 'node:crypto';
 import { logger } from './logger';
 import type { WorkerSessionStartupLifecycle } from '@/api/sessionStartupTrace';
@@ -65,7 +62,8 @@ export async function doAuth(): Promise<Credentials | null> {
 /**
  * Display authentication method selector and return user choice
  */
-function selectAuthenticationMethod(): Promise<AuthMethod | null> {
+async function selectAuthenticationMethod(): Promise<AuthMethod | null> {
+    const [{ render }, { default: React }, { AuthSelector }] = await Promise.all([import('ink'), import('react'), import('./ink/AuthSelector')]);
     return new Promise((resolve) => {
         let hasResolved = false;
 
@@ -101,6 +99,7 @@ async function doMobileAuth(keypair: tweetnacl.BoxKeyPair): Promise<Credentials 
     console.log('Scan this QR code with your Happy mobile app:\n');
 
     const authUrl = 'paws://terminal?' + encodeBase64Url(keypair.publicKey);
+    const { displayQRCode } = await import('./qrcode');
     displayQRCode(authUrl);
 
     console.log('\nOr manually enter this URL:');

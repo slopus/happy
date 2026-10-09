@@ -89,6 +89,7 @@ export function createSharedServiceWorker(context: { machine: Machine; request: 
   let latest='',sequence=job.sequence??0,flushing:Promise<unknown>=Promise.resolve(),heartbeat:NodeJS.Timeout|undefined,textFlush:NodeJS.Timeout|undefined;
   let key:Uint8Array|undefined, phase:NativePhase|undefined;
   let messages:NativeConversationMessage[]|undefined, terminalObserved=false;
+  let textPending=false,firstTextQueued=false;
   const publish=(body:object)=>request(`${path}/turns/${job.record.id}`,{ lease:job.lease,...(phase ? {phase}:{}),...body });
   const encode=(includeHistory=true,forceTooLarge=false)=>encodeNativeServiceSnapshot({ protocol:'ai-services/1',grantId:job.grantId,appId:job.record.binding.appId,serviceId:job.record.binding.serviceId,bindingId:job.record.binding.id,requestId:job.record.requestId,turnId:job.record.id,direction:'output',sequence:++sequence,text:latest,...(includeHistory && messages ? {messages}: {historyComplete:false}) },key!,forceTooLarge);
   const publishTerminal=async(body:object)=>{
@@ -97,16 +98,21 @@ export function createSharedServiceWorker(context: { machine: Machine; request: 
    catch(error){if(!(error instanceof Error)||error.message!=='snapshot-too-large')throw error;output=encode(false,true);await publish({...body,output,sequence});}
   };
   const scheduleText=():void=>{
-   if(textFlush || terminalObserved || control.signal.aborted)return;
-   textFlush=setTimeout(()=>{
+   if(textPending || terminalObserved || control.signal.aborted)return;
+   textPending=true;
+   const flush=()=>{
     let publishedText:string|undefined;
     flushing=flushing.then(async()=>{
      if(control.signal.aborted)return;
      publishedText=latest;await publish({output:encode(false),sequence});
     }).catch(()=>control.abort()).finally(()=>{
-     textFlush=undefined;if(latest!==publishedText)scheduleText();
+     textPending=false;textFlush=undefined;if(latest!==publishedText)scheduleText();
     });
-   },250);
+   };
+   // First visible text should not wait for the batching window. All writes
+   // still share the same queue, including heartbeat and terminal snapshots.
+   if(!firstTextQueued && latest.length>0){firstTextQueued=true;flush();}
+   else textFlush=setTimeout(flush,50);
   };
   try {
    const decoded=decodeServiceJob(machine,job); key=decoded.key;

@@ -87,7 +87,7 @@ vi.mock('@/persistence', () => ({
 vi.mock('@/utils/createSessionMetadata', () => ({
   createSessionMetadata: vi.fn(() => ({ state: {}, metadata: {} })),
 }));
-vi.mock('@/daemon/run', () => ({ initialMachineMetadata: {} }));
+vi.mock('@/daemon/machineMetadata', () => ({ initialMachineMetadata: {} }));
 vi.mock('@/utils/MessageQueue2', () => ({
   MessageQueue2: class {
     push() {}

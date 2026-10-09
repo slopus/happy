@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
+import { watch, type FSWatcher } from 'node:fs';
 import { lstat, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ApiClient } from '@/api/api';
 import { CodexAccountRequestError } from '@/api/codexAccountTypes';
 import { codexAccountAuthSchema, readCodexAccountAuth, type CodexAccountAuth } from '@/codex/codexAccountAuth';
 import { prepareCodexHomeWithAuth } from '@/codex/codexHome';
+import { CodexModelCache } from '@/codex/codexModelCache';
 import { collectCodexUsageSnapshot, type CodexUsageRateLimitWindow, type CodexUsageRateLimits } from '@/codex/codexUsage';
 import { retainCodexAccountHistory, rememberCodexAccountSession, copyCodexSourceThread, getCodexSourceAccountProfileId, CodexSourceHistoryUnavailableError, CodexSourceAccountMismatchError } from '@/codex/codexAccountHistory';
 import { configuration } from '@/configuration';
@@ -49,6 +51,8 @@ export class CodexAccountLaunch {
   private readonly startedAt: number;
   private readonly daemonPid: number;
   private identityInvalid = false;
+  private catalogWatcher?: FSWatcher;
+  private catalogPending: Promise<void> = Promise.resolve();
 
   private constructor(private readonly api: AccountApi, private readonly machineId: string, readonly home: string, state: CodexAccountLaunchState, private readonly historyRoot: string) {
     this.profileId = state.profileId; this.launchId = state.launchId;
@@ -57,6 +61,20 @@ export class CodexAccountLaunch {
     this.startedAt = state.startedAt; this.daemonPid = state.daemonPid;
     this.sourceSessionId = state.sourceSessionId; this.writeDisabled = state.writeDisabled;
     this.identityInvalid = state.identityInvalid; this.lastQuota = state.lastQuota;
+    try {
+      this.catalogWatcher = watch(home, { persistent: false }, (_event, name) => {
+        if (name && name.toString() !== 'models_cache.json') return;
+        this.catalogPending = this.catalogPending.then(() => this.publishModelCache()).catch(() => undefined);
+      });
+      this.catalogWatcher.on('error', () => { this.catalogWatcher?.close(); });
+    } catch { /* Probes and finish also publish when file watching is unavailable. */ }
+  }
+
+  private async publishModelCache(): Promise<void> {
+    if (this.identityInvalid || this.writeDisabled) return;
+    const auth = await readCodexAccountAuth(this.home).catch(() => undefined);
+    if (!auth || identityFingerprint(this.launchId, auth.tokens.account_id) !== this.accountFingerprint) return;
+    await new CodexModelCache(this.historyRoot, this.profileId, auth.tokens.account_id).publish(this.home);
   }
 
   /** Only the surviving worker may recover this observer, after daemon death. */
@@ -98,6 +116,7 @@ export class CodexAccountLaunch {
       ...options, createTempDir: options?.createTempDir ?? createCodexSessionHome,
     });
     try {
+      await new CodexModelCache(historyRoot, redeemed.profile.id, parsed.data.tokens.account_id).restore(home);
       // Fresh sessions need no history. Import only an explicit resume/fork
       // source and its ancestors, never the entire account cache.
       if (!options?.skipHistory && options?.sourceThreadId) {
@@ -154,6 +173,7 @@ export class CodexAccountLaunch {
     const auth = await readCodexAccountAuth(this.home).catch(() => undefined);
     if (!auth) throw new Error('Codex quota probe could not read its refreshed login');
     if (identityFingerprint(this.launchId, auth.tokens.account_id) !== this.accountFingerprint) throw new Error('Codex quota probe identity changed unexpectedly');
+    await this.publishModelCache();
     if (fingerprint(auth) === this.authFingerprint) return;
     if (!this.api.updateCodexAccountCredential) throw new Error('This Paws daemon cannot save a refreshed Codex login');
     const result = await this.api.updateCodexAccountCredential(this.profileId, {
@@ -245,6 +265,7 @@ export class CodexAccountLaunch {
       }
     }
     if (this.identityInvalid) return;
+    await this.publishModelCache();
     try {
       const snapshot = await collectCodexUsageSnapshot({ codexHome: this.home, maxDays: 8 });
       const event = snapshot.latestEvent;
@@ -268,7 +289,8 @@ export class CodexAccountLaunch {
   finish(): Promise<void> {
     if (!this.finishing) {
       clearInterval(this.timer);
-      this.finishing = Promise.allSettled([this.pending, this.attaching]).then(() => this.sourceSessionId
+      this.catalogWatcher?.close();
+      this.finishing = Promise.allSettled([this.pending, this.attaching, this.catalogPending]).then(() => this.sourceSessionId
         ? this.syncOnce()
         : !this.writeDisabled ? this.syncProbeCredential() : undefined).catch(() => undefined)
         .then(async () => {

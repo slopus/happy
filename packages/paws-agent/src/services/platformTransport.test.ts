@@ -40,3 +40,26 @@ it('rejects a caller-supplied foreign origin when an actual page location exists
         transport.dispose();
     } finally { vi.unstubAllGlobals(); }
 });
+
+it('forwards change cursors through the browser bridge and rechecks host ownership after waiting', async () => {
+ const upstream=fixture(), cursor='a'.repeat(64); let allowed=true;
+ const fetcher:typeof fetch=async(url,init)=>{
+  const response=await upstream.fetcher(url,init), request=new URL(String(url));
+  if(!request.pathname.endsWith('/turns/turn'))return response;
+  expect(request.searchParams.get('observe')).toBe('1');
+  if(request.searchParams.has('after')){expect(request.searchParams.get('after')).toBe(cursor);allowed=false;}
+  return Response.json({...await response.json(),observationCursor:cursor});
+ };
+ const node=createAIServiceClient({appId:'advisor',transport:createNodePlatformTransport({appId:'advisor',receipt:makeReceipt('platform-grant'),serverUrl:'https://paws.test',storage:createMemoryServiceStorage(),fetch:fetcher})});
+ const handler=createPlatformServiceHandler(node,{authorize:async()=>allowed,registerConversation:async()=>{},resolveBinding:async()=>binding});
+ const bridgeFetch:typeof fetch=async(url,init)=>{
+  const result=await handler({method:init?.method??'GET',path:new URL(String(url)).pathname.replace('/api/ai',''),body:init?.body?JSON.parse(String(init.body)):undefined,signal:init?.signal??undefined},{});
+  return Response.json(result.body,{status:result.status});
+ };
+ const browser=createBrowserPlatformTransport({appId:'advisor',baseUrl:'/api/ai',origin:'https://app.test',storage:createMemoryServiceStorage(),fetch:bridgeFetch});
+ try{
+  await browser.authorize();await expect(browser.start({binding,requestId:'request',messages:[{role:'user',text:'hello'}]})).rejects.toThrow();
+  expect((await browser.read({bindingId:'binding',turnId:'turn'})).observationCursor).toBe(cursor);
+  await expect(browser.read({bindingId:'binding',turnId:'turn'},{waitForChange:cursor})).rejects.toMatchObject({code:'permission-denied',retryable:false});
+ }finally{browser.dispose();node.dispose();}
+});

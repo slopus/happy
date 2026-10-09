@@ -1,8 +1,6 @@
 import { nativeLaunchPolicy, nativeCodexMode } from '@/daemon/appDelegation/nativeLaunchPolicy';
 import { immediateCodexCommandEnvelopes } from './codexImmediateCommand';
 import { createCodexSteerHandler, type CodexSteerRequest, type CodexSteerResponse } from './codexSteerRpc';
-import { render } from "ink";
-import React from "react";
 import { ApiClient } from '@/api/api';
 import {
     CodexAppServerClient,
@@ -24,7 +22,7 @@ import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
-import { initialMachineMetadata } from '@/daemon/run';
+import { initialMachineMetadata } from '@/daemon/machineMetadata';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
 import { createSerializedTaskRunner, MessageQueue2 } from '@/utils/MessageQueue2';
@@ -36,7 +34,6 @@ import { basename, join } from 'node:path';
 import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
-import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
@@ -921,6 +918,9 @@ export async function runCodex(opts: {
     let inkInstance: any = null;
 
     if (hasTTY) {
+        const [{ render }, { default: React }, { CodexDisplay }] = await Promise.all([
+            import('ink'), import('react'), import('@/ui/ink/CodexDisplay'),
+        ]);
         console.clear();
         inkInstance = render(React.createElement(CodexDisplay, {
             messageBuffer,

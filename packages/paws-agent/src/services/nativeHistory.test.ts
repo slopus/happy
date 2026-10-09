@@ -19,7 +19,7 @@ it('preserves twelve carried native images in one history message while keeping 
 it('marks absent worker history as partial across initial phases, heartbeats and the browser bridge',async()=>{
  const upstream=fixture();let phase=0;
  const transport=createNodePlatformTransport({appId:'advisor',receipt:makeReceipt('platform-grant'),serverUrl:'https://paws.test',storage:createMemoryServiceStorage(),fetch:async(url,init)=>{
-  const response=await upstream.fetcher(url,init);if(!String(url).endsWith('/turns/turn'))return response;
+  const response=await upstream.fetcher(url,init);if(!new URL(String(url)).pathname.endsWith('/turns/turn'))return response;
   const row=await response.json();row.record.sessionId='native';row.record.status='running';row.record.startedAt=2;row.record.completedAt=null;row.record.phase=phase?'generating':'resuming';row.sequence=phase;
   row.output=phase?encrypt({protocol:'ai-services/1',grantId:'grant',appId:'advisor',serviceId:'service',bindingId:'binding',requestId:'request',turnId:'turn',direction:'output',sequence:phase,text:'partial'}):null;
   return Response.json(row);
@@ -51,7 +51,7 @@ it('uses native output history instead of stale submitted input', async () => {
  const upstream=fixture();
  const transport=createNodePlatformTransport({appId:'advisor',receipt:makeReceipt('platform-grant'),serverUrl:'https://paws.test',storage:createMemoryServiceStorage(),fetch:async (url,init)=>{
   const response=await upstream.fetcher(url,init);
-  if(!String(url).endsWith('/turns/turn')) return response;
+  if(!new URL(String(url)).pathname.endsWith('/turns/turn')) return response;
   const row=await response.json();
   row.output=encrypt({protocol:'ai-services/1',grantId:'grant',appId:'advisor',serviceId:'service',bindingId:'binding',requestId:'request',turnId:'turn',direction:'output',sequence:1,text:'answer',messages:[{id:'paws',seq:4,role:'user',text:'Paws followup'}]});
   return Response.json(row);
@@ -89,7 +89,7 @@ it('round-trips an encrypted screenshot above the legacy cap and surfaces explic
   const context={protocol:'ai-services/1',grantId:'grant',appId:'advisor',serviceId:'service',bindingId:'binding'};
   if(String(url).endsWith('/session')) return Response.json({sessionId:'native',requestId:'history',ciphertext:encrypt({...context,sessionId:'native',requestId:'history',direction:'session-history',active:false,messages:[],snapshotError:'snapshot-too-large'})});
   const response=await upstream.fetcher(url,init);
-  if(!String(url).endsWith('/turns/turn')) return response;
+  if(!new URL(String(url)).pathname.endsWith('/turns/turn')) return response;
   const row=await response.json();row.record.sessionId='native';row.sequence=marker?2:1;
   row.output=encrypt({...context,requestId:'request',turnId:'turn',direction:'output',sequence:row.sequence,text:'Native answer',...(marker?{snapshotError:'snapshot-too-large',messages:[]}:{messages:[{role:'user',text:'Screenshot',images:[image]}]})});
   if(!marker) expect(row.output.length).toBeGreaterThan(1024*1024);

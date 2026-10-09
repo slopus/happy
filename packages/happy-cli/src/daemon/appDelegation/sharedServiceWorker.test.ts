@@ -1,7 +1,7 @@
 import { deflateSync } from 'node:zlib';
 import { NATIVE_SNAPSHOT_PLAINTEXT_MAX_BYTES, NATIVE_SNAPSHOT_CIPHERTEXT_MAX_BYTES } from '@slopus/happy-wire';
 import type { NativeMessage, NativeTextDelta } from './nativeSessionRuntime';
-import { afterEach, it, expect } from 'vitest';
+import { afterEach, it, expect, vi } from 'vitest';
 import { mkdtemp, writeFile, rm, readdir, readFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -19,7 +19,7 @@ function screenshotFixture():string {
  return 'data:image/png;base64,'+Buffer.concat([Buffer.from([137,80,78,71,13,10,26,10]),chunk('IHDR',header),chunk('IDAT',deflateSync(scanlines)),chunk('IEND',Buffer.alloc(0))]).toString('base64');
 }
 const roots:string[]=[];
-afterEach(async()=>{ await Promise.all(roots.splice(0).map(root=>rm(root,{ recursive:true,force:true }))); });
+afterEach(async()=>{ vi.restoreAllMocks();await Promise.all(roots.splice(0).map(root=>rm(root,{ recursive:true,force:true }))); });
 const machine={ id:'shared-machine',encryptionKey:randomBytes(32),encryptionVariant:'dataKey',metadata:{} as Machine['metadata'],metadataVersion:1,daemonState:null,daemonStateVersion:1 } satisfies Machine;
 const target={ machineId:machine.id,engine:'codex' as const,accountRef:{ kind:'codex-profile' as const,id:'exact-profile' } };
 const binding={ ...target,id:'binding',appId:'summary-app',serviceId:'service',revision:1,requestedModel:null,reasoning:{ mode:'default' as const },permissions:['chat' as const] };
@@ -62,6 +62,7 @@ rl.createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(li
  if(image)f.job.input=encodeBase64(encryptLegacy({...f.payload,messages:[{...f.payload.messages[0],images:[image]}]},f.key));
  const nativeMessages:NativeMessage[]=[];let consumer:((message:NativeMessage)=>void)|undefined,stream:((event:NativeTextDelta)=>void)|undefined,nativePrompt='';
  let partialPublished!:()=>void;const partial=new Promise<void>(resolve=>{partialPublished=resolve;});
+ let releasePartial!:()=>void;const partialGate=new Promise<void>(resolve=>{releasePartial=resolve;});
  const append=(content:unknown,localId:string|null=null)=>{const message={id:String(nativeMessages.length+1),seq:nativeMessages.length+1,localId,content};nativeMessages.push(message);consumer?.(message);};
  const worker=createSharedServiceWorker({ machine,recoveryRoot:join(root,'jobs'),lifetime:new AbortController().signal,codexBinary:binary,claudeBinary:claude,
   nativeSessionHooks:{connect:async()=>{},get:async()=>({id:'native-session',active:true,metadata:{machineId:machine.id,application:{appId:binding.appId,bindingId:binding.id},codexAccountProfileId:'exact-profile',currentModelCode:'native'},agentState:{}}),
@@ -71,17 +72,22 @@ rl.createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(li
    readImage:async()=>image!,
    send:async input=>{if(image)append({role:'session',content:{type:'session',data:{role:'user',ev:{t:'file',ref:'sessions/native-session/attachments/screenshot.enc',mimeType:'image/png'}}}},input.localId+':image:0');append({role:'user',content:{type:'text',text:input.text}},input.localId);append({role:'session',content:{type:'session',data:{role:'agent',turn:'native-turn',ev:{t:'turn-start',localIds:[input.localId]}}}});
     if(!image){
+     const timers=vi.spyOn(globalThis,'setTimeout');
      for(let index=1;index<=100;index++)stream?.({turnId:'native-turn',itemId:'answer',text:`Partial ${index}`});
      let timeout:ReturnType<typeof setTimeout>|undefined;
      try{await Promise.race([partial,new Promise((_,reject)=>{timeout=setTimeout(()=>reject(Error('stream did not publish before completion')),1000);})]);}finally{clearTimeout(timeout);}
      const updates=calls.filter(call=>call.path.endsWith('/turns/turn')&&call.body.output);
      expect(updates).toHaveLength(1);expect(decryptLegacy(decodeBase64(updates[0].body.output),f.key)).toMatchObject({text:'Partial 100',historyComplete:false});
+     expect(timers.mock.calls.some(([,delay])=>delay===50)).toBe(false);timers.mockRestore();
      expect(calls.some(call=>call.body.status==='completed')).toBe(false);
+     // The first HTTP write is still pending: newer deltas and the terminal
+     // event must not publish concurrently or overtake that first snapshot.
+     stream?.({turnId:'native-turn',itemId:'answer',text:'Newer text while publication is blocked'});
     }
-    append({role:'session',content:{type:'session',data:{role:'agent',turn:'native-turn',codexItemId:'answer',ev:{t:'text',text:'Summary answer'}}}});if(image)await new Promise(resolve=>setTimeout(resolve,3200));append({role:'session',content:{type:'session',data:{role:'agent',turn:'native-turn',ev:{t:'turn-end',status:'completed'}}}});},cancel:async()=>{}},
+    append({role:'session',content:{type:'session',data:{role:'agent',turn:'native-turn',codexItemId:'answer',ev:{t:'text',text:'Summary answer'}}}});if(image)await new Promise(resolve=>setTimeout(resolve,3200));append({role:'session',content:{type:'session',data:{role:'agent',turn:'native-turn',ev:{t:'turn-end',status:'completed'}}}});releasePartial();},cancel:async()=>{}},
   request:async <T>(path:string,body:any):Promise<T>=>{
    calls.push({ path,body });
-   if(path.endsWith('/turns/turn')&&body.output&&!body.status)partialPublished();
+   if(path.endsWith('/turns/turn')&&body.output&&!body.status){partialPublished();if(!image)await partialGate;}
    if(rejectSize && path.endsWith('/turns/turn') && body.status){rejectSize=false;throw new Error('snapshot-too-large');}
    if(path.endsWith('/announce'))return {} as T;
    if(path.endsWith('/history/claim'))return {history:{id:binding.id,sessionId:'native-session',binding,grantId:f.job.grantId,ownerId:f.job.ownerId,scope:f.job.scope,envelope:f.job.envelope,requestId:'history-request'}} as T;
@@ -100,6 +106,9 @@ rl.createInterface({input:process.stdin}).on('line',line=>{const m=JSON.parse(li
  const published=calls.find(call=>call.path.endsWith('/turns/turn') && call.body.status === 'completed');expect(published).toBeDefined();
  expect(published!.body.output).not.toContain('Summary answer');expect(decryptLegacy(decodeBase64(published!.body.output),f.key)).toMatchObject({ text:'Summary answer',bindingId:'binding',requestId:'request',direction:'output' });
  expect(published!.body.actual.modelId).toBe('native');
+ const outputWrites=calls.filter(call=>call.path.endsWith('/turns/turn')&&call.body.output);
+ expect(outputWrites.at(-1)!.body.status).toBe('completed');
+ for(let index=1;index<outputWrites.length;index++)expect(outputWrites[index].body.sequence).toBeGreaterThan(outputWrites[index-1].body.sequence);
  if(image){const heartbeat=calls.find(call=>call.path.endsWith('/turns/turn')&&call.body.output&&!call.body.status)!;expect(heartbeat).toBeDefined();const partial=decryptLegacy(decodeBase64(heartbeat.body.output),f.key);expect(partial).toMatchObject({historyComplete:false,text:'Summary answer'});expect(partial.messages).toBeUndefined();expect(Buffer.byteLength(heartbeat.body.output)).toBeLessThan(2048);expect(Buffer.byteLength(published!.body.output)).toBeGreaterThan(1024*1024);expect(decryptLegacy(decodeBase64(published!.body.output),f.key).messages.at(-1).images).toEqual([image]);}
  await worker.tickHistory();const history=calls.find(call=>call.path.endsWith('/history/binding'))!.body;const snapshot=decryptLegacy(decodeBase64(history.ciphertext),f.key);expect(snapshot.messages.map((message:{text:string})=>message.text)).toEqual(['A short topic.','Summary answer']);if(image)expect(snapshot.messages[0].images).toEqual([image]);
  const nativeCalls=(await readFile(audit,'utf8')).trim().split('\n').map(line=>JSON.parse(line));

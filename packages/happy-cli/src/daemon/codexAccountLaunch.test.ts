@@ -28,6 +28,21 @@ function api() {
   };
 }
 describe('Codex account launch lifecycle', () => {
+  it('publishes probe catalogs before unchanged credentials return and restores only after fresh redemption', async () => {
+    const historyRoot = await home(), sourceHome = await home(), a = api();
+    const probe = await CodexAccountLaunch.prepare(a, 'machine-1', 'g'.repeat(43), { sourceHome, historyRoot, inheritConfiguration: false });
+    const raw = JSON.stringify({ fetched_at: new Date().toISOString(), client_version: '0.159.3', models: [] });
+    let session: CodexAccountLaunch | undefined;
+    try {
+      await writeFile(join(probe.home, 'models_cache.json'), raw);
+      await probe.syncProbeCredential();
+      expect(a.updateCodexAccountCredential).not.toHaveBeenCalled();
+      session = await CodexAccountLaunch.prepare(a, 'machine-1', 'h'.repeat(43), { sourceHome, historyRoot, inheritConfiguration: false });
+      expect(a.redeemCodexSessionGrant).toHaveBeenCalledTimes(2);
+      expect(await readFile(join(session.home, 'models_cache.json'), 'utf8')).toBe(raw);
+    } finally { await session?.finish(); await probe.finish(); }
+  });
+
   it('starts a fresh session without importing unrelated account history', async () => {
     const historyRoot = await home(); const previous = await home();
     await mkdir(join(previous, 'sessions'));
