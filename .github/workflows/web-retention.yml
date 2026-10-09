@@ -1,0 +1,75 @@
+name: Daily Web OSS retention
+
+on:
+  schedule:
+    # UTC 19:17 = Asia/Shanghai 03:17 the following day.
+    - cron: '17 19 * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Only generate a cleanup plan'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  actions: read
+
+# The same mutex as activation/upload. Queue instead of cancelling a pending
+# deployment; cleanup never overlaps an active Web release.
+concurrency:
+  group: paws-web-production
+  cancel-in-progress: false
+  queue: max
+
+jobs:
+  cleanup:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production-web
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PAWS_WEB_RETENTION_LOCK: paws-web-production
+      PAWS_WEB_RETENTION_REPORT_DIR: ${{ runner.temp }}/web-retention-report
+      ALIBABA_CLOUD_ACCESS_KEY_ID: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_ID }}
+      ALIBABA_CLOUD_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_OSS_ACCESS_KEY_SECRET }}
+      ALIBABA_CLOUD_REGION_ID: cn-hangzhou
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard main source and credentials
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = 'refs/heads/main'
+          git fetch --no-tags origin main
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git rev-parse origin/main)" = "$GITHUB_SHA"
+          test -z "$(git status --short)"
+          test -n "$ALIBABA_CLOUD_ACCESS_KEY_ID"
+          test -n "$ALIBABA_CLOUD_ACCESS_KEY_SECRET"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Aliyun CLI
+        run: |
+          set -euo pipefail
+          curl -fsSL -o /tmp/aliyun-cli.tgz https://aliyuncli.alicdn.com/aliyun-cli-linux-latest-amd64.tgz
+          tar -xzf /tmp/aliyun-cli.tgz -C /tmp
+          sudo mv /tmp/aliyun /usr/local/bin/aliyun
+          aliyun ossutil --help >/dev/null
+          aliyun configure set --profile default --mode AK \
+            --access-key-id "$ALIBABA_CLOUD_ACCESS_KEY_ID" \
+            --access-key-secret "$ALIBABA_CLOUD_ACCESS_KEY_SECRET" \
+            --region cn-hangzhou
+      - name: Retain five Web releases and their dependencies
+        env:
+          RETENTION_MODE: ${{ github.event_name == 'schedule' && '--apply' || inputs.dry_run && '--dry-run' || '--apply' }}
+        run: node scripts/cleanup-web-assets.cjs "$RETENTION_MODE"
+      - name: Preserve plan, deletion receipts and verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-retention-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.PAWS_WEB_RETENTION_REPORT_DIR }}
+          if-no-files-found: warn
+          retention-days: 30

@@ -203,4 +203,4 @@ function syncPublicDirectory(sourceDirectory, bucket, sourcePrefix, destinationP
   return { copiedFiles: changed.length, reusedFiles: files.length - changed.length };
 }
 
-module.exports = { syncDirectory, syncPublicDirectory };
+module.exports = { syncDirectory, syncPublicDirectory, listObjects };

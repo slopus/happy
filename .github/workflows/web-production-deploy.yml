@@ -11,6 +11,7 @@ concurrency:
   # A deployment may be between the OSS marker and HTML switches. Queue newer
   # main revisions instead of cancelling the active release before rollback can run.
   cancel-in-progress: false
+  queue: max
 
 permissions:
   contents: read
