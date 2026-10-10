@@ -141,7 +141,7 @@ function UserMessageFrame(props: {
 // genuinely taking time, surface that after a short grace period instead of
 // leaving a pending message with no explanation. Use createdAt so remounting an
 // already-stale row shows its state immediately rather than restarting the wait.
-const PENDING_STATUS_GRACE_MS = 1_000;
+const PENDING_STATUS_GRACE_MS = 2_000;
 
 function usePendingStatusVisible(pending: boolean | undefined, queuedWhileBusy: boolean | undefined, createdAt: number) {
   const shouldDelay = pending === true && queuedWhileBusy !== true;

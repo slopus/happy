@@ -80,7 +80,7 @@ describe('user message frame', () => {
         const body = renderer.root.findByType('LongPressCopyable').parent.parent;
         expect(labels(renderer)).toEqual(['']);
 
-        act(() => vi.advanceTimersByTime(999));
+        act(() => vi.advanceTimersByTime(1_999));
         expect(labels(renderer)).toEqual(['']);
         act(() => vi.advanceTimersByTime(1));
         expect(labels(renderer)).toContain('message.sending');
