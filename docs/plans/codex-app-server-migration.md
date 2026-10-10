@@ -6,7 +6,7 @@ Codex is a **system-wide CLI** (`npm install -g @openai/codex`). We don't bundle
 
 At startup, `CodexAppServerClient` spawns `codex app-server --listen stdio://` as a child process and talks JSON-RPC 2.0 over stdin/stdout (newline-delimited JSON). The Codex process manages its own model inference, sandbox, and tool execution. We just send prompts and react to events.
 
-Version check: `codex --version` must report >= 0.100 for app-server support.
+Version check: `codex --version` must report >= 0.153.0 because Happy defaults to GPT-6.1 Sol.
 
 ## Why app-server (not MCP)
 

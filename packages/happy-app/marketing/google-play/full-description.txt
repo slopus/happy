@@ -1,0 +1,33 @@
+Keep your coding agents within reach.
+
+Happy is the companion to the Happy desktop app. It connects your phone to Claude Code, Codex, and Grok running on your own computer. Start a task, follow its progress, answer questions and review changes from wherever you are.
+
+When an agent stops to ask for permission or a decision, you can answer from your phone. It carries on in the same session, with the same repository, tools and context.
+
+What you can do from your phone
+• Start new sessions or continue ones you began at your desk
+• Get notified when an agent needs input or finishes
+• Approve permission requests and choose how your agent runs
+• Pick models and reasoning effort from the providers set up on your computer
+• Review changed files and colored diffs
+• Attach screenshots and photos to your prompts
+• Browse sessions by project and keep drafts in sync across devices
+
+How to connect
+1. Install the Happy desktop app from happy.engineering.
+2. Create an account in this app. No email address or password needed.
+3. In Happy on your computer, open Settings → Mobile Access and scan the QR code it shows.
+
+Prefer the terminal? The original Happy CLI works with this app too: install it with npm install -g happy, start an agent with happy claude or happy codex, and scan the QR code it shows.
+
+What you need
+• A computer running the Happy desktop app or the original Happy CLI
+• Access to the coding agents you use, through your existing subscription or API key
+
+Private by design
+Sessions are end-to-end encrypted, and your encryption keys stay on your devices. Happy's servers relay encrypted session data and can't read your prompts, responses or code.
+
+Open source
+Happy is MIT-licensed. Read the source, build your own version or host your own server.
+
+Happy is an independent project, not affiliated with or endorsed by Anthropic, OpenAI, or xAI. Claude and Claude Code are trademarks of Anthropic. Codex is a trademark of OpenAI. Grok is a trademark of xAI.

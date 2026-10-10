@@ -1,105 +1,69 @@
 <div align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="/.github/logotype-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="/.github/logotype-light.png">
-    <img src="/.github/logotype-dark.png" width="400" alt="Happy">
-  </picture>
-</div>
 
-<h1 align="center">
-  Mobile and Web Client for Claude Code & Codex
-</h1>
+<h1>Any Model. Your Subscription.<br><em>Happy Harness.</em></h1>
 
-<h4 align="center">
-Use Claude Code or Codex from anywhere with end-to-end encryption.
-</h4>
-
-<div align="center">
-  
-[🖥️ **macOS App**](https://github.com/slopus/happy-desktop/releases/latest) • [📱 **iOS App**](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) • [🌐 **Web App**](https://app.happy.engineering) • [🎥 **See a Demo**](https://youtu.be/GCS0OG9QMSE) • [📚 **Documentation**](https://happy.engineering/docs/) • [💬 **Discord**](https://discord.gg/fX9WBAhyfD)
+<p>Free and open source</p>
 
 </div>
 
-<img width="5178" height="2364" alt="github" src="/.github/header.png" />
+https://github.com/user-attachments/assets/b3580704-f9e0-441e-80be-3f83f6a08ab5
 
+<p align="center">
+<a href="https://happy.engineering/#download"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/download-desktop-dark.svg"><img width="212" height="39" alt="Download Desktop for macOS, Windows, and Linux" src="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/download-desktop-light.svg" /></picture></a>
+</p>
 
-<h3 align="center">
-Step 1: Download App
-</h3>
+<p align="center">
+<a href="https://apps.apple.com/us/app/happy-claude-code-client/id6748571505"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/app-store-rating-dark.svg"><img width="150" height="56" alt="Download on the App Store. Rated 4.9 stars from 1,000+ ratings" src="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/app-store-rating-light.svg" /></picture></a>&nbsp;&nbsp;&nbsp;<a href="https://play.google.com/store/apps/details?id=com.ex3ndr.happy"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/google-play-rating-dark.svg"><img width="150" height="56" alt="Get it on Google Play. Rated 5.0 stars from 3.1k+ reviews" src="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/google-play-rating-light.svg" /></picture></a>
+</p>
 
-<div align="center">
-<a href="https://apps.apple.com/us/app/happy-claude-code-client/id6748571505"><img width="135" height="39" alt="appstore" src="https://github.com/user-attachments/assets/45e31a11-cf6b-40a2-a083-6dc8d1f01291" /></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://play.google.com/store/apps/details?id=com.ex3ndr.happy"><img width="135" height="39" alt="googleplay" src="https://github.com/user-attachments/assets/acbba639-858f-4c74-85c7-92a4096efbf5" /></a>
-</div>
+## What you get
 
-<h3 align="center">
-Step 2: Install CLI on your computer
-</h3>
+1. **Multi-provider within one session.** Astra, Fable, and Grok in the same
+   session. Switch models in the middle of a task or delegate to subagents.
+2. **Reuse current subscriptions.** Sign in with the Claude, Codex, and Grok
+   plans you already pay for. Happy adds a harness, not another bill.
+3. **Open source MIT.** It runs on your own hardware and your projects stay
+   ordinary folders. Read the code, fork it, ship your own build.
+4. **End-to-end encrypted mobile app.** Left your desk? The same sessions are
+   already on your phone, and what moves between your devices is encrypted.
+5. **Natively multiplayer.** Invite a colleague or a friend into the session.
+   You both watch the same agent work, and either of you can steer it.
 
-```bash
+#### Resources
+
+<p align="center">
+<a href="https://happy.engineering/">Website</a> · <a href="https://happy.engineering/desktop/docs/">Documentation</a> · <a href="https://discord.gg/fX9WBAhyfD">Discord</a> · <a href="docs/CONTRIBUTING.md">Development guide</a> · <a href="LICENSE">MIT License</a>
+</p>
+
+## How Happy fits together
+
+| Repository                                                                            | What it is                                                                 |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| **[slopus/happy](https://github.com/slopus/happy)** ← this repository | **The mobile app (iOS, Android, web), the original CLI, and the relay server** |
+| [slopus/happy-desktop](https://github.com/slopus/happy-desktop) | The desktop app for macOS, Windows, and Linux |
+| [slopus/happy-agent](https://github.com/slopus/happy-agent)                           | Happy Agent, the open-source agent runtime the desktop app runs on         |
+| [slopus/slopus.github.io](https://github.com/slopus/slopus.github.io)                 | The website and docs at happy.engineering                                  |
+
+## Original Happy CLI
+
+The original CLI wraps the Claude Code and Codex harnesses directly in your
+terminal and lets you continue from your phone.
+
+For multi-model sessions and teams, move to the desktop app and Happy Harness.
+
+```sh
 npm install -g happy
-```
 
-> Migrated from the `happy-coder` package. Thanks to [@franciscop](https://github.com/franciscop) for donating the `happy` package name!
-
-<h3 align="center">
-Step 3: Start using `happy` instead of `claude` or `codex`
-</h3>
-
-```bash
-# Instead of claude, use:
+# Start Claude Code
 happy claude
-# or
+
+# Or start Codex
 happy codex
 ```
 
-<h3 align="center">
-Step 4 (optional): Get the desktop app
-</h3>
+- [happy-app](packages/happy-app): the Happy mobile app and web client (Expo)
+- [happy-cli](packages/happy-cli): the original Happy CLI (`happy` on npm)
+- [happy-agent](packages/happy-agent): remote session control for the original Happy CLI (not the Happy Agent runtime)
+- [happy-server](packages/happy-server): the relay server for encrypted sync
 
-<div align="center">
-  <a href="https://github.com/slopus/happy-desktop/releases/latest">
-    <picture>
-      <source media="(prefers-color-scheme: dark)" srcset="/.github/banner-desktop-dark.png">
-      <source media="(prefers-color-scheme: light)" srcset="/.github/banner-desktop-light.png">
-      <img src="/.github/banner-desktop-dark.png" width="640" alt="Now on Mac desktop — download for macOS">
-    </picture>
-  </a>
-</div>
-
-<p align="center">
-Prefer a native app over the terminal? <a href="https://github.com/slopus/happy-desktop/releases/latest"><b>Download Happy for macOS</b></a> — conversations beside the files, diffs, terminals, and previews your work actually touches.
-</p>
-
-## How does it work?
-
-On your computer, run `happy` instead of `claude` or `happy codex` instead of `codex` to start your AI through our wrapper. When you want to control your coding agent from your phone, it restarts the session in remote mode. To switch back to your computer, just press any key on your keyboard.
-
-## 🔥 Why Happy Coder?
-
-- 📱 **Mobile access to Claude Code and Codex** - Check what your AI is building while away from your desk
-- 🔔 **Push notifications** - Get alerted when Claude Code and Codex needs permission or encounters errors  
-- ⚡ **Switch devices instantly** - Take control from phone or desktop with one keypress
-- 🔐 **End-to-end encrypted** - Your code never leaves your devices unencrypted
-- 🛠️ **Open source** - Audit the code yourself. No telemetry, no tracking
-
-## 📦 Project Components
-
-- **[Happy Desktop](https://github.com/slopus/happy-desktop)** - Native macOS app ([download](https://github.com/slopus/happy-desktop/releases/latest))
-- **[Happy App](https://github.com/slopus/happy/tree/main/packages/happy-app)** - Web UI + mobile client (Expo)
-- **[Happy CLI](https://github.com/slopus/happy/tree/main/packages/happy-cli)** - Command-line interface for Claude Code and Codex
-- **[Happy Agent](https://github.com/slopus/happy/tree/main/packages/happy-agent)** - Remote agent control CLI (create, send, monitor sessions)
-- **[Happy Server](https://github.com/slopus/happy/tree/main/packages/happy-server)** - Backend server for encrypted sync
-
-## 🏠 Who We Are
-
-We're engineers scattered across Bay Area coffee shops and hacker houses, constantly checking how our AI coding agents are progressing on our pet projects during lunch breaks. Happy Coder was born from the frustration of not being able to peek at our AI coding tools building our side hustles while we're away from our keyboards. We believe the best tools come from scratching your own itch and sharing with the community.
-
-## 📚 Documentation & Contributing
-
-- **[Documentation Website](https://happy.engineering/docs/)** - Learn how to use Happy Coder effectively
-- **[Contributing Guide](docs/CONTRIBUTING.md)** - How to contribute, PR guidelines, and development setup
-- **[Edit docs at github.com/slopus/slopus.github.io](https://github.com/slopus/slopus.github.io)** - Help improve our documentation and guides
-
-## License
-
-MIT License - see [LICENSE](LICENSE) for details.
+Migrated from the `happy-coder` package. Thanks to [@franciscop](https://github.com/franciscop) for donating the `happy` package name!

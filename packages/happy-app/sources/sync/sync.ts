@@ -937,7 +937,9 @@ class Sync {
             rigComposerClear(sessionId);
         }
         options?.onAccepted?.();
-        trackMessageSent(source, session.metadata);
+        const machineId = session.metadata?.machineId;
+        trackMessageSent(source, session.metadata, modeMeta,
+            machineId ? storage.getState().machines[machineId]?.metadata?.platform : null);
 
         // Stamp local activity time so the (opt-in) activity sort bubbles this session
         // up on user action only — not on background agent output.
@@ -3323,7 +3325,7 @@ async function syncInit(credentials: AuthCredentials, restore: boolean) {
     const encryption = await Encryption.create(secretKey);
 
     // Initialize tracking
-    initializeTracking(encryption.anonID);
+    initializeTracking(encryption.anonID, encryption.providerAccountKey);
 
     // Initialize socket connection
     const API_ENDPOINT = getServerUrl();

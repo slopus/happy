@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { storage, useAllMachines, useSetting } from '@/sync/storage';
-import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
+import { getCodeAgentDefaults, resolveAgentDefaultConfig, retireModelMode } from '@/sync/agentDefaults';
 import {
     machineSpawnNewSession,
     machineStopSession,
@@ -29,7 +29,7 @@ import {
     collectMachineChoices,
     findMachineChoice,
     resolveAgentMachine,
-    resolveChoiceAgent,
+    resolveNewSessionAgent,
     resolveWorktreeCreationMachine,
 } from '@/sync/machineChoices';
 import { delay } from '@/utils/time';
@@ -54,6 +54,11 @@ import { collectSessionPlaces, collectSessionWorkspaces, projectPlaceKey } from 
 import { resolveHappyAgentSpawnTarget, type HappyAgentSpawnTarget } from '@/sync/happyAgentSpawn';
 import { paintBotFace } from '@/utils/botFacePaint';
 import { describeBotNameProblem } from '@/utils/botName';
+import {
+    getAttachmentDiagnostic,
+    formatAttachmentDiagnosticForLog,
+    type AttachmentDiagnostic,
+} from '@/sync/attachmentDiagnostics';
 
 const MAX_RIG_PENDING_RESULTS = 3;
 
@@ -143,17 +148,29 @@ function beginRun(): StartRun {
  * already open on this phone. Reported rather than thrown: the bot exists by
  * now, and the caller decides what a missing face means.
  */
+type BotFaceLeg = 'painting the face' | 'uploading the face' | 'asking the bot to wear it';
+type BotFaceFailure = {
+    ok: false;
+    leg: BotFaceLeg | null;
+    error: string;
+    diagnostic: AttachmentDiagnostic | null;
+};
+
 async function wearBotFace(
     sessionId: string,
     seed: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
+): Promise<{ ok: true } | BotFaceFailure> {
     // Each leg is caught under its own name. The three do quite different
     // things — draw, upload, ask — and a bare message like "undefined is not an
     // object" says nothing about which of them was running when it was thrown.
-    const leg = async <T,>(name: string, step: () => Promise<T>): Promise<T> => {
+    let failedLeg: BotFaceLeg | null = null;
+    let diagnostic: AttachmentDiagnostic | null = null;
+    const leg = async <T,>(name: BotFaceLeg, step: () => Promise<T>): Promise<T> => {
         try {
             return await step();
         } catch (error) {
+            failedLeg = name;
+            diagnostic = getAttachmentDiagnostic(error);
             const message = error instanceof Error ? error.message : String(error);
             throw new Error(`${name}: ${message}`);
         }
@@ -170,8 +187,40 @@ async function wearBotFace(
         }));
         return { ok: true };
     } catch (error) {
-        return { ok: false, error: error instanceof Error ? error.message : String(error) };
+        return { ok: false, leg: failedLeg, diagnostic, error: error instanceof Error ? error.message : String(error) };
     }
+}
+
+/** Retry only the picture on the existing bot, keeping transport details in the log. */
+function offerBotFaceRetry(
+    sessionId: string,
+    seed: string,
+    botName: string,
+    failure: BotFaceFailure,
+): void {
+    if (failure.diagnostic) {
+        console.error('[bot] The face could not be put on the bot:', failure.error,
+            formatAttachmentDiagnosticForLog(failure.diagnostic));
+    } else {
+        console.error('[bot] The face could not be put on the bot:', failure.error);
+    }
+    Modal.alert(
+        'Picture not set',
+        failure.leg === 'uploading the face'
+            ? `${botName} is ready, but its picture couldn’t be uploaded. You can try again without creating another bot.`
+            : `${botName} is ready, but its picture couldn't be set. Try again.`,
+        [
+            { text: 'Not now', style: 'cancel' },
+            {
+                text: 'Try again',
+                onPress: () => {
+                    void wearBotFace(sessionId, seed).then((worn) => {
+                        if (!worn.ok) offerBotFaceRetry(sessionId, seed, botName, worn);
+                    });
+                },
+            },
+        ],
+    );
 }
 
 function resolveOption<T extends { key: string }>(
@@ -271,7 +320,10 @@ export function useStartSessionFromDraft() {
         // The draft survives machine changes and app upgrades. Resolve it again
         // at launch time so a stale Claude selection cannot spawn Claude while
         // the selected computer only reports Codex (the Android 1.7.0 regression).
-        // A bot is Happy Agent's to make whatever harness the draft last chose.
+        // A bot is Happy Agent's to make whatever harness the draft last chose. A caller that names
+        // the agent (a new chat like an existing one) has picked it for this start alone; otherwise
+        // the pick is the harness last tapped in the composer, which outlives this session.
+        const pickedAgentType = draftOverrides.agentType ?? draftStore.pickedAgentType;
         const createsBot = draft.createsBot;
         const botName = draft.botName.trim();
         const botFaceSeed = draft.botFaceSeeds[draft.botFaceSlot];
@@ -280,7 +332,7 @@ export function useStartSessionFromDraft() {
             Modal.alert(t('common.error'), botNameProblem);
             return false;
         }
-        const agentType = createsBot ? 'rig' : resolveChoiceAgent(choice, draft.agentType);
+        const agentType = createsBot ? 'rig' : resolveNewSessionAgent(choice, draft.agentType, pickedAgentType);
         const agentChanged = agentType !== draft.agentType;
         const machine = resolveAgentMachine(choice, agentType);
         if (!machine) {
@@ -341,7 +393,7 @@ export function useStartSessionFromDraft() {
             ),
             agentChanged
                 ? [defaults.modelMode]
-                : [draft.modelMode, defaults.modelMode],
+                : [retireModelMode(agentType, draft.modelMode), defaults.modelMode],
         );
         const effortDefault = rigCreation?.defaultEffortForModel(model?.key)
             ?? defaults.effortLevel;
@@ -651,11 +703,7 @@ export function useStartSessionFromDraft() {
                     return false;
                 }
                 if (!worn.ok) {
-                    console.error('[bot] The face could not be put on the bot:', worn.error);
-                    Modal.alert(
-                        'Bot created without a face',
-                        `${botName} is ready, but its picture could not be set: ${worn.error}`,
-                    );
+                    offerBotFaceRetry(sessionId, botFaceSeed, botName, worn);
                 }
             }
 

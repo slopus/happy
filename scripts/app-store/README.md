@@ -26,7 +26,8 @@ desktop-only capability as an iPhone capability.
 
 ## Visual system
 
-Export portrait **1320 × 2868 for iPhone** and **2064 × 2752 for iPad**, sRGB
+Export portrait **1320 × 2868 for the iPhone 6.9-inch slot** and
+**2064 × 2752 for the iPad 13-inch slot**, sRGB
 RGB PNG, no transparency. Cream, deep
 green, restrained orange, generous whitespace, two-line benefit headline. Real
 dark-mode iPhone screens dominate the composition. No baked playback controls,
@@ -44,6 +45,14 @@ Both third cards use the actual desktop app-shell capture at 2.5×
 (2250 × 2140 pixels), selected explicitly in each manifest. The 832/1080 CSS-pixel
 desktop widths intentionally clip only the right edge by about 25.5%/10.4%,
 without upscaling. Do not use the tall, mostly empty alternate desktop shot.
+
+For App Store Connect's **6.5-inch iPhone slot**, use the selected exports in
+`packages/happy-app/marketing/app-store/en-US/iphone-6.5-inch-1284x2778/`. Regenerate with
+`python3 scripts/app-store/export-iphone-65.py` (Pillow required), using `--out`
+for a fresh output directory. This fits the full 1320 × 2868 composition into
+1284 × 2778 with proportional downsampling and matching cream side padding;
+it does not stretch, upscale or crop the app content. The upload folder contains
+only the five final opaque RGB PNGs with an embedded sRGB profile.
 
 ## Capture and regenerate
 
@@ -77,8 +86,10 @@ without upscaling. Do not use the tall, mostly empty alternate desktop shot.
    screen/headline geometry. The source assets remain unchanged.
 6. Keep curated raw inputs, intermediate renders, contact sheets, and provenance
    manifests ignored under `.context/`. After selection, track only one final
-   five-PNG set per device under `marketing/app-store/en-US/iphone/` and
-   `marketing/app-store/en-US/ipad/`. Replace the selected set deliberately;
+   five-PNG set per device under `packages/happy-app/marketing/app-store/en-US/iphone/` and
+   `packages/happy-app/marketing/app-store/en-US/ipad/`. The 6.5-inch iPhone compatibility export
+   lives in `packages/happy-app/marketing/app-store/en-US/iphone-6.5-inch-1284x2778/` so each Apple
+   upload slot has an explicit destination. Replace the selected set deliberately;
    remove superseded names such as the version-1 `03-continuity.png` when
    selecting version-2 `03-desktop.png`. Earlier drafts remain in Git history,
    not duplicate tracked output folders.
@@ -349,8 +360,9 @@ No capture, output selection, upload, or publication is implicit in this command
 
 The iPhone set does not cover iPad submission requirements. The separate iPad
 set must contain real 13-inch iPad captures, not scaled iPhone UI. Apple's current
-specification page lists 1320 × 2868 for the large iPhone portrait class and
-2064 × 2752 for 13-inch iPad portrait; recheck the live specification for the
+specification page, checked live on 2026-10-02, lists 1320 × 2868 for the
+6.9-inch iPhone slot, 1284 × 2778 or 1242 × 2688 for the 6.5-inch iPhone slot,
+and 2064 × 2752 for 13-inch iPad portrait; recheck the live specification for the
 submitted devices/build before upload. Use PNG/JPEG without alpha and 1–10
 screenshots per required device class. Confirm computer/provider subscription
 requirements in the listing; the models copy does not promise free inference

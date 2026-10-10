@@ -6,6 +6,15 @@ import { Usage } from '../api/types';
  */
 export const PRICING = {
     // --- Claude 4 & Future Models ---
+    // Prompts up to 100K tokens. Above that the whole call is billed at 5x
+    // (0.50 / 2.50 / 0.625 / 0.05), which this flat table cannot express.
+    // Source: https://platform.claude.com/docs/en/about-claude/pricing
+    'claude-haiku-5-5': {
+        input: 0.10,
+        output: 0.50,
+        cache_write: 0.125,
+        cache_read: 0.01
+    },
     'claude-4.5-opus': {
         input: 5.0,
         output: 25.0,

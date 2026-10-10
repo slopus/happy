@@ -7,6 +7,8 @@ export const RigBotSchema = z.object({
   username: z.string().min(1).max(64),
   workspaceId: z.string().min(1).max(128),
   orderKey: z.string().min(1).max(64),
+  /** A system bot's stable key, such as `chief_of_staff`; null for a user's own bot, absent from older Happy Agents. */
+  systemKey: z.string().nullable().optional(),
 }).passthrough();
 
 export const RigProviderSchema = z.object({
@@ -121,6 +123,9 @@ export type RigComposerDraft = z.infer<typeof RigComposerDraftSchema>;
 
 export const RigMetadataV1Schema = z.object({
   bot: RigBotSchema.optional(),
+  // How deep this session sits under its root: 0 for a bot or project session,
+  // 1 for a subtask. Absent from older daemons; a bad value is dropped, never fatal.
+  depth: z.number().int().nonnegative().optional().catch(undefined),
   // Parse later additive revisions with the v1-compatible fields we know.
   rigMetadataVersion: z.number().int().min(1),
   client: z.object({

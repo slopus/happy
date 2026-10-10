@@ -1,10 +1,10 @@
 # Dev Environments
 
-This document covers the local environment manager in [`environments/environments.ts`](../environments/environments.ts).
+This document covers the local environment manager in [`packages/dev-environments/environments.ts`](../packages/dev-environments/environments.ts).
 
 ## What `pnpm env:*` Does
 
-- `pnpm env:new`: create a new isolated environment under `environments/data/envs/<name>`.
+- `pnpm env:new`: create a new isolated environment under `packages/dev-environments/data/envs/<name>`.
 - `pnpm env:use <name>`: switch the current environment.
 - `pnpm env:server`: run the server inside the current environment.
 - `pnpm env:web`: run the web app inside the current environment.
@@ -20,7 +20,7 @@ Each environment injects its own:
 - dev auth values when seeded
 
 Each fresh environment also gets a copied lightweight fixture project from
-`environments/lab-rat-todo-project/` at `environments/data/envs/<name>/project`.
+`packages/dev-environments/lab-rat-todo-project/` at `packages/dev-environments/data/envs/<name>/project`.
 
 Current limitation: the lab-rat project is copied as plain files only. It does
 not include git history yet, so provider tests that depend on realistic repo
@@ -43,7 +43,7 @@ pnpm env:cli daemon start
 This is equivalent to sourcing the environment and running the CLI manually:
 
 ```bash
-source environments/data/envs/<name>/env.sh
+source packages/dev-environments/data/envs/<name>/env.sh
 happy daemon status
 ```
 
@@ -51,14 +51,14 @@ happy daemon status
 
 It is a convenience wrapper for the current environment. It does not create or pick an environment on its own. It just:
 
-1. Reads `environments/data/current.json`
+1. Reads `packages/dev-environments/data/current.json`
 2. Builds env vars for that environment
 3. Launches the CLI with those vars applied
 
 If you want a lower-level, shell-native workflow, use the generated env file directly:
 
 ```bash
-source environments/data/envs/<name>/env.sh
+source packages/dev-environments/data/envs/<name>/env.sh
 happy
 ```
 
@@ -74,7 +74,7 @@ pnpm env:cli daemon start
 Or:
 
 ```bash
-source environments/data/envs/<name>/env.sh
+source packages/dev-environments/data/envs/<name>/env.sh
 happy daemon stop
 happy daemon start
 ```

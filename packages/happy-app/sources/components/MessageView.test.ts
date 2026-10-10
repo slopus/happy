@@ -2,7 +2,8 @@ import * as React from 'react';
 // @ts-expect-error react-test-renderer has no declarations in this workspace.
 import { act, create } from 'react-test-renderer';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { UserTextMessage } from '@/sync/typesMessage';
+import * as Clipboard from 'expo-clipboard';
+import type { AgentTextMessage, UserTextMessage } from '@/sync/typesMessage';
 
 vi.hoisted(() => vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true));
 vi.mock('react-native', async () => {
@@ -14,7 +15,7 @@ vi.mock('react-native', async () => {
     };
 });
 vi.mock('react-native-unistyles', () => ({
-    useUnistyles: () => ({ theme: { dark: false } }),
+    useUnistyles: () => ({ theme: { dark: false, colors: { text: '#000' } } }),
     StyleSheet: { create: (factory: (theme: any) => unknown) => factory({ colors: { input: {} } }) },
 }));
 vi.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
@@ -38,7 +39,7 @@ const base: UserTextMessage = {
     kind: 'user-text', id: 'message', localId: 'local', createdAt: Date.now(), text: 'hello',
 };
 
-function render(message: UserTextMessage, renderer?: ReturnType<typeof create>) {
+function render(message: UserTextMessage | AgentTextMessage, renderer?: ReturnType<typeof create>) {
     const element = React.createElement(MessageView, { message, sessionId: 'session', metadata: null });
     if (renderer) {
         act(() => renderer.update(element));
@@ -64,11 +65,11 @@ describe('user message frame', () => {
         const message = { ...base, pending: true, meta: { queuedWhileBusy } };
         const renderer = render(message);
         const body = renderer.root.findByType('LongPressCopyable').parent.parent;
-        expect(labels(renderer)).toEqual([]);
+        expect(labels(renderer)).toEqual(['']);
         expect(body.props.style).not.toContainEqual({ opacity: 0.45 });
 
         render({ ...message, pending: false }, renderer);
-        expect(labels(renderer)).toEqual([]);
+        expect(labels(renderer)).toEqual(['']);
         expect(renderer.root.findByType('LongPressCopyable').parent.parent).toBe(body);
     });
 
@@ -77,16 +78,16 @@ describe('user message frame', () => {
         const message = { ...base, createdAt: Date.now(), pending: true, meta: { queuedWhileBusy } };
         const renderer = render(message);
         const body = renderer.root.findByType('LongPressCopyable').parent.parent;
-        expect(labels(renderer)).toEqual([]);
+        expect(labels(renderer)).toEqual(['']);
 
-        act(() => vi.advanceTimersByTime(999));
-        expect(labels(renderer)).toEqual([]);
+        act(() => vi.advanceTimersByTime(1_999));
+        expect(labels(renderer)).toEqual(['']);
         act(() => vi.advanceTimersByTime(1));
         expect(labels(renderer)).toContain('message.sending');
         expect(renderer.root.findByType('LongPressCopyable').parent.parent).toBe(body);
 
         render({ ...message, pending: false }, renderer);
-        expect(labels(renderer)).toEqual([]);
+        expect(labels(renderer)).toEqual(['']);
     });
 
     it.each([
@@ -107,7 +108,7 @@ describe('user message frame', () => {
 
     it('puts the other participant’s name above their message', () => {
         const renderer = render({ ...base, author: { id: 'other', name: 'Alex', owner: false } });
-        const author = renderer.root.findByType('Text');
+        const author = renderer.root.findAllByType('Text')[0];
         expect(author.props.children).toBe('Alex');
         const container = author.parent.parent;
         expect(container.children[0]).toBe(author.parent);
@@ -115,11 +116,32 @@ describe('user message frame', () => {
     });
 
     it.each([undefined, { id: 'owner', name: 'You', owner: true }])('does not label the reader’s own messages (%j)', (author) => {
-        expect(labels(render({ ...base, author }))).toEqual([]);
+        expect(labels(render({ ...base, author }))).toEqual(['']);
     });
 
     it('still shows send failures for an idle send', () => {
         expect(labels(render({ ...base, sendError: 'Unavailable', meta: { queuedWhileBusy: false } })))
             .toContain('message.sendFailed');
+    });
+});
+describe('agent message copy button', () => {
+    const agent: AgentTextMessage = { kind: 'agent-text', id: 'agent', localId: null, createdAt: Date.now(), text: 'first part' };
+
+    it('shows on every agent text row and copies that row’s own text', async () => {
+        const renderer = render(agent);
+        const button = renderer.root.findByType('Pressable');
+        await act(async () => { await button.props.onPress(); });
+        expect(Clipboard.setStringAsync).toHaveBeenCalledWith('first part');
+    });
+
+    it('stays mounted as the text streams in', () => {
+        const renderer = render(agent);
+        const button = renderer.root.findByType('Pressable');
+        render({ ...agent, text: 'first part, then more' }, renderer);
+        expect(renderer.root.findByType('Pressable')).toBe(button);
+    });
+
+    it('does not show on thinking rows', () => {
+        expect(render({ ...agent, isThinking: true }).root.findAllByType('Pressable')).toHaveLength(0);
     });
 });

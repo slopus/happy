@@ -55,6 +55,7 @@ import {
     machineChoiceAgentAvailable,
     resolveAgentMachine,
     resolveChoiceAgent,
+    resolveNewSessionAgent,
     resolveWorktreeCreationMachine,
 } from '@/sync/machineChoices';
 import {
@@ -76,7 +77,7 @@ import {
     cancelPendingPickerOpenState,
     resolvePickerToggleAction,
 } from '@/utils/newSessionPickerInteraction';
-import { getCodeAgentDefaults, resolveAgentDefaultConfig } from '@/sync/agentDefaults';
+import { getCodeAgentDefaults, resolveAgentDefaultConfig, retireModelMode } from '@/sync/agentDefaults';
 import { delay } from '@/utils/time';
 import {
     buildRigSpawnConfiguration,
@@ -807,7 +808,9 @@ function NewSessionScreen() {
         selectedProjectId: s.selectedProjectId,
         setProjectId: s.setProjectId,
         agentType: s.agentType,
+        pickedAgentType: s.pickedAgentType,
         setAgentType: s.setAgentType,
+        pickAgentType: s.pickAgentType,
         permissionMode: s.permissionMode,
         setPermissionMode: s.setPermissionMode,
         modelMode: s.modelMode,
@@ -867,7 +870,7 @@ function NewSessionScreen() {
         () => findMachineChoice(machineChoices, selectedMachineId),
         [machineChoices, selectedMachineId],
     );
-    const selectedAgent = resolveChoiceAgent(selectedChoice, draftAgent);
+    const selectedAgent = resolveNewSessionAgent(selectedChoice, draftAgent, draft.pickedAgentType);
     const selectedMachine = React.useMemo(
         () => resolveAgentMachine(selectedChoice, selectedAgent),
         [selectedAgent, selectedChoice],
@@ -1144,7 +1147,7 @@ function NewSessionScreen() {
         ]));
 
         setModelIndex(findPreferredModeIndex(modelModes, [
-            draft.modelMode,
+            retireModelMode(selectedAgent, draft.modelMode),
             effectiveAgentDefaults.modelMode,
         ]));
 
@@ -1198,10 +1201,10 @@ function NewSessionScreen() {
     const selectProjectPlace = React.useCallback((projectId: string) => {
         setDraftProjectId(projectId);
         if (availableAgents.some((candidate) => candidate.key === 'rig')) {
-            setSelectedAgent('rig');
+            draft.pickAgentType('rig');
         }
         closePicker();
-    }, [availableAgents, closePicker, setDraftProjectId, setSelectedAgent]);
+    }, [availableAgents, closePicker, draft.pickAgentType, setDraftProjectId]);
 
     const toggleConfig = React.useCallback(() => {
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -1388,7 +1391,7 @@ function NewSessionScreen() {
                 break;
             case 'agent':
                 if (availableAgents.some((candidate) => candidate.key === key)) {
-                    setSelectedAgent(key as NewSessionAgentType);
+                    draft.pickAgentType(key as NewSessionAgentType);
                 }
                 break;
             case 'model': {
@@ -1421,13 +1424,13 @@ function NewSessionScreen() {
         activePicker,
         availableAgents,
         closePicker,
+        draft.pickAgentType,
         draft.setEffortLevel,
         draft.setModelMode,
         draft.setPermissionMode,
         effortLevels,
         modelModes,
         permissionModes,
-        setSelectedAgent,
         setSelectedMachineId,
         setWorktreeKey,
     ]);

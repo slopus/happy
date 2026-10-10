@@ -45,8 +45,12 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
             return true;
         } catch (e) {
             console.error(e);
-            Modal.alert(t('common.error'), t('modals.failedToConnectTerminal'), [{ text: t('common.ok') }]);
-            options?.onError?.(e);
+            // A caller that handles failures reports them in its own UI.
+            if (options?.onError) {
+                options.onError(e);
+            } else {
+                Modal.alert(t('common.error'), t('modals.failedToConnectTerminal'), [{ text: t('common.ok') }]);
+            }
             return false;
         } finally {
             setIsLoading(false);

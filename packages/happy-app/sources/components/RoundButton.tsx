@@ -39,6 +39,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         alignItems: 'center',
         justifyContent: 'center',
     },
+    inlineLoading: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
     text: {
         ...Typography.default('semiBold'),
         fontWeight: '600',
@@ -51,11 +56,24 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?: RoundButtonDisplay, title?: any, style?: StyleProp<ViewStyle>, textStyle?: StyleProp<TextStyle>, disabled?: boolean, loading?: boolean, onPress?: () => void, action?: () => Promise<any> }) => {
+export const RoundButton = React.memo((props: {
+    size?: RoundButtonSize,
+    display?: RoundButtonDisplay,
+    title?: any,
+    /** While loading, shown beside the spinner instead of hiding the label. */
+    loadingTitle?: string,
+    style?: StyleProp<ViewStyle>,
+    textStyle?: StyleProp<TextStyle>,
+    disabled?: boolean,
+    loading?: boolean,
+    onPress?: () => void,
+    action?: () => Promise<any>,
+}) => {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const [loading, setLoading] = React.useState(false);
     const doLoading = props.loading !== undefined ? props.loading : loading;
+    const inlineLoading = doLoading && props.loadingTitle !== undefined;
     const doAction = React.useCallback(() => {
         if (props.onPress) {
             props.onPress();
@@ -95,6 +113,24 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
     const size = sizes[props.size || 'large'];
     const isInverted = props.display === 'inverted';
     const display = displays[props.display || 'default'];
+    const label = (title: any, opacity: number) => (
+        <Text
+            style={[
+                styles.text,
+                isInverted && styles.textInverted,
+                {
+                    opacity,
+                    color: display.textColor,
+                    fontSize: size.fontSize,
+                    lineHeight: Math.round(size.fontSize * 1.3),
+                },
+                props.textStyle,
+            ]}
+            numberOfLines={isInverted ? undefined : 1}
+        >
+            {title}
+        </Text>
+    );
 
     return (
         <Pressable
@@ -126,27 +162,21 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
                         },
                     ]}
                 >
-                    {doLoading && (
-                        <View style={styles.loadingContainer}>
+                    {inlineLoading ? (
+                        <View style={styles.inlineLoading}>
                             <ActivityIndicator color={display.textColor} size='small' />
+                            {label(props.loadingTitle, 1)}
                         </View>
+                    ) : (
+                        <>
+                            {doLoading && (
+                                <View style={styles.loadingContainer}>
+                                    <ActivityIndicator color={display.textColor} size='small' />
+                                </View>
+                            )}
+                            {label(props.title, doLoading ? 0 : 1)}
+                        </>
                     )}
-                    <Text
-                        style={[
-                            styles.text,
-                            isInverted && styles.textInverted,
-                            {
-                                opacity: doLoading ? 0 : 1,
-                                color: display.textColor,
-                                fontSize: size.fontSize,
-                                lineHeight: Math.round(size.fontSize * 1.3),
-                            },
-                            props.textStyle,
-                        ]}
-                        numberOfLines={isInverted ? undefined : 1}
-                    >
-                        {props.title}
-                    </Text>
                 </View>
             )}
         </Pressable>

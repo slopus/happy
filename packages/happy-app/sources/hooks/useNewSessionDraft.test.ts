@@ -5,6 +5,7 @@ type Draft = {
     selectedMachineId: string | null;
     selectedPath: string | null;
     agentType: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy' | 'rig';
+    pickedAgentType?: 'claude' | 'codex' | 'gemini' | 'openclaw' | 'agy' | 'rig' | null;
     permissionMode: string | null;
     modelMode: string | null;
     effortLevel: string | null;
@@ -62,6 +63,39 @@ describe('useNewSessionDraft', () => {
         mockPersistence.draft = persistedDraft({ agentType });
         const { useNewSessionDraft } = await import('./useNewSessionDraft');
         expect(useNewSessionDraft.getState().agentType).toBe(agentType);
+    });
+
+    it('treats a draft saved before picks were remembered as having no pick', async () => {
+        // Its claude is mostly the old implicit default, so Happy should still win.
+        mockPersistence.draft = persistedDraft({ agentType: 'claude' });
+        const { useNewSessionDraft } = await import('./useNewSessionDraft');
+        expect(useNewSessionDraft.getState().pickedAgentType).toBeNull();
+    });
+
+    it('persists a harness tapped in the composer', async () => {
+        const { useNewSessionDraft } = await import('./useNewSessionDraft');
+
+        useNewSessionDraft.getState().pickAgentType('codex');
+        expect(useNewSessionDraft.getState()).toMatchObject({ agentType: 'codex', pickedAgentType: 'codex' });
+        expect(mockPersistence.saved.at(-1)).toMatchObject({ agentType: 'codex', pickedAgentType: 'codex' });
+    });
+
+    it('restores the pick after a reload', async () => {
+        const first = await import('./useNewSessionDraft');
+        first.useNewSessionDraft.getState().pickAgentType('codex');
+
+        vi.resetModules();
+        const { useNewSessionDraft } = await import('./useNewSessionDraft');
+        expect(useNewSessionDraft.getState()).toMatchObject({ agentType: 'codex', pickedAgentType: 'codex' });
+    });
+
+    it('keeps the pick when the composer follows a computer to a different harness', async () => {
+        const { useNewSessionDraft } = await import('./useNewSessionDraft');
+
+        useNewSessionDraft.getState().pickAgentType('codex');
+        useNewSessionDraft.getState().setAgentType('claude');
+        expect(useNewSessionDraft.getState()).toMatchObject({ agentType: 'claude', pickedAgentType: 'codex' });
+        expect(mockPersistence.saved.at(-1)).toMatchObject({ agentType: 'claude', pickedAgentType: 'codex' });
     });
 
     it('loads persisted permission, model, and effort defaults', async () => {
