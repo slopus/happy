@@ -1,9 +1,16 @@
 import { selectPendingCommunications } from './agentCommunications';
-import type { AgentState } from './storageTypes';
+import { hasBackgroundActivity } from './rig';
+import type { AgentState, Metadata } from './storageTypes';
 
+/**
+ * `background` means the turn is over but the session still has work in flight
+ * — a background shell, a subagent, a workflow. It sits between `thinking` and
+ * `waiting`: nothing is being generated, yet the session is not done either.
+ */
 export type SessionState =
     | 'disconnected'
     | 'thinking'
+    | 'background'
     | 'waiting'
     | 'permission_required'
     | 'input_required';
@@ -20,10 +27,12 @@ export function resolveSessionState({
     agentState,
     thinking,
     isOnline,
+    metadata,
 }: {
     agentState: AgentState | null | undefined;
     thinking: boolean;
     isOnline: boolean;
+    metadata?: Metadata | null;
 }): SessionState {
     if (!isOnline) return 'disconnected';
 
@@ -35,5 +44,11 @@ export function resolveSessionState({
         return 'input_required';
     }
 
-    return thinking ? 'thinking' : 'waiting';
+    if (thinking) return 'thinking';
+
+    // The turn ended but a background shell / subagent / workflow is still
+    // running, so the session is not actually idle.
+    if (hasBackgroundActivity(metadata)) return 'background';
+
+    return 'waiting';
 }
