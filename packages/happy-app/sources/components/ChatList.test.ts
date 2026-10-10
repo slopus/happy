@@ -112,7 +112,6 @@ vi.mock('./RoundButton', async () => {
 });
 vi.mock('@/sync/controlHandoff', () => ({ resolveControlMode: () => 'agent' }));
 vi.mock('@/sync/rig', () => ({ usesControlledSessionUi: () => false }));
-vi.mock('@/utils/agentTurnCopy', () => ({ buildAgentTurnCopyTextByMessageId: () => new Map() }));
 vi.mock('@/utils/perfLog', () => ({ perfSince: vi.fn(), useCommitPerf: vi.fn() }));
 vi.mock('./MessageView', async () => {
     const ReactModule = await import('react');

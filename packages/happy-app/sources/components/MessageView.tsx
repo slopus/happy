@@ -24,7 +24,6 @@ export const MessageView = React.memo((props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
-  copyText?: string;
 }) => {
   return (
     <View
@@ -37,7 +36,6 @@ export const MessageView = React.memo((props: {
           metadata={props.metadata}
           sessionId={props.sessionId}
           getMessageById={props.getMessageById}
-          copyText={props.copyText}
         />
       </View>
     </View>
@@ -50,7 +48,6 @@ function RenderBlock(props: {
   metadata: Metadata | null;
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
-  copyText?: string;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
@@ -63,7 +60,7 @@ function RenderBlock(props: {
       );
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} sessionId={props.sessionId} copyText={props.copyText} />;
+      return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
 
     case 'tool-call':
       return <ToolCallBlock
@@ -262,7 +259,6 @@ function UserTextBlock(props: {
 function AgentTextBlock(props: {
   message: AgentTextMessage;
   sessionId: string;
-  copyText?: string;
 }) {
   const handleOptionPress = React.useCallback((option: Option) => {
     sync.sendMessage(props.sessionId, option.title, { source: 'option' });
@@ -276,7 +272,7 @@ function AgentTextBlock(props: {
   return (
     <View style={styles.agentMessageContainer}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} sessionId={props.sessionId} />
-      {props.copyText ? <MessageCopyButton text={props.copyText} /> : null}
+      <MessageCopyButton text={props.message.text} />
     </View>
   );
 }

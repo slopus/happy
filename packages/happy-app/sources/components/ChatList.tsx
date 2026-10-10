@@ -16,7 +16,6 @@ import { Octicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { resolveControlMode } from '@/sync/controlHandoff';
 import { usesControlledSessionUi } from '@/sync/rig';
-import { buildAgentTurnCopyTextByMessageId } from '@/utils/agentTurnCopy';
 import { perfSince, useCommitPerf } from '@/utils/perfLog';
 import { handleInvertedChatWheel } from '@/utils/invertedChatWheel';
 import { DiffSyntaxCell, SyntaxViewport, SYNTAX_VIEWABILITY } from './diff/syntax/viewport';
@@ -355,10 +354,6 @@ const ChatListInternal = React.memo((props: {
     }, [props.sessionId]);
 
     const displayItems = useGroupedMessages(windowedMessages, groupToolCalls, groupingOptions);
-    const agentCopyTextByMessageId = React.useMemo(
-        () => buildAgentTurnCopyTextByMessageId(windowedMessages, { currentTurnComplete }),
-        [currentTurnComplete, windowedMessages],
-    );
 
     const currentTurnUserMessageId = React.useMemo(() => {
         for (const message of windowedMessages) {
@@ -608,11 +603,10 @@ const ChatListInternal = React.memo((props: {
                     message={item.message}
                     metadata={props.metadata}
                     sessionId={props.sessionId}
-                    copyText={agentCopyTextByMessageId.get(item.message.id)}
                 />
             </DiffSyntaxCell>
         );
-    }, [agentCopyTextByMessageId, props.metadata, props.sessionId, syntaxViewport, isGroupExpanded, handleToggleGroup]);
+    }, [props.metadata, props.sessionId, syntaxViewport, isGroupExpanded, handleToggleGroup]);
 
     // The list is inverted, so offset 0 is the newest message and growing
     // offsets walk back through history.
