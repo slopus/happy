@@ -109,7 +109,14 @@ function UserMessageFrame(props: {
   // that exists in one state only, or a different component type — makes React
   // remount the bubble and its markdown, which shows up as a relayout flash at
   // the exact moment the message should simply stop looking dimmed. Only style
-  // values and the trailing status line may differ.
+  // values and the status text may differ. The status line is always mounted at
+  // a fixed single-line height, so a row never changes height once it is in the
+  // transcript and the chat does not jump when a status appears or clears.
+  const statusText = props.sendError !== undefined
+    ? t('message.sendFailed', { reason: props.sendError })
+    : showPendingStatus
+      ? (props.queuedWhileBusy === true ? t('message.sendsAfterThisTurn') : t('message.sending'))
+      : '';
   return (
     <View style={[styles.userMessageContainer, fromOther && styles.userMessageContainerOther]}>
       {fromOther ? <Text numberOfLines={1} style={styles.userMessageAuthorText}>{props.author!.name}</Text> : null}
@@ -126,14 +133,9 @@ function UserMessageFrame(props: {
       >
         {props.children}
       </View>
-      {showPendingStatus ? (
-        <Text style={styles.pendingStatusText}>
-          {props.queuedWhileBusy === true ? t('message.sendsAfterThisTurn') : t('message.sending')}
-        </Text>
-      ) : null}
-      {props.sendError !== undefined ? (
-        <Text style={[styles.pendingStatusText, styles.sendErrorText]}>{t('message.sendFailed', { reason: props.sendError })}</Text>
-      ) : null}
+      <Text numberOfLines={1} style={[styles.pendingStatusText, props.sendError !== undefined && styles.sendErrorText]}>
+        {statusText}
+      </Text>
     </View>
   );
 }
@@ -410,6 +412,7 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: 'flex-end',
     justifyContent: 'flex-end',
     paddingHorizontal: 16,
+    paddingTop: 6,
   },
   userMessageBubble: {
     backgroundColor: theme.colors.userMessageBackground,
@@ -517,6 +520,9 @@ const styles = StyleSheet.create((theme) => ({
     // Matches the status line above the composer, the app's other place for
     // saying what the session is doing right now.
     fontSize: 11,
+    // Fixed so an empty line and a long error take the same space.
+    lineHeight: 14,
+    height: 14,
     marginBottom: 4,
     marginTop: 2,
     ...Typography.default(),

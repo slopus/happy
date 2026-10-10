@@ -64,11 +64,11 @@ describe('user message frame', () => {
         const message = { ...base, pending: true, meta: { queuedWhileBusy } };
         const renderer = render(message);
         const body = renderer.root.findByType('LongPressCopyable').parent.parent;
-        expect(labels(renderer)).toEqual([]);
+        expect(labels(renderer)).toEqual(['']);
         expect(body.props.style).not.toContainEqual({ opacity: 0.45 });
 
         render({ ...message, pending: false }, renderer);
-        expect(labels(renderer)).toEqual([]);
+        expect(labels(renderer)).toEqual(['']);
         expect(renderer.root.findByType('LongPressCopyable').parent.parent).toBe(body);
     });
 
@@ -77,16 +77,16 @@ describe('user message frame', () => {
         const message = { ...base, createdAt: Date.now(), pending: true, meta: { queuedWhileBusy } };
         const renderer = render(message);
         const body = renderer.root.findByType('LongPressCopyable').parent.parent;
-        expect(labels(renderer)).toEqual([]);
+        expect(labels(renderer)).toEqual(['']);
 
         act(() => vi.advanceTimersByTime(999));
-        expect(labels(renderer)).toEqual([]);
+        expect(labels(renderer)).toEqual(['']);
         act(() => vi.advanceTimersByTime(1));
         expect(labels(renderer)).toContain('message.sending');
         expect(renderer.root.findByType('LongPressCopyable').parent.parent).toBe(body);
 
         render({ ...message, pending: false }, renderer);
-        expect(labels(renderer)).toEqual([]);
+        expect(labels(renderer)).toEqual(['']);
     });
 
     it.each([
@@ -107,7 +107,7 @@ describe('user message frame', () => {
 
     it('puts the other participant’s name above their message', () => {
         const renderer = render({ ...base, author: { id: 'other', name: 'Alex', owner: false } });
-        const author = renderer.root.findByType('Text');
+        const author = renderer.root.findAllByType('Text')[0];
         expect(author.props.children).toBe('Alex');
         const container = author.parent.parent;
         expect(container.children[0]).toBe(author.parent);
@@ -115,7 +115,7 @@ describe('user message frame', () => {
     });
 
     it.each([undefined, { id: 'owner', name: 'You', owner: true }])('does not label the reader’s own messages (%j)', (author) => {
-        expect(labels(render({ ...base, author }))).toEqual([]);
+        expect(labels(render({ ...base, author }))).toEqual(['']);
     });
 
     it('still shows send failures for an idle send', () => {
