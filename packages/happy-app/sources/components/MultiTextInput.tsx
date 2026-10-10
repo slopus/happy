@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Text, TextInput, Platform, View, NativeSyntheticEvent, TextInputKeyPressEventData, TextInputSelectionChangeEventData } from 'react-native';
+import { Text, TextInput, Platform, View, NativeSyntheticEvent, TextInputChangeEvent, TextInputKeyPressEventData, TextInputSelectionChangeEventData, codegenNativeCommands } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 
@@ -31,11 +31,10 @@ export interface MultiTextInputHandle {
 }
 
 // Either `value` (controlled) or `defaultValue` (uncontrolled) must be set.
-// "Uncontrolled" here means uncontrolled *from the parent's perspective*: the
-// parent never passes `value`, so it never re-renders on every keystroke (the
-// perf goal). Internally the native input is always `value`-driven, because on
-// the New Architecture (Fabric) `setNativeProps({ text })` is a no-op — driving
-// `value` is the only text path that actually clears/replaces the field.
+// "Uncontrolled" means uncontrolled from the parent's perspective: the parent
+// never passes `value`, so it never re-renders on every keystroke. How the
+// native field itself is driven differs by platform; see NativeTextField
+// (iOS) and ValueTextField (Android) below.
 interface MultiTextInputProps {
     value?: string;
     defaultValue?: string;
@@ -75,34 +74,20 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
         onStateChange
     } = props;
 
-    const isControlled = value !== undefined;
-    const isControlledRef = React.useRef(isControlled);
-    isControlledRef.current = isControlled;
     const { theme } = useUnistyles();
     // Track latest selection in a ref
     const selectionRef = React.useRef({ start: 0, end: 0 });
-    const inputRef = React.useRef<TextInput>(null);
-    // In uncontrolled mode we own the text locally and bind it to the native
-    // input's `value`. Keystrokes update this state (re-rendering only this
-    // small component, never the parent), and imperative sets flow through it
-    // too — the only mutation path Fabric honors.
-    const [uncontrolledText, setUncontrolledText] = React.useState<string>(defaultValue ?? '');
-    const text = isControlled ? value! : uncontrolledText;
-    // Synchronous mirror so imperative getText() never lags a state commit.
-    const latestTextRef = React.useRef<string>(text);
-    latestTextRef.current = text;
-    // Caret to apply after an imperative text set. Applied in a layout effect
-    // so it runs once the new `value` is committed to the native view, using
-    // TextInput.setSelection() (Fabric's supported imperative caret API).
-    const pendingSelectionRef = React.useRef<{ start: number; end: number } | null>(null);
-    const [, bumpSelectionTick] = React.useReducer((c: number) => c + 1, 0);
-    React.useLayoutEffect(() => {
-        const sel = pendingSelectionRef.current;
-        if (sel && inputRef.current) {
-            pendingSelectionRef.current = null;
-            inputRef.current.setSelection(sel.start, sel.end);
-        }
-    });
+    const fieldRef = React.useRef<TextFieldHandle>(null);
+    // Synchronous mirror of the text, so imperative getText() never lags a
+    // state commit.
+    const latestTextRef = React.useRef<string>(value ?? defaultValue ?? '');
+    if (value !== undefined) {
+        latestTextRef.current = value;
+    }
+    // The read-only branch has no field to write to, so a write made while it
+    // is showing renders the new text instead.
+    const [, renderReadOnlyText] = React.useReducer((c: number) => c + 1, 0);
+
     const textStyle = {
         width: '100%' as const,
         fontSize: MULTI_TEXT_INPUT_FONT_SIZE,
@@ -121,7 +106,7 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
 
     React.useEffect(() => {
         if (!editable) {
-            inputRef.current?.blur();
+            fieldRef.current?.blur();
         }
     }, [editable]);
 
@@ -177,9 +162,6 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
 
     const handleTextChange = React.useCallback((text: string) => {
         latestTextRef.current = text;
-        if (!isControlledRef.current) {
-            setUncontrolledText(text);
-        }
         // When text changes, assume cursor moves to end
         const selection = { start: text.length, end: text.length };
         selectionRef.current = selection;
@@ -217,19 +199,13 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
     React.useImperativeHandle(ref, () => ({
         getText: () => latestTextRef.current,
         setTextAndSelection: (text: string, selection: { start: number; end: number }) => {
-            // Drive the native input through `value` — Fabric ignores
-            // setNativeProps({ text }), so this is the only path that actually
-            // clears/replaces the field. The caret is applied in the layout
-            // effect once the new text is committed natively. bumpSelectionTick
-            // forces a render even when the text is unchanged (e.g. Escape
-            // collapsing the autocomplete selection) so the caret still applies.
             latestTextRef.current = text;
             selectionRef.current = selection;
-            pendingSelectionRef.current = selection;
-            if (!isControlledRef.current) {
-                setUncontrolledText(text);
+            if (fieldRef.current) {
+                fieldRef.current.setTextAndSelection(text, selection);
+            } else {
+                renderReadOnlyText();
             }
-            bumpSelectionTick();
 
             // Notify through callbacks
             onChangeText?.(text);
@@ -241,24 +217,26 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
             }
         },
         focus: () => {
-            inputRef.current?.focus();
+            fieldRef.current?.focus();
         },
         blur: () => {
-            inputRef.current?.blur();
+            fieldRef.current?.blur();
         }
     }), [onChangeText, onStateChange, onSelectionChange]);
 
-    const displayText = text;
+    const displayText = latestTextRef.current;
+    const TextField = Platform.OS === 'ios' ? NativeTextField : ValueTextField;
 
     return (
         <View style={{ width: '100%' }}>
             {editable ? (
-                <TextInput
-                    ref={inputRef}
+                <TextField
+                    ref={fieldRef}
+                    value={value}
+                    initialText={latestTextRef.current}
                     style={textStyle}
                     placeholder={placeholder}
                     placeholderTextColor={theme.colors.input.placeholder}
-                    value={text}
                     editable={editable}
                     onChangeText={handleTextChange}
                     onKeyPress={handleKeyPress}
@@ -292,3 +270,158 @@ export const MultiTextInput = React.memo(React.forwardRef<MultiTextInputHandle, 
 }));
 
 MultiTextInput.displayName = 'MultiTextInput';
+
+interface TextFieldHandle {
+    setTextAndSelection: (text: string, selection: { start: number; end: number }) => void;
+    focus: () => void;
+    blur: () => void;
+}
+
+type TextFieldProps = Omit<React.ComponentProps<typeof TextInput>, 'value' | 'defaultValue' | 'onChange' | 'onChangeText'> & {
+    // The parent's text in controlled mode, undefined when uncontrolled.
+    value: string | undefined;
+    // The text a newly mounted field starts with (editable turning back on
+    // mounts a new one).
+    initialText: string;
+    onChangeText: (text: string) => void;
+};
+
+// The command React Native's own TextInput uses for clear() and setSelection().
+// Native applies it only when `eventCount` matches the edits it has reported,
+// so a write never lands on top of a keystroke JS has not seen yet.
+interface TextInputNativeCommands {
+    setTextAndSelection: (
+        ref: React.ComponentRef<typeof TextInput>,
+        eventCount: number,
+        text: string | null,
+        start: number,
+        end: number,
+    ) => void;
+}
+
+const TextInputCommands = codegenNativeCommands<TextInputNativeCommands>({
+    supportedCommands: ['setTextAndSelection'],
+});
+
+// iOS: the native view owns its text. It is seeded once on mount and never
+// handed a `value` prop; writes from JS (an imperative set, or a controlled
+// `value` that differs from what the field last reported) go through the
+// native setTextAndSelection command.
+//
+// Why not `value`: on Fabric, every render that changes the `value` prop
+// rebuilds the field's text from JS. The shadow node then measures that JS
+// copy instead of the field's own text, tagged with whichever edit JS had
+// seen, and iOS re-applies it to the UITextView whenever its attributes differ
+// (autocorrect, emoji fonts...). Re-setting `attributedText` restores the caret
+// relative to the end of the text and scrolls to it, and a JS copy a keystroke
+// behind sizes the field for the previous text. Done on every keystroke, that
+// was a multiline composer that jumped while editing mid-text and sometimes
+// kept a blank line under the text.
+const NativeTextField = React.forwardRef<TextFieldHandle, TextFieldProps>(({ value, initialText, onChangeText, ...inputProps }, ref) => {
+    const inputRef = React.useRef<TextInput>(null);
+    const [defaultValue] = React.useState(initialText);
+    const eventCountRef = React.useRef(0);
+    // What the native view holds: its last reported edit, or the last write.
+    const nativeTextRef = React.useRef(initialText);
+
+    const setTextAndSelection = React.useCallback((text: string, selection: { start: number; end: number }) => {
+        nativeTextRef.current = text;
+        if (inputRef.current) {
+            TextInputCommands.setTextAndSelection(inputRef.current, eventCountRef.current, text, selection.start, selection.end);
+        }
+    }, []);
+
+    // Controlled mode: write the parent's value only when the parent changed
+    // it, not when it echoes a keystroke back. A -1 selection leaves the caret
+    // where native puts it, as React Native does for a controlled value.
+    React.useLayoutEffect(() => {
+        if (value !== undefined && value !== nativeTextRef.current) {
+            setTextAndSelection(value, { start: -1, end: -1 });
+        }
+    }, [value, setTextAndSelection]);
+
+    const handleChange = React.useCallback((e: TextInputChangeEvent) => {
+        eventCountRef.current = e.nativeEvent.eventCount;
+        nativeTextRef.current = e.nativeEvent.text;
+        onChangeText(e.nativeEvent.text);
+    }, [onChangeText]);
+
+    React.useImperativeHandle(ref, () => ({
+        setTextAndSelection,
+        focus: () => {
+            inputRef.current?.focus();
+        },
+        blur: () => {
+            inputRef.current?.blur();
+        },
+    }), [setTextAndSelection]);
+
+    return (
+        <TextInput
+            ref={inputRef}
+            {...inputProps}
+            defaultValue={defaultValue}
+            onChange={handleChange}
+        />
+    );
+});
+
+NativeTextField.displayName = 'NativeTextField';
+
+// Android: the field is bound to `value`, from the parent when controlled and
+// from local state otherwise. On Fabric, setNativeProps({ text }) is a no-op,
+// and the native setTextAndSelection command updates the text without telling
+// the shadow node, so a field written that way keeps its old height. A `value`
+// change is the write path that also re-measures. The caret for an imperative
+// set is applied once the new value is committed.
+const ValueTextField = React.forwardRef<TextFieldHandle, TextFieldProps>(({ value, initialText, onChangeText, ...inputProps }, ref) => {
+    const inputRef = React.useRef<TextInput>(null);
+    const isControlledRef = React.useRef(value !== undefined);
+    isControlledRef.current = value !== undefined;
+    const [ownText, setOwnText] = React.useState(initialText);
+    const pendingSelectionRef = React.useRef<{ start: number; end: number } | null>(null);
+    // Forces a render even when the text is unchanged (e.g. Escape collapsing
+    // the autocomplete selection) so the caret still applies.
+    const [, bumpSelectionTick] = React.useReducer((c: number) => c + 1, 0);
+    React.useLayoutEffect(() => {
+        const sel = pendingSelectionRef.current;
+        if (sel && inputRef.current) {
+            pendingSelectionRef.current = null;
+            inputRef.current.setSelection(sel.start, sel.end);
+        }
+    });
+
+    const handleChangeText = React.useCallback((text: string) => {
+        if (!isControlledRef.current) {
+            setOwnText(text);
+        }
+        onChangeText(text);
+    }, [onChangeText]);
+
+    React.useImperativeHandle(ref, () => ({
+        setTextAndSelection: (text, selection) => {
+            pendingSelectionRef.current = selection;
+            if (!isControlledRef.current) {
+                setOwnText(text);
+            }
+            bumpSelectionTick();
+        },
+        focus: () => {
+            inputRef.current?.focus();
+        },
+        blur: () => {
+            inputRef.current?.blur();
+        },
+    }), []);
+
+    return (
+        <TextInput
+            ref={inputRef}
+            {...inputProps}
+            value={value ?? ownText}
+            onChangeText={handleChangeText}
+        />
+    );
+});
+
+ValueTextField.displayName = 'ValueTextField';
