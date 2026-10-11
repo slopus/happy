@@ -6,6 +6,7 @@ import type { JsRuntime } from "./runClaude";
 import type { SandboxConfig } from "@/persistence";
 
 export class Session {
+    model?: string;
     readonly path: string;
     readonly logPath: string;
     readonly api: ApiClient;
@@ -37,6 +38,7 @@ export class Session {
         api: ApiClient,
         client: ApiSessionClient,
         path: string,
+        model?: string,
         logPath: string,
         sessionId: string | null,
         claudeEnvVars?: Record<string, string>,
@@ -53,6 +55,7 @@ export class Session {
         jsRuntime?: JsRuntime,
     }) {
         this.path = opts.path;
+        this.model = opts.model;
         this.api = opts.api;
         this.client = opts.client;
         this.logPath = opts.logPath;
