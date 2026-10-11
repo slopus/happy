@@ -2,6 +2,8 @@
 
 <h1>Any Model. Your Subscription.<br><em>Happy Harness.</em></h1>
 
+<p>Orchestrate Claude, Codex and Grok in one app</p>
+
 <p>Free and open source</p>
 
 </div>
@@ -13,15 +15,16 @@ https://github.com/user-attachments/assets/b3580704-f9e0-441e-80be-3f83f6a08ab5
 </p>
 
 <p align="center">
-<a href="https://apps.apple.com/us/app/happy-claude-code-client/id6748571505"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/app-store-rating-dark.svg"><img width="150" height="56" alt="Download on the App Store. Rated 4.9 stars from 1,000+ ratings" src="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/app-store-rating-light.svg" /></picture></a>&nbsp;&nbsp;&nbsp;<a href="https://play.google.com/store/apps/details?id=com.ex3ndr.happy"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/google-play-rating-dark.svg"><img width="150" height="56" alt="Get it on Google Play. Rated 5.0 stars from 3.1k+ reviews" src="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/google-play-rating-light.svg" /></picture></a>
+<a href="https://apps.apple.com/us/app/happy-codex-claude-code-app/id6748571505"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/app-store-rating-dark.svg"><img width="150" height="56" alt="Download on the App Store. Rated 4.9 stars from 1,000+ ratings" src="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/app-store-rating-light.svg" /></picture></a>&nbsp;&nbsp;&nbsp;<a href="https://play.google.com/store/apps/details?id=com.ex3ndr.happy"><picture><source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/google-play-rating-dark.svg"><img width="150" height="56" alt="Get it on Google Play. Rated 5.0 stars from 3.1k+ reviews" src="https://raw.githubusercontent.com/slopus/happy-desktop/main/.github/google-play-rating-light.svg" /></picture></a>
 </p>
 
 ## What you get
 
-1. **Multi-provider within one session.** Astra, Fable, and Grok in the same
-   session. Switch models in the middle of a task or delegate to subagents.
-2. **Reuse current subscriptions.** Sign in with the Claude, Codex, and Grok
-   plans you already pay for. Happy adds a harness, not another bill.
+1. **Multi-provider.** Astra, Fable, and Grok in one app, each with its
+   vendor's own prompts and tools. Give every task the model that fits, and
+   delegate to subagents on any of them.
+2. **Reuse your subscriptions.** Sign in with the Claude, Codex, and Grok
+   subscriptions you already pay for. Happy adds a harness, not another bill.
 3. **Open source MIT.** It runs on your own hardware and your projects stay
    ordinary folders. Read the code, fork it, ship your own build.
 4. **End-to-end encrypted mobile app.** Left your desk? The same sessions are
@@ -32,7 +35,7 @@ https://github.com/user-attachments/assets/b3580704-f9e0-441e-80be-3f83f6a08ab5
 #### Resources
 
 <p align="center">
-<a href="https://happy.engineering/">Website</a> · <a href="https://happy.engineering/desktop/docs/">Documentation</a> · <a href="https://discord.gg/fX9WBAhyfD">Discord</a> · <a href="docs/CONTRIBUTING.md">Development guide</a> · <a href="LICENSE">MIT License</a>
+<a href="https://happy.engineering/">Website</a> · <a href="https://happy.engineering/welcome/">Documentation</a> · <a href="https://discord.gg/fX9WBAhyfD">Discord</a> · <a href="docs/CONTRIBUTING.md">Development guide</a> · <a href="LICENSE">MIT License</a>
 </p>
 
 ## How Happy fits together
