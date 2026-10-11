@@ -247,7 +247,7 @@ export class ApiSessionClient extends EventEmitter {
     private readonly receiveSync: InvalidateSync;
     private reconnectCapabilityHeld = false;
 
-    constructor(token: string, session: Session) {
+    constructor(token: string, session: Session, opts: { connect?: boolean; metadataOnly?: boolean } = {}) {
         super()
         this.token = token;
         this.sessionId = session.id;
@@ -267,7 +267,7 @@ export class ApiSessionClient extends EventEmitter {
             encryptionVariant: this.encryptionVariant,
             logger: (msg, data) => logger.debug(msg, data)
         });
-        registerCommonHandlers(this.rpcHandlerManager, this.metadata.path);
+        if (!opts.metadataOnly) registerCommonHandlers(this.rpcHandlerManager, this.metadata.path);
 
         //
         // Create socket
@@ -298,8 +298,10 @@ export class ApiSessionClient extends EventEmitter {
             }
             logger.debug('Socket connected successfully');
             this.clearReconnectTimers();
-            this.rpcHandlerManager.onSocketConnect(this.socket);
-            this.receiveSync.invalidate();
+            if (!opts.metadataOnly) {
+                this.rpcHandlerManager.onSocketConnect(this.socket);
+                this.receiveSync.invalidate();
+            }
         })
 
         // Set up global RPC request handler
@@ -332,6 +334,7 @@ export class ApiSessionClient extends EventEmitter {
                 }
 
                 if (data.body.t === 'new-message') {
+                    if (opts.metadataOnly) return;
                     const messageSeq = data.body.message?.seq;
                     if (typeof messageSeq !== 'number' || messageSeq !== this.lastReceivedSeq + 1 || data.body.message.content.t !== 'encrypted') {
                         this.receiveSync.invalidate();
@@ -389,9 +392,11 @@ export class ApiSessionClient extends EventEmitter {
         // Connect (after short delay to give a time to add handlers)
         //
 
-        retainReconnectCapabilityMonitor();
-        this.reconnectCapabilityHeld = true;
-        this.socket.connect();
+        if (opts.connect !== false) {
+            retainReconnectCapabilityMonitor();
+            this.reconnectCapabilityHeld = true;
+            this.socket.connect();
+        }
     }
 
     onUserMessage(callback: (data: UserMessage) => void) {
@@ -945,7 +950,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     updateMetadata(handler: (metadata: Metadata) => Metadata) {
-        this.metadataLock.inLock(async () => {
+        return this.metadataLock.inLock(async () => {
             await backoff(async () => {
                 let updated = handler(this.metadata!); // Weird state if metadata is null - should never happen but here we are
                 const answer = await this.socket.emitWithAck('update-metadata', { sid: this.sessionId, expectedVersion: this.metadataVersion, metadata: encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, updated)) });
@@ -962,6 +967,7 @@ export class ApiSessionClient extends EventEmitter {
                     // Hard error - ignore
                 }
             });
+            return { metadata: this.metadata!, metadataVersion: this.metadataVersion };
         });
     }
 

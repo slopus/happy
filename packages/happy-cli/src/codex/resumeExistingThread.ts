@@ -5,6 +5,7 @@ type ResumeThreadClient = {
         threadId: string;
         cwd: string;
         mcpServers: Record<string, unknown>;
+        model?: string;
     }) => Promise<{ threadId: string; model: string }>;
 };
 
@@ -24,6 +25,7 @@ export async function resumeExistingThread(opts: {
     threadId: string;
     cwd: string;
     mcpServers: Record<string, unknown>;
+    model?: string;
     /**
      * Whether to surface a "Resumed Codex thread …" message in the chat UI.
      * Side chats open empty on purpose, so they pass `false` to keep this
@@ -36,6 +38,7 @@ export async function resumeExistingThread(opts: {
             threadId: opts.threadId,
             cwd: opts.cwd,
             mcpServers: opts.mcpServers,
+            ...(opts.model ? { model: opts.model } : {}),
         });
 
         opts.session.updateMetadata((currentMetadata) => ({

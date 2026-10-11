@@ -30,7 +30,8 @@ export class ApiClient {
   async getOrCreateSession(opts: {
     tag: string,
     metadata: Metadata,
-    state: AgentState | null
+    state: AgentState | null,
+    encryptionKey?: Uint8Array,
   }): Promise<Session | null> {
 
     // Resolve encryption key
@@ -40,7 +41,8 @@ export class ApiClient {
     if (this.credential.encryption.type === 'dataKey') {
 
       // Generate new encryption key
-      encryptionKey = getRandomBytes(32);
+      encryptionKey = opts.encryptionKey ?? getRandomBytes(32);
+      if (encryptionKey.length !== 32) throw new Error('Session encryption key must contain 32 bytes');
       encryptionVariant = 'dataKey';
 
       // Derive and encrypt data encryption key

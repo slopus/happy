@@ -90,6 +90,9 @@ function isSessionActive(session: { active: boolean; activeAt: number }): boolea
  * makes the user wait for one.
  */
 function isSessionArchived(session: Session, archiving: ReadonlySet<string>): boolean {
+    if (typeof session.metadata?.codexArchived === 'boolean') {
+        return archiving.has(session.id) || session.metadata.codexArchived;
+    }
     return archiving.has(session.id)
         || session.metadata?.lifecycleState === 'archived'
         || (!isRigMetadata(session.metadata) && !session.active);

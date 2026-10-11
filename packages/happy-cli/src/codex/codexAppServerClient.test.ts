@@ -7,12 +7,25 @@ const {
     mockWrapForMcpTransport,
     mockSandboxCleanup,
     mockSpawn,
+    mockExistsSync,
+    mockWebSocket,
 } = vi.hoisted(() => ({
     mockExecSync: vi.fn(),
     mockInitializeSandbox: vi.fn(),
     mockWrapForMcpTransport: vi.fn(),
     mockSandboxCleanup: vi.fn(),
     mockSpawn: vi.fn(),
+    mockExistsSync: vi.fn(),
+    mockWebSocket: vi.fn(),
+}));
+
+vi.mock('node:fs', async (importOriginal) => ({
+    ...await importOriginal<typeof import('node:fs')>(),
+    existsSync: mockExistsSync,
+}));
+
+vi.mock('ws', () => ({
+    default: Object.assign(function (...args: unknown[]) { return mockWebSocket(...args); }, { OPEN: 1 }),
 }));
 
 vi.mock('node:child_process', () => ({
@@ -88,6 +101,27 @@ function createMockProcess(opts?: {
     return proc;
 }
 
+function createSharedDaemon(parents: Record<string, string | null> = {}) {
+    const socket = new (require('events').EventEmitter)();
+    const sent: MockRpcMessage[] = [];
+    socket.readyState = 1;
+    socket.close = vi.fn();
+    socket.send = (data: string) => {
+        const msg = JSON.parse(data); sent.push(msg);
+        if (msg.id != null && msg.method) {
+            const id = msg.params?.threadId ?? 'root';
+            const result = msg.method === 'initialize' ? { userAgent: 'daemon' }
+                : msg.method === 'thread/unsubscribe' ? { status: 'unsubscribed' }
+                : { thread: { id, parentThreadId: parents[id] ?? null }, model: 'gpt-test' };
+            queueMicrotask(() => socket.emit('message', Buffer.from(JSON.stringify({ id: msg.id, result }))));
+        }
+    };
+    mockExistsSync.mockReturnValue(true);
+    mockWebSocket.mockImplementation(() => { queueMicrotask(() => socket.emit('open')); return socket; });
+    return { socket, sent, push: (method: string, params: unknown, id?: number) =>
+        socket.emit('message', Buffer.from(JSON.stringify({ method, params, ...(id != null ? { id } : {}) }))) };
+}
+
 async function waitFor(predicate: () => boolean, timeoutMs: number = 1000): Promise<void> {
     const deadline = Date.now() + timeoutMs;
     while (!predicate()) {
@@ -117,6 +151,7 @@ describe('CodexAppServerClient sandbox integration', () => {
 
     beforeEach(() => {
         vi.clearAllMocks();
+        mockExistsSync.mockReturnValue(false);
         process.env.RUST_LOG = originalRustLog;
         mockExecSync.mockReturnValue('codex-cli 0.153.0');
         mockInitializeSandbox.mockResolvedValue(mockSandboxCleanup);
@@ -126,6 +161,132 @@ describe('CodexAppServerClient sandbox integration', () => {
 
     afterAll(() => {
         process.env.RUST_LOG = originalRustLog;
+    });
+
+    it('resumes through the shared daemon and routes events and approvals without owning its process', async () => {
+        const socket = new (require('events').EventEmitter)();
+        socket.readyState = 1;
+        socket.close = vi.fn();
+        const sent: MockRpcMessage[] = [];
+        socket.send = vi.fn((data: string) => {
+            const msg = JSON.parse(data);
+            sent.push(msg);
+            const result = msg.method === 'initialize' ? { userAgent: 'Codex Desktop' }
+                : { thread: { id: 'native-thread', model: 'gpt-test', turns: [] }, model: 'gpt-test' };
+            if (msg.method && msg.id != null) {
+                queueMicrotask(() => socket.emit('message', Buffer.from(JSON.stringify({ id: msg.id, result }))));
+            }
+        });
+        mockExistsSync.mockReturnValue(true);
+        mockWebSocket.mockImplementation(() => {
+            queueMicrotask(() => socket.emit('open'));
+            return socket;
+        });
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events = vi.fn();
+        const notifications = vi.fn();
+        client.setNotificationHandler(notifications);
+        client.setEventHandler(events);
+        client.setApprovalHandler(async () => 'approved');
+        await client.connect();
+        await expect(client.resumeThread({ threadId: 'native-thread' })).resolves.toEqual({
+            threadId: 'native-thread', model: 'gpt-test',
+        });
+        socket.emit('message', Buffer.from(JSON.stringify({
+            method: 'codex/event/agent_message', params: { threadId: 'native-thread', msg: { type: 'agent_message', message: 'hello' } },
+        })));
+        socket.emit('message', Buffer.from(JSON.stringify({
+            id: 100, method: 'item/commandExecution/requestApproval',
+            params: { threadId: 'native-thread', itemId: 'cmd', command: ['pwd'] },
+        })));
+        await waitFor(() => sent.some(msg => msg.id === 100 && msg.result));
+        expect(sent).toContainEqual({ jsonrpc: '2.0', id: 100, result: { decision: 'accept' } });
+        expect(events).toHaveBeenCalledWith({ type: 'agent_message', message: 'hello', native_thread_id: 'native-thread' });
+        expect(notifications).toHaveBeenCalledWith('codex/event/agent_message', { threadId: 'native-thread', msg: { type: 'agent_message', message: 'hello' } });
+        expect(mockSpawn).not.toHaveBeenCalled();
+        await client.disconnect();
+        expect(socket.close).toHaveBeenCalledOnce();
+    });
+
+    it('falls back to stdio when the daemon socket is stale', async () => {
+        const socket = new (require('events').EventEmitter)();
+        socket.readyState = 3;
+        socket.terminate = vi.fn();
+        mockExistsSync.mockReturnValue(true);
+        mockWebSocket.mockImplementation(() => {
+            queueMicrotask(() => socket.emit('error', new Error('ECONNREFUSED')));
+            return socket;
+        });
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        await client.connect();
+        expect(socket.terminate).toHaveBeenCalledOnce();
+        expect(mockSpawn).toHaveBeenCalledOnce();
+        await client.disconnect();
+    });
+
+    it('never spawns Codex when a shared-only watcher has no native daemon', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        await expect(new CodexAppServerClient().connect({ sharedOnly: true })).rejects.toThrow('daemon is unavailable');
+        expect(mockSpawn).not.toHaveBeenCalled();
+    });
+
+    it('keeps its own descendants and rejects globally subscribed foreign agents and approvals', async () => {
+        const { socket, sent, push } = createSharedDaemon({ child: 'root', grandchild: 'child', foreign: 'other-root' });
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events = vi.fn(); const approvals = vi.fn(async () => 'approved' as const);
+        client.setEventHandler(events); client.setApprovalHandler(approvals);
+        await client.connect(); await client.resumeThread({ threadId: 'root' });
+        (client as any)._turnId = 'main-turn';
+        for (const threadId of ['foreign', 'grandchild']) {
+            push('turn/started', { threadId, turn: { id: `${threadId}-turn` } });
+            push('item/completed', { threadId, turnId: `${threadId}-turn`, item: { type: 'agentMessage', id: '1', text: threadId, phase: 'final_answer' } });
+            push('item/commandExecution/requestApproval', { threadId, itemId: '2', command: 'pwd' }, threadId === 'foreign' ? 91 : 92);
+        }
+        await waitFor(() => approvals.mock.calls.length === 1 && events.mock.calls.length === 1);
+        expect(events).toHaveBeenCalledWith(expect.objectContaining({ message: 'grandchild', subagent: 'grandchild', native_thread_id: 'grandchild' }));
+        expect(approvals).toHaveBeenCalledWith(expect.objectContaining({ threadId: 'grandchild' }));
+        expect(sent.some(msg => msg.id === 91 && msg.result)).toBe(false);
+        expect(sent).toContainEqual(expect.objectContaining({ method: 'thread/unsubscribe', params: { threadId: 'foreign' } }));
+        expect((client as any)._turnId).toBe('main-turn');
+        client.clearThreadState();
+        push('item/completed', { threadId: 'root', item: { type: 'agentMessage', id: '3', text: 'old context' } });
+        expect(events).toHaveBeenCalledOnce();
+        expect(sent).toContainEqual(expect.objectContaining({ method: 'thread/unsubscribe', params: { threadId: 'root' } }));
+        expect(sent).toContainEqual(expect.objectContaining({ method: 'thread/unsubscribe', params: { threadId: 'grandchild' } }));
+        await client.disconnect(); expect(socket.close).toHaveBeenCalledOnce();
+    });
+
+    it('never responds to another thread approval on a history-only watcher', async () => {
+        const { sent, push } = createSharedDaemon();
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const approvals = vi.fn(); client.setApprovalHandler(approvals);
+        await client.connect({ sharedOnly: true });
+        push('item/commandExecution/requestApproval', { threadId: 'foreign', itemId: 'cmd', command: 'pwd' }, 90);
+        await waitFor(() => sent.some(msg => msg.method === 'thread/unsubscribe'));
+        expect(approvals).not.toHaveBeenCalled();
+        expect(sent.some(msg => msg.id === 90 && msg.result)).toBe(false);
+        await client.disconnect();
+    });
+
+    it('ignores another daemon thread becoming idle without hiding global notifications from the watcher', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const events = vi.fn();
+        const notifications = vi.fn();
+        client.setEventHandler(events);
+        client.setNotificationHandler(notifications);
+        (client as any)._threadId = 'mine';
+        (client as any)._turnId = 'my-turn';
+        (client as any).pendingTurnCompletion = { turnId: 'my-turn', started: true, resolve: vi.fn() };
+        (client as any).handleLine(JSON.stringify({ method: 'thread/status/changed', params: { threadId: 'other', status: { type: 'idle' } } }));
+        expect(notifications).toHaveBeenCalledOnce();
+        expect(events).not.toHaveBeenCalled();
+        expect((client as any)._turnId).toBe('my-turn');
+        expect((client as any).pendingTurnCompletion).not.toBeNull();
     });
 
     it('reports goal action support for Codex versions with goal action requests', async () => {
@@ -391,6 +552,10 @@ describe('CodexAppServerClient sandbox integration', () => {
             onRequest: (msg, stdout) => {
                 secondProcessRequests.push(msg);
 
+                if (msg.method === 'thread/read' && msg.id != null) {
+                    pushJsonLine(stdout, { id: msg.id, result: { thread: { id: 'thread-1', path: '/tmp/thread-1' } } });
+                }
+
                 if (msg.method === 'thread/resume' && msg.id != null) {
                     setTimeout(() => {
                         pushJsonLine(stdout, {
@@ -468,7 +633,7 @@ describe('CodexAppServerClient sandbox integration', () => {
         const resumeRequest = secondProcessRequests.find((msg) => msg.method === 'thread/resume');
         expect(resumeRequest?.params).toEqual(expect.objectContaining({
             threadId: 'thread-1',
-            model: 'gpt-test',
+            model: null,
             cwd: '/tmp/project',
             approvalPolicy: 'on-request',
             sandbox: 'read-only',
@@ -527,6 +692,10 @@ describe('CodexAppServerClient sandbox integration', () => {
             onRequest: (msg, stdout) => {
                 secondProcessRequests.push(msg);
 
+                if (msg.method === 'thread/read' && msg.id != null) {
+                    pushJsonLine(stdout, { id: msg.id, result: { thread: { id: 'thread-stuck-interrupt', path: '/tmp/thread-stuck-interrupt' } } });
+                }
+
                 if (msg.method === 'thread/resume' && msg.id != null) {
                     setTimeout(() => {
                         pushJsonLine(stdout, {
@@ -583,6 +752,59 @@ describe('CodexAppServerClient sandbox integration', () => {
         expect(secondProcessRequests.some((msg) => msg.method === 'thread/resume')).toBe(true);
 
         await client.disconnect();
+    });
+
+    it('unarchives before resuming and preserves the native model instead of a cached default', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        (client as any).threadDefaults = { model: 'gpt-default' };
+        const request = vi.spyOn(client as any, 'request')
+            .mockResolvedValueOnce({ thread: { path: '/home/.codex/archived_sessions/thread.jsonl', model: 'deepseek-chat' } })
+            .mockResolvedValueOnce({})
+            .mockResolvedValueOnce({ thread: { id: 'native' }, model: 'deepseek-chat' });
+        expect(await client.resumeThread({ threadId: 'native', model: 'deepseek-chat' })).toEqual({ threadId: 'native', model: 'deepseek-chat' });
+        expect(request.mock.calls.map(([method]) => method)).toEqual(['thread/read', 'thread/unarchive', 'thread/resume']);
+        expect(request.mock.calls[2][1]).toMatchObject({ threadId: 'native', model: null, modelProvider: null });
+    });
+
+    it('pages turns and their items without loading a provider thread', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const request = vi.spyOn(client as any, 'request')
+            .mockResolvedValueOnce({ thread: { id: 'native', historyMode: 'paginated' } })
+            .mockResolvedValueOnce({ data: [{ id: 'turn', items: [] }], nextCursor: 'turn-page' })
+            .mockResolvedValueOnce({ data: [{ item: { type: 'userMessage', id: 'user' } }], nextCursor: 'item-page' })
+            .mockResolvedValueOnce({ data: [{ item: { type: 'agentMessage', id: 'agent' } }], nextCursor: null })
+            .mockResolvedValueOnce({ data: [{ id: 'older', items: [] }], nextCursor: null })
+            .mockResolvedValueOnce({ data: [], nextCursor: null });
+        const thread = await client.readThreadHistory('native');
+        expect(thread.turns?.map(turn => turn.id)).toEqual(['turn', 'older']);
+        expect(thread.turns?.[0].items.map(item => item.id)).toEqual(['user', 'agent']);
+        expect(request.mock.calls[3][1]).toMatchObject({ cursor: 'item-page', turnId: 'turn' });
+        expect(request.mock.calls[4][1]).toMatchObject({ cursor: 'turn-page' });
+        expect(request.mock.calls.some(([method]) => method === 'thread/start' || method === 'thread/resume')).toBe(false);
+    });
+
+    it('explicitly includes every model provider when listing history', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const request = vi.spyOn(client as any, 'request').mockResolvedValue({ data: [], nextCursor: null });
+        await client.listThreads();
+        expect(request).toHaveBeenCalledWith('thread/list', expect.objectContaining({ modelProviders: [] }));
+    });
+
+    it('restores history with current defaults when its old provider has been removed', async () => {
+        const { CodexAppServerClient } = await import('./codexAppServerClient');
+        const client = new CodexAppServerClient();
+        const request = vi.spyOn(client as any, 'request')
+            .mockResolvedValueOnce({ thread: { id: 'native', model: 'old-model' } })
+            .mockRejectedValueOnce(new Error('Model provider `removed` not found'))
+            .mockResolvedValueOnce({ config: { model: 'current-model' } })
+            .mockResolvedValueOnce({ thread: { id: 'native' }, model: 'current-model' });
+        expect(await client.resumeThread({ threadId: 'native', model: 'old-model' })).toEqual({ threadId: 'native', model: 'current-model' });
+        expect(request.mock.calls[3]).toEqual(['thread/resume', expect.objectContaining({
+            threadId: 'native', model: 'current-model', modelProvider: 'openai',
+        })]);
     });
 
     it('forks, reads, and rolls back Codex threads through app-server RPC', async () => {

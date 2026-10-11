@@ -299,6 +299,7 @@ export type Metadata = {
   // `code` = protocol value ID, `value` = human label
   models?: Array<{ code: string; value: string; description?: string | null }>,
   currentModelCode?: string,
+  lastMeaningfulMessageAt?: number,
   operatingModes?: Array<{ code: string; value: string; description?: string | null }>,
   currentOperatingModeCode?: string,
   thoughtLevels?: Array<{ code: string; value: string; description?: string | null }>,
@@ -316,6 +317,8 @@ export type Metadata = {
   gitBranch?: string,
   claudeSessionId?: string, // Claude Code session ID
   codexThreadId?: string, // Codex app-server thread ID
+  codexArchived?: boolean, // Mirrors Codex, independent of backend connectivity
+  codexParentThreadId?: string, // Subagent records continue through their parent
   tools?: string[],
   slashCommands?: string[],
   mcpServers?: Array<{ name: string; status: string }>,

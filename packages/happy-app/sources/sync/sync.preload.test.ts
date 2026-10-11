@@ -242,6 +242,7 @@ describe('session avatar sync integration', () => {
         engine.credentials = { token: 'test', secret: 'secret' };
         engine.encryption = {
             initializeSessions: vi.fn(),
+            removeSessionEncryption: vi.fn(),
             getSessionEncryption: () => ({ decryptMetadata: async () => ({}), decryptAgentState: async () => null }),
         };
         vi.stubGlobal('fetch', vi.fn(async () => Response.json({ sessions: [{ id: 'a', seq: 0, metadata: 'opaque', metadataVersion: 1, agentState: null, agentStateVersion: 0, dataEncryptionKey: null, active: false, updatedAt: 10, createdAt: 1, avatar: null, avatarVersion: 3 }] })));
@@ -256,6 +257,7 @@ describe('session avatar sync integration', () => {
         engine.credentials = { token: 'test', secret: 'secret' };
         engine.encryption = {
             initializeSessions: vi.fn(),
+            removeSessionEncryption: vi.fn(),
             getSessionEncryption: () => ({ decryptMetadata: async () => ({}), decryptAgentState: async () => null }),
         };
         await engine.handleUpdate(update(10, avatar));

@@ -190,6 +190,17 @@ describe('persisted session retention', () => {
         rmSync(dir, { recursive: true, force: true });
     });
 
+    it('retains imported history keys and marks an imported entry attached on its first webhook', () => {
+        const history = { updatedAt: 1, turns: ['turn'] };
+        const record = { ...sessionRecord({ savedAt: Date.now() - 60 * DAY_MS }), codexHistory: history };
+        record.metadata.codexThreadId = 'native-id';
+        writeSessions({ imported: record });
+        expect(readPersistedSessions().imported.codexHistory).toEqual(history);
+        persistSession('imported', sessionRecord({ hostPid: process.pid }));
+        expect(readPersistedSessions().imported.codexHistory).toEqual({ ...history, attached: true });
+        expect(readPersistedSessions().imported.metadata.codexThreadId).toBe('native-id');
+    });
+
     it('keeps a session that was in use yesterday but started long ago', () => {
         // A session used daily for months: it started 60 days ago and stopped
         // yesterday. Measuring age from when it STARTED would throw it away.

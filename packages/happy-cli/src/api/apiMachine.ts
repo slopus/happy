@@ -121,6 +121,7 @@ export type ResumeFallback = z.infer<typeof ResumeFallbackSchema>;
 export type ResumeSessionOptions = { model?: string; permissionMode?: string; fallback?: ResumeFallback; fallbackReason?: string };
 
 type MachineRpcHandlers = {
+    setCodexArchive?: (sessionId: string, threadId: string, archived: boolean) => Promise<{ success: boolean }>;
     spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
     resumeSession?: (sessionId: string, options?: ResumeSessionOptions) => Promise<SpawnSessionResult>;
     stopSession: (sessionId: string) => boolean;
@@ -176,6 +177,7 @@ export class ApiMachineClient {
     setRPCHandlers({
         spawnSession,
         resumeSession,
+        setCodexArchive,
         stopSession,
         requestShutdown
     }: MachineRpcHandlers) {
@@ -207,6 +209,13 @@ export class ApiMachineClient {
         });
 
         this.syncResumeSessionRpcRegistration();
+
+        if (setCodexArchive) this.rpcHandlerManager.registerHandler('codex-set-archive', async (params: any) => {
+            const sessionId = requireNonEmptyString(params?.sessionId, 'sessionId');
+            const threadId = requireNonEmptyString(params?.threadId, 'threadId');
+            if (typeof params?.archived !== 'boolean') throw new Error('archived must be a boolean');
+            return setCodexArchive(sessionId, threadId, params.archived);
+        });
 
         // Register stop session handler
         this.rpcHandlerManager.registerHandler('stop-session', (params: any) => {
