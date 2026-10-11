@@ -317,19 +317,38 @@ const TextInputCommands = codegenNativeCommands<TextInputNativeCommands>({
 // behind sizes the field for the previous text. Done on every keystroke, that
 // was a multiline composer that jumped while editing mid-text and sometimes
 // kept a blank line under the text.
+//
+// One catch: a field that mounts empty never grows. The shadow node only
+// sizes itself from the field's own text once it has taken its text from the
+// React tree at least once (BaseTextInputShadowNode: until then its state has
+// no font-size multiplier, so `attributedStringBoxToMeasure` keeps measuring
+// the React tree's text, which is empty, i.e. one line). An empty React tree
+// text never counts as a change, so that never happens on its own. The first
+// non-empty text the field gets, typed or written, is therefore handed to the
+// React tree, once: it is what the field already holds, so native has nothing
+// to apply, and from then on the shadow node measures the field's own text.
 const NativeTextField = React.forwardRef<TextFieldHandle, TextFieldProps>(({ value, initialText, onChangeText, ...inputProps }, ref) => {
     const inputRef = React.useRef<TextInput>(null);
-    const [defaultValue] = React.useState(initialText);
+    const [defaultValue, setDefaultValue] = React.useState(initialText);
+    const treeHasTextRef = React.useRef(initialText !== '');
     const eventCountRef = React.useRef(0);
     // What the native view holds: its last reported edit, or the last write.
     const nativeTextRef = React.useRef(initialText);
 
+    const giveTreeText = React.useCallback((text: string) => {
+        if (text !== '' && !treeHasTextRef.current) {
+            treeHasTextRef.current = true;
+            setDefaultValue(text);
+        }
+    }, []);
+
     const setTextAndSelection = React.useCallback((text: string, selection: { start: number; end: number }) => {
         nativeTextRef.current = text;
+        giveTreeText(text);
         if (inputRef.current) {
             TextInputCommands.setTextAndSelection(inputRef.current, eventCountRef.current, text, selection.start, selection.end);
         }
-    }, []);
+    }, [giveTreeText]);
 
     // Controlled mode: write the parent's value only when the parent changed
     // it, not when it echoes a keystroke back. A -1 selection leaves the caret
@@ -341,10 +360,12 @@ const NativeTextField = React.forwardRef<TextFieldHandle, TextFieldProps>(({ val
     }, [value, setTextAndSelection]);
 
     const handleChange = React.useCallback((e: TextInputChangeEvent) => {
+        const text = e.nativeEvent.text;
         eventCountRef.current = e.nativeEvent.eventCount;
-        nativeTextRef.current = e.nativeEvent.text;
-        onChangeText(e.nativeEvent.text);
-    }, [onChangeText]);
+        nativeTextRef.current = text;
+        giveTreeText(text);
+        onChangeText(text);
+    }, [onChangeText, giveTreeText]);
 
     React.useImperativeHandle(ref, () => ({
         setTextAndSelection,

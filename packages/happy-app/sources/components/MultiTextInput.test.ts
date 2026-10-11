@@ -83,9 +83,35 @@ describe('MultiTextInput on iOS: the native field owns its text', () => {
         type(renderer, 'draft one two', 2);
 
         expect(onChangeText).toHaveBeenLastCalledWith('draft one two');
+        // Mounted with text, so nothing is handed back to the React tree.
         expect(field(renderer).props.value).toBeUndefined();
         expect(field(renderer).props.defaultValue).toBe('draft');
         expect(setTextAndSelection).not.toHaveBeenCalled();
+    });
+
+    it('hands the first edit from empty to the React tree once, so the field can grow', () => {
+        const ref = React.createRef<MultiTextInputHandle>();
+        const renderer = render(React.createElement(MultiTextInput, { ref, defaultValue: '' }));
+        expect(field(renderer).props.defaultValue).toBe('');
+
+        type(renderer, 'h', 1);
+        expect(field(renderer).props.defaultValue).toBe('h');
+
+        type(renderer, 'he', 2);
+        act(() => ref.current!.setTextAndSelection('', { start: 0, end: 0 }));
+        type(renderer, 'x', 3);
+        expect(field(renderer).props.defaultValue).toBe('h');
+        expect(field(renderer).props.value).toBeUndefined();
+    });
+
+    it('hands a first imperative write into an empty field to the React tree too', () => {
+        const ref = React.createRef<MultiTextInputHandle>();
+        const renderer = render(React.createElement(MultiTextInput, { ref, defaultValue: '' }));
+
+        act(() => ref.current!.setTextAndSelection('restored\ndraft', { start: 14, end: 14 }));
+
+        expect(field(renderer).props.defaultValue).toBe('restored\ndraft');
+        expect(setTextAndSelection.mock.calls[0].slice(1)).toEqual([0, 'restored\ndraft', 14, 14]);
     });
 
     it('writes imperative text through the native command at the latest edit count', () => {
