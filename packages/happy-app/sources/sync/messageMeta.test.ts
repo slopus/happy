@@ -82,7 +82,7 @@ describe('resolveMessageModeMeta', () => {
 
         expect(meta).toEqual({
             permissionMode: 'auto',
-            model: 'gpt-5.6-sol',
+            model: 'gpt-6.1-sol',
             effort: 'medium',
         });
     });
