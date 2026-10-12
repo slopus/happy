@@ -14,6 +14,8 @@ import { readDaemonState } from '@/persistence'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { projectPath } from '@/projectPath'
+import { configureProxy, describeProxy } from '@/proxy'
+import { maskProxyUrl } from '@/proxy/types'
 import packageJson from '../../package.json'
 
 /**
@@ -212,11 +214,40 @@ export async function runDoctorCommand(): Promise<void> {
     // Settings
     try {
         const settings = await readSettings();
+        const printableSettings = settings.proxyConfig?.manual?.password
+            ? { ...settings, proxyConfig: { ...settings.proxyConfig, manual: { ...settings.proxyConfig.manual, password: '***' } } }
+            : settings;
         console.log(chalk.bold('\n📄 Settings (settings.json):'));
-        console.log(chalk.gray(JSON.stringify(settings, null, 2)));
+        console.log(chalk.gray(JSON.stringify(printableSettings, null, 2)));
     } catch (error) {
         console.log(chalk.bold('\n📄 Settings:'));
         console.log(chalk.red('❌ Failed to read settings'));
+    }
+
+    // Proxy
+    try {
+        await configureProxy();
+        const proxy = await describeProxy();
+        console.log(chalk.bold('\n🌐 Proxy'));
+        console.log(`Mode: ${chalk.cyan(proxy.config.mode)}`);
+        if (proxy.resolved) {
+            const label = proxy.resolved.source === 'pac' ? 'PAC script' : 'Proxy';
+            console.log(`Relay ${proxy.serverUrl}: ${chalk.cyan(maskProxyUrl(proxy.resolved.url))} ${chalk.gray(`(${proxy.resolved.source})`)}`);
+            console.log(`Usable: ${proxy.agentReady ? chalk.green('yes') : chalk.red('no')}`);
+        } else {
+            console.log(`Relay ${proxy.serverUrl}: ${chalk.gray('direct (no proxy)')}`);
+        }
+        if (proxy.system) {
+            const detail = proxy.system.mode === 'pac'
+                ? `PAC ${proxy.system.pacUrl}`
+                : proxy.system.mode === 'manual'
+                    ? maskProxyUrl(proxy.system.httpsProxy ?? proxy.system.httpProxy ?? proxy.system.socksProxy ?? '')
+                    : 'none configured';
+            console.log(`System proxy (${proxy.system.source}): ${chalk.cyan(detail)}`);
+        }
+    } catch (error) {
+        console.log(chalk.bold('\n🌐 Proxy:'));
+        console.log(chalk.red('❌ Failed to determine the proxy configuration'));
     }
 
     // Support and bug reports

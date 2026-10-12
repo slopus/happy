@@ -14,6 +14,7 @@ import * as z from 'zod';
 import { encodeBase64, decodeBase64 } from '@/api/encryption';
 import type { Metadata } from '@/api/types';
 import { logger } from '@/ui/logger';
+import { ProxyConfigSchema, type ProxyConfig } from '@/proxy/types';
 
 export const SandboxConfigSchema = z.object({
   enabled: z.boolean().default(false),
@@ -44,6 +45,7 @@ interface Settings {
   daemonAutoStartWhenRunningHappy?: boolean
   chromeMode?: boolean
   sandboxConfig?: SandboxConfig
+  proxyConfig?: ProxyConfig
   serverUrl?: string
   webappUrl?: string
 }
@@ -110,6 +112,15 @@ export async function readSettings(): Promise<Settings> {
       } catch (error: any) {
         logger.warn(`⚠️ Invalid sandbox config - skipping. Error: ${error.message}`);
         migrated.sandboxConfig = undefined;
+      }
+    }
+
+    if (migrated.proxyConfig !== undefined) {
+      try {
+        migrated.proxyConfig = ProxyConfigSchema.parse(migrated.proxyConfig);
+      } catch (error: any) {
+        logger.warn(`⚠️ Invalid proxy config - skipping. Error: ${error.message}`);
+        migrated.proxyConfig = undefined;
       }
     }
 

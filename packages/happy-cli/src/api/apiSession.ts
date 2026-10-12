@@ -25,6 +25,7 @@ import {
 } from '@/claude/utils/sessionProtocolMapper';
 import { InvalidateSync } from '@/utils/sync';
 import axios from 'axios';
+import { createSocketProxyOptions } from '@/proxy';
 
 /**
  * ACP (Agent Communication Protocol) message data types.
@@ -273,6 +274,11 @@ export class ApiSessionClient extends EventEmitter {
         // Create socket
         //
 
+        const socketProxyOptions = createSocketProxyOptions(configuration.serverUrl);
+        if (socketProxyOptions.transportOptions) {
+            logger.debug('[API] Relay socket will use the configured proxy');
+        }
+
         this.socket = io(configuration.serverUrl, {
             auth: {
                 token: this.token,
@@ -284,7 +290,8 @@ export class ApiSessionClient extends EventEmitter {
             reconnection: false,
             transports: ['websocket'],
             withCredentials: true,
-            autoConnect: false
+            autoConnect: false,
+            ...socketProxyOptions
         });
 
         //
