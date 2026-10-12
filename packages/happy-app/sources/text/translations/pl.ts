@@ -1212,6 +1212,9 @@ failedContinueTask: "Kontynuuj niedokończone zadanie",
     },
 
     agentInput: {
+        questionSkip: 'Pomiń',
+        questionSend: 'Wyślij',
+        questionClose: 'Zamknij pytanie',
         customOption: 'Inne…',
         customOptionPlaceholder: 'Wpisz swoją odpowiedź…',
         permissionMode: {

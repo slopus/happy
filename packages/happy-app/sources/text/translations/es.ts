@@ -1196,6 +1196,9 @@ failedContinueTask: "Continuar tarea pendiente",
     },
 
     agentInput: {
+        questionSkip: 'Omitir',
+        questionSend: 'Enviar',
+        questionClose: 'Cerrar pregunta',
         customOption: 'Otro…',
         customOptionPlaceholder: 'Escribe tu respuesta…',
         permissionMode: {

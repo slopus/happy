@@ -1195,6 +1195,9 @@ failedContinueTask: "Continuar tarefa pendente",
     },
 
     agentInput: {
+        questionSkip: 'Pular',
+        questionSend: 'Enviar',
+        questionClose: 'Fechar pergunta',
         customOption: 'Outro…',
         customOptionPlaceholder: 'Digite sua resposta…',
         permissionMode: {

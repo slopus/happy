@@ -1194,6 +1194,9 @@ failedContinueTask: "Continua il lavoro in sospeso",
     },
 
     agentInput: {
+        questionSkip: 'Salta',
+        questionSend: 'Invia',
+        questionClose: 'Chiudi domanda',
         customOption: 'Altro…',
         customOptionPlaceholder: 'Scrivi la tua risposta…',
         permissionMode: {

@@ -1196,6 +1196,9 @@ failedContinueTask: "繼續未完成的工作",
     },
 
     agentInput: {
+        questionSkip: '略過',
+        questionSend: '傳送',
+        questionClose: '關閉問題',
         customOption: '其他…',
         customOptionPlaceholder: '輸入你的回覆…',
         permissionMode: {

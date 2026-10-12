@@ -1197,6 +1197,9 @@ failedContinueTask: "未完了の作業を続ける",
     },
 
     agentInput: {
+        questionSkip: 'スキップ',
+        questionSend: '送信',
+        questionClose: '質問を閉じる',
         customOption: 'その他…',
         customOptionPlaceholder: '返信を入力…',
         permissionMode: {

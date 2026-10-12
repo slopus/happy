@@ -1242,6 +1242,9 @@ failedContinueTask: "继续未完成的任务",
     },
 
     agentInput: {
+        questionSkip: '跳过',
+        questionSend: '发送',
+        questionClose: '关闭问题',
         customOption: '其他…',
         customOptionPlaceholder: '输入你的回复…',
         permissionMode: {

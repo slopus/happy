@@ -1196,6 +1196,9 @@ failedContinueTask: "Continua la tasca pendent",
     },
 
     agentInput: {
+        questionSkip: 'Omet',
+        questionSend: 'Envia',
+        questionClose: 'Tanca la pregunta',
         customOption: 'Altres…',
         customOptionPlaceholder: 'Escriu la teva resposta…',
         permissionMode: {

@@ -193,9 +193,8 @@ function UserTextBlock(props: {
   const [isSendingEdit, setIsSendingEdit] = React.useState(false);
   const [isCopied, setIsCopied] = React.useState(false);
   const copyFeedbackTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleOptionPress = React.useCallback((option: Option) => {
-    if (!readOnly && props.sessionId) void sync.sendMessage(props.sessionId, option.title, { source: 'option' })
-      .catch(() => Modal.alert(t('common.error'), t('common.retry')));
+  const handleOptionPress = React.useCallback(async (option: Option) => {
+    if (!readOnly && props.sessionId) await sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId, readOnly]);
 
   const rewindPointId = getUserMessageForkRewindPointId(
@@ -450,9 +449,8 @@ function AgentTextBlock(props: {
   const [hoveredAction, setHoveredAction] = React.useState<'copy' | 'fork' | null>(null);
   const [isCopied, setIsCopied] = React.useState(false);
   const copyFeedbackTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const handleOptionPress = React.useCallback((option: Option) => {
-    if (!readOnly && props.sessionId) void sync.sendMessage(props.sessionId, option.title, { source: 'option' })
-      .catch(() => Modal.alert(t('common.error'), t('common.retry')));
+  const handleOptionPress = React.useCallback(async (option: Option) => {
+    if (!readOnly && props.sessionId) await sync.sendMessage(props.sessionId, option.title, { source: 'option' });
   }, [props.sessionId, readOnly]);
   const copyMessage = React.useCallback(async () => {
     try {
@@ -609,7 +607,7 @@ function AgentTextBlock(props: {
 function AutoFoldPromptBlock(props: {
   text: string;
   info: NonNullable<ReturnType<typeof getAutoFoldPromptInfo>>;
-  onOptionPress?: (option: Option) => void;
+  onOptionPress?: (option: Option) => void | Promise<void>;
   sessionId?: string;
 }) {
   const { theme } = useUnistyles();

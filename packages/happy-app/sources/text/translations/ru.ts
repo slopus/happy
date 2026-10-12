@@ -1212,6 +1212,9 @@ failedContinueTask: "Продолжить незавершённую задач�
     },
 
     agentInput: {
+        questionSkip: 'Пропустить',
+        questionSend: 'Отправить',
+        questionClose: 'Закрыть вопрос',
         customOption: 'Другое…',
         customOptionPlaceholder: 'Введите ответ…',
         permissionMode: {

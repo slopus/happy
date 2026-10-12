@@ -29,7 +29,8 @@ vi.mock('react-native-gesture-handler', () => ({
 }));
 vi.mock('react-native-unistyles', () => {
     const nestedTheme = new Proxy({}, {
-        get: (_target, property) => property === 'toString' ? () => '#000000' : nestedTheme,
+        get: (_target, property) => property === 'toString' ? () => '#000000'
+            : ['surface', 'surfacePressed', 'surfaceSelected'].includes(String(property)) ? `theme.${String(property)}` : nestedTheme,
     });
     return {
         StyleSheet: {
@@ -94,6 +95,8 @@ const CJK_TABLE_MARKDOWN = [
     '| --- | --- |',
     '| 数据从哪来、怎么处理、去哪 | architecture 架构图 |',
 ].join('\n');
+
+const QUESTION_MARKDOWN = '由谁决定？\n\n<options>\n<option>AI 提议</option>\n<option>我选择</option>\n</options>';
 
 function flattenStyle(style: unknown): Record<string, unknown> {
     const result: Record<string, unknown> = {};
@@ -169,5 +172,56 @@ describe('MarkdownView typography scope', () => {
         });
 
         expect(scroll.children[0].props.style).toMatchObject({ width: 600 });
+    });
+
+    it('requires explicit send and sends only the chosen option once', async () => {
+        let resolveSend!: () => void;
+        const onOptionPress = vi.fn(() => new Promise<void>(resolve => { resolveSend = resolve; }));
+        act(() => { renderer = TestRenderer.create(<MarkdownView markdown={QUESTION_MARKDOWN} onOptionPress={onOptionPress} />); });
+        expect(renderer.root.findByProps({ testID: 'question-send' }).props.disabled).toBe(true);
+        act(() => { renderer.root.findByProps({ testID: 'question-option-1' }).props.onPress(); });
+        expect(onOptionPress).not.toHaveBeenCalled();
+        const send = renderer.root.findByProps({ testID: 'question-send' }).props.onPress;
+        act(() => { send(); send(); });
+        expect(onOptionPress).toHaveBeenCalledExactlyOnceWith({ title: '我选择' });
+        expect(renderer.root.findByProps({ testID: 'question-send' }).props.disabled).toBe(true);
+        await act(async () => { resolveSend(); });
+        expect(renderer.root.findAllByProps({ testID: 'markdown-question-card' })).toHaveLength(0);
+    });
+
+    it('keeps a custom draft after failure and retries the trimmed reply', async () => {
+        const onOptionPress = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValueOnce(undefined);
+        act(() => { renderer = TestRenderer.create(<MarkdownView markdown={QUESTION_MARKDOWN} onOptionPress={onOptionPress} />); });
+        act(() => { renderer.root.findByProps({ testID: 'question-option-0' }).props.onPress(); });
+        act(() => { renderer.root.findByProps({ testID: 'question-custom-input' }).props.onChangeText('  自行决定  '); });
+        expect(renderer.root.findByProps({ testID: 'question-option-0' }).props.accessibilityState.selected).toBe(false);
+        await act(async () => { renderer.root.findByProps({ testID: 'question-send' }).props.onPress(); });
+        expect(renderer.root.findByProps({ testID: 'question-custom-input' }).props.value).toBe('  自行决定  ');
+        await act(async () => { renderer.root.findByProps({ testID: 'question-send' }).props.onPress(); });
+        expect(onOptionPress).toHaveBeenNthCalledWith(2, { title: '自行决定' });
+    });
+
+    it('uses current semantic theme surfaces for normal, hover, and selection', () => {
+        act(() => { renderer = TestRenderer.create(<MarkdownView markdown={QUESTION_MARKDOWN} onOptionPress={vi.fn()} />); });
+        const option = () => renderer.root.findByProps({ testID: 'question-option-0' });
+        expect(flattenStyle(option().props.style({ pressed: false })).backgroundColor).toBe('theme.surface');
+        act(() => { option().props.onHoverIn(); });
+        expect(flattenStyle(option().props.style({ pressed: false })).backgroundColor).toBe('theme.surfacePressed');
+        act(() => { option().props.onHoverOut(); option().props.onPress(); });
+        expect(flattenStyle(option().props.style({ pressed: false })).backgroundColor).toBe('theme.surfaceSelected');
+    });
+
+    it.each(['question-skip', 'question-close'])('%s dismisses without sending an answer', (testID) => {
+        const onOptionPress = vi.fn();
+        act(() => { renderer = TestRenderer.create(<MarkdownView markdown={QUESTION_MARKDOWN} onOptionPress={onOptionPress} />); });
+        act(() => { renderer.root.findByProps({ testID }).props.onPress(); });
+        expect(onOptionPress).not.toHaveBeenCalled();
+        expect(renderer.root.findAllByProps({ testID: 'markdown-question-card' })).toHaveLength(0);
+    });
+
+    it('leaves restricted history inert and preserves its question text', () => {
+        act(() => { renderer = TestRenderer.create(<MarkdownView markdown={QUESTION_MARKDOWN} readOnly onOptionPress={vi.fn()} />); });
+        expect(textNode(renderer, '由谁决定？')).toBeDefined();
+        expect(renderer.root.findAllByType('Pressable')).toHaveLength(0);
     });
 });

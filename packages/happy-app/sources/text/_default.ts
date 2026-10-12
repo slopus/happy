@@ -1354,6 +1354,9 @@ failedContinueTask: "Continue unfinished task",
     },
 
     agentInput: {
+        questionSkip: 'Skip',
+        questionSend: 'Send',
+        questionClose: 'Close question',
         customOption: 'Other…',
         customOptionPlaceholder: 'Type your reply…',
         permissionMode: {

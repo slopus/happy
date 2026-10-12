@@ -54,7 +54,7 @@ function useMarkdownTypography() {
 
 export const MarkdownView = React.memo((props: { 
     markdown: string;
-    onOptionPress?: (option: Option) => void;
+    onOptionPress?: (option: Option) => void | Promise<void>;
     sessionId?: string;
     typography?: MarkdownTypographyMode;
     variant?: MarkdownViewVariant;
@@ -94,6 +94,13 @@ export const MarkdownView = React.memo((props: {
             <MarkdownTypographyContext.Provider value={props.typography ?? 'default'}>
                 <View style={{ width: '100%' }}>
                     {blocks.map((block, index) => {
+                    const nextBlock = blocks[index + 1];
+                    const previousBlock = blocks[index - 1];
+                    const isQuestion = (candidate: typeof block | undefined) => candidate?.type === 'text'
+                        && /[?？:：]$/.test(candidate.content.map(span => span.text).join('').trim());
+                    const isQuestionCard = (candidate: typeof block | undefined) => candidate?.type === 'options'
+                        && Boolean(props.onOptionPress) && parseImageStyleOptions(candidate.items).length === 0;
+                    if (block.type === 'text' && isQuestion(block) && isQuestionCard(nextBlock)) return null;
                     if (block.type === 'text') {
                         return <RenderTextBlock spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onLinkPress={handleLinkPress} variant={variant} />;
                     } else if (block.type === 'header') {
@@ -109,7 +116,7 @@ export const MarkdownView = React.memo((props: {
                     } else if (block.type === 'mermaid') {
                         return <MermaidRenderer content={block.content} key={index} typography={props.typography} />;
                     } else if (block.type === 'options') {
-                        return <RenderOptionsBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onOptionPress={props.onOptionPress} variant={variant} />;
+                        return <RenderOptionsBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onOptionPress={props.onOptionPress} variant={variant} question={isQuestion(previousBlock) && previousBlock.type === 'text' ? previousBlock.content : undefined} onLinkPress={handleLinkPress} />;
                     } else if (block.type === 'table') {
                         return <RenderTableBlock headers={block.headers} rows={block.rows} onLinkPress={handleLinkPress} selectable={selectable} key={index} first={index === 0} last={index === blocks.length - 1} variant={variant} />;
                     } else if (block.type === 'image') {
@@ -295,11 +302,11 @@ function RenderOptionsBlock(props: {
     first: boolean,
     last: boolean,
     selectable: boolean,
-    onOptionPress?: (option: Option) => void,
+    onOptionPress?: (option: Option) => void | Promise<void>,
     variant: MarkdownViewVariant,
+    question?: MarkdownSpan[],
+    onLinkPress: (url: string) => void,
 }) {
-    const { theme } = useUnistyles();
-    const typography = useMarkdownTypography();
     const imageStyleOptions = React.useMemo(() => parseImageStyleOptions(props.items), [props.items]);
 
     if (props.onOptionPress && imageStyleOptions.length > 0) {
@@ -314,38 +321,84 @@ function RenderOptionsBlock(props: {
         );
     }
 
-    // When none of the preset options fit, the user can tap "Other…" to reveal an
-    // inline text field and send a free-form reply through the same onOptionPress
-    // channel as the preset cards.
-    const [customMode, setCustomMode] = React.useState(false);
+    return <RenderQuestionOptions {...props} />;
+}
+
+function RenderQuestionOptions(props: {
+    items: string[];
+    first: boolean;
+    last: boolean;
+    selectable: boolean;
+    onOptionPress?: (option: Option) => void | Promise<void>;
+    variant: MarkdownViewVariant;
+    question?: MarkdownSpan[];
+    onLinkPress: (url: string) => void;
+}) {
+    const { theme } = useUnistyles();
+    const typography = useMarkdownTypography();
+    const [selected, setSelected] = React.useState<number | null>(null);
+    const [hovered, setHovered] = React.useState<number | null>(null);
     const [customText, setCustomText] = React.useState('');
-    const inputRef = React.useRef<TextInput>(null);
-
-    const submitCustom = React.useCallback(() => {
-        const value = customText.trim();
-        if (!value) {
-            return;
+    const [inputHeight, setInputHeight] = React.useState(32);
+    const [cardWidth, setCardWidth] = React.useState(0);
+    const [inputFocused, setInputFocused] = React.useState(false);
+    const compactFooter = Platform.OS !== 'web' || cardWidth <= 480;
+    const [dismissed, setDismissed] = React.useState(false);
+    const [sending, setSending] = React.useState(false);
+    const sendingRef = React.useRef(false);
+    const answer = customText.trim() || (selected === null ? '' : props.items[selected]);
+    const submit = async () => {
+        if (!answer || !props.onOptionPress || sendingRef.current) return;
+        sendingRef.current = true;
+        setSending(true);
+        try {
+            await props.onOptionPress({ title: answer });
+            setDismissed(true);
+        } catch {
+            // Keep the draft and selection available for retry.
+            Modal.alert(t('common.error'), t('common.retry'));
+        } finally {
+            sendingRef.current = false;
+            setSending(false);
         }
-        props.onOptionPress?.({ title: value });
-        setCustomText('');
-        setCustomMode(false);
-    }, [customText, props.onOptionPress]);
-
+    };
+    if (dismissed) return null;
     return (
-        <View style={[style.optionsContainer, props.variant === 'foldedPrompt' && style.foldedOptionsContainer, props.first && style.first, props.last && style.last]}>
+        <View testID="markdown-question-card" onLayout={event => setCardWidth(event.nativeEvent.layout.width)} style={[style.optionsContainer, props.onOptionPress && style.questionCard, props.variant === 'foldedPrompt' && style.foldedOptionsContainer, props.first && style.first, props.last && style.last]}>
+            {props.onOptionPress && <>
+                <View style={style.questionHeader}>
+                    <Ionicons name="help-circle-outline" size={18} color={theme.colors.textSecondary} />
+                    <Text style={style.questionLabel}>{t('tools.names.question')}</Text>
+                    <Pressable testID="question-close" accessibilityRole="button" accessibilityLabel={t('agentInput.questionClose')} disabled={sending} onPress={() => setDismissed(true)} style={style.questionClose}>
+                        <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
+                    </Pressable>
+                </View>
+                {props.question && <Text selectable={props.selectable} style={style.questionText}><RenderSpans spans={props.question} baseStyle={style.questionText} selectable={props.selectable} onLinkPress={props.onLinkPress} /></Text>}
+            </>}
             {props.items.map((item, index) => {
                 if (props.onOptionPress) {
                     return (
                         <Pressable
                             key={index}
+                            testID={`question-option-${index}`}
+                            accessibilityRole="radio"
+                            aria-checked={selected === index}
+                            accessibilityState={{ checked: selected === index, selected: selected === index, disabled: sending }}
+                            accessibilityLabel={item}
+                            disabled={sending}
+                            onHoverIn={() => setHovered(index)}
+                            onHoverOut={() => setHovered(null)}
                             style={({ pressed }) => [
                                 style.optionItem,
                                 props.variant === 'foldedPrompt' && style.foldedOptionItem,
-                                pressed && style.optionItemPressed
+                                selected === index && style.optionItemSelected,
+                                (pressed || hovered === index) && style.optionItemPressed,
                             ]}
-                            onPress={() => props.onOptionPress?.({ title: item })}
+                            onPress={() => { setSelected(index); setCustomText(''); setInputHeight(32); }}
                         >
-                            <Text selectable={props.selectable} style={[style.optionText, props.variant === 'foldedPrompt' && style.foldedOptionText, typography.body]}>{item}</Text>
+                            <View style={[style.optionNumber, selected === index && style.optionNumberSelected]}><Text style={style.optionNumberText}>{index + 1}</Text></View>
+                            <Text style={[style.optionText, { flex: 1 }, props.variant === 'foldedPrompt' && style.foldedOptionText]}>{item}</Text>
+                            {selected === index && <Ionicons name="arrow-forward" size={18} color={theme.colors.textSecondary} />}
                         </Pressable>
                     );
                 } else {
@@ -357,47 +410,34 @@ function RenderOptionsBlock(props: {
                 }
             })}
             {props.onOptionPress ? (
-                customMode ? (
-                    <View style={style.optionCustomRow}>
+                <View style={[style.questionFooter, compactFooter && style.questionFooterCompact]}>
+                    <View testID="question-input-row" style={[style.optionCustomRow, compactFooter && style.optionCustomRowCompact, inputFocused && style.optionCustomRowFocused]}>
+                        <Ionicons name="create-outline" size={18} color={theme.colors.textSecondary} />
                         <TextInput
-                            ref={inputRef}
-                            style={[style.optionCustomInput, props.variant === 'foldedPrompt' && style.foldedOptionCustomInput, typography.body]}
+                            testID="question-custom-input"
+                            accessibilityLabel={t('agentInput.customOptionPlaceholder')}
+                            style={[style.optionCustomInput, props.variant === 'foldedPrompt' && style.foldedOptionCustomInput, { height: inputHeight }]}
                             value={customText}
-                            onChangeText={setCustomText}
+                            editable={!sending}
+                            onFocus={() => setInputFocused(true)}
+                            onBlur={() => setInputFocused(false)}
+                            onChangeText={(value) => { setCustomText(value); if (value.trim()) setSelected(null); if (!value) setInputHeight(32); }}
+                            onContentSizeChange={(event) => setInputHeight(Math.max(32, Math.min(120, event.nativeEvent.contentSize.height)))}
                             placeholder={t('agentInput.customOptionPlaceholder')}
                             placeholderTextColor={theme.colors.textSecondary}
                             multiline
-                            autoFocus
-                            onSubmitEditing={submitCustom}
-                            blurOnSubmit
-                            returnKeyType="send"
+                            numberOfLines={1}
                         />
-                        <Pressable
-                            style={({ pressed }) => [
-                                style.optionCustomSend,
-                                !customText.trim() && style.optionCustomSendDisabled,
-                                pressed && customText.trim() && style.optionItemPressed,
-                            ]}
-                            disabled={!customText.trim()}
-                            onPress={submitCustom}
-                        >
-                            <Ionicons name="arrow-up" size={18} color={theme.colors.surface} />
+                    </View>
+                    <View testID="question-actions" style={[style.questionActions, compactFooter && style.questionActionsCompact]}>
+                        <Pressable testID="question-skip" accessibilityRole="button" disabled={sending} onPress={() => setDismissed(true)} style={({ pressed }) => [style.questionSkip, pressed && style.optionItemPressed]}>
+                            <Text style={style.optionText}>{t('agentInput.questionSkip')}</Text>
+                        </Pressable>
+                        <Pressable testID="question-send" accessibilityRole="button" aria-busy={sending} accessibilityState={{ disabled: !answer || sending, busy: sending }} disabled={!answer || sending} onPress={() => void submit()} style={[style.questionSend, (!answer || sending) && style.optionCustomSendDisabled]}>
+                            <Text style={style.questionSendText}>{t('agentInput.questionSend')}</Text>
                         </Pressable>
                     </View>
-                ) : (
-                    <Pressable
-                        style={({ pressed }) => [
-                            style.optionItem,
-                            style.optionOtherItem,
-                            props.variant === 'foldedPrompt' && style.foldedOptionItem,
-                            pressed && style.optionItemPressed,
-                        ]}
-                        onPress={() => setCustomMode(true)}
-                    >
-                        <Ionicons name="create-outline" size={16} color={theme.colors.textSecondary} />
-                        <Text style={[style.optionText, style.optionOtherText, props.variant === 'foldedPrompt' && style.foldedOptionText, typography.body]}>{t('agentInput.customOption')}</Text>
-                    </Pressable>
-                )
+                </View>
             ) : null}
         </View>
     );
@@ -407,7 +447,7 @@ function RenderImageStyleOptionsBlock(props: {
     items: ParsedImageStyleOption[];
     first: boolean;
     last: boolean;
-    onOptionPress: (option: Option) => void;
+    onOptionPress: (option: Option) => void | Promise<void>;
     variant: MarkdownViewVariant;
 }) {
     const typography = useMarkdownTypography();
@@ -435,7 +475,8 @@ function RenderImageStyleOptionsBlock(props: {
 
     const submit = React.useCallback(() => {
         if (selectedStyles.length === 0) return;
-        props.onOptionPress({ title: buildImageStyleContinuationPrompt(selectedStyles, { variantsPerStyle: drawCount }) });
+        void Promise.resolve(props.onOptionPress({ title: buildImageStyleContinuationPrompt(selectedStyles, { variantsPerStyle: drawCount }) }))
+            .catch(() => Modal.alert(t('common.error'), t('common.retry')));
     }, [drawCount, props, selectedStyles]);
 
     return (
@@ -895,6 +936,32 @@ const style = StyleSheet.create((theme) => ({
         gap: 6,
         marginVertical: 6,
     },
+    questionCard: {
+        width: '100%',
+        maxWidth: 760,
+        alignSelf: 'flex-start',
+        backgroundColor: theme.colors.surface,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        borderRadius: 20,
+        padding: 12,
+        gap: 6,
+    },
+    questionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 8, marginBottom: 6 },
+    questionLabel: { ...Typography.default(), fontSize: 13, color: theme.colors.textSecondary, flex: 1 },
+    questionClose: { width: 36, height: 36, alignItems: 'center', justifyContent: 'center' },
+    questionText: { ...Typography.default('semiBold'), fontSize: 16, lineHeight: 24, color: theme.colors.text, marginHorizontal: 8, marginBottom: 10 },
+    optionItemSelected: { backgroundColor: theme.colors.surfaceSelected },
+    optionNumber: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: theme.colors.divider, backgroundColor: theme.colors.surface },
+    optionNumberSelected: { backgroundColor: theme.colors.surfaceSelected },
+    optionNumberText: { ...Typography.default(), fontSize: 14, color: theme.colors.textSecondary },
+    questionFooter: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'flex-end', gap: 8, marginTop: 8 },
+    questionFooterCompact: { flexDirection: 'column', alignItems: 'stretch', gap: 12 },
+    questionActions: { flexDirection: 'row', alignItems: 'center', gap: 8, marginLeft: 'auto' },
+    questionActionsCompact: { alignSelf: 'flex-end' },
+    questionSkip: { minHeight: 40, borderWidth: 1, borderColor: theme.colors.divider, borderRadius: 20, backgroundColor: theme.colors.surface, paddingHorizontal: 14, justifyContent: 'center' },
+    questionSend: { minHeight: 40, borderRadius: 20, backgroundColor: theme.colors.text, paddingHorizontal: 16, justifyContent: 'center' },
+    questionSendText: { ...Typography.default('semiBold'), fontSize: 14, color: theme.colors.surface },
     imageStyleOptionsContainer: {
         backgroundColor: theme.colors.surfaceHigh,
         borderRadius: 10,
@@ -1031,25 +1098,27 @@ const style = StyleSheet.create((theme) => ({
         color: theme.colors.surface,
     },
     optionItem: {
-        backgroundColor: theme.colors.surfaceHighest,
-        borderRadius: 8,
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        borderWidth: 1,
-        borderColor: theme.colors.divider,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 12,
+        minHeight: 52,
+        backgroundColor: theme.colors.surface,
+        borderRadius: 12,
+        paddingHorizontal: 10,
+        paddingVertical: 8,
     },
     foldedOptionItem: {
         paddingHorizontal: 10,
         paddingVertical: 8,
     },
     optionItemPressed: {
-        opacity: 0.7,
-        backgroundColor: theme.colors.surfaceHigh,
+        backgroundColor: theme.colors.surfacePressed,
     },
     optionText: {
         ...Typography.default(),
-        fontSize: 16,
-        lineHeight: 24,
+        flexShrink: 1,
+        fontSize: 14,
+        lineHeight: 20,
         color: theme.colors.text,
     },
     foldedOptionText: {
@@ -1057,47 +1126,41 @@ const style = StyleSheet.create((theme) => ({
         fontSize: 13,
         lineHeight: 18,
     },
-    optionOtherItem: {
+    optionCustomRow: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
-        borderStyle: 'dashed',
-    },
-    optionOtherText: {
-        color: theme.colors.textSecondary,
-    },
-    optionCustomRow: {
-        flexDirection: 'row',
-        alignItems: 'flex-end',
-        gap: 8,
-        backgroundColor: theme.colors.surfaceHighest,
-        borderRadius: 8,
+        flex: 1,
+        minWidth: 180,
+        minHeight: 40,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
         borderWidth: 1,
         borderColor: theme.colors.divider,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
+        borderRadius: 12,
+        backgroundColor: theme.colors.surface,
     },
+    optionCustomRowCompact: { flex: 0, width: '100%', minWidth: 0 },
+    optionCustomRowFocused: { borderColor: theme.colors.textLink },
     optionCustomInput: {
         ...Typography.default(),
         flex: 1,
-        fontSize: 16,
-        lineHeight: 22,
+        fontSize: 14,
+        lineHeight: 20,
         maxHeight: 120,
         color: theme.colors.text,
+        minWidth: 0,
+        borderWidth: 0,
+        backgroundColor: 'transparent',
+        textAlignVertical: 'top',
+        paddingHorizontal: 0,
+        ...(Platform.OS === 'web' ? { outlineStyle: 'none' as any } : {}),
         paddingTop: Platform.OS === 'ios' ? 6 : 4,
         paddingBottom: Platform.OS === 'ios' ? 6 : 4,
     },
     foldedOptionCustomInput: {
         fontSize: 13,
         lineHeight: 18,
-    },
-    optionCustomSend: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        alignItems: 'center',
-        justifyContent: 'center',
-        backgroundColor: theme.colors.text,
     },
     optionCustomSendDisabled: {
         opacity: 0.3,
