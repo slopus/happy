@@ -257,6 +257,21 @@ enum FixtureScenarios {
             .toolCall(ToolCallMessage(id: "child-1", createdAt: childAt, tool: ToolCall(name: "Read", state: .completed, input: json(["file_path": "ChatScreenLayout.swift"]), createdAt: childAt))),
         ])
         b.tool("apply_patch", ["input": "*** Begin Patch\n*** Update File: Sources/HappyUI/Chat/ChatListView.swift\n@@ func apply\n-        reloadData()\n+        performBatchUpdates(updates)\n*** End Patch", "workdir": "/Users/fixture/happy/packages/happy-ios"], result: "Success")
+        // Codex's own shapes: a hunk-only diff, a new file's body, a move.
+        b.tool("CodexPatch", ["changes": [
+            "/Users/fixture/happy/packages/happy-ios/Sources/HappyUI/Chat/ChatServices.swift": [
+                "kind": ["type": "update"],
+                "unified_diff": "@@ -70,3 +70,4 @@\n     var observeSession: Observe\n-    var gitStatus: GitStatusSync?\n+    var gitStatus: GitStatusSync?\n+    var pendingChats: PendingChats\n     var setPermissionMode: SetMode",
+            ],
+            "/Users/fixture/happy/packages/happy-ios/docs/PATCHES.md": ["kind": ["type": "add"], "diff": "# Patches\n\nEvery file under its own header."],
+            "/Users/fixture/happy/packages/happy-ios/Sources/Old.swift": [
+                "kind": ["type": "update", "move_path": "/Users/fixture/happy/packages/happy-ios/Sources/New.swift"],
+                "modify": ["old_content": "let name = \"old\"", "new_content": "let name = \"new\""],
+            ],
+        ]], result: "Success")
+        b.tool("CodexDiff", [
+            "unified_diff": "--- a/Sources/HappyUI/Chat/ChatServices.swift\n+++ b/Sources/HappyUI/Chat/ChatServices.swift\n@@ -1,2 +1,2 @@\n import Foundation\n-import HappyCore\n+@preconcurrency import HappyCore",
+        ])
         b.tool("Bash", ["command": "swift test --filter Chat", "description": "Run the chat tests"], state: .error, result: "error: 2 tests failed", description: "Run the chat tests", seconds: 12)
         b.agent("Two tests failed because the fixture ids changed. I'll fix the expectations, then I need to push to your branch.")
         b.tool("Bash", ["command": "git push origin HEAD:chat-native", "description": "Push the branch"], state: .error,

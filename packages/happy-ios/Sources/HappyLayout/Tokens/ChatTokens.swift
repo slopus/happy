@@ -267,6 +267,10 @@ public enum ChatTextStyles {
     // SessionView's CLI version warning (a plain <Text>: the system font)
     public static let cliWarning = ChatTextStyle(.system(.semibold), size: 12)
 
+    // CodexPatchView's move destination: `fontFamily: 'monospace'`, which
+    // React Native on iOS doesn't know, so the system font
+    public static let patchMovePath = ChatTextStyle(.system(.regular), size: 12)
+
     // PendingChatPlaceholder.tsx; its folder line is emptyPath's 14
     public static let pendingQueued = ChatTextStyle(.plex(.regular), size: 15, lineHeight: 21)
 

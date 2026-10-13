@@ -17,7 +17,9 @@ struct DiffHeaderPlan: @unchecked Sendable {
     let chevron: Icon
     let layout: DiffFileHeaderLayout
 
-    init(path: String, kind: FileChangeKind, additions: Int, deletions: Int, collapsed: Bool, width: CGFloat, scale: CGFloat) {
+    /// `toggles: false` is a header without `onToggle`, so without the
+    /// chevron (the chat's patch cards).
+    init(path: String, kind: FileChangeKind, additions: Int, deletions: Int, collapsed: Bool, width: CGFloat, scale: CGFloat, toggles: Bool = true) {
         let lastSlash = path.lastIndex(of: "/")
         let tail = lastSlash.map { String(path[path.index(after: $0)...]) } ?? path
         let name = tail.isEmpty ? path : tail
@@ -49,7 +51,7 @@ struct DiffHeaderPlan: @unchecked Sendable {
         }
         layout = DiffFileHeaderLayout(.init(
             width: width,
-            chevron: chevronSize,
+            chevron: toggles ? chevronSize : nil,
             dir: box(dir, dirStyle),
             fileName: box(fileName, nameStyle),
             badge: badge.map(DiffStyle.size),

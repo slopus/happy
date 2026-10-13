@@ -15,6 +15,12 @@ public struct ToolFullPresentation: Equatable, Sendable {
         /// EditViewFull (line numbers always on), WriteView (the
         /// setting's), MultiEditViewFull (each edit headed "Edit N of M").
         case diff(ToolViewKind, chunks: [ToolDiffChunk], replaceAll: [Bool])
+        /// CodexPatchViewFull: each file in a bordered card; nil when the
+        /// patch can't be read and PatchFallback shows the raw text.
+        case patch([ToolPatchFile]?)
+        /// CodexDiffViewFull: the turn's diff in a bordered card; nil draws
+        /// nothing.
+        case unifiedDiff(ToolUnifiedDiff?)
         /// ToolFullView's fallback: description, input, output, error.
         case generic(ToolFullGeneric)
     }
@@ -64,10 +70,11 @@ public struct ToolFullPresentation: Equatable, Sendable {
                 ? (tool.input["edits"]?.arrayValue ?? []).map { $0["replace_all"]?.boolValue == true }
                 : []
             main = .diff(kind, chunks: chunks, replaceAll: replaceAll)
+        } else if Self.patchNames.contains(name) {
+            main = .patch(ChatPatch.viewFiles(tool.input, root: root))
+        } else if Self.unifiedDiffNames.contains(name) {
+            main = .unifiedDiff(ToolUnifiedDiff(tool.input))
         } else {
-            // Codex patches and diffs have views of their own in happy-app;
-            // until the shared unified-diff parser lands they show the
-            // fallback, which still carries the input.
             main = .generic(ToolFullGeneric(tool, words: words))
             outcome = nil
             return
@@ -96,7 +103,7 @@ public struct ToolFullPresentation: Equatable, Sendable {
     }
 
     /// toolResult.ts `toolResultText`.
-    static func resultText(_ value: JSONValue?) -> String? {
+    public static func resultText(_ value: JSONValue?) -> String? {
         guard let value, value != .null else { return nil }
         return value.stringValue ?? ChatToolPresentation.pretty(value)
     }
@@ -105,6 +112,8 @@ public struct ToolFullPresentation: Equatable, Sendable {
     /// terminal category joins them.
     static let terminalNames: Set<String> = ["Bash", "CodexBash"]
     static let taskNames: Set<String> = ["Task", "Agent"]
+    static let patchNames: Set<String> = ["CodexPatch", "GeminiPatch", "apply_patch"]
+    static let unifiedDiffNames: Set<String> = ["CodexDiff", "GeminiDiff"]
     static let diffNames: [String: ToolViewKind] = [
         "Edit": .edit, "search_replace": .edit, "Write": .write, "write": .write, "MultiEdit": .multiEdit,
     ]

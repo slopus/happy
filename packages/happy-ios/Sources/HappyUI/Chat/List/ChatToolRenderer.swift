@@ -234,13 +234,14 @@ extension ChatRowRenderer {
         return entries.isEmpty ? nil : .stack(entries)
     }
 
-    /// The tool's own view. Codex patches and diffs wait for the shared
-    /// unified-diff parser, and attachments for FileView; until then those
-    /// rows have nothing to open.
+    /// The tool's own view. Attachments wait for FileView; until then
+    /// those rows have nothing to open.
     static func toolView(_ kind: ToolViewKind, message: ToolCallMessage, views: ChatToolViews, style: ChatRowStyle) -> ChatStackEntry? {
         switch kind {
         case .askUserQuestion, .requestUserInput: views.question.map { questionForm($0, toolId: message.id) }
         case .edit, .write, .multiEdit, .geminiEdit: diffView(kind, message: message, views: views, style: style)
+        case .codexPatch: codexPatchView(message, views: views, style: style)
+        case .codexDiff: codexDiffView(message, views: views, style: style)
         case .todo: todoView(message.tool)
         case .exitPlan: exitPlanView(message.tool)
         case .task: taskView(message.children)
@@ -266,19 +267,129 @@ extension ChatRowRenderer {
         }
         guard !pieces.isEmpty else { return nil }
         let entries = pieces.map { ChatStackEntry(piece: $0) }
-        let stack = ChatPiece.stack(entries, gap: 8)
-        guard views.flush else { return section(nil, stack) }
+        return fullWidthSection(.stack(entries, gap: 8), flush: views.flush)
+    }
+
+    /// ToolSectionView fullWidth: flush under the card's header and out to
+    /// its edges. In a compact row's box, a plain section.
+    static func fullWidthSection(_ piece: ChatPiece, flush: Bool) -> ChatStackEntry {
+        guard flush else { return section(nil, piece) }
         typealias M = ToolCardLayout.Metrics
         return ChatStackEntry(
-            piece: stack, marginTop: -M.contentPaddingTop, marginBottom: 12,
+            piece: piece, marginTop: -M.contentPaddingTop, marginBottom: 12,
             padding: LayoutInsets(top: 0, left: -M.contentPaddingH, bottom: 0, right: -M.contentPaddingH)
         )
+    }
+
+    /// CodexPatchView: each file in its own full-width section on
+    /// `surface`, its header opening that file on the message's screen,
+    /// then its diff. PatchFallback, "Update file" over the raw text, when
+    /// the patch can't be read.
+    static func codexPatchView(_ message: ToolCallMessage, views: ChatToolViews, style: ChatRowStyle) -> ChatStackEntry? {
+        let tool = message.tool
+        // PatchError: ToolView hides the default error for patches.
+        let error = tool.state == .error ? ToolFullPresentation.resultText(tool.result).map(toolError) : nil
+        guard let files = ChatPatch.viewFiles(tool.input, root: style.root) else {
+            var entries = error.map { [$0] } ?? []
+            if let raw = ChatPatch.fallbackText(tool.input), !raw.isEmpty { entries.append(ChatStackEntry(piece: codeView(raw))) }
+            return section(Strings.Tools.name(.applyChanges), .stack(entries))
+        }
+        var entries = error.map { [$0] } ?? []
+        for (index, file) in files.enumerated() {
+            var parts = [ChatStackEntry(piece: patchHeader(
+                path: file.path, kind: file.kind, stats: file.stats, movePath: file.movePath,
+                opens: .openMessageFile(id: message.id, file: file.file)
+            ))]
+            let source: DiffChunkSource? = switch file.diff {
+            case .patch(let patch)?: DiffChunkSource(patch: patch, fileName: file.fileName)
+            case .pair(let old, let new)?: DiffChunkSource(oldText: old, newText: new, fileName: file.fileName)
+            case nil: nil
+            }
+            if let source, let diff = diffPiece(source, index: index, toolId: message.id, showLineNumbers: style.showLineNumbers, expanded: views.diffExpanded[index] ?? []) {
+                parts.append(ChatStackEntry(piece: diff))
+            }
+            let container = ChatStackEntry(piece: .stack(parts), background: ChatBox(frame: .zero, fill: Palette.surface))
+            entries.append(fullWidthSection(.stack([container]), flush: views.flush))
+        }
+        return ChatStackEntry(piece: .stack(entries))
+    }
+
+    /// CodexDiffView: the turn's diff under a header naming its file, when
+    /// it names one.
+    static func codexDiffView(_ message: ToolCallMessage, views: ChatToolViews, style: ChatRowStyle) -> ChatStackEntry? {
+        guard let diff = ToolUnifiedDiff(message.tool.input) else { return nil }
+        var parts: [ChatStackEntry] = []
+        if let name = diff.fileName, !name.isEmpty {
+            parts.append(ChatStackEntry(piece: patchHeader(path: name, kind: .modified, stats: DiffStats.countPatch(diff.patch), movePath: nil, opens: nil)))
+        }
+        let source = DiffChunkSource(patch: diff.patch, fileName: diff.fileName)
+        if let piece = diffPiece(source, index: 0, toolId: message.id, showLineNumbers: style.showLineNumbers, expanded: views.diffExpanded[0] ?? []) {
+            parts.append(ChatStackEntry(piece: piece))
+        }
+        guard !parts.isEmpty else { return nil }
+        return fullWidthSection(.stack(parts), flush: views.flush)
+    }
+
+    /// CodexPatchView's PatchFileHeader: DiffFileHeader (no collapse
+    /// chevron) on hunkBg, the move's destination under it, and, when it
+    /// opens something, a chevron after the counts. `topRadius` rounds its
+    /// top corners, as a card that clips it does.
+    static func patchHeader(path: String, kind: FileChangeKind, stats: DiffStats.Counts, movePath: String?, opens: ChatRowAction?, topRadius: CGFloat = 0) -> ChatPiece {
+        typealias M = DiffFileHeaderLayout.Metrics
+        let chevronSize: CGFloat = 14
+        // The `right` slot: 8 after the counts, inside the header's padding.
+        let reserve = opens == nil ? 0 : M.gap + chevronSize
+        let move = movePath.map {
+            MeasuredText(ChatTextStyles.patchMovePath.string($0, color: DiffStyle.textSecondary, lineBreakMode: .byTruncatingHead), maxLines: 1)
+        }
+        let moveInset = LayoutInsets(top: 0, left: M.paddingHorizontal, bottom: M.paddingVertical, right: M.paddingHorizontal)
+        func plan(_ width: CGFloat) -> DiffHeaderPlan {
+            DiffHeaderPlan(
+                path: path, kind: kind, additions: stats.additions, deletions: stats.deletions,
+                collapsed: false, width: max(0, width - reserve), scale: 1, toggles: false
+            )
+        }
+        func moveHeight(_ width: CGFloat) -> CGFloat {
+            move.map { $0.measurable.height(fitting: max(0, width - moveInset.horizontal)) + moveInset.vertical } ?? 0
+        }
+        return ChatPiece(measurable: Measurable { width in
+            CGSize(width: width, height: plan(width).layout.size.height + moveHeight(width))
+        }) { frame in
+            let header = plan(frame.width)
+            let headerFrame = CGRect(x: frame.minX, y: frame.minY, width: header.layout.size.width, height: header.layout.size.height)
+            let box = CGRect(x: frame.minX, y: frame.minY, width: frame.width, height: headerFrame.height + moveHeight(frame.width))
+            var items: [ChatDrawItem] = [
+                .box(ChatBox(frame: box, fill: DiffStyle.hunkBackground, radius: topRadius, corners: .top)),
+                .diffHeader(header, path: path, frame: headerFrame),
+            ]
+            if opens != nil {
+                let chevron = CGRect(
+                    x: frame.maxX - M.paddingHorizontal - chevronSize, y: headerFrame.midY - chevronSize / 2,
+                    width: chevronSize, height: chevronSize
+                )
+                items.append(.icon(.octicons("chevron-right"), size: chevronSize, frame: chevron, tint: DiffStyle.textSecondary))
+            }
+            if let move {
+                let text = CGRect(
+                    x: frame.minX + moveInset.left, y: headerFrame.maxY,
+                    width: max(0, frame.width - moveInset.horizontal), height: box.height - headerFrame.height - moveInset.bottom
+                )
+                items.append(.text(move.layout(for: text), text))
+            }
+            return (items, opens.map { [ChatHit(frame: box, action: $0)] } ?? [])
+        }
     }
 
     /// One DiffChunk: diff `index` of tool `toolId`, or nil when it draws
     /// nothing (DiffChunk renders null).
     static func diffPiece(_ chunk: ToolDiffChunk, index: Int, toolId: String, showLineNumbers: Bool, expanded: Set<Int>) -> ChatPiece? {
-        let source = DiffChunkSource(oldText: chunk.oldText, newText: chunk.newText, fileName: chunk.fileName)
+        diffPiece(
+            DiffChunkSource(oldText: chunk.oldText, newText: chunk.newText, fileName: chunk.fileName),
+            index: index, toolId: toolId, showLineNumbers: showLineNumbers, expanded: expanded
+        )
+    }
+
+    static func diffPiece(_ source: DiffChunkSource, index: Int, toolId: String, showLineNumbers: Bool, expanded: Set<Int>) -> ChatPiece? {
         guard !DiffFileItem.document(source.source).files.isEmpty else { return nil }
         let diff = ChatDiffPiece(source: source, showLineNumbers: showLineNumbers, expanded: expanded)
         return ChatPiece(measurable: Measurable { diff.plan(width: $0).size }) { frame in

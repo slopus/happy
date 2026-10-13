@@ -61,6 +61,8 @@ enum ChatDrawItem {
     /// A DiffChunk, planned at the frame's width. Its "Show N more lines"
     /// asks for `diffShowMore(toolId:chunk:file:)`.
     case diff(DiffChunkPlan, frame: CGRect, toolId: String, chunk: Int)
+    /// A DiffFileHeader, planned at the frame's width, naming `path`.
+    case diffHeader(DiffHeaderPlan, path: String, frame: CGRect)
     /// A strip that scrolls sideways (HorizontalScrollView: a code block, a
     /// table), showing `content` through `frame`, its corners rounded by
     /// `radius`. The content's items and hits are in its own coordinates.
@@ -75,6 +77,8 @@ enum ChatRowAction: Equatable, Sendable {
     /// Open or close a tool's body, by message id.
     case toggleTool(String)
     case openMessage(String)
+    /// One file of a patch, on the message's screen.
+    case openMessageFile(id: String, file: String)
     case openFile(String)
     case option(String)
     case retry(localId: String)

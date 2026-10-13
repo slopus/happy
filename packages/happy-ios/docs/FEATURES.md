@@ -67,24 +67,32 @@ accident.
   - Not yet: the worktree tab strip and its title, the landscape layout without a header, and the file-view path segment.
   - Done: the CLI-outdated pill (dismissed per machine and version in `LocalSettings.acknowledgedCliVersions`), under the header on every device; see AGENTS.md.
   - Done: the stopped session's hint above the composer (`InactiveArchivedHint`), with Resume when its machine can run it, or the terminal commands, which a tap copies.
-- [ ] Inverted list engine with precomputed, off-main text layout, manual frames, bubble resize animations, scroll position keeping (`ChatList`) — Chat
-- [ ] Keyboard: input bar tracks the keyboard, interactive dismiss, list insets — Chat
-- [ ] Messages: user bubbles, agent text, thinking, events, unsupported placeholder (`MessageView`) — Chat
+- [~] Inverted list engine with precomputed, off-main text layout, manual frames, bubble resize animations, scroll position keeping (`ChatList`) — Chat
+  - A flipped collection view over `ChatListLayout`; rows are planned and measured off the main thread (`ChatRowMeasurer`), arrive and grow animated, and keep the reader's place, or the row they just opened or closed (`ChatScrollAnchor`). Older messages join the rendered window a page at a time as the reader nears them.
+  - Not yet: AGENTS.md rule 8's minimal changesets and main-thread budgets for the apply path (Apply perf is reworking it), and paging older pages in from the server.
+- [x] Keyboard: input bar tracks the keyboard, interactive dismiss, list insets — Chat
+  - The dock rides the keyboard layout guide, through interactive dismiss too, and the list's insets follow it (`ChatScreenLayout`). The question sheet's footer also rides the keyboard; see AGENTS.md.
+- [x] Messages: user bubbles, agent text, thinking, events, unsupported placeholder (`MessageView`) — Chat
+  - User bubbles with their delivery status, agent text with its copy button, events and the unsupported line. Thinking is hidden, as happy-app's reducer hides it.
 - [~] Markdown: blocks, spans, links, lists, tables, code blocks with syntax highlighting, copy (`markdown/*`, `SyntaxText`, `SimpleSyntaxHighlighter`) — Chat
 - [~] Text selection screen (`text-selection.tsx`) and long-press copy (`LongPressCopyable`, MarkdownView's `selectable`) — Chat
   - A user's message copies through LongPressCopyable's menu; an agent's paragraphs, list items, code blocks and table cells, and on a tool's screen the command and its output, bring up the edit menu's Copy for that text. With Markdown Copy v2 (`LocalSettings.markdownCopyV2`) a long press on an agent's message opens the text selection screen instead.
   - Not yet: the Developer screen's toggle for Markdown Copy v2 (the screen isn't ported), so the text selection screen can't be reached in the app yet. Copy puts plain text on the pasteboard, without React Native's RTF. In the chat both long presses take 400 ms; React Native's selectable text takes 500.
-- [ ] Tool calls, hidden by default; tool headers, sections, errors, full view (`tools/*`, `knownTools.tsx`) — Chat
+- [~] Tool calls, hidden by default; tool headers, sections, errors, full view (`tools/*`, `knownTools.tsx`) — Chat
   - Deviation from happy-app, on purpose: tool output is collapsed by default (header only, compact row or card as `compactToolCalls` picks); tap the header to expand, in memory for the screen's lifetime; a pending permission, question or plan keeps its input open, never its output.
   - Partial: on iPad, permission buttons stretch instead of right-aligning, and a long permission list doesn't scroll at min(260, 35% of the window).
 - [~] Tool views: Bash, Edit, MultiEdit, Write, Todo, Task, MCP, Codex patch/diff/bash, Gemini edit/execute, file, exit plan, ask user question, request user input (`tools/views/*`) — Chat
-  - Edit, Write, MultiEdit and Gemini edit draw Secondary's DiffChunk (`HappyUI/Diff`), without syntax colour until its tokenizer lands. Codex patch and diff cards (CodexPatch, CodexDiff, apply_patch, GeminiPatch, GeminiDiff) are header-only until the shared `codexUnifiedDiff` parser lands. FileView is not ported.
-- [ ] Permission prompts: allow, allow for session, deny, mode switch (`PermissionFooter`) — Chat
-- [ ] Agent questions: banner, modal, inline form (`AgentQuestionBanner`, `AgentQuestionModal`, `InlineQuestionForm`, `agentCommunications.ts`) — Chat
+  - Edit, Write, MultiEdit and Gemini edit draw Secondary's DiffChunk (`HappyUI/Diff`), without syntax colour until its tokenizer lands. Codex patches (CodexPatch, apply_patch, GeminiPatch) open to each file under its DiffFileHeader, which opens that file alone on the message's screen, and Codex diffs (CodexDiff, GeminiDiff) to the turn's diff under its file's header; both use Secondary's `CodexUnifiedDiff`. A file header shows no pressed state. FileView is not ported.
+- [~] Permission prompts: allow, allow for session, deny, mode switch (`PermissionFooter`) — Chat
+  - Claude's and Codex's buttons, the busy ring while a reply is on its way, and the mode change an answer brings.
+  - Not yet: the tablet layout (`PermissionFooterLayout.tablet`); see Tool calls.
+- [x] Agent questions: banner, modal, inline form (`AgentQuestionBanner`, `AgentQuestionModal`, `InlineQuestionForm`, `agentCommunications.ts`) — Chat
+  - The banner over the composer for what the chat can't show inline, the answer sheet, and the inline form; a sent message answers a waiting question. The sheet's footer rides the keyboard; see AGENTS.md.
 - [ ] Image and file messages, decrypted on demand (`FileView`) — Chat + Sending
 - [~] Message detail screen (`session/[id]/message/[messageId].tsx`) — Chat
   - ToolHeader's title; ToolFullView's terminal (CommandView with all output), Task, Edit, Write and MultiEdit full views, the generic sections, the outcome after a specialized view, and dev mode's raw JSON; a text message's whole text. Long output is drawn in pieces near the screen only (`TextChunks`).
-  - Not yet: the Codex patch and diff full views (they show the generic sections until `codexUnifiedDiff` lands) and the `file` focus parameter.
+  - The Codex patch and diff full views are cards; a patch opened from one file's header shows that file alone (`file`), or every file when it is no longer in the patch.
+  - Partial: those cards round their header's corners but don't clip the diff at their bottom corners, as React Native's `overflow: hidden` does.
 - [~] Agent goal bar, work group headers, rig activity bar (`AgentGoalBar`, `AgentWorkGroupHeader`, `RigActivityBar`) — Chat
   - Stop shows but sends nothing, as in happy-app (`agentGoalActionHandler.ts`). The goal bar has no details sheet; happy-app doesn't open one from the chat either.
 - [~] Empty and pending states (`EmptyMessages`, `ChatFooter`) — Chat

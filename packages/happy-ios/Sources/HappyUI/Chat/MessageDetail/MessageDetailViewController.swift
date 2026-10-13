@@ -14,6 +14,8 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     private let context: AppContext
     private let sessionId: String
     private let messageId: String
+    /// Of a patch's files, the one the reader tapped in the chat.
+    private let focusFile: String?
     private let services: ChatServices
     private let scrollView = UIScrollView()
     private let canvas = MessageDetailCanvas()
@@ -35,10 +37,11 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     private var lastLayoutWidth: CGFloat = 0
     private var leaving = false
 
-    init(context: AppContext, session account: AccountSession, sessionId: String, messageId: String) {
+    init(context: AppContext, session account: AccountSession, sessionId: String, messageId: String, file: String? = nil) {
         self.context = context
         self.sessionId = sessionId
         self.messageId = messageId
+        focusFile = file
         services = ChatServices.make(account: account, sessionId: sessionId)
         super.init(nibName: nil, bundle: nil)
     }
@@ -209,7 +212,8 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
             showLineNumbers: session.settings.bool("showLineNumbersInToolViews"),
             devMode: devMode,
             diffExpanded: diffExpanded,
-            maxContentWidth: maxContentWidth
+            maxContentWidth: maxContentWidth,
+            focusFile: focusFile
         )
         let width = view.bounds.width
         let measurer = self.measurer

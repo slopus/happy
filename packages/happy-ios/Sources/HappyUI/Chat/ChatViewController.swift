@@ -779,6 +779,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             scheduleMeasure()
         case .openMessage(let messageId):
             push(.sessionMessage(id: sessionId, messageId: messageId), context: context)
+        case .openMessageFile(let messageId, let file):
+            push(.sessionMessage(id: sessionId, messageId: messageId, file: file), context: context)
         case .openFile(let path):
             push(.sessionFile(id: sessionId, path: path), context: context)
         case .permission(let tap):

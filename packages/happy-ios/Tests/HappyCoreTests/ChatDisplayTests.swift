@@ -261,6 +261,41 @@ final class ChatPatchTests: XCTestCase {
     func testUnifiedDiffSniffing() {
         XCTAssertEqual(["@@ -1 +1 @@", "a\n@@@ -1", "--- a", "hello @@ -1"].map(ChatPatch.looksLikeUnifiedDiff), [true, true, true, false])
     }
+
+    func testThePatchViewsFiles() throws {
+        let files = try XCTUnwrap(ChatPatch.viewFiles(["changes": [
+            "/repo/src/a.ts": ["kind": ["type": "update"], "unified_diff": "@@ -1 +1 @@\n-x\n+y"],
+            "/repo/b.ts": ["kind": ["type": "add"], "diff": "hello"],
+            "/repo/c.ts": ["kind": ["type": "update", "move_path": "/repo/d.ts"], "modify": ["old_content": "", "new_content": ""]],
+            "/elsewhere/e.ts": ["type": "delete", "unified_diff": "@@ -1 +0,0 @@\n-gone"],
+        ]], root: "/repo"))
+        XCTAssertEqual(files.map(\.path), ["/elsewhere/e.ts", "b.ts", "c.ts", "src/a.ts"])
+        XCTAssertEqual(files.map(\.kind), [.deleted, .added, .renamed, .modified])
+        // A hunk-only diff gains headers for the file, /dev/null on the side
+        // a delete lacks.
+        XCTAssertEqual(files[0].diff, .patch("--- a//elsewhere/e.ts\n+++ /dev/null\n@@ -1 +0,0 @@\n-gone"))
+        XCTAssertEqual(files[1].diff, .pair(old: "", new: "hello"), "an add's diff is the file's body")
+        XCTAssertNil(files[2].diff, "nothing on either side")
+        XCTAssertEqual(files[2].movePath, "d.ts")
+        XCTAssertEqual(files[3].diff, .patch("--- a//repo/src/a.ts\n+++ b//repo/src/a.ts\n@@ -1 +1 @@\n-x\n+y"))
+        XCTAssertEqual(files[3].fileName, "a.ts")
+        XCTAssertEqual(files[3].file, "/repo/src/a.ts")
+        XCTAssertEqual(files.map(\.stats), [.init(additions: 0, deletions: 1), .init(additions: 1, deletions: 0), .init(additions: 0, deletions: 0), .init(additions: 1, deletions: 1)])
+
+        XCTAssertNil(ChatPatch.viewFiles(["patch": "not an envelope"], root: nil))
+        XCTAssertEqual(ChatPatch.fallbackText(["patch": "not an envelope"]), "not an envelope")
+        XCTAssertEqual(ChatPatch.fallbackText(["input": "raw"]), "raw")
+        XCTAssertEqual(ChatPatch.fallbackText(["changes": [:]]), "{\n  \"changes\": {}\n}")
+    }
+
+    func testTheTurnDiffNamesItsFile() {
+        let diff = "--- a/x.swift\n+++ b/x.swift\n@@ -1 +1 @@\n-a\n+b"
+        XCTAssertEqual(ToolUnifiedDiff(["unified_diff": .string(diff)])?.fileName, "x.swift")
+        XCTAssertEqual(ToolUnifiedDiff(["unified_diff": .string(diff), "path": "/w/y.swift"])?.fileName, "/w/y.swift")
+        XCTAssertNil(ToolUnifiedDiff(["unified_diff": "@@ -1 +1 @@\n-a\n+b"])?.fileName)
+        XCTAssertNil(ToolUnifiedDiff(["unified_diff": ""]))
+        XCTAssertNil(ToolUnifiedDiff([:]))
+    }
 }
 
 final class LocalCommandMessageTests: XCTestCase {
