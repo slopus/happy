@@ -29,6 +29,9 @@ public final class AccountSession: Sendable {
     public let machineActions: MachineActions
     /// Checkout status shared by this account's sessions.
     public let gitStatus: GitStatusSync
+    /// The composer's `@` file lists, this account's alone: another
+    /// account's session with the same id is another machine's tree.
+    public let composerFileIndex = ComposerFileIndex()
     /// This account's Rig whole-draft synchronization.
     public let rigComposer: RigComposerSync
     /// Starts in flight stay within this account, including their unsent text.
