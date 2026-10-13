@@ -417,10 +417,10 @@ change a file another workstream owns, ask the coordinator.
 | Workstream | Owns |
 | --- | --- |
 | Icons | `Sources/HappyIcons`, `scripts/generate-icons.*`, `Sources/HappyUI/Theme/IconImages.swift`, `ItemIcon`'s icon source, swapping SF Symbols for happy-app's icons in onboarding and troubleshoot, light/dark theme application |
-| Home | `Screens/HomeScreens.swift`, `Screens/SessionListScreens.swift`, `Components/SessionListViews.swift`, home header and dock, new session screen, `Core/Home/` |
+| Home | `Screens/HomeScreens.swift`, `Screens/SessionListScreens.swift`, `Components/SessionListViews.swift`, home header and dock, new session screen, `Core/Home/` (including the new-session draft store and `SessionStarter`) |
 | Settings | `Screens/SettingsScreens.swift` and every settings screen, the account switcher UI, `Core/Settings/` |
 | Chat | `Sources/HappyUI/Chat/`, `Sources/HappyLayout/Chat/`, the session screen, `docs/telegram-notes.md` |
-| Composer | `Sources/HappyUI/Composer/`, `Sources/HappyLayout/Composer/` |
+| Composer | `Sources/HappyUI/Composer/`, `Sources/HappyLayout/Composer/`, `Sources/HappyCore/Composer/` (model, permission and effort options; `useComposerModes`). The AgentInput card is shared: Home embeds it in the dock and the new session screen |
 | Secondary | session info, files, changes, machine screens |
 | Accounts | `Core/Accounts/`, `AccountController`, `AccountSession` lifecycle, `CompositionRoot`, `Auth/` |
 | Sending | `Core/Chat/` sending and attachments, the outbox in `SyncEngine` and `LocalStore`, `HappyStore` schema |
