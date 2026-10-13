@@ -431,6 +431,16 @@ final class AgentInputLayoutTests: XCTestCase {
         assertFrame(layout.autocomplete(rows: 10, border: 0.5), rect(16, -320, 361, 320))
         assertFrame(layout.autocomplete(rows: 0, border: 0), rect(16, 0, 361, 0))
     }
+
+    func testWideScreensRunTheListToTheInnerEdges() {
+        let layout = AgentInputLayout(.init(
+            width: 900,
+            paddingH: AgentInputLayout.Metrics.containerPaddingHWide,
+            maxContentWidth: 800,
+            card: oneLine
+        ))
+        assertFrame(layout.autocomplete(rows: 2, border: 0.5), rect(50, -97, 800, 97))
+    }
 }
 
 final class ComposerTokenTests: XCTestCase {

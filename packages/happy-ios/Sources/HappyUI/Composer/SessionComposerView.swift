@@ -15,6 +15,7 @@ private let logger = Logger(subsystem: "engineering.happy", category: "composer"
 /// the reader is back in history.
 ///
 /// It keeps the draft (useDraft.ts), holds picked images (useImagePicker.ts),
+/// suggests commands and files for the word at the caret (`/` and `@`),
 /// sends through `environment.sender`, stops the agent, and shows the
 /// permission, model and effort picks: the
 /// session's own (its composer state) over the agent defaults over the
@@ -51,6 +52,14 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// Picked images wait here until the outbox has its own copies.
     private let staging: ComposerAttachmentStaging
     private let images: ComposerImagePicker
+
+    /// useActiveSuggestions: the last list and its highlighted row, kept
+    /// while the query moves, shown only while there is a query.
+    private let suggestionList = ComposerSuggestionListView()
+    private var suggestions: (items: [ComposerSuggestion], selected: Int) = ([], -1)
+    private var activeQuery: String?
+    private var suggestionTask: Task<Void, Never>?
+    private var isSuggestionListShown = false
 
     private var statusSize: CGSize = .zero
     private var weekSize: CGSize = .zero
@@ -94,6 +103,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         addSubview(weekButton)
         contextButton.addTarget(self, action: #selector(contextTapped), for: .touchUpInside)
         addSubview(contextButton)
+        suggestionList.isHidden = true
+        suggestionList.onSelect = { [weak self] index in self?.selectSuggestion(index) }
+        addSubview(suggestionList)
 
         applyConfiguration()
         applyDetails()
@@ -168,6 +180,10 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
         applyDetails()
         applyConfiguration()
+        if previous == nil {
+            // A draft that ends in "/co" opens on its suggestions.
+            updateActiveWord()
+        }
         if before != (composerHeight(fitting: bounds.width), cardOffset) {
             composerDelegate?.composerDidInvalidateHeight(self)
         }
@@ -236,6 +252,21 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
                 gauge: gauge.offsetBy(dx: -context.minX, dy: -context.minY)
             )
         }
+        if isSuggestionListShown {
+            // Bounds and centre: the list may be mid-way through its rise.
+            let frame = PixelGrid.snap(
+                layout.autocomplete(rows: suggestionList.suggestions.count, border: suggestionList.border),
+                scale: max(1, traitCollection.displayScale)
+            )
+            suggestionList.bounds = CGRect(origin: .zero, size: frame.size)
+            suggestionList.center = CGPoint(x: frame.midX, y: frame.midY)
+        }
+    }
+
+    /// The suggestion list hangs above the composer, outside its bounds.
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        super.point(inside: point, with: event)
+            || (isSuggestionListShown && suggestionList.frame.contains(point))
     }
 
     override func willMove(toWindow newWindow: UIWindow?) {
@@ -347,10 +378,20 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         draftChanged(card.text)
         applyDeferredRemoteDraft()
         applyConfiguration()
+        updateActiveWord()
     }
 
     func agentInputCardDidChangeSelection(_ card: AgentInputCardView) {
         applyDeferredRemoteDraft()
+        updateActiveWord()
+    }
+
+    /// Return picks the highlighted suggestion (or the first) instead of
+    /// starting a line.
+    func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool {
+        guard activeQuery != nil, !suggestions.items.isEmpty else { return true }
+        selectSuggestion(max(0, suggestions.selected))
+        return false
     }
 
     func agentInputCardDidChangeFocus(_ card: AgentInputCardView) {
@@ -538,6 +579,82 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     @objc private func appWillResignActive() {
         flushDraft()
+    }
+
+    // MARK: Autocomplete
+
+    /// useActiveWord and useActiveSuggestions: the prefixed word at the
+    /// caret is the query; its suggestions replace the list when they
+    /// arrive (a newer query drops older answers).
+    private func updateActiveWord() {
+        let query = ComposerAutocomplete.findActiveWord(
+            card.text, selection: card.selectedRange, prefixes: ComposerAutocomplete.chatPrefixes
+        )?.activeWord
+        guard query != activeQuery else { return }
+        activeQuery = query
+        suggestionTask?.cancel()
+        suggestionTask = nil
+        applySuggestions()
+        guard let query else { return }
+        let metadata = state?.session.record?.metadata
+        let sessionId = environment.sessionId
+        let actions = environment.account.actions
+        suggestionTask = Task { [weak self] in
+            let results: [ComposerSuggestion]
+            if query.hasPrefix("/") {
+                results = ComposerCommands.suggestions(query, metadata: metadata)
+            } else if query.hasPrefix("@") {
+                results = await ComposerFileIndex.shared.suggestions(query, sessionId: sessionId) { id in
+                    try? await actions.sessionRipgrep(sessionId: id, args: ComposerFileIndex.ripgrepArguments)
+                }
+            } else {
+                results = []
+            }
+            guard !Task.isCancelled, let self, self.activeQuery == query else { return }
+            let selected = ComposerAutocomplete.selection(
+                previous: self.suggestions.selected, previousCount: self.suggestions.items.count, count: results.count
+            )
+            self.suggestions = (results, selected)
+            self.applySuggestions()
+        }
+    }
+
+    private func applySuggestions() {
+        let visible = activeQuery == nil ? [] : suggestions.items
+        guard !visible.isEmpty else {
+            guard isSuggestionListShown else { return }
+            isSuggestionListShown = false
+            suggestionList.animateOut { [weak self] in
+                guard let self, !self.isSuggestionListShown else { return }
+                self.suggestionList.isHidden = true
+            }
+            return
+        }
+        suggestionList.set(visible, selected: suggestions.selected)
+        if !isSuggestionListShown {
+            isSuggestionListShown = true
+            suggestionList.isHidden = false
+            setNeedsLayout()
+            layoutIfNeeded()
+            suggestionList.animateIn()
+        } else {
+            setNeedsLayout()
+        }
+    }
+
+    /// `handleSuggestionSelect`: the whole active word becomes the pick and
+    /// a space, the caret after it.
+    private func selectSuggestion(_ index: Int) {
+        guard activeQuery != nil, index < suggestions.items.count else { return }
+        let result = ComposerAutocomplete.applySuggestion(
+            card.text,
+            selection: card.selectedRange,
+            suggestion: suggestions.items[index].text,
+            prefixes: ComposerAutocomplete.chatPrefixes,
+            addSpace: true
+        )
+        card.setText(result.text, selection: NSRange(location: result.cursor, length: 0))
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
 
     // MARK: Attachments

@@ -203,18 +203,19 @@ public struct AgentInputLayout: Equatable, Sendable {
     }
 
     /// The suggestion list: above the composer (`bottom: '100%'`), 8 over
-    /// the inner container and 8 in from its sides, sized for `rows` 48pt
-    /// rows up to 320 inside a `border` rim. Its bottom edge is the
-    /// composer's top.
+    /// the inner container and 8 in from its sides (none past 700 wide),
+    /// sized for `rows` 48pt rows up to 320 inside a `border` rim. Its
+    /// bottom edge is the composer's top.
     public func autocomplete(rows: Int, border: CGFloat) -> CGRect {
         typealias M = Metrics
         let list = CGFloat(max(0, rows)) * M.autocompleteRowHeight + 2 * max(0, border)
         let height = min(M.autocompleteMaxHeight, list)
         let bottom = inner.minY - M.autocompleteMarginBottom
+        let paddingH = size.width > 700 ? 0 : M.autocompletePaddingH
         return CGRect(
-            x: inner.minX + M.autocompletePaddingH,
+            x: inner.minX + paddingH,
             y: bottom - height,
-            width: max(0, inner.width - 2 * M.autocompletePaddingH),
+            width: max(0, inner.width - 2 * paddingH),
             height: height
         )
     }
