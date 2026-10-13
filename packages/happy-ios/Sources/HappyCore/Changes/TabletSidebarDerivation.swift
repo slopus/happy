@@ -111,6 +111,23 @@ public enum TabletSidebarDerivation {
         derive(input.snapshot, git: input.git, applied: applied, clock: clock)
     }
 
+    /// `derive` at one instant (`clock`, or now), with `wake` set for the
+    /// next instant a stamp or a day heading can change, so the sidebar is
+    /// derived again then even if the store never changes. The result is
+    /// nil, and the main thread hears nothing, if nothing did.
+    public static func derive(
+        _ input: TabletSidebarInput,
+        applied: Applied,
+        wake: ClockWake,
+        clock: SessionList.Clock? = nil
+    ) -> (output: TabletSidebarUpdate, state: Applied)? {
+        let clock = clock ?? SessionList.Clock()
+        if let snapshot = input.snapshot {
+            wake.schedule(HomeClockBoundary.next(after: clock, snapshot: snapshot))
+        }
+        return derive(input, applied: applied, clock: clock)
+    }
+
     public static func derive(
         _ snapshot: HomeSnapshot?,
         git: [GitCheckoutKey: GitHeadingStatus] = [:],

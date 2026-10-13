@@ -32,6 +32,9 @@ final class TabletSidebarViewController: UIViewController {
     /// The checkouts whose headings show; a new message in one refreshes
     /// its status. Withdrawn when the sidebar goes.
     private let gitInterest: GitCheckoutInterest
+    /// The next instant a stamp or a day heading can read differently.
+    private let clockWake = ClockWake()
+    private var pipeline: ApplyPipeline<TabletSidebarInput, TabletSidebarDerivation.Applied, TabletSidebarUpdate>?
 
     private(set) var state: TabletSidebarFrame?
     var onStateChange: ((TabletSidebarFrame) -> Void)?
@@ -86,7 +89,7 @@ final class TabletSidebarViewController: UIViewController {
         let pipeline = ApplyPipeline<TabletSidebarInput, TabletSidebarDerivation.Applied, TabletSidebarUpdate>(
             input: TabletSidebarInput(),
             state: TabletSidebarDerivation.Applied(),
-            derive: { TabletSidebarDerivation.derive($0, applied: $1) },
+            derive: { [clockWake] in TabletSidebarDerivation.derive($0, applied: $1, wake: clockWake) },
             apply: { [weak self] update in
                 // A result worked out for an account that is no longer the
                 // active one (a switch while this sidebar is still on
@@ -97,6 +100,7 @@ final class TabletSidebarViewController: UIViewController {
                 return true
             }
         )
+        clockWake.onWake { [weak pipeline] in pipeline?.update { _ in } }
         pipeline.follow(session.homeFeed.snapshots()) { $0.snapshot = $1 }
         // Only what has been fetched already, and only when what a heading
         // shows changed.
@@ -105,7 +109,20 @@ final class TabletSidebarViewController: UIViewController {
             let statuses = await git.headingStatuses()
             pipeline?.follow(statuses) { $0.git = $1 }
         }
+        self.pipeline = pipeline
         observation = pipeline.observation
+        // A wake that fell due while the app was suspended; midnight, a new
+        // time zone, a clock set by hand. Derived again off the main thread.
+        NotificationCenter.default.addObserver(self, selector: #selector(clockChanged), name: UIApplication.didBecomeActiveNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(clockChanged), name: UIApplication.significantTimeChangeNotification, object: nil)
+    }
+
+    deinit {
+        clockWake.cancel()
+    }
+
+    @objc private func clockChanged() {
+        pipeline?.update { _ in }
     }
 
     /// The sidebar's own hairline frame, on all four sides.
