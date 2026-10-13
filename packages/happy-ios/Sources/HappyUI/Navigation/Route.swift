@@ -55,17 +55,17 @@ enum Screens {
         case .newSession, .machine:
             return PlaceholderViewController(title: "")
         case .settingsAccount:
-            return PlaceholderViewController(title: Strings.Settings.account)
+            return SettingsAccountViewController(context: context, session: session)
         case .settingsAppearance:
-            return PlaceholderViewController(title: Strings.Settings.appearance)
+            return SettingsAppearanceViewController(context: context, session: session)
         case .settingsLanguage:
-            return PlaceholderViewController(title: Strings.SettingsLanguage.title)
+            return SettingsLanguageViewController(session: session)
         case .settingsAgents:
-            return PlaceholderViewController(title: "")
+            return SettingsAgentsViewController(context: context, session: session)
         case .settingsConnectClaude:
-            return PlaceholderViewController(title: Strings.ConnectClaude.title)
+            return SettingsConnectClaudeViewController()
         case .changelog:
-            return PlaceholderViewController(title: "")
+            return ChangelogViewController()
         case .developer:
             return PlaceholderViewController(title: "")
         }
