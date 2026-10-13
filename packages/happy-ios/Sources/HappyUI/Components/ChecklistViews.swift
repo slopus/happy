@@ -51,25 +51,22 @@ public final class TerminalBlockView: UIView {
 /// a label would be: no insets, no scrolling, nothing to edit. A command's
 /// prompt stays out of every selection, so a copy is the command alone.
 final class TerminalLineView: UITextView, UITextViewDelegate {
+    private static let prompt = "$ "
+    private let line: TerminalBlockView.Line
     /// The `$ ` a selection never reaches into.
     private let promptLength: Int
+    /// The person's text size, where this line follows it.
+    private var textScale: TextScale?
 
     init(line: TerminalBlockView.Line) {
-        let style = TextStyles.terminalLine
-        let text: NSAttributedString
-        switch line {
-        case .comment(let comment):
+        self.line = line
+        if case .command = line {
+            promptLength = (Self.prompt as NSString).length
+        } else {
             promptLength = 0
-            text = style.attributedString(comment, color: UIColor(Palette.terminalComment))
-        case .command(let command):
-            let prompt = "$ "
-            promptLength = (prompt as NSString).length
-            let styled = NSMutableAttributedString(attributedString: style.attributedString(prompt + command, color: UIColor(Palette.terminalText)))
-            styled.addAttribute(.foregroundColor, value: UIColor(Palette.terminalPrompt), range: NSRange(location: 0, length: promptLength))
-            text = styled
         }
         super.init(frame: .zero, textContainer: nil)
-        attributedText = text
+        render()
         isEditable = false
         isSelectable = true
         isScrollEnabled = false
@@ -80,11 +77,50 @@ final class TerminalLineView: UITextView, UITextViewDelegate {
         delegate = self
         // VoiceOver reads the command, not the prompt.
         if case .command(let command) = line { accessibilityLabel = command }
+        registerForTraitChanges(UIView.textSizeTraits, action: #selector(textSizeChanged))
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        // Measured before its first trait update: measure what it will draw.
+        syncTextSize()
+        return super.sizeThatFits(size)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if syncTextSize() { setNeedsLayoutUpTheTree() }
+    }
+
+    @objc private func textSizeChanged() {
+        if syncTextSize() { setNeedsLayoutUpTheTree() }
+    }
+
+    /// Draws again when the text size here changed; true when it did.
+    @discardableResult
+    private func syncTextSize() -> Bool {
+        let scale = traitCollection.textEnvironment?.scale
+        guard scale != textScale else { return false }
+        textScale = scale
+        render()
+        return true
+    }
+
+    /// TerminalBlock.tsx's `<Text>`, at the size it is drawn at.
+    private func render() {
+        let style = textScale.map { TextStyles.terminalLine.scaled($0) } ?? TextStyles.terminalLine
+        switch line {
+        case .comment(let comment):
+            attributedText = style.attributedString(comment, color: UIColor(Palette.terminalComment))
+        case .command(let command):
+            let styled = NSMutableAttributedString(attributedString: style.attributedString(Self.prompt + command, color: UIColor(Palette.terminalText)))
+            styled.addAttribute(.foregroundColor, value: UIColor(Palette.terminalPrompt), range: NSRange(location: 0, length: promptLength))
+            attributedText = styled
+        }
     }
 
     func textViewDidChangeSelection(_ textView: UITextView) {

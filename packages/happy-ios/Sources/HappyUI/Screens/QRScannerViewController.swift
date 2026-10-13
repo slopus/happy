@@ -35,6 +35,8 @@ public final class QRScannerViewController: UIViewController {
     public init() {
         previewLayer = AVCaptureVideoPreviewLayer(session: capture.session)
         super.init(nibName: nil, bundle: nil)
+        // The system scanner happy-app opens follows the text size.
+        followsTextSize()
         modalPresentationStyle = .fullScreen
     }
 

@@ -135,11 +135,31 @@ public final class NavigationTitleView: UIView {
         self.title = title
         self.subtitle = subtitle
         apply()
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.fitTextSize()
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    /// The text size the view was last fitted to; nil at the designed size.
+    private var textScale: TextScale?
+
+    /// A bar sizes its title view by its frame: fit it again to text drawn
+    /// at a new size (OnboardingHeader's and Header.tsx's titles scale, in a
+    /// header that keeps its height).
+    private func fitTextSize() {
+        let scale = traitCollection.textEnvironment?.scale
+        guard scale != textScale else { return }
+        textScale = scale
+        titleLabel.updateTraitsIfNeeded()
+        subtitleLabel.updateTraitsIfNeeded()
+        invalidateIntrinsicContentSize()
+        frame.size = layout(maxWidth: Self.defaultMaxWidth).size
+        superview?.setNeedsLayout()
     }
 
     /// The bar's title slot is about this wide on a phone.

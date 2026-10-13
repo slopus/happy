@@ -61,8 +61,29 @@ Following now:
 - Onboarding: Welcome, Restore (QR and secret key), Link Your Computer. The
   hidden copies that reserve the block's height are in the tree, so they
   are measured at the same size. The titles stop at 1.2.
+- Troubleshooting, the offline checklist home shows when every computer is
+  offline, and the QR scanner (happy-app opens the system's, which scales).
 - Their inputs (the server field, the secret key) and the text not drawn by
-  `StyledLabel` (What's New's paragraphs, the Claude command).
+  `StyledLabel` (What's New's paragraphs, the Claude command, terminal
+  lines).
+
+## Header titles
+
+happy-app has two kinds of header on iOS (`app/(app)/_layout.tsx`):
+
+- UIKit's, through react-native-screens, on most screens. Its title is
+  `IBMPlexSans-SemiBold` 17 (`DEFAULT_TITLE_FONT_SIZE`), made with
+  `scaleMultiplier:1.0` (react-native-screens 4.22.0
+  `ios/RNSScreenStackHeaderConfig.mm` 41, 480-505), so it never scales.
+- Its own `Header.tsx` (`header: createPlainHeader`: Settings, message
+  detail, session info, machine, changes, What's New) and
+  `OnboardingHeader` (Welcome, Link Your Computer, Home's link state). The
+  title is an RN `<Text>` (16, semibold; the subtitle 11), so it scales,
+  uncapped, in a header that keeps its height.
+
+Here the bar's own title never scales. Settings, What's New, Welcome and
+Home put their title in a title view that follows the text size and is
+fitted again in the bar when the size changes.
 
 Fixed RN sizes stay fixed: icons, the wordmark, the checklist boxes,
 paddings, and minimum heights (rows 44, buttons 50/44/32, Get help 36),
@@ -77,7 +98,8 @@ which taller text grows past.
   then their screens opt in. `HomeRowHeights.flatSession` comes from the
   scaled lines instead of 81.
 - The composer and the new-session screen.
-- Navigation bar titles (`NavigationTitleView`, What's New's title).
+- The `createPlainHeader` titles of message detail, session info, machine
+  and changes.
 - Measured text boxes ceil to pixels as RN's do.
 - Fonts made outside `TextStyle` (session info's duplicate sheet, code
   blocks).

@@ -55,6 +55,8 @@ public final class HomeViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.groupedBackground)
+        // OnboardingHeader's title, which scales; the rows below don't yet.
+        titleView.traitOverrides.followsTextSize = true
         navigationItem.titleView = titleView
         showsBackTitle()
         header.isHidden = true
@@ -486,6 +488,7 @@ final class OfflineChecklistViewController: UIViewController {
         self.choices = choices
         self.hasArchived = hasArchived
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)
@@ -584,6 +587,7 @@ final class TroubleshootViewController: UIViewController {
         self.context = context
         self.session = session
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)

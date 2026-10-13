@@ -74,7 +74,10 @@ public final class ChangelogViewController: UIViewController {
 
     public override func viewDidLoad() {
         super.viewDidLoad()
-        navigationItem.titleView = ChangelogTitleView(title: Strings.SettingsTitles.whatsNew)
+        // Header.tsx's title, which scales; the picture doesn't.
+        let titleView = ChangelogTitleView(title: Strings.SettingsTitles.whatsNew)
+        titleView.traitOverrides.followsTextSize = true
+        navigationItem.titleView = titleView
         title = Strings.SettingsTitles.whatsNew
         showsBackTitle()
         dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx

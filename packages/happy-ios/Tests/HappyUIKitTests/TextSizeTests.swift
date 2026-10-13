@@ -167,5 +167,86 @@ final class TextSizeTests: XCTestCase {
         XCTAssertEqual(font.pointSize, TextStyles.changelogBody.size * TextScale(.extraExtraExtraLarge).multiplier, accuracy: 0.0001)
         withExtendedLifetime(window) {}
     }
+
+    // MARK: Header titles
+
+    /// OnboardingHeader's and Header.tsx's titles scale in a header that
+    /// keeps its height; the view is fitted again in the bar.
+    func testATitleViewThatFollowsGrowsAndIsFittedAgain() throws {
+        let (window, host) = host(.large, follows: false)
+        let title = NavigationTitleView(title: "Settings", subtitle: "server.example")
+        title.traitOverrides.followsTextSize = true
+        attach(title, to: host)
+        title.sizeToFit()
+        let designed = title.frame.size
+        XCTAssertEqual(font(title.titleLabel)?.pointSize, 16)
+
+        host.traitOverrides.preferredContentSizeCategory = .accessibilityMedium
+        attach(title, to: host)
+        let scale = TextScale(.accessibilityMedium).multiplier
+        XCTAssertEqual(try XCTUnwrap(font(title.titleLabel)).pointSize, 16 * scale, accuracy: 0.0001)
+        XCTAssertEqual(try XCTUnwrap(font(title.subtitleLabel)).pointSize, 11 * scale, accuracy: 0.0001)
+        XCTAssertGreaterThan(title.frame.height, designed.height)
+        XCTAssertEqual(title.frame.size, title.layout(maxWidth: NavigationTitleView.defaultMaxWidth).size)
+        withExtendedLifetime(window) {}
+    }
+
+    /// UIKit's own titles stay put: a title view that doesn't follow is
+    /// never refitted.
+    func testATitleViewThatDoesNotFollowStays() {
+        let (window, host) = host(.large, follows: false)
+        let title = NavigationTitleView(title: "Account")
+        attach(title, to: host)
+        title.sizeToFit()
+        let designed = title.frame
+        host.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
+        attach(title, to: host)
+        XCTAssertEqual(font(title.titleLabel)?.pointSize, 16)
+        XCTAssertEqual(title.frame, designed)
+        withExtendedLifetime(window) {}
+    }
+
+    func testWhatsNewsTitleGrowsAndItsPictureDoesNot() throws {
+        let (window, host) = host(.accessibilityLarge, follows: false)
+        let title = ChangelogTitleView(title: "What's New")
+        title.traitOverrides.followsTextSize = true
+        attach(title, to: host)
+        let scale = TextScale(.accessibilityLarge).multiplier
+        XCTAssertEqual(try XCTUnwrap(font(title.label)).pointSize, TextStyles.changelogNavigationTitle.size * scale, accuracy: 0.0001)
+        let layout = ChangelogTitleLayout(title: title.label.measurable, maxWidth: 240)
+        XCTAssertEqual(layout.image.size, CGSize(width: 40, height: 40))
+        withExtendedLifetime(window) {}
+    }
+
+    // MARK: Troubleshooting
+
+    func testTerminalLinesFollowTheTextSize() throws {
+        let (window, host) = host(.extraExtraExtraLarge, follows: true)
+        let block = TerminalBlockView(lines: [.command("happy daemon start"), .comment("# a comment")])
+        attach(block, to: host)
+        for line in block.lines { line.updateTraitsIfNeeded() }
+        let command = try XCTUnwrap(block.lines.first?.attributedText)
+        let font = try XCTUnwrap(command.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)
+        XCTAssertEqual(font.pointSize, 14 * TextScale(.extraExtraExtraLarge).multiplier, accuracy: 0.0001)
+        XCTAssertEqual(command.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor, UIColor(Palette.terminalPrompt), "the prompt keeps its colour")
+        XCTAssertEqual(command.string, "$ happy daemon start")
+        withExtendedLifetime(window) {}
+    }
+
+    func testTroubleshootingsLinkKeepsItsUnderline() throws {
+        let (window, host) = host(.large, follows: true)
+        let guide = TroubleshootGuideView()
+        attach(guide, to: host)
+        host.traitOverrides.preferredContentSizeCategory = .accessibilityMedium
+        attach(guide, to: host)
+        let body = guide.steps[1].body
+        body.updateTraitsIfNeeded()
+        let text = try XCTUnwrap(body.attributedText)
+        let range = (text.string as NSString).range(of: Strings.Troubleshoot.desktopBodyLink)
+        XCTAssertNotEqual(range.location, NSNotFound)
+        XCTAssertEqual(text.attribute(.underlineStyle, at: range.location, effectiveRange: nil) as? Int, NSUnderlineStyle.single.rawValue)
+        XCTAssertEqual(try XCTUnwrap(font(body)).pointSize, 15 * TextScale(.accessibilityMedium).multiplier, accuracy: 0.0001)
+        withExtendedLifetime(window) {}
+    }
 }
 #endif
