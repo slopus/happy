@@ -27,6 +27,8 @@ struct ChatRowInput: Equatable, Sendable {
     var expanded = false
     /// For a tool: the permission button whose reply is on its way.
     var permissionBusy: PermissionButton.Kind?
+    /// For a question tool: its form and what has been picked.
+    var question: ChatQuestionState?
     var style: ChatRowStyle
 
     var id: String { item.id }
@@ -59,7 +61,7 @@ enum ChatRowRenderer {
             switch message {
             case .userText(let user): return userText(user, delivery: input.delivery, width: width, style: input.style)
             case .agentText(let agent): return agentText(agent, width: width, style: input.style)
-            case .toolCall(let call): return toolCall(call, expanded: input.expanded, busy: input.permissionBusy, width: width, style: input.style)
+            case .toolCall(let call): return toolCall(call, expanded: input.expanded, busy: input.permissionBusy, question: input.question, width: width, style: input.style)
             case .agentEvent(let event): return agentEvent(event, width: width, style: input.style)
             case .unsupported(let unsupported): return unsupportedRow(unsupported, width: width, style: input.style)
             }

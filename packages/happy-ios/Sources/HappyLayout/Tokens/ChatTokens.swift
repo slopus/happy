@@ -130,6 +130,11 @@ extension Palette {
     public static let todoPending = ColorToken("#666666")
     public static let todoOther = ColorToken("#000000")
 
+    /// White on an accent fill (a ticked checkbox, the answer sheet's button).
+    public static let onAccent = ColorToken("#FFFFFF")
+    /// The answer sheet's required-question dot.
+    public static let requiredDot = ColorToken("#FF9500")
+
     /// theme.colors.button.secondary.tint: the goal bar's action glyphs.
     public static let buttonSecondaryTint = ColorToken("#666666", "#8E8E93")
     /// theme.colors.shadow: the scroll-to-bottom button.
@@ -142,7 +147,7 @@ extension Palette {
         gitBranchText, gitAddedText, gitRemovedText, terminalPanel, terminalPromptGreen, terminalCommand,
         terminalStdout, terminalStderr, terminalError, terminalEmptyOutput, diffRowAdded, diffRowRemoved,
         diffMarkerAdded, diffMarkerRemoved, diffText, diffSectionText, diffGutterBorder, buttonSecondaryTint, shadow,
-        boxWarningText, todoCompleted, todoInProgress, todoPending, todoOther,
+        boxWarningText, todoCompleted, todoInProgress, todoPending, todoOther, onAccent, requiredDot,
     ]
 }
 
@@ -233,11 +238,28 @@ public enum ChatTextStyles {
     public static let emptyTitle = ChatTextStyle(.plex(.regular), size: 20)
     public static let emptySubtitle = ChatTextStyle(.plex(.regular), size: 15, lineHeight: 20)
 
-    // InlineQuestionForm.tsx
-    public static let questionHeader = ChatTextStyle(.plex(.semiBold), size: 12, lineHeight: 16, letterSpacing: 0.4, uppercase: true)
-    public static let questionText = ChatTextStyle(.plex(.semiBold), size: 15, lineHeight: 21)
-    public static let questionOption = ChatTextStyle(.plex(.regular), size: 15, lineHeight: 20)
-    public static let questionOptionDescription = ChatTextStyle(.plex(.regular), size: 13, lineHeight: 18)
+    // InlineQuestionForm.tsx (plain <Text>: the system font)
+    public static let inlineQuestionHeader = ChatTextStyle(.system(.semibold), size: 12, uppercase: true)
+    public static let inlineQuestionText = ChatTextStyle(.system(.medium), size: 15)
+    public static let inlineOptionLabel = ChatTextStyle(.system(.medium), size: 14)
+    public static let inlineOptionDescription = ChatTextStyle(.system(.regular), size: 13)
+    public static let inlineSubmit = ChatTextStyle(.system(.semibold), size: 14)
+    public static let inlineSubmittedHeader = ChatTextStyle(.system(.semibold), size: 13)
+    public static let inlineSubmittedValue = ChatTextStyle(.system(.regular), size: 13)
+
+    // AgentQuestionModal.tsx
+    public static let sheetAction = ChatTextStyle(.plex(.regular), size: 16)
+    public static let sheetTitle = ChatTextStyle(.plex(.semiBold), size: 16)
+    public static let sheetChip = ChatTextStyle(.plex(.semiBold), size: 12, uppercase: true)
+    public static let sheetQuestion = ChatTextStyle(.plex(.semiBold), size: 17)
+    public static let sheetHint = ChatTextStyle(.plex(.regular), size: 13)
+    public static let sheetOptionLabel = ChatTextStyle(.plex(.semiBold), size: 15)
+    public static let sheetOptionDescription = ChatTextStyle(.plex(.regular), size: 13)
+    public static let sheetCustomLabel = ChatTextStyle(.plex(.semiBold), size: 13)
+    /// A TextInput with no font family: the system font.
+    public static let sheetInput = ChatTextStyle(.system(.regular), size: 15)
+    public static let sheetError = ChatTextStyle(.plex(.regular), size: 14)
+    public static let sheetSubmit = ChatTextStyle(.plex(.semiBold), size: 16)
 
     // The session deleted state (SessionView.tsx)
     public static let deletedTitle = ChatTextStyle(.system(.semibold), size: 20)

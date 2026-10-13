@@ -514,3 +514,69 @@ final class ComposerPlaceholderLayoutTests: XCTestCase {
         XCTAssertTrue(layout.textScrolls)
     }
 }
+
+final class QuestionSheetLayoutTests: XCTestCase {
+    private func sheet(keyboardTop: CGFloat? = nil) -> QuestionSheetLayout {
+        QuestionSheetLayout(.init(
+            size: CGSize(width: 393, height: 852), safeArea: LayoutInsets(top: 59, bottom: 34), keyboardTop: keyboardTop, hairline: 0.5,
+            cancel: text("Cancel", lineHeight: 20), title: text("Question", lineHeight: 20), submit: text("Send answer", lineHeight: 20),
+            questions: [
+                .init(
+                    chip: text("SCOPE", lineHeight: 16), showsDot: true, text: text("Which part?", lineHeight: 22),
+                    options: [
+                        .init(label: text("List", lineHeight: 20)),
+                        .init(label: text("Composer", lineHeight: 20), description: text("The input", lineHeight: 18)),
+                    ],
+                    custom: (label: text("Your own answer", lineHeight: 18), text: text("", lineHeight: 20))
+                ),
+                .init(chip: text("NAME", lineHeight: 16), showsDot: false, text: text("What?", lineHeight: 22), hint: text("Choose as many as apply", lineHeight: 18), options: []),
+            ],
+            error: text("Could not send", lineHeight: 20)
+        ))
+    }
+
+    func testTheHeaderAndFooterFrameTheQuestions() {
+        let layout = sheet()
+        assertFrame(layout.cancel, rect(16, 73, 48, 20))
+        assertFrame(layout.title, rect(158.5, 73, 64, 20))
+        assertFrame(layout.header, rect(0, 59, 393, 48.5))
+        assertFrame(layout.headerDivider, rect(0, 107, 393, 0.5))
+        assertFrame(layout.footer, rect(0, 743.5, 393, 108.5))
+        assertFrame(layout.footerDivider, rect(0, 743.5, 393, 0.5))
+        assertFrame(layout.submit, rect(16, 756, 361, 50))
+        assertFrame(layout.submitLabel, rect(152.5, 771, 88, 20))
+        assertFrame(layout.scroll, rect(0, 107.5, 393, 636))
+    }
+
+    func testQuestionsStackWithTheirOptionsAndOwnAnswer() {
+        let layout = sheet()
+        let first = layout.questions[0]
+        assertFrame(first.chip, rect(16, 16, 56, 24))
+        assertFrame(first.chipText, rect(24, 20, 40, 16))
+        assertFrame(first.dot, rect(80, 25, 6, 6))
+        assertFrame(first.text, rect(16, 48, 361, 22))
+        XCTAssertNil(first.hint)
+        assertFrame(first.options[0].box, rect(16, 78, 361, 51))
+        assertFrame(first.options[0].checkbox, rect(30, 93, 22, 22))
+        assertFrame(first.options[0].label, rect(64, 92, 299, 20))
+        XCTAssertNil(first.options[0].description)
+        assertFrame(first.options[1].box, rect(16, 137, 361, 68))
+        assertFrame(first.options[1].description, rect(64, 173, 299, 18))
+        assertFrame(first.customLabel, rect(16, 217, 361, 18))
+        assertFrame(first.input, rect(16, 241, 361, 48))
+        let second = layout.questions[1]
+        assertFrame(second.chip, rect(16, 317, 48, 24))
+        XCTAssertNil(second.dot)
+        assertFrame(second.hint, rect(16, 379, 361, 18))
+        XCTAssertNil(second.input)
+        assertFrame(layout.error, rect(16, 425, 361, 20))
+        XCTAssertEqual(layout.contentSize, CGSize(width: 393, height: 575))
+    }
+
+    func testTheFooterRidesTheKeyboard() {
+        let layout = sheet(keyboardTop: 500)
+        assertFrame(layout.footer, rect(0, 425.5, 393, 74.5))
+        assertFrame(layout.submit, rect(16, 438, 361, 50))
+        assertFrame(layout.scroll, rect(0, 107.5, 393, 318))
+    }
+}
