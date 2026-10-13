@@ -6,12 +6,71 @@ public struct Changelog: Decodable, Equatable, Sendable {
         public var title: String
         public var summary: String
         public var markdown: String
+
+        public init(title: String, summary: String, markdown: String) {
+            self.title = title
+            self.summary = summary
+            self.markdown = markdown
+        }
     }
 
     public var entries: [Entry]
+    /// The newest entry's title, which What's New marks as read.
+    public var latestTitle: String
+
+    public init(entries: [Entry], latestTitle: String) {
+        self.entries = entries
+        self.latestTitle = latestTitle
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        entries = try container.decode([Entry].self, forKey: .entries)
+        latestTitle = try container.decodeIfPresent(String.self, forKey: .latestTitle) ?? ""
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case entries
+        case latestTitle
+    }
 
     public static func decode(_ data: Data) throws -> Changelog {
         try JSONDecoder().decode(Changelog.self, from: data)
+    }
+}
+
+/// A What's New summary line (changelog.tsx `parseSummary`): text, links
+/// and bundled images, in order.
+public enum ChangelogSummary {
+    public enum Segment: Equatable, Sendable {
+        case text(String)
+        case link(String, url: String)
+        case image(path: String)
+    }
+
+    public static func parse(_ summary: String) -> [Segment] {
+        // `!\[[^\]]*\]\(([^)]+)\)|\[([^\]]+)\]\(([^)]+)\)`, matched left to
+        // right without overlap.
+        let image = /!\[[^\]]*\]\(([^)]+)\)/
+        let link = /\[([^\]]+)\]\(([^)]+)\)/
+        var segments: [Segment] = []
+        var rest = summary[...]
+        var text = ""
+        while !rest.isEmpty {
+            if let match = rest.prefixMatch(of: image) {
+                if !text.isEmpty { segments.append(.text(text)); text = "" }
+                segments.append(.image(path: String(match.1)))
+                rest = rest[match.range.upperBound...]
+            } else if let match = rest.prefixMatch(of: link) {
+                if !text.isEmpty { segments.append(.text(text)); text = "" }
+                segments.append(.link(String(match.1), url: String(match.2)))
+                rest = rest[match.range.upperBound...]
+            } else {
+                text.append(rest.removeFirst())
+            }
+        }
+        if !text.isEmpty { segments.append(.text(text)) }
+        return segments
     }
 }
 

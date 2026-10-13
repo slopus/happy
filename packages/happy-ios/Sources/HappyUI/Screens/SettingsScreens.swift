@@ -2,16 +2,24 @@
 import HappyCore
 import HappyCrypto
 import HappyLayout
+import HappyStore
 import UIKit
 
-/// Settings, trimmed to what this app does so far: connect a terminal, the
-/// account and its backup key, the server, about and logout. Rows follow
-/// components/SettingsView.tsx and app/(app)/settings/account.tsx.
+/// Settings (components/SettingsView.tsx): the profile or logo header,
+/// connecting a terminal, connected accounts, the feature pages and About.
+/// Voice, Usage, Support Us and the Developer row are not ported (see
+/// docs/FEATURES.md); logout and the push rows live on the Account page, as
+/// they do in happy-app.
 public final class SettingsViewController: UIViewController {
     private let context: AppContext
     private let list = GroupedListView()
-    private var revealsSecret = false
-    private var copiedRecently = false
+    private var observation: StoreObservation?
+    private var snapshot = SettingsSnapshot()
+    private var versionClicks = MultiClickCounter()
+    private var profileHeader: SettingsProfileHeaderView?
+    private var connectingTerminal = false
+    private var claudeBusy = false
+    private var githubBusy = false
 
     public init(context: AppContext) {
         self.context = context
@@ -31,6 +39,10 @@ public final class SettingsViewController: UIViewController {
         super.viewDidLoad()
         title = Strings.Settings.title
         showsBackTitle()
+        observation = context.account.session?.store.observeSettings { [weak self] snapshot in
+            self?.snapshot = snapshot
+            self?.rebuild()
+        }
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -39,145 +51,287 @@ public final class SettingsViewController: UIViewController {
     }
 
     private func rebuild() {
-        guard let session = context.account.session else {
+        guard context.account.session != nil else {
             list.sections = []
             return
         }
+        let model = SettingsIndexModel(profile: snapshot.profile)
+        let settings = AccountSettings(snapshot)
         let blue = Palette.iconBlue
-        var sections: [UIView] = [SettingsHeaderView()]
+        var sections: [UIView] = [header(model.header, settings: settings)]
 
-        sections.append(ItemGroupView(rows: [
-            ItemRowView(title: Strings.Settings.scanQrCodeToAuthenticate, icon: ItemIcon("qrcode", tint: blue)) { [weak self] in
-                self?.scanTerminal()
-            },
-            ItemRowView(title: Strings.Connect.enterUrlManually, icon: ItemIcon("link", tint: blue)) { [weak self] in
-                self?.enterTerminalURL()
-            },
-        ]))
+        let scan = ItemRowView(title: Strings.Settings.scanQrCodeToAuthenticate, icon: ItemIcon(.ionicons("qr-code-outline"), tint: blue)) { [weak self] in
+            self?.scanTerminal()
+        }
+        scan.showsChevron = false
+        scan.isLoading = connectingTerminal
+        let enterURL = ItemRowView(title: Strings.Connect.enterUrlManually, icon: ItemIcon(.ionicons("link-outline"), tint: blue)) { [weak self] in
+            self?.enterTerminalURL()
+        }
+        enterURL.showsChevron = false
+        sections.append(ItemGroupView(rows: [scan, enterURL]))
 
-        sections.append(ItemGroupView(title: Strings.Settings.account, rows: [
-            ItemRowView(title: Strings.SettingsAccount.status, detail: Strings.SettingsAccount.statusActive),
-            ItemRowView(title: Strings.SettingsAccount.anonymousId, detail: session.keys.anonID),
-            ItemRowView(
-                title: Strings.SettingsAccount.linkNewDevice,
-                subtitle: Strings.SettingsAccount.linkNewDeviceSubtitle,
-                icon: ItemIcon("qrcode", tint: blue)
-            ) { [weak self] in
-                self?.linkDevice()
-            },
-        ]))
-
-        let secretRow = ItemRowView(
-            title: Strings.SettingsAccount.secretKey,
-            subtitle: revealsSecret ? Strings.SettingsAccount.tapToHide : Strings.SettingsAccount.tapToReveal,
-            icon: ItemIcon(revealsSecret ? "eye.slash" : "eye", tint: Palette.iconOrange)
+        let claude = ItemRowView(
+            title: Strings.Settings.claudeCode,
+            subtitle: model.claudeConnected ? Strings.SettingsAccount.statusActive : Strings.Settings.connectAccount,
+            icon: ItemIcon(.bundled("icon-claude"))
         ) { [weak self] in
-            self?.toggleSecret()
+            if model.claudeConnected { self?.disconnectClaude() } else { self?.connectClaude() }
         }
-        secretRow.showsChevron = false
-        sections.append(ItemGroupView(title: Strings.SettingsAccount.backup, footer: Strings.SettingsAccount.backupDescription, rows: [secretRow]))
-        if revealsSecret {
-            let card = SecretKeyCardView(formattedKey: SecretKeyBackup.format(secret: session.keys.secret))
-            card.copiedRecently = copiedRecently
-            card.onCopy = { [weak self] in self?.copySecret() }
-            sections.append(ItemGroupView(rows: [card]))
+        claude.showsChevron = false
+        claude.isLoading = claudeBusy
+        let github = ItemRowView(
+            title: Strings.Settings.github,
+            subtitle: model.githubLogin.map(Strings.Settings.githubConnected(login:)) ?? Strings.Settings.connectGithubAccount,
+            icon: ItemIcon(.ionicons("logo-github"), tint: model.githubLogin == nil ? Palette.textSecondary : Palette.statusConnected)
+        ) { [weak self] in
+            if model.githubLogin == nil { self?.connectGitHub() } else { self?.disconnectGitHub() }
         }
+        github.showsChevron = false
+        github.isLoading = githubBusy
+        sections.append(ItemGroupView(title: Strings.Settings.connectedAccounts, rows: [claude, github]))
 
-        sections.append(ItemGroupView(rows: [
+        let agents = ItemRowView(
+            title: Strings.Settings.agents,
+            subtitle: Strings.Settings.agentsSubtitle,
+            icon: ItemIcon(.ionicons("options-outline"), tint: Palette.iconTeal)
+        ) { [weak self] in
+            self?.open(.settingsAgents)
+        }
+        sections.append(ItemGroupView(title: Strings.Settings.features, rows: [
             ItemRowView(
-                title: Strings.SettingsAccount.server,
-                detail: context.customServerHost ?? Strings.Server.defaultServer,
-                icon: ItemIcon("server.rack", tint: Palette.iconPurple)
+                title: Strings.Settings.account,
+                subtitle: Strings.Settings.accountSubtitle,
+                icon: ItemIcon(.ionicons("person-circle-outline"), tint: blue)
             ) { [weak self] in
-                self?.openServer()
+                self?.open(.settingsAccount)
             },
+            ItemRowView(
+                title: Strings.Settings.appearance,
+                subtitle: Strings.Settings.appearanceSubtitle,
+                icon: ItemIcon(.ionicons("color-palette-outline"), tint: Palette.iconPurple)
+            ) { [weak self] in
+                self?.open(.settingsAppearance)
+            },
+            agents,
         ]))
+        // ItemGroup counts the `{experiments && …}` slot after Agents even
+        // when it is empty, so Agents keeps its divider in happy-app.
+        agents.showsDivider = true
 
+        let version = ItemRowView(
+            title: Strings.Common.version,
+            detail: SettingsIndexModel.versionDetail(version: context.version, variant: context.variant),
+            icon: ItemIcon(.ionicons("information-circle-outline"), tint: Palette.textSecondary)
+        ) { [weak self] in
+            self?.versionTapped()
+        }
+        version.showsChevron = false
         sections.append(ItemGroupView(title: Strings.Settings.about, footer: Strings.Settings.aboutFooter, rows: [
             ItemRowView(
-                title: Strings.Common.version,
-                detail: context.variant == .production ? context.version : "\(context.version) (\(context.variant.rawValue))",
-                icon: ItemIcon("info.circle", tint: Palette.textSecondary)
-            ),
-        ]))
-
-        sections.append(ItemGroupView(rows: [
-            ItemRowView(
-                title: Strings.SettingsAccount.logout,
-                subtitle: Strings.SettingsAccount.logoutSubtitle,
-                icon: ItemIcon("rectangle.portrait.and.arrow.right", tint: Palette.iconRed),
-                isDestructive: true
+                title: Strings.Settings.whatsNew,
+                subtitle: Strings.Settings.whatsNewSubtitle,
+                icon: ItemIcon(.ionicons("sparkles-outline"), tint: Palette.iconOrange)
             ) { [weak self] in
-                self?.logout()
+                self?.open(.changelog)
             },
+            ItemRowView(
+                title: Strings.Settings.github,
+                detail: Strings.Links.githubDetail,
+                icon: ItemIcon(.ionicons("logo-github"), tint: Palette.text)
+            ) {
+                UIApplication.shared.open(Strings.Links.github)
+            },
+            ItemRowView(title: Strings.Settings.reportIssue, icon: ItemIcon(.ionicons("bug-outline"), tint: Palette.iconRed)) {
+                UIApplication.shared.open(Strings.Links.issues)
+            },
+            ItemRowView(title: Strings.Settings.privacyPolicy, icon: ItemIcon(.ionicons("shield-checkmark-outline"), tint: blue)) {
+                UIApplication.shared.open(Strings.Links.privacy)
+            },
+            ItemRowView(title: Strings.Settings.termsOfService, icon: ItemIcon(.ionicons("document-text-outline"), tint: blue)) {
+                UIApplication.shared.open(Strings.Links.terms)
+            },
+            ItemRowView(title: Strings.Settings.eula, icon: ItemIcon(.ionicons("document-text-outline"), tint: blue)) {
+                UIApplication.shared.open(Strings.Links.eula)
+            },
+            version,
         ]))
         list.sections = sections
     }
 
+    private func header(_ header: SettingsIndexModel.Header, settings: AccountSettings) -> UIView {
+        switch header {
+        case .logo:
+            profileHeader = nil
+            return SettingsHeaderView()
+        case .profile(let id, let name, let bio, let avatarURL):
+            let content = SettingsProfileHeaderView.Content(
+                id: id,
+                name: name,
+                bio: bio,
+                avatarURL: avatarURL.flatMap(URL.init(string:)),
+                style: settings.avatarStyle,
+                monochrome: settings.avatarMonochrome
+            )
+            if let profileHeader {
+                profileHeader.content = content
+                return profileHeader
+            }
+            let view = SettingsProfileHeaderView(content: content)
+            profileHeader = view
+            return view
+        }
+    }
+
+    private func open(_ route: Route) {
+        push(route, context: context)
+    }
+
+    // MARK: Connect a terminal (useConnectTerminal.ts)
+
     private func scanTerminal() {
         Task { @MainActor in
             guard let text = await PairingFlow.scan(.terminal, from: self) else { return }
-            await approve(text, kind: .terminal)
+            await approve(text)
         }
     }
 
     private func enterTerminalURL() {
         Task { @MainActor in
-            guard let text = await Alerts.prompt(
+            let text = await Alerts.prompt(
                 Strings.Modals.authenticateTerminal,
                 Strings.Modals.pasteUrlFromTerminal,
                 placeholder: "happy://terminal?...",
-                confirmTitle: Strings.Common.continueAction,
+                confirmTitle: Strings.Common.authenticate,
                 on: self
-            ) else { return }
-            await approve(text, kind: .terminal)
+            )
+            guard let url = text?.trimmingCharacters(in: .whitespacesAndNewlines), !url.isEmpty else { return }
+            await approve(url)
         }
     }
 
-    private func linkDevice() {
-        Task { @MainActor in
-            guard let text = await PairingFlow.scan(.account, from: self) else { return }
-            await approve(text, kind: .account)
-        }
-    }
-
-    private func approve(_ text: String, kind: PairingFlow.Kind) async {
-        guard let session = context.account.session else { return }
-        let outcome = await PairingFlow.approve(text, expecting: kind, session: session)
-        PairingFlow.report(outcome, kind: kind, on: self)
-    }
-
-    private func toggleSecret() {
-        revealsSecret.toggle()
-        copiedRecently = false
+    private func approve(_ text: String) async {
+        guard let session = context.account.session, !connectingTerminal else { return }
+        connectingTerminal = true
         rebuild()
-    }
-
-    private func copySecret() {
-        guard let session = context.account.session else { return }
-        UIPasteboard.general.string = SecretKeyBackup.format(secret: session.keys.secret)
-        copiedRecently = true
+        let outcome = await PairingFlow.approve(text, expecting: .terminal, session: session)
+        connectingTerminal = false
         rebuild()
-        Alerts.show(Strings.Common.success, Strings.SettingsAccount.secretKeyCopied, on: self)
+        PairingFlow.report(outcome, kind: .terminal, on: self)
     }
 
-    private func openServer() {
-        navigationController?.pushViewController(ServerConfigViewController(context: context), animated: true)
+    // MARK: Connected accounts
+
+    private func connectClaude() {
+        open(.settingsConnectClaude)
     }
 
-    private func logout() {
+    private func disconnectClaude() {
+        guard !claudeBusy, let session = context.account.session else { return }
+        claudeBusy = true
+        rebuild()
         Task { @MainActor in
+            defer {
+                claudeBusy = false
+                rebuild()
+            }
+            let service = "Claude"
             let confirmed = await Alerts.confirm(
-                Strings.Common.logout,
-                Strings.SettingsAccount.logoutConfirm,
-                confirmTitle: Strings.Common.logout,
+                Strings.Modals.disconnectService(service),
+                Strings.Modals.disconnectServiceConfirm(service),
+                confirmTitle: Strings.Modals.disconnect,
                 destructive: true,
                 on: self
             )
             guard confirmed else { return }
-            await context.account.signOut()
+            do {
+                try await session.api.disconnectService("anthropic")
+                await session.sync.invalidate(.profile)
+            } catch {
+                SettingsAlerts.unknownError(on: self)
+            }
         }
     }
+
+    private func connectGitHub() {
+        guard !githubBusy, let session = context.account.session else { return }
+        githubBusy = true
+        rebuild()
+        Task { @MainActor in
+            defer {
+                githubBusy = false
+                rebuild()
+            }
+            do {
+                let params = try await session.api.githubOAuthParams()
+                guard let url = URL(string: params.url) else { throw APIError.decoding("GitHub OAuth URL") }
+                await UIApplication.shared.open(url)
+            } catch {
+                SettingsAlerts.unknownError(on: self)
+            }
+        }
+    }
+
+    private func disconnectGitHub() {
+        guard !githubBusy, let session = context.account.session else { return }
+        githubBusy = true
+        rebuild()
+        Task { @MainActor in
+            defer {
+                githubBusy = false
+                rebuild()
+            }
+            let confirmed = await Alerts.confirm(
+                Strings.Modals.disconnectGithub,
+                Strings.Modals.disconnectGithubConfirm,
+                confirmTitle: Strings.Modals.disconnect,
+                destructive: true,
+                on: self
+            )
+            guard confirmed else { return }
+            do {
+                try await session.api.disconnectGitHub()
+                // The server also sends an account update; pulling the
+                // profile covers a socket that is down.
+                await session.sync.invalidate(.profile)
+            } catch {
+                SettingsAlerts.unknownError(on: self)
+            }
+        }
+    }
+
+    // MARK: About
+
+    /// Ten taps toggle developer mode. The Developer row it reveals is not
+    /// ported, but the switch is kept so it means the same in both apps.
+    private func versionTapped() {
+        guard versionClicks.click(at: Date()) else { return }
+        let enabled = !context.account.localSettings.devModeEnabled
+        context.account.localSettings.devModeEnabled = enabled
+        Alerts.show(
+            Strings.Modals.developerMode,
+            enabled ? Strings.Modals.developerModeEnabled : Strings.Modals.developerModeDisabled,
+            on: self
+        )
+    }
+}
+
+/// useHappyAction.ts's catch-all: any failure reads "Unknown error".
+@MainActor
+enum SettingsAlerts {
+    static func unknownError(on controller: UIViewController) {
+        Alerts.show(Strings.SettingsActions.error, Strings.SettingsActions.unknownError, on: controller)
+    }
+}
+
+/// The active account's server host, for rows that name it; nil on the
+/// default server. Each account has its own server, so this reads the
+/// session, not the server the sign-in screens would pick.
+@MainActor
+func activeServerHost(_ context: AppContext) -> String? {
+    guard let url = context.account.session?.api.serverURL, url != ServerConfig.defaultServerURL else { return nil }
+    guard let host = url.host else { return url.absoluteString }
+    return url.port.map { "\(host):\($0)" } ?? host
 }
 
 /// The gear on Link Your Computer, app/(app)/onboarding/settings.tsx. Two
@@ -217,14 +371,14 @@ public final class OnboardingSettingsViewController: UIViewController {
     private func rebuild() {
         let server = ItemRowView(
             title: Strings.Onboarding.settingsServer,
-            detail: context.customServerHost ?? Strings.Onboarding.settingsServerDefault,
-            icon: ItemIcon("server.rack", tint: Palette.textSecondary)
+            detail: activeServerHost(context) ?? Strings.Onboarding.settingsServerDefault,
+            icon: ItemIcon(.ionicons("server-outline"), tint: Palette.textSecondary)
         ) { [weak self] in
             self?.openServer()
         }
         let logout = ItemRowView(
             title: Strings.Onboarding.logoutStartOver,
-            icon: ItemIcon("rectangle.portrait.and.arrow.right", tint: Palette.textDestructive),
+            icon: ItemIcon(.ionicons("log-out-outline"), tint: Palette.textDestructive),
             isDestructive: true
         ) { [weak self] in
             self?.logout()
