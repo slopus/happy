@@ -39,6 +39,9 @@ public struct SessionRecord: Codable, Hashable, Sendable, FetchableRecord, Persi
     /// Every message with `seq <= syncedMessageSeq` is stored locally. The
     /// next delta fetch asks for `after_seq = syncedMessageSeq`.
     public var syncedMessageSeq: Int
+    /// This device's last accepted send, persisted for activity ordering.
+    /// Wire updates never overwrite it; retries do not advance it.
+    public var lastMessageSentAt: Int64?
 
     /// The agent is working on a turn. Only `activity` ephemerals carry it,
     /// so it is local, cleared on launch and whenever the session goes
@@ -57,7 +60,8 @@ public struct SessionRecord: Codable, Hashable, Sendable, FetchableRecord, Persi
         projectId: String?, metadataVersion: Int, metadataCipher: String, metadata: JSONValue?,
         agentStateVersion: Int, agentStateCipher: String?, agentState: JSONValue?,
         dataKeyCipher: String?, decryptable: Bool, syncedMessageSeq: Int = 0,
-        thinking: Bool = false, thinkingAt: Int64 = 0, unread: Bool = false, archiving: Bool = false
+        thinking: Bool = false, thinkingAt: Int64 = 0, unread: Bool = false, archiving: Bool = false,
+        lastMessageSentAt: Int64? = nil
     ) {
         self.id = id
         self.seq = seq
@@ -75,6 +79,7 @@ public struct SessionRecord: Codable, Hashable, Sendable, FetchableRecord, Persi
         self.dataKeyCipher = dataKeyCipher
         self.decryptable = decryptable
         self.syncedMessageSeq = syncedMessageSeq
+        self.lastMessageSentAt = lastMessageSentAt
         self.thinking = thinking
         self.thinkingAt = thinkingAt
         self.unread = unread

@@ -54,7 +54,7 @@ public final class LocalStore: Sendable {
         // Ciphertexts, versions and message cursors do not render on home.
         // Scope invalidation to the columns its consumers actually use.
         let homeSessionRegion = SQLRequest<Row>(sql: """
-            SELECT id, createdAt, updatedAt, active, activeAt, projectId,
+            SELECT id, createdAt, updatedAt, lastMessageSentAt, active, activeAt, projectId,
                    metadata, agentState, decryptable, thinking, unread, archiving
             FROM session
             """)
@@ -74,7 +74,7 @@ public final class LocalStore: Sendable {
         presenceOverlay = overlay
         homeHub = SnapshotHub(observation: homeObservation, project: { overlay.home($0) })
         machinesHub = SnapshotHub(observation: machinesObservation, project: { overlay.machineSnapshot($0) })
-        let troubleRegion = SQLRequest<Row>(sql: "SELECT id, updatedAt, active, createdAt, metadata FROM session")
+        let troubleRegion = SQLRequest<Row>(sql: "SELECT id, updatedAt, active, createdAt, lastMessageSentAt, metadata FROM session")
         let troubleMachines = SQLRequest<Row>(sql: "SELECT id, createdAt, active, activeAt, metadata FROM machine")
         let troubleshootingObservation = ValueObservation.tracking(region: troubleRegion, troubleMachines,
             fetch: { db in try Self.fetchTroubleshootingSnapshot(db) }
