@@ -275,6 +275,82 @@ final class ChatCliWarningPill: UIControl {
     }
 }
 
+/// SessionView's back button on a phone held sideways, where the header is
+/// gone: a 44pt disc with Ionicons' chevron-back at 28, a soft shadow, and
+/// 15 of slop around it. Like happy-app's Pressable it doesn't change while
+/// pressed.
+final class ChatLandscapeBackButton: UIControl {
+    private static let hitSlop: CGFloat = 15
+    private let chevron = IconView(.ionicons("chevron-back"), size: 28, tint: Palette.landscapeBackGlyph)
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        addSubview(chevron)
+        layer.shadowOffset = CGSize(width: 0, height: 2)
+        layer.shadowOpacity = 0.1
+        layer.shadowRadius = 4
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+        accessibilityLabel = Strings.Common.back
+        updateColors()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
+            self.updateColors()
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerRadius = bounds.height / 2
+        layer.shadowPath = UIBezierPath(ovalIn: bounds).cgPath
+        chevron.setLayoutFrame(bounds)
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        bounds.insetBy(dx: -Self.hitSlop, dy: -Self.hitSlop).contains(point)
+    }
+
+    private func updateColors() {
+        backgroundColor = UIColor(Palette.landscapeBackFill)
+        layer.shadowColor = UIColor(Palette.shadow).resolvedColor(with: traitCollection).cgColor
+    }
+}
+
+/// The surface behind the status bar while the header is gone, its shadow
+/// falling 2 onto the chat (theme.colors.shadow, radius 3).
+final class ChatStatusBarStrip: UIView {
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        backgroundColor = UIColor(Palette.surface)
+        layer.shadowOffset = CGSize(width: 0, height: 2)
+        layer.shadowOpacity = 0.1
+        layer.shadowRadius = 3
+        updateColors()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
+            self.updateColors()
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.shadowPath = UIBezierPath(rect: bounds).cgPath
+    }
+
+    private func updateColors() {
+        layer.shadowColor = UIColor(Palette.shadow).resolvedColor(with: traitCollection).cgColor
+    }
+}
+
 /// What fills the chat when there is no conversation to show: a spinner
 /// while it loads, EmptyMessages for a chat with nothing in it yet,
 /// PendingChatPlaceholder for one that hasn't started yet, or the deleted

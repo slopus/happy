@@ -88,7 +88,9 @@ extension ChatRowRenderer {
         let expandable = !presentation.awaitingDecision && presentation.expandedBody != .none
             && (body != nil || toolBody(presentation.expandedBody, message: message, views: views, style: style) != nil)
         let tap: ChatRowAction = expandable ? .toggleTool(message.id) : open
-        let footer = presentation.showsPermissionFooter ? tool.permission.map { permissionFooter($0, tool: tool, busy: busy, flavor: style.flavor, tablet: style.tablet) } : nil
+        let footer = presentation.showsPermissionFooter ? tool.permission.map {
+            permissionFooter($0, tool: tool, busy: busy, flavor: style.flavor, tablet: style.tablet, maxListHeight: style.permissionListMaxHeight)
+        } : nil
         let elapsed = presentation.showsElapsed ? elapsedSize : nil
         let glyph = presentation.statusGlyph.map { _ in CGSize(width: ToolCardLayout.Metrics.statusIconSize, height: ToolCardLayout.Metrics.statusIconSize) }
 
@@ -249,7 +251,6 @@ extension ChatRowRenderer {
         case .codexBash: codexBashView(message.tool, root: style.root)
         case .geminiExecute: geminiExecuteView(message.tool)
         case .file: fileView(message.tool)
-        default: nil
         }
     }
 
@@ -390,11 +391,15 @@ extension ChatRowRenderer {
         )
     }
 
-    static func diffPiece(_ source: DiffChunkSource, index: Int, toolId: String, showLineNumbers: Bool, expanded: Set<Int>) -> ChatPiece? {
+    /// `radius` and `corners` clip the diff where it ends a card.
+    static func diffPiece(
+        _ source: DiffChunkSource, index: Int, toolId: String, showLineNumbers: Bool, expanded: Set<Int>,
+        radius: CGFloat = 0, corners: CACornerMask = .all
+    ) -> ChatPiece? {
         guard !DiffFileItem.document(source.source).files.isEmpty else { return nil }
         let diff = ChatDiffPiece(source: source, showLineNumbers: showLineNumbers, expanded: expanded)
         return ChatPiece(measurable: Measurable { diff.plan(width: $0).size }) { frame in
-            ([.diff(diff.plan(width: frame.width), frame: frame, toolId: toolId, chunk: index)], [])
+            ([.diff(diff.plan(width: frame.width), frame: frame, toolId: toolId, chunk: index, radius: radius, corners: corners)], [])
         }
     }
 
@@ -632,7 +637,12 @@ extension ChatRowRenderer {
 
     // MARK: Permission buttons (PermissionFooter.tsx)
 
-    static func permissionFooter(_ permission: ToolPermission, tool: ToolCall, busy: PermissionButton.Kind?, flavor: String?, tablet: Bool = false) -> ChatPiece {
+    /// A list taller than `maxListHeight` scrolls, its buttons and their
+    /// taps inside the scroller.
+    static func permissionFooter(
+        _ permission: ToolPermission, tool: ToolCall, busy: PermissionButton.Kind?, flavor: String?, tablet: Bool = false,
+        maxListHeight: CGFloat = PermissionFooterLayout.Metrics.maxListHeight
+    ) -> ChatPiece {
         let buttons = ChatPermissionButtons.buttons(permission, toolName: tool.name, toolInput: tool.input, flavor: flavor)
         let pending = permission.status == .pending
         let labels = buttons.map { button in
@@ -641,16 +651,20 @@ extension ChatRowRenderer {
         }
         let measurables = labels.map(\.measurable)
         func layout(_ width: CGFloat) -> PermissionFooterLayout {
-            tablet ? .tablet(width: width, labels: measurables) : PermissionFooterLayout(width: width, labels: measurables)
+            tablet
+                ? .tablet(width: width, labels: measurables, maxListHeight: maxListHeight)
+                : PermissionFooterLayout(width: width, labels: measurables, maxListHeight: maxListHeight)
         }
         return ChatPiece(measurable: Measurable { layout($0).size }) { frame in
             typealias M = PermissionFooterLayout.Metrics
             let layout = layout(frame.width)
+            // In the row, or in the scrolling list's own coordinates.
+            let origin = layout.scrolls ? CGPoint(x: -layout.list.minX, y: -layout.list.minY) : frame.origin
             var items: [ChatDrawItem] = []
             var hits: [ChatHit] = []
             for (index, button) in buttons.enumerated() {
-                let box = layout.buttons[index].offsetBy(dx: frame.minX, dy: frame.minY)
-                let label = layout.labels[index].offsetBy(dx: frame.minX, dy: frame.minY)
+                let box = layout.buttons[index].offsetBy(dx: origin.x, dy: origin.y)
+                let label = layout.labels[index].offsetBy(dx: origin.x, dy: origin.y)
                 let alpha = button.inactive ? M.inactiveOpacity : 1
                 items.append(.box(ChatBox(
                     frame: box, fill: button.selected ? Palette.surfaceHighest : Palette.surface,
@@ -666,7 +680,9 @@ extension ChatRowRenderer {
                     hits.append(ChatHit(frame: box, action: .permission(ChatPermissionTap(permissionId: permission.id, kind: button.kind, reply: reply))))
                 }
             }
-            return (items, hits)
+            guard layout.scrolls else { return (items, hits) }
+            let list = ChatRowPlan(id: "permissions", size: CGSize(width: layout.list.width, height: layout.listContentHeight), items: items, hits: hits)
+            return ([.scroller(list, frame: layout.list.offsetBy(dx: frame.minX, dy: frame.minY), vertical: true)], [])
         }
     }
 }
