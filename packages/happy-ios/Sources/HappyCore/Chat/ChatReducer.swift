@@ -1,4 +1,5 @@
 import Foundation
+import HappyStore
 import HappyWire
 
 /// The visible and status changes caused by one incremental reduction.
@@ -67,6 +68,7 @@ public struct ChatReducer: Sendable {
         _ records: [NormalizedChatRecord], agentState: JSONValue? = nil,
         holdUserMessagesUntilAccepted: Bool = false
     ) -> ChatReduction {
+        ThreadRules.assertOffMain()
         changed = []
         settled = []
         var ready = false
