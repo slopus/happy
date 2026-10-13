@@ -35,6 +35,11 @@ private let logger = Logger(subsystem: "engineering.happy", category: "composer"
 /// window's, not the chat column's) the card is the flat panel with the
 /// gear, Stop, image and send (`desktopActionControls`). The same text view
 /// carries across the line as the window is resized.
+///
+/// It follows the person's text size on its own (`FollowsTextSize`, set on
+/// itself), as React Native scales AgentInput: every height it reports is
+/// measured from its text as drawn, so the chat lays it out at that size
+/// whether or not the rest of the screen follows yet.
 final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegate {
     weak var composerDelegate: (any ChatComposerDelegate)?
 
@@ -83,6 +88,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     private var statusSize: CGSize = .zero
     private var weekSize: CGSize = .zero
+    /// The text size the status and usage rows were last drawn at.
+    private var detailsScale: TextScale?
 
     private static let titles = ComposerChipSet.Titles(
         permission: Strings.Composer.permissionModeTitle,
@@ -100,6 +107,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         modes = ComposerModes(metadata: nil, picks: ComposerPicks(), agentDefaultOverrides: [:])
         card = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: Strings.Composer.inputPlaceholder))
         super.init(frame: .zero)
+        // Before anything is measured: every height here is measured as
+        // drawn (docs/DYNAMIC-TYPE.md).
+        traitOverrides.followsTextSize = true
 
         statusDot.isUserInteractionEnabled = false
         addSubview(statusDot)
@@ -138,6 +148,11 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         }
         registerForTraitChanges([ZenModeTrait.self]) { (self: Self, _) in
             self.applyConfiguration()
+        }
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            guard self.syncTextSize() else { return }
+            self.setNeedsLayout()
+            self.composerDelegate?.composerDidInvalidateHeight(self)
         }
     }
 
@@ -312,7 +327,23 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         followWindowLater()
     }
 
+    /// The person's text size, as the composer draws it.
+    private var textScale: TextScale? {
+        traitCollection.textEnvironment?.scale
+    }
+
+    /// Draws the rows again if the text size moved since; true if it did.
+    /// The card and the suggestion rows keep up on their own.
+    @discardableResult
+    private func syncTextSize() -> Bool {
+        guard textScale != detailsScale else { return false }
+        applyDetails()
+        return true
+    }
+
     private func layout(width: CGFloat) -> AgentInputLayout {
+        // Measured before the first trait update: measure what will be drawn.
+        syncTextSize()
         let screenWidth = self.screenWidth
         let paddingH = AgentInputLayout.paddingH(screenWidth: screenWidth)
         let maxContentWidth = self.maxContentWidth
@@ -510,8 +541,11 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         )
     }
 
+    /// Something besides whitespace (`trim().length > 0`). Stops at the
+    /// first such character rather than copying the trimmed text.
     private static func hasContent(_ text: String) -> Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let blank = CharacterSet.whitespacesAndNewlines
+        return text.unicodeScalars.contains { !blank.contains($0) }
     }
 
     func agentInputCardDidChangeText(_ card: AgentInputCardView) {
@@ -529,9 +563,21 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// Return picks the highlighted suggestion (or the first) instead of
     /// starting a line.
     func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool {
-        guard activeQuery != nil, !suggestions.items.isEmpty else { return true }
+        !pickSuggestionOnKey()
+    }
+
+    /// So does a hardware keyboard's Tab: Fabric reports the typed "\t" as
+    /// "Tab" (TextInputEventEmitter), which AgentInput's handleKeyPress
+    /// takes as Enter. With no list, the tab is typed.
+    func agentInputCardShouldInsertTab(_ card: AgentInputCardView) -> Bool {
+        !pickSuggestionOnKey()
+    }
+
+    /// Picks the highlighted suggestion, or the first; false with no list.
+    private func pickSuggestionOnKey() -> Bool {
+        guard activeQuery != nil, !suggestions.items.isEmpty else { return false }
         selectSuggestion(max(0, suggestions.selected))
-        return false
+        return true
     }
 
     func agentInputCardDidChangeFocus(_ card: AgentInputCardView) {
@@ -891,7 +937,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     // MARK: Status and usage
 
     private func applyDetails() {
-        let style = TextStyles.composerStatus
+        let scale = textScale
+        detailsScale = scale
+        let style = scale.map { TextStyles.composerStatus.scaled($0) } ?? TextStyles.composerStatus
         if let status {
             let color = UIColor(Self.color(status.tone))
             statusLabel.attributedText = style.attributedString(Self.text(status.text), color: color, lineBreakMode: .byTruncatingTail)

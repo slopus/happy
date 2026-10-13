@@ -20,6 +20,12 @@ import UIKit
 // `AgentInputCardLayout` places every subview. The chat's composer in a
 // window wider than 700 points makes it the flat panel instead
 // (`desktop`, AgentInputDesktopControls.swift), keeping the text view.
+//
+// Under `FollowsTextSize` (the chat's composer sets it; Home's dock
+// doesn't) its text is drawn at the person's text size as React Native
+// scales it, and measured as drawn: the input, its placeholder and line, the
+// chips and the "·". Icons, paddings, the 40 and 42 rows, the 44 minimum
+// and the 120 cap stay.
 
 /// A chip in the action row.
 public enum AgentInputChip: Sendable {
@@ -234,6 +240,9 @@ public protocol AgentInputCardDelegate: AnyObject {
     func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip)
     /// Return was typed. False swallows the newline (an autocomplete pick).
     func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool
+    /// A hardware keyboard's Tab was typed. False swallows the tab (an
+    /// autocomplete pick).
+    func agentInputCardShouldInsertTab(_ card: AgentInputCardView) -> Bool
     /// A control was pressed while `refusesControls` is on; it has shaken.
     func agentInputCardDidRefuse(_ card: AgentInputCardView, control: AgentInputControl)
 }
@@ -250,6 +259,7 @@ extension AgentInputCardDelegate {
     public func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) {}
     public func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {}
     public func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool { true }
+    public func agentInputCardShouldInsertTab(_ card: AgentInputCardView) -> Bool { true }
     public func agentInputCardDidRefuse(_ card: AgentInputCardView, control: AgentInputControl) {}
 }
 
@@ -290,9 +300,26 @@ public final class AgentInputCardView: UIView {
     private let primaryButton = ComposerPrimaryButton()
     private let desktopControls = AgentInputDesktopControlsView()
     private var primaryFlash: CGFloat = 0
-    private var measured: (width: CGFloat, text: String, height: CGFloat)?
+    /// The text's height at a width, for the text as it was at `revision`.
+    private var measured: (width: CGFloat, revision: Int, scale: TextScale?, height: CGFloat)?
+    /// Moves on every change to the text, so a cached height is checked
+    /// without reading the text, however long it is.
+    private var textRevision = 0
+    /// The height the owner last laid the card out at, and at what width:
+    /// what a change to the text is measured against.
+    private var laidOut: (width: CGFloat, height: CGFloat)?
+    /// The person's text size, where the card follows it; nil draws the
+    /// designed sizes.
+    private var textScale: TextScale?
 
-    private static let inputStyle = TextStyles.composerInput
+    /// MultiTextInput's 16/22, as drawn here.
+    private var inputStyle: TextStyle {
+        textScale.map { TextStyles.composerInput.scaled($0) } ?? TextStyles.composerInput
+    }
+
+    private var chipStyle: TextStyle {
+        textScale.map { TextStyles.composerChip.scaled($0) } ?? TextStyles.composerChip
+    }
 
     public init(configuration: AgentInputCardConfiguration, metrics: MobileComposerMetrics = .mobile) {
         self.configuration = configuration
@@ -322,9 +349,9 @@ public final class AgentInputCardView: UIView {
         textView.backgroundColor = .clear
         textView.textContainerInset = UIEdgeInsets(top: metrics.inputPaddingTop, left: 0, bottom: metrics.inputPaddingBottom, right: 0)
         textView.textContainer.lineFragmentPadding = 0
-        textView.font = Self.inputStyle.font
+        textView.font = inputStyle.font
         textView.textColor = UIColor(Palette.inputText)
-        textView.typingAttributes = Self.inputStyle.attributes(color: UIColor(Palette.inputText))
+        textView.typingAttributes = inputStyle.attributes(color: UIColor(Palette.inputText))
         textView.isScrollEnabled = false
         textView.autocorrectionType = .yes
         textView.keyboardType = .default
@@ -354,7 +381,6 @@ public final class AgentInputCardView: UIView {
             }
             middle.addSubview(chip)
         }
-        separator.attributedText = TextStyles.composerChip.attributedString("·", color: UIColor(Palette.textSecondary))
         middle.addSubview(separator)
 
         primaryButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
@@ -380,11 +406,69 @@ public final class AgentInputCardView: UIView {
         actionsGroup.addSubview(desktopControls)
 
         // didSet doesn't run in the initializer.
+        syncTextSize()
+        applyTextSize()
         apply(previous: nil)
         applyAppearance()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
             self.applyAppearance()
         }
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.textSizeMayHaveChanged()
+        }
+    }
+
+    public override func didMoveToWindow() {
+        super.didMoveToWindow()
+        textSizeMayHaveChanged()
+    }
+
+    // MARK: Text size
+
+    /// Takes up the text size the traits now give; true if it moved. The
+    /// fonts are redrawn, nothing is reported.
+    @discardableResult
+    private func syncTextSize() -> Bool {
+        let scale = traitCollection.textEnvironment?.scale
+        guard scale != textScale else { return false }
+        textScale = scale
+        applyTextSize()
+        return true
+    }
+
+    /// The text size moved outside a measurement: redraw, and the owner
+    /// lays the card out again.
+    private func textSizeMayHaveChanged() {
+        guard syncTextSize() else { return }
+        delegate?.agentInputCardDidInvalidateHeight(self)
+        setNeedsLayout()
+    }
+
+    /// Every font the card draws, at `textScale`.
+    private func applyTextSize() {
+        separator.attributedText = chipStyle.attributedString("·", color: UIColor(Palette.textSecondary))
+        for chip in [permissionChip, modelChip, effortChip] {
+            chip.textScale = textScale
+        }
+        placeholderLabel.attributedText = inputStyle.attributedString(
+            configuration.placeholder,
+            color: UIColor(Palette.inputPlaceholder),
+            lineBreakMode: .byTruncatingTail
+        )
+        textView.font = inputStyle.font
+        restyleText()
+        measured = nil
+    }
+
+    /// The typed text drawn again in the input style and colour, the
+    /// selection kept.
+    private func restyleText() {
+        let selection = textView.selectedRange
+        if textView.hasText {
+            textView.attributedText = inputStyle.attributedString(text, color: UIColor(Palette.inputText))
+            textView.selectedRange = selection
+        }
+        textView.typingAttributes = inputStyle.attributes(color: UIColor(Palette.inputText))
     }
 
     @available(*, unavailable)
@@ -405,8 +489,8 @@ public final class AgentInputCardView: UIView {
     /// Replaces the text and moves the caret (`setTextAndSelection`).
     /// Reports the change to the delegate, as a keystroke would.
     public func setText(_ text: String, selection: NSRange) {
-        textView.attributedText = Self.inputStyle.attributedString(text, color: UIColor(Palette.inputText))
-        textView.typingAttributes = Self.inputStyle.attributes(color: UIColor(Palette.inputText))
+        textView.attributedText = inputStyle.attributedString(text, color: UIColor(Palette.inputText))
+        textView.typingAttributes = inputStyle.attributes(color: UIColor(Palette.inputText))
         let length = (text as NSString).length
         let location = min(max(0, selection.location), length)
         textView.selectedRange = NSRange(location: location, length: min(selection.length, length - location))
@@ -485,44 +569,65 @@ public final class AgentInputCardView: UIView {
 
     /// The card's frames at `width`.
     public func layout(width: CGFloat) -> AgentInputCardLayout {
-        AgentInputCardLayout(layoutInput(width: width))
+        let layout = AgentInputCardLayout(layoutInput(width: width))
+        laidOut = (width, layout.size.height)
+        return layout
     }
 
     /// The flat panel's frames at `width`; nil for the compact card.
     public func desktopLayout(width: CGFloat) -> AgentInputDesktopLayout? {
-        desktopLayoutInput(width: width).map(AgentInputDesktopLayout.init)
+        guard let input = desktopLayoutInput(width: width) else { return nil }
+        let layout = AgentInputDesktopLayout(input)
+        laidOut = (width, layout.size.height)
+        return layout
     }
 
-    /// The card's height at `width`. Cached by width and text.
+    /// The card's height at `width`. The text's height is cached by width,
+    /// text size and revision.
     public func height(fitting width: CGFloat) -> CGFloat {
         desktopLayout(width: width)?.size.height ?? layout(width: width).size.height
     }
 
     /// What `AgentInputLayout` places between its rows.
     public func panelInput(width: CGFloat) -> AgentInputLayout.Panel {
-        desktopLayoutInput(width: width).map { .desktop($0) } ?? .card(layoutInput(width: width))
+        if let input = desktopLayoutInput(width: width) {
+            laidOut = (width, AgentInputDesktopLayout(input).size.height)
+            return .desktop(input)
+        }
+        let input = layoutInput(width: width)
+        laidOut = (width, AgentInputCardLayout(input).size.height)
+        return .card(input)
     }
 
-    /// The text's height at `textWidth`, its padding included.
+    /// The text's height at `textWidth`, its padding included, at the
+    /// text size it is drawn at.
     private func textHeight(width textWidth: CGFloat) -> CGFloat {
-        let text = self.text
-        if let measured, measured.width == textWidth, measured.text == text {
+        // Measured before its first trait update: measure what it will draw.
+        syncTextSize()
+        if let measured, measured.width == textWidth, measured.revision == textRevision, measured.scale == textScale {
             return measured.height
         }
         let height = ceil(textView.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude)).height)
-        measured = (textWidth, text, height)
+        measured = (textWidth, textRevision, textScale, height)
         return height
+    }
+
+    /// One line of the input as drawn.
+    private var inputLineHeight: CGFloat {
+        inputStyle.lineHeightValue
     }
 
     func desktopLayoutInput(width: CGFloat) -> AgentInputDesktopLayout.Input? {
         let config = configuration
         guard let desktop = config.desktop else { return nil }
-        let text = self.text
+        // First: it takes up the text size the rest is measured at.
+        let height = textHeight(width: AgentInputDesktopLayout.textWidth(panelWidth: width))
         return AgentInputDesktopLayout.Input(
             width: width,
             attachmentCount: config.attachments.count,
-            textContentHeight: textHeight(width: AgentInputDesktopLayout.textWidth(panelWidth: width)),
-            hasText: !text.isEmpty,
+            textContentHeight: height,
+            hasText: textView.hasText,
+            lineHeight: inputLineHeight,
             inputMinHeight: config.inputMinHeight,
             showsSettings: desktop.settings != nil,
             stopContentWidth: desktop.showsStop ? desktopControls.stopContentWidth : nil,
@@ -537,7 +642,7 @@ public final class AgentInputCardView: UIView {
         let contentWidth = max(0, width - 2 * border - 2 * metrics.shellInset)
         let insets = AgentInputInsets(shellInset: metrics.shellInset, actionSize: metrics.actionSize, addIconSize: metrics.addIconSize)
         let textWidth = max(0, contentWidth - insets.inputContainerPaddingLeft - insets.inputContainerPaddingRight)
-        let text = self.text
+        // First: it takes up the text size the chips are measured at.
         let height = textHeight(width: textWidth)
         return AgentInputCardLayout.Input(
             width: width,
@@ -545,7 +650,8 @@ public final class AgentInputCardView: UIView {
             borderWidth: border,
             attachmentCount: config.attachments.count,
             textContentHeight: height,
-            hasText: !text.isEmpty,
+            hasText: textView.hasText,
+            lineHeight: textScale == nil ? nil : inputLineHeight,
             inputMinHeight: config.inputMinHeight,
             showsAdd: config.showsAdd,
             permission: config.permission.map { _ in .init(labelSize: permissionChip.contentSize) },
@@ -591,7 +697,7 @@ public final class AgentInputCardView: UIView {
             x: layout.text.minX,
             y: layout.text.minY + metrics.inputPaddingTop,
             width: layout.text.width,
-            height: metrics.inputLineHeight
+            height: inputLineHeight
         ))
         if let add = layout.add {
             addButton.setLayoutFrame(add)
@@ -630,7 +736,7 @@ public final class AgentInputCardView: UIView {
             x: layout.text.minX,
             y: layout.text.minY + M.textPaddingTop,
             width: layout.text.width,
-            height: M.lineHeight
+            height: inputLineHeight
         ))
         desktopControls.frame = actionsGroup.bounds
         desktopControls.place(layout)
@@ -646,7 +752,7 @@ public final class AgentInputCardView: UIView {
 
     private func apply(previous: AgentInputCardConfiguration?) {
         let config = configuration
-        placeholderLabel.attributedText = Self.inputStyle.attributedString(
+        placeholderLabel.attributedText = inputStyle.attributedString(
             config.placeholder,
             color: UIColor(Palette.inputPlaceholder),
             lineBreakMode: .byTruncatingTail
@@ -752,26 +858,23 @@ public final class AgentInputCardView: UIView {
         surface.layer.borderWidth = isDesktop ? 0 : hairline
         surface.layer.borderColor = UIColor(Palette.glassBorder).resolvedColor(with: traitCollection).cgColor
         // The typed text keeps the colour it was typed in; re-colour it.
-        let selection = textView.selectedRange
-        if !(textView.text ?? "").isEmpty {
-            textView.attributedText = Self.inputStyle.attributedString(text, color: UIColor(Palette.inputText))
-            textView.selectedRange = selection
-        }
-        textView.typingAttributes = Self.inputStyle.attributes(color: UIColor(Palette.inputText))
+        restyleText()
     }
 
     private func updatePlaceholder() {
-        placeholderLabel.isHidden = !(textView.text ?? "").isEmpty
+        placeholderLabel.isHidden = textView.hasText
     }
 
     fileprivate func textChanged() {
+        textRevision += 1
         let width = bounds.width
-        let before = width > 0 ? height(fitting: width) : 0
-        measured = nil
-        let after = width > 0 ? height(fitting: width) : 0
+        // Against what the owner laid out for the text before: measuring
+        // it now would measure the new text.
+        let before = laidOut
+        let after = width > 0 ? height(fitting: width) : nil
         updatePlaceholder()
         delegate?.agentInputCardDidChangeText(self)
-        if before != after {
+        if let after, before?.width != width || before?.height != after {
             delegate?.agentInputCardDidInvalidateHeight(self)
         }
         setNeedsLayout()
@@ -803,8 +906,11 @@ extension AgentInputCardView: UITextViewDelegate {
     }
 
     public func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
-        guard text == "\n" else { return true }
-        return delegate?.agentInputCardShouldInsertNewline(self) ?? true
+        switch text {
+        case "\n": delegate?.agentInputCardShouldInsertNewline(self) ?? true
+        case "\t": delegate?.agentInputCardShouldInsertTab(self) ?? true
+        default: true
+        }
     }
 
     public func textViewDidBeginEditing(_ textView: UITextView) {
@@ -931,14 +1037,22 @@ final class ComposerChipButton: UIButton {
         }
     }
 
+    /// The card's text size; nil draws the designed 14.
+    var textScale: TextScale? {
+        didSet {
+            guard textScale != oldValue else { return }
+            renderLabel()
+        }
+    }
+
     func configure(_ configuration: AgentInputChipConfiguration?) {
         guard configuration != chipConfiguration else { return }
         chipConfiguration = configuration
         isHidden = configuration == nil
         guard let configuration else { return }
         switch configuration.content {
-        case .label(let text):
-            label.attributedText = TextStyles.composerChip.attributedString(text, color: UIColor(Palette.text), lineBreakMode: .byTruncatingTail)
+        case .label:
+            renderLabel()
             label.isHidden = false
             iconView.isHidden = true
         case .icon(let icon):
@@ -949,6 +1063,12 @@ final class ComposerChipButton: UIButton {
         accessibilityLabel = configuration.accessibilityLabel
         alpha = configuration.menu != nil ? 1 : AgentInputCardLayout.Metrics.disabledChipOpacity
         applyMenu()
+    }
+
+    private func renderLabel() {
+        guard case .label(let text) = chipConfiguration?.content else { return }
+        let style = textScale.map { TextStyles.composerChip.scaled($0) } ?? TextStyles.composerChip
+        label.attributedText = style.attributedString(text, color: UIColor(Palette.text), lineBreakMode: .byTruncatingTail)
     }
 
     /// A refusing chip takes the press itself (RefusableControl's blocker

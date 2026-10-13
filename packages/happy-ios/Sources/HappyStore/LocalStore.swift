@@ -54,19 +54,23 @@ public final class LocalStore: Sendable {
         // Ciphertexts, versions and message cursors do not render on home.
         // Scope invalidation to the columns its consumers actually use.
         let homeSessionRegion = SQLRequest<Row>(sql: """
-            SELECT id, createdAt, updatedAt, active, activeAt, projectId,
+            SELECT id, createdAt, updatedAt, lastMessageSentAt, active, activeAt, projectId,
                    metadata, agentState, decryptable, thinking, unread, archiving
             FROM session
             """)
+        // Async consumers must use SharedObservationBridge: GRDB invokes
+        // shared callbacks while holding its client lock.
         homeObservation = ValueObservation.tracking(
             region: homeSessionRegion, MachineRecord.all(), ProjectRecord.all(),
             AccountSettingsRecord.all(), PendingSettingsRecord.all(), AccountProfileRecord.all(),
             SyncStateRecord.select(Column("key")).filter([SyncCursor.machinesLastSync.rawValue, SyncCursor.sessionsChangedSince.rawValue].contains(Column("key"))),
             fetch: { db in try Self.fetchHomeSnapshot(db) }
         ).removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))
+        // Async consumers must use SharedObservationBridge.
         settingsObservation = ValueObservation.trackingConstantRegion { db in
             try Self.fetchSettingsSnapshot(db)
         }.removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))
+        // Async consumers must use SharedObservationBridge.
         machinesObservation = ValueObservation.trackingConstantRegion { db in
             try Self.fetchMachinesSnapshot(db)
         }.removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))
@@ -74,8 +78,9 @@ public final class LocalStore: Sendable {
         presenceOverlay = overlay
         homeHub = SnapshotHub(observation: homeObservation, project: { overlay.home($0) })
         machinesHub = SnapshotHub(observation: machinesObservation, project: { overlay.machineSnapshot($0) })
-        let troubleRegion = SQLRequest<Row>(sql: "SELECT id, updatedAt, active, createdAt, metadata FROM session")
+        let troubleRegion = SQLRequest<Row>(sql: "SELECT id, updatedAt, active, createdAt, lastMessageSentAt, metadata FROM session")
         let troubleMachines = SQLRequest<Row>(sql: "SELECT id, createdAt, active, activeAt, metadata FROM machine")
+        // Async consumers must use SharedObservationBridge.
         let troubleshootingObservation = ValueObservation.tracking(region: troubleRegion, troubleMachines,
             fetch: { db in try Self.fetchTroubleshootingSnapshot(db) }
         ).removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))

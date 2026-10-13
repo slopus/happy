@@ -59,6 +59,10 @@ public struct AgentInputCardLayout: Equatable, Sendable {
         /// The text view's height for its text, its 4 + 4 padding included.
         public var textContentHeight: CGFloat
         public var hasText: Bool
+        /// One line of the text as drawn, where the composer follows the
+        /// person's text size; nil is the designed 22. The 44 minimum and
+        /// the 120 cap stay.
+        public var lineHeight: CGFloat?
         /// `minHeight` for the input container; nil keeps 44.
         public var inputMinHeight: CGFloat?
         public var showsAdd: Bool
@@ -84,6 +88,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             attachmentCount: Int = 0,
             textContentHeight: CGFloat,
             hasText: Bool,
+            lineHeight: CGFloat? = nil,
             inputMinHeight: CGFloat? = nil,
             showsAdd: Bool = false,
             permission: Chip? = nil,
@@ -99,6 +104,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             self.attachmentCount = attachmentCount
             self.textContentHeight = textContentHeight
             self.hasText = hasText
+            self.lineHeight = lineHeight
             self.inputMinHeight = inputMinHeight
             self.showsAdd = showsAdd
             self.permission = permission
@@ -173,7 +179,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             contentHeight: input.textContentHeight,
             hasText: input.hasText,
             maxHeight: metrics.inputMaxHeight,
-            lineHeight: metrics.inputLineHeight,
+            lineHeight: input.lineHeight ?? metrics.inputLineHeight,
             paddingTop: metrics.inputPaddingTop,
             paddingBottom: metrics.inputPaddingBottom
         )

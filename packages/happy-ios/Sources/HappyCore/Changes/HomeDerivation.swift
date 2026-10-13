@@ -245,8 +245,9 @@ public enum HomeDerivation {
 /// What the new-session pickers (home's dock and the new-session screen)
 /// read from the store, without what changes on every heartbeat or cursor:
 /// they list machines, places and projects, newest first. A session's
-/// `active` and `lastMeaningfulMessageAt` order them and stay; its
-/// heartbeat, thinking and agent state never show and are cleared.
+/// `active`, `lastMeaningfulMessageAt` and `lastMessageSentAt` order them
+/// and stay; its heartbeat, thinking and agent state never show and are
+/// cleared.
 public enum NewSessionSnapshot {
     public static func rendered(_ snapshot: HomeSnapshot) -> HomeSnapshot {
         var snapshot = snapshot
@@ -258,6 +259,9 @@ public enum NewSessionSnapshot {
                 fields["lastMeaningfulMessageAt"] = at
                 record.metadata = .object(fields)
             }
+            // The device's own accepted send orders a session the server
+            // hasn't stamped yet.
+            record.lastMessageSentAt = original.lastMessageSentAt
             record.activeAt = 0
             record.agentState = nil
             record.thinking = false
