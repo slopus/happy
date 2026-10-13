@@ -568,5 +568,3 @@ To keep parallel work from colliding:
 - Accounts import: the real-device MMKV path and decoding still need an
   in-place upgrade check. Encoding, size metadata, CRC and confirmation gates
   are verified on Linux with reproduced MMKV fixtures.
-- Not ported yet from the onboarding screens: copying terminal commands by
-  selecting them.
