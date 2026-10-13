@@ -22,6 +22,7 @@ extension ChatTextStyle {
         case .systemItalic: .italicSystemFont(ofSize: size)
         case .menlo: UIFont(name: "Menlo-Regular", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
         case .menloBold: UIFont(name: "Menlo-Bold", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .semibold)
+        case .menloItalic: UIFont(name: "Menlo-Italic", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
         }
     }
 

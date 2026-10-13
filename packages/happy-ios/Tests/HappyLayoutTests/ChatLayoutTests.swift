@@ -146,6 +146,13 @@ final class MarkdownLayoutTests: XCTestCase {
         assertSize(code.contentSize, CGSize(width: 300, height: 52))
     }
 
+    func testAVeryLongLineOfCodeIsCutOff() {
+        let layout = MarkdownLayout(width: 300, blocks: [.code(language: nil, code: CGSize(width: 90_000, height: 20))])
+        guard case .code(let code) = layout.blocks[0] else { return XCTFail() }
+        assertSize(code.contentSize, CGSize(width: 4128, height: 52))
+        assertFrame(code.text, rect(16, 16, 4096, 20))
+    }
+
     func testTableGrid() {
         let layout = MarkdownLayout(width: 300, blocks: [.table(.init(
             columnWidths: [80, 120],
@@ -625,9 +632,120 @@ final class MessageDetailLayoutTests: XCTestCase {
         assertFrame(pad.content, rect(128, 12, 768, 300))
     }
 
+    func testAnEditsDiffsRunEdgeToEdgeOnAPhone() {
+        let phone = MessageDetailLayout(width: 393, kind: .wideTool, content: block(height: 300))
+        assertFrame(phone.content, rect(0, 12, 393, 300))
+        let pad = MessageDetailLayout(width: 1024, kind: .wideTool, content: block(height: 300), maxContentWidth: 800)
+        assertFrame(pad.content, rect(128, 12, 768, 300))
+    }
+
     func testATextMessageIsPaddedAllRound() {
         let layout = MessageDetailLayout(width: 393, kind: .text, content: block(height: 48))
         assertFrame(layout.content, rect(16, 16, 361, 48))
         assertSize(layout.contentSize, CGSize(width: 393, height: 80))
+    }
+
+    func testAMultiEditHeaderCarriesItsBadgeBesideTheNumber() {
+        // "Edit 2 of 3" at 8 a character beside a 12-high "Replace All".
+        let layout = MultiEditHeaderLayout(width: 361, number: text("Edit 2 of 3", lineHeight: 17), badge: text("Replace All", advance: 6, lineHeight: 15))
+        assertFrame(layout.number, rect(0, 3, 88, 17))
+        assertFrame(layout.badge, rect(96, 0, 82, 23))
+        assertFrame(layout.badgeText, rect(104, 4, 66, 15))
+        assertSize(layout.size, CGSize(width: 361, height: 23))
+
+        let plain = MultiEditHeaderLayout(width: 361, number: text("Edit 1 of 3", lineHeight: 17), badge: nil)
+        assertFrame(plain.number, rect(0, 0, 88, 17))
+        XCTAssertNil(plain.badge)
+        XCTAssertNil(plain.badgeText)
+    }
+}
+
+final class TextSelectionLayoutTests: XCTestCase {
+    func testTheCardRunsToTheFootOfTheScreenAndTheTextClearsTheHomeIndicator() {
+        let layout = TextSelectionLayout(size: CGSize(width: 393, height: 852), safeArea: LayoutInsets(top: 103, left: 0, bottom: 34, right: 0))
+        assertFrame(layout.card, rect(16, 119, 361, 717))
+        XCTAssertEqual(layout.textInsets, LayoutInsets(top: 16, left: 16, bottom: 66, right: 16))
+    }
+}
+
+final class TextChunksTests: XCTestCase {
+    func testShortTextIsOnePiece() {
+        XCTAssertEqual(TextChunks.split("one\ntwo\n"), ["one\ntwo\n"])
+        XCTAssertEqual(TextChunks.split(""), [""])
+    }
+
+    func testLongTextIsCutAfterNewlines() {
+        let text = (1...7).map { "line \($0)" }.joined(separator: "\n")
+        let chunks = TextChunks.split(text, maxLines: 3, maxLength: 1000)
+        XCTAssertEqual(chunks, ["line 1\nline 2\nline 3\n", "line 4\nline 5\nline 6\n", "line 7"])
+        XCTAssertEqual(chunks.joined(), text)
+
+        let wide = TextChunks.split("aaaaaa\nbb\ncc", maxLines: 40, maxLength: 5)
+        XCTAssertEqual(wide, ["aaaaaa\n", "bb\ncc"], "past maxLength, the next newline ends the piece")
+    }
+
+    func testAVeryLongLineIsCutAfterItsLastSpace() {
+        let line = "alpha beta gamma delta"
+        XCTAssertEqual(TextChunks.split(line, maxLength: 6), ["alpha beta ", "gamma delta"])
+        XCTAssertEqual(TextChunks.split("abcdefghij", maxLength: 2), ["abcd", "efgh", "ij"], "no space: cut anywhere")
+        let emoji = String(repeating: "👍🏽", count: 5)
+        XCTAssertEqual(TextChunks.split(emoji, maxLength: 4).joined(), emoji, "never inside a character")
+    }
+
+    func testAPieceDrawsWithoutTheNewlineThatEndsIt() {
+        XCTAssertEqual(TextChunks.drawn("a\nb\n"), "a\nb")
+        XCTAssertEqual(TextChunks.drawn("a\n\n"), "a\n ", "an empty last line keeps its height")
+        XCTAssertEqual(TextChunks.drawn("\n"), " ")
+        XCTAssertEqual(TextChunks.drawn("abc"), "abc", "cut inside a line: nothing to drop")
+    }
+}
+
+final class CopyMenuLayoutTests: XCTestCase {
+    private let window = CGSize(width: 393, height: 852)
+
+    func testTheMenuSitsAboveTheMessageWithItsRightEdgeOnTheMessages() {
+        let layout = CopyMenuLayout(anchor: rect(150, 400, 227, 60), window: window, label: text("Copy", lineHeight: 20))
+        assertFrame(layout.menu, rect(225, 348, 152, 44))
+        assertFrame(layout.icon, rect(14, 13.5, 17, 17))
+        assertFrame(layout.label, rect(41, 12, 32, 20))
+    }
+
+    func testNearTheTopItDropsBelowAndStaysOnScreen() {
+        let below = CopyMenuLayout(anchor: rect(16, 40, 80, 30), window: window, label: text("Copy", lineHeight: 20))
+        // 8 below, and 12 in from the left.
+        assertFrame(below.menu, rect(12, 78, 152, 44))
+        let tall = CopyMenuLayout(anchor: rect(16, 40, 361, 900), window: window, label: text("Copy", lineHeight: 20))
+        // Never within 12 of the bottom.
+        assertFrame(tall.menu, rect(225, 796, 152, 44))
+    }
+}
+
+final class InactiveHintLayoutTests: XCTestCase {
+    func testResumeSitsUnderTheNotice() {
+        let layout = InactiveHintLayout(
+            width: 361, notice: text("This session is inactive.", advance: 7, lineHeight: 18), terminalNotice: nil,
+            action: .resume(label: .fixed(width: 111, height: 20))
+        )
+        assertFrame(layout.notice, rect(8, 12, 345, 18))
+        assertFrame(layout.button, rect(8, 40, 345, 44))
+        assertFrame(layout.buttonLabel, rect(125, 52, 111, 20))
+        XCTAssertNil(layout.command)
+        assertSize(layout.size, CGSize(width: 361, height: 94))
+    }
+
+    func testTheCommandBlockRunsEdgeToEdgeWithItsCopyGlyph() {
+        let layout = InactiveHintLayout(
+            width: 361, notice: text("x", lineHeight: 18), terminalNotice: text("y", lineHeight: 18),
+            action: .command(block(height: 36))
+        )
+        assertFrame(layout.terminalNotice, rect(8, 34, 345, 18))
+        assertFrame(layout.command, rect(0, 62, 361, 60))
+        assertFrame(layout.commandText, rect(16, 74, 305, 36))
+        assertFrame(layout.commandIcon, rect(329, 75, 16, 16))
+        assertSize(layout.size, CGSize(width: 361, height: 132))
+
+        let short = InactiveHintLayout(width: 361, notice: text("x", lineHeight: 18), terminalNotice: nil, action: .command(block(height: 18)))
+        // At least 48 tall.
+        assertFrame(short.command, rect(0, 40, 361, 48))
     }
 }

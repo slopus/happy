@@ -11,6 +11,9 @@ protocol ChatListViewDelegate: AnyObject {
     func chatList(_ list: ChatListView, didScroll distanceFromNewest: CGFloat, distanceFromOldest: CGFloat)
     func chatList(_ list: ChatListView, perform action: ChatRowAction)
     func chatList(_ list: ChatListView, openLink url: String)
+    /// A long press on a row's long-press target. `frame` is the target's
+    /// and `point` the finger's, both in the list's coordinates.
+    func chatList(_ list: ChatListView, hold action: ChatRowAction, frame: CGRect, at point: CGPoint)
 }
 
 /// The chat's message list: a flipped UICollectionView whose rows were all
@@ -29,6 +32,7 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     private(set) var plans: [ChatRowPlan] = []
     private var planById: [String: ChatRowPlan] = [:]
     private var hasContent = false
+    private let holdRecognizer = UILongPressGestureRecognizer()
 
     /// ChatFooter, just past the newest message: it scrolls with the rows,
     /// as the inverted list's header does in happy-app.
@@ -67,6 +71,14 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         tap.cancelsTouchesInView = false
         tap.delegate = self
         collectionView.addGestureRecognizer(tap)
+        // Starts only over a long-press target, so a slow tap elsewhere is
+        // still a tap; a tap waits for it, which costs nothing, as it fails
+        // the moment the finger lifts.
+        holdRecognizer.addTarget(self, action: #selector(held(_:)))
+        holdRecognizer.minimumPressDuration = CopyMenuLayout.Metrics.pressDuration
+        holdRecognizer.delegate = self
+        collectionView.addGestureRecognizer(holdRecognizer)
+        tap.require(toFail: holdRecognizer)
     }
 
     @available(*, unavailable)
@@ -240,6 +252,25 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
             view = current.superview
         }
         return true
+    }
+
+    override func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureRecognizer === holdRecognizer else { return super.gestureRecognizerShouldBegin(gestureRecognizer) }
+        return holdTarget(at: gestureRecognizer.location(in: collectionView)) != nil
+    }
+
+    /// The long-press target under `point` (in the collection view), with
+    /// its frame in this view's coordinates.
+    private func holdTarget(at point: CGPoint) -> (action: ChatRowAction, frame: CGRect)? {
+        guard let indexPath = collectionView.indexPathForItem(at: point),
+              let cell = collectionView.cellForItem(at: indexPath) as? ChatRowCell,
+              let hit = cell.hold(at: cell.convert(point, from: collectionView)) else { return nil }
+        return (hit.action, cell.convert(hit.frame, to: self))
+    }
+
+    @objc private func held(_ recognizer: UILongPressGestureRecognizer) {
+        guard recognizer.state == .began, let target = holdTarget(at: recognizer.location(in: collectionView)) else { return }
+        delegate?.chatList(self, hold: target.action, frame: target.frame, at: recognizer.location(in: self))
     }
 
     @objc private func tapped(_ recognizer: UITapGestureRecognizer) {

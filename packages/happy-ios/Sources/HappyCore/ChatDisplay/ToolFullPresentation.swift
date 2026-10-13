@@ -12,6 +12,9 @@ public struct ToolFullPresentation: Equatable, Sendable {
         case terminal(ToolFullTerminal, controlInput: String?)
         /// TaskView: the sub-agent's last tool calls.
         case task
+        /// EditViewFull (line numbers always on), WriteView (the
+        /// setting's), MultiEditViewFull (each edit headed "Edit N of M").
+        case diff(ToolViewKind, chunks: [ToolDiffChunk], replaceAll: [Bool])
         /// ToolFullView's fallback: description, input, output, error.
         case generic(ToolFullGeneric)
     }
@@ -27,10 +30,14 @@ public struct ToolFullPresentation: Equatable, Sendable {
     public var title: ToolText
     public var main: Main
     public var outcome: Outcome?
+    /// An edit tool's diffs run edge to edge on a phone instead of in a
+    /// readable column (`getToolSummaryCategory(tool.name) === 'edit'`).
+    public var wide: Bool
 
     public init(_ tool: ToolCall, root: String?, words: ToolActionWords) {
         title = Self.title(tool, root: root, words: words)
         let name = tool.name
+        wide = ChatToolDisplay.category(name) == .edit
         let terminal = ChatToolDisplay.isTerminal(name) || Self.terminalNames.contains(name)
         if terminal {
             let command = ChatToolDisplay.terminalCommand(tool)
@@ -51,10 +58,16 @@ public struct ToolFullPresentation: Equatable, Sendable {
         }
         if Self.taskNames.contains(name) {
             main = .task
+        } else if let kind = Self.diffNames[name] {
+            let chunks = ToolDiffInputs.chunks(kind, input: tool.input)
+            let replaceAll = kind == .multiEdit
+                ? (tool.input["edits"]?.arrayValue ?? []).map { $0["replace_all"]?.boolValue == true }
+                : []
+            main = .diff(kind, chunks: chunks, replaceAll: replaceAll)
         } else {
-            // Diffs (Edit, MultiEdit, Write, the patches) have views of
-            // their own in happy-app; until the shared diff views land they
-            // show the fallback, which still carries the input.
+            // Codex patches and diffs have views of their own in happy-app;
+            // until the shared unified-diff parser lands they show the
+            // fallback, which still carries the input.
             main = .generic(ToolFullGeneric(tool, words: words))
             outcome = nil
             return
@@ -71,7 +84,7 @@ public struct ToolFullPresentation: Equatable, Sendable {
 
     /// ToolHeader: the known tool's title unless the provider named the
     /// call; for a terminal tool, what it ran.
-    static func title(_ tool: ToolCall, root: String?, words: ToolActionWords) -> ToolText {
+    public static func title(_ tool: ToolCall, root: String?, words: ToolActionWords) -> ToolText {
         if ChatToolDisplay.isTerminal(tool.name) {
             return .literal(ChatToolDisplay.activityLabel(tool, words: words))
         }
@@ -92,6 +105,98 @@ public struct ToolFullPresentation: Equatable, Sendable {
     /// terminal category joins them.
     static let terminalNames: Set<String> = ["Bash", "CodexBash"]
     static let taskNames: Set<String> = ["Task", "Agent"]
+    static let diffNames: [String: ToolViewKind] = [
+        "Edit": .edit, "search_replace": .edit, "Write": .write, "write": .write, "MultiEdit": .multiEdit,
+    ]
+}
+
+extension ToolFullPresentation {
+    /// ToolFullView's dev-mode "Raw JSON": the call as happy-app's
+    /// `ToolCall` and its sub-agent's messages as `Message`s. Absent
+    /// optionals are left out and nullable ones are null, as
+    /// `JSON.stringify` writes them.
+    public static func rawJSON(_ message: ToolCallMessage) -> JSONValue {
+        // The screen lists the call's fields by name; a child's tool is the
+        // whole `ToolCall`, call id included.
+        var object = toolJSON(message.tool).objectValue ?? [:]
+        object["callId"] = nil
+        object["messages"] = .array(message.children.map(messageJSON))
+        return .object(object)
+    }
+
+    static func toolJSON(_ tool: ToolCall) -> JSONValue {
+        var object: [String: JSONValue] = [
+            "name": .string(tool.name),
+            "state": .string(tool.state.rawValue),
+            "description": tool.description.map(JSONValue.string) ?? .null,
+            "input": tool.input,
+            "createdAt": .number(Double(tool.createdAt)),
+            "startedAt": tool.startedAt.map { .number(Double($0)) } ?? .null,
+            "completedAt": tool.completedAt.map { .number(Double($0)) } ?? .null,
+        ]
+        if let callId = tool.callId { object["callId"] = .string(callId) }
+        if let title = tool.title { object["title"] = .string(title) }
+        if let result = tool.result { object["result"] = result }
+        if let permission = tool.permission {
+            var record: [String: JSONValue] = ["id": .string(permission.id), "status": .string(permission.status.rawValue)]
+            if let reason = permission.reason { record["reason"] = .string(reason) }
+            if let mode = permission.mode { record["mode"] = .string(mode) }
+            if let allowedTools = permission.allowedTools { record["allowedTools"] = .array(allowedTools.map(JSONValue.string)) }
+            if let decision = permission.decision { record["decision"] = .string(decision.rawValue) }
+            if let date = permission.date { record["date"] = .number(Double(date)) }
+            object["permission"] = .object(record)
+        }
+        return .object(object)
+    }
+
+    static func messageJSON(_ message: ChatMessage) -> JSONValue {
+        var object: [String: JSONValue] = ["id": .string(message.id), "createdAt": .number(Double(message.createdAt))]
+        var meta: MessageMeta?
+        switch message {
+        case .userText(let user):
+            object["kind"] = .string("user-text")
+            object["localId"] = user.localId.map(JSONValue.string) ?? .null
+            object["text"] = .string(user.text)
+            if let displayText = user.displayText { object["displayText"] = .string(displayText) }
+            meta = user.meta
+        case .agentText(let agent):
+            object["kind"] = .string("agent-text")
+            object["localId"] = agent.localId.map(JSONValue.string) ?? .null
+            object["text"] = .string(agent.text)
+            if agent.isThinking { object["isThinking"] = .bool(true) }
+            if let turn = agent.turn { object["turn"] = .string(turn) }
+            meta = agent.meta
+        case .toolCall(let call):
+            object["kind"] = .string("tool-call")
+            object["localId"] = call.localId.map(JSONValue.string) ?? .null
+            object["tool"] = toolJSON(call.tool)
+            object["children"] = .array(call.children.map(messageJSON))
+            if let turn = call.turn { object["turn"] = .string(turn) }
+            meta = call.meta
+        case .agentEvent(let event):
+            object["kind"] = .string("agent-event")
+            object["event"] = eventJSON(event.event)
+            if let turn = event.turn { object["turn"] = .string(turn) }
+            meta = event.meta
+        case .unsupported(let unsupported):
+            object["kind"] = .string(unsupported.kind)
+        }
+        if let meta, let data = try? JSONEncoder().encode(meta), let value = try? JSONDecoder().decode(JSONValue.self, from: data) {
+            object["meta"] = value
+        }
+        return .object(object)
+    }
+
+    static func eventJSON(_ event: AgentEvent) -> JSONValue {
+        switch event {
+        case .modeSwitch(let mode): .object(["type": .string("switch"), "mode": .string(mode)])
+        case .message(let message): .object(["type": .string("message"), "message": .string(message)])
+        case .limitReached(let endsAt): .object(["type": .string("limit-reached"), "endsAt": .number(Double(endsAt))])
+        case .ready: .object(["type": .string("ready")])
+        case .userMessageAccepted(let ref): .object(["type": .string("user-message-accepted"), "ref": .string(ref)])
+        case .userMessageRejected(let ref, let reason): .object(["type": .string("user-message-rejected"), "ref": .string(ref), "reason": .string(reason)])
+        }
+    }
 }
 
 /// A failure's words, or tools.fullView.error ("Error") when it said

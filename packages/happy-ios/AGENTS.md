@@ -118,6 +118,12 @@ nothing here is wired to the release skill or to EAS.
   screen, under the keyboard. Here the footer rides the keyboard, so someone
   typing their own answer can send it without dismissing the keyboard first.
   Laid out in `QuestionSheetLayout`.
+- **A message's own screen always scrolls, and Write's diff keeps its
+  gutter there.** happy-app shows a text message in a plain View, so a long
+  one is cut off, and WriteView's full-width section pulls 12 past each
+  edge, which on a phone (no padding for edits) clips the line numbers.
+  Here text scrolls and Write's diff sits edge to edge like Edit's. Built
+  in `MessageDetailRenderer`.
 - **Push notifications follow happy-app's iPhone behaviour**
   (`sync/pushRegistration.ts`, `app/_layout.tsx`). They are wired in
   `Sources/HappyApp/PushNotifications.swift`, and the logic lives in

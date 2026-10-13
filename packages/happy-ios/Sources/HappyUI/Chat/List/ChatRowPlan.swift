@@ -14,7 +14,7 @@ final class ChatRowPlan: @unchecked Sendable {
     let id: String
     let size: CGSize
     let items: [ChatDrawItem]
-    /// Tap targets, in row coordinates, front to back.
+    /// Tap and long-press targets, in row coordinates, front to back.
     let hits: [ChatHit]
     /// The whole row's opacity (a pending message is dimmed).
     let alpha: CGFloat
@@ -61,11 +61,16 @@ enum ChatDrawItem {
     /// A DiffChunk, planned at the frame's width. Its "Show N more lines"
     /// asks for `diffShowMore(toolId:chunk:file:)`.
     case diff(DiffChunkPlan, frame: CGRect, toolId: String, chunk: Int)
+    /// A strip that scrolls sideways (HorizontalScrollView: a code block, a
+    /// table), showing `content` through `frame`, its corners rounded by
+    /// `radius`. The content's items and hits are in its own coordinates.
+    case scroller(ChatRowPlan, frame: CGRect, radius: CGFloat = 0)
 }
 
 /// What a tap on part of a row does.
 enum ChatRowAction: Equatable, Sendable {
-    case copy(String)
+    /// An agent's copy button.
+    case copyMessage(id: String, text: String)
     case toggleGroup(String)
     /// Open or close a tool's body, by message id.
     case toggleTool(String)
@@ -79,6 +84,17 @@ enum ChatRowAction: Equatable, Sendable {
     case questionSubmit(toolId: String)
     /// "Show N more lines" on file `file` of a tool's diff `chunk`.
     case diffShowMore(toolId: String, chunk: Int, file: Int)
+
+    // Long presses
+
+    /// LongPressCopyable: a "Copy" menu over the whole message.
+    case copyMenu(String)
+    /// React Native's `selectable` Text: the edit menu's Copy, for all of
+    /// this text.
+    case selectable(String)
+    /// Selectable markdown: like `selectable` for its paragraph, or with
+    /// Markdown Copy v2 the text selection screen for the whole markdown.
+    case markdownSelectable(paragraph: String, markdown: String)
 }
 
 /// A permission button, with what its reply needs.
@@ -91,5 +107,7 @@ struct ChatPermissionTap: Equatable, Sendable {
 struct ChatHit {
     var frame: CGRect
     var action: ChatRowAction
+    /// Answers a long press rather than a tap.
+    var hold = false
 }
 #endif

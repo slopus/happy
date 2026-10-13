@@ -64,12 +64,15 @@ accident.
 
 - [~] Session screen shell: header (title, avatar, status, git status), back, info (`session/[id].tsx`, `SessionView.tsx`, `ChatHeaderView`) — Chat
   - The title capsule and the avatar circle sit on the system navigation bar, made transparent, so back, its swipe and its menu are the platform's. Off iOS 26 the back button is the plain chevron and "Back", not happy-app's glass circle.
-  - Not yet: the worktree tab strip and its title, the CLI-outdated pill, the landscape layout without a header, the file-view path segment, and the archived session's resume hint above the composer (`InactiveArchivedHint`).
+  - Not yet: the worktree tab strip and its title, the CLI-outdated pill, the landscape layout without a header, and the file-view path segment.
+  - Done: the stopped session's hint above the composer (`InactiveArchivedHint`), with Resume when its machine can run it, or the terminal commands, which a tap copies.
 - [ ] Inverted list engine with precomputed, off-main text layout, manual frames, bubble resize animations, scroll position keeping (`ChatList`) — Chat
 - [ ] Keyboard: input bar tracks the keyboard, interactive dismiss, list insets — Chat
 - [ ] Messages: user bubbles, agent text, thinking, events, unsupported placeholder (`MessageView`) — Chat
 - [~] Markdown: blocks, spans, links, lists, tables, code blocks with syntax highlighting, copy (`markdown/*`, `SyntaxText`, `SimpleSyntaxHighlighter`) — Chat
-- [ ] Text selection screen (`text-selection.tsx`) — Chat
+- [~] Text selection screen (`text-selection.tsx`) and long-press copy (`LongPressCopyable`, MarkdownView's `selectable`) — Chat
+  - A user's message copies through LongPressCopyable's menu; an agent's paragraphs, list items, code blocks and table cells, and on a tool's screen the command and its output, bring up the edit menu's Copy for that text. With Markdown Copy v2 (`LocalSettings.markdownCopyV2`) a long press on an agent's message opens the text selection screen instead.
+  - Not yet: the Developer screen's toggle for Markdown Copy v2 (the screen isn't ported), so the text selection screen can't be reached in the app yet. Copy puts plain text on the pasteboard, without React Native's RTF. In the chat both long presses take 400 ms; React Native's selectable text takes 500.
 - [ ] Tool calls, hidden by default; tool headers, sections, errors, full view (`tools/*`, `knownTools.tsx`) — Chat
   - Deviation from happy-app, on purpose: tool output is collapsed by default (header only, compact row or card as `compactToolCalls` picks); tap the header to expand, in memory for the screen's lifetime; a pending permission, question or plan keeps its input open, never its output.
   - Partial: on iPad, permission buttons stretch instead of right-aligning, and a long permission list doesn't scroll at min(260, 35% of the window).
@@ -78,11 +81,14 @@ accident.
 - [ ] Permission prompts: allow, allow for session, deny, mode switch (`PermissionFooter`) — Chat
 - [ ] Agent questions: banner, modal, inline form (`AgentQuestionBanner`, `AgentQuestionModal`, `InlineQuestionForm`, `agentCommunications.ts`) — Chat
 - [ ] Image and file messages, decrypted on demand (`FileView`) — Chat + Sending
-- [ ] Message detail screen (`session/[id]/message/[messageId].tsx`) — Chat
+- [~] Message detail screen (`session/[id]/message/[messageId].tsx`) — Chat
+  - ToolHeader's title; ToolFullView's terminal (CommandView with all output), Task, Edit, Write and MultiEdit full views, the generic sections, the outcome after a specialized view, and dev mode's raw JSON; a text message's whole text. Long output is drawn in pieces near the screen only (`TextChunks`).
+  - Not yet: the Codex patch and diff full views (they show the generic sections until `codexUnifiedDiff` lands) and the `file` focus parameter.
 - [~] Agent goal bar, work group headers, rig activity bar (`AgentGoalBar`, `AgentWorkGroupHeader`, `RigActivityBar`) — Chat
   - Stop shows but sends nothing, as in happy-app (`agentGoalActionHandler.ts`). The goal bar has no details sheet; happy-app doesn't open one from the chat either.
 - [~] Empty and pending states (`EmptyMessages`, `ChatFooter`) — Chat
-  - Not yet: EmptyMessages paging back through invisible older pages (Retry, Load more), since the chat feed has no older-page signal; `PendingChatPlaceholder` (a `pending-chat:` route shows a spinner over the composer).
+  - A `pending-chat:` screen draws `PendingChatPlaceholder` over the composer: the shimmering title, then what was sent before the chat existed or the folder of the chat it was started beside.
+  - Not yet: EmptyMessages paging back through invisible older pages (Retry, Load more), since the chat feed has no older-page signal. On a `pending-chat:` screen, becoming the chat once it settles, going back to the anchor when it fails, and the header reading the anchor's checkout meanwhile: nothing opens a pending chat yet (the worktree strip's `+` isn't ported).
 - [x] Composer: growing text input, send/stop button, drafts (`AgentInput`, `MultiTextInput`, `agentInputLayout.ts`, `agentInputPrimaryAction.ts`) — Composer
   - Done: the card (`AgentInputCardView`, shared with Home's dock) with the status row and its vibing words, the week quota menu and the context gauge; send, Stop (at least 300ms of spinner), the locked button and its shake; drafts as useDraft.ts keeps them, Happy Agent drafts synced on every edit, remote edits taken (not mid-composition), the post-send clear left to the sender.
   - Not ported: the voice button and microphone (voice mode is excluded); zen mode, Enter to send and Shift+Tab, which are desktop and web only.

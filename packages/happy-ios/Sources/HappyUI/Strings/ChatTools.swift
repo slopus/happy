@@ -21,6 +21,26 @@ extension Strings {
         /// tools.taskView.initializing
         public static let initializing = "Initializing agent..."
 
+        /// common.message: a message screen's title.
+        public static let message = "Message"
+
+        /// tools.fullView
+        public enum FullView {
+            public static let description = "Description"
+            public static let inputParams = "Input Parameters"
+            public static let output = "Output"
+            public static let error = "Error"
+            public static let completed = "Tool completed successfully"
+            public static let noOutput = "No output was produced"
+            public static let rawJsonDevMode = "Raw JSON (Dev Mode)"
+        }
+
+        /// tools.multiEdit
+        public static func editNumber(_ index: Int, of total: Int) -> String { "Edit \(index) of \(total)" }
+        public static let replaceAll = "Replace All"
+        /// CommandView.tsx (not in en.ts)
+        public static let commandNoOutput = "[Command completed with no output]"
+
         /// tools.names
         public static func name(_ name: ToolName) -> String {
             switch name {

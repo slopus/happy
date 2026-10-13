@@ -45,8 +45,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private var gitStatus: GitStatus?
     private let dock = UIView()
     private let composer: any ChatComposerView
-    /// The bars above the composer, top to bottom: the goal, a request the
-    /// chat can't show inline, what a Happy Agent session has running.
+    /// The bars above the composer, top to bottom: how to bring back a
+    /// session that has stopped, the goal, a request the chat can't show
+    /// inline, what a Happy Agent session has running.
+    private let inactiveHint = ChatInactiveHintView()
+    private var resuming = false
     private let goalBar = ChatGoalBarView()
     private var goalInFlight: SessionGoalAction?
     private let questionBanner = ChatQuestionBannerView()
@@ -56,10 +59,23 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// id: dismissed once it is delivered.
     private var questionsToDismiss: [String: [PendingAgentCommunication]] = [:]
     private let scrollButton = ChatScrollButton()
+    private let copyCallout = ChatCopyCallout()
     private let keyboardTracker = UIView()
     private let measurer = ChatRowMeasurer()
     private let feedTask = TaskHolder()
+    /// The next time a waiting user message's status is due to show.
+    private var graceEnd: Int64?
+    private let graceTask = TaskHolder()
+    /// The agent message whose copy button shows its tick.
+    private var copiedMessageId: String?
+    private let copiedTask = TaskHolder()
     private var observation: StoreObservation?
+    /// A `pending-chat:` screen's record, and the session it was started
+    /// beside.
+    private var pendingChat: PendingChat?
+    private let pendingTask = TaskHolder()
+    private var anchorMetadata: JSONValue?
+    private var anchorObservation: StoreObservation?
 
     private var snapshot: ChatSnapshot?
     private var session = ChatSessionState(record: nil, settings: AccountSettings())
@@ -125,9 +141,12 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         questionBanner.isHidden = true
         questionBanner.onOpen = { [weak self] in self?.openQuestionSheet() }
         questionBanner.onDismiss = { [weak self] in self?.dismissUnsupportedRequest() }
+        inactiveHint.isHidden = true
+        inactiveHint.onResume = { [weak self] in self?.resume() }
         goalBar.isHidden = true
         goalBar.onAction = { [weak self] action in self?.performGoalAction(action) }
         rigActivity.isHidden = true
+        dock.addSubview(inactiveHint)
         dock.addSubview(goalBar)
         dock.addSubview(questionBanner)
         dock.addSubview(rigActivity)
@@ -151,6 +170,16 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
         observation = services.observeSession { [weak self] state in
             self?.sessionChanged(state)
+        }
+        if PendingChats.isPendingChatId(sessionId) {
+            let pendingChats = services.pendingChats
+            let sessionId = self.sessionId
+            pendingTask.task = Task { [weak self] in
+                for await chats in await pendingChats.observe() {
+                    guard let self, !Task.isCancelled else { return }
+                    self.pendingChatChanged(chats[sessionId])
+                }
+            }
         }
         if let git = services.gitStatus {
             let sessionId = self.sessionId
@@ -178,6 +207,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         account.actions.markRead(sessionId: sessionId)
+        // sync.ts `onSessionVisible`: a session someone has opened is no
+        // longer an abandoned start.
+        SpawnRequests.shared.release(sessionId: sessionId)
     }
 
     // MARK: Layout
@@ -302,6 +334,22 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         PendingChats.isPendingChatId(sessionId) && session.record == nil
     }
 
+    private func pendingChatChanged(_ chat: PendingChat?) {
+        guard chat != pendingChat else { return }
+        if chat?.anchorSessionId != pendingChat?.anchorSessionId {
+            anchorMetadata = nil
+            anchorObservation = chat.map { chat in
+                services.observeOtherSession(chat.anchorSessionId) { [weak self] state in
+                    guard let self, state.metadata != self.anchorMetadata else { return }
+                    self.anchorMetadata = state.metadata
+                    self.updatePlaceholder()
+                }
+            }
+        }
+        pendingChat = chat
+        updatePlaceholder()
+    }
+
     private var isFixture: Bool {
         #if DEBUG
         FixtureScenarios.isFixture(sessionId)
@@ -326,8 +374,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 content = .loading
             }
         } else if isPendingChat {
-            // PendingChatPlaceholder is not ported; the composer stays.
-            content = .loading
+            // The composer stays: it is the one thing on this screen that
+            // survives the chat's arrival.
+            content = pendingChat.map { .pendingChat(PendingChatPlaceholderModel(queued: $0.queued, anchorMetadata: anchorMetadata)) } ?? .loading
         } else {
             content = session.dataReady ? .deleted : .loading
             fullScreen = true
@@ -345,17 +394,24 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// The bars shown above the composer, in order, with their heights.
     private var dockBars: [(view: UIView, measurable: Measurable, inset: Bool)] {
         var bars: [(view: UIView, measurable: Measurable, inset: Bool)] = []
+        if !inactiveHint.isHidden { bars.append((inactiveHint, inactiveHint.barMeasurable, true)) }
         if !goalBar.isHidden { bars.append((goalBar, goalBar.barMeasurable, true)) }
         if !questionBanner.isHidden { bars.append((questionBanner, questionBanner.bannerMeasurable, true)) }
         if !rigActivity.isHidden { bars.append((rigActivity, rigActivity.barMeasurable, false)) }
         return bars
     }
 
-    /// SessionView's input stack: AgentGoalBar, AgentQuestionBanner and
-    /// RigActivityBar. A bar that comes or goes moves the composer with an
-    /// animation; while the reader is scrolled back they stay faded.
+    /// SessionView's input stack: InactiveArchivedHint, AgentGoalBar,
+    /// AgentQuestionBanner and RigActivityBar. A bar that comes or goes moves
+    /// the composer with an animation; while the reader is scrolled back they
+    /// stay faded.
     private func updateDockBars() {
         let before = dockBars.map { $0.view }
+        let hint = InactiveSessionHint(session: session.record, machine: session.machine)
+        if let hint {
+            inactiveHint.show(hint, resuming: resuming)
+        }
+        inactiveHint.isHidden = hint == nil
         let goal = session.record.flatMap(VisibleAgentGoal.init)
         if let goal {
             goalBar.show(goal, inFlight: goalInFlight)
@@ -416,6 +472,29 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             try? await goalAction(dispatch.action, dispatch.objective)
             self.goalInFlight = nil
             self.updateDockBars()
+        }
+    }
+
+    /// useSessionQuickActions' performResume: one at a time, spinning until
+    /// it is done; a failure is an alert. The session reconnects under its
+    /// own id, so the hint just goes once it is back.
+    private func resume() {
+        guard !resuming, let record = session.record else { return }
+        let resume = services.resume
+        let machine = session.machine
+        resuming = true
+        updateDockBars()
+        Task { [weak self] in
+            do {
+                let opened = try await resume(record, machine)
+                if let self, let opened, opened != self.sessionId {
+                    self.push(.session(id: opened), context: self.context)
+                }
+            } catch {
+                if let self { DetailActionAlert.show(error, on: self) }
+            }
+            self?.resuming = false
+            self?.updateDockBars()
         }
     }
 
@@ -502,13 +581,27 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         let permissionBusy = self.permissionBusy
         let expandedTools = self.expandedTools
         let diffExpanded = self.diffExpanded
+        let copiedMessageId = self.copiedMessageId
         let agentState = session.agentState
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        var graceEnd: Int64?
         questionForms = [:]
+        defer { scheduleGraceEnd(graceEnd, now: now) }
         return items.filter { ChatRowRenderer.isShown($0, style: style) }.map { item in
             var delivery: OutboxDelivery?
-            if case .message(.userText(let message)) = item, let localId = message.localId {
-                delivery = snapshot.delivery[localId]
+            var userStatus: UserMessageStatus?
+            if case .message(.userText(let message)) = item {
+                if let localId = message.localId { delivery = snapshot.delivery[localId] }
+                userStatus = ChatRowRenderer.userStatus(message, delivery: delivery, now: now)
+                if let end = UserMessageStatus.graceEnds(
+                    pending: message.pending, undelivered: delivery != nil, queuedWhileBusy: message.meta?.queuedWhileBusy == true,
+                    createdAt: message.createdAt, now: now
+                ) {
+                    graceEnd = min(graceEnd ?? end, end)
+                }
             }
+            var copied = false
+            if case .message(.agentText(let message)) = item { copied = message.id == copiedMessageId }
             var expanded = false
             if case .workHeader(let group, _) = item {
                 expanded = groups.isExpanded(group, inForeground: inForeground)
@@ -527,7 +620,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                     question = state
                 }
             }
-            return ChatRowInput(item: item, delivery: delivery, expanded: expanded, permissionBusy: busy, question: question, diffExpanded: diffs, style: style)
+            return ChatRowInput(
+                item: item, delivery: delivery, expanded: expanded, permissionBusy: busy, question: question, diffExpanded: diffs,
+                userStatus: userStatus, copied: copied, style: style
+            )
         }
     }
 
@@ -538,6 +634,21 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         case "AskUserQuestion": InlineQuestionForm.askUserQuestion(tool)
         case "request_user_input": InlineQuestionForm.requestUserInput(tool, communication: AgentCommunications.form(agentState, toolUseId: tool.callId))
         default: nil
+        }
+    }
+
+    /// Measures again when the first waiting message's quiet spell ends,
+    /// so its status shows.
+    private func scheduleGraceEnd(_ end: Int64?, now: Int64) {
+        guard end != graceEnd else { return }
+        graceEnd = end
+        graceTask.task?.cancel()
+        guard let end else { return }
+        graceTask.task = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(end - now))
+            guard !Task.isCancelled, let self else { return }
+            self.graceEnd = nil
+            self.scheduleMeasure()
         }
     }
 
@@ -614,8 +725,18 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     func chatList(_ list: ChatListView, perform action: ChatRowAction) {
         switch action {
-        case .copy(let text):
+        case .copyMessage(let id, let text):
             UIPasteboard.general.string = text
+            // MessageCopyButton: a tick for 1.5 s.
+            copiedMessageId = id
+            copiedTask.task?.cancel()
+            copiedTask.task = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(1500))
+                guard !Task.isCancelled, let self else { return }
+                self.copiedMessageId = nil
+                self.scheduleMeasure()
+            }
+            scheduleMeasure()
         case .toggleGroup(let id):
             for case .workGroup(let group) in display where group.id == id {
                 groups.toggle(group, inForeground: inForeground)
@@ -651,6 +772,26 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         case .retry(let localId):
             let sender = services.sender
             Task { try? await sender.retry(localId: localId) }
+        case .copyMenu, .selectable, .markdownSelectable:
+            // Long presses; see `chatList(_:hold:frame:at:)`.
+            break
+        }
+    }
+
+    func chatList(_ list: ChatListView, hold action: ChatRowAction, frame: CGRect, at point: CGPoint) {
+        switch action {
+        case .copyMenu(let text):
+            ChatCopyMenu.present(copying: text, anchor: frame, in: list)
+        case .selectable(let text):
+            copyCallout.present(copying: text, at: point, in: list)
+        case .markdownSelectable(let paragraph, let markdown):
+            if context.account.localSettings.markdownCopyV2 {
+                push(.textSelection(text: markdown), context: context)
+            } else {
+                copyCallout.present(copying: paragraph, at: point, in: list)
+            }
+        default:
+            chatList(list, perform: action)
         }
     }
 

@@ -225,6 +225,10 @@ enum FixtureScenarios {
         b.tool("Grep", ["pattern": "didSelectRowAt", "path": "packages/happy-ios/Sources"], result: "Sources/HappyUI/Screens/SessionListScreens.swift:189")
         b.tool("Read", ["file_path": "/Users/fixture/happy/packages/happy-ios/Sources/HappyUI/Navigation/Route.swift"], result: "enum Route: Hashable { … }")
         b.tool("Bash", ["command": "swift build -j 2", "description": "Build the package"], result: "Build complete! (41.20s)", description: "Build the package", seconds: 41)
+        // Thousands of lines of output, for the tool's own screen.
+        b.tool("Bash", ["command": "swift test --parallel", "description": "Run every test"], result: (
+            (1...3000).map { "Test Case 'ChatLayoutTests.testRow\($0)' passed (0.00\($0 % 10) seconds)." }.joined(separator: "\n")
+        ), description: "Run every test", seconds: 64)
         b.tool("Edit", [
             "file_path": "/Users/fixture/happy/packages/happy-ios/Sources/HappyUI/Navigation/Route.swift",
             "old_string": "case .session:\n    return PlaceholderViewController(title: \"\")",

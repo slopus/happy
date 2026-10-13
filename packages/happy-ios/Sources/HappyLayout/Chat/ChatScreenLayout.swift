@@ -322,3 +322,84 @@ public struct RigActivityLayout: Equatable, Sendable {
         size = CGSize(width: width, height: input.isEmpty ? 0 : y + lineHeight + M.paddingV)
     }
 }
+
+/// InactiveArchivedHint: the notice (and, without Resume, "To resume it
+/// from the terminal:") 8 in, then 10 below it either the Resume button, 8
+/// in and 44 tall with its label in the middle, or the command block, edge
+/// to edge, 16 and 12 inside, the commands on the left and the copy glyph on
+/// the right. 12 above, 10 below.
+public struct InactiveHintLayout: Equatable, Sendable {
+    public enum Metrics {
+        public static let paddingTop: CGFloat = 12
+        public static let paddingBottom: CGFloat = 10
+        public static let gap: CGFloat = 10
+        public static let textInset: CGFloat = 8
+        public static let textGap: CGFloat = 4
+        public static let buttonHeight: CGFloat = 44
+        public static let buttonInset: CGFloat = 8
+        public static let radius: CGFloat = 18
+        public static let commandMinHeight: CGFloat = 48
+        public static let commandPaddingH: CGFloat = 16
+        public static let commandPaddingV: CGFloat = 12
+        public static let commandGap: CGFloat = 8
+        public static let iconSize: CGFloat = 16
+        public static let iconTop: CGFloat = 1
+        /// The busy button.
+        public static let resumingOpacity: CGFloat = 0.6
+    }
+
+    public enum Action {
+        case none
+        case resume(label: Measurable)
+        case command(Measurable)
+    }
+
+    public var size: CGSize
+    public var notice: CGRect
+    public var terminalNotice: CGRect?
+    public var button: CGRect?
+    public var buttonLabel: CGRect?
+    public var command: CGRect?
+    public var commandText: CGRect?
+    public var commandIcon: CGRect?
+
+    public init(width: CGFloat, notice: Measurable, terminalNotice: Measurable?, action: Action) {
+        typealias M = Metrics
+        let width = max(0, width)
+        let textWidth = max(0, width - 2 * M.textInset)
+        var y = M.paddingTop
+        let noticeHeight = notice.height(fitting: textWidth)
+        self.notice = CGRect(x: M.textInset, y: y, width: textWidth, height: noticeHeight)
+        y += noticeHeight
+        if let terminalNotice {
+            y += M.textGap
+            let height = terminalNotice.height(fitting: textWidth)
+            self.terminalNotice = CGRect(x: M.textInset, y: y, width: textWidth, height: height)
+            y += height
+        }
+        switch action {
+        case .none:
+            break
+        case .resume(let label):
+            y += M.gap
+            let button = CGRect(x: M.buttonInset, y: y, width: max(0, width - 2 * M.buttonInset), height: M.buttonHeight)
+            let labelSize = label.size(fitting: button.width)
+            self.button = button
+            buttonLabel = CGRect(
+                x: button.midX - labelSize.width / 2, y: button.midY - labelSize.height / 2,
+                width: labelSize.width, height: labelSize.height
+            )
+            y += M.buttonHeight
+        case .command(let text):
+            y += M.gap
+            let innerWidth = max(0, width - 2 * M.commandPaddingH - M.commandGap - M.iconSize)
+            let textHeight = text.height(fitting: innerWidth)
+            let height = max(M.commandMinHeight, textHeight + 2 * M.commandPaddingV)
+            command = CGRect(x: 0, y: y, width: width, height: height)
+            commandText = CGRect(x: M.commandPaddingH, y: y + M.commandPaddingV, width: innerWidth, height: textHeight)
+            commandIcon = CGRect(x: width - M.commandPaddingH - M.iconSize, y: y + M.commandPaddingV + M.iconTop, width: M.iconSize, height: M.iconSize)
+            y += height
+        }
+        size = CGSize(width: width, height: y + M.paddingBottom)
+    }
+}
