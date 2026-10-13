@@ -10,6 +10,8 @@ actor SnapshotHub<Value: Equatable & Sendable> {
     private var raw: Value?
     private var published: Value?
     private var task: Task<Void, Never>?
+    private var generation: UInt64 = 0
+    private var retiring: [UUID: Task<Void, Never>] = [:]
 
     init(observation: SharedValueObservation<Value>, project: @escaping @Sendable (Value) -> Value) {
         self.observation = observation
@@ -35,24 +37,25 @@ actor SnapshotHub<Value: Equatable & Sendable> {
         if let published { continuation.yield(published) }
         guard task == nil else { return }
         let observation = self.observation
+        let token = generation
         task = Task { [weak self] in
             do {
                 for try await value in observation.values() {
                     guard !Task.isCancelled else { break }
-                    await self?.receive(value)
+                    await self?.receive(value, generation: token)
                 }
             } catch {
                 guard !Task.isCancelled else { return }
                 // The public stream is nonthrowing; make a stopped producer
                 // diagnosable, then allow a new subscription to restart it.
                 print("HappyStore snapshot observation stopped: \(error)")
-                await self?.finish()
+                await self?.finish(generation: token)
             }
         }
     }
 
-    private func receive(_ value: Value) {
-        guard !Task.isCancelled else { return }
+    private func receive(_ value: Value, generation token: UInt64) {
+        guard !Task.isCancelled, token == generation else { return }
         raw = value
         refresh()
     }
@@ -66,21 +69,54 @@ actor SnapshotHub<Value: Equatable & Sendable> {
     }
 
     private func remove(_ id: UUID) {
-        subscribers.removeValue(forKey: id)
+        guard subscribers.removeValue(forKey: id) != nil else { return }
         if subscribers.isEmpty {
-            task?.cancel()
+            generation &+= 1
+            if let task { retire(task) }
             task = nil
             raw = nil
             published = nil
         }
     }
 
-    private func finish() {
+    private func finish(generation token: UInt64) {
+        guard token == generation else { return }
+        generation &+= 1
         let continuations = Array(subscribers.values)
         subscribers.removeAll()
+        if let task { retire(task) }
         task = nil
         raw = nil
         published = nil
         for continuation in continuations { continuation.finish() }
     }
+
+    /// Account stop waits for cancellation to reach the underlying shared
+    /// GRDB producer. A new account scope then reads disk rather than a
+    /// cached value whose final database callback is still queued.
+    func stop() async {
+        let oldTasks = Array(retiring.values) + (task.map { [$0] } ?? [])
+        retiring.removeAll()
+        generation &+= 1
+        task = nil
+        raw = nil
+        published = nil
+        let continuations = Array(subscribers.values)
+        subscribers.removeAll()
+        for continuation in continuations { continuation.finish() }
+        for task in oldTasks { task.cancel() }
+        for task in oldTasks { await task.value }
+    }
+
+    private func retire(_ task: Task<Void, Never>) {
+        let id = UUID()
+        retiring[id] = task
+        task.cancel()
+        Task { [weak self] in
+            await task.value
+            await self?.forgetRetired(id)
+        }
+    }
+
+    private func forgetRetired(_ id: UUID) { retiring.removeValue(forKey: id) }
 }

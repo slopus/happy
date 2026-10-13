@@ -140,7 +140,10 @@ final class SyncPerfObservationTests: XCTestCase {
     }
 
     func testAccountStopFinishesItsFeedsAndNewScopeRestartsFromDisk() async throws {
-        let store = try LocalStore.inMemory()
+        let reads = HomeSQLCounter()
+        var configuration = Configuration()
+        configuration.prepareDatabase { db in db.trace { reads.trace($0) } }
+        let store = try LocalStore(writer: DatabaseQueue(configuration: configuration))
         let session = try AccountSession(credentials: Credentials(token: "test", secret: Data(repeating: 3, count: 32)),
                                          store: store, dependencies: .init(serverURL: URL(string: "https://test.invalid")!,
                                          clientID: "test", transport: FakeHTTP(), connector: FakeConnector()))
@@ -152,8 +155,14 @@ final class SyncPerfObservationTests: XCTestCase {
         try store.addPendingSettings(["theme": .string("dark")])
         let stopped = try await syncPerfNext(session.homeFeed.snapshots())
         XCTAssertNil(stopped)
-        let restarted = try await syncPerfNext(HomeFeed(store: store).snapshots())
+        let restartedStream = HomeFeed(store: store).snapshots()
+        let restarted = try await syncPerfNext(restartedStream)
         XCTAssertEqual(restarted?.settings.pending["theme"], .string("dark"))
+        XCTAssertEqual(reads.value, 2, "new scope performs a fresh disk fetch")
+        try store.addPendingSettings(["theme": .string("light")])
+        let changed = try await syncPerfNext(restartedStream)
+        XCTAssertEqual(changed?.settings.pending["theme"], .string("light"))
+        XCTAssertEqual(reads.value, 3, "late cancellation of the old scope cannot stop the new producer")
     }
 
     func testObservationErrorFinishesStreamAndResubscriptionRecovers() async throws {

@@ -187,6 +187,7 @@ public final class AccountSession: Sendable {
         await realtime.disconnect()
         await rigComposer.stop()
         await sync.stop()
+        await store.stopSnapshotProducers()
         await task?.value
         statusContinuation.finish()
     }
