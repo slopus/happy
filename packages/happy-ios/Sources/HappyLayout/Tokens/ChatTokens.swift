@@ -17,13 +17,15 @@ public enum ChatFace: Hashable, Sendable {
     case plex(FontFace)
     /// React Native's default font: the system font at a weight.
     case system(ChatWeight)
+    /// `fontStyle: 'italic'` on React Native's default font.
+    case systemItalic
     /// `Platform.select({ ios: 'Menlo' })`.
     case menlo
 
     public var isMonospaced: Bool {
         switch self {
         case .plex(let face): face == .mono || face == .monoItalic || face == .monoSemiBold
-        case .system: false
+        case .system, .systemItalic: false
         case .menlo: true
         }
     }
@@ -117,6 +119,15 @@ extension Palette {
     public static let diffSectionText = ColorToken("#6E7781", "#8B949E")
     public static let diffGutterBorder = ColorToken("#D8DEE4", "#21262D")
 
+    /// theme.colors.box.warning.text: ToolError's glyph for a refused call.
+    public static let boxWarningText = ColorToken("#FF9500", "#FFAB00")
+
+    // TodoView.tsx (fixed colours, the same in both themes)
+    public static let todoCompleted = ColorToken("#34C759")
+    public static let todoInProgress = ColorToken("#007AFF")
+    public static let todoPending = ColorToken("#666666")
+    public static let todoOther = ColorToken("#000000")
+
     /// theme.colors.button.secondary.tint: the goal bar's action glyphs.
     public static let buttonSecondaryTint = ColorToken("#666666", "#8E8E93")
     /// theme.colors.shadow: the scroll-to-bottom button.
@@ -129,6 +140,7 @@ extension Palette {
         gitBranchText, gitAddedText, gitRemovedText, terminalPanel, terminalPromptGreen, terminalCommand,
         terminalStdout, terminalStderr, terminalError, terminalEmptyOutput, diffRowAdded, diffRowRemoved,
         diffMarkerAdded, diffMarkerRemoved, diffText, diffSectionText, diffGutterBorder, buttonSecondaryTint, shadow,
+        boxWarningText, todoCompleted, todoInProgress, todoPending, todoOther,
     ]
 }
 
@@ -171,6 +183,11 @@ public enum ChatTextStyles {
     public static let toolDescription = ChatTextStyle(.system(.regular), size: 13)
     public static let toolElapsed = ChatTextStyle(.menlo, size: 13)
     public static let compactActivity = ChatTextStyle(.system(.regular), size: 15, lineHeight: 20)
+    // TodoView.tsx, TaskView.tsx (TaskView asks for 'monospace', which iOS
+    // doesn't have, so React Native draws the system font)
+    public static let todo = ChatTextStyle(.system(.regular), size: 14)
+    public static let taskItem = ChatTextStyle(.system(.medium), size: 14)
+    public static let taskMore = ChatTextStyle(.systemItalic, size: 14)
     // ToolSectionView.tsx, ToolError.tsx, CodeView.tsx
     public static let toolSectionTitle = ChatTextStyle(.system(.semibold), size: 13, uppercase: true)
     public static let toolError = ChatTextStyle(.system(.regular), size: 13)

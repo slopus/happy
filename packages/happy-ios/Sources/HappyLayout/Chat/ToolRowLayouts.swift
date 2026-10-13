@@ -391,3 +391,32 @@ public struct PermissionFooterLayout: Equatable, Sendable {
         size = CGSize(width: width, height: y + M.paddingBottom)
     }
 }
+
+/// A line of text with a fixed-size glyph before or after it: ToolError's
+/// warning sign (top-aligned, 8 before the text), TaskView's status (centred,
+/// 8 after the text).
+public struct ChatAccessoryRowLayout: Equatable, Sendable {
+    public enum Alignment: Equatable, Sendable {
+        case top
+        case center
+    }
+
+    public var size: CGSize
+    public var leading: CGRect?
+    public var text: CGRect
+    public var trailing: CGRect?
+
+    public init(width: CGFloat, leading: CGSize? = nil, text: Measurable, trailing: CGSize? = nil, gap: CGFloat = 8, alignment: Alignment = .center) {
+        let width = max(0, width)
+        let textX = leading.map { $0.width + gap } ?? 0
+        let textRight = width - (trailing.map { $0.width + gap } ?? 0)
+        let textWidth = max(0, textRight - textX)
+        let textHeight = text.height(fitting: textWidth)
+        let height = max(textHeight, leading?.height ?? 0, trailing?.height ?? 0)
+        func y(_ itemHeight: CGFloat) -> CGFloat { alignment == .top ? 0 : (height - itemHeight) / 2 }
+        self.leading = leading.map { CGRect(x: 0, y: y($0.height), width: $0.width, height: $0.height) }
+        self.text = CGRect(x: textX, y: y(textHeight), width: textWidth, height: textHeight)
+        self.trailing = trailing.map { CGRect(x: width - $0.width, y: y($0.height), width: $0.width, height: $0.height) }
+        size = CGSize(width: width, height: height)
+    }
+}

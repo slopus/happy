@@ -49,6 +49,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private var inForeground = true
     private var dockDetailsVisible = true
     private var lastLayoutWidth: CGFloat = 0
+    /// Permission buttons whose reply is on its way, by permission id.
+    private var permissionBusy: [String: PermissionButton.Kind] = [:]
 
     init(context: AppContext, session account: AccountSession, sessionId: String) {
         self.context = context
@@ -218,8 +220,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             bubble: session.settings.userMessageBubbleColor,
             compactTools: session.compactToolCalls,
             claudeFlavor: flavor == nil || flavor == "" || flavor == "claude",
-            maxContentWidth: maxContentWidth
+            maxContentWidth: maxContentWidth,
+            root: session.metadata?["path"]?.stringValue,
+            flavor: flavor
         )
+        let permissionBusy = self.permissionBusy
         return items.filter { ChatRowRenderer.isShown($0, style: style) }.map { item in
             var delivery: OutboxDelivery?
             if case .message(.userText(let message)) = item, let localId = message.localId {
@@ -229,7 +234,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             if case .workHeader(let group, _) = item {
                 expanded = groups.isExpanded(group, inForeground: inForeground)
             }
-            return ChatRowInput(item: item, delivery: delivery, expanded: expanded, style: style)
+            var busy: PermissionButton.Kind?
+            if case .message(.toolCall(let call)) = item, let permission = call.tool.permission {
+                busy = permissionBusy[permission.id]
+            }
+            return ChatRowInput(item: item, delivery: delivery, expanded: expanded, permissionBusy: busy, style: style)
         }
     }
 
@@ -297,6 +306,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             scheduleMeasure()
         case .openMessage(let messageId):
             push(.sessionMessage(id: sessionId, messageId: messageId), context: context)
+        case .openFile(let path):
+            push(.sessionFile(id: sessionId, path: path), context: context)
+        case .permission(let tap):
+            answer(tap)
         case .option(let title):
             let sender = services.sender
             let sessionId = self.sessionId
@@ -310,6 +323,32 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     func chatList(_ list: ChatListView, openLink url: String) {
         guard let url = URL(string: url) else { return }
         UIApplication.shared.open(url)
+    }
+
+    /// Sends a permission answer; the button pulses until it has gone.
+    private func answer(_ tap: ChatPermissionTap) {
+        guard permissionBusy[tap.permissionId] == nil else { return }
+        permissionBusy[tap.permissionId] = tap.kind
+        scheduleMeasure()
+        let controls = services.controls
+        let setPermissionMode = services.setPermissionMode
+        let sessionId = self.sessionId
+        let reply = tap.reply
+        Task { [weak self] in
+            do {
+                if reply.allow {
+                    try await controls.allow(sessionId: sessionId, permissionId: tap.permissionId, mode: reply.mode, allowedTools: reply.allowedTools, decision: reply.decision, updatedInput: nil)
+                } else {
+                    try await controls.deny(sessionId: sessionId, permissionId: tap.permissionId, mode: reply.mode, allowedTools: reply.allowedTools, decision: reply.decision)
+                }
+                if let mode = reply.permissionMode { await setPermissionMode(mode) }
+            } catch {
+                // The buttons stay as they were, so the reader can try again.
+            }
+            guard let self else { return }
+            self.permissionBusy[tap.permissionId] = nil
+            self.scheduleMeasure()
+        }
     }
 
     // MARK: ChatComposerDelegate

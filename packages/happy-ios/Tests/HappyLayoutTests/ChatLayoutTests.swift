@@ -358,6 +358,22 @@ final class ToolRowLayoutTests: XCTestCase {
         assertFrame(layout.lines[1], rect(0, 22, 516, 18))
     }
 
+    func testAnErrorLineHangsItsGlyphAtTheTop() {
+        let layout = ChatAccessoryRowLayout(width: 300, leading: CGSize(width: 16, height: 16), text: .fixed(width: 200, height: 36), alignment: .top)
+        XCTAssertEqual(layout.leading, rect(0, 0, 16, 16))
+        // The text takes the rest of the line (flex: 1).
+        XCTAssertEqual(layout.text, rect(24, 0, 276, 36))
+        XCTAssertNil(layout.trailing)
+        XCTAssertEqual(layout.size, CGSize(width: 300, height: 36))
+    }
+
+    func testATaskLineCentresItsStatusAtTheEnd() {
+        let layout = ChatAccessoryRowLayout(width: 300, text: Measurable { CGSize(width: $0, height: 17) }, trailing: CGSize(width: 20, height: 20))
+        XCTAssertEqual(layout.text, rect(0, 1.5, 272, 17))
+        XCTAssertEqual(layout.trailing, rect(280, 0, 20, 20))
+        XCTAssertEqual(layout.size.height, 20)
+    }
+
     func testPermissionButtonsStretchAndGrowForTwoLines() {
         let layout = PermissionFooterLayout(width: 377, labels: [
             text("Yes", lineHeight: 18),

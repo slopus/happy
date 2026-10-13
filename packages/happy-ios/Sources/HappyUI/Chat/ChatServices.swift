@@ -62,6 +62,9 @@ struct ChatServices {
     var controls: any ChatControls
     /// The session record and settings, kept current.
     var observeSession: (_ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> StoreObservation
+    /// sessionSetAgentModes({ permissionMode }): a permission answer that
+    /// changes the mode for the rest of the session.
+    var setPermissionMode: @Sendable (_ mode: String) async -> Void = { _ in }
 
     static func make(account: AccountSession, sessionId: String) -> ChatServices {
         let store = account.store
@@ -83,6 +86,10 @@ struct ChatServices {
             controls: account.actions,
             observeSession: observe(store: store) { snapshot in
                 snapshot.sessions.first { $0.id == sessionId }
+            },
+            setPermissionMode: { [actions = account.actions, transport = account.realtime] mode in
+                // Fire and forget, as in happy-app; the answer itself has gone.
+                try? await actions.sessionSetAgentModes(sessionId: sessionId, patch: SessionAgentModesPatch(permissionMode: .string(mode)), transport: transport)
             }
         )
     }

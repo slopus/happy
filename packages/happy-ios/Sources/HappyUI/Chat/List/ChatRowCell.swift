@@ -13,6 +13,9 @@ final class ChatRowCell: UICollectionViewCell {
     private var boxes: [UIView] = []
     private var texts: [ChatTextView] = []
     private var icons: [UIImageView] = []
+    private var spinners: [UIActivityIndicatorView] = []
+    private var timers: [ChatElapsedLabel] = []
+    private var pulses: [ChatPulseView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -44,17 +47,15 @@ final class ChatRowCell: UICollectionViewCell {
         var boxIndex = 0
         var textIndex = 0
         var iconIndex = 0
+        var spinnerIndex = 0
+        var timerIndex = 0
+        var pulseIndex = 0
         var order: [UIView] = []
         for item in plan.items {
             switch item {
             case .box(let box):
                 let view = take(&boxes, &boxIndex) { UIView() }
-                view.setLayoutFrame(box.frame)
-                view.backgroundColor = box.fill.map { UIColor($0) } ?? .clear
-                view.layer.cornerRadius = box.radius
-                view.layer.cornerCurve = .continuous
-                view.layer.borderWidth = box.borderWidth
-                view.layer.borderColor = box.border.map { UIColor($0).resolvedColor(with: traitCollection).cgColor }
+                style(view, box)
                 order.append(view)
             case .text(let layout, let frame):
                 let view = take(&texts, &textIndex) { ChatTextView() }
@@ -69,15 +70,56 @@ final class ChatRowCell: UICollectionViewCell {
                 view.tintColor = UIColor(tint)
                 view.setLayoutFrame(frame)
                 order.append(view)
+            case .spinner(let frame, let tint, let scale):
+                let view = take(&spinners, &spinnerIndex) { UIActivityIndicatorView(style: .medium) }
+                view.bounds = CGRect(origin: .zero, size: frame.size)
+                view.center = CGPoint(x: frame.midX, y: frame.midY)
+                view.transform = CGAffineTransform(scaleX: scale, y: scale)
+                view.color = UIColor(tint)
+                view.startAnimating()
+                order.append(view)
+            case .elapsed(let since, let frame):
+                let view = take(&timers, &timerIndex) { ChatElapsedLabel() }
+                view.setLayoutFrame(frame)
+                view.since = since
+                order.append(view)
+            case .pulse(let box):
+                let view = take(&pulses, &pulseIndex) { ChatPulseView() }
+                style(view, box)
+                view.startPulsing()
+                order.append(view)
             }
         }
         for view in boxes[boxIndex...] { view.isHidden = true }
         for view in texts[textIndex...] { view.isHidden = true }
         for view in icons[iconIndex...] { view.isHidden = true }
+        for view in spinners[spinnerIndex...] {
+            view.stopAnimating()
+            view.isHidden = true
+        }
+        for view in timers[timerIndex...] {
+            view.since = nil
+            view.isHidden = true
+        }
+        for view in pulses[pulseIndex...] {
+            view.stopPulsing()
+            view.isHidden = true
+        }
         for view in order {
             view.isHidden = false
             contentView.bringSubviewToFront(view)
         }
+    }
+
+    private func style(_ view: UIView, _ box: ChatBox) {
+        view.setLayoutFrame(box.frame)
+        view.backgroundColor = box.fill.map { UIColor($0) } ?? .clear
+        view.alpha = box.alpha
+        view.layer.cornerRadius = box.radius
+        view.layer.maskedCorners = box.corners
+        view.layer.cornerCurve = .continuous
+        view.layer.borderWidth = box.borderWidth
+        view.layer.borderColor = box.border.map { UIColor($0).resolvedColor(with: traitCollection).cgColor }
     }
 
     private func take<View: UIView>(_ pool: inout [View], _ index: inout Int, make: () -> View) -> View {
@@ -104,6 +146,104 @@ final class ChatRowCell: UICollectionViewCell {
             }
         }
         return nil
+    }
+}
+
+/// ToolView's ElapsedView: whole seconds since the tool started, ticking
+/// once a second while on screen ("12.0s", useElapsedTime + toFixed(1)).
+final class ChatElapsedLabel: UILabel {
+    var since: Int64? {
+        didSet {
+            guard since != oldValue else { return }
+            tick()
+            updateTimer()
+        }
+    }
+
+    private var timer: Timer?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        font = ChatTextStyles.toolElapsed.font
+        textColor = UIColor(Palette.textSecondary)
+        textAlignment = .right
+        isAccessibilityElement = false
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        updateTimer()
+    }
+
+    private func updateTimer() {
+        let running = since != nil && window != nil
+        if running && timer == nil {
+            let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.tick() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            self.timer = timer
+            tick()
+        } else if !running {
+            timer?.invalidate()
+            timer = nil
+        }
+    }
+
+    private func tick() {
+        guard let since else {
+            text = nil
+            return
+        }
+        let seconds = max(0, (Int64(Date().timeIntervalSince1970 * 1000) - since) / 1000)
+        text = "\(seconds).0s"
+    }
+}
+
+/// PermissionFooter's loading ring: its opacity runs 0.18 → 0.52 → 0.18,
+/// 720 ms each way.
+final class ChatPulseView: UIView {
+    private static let key = "pulse"
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    func startPulsing() {
+        guard layer.animation(forKey: Self.key) == nil else { return }
+        let animation = CABasicAnimation(keyPath: "opacity")
+        animation.fromValue = 0.18
+        animation.toValue = 0.52
+        animation.duration = 0.72
+        animation.autoreverses = true
+        animation.repeatCount = .infinity
+        animation.timingFunction = CAMediaTimingFunction(controlPoints: 0.455, 0.03, 0.515, 0.955)
+        animation.isRemovedOnCompletion = false
+        layer.add(animation, forKey: Self.key)
+    }
+
+    func stopPulsing() {
+        layer.removeAnimation(forKey: Self.key)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        // Core Animation drops an animation when its layer leaves the window.
+        if window != nil && !isHidden {
+            stopPulsing()
+            startPulsing()
+        }
     }
 }
 #endif

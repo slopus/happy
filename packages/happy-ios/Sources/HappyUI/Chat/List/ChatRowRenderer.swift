@@ -11,6 +11,9 @@ struct ChatRowStyle: Equatable, Sendable {
     /// Absent flavor is Claude: its SDK echoes slash commands as chips.
     var claudeFlavor = true
     var maxContentWidth: CGFloat = .greatestFiniteMagnitude
+    /// metadata.path: tool paths under it are shown relative to it.
+    var root: String?
+    var flavor: String?
 }
 
 /// Everything one row is drawn from. Equal inputs at the same width give
@@ -21,6 +24,8 @@ struct ChatRowInput: Equatable, Sendable {
     var delivery: OutboxDelivery?
     /// For a work header: whether its group is open.
     var expanded = false
+    /// For a tool: the permission button whose reply is on its way.
+    var permissionBusy: PermissionButton.Kind?
     var style: ChatRowStyle
 
     var id: String { item.id }
@@ -34,6 +39,7 @@ enum ChatRowRenderer {
     /// caveats and goal confirmations, and the echo of a slash command the
     /// SDK re-emits as a chip.
     static func isShown(_ item: ChatListItem, style: ChatRowStyle) -> Bool {
+        if case .message(.toolCall(let call)) = item { return !ChatToolDisplay.isHidden(call.tool.name) }
         guard case .message(.userText(let message)) = item else { return true }
         if style.claudeFlavor && LocalCommandMessage.isSlashCommandEcho(message.text, hasLocalId: message.localId != nil) {
             return false
@@ -52,7 +58,7 @@ enum ChatRowRenderer {
             switch message {
             case .userText(let user): return userText(user, delivery: input.delivery, width: width, style: input.style)
             case .agentText(let agent): return agentText(agent, width: width, style: input.style)
-            case .toolCall(let call): return toolCall(call, width: width, style: input.style)
+            case .toolCall(let call): return toolCall(call, busy: input.permissionBusy, width: width, style: input.style)
             case .agentEvent(let event): return agentEvent(event, width: width, style: input.style)
             case .unsupported(let unsupported): return unsupportedRow(unsupported, width: width, style: input.style)
             }
@@ -191,34 +197,6 @@ enum ChatRowRenderer {
         let text = MeasuredText(textStyle.string(label, color: color, alignment: .center))
         let layout = ChatEventLayout(width: width, maxContentWidth: maxContentWidth, label: text.measurable)
         return ChatRowPlan(id: id, size: layout.size, items: [.text(text.layout(for: layout.label), layout.label)], accessibilityLabel: label)
-    }
-
-    /// For now every tool is its compact activity row; the cards, the
-    /// tool views and the permission buttons come next.
-    static func toolCall(_ message: ToolCallMessage, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
-        let tool = message.tool
-        let label = ChatToolDisplay.activityLabel(tool, words: Strings.ToolGroup.words)
-        let text = MeasuredText(ChatTextStyles.compactActivity.string(label, color: Palette.text, lineBreakMode: .byTruncatingTail), maxLines: 1)
-        let layout = CompactToolRowLayout(width: width, maxContentWidth: style.maxContentWidth, label: text.measurable, elapsed: nil, statusIcon: nil, footer: nil)
-        let icon: Icon = switch ChatToolDisplay.category(tool.name) {
-        case .terminal: .octicons("terminal")
-        case .edit: .octicons("file-diff")
-        case .read: .octicons("eye")
-        case .search: .octicons("search")
-        case .web: .ionicons("globe-outline")
-        case .task: .octicons("rocket")
-        case .other: .ionicons("construct-outline")
-        }
-        let tint = tool.state == .error ? Palette.statusError : Palette.textSecondary
-        return ChatRowPlan(
-            id: message.id, size: layout.size,
-            items: [
-                .icon(icon, size: 16, frame: layout.icon, tint: tint),
-                .text(text.layout(for: layout.label), layout.label),
-            ],
-            hits: [ChatHit(frame: layout.header, action: .openMessage(message.id))],
-            accessibilityLabel: label
-        )
     }
 
     static func workHeader(_ id: String, group: ChatWorkGroup, placement: ChatListItem.Placement, expanded: Bool, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
