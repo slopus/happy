@@ -36,7 +36,7 @@ accident.
 - [x] Link Your Computer, offline checklist, troubleshoot (`troubleshoot.tsx`)
 - [x] Connect a terminal by QR or URL; `happy://terminal` deep links (`terminal/*`)
 - [ ] The machine screen that troubleshoot rows open — Secondary
-- [ ] Copy terminal commands by selecting them — Home
+- [x] Copy terminal commands by selecting them (`TerminalBlock.tsx`): every line in the offline checklist and on troubleshoot is selectable, and a selection never takes in the `$ ` prompt — Home
 
 ## Home
 
