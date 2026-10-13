@@ -38,6 +38,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private let headerScrim = HeaderScrimView()
     private let titleView = ChatHeaderTitleView()
     private let avatarControl = ChatHeaderAvatarControl()
+    private lazy var avatarItem = UIBarButtonItem(customView: avatarControl)
+    /// The title on a tablet, without glass.
+    private let plainTitleView = ChatPlainHeaderTitleView()
     private let cliWarning = ChatCliWarningPill()
     /// localSettings' `acknowledgedCliVersions`, read once.
     private lazy var acknowledgedCliVersions = context.account.localSettings.acknowledgedCliVersions
@@ -93,6 +96,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private var inForeground = true
     private var dockDetailsVisible = true
     private var lastLayoutWidth: CGFloat = 0
+    /// `traitCollection.isTabletLayout`, kept here so the row inputs can be
+    /// built off the main thread.
+    private var isTabletLayout = false
     /// Permission buttons whose reply is on its way, by permission id.
     private var permissionBusy: [String: PermissionButton.Kind] = [:]
     /// Tools the reader opened, by message id: for as long as the screen
@@ -128,6 +134,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        isTabletLayout = traitCollection.isTabletLayout
         view.backgroundColor = UIColor(Palette.surface)
         showsBackTitle()
         dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): ChatHeaderView.tsx
@@ -146,6 +153,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         view.addSubview(scrim)
         registerForTraitChanges([UITraitVerticalSizeClass.self]) { (self: Self, _) in
             self.updateCliWarning()
+        }
+        registerForTraitChanges([TabletLayoutTrait.self]) { (self: Self, _) in
+            self.tabletLayoutChanged()
         }
         composer.composerDelegate = self
         questionBanner.isHidden = true
@@ -248,7 +258,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             accessories: dockBars.map { $0.inset ? .inset($0.measurable) : .fullWidth($0.measurable) },
             composerHeight: composer.composerHeight(fitting: size.width),
             composerCardOffset: composer.cardOffset,
-            maxContentWidth: maxContentWidth
+            maxContentWidth: maxContentWidth,
+            // TabletBranches: chatFloatingDock and chatInputPaddingH.
+            docked: isTabletLayout,
+            accessoryPaddingH: isTabletLayout ? TabletBranches.Metrics.tabletInputPaddingH : TabletBranches.Metrics.phoneInputPaddingH
         ))
         list.setLayoutFrame(screen.list)
         list.setEdgeInsets(newest: screen.newestEdgeInset, oldest: screen.oldestEdgeInset)
@@ -260,6 +273,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         // an empty chat sits between the bar and the dock.
         placeholder.setLayoutFrame(dock.isHidden ? view.bounds : screen.placeholder)
         titleView.maxWidth = ChatHeaderTitleLayout.maxWidth(headerWidth: size.width)
+        plainTitleView.maxWidth = ContentWidth.headerMaxWidth
         dock.setLayoutFrame(screen.dock)
         for (bar, frame) in zip(dockBars, screen.accessories) { bar.view.setLayoutFrame(frame) }
         composer.setLayoutFrame(screen.composer)
@@ -284,28 +298,45 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// ChatHeaderView over a transparent bar: the system back button, the
     /// title capsule, the avatar; the scrim is the screen's own.
     private func setUpHeader() {
+        titleView.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
+        plainTitleView.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
+        avatarControl.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
+        if #available(iOS 26.0, *) {
+            // The control is its own glass.
+            avatarItem.hidesSharedBackground = true
+        }
+        applyHeaderBranch()
+        updateHeader()
+    }
+
+    /// ChatHeaderView's `glassEnabled` and SessionView's `headerRight`
+    /// (`TabletBranches`): a phone's glass capsule and avatar over the
+    /// scrim, or a tablet's opaque bar (`header.background`) with the plain
+    /// title and no avatar. The back button is `dropsBackButtonOnTablet`'s.
+    private func applyHeaderBranch() {
+        let tablet = isTabletLayout
         let appearance = UINavigationBarAppearance()
-        appearance.configureWithTransparentBackground()
+        if tablet {
+            appearance.configureWithOpaqueBackground()
+            appearance.backgroundColor = UIColor(Palette.headerBackground)
+            appearance.shadowColor = .clear
+        } else {
+            appearance.configureWithTransparentBackground()
+        }
         appearance.titleTextAttributes = TextStyles.headerTitle.attributes(color: UIColor(Palette.headerTint))
         navigationItem.standardAppearance = appearance
         navigationItem.scrollEdgeAppearance = appearance
         navigationItem.compactAppearance = appearance
         navigationItem.compactScrollEdgeAppearance = appearance
 
-        titleView.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
-        navigationItem.titleView = titleView
-        avatarControl.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
-        let avatarItem = UIBarButtonItem(customView: avatarControl)
-        if #available(iOS 26.0, *) {
-            // The control is its own glass.
-            avatarItem.hidesSharedBackground = true
-        }
-        var items = [avatarItem]
+        navigationItem.titleView = tablet ? plainTitleView : titleView
+        var items = tablet ? [] : [avatarItem]
         #if DEBUG
         items.append(fixturesMenu())
         #endif
         navigationItem.rightBarButtonItems = items
-        updateHeader()
+        headerScrim.isHidden = tablet
+        scrim.isHidden = tablet || dock.isHidden
     }
 
     private func updateHeader() {
@@ -319,6 +350,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         titleView.update(title: title, subtitle: model.subtitle, changes: model.changes)
         titleView.isEnabled = session.record != nil
         titleView.sizeToFit()
+        plainTitleView.update(title: title, subtitle: model.subtitle, changes: model.changes)
+        plainTitleView.isEnabled = session.record != nil
 
         let settings = session.settings
         avatarControl.isHidden = session.record == nil
@@ -354,6 +387,17 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         acknowledgedCliVersions = acknowledged
         context.account.localSettings.acknowledgedCliVersions = acknowledged
         updateCliWarning()
+    }
+
+    /// The window crossed the tablet width: rows plan their tablet
+    /// branches again.
+    private func tabletLayoutChanged() {
+        let tablet = traitCollection.isTabletLayout
+        guard tablet != isTabletLayout else { return }
+        isTabletLayout = tablet
+        applyHeaderBranch()
+        view.setNeedsLayout()
+        scheduleMeasure()
     }
 
     @objc private func openInfo() {
@@ -417,7 +461,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         list.isHidden = fullScreen
         if dock.isHidden != fullScreen {
             dock.isHidden = fullScreen
-            scrim.isHidden = fullScreen
+            scrim.isHidden = fullScreen || isTabletLayout
             view.setNeedsLayout()
         }
     }
@@ -607,7 +651,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             maxContentWidth: maxContentWidth,
             root: session.metadata?["path"]?.stringValue,
             flavor: flavor,
-            showLineNumbers: session.settings.bool("showLineNumbersInToolViews")
+            showLineNumbers: session.settings.bool("showLineNumbersInToolViews"),
+            tablet: isTabletLayout
         )
         let permissionBusy = self.permissionBusy
         let expandedTools = self.expandedTools

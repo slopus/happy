@@ -88,7 +88,7 @@ extension ChatRowRenderer {
         let expandable = !presentation.awaitingDecision && presentation.expandedBody != .none
             && (body != nil || toolBody(presentation.expandedBody, message: message, views: views, style: style) != nil)
         let tap: ChatRowAction = expandable ? .toggleTool(message.id) : open
-        let footer = presentation.showsPermissionFooter ? tool.permission.map { permissionFooter($0, tool: tool, busy: busy, flavor: style.flavor) } : nil
+        let footer = presentation.showsPermissionFooter ? tool.permission.map { permissionFooter($0, tool: tool, busy: busy, flavor: style.flavor, tablet: style.tablet) } : nil
         let elapsed = presentation.showsElapsed ? elapsedSize : nil
         let glyph = presentation.statusGlyph.map { _ in CGSize(width: ToolCardLayout.Metrics.statusIconSize, height: ToolCardLayout.Metrics.statusIconSize) }
 
@@ -609,7 +609,7 @@ extension ChatRowRenderer {
 
     // MARK: Permission buttons (PermissionFooter.tsx)
 
-    static func permissionFooter(_ permission: ToolPermission, tool: ToolCall, busy: PermissionButton.Kind?, flavor: String?) -> ChatPiece {
+    static func permissionFooter(_ permission: ToolPermission, tool: ToolCall, busy: PermissionButton.Kind?, flavor: String?, tablet: Bool = false) -> ChatPiece {
         let buttons = ChatPermissionButtons.buttons(permission, toolName: tool.name, toolInput: tool.input, flavor: flavor)
         let pending = permission.status == .pending
         let labels = buttons.map { button in
@@ -617,9 +617,12 @@ extension ChatRowRenderer {
             return MeasuredText(style.string(Strings.Tools.permission(button.kind), color: Palette.text, lineBreakMode: .byTruncatingTail), maxLines: button.maxLines)
         }
         let measurables = labels.map(\.measurable)
-        return ChatPiece(measurable: Measurable { PermissionFooterLayout(width: $0, labels: measurables).size }) { frame in
+        func layout(_ width: CGFloat) -> PermissionFooterLayout {
+            tablet ? .tablet(width: width, labels: measurables) : PermissionFooterLayout(width: width, labels: measurables)
+        }
+        return ChatPiece(measurable: Measurable { layout($0).size }) { frame in
             typealias M = PermissionFooterLayout.Metrics
-            let layout = PermissionFooterLayout(width: frame.width, labels: measurables)
+            let layout = layout(frame.width)
             var items: [ChatDrawItem] = []
             var hits: [ChatHit] = []
             for (index, button) in buttons.enumerated() {

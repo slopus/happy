@@ -450,6 +450,24 @@ final class ChatScreenLayoutTests: XCTestCase {
         assertFrame(layout.scrollButton, rect(180.5, 720, 32, 32))
     }
 
+    func testOnATabletTheListStopsAtTheDock() {
+        // An iPad's chat: 1024 by 768, status bar 24 and a 50 bar.
+        let layout = ChatScreenLayout(.init(
+            size: CGSize(width: 664, height: 768), safeArea: LayoutInsets(top: 74, left: 0, bottom: 20, right: 0), keyboardTop: nil,
+            accessories: [.inset(block(height: 60))], composerHeight: 70, composerCardOffset: 20, docked: true, accessoryPaddingH: 12
+        ))
+        assertFrame(layout.accessories[0], rect(12, 0, 640, 60))
+        assertFrame(layout.dock, rect(0, 618, 664, 130))
+        assertFrame(layout.list, rect(0, 74, 664, 544))
+        XCTAssertEqual(layout.newestEdgeInset, 8)
+        XCTAssertEqual(layout.oldestEdgeInset, 106)
+        // 4 above the list's bottom.
+        assertFrame(layout.scrollButton, rect(316, 582, 32, 32))
+        XCTAssertEqual(layout.scrim.height, 0)
+        XCTAssertEqual(layout.headerScrim.height, 0)
+        assertFrame(layout.placeholder, rect(0, 74, 664, 544))
+    }
+
     func testTheDockRidesTheKeyboard() {
         let layout = screen(keyboardTop: 500)
         assertFrame(layout.dock, rect(0, 370, 393, 130))
@@ -757,5 +775,81 @@ final class InactiveHintLayoutTests: XCTestCase {
         let short = InactiveHintLayout(width: 361, notice: text("x", lineHeight: 18), terminalNotice: nil, action: .command(block(height: 18)))
         // At least 48 tall.
         assertFrame(short.command, rect(0, 40, 361, 48))
+    }
+}
+
+final class ChatPlainHeaderLayoutTests: XCTestCase {
+    func testTheTitleSitsAtTheStartOfTheRow() {
+        let layout = ChatPlainHeaderLayout(
+            bar: rect(0, 0, 664, 50), size: CGSize(width: 664, height: 50), maxWidth: 800,
+            title: fixed(120, 20), subtitle: fixed(60, 16), changes: CGSize(width: 40, height: 14)
+        )
+        assertFrame(layout.column, rect(16, 7, 632, 36))
+        // The column's children are in the column.
+        assertFrame(layout.title, rect(0, 0, 120, 20))
+        assertFrame(layout.subtitle, rect(0, 20, 60, 16))
+        assertFrame(layout.changes, rect(64, 21, 40, 14))
+    }
+
+    func testAWideBarHoldsTheRowToTheHeadersMaxWidth() {
+        let layout = ChatPlainHeaderLayout(bar: rect(0, 0, 1000, 50), size: CGSize(width: 1000, height: 50), maxWidth: 800, title: fixed(120, 20), subtitle: nil, changes: nil)
+        assertFrame(layout.column, rect(116, 15, 768, 20))
+        assertFrame(layout.title, rect(0, 0, 120, 20))
+        XCTAssertNil(layout.subtitle)
+        XCTAssertNil(layout.changes)
+    }
+
+    func testAnInsetTitleViewPlacesTheRowFromTheBarsEdges() {
+        // UIKit put the title view 80 into a 1000-wide bar, 840 wide and 3
+        // down: the row is where it would be in the bar (116), which is 36
+        // into the view, and centred in the view's own height.
+        let layout = ChatPlainHeaderLayout(
+            bar: rect(-80, -3, 1000, 50), size: CGSize(width: 840, height: 44), maxWidth: 800,
+            title: fixed(120, 20), subtitle: nil, changes: nil
+        )
+        assertFrame(layout.column, rect(36, 12, 768, 20))
+        assertFrame(layout.title, rect(0, 0, 120, 20))
+    }
+
+    func testARowStartingBeforeTheTitleViewIsClippedAndMeasuredToWhatIsLeft() {
+        // The row starts 16 into the bar, which is 104 before the view.
+        let layout = ChatPlainHeaderLayout(
+            bar: rect(-120, 0, 664, 50), size: CGSize(width: 500, height: 50), maxWidth: 800,
+            title: fixed(600, 20), subtitle: fixed(480, 16), changes: CGSize(width: 40, height: 14)
+        )
+        assertFrame(layout.column, rect(0, 7, 500, 36))
+        assertFrame(layout.title, rect(0, 0, 500, 20))
+        // 500 less the changes and their gap.
+        assertFrame(layout.subtitle, rect(0, 20, 456, 16))
+        assertFrame(layout.changes, rect(460, 21, 40, 14))
+    }
+
+    func testARowEndingPastTheTitleViewIsClipped() {
+        let layout = ChatPlainHeaderLayout(
+            bar: rect(0, 0, 664, 50), size: CGSize(width: 400, height: 50), maxWidth: 800,
+            title: fixed(600, 20), subtitle: nil, changes: nil
+        )
+        assertFrame(layout.column, rect(16, 15, 384, 20))
+        assertFrame(layout.title, rect(0, 0, 384, 20))
+    }
+
+    func testATitleViewOutsideTheRowGetsAnEmptyColumn() {
+        // The row ends 16 before the view starts.
+        let layout = ChatPlainHeaderLayout(
+            bar: rect(-900, 0, 1000, 50), size: CGSize(width: 100, height: 50), maxWidth: 800,
+            title: fixed(120, 20), subtitle: nil, changes: nil
+        )
+        assertFrame(layout.column, rect(0, 15, 0, 20))
+        assertFrame(layout.title, rect(0, 0, 0, 20))
+    }
+
+    func testWithoutABarTheRowIsTheTitleViews() {
+        let size = CGSize(width: 664, height: 44)
+        let layout = ChatPlainHeaderLayout(
+            bar: CGRect(origin: .zero, size: size), size: size, maxWidth: 800,
+            title: fixed(120, 20), subtitle: fixed(60, 16), changes: nil
+        )
+        assertFrame(layout.column, rect(16, 4, 632, 36))
+        assertFrame(layout.subtitle, rect(0, 20, 60, 16))
     }
 }

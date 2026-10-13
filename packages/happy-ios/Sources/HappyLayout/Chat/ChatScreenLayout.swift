@@ -24,6 +24,14 @@ import CoreGraphics
 ///   - the header's scrim covers the bar and 8 past it (ChatHeaderView's
 ///     headerBackdrop), and an empty chat's placeholder is centred between
 ///     the bar and the dock (AgentContentView).
+///
+/// On a tablet (`docked`) nothing floats: the list starts under the bar and
+/// stops at the dock (SessionView's `contentRunsUnderHeader` and
+/// `usesFloatingMobileDock` are false), the newest message sits 8 above
+/// the dock, the oldest end leaves ChatList's fallback spacer (the bar, the
+/// status bar and 32 more, on top of starting under the bar), the scroll
+/// button floats 4 above the list's bottom, there is no fade behind the
+/// dock, and the bars above the composer sit 12 in.
 public struct ChatScreenLayout: Equatable, Sendable {
     public enum Metrics {
         /// sessionInputHorizontalPadding on a phone.
@@ -41,6 +49,10 @@ public struct ChatScreenLayout: Equatable, Sendable {
         public static let dockDetailsShowOffset: CGFloat = 16
         /// The fade behind the dock reaches 28 above it.
         public static let scrimExtra: CGFloat = 28
+        /// Docked: ChatList's SCROLL_BUTTON_DOCK_GAP above the list's bottom.
+        public static let dockedScrollButtonGap: CGFloat = 4
+        /// Docked: OlderEnd's `headerHeight + safeArea.top + 32`.
+        public static let dockedOlderEdgeExtra: CGFloat = 32
         /// The header's scrim runs 8 past the bar (headerBackdrop bottom -8).
         public static let headerScrimOverhang: CGFloat = 8
         /// layout.maxWidth off a phone (tablet and web: 800; a phone is never
@@ -73,8 +85,17 @@ public struct ChatScreenLayout: Equatable, Sendable {
         /// status rows sit above the card).
         public var composerCardOffset: CGFloat
         public var maxContentWidth: CGFloat
+        /// The tablet layout: the list stops at the dock instead of
+        /// running under it and the bar.
+        public var docked: Bool
+        /// `sessionInputHorizontalPadding`: 8 on a phone, 12 on a tablet.
+        public var accessoryPaddingH: CGFloat
 
-        public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat?, accessories: [Accessory] = [], composerHeight: CGFloat, composerCardOffset: CGFloat = 0, maxContentWidth: CGFloat = .greatestFiniteMagnitude) {
+        public init(
+            size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat?, accessories: [Accessory] = [], composerHeight: CGFloat,
+            composerCardOffset: CGFloat = 0, maxContentWidth: CGFloat = .greatestFiniteMagnitude,
+            docked: Bool = false, accessoryPaddingH: CGFloat = Metrics.accessoryPaddingH
+        ) {
             self.size = size
             self.safeArea = safeArea
             self.keyboardTop = keyboardTop
@@ -82,6 +103,8 @@ public struct ChatScreenLayout: Equatable, Sendable {
             self.composerHeight = composerHeight
             self.composerCardOffset = composerCardOffset
             self.maxContentWidth = maxContentWidth
+            self.docked = docked
+            self.accessoryPaddingH = accessoryPaddingH
         }
     }
 
@@ -112,8 +135,8 @@ public struct ChatScreenLayout: Equatable, Sendable {
         list = CGRect(x: 0, y: 0, width: width, height: height)
 
         let column = ChatColumn(rowWidth: width, maxContentWidth: input.maxContentWidth)
-        let accessoryX = column.x + M.accessoryPaddingH
-        let accessoryWidth = max(0, column.width - 2 * M.accessoryPaddingH)
+        let accessoryX = column.x + input.accessoryPaddingH
+        let accessoryWidth = max(0, column.width - 2 * input.accessoryPaddingH)
         var y: CGFloat = 0
         var frames: [CGRect] = []
         for accessory in input.accessories {
@@ -141,6 +164,16 @@ public struct ChatScreenLayout: Equatable, Sendable {
         scrim = CGRect(x: 0, y: dock.minY - M.scrimExtra, width: width, height: max(0, height - dock.minY + M.scrimExtra))
         headerScrim = CGRect(x: 0, y: 0, width: width, height: max(0, input.safeArea.top) + M.headerScrimOverhang)
         placeholder = CGRect(x: 0, y: input.safeArea.top, width: width, height: max(0, dock.minY - input.safeArea.top))
+
+        if input.docked {
+            let top = max(0, input.safeArea.top)
+            list = CGRect(x: 0, y: top, width: width, height: max(0, dock.minY - top))
+            newestEdgeInset = M.newerEdgeExtra
+            oldestEdgeInset = top + M.dockedOlderEdgeExtra
+            scrollButton.origin.y = list.maxY - M.dockedScrollButtonGap - M.scrollButtonSize
+            scrim = CGRect(x: 0, y: dock.minY, width: width, height: 0)
+            headerScrim = CGRect(x: 0, y: 0, width: width, height: 0)
+        }
     }
 
     /// ChatList's header backdrop: stronger once anything is scrolled under
