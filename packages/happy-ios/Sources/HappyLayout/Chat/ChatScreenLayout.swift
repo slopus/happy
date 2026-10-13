@@ -38,6 +38,12 @@ import CoreGraphics
 /// the list starts under the status bar with 12 before its oldest end, a
 /// 44pt round back button floats 16 in and 8 under the status bar, and
 /// the status bar gets a shadowed strip of its own.
+///
+/// Something under the header (`headerAccessory`, the worktree tab strip)
+/// rides with it: on a phone the oldest end clears it too
+/// (`chatListTopContentInset`'s `headerAccessoryHeight`); on a tablet the
+/// list starts under it and the oldest end's spacer stays as it was. With
+/// no header there is nothing for it to hang from.
 public struct ChatScreenLayout: Equatable, Sendable {
     public enum Metrics {
         /// sessionInputHorizontalPadding on a phone.
@@ -105,11 +111,14 @@ public struct ChatScreenLayout: Equatable, Sendable {
         /// A phone on its side: no header, docked. `safeArea.top` is then
         /// the status bar's alone.
         public var hidesHeader: Bool
+        /// The height of what hangs under the header, margins included.
+        public var headerAccessory: CGFloat
 
         public init(
             size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat?, accessories: [Accessory] = [], composerHeight: CGFloat,
             composerCardOffset: CGFloat = 0, maxContentWidth: CGFloat = .greatestFiniteMagnitude,
-            docked: Bool = false, accessoryPaddingH: CGFloat = Metrics.accessoryPaddingH, hidesHeader: Bool = false
+            docked: Bool = false, accessoryPaddingH: CGFloat = Metrics.accessoryPaddingH, hidesHeader: Bool = false,
+            headerAccessory: CGFloat = 0
         ) {
             self.size = size
             self.safeArea = safeArea
@@ -121,6 +130,7 @@ public struct ChatScreenLayout: Equatable, Sendable {
             self.docked = docked
             self.accessoryPaddingH = accessoryPaddingH
             self.hidesHeader = hidesHeader
+            self.headerAccessory = headerAccessory
         }
     }
 
@@ -147,6 +157,11 @@ public struct ChatScreenLayout: Equatable, Sendable {
     /// status bar's strip.
     public var backButton: CGRect?
     public var statusBarShadow: CGRect?
+    /// What hangs under the header, full width; nil without a header.
+    public var headerAccessory: CGRect?
+    /// The header's bottom, past what hangs under it: where the CLI pill
+    /// goes.
+    public var headerBottom: CGFloat
 
     public init(_ input: Input) {
         typealias M = Metrics
@@ -173,8 +188,11 @@ public struct ChatScreenLayout: Equatable, Sendable {
         let restingBottom = height - input.safeArea.bottom
         let bottom = min(restingBottom, input.keyboardTop ?? restingBottom)
         dock = CGRect(x: 0, y: bottom - dockHeight, width: width, height: dockHeight)
+        let accessory = input.hidesHeader ? 0 : max(0, input.headerAccessory)
+        headerAccessory = input.hidesHeader ? nil : CGRect(x: 0, y: input.safeArea.top, width: width, height: accessory)
+        headerBottom = input.safeArea.top + accessory
         newestEdgeInset = max(0, height - dock.minY) + M.newerEdgeExtra
-        oldestEdgeInset = input.safeArea.top + M.olderEdgeExtra
+        oldestEdgeInset = headerBottom + M.olderEdgeExtra
         scrollButton = CGRect(
             x: (width - M.scrollButtonSize) / 2,
             y: dock.minY + composer.minY + min(max(0, input.composerCardOffset), composer.height) - M.scrollButtonGap - M.scrollButtonSize,
@@ -183,13 +201,13 @@ public struct ChatScreenLayout: Equatable, Sendable {
         )
         scrim = CGRect(x: 0, y: dock.minY - M.scrimExtra, width: width, height: max(0, height - dock.minY + M.scrimExtra))
         headerScrim = CGRect(x: 0, y: 0, width: width, height: max(0, input.safeArea.top) + M.headerScrimOverhang)
-        placeholder = CGRect(x: 0, y: input.safeArea.top, width: width, height: max(0, dock.minY - input.safeArea.top))
+        placeholder = CGRect(x: 0, y: headerBottom, width: width, height: max(0, dock.minY - headerBottom))
 
         backButton = nil
         statusBarShadow = nil
         if input.docked || input.hidesHeader {
             let top = max(0, input.safeArea.top)
-            list = CGRect(x: 0, y: top, width: width, height: max(0, dock.minY - top))
+            list = CGRect(x: 0, y: top + accessory, width: width, height: max(0, dock.minY - top - accessory))
             newestEdgeInset = M.newerEdgeExtra
             oldestEdgeInset = input.hidesHeader ? M.headerlessOlderEdgeExtra : top + M.dockedOlderEdgeExtra
             scrollButton.origin.y = list.maxY - M.dockedScrollButtonGap - M.scrollButtonSize

@@ -125,7 +125,7 @@ public final class SessionStarter {
             refreshSessions: @escaping @Sendable () async -> Void,
             paintBotFace: @escaping @Sendable (String) async throws -> Data,
             attachmentPlan: @escaping @Sendable (OutgoingMessage, String) async throws -> AttachmentSendPlan,
-            spawnRequests: SpawnRequests = SpawnRequests(),
+            spawnRequests: SpawnRequests,
             sleep: @escaping @Sendable (Int) async -> Void = { ms in try? await Task.sleep(for: .milliseconds(ms)) }
         ) {
             self.ops = ops
