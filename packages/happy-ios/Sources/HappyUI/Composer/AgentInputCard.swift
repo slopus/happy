@@ -147,6 +147,8 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
     /// `minHeight` for the input container; nil keeps 44.
     public var inputMinHeight: CGFloat?
     public var autocapitalization: UITextAutocapitalizationType
+    /// The keyboard's return key ("done" for a bot's name on home).
+    public var returnKey: UIReturnKeyType
     public var primaryStyle: AgentInputPrimaryStyle
     /// While true, add and the chips refuse presses: the pressed one shakes
     /// and the delegate hears `agentInputCardDidRefuse`. The primary button
@@ -170,6 +172,7 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         primaryAccessibilityLabel: String? = nil,
         inputMinHeight: CGFloat? = nil,
         autocapitalization: UITextAutocapitalizationType = .sentences,
+        returnKey: UIReturnKeyType = .default,
         primaryStyle: AgentInputPrimaryStyle = .standard,
         refusesControls: Bool = false,
         zenMode: Bool = false
@@ -186,6 +189,7 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         self.primaryAccessibilityLabel = primaryAccessibilityLabel
         self.inputMinHeight = inputMinHeight
         self.autocapitalization = autocapitalization
+        self.returnKey = returnKey
         self.primaryStyle = primaryStyle
         self.refusesControls = refusesControls
         self.zenMode = zenMode
@@ -548,7 +552,13 @@ public final class AgentInputCardView: UIView {
         if !config.isEditable, textView.isFirstResponder {
             textView.resignFirstResponder()
         }
-        textView.autocapitalizationType = config.autocapitalization
+        if textView.autocapitalizationType != config.autocapitalization || textView.returnKeyType != config.returnKey {
+            textView.autocapitalizationType = config.autocapitalization
+            textView.returnKeyType = config.returnKey
+            // The keyboard is up through the change; it takes new traits
+            // only when asked.
+            if textView.isFirstResponder { textView.reloadInputViews() }
+        }
         textView.accessibilityLabel = config.placeholder
 
         addButton.isHidden = !config.showsAdd || config.zenMode

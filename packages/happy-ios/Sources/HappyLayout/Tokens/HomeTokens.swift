@@ -135,6 +135,12 @@ extension TextStyles {
     public static let homeDockRowValue = TextStyle(.regular, size: 17)
     /// The status line above the composer and its hint.
     public static let homeDockProgress = TextStyle(.regular, size: 11)
+    /// What a bot is for, under Session | Bot (`focusHeaderLede`).
+    public static let homeDockLede = TextStyle(.regular, size: 13, lineHeight: 18)
+    /// "Avatar" over a bot's faces (BotFacePicker.tsx `heading`).
+    public static let botFaceHeading = TextStyle(.semiBold, size: 12)
+    /// "Art by Lisa Wischofsky" under them.
+    public static let botFaceCredit = TextStyle(.regular, size: 11)
 }
 
 // The new-session screen (app/(app)/new/index.tsx).

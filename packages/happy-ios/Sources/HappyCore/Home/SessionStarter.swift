@@ -27,6 +27,18 @@ public struct NewSessionLaunch: Sendable {
     public var prompt: String
     public var attachments: [OutgoingAttachment]
     public var signature: SpawnRequests.Signature
+    /// The bot being made, and the face it is to wear.
+    public var bot: Bot?
+
+    public struct Bot: Equatable, Sendable {
+        public var name: String
+        public var faceSeed: String
+
+        public init(name: String, faceSeed: String) {
+            self.name = name
+            self.faceSeed = faceSeed
+        }
+    }
 
     public init(
         machineId: String,
@@ -41,7 +53,8 @@ public struct NewSessionLaunch: Sendable {
         effortLevel: String?,
         prompt: String,
         attachments: [OutgoingAttachment],
-        signature: SpawnRequests.Signature
+        signature: SpawnRequests.Signature,
+        bot: Bot? = nil
     ) {
         self.machineId = machineId
         self.agent = agent
@@ -56,6 +69,7 @@ public struct NewSessionLaunch: Sendable {
         self.prompt = prompt
         self.attachments = attachments
         self.signature = signature
+        self.bot = bot
     }
 
     var isRig: Bool { rigMetadata != nil }
@@ -68,6 +82,9 @@ public protocol SessionStarterPresenter: AnyObject {
     func showStartError(_ message: String)
     /// "Create Directory?": the directory doesn't exist yet.
     func confirmDirectoryCreation(_ directory: String) async -> Bool
+    /// "Picture not set": the bot was made but its face didn't take. True
+    /// to try the face again.
+    func offerBotFaceRetry(_ message: String) async -> Bool
 }
 
 /// Starts a session and reports each step (useStartSessionFromDraft.ts
@@ -87,6 +104,9 @@ public final class SessionStarter {
         public var metadataTransport: any MetadataUpdateTransport
         /// sync.ts `refreshSessions`.
         public var refreshSessions: @Sendable () async -> Void
+        /// utils/botFacePaint.ts `paintBotFace`: a seed's face as PNG
+        /// bytes, painted off the main thread.
+        public var paintBotFace: @Sendable (String) async throws -> Data
         public var spawnRequests: SpawnRequests
         public var sleep: @Sendable (Int) async -> Void
 
@@ -97,6 +117,7 @@ public final class SessionStarter {
             sender: any ChatSending,
             metadataTransport: any MetadataUpdateTransport,
             refreshSessions: @escaping @Sendable () async -> Void,
+            paintBotFace: @escaping @Sendable (String) async throws -> Data,
             spawnRequests: SpawnRequests = .shared,
             sleep: @escaping @Sendable (Int) async -> Void = { ms in try? await Task.sleep(for: .milliseconds(ms)) }
         ) {
@@ -105,6 +126,7 @@ public final class SessionStarter {
             self.sender = sender
             self.metadataTransport = metadataTransport
             self.refreshSessions = refreshSessions
+            self.paintBotFace = paintBotFace
             self.spawnRequests = spawnRequests
             self.sleep = sleep
         }
@@ -118,6 +140,35 @@ public final class SessionStarter {
         public static let worktreeFailed = "Failed to create worktree"
         public static let stillSyncing = "The session was created, but it is still syncing. It should appear shortly."
         public static let startFailed = "Failed to start session"
+
+        /// A bot whose face couldn't be uploaded.
+        public static func faceNotUploaded(_ botName: String) -> String {
+            "\(botName) is ready, but its picture couldn’t be uploaded. You can try again without creating another bot."
+        }
+
+        /// A bot whose face couldn't be painted or put on.
+        public static func faceNotSet(_ botName: String) -> String {
+            "\(botName) is ready, but its picture couldn't be set. Try again."
+        }
+    }
+
+    /// Where putting a face on a bot stopped (`BotFaceLeg`). Each leg is
+    /// named, since the three do different things and a bare message
+    /// doesn't say which was running.
+    public struct BotFaceFailure: Error, Equatable, Sendable {
+        public enum Leg: String, Sendable {
+            case painting = "painting the face"
+            case uploading = "uploading the face"
+            case wearing = "asking the bot to wear it"
+        }
+
+        public var leg: Leg
+        public var message: String
+
+        public init(leg: Leg, message: String) {
+            self.leg = leg
+            self.message = message
+        }
     }
 
     private let environment: Environment
@@ -258,6 +309,24 @@ public final class SessionStarter {
                 Task { try? await sessionOps.sessionSetAgentModes(sessionId: sessionId, patch: patch, transport: transport) }
             }
 
+            if let bot = launch.bot {
+                // The face travels as a session attachment, then the bot is
+                // asked to wear it. A face that can't be painted or
+                // delivered is no reason to lose the bot just made: it
+                // opens without one, and says so.
+                showPhase(.avatar)
+                let paint = environment.paintBotFace
+                guard let worn = await run.race({
+                    await Self.wearBotFace(sessionId: sessionId, seed: bot.faceSeed, paint: paint, sessionOps: sessionOps)
+                }) else {
+                    Task { @MainActor in await self.stopAbandoned(sessionId, launch: launch, run: run) }
+                    return nil
+                }
+                if let failure = worn {
+                    offerBotFaceRetry(sessionId: sessionId, bot: bot, failure: failure)
+                }
+            }
+
             if !launch.prompt.isEmpty || !launch.attachments.isEmpty {
                 guard isCurrent() else {
                     requests.complete(clientRequestId)
@@ -358,6 +427,69 @@ public final class SessionStarter {
         }
     }
 
+    /// Paints the chosen face and puts it on the bot behind a session that
+    /// is already open (`wearBotFace`). Reported rather than thrown: the
+    /// bot exists by now, and the caller decides what a missing face means.
+    nonisolated static func wearBotFace(
+        sessionId: String,
+        seed: String,
+        paint: @Sendable (String) async throws -> Data,
+        sessionOps: any HomeSessionOps
+    ) async -> BotFaceFailure? {
+        let bytes: Data
+        do {
+            bytes = try await paint(seed)
+        } catch {
+            return BotFaceFailure(leg: .painting, message: "\(BotFaceFailure.Leg.painting.rawValue): \(describe(error))")
+        }
+        let uploaded: (ref: String, size: Int)
+        do {
+            uploaded = try await sessionOps.uploadSessionBlob(sessionId: sessionId, name: "face.png", bytes: bytes)
+        } catch {
+            return BotFaceFailure(leg: .uploading, message: "\(BotFaceFailure.Leg.uploading.rawValue): \(describe(error))")
+        }
+        do {
+            try await sessionOps.sessionSetAvatar(
+                sessionId: sessionId,
+                picture: SessionAvatarPicture(ref: uploaded.ref, size: uploaded.size, mimeType: .png)
+            )
+        } catch {
+            return BotFaceFailure(leg: .wearing, message: "\(BotFaceFailure.Leg.wearing.rawValue): \(describe(error))")
+        }
+        return nil
+    }
+
+    /// `offerBotFaceRetry`: says the face didn't take, and tries only the
+    /// face again for as long as the person asks. The bot is open by now,
+    /// so this outlives the start.
+    private func offerBotFaceRetry(sessionId: String, bot: NewSessionLaunch.Bot, failure: BotFaceFailure) {
+        Self.offerBotFaceRetry(
+            presenter: presenter,
+            sessionId: sessionId,
+            bot: bot,
+            failure: failure,
+            paint: environment.paintBotFace,
+            sessionOps: environment.sessionOps
+        )
+    }
+
+    private static func offerBotFaceRetry(
+        presenter: (any SessionStarterPresenter)?,
+        sessionId: String,
+        bot: NewSessionLaunch.Bot,
+        failure: BotFaceFailure,
+        paint: @escaping @Sendable (String) async throws -> Data,
+        sessionOps: any HomeSessionOps
+    ) {
+        let message = failure.leg == .uploading ? Message.faceNotUploaded(bot.name) : Message.faceNotSet(bot.name)
+        Task { @MainActor [weak presenter] in
+            guard let presenter, await presenter.offerBotFaceRetry(message) else { return }
+            if let next = await wearBotFace(sessionId: sessionId, seed: bot.faceSeed, paint: paint, sessionOps: sessionOps) {
+                offerBotFaceRetry(presenter: presenter, sessionId: sessionId, bot: bot, failure: next, paint: paint, sessionOps: sessionOps)
+            }
+        }
+    }
+
     /// Puts down a session nobody is waiting for any more. Happy Agent's
     /// session is killed through its own RPC, which also retires a bot;
     /// Happy CLI's daemon is asked first, then the session, then the
@@ -378,7 +510,7 @@ public final class SessionStarter {
         await environment.refreshSessions()
     }
 
-    static func describe(_ error: any Error) -> String {
+    nonisolated static func describe(_ error: any Error) -> String {
         let message = (error as? LocalizedError)?.errorDescription
         return message?.isEmpty == false ? message! : Message.startFailed
     }
