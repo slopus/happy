@@ -170,6 +170,21 @@ final class TextSizeTests: XCTestCase {
 
     // MARK: Header titles
 
+    /// react-native-screens' title: IBMPlexSans-SemiBold 17, a font and a
+    /// colour, no line height, never scaled.
+    func testUIKitsHeaderTitleIsReactNativeScreens() throws {
+        let attributes = AppCoordinator.nativeTitleAttributes
+        let font = try XCTUnwrap(attributes[.font] as? UIFont)
+        XCTAssertEqual(font.pointSize, 17)
+        XCTAssertEqual(font.fontName, "IBMPlexSans-SemiBold")
+        XCTAssertNil(attributes[.paragraphStyle])
+        XCTAssertNil(attributes[.baselineOffset])
+        XCTAssertEqual(Set(attributes.keys), [.font, .foregroundColor])
+        let bar = UINavigationBar()
+        AppCoordinator.applyAppearance(to: bar)
+        XCTAssertEqual((bar.standardAppearance.titleTextAttributes[.font] as? UIFont)?.pointSize, 17)
+    }
+
     /// OnboardingHeader's and Header.tsx's titles scale in a header that
     /// keeps its height; the view is fitted again in the bar.
     func testATitleViewThatFollowsGrowsAndIsFittedAgain() throws {

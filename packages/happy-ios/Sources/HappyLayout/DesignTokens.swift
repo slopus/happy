@@ -250,6 +250,9 @@ public enum TextStyles {
 
     // Navigation header (components/onboarding/OnboardingHeader.tsx)
     public static let headerTitle = TextStyle(.semiBold, size: 16, lineHeight: 20)
+    /// UIKit's header title through react-native-screens: semibold at its
+    /// default 17, which no `headerTitleStyle` in happy-app overrides.
+    public static let nativeHeaderTitle = TextStyle(.semiBold, size: 17)
     public static let headerSubtitle = TextStyle(.regular, size: 11, lineHeight: 14)
 
     // First run (components/onboarding/OnboardingContent.tsx)
