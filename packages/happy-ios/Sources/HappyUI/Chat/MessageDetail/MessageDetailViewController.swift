@@ -26,6 +26,8 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     private let copyCallout = ChatCopyCallout()
     private var feedTask: Task<Void, Never>?
     private var observation: ApplyObservation?
+    /// The account's own, for `onSessionVisible`.
+    private let spawnRequests: SpawnRequests
 
     private var session = ChatSessionState(record: nil, settings: AccountSettings())
     private var snapshot: ChatSnapshot?
@@ -42,6 +44,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
         self.sessionId = sessionId
         self.messageId = messageId
         focusFile = file
+        spawnRequests = account.spawnRequests
         services = ChatServices.make(account: account, sessionId: sessionId, isCurrent: { [weak context, weak account] in account != nil && context?.account.session === account })
         super.init(nibName: nil, bundle: nil)
     }
@@ -98,7 +101,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         // sync.ts `onSessionVisible`, which this screen calls on mount too.
-        SpawnRequests.shared.release(sessionId: sessionId)
+        spawnRequests.release(sessionId: sessionId)
     }
 
     override func viewDidAppear(_ animated: Bool) {

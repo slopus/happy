@@ -18,7 +18,8 @@ extension SessionStarter {
             paintBotFace: { try await BotFacePainter.png(seed: $0) },
             attachmentPlan: { [sender = session.sender] message, sessionId in
                 try await sender.attachmentPlan(for: message, sessionId: sessionId)
-            }
+            },
+            spawnRequests: session.spawnRequests
         ))
     }
 }
