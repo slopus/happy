@@ -59,11 +59,12 @@ public actor SessionPresence {
 
     public func activity(id: String, active: Bool, activeAt: Int64, thinking: Bool) async {
         guard !stopped else { return }
+        let time = now()
         if sessions[id] == nil, let row = try? store.session(id: id) { seed(row) }
         guard var state = sessions[id], activeAt >= state.latestAt else { return }
         let criticalTimestamp = activeAt - state.persistedAt > options.persistenceIntervalMs
         let flip = state.active != active || state.thinking != (active && thinking)
-        let token = active ? nil : ComposerStatus.lastSeen(activeAt: activeAt, now: now())
+        let token = active ? nil : ComposerStatus.lastSeen(activeAt: activeAt, now: time)
         let textChanged = token != state.lastSeen
         state.active = active
         state.thinking = active && thinking
@@ -76,13 +77,16 @@ public actor SessionPresence {
         sessions[id] = state
         dirtySessions.insert(id)
         store.setSessionPresenceOverlay(id: id, value: state.overlay)
-        if flip || textChanged { store.setPresenceDisplayClock(now()) }
-        if flip || criticalTimestamp || now() - lastFlush >= options.persistenceIntervalMs { checkpoint() }
-        if flip || textChanged { await store.refreshPresenceDisplay(at: now()) }
+        if flip || textChanged { store.setPresenceDisplayClock(time) }
+        if flip || criticalTimestamp || time - lastFlush >= options.persistenceIntervalMs { checkpoint() }
+        // A flip already changed SQLite and wakes its observation. Reusing
+        // the hub's older raw row here could expose pre-checkpoint unread.
+        if textChanged && !flip { await store.refreshPresenceDisplay() }
     }
 
     public func machineActivity(id: String, active: Bool, activeAt: Int64) async {
         guard !stopped else { return }
+        let time = now()
         if machines[id] == nil, let row = try? store.machine(id: id) { seed(row) }
         guard var state = machines[id], activeAt >= state.latestAt else { return }
         let criticalTimestamp = activeAt - state.persistedAt > options.persistenceIntervalMs
@@ -93,9 +97,8 @@ public actor SessionPresence {
         machines[id] = state
         dirtyMachines.insert(id)
         store.setMachinePresenceOverlay(id: id, value: state.overlay)
-        if flip { store.setPresenceDisplayClock(now()) }
-        if flip || criticalTimestamp || now() - lastFlush >= options.persistenceIntervalMs { checkpoint() }
-        if flip { await store.refreshPresenceDisplay(at: now()) }
+        if flip { store.setPresenceDisplayClock(time) }
+        if flip || criticalTimestamp || time - lastFlush >= options.persistenceIntervalMs { checkpoint() }
     }
 
     /// Seed incoming list scalars before their transaction so an older cached
@@ -154,7 +157,7 @@ public actor SessionPresence {
         }
         if changed { store.setPresenceDisplayClock(time) }
         if changed || time - lastFlush >= options.persistenceIntervalMs { checkpoint() }
-        if changed { await store.refreshPresenceDisplay(at: time) }
+        if changed { await store.refreshPresenceDisplay() }
     }
 
     public func flush() throws {

@@ -13,8 +13,7 @@ extension LocalStore {
     /// DB callback and explicit hub refresh then project the same clock.
     public func setPresenceDisplayClock(_ now: Int64) { presenceOverlay.setClock(now) }
 
-    public func refreshPresenceDisplay(at now: Int64) async {
-        setPresenceDisplayClock(now)
+    public func refreshPresenceDisplay() async {
         await homeHub.refresh()
         await machinesHub.refresh()
     }

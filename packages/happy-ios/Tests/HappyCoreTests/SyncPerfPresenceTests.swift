@@ -1,9 +1,30 @@
 import Foundation
+import GRDB
 import XCTest
 import HappyCrypto
 import HappyStore
 import HappyWire
 @testable import HappyCore
+
+private final class AdvancingPresenceClock: @unchecked Sendable {
+    private let lock = NSLock()
+    private var time: Int64 = 1_000_000
+    var now: Int64 {
+        get { lock.withLock { let value = time; time += 1; return value } }
+        set { lock.withLock { time = newValue } }
+    }
+}
+
+private final class PresenceHomeReads: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func trace(_ event: Database.TraceEvent) {
+        if event.description.lowercased().contains("select * from \"session\" order by") {
+            lock.withLock { count += 1 }
+        }
+    }
+}
 
 final class SyncPerfPresenceTests: XCTestCase {
     private func fixture() throws -> (LocalStore, SyncEngineTests.Clock, SessionPresence) {
@@ -195,7 +216,7 @@ final class SyncPerfPresenceTests: XCTestCase {
     func testAheadAndBehindClientClocksCannotFlapLiveSessionOrMachinePresence() async throws {
         for skew: Int64 in [15 * 60_000, -15 * 60_000] {
             let store = try LocalStore.inMemory()
-            let clock = SyncEngineTests.Clock()
+            let clock = AdvancingPresenceClock()
             let wireStart: Int64 = 1_000_000
             let clientStart = wireStart + skew
             clock.now = clientStart
@@ -272,5 +293,82 @@ final class SyncPerfPresenceTests: XCTestCase {
         await presence.activity(id: "s", active: false, activeAt: 1_002_000, thinking: false)
         XCTAssertEqual(try store.session(id: "s")?.active, false)
         XCTAssertEqual(commits.value, 2, "server timeout flips offline immediately")
+    }
+
+    func testAdvancingClockPublishesOneValuePerFlipAndLastSeenTick() async throws {
+        let store = try LocalStore.inMemory()
+        var row = ChatRecords.storeSession("s")
+        row.activeAt = 1_000_000
+        try store.upsertSessions([row])
+        try store.replaceMachines([MachineRecord(id: "m", seq: 0, createdAt: 1, updatedAt: 1, active: true,
+            activeAt: 1_000_000, metadataVersion: 0, metadataCipher: "", metadata: nil,
+            daemonStateVersion: 0, daemonStateCipher: nil, daemonState: nil, dataKeyCipher: nil, decryptable: false)])
+        let clock = AdvancingPresenceClock()
+        let presence = SessionPresence(store: store, now: { clock.now })
+        let expected = (0..<4).map { expectation(description: "home value \($0)") }
+        let extra = expectation(description: "no clock-only duplicate")
+        extra.isInverted = true
+        let values = PageCounter()
+        let watching = Task {
+            for await _ in HomeFeed(store: store).snapshots() {
+                let index = values.count
+                values.count += 1
+                if index < expected.count { expected[index].fulfill() } else { extra.fulfill() }
+            }
+        }
+        defer { watching.cancel() }
+        await fulfillment(of: [expected[0]], timeout: 5)
+        await presence.activity(id: "s", active: false, activeAt: 1_000_000, thinking: false)
+        await fulfillment(of: [expected[1]], timeout: 5)
+        await presence.machineActivity(id: "m", active: false, activeAt: 1_000_000)
+        await fulfillment(of: [expected[2]], timeout: 5)
+        clock.now = 1_060_000
+        await presence.tick()
+        await fulfillment(of: [expected[3]], timeout: 5)
+        await fulfillment(of: [extra], timeout: 0.05)
+        XCTAssertEqual(values.count, 4, "initial, session flip, machine flip, one last-seen tick")
+        try await presence.stop()
+    }
+
+    func testBusyIdleAndReadPublishExactlyOneCoherentValueEach() async throws {
+        let reads = PresenceHomeReads()
+        var configuration = Configuration()
+        configuration.prepareDatabase { db in db.trace { reads.trace($0) } }
+        let store = try LocalStore(writer: DatabaseQueue(configuration: configuration))
+        var row = ChatRecords.storeSession("s")
+        row.activeAt = 1_000_000
+        try store.upsertSessions([row])
+        let clock = AdvancingPresenceClock()
+        let presence = SessionPresence(store: store, now: { clock.now })
+        let expected = (0..<4).map { expectation(description: "coherent value \($0)") }
+        let extra = expectation(description: "no intermediate raw-row value")
+        extra.isInverted = true
+        let values = PageCounter()
+        let watching = Task {
+            for await home in HomeFeed(store: store).snapshots() {
+                let index = values.count
+                values.count += 1
+                let session = home.sessions.first
+                XCTAssertEqual(session?.thinking, index == 1)
+                XCTAssertEqual(session?.unread, index == 2)
+                if index < expected.count { expected[index].fulfill() } else { extra.fulfill() }
+            }
+        }
+        defer { watching.cancel() }
+        await fulfillment(of: [expected[0]], timeout: 5)
+        let commits = SyncPerfCommits()
+        store.writer.add(transactionObserver: commits)
+        await presence.activity(id: "s", active: true, activeAt: 1_000_001, thinking: true)
+        await fulfillment(of: [expected[1]], timeout: 5)
+        await presence.activity(id: "s", active: true, activeAt: 1_000_002, thinking: false)
+        await fulfillment(of: [expected[2]], timeout: 5)
+        try store.markSessionRead(id: "s")
+        await fulfillment(of: [expected[3]], timeout: 5)
+        await fulfillment(of: [extra], timeout: 0.05)
+        XCTAssertEqual(values.count, 4)
+        XCTAssertEqual(reads.value, 4, "initial plus one SQL producer fetch per modifying commit")
+        XCTAssertEqual(commits.value, 3)
+        print("SYNC_PERF busy-idle-read: modifying_commits=3 home_fetches=4 home_values=3")
+        try await presence.stop()
     }
 }
