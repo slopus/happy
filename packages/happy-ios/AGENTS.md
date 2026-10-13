@@ -192,6 +192,9 @@ nothing here is wired to the release skill or to EAS.
   - **Switching** stops the active account's sync and socket, opens the
     other account's store (its home shows from disk at once) and starts
     its sync. Only the active account syncs.
+  - **The Server screen** (`ServerConfigViewController`) edits only the
+    candidate used to sign in or add an account. An existing account's
+    server changes only through the confirmation flow.
   - **What an RN rollback sees.** The RN build reads only the shared item,
     so it comes back signed in to the shared account and knows nothing of
     the others. Their items and caches stay on disk, unused, and are picked

@@ -56,7 +56,7 @@ accident.
 - [ ] Inverted list engine with precomputed, off-main text layout, manual frames, bubble resize animations, scroll position keeping (`ChatList`) — Chat
 - [ ] Keyboard: input bar tracks the keyboard, interactive dismiss, list insets — Chat
 - [ ] Messages: user bubbles, agent text, thinking, events, unsupported placeholder (`MessageView`) — Chat
-- [ ] Markdown: blocks, spans, links, lists, tables, code blocks with syntax highlighting, copy (`markdown/*`, `SyntaxText`, `SimpleSyntaxHighlighter`) — Chat
+- [~] Markdown: blocks, spans, links, lists, tables, code blocks with syntax highlighting, copy (`markdown/*`, `SyntaxText`, `SimpleSyntaxHighlighter`) — Chat
 - [ ] Text selection screen (`text-selection.tsx`) — Chat
 - [ ] Tool calls, hidden by default; tool headers, sections, errors, full view (`tools/*`, `knownTools.tsx`) — Chat
 - [ ] Tool views: Bash, Edit, MultiEdit, Write, Todo, Task, MCP, Codex patch/diff/bash, Gemini edit/execute, file, exit plan, ask user question, request user input (`tools/views/*`) — Chat
@@ -75,28 +75,28 @@ accident.
 
 ## Settings
 
-- [~] Settings index: header, connect terminal, account, features, appearance, agents, about, version, logout (`SettingsView.tsx`) — Settings
-- [ ] Account: profile, public id, secret key backup, linked devices, GitHub connect, logout, delete (`settings/account.tsx`) — Settings
-- [ ] Account switcher: list, switch, add, sign out one — Settings + Accounts
-- [ ] Appearance: theme, avatar style, bubble colours, session list options, compact mode (`settings/appearance.tsx`) — Settings
-- [ ] Language (`settings/language.tsx`) — Settings
-- [ ] Agents: machines and agent defaults (`settings/agents.tsx`) — Settings
-- [ ] Connect Claude (`settings/connect/claude.tsx`) — Settings. Diverges on purpose: the command is in the text colour, because happy-app's white-on-transparent card vanishes in light mode.
-- [ ] What's new (`changelog.tsx`) — Settings
-- [ ] Push notification settings and registration (`apiPush.ts`) — Settings + Ops
+- [x] Settings index: header, connect terminal, account, features, appearance, agents, about, version, logout (`SettingsView.tsx`) — Settings
+- [x] Account: profile, public id, secret key backup, linked devices, GitHub connect, logout, delete (`settings/account.tsx`) — Settings
+- [~] Account switcher: list, switch, add, sign out one — Settings + Accounts (list and switch done; add and sign out one being wired)
+- [x] Appearance: theme, avatar style, bubble colours, session list options, compact mode (`settings/appearance.tsx`) — Settings
+- [x] Language (`settings/language.tsx`) — Settings
+- [x] Agents: machines and agent defaults (`settings/agents.tsx`) — Settings
+- [x] Connect Claude (`settings/connect/claude.tsx`) — Settings. Diverges on purpose: the command is in the text colour, because happy-app's white-on-transparent card vanishes in light mode.
+- [x] What's new (`changelog.tsx`) — Settings
+- [~] Push notification settings and registration (`apiPush.ts`) — Settings + Ops (settings rows done; APNs registration is Ops)
 - [x] Synced settings model with pending deltas (`AccountSettings`, `SyncEngine.pushSettings`)
 
 ## Platform
 
 - [x] Credentials in the RN app's Keychain item
-- [ ] Multiple accounts with separate caches — Accounts
+- [x] Multiple accounts with separate caches, RN custom server imported — Accounts
 - [x] Offline-first delta sync: sessions, machines, settings, profile, projects, messages
-- [ ] Outbox for every write, with retry and failure states — Sending
-- [ ] Session protocol rendering and the reducer (`typesRaw.ts`, `sync/reducer/*`) — Reducer
+- [x] Outbox for messages and attachments, with retry and failure states — Sending
+- [x] Session protocol normalization and the reducer (`typesRaw.ts`, `sync/reducer/*`) — Reducer
 - [ ] Session ops over RPC: spawn, resume, fork, duplicate, rename, machine ops, bash, files (`sync/ops.ts`) — Ops
 - [ ] Git status (`gitStatusSync.ts`) — Ops
-- [ ] Icons as vector outlines, no icon fonts — Icons
-- [ ] Light and dark theme switching (`themePreference`) — Icons
+- [x] Icons as vector outlines, no icon fonts — Icons
+- [x] Light and dark theme switching (`themePreference`) — Icons
 - [ ] Dynamic Type — unassigned
 - [ ] iPad layout (sidebar + detail) — unassigned
 - [ ] Push notifications (APNs registration, open from a notification) — Ops
