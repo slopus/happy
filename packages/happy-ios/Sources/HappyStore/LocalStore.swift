@@ -30,6 +30,7 @@ public final class LocalStore: Sendable {
         var configuration = Configuration()
         configuration.foreignKeysEnabled = true
         configuration.label = "HappyStore"
+        configuration.busyMode = .timeout(5)
         return try LocalStore(writer: DatabasePool(path: url.path, configuration: configuration))
     }
 
@@ -53,7 +54,7 @@ public final class LocalStore: Sendable {
         homeObservation = ValueObservation.tracking(
             region: homeSessionRegion, MachineRecord.all(), ProjectRecord.all(),
             AccountSettingsRecord.all(), PendingSettingsRecord.all(), AccountProfileRecord.all(),
-            SyncStateRecord.filter([SyncCursor.machinesLastSync.rawValue, SyncCursor.sessionsChangedSince.rawValue].contains(Column("key"))),
+            SyncStateRecord.select(Column("key")).filter([SyncCursor.machinesLastSync.rawValue, SyncCursor.sessionsChangedSince.rawValue].contains(Column("key"))),
             fetch: { db in try Self.fetchHomeSnapshot(db) }
         ).removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))
         settingsObservation = ValueObservation.trackingConstantRegion { db in
@@ -359,7 +360,7 @@ public final class LocalStore: Sendable {
 
     static func fetchMachinesSnapshot(_ db: Database) throws -> MachinesSnapshot {
         MachinesSnapshot(
-            synced: try SyncStateRecord.fetchOne(db, key: SyncCursor.machinesLastSync.rawValue) != nil,
+            synced: try SyncStateRecord.exists(db, key: SyncCursor.machinesLastSync.rawValue),
             // Newest first, as happy-app's useAllMachines sorts them.
             machines: try MachineRecord.order(Column("createdAt").desc, Column("id")).fetchAll(db)
         )

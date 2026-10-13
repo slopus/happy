@@ -119,29 +119,59 @@ public final class AccountController {
     /// GRDB's read-only configuration, like `AccountDisplay.read`. Accounts
     /// waiting for server confirmation have no session to open and are
     /// skipped. Nil when no store holds it.
-    public func accountHoldingSession(_ sessionId: String) -> AccountSummary.ID? {
-        if let session, (try? session.store.session(id: sessionId)) != nil {
-            return session.keys.anonID
-        }
+    public func accountHoldingSession(_ sessionId: String) async throws -> AccountSummary.ID? {
+        let activeStore = session?.store
+        let activeID = session?.keys.anonID
         let others = registry.entries
-            .filter { $0.serverConfirmed && $0.id != session?.keys.anonID }
+            .filter { $0.serverConfirmed && $0.id != activeID }
             .sorted { $0.addedOrder < $1.addedOrder }
-        for entry in others {
-            if let store = memoryStores[entry.id] {
-                if (try? store.session(id: sessionId)) != nil { return entry.id }
-                continue
+        let memoryStores = self.memoryStores
+        let directory = storeDirectory
+        return try await Task.detached {
+            var lookupError: (any Error)?
+            if let activeStore {
+                do { if try activeStore.session(id: sessionId) != nil { return activeID } }
+                catch { lookupError = error }
             }
-            guard let directory = storeDirectory else { continue }
-            let url = AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("store.sqlite")
-            guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            var configuration = Configuration()
-            configuration.readonly = true
-            let found = try? DatabaseQueue(path: url.path, configuration: configuration).read { db in
-                try SessionRecord.exists(db, key: sessionId)
+            for entry in others {
+                if let store = memoryStores[entry.id] {
+                    do { if try store.session(id: sessionId) != nil { return entry.id } }
+                    catch { lookupError = lookupError ?? error }
+                    continue
+                }
+                guard let directory else { continue }
+                let url = AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("store.sqlite")
+                guard FileManager.default.fileExists(atPath: url.path) else { continue }
+                do {
+                    if try await Self.readSession(id: sessionId, at: url) { return entry.id }
+                } catch {
+                    lookupError = lookupError ?? error
+                }
             }
-            if found == true { return entry.id }
+            if let lookupError { throw lookupError }
+            return nil
+        }.value
+    }
+
+    /// Read-only connections can meet the previous pool's final checkpoint
+    /// while it removes WAL sidecars. Busy handling covers SQL locks; one
+    /// bounded reopen also covers the sidecar-open race.
+    private nonisolated static func readSession(id: String, at url: URL) async throws -> Bool {
+        var configuration = Configuration()
+        configuration.readonly = true
+        configuration.busyMode = .timeout(2)
+        for attempt in 0..<2 {
+            do {
+                return try await DatabaseQueue(path: url.path, configuration: configuration).read { db in
+                    try SessionRecord.exists(db, key: id)
+                }
+            } catch {
+                guard attempt == 0, let error = error as? DatabaseError,
+                      [.SQLITE_BUSY, .SQLITE_LOCKED, .SQLITE_CANTOPEN].contains(error.resultCode) else { throw error }
+                try await Task.sleep(for: .milliseconds(10))
+            }
         }
-        return nil
+        return false
     }
 
     /// Presents onboarding without logging out. Cancel leaves the current
@@ -153,12 +183,12 @@ public final class AccountController {
         guard !busy else { throw AccountSwitchError.operationInProgress }
         busy = true
         defer { busy = false }
-        let values = try reconcile()
+        let values = try await reconcile()
         guard let entry = registry.entries.first(where: { $0.id == id }), let value = values[id] else {
             throw AccountSwitchError.unknownAccount
         }
         guard session?.keys.anonID != id else { return }
-        let next = entry.serverConfirmed ? try makeSession(value.credentials, entry: entry) : nil
+        let next = entry.serverConfirmed ? try await makeSession(value.credentials, entry: entry) : nil
         var updated = registry
         updated.activeID = id
         try updated.save(directory: storeDirectory)
@@ -176,7 +206,7 @@ public final class AccountController {
         busy = true
         defer { busy = false }
         let url = try ServerConfig.validate(url.absoluteString)
-        let values = try reconcile()
+        let values = try await reconcile()
         guard let index = registry.entries.firstIndex(where: { $0.id == id }),
               let value = values[id] else { throw AccountSwitchError.unknownAccount }
         var updated = registry
@@ -185,7 +215,7 @@ public final class AccountController {
         updated.activeID = id
         try updated.save(directory: storeDirectory)
         registry = updated
-        let next = try makeSession(value.credentials, entry: updated.entries[index])
+        let next = try await makeSession(value.credentials, entry: updated.entries[index])
         await activate(next, registry: updated)
     }
 
@@ -206,11 +236,11 @@ public final class AccountController {
         busy = true
         defer { busy = false }
         do {
-            let values = try reconcile()
+            let values = try await reconcile()
             guard let id = registry.activeID,
                   let entry = registry.entries.first(where: { $0.id == id }), let value = values[id] else { return }
             if entry.serverConfirmed {
-                let next = try makeSession(value.credentials, entry: entry)
+                let next = try await makeSession(value.credentials, entry: entry)
                 await activate(next, registry: registry)
             } else {
                 await selectUnconfirmed(registry: registry)
@@ -226,13 +256,13 @@ public final class AccountController {
         busy = true
         defer { busy = false }
         let id = try accountID(credentials)
-        _ = try reconcile()
+        _ = try await reconcile()
         let existing = registry.entries.first { $0.id == id }
         guard existing?.serverConfirmed != false else { throw AccountSwitchError.serverNeedsConfirmation }
         let location = try existing?.location ?? (accountCredentialStore.sharedIsEmpty() ? .shared : .own)
         let entry = AccountRegistryEntry(id: id, serverURL: authenticationServerURL, location: location,
                                          addedOrder: existing?.addedOrder ?? nextOrder)
-        let next = try makeSession(credentials, entry: entry)
+        let next = try await makeSession(credentials, entry: entry)
         try accountCredentialStore.save(StoredAccountCredentials(credentials: credentials, serverURL: entry.serverURL), id: id, location: location)
         var updated = registry
         updated.entries.removeAll { $0.id == id }
@@ -257,7 +287,7 @@ public final class AccountController {
         guard !busy else { throw AccountSwitchError.operationInProgress }
         busy = true
         defer { busy = false }
-        let values = try reconcile()
+        let values = try await reconcile()
         guard let entry = registry.entries.first(where: { $0.id == id }) else { throw AccountSwitchError.unknownAccount }
         await unregisterPushToken(of: entry, credentials: values[id]?.credentials)
         var updated = registry
@@ -267,7 +297,7 @@ public final class AccountController {
         let following = updated.entries.sorted { $0.addedOrder < $1.addedOrder }.first
         let next: AccountSession?
         if wasActive, let following, following.serverConfirmed, let value = values[following.id] {
-            next = try makeSession(value.credentials, entry: following)
+            next = try await makeSession(value.credentials, entry: following)
         } else {
             next = nil
         }
@@ -301,21 +331,24 @@ public final class AccountController {
         var cleanupError: Error?
         do {
             let removedStore = oldSession?.store ?? memoryStores[id]
-            if let removedStore {
-                try removedStore.eraseAll()
-            } else if let directory = storeDirectory {
-                let file = AccountSession.accountDirectory(directory: directory, id: id).appendingPathComponent("store.sqlite")
-                if FileManager.default.fileExists(atPath: file.path) {
-                    let store = try LocalStore.open(at: file)
-                    try store.eraseAll()
+            let directory = storeDirectory
+            try await Task.detached {
+                if let removedStore {
+                    try removedStore.eraseAll()
+                } else if let directory {
+                    let file = AccountSession.accountDirectory(directory: directory, id: id).appendingPathComponent("store.sqlite")
+                    if FileManager.default.fileExists(atPath: file.path) {
+                        let store = try LocalStore.open(at: file)
+                        try store.eraseAll()
+                    }
                 }
-            }
-            if let directory = storeDirectory {
-                let accountDirectory = AccountSession.accountDirectory(directory: directory, id: id)
-                if FileManager.default.fileExists(atPath: accountDirectory.path) {
-                    try FileManager.default.removeItem(at: accountDirectory)
+                if let directory {
+                    let accountDirectory = AccountSession.accountDirectory(directory: directory, id: id)
+                    if FileManager.default.fileExists(atPath: accountDirectory.path) {
+                        try FileManager.default.removeItem(at: accountDirectory)
+                    }
                 }
-            }
+            }.value
         } catch {
             // Never unlink a database whose erase failed. The account is
             // already signed out, and the next account must still start.
@@ -351,7 +384,7 @@ public final class AccountController {
 
     /// Reconciles only after every credential read succeeds. A missing item
     /// is different from a temporary Keychain access error.
-    private func reconcile() throws -> [String: StoredAccountCredentials] {
+    private func reconcile() async throws -> [String: StoredAccountCredentials] {
         var updated = registryLoaded ? registry : try AccountRegistry.load(directory: storeDirectory)
         let shared = try accountCredentialStore.shared()
         let own = try accountCredentialStore.ownAccounts()
@@ -391,18 +424,24 @@ public final class AccountController {
                 addedOrder: (updated.entries.map(\.addedOrder).max() ?? -1) + 1,
                 serverConfirmed: id != sharedID || importedServer != .needsConfirmation))
         }
-        for index in updated.entries.indices {
-            let entry = updated.entries[index]
-            if let store = memoryStores[entry.id] {
-                updated.entries[index].display = try store.profile().map(AccountDisplay.init)
-            } else if let directory = storeDirectory {
-                do {
-                    updated.entries[index].display = try AccountDisplay.read(directory: directory, id: entry.id)
-                } catch {
-                    // A temporary read failure keeps previously cached display
-                    // fields; it never prevents credential/server recovery.
+        let entries = updated.entries
+        let memoryStores = self.memoryStores
+        let directory = storeDirectory
+        let displays = try await Task.detached {
+            var displays: [String: AccountDisplay?] = [:]
+            for entry in entries {
+                if let store = memoryStores[entry.id] {
+                    displays[entry.id] = .some(try store.profile().map(AccountDisplay.init))
+                } else if let directory {
+                    // A temporary read failure keeps the cached presentation.
+                    do { displays[entry.id] = .some(try AccountDisplay.read(directory: directory, id: entry.id)) }
+                    catch { }
                 }
             }
+            return displays
+        }.value
+        for index in updated.entries.indices {
+            if let display = displays[updated.entries[index].id] { updated.entries[index].display = display }
         }
         if !updated.entries.contains(where: { $0.id == updated.activeID }) {
             updated.activeID = updated.entries.min { $0.addedOrder < $1.addedOrder }?.id
@@ -422,22 +461,27 @@ public final class AccountController {
         return value
     }
 
-    private func makeSession(_ credentials: Credentials, entry: AccountRegistryEntry) throws -> AccountSession {
+    private func makeSession(_ credentials: Credentials, entry: AccountRegistryEntry) async throws -> AccountSession {
         guard entry.serverConfirmed else { throw AccountSwitchError.serverNeedsConfirmation }
-        let store: LocalStore
-        var files: URL?
-        if let directory = storeDirectory {
-            try AccountSession.prepareDirectory(directory: directory, id: entry.id)
-            store = try LocalStore.open(at: AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("store.sqlite"))
-            files = AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("files", isDirectory: true)
-        } else if let existing = memoryStores[entry.id] { store = existing }
-        else {
-            store = try LocalStore.inMemory()
-            memoryStores[entry.id] = store
-        }
-        return try AccountSession(credentials: credentials, store: store, dependencies: .init(
+        let existing = memoryStores[entry.id]
+        let directory = storeDirectory
+        let dependencies = AccountSession.Dependencies(
             serverURL: entry.serverURL, clientID: clientID, transport: transport,
-            connector: connector, appState: appState, deliveryActivity: deliveryActivity), filesDirectory: files)
+            connector: connector, appState: appState, deliveryActivity: deliveryActivity)
+        let next = try await Task.detached {
+            let store: LocalStore
+            var files: URL?
+            if let directory {
+                try AccountSession.prepareDirectory(directory: directory, id: entry.id)
+                store = try LocalStore.open(at: AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("store.sqlite"))
+                files = AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("files", isDirectory: true)
+            } else {
+                store = try existing ?? LocalStore.inMemory()
+            }
+            return try AccountSession(credentials: credentials, store: store, dependencies: dependencies, filesDirectory: files)
+        }.value
+        if directory == nil { memoryStores[entry.id] = next.store }
+        return next
     }
 
     private func activate(_ next: AccountSession, registry: AccountRegistry) async {
@@ -463,18 +507,25 @@ public final class AccountController {
     }
 
     private func observeProfile(of session: AccountSession) {
-        let id = session.keys.anonID
-        let observation = session.store.observe({ db in
-            try AccountProfileRecord.fetchOne(db, key: 1)?.profile
-        }, onChange: { [weak self] profile in
-            guard let self, self.session?.keys.anonID == id,
-                  let index = self.registry.entries.firstIndex(where: { $0.id == id }) else { return }
-            let display = profile.map(AccountDisplay.init)
-            guard self.registry.entries[index].display != display else { return }
-            self.registry.entries[index].display = display
-            try? self.registry.save(directory: self.storeDirectory)
-            self.notifyAccounts()
-        })
-        cancelProfileObservation = { observation.cancel() }
+        let task = Task.detached { [weak self] in
+            var previous: AccountDisplay??
+            for await snapshot in session.settingsFeed.snapshots() {
+                guard !Task.isCancelled else { break }
+                let display = snapshot.profile.map(AccountDisplay.init)
+                guard previous != .some(display) else { continue }
+                previous = .some(display)
+                await self?.applyProfileDisplay(display, session: session)
+            }
+        }
+        cancelProfileObservation = { task.cancel() }
+    }
+
+    private func applyProfileDisplay(_ display: AccountDisplay?, session source: AccountSession) {
+        guard !Task.isCancelled, session === source,
+              let index = registry.entries.firstIndex(where: { $0.id == source.keys.anonID }),
+              registry.entries[index].display != display else { return }
+        registry.entries[index].display = display
+        try? registry.save(directory: storeDirectory)
+        notifyAccounts()
     }
 }

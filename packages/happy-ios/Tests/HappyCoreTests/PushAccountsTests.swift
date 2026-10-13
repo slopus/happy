@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import GRDB
 @testable import HappyCore
 import HappyStore
 
@@ -127,10 +128,14 @@ final class PushAccountsTests: XCTestCase {
         try account.session?.store.upsertSessions([ChatRecords.storeSession("in-second"), ChatRecords.storeSession("in-both")])
         try await account.switchAccount(to: sharedID)
         try account.session?.store.upsertSessions([ChatRecords.storeSession("in-shared"), ChatRecords.storeSession("in-both")])
-        XCTAssertEqual(account.accountHoldingSession("in-shared"), sharedID)
-        XCTAssertEqual(account.accountHoldingSession("in-both"), sharedID)
-        XCTAssertEqual(account.accountHoldingSession("in-second"), secondID)
-        XCTAssertNil(account.accountHoldingSession("nowhere"))
+        let inShared = try await account.accountHoldingSession("in-shared")
+        let inBoth = try await account.accountHoldingSession("in-both")
+        let inSecond = try await account.accountHoldingSession("in-second")
+        let nowhere = try await account.accountHoldingSession("nowhere")
+        XCTAssertEqual(inShared, sharedID)
+        XCTAssertEqual(inBoth, sharedID)
+        XCTAssertEqual(inSecond, secondID)
+        XCTAssertNil(nowhere)
         await account.session?.stop()
     }
 
@@ -138,13 +143,30 @@ final class PushAccountsTests: XCTestCase {
         let account = try await twoAccounts(AccountsKeychain())
         try account.session?.store.upsertSessions([ChatRecords.storeSession("in-second")])
         try await account.switchAccount(to: accountID(shared))
-        XCTAssertEqual(account.accountHoldingSession("in-second"), try accountID(second))
+        let owner = try await account.accountHoldingSession("in-second")
+        XCTAssertEqual(owner, try accountID(second))
         await account.session?.stop()
     }
 
-    func testSessionLookupWhileSignedOutFindsNothing() async {
+    func testSessionLookupWhileSignedOutFindsNothing() async throws {
         let account = controller(AccountsKeychain())
         await account.restore()
-        XCTAssertNil(account.accountHoldingSession("any"))
+        let owner = try await account.accountHoldingSession("any")
+        XCTAssertNil(owner)
+    }
+
+    func testLookupReadFailureIsReportedInsteadOfMissingSession() async throws {
+        let directory = try directory()
+        let account = try await twoAccounts(AccountsKeychain(), directory: directory)
+        let broken = try XCTUnwrap(account.session?.store)
+        try await broken.writer.write { db in try db.execute(sql: "DROP TABLE session") }
+        try await account.switchAccount(to: accountID(shared))
+        do {
+            _ = try await account.accountHoldingSession("absent")
+            XCTFail("a failed inactive-store read must remain observable")
+        } catch let error as DatabaseError {
+            XCTAssertEqual(error.resultCode, .SQLITE_ERROR)
+        }
+        await account.session?.stop()
     }
 }
