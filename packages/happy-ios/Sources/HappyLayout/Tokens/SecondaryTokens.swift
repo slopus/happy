@@ -145,6 +145,37 @@ public enum FileIconPalette {
     public static let all: [ColorToken] = [blue, grey, greyLight, green, orange, pink, purple, red, white, yellow, ignore]
 }
 
+/// app/(app)/session/[id]/file.tsx's colours beyond the theme's named ones.
+public enum FileViewerPalette {
+    /// The chosen Diff / File button: `${theme.colors.textLink}66`.
+    public static let toggleSelected = ColorToken("#2BACCC66")
+    /// Its label: 'white'.
+    public static let toggleSelectedText = ColorToken("#FFFFFF")
+
+    public static let all: [ColorToken] = [toggleSelected, toggleSelectedText]
+}
+
+/// file.tsx's type.
+public enum FileViewerTextStyles {
+    /// The header's path: Typography.mono() at 14.
+    public static let path = TextStyle(.mono, size: 14)
+    /// Diff / File: 14 at weight 600, the semibold face on iOS.
+    public static let toggle = TextStyle(.semiBold, size: 14)
+    /// DiffDisplay's rows and SimpleSyntaxHighlighter: mono 14 on a 20
+    /// line. Hunk and file headers, keywords, control flow, types and
+    /// functions are weight 600, the semibold face.
+    public static let code = TextStyle(.mono, size: 14, lineHeight: 20)
+    public static let codeBold = TextStyle(.monoSemiBold, size: 14, lineHeight: 20)
+    /// "File is empty" / "No changes to display": italic 16.
+    public static let message = TextStyle(.italic, size: 16)
+    /// "Loading {fileName}...", and the error and binary states' text: 16.
+    public static let body = TextStyle(.regular, size: 16)
+    /// "Error" / "Binary File": 18, bold over the semibold face.
+    public static let stateTitle = TextStyle(.semiBold, size: 18)
+    /// The binary file's name under them: 14.
+    public static let fileName = TextStyle(.regular, size: 14)
+}
+
 /// components/diff's type, beside the rows' own (`DiffStyle` in HappyUI,
 /// which follow the font size a view is given).
 public enum DiffTextStyles {

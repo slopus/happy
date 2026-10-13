@@ -144,10 +144,12 @@ final class DuplicateSheetLayoutTests: XCTestCase {
 final class SecondaryTokenTests: XCTestCase {
     func testEveryTokenParsed() {
         let magenta = RGBA(red: 1, green: 0, blue: 1, alpha: 0.999)
-        for token in SecondaryPalette.all + DiffPalette.all + FileIconPalette.all {
+        for token in SecondaryPalette.all + DiffPalette.all + FileIconPalette.all + FileViewerPalette.all {
             XCTAssertNotEqual(token.light, magenta)
             XCTAssertNotEqual(token.dark, magenta)
         }
+        // `${theme.colors.textLink}66`.
+        XCTAssertEqual(FileViewerPalette.toggleSelected.light, RGBA(red: 0x2B / 255, green: 0xAC / 255, blue: 0xCC / 255, alpha: 0x66 / 255))
     }
 
     func testDiffPaletteFromTheme() {

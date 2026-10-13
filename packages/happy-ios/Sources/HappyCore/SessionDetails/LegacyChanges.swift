@@ -40,25 +40,8 @@ public enum LegacyChanges {
         "\(file.status.rawValue)|\(file.isStaged ? 1 : 0)|\(file.linesAdded)|\(file.linesRemoved)|\(expanded ? "full" : "near")|\(ignoreWhitespace ? "w" : "")"
     }
 
-    /// The session shell calls a fetch makes: SessionActions' sessionBash
-    /// and sessionReadFile, or a test's stand-ins.
-    public struct Transport: Sendable {
-        public var bash: @Sendable (SessionBashRequest) async throws -> SessionBashResponse
-        public var readFile: @Sendable (String) async throws -> SessionReadFileResponse
-
-        public init(
-            bash: @escaping @Sendable (SessionBashRequest) async throws -> SessionBashResponse,
-            readFile: @escaping @Sendable (String) async throws -> SessionReadFileResponse
-        ) {
-            self.bash = bash
-            self.readFile = readFile
-        }
-
-        public init(actions: SessionActions, sessionId: String) {
-            bash = { try await actions.sessionBash(sessionId: sessionId, request: $0) }
-            readFile = { try await actions.sessionReadFile(sessionId: sessionId, path: $0) }
-        }
-    }
+    /// The session shell calls a fetch makes.
+    public typealias Transport = SessionShellTransport
 
     /// Fetches one file's diff: both sides of an image, an untracked file's
     /// contents, or `git diff HEAD` for the rest.
@@ -128,15 +111,9 @@ public enum LegacyChanges {
         return response.content
     }
 
-    /// `atob` then `new TextDecoder().decode`: whitespace ignored, padding
-    /// optional, malformed UTF-8 replaced and a leading BOM dropped.
+    /// `atob` then `new TextDecoder().decode`; nil where `atob` throws.
     static func decodeText(_ base64: String) -> String? {
-        var clean = String(String.UnicodeScalarView(base64.unicodeScalars.filter { !" \t\n\u{0C}\r".unicodeScalars.contains($0) }))
-        if clean.utf8.count % 4 == 1 { return nil }
-        clean += String(repeating: "=", count: (4 - clean.utf8.count % 4) % 4)
-        guard var data = Data(base64Encoded: clean) else { return nil }
-        if data.starts(with: [0xEF, 0xBB, 0xBF]) { data.removeFirst(3) }
-        return String(decoding: data, as: UTF8.self)
+        JSBase64.decode(base64).map(JSBase64.utf8)
     }
 
     /// `x || fallback` for an optional string.
