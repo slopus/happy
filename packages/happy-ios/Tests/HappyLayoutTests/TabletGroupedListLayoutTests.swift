@@ -131,6 +131,40 @@ final class TabletGroupedListLayoutTests: XCTestCase {
         assertSize(layout.size, CGSize(width: 300, height: 90))
     }
 
+    func testTheProviderGlyphLeadsTheIdentity() {
+        let layout = TabletArchivedRowLayout(.init(
+            width: 300, hairline: 0.5,
+            title: text("Old chat", lineHeight: 20),
+            subtitle: text("Rig · Anthropic", lineHeight: 18),
+            subtitleRow: true,
+            subtitleIcon: CGSize(width: 13, height: 13.5),
+            status: text("online", lineHeight: 16),
+            last: false
+        ))
+        // The glyph and the text share the 18 line, 4 apart.
+        assertFrame(layout.subtitleIcon, rect(96.5, 37.75, 13, 13.5))
+        assertFrame(layout.subtitle, rect(113.5, 35.5, 120, 18))
+        assertFrame(layout.title, rect(96.5, 13.5, 171, 20))
+        assertFrame(layout.status, rect(106.5, 58.5, 161, 16))
+    }
+
+    func testALongIdentityStopsAtTheCardsPadding() {
+        let layout = TabletArchivedRowLayout(.init(
+            width: 300, hairline: 0.5,
+            title: text("Old chat", lineHeight: 20),
+            subtitle: text(String(repeating: "i", count: 40), lineHeight: 18, maxLines: 1),
+            subtitleRow: true,
+            subtitleIcon: CGSize(width: 13, height: 13),
+            status: text("online", lineHeight: 16),
+            last: false
+        ))
+        assertFrame(layout.subtitle, rect(113.5, 35.5, 154, 18))
+        XCTAssertNil(TabletArchivedRowLayout(.init(
+            width: 300, hairline: 0.5, title: text("a", lineHeight: 20), subtitle: text("b", lineHeight: 18),
+            subtitleRow: false, status: text("c", lineHeight: 16), last: false
+        )).subtitleIcon)
+    }
+
     func testABareSubtitleAndADaysLastCard() {
         let layout = TabletArchivedRowLayout(.init(
             width: 300, hairline: 0.5,

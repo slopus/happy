@@ -336,6 +336,8 @@ public struct RigIdentity: Equatable, Sendable {
     public var clientName: String
     public var clientVersion: String?
     public var providerName: String
+    /// The glyph ProviderIcon.tsx draws for it.
+    public var providerKind: ProviderIconKind
     public var modelName: String?
 
     public init?(_ metadata: JSONValue?) {
@@ -348,11 +350,15 @@ public struct RigIdentity: Equatable, Sendable {
             ?? current?.providerName
             ?? nonEmpty(metadata["flavor"])
             ?? "Provider"
+        // `metadata.provider.kind ?? currentModel.providerKind`: only a
+        // missing kind falls through, not an empty one.
+        providerKind = ProviderIconKind(metadata["provider"]?["kind"]?.stringValue ?? current?.providerKind)
         modelName = current?.name ?? nonEmpty(metadata["currentModelCode"])
     }
 
-    /// rig.ts `getRigCurrentModel`, reduced to the two names shown.
-    static func currentModel(_ metadata: JSONValue) -> (name: String, providerName: String?)? {
+    /// rig.ts `getRigCurrentModel`, reduced to what is shown: the two
+    /// names and the provider's kind.
+    static func currentModel(_ metadata: JSONValue) -> (name: String, providerName: String?, providerKind: String?)? {
         func nonEmpty(_ value: JSONValue?) -> String? { SessionDetails.nonBlank(value) }
         let isV1 = SessionMetadata.isRigV1(metadata)
         let mode: JSONValue? = isV1 ? [metadata["draft"], metadata["lastMode"]].compactMap { $0 }.first { $0 != .null } : nil
@@ -366,15 +372,44 @@ public struct RigIdentity: Equatable, Sendable {
             else { continue }
             return (
                 nonEmpty(model["name"]) ?? nonEmpty(model["value"]) ?? modelId,
-                nonEmpty(model["provider"]?["name"]) ?? nonEmpty(model["providerName"]) ?? modelProvider
+                nonEmpty(model["provider"]?["name"]) ?? nonEmpty(model["providerName"]) ?? modelProvider,
+                nonEmpty(model["provider"]?["kind"]) ?? nonEmpty(model["providerKind"]) ?? "custom"
             )
         }
         let providerName: String?
+        let providerKind: String?
         if metadata["provider"]?["id"]?.stringValue == providerId {
             providerName = nonEmpty(metadata["provider"]?["name"])
+            providerKind = metadata["provider"]?["kind"]?.stringValue
         } else {
-            providerName = metadata["providers"]?.arrayValue?.first { $0["id"]?.stringValue == providerId }?["name"]?.stringValue ?? providerId
+            let provider = metadata["providers"]?.arrayValue?.first { $0["id"]?.stringValue == providerId }
+            providerName = provider?["name"]?.stringValue ?? providerId
+            providerKind = provider?["kind"]?.stringValue ?? "custom"
         }
-        return (id, providerName)
+        return (id, providerName, providerKind)
+    }
+}
+
+/// rig.ts `getProviderIconKind`: which glyph ProviderIcon.tsx draws.
+public enum ProviderIconKind: Equatable, Sendable {
+    /// The GPT mark, tinted the secondary text colour.
+    case codex
+    /// The Claude mark, in its own colours.
+    case claude
+    /// Ionicons flash-outline.
+    case grok
+    /// Ionicons moon-outline.
+    case kimi
+    /// Ionicons sparkles-outline.
+    case generic
+
+    public init(_ kind: String?) {
+        switch kind?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "codex": self = .codex
+        case "claude": self = .claude
+        case "grok": self = .grok
+        case "kimi": self = .kimi
+        default: self = .generic
+        }
     }
 }

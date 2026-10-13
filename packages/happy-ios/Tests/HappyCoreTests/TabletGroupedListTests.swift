@@ -224,7 +224,7 @@ final class TabletGroupedListTests: XCTestCase {
         ], unread: true)]
         let list = Self.list(snapshot)
         guard case .archived(let row)? = list.rows.last else { return XCTFail("\(list.rows)") }
-        XCTAssertEqual(row.subtitle, .identity("Rig · Anthropic"))
+        XCTAssertEqual(row.subtitle, .identity("Rig · Anthropic", .generic))
         XCTAssertEqual(row.modelName, "opus")
         XCTAssertEqual(row.activity, "2+1 subagents · 1+3 tasks")
         // Connected and unread: blue, still, "new results".
@@ -232,6 +232,39 @@ final class TabletGroupedListTests: XCTestCase {
         XCTAssertEqual(row.status, .unread)
         XCTAssertEqual(row.tone, .working)
         XCTAssertFalse(row.pulsing)
+    }
+
+    /// rig.ts `getRigIdentity`'s `providerKind`: the session's provider,
+    /// else the current model's, as `getProviderIconKind` reads it.
+    func testProviderGlyph() {
+        func kind(_ metadata: [String: JSONValue]) -> ProviderIconKind? {
+            var value = metadata
+            value["client"] = .object(["id": .string("rig")])
+            return RigIdentity(.object(value))?.providerKind
+        }
+        XCTAssertEqual(kind(["provider": .object(["kind": .string(" Claude ")])]), .claude)
+        XCTAssertEqual(kind(["provider": .object(["kind": .string("codex")])]), .codex)
+        XCTAssertEqual(kind(["provider": .object(["kind": .string("grok")])]), .grok)
+        XCTAssertEqual(kind(["provider": .object(["kind": .string("kimi")])]), .kimi)
+        XCTAssertEqual(kind(["provider": .object(["kind": .string("openrouter")])]), .generic)
+        // An empty kind is a kind: it does not fall through to the model.
+        XCTAssertEqual(kind([
+            "provider": .object(["kind": .string("")]),
+            "currentModelProviderId": .string("p"), "currentModelCode": .string("m"),
+            "models": .array([.object(["id": .string("m"), "providerId": .string("p"), "providerKind": .string("claude")])]),
+        ]), .generic)
+        // No provider kind: the current model's, from the catalog...
+        XCTAssertEqual(kind([
+            "currentModelProviderId": .string("p"), "currentModelCode": .string("m"),
+            "models": .array([.object(["id": .string("m"), "provider": .object(["id": .string("p"), "kind": .string("codex")])])]),
+        ]), .codex)
+        // ...or from the providers list when the model is not in it.
+        XCTAssertEqual(kind([
+            "currentModelProviderId": .string("x"), "currentModelCode": .string("m"),
+            "providers": .array([.object(["id": .string("x"), "kind": .string("kimi")])]),
+        ]), .kimi)
+        XCTAssertEqual(kind([:]), .generic)
+        XCTAssertNil(RigIdentity(.object(["provider": .object(["kind": .string("claude")])])), "not a Happy Agent session")
     }
 
     func testHiddenArchiveKeepsOnlyItsToggle() {

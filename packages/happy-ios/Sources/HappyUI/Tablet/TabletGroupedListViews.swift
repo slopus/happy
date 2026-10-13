@@ -298,6 +298,7 @@ final class TabletArchivedCell: UITableViewCell {
     let avatar = AvatarView()
     let titleLabel = StyledLabel(style: TextStyles.tabletArchivedTitle, color: Palette.text, lines: 1)
     let subtitleLabel = StyledLabel(style: TextStyles.tabletArchivedSubtitle, color: Palette.textSecondary, lines: 1)
+    let providerIcon = ProviderIconView(size: TabletArchivedRowLayout.Metrics.providerIconSize)
     let dot = StatusDotView()
     let statusLabel = StyledLabel(style: TextStyles.tabletArchivedStatus, color: TabletPalette.statusOffline)
     private(set) var row: TabletArchivedRow?
@@ -310,7 +311,7 @@ final class TabletArchivedCell: UITableViewCell {
         selectionStyle = .none
         card.layer.cornerRadius = TabletArchivedRowLayout.Metrics.radius
         card.fill.layer.cornerRadius = TabletArchivedRowLayout.Metrics.radius
-        for view in [card, avatar, titleLabel, subtitleLabel, dot, statusLabel] as [UIView] {
+        for view in [card, avatar, titleLabel, providerIcon, subtitleLabel, dot, statusLabel] as [UIView] {
             contentView.addSubview(view)
         }
         isAccessibilityElement = true
@@ -336,9 +337,13 @@ final class TabletArchivedCell: UITableViewCell {
         titleLabel.string = row.title ?? Strings.Session.newChat
         titleLabel.color = row.connected ? Palette.text : Palette.textSecondary
         switch row.subtitle {
-        case .identity(let text), .folder(let text), .text(let text): subtitleLabel.string = text
+        case .identity(let text, let kind):
+            subtitleLabel.string = text
+            providerIcon.kind = kind
+        case .folder(let text), .text(let text): subtitleLabel.string = text
         case .unknown: subtitleLabel.string = Strings.Tablet.unknown
         }
+        providerIcon.isHidden = !row.subtitle.hasProviderIcon
         let color = TabletStatusColors.color(row.tone)
         dot.backgroundColor = UIColor(color)
         dot.isPulsing = row.pulsing
@@ -357,6 +362,7 @@ final class TabletArchivedCell: UITableViewCell {
             title: titleLabel.measurable,
             subtitle: subtitleLabel.measurable,
             subtitleRow: row?.subtitle.inRow ?? false,
+            subtitleIcon: providerIcon.isHidden ? nil : providerIcon.sizeThatFits(.zero),
             status: statusLabel.measurable,
             last: row?.last ?? true
         ))
@@ -374,6 +380,7 @@ final class TabletArchivedCell: UITableViewCell {
         avatar.setLayoutFrame(layout.avatar)
         titleLabel.setLayoutFrame(layout.title)
         subtitleLabel.setLayoutFrame(layout.subtitle)
+        if let frame = layout.subtitleIcon { providerIcon.setLayoutFrame(frame) }
         dot.setLayoutFrame(layout.dot)
         statusLabel.setLayoutFrame(layout.status)
     }
@@ -410,6 +417,66 @@ final class TabletArchivedCell: UITableViewCell {
             formatter.setLocalizedDateFormatFromTemplate(sameYear ? "MMMd" : "yMMMd")
             return formatter.string(from: date)
         }
+    }
+}
+
+/// ProviderIcon.tsx: the GPT mark tinted the secondary text colour, the
+/// Claude mark in its own colours, or an Ionicon in the secondary colour.
+final class ProviderIconView: UIView {
+    private let image = UIImageView()
+    private let glyph: IconView
+    private let size: CGFloat
+
+    var kind: ProviderIconKind = .generic {
+        didSet { if kind != oldValue { apply() } }
+    }
+
+    init(size: CGFloat) {
+        self.size = size
+        glyph = IconView(nil, size: size, tint: Palette.textSecondary)
+        super.init(frame: .zero)
+        image.contentMode = .scaleAspectFit
+        image.tintColor = UIColor(Palette.textSecondary)
+        addSubview(image)
+        addSubview(glyph)
+        isUserInteractionEnabled = false
+        apply()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    private func apply() {
+        switch kind {
+        case .codex:
+            image.image = UIImage.happy("icon-gpt")?.withRenderingMode(.alwaysTemplate)
+        case .claude:
+            image.image = UIImage.happy("icon-claude")?.withRenderingMode(.alwaysOriginal)
+        case .grok, .kimi, .generic:
+            image.image = nil
+        }
+        image.isHidden = image.image == nil
+        glyph.isHidden = !image.isHidden
+        switch kind {
+        case .grok: glyph.icon = .ionicons("flash-outline")
+        case .kimi: glyph.icon = .ionicons("moon-outline")
+        case .generic: glyph.icon = .ionicons("sparkles-outline")
+        case .codex, .claude: glyph.icon = nil
+        }
+        setNeedsLayout()
+    }
+
+    /// An image is `size` square; a glyph is its RN text box (`Icon.layout`).
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        image.isHidden ? glyph.sizeThatFits(size) : CGSize(width: self.size, height: self.size)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        image.frame = bounds
+        glyph.frame = bounds
     }
 }
 

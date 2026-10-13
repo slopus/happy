@@ -414,9 +414,9 @@ public struct TabletChatRow: Equatable, Sendable {
 /// SessionsList.tsx `SessionItem`: an archived chat as a card of its own.
 public struct TabletArchivedRow: Equatable, Sendable {
     public enum Subtitle: Equatable, Sendable {
-        /// A Happy Agent session: "<client> · <provider>", in a row with 4
-        /// under it.
-        case identity(String)
+        /// A Happy Agent session: the provider's glyph and "<client> ·
+        /// <provider>", in a row with 4 under it.
+        case identity(String, ProviderIconKind)
         /// The folder the chat ran in, in the same row.
         case folder(String)
         /// A bot's "@name", or the path from home: a bare line.
@@ -430,6 +430,12 @@ public struct TabletArchivedRow: Equatable, Sendable {
             case .identity, .folder: true
             case .text, .unknown: false
             }
+        }
+
+        /// ProviderIcon leads the line.
+        public var hasProviderIcon: Bool {
+            if case .identity = self { return true }
+            return false
         }
     }
 
@@ -498,7 +504,7 @@ public struct TabletArchivedRow: Equatable, Sendable {
         let identity = RigIdentity(metadata)
         let subtitle: Subtitle
         if let identity {
-            subtitle = .identity("\(identity.clientName) · \(identity.providerName)")
+            subtitle = .identity("\(identity.clientName) · \(identity.providerName)", identity.providerKind)
         } else if let path = metadata?["path"]?.stringValue, !path.isEmpty {
             subtitle = .folder(path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? "")
         } else if session.isBot {

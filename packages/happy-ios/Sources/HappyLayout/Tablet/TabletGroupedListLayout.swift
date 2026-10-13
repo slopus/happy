@@ -245,7 +245,7 @@ public struct TabletChatRowLayout: Equatable, Sendable {
 /// bottom before the next one.
 ///
 ///     |16| ┌ |16| avatar 48 |16| title ………………………… |16| ┐ |16|
-///     |    |               | subtitle
+///     |    |               | (provider |4|) subtitle
 ///     |    |               | ● status · …
 ///
 /// The card is 88 inside its border; 1 separates cards, 12 follows a day's
@@ -263,6 +263,9 @@ public struct TabletArchivedRowLayout: Equatable, Sendable {
         public static let titleMarginBottom: CGFloat = 2
         /// Only the identity and path lines are a row with this under them.
         public static let subtitleMarginBottom: CGFloat = 4
+        /// ProviderIcon's size ahead of the identity, and the row's gap.
+        public static let providerIconSize: CGFloat = 13
+        public static let subtitleIconGap: CGFloat = 4
         public static let dotSlotHeight: CGFloat = 16
         public static let dotSlotMarginTop: CGFloat = 2
         public static let dotSlotMarginRight: CGFloat = 4
@@ -277,15 +280,19 @@ public struct TabletArchivedRowLayout: Equatable, Sendable {
         public var subtitle: Measurable
         /// The subtitle sits in its row, with the 4 under it.
         public var subtitleRow: Bool
+        /// The provider glyph's box ahead of the identity line; nil without
+        /// one.
+        public var subtitleIcon: CGSize?
         public var status: Measurable
         public var last: Bool
 
-        public init(width: CGFloat, hairline: CGFloat, title: Measurable, subtitle: Measurable, subtitleRow: Bool, status: Measurable, last: Bool) {
+        public init(width: CGFloat, hairline: CGFloat, title: Measurable, subtitle: Measurable, subtitleRow: Bool, subtitleIcon: CGSize? = nil, status: Measurable, last: Bool) {
             self.width = width
             self.hairline = hairline
             self.title = title
             self.subtitle = subtitle
             self.subtitleRow = subtitleRow
+            self.subtitleIcon = subtitleIcon
             self.status = status
             self.last = last
         }
@@ -298,6 +305,7 @@ public struct TabletArchivedRowLayout: Equatable, Sendable {
     public var avatar: CGRect
     public var title: CGRect
     public var subtitle: CGRect
+    public var subtitleIcon: CGRect?
     public var dot: CGRect
     public var status: CGRect
 
@@ -322,19 +330,30 @@ public struct TabletArchivedRowLayout: Equatable, Sendable {
         let contentWidth = max(0, row.maxX - M.paddingHorizontal - x)
 
         let titleHeight = input.title.height(fitting: contentWidth)
-        let subtitleSize = input.subtitle.size(fitting: contentWidth)
+        let iconWidth = input.subtitleIcon.map { $0.width + M.subtitleIconGap } ?? 0
+        let subtitleWidth = max(0, contentWidth - iconWidth)
+        let subtitleSize = input.subtitle.size(fitting: subtitleWidth)
+        let subtitleLine = max(subtitleSize.height, input.subtitleIcon?.height ?? 0)
         let subtitleGap = input.subtitleRow ? M.subtitleMarginBottom : 0
         let slotHeight = M.dotSlotMarginTop + M.dotSlotHeight
         let statusX = x + M.dotSize + M.dotSlotMarginRight
         let statusHeight = input.status.height(fitting: max(0, contentWidth - M.dotSize - M.dotSlotMarginRight))
         let statusRow = max(slotHeight, statusHeight)
-        let total = titleHeight + M.titleMarginBottom + subtitleSize.height + subtitleGap + statusRow
+        let total = titleHeight + M.titleMarginBottom + subtitleLine + subtitleGap + statusRow
 
         var y = row.midY - total / 2
         title = CGRect(x: x, y: y, width: contentWidth, height: titleHeight)
         y += titleHeight + M.titleMarginBottom
-        subtitle = CGRect(x: x, y: y, width: min(subtitleSize.width, contentWidth), height: subtitleSize.height)
-        y += subtitleSize.height + subtitleGap
+        subtitleIcon = input.subtitleIcon.map {
+            CGRect(x: x, y: y + (subtitleLine - $0.height) / 2, width: $0.width, height: $0.height)
+        }
+        subtitle = CGRect(
+            x: x + iconWidth,
+            y: y + (subtitleLine - subtitleSize.height) / 2,
+            width: min(subtitleSize.width, subtitleWidth),
+            height: subtitleSize.height
+        )
+        y += subtitleLine + subtitleGap
         let slotY = y + (statusRow - slotHeight) / 2 + M.dotSlotMarginTop
         dot = CGRect(x: x, y: slotY + (M.dotSlotHeight - M.dotSize) / 2, width: M.dotSize, height: M.dotSize)
         status = CGRect(
