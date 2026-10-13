@@ -138,4 +138,37 @@ final class SyncPerfObservationTests: XCTestCase {
         let restarted = try await syncPerfNext(stream)
         XCTAssertEqual(restarted?.settings.pending["theme"], .string("dark"))
     }
+
+    func testAccountStopFinishesItsFeedsAndNewScopeRestartsFromDisk() async throws {
+        let store = try LocalStore.inMemory()
+        let session = try AccountSession(credentials: Credentials(token: "test", secret: Data(repeating: 3, count: 32)),
+                                         store: store, dependencies: .init(serverURL: URL(string: "https://test.invalid")!,
+                                         clientID: "test", transport: FakeHTTP(), connector: FakeConnector()))
+        let stream = session.homeFeed.snapshots()
+        _ = try await syncPerfNext(stream)
+        await session.stop()
+        let ended = try await syncPerfNext(stream)
+        XCTAssertNil(ended)
+        try store.addPendingSettings(["theme": .string("dark")])
+        let stopped = try await syncPerfNext(session.homeFeed.snapshots())
+        XCTAssertNil(stopped)
+        let restarted = try await syncPerfNext(HomeFeed(store: store).snapshots())
+        XCTAssertEqual(restarted?.settings.pending["theme"], .string("dark"))
+    }
+
+    func testObservationErrorFinishesStreamAndResubscriptionRecovers() async throws {
+        let store = try LocalStore.inMemory()
+        let schema = try await store.writer.read { db in
+            try String.fetchOne(db, sql: "SELECT sql FROM sqlite_master WHERE name = 'accountSettings'")!
+        }
+        let home = HomeFeed(store: store).snapshots()
+        _ = try await syncPerfNext(home)
+        try await store.writer.write { db in try db.execute(sql: "DROP TABLE accountSettings") }
+        try store.addPendingSettings(["trigger": .bool(true)])
+        let ended = try await syncPerfNext(home)
+        XCTAssertNil(ended)
+        try await store.writer.write { db in try db.execute(sql: schema) }
+        let restarted = try await syncPerfNext(HomeFeed(store: store).snapshots())
+        XCTAssertEqual(restarted?.settings.pending["trigger"], .bool(true))
+    }
 }
