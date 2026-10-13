@@ -62,7 +62,7 @@ struct ChatStackEntry {
 extension ChatRowRenderer {
     /// A tool row: its header always, its body only once the reader opens
     /// it or while a decision needs it (`ChatToolPresentation`).
-    static func toolCall(_ message: ToolCallMessage, expanded: Bool, busy: PermissionButton.Kind?, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
+    static func toolCall(_ message: ToolCallMessage, expanded: Bool, busy: PermissionButton.Kind?, question: ChatQuestionState?, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
         let tool = message.tool
         let context = ToolContext(root: style.root, flavor: style.flavor, compactMode: style.compactTools)
         guard let presentation = ChatToolPresentation.present(
@@ -70,12 +70,12 @@ extension ChatRowRenderer {
         ) else {
             return ChatRowPlan(id: message.id, size: CGSize(width: width, height: 0), items: [])
         }
-        let body = toolBody(presentation.body, message: message, style: style)
+        let body = toolBody(presentation.body, message: message, question: question, style: style)
         // The header opens and closes the body. With nothing to open, or
         // while a decision holds it open, it opens the tool's own screen.
         let open: ChatRowAction = presentation.opensFile.map(ChatRowAction.openFile) ?? .openMessage(message.id)
         let expandable = !presentation.awaitingDecision && presentation.expandedBody != .none
-            && (body != nil || toolBody(presentation.expandedBody, message: message, style: style) != nil)
+            && (body != nil || toolBody(presentation.expandedBody, message: message, question: question, style: style) != nil)
         let tap: ChatRowAction = expandable ? .toggleTool(message.id) : open
         let footer = presentation.showsPermissionFooter ? tool.permission.map { permissionFooter($0, tool: tool, busy: busy, flavor: style.flavor) } : nil
         let elapsed = presentation.showsElapsed ? elapsedSize : nil
@@ -206,7 +206,7 @@ extension ChatRowRenderer {
     // MARK: Card bodies
 
     /// The body's pieces, or nil when they draw nothing.
-    static func toolBody(_ body: ToolPresentation.Body, message: ToolCallMessage, style: ChatRowStyle) -> ChatPiece? {
+    static func toolBody(_ body: ToolPresentation.Body, message: ToolCallMessage, question: ChatQuestionState?, style: ChatRowStyle) -> ChatPiece? {
         var entries: [ChatStackEntry] = []
         switch body {
         case .none:
@@ -217,16 +217,17 @@ extension ChatRowRenderer {
             if let input { entries.append(section(Strings.Tools.input, codeView(input))) }
             if let output { entries.append(section(Strings.Tools.output, codeView(output))) }
         case .view(let kind, let error):
-            if let view = toolView(kind, message: message, style: style) { entries.append(view) }
+            if let view = toolView(kind, message: message, question: question, style: style) { entries.append(view) }
             if let error { entries.append(toolError(error)) }
         }
         return entries.isEmpty ? nil : .stack(entries)
     }
 
-    /// The tool's own view. Diffs, questions and attachments are drawn by
-    /// views still to come; until then those rows have nothing to open.
-    static func toolView(_ kind: ToolViewKind, message: ToolCallMessage, style: ChatRowStyle) -> ChatStackEntry? {
+    /// The tool's own view. Diffs and attachments are drawn by views
+    /// still to come; until then those rows have nothing to open.
+    static func toolView(_ kind: ToolViewKind, message: ToolCallMessage, question: ChatQuestionState?, style: ChatRowStyle) -> ChatStackEntry? {
         switch kind {
+        case .askUserQuestion, .requestUserInput: question.map { questionForm($0, toolId: message.id) }
         case .todo: todoView(message.tool)
         case .exitPlan: exitPlanView(message.tool)
         case .task: taskView(message.children)

@@ -61,10 +61,41 @@ enum FixtureScenarios {
                 "summary": ["text": scenario.title],
                 "flavor": "claude",
             ]),
-            agentStateVersion: 1, agentStateCipher: nil, agentState: json(["controlledByUser": false]),
+            agentStateVersion: 1, agentStateCipher: nil, agentState: json(agentState(scenario)),
             dataKeyCipher: nil, decryptable: true, thinking: scenario == .live
         )
     }
+
+    /// The question scenario's agent is also waiting on a form joined to
+    /// its request_user_input call, a written answer (the banner and the
+    /// answer sheet) and a kind this build doesn't know.
+    static func agentState(_ scenario: FixtureScenario) -> [String: Any] {
+        guard scenario == .question else { return ["controlledByUser": false] }
+        return [
+            "controlledByUser": false,
+            "communications": [
+                questionCallId: [
+                    "kind": "form", "createdAt": 3, "toolUseId": questionCallId,
+                    "form": ["questions": [[
+                        "id": "platform", "header": "Platform", "question": "Which devices should the build support?", "multiSelect": true,
+                        "options": [["label": "iPhone", "description": "iOS 17 and later"], ["label": "iPad"], ["label": "Mac (Designed for iPad)"]],
+                    ]]],
+                ],
+                "ask-name": [
+                    "kind": "form", "createdAt": 1,
+                    "form": ["questions": [[
+                        "id": "name", "header": "Release name", "question": "What should this release be called?",
+                    ], [
+                        "id": "notes", "header": "Notes", "question": "Anything the testers should look at first?",
+                        "options": [["label": "The chat list"], ["label": "The composer"]], "multiSelect": true, "required": false,
+                    ]]],
+                ],
+                "approve-deploy": ["kind": "approval", "createdAt": 2, "title": "Approve the production deploy"],
+            ],
+        ]
+    }
+
+    static let questionCallId = "call-question-platform"
 
     static func messages(_ scenario: FixtureScenario, sessionId: String) -> [ChatMessage] {
         var builder = Builder()
@@ -126,14 +157,14 @@ enum FixtureScenarios {
 
         mutating func tool(
             _ name: String, _ input: [String: Any], state: ToolCall.State = .completed, result: String? = nil,
-            description: String? = nil, permission: ToolPermission? = nil, seconds: Int64 = 3, children: [ChatMessage] = []
+            description: String? = nil, permission: ToolPermission? = nil, seconds: Int64 = 3, children: [ChatMessage] = [], callId: String? = nil
         ) {
             let id = nextId("tool")
             let started = advance(1)
             let completed = state == .running ? nil : started + seconds * 1000
             time = max(time, completed ?? started)
             messages.append(.toolCall(ToolCallMessage(id: id, createdAt: started, turn: turn, tool: ToolCall(
-                callId: "call-\(id)", name: name, state: state, input: json(input), createdAt: started,
+                callId: callId ?? "call-\(id)", name: name, state: state, input: json(input), createdAt: started,
                 startedAt: started, completedAt: completed, description: description, result: result.map(JSONValue.string), permission: permission
             ), children: children)))
         }
@@ -224,7 +255,9 @@ enum FixtureScenarios {
                     ["label": "Screenshots", "description": "Compare against happy-app"],
                 ],
             ],
-        ]], state: .running)
+        ]], state: .running, permission: ToolPermission(id: "perm-question", status: .pending))
+        b.tool("request_user_input", ["questions": [["id": "platform", "header": "Platform", "question": "Which devices should the build support?"]]],
+               state: .running, callId: questionCallId)
     }
 
     static func sending(_ b: inout Builder) {

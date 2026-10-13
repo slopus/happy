@@ -71,6 +71,9 @@ enum ChatRowAction: Equatable, Sendable {
     case option(String)
     case retry(localId: String)
     case permission(ChatPermissionTap)
+    /// An option in a tool's question form, by tool message id.
+    case questionOption(toolId: String, questionId: String, option: Int)
+    case questionSubmit(toolId: String)
 }
 
 /// A permission button, with what its reply needs.

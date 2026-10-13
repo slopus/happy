@@ -16,6 +16,8 @@ extension Strings {
         public static func readingFile(_ file: String) -> String { "Reading \(file)" }
         /// tools.desc.writingFile
         public static func writingFile(_ file: String) -> String { "Writing \(file)" }
+        /// tools.askUserQuestion.submit
+        public static let submitAnswer = "Submit Answer"
         /// tools.taskView.initializing
         public static let initializing = "Initializing agent..."
 

@@ -3,6 +3,7 @@ import HappyCore
 import HappyLayout
 import HappyStore
 import UIKit
+import HappyWire
 
 /// The session screen: session/[id].tsx → SessionView.tsx with
 /// AgentContentView's floating dock (the phone layout).
@@ -30,6 +31,12 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private let scrim = ChatScrimView()
     private let dock = UIView()
     private let composer: any ChatComposerView
+    /// A request the chat can't show inline, above the composer.
+    private let questionBanner = ChatQuestionBannerView()
+    private weak var questionSheet: AgentQuestionSheetController?
+    /// Questions a sent message answers instead, by the message's local
+    /// id: dismissed once it is delivered.
+    private var questionsToDismiss: [String: [PendingAgentCommunication]] = [:]
     private let scrollButton = ChatScrollButton()
     private let keyboardTracker = UIView()
     private let measurer = ChatRowMeasurer()
@@ -56,6 +63,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private var expandedTools: Set<String> = []
     /// The tool just opened or closed, held still by the next update.
     private var pendingPin: String?
+    /// Question forms in the chat, by tool message id: the form as the
+    /// latest snapshot has it, and what the reader has done to it.
+    private var questionForms: [String: (tool: ToolCall, form: InlineQuestionForm)] = [:]
+    private var questionDrafts: [String: ChatQuestionState] = [:]
 
     init(context: AppContext, session account: AccountSession, sessionId: String) {
         self.context = context
@@ -88,6 +99,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         view.addSubview(list)
         view.addSubview(scrim)
         composer.composerDelegate = self
+        questionBanner.isHidden = true
+        questionBanner.onOpen = { [weak self] in self?.openQuestionSheet() }
+        questionBanner.onDismiss = { [weak self] in self?.dismissUnsupportedRequest() }
+        dock.addSubview(questionBanner)
         dock.addSubview(composer)
         view.addSubview(dock)
         scrollButton.alpha = 0
@@ -149,6 +164,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             // The guide's top is the safe area's bottom while the keyboard
             // is down, and the layout never goes below that.
             keyboardTop: keyboardTracker.frame.minY,
+            accessories: questionBanner.isHidden ? [] : [questionBanner.bannerMeasurable],
             composerHeight: composer.composerHeight(fitting: size.width),
             composerCardOffset: composer.cardOffset,
             maxContentWidth: maxContentWidth
@@ -156,6 +172,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         list.setLayoutFrame(screen.list)
         list.setEdgeInsets(newest: screen.newestEdgeInset, oldest: screen.oldestEdgeInset)
         dock.setLayoutFrame(screen.dock)
+        if let frame = screen.accessories.first, !questionBanner.isHidden { questionBanner.setLayoutFrame(frame) }
         composer.setLayoutFrame(screen.composer)
         scrollButton.setLayoutFrame(screen.scrollButton)
         scrim.setLayoutFrame(screen.scrim)
@@ -166,8 +183,60 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private func sessionChanged(_ state: ChatSessionState) {
         session = state
         navigationItem.title = Self.title(state)
+        updateQuestionBanner()
         updateComposer()
         scheduleMeasure()
+    }
+
+    /// AgentQuestionBanner: the first request the chat can't show inline.
+    /// An answer from another device closes the sheet here too.
+    private func updateQuestionBanner() {
+        let pending = AgentCommunications.pending(session.agentState)
+        let fallback = pending.first(where: AgentCommunications.usesFallback)
+        if let sheet = questionSheet, !pending.contains(where: { $0.id == sheet.pending.id }) {
+            sheet.dismiss(animated: true)
+        }
+        let wasHidden = questionBanner.isHidden
+        if let fallback {
+            questionBanner.show(fallback)
+            questionBanner.isHidden = false
+        } else {
+            questionBanner.isHidden = true
+        }
+        if wasHidden != questionBanner.isHidden || fallback != nil {
+            questionBanner.alpha = dockDetailsVisible ? 1 : 0
+            view.setNeedsLayout()
+            if isViewLoaded && view.window != nil {
+                UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+                    self.view.layoutIfNeeded()
+                }
+            }
+        }
+    }
+
+    private func openQuestionSheet() {
+        guard let pending = questionBanner.pending, case .form = pending.kind, presentedViewController == nil else { return }
+        let controls = services.controls
+        let sessionId = self.sessionId
+        let sheet = AgentQuestionSheetController(
+            pending: pending,
+            submit: { answers in
+                try await controls.answerQuestion(sessionId: sessionId, id: pending.id, answers: answers, kind: pending.rawKind)
+            },
+            cancel: {
+                // The agent asks again if the dismissal never lands.
+                try? await controls.cancelQuestion(sessionId: sessionId, id: pending.id, kind: pending.rawKind)
+            }
+        )
+        questionSheet = sheet
+        present(sheet, animated: true)
+    }
+
+    private func dismissUnsupportedRequest() {
+        guard let pending = questionBanner.pending else { return }
+        let controls = services.controls
+        let sessionId = self.sessionId
+        Task { try? await controls.cancelQuestion(sessionId: sessionId, id: pending.id, kind: pending.rawKind) }
     }
 
     /// getSessionName: the bot's name, the summary, or "New chat".
@@ -180,6 +249,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private func receive(_ snapshot: ChatSnapshot) {
         guard snapshot != self.snapshot else { return }
         self.snapshot = snapshot
+        dismissAnsweredQuestions(snapshot)
         updateComposer()
         scheduleMeasure()
     }
@@ -231,6 +301,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         )
         let permissionBusy = self.permissionBusy
         let expandedTools = self.expandedTools
+        let agentState = session.agentState
+        questionForms = [:]
         return items.filter { ChatRowRenderer.isShown($0, style: style) }.map { item in
             var delivery: OutboxDelivery?
             if case .message(.userText(let message)) = item, let localId = message.localId {
@@ -241,11 +313,28 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 expanded = groups.isExpanded(group, inForeground: inForeground)
             }
             var busy: PermissionButton.Kind?
+            var question: ChatQuestionState?
             if case .message(.toolCall(let call)) = item {
                 expanded = expandedTools.contains(call.id)
                 busy = call.tool.permission.flatMap { permissionBusy[$0.id] }
+                if let form = Self.questionForm(call.tool, agentState: agentState) {
+                    questionForms[call.id] = (call.tool, form)
+                    var state = questionDrafts[call.id] ?? ChatQuestionState(form: form)
+                    state.form = form
+                    question = state
+                }
             }
-            return ChatRowInput(item: item, delivery: delivery, expanded: expanded, permissionBusy: busy, style: style)
+            return ChatRowInput(item: item, delivery: delivery, expanded: expanded, permissionBusy: busy, question: question, style: style)
+        }
+    }
+
+    /// AskUserQuestion answers through its permission; request_user_input
+    /// through the communication it raised.
+    static func questionForm(_ tool: ToolCall, agentState: JSONValue?) -> InlineQuestionForm? {
+        switch tool.name {
+        case "AskUserQuestion": InlineQuestionForm.askUserQuestion(tool)
+        case "request_user_input": InlineQuestionForm.requestUserInput(tool, communication: AgentCommunications.form(agentState, toolUseId: tool.callId))
+        default: nil
         }
     }
 
@@ -301,6 +390,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         if details != dockDetailsVisible {
             dockDetailsVisible = details
             composer.setDetailsVisible(details, animated: true)
+            // The bars above the composer fade but keep their space.
+            UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+                self.questionBanner.alpha = details ? 1 : 0
+            }
         }
         if nearOldest && !measuring { growWindow() }
     }
@@ -324,6 +417,15 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             push(.sessionFile(id: sessionId, path: path), context: context)
         case .permission(let tap):
             answer(tap)
+        case .questionOption(let toolId, let questionId, let option):
+            guard let form = questionForms[toolId]?.form, let question = form.questions.first(where: { $0.id == questionId }) else { return }
+            var state = questionDrafts[toolId] ?? ChatQuestionState(form: form)
+            guard state.canInteract, !state.submitting else { return }
+            state.selections.toggle(question, option: option)
+            questionDrafts[toolId] = state
+            scheduleMeasure()
+        case .questionSubmit(let toolId):
+            submitQuestion(toolId)
         case .option(let title):
             let sender = services.sender
             let sessionId = self.sessionId
@@ -365,6 +467,41 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         }
     }
 
+    /// Sends a question form's answers. The summary shows at once; if the
+    /// answer fails, the form comes back as it was.
+    private func submitQuestion(_ toolId: String) {
+        guard let (tool, form) = questionForms[toolId], let reply = form.reply else { return }
+        var state = questionDrafts[toolId] ?? ChatQuestionState(form: form)
+        state.form = form
+        guard state.canInteract, !state.submitting, state.selections.allAnswered(form.questions) else { return }
+        let answers = state.selections.answers(form.questions)
+        state.sent = answers
+        state.submitting = true
+        questionDrafts[toolId] = state
+        scheduleMeasure()
+        let controls = services.controls
+        let sessionId = self.sessionId
+        Task { [weak self] in
+            var failed = false
+            do {
+                switch reply {
+                case .permission(let id):
+                    let input = InlineQuestionForm.askUserQuestionInput(tool, answers: answers)
+                    try await controls.allow(sessionId: sessionId, permissionId: id, mode: nil, allowedTools: nil, decision: .approved, updatedInput: input)
+                case .communication(let id, let kind):
+                    try await controls.answerQuestion(sessionId: sessionId, id: id, answers: InlineQuestionForm.communicationAnswers(form.questions, answers: answers), kind: kind)
+                }
+            } catch {
+                failed = true
+            }
+            guard let self, var state = self.questionDrafts[toolId] else { return }
+            state.submitting = false
+            if failed { state.sent = nil }
+            self.questionDrafts[toolId] = state
+            self.scheduleMeasure()
+        }
+    }
+
     // MARK: ChatComposerDelegate
 
     func composerDidInvalidateHeight(_ composer: any ChatComposerView) {
@@ -376,6 +513,36 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     func composer(_ composer: any ChatComposerView, didSend localId: String) {
         list.scrollToNewest(animated: true)
+        // A message sent while the agent waits on questions answers them:
+        // once it is delivered, the forms are dismissed (SessionView's
+        // handleSend), so the agent reads the text as the reply.
+        let pending = AgentCommunications.pending(session.agentState)
+        if !pending.isEmpty {
+            questionsToDismiss[localId] = pending
+        }
+    }
+
+    private func dismissAnsweredQuestions(_ snapshot: ChatSnapshot) {
+        guard !questionsToDismiss.isEmpty else { return }
+        let controls = services.controls
+        let sessionId = self.sessionId
+        for (localId, communications) in questionsToDismiss {
+            if case .failed = snapshot.delivery[localId] {
+                questionsToDismiss[localId] = nil
+                continue
+            }
+            let delivered = snapshot.delivery[localId] == nil && snapshot.messages.contains {
+                if case .userText(let message) = $0 { return message.localId == localId }
+                return false
+            }
+            guard delivered else { continue }
+            questionsToDismiss[localId] = nil
+            Task {
+                for communication in communications {
+                    try? await controls.cancelQuestion(sessionId: sessionId, id: communication.id, kind: communication.rawKind)
+                }
+            }
+        }
     }
 
     // MARK: Actions
