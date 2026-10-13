@@ -168,19 +168,21 @@ final class OpsRigComposerTests: XCTestCase {
     }
 
     func testOneInflightWriteCoalescesEditsIntoOneFollowup() async throws {
-        let (_, _, writer, transport) = try fixture()
+        let (_, store, writer, transport) = try fixture()
         await writer.configure(transport: transport)
         await transport.block()
         try writer.setText(sessionId: "s", text: "")
         try await waitUntil { await transport.calls.count == 1 }
         try writer.setText(sessionId: "s", text: "second")
-        let flushing = Task { try await writer.flushPending(sessionId: "s") }
         try writer.setText(sessionId: "s", text: "third")
         try writer.clear(sessionId: "s")
-        // Barrier through the actor ensures the immediate clear is queued.
+        // Configure shares the edit queue: every synchronous schedule before it
+        // has reached the writer before the first RPC is released.
         await writer.configure(transport: transport)
         await transport.release()
-        try await flushing.value
+        try await waitUntil { await transport.calls.count == 2 }
+        try await waitUntil { (try? store.session(id: "s")?.metadataVersion) == 3 }
+        await writer.configure(transport: transport)
         let writes = await transport.drafts()
         XCTAssertEqual(writes.count, 2)
         XCTAssertEqual(writes[0]["draft"]?["text"], .string(""))
