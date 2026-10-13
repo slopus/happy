@@ -454,6 +454,36 @@ final class ApplyPerfDockTests: XCTestCase {
     }
 }
 
+extension ApplyPerfDockTests {
+    /// The new-session screen hears nothing until the computers are known,
+    /// so an empty first read never resets the draft; then only what its
+    /// pickers read.
+    func testTheNewSessionScreenWaitsForComputersAndIgnoresHeartbeats() throws {
+        var unknown = ApplyPerfFixtures.snapshot(3)
+        unknown.machines = MachinesSnapshot(synced: false, machines: [])
+        XCTAssertNil(NewSessionSnapshot.derive(unknown, applied: nil))
+        XCTAssertNil(NewSessionSnapshot.derive(nil, applied: nil))
+
+        var onDisk = ApplyPerfFixtures.snapshot(3)
+        onDisk.machines.synced = false
+        let first = try XCTUnwrap(NewSessionSnapshot.derive(onDisk, applied: nil))
+        XCTAssertEqual(first.output.machines.machines.count, 1, "computers from before, ahead of the refresh")
+
+        var noComputers = unknown
+        noComputers.machines.synced = true
+        XCTAssertNotNil(NewSessionSnapshot.derive(noComputers, applied: nil), "synced and empty is an answer")
+
+        var heartbeat = onDisk
+        heartbeat.sessions = heartbeat.sessions.map { ApplyPerfFixtures.invisiblyTouched($0, by: 2000) }
+        heartbeat.presenceNow = ApplyPerfFixtures.now + 60_000
+        XCTAssertNil(NewSessionSnapshot.derive(heartbeat, applied: first.state))
+
+        var message = onDisk
+        message.sessions[2] = ApplyPerfFixtures.active(message.sessions[2], at: ApplyPerfFixtures.now + 5)
+        XCTAssertNotNil(NewSessionSnapshot.derive(message, applied: first.state))
+    }
+}
+
 final class ApplyPerfPresenceClockTests: XCTestCase {
     private func stopped(_ snapshot: HomeSnapshot, index: Int, lastSeen: Int64) -> HomeSnapshot {
         var snapshot = snapshot

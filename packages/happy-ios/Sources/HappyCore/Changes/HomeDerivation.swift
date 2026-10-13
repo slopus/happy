@@ -266,4 +266,14 @@ public enum NewSessionSnapshot {
         }
         return snapshot
     }
+
+    /// The new-session screen's derivation: the pickers' snapshot once the
+    /// computers are known (synced, or on disk from before), nil until then
+    /// and whenever it is what the screen has.
+    public static func derive(_ snapshot: HomeSnapshot?, applied: HomeSnapshot?) -> (output: HomeSnapshot, state: HomeSnapshot?)? {
+        guard let snapshot, snapshot.machines.synced || !snapshot.machines.machines.isEmpty else { return nil }
+        let rendered = rendered(snapshot)
+        guard rendered != applied else { return nil }
+        return (rendered, rendered)
+    }
 }

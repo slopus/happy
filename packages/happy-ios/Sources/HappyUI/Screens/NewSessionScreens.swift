@@ -56,7 +56,7 @@ final class NewSessionViewController: UIViewController {
     private let composer: NewSessionComposer
     private let starter: SessionStarter
     private var model: NewSessionScreenModel
-    private var observation: StoreObservation?
+    private var observation: ApplyObservation?
 
     private let titleView = NewSessionTitleView(title: Strings.NewSession.title)
     private let scrollView = UIScrollView()
@@ -175,10 +175,23 @@ final class NewSessionViewController: UIViewController {
         starter.presenter = self
         starter.onPhaseChange = { [weak self] _ in self?.render() }
         composer.onChange = { [weak self] in self?.render() }
-        let composer = composer
-        observation = session.store.observeHome { snapshot in
-            composer.update(snapshot: snapshot)
-        }
+        // The pickers' snapshot from the account's shared feed, off the main
+        // thread; a heartbeat or a cursor never reaches the composer.
+        let pipeline = ApplyPipeline<HomeSnapshot?, HomeSnapshot?, HomeSnapshot>(
+            input: nil,
+            state: nil,
+            derive: { snapshot, applied in NewSessionSnapshot.derive(snapshot, applied: applied) },
+            apply: { [weak self] snapshot in
+                guard let self, self.context.account.session === self.session else { return false }
+                ApplyPerf.measure(.screen) {
+                    self.composer.update(snapshot: snapshot)
+                    return 1
+                }
+                return true
+            }
+        )
+        pipeline.follow(session.homeFeed.snapshots()) { $0 = $1 }
+        observation = pipeline.observation
         render()
     }
 
