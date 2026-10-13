@@ -195,6 +195,51 @@ final class SessionDetailSnapshotTests: XCTestCase {
         reader.cancel()
     }
 
+    func testASendAcceptedHereWakesNothing() async throws {
+        let store = try store()
+        let seen = DetailSeen()
+        let stream = store.sessionDetailSnapshots(sessionId: "s1")
+        let reader = Task { for await value in stream { await seen.append(value) } }
+        try await waitUntil { await seen.values.count == 1 }
+        let opened = await seen.values.first
+        let first = try XCTUnwrap(opened)
+
+        // The composer's send: the outbox row and the local activity stamp,
+        // in one commit.
+        let sentAt = Fixture.now + 5_000
+        try store.enqueueAcceptedSend(
+            [OutboxRecord(localId: "l1", kind: .message, sessionId: "s1", payload: .null, createdAt: sentAt)], attachments: []
+        )
+        // Stored, and read by whoever acts on the session.
+        XCTAssertEqual(try store.session(id: "s1")?.lastMessageSentAt, sentAt)
+        XCTAssertEqual(try store.sessionDetail(sessionId: "s1").session?.lastMessageSentAt, sentAt)
+        try await Task.sleep(for: .milliseconds(100))
+        let quiet = await seen.values.count
+        XCTAssertEqual(quiet, 1)
+        // Info derives nothing from it either.
+        var input = SessionInfoInput()
+        input.detail = first
+        let shown = try XCTUnwrap(SessionInfoDerivation.derive(input, applied: nil))
+        input.detail = try store.sessionDetail(sessionId: "s1")
+        XCTAssertNil(SessionInfoDerivation.derive(input, applied: shown.state))
+
+        // The server's echo: a new seq and updatedAt, which info shows.
+        var echoed = try XCTUnwrap(store.session(id: "s1"))
+        echoed.updatedAt += 6_000
+        echoed.seq = 7
+        try store.upsertSessions([echoed])
+        try await waitUntil { await seen.values.count == 2 }
+        let latest = await seen.values.last
+        let last = try XCTUnwrap(latest)
+        XCTAssertEqual(last.session?.seq, 7)
+        XCTAssertEqual(last.session?.updatedAt, echoed.updatedAt)
+        XCTAssertNil(last.session?.lastMessageSentAt)
+        input.detail = last
+        let update = try XCTUnwrap(SessionInfoDerivation.derive(input, applied: shown.state))
+        XCTAssertEqual(update.output.changes, SessionInfoChanges(lastUpdated: true, sequence: true))
+        reader.cancel()
+    }
+
     func testEachAccountHasItsOwnFileCache() throws {
         func account() throws -> AccountSession {
             try AccountSession(

@@ -36,7 +36,9 @@ extension LocalStore {
 
     /// The snapshot now, then each distinct one, fetched and compared on a
     /// background queue. Only this session's row, its computer, the
-    /// settings, the list cursor and its composer are read.
+    /// settings, the list cursor and its composer are read. Fields no
+    /// session screen shows are left out of what is compared (`shown`), so
+    /// a send accepted here wakes nothing; `sessionDetail` keeps them.
     public func sessionDetailSnapshots(sessionId: String) -> AsyncStream<SessionDetailSnapshot> {
         let writer = self.writer
         let overlay = presenceOverlay
@@ -58,7 +60,7 @@ extension LocalStore {
                     onChange: { raw in
                         // A presence checkpoint moves stored stamps the
                         // screen never shows; it yields nothing.
-                        let value = Self.project(raw, overlay)
+                        let value = Self.shown(Self.project(raw, overlay))
                         guard last.replace(value) else { return }
                         continuation.yield(value)
                     }
@@ -83,6 +85,15 @@ extension LocalStore {
             dataReady: dataReady,
             composer: try ComposerStateRecord.fetchOne(db, key: sessionId)?.values ?? .object([:])
         )
+    }
+
+    /// Without the local activity stamp of the last send accepted here
+    /// (`enqueueAcceptedSend`): it orders home's list, and no session screen
+    /// shows it. `updatedAt` and `seq` stay; info.tsx shows them.
+    static func shown(_ value: SessionDetailSnapshot) -> SessionDetailSnapshot {
+        var value = value
+        value.session?.lastMessageSentAt = nil
+        return value
     }
 
     private static func project(_ raw: SessionDetailSnapshot, _ overlay: PresenceOverlay) -> SessionDetailSnapshot {

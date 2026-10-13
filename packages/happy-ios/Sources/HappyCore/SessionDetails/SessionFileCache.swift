@@ -55,8 +55,22 @@ public final class SessionFileCache: @unchecked Sendable {
         self.init(directory: nil)
     }
 
-    /// `directory` is the account's own, made on the first write but never
-    /// its parent; nil keeps nothing on disk.
+    /// The cache's directory inside an account's (`AccountSession
+    /// .accountDirectory`).
+    public static func directory(inAccount accountDirectory: URL) -> URL {
+        accountDirectory.appendingPathComponent("file-cache", isDirectory: true)
+    }
+
+    /// Makes the directory, off the main thread, while the account is made
+    /// ready (`AccountSession.prepareDirectory`). The cache never makes it
+    /// itself: without it nothing is written, so a signed-out account's
+    /// directory is never made again.
+    public static func prepare(directory: URL) throws {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+    }
+
+    /// `directory` is the account's own, made ready by `prepare`; nil keeps
+    /// nothing on disk.
     public init(
         directory: URL?,
         maxCount: Int = defaultMaxCount,
@@ -345,11 +359,9 @@ final class FileCacheDisk: @unchecked Sendable {
             try? manager.removeItem(at: file)
             return
         }
-        // Never with its parents: an account directory that is gone (the
-        // account signed out) stays gone.
-        if !manager.fileExists(atPath: directory.path) {
-            do { try manager.createDirectory(at: directory, withIntermediateDirectories: false) } catch { return }
-        }
+        // Never made here: a directory that is gone (the account signed
+        // out) stays gone, and nothing is written.
+        guard manager.fileExists(atPath: directory.path) else { return }
         do { try data.write(to: file, options: .atomic) } catch { return }
         prune()
     }
