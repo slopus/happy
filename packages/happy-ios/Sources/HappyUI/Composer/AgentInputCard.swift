@@ -240,6 +240,9 @@ public protocol AgentInputCardDelegate: AnyObject {
     func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip)
     /// Return was typed. False swallows the newline (an autocomplete pick).
     func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool
+    /// A hardware keyboard's Tab was typed. False swallows the tab (an
+    /// autocomplete pick).
+    func agentInputCardShouldInsertTab(_ card: AgentInputCardView) -> Bool
     /// A control was pressed while `refusesControls` is on; it has shaken.
     func agentInputCardDidRefuse(_ card: AgentInputCardView, control: AgentInputControl)
 }
@@ -256,6 +259,7 @@ extension AgentInputCardDelegate {
     public func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) {}
     public func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {}
     public func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool { true }
+    public func agentInputCardShouldInsertTab(_ card: AgentInputCardView) -> Bool { true }
     public func agentInputCardDidRefuse(_ card: AgentInputCardView, control: AgentInputControl) {}
 }
 
@@ -884,8 +888,11 @@ extension AgentInputCardView: UITextViewDelegate {
     }
 
     public func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
-        guard text == "\n" else { return true }
-        return delegate?.agentInputCardShouldInsertNewline(self) ?? true
+        switch text {
+        case "\n": delegate?.agentInputCardShouldInsertNewline(self) ?? true
+        case "\t": delegate?.agentInputCardShouldInsertTab(self) ?? true
+        default: true
+        }
     }
 
     public func textViewDidBeginEditing(_ textView: UITextView) {
