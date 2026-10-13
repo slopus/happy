@@ -7,13 +7,15 @@ import HappyStore
 import HappyWire
 
 /// A store that records every call, in order, and where it ran. A save can
-/// be held at the gate until the test lets it go.
+/// be held at the gate until the test lets it go, or made to fail.
 private final class ProbeStorage: ComposerStorage, @unchecked Sendable {
     private let lock = NSLock()
     private var current: ComposerStoreValue
     private var calls: [String] = []
     private var mainThreadCalls = 0
     private var holdNextSave = false
+    private var savesFail = false
+    private var attempts = 0
     private let gate = DispatchSemaphore(value: 0)
     private let entered = DispatchSemaphore(value: 0)
     /// The writer the observation reports to, in the test's order.
@@ -27,6 +29,11 @@ private final class ProbeStorage: ComposerStorage, @unchecked Sendable {
     var reads: Int { log.filter { $0 == "read" }.count }
     var saves: [String] { log.compactMap { $0.hasPrefix("save ") ? String($0.dropFirst(5)) : nil } }
     var callsOnMain: Int { lock.withLock { mainThreadCalls } }
+    /// Saves tried, failed or not.
+    var saveAttempts: Int { lock.withLock { attempts } }
+
+    /// Every save throws until set back.
+    func failSaves(_ fail: Bool) { lock.withLock { savesFail = fail } }
     var value: ComposerStoreValue { lock.withLock { current } }
 
     func record(_ call: String) {
@@ -68,12 +75,27 @@ private final class ProbeStorage: ComposerStorage, @unchecked Sendable {
             entered.signal()
             gate.wait()
         }
+        let fail = lock.withLock {
+            attempts += 1
+            return savesFail
+        }
+        if fail { throw ProbeError.diskFull }
         record("save \(text)")
         lock.withLock { current.draft = text }
     }
 
     /// The tests report observations themselves (`observe`, `change`).
-    func composerValues(sessionId: String) -> AsyncStream<ComposerStoreValue> { AsyncStream { _ in } }
+    func composerValues(sessionId: String) -> AsyncThrowingStream<ComposerStoreValue, any Error> { AsyncThrowingStream { _ in } }
+}
+
+private enum ProbeError: Error { case diskFull, offline }
+
+/// The failures a writer reported.
+private final class Failures: @unchecked Sendable {
+    private let lock = NSLock()
+    private var list: [ComposerDraftWriter.Failure.Operation] = []
+    var operations: [ComposerDraftWriter.Failure.Operation] { lock.withLock { list } }
+    func record(_ failure: ComposerDraftWriter.Failure) { lock.withLock { list.append(failure.operation) } }
 }
 
 /// Sends by logging into the storage's log, so order is visible; the send
@@ -85,8 +107,12 @@ private final class ProbeSending: ChatSending, @unchecked Sendable {
     private var holding = false
     private var waiting: CheckedContinuation<Void, Never>?
     private var count = 0
+    private var failNext = false
 
     init(_ storage: ProbeStorage) { self.storage = storage }
+
+    /// The next send is refused.
+    func refuseNext() { lock.withLock { failNext = true } }
 
     func hold() { lock.withLock { holding = true } }
 
@@ -113,6 +139,11 @@ private final class ProbeSending: ChatSending, @unchecked Sendable {
 
     func send(_ message: OutgoingMessage, sessionId: String) async throws -> String {
         storage.record("send \(message.text) over \(storage.value.draft)")
+        let refused = lock.withLock {
+            defer { failNext = false }
+            return failNext
+        }
+        if refused { throw ProbeError.offline }
         if lock.withLock({ holding }) {
             await withCheckedContinuation { continuation in
                 let waiter = lock.withLock {
@@ -158,9 +189,15 @@ private final class Deliveries {
 
 @MainActor
 final class ComposerDraftWriterTests: XCTestCase {
-    private func writer(_ storage: ProbeStorage) -> (ComposerDraftWriter, ProbeSending, Deliveries) {
+    private func writer(
+        _ storage: ProbeStorage,
+        retryDelays: [Duration] = ComposerDraftWriter.defaultRetryDelays,
+        failures: Failures = Failures()
+    ) -> (ComposerDraftWriter, ProbeSending, Deliveries) {
         let sending = ProbeSending(storage)
-        let writer = ComposerDraftWriter(sessionId: "s", storage: storage, sending: sending)
+        let writer = ComposerDraftWriter(
+            sessionId: "s", storage: storage, sending: sending, retryDelays: retryDelays, onFailure: failures.record
+        )
         storage.writer = writer
         let deliveries = Deliveries()
         writer.start { deliveries.receive($0) }
@@ -324,6 +361,192 @@ final class ComposerDraftWriterTests: XCTestCase {
     }
 }
 
+/// A write that doesn't land.
+@MainActor
+final class ComposerDraftWriterFailureTests: XCTestCase {
+    private func writer(
+        _ storage: ProbeStorage,
+        retryDelays: [Duration] = [.seconds(60)],
+        failures: Failures
+    ) -> (ComposerDraftWriter, ProbeSending, Deliveries) {
+        let sending = ProbeSending(storage)
+        let writer = ComposerDraftWriter(
+            sessionId: "s", storage: storage, sending: sending, retryDelays: retryDelays, onFailure: failures.record
+        )
+        storage.writer = writer
+        let deliveries = Deliveries()
+        writer.start { deliveries.receive($0) }
+        return (writer, sending, deliveries)
+    }
+
+    private func until(_ condition: () -> Bool) async throws {
+        for _ in 0..<500 where !condition() {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
+    func testAFailedWriteLeavesTheGenerationAndTheTextToTheComposer() async throws {
+        let storage = ProbeStorage(ComposerStoreValue(draft: "before"))
+        let failures = Failures()
+        let (writer, _, deliveries) = writer(storage, failures: failures)
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        storage.failSaves(true)
+        writer.save("typed", generation: 1)
+        let settled = await writer.settle()
+        XCTAssertFalse(settled, "not on disk")
+        XCTAssertEqual(failures.operations, [.save, .save], "the write and the settle's retry")
+
+        // Another device moves the picks, the draft and an upload fails.
+        storage.change {
+            $0.draft = "from the laptop"
+            $0.picks = ComposerPicks(permissionMode: "plan")
+            $0.failedAttachments = 1
+        }
+        await fulfillment(of: [deliveries.expect(2)], timeout: 5)
+        let late = try XCTUnwrap(deliveries.all.last)
+        XCTAssertEqual(late.generation, 0, "the failed write doesn't count")
+        // The composer still holds its typing; the rest is news.
+        var model = ComposerDraftModel()
+        _ = model.receive(deliveries.all[0], text: "", synced: true, composing: false)
+        XCTAssertEqual(model.textChanged("typed", synced: true).write?.generation, 1)
+        let change = model.receive(late, text: "typed", synced: true, composing: false)
+        XCTAssertNil(change.text, "unsaved typing isn't replaced")
+        XCTAssertEqual(change.picks, ComposerPicks(permissionMode: "plan"))
+        XCTAssertEqual(change.newlyFailedAttachments, 1)
+
+        // Saved at last: it goes over the remote text, as typing would.
+        storage.failSaves(false)
+        let saved = await writer.settle()
+        XCTAssertTrue(saved)
+        XCTAssertEqual(storage.saves, ["typed"])
+        storage.change { $0.draft = "edited again" }
+        await fulfillment(of: [deliveries.expect(3)], timeout: 5)
+        XCTAssertEqual(deliveries.all.last?.generation, 1)
+    }
+
+    func testRetriesAreBoundedAndANewerWriteReplacesTheFailedOne() async throws {
+        let storage = ProbeStorage()
+        let failures = Failures()
+        let (writer, _, deliveries) = writer(storage, retryDelays: [.milliseconds(5), .milliseconds(5)], failures: failures)
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        storage.failSaves(true)
+        writer.save("a", generation: 1)
+        try await until { storage.saveAttempts == 3 }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(storage.saveAttempts, 3, "the write and two retries")
+        XCTAssertEqual(failures.operations, [.save, .save, .save])
+        storage.failSaves(false)
+        writer.save("ab", generation: 2)
+        let saved = await writer.settle()
+        XCTAssertTrue(saved)
+        XCTAssertEqual(storage.saves, ["ab"], "only the newest text")
+    }
+
+    func testAnAcceptedSendDropsTheUnsavedWriteSoItCannotComeBack() async throws {
+        let storage = ProbeStorage()
+        let failures = Failures()
+        let (writer, _, deliveries) = writer(storage, retryDelays: [.milliseconds(5)], failures: failures)
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        storage.failSaves(true)
+        writer.save("hello", generation: 1)
+        let sent = writer.send(OutgoingMessage(text: "hello"))
+        writer.save("next", generation: 2)
+        _ = try await sent.value
+        // The disk recovers after the send; only the later typing lands.
+        storage.failSaves(false)
+        let saved = await writer.settle()
+        XCTAssertTrue(saved)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(storage.saves, ["next"])
+        XCTAssertEqual(storage.log.filter { $0.hasPrefix("send") }, ["send hello over "])
+    }
+
+    func testAnAcceptedSendSettlesTheGenerationOfTheTextItSent() async throws {
+        let storage = ProbeStorage()
+        let (writer, _, deliveries) = writer(storage, retryDelays: [.milliseconds(5)], failures: Failures())
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        storage.failSaves(true)
+        writer.save("hello", generation: 1)
+        _ = try await writer.send(OutgoingMessage(text: "hello")).value
+        let settled = await writer.settle()
+        XCTAssertTrue(settled, "nothing is left unsaved")
+        storage.failSaves(false)
+        storage.change { $0.draft = "from the laptop" }
+        await fulfillment(of: [deliveries.expect(2)], timeout: 5)
+        XCTAssertEqual(deliveries.all.last?.generation, 1, "a later remote edit is news again")
+        XCTAssertTrue(storage.saves.isEmpty)
+    }
+
+    func testARefusedSendKeepsTheUnsavedWrite() async throws {
+        let storage = ProbeStorage()
+        let (writer, sending, deliveries) = writer(storage, failures: Failures())
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        storage.failSaves(true)
+        writer.save("hello", generation: 1)
+        sending.refuseNext()
+        do {
+            _ = try await writer.send(OutgoingMessage(text: "hello")).value
+            XCTFail("refused")
+        } catch {
+            XCTAssertEqual(error as? ProbeError, .offline)
+        }
+        storage.failSaves(false)
+        let saved = await writer.settle()
+        XCTAssertTrue(saved)
+        XCTAssertEqual(storage.saves, ["hello"])
+    }
+
+    func testAFailedReadIsReportedAndTheNextOneDelivers() async throws {
+        let storage = FailingReads()
+        let failures = Failures()
+        let writer = ComposerDraftWriter(sessionId: "s", storage: storage, sending: ProbeSending(ProbeStorage()), onFailure: failures.record)
+        let deliveries = Deliveries()
+        writer.start { deliveries.receive($0) }
+        await writer.settle()
+        XCTAssertEqual(failures.operations, [.read])
+        XCTAssertTrue(deliveries.all.isEmpty)
+        writer.refresh()
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        XCTAssertEqual(deliveries.all.first?.value.draft, "second look")
+        writer.close()
+    }
+}
+
+/// Fails the first read.
+private final class FailingReads: ComposerStorage, @unchecked Sendable {
+    private let lock = NSLock()
+    private var reads = 0
+    func composerValue(sessionId: String) throws -> ComposerStoreValue {
+        let first = lock.withLock {
+            reads += 1
+            return reads == 1
+        }
+        if first { throw ProbeError.diskFull }
+        return ComposerStoreValue(draft: "second look")
+    }
+    func saveDraft(sessionId: String, text: String) throws {}
+    func composerValues(sessionId: String) -> AsyncThrowingStream<ComposerStoreValue, any Error> { AsyncThrowingStream { _ in } }
+}
+
+/// Counts the writer's own reads, apart from the observation's fetches.
+private final class CountingStorage: ComposerStorage, @unchecked Sendable {
+    let base: OutboxSender
+    private let lock = NSLock()
+    private var count = 0
+    var reads: Int { lock.withLock { count } }
+
+    init(_ base: OutboxSender) { self.base = base }
+
+    func composerValue(sessionId: String) throws -> ComposerStoreValue {
+        lock.withLock { count += 1 }
+        return try base.composerValue(sessionId: sessionId)
+    }
+    func saveDraft(sessionId: String, text: String) throws { try base.saveDraft(sessionId: sessionId, text: text) }
+    func composerValues(sessionId: String) -> AsyncThrowingStream<ComposerStoreValue, any Error> {
+        base.composerValues(sessionId: sessionId)
+    }
+}
+
 /// The writer over a real store: what wakes it, and what a send leaves.
 @MainActor
 final class ComposerDraftStoreTests: XCTestCase {
@@ -347,37 +570,92 @@ final class ComposerDraftStoreTests: XCTestCase {
         return (store, sync, OutboxSender(store: store, sync: sync, filesDirectory: files), files)
     }
 
-    func testHeartbeatsAndOtherSessionsWakeNothing() async throws {
-        let counter = DraftFetchCounter()
+    /// What each kind of commit costs: fetches by the background
+    /// observation (three indexed lookups each), reads by the writer, and
+    /// deliveries to the main thread.
+    func testHeartbeatsCostNothingAndOtherSessionsOnlyABackgroundFetch() async throws {
+        let counter = ComposerSQLCounter()
         var configuration = Configuration()
         configuration.prepareDatabase { db in db.trace { counter.trace($0) } }
         let (store, sync, sender, files) = try await fixture(rig: false, writer: DatabaseQueue(configuration: configuration))
         defer { try? FileManager.default.removeItem(at: files) }
         try store.saveDraft(sessionId: "s", text: "unsent", at: 1)
-        let writer = ComposerDraftWriter(sessionId: "s", storage: sender, sending: sender)
+        counter.reset()
+        let storage = CountingStorage(sender)
+        let writer = ComposerDraftWriter(sessionId: "s", storage: storage, sending: sender)
         let deliveries = Deliveries()
         writer.start { deliveries.receive($0) }
         await fulfillment(of: [deliveries.expect(1)], timeout: 5)
-        // The opening read and the observation's start (GRDB fetches twice).
         try await Task.sleep(for: .milliseconds(100))
-        XCTAssertEqual(counter.value, 3)
+        func costs() -> (fetches: Int, reads: Int, deliveries: Int) {
+            XCTAssertEqual(counter.composerStateSelects, counter.draftSelects, "one of each per fetch")
+            XCTAssertEqual(counter.outboxSelects, counter.draftSelects)
+            return (counter.draftSelects - storage.reads, storage.reads, deliveries.all.count)
+        }
+        var cost = costs()
+        // The observation's first fetch matches the opening read.
+        XCTAssertEqual([cost.fetches, cost.reads, cost.deliveries], [1, 1, 1], "opening")
+
         for at in Int64(200)..<Int64(215) {
             try store.applySessionActivity(id: "s", active: true, activeAt: at)
         }
         try await Task.sleep(for: .milliseconds(100))
-        XCTAssertEqual(counter.value, 3, "the session row is outside what the composer reads")
+        cost = costs()
+        XCTAssertEqual([cost.fetches, cost.reads, cost.deliveries], [1, 1, 1], "15 heartbeats: nothing")
+
+        // The observed region is the whole draft, composerState and outbox
+        // tables, so another session's row costs a background fetch, which
+        // matches what the composer holds and goes no further.
         try store.saveDraft(sessionId: "other", text: "elsewhere", at: 2)
         try store.saveComposerState(ComposerStateRecord(sessionId: "other", values: .object(["permissionMode": .string("plan")])))
-        // Something it does show, after all of the above.
+        for _ in 0..<400 where counter.draftSelects - storage.reads < 3 {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        cost = costs()
+        XCTAssertEqual([cost.fetches, cost.reads, cost.deliveries], [3, 1, 1], "another session: one fetch each, no read")
+
         try store.enqueue(OutboxRecord(localId: "f", kind: .file, sessionId: "s", payload: .null, createdAt: 1, state: .failed))
         await fulfillment(of: [deliveries.expect(2)], timeout: 5)
         try await Task.sleep(for: .milliseconds(100))
+        cost = costs()
+        XCTAssertEqual([cost.fetches, cost.reads, cost.deliveries], [4, 2, 2], "a failed upload: a fetch, a read, a delivery")
         XCTAssertEqual(deliveries.all.map(\.value), [
             ComposerStoreValue(draft: "unsent"),
             ComposerStoreValue(draft: "unsent", failedAttachments: 1),
         ])
         XCTAssertEqual(deliveries.offMain, 0)
-        XCTAssertEqual(counter.value, 7, "the two other-session writes and the failed upload: three observation fetches, one read")
+        writer.close()
+        await sync.stop()
+    }
+
+    func testAFailedObservationIsReportedAndStartedAgain() async throws {
+        let (store, sync, sender, files) = try await fixture(rig: false)
+        defer { try? FileManager.default.removeItem(at: files) }
+        let failures = Failures()
+        let writer = ComposerDraftWriter(
+            sessionId: "s", storage: sender, sending: sender, retryDelays: [.milliseconds(20)], onFailure: failures.record
+        )
+        let deliveries = Deliveries()
+        writer.start { deliveries.receive($0) }
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        let schema = try await store.writer.read { db in
+            try String.fetchOne(db, sql: "SELECT sql FROM sqlite_master WHERE name = 'composerState'")
+        }
+        try await store.writer.write { db in try db.execute(sql: "DROP TABLE composerState") }
+        // The next fetch finds no table.
+        try store.saveDraft(sessionId: "s", text: "while it was down", at: 2)
+        for _ in 0..<200 where !failures.operations.contains(.observation) {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTAssertTrue(failures.operations.contains(.observation))
+        try await store.writer.write { db in try db.execute(sql: try XCTUnwrap(schema)) }
+        // Started again, it catches up on what changed while it was down.
+        await fulfillment(of: [deliveries.expect(2)], timeout: 5)
+        XCTAssertEqual(deliveries.all.last?.value.draft, "while it was down")
+        try store.saveComposerState(ComposerStateRecord(sessionId: "s", values: .object(["permissionMode": .string("plan")])))
+        await fulfillment(of: [deliveries.expect(3)], timeout: 5)
+        XCTAssertEqual(deliveries.all.last?.value.picks, ComposerPicks(permissionMode: "plan"))
         writer.close()
         await sync.stop()
     }
@@ -476,13 +754,20 @@ final class ComposerDraftStoreTests: XCTestCase {
     }
 }
 
-/// Counts the composer's reads: one per draft lookup.
-private final class DraftFetchCounter: @unchecked Sendable {
+/// Counts the SELECTs of the composer's three lookups.
+private final class ComposerSQLCounter: @unchecked Sendable {
     private let lock = NSLock()
-    private var count = 0
-    var value: Int { lock.withLock { count } }
+    private var counts: [String: Int] = [:]
+    var draftSelects: Int { lock.withLock { counts["draft", default: 0] } }
+    var composerStateSelects: Int { lock.withLock { counts["composerState", default: 0] } }
+    var outboxSelects: Int { lock.withLock { counts["outbox", default: 0] } }
+    func reset() { lock.withLock { counts = [:] } }
     func trace(_ event: Database.TraceEvent) {
-        if event.description.contains("FROM \"draft\"") { lock.withLock { count += 1 } }
+        let sql = event.description
+        guard sql.hasPrefix("SELECT") else { return }
+        for table in ["draft", "composerState", "outbox"] where sql.contains("FROM \"\(table)\"") {
+            lock.withLock { counts[table, default: 0] += 1 }
+        }
     }
 }
 

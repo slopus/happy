@@ -85,7 +85,10 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         draftWriter = ComposerDraftWriter(
             sessionId: environment.sessionId,
             storage: environment.account.sender,
-            sending: environment.sender
+            sending: environment.sender,
+            onFailure: { failure in
+                logger.error("draft \(String(describing: failure.operation), privacy: .public) failed: \(String(describing: failure.error), privacy: .public)")
+            }
         )
         staging = ComposerAttachmentStaging(filesDirectory: environment.account.filesDirectory)
         images = ComposerImagePicker(staging: staging)
@@ -630,7 +633,10 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         let writer = draftWriter
         let lease = DraftWriteLease()
         Task {
-            await writer.settle()
+            if !(await writer.settle()) {
+                // Still unsaved; the writer keeps trying while it can.
+                logger.error("draft not saved before the background")
+            }
             lease.end()
         }
     }

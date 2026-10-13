@@ -37,9 +37,10 @@ public struct ComposerStoreValue: Equatable, Sendable {
 /// A read handed to the main thread.
 public struct ComposerStoreDelivery: Equatable, Sendable {
     public var value: ComposerStoreValue
-    /// The newest draft write (`ComposerDraftWriter.save`) committed before
-    /// the read. A read older than the composer's newest write says nothing
-    /// about the draft: it may show text the composer has since replaced.
+    /// The newest draft write (`ComposerDraftWriter.save`) the store held at
+    /// the read, or that a send made moot. A failed write doesn't count. A
+    /// read older than the composer's newest write says nothing about the
+    /// draft: it may show text the composer has since replaced.
     public var generation: Int
 
     public init(value: ComposerStoreValue, generation: Int) {
@@ -53,9 +54,10 @@ public struct ComposerStoreDelivery: Equatable, Sendable {
 public protocol ComposerStorage: Sendable {
     func composerValue(sessionId: String) throws -> ComposerStoreValue
     func saveDraft(sessionId: String, text: String) throws
-    /// The current value, then each distinct one after a commit, produced
-    /// off the main thread.
-    func composerValues(sessionId: String) -> AsyncStream<ComposerStoreValue>
+    /// The current value, then one after each commit to what it reads,
+    /// produced off the main thread. It ends by throwing if the database
+    /// observation fails.
+    func composerValues(sessionId: String) -> AsyncThrowingStream<ComposerStoreValue, any Error>
 }
 
 /// One session's composer persistence, in order and off the main thread.
@@ -67,27 +69,56 @@ public protocol ComposerStorage: Sendable {
 ///     after it, so a Happy Agent send reads the stamp of the text it sends,
 ///     and typing during a send is written after the send's clear;
 ///   - reads move to the end of their run and are tagged with the newest
-///     committed write (`ComposerStoreDelivery.generation`);
+///     write the store holds (`ComposerStoreDelivery.generation`);
 ///   - the store observation only wakes the drain. A value the composer
 ///     already holds (its own write coming back) is dropped without a read;
 ///     anything else is read again in order and delivered only if it
 ///     differs from what the composer holds.
+///
+/// A write that fails stays unsaved: the generation doesn't move, so no
+/// read can pass for a remote edit over the text it carries. It is tried
+/// again on a timer (`retryDelays`, then no more until the next save), before
+/// a send, at `settle()`, and replaced by any newer write. A send goes
+/// whether or not it landed (the message is the composer's text, not the
+/// draft's); once the send is accepted the unsaved write is moot and
+/// dropped, so a later retry can't bring the sent text back. Failed writes,
+/// reads and observations go to `onFailure`. A failed observation is
+/// started again while the writer is open, after `retryDelays` (the last
+/// one repeating); its first value catches up on anything missed.
 ///
 /// `close()` stops reads and deliveries. Writes and sends handed over
 /// before or after it still run, so a teardown flush lands.
 public final class ComposerDraftWriter: @unchecked Sendable {
     public typealias Deliver = @MainActor @Sendable (ComposerStoreDelivery) -> Void
 
+    /// What failed, for the log.
+    public struct Failure: Sendable {
+        public enum Operation: Equatable, Sendable {
+            case save
+            case read
+            case observation
+        }
+
+        public var operation: Operation
+        public var error: any Error
+    }
+
+    /// 250ms, 1s, 4s.
+    public static let defaultRetryDelays: [Duration] = [.milliseconds(250), .seconds(1), .seconds(4)]
+
     private enum Command {
         case save(String, generation: Int)
         case read(forced: Bool, observed: ComposerStoreValue?)
         case send(OutgoingMessage, AsyncThrowingStream<String, any Error>.Continuation)
-        case barrier(CheckedContinuation<Void, Never>)
+        case barrier(CheckedContinuation<Bool, Never>)
+        case retry
     }
 
     public let sessionId: String
     private let storage: any ComposerStorage
     private let sending: any ChatSending
+    private let retryDelays: [Duration]
+    private let onFailure: @Sendable (Failure) -> Void
 
     private let lock = NSLock()
     // Guarded by `lock`.
@@ -98,15 +129,28 @@ public final class ComposerDraftWriter: @unchecked Sendable {
     private var observation: Task<Void, Never>?
 
     // Touched only by the drain, which never runs twice at once.
-    private var committed = 0
-    /// What the composer holds: the last delivery, with each later write's
-    /// text in place of its draft.
+    /// The newest write the store holds, or that a send made moot.
+    private var settled = 0
+    /// The newest write handed over that hasn't landed.
+    private var unsaved: (text: String, generation: Int)?
+    private var retries = 0
+    private var retryScheduled = false
+    /// What the composer holds: the last delivery, with each later saved
+    /// write's text in place of its draft.
     private var held: ComposerStoreValue?
 
-    public init(sessionId: String, storage: any ComposerStorage, sending: any ChatSending) {
+    public init(
+        sessionId: String,
+        storage: any ComposerStorage,
+        sending: any ChatSending,
+        retryDelays: [Duration] = ComposerDraftWriter.defaultRetryDelays,
+        onFailure: @escaping @Sendable (Failure) -> Void = { _ in }
+    ) {
         self.sessionId = sessionId
         self.storage = storage
         self.sending = sending
+        self.retryDelays = retryDelays
+        self.onFailure = onFailure
     }
 
     deinit {
@@ -118,18 +162,46 @@ public final class ComposerDraftWriter: @unchecked Sendable {
         lock.withLock { self.deliver = deliver }
         // Queued first, so the observation's first value finds it read.
         enqueue(.read(forced: true, observed: nil))
-        let values = storage.composerValues(sessionId: sessionId)
-        let task = Task.detached(priority: .userInitiated) { [weak self] in
-            for await value in values {
-                guard let self else { return }
-                self.observed(value)
-            }
+        let task = Self.observe(storage, sessionId: sessionId, retryDelays: retryDelays, onFailure: onFailure) { [weak self] value in
+            guard let self else { return false }
+            self.observed(value)
+            return true
         }
         let cancelled = lock.withLock {
             if !closed { observation = task }
             return closed
         }
         if cancelled { task.cancel() }
+    }
+
+    /// Follows the store until cancelled or `observed` returns false (the
+    /// writer is gone), holding nothing between values. A failed
+    /// observation is reported and started again after the next retry
+    /// delay, the last one repeating.
+    private static func observe(
+        _ storage: any ComposerStorage,
+        sessionId: String,
+        retryDelays: [Duration],
+        onFailure: @escaping @Sendable (Failure) -> Void,
+        observed: @escaping @Sendable (ComposerStoreValue) -> Bool
+    ) -> Task<Void, Never> {
+        Task.detached(priority: .userInitiated) {
+            var restarts = 0
+            while !Task.isCancelled {
+                do {
+                    for try await value in storage.composerValues(sessionId: sessionId) {
+                        guard observed(value) else { return }
+                    }
+                    return
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    onFailure(Failure(operation: .observation, error: error))
+                    guard let delay = retryDelays.isEmpty ? nil : retryDelays[min(restarts, retryDelays.count - 1)] else { return }
+                    try? await Task.sleep(for: delay)
+                    restarts += 1
+                }
+            }
+        }
     }
 
     /// The store observation's value. A value that lags behind a write
@@ -164,9 +236,12 @@ public final class ComposerDraftWriter: @unchecked Sendable {
         }
     }
 
-    /// Returns once everything handed over before it has run: a flush on the
-    /// way to the background is on disk.
-    public func settle() async {
+    /// Returns once everything handed over before it has run, after one
+    /// more try at a write that failed. True only if no write is left
+    /// unsaved: every write handed over is on disk, or was dropped as moot
+    /// by an accepted send. False if the newest write still isn't.
+    @discardableResult
+    public func settle() async -> Bool {
         await withCheckedContinuation { continuation in
             enqueue(.barrier(continuation))
         }
@@ -227,11 +302,23 @@ public final class ComposerDraftWriter: @unchecked Sendable {
                     if forced || observed != holding {
                         run.read = (run.read ?? false) || forced
                     }
+                case .retry:
+                    retryScheduled = false
+                    run.retry = true
                 case .send(let message, let continuation):
                     await finish(run)
                     run = Run()
+                    // One more try; the send goes either way.
+                    commitUnsaved()
                     do {
-                        continuation.yield(try await sending.send(message, sessionId: sessionId))
+                        let localId = try await sending.send(message, sessionId: sessionId)
+                        // Accepted: what the failed write held was sent (or
+                        // typed over by a write queued after this send).
+                        if let write = unsaved {
+                            unsaved = nil
+                            settled = write.generation
+                        }
+                        continuation.yield(localId)
                         continuation.finish()
                     } catch {
                         continuation.finish(throwing: error)
@@ -239,7 +326,7 @@ public final class ComposerDraftWriter: @unchecked Sendable {
                 case .barrier(let continuation):
                     await finish(run)
                     run = Run()
-                    continuation.resume()
+                    continuation.resume(returning: commitUnsaved())
                 }
             }
             await finish(run)
@@ -252,24 +339,64 @@ public final class ComposerDraftWriter: @unchecked Sendable {
         var save: (text: String, generation: Int)?
         /// Whether the read is forced.
         var read: Bool?
+        /// A retry timer fired.
+        var retry = false
     }
 
     private func finish(_ run: Run) async {
         if let save = run.save {
-            try? storage.saveDraft(sessionId: sessionId, text: save.text)
-            committed = save.generation
-            held?.draft = save.text
+            unsaved = save
+            retries = 0
+        }
+        if run.save != nil || run.retry {
+            commitUnsaved()
         }
         if let forced = run.read {
             await read(forced: forced)
         }
     }
 
+    /// Writes the unsaved draft, if any. False if it failed again.
+    @discardableResult
+    private func commitUnsaved() -> Bool {
+        guard let write = unsaved else { return true }
+        do {
+            try storage.saveDraft(sessionId: sessionId, text: write.text)
+        } catch {
+            onFailure(Failure(operation: .save, error: error))
+            scheduleRetry()
+            return false
+        }
+        unsaved = nil
+        retries = 0
+        settled = write.generation
+        held?.draft = write.text
+        return true
+    }
+
+    private func scheduleRetry() {
+        guard !retryScheduled, retries < retryDelays.count else { return }
+        retryScheduled = true
+        let delay = retryDelays[retries]
+        retries += 1
+        Task.detached(priority: .utility) {
+            try? await Task.sleep(for: delay)
+            self.enqueue(.retry)
+        }
+    }
+
     private func read(forced: Bool) async {
-        guard isOpen, let value = try? storage.composerValue(sessionId: sessionId) else { return }
+        guard isOpen else { return }
+        let value: ComposerStoreValue
+        do {
+            value = try storage.composerValue(sessionId: sessionId)
+        } catch {
+            onFailure(Failure(operation: .read, error: error))
+            return
+        }
         if !forced, value == held { return }
         held = value
-        let delivery = ComposerStoreDelivery(value: value, generation: committed)
+        let delivery = ComposerStoreDelivery(value: value, generation: settled)
         // Checked again on the main thread, where the composer closes it.
         await MainActor.run {
             guard let deliver = self.lock.withLock({ self.closed ? nil : self.deliver }) else { return }
@@ -289,9 +416,9 @@ extension OutboxSender: ComposerStorage {
         try store.writer.read { db in try ComposerStoreValue.fetch(db, sessionId: sessionId) }
     }
 
-    public func composerValues(sessionId: String) -> AsyncStream<ComposerStoreValue> {
+    public func composerValues(sessionId: String) -> AsyncThrowingStream<ComposerStoreValue, any Error> {
         let writer = store.writer
-        return AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
+        return AsyncThrowingStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
             // No removeDuplicates: a store that moves away and back between
             // two fetches must still wake the writer, which compares with
             // what the composer holds.
@@ -300,7 +427,7 @@ extension OutboxSender: ComposerStorage {
                 .start(
                     in: writer,
                     scheduling: .async(onQueue: Self.composerQueue),
-                    onError: { _ in continuation.finish() },
+                    onError: { continuation.finish(throwing: $0) },
                     onChange: { continuation.yield($0) }
                 )
             continuation.onTermination = { _ in cancellable.cancel() }
