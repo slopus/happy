@@ -51,10 +51,12 @@ accident.
 - [x] Session row actions as the iPhone shows them: the "Session" alert from `useSessionQuickActions.ts` (details, resume, fork, duplicate, archive). `SessionActionsPopover` is web-only — Home + Ops
   - Rename is absent from current happy-app and is not ported.
 - [ ] Pending chats placeholder (`PendingChatPlaceholder`, `pendingChats.ts`) — Home
-- [~] Update banner (`UpdateBanner`) and offline machines banner (`OfflineMachinesBanner`) — Home
-  - Done: the offline machines banner and the changelog's "What's new". Not yet: the store-version check (`POST /v1/version`).
+- [x] Update banner (`UpdateBanner`) and offline machines banner (`OfflineMachinesBanner`) — Home
+  - The offline machines banner, the changelog's "What's new", and the store-version check (`sync.ts` `fetchNativeUpdate`, `POST /v1/version`). The check runs when home loads and whenever the app becomes active. When it reports an update, "App Update Available" takes "What's new"'s place and opens the store.
+  - The check reads `update_required` and `update_url`, as happy-app does. `versionRoutes.ts` answers `{ updateUrl }` instead, so against the current server the store banner never shows, in happy-app or here.
   - The OTA update banner is excluded: a native build has no over-the-air JavaScript updates.
-- [ ] New session screen: machine, path, agent, model, permission mode, worktree (`new/index.tsx`, `newSessionProgress.ts`, `machineChoices.ts`) — Home + Ops
+- [x] New session screen as a phone shows it (`new/index.tsx`, `machineChoices.ts`): the machine, path and worktree rows over a glass composer with the harness, its settings (permission, model, effort), the microphone and Send. Each picker opens in a glass popover above the control that opened it: a search field once there are more than four rows, the path field with the computer's places, and a page per setting. The offline help shows while the harness's daemon is down. Send starts through `SessionStarter`, as the dock does, and the session then replaces the screen. The screen shares the account's draft with home's dock. It opens from "Start New Session" on the empty home, and from a project's `+` when the dock can't open — Home
+  - Deviations: back is the system navigation bar's, so off iOS 26 it is the plain chevron rather than happy-app's glass circle. The soft blur around a popover (`LocalBlurHalo`) is approximated with a partial blur. `autoSubmit` is not read, since nothing in happy-app sets it. The iPad sidebar, sheet and web layouts are not ported.
   - Current happy-app does not use recent paths; `recentMachinePaths` remains an untouched synced settings key for compatibility.
 - [ ] Machine screen: status, sessions, resume, stop daemon, rename (`machine/[id].tsx`) — Secondary + Ops
 

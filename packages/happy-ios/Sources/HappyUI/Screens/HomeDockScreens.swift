@@ -111,18 +111,7 @@ final class HomeDockController: NSObject {
     /// moves to the project, asking for a new workspace, and the composer
     /// opens on it.
     func createWorkspace(_ origin: WorkspaceOrigin) -> Bool {
-        let drafts = composer.drafts
-        drafts.setMachineId(origin.machineId)
-        if let projectId = origin.projectId {
-            // A catalog project is an identity: a worktree's directory
-            // says nothing about where it lives.
-            drafts.pickAgentType(.rig)
-            drafts.setProjectId(projectId)
-        } else {
-            drafts.setPath(origin.path)
-        }
-        drafts.setSessionType(.worktree)
-        drafts.setWorktreeKey(nil)
+        composer.drafts.prepareWorkspace(origin)
         return openFocus()
     }
 

@@ -5,10 +5,11 @@ import UIKit
 
 /// HomeListHeader.tsx on a phone: the offline plaque while every computer
 /// is offline, then the update banner. Each is an ItemGroup with 4 above
-/// and 16 below. Of UpdateBanner's three notices only "What's new" applies
-/// here: the store-update check and OTA reloads belong to the RN app.
+/// and 16 below. UpdateBanner shows one notice: the store update first,
+/// else "What's new". Its OTA reload belongs to the RN app.
 final class HomeListHeaderView: UIView {
     var onTroubleshoot: (() -> Void)?
+    var onNativeUpdate: (() -> Void)?
     var onWhatsNew: (() -> Void)?
 
     /// OfflineMachinesBanner.tsx's title; nil hides the plaque.
@@ -16,11 +17,16 @@ final class HomeListHeaderView: UIView {
         didSet { if offlineTitle != oldValue { rebuild() } }
     }
 
+    /// `useNativeUpdate`: the store link while this build is too old.
+    var showsNativeUpdate = false {
+        didSet { if showsNativeUpdate != oldValue { rebuild() } }
+    }
+
     var showsWhatsNew = false {
         didSet { if showsWhatsNew != oldValue { rebuild() } }
     }
 
-    var isEmpty: Bool { offlineTitle == nil && !showsWhatsNew }
+    var isEmpty: Bool { offlineTitle == nil && !showsNativeUpdate && !showsWhatsNew }
 
     private var groups: [ItemGroupView] = []
 
@@ -43,7 +49,15 @@ final class HomeListHeaderView: UIView {
                 self?.onTroubleshoot?()
             }))
         }
-        if showsWhatsNew {
+        if showsNativeUpdate {
+            groups.append(group(ItemRowView(
+                title: Strings.Home.nativeUpdateAvailable,
+                subtitle: Strings.Home.tapToUpdateAppStore,
+                icon: ItemIcon(.ionicons("download-outline"), tint: Palette.success, size: 28)
+            ) { [weak self] in
+                self?.onNativeUpdate?()
+            }))
+        } else if showsWhatsNew {
             groups.append(group(ItemRowView(
                 title: Strings.Home.whatsNew,
                 subtitle: Strings.Home.seeLatest,

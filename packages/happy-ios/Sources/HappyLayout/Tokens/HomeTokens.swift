@@ -136,3 +136,75 @@ extension TextStyles {
     /// The status line above the composer and its hint.
     public static let homeDockProgress = TextStyle(.regular, size: 11)
 }
+
+// The new-session screen (app/(app)/new/index.tsx).
+extension Palette {
+    /// theme.colors.glass.tint: the composer's liquid glass.
+    public static let glassTint = ColorToken(
+        light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.14),
+        dark: RGBA(red: 16 / 255, green: 16 / 255, blue: 16 / 255, alpha: 0.08)
+    )
+    /// theme.colors.glass.overlayTint: the picker popover's glass.
+    public static let glassOverlayTint = ColorToken(
+        light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.46),
+        dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.56)
+    )
+    /// theme.colors.glass.highlight: Send's rim.
+    public static let glassHighlight = ColorToken(
+        light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.94),
+        dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.22)
+    )
+    /// LocalBlurHalo's wash over its blur.
+    public static let pickerHaloDim = ColorToken(
+        light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.08),
+        dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.10)
+    )
+
+    public static let newSession: [ColorToken] = [glassTint, glassOverlayTint, glassHighlight, pickerHaloDim]
+}
+
+/// The new-session screen's materials, shadows and fades.
+public enum NewSessionMaterial {
+    /// MobileGlassSurface without the glass API: `intensity` 88 capped at
+    /// 36 on the ultra-thin material.
+    public static let glassFallbackFraction: CGFloat = 0.36
+    /// LocalBlurHalo: `intensity` 34.
+    public static let haloFraction: CGFloat = 0.34
+    /// `mobileComposerShadow`: glass.shadow, 0/10 radius 24, full opacity.
+    public static let composerShadowOffsetY: CGFloat = 10
+    public static let composerShadowRadius: CGFloat = 24
+    /// `nativePopoverSurface`: glass.shadow, 0/12 radius 32.
+    public static let popoverShadowOffsetY: CGFloat = 12
+    public static let popoverShadowRadius: CGFloat = 32
+    /// `configRowPressed`, and BubblePressable's own.
+    public static let pressedOpacity: CGFloat = 0.6
+    /// The place rows while the computer is offline.
+    public static let offlineOpacity: CGFloat = 0.4
+    /// An offline computer in the machine picker.
+    public static let dimmedOpacity: CGFloat = 0.45
+    /// Send while it can't be pressed.
+    public static let sendInactiveOpacity: CGFloat = 0.56
+}
+
+extension TextStyles {
+    /// `configLabel` on a phone.
+    public static let newSessionRow = TextStyle(.semiBold, size: 16)
+    /// `offlineHelpTitle` and `offlineHelpText`.
+    public static let newSessionOfflineTitle = TextStyle(.semiBold, size: 13)
+    public static let newSessionOfflineBody = TextStyle(.regular, size: 12, lineHeight: 18)
+    /// `composerAgentLabel`.
+    public static let newSessionAgent = TextStyle(.semiBold, size: 13)
+    /// A picker row (`optionText`) and the line under it.
+    public static let newSessionOption = TextStyle(.regular, size: 15)
+    public static let newSessionOptionDetail = TextStyle(.regular, size: 13)
+    /// `sectionLabel`.
+    public static let newSessionSection = TextStyle(.semiBold, size: 13)
+    /// `pathMetaText`.
+    public static let newSessionMeta = TextStyle(.regular, size: 13)
+    /// `emptyText`.
+    public static let newSessionEmpty = TextStyle(.regular, size: 14)
+    /// A settings row's name, over its value.
+    public static let newSessionSettingName = TextStyle(.regular, size: 12)
+    /// `composerPickerTitle`.
+    public static let newSessionPickerTitle = TextStyle(.semiBold, size: 14)
+}

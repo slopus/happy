@@ -67,6 +67,19 @@ public final class HomeViewController: UIViewController {
                 self?.header.status = status
             }
         }
+        // sync.ts `nativeUpdateSync`: asked at start and whenever the app
+        // becomes active.
+        checkNativeUpdate()
+        NotificationCenter.default.addObserver(self, selector: #selector(appBecameActive), name: UIApplication.didBecomeActiveNotification, object: nil)
+    }
+
+    @objc private func appBecameActive() {
+        checkNativeUpdate()
+    }
+
+    private func checkNativeUpdate() {
+        guard let request = NativeUpdateCheck.Request.current() else { return }
+        NativeUpdateCheck.shared.invalidate(api: session.api, request: request)
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -155,7 +168,7 @@ public final class HomeViewController: UIViewController {
         case .offline(let choices, let hasArchived):
             OfflineChecklistViewController(context: context, session: session, choices: choices, hasArchived: hasArchived)
         case .noSessions:
-            NoSessionsViewController(session: session)
+            NoSessionsViewController(context: context, session: session)
         case .list(let list, let offline):
             makeList(list, offline: offline)
         }

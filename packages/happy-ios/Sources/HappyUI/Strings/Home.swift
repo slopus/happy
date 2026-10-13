@@ -68,6 +68,10 @@ extension Strings {
         public static let actionUnknownError = "Unknown error"
 
         // The update banner (UpdateBanner.tsx).
+        /// `updateBanner.nativeUpdateAvailable`.
+        public static let nativeUpdateAvailable = "App Update Available"
+        /// `updateBanner.tapToUpdateAppStore`.
+        public static let tapToUpdateAppStore = "Tap to update in App Store"
         /// `updateBanner.whatsNew`.
         public static let whatsNew = "What's new"
         /// `updateBanner.seeLatest`.
@@ -99,5 +103,35 @@ extension Strings {
         }
         /// `common.create`.
         public static let create = "Create"
+    }
+
+    /// The new-session screen (app/(app)/new/index.tsx). Its picker copy
+    /// is written there in English; the rest is `t()`.
+    public enum NewSession {
+        /// `newSession.title`.
+        public static let title = "Start New Session"
+        /// EmptyMainScreen.tsx's button, written there in English.
+        public static let startNewSession = "Start New Session"
+        /// `newSession.machineOffline`.
+        public static let machineOffline = "Machine is offline"
+        /// `machine.offlineHelp`.
+        public static let offlineHelp = "• Run `happy daemon start` on your computer\n• Make sure your computer is online\n• Run `happy daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `npm install -g happy@latest`"
+        public static let happyAgentOffline = "Happy Agent is offline on this computer"
+        /// `newSession.switchMachinesHint`.
+        public static let switchMachinesHint = "• Switch machines by clicking on the machine above"
+        public static let searchMachines = "search machines..."
+        public static let searchWorktrees = "search worktrees..."
+        public static let searchWorkspaces = "search workspaces..."
+        public static let searchAgents = "search agents..."
+        public static let noResults = "no results"
+        public static let pathPlaceholder = "Enter project path"
+        public static func usingProject(_ name: String) -> String { "using project \(name)" }
+        public static let usingCustomPath = "using custom path above"
+        public static let recent = "Recent"
+        public static let noRecentProjects = "no recent projects yet"
+        /// `settings.title`.
+        public static let settings = "Settings"
+        public static let voiceInput = "Voice input"
+        public static func agent(_ label: String) -> String { "Agent: \(label)" }
     }
 }

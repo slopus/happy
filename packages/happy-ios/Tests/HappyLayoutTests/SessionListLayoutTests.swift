@@ -93,6 +93,23 @@ final class SessionListChromeLayoutTests: XCTestCase {
         assertFrame(layout.action, rect(130.5, 506.5, 132, 40))
     }
 
+    func testNoSessionsStartNewSessionStretchesAcross() {
+        let layout = NoSessionsLayout(.init(
+            size: phone,
+            safeArea: phoneUnderBar,
+            title: text("No sessions yet", lineHeight: 30),
+            description: text("Start one on a connected machine.", lineHeight: 22),
+            buttonHeight: 50,
+            action: fixed(132, 40)
+        ))
+        // 94 more content lifts everything by 47; the button follows the
+        // description's 24 and the action sits 4 under it.
+        assertFrame(layout.icon, rect(168.5, 317.5, 56, 56))
+        assertFrame(layout.description, rect(64.5, 431.5, 264, 22))
+        assertFrame(layout.button, rect(0, 477.5, 393, 50))
+        assertFrame(layout.action, rect(130.5, 531.5, 132, 40))
+    }
+
     func testTextAction() {
         let layout = TextActionLayout(width: 393, label: text("Show archived", lineHeight: 20))
         assertSize(layout.size, CGSize(width: 132, height: 40))

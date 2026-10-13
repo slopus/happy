@@ -48,6 +48,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
     private let banners = HomeListHeaderView()
     private lazy var actions = HomeSessionActions(context: context, session: session, host: self)
     private let changelogMarker = ChangelogReadMarker(storage: UserDefaultsStore(suiteName: ChangelogReadMarker.suiteName))
+    private var nativeUpdateObservation: AccountsObservation?
 
     /// Where rows start and stop under home's header and dock.
     var contentInsets: HomeContentInsets? {
@@ -96,7 +97,11 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
         tableView.addGestureRecognizer(longPress)
         banners.onTroubleshoot = { [weak self] in self?.openTroubleshoot() }
+        banners.onNativeUpdate = { [weak self] in self?.openStore() }
         banners.onWhatsNew = { [weak self] in self?.openWhatsNew() }
+        nativeUpdateObservation = NativeUpdateCheck.shared.observe { [weak self] in
+            self?.updateBanners()
+        }
         apply(animated: false)
         applyContentInsets()
     }
@@ -280,6 +285,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
                 : Strings.Troubleshoot.bannerTitleMany
         }
         banners.offlineTitle = offlineTitle
+        banners.showsNativeUpdate = NativeUpdateCheck.shared.updateURL != nil
         banners.showsWhatsNew = changelogMarker.hasUnread(latestTitle: ChangelogViewController.bundled.latestTitle)
         if banners.isEmpty {
             tableView.tableHeaderView = nil
@@ -301,6 +307,12 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
 
     private func openTroubleshoot() {
         push(.troubleshoot, context: context)
+    }
+
+    /// UpdateBanner.tsx `handleOpenStore`.
+    private func openStore() {
+        guard let link = NativeUpdateCheck.shared.updateURL, let url = URL(string: link) else { return }
+        UIApplication.shared.open(url)
     }
 
     /// UpdateBanner.tsx marks What's New read a second after opening it.
@@ -330,11 +342,12 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
     }
 
     /// ProjectRow's `+`: home's composer on this project's "Create New"
-    /// workspace, or the new-session screen without a dock.
+    /// workspace, or the new-session screen on it when the dock can't open.
     private func createWorkspace(_ entry: ProjectHomeEntry) {
         guard let origin = entry.origin else { return }
         if onCreateWorkspace?(origin) == true { return }
-        push(.newSession(machineId: origin.machineId, path: origin.path, prompt: nil), context: context)
+        NewSessionDraftStore.shared(for: context.account.localSettings).prepareWorkspace(origin)
+        push(.newSession(machineId: nil, path: nil, prompt: nil), context: context)
     }
 
     private func showProjectActions(_ entry: ProjectHomeEntry) {
@@ -420,10 +433,12 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
 
 /// A reachable computer with nothing on it yet.
 final class NoSessionsViewController: UIViewController {
+    private let context: AppContext
     private let session: AccountSession
     private let content = NoSessionsView()
 
-    init(session: AccountSession) {
+    init(context: AppContext, session: AccountSession) {
+        self.context = context
         self.session = session
         super.init(nibName: nil, bundle: nil)
     }
@@ -441,6 +456,10 @@ final class NoSessionsViewController: UIViewController {
         super.viewDidLoad()
         content.showArchived.onTap = { [weak self] in
             self?.session.updateSettings(["hideInactiveSessions": .bool(false)])
+        }
+        content.startNewSession.onTap = { [weak self] in
+            guard let self else { return }
+            self.push(.newSession(machineId: nil, path: nil, prompt: nil), context: self.context)
         }
     }
 }
