@@ -390,11 +390,15 @@ extension ChatRowRenderer {
         )
     }
 
-    static func diffPiece(_ source: DiffChunkSource, index: Int, toolId: String, showLineNumbers: Bool, expanded: Set<Int>) -> ChatPiece? {
+    /// `radius` and `corners` clip the diff where it ends a card.
+    static func diffPiece(
+        _ source: DiffChunkSource, index: Int, toolId: String, showLineNumbers: Bool, expanded: Set<Int>,
+        radius: CGFloat = 0, corners: CACornerMask = .all
+    ) -> ChatPiece? {
         guard !DiffFileItem.document(source.source).files.isEmpty else { return nil }
         let diff = ChatDiffPiece(source: source, showLineNumbers: showLineNumbers, expanded: expanded)
         return ChatPiece(measurable: Measurable { diff.plan(width: $0).size }) { frame in
-            ([.diff(diff.plan(width: frame.width), frame: frame, toolId: toolId, chunk: index)], [])
+            ([.diff(diff.plan(width: frame.width), frame: frame, toolId: toolId, chunk: index, radius: radius, corners: corners)], [])
         }
     }
 

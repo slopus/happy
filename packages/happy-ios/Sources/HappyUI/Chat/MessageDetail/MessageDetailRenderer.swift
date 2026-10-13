@@ -228,7 +228,9 @@ enum MessageDetailRenderer {
     }
 
     /// The full views' card: surface, a 1 pt divider rim, 8 round, the
-    /// header and the diff inside the rim. Nil with neither.
+    /// header and the diff inside the rim, which clips them to its inner
+    /// corners (`overflow: hidden`): the header its top ones, the diff its
+    /// bottom ones, or all four without a header. Nil with neither.
     static func diffCard(
         header: (path: String, kind: FileChangeKind, stats: DiffStats.Counts, movePath: String?)?,
         source: DiffChunkSource?, index: Int, toolId: String, input: MessageDetailInput
@@ -241,7 +243,10 @@ enum MessageDetailRenderer {
                 path: header.path, kind: header.kind, stats: header.stats, movePath: header.movePath, opens: nil, topRadius: radius - border
             )))
         }
-        if let source, let diff = ChatRowRenderer.diffPiece(source, index: index, toolId: toolId, showLineNumbers: input.showLineNumbers, expanded: input.diffExpanded[index] ?? []) {
+        if let source, let diff = ChatRowRenderer.diffPiece(
+            source, index: index, toolId: toolId, showLineNumbers: input.showLineNumbers, expanded: input.diffExpanded[index] ?? [],
+            radius: radius - border, corners: header == nil ? .all : .bottom
+        ) {
             parts.append(ChatStackEntry(piece: diff))
         }
         guard !parts.isEmpty else { return nil }

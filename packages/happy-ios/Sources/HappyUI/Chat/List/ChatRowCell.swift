@@ -148,8 +148,14 @@ final class ChatPlanView: UIView {
                 style(view, box)
                 view.startPulsing()
                 order.append(view)
-            case .diff(let diff, let frame, let toolId, let chunk):
+            case .diff(let diff, let frame, let toolId, let chunk, let radius, let corners):
                 let view = take(&diffs, &diffIndex) { DiffChunkView() }
+                // Set every time: the view may have ended another card.
+                // React Native's corners are circular.
+                view.layer.cornerRadius = radius
+                view.layer.maskedCorners = corners
+                view.layer.cornerCurve = .circular
+                view.layer.masksToBounds = radius > 0
                 view.onShowMore = { [weak self] file in
                     self?.onAction?(.diffShowMore(toolId: toolId, chunk: chunk, file: file))
                 }

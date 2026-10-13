@@ -98,7 +98,7 @@ accident.
   - ToolHeader's title; ToolFullView's terminal (CommandView with all output), Task, Edit, Write and MultiEdit full views, the generic sections, the outcome after a specialized view, and dev mode's raw JSON; a text message's whole text. Long output is drawn in pieces near the screen only (`TextChunks`).
   - The terminal is coloured as BashViewFull's SyntaxText does: the command as bash (not the activity label shown when there is no command), stdout and stderr as a shell session, by Secondary's Prism port and cache (`TerminalSyntax`), in the dark theme's diff colours over the panel in either appearance. It is tokenized while the screen's plan is made, off the main thread, waiting at most a second; what it didn't reach stays plain and is tokenized in the background for the next plan. The error and the empty-output line stay plain.
   - The Codex patch and diff full views are cards; a patch opened from one file's header shows that file alone (`file`), or every file when it is no longer in the patch.
-  - Partial: those cards round their header's corners but don't clip the diff at their bottom corners, as React Native's `overflow: hidden` does.
+  - The cards clip to their inner corners, as React Native's `overflow: hidden` does: the header its top ones, the diff its bottom ones (all four without a header).
 - [~] Agent goal bar, work group headers, rig activity bar (`AgentGoalBar`, `AgentWorkGroupHeader`, `RigActivityBar`) — Chat
   - Stop shows but sends nothing, as in happy-app (`agentGoalActionHandler.ts`). The goal bar has no details sheet; happy-app doesn't open one from the chat either.
 - [~] Empty and pending states (`EmptyMessages`, `ChatFooter`) — Chat
