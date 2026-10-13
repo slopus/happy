@@ -115,12 +115,12 @@ final class SyncPerfTests: XCTestCase {
             try store.applyMessagePage(sessionId: "s", messages: (1...2000).map {
                 ChatRecords.stored(ChatRecords.text("m\($0)", at: Int64($0)), seq: $0)
             })
-            var iterator = LocalChatFeed(store: store).snapshots(sessionId: "s").makeAsyncIterator()
-            let first = await iterator.next()
+            let stream = LocalChatFeed(store: store).snapshots(sessionId: "s")
+            let first = try await syncPerfNext(stream)
             XCTAssertEqual(first?.messages.count, 2000)
             let start = ContinuousClock.now
             try store.applyMessagePage(sessionId: "s", messages: [ChatRecords.stored(ChatRecords.text("new", at: 2001), seq: 2001)])
-            let next = await iterator.next()
+            let next = try await syncPerfNext(stream)
             let duration = start.duration(to: .now).components
             times.append(Double(duration.seconds) * 1000 + Double(duration.attoseconds) / 1e15)
             XCTAssertEqual(next?.messages.count, 2001)

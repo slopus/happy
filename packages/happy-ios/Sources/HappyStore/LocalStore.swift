@@ -19,6 +19,9 @@ import HappyWire
 ///   - messages are keyed by server id and `(sessionId, seq)`.
 public final class LocalStore: Sendable {
     public let writer: any DatabaseWriter
+    let homeObservation: SharedValueObservation<HomeSnapshot>
+    let settingsObservation: SharedValueObservation<SettingsSnapshot>
+    let machinesObservation: SharedValueObservation<MachinesSnapshot>
 
     /// Opens (creating if needed) the store at `url`, in WAL mode so the UI
     /// can read while sync writes.
@@ -39,6 +42,26 @@ public final class LocalStore: Sendable {
 
     public init(writer: any DatabaseWriter) throws {
         self.writer = writer
+        let delivery = DispatchQueue(label: "HappyStore.observations", qos: .userInitiated)
+        // Ciphertexts, versions and message cursors do not render on home.
+        // Scope invalidation to the columns its consumers actually use.
+        let homeSessionRegion = SQLRequest<Row>(sql: """
+            SELECT id, createdAt, updatedAt, active, activeAt, projectId,
+                   metadata, agentState, decryptable, thinking, unread, archiving
+            FROM session
+            """)
+        homeObservation = ValueObservation.tracking(
+            region: homeSessionRegion, MachineRecord.all(), ProjectRecord.all(),
+            AccountSettingsRecord.all(), PendingSettingsRecord.all(), AccountProfileRecord.all(),
+            SyncStateRecord.filter(Column("key") == SyncCursor.machinesLastSync.rawValue),
+            fetch: { db in try Self.fetchHomeSnapshot(db) }
+        ).removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))
+        settingsObservation = ValueObservation.trackingConstantRegion { db in
+            try Self.fetchSettingsSnapshot(db)
+        }.removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))
+        machinesObservation = ValueObservation.trackingConstantRegion { db in
+            try Self.fetchMachinesSnapshot(db)
+        }.removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))
         try Schema.migrator.migrate(writer)
         // Live state from a previous run is stale: the server re-sends
         // `thinking` every few seconds while it holds, and an archive that
@@ -324,7 +347,7 @@ public final class LocalStore: Sendable {
     /// or to the machine sync cursor. Home decides what to show from this.
     @MainActor
     public func observeMachines(onChange: @escaping @MainActor (MachinesSnapshot) -> Void) -> StoreObservation {
-        StoreObservation(observe({ db in try Self.fetchMachinesSnapshot(db) }, onChange: onChange))
+        Self.deliverOnMain(machineSnapshots(), onChange: onChange)
     }
 
     static func fetchMachinesSnapshot(_ db: Database) throws -> MachinesSnapshot {
@@ -419,7 +442,7 @@ public final class LocalStore: Sendable {
 
     @MainActor
     public func observeHome(onChange: @escaping @MainActor (HomeSnapshot) -> Void) -> StoreObservation {
-        StoreObservation(observe({ db in try Self.fetchHomeSnapshot(db) }, onChange: onChange))
+        Self.deliverOnMain(homeSnapshots(), onChange: onChange)
     }
 
     static func fetchHomeSnapshot(_ db: Database) throws -> HomeSnapshot {
@@ -438,7 +461,7 @@ public final class LocalStore: Sendable {
 
     @MainActor
     public func observeSettings(onChange: @escaping @MainActor (SettingsSnapshot) -> Void) -> StoreObservation {
-        StoreObservation(observe({ db in try Self.fetchSettingsSnapshot(db) }, onChange: onChange))
+        Self.deliverOnMain(settingsSnapshots(), onChange: onChange)
     }
 
     static func fetchSettingsSnapshot(_ db: Database) throws -> SettingsSnapshot {
