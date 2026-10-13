@@ -41,6 +41,16 @@ public final class AccountController {
     private var busy = false
     private var observers: [UUID: AccountsObserver] = [:]
     private var cancelProfileObservation: (() -> Void)?
+    // Internal injection seams exercise the actual suspension and I/O paths.
+    var registryWriter = AccountRegistryWriter()
+    var readRegistryDisplays: @Sendable ([AccountRegistryEntry], [String: LocalStore], URL?) throws -> [String: AccountDisplay?] = AccountController.readDisplays
+    var prepareSessionDirectory: @Sendable (URL, String) throws -> Void = AccountSession.prepareDirectory
+    private var registryRevision: UInt64 = 0
+    private var profileGeneration: UInt64 = 0
+    private var profileGenerations: [String: UInt64] = [:]
+    private var profileObservationGeneration: UInt64 = 0
+    private var profileDirty = false
+    private var profilePersistenceTask: Task<Void, Never>?
 
     public init(
         serverConfig: ServerConfig,
@@ -182,7 +192,7 @@ public final class AccountController {
     public func switchAccount(to id: AccountSummary.ID) async throws {
         guard !busy else { throw AccountSwitchError.operationInProgress }
         busy = true
-        defer { busy = false }
+        defer { finishOperation() }
         let values = try await reconcile()
         guard let entry = registry.entries.first(where: { $0.id == id }), let value = values[id] else {
             throw AccountSwitchError.unknownAccount
@@ -191,7 +201,7 @@ public final class AccountController {
         let next = entry.serverConfirmed ? try await makeSession(value.credentials, entry: entry) : nil
         var updated = registry
         updated.activeID = id
-        try updated.save(directory: storeDirectory)
+        updated = try await persistRegistry(updated, preservingProfilesSince: profileGeneration)
         if let next {
             await activate(next, registry: updated)
         } else {
@@ -204,7 +214,7 @@ public final class AccountController {
     public func confirmServer(_ url: URL, for id: AccountSummary.ID) async throws {
         guard !busy else { throw AccountSwitchError.operationInProgress }
         busy = true
-        defer { busy = false }
+        defer { finishOperation() }
         let url = try ServerConfig.validate(url.absoluteString)
         let values = try await reconcile()
         guard let index = registry.entries.firstIndex(where: { $0.id == id }),
@@ -213,10 +223,10 @@ public final class AccountController {
         updated.entries[index].serverURL = url
         updated.entries[index].serverConfirmed = true
         updated.activeID = id
-        try updated.save(directory: storeDirectory)
+        updated = try await persistRegistry(updated, preservingProfilesSince: profileGeneration)
         registry = updated
         let next = try await makeSession(value.credentials, entry: updated.entries[index])
-        await activate(next, registry: updated)
+        await activate(next, registry: registry)
     }
 
     public var authService: AuthService {
@@ -234,7 +244,7 @@ public final class AccountController {
     public func restore() async {
         guard session == nil, !busy else { return }
         busy = true
-        defer { busy = false }
+        defer { finishOperation() }
         do {
             let values = try await reconcile()
             guard let id = registry.activeID,
@@ -254,21 +264,22 @@ public final class AccountController {
     public func signIn(_ credentials: Credentials) async throws {
         guard !busy else { throw AccountSwitchError.operationInProgress }
         busy = true
-        defer { busy = false }
+        defer { finishOperation() }
         let id = try accountID(credentials)
         _ = try await reconcile()
+        let generation = profileGeneration
         let existing = registry.entries.first { $0.id == id }
         guard existing?.serverConfirmed != false else { throw AccountSwitchError.serverNeedsConfirmation }
         let location = try existing?.location ?? (accountCredentialStore.sharedIsEmpty() ? .shared : .own)
         let entry = AccountRegistryEntry(id: id, serverURL: authenticationServerURL, location: location,
-                                         addedOrder: existing?.addedOrder ?? nextOrder)
+                                         addedOrder: existing?.addedOrder ?? nextOrder, display: existing?.display)
         let next = try await makeSession(credentials, entry: entry)
         try accountCredentialStore.save(StoredAccountCredentials(credentials: credentials, serverURL: entry.serverURL), id: id, location: location)
         var updated = registry
         updated.entries.removeAll { $0.id == id }
         updated.entries.append(entry)
         updated.activeID = id
-        try updated.save(directory: storeDirectory)
+        updated = try await persistRegistry(updated, preservingProfilesSince: generation)
         isAddingAccount = false
         await activate(next, registry: updated)
     }
@@ -286,11 +297,12 @@ public final class AccountController {
     public func signOut(accountID id: AccountSummary.ID) async throws {
         guard !busy else { throw AccountSwitchError.operationInProgress }
         busy = true
-        defer { busy = false }
+        defer { finishOperation() }
         let values = try await reconcile()
         guard let entry = registry.entries.first(where: { $0.id == id }) else { throw AccountSwitchError.unknownAccount }
         await unregisterPushToken(of: entry, credentials: values[id]?.credentials)
         var updated = registry
+        let generation = profileGeneration
         updated.entries.removeAll { $0.id == id }
         let wasActive = session.map { $0.keys.anonID == id } ?? (registry.activeID == id)
         let oldSession = wasActive ? session : nil
@@ -302,19 +314,19 @@ public final class AccountController {
             next = nil
         }
         if wasActive { updated.activeID = following?.id }
-        try updated.save(directory: storeDirectory)
+        updated = try await persistRegistry(updated, preservingProfilesSince: generation)
         do {
             try accountCredentialStore.remove(id: id, location: entry.location)
         } catch {
-            try? registry.save(directory: storeDirectory)
+            _ = try? await persistRegistry(registry, preservingProfilesSince: profileGeneration)
             throw error
         }
         if wasActive {
-            cancelProfileObservation?()
-            cancelProfileObservation = nil
+            stopProfileObservation()
             await oldSession?.stop()
         }
         registry = updated
+        profileGenerations.removeValue(forKey: id)
         if wasActive {
             if let next {
                 localSettings = settings(for: next.keys.anonID)
@@ -385,7 +397,8 @@ public final class AccountController {
     /// Reconciles only after every credential read succeeds. A missing item
     /// is different from a temporary Keychain access error.
     private func reconcile() async throws -> [String: StoredAccountCredentials] {
-        var updated = registryLoaded ? registry : try AccountRegistry.load(directory: storeDirectory)
+        let generation = profileGeneration
+        var updated = registryLoaded ? registry : try await registryWriter.load(directory: storeDirectory)
         let shared = try accountCredentialStore.shared()
         let own = try accountCredentialStore.ownAccounts()
         let sharedID = shared.flatMap { try? accountID($0) }
@@ -427,31 +440,101 @@ public final class AccountController {
         let entries = updated.entries
         let memoryStores = self.memoryStores
         let directory = storeDirectory
-        let displays = try await Task.detached {
-            var displays: [String: AccountDisplay?] = [:]
-            for entry in entries {
-                if let store = memoryStores[entry.id] {
-                    displays[entry.id] = .some(try store.profile().map(AccountDisplay.init))
-                } else if let directory {
-                    // A temporary read failure keeps the cached presentation.
-                    do { displays[entry.id] = .some(try AccountDisplay.read(directory: directory, id: entry.id)) }
-                    catch { }
-                }
-            }
-            return displays
-        }.value
+        let readDisplays = readRegistryDisplays
+        let displays = try await Task.detached { try readDisplays(entries, memoryStores, directory) }.value
         for index in updated.entries.indices {
             if let display = displays[updated.entries[index].id] { updated.entries[index].display = display }
         }
         if !updated.entries.contains(where: { $0.id == updated.activeID }) {
             updated.activeID = updated.entries.min { $0.addedOrder < $1.addedOrder }?.id
         }
-        try updated.save(directory: storeDirectory)
+        updated = try await persistRegistry(updated, preservingProfilesSince: generation)
         let changed = registry != updated
         registry = updated
         registryLoaded = true
         if changed { notifyAccounts() }
         return values
+    }
+
+    private nonisolated static func readDisplays(
+        entries: [AccountRegistryEntry], stores: [String: LocalStore], directory: URL?
+    ) throws -> [String: AccountDisplay?] {
+        #if DEBUG
+        dispatchPrecondition(condition: .notOnQueue(.main))
+        #endif
+        var displays: [String: AccountDisplay?] = [:]
+        for entry in entries {
+            if let store = stores[entry.id] {
+                displays[entry.id] = .some(try store.profile().map(AccountDisplay.init))
+            } else if let directory {
+                // A temporary read failure keeps the cached presentation.
+                do { displays[entry.id] = .some(try AccountDisplay.read(directory: directory, id: entry.id)) }
+                catch { }
+            }
+        }
+        return displays
+    }
+
+    private func mergingProfiles(into value: AccountRegistry, since generation: UInt64) -> AccountRegistry {
+        var result = value
+        for index in result.entries.indices {
+            let id = result.entries[index].id
+            guard (profileGenerations[id] ?? 0) > generation,
+                  let live = registry.entries.first(where: { $0.id == id }) else { continue }
+            result.entries[index].display = live.display
+        }
+        return result
+    }
+
+    /// Critical operations publish only the value successfully persisted. A
+    /// profile arriving during I/O is merged and saved again before returning.
+    /// Only main allocates revisions, and busy defers routine requests. Thus a
+    /// critical request cannot be rejected by a newer request; the rejection
+    /// branch is defensive, while generation changes are the normal retry case.
+    private func persistRegistry(_ value: AccountRegistry, preservingProfilesSince generation: UInt64) async throws -> AccountRegistry {
+        while true {
+            let updated = mergingProfiles(into: value, since: generation)
+            let currentGeneration = profileGeneration
+            registryRevision += 1
+            let revision = registryRevision
+            let written = try await registryWriter.save(updated, directory: storeDirectory, revision: revision)
+            guard written, currentGeneration == profileGeneration else { continue }
+            profileDirty = false
+            return updated
+        }
+    }
+
+    private func finishOperation() {
+        busy = false
+        scheduleProfilePersistence()
+    }
+
+    /// Profile publication is immediate; failures keep that cached display.
+    /// During a transition the critical writer merges it into the candidate,
+    /// rather than allowing an old inventory to supersede that transition.
+    private func scheduleProfilePersistence() {
+        guard profileDirty, !busy, profilePersistenceTask == nil else { return }
+        let value = registry
+        let generation = profileGeneration
+        registryRevision += 1
+        let revision = registryRevision
+        let writer = registryWriter
+        let directory = storeDirectory
+        profilePersistenceTask = Task { [weak self] in
+            let written = (try? await writer.save(value, directory: directory, revision: revision)) == true
+            guard let self else { return }
+            self.profilePersistenceTask = nil
+            if written, generation == self.profileGeneration { self.profileDirty = false }
+            // Retry only for a newer profile, not indefinitely on an I/O error.
+            if generation != self.profileGeneration { self.scheduleProfilePersistence() }
+        }
+    }
+
+    /// Waits for currently scheduled routine writes, useful at lifecycle/test
+    /// boundaries. Critical operations already await their own persistence.
+    func flushProfilePersistence() async {
+        scheduleProfilePersistence()
+        while let task = profilePersistenceTask { await task.value }
     }
 
     private func settings(for id: String) -> LocalSettings {
@@ -465,6 +548,7 @@ public final class AccountController {
         guard entry.serverConfirmed else { throw AccountSwitchError.serverNeedsConfirmation }
         let existing = memoryStores[entry.id]
         let directory = storeDirectory
+        let prepareDirectory = prepareSessionDirectory
         let dependencies = AccountSession.Dependencies(
             serverURL: entry.serverURL, clientID: clientID, transport: transport,
             connector: connector, appState: appState, deliveryActivity: deliveryActivity)
@@ -472,7 +556,7 @@ public final class AccountController {
             let store: LocalStore
             var files: URL?
             if let directory {
-                try AccountSession.prepareDirectory(directory: directory, id: entry.id)
+                try prepareDirectory(directory, entry.id)
                 store = try LocalStore.open(at: AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("store.sqlite"))
                 files = AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("files", isDirectory: true)
             } else {
@@ -485,8 +569,7 @@ public final class AccountController {
     }
 
     private func activate(_ next: AccountSession, registry: AccountRegistry) async {
-        cancelProfileObservation?()
-        cancelProfileObservation = nil
+        stopProfileObservation()
         await session?.stop()
         self.registry = registry
         localSettings = settings(for: next.keys.anonID)
@@ -497,8 +580,7 @@ public final class AccountController {
     }
 
     private func selectUnconfirmed(registry: AccountRegistry) async {
-        cancelProfileObservation?()
-        cancelProfileObservation = nil
+        stopProfileObservation()
         await session?.stop()
         self.registry = registry
         localSettings = LocalSettings(storage: InMemoryKeyValueStore())
@@ -507,6 +589,8 @@ public final class AccountController {
     }
 
     private func observeProfile(of session: AccountSession) {
+        profileObservationGeneration += 1
+        let generation = profileObservationGeneration
         let task = Task.detached { [weak self] in
             var previous: AccountDisplay??
             for await snapshot in session.settingsFeed.snapshots() {
@@ -514,18 +598,27 @@ public final class AccountController {
                 let display = snapshot.profile.map(AccountDisplay.init)
                 guard previous != .some(display) else { continue }
                 previous = .some(display)
-                await self?.applyProfileDisplay(display, session: session)
+                await self?.applyProfileDisplay(display, session: session, generation: generation)
             }
         }
         cancelProfileObservation = { task.cancel() }
     }
 
-    private func applyProfileDisplay(_ display: AccountDisplay?, session source: AccountSession) {
-        guard !Task.isCancelled, session === source,
+    private func stopProfileObservation() {
+        profileObservationGeneration += 1
+        cancelProfileObservation?()
+        cancelProfileObservation = nil
+    }
+
+    private func applyProfileDisplay(_ display: AccountDisplay?, session source: AccountSession, generation: UInt64) {
+        guard !Task.isCancelled, generation == profileObservationGeneration, session === source,
               let index = registry.entries.firstIndex(where: { $0.id == source.keys.anonID }),
               registry.entries[index].display != display else { return }
         registry.entries[index].display = display
-        try? registry.save(directory: storeDirectory)
+        profileGeneration += 1
+        profileGenerations[source.keys.anonID] = profileGeneration
+        profileDirty = true
         notifyAccounts()
+        scheduleProfilePersistence()
     }
 }
