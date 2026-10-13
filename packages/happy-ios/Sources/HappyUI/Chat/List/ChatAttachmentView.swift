@@ -14,15 +14,24 @@ protocol ChatAttachmentProviding: AnyObject {
 /// useAttachmentImage for one session of one account: its pictures,
 /// downloaded and decrypted by `load`, decoded off the main thread at no
 /// more than FileView draws, and kept in the account's own
-/// `AttachmentPictures`, never another account's.
+/// `AttachmentPictures`, never another account's. Their thumbhashes are
+/// decoded off the main thread too, and kept in the account's own
+/// `AccountPictures`.
 @MainActor
 final class ChatAttachmentImages: NSObject {
     private let pictures: AttachmentPictures
+    private let placeholders: AccountPictures?
     private let sessionId: String
     private let load: @Sendable (_ ref: String) async throws -> Data
 
-    init(pictures: AttachmentPictures, sessionId: String, load: @escaping @Sendable (_ ref: String) async throws -> Data) {
+    init(
+        pictures: AttachmentPictures,
+        placeholders: AccountPictures? = nil,
+        sessionId: String,
+        load: @escaping @Sendable (_ ref: String) async throws -> Data
+    ) {
         self.pictures = pictures
+        self.placeholders = placeholders
         self.sessionId = sessionId
         self.load = load
         super.init()
@@ -31,6 +40,17 @@ final class ChatAttachmentImages: NSObject {
 
     @objc private func memoryWarning() {
         pictures.removeAll()
+        placeholders?.removeAll()
+    }
+
+    /// A thumbhash already decoded, or nil.
+    func cachedPlaceholder(_ thumbhash: String) -> UIImage? {
+        placeholders?.cachedPlaceholderImage(thumbhash)
+    }
+
+    /// The thumbhash as a picture, decoded off the main thread.
+    func placeholder(_ thumbhash: String) async -> UIImage? {
+        await placeholders?.placeholderImage(thumbhash)
     }
 
     func cached(_ ref: String) -> UIImage? {
@@ -118,6 +138,7 @@ final class ChatAttachmentView: UIView {
     private let badgeIcon = UIImageView()
     private var attachment: ChatAttachment?
     private var task: Task<Void, Never>?
+    private var placeholderTask: Task<Void, Never>?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -150,8 +171,11 @@ final class ChatAttachmentView: UIView {
         guard attachment != self.attachment else { return }
         task?.cancel()
         task = nil
+        placeholderTask?.cancel()
+        placeholderTask = nil
         self.attachment = attachment
-        placeholder.image = attachment?.thumbhash.flatMap(ThumbHashImages.image(base64:))
+        // Only one already decoded; any other is decoded off the main thread.
+        placeholder.image = attachment?.thumbhash.flatMap { source()?.cachedPlaceholder($0) }
         picture.image = nil
         picture.alpha = 1
         badge.isHidden = true
@@ -173,7 +197,9 @@ final class ChatAttachmentView: UIView {
     }
 
     private func loadIfNeeded() {
-        guard task == nil, window != nil, let attachment, picture.image == nil, badge.isHidden, let images = source() else { return }
+        guard window != nil, let attachment, let images = source() else { return }
+        loadPlaceholderIfNeeded(attachment, from: images)
+        guard task == nil, picture.image == nil, badge.isHidden else { return }
         // Before the first frame it is drawn in, so no fade.
         if let image = images.cached(attachment.ref) {
             picture.image = image
@@ -190,6 +216,21 @@ final class ChatAttachmentView: UIView {
             self.picture.image = image
             self.picture.alpha = 0
             UIView.animate(withDuration: FileViewLayout.Metrics.fadeIn) { self.picture.alpha = 1 }
+        }
+    }
+
+    /// The thumbhash, under the picture and under the badge when the
+    /// picture can't be had.
+    private func loadPlaceholderIfNeeded(_ attachment: ChatAttachment, from images: ChatAttachmentImages) {
+        guard placeholderTask == nil, placeholder.image == nil, let thumbhash = attachment.thumbhash else { return }
+        if let image = images.cachedPlaceholder(thumbhash) {
+            placeholder.image = image
+            return
+        }
+        placeholderTask = Task { @MainActor [weak self] in
+            let image = await images.placeholder(thumbhash)
+            guard !Task.isCancelled, let self, self.attachment == attachment else { return }
+            self.placeholder.image = image
         }
     }
 

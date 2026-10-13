@@ -68,7 +68,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// The session's pictures, for the attachments in the list, kept with
     /// this account's.
     private(set) lazy var chatAttachments: ChatAttachmentImages? = ChatAttachmentImages(
-        pictures: account.attachmentPictures, sessionId: sessionId, load: services.attachment
+        pictures: account.attachmentPictures, placeholders: context.account.pictures(for: account.keys.anonID),
+        sessionId: sessionId, load: services.attachment
     )
     private weak var questionSheet: AgentQuestionSheetController?
     /// Questions a sent message answers instead, by the message's local

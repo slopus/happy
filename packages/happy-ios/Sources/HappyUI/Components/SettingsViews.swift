@@ -80,14 +80,20 @@ public final class SettingsProfileHeaderView: UIView {
         didSet { if content != oldValue { apply() } }
     }
 
+    /// The account the picture is fetched for, from its own cache.
+    public var pictures: AccountPictures? {
+        didSet { if pictures !== oldValue { apply() } }
+    }
+
     let card = UIView()
     let avatarView = AvatarView()
     let photo = RemoteImageView(size: SettingsProfileHeaderLayout.Metrics.avatarSize)
     let nameLabel = StyledLabel(style: TextStyles.profileName, color: Palette.text, alignment: .center)
     let bioLabel = StyledLabel(style: TextStyles.profileBio, color: Palette.textSecondary, alignment: .center)
 
-    public init(content: Content) {
+    public init(content: Content, pictures: AccountPictures? = nil) {
         self.content = content
+        self.pictures = pictures
         super.init(frame: .zero)
         card.backgroundColor = UIColor(Palette.surface)
         card.layer.cornerRadius = SettingsProfileHeaderLayout.Metrics.cornerRadius
@@ -137,8 +143,7 @@ public final class SettingsProfileHeaderView: UIView {
             style: content.style,
             monochrome: content.monochrome
         )
-        photo.placeholder = content.thumbhash.flatMap(ThumbHashImages.image(base64:))
-        photo.url = content.avatarURL
+        photo.show(content.avatarURL, thumbhash: content.thumbhash, from: pictures)
         setNeedsLayout()
         superview?.setNeedsLayout()
     }
@@ -149,20 +154,13 @@ public final class SettingsProfileHeaderView: UIView {
     }
 }
 
-/// A round picture fetched from a URL (expo-image with a disk cache). The
-/// placeholder (a decoded thumbhash) shows until the picture arrives.
+/// A round picture fetched from a URL (expo-image with a disk cache),
+/// from its account's own `AccountPictures`. The placeholder (a decoded
+/// thumbhash) shows until the picture arrives.
 public final class RemoteImageView: UIImageView {
-    public var url: URL? {
-        didSet {
-            guard url != oldValue else { return }
-            load()
-        }
-    }
-
-    public var placeholder: UIImage? {
-        didSet { if image == nil || image === oldValue { image = placeholder } }
-    }
-
+    public private(set) var url: URL?
+    private var thumbhash: String?
+    private weak var pictures: AccountPictures?
     private var task: Task<Void, Never>?
 
     public init(size: CGFloat) {
@@ -178,81 +176,35 @@ public final class RemoteImageView: UIImageView {
         fatalError("init(coder:) is not supported")
     }
 
-    private func load() {
+    /// Shows `url`'s picture from `pictures`, the thumbhash until it comes.
+    public func show(_ url: URL?, thumbhash: String?, from pictures: AccountPictures?) {
+        guard url != self.url || thumbhash != self.thumbhash || pictures !== self.pictures else { return }
         task?.cancel()
+        task = nil
+        self.url = url
+        self.thumbhash = thumbhash
+        self.pictures = pictures
         isHidden = url == nil
-        guard let url else {
-            image = nil
-            return
-        }
-        if let cached = RemoteImages.shared.cached(url) {
+        image = nil
+        guard let url, let pictures else { return }
+        if let cached = pictures.cachedImage(url) {
             image = cached
             return
         }
-        image = placeholder
+        image = thumbhash.flatMap(pictures.cachedPlaceholderImage)
         task = Task { @MainActor [weak self] in
-            let image = await RemoteImages.shared.load(url)
-            guard !Task.isCancelled, let self, self.url == url, let image else { return }
+            if self?.image == nil, let thumbhash, let placeholder = await pictures.placeholderImage(thumbhash) {
+                guard !Task.isCancelled, let self, self.isShowing(url, from: pictures) else { return }
+                if self.image == nil { self.image = placeholder }
+            }
+            let image = await pictures.image(url)
+            guard !Task.isCancelled, let self, self.isShowing(url, from: pictures), let image else { return }
             self.image = image
         }
     }
-}
 
-/// Fetched pictures, kept in memory and in URLCache's disk cache so they
-/// show offline once seen.
-@MainActor
-final class RemoteImages {
-    static let shared = RemoteImages()
-
-    private let cache = NSCache<NSURL, UIImage>()
-    private var inFlight: [URL: Task<UIImage?, Never>] = [:]
-
-    func cached(_ url: URL) -> UIImage? {
-        cache.object(forKey: url as NSURL)
-    }
-
-    func load(_ url: URL) async -> UIImage? {
-        if let image = cached(url) { return image }
-        if let task = inFlight[url] { return await task.value }
-        let task = Task<UIImage?, Never> {
-            let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
-            guard let (data, _) = try? await URLSession.shared.data(for: request) else { return nil }
-            return UIImage(data: data)
-        }
-        inFlight[url] = task
-        let image = await task.value
-        inFlight[url] = nil
-        if let image { cache.setObject(image, forKey: url as NSURL) }
-        return image
-    }
-}
-
-/// Thumbhash placeholders as images, decoded once per hash.
-@MainActor
-enum ThumbHashImages {
-    private static let cache = NSCache<NSString, UIImage>()
-
-    static func image(base64: String) -> UIImage? {
-        if let image = cache.object(forKey: base64 as NSString) { return image }
-        guard let decoded = ThumbHash.decode(base64: base64) else { return nil }
-        let bytesPerRow = decoded.width * 4
-        guard let provider = CGDataProvider(data: Data(decoded.rgba) as CFData),
-              let cgImage = CGImage(
-                  width: decoded.width,
-                  height: decoded.height,
-                  bitsPerComponent: 8,
-                  bitsPerPixel: 32,
-                  bytesPerRow: bytesPerRow,
-                  space: CGColorSpaceCreateDeviceRGB(),
-                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
-                  provider: provider,
-                  decode: nil,
-                  shouldInterpolate: true,
-                  intent: .defaultIntent
-              ) else { return nil }
-        let image = UIImage(cgImage: cgImage)
-        cache.setObject(image, forKey: base64 as NSString)
-        return image
+    private func isShowing(_ url: URL, from pictures: AccountPictures) -> Bool {
+        self.url == url && self.pictures === pictures
     }
 }
 

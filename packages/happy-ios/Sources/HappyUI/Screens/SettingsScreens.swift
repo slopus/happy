@@ -175,11 +175,14 @@ public final class SettingsViewController: UIViewController {
                 style: settings.avatarStyle,
                 monochrome: settings.avatarMonochrome
             )
+            // This account's own pictures, never another's.
+            let pictures = context.account.session.flatMap { context.account.pictures(for: $0.keys.anonID) }
             if let profileHeader {
                 profileHeader.content = content
+                profileHeader.pictures = pictures
                 return profileHeader
             }
-            let view = SettingsProfileHeaderView(content: content)
+            let view = SettingsProfileHeaderView(content: content, pictures: pictures)
             profileHeader = view
             return view
         }
