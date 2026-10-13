@@ -16,7 +16,11 @@ extension SessionStarter {
             metadataTransport: session.realtime,
             refreshSessions: { await sync.run(.sessions) },
             paintBotFace: { try await BotFacePainter.png(seed: $0) },
-            attachmentPlan: { [sender = session.sender] in try sender.attachmentPlan($0, sessionId: $1) }
+            // The store read goes off main. Becomes
+            // `sender.attachmentPlan(for:sessionId:)` once that lands.
+            attachmentPlan: { [sender = session.sender] message, sessionId in
+                try await Task.detached { try sender.attachmentPlan(message, sessionId: sessionId) }.value
+            }
         ))
     }
 }

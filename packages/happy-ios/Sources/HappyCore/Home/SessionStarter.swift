@@ -111,8 +111,8 @@ public final class SessionStarter {
         /// bytes, painted off the main thread.
         public var paintBotFace: @Sendable (String) async throws -> Data
         /// `OutboxSender.attachmentPlan`: which pictures the session's agent
-        /// takes.
-        public var attachmentPlan: @Sendable (OutgoingMessage, String) throws -> AttachmentSendPlan
+        /// takes. It reads the store, so it runs off the main thread.
+        public var attachmentPlan: @Sendable (OutgoingMessage, String) async throws -> AttachmentSendPlan
         public var spawnRequests: SpawnRequests
         public var sleep: @Sendable (Int) async -> Void
 
@@ -124,7 +124,7 @@ public final class SessionStarter {
             metadataTransport: any MetadataUpdateTransport,
             refreshSessions: @escaping @Sendable () async -> Void,
             paintBotFace: @escaping @Sendable (String) async throws -> Data,
-            attachmentPlan: @escaping @Sendable (OutgoingMessage, String) throws -> AttachmentSendPlan,
+            attachmentPlan: @escaping @Sendable (OutgoingMessage, String) async throws -> AttachmentSendPlan,
             spawnRequests: SpawnRequests = .shared,
             sleep: @escaping @Sendable (Int) async -> Void = { ms in try? await Task.sleep(for: .milliseconds(ms)) }
         ) {
@@ -344,17 +344,25 @@ public final class SessionStarter {
                 let sender = environment.sender
                 let message = OutgoingMessage(text: launch.prompt, attachments: launch.attachments, source: .newSession)
                 // sync.ts `sendMessage`: pictures the agent can't take are
-                // named first; with nothing else to send, nothing goes.
-                if !launch.attachments.isEmpty,
-                   let plan = try? environment.attachmentPlan(message, sessionId),
-                   plan.shouldShowUnsupportedAlert {
-                    presenter?.showAttachmentsNotSupported()
-                    if !plan.shouldSendText || (launch.prompt.isEmpty && plan.accepted.isEmpty) {
-                        if !isCurrent() {
-                            requests.complete(clientRequestId)
-                            Task { @MainActor in await self.stopAbandoned(sessionId, launch: launch, run: run) }
-                        }
+                // named first; with nothing else to send, nothing goes. A
+                // plan that can't be read leaves the send to decide.
+                if !launch.attachments.isEmpty {
+                    let attachmentPlan = environment.attachmentPlan
+                    guard let planned = await run.race({ try? await attachmentPlan(message, sessionId) }) else {
+                        Task { @MainActor in await self.stopAbandoned(sessionId, launch: launch, run: run) }
                         return nil
+                    }
+                    // The composer may have moved on while the plan was read.
+                    guard isCurrent() else {
+                        requests.complete(clientRequestId)
+                        Task { @MainActor in await self.stopAbandoned(sessionId, launch: launch, run: run) }
+                        return nil
+                    }
+                    if let plan = planned, plan.shouldShowUnsupportedAlert {
+                        presenter?.showAttachmentsNotSupported()
+                        if !plan.shouldSendText || (launch.prompt.isEmpty && plan.accepted.isEmpty) {
+                            return nil
+                        }
                     }
                 }
                 guard let sent = await run.race({ () -> Result<String, any Error> in
