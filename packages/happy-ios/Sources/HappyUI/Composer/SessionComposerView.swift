@@ -128,6 +128,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             picks = ComposerPicks(values: values)
         }
         recomputeModes()
+        if previous?.session.record != record, RigCatalog.isRigV1(record?.metadata) {
+            applyRemoteDraft()
+        }
 
         if let record {
             let sessionState = SessionState(record)
@@ -377,7 +380,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
                 self.isSending = false
                 // Only clear what was sent: typing may have gone on.
                 if self.card.text == text {
-                    self.clearDraft()
+                    self.clearDraft(stored: !RigCatalog.isRigV1(self.state?.session.record?.metadata))
                     self.card.text = ""
                 }
                 self.applyConfiguration()
@@ -447,11 +450,25 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         }
     }
 
-    private func clearDraft() {
+    /// `stored`: also delete the stored draft. A Happy Agent session's
+    /// send already cleared it, unless writing began during the send.
+    private func clearDraft(stored: Bool) {
         draftSave?.cancel()
         draftSave = nil
         autosave.clear()
-        saveDraft("")
+        if stored {
+            saveDraft("")
+        }
+    }
+
+    /// useDraft's store subscription: another device edited a Happy Agent
+    /// session's draft. It replaces the text, caret at the end.
+    private func applyRemoteDraft() {
+        guard let draft = try? environment.account.sender.draft(sessionId: environment.sessionId),
+              let remote = autosave.storeChanged(draft) else { return }
+        draftSave?.cancel()
+        draftSave = nil
+        card.text = remote
     }
 
     private func saveDraft(_ text: String) {

@@ -306,6 +306,8 @@ public struct ComposerUsage: Equatable, Sendable {
 /// useDraft.ts's autosave: a change between empty and not saves at once,
 /// an edit to non-empty text waits `interval`, and a pending edit is
 /// flushed when the app leaves the foreground or the composer goes away.
+/// A Happy Agent session saves every edit at once and takes remote edits
+/// from the store (`storeChanged`).
 public struct DraftAutosave: Equatable, Sendable {
     public enum Action: Equatable, Sendable {
         case none
@@ -319,11 +321,15 @@ public struct DraftAutosave: Equatable, Sendable {
 
     public private(set) var lastSaved: String
     public private(set) var pending: String?
+    /// The stored draft at the last look or save: the subscription's
+    /// `previous`.
+    public private(set) var stored: String
 
     /// Seeded with the draft the composer opened with, so loading it
     /// doesn't write it back.
     public init(loaded: String) {
         lastSaved = loaded
+        stored = loaded
     }
 
     /// `synced`: a Happy Agent session, whose draft goes to the mirror on
@@ -335,6 +341,7 @@ public struct DraftAutosave: Equatable, Sendable {
         let isEmpty = value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if synced || wasEmpty != isEmpty {
             lastSaved = value
+            stored = value
             return .saveNow(value)
         }
         if !isEmpty {
@@ -347,6 +354,7 @@ public struct DraftAutosave: Equatable, Sendable {
     /// The scheduled save fired.
     public mutating func saved(_ value: String) {
         lastSaved = value
+        stored = value
         pending = nil
     }
 
@@ -360,7 +368,21 @@ public struct DraftAutosave: Equatable, Sendable {
     /// `clearDraft`, after a send: the stored draft is deleted.
     public mutating func clear() {
         lastSaved = ""
+        stored = ""
         pending = nil
+    }
+
+    /// A synced session's stored draft, read again after its record
+    /// changed. Text that moved, and not to this composer's last save, is
+    /// a remote edit: it drops the pending save, counts as saved, and is
+    /// returned for the text view. Nil leaves the text alone.
+    public mutating func storeChanged(_ draft: String) -> String? {
+        let previous = stored
+        stored = draft
+        guard draft != previous, draft != lastSaved else { return nil }
+        pending = nil
+        lastSaved = draft
+        return draft
     }
 }
 
