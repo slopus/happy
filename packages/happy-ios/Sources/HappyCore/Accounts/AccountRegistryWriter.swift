@@ -16,6 +16,7 @@ actor AccountRegistryWriter {
         #if DEBUG
         dispatchPrecondition(condition: .notOnQueue(.main))
         #endif
+        try AccountStorageDirectory.prepare(directory)
         return try AccountRegistry.load(directory: directory)
     }
 
@@ -28,6 +29,7 @@ actor AccountRegistryWriter {
         #endif
         guard revision > latestRevision else { return false }
         latestRevision = revision
+        try AccountStorageDirectory.prepare(directory)
         try saveValue(value, directory)
         return true
     }

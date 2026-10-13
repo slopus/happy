@@ -158,6 +158,7 @@ public final class AccountSession: Sendable {
     /// Move sidecars before the database, which is the migration's commit
     /// marker. Retrying an interrupted migration completes the remaining moves.
     public static func prepareDirectory(directory: URL, id: String) throws {
+        try AccountStorageDirectory.prepare(directory)
         let manager = FileManager.default
         let target = accountDirectory(directory: directory, id: id)
         try manager.createDirectory(at: target.appendingPathComponent("files", isDirectory: true), withIntermediateDirectories: true)
