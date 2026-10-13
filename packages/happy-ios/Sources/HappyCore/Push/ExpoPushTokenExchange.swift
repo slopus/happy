@@ -50,7 +50,10 @@ public struct ExpoPushTokenExchange: PushTokenSource, Sendable {
             "deviceToken": .string(token.map { String(format: "%02x", $0) }.joined()),
             "projectId": .string(configuration.projectId),
         ])
-        let request = HTTPRequest(method: "POST", url: URL(string: "https://exp.host/--/api/v2/push/getExpoPushToken")!, headers: ["content-type": "application/json"], body: try body.encoded())
+        let request = HTTPRequest(
+            method: "POST", url: URL(string: "https://exp.host/--/api/v2/push/getExpoPushToken")!,
+            headers: ["content-type": "application/json"], body: try body.encoded()
+        )
         let response = try await transport.send(request)
         guard (200..<300).contains(response.status) else {
             throw APIError.http(status: response.status, body: String(decoding: response.body.prefix(512), as: UTF8.self))

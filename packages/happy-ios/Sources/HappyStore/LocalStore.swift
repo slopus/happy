@@ -65,18 +65,24 @@ public final class LocalStore: Sendable {
     public func upsertSessions(_ incoming: [SessionRecord], reconcileComposer: SessionComposerReconciliation? = nil) throws {
         try writer.write { db in
             for record in incoming {
+                let previous = try SessionRecord.fetchOne(db, key: record.id)
                 try Self.upsert(record, db)
                 if let reconcileComposer, let merged = try SessionRecord.fetchOne(db, key: record.id) {
-                    try Self.reconcileComposer(merged, db: db, transform: reconcileComposer)
+                    try Self.reconcileComposer(merged, previous: previous, db: db, transform: reconcileComposer)
                 }
             }
         }
     }
 
-    private static func reconcileComposer(_ session: SessionRecord, db: Database, transform: SessionComposerReconciliation) throws {
+    private static func reconcileComposer(_ session: SessionRecord, previous: SessionRecord?, db: Database, transform: SessionComposerReconciliation) throws {
         let composer = try ComposerStateRecord.fetchOne(db, key: session.id) ?? ComposerStateRecord(sessionId: session.id)
-        let next = transform(session, composer)
-        if next != composer { try next.save(db) }
+        let draft = try DraftRecord.fetchOne(db, key: session.id)
+        let next = transform(session, previous, composer, draft)
+        if next.composer != composer { try next.composer.save(db) }
+        if next.draft != draft {
+            if let draft = next.draft { try draft.save(db) }
+            else { _ = try DraftRecord.deleteOne(db, key: session.id) }
+        }
     }
 
     /// Applies an `update-session` event. Each field is applied only if its
@@ -106,7 +112,7 @@ public final class LocalStore: Sendable {
             }
             Self.settle(old: old, &record)
             try record.update(db)
-            if let reconcileComposer { try Self.reconcileComposer(record, db: db, transform: reconcileComposer) }
+            if let reconcileComposer { try Self.reconcileComposer(record, previous: old, db: db, transform: reconcileComposer) }
             return true
         }
     }
@@ -620,6 +626,18 @@ public final class LocalStore: Sendable {
 
     public func saveComposerState(_ state: ComposerStateRecord) throws {
         try writer.write { db in try state.save(db) }
+    }
+
+    /// Atomically saves a Rig edit's text, picks and monotonic draft stamp.
+    public func saveRigComposer(_ composer: ComposerStateRecord, text: String?, at time: Int64) throws {
+        try writer.write { db in
+            try composer.save(db)
+            if let text, !text.isEmpty {
+                try DraftRecord(sessionId: composer.sessionId, text: text, updatedAt: time).save(db)
+            } else {
+                _ = try DraftRecord.deleteOne(db, key: composer.sessionId)
+            }
+        }
     }
 
     // MARK: Drafts

@@ -67,6 +67,8 @@ public actor SyncEngine {
     private let keyRing: KeyRing
     /// This account's in-flight mode pushes, sampled by the store transaction.
     nonisolated let modePushes = SessionModePushCounters()
+    /// This account's durable Rig drafts and serialized metadata writer.
+    public nonisolated let rigComposer: RigComposerSync
     private let decoder: RecordDecoder
     private let accountCipher: AccountCipher
     private let options: Options
@@ -92,6 +94,7 @@ public actor SyncEngine {
         self.store = store
         let keyRing = KeyRing(keys: keys)
         self.keyRing = keyRing
+        self.rigComposer = RigComposerSync(store: store, keyRing: keyRing, now: now, sleep: sleep)
         self.decoder = RecordDecoder(keyRing: keyRing)
         self.accountCipher = AccountCipher(secret: keys.secret)
         self.options = options
@@ -111,6 +114,7 @@ public actor SyncEngine {
 
     public func stop() async {
         stopped = true
+        await rigComposer.stop()
         retryTask?.cancel()
         retryTask = nil
         for job in jobs.values {
@@ -345,6 +349,49 @@ public actor SyncEngine {
         return keyRing.dataKey(wrappedKey: session.dataKeyCipher)
     }
 
+    /// Ports sync.ts ensureSessionReady. Each sessions-sync wait is capped at
+    /// four seconds; three rounds back off by 300 then 600 milliseconds.
+    public func ensureSessionReady(sessionId: String) async throws {
+        guard let sessions = job(.sessions) else { throw SessionReadinessError.notReady }
+        try await SessionReadiness.ensure(
+            isReady: { [weak self] in try await self?.sessionReady(sessionId) ?? false },
+            refresh: { await sessions.invalidateAndAwait() },
+            sleep: sleep
+        )
+    }
+
+    private func sessionReady(_ id: String) throws -> Bool {
+        guard !stopped, let session = try store.session(id: id), session.metadata?.objectValue != nil else { return false }
+        return keyRing.cipher(wrappedKey: session.dataKeyCipher) != nil && keyRing.blobKey(wrappedKey: session.dataKeyCipher) != nil
+    }
+
+    /// Ports sync.ts uploadSessionBlob using the outbox's same blob encryption.
+    /// Upload requests count sealed bytes; the result reports plaintext bytes.
+    public func uploadSessionBlob(sessionId: String, name: String, bytes: Data) async throws -> (ref: String, size: Int) {
+        guard !stopped, !backgrounded else { throw CancellationError() }
+        try Task.checkCancellation()
+        let blob = try encryptedSessionBlob(sessionId: sessionId, bytes: bytes)
+        await options.deliveryActivity(true)
+        do {
+            let upload = try await api.requestAttachmentUpload(sessionId: sessionId, filename: name, size: blob.count)
+            try Task.checkCancellation()
+            guard !stopped else { throw CancellationError() }
+            try await api.uploadEncryptedBlob(blob, upload: upload)
+            try Task.checkCancellation()
+            guard !stopped else { throw CancellationError() }
+            await options.deliveryActivity(false)
+            return (upload.ref, bytes.count)
+        } catch {
+            await options.deliveryActivity(false)
+            throw error
+        }
+    }
+
+    private func encryptedSessionBlob(sessionId: String, bytes: Data) throws -> Data {
+        guard let session = try store.session(id: sessionId), let key = keyRing.blobKey(wrappedKey: session.dataKeyCipher) else { throw SessionActionError.notDecryptable }
+        return try BlobCipher.seal(bytes, key: key, random: random)
+    }
+
     // MARK: Outbox
 
     /// Supplies the account's files directory before launch/reconnect delivery.
@@ -556,13 +603,12 @@ public actor SyncEngine {
                 try checkDelivery(item, session: session)
                 if item.kind == .file {
                     guard var attachment = try store.attachment(outboxLocalId: item.localId),
-                          let directory = filesDirectory,
-                          let blobKey = keyRing.blobKey(wrappedKey: session.dataKeyCipher) else {
+                          let directory = filesDirectory else {
                         throw SendingError.missingAttachment
                     }
                     if attachment.ref == nil {
                         let bytes = try Data(contentsOf: directory.appendingPathComponent(attachment.path))
-                        let blob = try BlobCipher.seal(bytes, key: blobKey, random: random)
+                        let blob = try encryptedSessionBlob(sessionId: item.sessionId, bytes: bytes)
                         let upload = try await api.requestAttachmentUpload(sessionId: item.sessionId, filename: attachment.name, size: blob.count)
                         try checkDelivery(item, session: session)
                         try await api.uploadEncryptedBlob(blob, upload: upload)

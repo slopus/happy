@@ -5,6 +5,14 @@
 `gitStatus` shares git snapshots by machine and checkout path; `pendingChats`
 holds starts in flight and their writing within this account.
 
+`SessionActions.ensureSessionReady(sessionId:)` waits for metadata and both keys
+before a newly spawned session takes text or a picture. It makes at most three
+sessions-sync rounds, each capped at four seconds, with 300/600ms backoff.
+Cancelling a timed-out waiter leaves the shared sessions job running.
+`uploadSessionBlob(sessionId:name:bytes:)` shares the outbox's blob encryption
+and attachment API: the upload request counts sealed bytes, while the returned
+size counts plaintext bytes. Both methods also exist on `SyncEngine`.
+
 The wire source is happy-app's `sync/ops.ts`, with CLI handlers in
 `modules/common/registerCommonHandlers.ts`, `api/apiMachine.ts`, and the
 Claude/Codex launchers. RPC parameters and replies use the addressed record's
@@ -19,7 +27,22 @@ cannot replace a pending pick. Otherwise an explicit metadata value wins,
 including null, while an absent key retains the local value. The store writes
 the session and reconciled composer in one transaction. Rig v1 instead writes
 its complete draft under a monotonic `draftUpdatedAt` stamp and adopts a remote
-draft whose stamp is equal or newer.
+draft whose stamp is equal or newer. The session, draft text, and picks commit
+together. A clear echo retains the picks used by the send until `lastMode`
+changes. `AccountSession.rigComposer` owns one writer per session, coalesces
+edits during a write, debounces typing for 250ms, and writes empty text or mode
+changes immediately. Connected failures retry from 1s up to 30s; reconnect and
+foreground flush locally newer persisted drafts. `OutboxSender` routes drafts
+and successful-send clears internally, preserving writing begun during send.
+
+`SessionActions.supportsHappyAgentGit(_:)` checks Rig v1, readable files and
+the full native Git RPC surface. `getHappyAgentGitState(sessionId:)` validates
+the native `gitState` snapshot and preserves unknown schema fields.
+`readHappyAgentGitFile(sessionId:gitBase:file:)` reads base and working-tree
+sides concurrently with strict base64 and UTF-8 checks, retaining BOM changes,
+a 512 KiB per-side limit, and a 20,000 combined-line limit. Unsupported changes
+return the exact source messages; image comparisons use each side's MIME type.
+Shell GitStatusSync remains the source-compatible status path for CLI sessions.
 
 Git observers emit a cached snapshot immediately. A screen calls
 `refresh(sessionId:)` on opening; account socket updates subsequently invalidate
@@ -41,7 +64,10 @@ archived workspaces and bots.
 The Happy server sends through Expo. `ExpoPushTokenExchange` converts APNs bytes
 to a server-compatible Expo token over `HTTPTransport`; the exchange receives
 no Happy account credentials. `TokenPushRegistration` then registers that Expo
-token with the signed-in `HappyAPI`. `pushTokens()` already lists registrations;
+token with the signed-in `HappyAPI`, persists it, and removes a differing old
+token without failing the new registration if old-token cleanup fails.
+`removePushToken(api:token:)` unregisters a token and clears the account cache
+only when it matches that token. `pushTokens()` already lists registrations;
 `unregisterPushToken(_:)` checks the unregister acknowledgement.
 
 CompositionRoot must supply:

@@ -7,6 +7,7 @@ extension HappyAPI {
         let request = try makeRequest("POST", "/v1/push-tokens", body: JSONValue.object(["token": .string(token)]).encoded())
         try await opsSuccess(request)
     }
+
     /// Ports ops.ts machineDelete.
     public func deleteMachine(id: String) async throws {
         try await opsSuccess(makeRequest("DELETE", "/v1/machines/\(Self.escape(id))"), requireConfirmation: false)

@@ -33,7 +33,7 @@ final class OpsRPCTests: XCTestCase {
         fixture = ServerFixture()
         http = FakeHTTP()
         store = try LocalStore.inMemory()
-        sync = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys)
+        sync = SyncEngine(api: testAPI(http), store: store, keys: fixture.keys, now: { 500 })
         rpc = FakeRPC()
         sessions = SessionActions(api: testAPI(http), store: store, sync: sync, rpc: rpc, now: { 500 })
         machines = MachineActions(api: testAPI(http), store: store, sync: sync, rpc: rpc, metadataTransport: FakeMetadataTransport([.null]))
@@ -42,7 +42,12 @@ final class OpsRPCTests: XCTestCase {
         try store.upsertSessions([record])
         // Machine key differs from the session key: pins the RPC encryption scope.
         let machineKey = Data(repeating: 21, count: 32)
-        try store.upsertMachine(MachineRecord(id: "m", seq: 0, createdAt: 1, updatedAt: 1, active: true, activeAt: 1, metadataVersion: 1, metadataCipher: "", metadata: .object(["host": .string("host")]), daemonStateVersion: 0, daemonStateCipher: nil, daemonState: nil, dataKeyCipher: Base64.encode(try fixture.keys.wrapDataKey(machineKey)), decryptable: true))
+        try store.upsertMachine(MachineRecord(
+            id: "m", seq: 0, createdAt: 1, updatedAt: 1, active: true, activeAt: 1, metadataVersion: 1,
+            metadataCipher: "", metadata: .object(["host": .string("host")]), daemonStateVersion: 0,
+            daemonStateCipher: nil, daemonState: nil,
+            dataKeyCipher: Base64.encode(try fixture.keys.wrapDataKey(machineKey)), decryptable: true
+        ))
     }
 
     override func tearDown() async throws { await sync.stop() }
@@ -127,8 +132,14 @@ final class OpsRPCTests: XCTestCase {
 
     func testPermissionsCommunicationsAndAbortExactPayloads() async throws {
         answer(.null)
-        try await sessions.allow(sessionId: "s", permissionId: "p", mode: "plan", allowedTools: ["Bash"], decision: .approvedForSession, updatedInput: .object(["command": .string("pwd")]))
-        try assertLast("s:permission", .object(["id": .string("p"), "approved": .bool(true), "mode": .string("plan"), "allowTools": .array([.string("Bash")]), "decision": .string("approved_for_session"), "updatedInput": .object(["command": .string("pwd")])]))
+        try await sessions.allow(
+            sessionId: "s", permissionId: "p", mode: "plan", allowedTools: ["Bash"], decision: .approvedForSession,
+            updatedInput: .object(["command": .string("pwd")])
+        )
+        try assertLast("s:permission", .object([
+            "id": .string("p"), "approved": .bool(true), "mode": .string("plan"), "allowTools": .array([.string("Bash")]),
+            "decision": .string("approved_for_session"), "updatedInput": .object(["command": .string("pwd")]),
+        ]))
         try await sessions.deny(sessionId: "s", permissionId: "p", decision: .abort)
         try assertLast("s:permission", .object(["id": .string("p"), "approved": .bool(false), "decision": .string("abort")]))
         try await sessions.answerQuestion(sessionId: "s", id: "q", answers: .object(["q1": .string("yes")]), kind: "input")
@@ -141,7 +152,10 @@ final class OpsRPCTests: XCTestCase {
 
     func testRigCapabilitiesRefuseUnadvertisedCalls() async throws {
         var session = try XCTUnwrap(store.session(id: "s"))
-        session.metadata = .object(["client": .object(["id": .string("rig")]), "rigMetadataVersion": .number(1), "capabilities": .object(["shell": .bool(true), "rpcMethods": .array([])])])
+        session.metadata = .object([
+            "client": .object(["id": .string("rig")]), "rigMetadataVersion": .number(1),
+            "capabilities": .object(["shell": .bool(true), "rpcMethods": .array([])]),
+        ])
         session.metadataVersion += 1
         try store.upsertSessions([session])
         let result = try await sessions.sessionBash(sessionId: "s", request: SessionBashRequest(command: "pwd"))
@@ -151,7 +165,10 @@ final class OpsRPCTests: XCTestCase {
             try await sessions.abort(sessionId: "s")
             XCTFail("must refuse")
         } catch {}
-        session.metadata = .object(["client": .object(["id": .string("rig")]), "rigMetadataVersion": .number(1), "capabilities": .object(["abort": .bool(true), "rpcMethods": .array([.string("abort")])])])
+        session.metadata = .object([
+            "client": .object(["id": .string("rig")]), "rigMetadataVersion": .number(1),
+            "capabilities": .object(["abort": .bool(true), "rpcMethods": .array([.string("abort")])]),
+        ])
         session.metadataVersion += 1
         try store.upsertSessions([session])
         answer(.null)
@@ -173,7 +190,12 @@ final class OpsRPCTests: XCTestCase {
         options.providerId = "should omit"
         let result = await machines.machineSpawnNewSession(options: options)
         XCTAssertEqual(result, .success(sessionId: "new"))
-        try assertLast("m:spawn-happy-session", .object(["type": .string("spawn-in-directory"), "directory": .string("/repo"), "approvedNewDirectoryCreation": .bool(false), "agent": .string("claude"), "token": .string("t"), "permissionMode": .string("auto"), "modelMode": .string("model"), "effortLevel": .string("high"), "resumeClaudeSessionId": .string("backend"), "parentSessionId": .string("s"), "forkedFromMessageId": .string("msg"), "isSideChat": .bool(false)]), machine: true)
+        try assertLast("m:spawn-happy-session", .object([
+            "type": .string("spawn-in-directory"), "directory": .string("/repo"), "approvedNewDirectoryCreation": .bool(false),
+            "agent": .string("claude"), "token": .string("t"), "permissionMode": .string("auto"), "modelMode": .string("model"),
+            "effortLevel": .string("high"), "resumeClaudeSessionId": .string("backend"), "parentSessionId": .string("s"),
+            "forkedFromMessageId": .string("msg"), "isSideChat": .bool(false),
+        ]), machine: true)
     }
 
     func testRigSpawnCatalogAndPendingResult() async throws {
@@ -190,17 +212,37 @@ final class OpsRPCTests: XCTestCase {
         answer(.object(["type": .string("pending"), "clientRequestId": .string("request"), "retryAfterMs": .number(250)]), machine: true)
         let pending = await machines.machineSpawnNewSession(options: options)
         XCTAssertEqual(pending, .pending(clientRequestId: "request", retryAfterMs: 250))
-        try assertLast("m:spawn-happy-session", .object(["type": .string("spawn-in-directory"), "directory": .string("/repo"), "approvedNewDirectoryCreation": .bool(false), "agent": .string("rig"), "clientRequestId": .string("request"), "permissionMode": .string("ask"), "providerId": .string("provider"), "modelId": .string("model"), "effort": .string("high")]), machine: true)
+        try assertLast("m:spawn-happy-session", .object([
+            "type": .string("spawn-in-directory"), "directory": .string("/repo"), "approvedNewDirectoryCreation": .bool(false),
+            "agent": .string("rig"), "clientRequestId": .string("request"), "permissionMode": .string("ask"),
+            "providerId": .string("provider"), "modelId": .string("model"), "effort": .string("high"),
+        ]), machine: true)
         options.happyAgentTarget = .object(["type": .string("project"), "projectId": .string("project")])
         options.effort = "low"
         _ = await machines.machineSpawnNewSession(options: options)
-        try assertLast("m:spawn-happy-session", .object(["type": .string("happy-agent-spawn"), "clientRequestId": .string("request"), "target": options.happyAgentTarget!, "agentConfiguration": .object(["type": .string("happy-agent"), "permissionMode": .string("ask"), "providerId": .string("provider"), "modelId": .string("model"), "effort": .string("low")])]), machine: true)
+        try assertLast("m:spawn-happy-session", .object([
+            "type": .string("happy-agent-spawn"), "clientRequestId": .string("request"), "target": options.happyAgentTarget!,
+            "agentConfiguration": .object([
+                "type": .string("happy-agent"), "permissionMode": .string("ask"), "providerId": .string("provider"),
+                "modelId": .string("model"), "effort": .string("low"),
+            ]),
+        ]), machine: true)
     }
 
     func testSpawnNormalizationDirectoryAndErrors() {
-        XCTAssertEqual(MachineActions.normalizeSpawnSessionResult(.object(["type": .string("requestToApproveDirectoryCreation"), "directory": .string("/new")])), .requestToApproveDirectoryCreation(directory: "/new"))
-        XCTAssertEqual(MachineActions.normalizeSpawnSessionResult(.object(["type": .string("error"), "message": .string("legacy refusal")])), .error(errorMessage: "legacy refusal"))
-        XCTAssertEqual(MachineActions.normalizeSpawnSessionResult(.object(["type": .string("error"), "errorMessage": .string("")])), .error(errorMessage: "Failed to spawn session"))
+        XCTAssertEqual(
+            MachineActions.normalizeSpawnSessionResult(.object([
+                "type": .string("requestToApproveDirectoryCreation"), "directory": .string("/new"),
+            ])), .requestToApproveDirectoryCreation(directory: "/new")
+        )
+        XCTAssertEqual(
+            MachineActions.normalizeSpawnSessionResult(.object(["type": .string("error"), "message": .string("legacy refusal")])),
+            .error(errorMessage: "legacy refusal")
+        )
+        XCTAssertEqual(
+            MachineActions.normalizeSpawnSessionResult(.object(["type": .string("error"), "errorMessage": .string("")])),
+            .error(errorMessage: "Failed to spawn session")
+        )
         XCTAssertEqual(MachineActions.normalizeSpawnSessionResult(.null), .error(errorMessage: "The machine answered with something Happy could not read."))
     }
 
@@ -210,7 +252,14 @@ final class OpsRPCTests: XCTestCase {
         let call = try XCTUnwrap(rpc.calls.last)
         let params = try XCTUnwrap(RecordCipher(key: Data(repeating: 21, count: 32)).decrypt(base64: call.params))
         XCTAssertEqual(call.method, "m:resume-happy-session")
-        XCTAssertEqual(params, .object(["sessionId": .string("s"), "model": .string("model"), "permissionMode": .string("auto"), "fallbackReason": .string("ok"), "fallback": .object(["metadata": try XCTUnwrap(store.session(id: "s")?.metadata), "metadataVersion": .number(1), "agentStateVersion": .number(0), "seq": .number(7), "encryptionKey": .string(fixture.dataKey.base64EncodedString()), "encryptionVariant": .string("dataKey")])]))
+        XCTAssertEqual(params, .object([
+            "sessionId": .string("s"), "model": .string("model"), "permissionMode": .string("auto"), "fallbackReason": .string("ok"),
+            "fallback": .object([
+                "metadata": try XCTUnwrap(store.session(id: "s")?.metadata), "metadataVersion": .number(1),
+                "agentStateVersion": .number(0), "seq": .number(7), "encryptionKey": .string(fixture.dataKey.base64EncodedString()),
+                "encryptionVariant": .string("dataKey"),
+            ]),
+        ]))
         var record = try XCTUnwrap(store.session(id: "s"))
         record.metadata = .object(["machineId": .string("other")])
         record.metadataVersion += 1
@@ -268,16 +317,26 @@ final class OpsRPCTests: XCTestCase {
     func testSideChatAndDuplicateSpawnLineage() async throws {
         let key = Data(repeating: 21, count: 32)
         rpc.answer = { method in
-            let response: JSONValue = method.hasSuffix("spawn-happy-session") ? .object(["type": .string("success"), "sessionId": .string("new")]) : .object(["type": .string("success"), "newClaudeSessionId": .string("copy"), "newCodexThreadId": .string("copy")])
+            let response: JSONValue = method.hasSuffix("spawn-happy-session")
+                ? .object(["type": .string("success"), "sessionId": .string("new")])
+                : .object(["type": .string("success"), "newClaudeSessionId": .string("copy"), "newCodexThreadId": .string("copy")])
             return RPCCallResult(ok: true, result: try RecordCipher(key: key).encrypt(response))
         }
         http.onRaw("GET /v2/sessions", #"{"sessions":[],"hasNext":false}"#)
         let source = ForkSource.claude(sessionId: "s", options: ClaudeForkSessionOptions(machineId: "m", directory: "/repo", claudeSessionId: "backend"))
         _ = await machines.spawnSideChat(source: source)
-        try assertLast("m:spawn-happy-session", .object(["type": .string("spawn-in-directory"), "directory": .string("/repo"), "approvedNewDirectoryCreation": .bool(false), "agent": .string("claude"), "resumeClaudeSessionId": .string("copy"), "parentSessionId": .string("s"), "isSideChat": .bool(true)]), machine: true)
+        try assertLast("m:spawn-happy-session", .object([
+            "type": .string("spawn-in-directory"), "directory": .string("/repo"), "approvedNewDirectoryCreation": .bool(false),
+            "agent": .string("claude"), "resumeClaudeSessionId": .string("copy"), "parentSessionId": .string("s"),
+            "isSideChat": .bool(true),
+        ]), machine: true)
         let codex = ForkSource.codex(sessionId: "s", options: CodexForkThreadOptions(machineId: "m", directory: "/repo", codexThreadId: "thread"))
         _ = await machines.forkAndSpawn(source: codex, options: ForkOptions(cutAfterItemId: "cut", forkedFromMessageId: "msg"))
-        try assertLast("m:spawn-happy-session", .object(["type": .string("spawn-in-directory"), "directory": .string("/repo"), "approvedNewDirectoryCreation": .bool(false), "agent": .string("codex"), "resumeCodexThreadId": .string("copy"), "parentSessionId": .string("s"), "forkedFromMessageId": .string("msg")]), machine: true)
+        try assertLast("m:spawn-happy-session", .object([
+            "type": .string("spawn-in-directory"), "directory": .string("/repo"), "approvedNewDirectoryCreation": .bool(false),
+            "agent": .string("codex"), "resumeCodexThreadId": .string("copy"), "parentSessionId": .string("s"),
+            "forkedFromMessageId": .string("msg"),
+        ]), machine: true)
         XCTAssertTrue(rpc.calls.contains { $0.method == "m:codex-duplicate-thread" })
         XCTAssertEqual(http.requests("GET /v2/sessions").count, 2)
     }
@@ -324,27 +383,42 @@ final class OpsRPCTests: XCTestCase {
         var session = try XCTUnwrap(store.session(id: "s"))
         let metadata: JSONValue = .object([
             "client": .object(["id": .string("rig")]), "rigMetadataVersion": .number(1), "unknown": .number(9),
-            "draft": .object(["text": .string("old"), "providerId": .string("p"), "modelId": .string("old"), "effort": .string("high"), "permissionMode": .string("ask"), "serviceTier": .string("fast")]),
+            "draft": .object([
+                "text": .string("old"), "providerId": .string("p"), "modelId": .string("old"), "effort": .string("high"),
+                "permissionMode": .string("ask"), "serviceTier": .string("fast"),
+            ]),
             "draftUpdatedAt": .number(10),
-            "models": .array([.object(["providerId": .string("p"), "id": .string("new"), "thinkingLevels": .array([.string("low")]), "defaultThinkingLevel": .string("low"), "serviceTiers": .array([])])]),
+            "models": .array([.object([
+                "providerId": .string("p"), "id": .string("new"), "thinkingLevels": .array([.string("low")]),
+                "defaultThinkingLevel": .string("low"), "serviceTiers": .array([]),
+            ])]),
         ])
         session.metadata = metadata
         session.metadataVersion = 2
         try store.upsertSessions([session])
         try store.saveDraft(sessionId: "s", text: "new text", at: 20)
-        let draft: JSONValue = .object(["text": .string("new text"), "providerId": .string("p"), "modelId": .string("new"), "effort": .string("low"), "serviceTier": .null, "permissionMode": .string("auto")])
+        let draft: JSONValue = .object([
+            "text": .string("new text"), "providerId": .string("p"), "modelId": .string("new"), "effort": .string("low"),
+            "serviceTier": .null, "permissionMode": .string("auto"),
+        ])
         var final = metadata.objectValue!
         final["draft"] = draft
         final["draftUpdatedAt"] = .number(500)
         let transport = FakeMetadataTransport([.object(["result": .string("success"), "version": .number(3), "metadata": .string(fixture.seal(.object(final)))])])
-        try await sessions.sessionSetAgentModes(sessionId: "s", patch: SessionAgentModesPatch(permissionMode: .string("auto"), modelMode: .string("p:new"), effortLevel: .null), transport: transport)
+        try await sessions.sessionSetAgentModes(
+            sessionId: "s", patch: SessionAgentModesPatch(permissionMode: .string("auto"), modelMode: .string("p:new"), effortLevel: .null),
+            transport: transport
+        )
         let calls = await transport.calls
         XCTAssertEqual(calls[0].1["expectedVersion"], .number(2))
         XCTAssertEqual(RecordCipher(key: fixture.dataKey).decrypt(base64: try XCTUnwrap(calls[0].1["metadata"]?.stringValue)), .object(final))
         XCTAssertEqual(try store.composerState(sessionId: "s").values["effortLevel"], .string("low"))
         var remote = final
         remote["draftUpdatedAt"] = .number(900)
-        remote["draft"] = .object(["text": .string("remote text"), "providerId": .string("p"), "modelId": .string("remote"), "effort": .string("medium"), "serviceTier": .null, "permissionMode": .string("ask")])
+        remote["draft"] = .object([
+            "text": .string("remote text"), "providerId": .string("p"), "modelId": .string("remote"), "effort": .string("medium"),
+            "serviceTier": .null, "permissionMode": .string("ask"),
+        ])
         let conflict = FakeMetadataTransport([.object(["result": .string("version-mismatch"), "version": .number(4), "metadata": .string(fixture.seal(.object(remote)))])])
         try await sessions.sessionSetAgentModes(sessionId: "s", patch: SessionAgentModesPatch(permissionMode: .string("local")), transport: conflict)
         let conflicts = await conflict.calls
@@ -369,7 +443,10 @@ final class OpsRPCTests: XCTestCase {
     }
 
     func testMetadataRetriesAreBoundedAndFailureKeepsOptimisticPick() async throws {
-        let conflict: JSONValue = .object(["result": .string("version-mismatch"), "version": .number(2), "metadata": .string(fixture.seal(.object(["modelMode": .string("remote")])) )])
+        let conflict: JSONValue = .object([
+            "result": .string("version-mismatch"), "version": .number(2),
+            "metadata": .string(fixture.seal(.object(["modelMode": .string("remote")]))),
+        ])
         let transport = FakeMetadataTransport([conflict])
         do {
             try await sessions.sessionSetAgentModes(sessionId: "s", patch: SessionAgentModesPatch(modelMode: .string("local")), transport: transport)

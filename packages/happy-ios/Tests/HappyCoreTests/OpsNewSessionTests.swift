@@ -114,10 +114,32 @@ final class OpsNewSessionTests: XCTestCase {
         XCTAssertEqual(settled?.sessionId, "real")
     }
 
+    func testRetireReturnsTextToExistingAnchorWithoutDraftAndSkipsAbsentAnchor() async throws {
+        for exists in [true, false] {
+            let pending = PendingChats()
+            let chat = await pending.open(anchorSessionId: "anchor", knownSessionIds: [])
+            await pending.submit(id: chat.id, message: "queued")
+            await pending.setDraft(id: chat.id, draft: "typing")
+            let delivery = PendingDelivery()
+            try await pending.retire(
+                id: chat.id, readDraft: { _ in exists ? "" : nil },
+                writeDraft: { await delivery.write($0, $1) }
+            )
+            let returned = await delivery.drafts["anchor"]
+            XCTAssertEqual(returned, exists ? "queued\n\ntyping" : nil)
+            let failed = await pending.get(id: chat.id)
+            XCTAssertEqual(failed?.status, .failed)
+        }
+    }
+
     func testMachineChoiceResolvesSiblingHarnessAndWorktreeMachine() throws {
         let store = try LocalStore.inMemory()
         func machine(_ id: String, _ metadata: JSONValue) -> MachineRecord {
-            MachineRecord(id: id, seq: 0, createdAt: 1, updatedAt: 1, active: true, activeAt: 1, metadataVersion: 1, metadataCipher: "", metadata: metadata, daemonStateVersion: 0, daemonStateCipher: nil, daemonState: nil, dataKeyCipher: nil, decryptable: false)
+            MachineRecord(
+                id: id, seq: 0, createdAt: 1, updatedAt: 1, active: true, activeAt: 1, metadataVersion: 1,
+                metadataCipher: "", metadata: metadata, daemonStateVersion: 0, daemonStateCipher: nil,
+                daemonState: nil, dataKeyCipher: nil, decryptable: false
+            )
         }
         try store.upsertMachine(machine("cli", .object(["host": .string("host"), "cliAvailability": .object(["claude": .bool(false), "codex": .bool(true), "agy": .bool(false)])])))
         try store.upsertMachine(machine("rig", .object(["host": .string("host"), "machineKind": .string("rig"), "siblingMachineId": .string("cli")])) )
@@ -140,7 +162,11 @@ final class OpsNewSessionTests: XCTestCase {
             return row
         }
         let rows = [
-            session("workspace", .object(["machineId": .string("rig"), "path": .string("/worktrees/w"), "project": .object(["id": .string("p2"), "name": .string("Only workspaces")]), "workspace": .object(["id": .string("w"), "name": .string("Fix")])])),
+            session("workspace", .object([
+                "machineId": .string("rig"), "path": .string("/worktrees/w"),
+                "project": .object(["id": .string("p2"), "name": .string("Only workspaces")]),
+                "workspace": .object(["id": .string("w"), "name": .string("Fix")]),
+            ])),
             session("named", .object(["machineId": .string("rig"), "path": .string("/repo"), "project": .object(["id": .string("p1"), "name": .string("Project")])])),
             session("bare", .object(["machineId": .string("cli"), "path": .string("/repo")])),
             session("archived", .object(["machineId": .string("rig"), "path": .string("/gone"), "lifecycleState": .string("archived")])),

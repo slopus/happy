@@ -26,6 +26,8 @@ public final class AccountSession: Sendable {
     public let machineActions: MachineActions
     /// Checkout status shared by this account's sessions.
     public let gitStatus: GitStatusSync
+    /// This account's Rig whole-draft synchronization.
+    public let rigComposer: RigComposerSync
     /// Starts in flight stay within this account, including their unsent text.
     public let pendingChats = PendingChats()
     /// Socket status for the UI (connection dot in settings).
@@ -96,6 +98,7 @@ public final class AccountSession: Sendable {
         self.actions = SessionActions(api: api, store: store, sync: sync, rpc: realtime)
         self.machineActions = MachineActions(api: api, store: store, sync: sync, rpc: realtime, metadataTransport: realtime)
         self.gitStatus = GitStatusSync(actions: actions, store: store)
+        self.rigComposer = sync.rigComposer
     }
 
     /// Changes synced account settings (sync.ts `applySettings`).
@@ -150,15 +153,17 @@ public final class AccountSession: Sendable {
 
     /// Shows local data immediately; sync and the socket catch up behind it.
     public func start() async {
+        await rigComposer.configure(transport: realtime)
         await sync.configureSending(filesDirectory: sender.filesDirectory)
         await sync.syncAll()
         let realtime = self.realtime
         let sync = self.sync
         let statusContinuation = self.statusContinuation
         let gitStatus = self.gitStatus
+        let rigComposer = self.rigComposer
         pump.set(Task {
             for await event in realtime.events {
-                await Self.route(event, sync: sync, status: statusContinuation, gitStatus: gitStatus)
+                await Self.route(event, sync: sync, status: statusContinuation, gitStatus: gitStatus, rigComposer: rigComposer)
             }
         })
         await realtime.connect()
@@ -167,7 +172,9 @@ public final class AccountSession: Sendable {
     public func stop() async {
         let task = pump.cancel()
         await gitStatus.stop()
+        await rigComposer.setConnected(false)
         await realtime.disconnect()
+        await rigComposer.stop()
         await sync.stop()
         await task?.value
         statusContinuation.finish()
@@ -177,15 +184,19 @@ public final class AccountSession: Sendable {
     /// suppress pushes while the user is looking at the app.
     public func sendAppState(_ state: String) async {
         await sync.setBackgrounded(state != "active")
+        if state == "active" { await rigComposer.flushAheadSessions() }
         try? await realtime.emit("app-state", .object(["state": .string(state)]))
     }
 
-    static func route(_ event: RealtimeEvent, sync: SyncEngine, status: AsyncStream<RealtimeStatus>.Continuation, gitStatus: GitStatusSync? = nil) async {
+    static func route(_ event: RealtimeEvent, sync: SyncEngine, status: AsyncStream<RealtimeStatus>.Continuation,
+                      gitStatus: GitStatusSync? = nil, rigComposer: RigComposerSync? = nil) async {
         switch event {
         case .status(let value):
             status.yield(value)
+            await rigComposer?.setConnected(value == .connected)
         case .connected:
             await sync.syncAll()
+            await rigComposer?.setConnected(true)
         case .event("update", let payload?):
             if let update = try? payload.decode(as: UpdateContainer.self) {
                 await sync.handle(update)
