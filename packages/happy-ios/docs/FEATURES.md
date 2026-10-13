@@ -52,7 +52,8 @@ accident.
 - [x] Project grouping and expanded projects (`ProjectHomeList`, `ProjectGroup`, `projectGroups.ts`, `sessionListGrouping` setting) — Home
 - [x] Session row actions as the iPhone shows them: the "Session" alert from `useSessionQuickActions.ts` (details, resume, fork, duplicate, archive). `SessionActionsPopover` is web-only — Home + Ops
   - Rename is absent from current happy-app and is not ported.
-- [ ] Pending chats placeholder (`PendingChatPlaceholder`, `pendingChats.ts`) — Home
+- [x] Pending chats placeholder (`PendingChatPlaceholder`, `pendingChats.ts`) — Home
+  - happy-app shows pending chats only on the session screen: `SessionView` draws the placeholder, and the worktree strip and its header count read the records. Neither the home list nor the dock does. The port draws it on a `pending-chat:` screen: Chat's "Empty and pending states" line below.
 - [x] Update banner (`UpdateBanner`) and offline machines banner (`OfflineMachinesBanner`) — Home
   - The offline machines banner, the changelog's "What's new", and the store-version check (`sync.ts` `fetchNativeUpdate`, `POST /v1/version`). The check runs when home loads and whenever the app becomes active. When it reports an update, "App Update Available" takes "What's new"'s place and opens the store.
   - The check reads `update_required` and `update_url`, as happy-app does. `versionRoutes.ts` answers `{ updateUrl }` instead, so against the current server the store banner never shows, in happy-app or here.
