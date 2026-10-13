@@ -92,6 +92,7 @@ accident.
   - The diff engine (`HappyCore/Diff`) and its layout (`HappyLayout/Diff`) are shared: Chat's Edit/Write/patch cards draw with `DiffChunkView`, and changes with `DiffFileView` sections.
   - Not ported yet: syntax colour in diff rows. happy-app colours rows after they are built, in a Prism worker (`components/diff/syntax/*`), and holds a file back (at most a second) until it is coloured; here rows draw in the plain text colour, with word-level emphasis. The renderer already colours by span kind, so the follow-up is a tokenizer that fills in the kinds.
   - Not ported: selecting text in diff rows (`selectable` on iOS in DiffFilesList).
+  - Changes (`Screens/SessionChangesScreen.swift`) has both viewers: a CLI session's uncommitted files from git status, and a Happy Agent session's comparison with its branch base. File headers leave the 16pt Seti icon slot empty until FileIcon lands. One deliberate difference: when git status changes while a legacy fetch is in flight, the results are still applied and changed files are fetched again. happy-app drops the batch, which can leave those files loading.
   - Rows are drawn only near the screen instead of being mounted in batches (`useProgressiveRows`), so a long file is full height from the first frame rather than growing over a few frames.
 
 ## Settings
