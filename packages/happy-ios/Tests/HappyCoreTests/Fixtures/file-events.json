@@ -1,0 +1,28 @@
+[
+  {
+    "name": "photo.png",
+    "size": 7,
+    "width": 10,
+    "height": 20,
+    "thumbhash": "hash",
+    "canonical": "{\"content\":{\"data\":{\"ev\":{\"image\":{\"height\":20,\"thumbhash\":\"hash\",\"width\":10},\"name\":\"photo.png\",\"ref\":\"blob-ref\",\"size\":7,\"t\":\"file\"},\"id\":\"event-id\",\"role\":\"user\",\"time\":123},\"type\":\"session\"},\"role\":\"session\"}",
+    "wire": "{\"role\":\"session\",\"content\":{\"type\":\"session\",\"data\":{\"id\":\"event-id\",\"time\":123,\"role\":\"user\",\"ev\":{\"t\":\"file\",\"ref\":\"blob-ref\",\"name\":\"photo.png\",\"size\":7,\"image\":{\"width\":10,\"height\":20,\"thumbhash\":\"hash\"}}}}}"
+  },
+  {
+    "name": "without-hash.png",
+    "size": 8,
+    "width": 10,
+    "height": 20,
+    "thumbhash": "",
+    "canonical": "{\"content\":{\"data\":{\"ev\":{\"image\":{\"height\":20,\"width\":10},\"name\":\"without-hash.png\",\"ref\":\"blob-ref\",\"size\":8,\"t\":\"file\"},\"id\":\"event-id\",\"role\":\"user\",\"time\":123},\"type\":\"session\"},\"role\":\"session\"}",
+    "wire": "{\"role\":\"session\",\"content\":{\"type\":\"session\",\"data\":{\"id\":\"event-id\",\"time\":123,\"role\":\"user\",\"ev\":{\"t\":\"file\",\"ref\":\"blob-ref\",\"name\":\"without-hash.png\",\"size\":8,\"image\":{\"width\":10,\"height\":20}}}}}"
+  },
+  {
+    "name": "document.txt",
+    "size": 9,
+    "width": 0,
+    "height": 0,
+    "canonical": "{\"content\":{\"data\":{\"ev\":{\"name\":\"document.txt\",\"ref\":\"blob-ref\",\"size\":9,\"t\":\"file\"},\"id\":\"event-id\",\"role\":\"user\",\"time\":123},\"type\":\"session\"},\"role\":\"session\"}",
+    "wire": "{\"role\":\"session\",\"content\":{\"type\":\"session\",\"data\":{\"id\":\"event-id\",\"time\":123,\"role\":\"user\",\"ev\":{\"t\":\"file\",\"ref\":\"blob-ref\",\"name\":\"document.txt\",\"size\":9}}}}"
+  }
+]

@@ -109,12 +109,27 @@ public enum AgentDefaults {
         "claude-sonnet-5-5[1m]": "claude-sonnet-5-5",
     ]
 
+    /// Maps a stored flavor-agent permission key to the currently accepted key.
+    /// Rig owns its own permission catalog and must not use this mapping.
+    public static func retirePermissionMode(_ mode: String) -> String {
+        retiredPermissionModes[mode] ?? mode
+    }
+
+    /// Mirrors permissionModeSupportedByCli; an absent CLI version is permissive.
+    public static func permissionModeSupportedByCli(_ mode: String, cliVersion: String?) -> Bool {
+        guard mode == "auto", let cliVersion, !cliVersion.isEmpty else {
+            return true
+        }
+        return SemanticVersion.isWellFormed(cliVersion)
+            && SemanticVersion.compare(cliVersion, cliVersionWithAuto) >= 0
+    }
+
     /// The stored override for one field, with retired keys mapped onto the
     /// row that stands for them now.
     public static func override(_ overrides: [String: JSONValue], _ agent: Agent, _ field: Field) -> String? {
         guard let value = overrides[agent.rawValue]?[field.rawValue]?.stringValue else { return nil }
         switch field {
-        case .permissionMode: return retiredPermissionModes[value] ?? value
+        case .permissionMode: return retirePermissionMode(value)
         case .modelMode: return agent == .claude ? retiredClaudeModelModes[value] ?? value : value
         case .effortLevel: return value
         }

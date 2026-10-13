@@ -156,6 +156,10 @@ enum Schema {
                 t.column("text", .text).notNull()
                 t.column("updatedAt", .integer).notNull()
             }
+            try db.create(table: "composerState") { t in
+                t.primaryKey("sessionId", .text)
+                t.column("values", .text).notNull()
+            }
         }
 
         return migrator

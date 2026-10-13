@@ -241,15 +241,23 @@ final class SyncEngineTests: XCTestCase {
             return (200, Data(#"{"messages":[{"id":"srv1","seq":1,"localId":"\#(sent.localId)","createdAt":5,"updatedAt":5}]}"#.utf8))
         }
 
-        let payload: JSONValue = .object(["role": .string("user"), "content": .object(["type": .string("text"), "text": .string("hi")])])
-        try await engine.enqueueMessage(sessionId: "s", payload: payload, localId: "L1")
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let localId = try await engine.accept(
+            OutgoingMessage(text: "hi"), sessionId: "s", filesDirectory: directory
+        )
+        let payload = try XCTUnwrap(store.outbox(localId: localId)?.payload)
         XCTAssertEqual(try store.pendingOutbox().count, 1, "stored before any network call")
         await engine.waitForIdle()
+
+        XCTAssertEqual(try store.outbox(localId: localId)?.nextAttemptAt, clock.now + 1_000)
+        clock.now += 1_000
+        await engine.run(.outbox)
 
         let attempts = http.requests("POST /v3/sessions/s/messages")
         XCTAssertEqual(attempts.count, 2, "retried after the 503")
         let sent = try attempts[1].jsonBody(SendMessagesRequest.self).messages[0]
-        XCTAssertEqual(sent.localId, "L1")
+        XCTAssertEqual(sent.localId, localId)
         XCTAssertEqual(RecordCipher(key: fixture.dataKey).decrypt(base64: sent.content), payload)
         XCTAssertTrue(try store.pendingOutbox().isEmpty)
         XCTAssertEqual(try store.messages(sessionId: "s").map(\.id), ["srv1"])

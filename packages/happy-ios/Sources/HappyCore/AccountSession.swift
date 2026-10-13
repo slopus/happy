@@ -11,6 +11,7 @@ public final class AccountSession: Sendable {
     public let api: HappyAPI
     public let store: LocalStore
     public let sync: SyncEngine
+    public let sender: OutboxSender
     public let realtime: SocketIOClient
     public let pairing: PairingService
     /// Archive, delete and mark read, for the session list.
@@ -27,6 +28,7 @@ public final class AccountSession: Sendable {
         public var transport: HTTPTransport
         public var connector: WebSocketConnector
         public var appState: @Sendable () async -> String
+        public var deliveryActivity: @Sendable (Bool) async -> Void = { _ in }
 
         public init(
             serverURL: URL,
@@ -43,14 +45,19 @@ public final class AccountSession: Sendable {
         }
     }
 
-    public init(credentials: Credentials, store: LocalStore, dependencies: Dependencies) throws {
+    public init(credentials: Credentials, store: LocalStore, dependencies: Dependencies, filesDirectory: URL? = nil) throws {
         guard let secret = credentials.secretData else { throw CryptoError.invalidInput("credentials secret") }
         self.credentials = credentials
         self.keys = try AccountKeys(secret: secret)
         self.store = store
         self.api = HappyAPI(serverURL: dependencies.serverURL, clientID: dependencies.clientID, transport: dependencies.transport)
             .authenticated(token: credentials.token)
-        self.sync = SyncEngine(api: api, store: store, keys: keys)
+        var syncOptions = SyncEngine.Options()
+        syncOptions.deliveryActivity = dependencies.deliveryActivity
+        self.sync = SyncEngine(api: api, store: store, keys: keys, options: syncOptions)
+        let accountFiles = filesDirectory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Happy/accounts/\(keys.anonID)/files", isDirectory: true)
+        self.sender = OutboxSender(store: store, sync: sync, filesDirectory: accountFiles)
         self.pairing = PairingService(api: api, keys: keys)
 
         guard let socketURL = SocketIOURL.make(serverURL: dependencies.serverURL) else {
@@ -101,6 +108,7 @@ public final class AccountSession: Sendable {
 
     /// Shows local data immediately; sync and the socket catch up behind it.
     public func start() async {
+        await sync.configureSending(filesDirectory: sender.filesDirectory)
         await sync.syncAll()
         let realtime = self.realtime
         let sync = self.sync
@@ -123,6 +131,7 @@ public final class AccountSession: Sendable {
     /// Tells the server whether the app is in the foreground, so it can
     /// suppress pushes while the user is looking at the app.
     public func sendAppState(_ state: String) async {
+        await sync.setBackgrounded(state != "active")
         try? await realtime.emit("app-state", .object(["state": .string(state)]))
     }
 

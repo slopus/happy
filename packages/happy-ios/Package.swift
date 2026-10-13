@@ -96,7 +96,8 @@ let package = Package(
         ),
         .testTarget(
             name: "HappyCoreTests",
-            dependencies: ["HappyCore", "HappyCrypto"]
+            dependencies: ["HappyCore", "HappyCrypto"],
+            resources: [.copy("Fixtures")]
         ),
         .testTarget(
             name: "HappyLayoutTests",
