@@ -33,6 +33,9 @@ public final class HomeViewController: UIViewController {
     /// home feed (`HomeDerivation`); only what changed is applied here.
     private var pipeline: ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>?
     private var observation: ApplyObservation?
+    /// Derives home again when a stamp or heading can next read differently
+    /// (`HomeClockBoundary`), with no store change.
+    private let clockWake = ClockWake()
     private var state: HomeContent?
     /// The home filter's choice, as last derived.
     private var grouping: SessionListGrouping = .flat
@@ -65,7 +68,7 @@ public final class HomeViewController: UIViewController {
         let pipeline = ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>(
             input: HomeDerivation.Input(expandedProjects: context.account.localSettings.expandedProjects, includesDock: true),
             state: HomeDerivation.Applied(),
-            derive: { HomeDerivation.derive($0, applied: $1) },
+            derive: { [clockWake] in HomeDerivation.derive($0, applied: $1, wake: clockWake) },
             apply: { [weak self] update in
                 // Nothing from an account that is no longer the active one.
                 guard let self, self.isCurrentAccount else { return false }
@@ -73,6 +76,7 @@ public final class HomeViewController: UIViewController {
                 return true
             }
         )
+        clockWake.onWake { [weak pipeline] in pipeline?.update { _ in } }
         pipeline.follow(session.homeFeed.snapshots()) { $0.snapshot = $1 }
         self.pipeline = pipeline
         observation = pipeline.observation
@@ -89,10 +93,23 @@ public final class HomeViewController: UIViewController {
         // becomes active.
         checkNativeUpdate()
         NotificationCenter.default.addObserver(self, selector: #selector(appBecameActive), name: UIApplication.didBecomeActiveNotification, object: nil)
+        // Midnight, a new time zone, a clock set by hand: the stamps are
+        // written again, off the main thread.
+        NotificationCenter.default.addObserver(self, selector: #selector(clockChanged), name: UIApplication.significantTimeChangeNotification, object: nil)
+    }
+
+    deinit {
+        clockWake.cancel()
     }
 
     @objc private func appBecameActive() {
         checkNativeUpdate()
+        // A wake that fell due while the app was suspended.
+        clockChanged()
+    }
+
+    @objc private func clockChanged() {
+        pipeline?.update { _ in }
     }
 
     private func checkNativeUpdate() {

@@ -112,6 +112,16 @@ final class HomeRowMeasurerTests: XCTestCase {
         XCTAssertEqual(environment.rows.hairline, 1.0 / 3, accuracy: 0.0001)
     }
 
+    /// The session list measures each heading as the text its cell is
+    /// configured with, and leaves the constant rows to their layouts.
+    func testTheSessionListMeasuresHeadingsAsItsCellsShowThem() {
+        typealias List = SessionListViewController
+        XCTAssertEqual(List.kind(.flat(.dayHeader(.today)), grouped: false), .dayHeader(label: Strings.SessionHistory.today))
+        XCTAssertEqual(List.kind(.flat(.archiveToggle(hidden: true)), grouped: false), .archiveToggle(label: Strings.Sidebar.showArchived, banded: true))
+        XCTAssertEqual(List.kind(.project(.archiveToggle(hidden: false)), grouped: true), .archiveToggle(label: Strings.Sidebar.hideArchived, banded: false))
+        XCTAssertEqual(List.kind(.project(.archiveHeader(.daysAgo(3))), grouped: true), .section(label: Strings.SessionHistory.daysAgo(3)))
+    }
+
     func testTheMeasurerRunsOffTheMainThread() async {
         let environment = HomeTextEnvironment.current(scale: 3)
         let height = await Task.detached {
