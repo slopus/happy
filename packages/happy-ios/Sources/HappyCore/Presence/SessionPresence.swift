@@ -6,8 +6,6 @@ import HappyStore
 public actor SessionPresence {
     public struct Options: Sendable {
         public var persistenceIntervalMs: Int64 = 60_000
-        /// Current happy-server presence/timeout.ts expires after ten minutes.
-        public var expirationMs: Int64 = 10 * 60_000
         public var timerInterval: Duration = .seconds(15)
         public init() { }
     }
@@ -143,13 +141,6 @@ public actor SessionPresence {
         var changed = false
         for id in Array(sessions.keys) {
             guard var state = sessions[id] else { continue }
-            if state.active && time - state.latestAt >= options.expirationMs {
-                state.active = false
-                state.thinking = false
-                state.displayedAt = state.latestAt
-                dirtySessions.insert(id)
-                changed = true
-            }
             let token = state.active ? nil : ComposerStatus.lastSeen(activeAt: state.latestAt, now: time)
             if token != state.lastSeen {
                 state.lastSeen = token
@@ -158,17 +149,6 @@ public actor SessionPresence {
             }
             sessions[id] = state
             store.setSessionPresenceOverlay(id: id, value: state.overlay)
-        }
-        for id in Array(machines.keys) {
-            guard var state = machines[id] else { continue }
-            if state.active && time - state.latestAt >= options.expirationMs {
-                state.active = false
-                state.displayedAt = state.latestAt
-                dirtyMachines.insert(id)
-                changed = true
-            }
-            machines[id] = state
-            store.setMachinePresenceOverlay(id: id, value: state.overlay)
         }
         if changed || time - lastFlush >= options.persistenceIntervalMs { checkpoint() }
         if changed { await store.refreshPresenceDisplay(at: time) }

@@ -59,7 +59,7 @@ final class SyncPerfPresenceTests: XCTestCase {
         XCTAssertEqual(commits.value, 1, "sentinel only, stale presence is ignored")
     }
 
-    func testIdleExpiryNeedsNoPacketAndLastSeenPublishesAtMinuteGranularity() async throws {
+    func testServerOfflinePacketAndLastSeenPublishAtMinuteGranularity() async throws {
         let (store, clock, presence) = try fixture()
         let home = HomeFeed(store: store).snapshots()
         _ = try await syncPerfNext(home)
@@ -67,6 +67,8 @@ final class SyncPerfPresenceTests: XCTestCase {
         store.writer.add(transactionObserver: commits)
         clock.now += 10 * 60_000
         await presence.tick()
+        XCTAssertEqual(try store.session(id: "s")?.active, true, "only the server changes active, regardless of device clock")
+        await presence.activity(id: "s", active: false, activeAt: 1_000_000, thinking: false)
         let expired = try await syncPerfNext(home)
         XCTAssertEqual(expired?.sessions.first?.active, false)
         XCTAssertEqual(expired?.sessions.first?.thinking, false)
@@ -161,7 +163,7 @@ final class SyncPerfPresenceTests: XCTestCase {
         XCTAssertEqual(try store.session(id: "s")?.activeAt, clock.now + 61_000)
     }
 
-    func testMachineOfflineFlipAndIdleExpiryAreImmediateAndMonotonic() async throws {
+    func testMachineOfflinePacketsAreImmediateAndMonotonicDespiteClockSkew() async throws {
         let store = try LocalStore.inMemory()
         let clock = SyncEngineTests.Clock()
         let machine = MachineRecord(id: "m", seq: 0, createdAt: 1, updatedAt: 1, active: true,
@@ -184,7 +186,91 @@ final class SyncPerfPresenceTests: XCTestCase {
         XCTAssertEqual(online?.machines.first?.active, true)
         clock.now += 10 * 60_000
         await presence.tick()
+        XCTAssertEqual(try store.machine(id: "m")?.active, true)
+        await presence.machineActivity(id: "m", active: false, activeAt: clock.now - 10 * 60_000)
         let expired = try await syncPerfNext(stream)
         XCTAssertEqual(expired?.machines.first?.active, false)
+    }
+
+    func testAheadAndBehindClientClocksCannotFlapLiveSessionOrMachinePresence() async throws {
+        for skew: Int64 in [15 * 60_000, -15 * 60_000] {
+            let store = try LocalStore.inMemory()
+            let clock = SyncEngineTests.Clock()
+            let wireStart: Int64 = 1_000_000
+            let clientStart = wireStart + skew
+            clock.now = clientStart
+            try store.upsertSessions((0..<10).map { index in
+                var row = ChatRecords.storeSession("s\(index)")
+                row.activeAt = wireStart
+                return row
+            })
+            try store.replaceMachines((0..<10).map { index in
+                MachineRecord(id: "m\(index)", seq: 0, createdAt: 1, updatedAt: 1, active: true,
+                              activeAt: wireStart, metadataVersion: 0, metadataCipher: "", metadata: nil,
+                              daemonStateVersion: 0, daemonStateCipher: nil, daemonState: nil,
+                              dataKeyCipher: nil, decryptable: false)
+            })
+            let presence = SessionPresence(store: store, now: { clock.now })
+            let initialHome = expectation(description: "home initial"), initialMachines = expectation(description: "machines initial")
+            let homeChurn = expectation(description: "no skew home value"), machineChurn = expectation(description: "no skew machine value")
+            homeChurn.isInverted = true
+            machineChurn.isInverted = true
+            let homes = PageCounter(), machines = PageCounter()
+            let watchingHome = Task {
+                for await _ in HomeFeed(store: store).snapshots() {
+                    homes.count += 1
+                    if homes.count == 1 { initialHome.fulfill() } else { homeChurn.fulfill() }
+                }
+            }
+            let watchingMachines = Task {
+                for await _ in MachinesFeed(store: store).snapshots() {
+                    machines.count += 1
+                    if machines.count == 1 { initialMachines.fulfill() } else { machineChurn.fulfill() }
+                }
+            }
+            defer { watchingHome.cancel(); watchingMachines.cancel() }
+            await fulfillment(of: [initialHome, initialMachines], timeout: 5)
+            let commits = SyncPerfCommits()
+            store.writer.add(transactionObserver: commits)
+            for tick in 1...15 {
+                if tick == 8 { clock.now = clientStart + 15_000; await presence.tick() }
+                clock.now = clientStart + Int64(tick * 2000)
+                let wireStamp = wireStart + Int64(tick * 2000)
+                for index in 0..<10 {
+                    await presence.activity(id: "s\(index)", active: true, activeAt: wireStamp, thinking: false)
+                    await presence.machineActivity(id: "m\(index)", active: true, activeAt: wireStamp)
+                }
+            }
+            await presence.tick() // 30s, after the last live packet.
+            XCTAssertEqual(commits.value, 0)
+            XCTAssertEqual(homes.count, 1)
+            XCTAssertEqual(machines.count, 1)
+            XCTAssertTrue(try store.sessions().allSatisfy { $0.active && !$0.thinking })
+            XCTAssertTrue(try store.machines().allSatisfy(\.active))
+            try await presence.stop()
+            XCTAssertEqual(commits.value, 1, "one separate stop checkpoint for all 20 dirty rows")
+            await fulfillment(of: [homeChurn, machineChurn], timeout: 0.05)
+            XCTAssertEqual(homes.count, 1)
+            XCTAssertEqual(machines.count, 1)
+        }
+    }
+
+    func testSilenceDoesNotInventOfflineStateAndOnlyDirtyPresenceCheckpoints() async throws {
+        let (store, clock, presence) = try fixture()
+        clock.now += 2000
+        await presence.activity(id: "s", active: true, activeAt: clock.now, thinking: false)
+        let commits = SyncPerfCommits()
+        store.writer.add(transactionObserver: commits)
+        clock.now += 11 * 60_000
+        await presence.tick()
+        XCTAssertEqual(try store.session(id: "s")?.active, true)
+        XCTAssertEqual(commits.value, 1, "only the previously dirty timestamp is checkpointed")
+        clock.now += 60_000
+        await presence.tick()
+        XCTAssertEqual(try store.session(id: "s")?.active, true)
+        XCTAssertEqual(commits.value, 1, "an empty minute checkpoint writes nothing")
+        await presence.activity(id: "s", active: false, activeAt: 1_002_000, thinking: false)
+        XCTAssertEqual(try store.session(id: "s")?.active, false)
+        XCTAssertEqual(commits.value, 2, "server timeout flips offline immediately")
     }
 }
