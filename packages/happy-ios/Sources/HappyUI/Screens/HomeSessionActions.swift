@@ -68,7 +68,7 @@ final class HomeSessionActions {
             }
         case .duplicate:
             guard actions.canFork else { return }
-            presentDuplicateSheet(sessionId: record.id)
+            host?.presentDuplicateSheet(sessionId: record.id, context: context)
         case .copyMetadata:
             copy(SessionQuickActions.metadataText(record))
         case .copyMetadataAndLogs:
@@ -147,12 +147,6 @@ final class HomeSessionActions {
             throw HomeActionError(Strings.Home.forkErrorGeneric)
         }
     }
-
-    /// SECONDARY SEAM: the duplicate sheet belongs to the session info
-    /// screen (`Screens/SessionInfoDuplicateSheet.swift`). Until it lands
-    /// this does nothing; then it becomes
-    /// `host?.presentDuplicateSheet(sessionId: sessionId, context: context)`.
-    private func presentDuplicateSheet(sessionId: String) {}
 
     private func copy(_ text: String?) {
         guard let text else {

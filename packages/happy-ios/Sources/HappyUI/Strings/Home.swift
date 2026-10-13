@@ -72,5 +72,32 @@ extension Strings {
         public static let whatsNew = "What's new"
         /// `updateBanner.seeLatest`.
         public static let seeLatest = "See the latest updates and improvements"
+    
+        // The dock (HomeDock.tsx), whose copy is written there in English.
+        public static let dockPlaceholder = "Plan, ask, build…"
+        public static let selectMachine = "Select machine"
+        public static let noProject = "~"
+        public static let mainWorkspace = "Main"
+        public static let noWorktree = "No worktree"
+        public static let harnessHelp = "Help"
+        public static let harnessHelpLabel = "Harness setup help"
+        public static let harnessHelpURL = URL(string: "https://happy.engineering/docs/quick-start/")!
+        public static let machineTitle = "Machine"
+        public static let projectTitle = "Project"
+        public static let projectsSection = "Projects"
+        public static let worktreeTitle = "Worktree"
+        public static let workspaceTitle = "Workspace"
+        public static let harnessTitle = "Harness"
+        /// `machineLauncher.enterCustomPath`.
+        public static let enterCustomPath = "Enter custom path"
+        public static let customPathPlaceholder = "~/path/to/project"
+        public static let interruptHint = "To interrupt press stop"
+        // useStartSessionFromDraft.ts's directory question.
+        public static let createDirectoryTitle = "Create Directory?"
+        public static func createDirectoryMessage(_ directory: String) -> String {
+            "The directory '\(directory)' does not exist. Would you like to create it?"
+        }
+        /// `common.create`.
+        public static let create = "Create"
     }
 }
