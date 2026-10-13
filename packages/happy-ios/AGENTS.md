@@ -35,6 +35,49 @@ nothing here is wired to the release skill or to EAS.
    its techniques (async text layout, bubble animations, keyboard
    handling) and reimplement them; never copy its code, and don't depend
    on AsyncDisplayKit/Texture or its Display framework.
+8. **Sync never runs on the main thread. The main thread only applies a
+   minimal changeset that was computed elsewhere.**
+   - Everything else runs off the main thread: network, decryption,
+     decoding, merges and DB writes, the reducer, markdown and syntax
+     highlighting, row-model derivation, diffing, and measurement.
+   - In debug builds, sync, store and reducer entry points assert
+     `dispatchPrecondition(condition: .notOnQueue(.main))`. UI apply points
+     assert `.onQueue(.main)`.
+   - Heartbeats are presence, not data. `activity` ephemerals update an
+     in-memory presence actor per account. The UI hears about presence only
+     when something it renders changes: `active` or `thinking` flips, or the
+     shown text changes at its display granularity. Presence reaches SQLite
+     only on a flip, on background or terminate, and at most about once a
+     minute. Never write it once per heartbeat.
+   - Merges skip unchanged rows (`updateChanges`), so a no-op write commits
+     nothing and wakes no observer. A catch-up is batched, so many pages
+     make one observable commit per batch, not one per page.
+   - Observation is region-scoped. Fetching, deriving and `removeDuplicates`
+     all happen off the main thread. There is one shared observation per
+     account and region, not one per screen.
+   - UI updates are minimal:
+     - Row models are `Equatable` and diffed old against new.
+     - A changed row is reconfigured in place, never reloaded.
+     - Insert, delete or move only when membership or order changes.
+     - At most one apply per frame or batch.
+     - A field nothing renders never causes an apply.
+     - No full reload after the first load.
+   - Main-thread budgets:
+     - at most 1 ms per typical delta;
+     - at most 4 ms to apply a 1000-session catch-up;
+     - no single block longer than half a 120 Hz frame (4.2 ms).
+
+     Every main-thread apply sits inside an `os_signpost` interval. Debug
+     builds count main-thread milliseconds per sync batch.
+   - Linux tests guard all of this:
+     - benchmarks over fixed fixtures, asserting operation counts exactly
+       and wall time against a ceiling;
+     - changeset tests asserting exactly which rows a change touches. For
+       example, one session changed reconfigures exactly one row, a change
+       to an unrendered field touches none, a 500-record catch-up is one
+       apply, and a streamed token re-measures only the last bubble.
+
+     A change that adds work to a sync path keeps them green.
 
 ## Scope
 
@@ -509,6 +552,8 @@ change a file another workstream owns, ask the coordinator.
 | Reducer | `Core/Chat/` reducer and `ChatFeed`, `HappyWire` session-protocol decoding |
 | Ops | `Core/Sessions/` RPC operations (`sync/ops.ts`) |
 | Push | `Sources/HappyApp/PushNotifications.swift`, `Core/Push/` routing, installation id, APNs source and token sync, the entitlements, `AppCoordinator.openSession(fromNotification:)` |
+| Sync perf | Presence (`Core/Presence/`), the merge rules' skip-if-unchanged and batching in `LocalStore`, the shared per-account observations (`Core/Observation/`), the thread preconditions in `SyncEngine`, `LocalStore` and `LocalChatFeed`, the sync benchmarks (`Tests/HappyCoreTests/SyncPerf*`) |
+| Apply perf | The off-main row derivation and changesets (`Core/Changes/`), the home list and chat apply paths (`SessionListViewController.apply`, `ChatViewController`'s session and snapshot handling, `ChatListView.apply`, `ChatRowMeasurer`), signposts and the main-thread counter (`HappyUI/Perf/`), the changeset tests |
 | Tablet | `Sources/HappyUI/Tablet/`, `Sources/HappyLayout/Tablet/`, `Sources/HappyCore/Tablet/`, the root container switch in `AppCoordinator`. Tablet branches inside other workstreams' screens go through their owners |
 
 Shared seams, changed only through the coordinator:
