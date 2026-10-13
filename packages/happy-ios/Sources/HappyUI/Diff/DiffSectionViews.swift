@@ -124,26 +124,6 @@ final class DiffFileHeaderView: UIControl {
     }
 }
 
-/// components/FileIcon.tsx: the Seti glyph for a file name.
-///
-/// SEAM: the Seti outlines are not generated yet, so this keeps the 16pt
-/// slot empty. It is replaced by the generated icons in the FileIcon commit.
-final class FileIconView: UIView {
-    var fileName = "" {
-        didSet { if fileName != oldValue { setNeedsDisplay() } }
-    }
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        isOpaque = false
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-}
-
 /// components/diff/DiffImageView.tsx's panes: Before and After side by
 /// side, each a label over a bordered 160-tall box with the picture fitted.
 final class DiffImagePanesView: UIView {
