@@ -321,26 +321,211 @@ final class PendingChatLaunchTests: XCTestCase {
     func testASessionTheMachineHandsBackAfterTheAccountStoppedIsPutDown() async {
         let chats = PendingChats()
         let sessions = Sessions()
-        let ops = HeldSpawn()
-        let refreshes = Counter()
-        let starter = SessionStarter(environment: .init(
-            ops: ops,
-            sessionOps: NoSessionOps(),
+        let machine = Machine()
+        await machine.holdSpawn()
+        let root = SpawnRequests()
+        let starter = starter(machine, sessions: sessions, scope: root.child(.pendingChats))
+        let launcher = stripLauncher(chats, sessions, starter: starter, launch: Self.launch(place: "/src/happy"))
+        let chat = await launcher.open(anchorSessionId: "anchor", knownSessionIds: [])
+        _ = await chats.submit(id: chat.id, message: "hello")
+        await waitFor { await machine.isHoldingSpawn }
+
+        launcher.close()
+        XCTAssertFalse(starter.isStarting)
+        await launcher.idle()
+        await machine.answerSpawn(.success(sessionId: "late"))
+        await waitFor { await machine.refreshes > 0 }
+        let stops = await machine.stops
+        XCTAssertEqual(stops, ["late"])
+        let record = await chats.get(id: chat.id)
+        XCTAssertNil(record?.sessionId, "the stand-in never names it")
+        let sent = await sessions.sentTexts()
+        XCTAssertEqual(sent, [], "the queued message is not sent to it")
+        root.close()
+    }
+
+    // MARK: The strip's spawn requests, beside the dock's
+
+    /// The strip's start has its session and waits for it to sync; the dock
+    /// starts something else on the same account meanwhile. Both are real
+    /// starters, the strip's on the account's `pendingChats` scope, the
+    /// dock's on the account's own: the dock's new request doesn't abandon
+    /// the strip's session, and the stand-in becomes it with what was typed.
+    @MainActor
+    func testADockStartDoesNotAbandonTheStripsSessionOnTheSameAccount() async {
+        let chats = PendingChats()
+        let sessions = Sessions()
+        let root = SpawnRequests()
+        let stripMachine = Machine(spawns: [.success(sessionId: "strip")])
+        await stripMachine.holdReady("strip")
+        let strip = starter(stripMachine, sessions: sessions, scope: root.child(.pendingChats))
+        let launcher = stripLauncher(chats, sessions, starter: strip, launch: Self.launch(place: "/src/happy"))
+        let chat = await launcher.open(anchorSessionId: "anchor", knownSessionIds: [])
+        _ = await chats.submit(id: chat.id, message: "hello")
+        await waitFor { await stripMachine.isHoldingReady }
+
+        let dockMachine = Machine(spawns: [.success(sessionId: "dock")])
+        let dock = starter(dockMachine, sessions: sessions, scope: root)
+        let docked = await dock.start(Self.launch(place: "/src/other", prompt: "Fix the build"), isCurrentTarget: { true })
+        XCTAssertEqual(docked, "dock")
+        XCTAssertTrue(strip.isStarting, "the strip's start is still waiting for its session")
+        let early = await stripMachine.stops
+        XCTAssertEqual(early, [])
+
+        await stripMachine.releaseReady()
+        await launcher.idle()
+        let named = await chats.get(id: chat.id)
+        XCTAssertEqual(named?.sessionId, "strip")
+        let sent = await sessions.sent.map { "\($0.sessionId): \($0.text)" }
+        XCTAssertEqual(sent, ["dock: Fix the build", "strip: hello"])
+        let stops = await stripMachine.stops + dockMachine.stops
+        XCTAssertEqual(stops, [])
+        root.close()
+    }
+
+    /// The other way round: the dock's session is waiting to sync when the
+    /// strip starts a sibling. The strip's request is its own, so the dock's
+    /// session is left alone and opens with its first message.
+    @MainActor
+    func testAStripStartDoesNotAbandonTheDocksSessionOnTheSameAccount() async {
+        let chats = PendingChats()
+        let sessions = Sessions()
+        let root = SpawnRequests()
+        let dockMachine = Machine(spawns: [.success(sessionId: "dock")])
+        await dockMachine.holdReady("dock")
+        let dock = starter(dockMachine, sessions: sessions, scope: root)
+        let docking = Task { await dock.start(Self.launch(place: "/src/other", prompt: "Fix the build"), isCurrentTarget: { true }) }
+        await waitFor { await dockMachine.isHoldingReady }
+
+        let stripMachine = Machine(spawns: [.success(sessionId: "strip")])
+        let strip = starter(stripMachine, sessions: sessions, scope: root.child(.pendingChats))
+        let launcher = stripLauncher(chats, sessions, starter: strip, launch: Self.launch(place: "/src/happy"))
+        let chat = await launcher.open(anchorSessionId: "anchor", knownSessionIds: [])
+        await launcher.idle()
+        let named = await chats.get(id: chat.id)
+        XCTAssertEqual(named?.sessionId, "strip")
+        XCTAssertTrue(dock.isStarting)
+
+        await dockMachine.releaseReady()
+        let docked = await docking.value
+        XCTAssertEqual(docked, "dock")
+        let sent = await sessions.sentTexts()
+        XCTAssertEqual(sent, ["Fix the build"])
+        let stops = await stripMachine.stops + dockMachine.stops
+        XCTAssertEqual(stops, [])
+        root.close()
+    }
+
+    /// `AccountSession.stop` closes the account's spawn requests, the
+    /// strip's scope with them, while the machine is still being asked. The
+    /// start stops without waiting for the machine, and its stand-in gives
+    /// its writing back to the chat it was opened beside; the session the
+    /// machine hands back later is put down, never named, never written to.
+    /// The scope stays closed: a start on it afterwards asks the machine for
+    /// nothing.
+    @MainActor
+    func testClosingTheAccountsSpawnRequestsStopsTheStripsStartWhileTheMachineIsAsked() async {
+        let chats = PendingChats()
+        let sessions = Sessions(drafts: ["anchor": "the anchor's own"])
+        let root = SpawnRequests()
+        let machine = Machine(spawns: [.success(sessionId: "late")])
+        await machine.holdSpawn()
+        let strip = starter(machine, sessions: sessions, scope: root.child(.pendingChats))
+        let launcher = stripLauncher(chats, sessions, starter: strip, launch: Self.launch(place: "/src/happy"))
+        let chat = await launcher.open(anchorSessionId: "anchor", knownSessionIds: [])
+        _ = await chats.submit(id: chat.id, message: "hello")
+        await waitFor { await machine.isHoldingSpawn }
+
+        // The attempt is cancelled now; the start unwinds on its own task.
+        root.close()
+        await launcher.idle()
+        XCTAssertFalse(strip.isStarting)
+        let retired = await chats.get(id: chat.id)
+        XCTAssertNil(retired?.sessionId)
+        XCTAssertEqual(retired?.status, .failed)
+        let anchorDraft = await sessions.read("anchor")
+        XCTAssertEqual(anchorDraft, "hello\n\nthe anchor's own")
+
+        await machine.answerSpawn(.success(sessionId: "late"))
+        await waitFor { await machine.refreshes > 0 }
+        let stops = await machine.stops
+        XCTAssertEqual(stops, ["late"])
+        let sent = await sessions.sentTexts()
+        XCTAssertEqual(sent, [])
+
+        let scope = root.child(.pendingChats)
+        XCTAssertTrue(scope.isClosed)
+        let again = await starter(machine, sessions: sessions, scope: scope).start(Self.launch(place: "/src/happy"), isCurrentTarget: { true })
+        XCTAssertNil(again)
+        let spawned = await machine.spawned
+        XCTAssertEqual(spawned, 1, "a closed scope asks the machine for nothing")
+    }
+
+    /// The strip's session opened somewhere else while it syncs (a chat
+    /// screen's `onSessionVisible`, which releases on the account's own
+    /// requests): the release reaches the strip's scope, so the session is
+    /// no longer the start's to put down. It keeps running; the stand-in,
+    /// whose start no longer owns it, gives its writing back.
+    @MainActor
+    func testReleasingOnTheAccountReachesTheStripsScope() async {
+        let chats = PendingChats()
+        let sessions = Sessions(drafts: ["anchor": ""])
+        let root = SpawnRequests()
+        let machine = Machine(spawns: [.success(sessionId: "strip")])
+        await machine.holdReady("strip")
+        let strip = starter(machine, sessions: sessions, scope: root.child(.pendingChats))
+        let launcher = stripLauncher(chats, sessions, starter: strip, launch: Self.launch(place: "/src/happy"))
+        let chat = await launcher.open(anchorSessionId: "anchor", knownSessionIds: [])
+        _ = await chats.submit(id: chat.id, message: "hello")
+        await waitFor { await machine.isHoldingReady }
+
+        root.release(sessionId: "another")
+        XCTAssertTrue(strip.isStarting, "another session's release is not this one's")
+        root.release(sessionId: "strip")
+        await machine.releaseReady()
+        await launcher.idle()
+        let record = await chats.get(id: chat.id)
+        XCTAssertNil(record?.sessionId)
+        let stops = await machine.stops
+        let kills = await machine.kills
+        XCTAssertEqual(stops, [], "the session opened elsewhere keeps running")
+        XCTAssertEqual(kills, [])
+        let anchorDraft = await sessions.read("anchor")
+        XCTAssertEqual(anchorDraft, "hello")
+        root.close()
+    }
+
+    // MARK: Real starters
+
+    private static func launch(place: String, prompt: String = "") -> NewSessionLaunch {
+        NewSessionLaunch(
+            machineId: "m1", agent: .claude, rigMetadata: nil, absolutePath: place,
+            worktreeSelection: NewSessionDraft.noWorktreeKey, worktreeCreationMachineId: nil, target: nil,
+            permissionMode: "default", modelMode: "default", effortLevel: nil, prompt: prompt, attachments: [],
+            signature: SpawnRequests.Signature(machineId: "m1", agent: "claude", place: place, worktree: nil, modelKey: nil, permissionMode: nil, effort: nil)
+        )
+    }
+
+    @MainActor
+    private func starter(_ machine: Machine, sessions: Sessions, scope: SpawnRequests) -> SessionStarter {
+        SessionStarter(environment: .init(
+            ops: machine,
+            sessionOps: machine,
             sender: RealStorage(sessions: sessions),
             metadataTransport: NoTransport(),
-            refreshSessions: { await refreshes.add() },
+            refreshSessions: { await machine.refreshed() },
             paintBotFace: { _ in Data() },
             attachmentPlan: { message, _ in AttachmentSendPlan(accepted: message.attachments, rejected: [], shouldShowUnsupportedAlert: false, shouldSendText: true) },
-            spawnRequests: SpawnRequests(),
+            spawnRequests: scope,
             sleep: { _ in }
         ))
-        let launch = NewSessionLaunch(
-            machineId: "m1", agent: .claude, rigMetadata: nil, absolutePath: "/src/happy",
-            worktreeSelection: NewSessionDraft.noWorktreeKey, worktreeCreationMachineId: nil, target: nil,
-            permissionMode: "default", modelMode: "default", effortLevel: nil, prompt: "", attachments: [],
-            signature: SpawnRequests.Signature(machineId: "m1", agent: "claude", place: "/src/happy", worktree: nil, modelKey: nil, permissionMode: nil, effort: nil)
-        )
-        let launcher = PendingChatLauncher(environment: .init(
+    }
+
+    /// `ChatPendingStarts`' launcher: every start the strip's, with no
+    /// first message, whatever the composer is doing.
+    @MainActor
+    private func stripLauncher(_ chats: PendingChats, _ sessions: Sessions, starter: SessionStarter, launch: NewSessionLaunch) -> PendingChatLauncher {
+        PendingChatLauncher(environment: .init(
             chats: chats,
             start: { _ in await starter.start(launch, isCurrentTarget: { true }) },
             send: { try await sessions.send($0, $1) },
@@ -349,35 +534,77 @@ final class PendingChatLaunchTests: XCTestCase {
             reportSendFailure: { _ in },
             cancelStart: { starter.cancel() }
         ))
-        let chat = await launcher.open(anchorSessionId: "anchor", knownSessionIds: [])
-        _ = await chats.submit(id: chat.id, message: "hello")
-        while !(await ops.isHolding) { await Task.yield() }
-
-        launcher.close()
-        XCTAssertFalse(starter.isStarting)
-        await launcher.idle()
-        await ops.answer(.success(sessionId: "late"))
-        for _ in 0..<500 where await refreshes.count == 0 { await Task.yield() }
-        let stops = await ops.stops
-        XCTAssertEqual(stops, ["late"])
-        let record = await chats.get(id: chat.id)
-        XCTAssertNil(record?.sessionId, "the stand-in never names it")
-        let sent = await sessions.sentTexts()
-        XCTAssertEqual(sent, [], "the queued message is not sent to it")
     }
 
-    private actor HeldSpawn: HomeOps {
-        var stops: [String] = []
-        private var held: CheckedContinuation<SpawnSessionResult, Never>?
-        var isHolding: Bool { held != nil }
+    /// Polls, so a start that never gets there is a failure, not a hang.
+    @MainActor
+    private func waitFor(file: StaticString = #filePath, line: UInt = #line, _ condition: () async -> Bool) async {
+        let deadline = ContinuousClock.now + .seconds(5)
+        while !(await condition()) {
+            if ContinuousClock.now > deadline {
+                XCTFail("timed out", file: file, line: line)
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(2))
+        }
+    }
 
-        func answer(_ result: SpawnSessionResult) {
-            held?.resume(returning: result)
-            held = nil
+    /// A computer: answers spawns in turn, and can hold a spawn or a
+    /// session's sync until told to go on.
+    private actor Machine: HomeOps, HomeSessionOps {
+        private var spawns: [SpawnSessionResult]
+        private(set) var spawned = 0
+        private(set) var stops: [String] = []
+        private(set) var kills: [String] = []
+        private(set) var refreshes = 0
+        private var holdsSpawn = false
+        private var spawnGate: CheckedContinuation<SpawnSessionResult, Never>?
+        private var readyHeldFor: String?
+        private var readyGate: CheckedContinuation<Void, Never>?
+
+        init(spawns: [SpawnSessionResult] = []) {
+            self.spawns = spawns
+        }
+
+        var isHoldingSpawn: Bool { spawnGate != nil }
+        var isHoldingReady: Bool { readyGate != nil }
+
+        func holdSpawn() { holdsSpawn = true }
+        func holdReady(_ sessionId: String) { readyHeldFor = sessionId }
+        func refreshed() { refreshes += 1 }
+
+        func answerSpawn(_ result: SpawnSessionResult) {
+            spawnGate?.resume(returning: result)
+            spawnGate = nil
+        }
+
+        func releaseReady() {
+            readyHeldFor = nil
+            readyGate?.resume()
+            readyGate = nil
         }
 
         func machineSpawnNewSession(options: SpawnSessionOptions) async -> SpawnSessionResult {
-            await withCheckedContinuation { held = $0 }
+            spawned += 1
+            if holdsSpawn {
+                holdsSpawn = false
+                return await withCheckedContinuation { spawnGate = $0 }
+            }
+            return spawns.isEmpty ? .error(errorMessage: "unscripted") : spawns.removeFirst()
+        }
+
+        func ensureSessionReady(sessionId: String) async throws {
+            if sessionId == readyHeldFor { await withCheckedContinuation { readyGate = $0 } }
+        }
+
+        func machineStopSession(machineId: String, sessionId: String) async -> MachineOperationResult {
+            stops.append(sessionId)
+            return MachineOperationResult(success: true, message: nil)
+        }
+
+        func sessionKill(sessionId: String) async throws -> SessionKillResponse {
+            kills.append(sessionId)
+            return SessionKillResponse(success: true, message: "")
         }
 
         func machineResumeSession(machineId: String, sessionId: String, model: String?, permissionMode: String?) async -> SpawnSessionResult {
@@ -388,32 +615,18 @@ final class PendingChatLaunchTests: XCTestCase {
             .error(errorMessage: "unused")
         }
 
-        func machineStopSession(machineId: String, sessionId: String) async -> MachineOperationResult {
-            stops.append(sessionId)
-            return MachineOperationResult(success: true, message: nil)
-        }
-
         func machineBash(machineId: String, command: String, cwd: String) async throws -> SessionBashResponse {
             SessionBashResponse(success: true, stdout: "", stderr: "", exitCode: 0, error: nil)
         }
-    }
 
-    private struct NoSessionOps: HomeSessionOps {
-        func sessionKill(sessionId: String) async throws -> SessionKillResponse { SessionKillResponse(success: true, message: "") }
         func sessionSetAgentModes(sessionId: String, patch: SessionAgentModesPatch, transport: any MetadataUpdateTransport) async throws {}
         func sessionSetAvatar(sessionId: String, picture: SessionAvatarPicture) async throws {}
         func archive(sessionId: String) async throws {}
-        func ensureSessionReady(sessionId: String) async throws {}
         func uploadSessionBlob(sessionId: String, name: String, bytes: Data) async throws -> (ref: String, size: Int) { ("", 0) }
     }
 
     private struct NoTransport: MetadataUpdateTransport {
         func updateMetadata(event: String, payload: JSONValue) async throws -> JSONValue { .null }
-    }
-
-    private actor Counter {
-        var count = 0
-        func add() { count += 1 }
     }
 
     // MARK: newSessionLikeSession

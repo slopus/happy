@@ -12,6 +12,11 @@ import UIKit
 /// Only the open account has them. Once it stops being the open one (a
 /// switch, a sign-out, its removal) they are closed, the start running is
 /// stopped, and nothing here keeps any of that account.
+///
+/// Their spawn requests are the account's `pendingChats` scope, apart from
+/// the one the dock and the new-session screen share, so a start on either
+/// side never abandons the other's session. The account closes that scope
+/// when it stops; nothing here closes it.
 @MainActor
 final class ChatPendingStarts: NSObject {
     private static var current: ChatPendingStarts?
@@ -35,7 +40,7 @@ final class ChatPendingStarts: NSObject {
 
     private init(_ account: AccountSession, context: AppContext) {
         self.account = account
-        starter = SessionStarter.make(for: account)
+        starter = SessionStarter.make(for: account, spawnRequests: account.spawnRequests.child(.pendingChats))
         super.init()
         starter.presenter = self
         let store = account.store
