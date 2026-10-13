@@ -73,7 +73,7 @@ accident.
 - [ ] Attachments: picker (photos, camera, files), strip, upload progress (`AgentInputAttachmentStrip`, `attachmentSupport.ts`) — Composer + Sending
 - [ ] Permission mode, model and effort pickers (`PermissionModeSelector`, `modelModeOptions.ts`, `NativeOptionsPicker`) — Composer
 - [ ] Session info: metadata, machine, path, archive, delete, duplicate, fork (`session/[id]/info.tsx`) — Secondary + Ops
-  - The duplicate sheet is `Screens/SessionInfoDuplicateSheet.swift`, entered through `presentDuplicateSheet(sessionId:from:)`. Home's row alert and the chat call that entry point instead of building their own.
+  - The duplicate sheet is `Screens/SessionInfoDuplicateSheet.swift`, entered through `UIViewController.presentDuplicateSheet(sessionId:context:)`, which works like `push(_:context:)`. Home's row alert and the chat call that entry point instead of building their own.
 - [ ] File viewer and changes with diffs (`file.tsx`, `changes.tsx`, `diff/*`, `CodeView`) — Secondary
   - The `/files` browser is gated behind `experiments` and excluded (see Exclusions). The `/file` viewer is reachable without it, from tool rows and changes, and is in scope.
 
