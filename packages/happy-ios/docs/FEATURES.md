@@ -90,7 +90,7 @@ accident.
 - [x] Agents: machines and agent defaults (`settings/agents.tsx`) — Settings
 - [x] Connect Claude (`settings/connect/claude.tsx`) — Settings. Diverges on purpose: the command is in the text colour, because happy-app's white-on-transparent card vanishes in light mode.
 - [x] What's new (`changelog.tsx`) — Settings
-- [~] Push notification settings and registration (`apiPush.ts`) — Settings + Ops (settings rows done; APNs registration is Ops)
+- [~] Push notification settings and registration (`apiPush.ts`) — Settings + Ops + Push (settings rows and the Expo token API done; APNs wiring is Push)
 - [x] Synced settings model with pending deltas (`AccountSettings`, `SyncEngine.pushSettings`)
 
 ## Platform
@@ -100,10 +100,10 @@ accident.
 - [x] Offline-first delta sync: sessions, machines, settings, profile, projects, messages
 - [x] Outbox for messages and attachments, with retry and failure states — Sending
 - [x] Session protocol normalization and the reducer (`typesRaw.ts`, `sync/reducer/*`) — Reducer
-- [ ] Session ops over RPC: spawn, resume, fork, duplicate, rename, machine ops, bash, files (`sync/ops.ts`) — Ops
-- [ ] Git status (`gitStatusSync.ts`) — Ops
+- [x] Session ops over RPC: spawn, resume, fork, duplicate, machine ops, bash, files, mode sync, Happy Agent draft sync and git (`sync/ops.ts`, `rigComposer.ts`, `happyAgentGit.ts`) — Ops. There is no session rename in happy-app, so none here (`docs/OPS.md`)
+- [x] Git status (`gitStatusSync.ts`) — Ops
 - [x] Icons as vector outlines, no icon fonts — Icons
 - [x] Light and dark theme switching (`themePreference`) — Icons
 - [ ] Dynamic Type — unassigned
 - [ ] iPad layout (sidebar + detail) — unassigned
-- [ ] Push notifications (APNs registration, open from a notification) — Ops
+- [ ] Push notifications (APNs registration, open from a notification) — Push
