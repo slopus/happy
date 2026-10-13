@@ -23,10 +23,12 @@ final class TabletSidebarViewController: UIViewController {
     private let empty = TabletEmptySessionsView()
     private let spinner = UIActivityIndicatorView(style: .medium)
     private var list: SessionListViewController?
-    private var observation: StoreObservation?
+    /// Worked out off the main thread from the account's home feed
+    /// (`TabletSidebarDerivation`); only what changed is applied here.
+    private var observation: ApplyObservation?
 
-    private(set) var state: TabletSidebarState?
-    var onStateChange: ((TabletSidebarState) -> Void)?
+    private(set) var state: TabletSidebarFrame?
+    var onStateChange: ((TabletSidebarFrame) -> Void)?
 
     /// The navigation header's height (`DeviceCalculations.headerHeight`);
     /// the controls start below it.
@@ -70,9 +72,18 @@ final class TabletSidebarViewController: UIViewController {
         registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in
             self.applyBorder()
         }
-        observation = session.store.observeHome { [weak self] snapshot in
-            self?.received(TabletSidebarState(snapshot))
-        }
+        let pipeline = ApplyPipeline<HomeSnapshot?, TabletSidebarDerivation.Applied, TabletSidebarUpdate>(
+            input: nil,
+            state: TabletSidebarDerivation.Applied(),
+            derive: { TabletSidebarDerivation.derive($0, applied: $1) },
+            apply: { [weak self] update in
+                guard let self else { return false }
+                ApplyPerf.measure(.sidebar) { self.received(update) }
+                return true
+            }
+        )
+        pipeline.follow(session.homeFeed.snapshots()) { $0 = $1 }
+        observation = pipeline.observation
     }
 
     /// The sidebar's own hairline frame, on all four sides.
@@ -125,11 +136,14 @@ final class TabletSidebarViewController: UIViewController {
 
     // MARK: State
 
-    private func received(_ state: TabletSidebarState) {
-        guard state != self.state else { return }
+    /// Returns how many rows it touched.
+    private func received(_ update: TabletSidebarUpdate) -> Int {
+        let state = update.frame
+        let previous = self.state
         self.state = state
-        archive.isHidden = !state.hasArchived
-        archive.hidesArchived = state.hidesArchived
+        var rows = 0
+        if archive.isHidden != !state.hasArchived { archive.isHidden = !state.hasArchived }
+        if archive.hidesArchived != state.hidesArchived { archive.hidesArchived = state.hidesArchived }
         switch state.content {
         case .loading:
             spinner.startAnimating()
@@ -140,27 +154,33 @@ final class TabletSidebarViewController: UIViewController {
             empty.state = variant
             empty.isHidden = false
             list?.view.isHidden = true
-        case .list(let sessions, let offline):
+        case .list(let model):
             spinner.stopAnimating()
             empty.isHidden = true
-            showList(sessions, offline: offline)
+            rows = showList(model, changeset: update.changeset ?? RowChangeset())
         }
-        view.setNeedsLayout()
-        onStateChange?(state)
+        // Only a change of what fills the sidebar moves anything.
+        if previous?.content.kind != state.content.kind || previous?.hasArchived != state.hasArchived {
+            view.setNeedsLayout()
+        }
+        if previous?.showsInstallStep != state.showsInstallStep { onStateChange?(state) }
+        return rows
     }
 
-    private func showList(_ sessions: SessionList, offline: [MachineChoice]?) {
+    private func showList(_ model: HomeListModel, changeset: RowChangeset) -> Int {
         if let list {
-            list.update(sessions, offline: offline)
+            let rows = list.apply(model, changeset: changeset, animated: view.window != nil)
             list.view.isHidden = false
-            return
+            return rows
         }
-        let controller = SessionListViewController(context: context, session: session, list: sessions, offline: offline)
+        let controller = SessionListViewController(context: context, session: session)
+        controller.apply(model, changeset: changeset, animated: false)
         controller.selectedSessionId = selectedSessionId
         addChild(controller)
         view.insertSubview(controller.view, belowSubview: settingsRow)
         controller.didMove(toParent: self)
         list = controller
+        return model.rows.count
     }
 
     // MARK: Actions

@@ -17,48 +17,6 @@ public protocol ChatControls: Sendable {
 
 extension SessionActions: ChatControls {}
 
-/// The session around the chat: its record (metadata, agent state,
-/// thinking) and the account settings that change how the chat reads.
-public struct ChatSessionState: Equatable, Sendable {
-    /// Nil until the session is in the store, and once it is gone from it.
-    public var record: SessionRecord?
-    public var settings: AccountSettings
-    /// happy-app's `isDataReady`: sessions have been fetched at least once,
-    /// so a missing record means the session was deleted.
-    public var dataReady: Bool
-    /// The machine a stopped session ran on, for whether it can be resumed.
-    public var machine: MachineRecord?
-
-    public init(record: SessionRecord?, settings: AccountSettings, dataReady: Bool = false, machine: MachineRecord? = nil) {
-        self.record = record
-        self.settings = settings
-        self.dataReady = dataReady
-        self.machine = machine
-    }
-
-    public var metadata: JSONValue? { record?.metadata }
-    public var agentState: JSONValue? { record?.agentState }
-    public var thinking: Bool { record?.thinking ?? false }
-
-    /// `settings.groupToolCalls`: fold finished turns behind "Worked for …".
-    public var groupToolCalls: Bool { settings.bool("groupToolCalls") }
-    /// `settings.compactToolCalls`: every tool as a one-line row.
-    public var compactToolCalls: Bool { settings.bool("compactToolCalls") }
-
-    /// The terminal has control, so permissions are answered there
-    /// (`usesControlledSessionUi && agentState.controlledByUser`).
-    public var controlledByUser: Bool {
-        guard metadata?["client"]?["id"]?.stringValue != "rig" else { return false }
-        return agentState?["controlledByUser"]?.boolValue ?? false
-    }
-
-    /// `agentState.requests` is not empty.
-    public var hasPendingPermission: Bool { record?.hasPendingPermissionRequests ?? false }
-
-    /// The flavor the session was started with; absent means Claude.
-    public var flavor: String? { metadata?["flavor"]?.stringValue }
-}
-
 /// Where the chat reads and sends: the account's own feed, outbox sender
 /// and session actions. In debug builds a `fixture:<scenario>` session id
 /// reads from the fixture world instead (see Fixtures/).
@@ -67,11 +25,12 @@ struct ChatServices {
     var feed: any ChatFeed
     var sender: any ChatSending
     var controls: any ChatControls
-    /// The session record and settings, kept current.
-    var observeSession: (_ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> StoreObservation
+    /// The session record and settings, kept current: derived off the main
+    /// thread, and handed over only when something the chat draws changed.
+    var observeSession: (_ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation
     /// The same for another session: the one a pending chat was started
     /// beside.
-    var observeOtherSession: (_ id: String, _ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> StoreObservation
+    var observeOtherSession: (_ id: String, _ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation
     /// The chats still on their way to a machine; a `pending-chat:` id is one.
     var pendingChats: PendingChats
     /// The checkout's git status for the header; nil for the fixtures.
@@ -89,6 +48,7 @@ struct ChatServices {
 
     static func make(account: AccountSession, sessionId: String) -> ChatServices {
         let store = account.store
+        let feed = account.homeFeed
         #if DEBUG
         if FixtureScenarios.isFixture(sessionId) {
             let world = FixtureChatWorld.shared
@@ -97,8 +57,8 @@ struct ChatServices {
                 feed: FixtureChatFeed(world: world),
                 sender: FixtureChatSender(world: world),
                 controls: FixtureChatControls(world: world),
-                observeSession: observe(store: store) { _ in record },
-                observeOtherSession: observeOther(store: store),
+                observeSession: observe(feed: feed, sessionId: sessionId, record: record),
+                observeOtherSession: observeOther(feed: feed),
                 pendingChats: account.pendingChats,
                 gitStatus: nil,
                 attachment: FixtureAttachments.data
@@ -109,10 +69,8 @@ struct ChatServices {
             feed: account.chatFeed,
             sender: account.sender,
             controls: account.actions,
-            observeSession: observe(store: store) { snapshot in
-                snapshot.sessions.first { $0.id == sessionId }
-            },
-            observeOtherSession: observeOther(store: store),
+            observeSession: observe(feed: feed, sessionId: sessionId),
+            observeOtherSession: observeOther(feed: feed),
             pendingChats: account.pendingChats,
             gitStatus: account.gitStatus,
             setPermissionMode: { [actions = account.actions, transport = account.realtime] mode in
@@ -123,8 +81,12 @@ struct ChatServices {
                 try await actions.sessionGoalAction(sessionId: sessionId, action: action, objective: objective)
             },
             resume: { session, machine in
-                let composer = (try? store.composerState(sessionId: session.id))?.values ?? .object([:])
-                let settings = (try? store.settingsSnapshot())?.synced?.settings
+                // A tap, but still no SQL on the main thread.
+                let sessionId = session.id
+                let (composer, settings) = await Task.detached(priority: .userInitiated) {
+                    ((try? store.composerState(sessionId: sessionId))?.values ?? .object([:]),
+                     (try? store.settingsSnapshot())?.synced?.settings)
+                }.value
                 typealias S = Strings.SessionDetail
                 let messages = SessionDetailActions.ResumeMessages(
                     missingMachine: S.resumeSessionMissingMachine,
@@ -142,37 +104,42 @@ struct ChatServices {
     }
 
     private static func observeOther(
-        store: LocalStore
-    ) -> (_ id: String, _ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> StoreObservation {
+        feed: HomeFeed
+    ) -> (_ id: String, _ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation {
         { id, onChange in
-            observe(store: store) { snapshot in snapshot.sessions.first { $0.id == id } }(onChange)
+            observe(feed: feed, sessionId: id)(onChange)
         }
     }
 
-    /// Through the home observation: public, and one read for the record and
-    /// the settings, so the two always agree.
-    private static func observe(
-        store: LocalStore,
-        record: @escaping @MainActor (HomeSnapshot) -> SessionRecord?
-    ) -> (_ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> StoreObservation {
+    /// Through the account's shared home feed: one read for the record and
+    /// the settings, so the two always agree. The state is reduced to what
+    /// the chat draws and compared off the main thread, so a heartbeat, a
+    /// message cursor or another session's change applies nothing here.
+    /// `record` stands in for the stored one (the debug fixtures).
+    static func observe(
+        feed: HomeFeed,
+        sessionId: String,
+        record: SessionRecord? = nil
+    ) -> (_ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation {
         { onChange in
-            var last: ChatSessionState?
-            return store.observeHome { snapshot in
-                let fetched = ((try? store.cursor(.sessionsChangedSince)) ?? nil) != nil
-                let session = record(snapshot)
-                // Only a stopped session needs it, and a live one shouldn't
-                // update with its machine's every heartbeat.
-                let machineId = session.flatMap { SessionState($0) == .disconnected ? $0.metadata?["machineId"]?.stringValue : nil }
-                let state = ChatSessionState(
-                    record: session,
-                    settings: AccountSettings(snapshot.settings),
-                    dataReady: fetched || !snapshot.sessions.isEmpty,
-                    machine: machineId.flatMap { id in snapshot.machines.machines.first { $0.id == id } }
-                )
-                guard state != last else { return }
-                last = state
-                onChange(state)
-            }
+            let pipeline = ApplyPipeline<HomeSnapshot?, ChatSessionState?, ChatSessionState>(
+                input: nil,
+                state: nil,
+                derive: { snapshot, applied in
+                    guard let snapshot else { return nil }
+                    let state = ChatSessionState(snapshot, sessionId: sessionId, record: record)
+                    return state == applied ? nil : (state, state)
+                },
+                apply: { state in
+                    ApplyPerf.measure(.chatSession) {
+                        onChange(state)
+                        return 1
+                    }
+                    return true
+                }
+            )
+            pipeline.follow(feed.snapshots()) { $0 = $1 }
+            return pipeline.observation
         }
     }
 }

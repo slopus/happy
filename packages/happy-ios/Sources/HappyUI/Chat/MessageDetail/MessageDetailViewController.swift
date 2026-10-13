@@ -25,7 +25,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     private let holdRecognizer = UILongPressGestureRecognizer()
     private let copyCallout = ChatCopyCallout()
     private var feedTask: Task<Void, Never>?
-    private var observation: StoreObservation?
+    private var observation: ApplyObservation?
 
     private var session = ChatSessionState(record: nil, settings: AccountSettings())
     private var snapshot: ChatSnapshot?
