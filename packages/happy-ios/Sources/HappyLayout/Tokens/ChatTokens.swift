@@ -53,17 +53,27 @@ public struct ChatTextStyle: Hashable, Sendable {
     public var lineHeight: CGFloat?
     public var letterSpacing: CGFloat
     public var uppercase: Bool
+    /// `maxFontSizeMultiplier`, as on `TextStyle`.
+    public var maxScale: CGFloat?
 
-    public init(_ face: ChatFace, size: CGFloat, lineHeight: CGFloat? = nil, letterSpacing: CGFloat = 0, uppercase: Bool = false) {
+    public init(_ face: ChatFace, size: CGFloat, lineHeight: CGFloat? = nil, letterSpacing: CGFloat = 0, uppercase: Bool = false, maxScale: CGFloat? = nil) {
         self.face = face
         self.size = size
         self.lineHeight = lineHeight
         self.letterSpacing = letterSpacing
         self.uppercase = uppercase
+        self.maxScale = maxScale
     }
 
     public init(_ style: TextStyle) {
-        self.init(.plex(style.face), size: style.size, lineHeight: style.lineHeight, letterSpacing: style.letterSpacing, uppercase: style.uppercase)
+        self.init(
+            .plex(style.face),
+            size: style.size,
+            lineHeight: style.lineHeight,
+            letterSpacing: style.letterSpacing,
+            uppercase: style.uppercase,
+            maxScale: style.maxScale
+        )
     }
 
     public func with(_ face: ChatFace) -> ChatTextStyle {
