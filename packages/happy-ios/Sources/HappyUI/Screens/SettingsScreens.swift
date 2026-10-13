@@ -24,6 +24,7 @@ public final class SettingsViewController: UIViewController {
     public init(context: AppContext) {
         self.context = context
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)
@@ -350,6 +351,7 @@ public final class OnboardingSettingsViewController: UIViewController {
     public init(context: AppContext) {
         self.context = context
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)
@@ -425,6 +427,7 @@ public final class ServerConfigViewController: UIViewController, UITextFieldDele
     public init(context: AppContext) {
         self.context = context
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)

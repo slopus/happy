@@ -359,6 +359,7 @@ final class LinkComputerViewController: UIViewController {
         self.context = context
         self.session = session
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)

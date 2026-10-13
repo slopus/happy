@@ -38,21 +38,46 @@ titles (`OnboardingContent.tsx`, `TITLE_MAX_SCALE`). It sets no
 ## Where it is ported
 
 - `HappyLayout/TextScale.swift`: the factors, the cap, and
-  `TextStyle`/`ChatTextStyle.scaled(_:)`. `maxScale` on a style is the cap.
+  `TextStyle`/`ChatTextStyle.scaled(_:)`. `maxScale` on a style is the cap;
+  only `TextStyles.onboardingTitle` has one (1.2).
 - `HappyUI/Theme/TextEnvironment.swift`: `TextEnvironment` (text size and
-  display scale, from traits) and `font(in:)`/`lineHeightValue(in:)`, cached
-  per face and size and safe off main.
+  display scale, from traits), `font(in:)`/`lineHeightValue(in:)` cached per
+  face and size and safe off main, and the `FollowsTextSize` trait.
+
+## Which screens follow it
+
+A screen follows the text size when its controller calls
+`followsTextSize()`, which sets the `FollowsTextSize` trait on its view.
+`StyledLabel` draws scaled only under that trait, and draws again when the
+size changes; everywhere else it draws as designed. A screen opts in only
+when every height on it is measured from its text as drawn, never from a
+plan made at the designed size.
+
+Following now:
+
+- Settings and every page under it (Account, Appearance, Agents, Language,
+  Claude Code, What's New), the custom server page and the server
+  confirmation.
+- Onboarding: Welcome, Restore (QR and secret key), Link Your Computer. The
+  hidden copies that reserve the block's height are in the tree, so they
+  are measured at the same size. The titles stop at 1.2.
+- Their inputs (the server field, the secret key) and the text not drawn by
+  `StyledLabel` (What's New's paragraphs, the Claude command).
+
+Fixed RN sizes stay fixed: icons, the wordmark, the checklist boxes,
+paddings, and minimum heights (rows 44, buttons 50/44/32, Get help 36),
+which taller text grows past.
 
 ## Not yet wired
 
-Nothing reads the person's text size yet; every screen draws at Large.
-Still to do, after the Apply and Composer work:
-
-- `StyledLabel` and the attributed strings take a `TextEnvironment`, and
-  re-render when `preferredContentSizeCategory` changes.
-- The off-main measurers (Chat, Diff, Home, message detail, file viewer)
-  take it as an input and cache key. A text size change invalidates every
-  height, as a width change does.
+- Home, the session list, the sidebar, the chat, message detail, diffs and
+  the file viewer: their heights are planned off main at the designed size.
+  Their measurers take a `TextEnvironment` as an input and cache key, a
+  text size change invalidates every height as a width change does, and
+  then their screens opt in. `HomeRowHeights.flatSession` comes from the
+  scaled lines instead of 81.
+- The composer and the new-session screen.
+- Navigation bar titles (`NavigationTitleView`, What's New's title).
 - Measured text boxes ceil to pixels as RN's do.
-- `HomeRowHeights.flatSession` comes from the scaled lines instead of 81.
-- The inputs, the onboarding cap, and the fonts made outside `TextStyle`.
+- Fonts made outside `TextStyle` (session info's duplicate sheet, code
+  blocks).

@@ -205,6 +205,12 @@ public final class OnboardingScreenView: UIView {
             RoundButton(title: $0, size: .normal, display: .inverted)
         }
         super.init(frame: .zero)
+        // In the tree but hidden, so they are measured at the text size the
+        // shown ones are drawn at, as RN's hidden copies are.
+        for view in reservedContent + reservedSecondary {
+            view.isHidden = true
+            addSubview(view)
+        }
         backgroundColor = UIColor(Palette.groupedBackground)
         scrollView.contentInsetAdjustmentBehavior = .never
         scrollView.alwaysBounceVertical = false
@@ -335,7 +341,14 @@ public final class LinkComputerContentView: UIView {
         rowTitles[1].string = Strings.Onboarding.openStep
         bodies[0].string = Strings.Onboarding.installBodyPrefix + Strings.Onboarding.installBodyLink + Strings.Onboarding.installBodySuffix
         bodies[1].string = Strings.Onboarding.openBody
-        underlineLink()
+        bodies[0].decoration = { text in
+            let range = (text.string as NSString).range(of: Strings.Onboarding.installBodyLink)
+            guard range.location != NSNotFound else { return }
+            text.addAttributes([
+                .underlineStyle: NSUnderlineStyle.single.rawValue,
+                .foregroundColor: UIColor(Palette.text),
+            ], range: range)
+        }
         addSubview(titleLabel)
         for index in Step.allCases.indices {
             let head = heads[index]
@@ -392,17 +405,6 @@ public final class LinkComputerContentView: UIView {
             boxes[index].showChecklistBox(checked: checked)
             heads[index].accessibilityTraits = checked ? [.button, .selected] : .button
         }
-    }
-
-    private func underlineLink() {
-        guard let text = bodies[0].attributedText?.mutableCopy() as? NSMutableAttributedString else { return }
-        let range = (text.string as NSString).range(of: Strings.Onboarding.installBodyLink)
-        guard range.location != NSNotFound else { return }
-        text.addAttributes([
-            .underlineStyle: NSUnderlineStyle.single.rawValue,
-            .foregroundColor: UIColor(Palette.text),
-        ], range: range)
-        bodies[0].attributedText = text
     }
 
     @objc private func toggle(_ sender: UIControl) {
