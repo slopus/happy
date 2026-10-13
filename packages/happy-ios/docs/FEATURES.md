@@ -41,10 +41,10 @@ accident.
 - [x] Home states: loading, link, offline, no sessions, list
 - [x] Flat session list in a `UITableView`: live rows, archive toggle, archived by day
 - [x] Archive by swipe and long press
-- [ ] Home header: avatar, title, connection status, custom server host, new-session button (`HomeHeader`, `HomeHeaderTitle`, `homeConnectionStatus.ts`) — Home
+- [ ] Home header as the iPhone renders it (`MainView.tsx` phone header): logo, "Sessions" with the socket status, the filter menu and the settings gear. `HomeHeader.tsx` is not mounted on iPhone, so there is no new-session button or server entry; a signed-in iPhone reaches Server from the onboarding settings, and a new account picks its server at sign-in — Home
 - [ ] Home dock: the prompt that starts a session from home (`HomeDock`, `homeDock*.ts`) — Home
 - [ ] Project grouping and expanded projects (`ProjectHomeList`, `ProjectGroup`, `projectGroups.ts`, `sessionListGrouping` setting) — Home
-- [ ] Session row actions popover: rename, duplicate, delete, mark read (`SessionActionsPopover`, `useSessionQuickActions.ts`) — Home
+- [ ] Session row actions as the iPhone shows them: the "Session" alert from `useSessionQuickActions.ts` (details, resume, fork, duplicate, archive). `SessionActionsPopover` is web-only — Home + Ops
 - [ ] Pending chats placeholder (`PendingChatPlaceholder`, `pendingChats.ts`) — Home
 - [ ] Update banner (`UpdateBanner`) and offline machines banner (`OfflineMachinesBanner`) — Home
 - [ ] New session screen: machine, path, agent, model, permission mode, worktree (`new/index.tsx`, `newSessionProgress.ts`, `machineChoices.ts`) — Home + Ops
@@ -77,7 +77,7 @@ accident.
 
 - [x] Settings index: header, connect terminal, account, features, appearance, agents, about, version, logout (`SettingsView.tsx`) — Settings
 - [x] Account: profile, public id, secret key backup, linked devices, GitHub connect, logout, delete (`settings/account.tsx`) — Settings
-- [~] Account switcher: list, switch, add, sign out one — Settings + Accounts (list and switch done; add and sign out one being wired)
+- [x] Account switcher: list, switch, add, sign out one — Settings + Accounts
 - [x] Appearance: theme, avatar style, bubble colours, session list options, compact mode (`settings/appearance.tsx`) — Settings
 - [x] Language (`settings/language.tsx`) — Settings
 - [x] Agents: machines and agent defaults (`settings/agents.tsx`) — Settings
