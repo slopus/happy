@@ -856,8 +856,7 @@ public actor SyncEngine {
             return body.projectId == nil ? nil : .projects
 
         case .deleteSession(let sessionId):
-            try store.deleteSession(id: sessionId)
-            await presence.removeSession(sessionId)
+            try await presence.deleteSession(sessionId)
             return nil
 
         case .newMachine(let body):
@@ -885,8 +884,7 @@ public actor SyncEngine {
             return nil
 
         case .deleteMachine(let machineId):
-            try store.deleteMachine(id: machineId)
-            await presence.removeMachine(machineId)
+            try await presence.deleteMachine(machineId)
             return nil
 
         case .updateAccount(let body):

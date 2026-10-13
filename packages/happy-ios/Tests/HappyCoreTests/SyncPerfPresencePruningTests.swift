@@ -1,11 +1,86 @@
 import Foundation
 import XCTest
 import HappyCrypto
-import HappyStore
+@testable import HappyStore
 import HappyWire
 @testable import HappyCore
 
+private struct DeleteUnusedMetadata: MetadataUpdateTransport {
+    func updateMetadata(event: String, payload: JSONValue) async throws -> JSONValue { throw SessionActionError.noAnswer }
+}
+
 final class SyncPerfPresencePruningTests: XCTestCase {
+    func testUserActionDeletesRemovePresenceAndPostDeleteTicksPublishNothing() async throws {
+        let store = try LocalStore.inMemory()
+        var row = ChatRecords.storeSession("s")
+        row.active = false
+        row.activeAt = 1_000_000
+        try store.upsertSessions([row])
+        try store.replaceMachines([machine("m")])
+        let http = FakeHTTP()
+        http.onRaw("DELETE /v1/sessions/s", #"{"success":true}"#)
+        http.onRaw("DELETE /v1/machines/m", #"{"success":true}"#)
+        let clock = SyncEngineTests.Clock()
+        let sync = try engine(store, http, clock)
+        await sync.presence.tick()
+        let actions = SessionActions(api: testAPI(http), store: store, sync: sync, rpc: FakeRPC())
+        let machines = MachineActions(api: testAPI(http), store: store, sync: sync, rpc: FakeRPC(), metadataTransport: DeleteUnusedMetadata())
+        try await actions.delete(sessionId: "s")
+        let deleted = await machines.machineDelete(machineId: "m")
+        XCTAssertTrue(deleted.success)
+        let counts = await sync.presence.trackedCounts
+        XCTAssertEqual(counts.sessions, 0)
+        XCTAssertEqual(counts.machines, 0)
+        let initial = expectation(description: "empty home after user deletes")
+        let phantom = expectation(description: "no phantom deleted presence")
+        phantom.isInverted = true
+        let values = PageCounter()
+        let watching = Task {
+            for await _ in HomeFeed(store: store).snapshots() {
+                values.count += 1
+                if values.count == 1 { initial.fulfill() } else { phantom.fulfill() }
+            }
+        }
+        await fulfillment(of: [initial], timeout: 5)
+        let commits = SyncPerfCommits()
+        store.writer.add(transactionObserver: commits)
+        clock.now += 60_000
+        await sync.presence.tick()
+        await fulfillment(of: [phantom], timeout: 0.05)
+        XCTAssertEqual(commits.value, 0)
+        row.activeAt = 0
+        let probe = store.presenceOverlay.home(.init(machines: .init(synced: true, machines: [machine("m", activeAt: 0)]), sessions: [row]))
+        XCTAssertEqual(probe.sessions[0].activeAt, 0, "deleted actor state cannot reattach an overlay")
+        XCTAssertEqual(probe.machines.machines[0].activeAt, 0)
+        watching.cancel()
+        await sync.stop()
+    }
+
+    func testActorRemovalClearsAnOverlayReattachedAfterAStoreDelete() async throws {
+        let store = try LocalStore.inMemory()
+        var row = ChatRecords.storeSession("s")
+        row.active = false
+        row.activeAt = 1_000_000
+        try store.upsertSessions([row])
+        try store.replaceMachines([machine("m")])
+        let clock = SyncEngineTests.Clock()
+        let sync = try engine(store, FakeHTTP(), clock)
+        await sync.presence.tick()
+        try store.deleteSession(id: "s")
+        try store.deleteMachine(id: "m")
+        // Reproduces the old Store -> actor hop window without a timing race.
+        clock.now += 60_000
+        await sync.presence.tick()
+        await sync.presence.machineActivity(id: "m", active: false, activeAt: 1_000_001)
+        await sync.presence.removeSession("s")
+        await sync.presence.removeMachine("m")
+        row.activeAt = 0
+        let probe = store.presenceOverlay.home(.init(machines: .init(synced: true, machines: [machine("m", activeAt: 0)]), sessions: [row]))
+        XCTAssertEqual(probe.sessions[0].activeAt, 0)
+        XCTAssertEqual(probe.machines.machines[0].activeAt, 0)
+        await sync.stop()
+    }
+
     private func machine(_ id: String, activeAt: Int64 = 1_000_000) -> MachineRecord {
         MachineRecord(id: id, seq: 0, createdAt: 1, updatedAt: 1, active: false, activeAt: activeAt,
             metadataVersion: 0, metadataCipher: "", metadata: nil, daemonStateVersion: 0,

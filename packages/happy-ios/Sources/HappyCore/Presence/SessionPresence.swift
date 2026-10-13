@@ -139,11 +139,24 @@ public actor SessionPresence {
     func removeSession(_ id: String) {
         sessions.removeValue(forKey: id)
         dirtySessions.remove(id)
+        store.clearSessionPresenceOverlay(id: id)
     }
 
     func removeMachine(_ id: String) {
         machines.removeValue(forKey: id)
         dirtyMachines.remove(id)
+        store.clearMachinePresenceOverlay(id: id)
+    }
+
+    /// Row, overlay and actor state leave together without yielding to tick.
+    public func deleteSession(_ id: String) throws {
+        try store.deleteSession(id: id)
+        removeSession(id)
+    }
+
+    public func deleteMachine(_ id: String) throws {
+        try store.deleteMachine(id: id)
+        removeMachine(id)
     }
 
     /// Full listings preserve rows newer than their cutoff. Read the actual
