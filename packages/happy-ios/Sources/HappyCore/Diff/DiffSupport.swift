@@ -48,6 +48,11 @@ public final class DiffLRUCache<Value>: @unchecked Sendable {
         entries.removeAll()
         weight = 0
     }
+
+    /// Retained payload accounting for owner lifecycle checks and diagnostics.
+    var retainedUsage: (count: Int, bytes: Int) {
+        lock.withLock { (entries.count, weight) }
+    }
 }
 
 /// engine/language.ts: the Prism grammar id for a file name.
