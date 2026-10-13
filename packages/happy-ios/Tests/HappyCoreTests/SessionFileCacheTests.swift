@@ -269,6 +269,192 @@ final class SessionFileCacheTests: XCTestCase {
         XCTAssertEqual(kept, snapshot("t"))
     }
 
+    // MARK: What waits for the disk
+
+    private func cost(_ snapshot: FileViewer.Snapshot) -> Int {
+        FileCacheDisk.cost(snapshot)
+    }
+
+    /// Writes a copy of each path, as an earlier launch did.
+    private func seed(_ directory: URL, _ keys: [(String, String)], text: String = "old") async {
+        let seeded = SessionFileCache(directory: directory)
+        for (sessionId, path) in keys { seeded.set(sessionId: sessionId, path: path, snapshot(text)) }
+        await seeded.close()
+    }
+
+    func testAHeldWriterKeepsOneWriteAFileTheNewest() async throws {
+        let directory = try account("one")
+        let cache = SessionFileCache(directory: directory)
+        let disk = try XCTUnwrap(cache.disk)
+        let release = disk.hold()
+        for version in 1...50 {
+            cache.set(sessionId: "s", path: path, snapshot("v\(version)"))
+        }
+        XCTAssertEqual(disk.waiting.count, 1)
+        XCTAssertEqual(disk.waiting.bytes, cost(snapshot("v50")))
+        release()
+        await disk.drain()
+        XCTAssertEqual(disk.waiting.count, 0)
+        XCTAssertEqual(disk.waiting.bytes, 0)
+        let writes = await disk.writes
+        XCTAssertEqual(writes, 1)
+        await cache.close()
+        let kept = await SessionFileCache(directory: directory).snapshot(sessionId: "s", path: path)
+        XCTAssertEqual(kept, snapshot("v50"))
+    }
+
+    func testAHeldWriterHoldsNoMoreTextThanItsBudgetAndNothingComesBackStale() async throws {
+        let directory = try account("one")
+        let names = ["a", "b", "c", "d"]
+        await seed(directory, names.map { ("s", "/repo/\($0)") })
+        let cache = SessionFileCache(directory: directory, maxPendingBytes: 2_500)
+        let disk = try XCTUnwrap(cache.disk)
+        let release = disk.hold()
+        for name in names {
+            cache.set(sessionId: "s", path: "/repo/\(name)", snapshot(String(repeating: name, count: 1_000)))
+            XCTAssertLessThanOrEqual(disk.waiting.bytes, 2_500)
+        }
+        // Two writes wait; the two older gave way to removals.
+        XCTAssertEqual(disk.waiting.count, 4)
+        XCTAssertEqual(disk.waiting.bytes, 2_000)
+        // Every read still shows from memory.
+        for name in names {
+            XCTAssertEqual(cache.get(sessionId: "s", path: "/repo/\(name)"), snapshot(String(repeating: name, count: 1_000)))
+        }
+        release()
+        await disk.drain()
+        let writes = await disk.writes
+        XCTAssertEqual(writes, 2)
+        await cache.close()
+        let reopened = SessionFileCache(directory: directory)
+        for name in ["a", "b"] {
+            // The old copy went with the write that gave way.
+            let read = await reopened.snapshot(sessionId: "s", path: "/repo/\(name)")
+            XCTAssertNil(read)
+        }
+        for name in ["c", "d"] {
+            let read = await reopened.snapshot(sessionId: "s", path: "/repo/\(name)")
+            XCTAssertEqual(read, snapshot(String(repeating: name, count: 1_000)))
+        }
+    }
+
+    func testTooManyWaitingChangesEmptyTheDirectoryFirst() async throws {
+        let directory = try account("one")
+        await seed(directory, [("z", "/repo/z")])
+        let cache = SessionFileCache(directory: directory, maxPendingChanges: 3)
+        let disk = try XCTUnwrap(cache.disk)
+        let release = disk.hold()
+        for index in 1...5 {
+            cache.set(sessionId: "s", path: "/repo/\(index)", snapshot("\(index)"))
+            XCTAssertLessThanOrEqual(disk.waiting.count, 3)
+        }
+        cache.removeSession(sessionId: "z")
+        XCTAssertEqual(disk.waiting.count, 2)
+        release()
+        await disk.drain()
+        await cache.close()
+        XCTAssertEqual(files(directory).count, 2)
+        let reopened = SessionFileCache(directory: directory)
+        for index in 1...3 {
+            let read = await reopened.snapshot(sessionId: "s", path: "/repo/\(index)")
+            XCTAssertNil(read)
+        }
+        for index in 4...5 {
+            let read = await reopened.snapshot(sessionId: "s", path: "/repo/\(index)")
+            XCTAssertEqual(read, snapshot("\(index)"))
+        }
+        let gone = await reopened.snapshot(sessionId: "z", path: "/repo/z")
+        XCTAssertNil(gone)
+    }
+
+    func testASessionDeletedWhileTheWriterIsHeldDropsItsWaitingWrites() async throws {
+        let directory = try account("one")
+        await seed(directory, [("s", "/repo/old")])
+        let cache = SessionFileCache(directory: directory)
+        let disk = try XCTUnwrap(cache.disk)
+        let release = disk.hold()
+        cache.set(sessionId: "s", path: "/repo/a", snapshot("sa"))
+        cache.set(sessionId: "t", path: "/repo/a", snapshot("ta"))
+        cache.set(sessionId: "s", path: "/repo/b", snapshot("sb"))
+        cache.removeSession(sessionId: "s")
+        // t's write and s's removal; s's writes are let go at once.
+        XCTAssertEqual(disk.waiting.count, 2)
+        XCTAssertEqual(disk.waiting.bytes, cost(snapshot("ta")))
+        // Read again after the deletion: kept.
+        cache.set(sessionId: "s", path: "/repo/c", snapshot("sc"))
+        release()
+        await disk.drain()
+        await cache.close()
+        let reopened = SessionFileCache(directory: directory)
+        for path in ["/repo/old", "/repo/a", "/repo/b"] {
+            let read = await reopened.snapshot(sessionId: "s", path: path)
+            XCTAssertNil(read)
+        }
+        let kept = await reopened.snapshot(sessionId: "s", path: "/repo/c")
+        let other = await reopened.snapshot(sessionId: "t", path: "/repo/a")
+        XCTAssertEqual(kept, snapshot("sc"))
+        XCTAssertEqual(other, snapshot("ta"))
+    }
+
+    func testClosingWritesWhatWaitsThenNothing() async throws {
+        let directory = try account("one")
+        let cache = SessionFileCache(directory: directory)
+        let disk = try XCTUnwrap(cache.disk)
+        let release = disk.hold()
+        cache.set(sessionId: "s", path: "/repo/a", snapshot("a"))
+        let closing = Task { await cache.close() }
+        try await Task.sleep(for: .milliseconds(50))
+        // Asked for after closing began.
+        cache.set(sessionId: "s", path: "/repo/b", snapshot("b"))
+        disk.write(SessionFileCache.Key(sessionId: "s", path: "/repo/c"), snapshot("c"))
+        XCTAssertEqual(disk.waiting.count, 1)
+        release()
+        await closing.value
+        XCTAssertEqual(disk.waiting.count, 0)
+        XCTAssertEqual(files(directory).count, 1)
+        let reopened = SessionFileCache(directory: directory)
+        let written = await reopened.snapshot(sessionId: "s", path: "/repo/a")
+        XCTAssertEqual(written, snapshot("a"))
+    }
+
+    func testWaitingWorkIsDoneInTheOrderAsked() {
+        let a = SessionFileCache.Key(sessionId: "s", path: "/a")
+        let b = SessionFileCache.Key(sessionId: "s", path: "/b")
+        let t = SessionFileCache.Key(sessionId: "t", path: "/a")
+        var work = PendingDiskWork(maxBytes: 100, maxChanges: 8)
+        work.set(a, .write(snapshot("1"), cost: 1))
+        work.set(t, .write(snapshot("2"), cost: 1))
+        work.removeSession("s")
+        work.set(b, .write(snapshot("3"), cost: 1))
+        work.set(t, .write(snapshot("4"), cost: 1))
+        XCTAssertEqual(work.bytes, 2)
+        var done: [PendingDiskWork.Work] = []
+        while let next = work.next() { done.append(next) }
+        XCTAssertEqual(done, [
+            .removeSession("s"),
+            .change(b, .write(snapshot("3"), cost: 1)),
+            .change(t, .write(snapshot("4"), cost: 1)),
+        ])
+        XCTAssertTrue(work.isEmpty)
+        XCTAssertEqual(work.bytes, 0)
+    }
+
+    func testRootsKeepTheMostRecentlyUsed() {
+        let cache = SessionFileCache(directory: nil, maxRoots: 2)
+        cache.setRoot(sessionId: "one", SessionFileCache.Root(path: "/1"))
+        cache.setRoot(sessionId: "two", SessionFileCache.Root(path: "/2"))
+        // Asking counts as a use.
+        XCTAssertEqual(cache.root(sessionId: "one"), SessionFileCache.Root(path: "/1"))
+        cache.setRoot(sessionId: "three", SessionFileCache.Root(path: "/3"))
+        XCTAssertEqual(cache.rootCount, 2)
+        XCTAssertNil(cache.root(sessionId: "two"))
+        XCTAssertEqual(cache.root(sessionId: "one"), SessionFileCache.Root(path: "/1"))
+        XCTAssertEqual(cache.root(sessionId: "three"), SessionFileCache.Root(path: "/3"))
+        cache.removeSession(sessionId: "three")
+        XCTAssertNil(cache.root(sessionId: "three"))
+        XCTAssertEqual(cache.rootCount, 1)
+    }
+
     func testAnUnreadableFileIsAMiss() async throws {
         let directory = try account("one")
         let cache = SessionFileCache(directory: directory)
