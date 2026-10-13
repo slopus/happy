@@ -37,10 +37,12 @@ final class DiffFilePlan: @unchecked Sendable {
     let expansionNeedsSyntax: Bool
 
     /// When a plan made now stops starting colour work: the first paint's
-    /// second (`SYNTAX_REVEAL_MS`). The budget is cooperative: it is checked
-    /// between hunks, and a hunk already tokenizing runs to its end.
+    /// second (`SYNTAX_REVEAL_MS`), or the deadline of the pass it is made
+    /// in (`SyntaxPass`), so the chat's rows share one second. The budget
+    /// is cooperative: it is checked between hunks, and a hunk already
+    /// tokenizing runs to its end.
     static func syntaxDeadline() -> ContinuousClock.Instant {
-        .now + .milliseconds(DiffSyntax.revealMilliseconds)
+        SyntaxPass.deadline()
     }
 
     /// `expanded` is the reader's "show more" (DiffFileView's own state).

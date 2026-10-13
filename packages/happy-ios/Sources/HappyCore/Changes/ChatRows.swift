@@ -227,7 +227,8 @@ public struct ChatSnapshotFacts: Equatable, Sendable {
 /// The chat's rows from a snapshot, off the main thread: the window, the
 /// display items, one row input each (`makeRows`, the screen's own), then
 /// a plan per row measured only when its input or the width changed, and
-/// the changeset against the rows the list applied last.
+/// the changeset against the rows the list applied last. The rows measured
+/// in one pass share one syntax deadline (`SyntaxPass`).
 public enum ChatRowsDerivation {
     public struct Result<Row: Equatable & Sendable, Plan: Sendable>: Sendable {
         public var window: ChatWindowItems
@@ -248,14 +249,18 @@ public enum ChatRowsDerivation {
         planner: RowPlanner<Row, Plan>,
         applied: PlannedRows<Row, Plan>,
         makeRows: (_ items: [ChatListItem], _ groups: ChatWorkGroupState) -> [Row],
-        id: (Row) -> String
+        id: (Row) -> String,
+        syntaxDeadline: ContinuousClock.Instant? = nil
     ) -> Result<Row, Plan> {
+        let syntaxDeadline = syntaxDeadline ?? SyntaxPass.deadline()
         let items = ChatWindowing.items(
             messages, state: window, requests: requests, groupToolCalls: groupToolCalls,
             currentTurnComplete: currentTurnComplete, inForeground: inForeground
         )
         let rows = makeRows(items.items, items.state.groups)
-        let planned = planner.plan(rows, id: id, width: width, applied: applied)
+        let planned = SyntaxPass.run(until: syntaxDeadline) {
+            planner.plan(rows, id: id, width: width, applied: applied)
+        }
         return Result(window: items, rows: planned.rows, changeset: planned.changeset, measured: planned.measured)
     }
 }

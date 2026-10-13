@@ -75,6 +75,11 @@ rule 8), and what the Linux benchmarks measure.
   - An update planned for another width or layout is refused and planned
     again.
   - Marking the chat read on open is a store write, done off the main thread.
+  - The rows one pass measures share one syntax deadline (`SyntaxPass`): a
+    window full of diffs starts at most one second of tokenizing, not one
+    per diff. The deadline is not part of a row's input, so it never makes
+    a row measure again. Markdown code blocks in the chat are tokenized
+    with no deadline at all.
 
 ## Known gaps
 
