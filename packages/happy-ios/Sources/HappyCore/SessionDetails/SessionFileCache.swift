@@ -76,6 +76,9 @@ public final class SessionFileCache: @unchecked Sendable {
     /// itself: without it nothing is written, so a signed-out account's
     /// directory is never made again.
     public static func prepare(directory: URL) throws {
+        #if DEBUG
+        dispatchPrecondition(condition: .notOnQueue(.main))
+        #endif
         var isDirectory: ObjCBool = false
         if FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue { return }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
