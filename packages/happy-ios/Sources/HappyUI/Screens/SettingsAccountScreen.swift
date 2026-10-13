@@ -494,7 +494,8 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
                     )
                 )
                 if isCurrent {
-                    row.onLongPress = { [weak self] in self?.copy(token.token, label: row.title) }
+                    let fingerprint = PushTokenText.fingerprint(token.token)
+                    row.onLongPress = { [weak self] in self?.copy(token.token, label: fingerprint) }
                 } else {
                     row.onTap = { [weak self] in self?.delete(token) }
                 }
