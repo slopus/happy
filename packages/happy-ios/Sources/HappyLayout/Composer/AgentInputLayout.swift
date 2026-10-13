@@ -13,10 +13,12 @@ import CoreGraphics
 ///
 /// The status and usage rows fade while the reader is back in history and
 /// keep their space. The suggestion list floats above the composer, outside
-/// its bounds (`autocomplete(rows:border:)`).
+/// its bounds (`autocomplete(rows:border:)`). In a window wider than 700
+/// points the card is the flat panel (`AgentInputDesktopLayout`) and the
+/// rest stays.
 ///
 /// Frames are in the composer's bounds; the card's own content is in
-/// `cardLayout`, in the card's bounds.
+/// `cardLayout` or `desktopLayout`, in the card's bounds.
 public struct AgentInputLayout: Equatable, Sendable {
     public enum Metrics {
         /// `CONTAINER_TOP_PADDING` and the container's bottom padding.
@@ -62,16 +64,27 @@ public struct AgentInputLayout: Equatable, Sendable {
         public static let fadeOutDuration: Double = 0.14
     }
 
+    /// What sits between the rows, without its width (the layout supplies
+    /// it).
+    public enum Panel: Equatable, Sendable {
+        /// The compact mobile card.
+        case card(AgentInputCardLayout.Input)
+        /// The flat panel of a window wider than 700 points.
+        case desktop(AgentInputDesktopLayout.Input)
+    }
+
     public struct Input: Equatable, Sendable {
         public var width: CGFloat
         /// The container's side padding (8 on a phone).
         public var paddingH: CGFloat
         /// `layout.maxWidth` for the inner container.
         public var maxContentWidth: CGFloat
+        /// happy-app's `screenWidth`, the window's, which the 700-point
+        /// rules read; nil takes the composer's own width.
+        public var screenWidth: CGFloat?
         /// The status row's text, measured; nil hides the row.
         public var statusText: CGSize?
-        /// The card, without its width (the layout supplies it).
-        public var card: AgentInputCardLayout.Input
+        public var panel: Panel
         /// The usage row's week and context texts; both nil hides the row.
         public var usageWeek: CGSize?
         public var usageContext: CGSize?
@@ -80,18 +93,37 @@ public struct AgentInputLayout: Equatable, Sendable {
             width: CGFloat,
             paddingH: CGFloat = Metrics.containerPaddingH,
             maxContentWidth: CGFloat = .greatestFiniteMagnitude,
+            screenWidth: CGFloat? = nil,
             statusText: CGSize? = nil,
-            card: AgentInputCardLayout.Input,
+            panel: Panel,
             usageWeek: CGSize? = nil,
             usageContext: CGSize? = nil
         ) {
             self.width = width
             self.paddingH = paddingH
             self.maxContentWidth = maxContentWidth
+            self.screenWidth = screenWidth
             self.statusText = statusText
-            self.card = card
+            self.panel = panel
             self.usageWeek = usageWeek
             self.usageContext = usageContext
+        }
+
+        /// The compact card.
+        public init(
+            width: CGFloat,
+            paddingH: CGFloat = Metrics.containerPaddingH,
+            maxContentWidth: CGFloat = .greatestFiniteMagnitude,
+            screenWidth: CGFloat? = nil,
+            statusText: CGSize? = nil,
+            card: AgentInputCardLayout.Input,
+            usageWeek: CGSize? = nil,
+            usageContext: CGSize? = nil
+        ) {
+            self.init(
+                width: width, paddingH: paddingH, maxContentWidth: maxContentWidth, screenWidth: screenWidth,
+                statusText: statusText, panel: .card(card), usageWeek: usageWeek, usageContext: usageContext
+            )
         }
     }
 
@@ -116,9 +148,15 @@ public struct AgentInputLayout: Equatable, Sendable {
     /// The inner container: the composer less its side padding.
     public var inner: CGRect
     public var status: StatusRow?
+    /// The card or the panel.
     public var card: CGRect
-    public var cardLayout: AgentInputCardLayout
+    /// The compact card's content; nil for the panel.
+    public var cardLayout: AgentInputCardLayout?
+    /// The panel's content; nil for the compact card.
+    public var desktopLayout: AgentInputDesktopLayout?
     public var usage: UsageRow?
+    /// The window is wider than 700 points.
+    public var isWide: Bool
 
     /// From the composer's top to the card's (`onActionAreaOffsetChange`).
     public var cardOffset: CGFloat { card.minY }
@@ -131,7 +169,14 @@ public struct AgentInputLayout: Equatable, Sendable {
 
     /// `paddingHorizontal: screenWidth > 700 ? 12 : 8`.
     public static func paddingH(screenWidth: CGFloat) -> CGFloat {
-        screenWidth > 700 ? Metrics.containerPaddingHWide : Metrics.containerPaddingH
+        isWide(screenWidth: screenWidth) ? Metrics.containerPaddingHWide : Metrics.containerPaddingH
+    }
+
+    /// `screenWidth > 700`: the wide container padding, the suggestion
+    /// list's sides and, on a phone or tablet, the flat panel
+    /// (`compactMobileComposer` false).
+    public static func isWide(screenWidth: CGFloat) -> Bool {
+        screenWidth > 700
     }
 
     public init(_ input: Input) {
@@ -165,10 +210,23 @@ public struct AgentInputLayout: Equatable, Sendable {
             status = nil
         }
 
-        var cardInput = input.card
-        cardInput.width = innerWidth
-        cardLayout = AgentInputCardLayout(cardInput)
-        card = CGRect(x: innerX, y: y, width: innerWidth, height: cardLayout.size.height)
+        isWide = Self.isWide(screenWidth: input.screenWidth ?? width)
+        let panelHeight: CGFloat
+        switch input.panel {
+        case .card(var cardInput):
+            cardInput.width = innerWidth
+            let layout = AgentInputCardLayout(cardInput)
+            cardLayout = layout
+            desktopLayout = nil
+            panelHeight = layout.size.height
+        case .desktop(var desktopInput):
+            desktopInput.width = innerWidth
+            let layout = AgentInputDesktopLayout(desktopInput)
+            cardLayout = nil
+            desktopLayout = layout
+            panelHeight = layout.size.height
+        }
+        card = CGRect(x: innerX, y: y, width: innerWidth, height: panelHeight)
         y += card.height
 
         // Right-aligned: [week] 10 [context 5 gauge].
@@ -211,7 +269,7 @@ public struct AgentInputLayout: Equatable, Sendable {
         let list = CGFloat(max(0, rows)) * M.autocompleteRowHeight + 2 * max(0, border)
         let height = min(M.autocompleteMaxHeight, list)
         let bottom = inner.minY - M.autocompleteMarginBottom
-        let paddingH = size.width > 700 ? 0 : M.autocompletePaddingH
+        let paddingH = isWide ? 0 : M.autocompletePaddingH
         return CGRect(
             x: inner.minX + paddingH,
             y: bottom - height,

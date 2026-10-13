@@ -30,6 +30,11 @@ private let logger = Logger(subsystem: "engineering.happy", category: "composer"
 /// A chat still being started (`pending-chat:`) writes every keystroke to
 /// its record (`environment.draftStorage`) and queues its send there; when
 /// the session arrives, `retarget` moves the same composer over.
+///
+/// In a window wider than 700 points (happy-app's `screenWidth`, the
+/// window's, not the chat column's) the card is the flat panel with the
+/// gear, Stop, image and send (`desktopActionControls`). The same text view
+/// carries across the line as the window is resized.
 final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegate {
     weak var composerDelegate: (any ChatComposerDelegate)?
 
@@ -56,6 +61,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private var draftSave: Task<Void, Never>?
     /// A read asked for after a composition ended, not yet delivered.
     private var draftRefreshPending = false
+    /// The panel is being switched for the window (`followWindow`): the
+    /// card's height change isn't passed on as it happens.
+    private var followingWindow = false
     private var isAborting = false
     /// Stop was pressed; Stop stays hidden until the agent stops working
     /// (`stopRequested`), so a late status update can't leave it up.
@@ -158,7 +166,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     // MARK: ChatComposerView
 
     func composerHeight(fitting width: CGFloat) -> CGFloat {
-        layout(width: width).size.height
+        // The screen lays out with this answer.
+        followWindow()
+        return layout(width: width).size.height
     }
 
     var cardOffset: CGFloat {
@@ -264,16 +274,56 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         ContentWidth.maxWidth // Tablet (HappyUI/Tablet): layout.ts maxWidth, was 800 by size class.
     }
 
+    /// useLayoutDimensions' width: the window's. Before the composer is in
+    /// one, its own.
+    private var screenWidth: CGFloat {
+        window?.bounds.width ?? bounds.width
+    }
+
+    private var isWide: Bool {
+        AgentInputLayout.isWide(screenWidth: screenWidth)
+    }
+
+    /// The window crossed 700 points (Split View, Slide Over, Stage
+    /// Manager, a rotation, the composer arriving in its window): the
+    /// panel follows. True if it changed.
+    @discardableResult
+    private func followWindow() -> Bool {
+        guard isWide != (card.configuration.desktop != nil) else { return false }
+        followingWindow = true
+        applyConfiguration()
+        followingWindow = false
+        return true
+    }
+
+    /// The panel changed without the screen asking for a height: it hears
+    /// of it after the current pass, unanimated.
+    private func followWindowLater() {
+        guard followWindow() else { return }
+        setNeedsLayout()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.composerDelegate?.composerDidInvalidateHeight(self)
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        followWindowLater()
+    }
+
     private func layout(width: CGFloat) -> AgentInputLayout {
-        let paddingH = AgentInputLayout.paddingH(screenWidth: width)
+        let screenWidth = self.screenWidth
+        let paddingH = AgentInputLayout.paddingH(screenWidth: screenWidth)
         let maxContentWidth = self.maxContentWidth
         let innerWidth = AgentInputLayout.innerWidth(width: width, paddingH: paddingH, maxContentWidth: maxContentWidth)
         return AgentInputLayout(.init(
             width: width,
             paddingH: paddingH,
             maxContentWidth: maxContentWidth,
+            screenWidth: screenWidth,
             statusText: status == nil ? nil : statusSize,
-            card: card.layoutInput(width: innerWidth),
+            panel: card.panelInput(width: innerWidth),
             usageWeek: usage?.weekPercent == nil ? nil : weekSize,
             usageContext: usage?.context == nil ? nil : contextButton.labelSize
         ))
@@ -281,6 +331,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        // Normally caught when the screen asks for the height.
+        followWindowLater()
         let layout = layout(width: bounds.width)
         if let row = layout.status {
             statusDot.setLayoutFrame(row.dot)
@@ -406,7 +458,33 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         configuration.attachments = canAttach
             ? images.images.map { AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL) }
             : []
+        configuration.desktop = isWide ? AgentInputDesktopConfiguration(
+            settings: chips.showsSettings ? AgentInputSettingsMenu(sections: chips.settings.map(Self.settingsSection)) : nil,
+            showsStop: SessionComposerRules.canAbort(record),
+            isStopBusy: isAborting,
+            // SessionView passes no `isSending`: a send never spins here.
+            send: AgentInputDesktopSend(
+                hasText: Self.hasContent(card.text),
+                hasComposerContent: hasComposerContent,
+                isSendBlocked: SessionComposerRules.isSendBlocked(record)
+            )
+        ) : nil
         card.configuration = configuration
+    }
+
+    private static func settingsSection(_ section: ComposerChipSet.SettingsSection) -> AgentInputSettingsMenu.Section {
+        let chip: AgentInputChip = switch section.kind {
+        case .permission: .permission
+        case .model: .model
+        case .effort: .effort
+        }
+        return AgentInputSettingsMenu.Section(
+            chip: chip,
+            title: section.title,
+            systemImage: section.systemImage,
+            options: section.options.map { .init(key: $0.key, label: $0.label, isDisabled: $0.isDisabled) },
+            selectedKey: section.selectedKey
+        )
     }
 
     /// Text or a picked image (`hasComposerContent`), read live.
@@ -465,6 +543,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     }
 
     func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) {
+        guard !followingWindow else { return }
         UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
             self.composerDelegate?.composerDidInvalidateHeight(self)
         }
@@ -478,6 +557,15 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             return
         }
         sendPressed()
+    }
+
+    /// The flat panel's send and stop are buttons of their own.
+    func agentInputCardDidPressSend(_ card: AgentInputCardView) {
+        sendPressed()
+    }
+
+    func agentInputCardDidPressStop(_ card: AgentInputCardView) {
+        abort()
     }
 
     func agentInputCardDidPressAdd(_ card: AgentInputCardView) {
