@@ -40,6 +40,12 @@ extension Strings {
         /// agentInput.suggestion.folderLabel
         public static let folderLabel = "FOLDER"
 
+        /// status.permissionRequired
+        public static let permissionRequired = "permission required"
+        /// status.inputRequired
+        public static let inputRequired = "waiting for your answer"
+        /// status.online
+        public static let online = "online"
         /// status.lastSeen
         public static func lastSeen(_ time: String) -> String { "last seen \(time)" }
         /// time.justNow
@@ -48,6 +54,8 @@ extension Strings {
         public static func minutesAgo(_ count: Int) -> String { "\(count) minute\(count != 1 ? "s" : "") ago" }
         /// time.hoursAgo
         public static func hoursAgo(_ count: Int) -> String { "\(count) hour\(count != 1 ? "s" : "") ago" }
+        /// sessionHistory.daysAgo
+        public static func daysAgo(_ count: Int) -> String { "\(count) \(count == 1 ? "day" : "days") ago" }
 
         public static let addPhoto = "Add photo"
         public static let stop = "Stop"

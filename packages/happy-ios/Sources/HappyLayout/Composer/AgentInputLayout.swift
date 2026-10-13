@@ -123,10 +123,21 @@ public struct AgentInputLayout: Equatable, Sendable {
     /// From the composer's top to the card's (`onActionAreaOffsetChange`).
     public var cardOffset: CGFloat { card.minY }
 
+    /// The inner container's width, which is the card's: measure the card's
+    /// text at this width.
+    public static func innerWidth(width: CGFloat, paddingH: CGFloat, maxContentWidth: CGFloat) -> CGFloat {
+        min(max(0, max(0, width) - 2 * paddingH), maxContentWidth)
+    }
+
+    /// `paddingHorizontal: screenWidth > 700 ? 12 : 8`.
+    public static func paddingH(screenWidth: CGFloat) -> CGFloat {
+        screenWidth > 700 ? Metrics.containerPaddingHWide : Metrics.containerPaddingH
+    }
+
     public init(_ input: Input) {
         typealias M = Metrics
         let width = max(0, input.width)
-        let innerWidth = min(max(0, width - 2 * input.paddingH), input.maxContentWidth)
+        let innerWidth = Self.innerWidth(width: width, paddingH: input.paddingH, maxContentWidth: input.maxContentWidth)
         let innerX = (width - innerWidth) / 2
         var y = M.containerPaddingTop
 

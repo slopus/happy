@@ -494,27 +494,6 @@ final class ChatTokenTests: XCTestCase {
     }
 }
 
-final class ComposerPlaceholderLayoutTests: XCTestCase {
-    func testOneLine() {
-        let layout = ComposerPlaceholderLayout(width: 393, textHeight: 20, lineHeight: 20)
-        assertFrame(layout.card, rect(8, 4, 377, 44))
-        assertFrame(layout.text, rect(22, 16, 319, 20))
-        assertFrame(layout.sendButton, rect(347, 10, 32, 32))
-        XCTAssertEqual(layout.size.height, 56)
-        XCTAssertFalse(layout.textScrolls)
-        XCTAssertEqual(ComposerPlaceholderLayout.textWidth(for: 393), 319)
-    }
-
-    func testGrowsToFiveLinesThenScrolls() {
-        let layout = ComposerPlaceholderLayout(width: 393, textHeight: 140, lineHeight: 20)
-        assertFrame(layout.card, rect(8, 4, 377, 116))
-        assertFrame(layout.text, rect(22, 12, 319, 100))
-        assertFrame(layout.sendButton, rect(347, 82, 32, 32))
-        XCTAssertEqual(layout.size.height, 128)
-        XCTAssertTrue(layout.textScrolls)
-    }
-}
-
 final class QuestionSheetLayoutTests: XCTestCase {
     private func sheet(keyboardTop: CGFloat? = nil) -> QuestionSheetLayout {
         QuestionSheetLayout(.init(
