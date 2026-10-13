@@ -118,7 +118,7 @@ accident.
 - [x] Git status (`gitStatusSync.ts`) — Ops
 - [x] Icons as vector outlines, no icon fonts — Icons
 - [x] Light and dark theme switching (`themePreference`) — Icons
-- [ ] Dynamic Type — unassigned
-- [ ] iPad layout (sidebar + detail) — unassigned
+- [ ] Dynamic Type, scaled as RN scales it: every text follows the system size, uncapped, except the onboarding titles (`maxFontSizeMultiplier` 1.2) — scheduled after the open chat, composer, Home and Secondary items
+- [ ] iPad layout: the sidebar and detail at window width ≥ 768 (`useIsTablet`, `SidebarNavigator`, `SidebarView`, `EmptySessionsTablet`, the tablet branches in other screens) — Tablet
 - [x] Push notifications (APNs registration, open from a notification) — Ops + Push. See AGENTS.md, "Push notifications".
   - Delivery, foreground presentation and taps are untested on a device or simulator; the routing, registration, installation id and signing-environment logic is tested on Linux.
