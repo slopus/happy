@@ -1,0 +1,318 @@
+import Foundation
+import HappyStore
+
+/// A row of home's session list, in either layout, as the table draws it.
+public enum HomeListRow: Equatable, Sendable {
+    case flat(SessionList.Item)
+    case project(ProjectHomeRow)
+
+    /// Who the row is across updates. Day headings are counted, so the
+    /// third heading stays the third heading when its title changes.
+    public enum ID: Hashable, Sendable {
+        case session(String)
+        case archiveToggle
+        case day(Int)
+        case project(String)
+    }
+}
+
+/// What home's session list shows: the rows, each with its identity, and
+/// what draws all of them. Only values a cell renders are here: a row's
+/// `lastActivityAt` orders the list but is drawn as `timestamp`, so it is
+/// cleared and a new activity in the same minute redraws nothing.
+public struct HomeListModel: Equatable, Sendable {
+    public var ids: [HomeListRow.ID]
+    public var rows: [HomeListRow]
+    public var avatarStyle: AvatarStyle
+    public var avatarMonochrome: Bool
+    /// Grouped by project rather than flat.
+    public var grouped: Bool
+    /// Every computer, when all are offline, for the plaque above the rows.
+    public var offline: [MachineChoice]?
+
+    public static let empty = HomeListModel(ids: [], rows: [], avatarStyle: .gradient, avatarMonochrome: false, grouped: false, offline: nil)
+
+    public init(ids: [HomeListRow.ID], rows: [HomeListRow], avatarStyle: AvatarStyle, avatarMonochrome: Bool, grouped: Bool, offline: [MachineChoice]?) {
+        self.ids = ids
+        self.rows = rows
+        self.avatarStyle = avatarStyle
+        self.avatarMonochrome = avatarMonochrome
+        self.grouped = grouped
+        self.offline = offline
+    }
+
+    /// `expandedProjects` are the projects whose worktrees are all shown
+    /// (a device setting, read on the main thread and passed in).
+    public init(_ list: SessionList, offline: [MachineChoice]?, expandedProjects: Set<String>) {
+        var ids: [HomeListRow.ID] = []
+        var rows: [HomeListRow] = []
+        var dayIndex = 0
+        if let projects = list.projects {
+            for row in projects.rows(expanded: expandedProjects) {
+                switch row {
+                case .archiveToggle: ids.append(.archiveToggle)
+                case .archiveHeader:
+                    ids.append(.day(dayIndex))
+                    dayIndex += 1
+                default: ids.append(.project(row.key))
+                }
+                rows.append(.project(Self.rendered(row)))
+            }
+        } else {
+            ids.reserveCapacity(list.items.count)
+            rows.reserveCapacity(list.items.count)
+            for item in list.items {
+                switch item {
+                case .session(var row):
+                    ids.append(.session(row.id))
+                    row.lastActivityAt = 0
+                    rows.append(.flat(.session(row)))
+                case .archiveToggle:
+                    ids.append(.archiveToggle)
+                    rows.append(.flat(item))
+                case .dayHeader:
+                    ids.append(.day(dayIndex))
+                    dayIndex += 1
+                    rows.append(.flat(item))
+                }
+            }
+        }
+        self.init(
+            ids: ids,
+            rows: rows,
+            avatarStyle: list.avatarStyle,
+            avatarMonochrome: list.avatarMonochrome,
+            grouped: list.projects != nil,
+            offline: offline
+        )
+    }
+
+    private static func rendered(_ row: ProjectHomeRow) -> ProjectHomeRow {
+        switch row {
+        case .bot(var session):
+            session.lastActivityAt = 0
+            return .bot(session)
+        case .archived(var session):
+            session.lastActivityAt = 0
+            return .archived(session)
+        default:
+            return row
+        }
+    }
+
+    /// Where each row is, for selecting one by session.
+    public func index(ofSession id: String) -> Int? {
+        ids.firstIndex(of: .session(id))
+    }
+}
+
+/// What home shows (`HomeState`), with the list reduced to what it draws.
+public enum HomeContent: Equatable, Sendable {
+    case loading
+    case link
+    case offline([MachineChoice], hasArchived: Bool)
+    case noSessions
+    case list(HomeListModel)
+
+    public init(_ state: HomeState, expandedProjects: Set<String>) {
+        switch state {
+        case .loading: self = .loading
+        case .link: self = .link
+        case .offline(let choices, let hasArchived): self = .offline(choices, hasArchived: hasArchived)
+        case .noSessions: self = .noSessions
+        case .list(let list, let offline): self = .list(HomeListModel(list, offline: offline, expandedProjects: expandedProjects))
+        }
+    }
+
+    /// Which screen home embeds; a change of kind swaps the content.
+    public enum Kind: Equatable, Sendable {
+        case loading, link, offline, noSessions, list
+    }
+
+    public var kind: Kind {
+        switch self {
+        case .loading: .loading
+        case .link: .link
+        case .offline: .offline
+        case .noSessions: .noSessions
+        case .list: .list
+        }
+    }
+
+    public var list: HomeListModel? {
+        if case .list(let model) = self { return model }
+        return nil
+    }
+}
+
+/// One home update for the main thread: what to show and, for the list,
+/// how to get there from the rows on screen.
+public struct HomeUpdate: Sendable {
+    public var content: HomeContent
+    /// The content differs from the one on screen (otherwise only the dock
+    /// changed).
+    public var contentChanged: Bool
+    /// Against the list home applied last; when the last content was not a
+    /// list (or there was none), against no rows.
+    public var changeset: RowChangeset
+    /// The content's kind differs from the one on screen.
+    public var kindChanged: Bool
+    /// What the new-session pickers read, when it changed.
+    public var dock: HomeSnapshot?
+    /// The home filter's choice, for its menu.
+    public var grouping: SessionListGrouping
+}
+
+/// Home's derivation: snapshot to content to changeset, off the main thread.
+public enum HomeDerivation {
+    /// Everything home is derived from. The snapshot comes from the feed;
+    /// the rest is read on the main thread and handed over.
+    public struct Input: Sendable {
+        public var snapshot: HomeSnapshot?
+        public var expandedProjects: Set<String>
+        /// Home's dock also wants the new-session pickers' snapshot.
+        public var includesDock: Bool
+        /// Nil uses the time of the derivation; tests fix it.
+        public var clock: SessionList.Clock?
+
+        public init(snapshot: HomeSnapshot? = nil, expandedProjects: Set<String> = [], includesDock: Bool = false, clock: SessionList.Clock? = nil) {
+            self.snapshot = snapshot
+            self.expandedProjects = expandedProjects
+            self.includesDock = includesDock
+            self.clock = clock
+        }
+    }
+
+    /// What home shows now; empty before the first apply.
+    public struct Applied: Equatable, Sendable {
+        public var content: HomeContent?
+        public var dock: HomeSnapshot?
+        public var grouping: SessionListGrouping?
+
+        public init(content: HomeContent? = nil, dock: HomeSnapshot? = nil, grouping: SessionListGrouping? = nil) {
+            self.content = content
+            self.dock = dock
+            self.grouping = grouping
+        }
+    }
+
+    /// Nil when the screen already shows exactly this.
+    public static func derive(_ input: Input, applied: Applied) -> (output: HomeUpdate, state: Applied)? {
+        guard let snapshot = input.snapshot else { return nil }
+        let state = HomeState(snapshot, clock: input.clock ?? SessionList.Clock())
+        let content = HomeContent(state, expandedProjects: input.expandedProjects)
+        let dock = input.includesDock ? NewSessionSnapshot.rendered(snapshot) : nil
+        let dockChanged = dock != nil && dock != applied.dock
+        let grouping = AccountSettings(snapshot.settings).sessionListGrouping
+        guard content != applied.content || dockChanged || grouping != applied.grouping else { return nil }
+        let before = applied.content?.list
+        let after = content.list ?? .empty
+        let rows = before?.rows ?? []
+        let changeset = content == applied.content
+            ? RowChangeset()
+            : RowChangeset(oldIds: before?.ids ?? [], newIds: after.ids) { rows[$0] != after.rows[$1] }
+        let update = HomeUpdate(
+            content: content,
+            contentChanged: content != applied.content,
+            changeset: changeset,
+            kindChanged: applied.content?.kind != content.kind,
+            dock: dockChanged ? dock : nil,
+            grouping: grouping
+        )
+        return (update, Applied(content: content, dock: dock ?? applied.dock, grouping: grouping))
+    }
+}
+
+/// What the new-session pickers (home's dock and the new-session screen)
+/// read from the store, without what changes on every heartbeat or
+/// message: they list machines, places and projects, never a session's
+/// state.
+public enum NewSessionSnapshot {
+    public static func rendered(_ snapshot: HomeSnapshot) -> HomeSnapshot {
+        var snapshot = snapshot
+        snapshot.sessions = snapshot.sessions.map { record in
+            var record = ChatSessionState.rendered(record)
+            record.active = false
+            record.activeAt = 0
+            record.agentState = nil
+            record.thinking = false
+            record.archiving = false
+            return record
+        }
+        return snapshot
+    }
+}
+
+/// The iPad sidebar (`TabletSidebarState`) with its list reduced to what
+/// it draws.
+public struct TabletSidebarFrame: Equatable, Sendable {
+    public enum Content: Equatable, Sendable {
+        case loading
+        case empty(TabletEmptySessions)
+        case list(HomeListModel)
+
+        /// Which view fills the sidebar.
+        public var kind: Int {
+            switch self {
+            case .loading: 0
+            case .empty: 1
+            case .list: 2
+            }
+        }
+    }
+
+    public var content: Content
+    public var hasArchived: Bool
+    public var hidesArchived: Bool
+    public var showsInstallStep: Bool
+
+    public init(_ state: TabletSidebarState) {
+        switch state.content {
+        case .loading: content = .loading
+        case .empty(let variant): content = .empty(variant)
+        case .list(let list, let offline): content = .list(HomeListModel(list, offline: offline, expandedProjects: []))
+        }
+        hasArchived = state.hasArchived
+        hidesArchived = state.hidesArchived
+        showsInstallStep = state.showsInstallStep
+    }
+
+    public var list: HomeListModel? {
+        if case .list(let model) = content { return model }
+        return nil
+    }
+}
+
+/// One sidebar update: the frame, and the list's changes against the rows
+/// its list last showed.
+public struct TabletSidebarUpdate: Sendable {
+    public var frame: TabletSidebarFrame
+    /// Nil when the list is not shown and keeps its rows.
+    public var changeset: RowChangeset?
+}
+
+public enum TabletSidebarDerivation {
+    /// The frame on screen, and the rows the list holds: the list stays
+    /// (hidden) while the sidebar shows a spinner or the empty state.
+    public struct Applied: Equatable, Sendable {
+        public var frame: TabletSidebarFrame?
+        public var list: HomeListModel?
+
+        public init(frame: TabletSidebarFrame? = nil, list: HomeListModel? = nil) {
+            self.frame = frame
+            self.list = list
+        }
+    }
+
+    public static func derive(_ snapshot: HomeSnapshot?, applied: Applied, clock: SessionList.Clock? = nil) -> (output: TabletSidebarUpdate, state: Applied)? {
+        guard let snapshot else { return nil }
+        let frame = TabletSidebarFrame(TabletSidebarState(snapshot, clock: clock ?? SessionList.Clock()))
+        guard frame != applied.frame else { return nil }
+        guard let after = frame.list else {
+            return (TabletSidebarUpdate(frame: frame, changeset: nil), Applied(frame: frame, list: applied.list))
+        }
+        let before = applied.list ?? .empty
+        let changeset = RowChangeset(oldIds: before.ids, newIds: after.ids) { before.rows[$0] != after.rows[$1] }
+        return (TabletSidebarUpdate(frame: frame, changeset: changeset), Applied(frame: frame, list: after))
+    }
+}

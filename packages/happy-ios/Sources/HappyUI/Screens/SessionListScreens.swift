@@ -14,29 +14,29 @@ import UIKit
 /// and the update banner (HomeListHeader.tsx). A tap opens the chat; a long
 /// press opens the "Session" alert. The table runs under the floating home
 /// header, padded by `contentInsets`.
-final class SessionListViewController: UIViewController, UITableViewDelegate {
-    private enum ItemID: Hashable {
-        case session(String)
-        case archiveToggle
-        case day(Int)
-        case project(String)
-    }
-
-    private enum Item: Equatable {
-        case flat(SessionList.Item)
-        case project(ProjectHomeRow)
-    }
+///
+/// Its rows are worked out off the main thread (`HomeDerivation`): `apply`
+/// gets the rows and exactly which of them changed, and only inserts,
+/// deletes, moves or reconfigures those. Row heights are cached by row and
+/// width, so an unchanged row is never measured again.
+final class SessionListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+    private typealias Item = HomeListRow
 
     private let context: AppContext
     private let session: AccountSession
-    private(set) var list: SessionList
+    private(set) var model = HomeListModel.empty
     /// Opens home's composer on a project's new workspace
     /// (`requestHomeDockFocus`); false when there is no dock to open.
     var onCreateWorkspace: ((WorkspaceOrigin) -> Bool)?
-    private var offline: [MachineChoice]?
+    /// A project's worktrees were shown or hidden (`expandedProjects`
+    /// changed): the owner derives the rows again.
+    var onExpandedProjectsChange: (() -> Void)?
     private let tableView = UITableView(frame: .zero, style: .plain)
-    private var dataSource: UITableViewDiffableDataSource<Int, ItemID>!
-    private var items: [ItemID: Item] = [:]
+    /// The table has asked for its rows once; from then on it only takes
+    /// changesets.
+    private var tableLoaded = false
+    private var heights: [HomeListRow.ID: (row: HomeListRow, width: CGFloat, height: CGFloat)] = [:]
+    private var bannerState: BannerState?
     private let sizingRow = SessionRowCell(style: .default, reuseIdentifier: nil)
     private let sizingDay = SessionDayHeaderCell(style: .default, reuseIdentifier: nil)
     private let sizingToggle = ArchiveToggleCell(style: .default, reuseIdentifier: nil)
@@ -63,7 +63,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
 
     private func applySelection() {
         guard isViewLoaded else { return }
-        if let path = selectedSessionId.flatMap({ dataSource.indexPath(for: .session($0)) }) {
+        if let path = selectedSessionId.flatMap({ model.index(ofSession: $0) }).map({ IndexPath(row: $0, section: 0) }) {
             tableView.selectRow(at: path, animated: false, scrollPosition: .none)
         } else if let path = tableView.indexPathForSelectedRow {
             tableView.deselectRow(at: path, animated: false)
@@ -72,11 +72,9 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
 
     private var didScrollToTop = false
 
-    init(context: AppContext, session: AccountSession, list: SessionList, offline: [MachineChoice]?) {
+    init(context: AppContext, session: AccountSession) {
         self.context = context
         self.session = session
-        self.list = list
-        self.offline = offline
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -94,6 +92,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         tableView.separatorStyle = .none
         tableView.contentInsetAdjustmentBehavior = .never
         tableView.delegate = self
+        tableView.dataSource = self
         for (type, identifier) in [
             (SessionRowCell.self as UITableViewCell.Type, SessionRowCell.reuseIdentifier),
             (SessionDayHeaderCell.self, SessionDayHeaderCell.reuseIdentifier),
@@ -106,10 +105,6 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         ] {
             tableView.register(type, forCellReuseIdentifier: identifier)
         }
-        dataSource = UITableViewDiffableDataSource(tableView: tableView) { [weak self] tableView, indexPath, id in
-            self?.cell(tableView, indexPath, id) ?? UITableViewCell()
-        }
-        dataSource.defaultRowAnimation = .fade
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
         tableView.addGestureRecognizer(longPress)
         banners.onTroubleshoot = { [weak self] in self?.openTroubleshoot() }
@@ -118,7 +113,11 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         nativeUpdateObservation = NativeUpdateCheck.shared.observe { [weak self] in
             self?.updateBanners()
         }
-        apply(animated: false)
+        tableView.backgroundColor = UIColor(model.grouped ? Palette.groupedBackground : Palette.flatListBackground)
+        tableView.reloadData()
+        tableLoaded = true
+        updateBanners()
+        applySelection()
         applyContentInsets()
     }
 
@@ -145,72 +144,95 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         sizeHeader()
     }
 
-    func update(_ list: SessionList, offline: [MachineChoice]?) {
-        self.list = list
-        self.offline = offline
-        guard isViewLoaded else { return }
-        apply(animated: view.window != nil)
+    /// Shows `next`; `changeset` takes the rows on screen (`model`) to it.
+    /// Returns how many rows it touched.
+    @discardableResult
+    func apply(_ next: HomeListModel, changeset: RowChangeset, animated: Bool) -> Int {
+        let previous = model
+        model = next
+        guard isViewLoaded, tableLoaded else { return 0 }
+        if next.grouped != previous.grouped {
+            // Another layout altogether: nothing to keep.
+            tableView.backgroundColor = UIColor(next.grouped ? Palette.groupedBackground : Palette.flatListBackground)
+            heights = [:]
+            tableView.reloadData()
+            updateBanners()
+            applySelection()
+            return next.rows.count
+        }
+        if changeset.isStructural {
+            let rows = { (indexes: [Int]) in indexes.map { IndexPath(row: $0, section: 0) } }
+            let animation: UITableView.RowAnimation = animated ? .fade : .none
+            let update = {
+                self.tableView.performBatchUpdates {
+                    self.tableView.deleteRows(at: rows(changeset.deletes), with: animation)
+                    self.tableView.insertRows(at: rows(changeset.inserts), with: animation)
+                    for move in changeset.moves {
+                        self.tableView.moveRow(at: IndexPath(row: move.from, section: 0), to: IndexPath(row: move.to, section: 0))
+                    }
+                }
+            }
+            if animated { update() } else { UIView.performWithoutAnimation(update) }
+            if !changeset.deletes.isEmpty {
+                let kept = Set(next.ids)
+                heights = heights.filter { kept.contains($0.key) }
+            }
+        }
+        var reconfigure = changeset.reconfigures.map { IndexPath(row: $0, section: 0) }
+        if next.avatarStyle != previous.avatarStyle || next.avatarMonochrome != previous.avatarMonochrome {
+            // Every avatar on screen redraws; the rest are made when shown.
+            reconfigure = tableView.indexPathsForVisibleRows ?? []
+        }
+        if !reconfigure.isEmpty {
+            let width = tableView.bounds.width
+            var heightChanged = false
+            for path in reconfigure where path.row < next.ids.count {
+                // Only rows already measured; the rest are measured when shown.
+                let id = next.ids[path.row]
+                guard let cached = heights[id], cached.width == width, cached.row != next.rows[path.row] else { continue }
+                let height = measure(next.rows[path.row], width: width)
+                heights[id] = (next.rows[path.row], width, height)
+                if height != cached.height { heightChanged = true }
+            }
+            tableView.reconfigureRows(at: reconfigure)
+            if heightChanged {
+                UIView.performWithoutAnimation { tableView.performBatchUpdates(nil) }
+            }
+        }
+        if next.offline != previous.offline { updateBanners() }
+        applySelection() // Tablet
+        return changeset.touchedRows
     }
 
     // MARK: Data
 
     private var grouped: Bool {
-        list.projects != nil
+        model.grouped
     }
 
-    private func apply(animated: Bool) {
-        // The flat variant paints rows and page alike; the grouped one sits
-        // on the grouped background (ProjectHomeList.tsx `container`).
-        tableView.backgroundColor = UIColor(grouped ? Palette.groupedBackground : Palette.flatListBackground)
-        var ids: [ItemID] = []
-        var next: [ItemID: Item] = [:]
-        if let projects = list.projects {
-            var dayIndex = 0
-            for row in projects.rows(expanded: context.account.localSettings.expandedProjects) {
-                let id: ItemID
-                switch row {
-                case .archiveToggle: id = .archiveToggle
-                case .archiveHeader:
-                    id = .day(dayIndex)
-                    dayIndex += 1
-                default: id = .project(row.key)
-                }
-                ids.append(id)
-                next[id] = .project(row)
-            }
-        } else {
-            var dayIndex = 0
-            for item in list.items {
-                let id: ItemID
-                switch item {
-                case .session(let row): id = .session(row.id)
-                case .archiveToggle: id = .archiveToggle
-                case .dayHeader:
-                    id = .day(dayIndex)
-                    dayIndex += 1
-                }
-                ids.append(id)
-                next[id] = .flat(item)
-            }
-        }
-        let changed = ids.filter { id in items[id].map { $0 != next[id] } ?? false }
-        items = next
-
-        var snapshot = NSDiffableDataSourceSnapshot<Int, ItemID>()
-        snapshot.appendSections([0])
-        snapshot.appendItems(ids)
-        snapshot.reconfigureItems(changed.filter { dataSource.snapshot().itemIdentifiers.contains($0) })
-        dataSource.apply(snapshot, animatingDifferences: animated)
-        applySelection() // Tablet
-        updateBanners()
+    func numberOfSections(in tableView: UITableView) -> Int {
+        1
     }
 
-    private func cell(_ tableView: UITableView, _ indexPath: IndexPath, _ id: ItemID) -> UITableViewCell? {
-        guard let item = items[id] else { return nil }
-        let identifier = Self.reuseIdentifier(item)
-        let cell = tableView.dequeueReusableCell(withIdentifier: identifier, for: indexPath)
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        model.rows.count
+    }
+
+    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        guard let item = item(at: indexPath) else { return UITableViewCell() }
+        let cell = tableView.dequeueReusableCell(withIdentifier: Self.reuseIdentifier(item), for: indexPath)
         configure(cell, item)
         return cell
+    }
+
+    private func item(at indexPath: IndexPath) -> Item? {
+        model.rows.indices.contains(indexPath.row) ? model.rows[indexPath.row] : nil
+    }
+
+    private func measure(_ item: Item, width: CGFloat) -> CGFloat {
+        let cell = sizingCell(item)
+        configure(cell, item)
+        return cell.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
     }
 
     private static func reuseIdentifier(_ item: Item) -> String {
@@ -230,7 +252,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
     private func configure(_ cell: UITableViewCell, _ item: Item) {
         switch item {
         case .flat(.session(let row)):
-            (cell as? SessionRowCell)?.configure(row, style: list.avatarStyle, monochrome: list.avatarMonochrome)
+            (cell as? SessionRowCell)?.configure(row, style: model.avatarStyle, monochrome: model.avatarMonochrome)
         case .flat(.archiveToggle(let hidden)), .project(.archiveToggle(let hidden)):
             guard let cell = cell as? ArchiveToggleCell else { return }
             cell.banded = !grouped
@@ -246,16 +268,16 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
             (cell as? ProjectSectionCell)?.configure(Self.dayTitle(age))
         case .project(.project(let entry)):
             guard let cell = cell as? ProjectCardCell else { return }
-            cell.configure(entry, style: list.avatarStyle, monochrome: list.avatarMonochrome)
+            cell.configure(entry, style: model.avatarStyle, monochrome: model.avatarMonochrome)
             cell.onCreateWorkspace = { [weak self] entry in self?.createWorkspace(entry) }
         case .project(.worktree(let worktree, let last)):
             (cell as? WorktreeCell)?.configure(worktree, last: last)
         case .project(.worktreeToggle(let toggle)):
             (cell as? WorktreeCell)?.configure(toggle)
         case .project(.bot(let row)):
-            (cell as? ProjectChatCell)?.configure(row, archived: false, style: list.avatarStyle, monochrome: list.avatarMonochrome)
+            (cell as? ProjectChatCell)?.configure(row, archived: false, style: model.avatarStyle, monochrome: model.avatarMonochrome)
         case .project(.archived(let row)):
-            (cell as? ProjectChatCell)?.configure(row, archived: true, style: list.avatarStyle, monochrome: list.avatarMonochrome)
+            (cell as? ProjectChatCell)?.configure(row, archived: true, style: model.avatarStyle, monochrome: model.avatarMonochrome)
         }
     }
 
@@ -292,18 +314,32 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
 
     // MARK: Banners
 
-    /// HomeListHeader.tsx: the offline plaque, then the update banner.
+    private struct BannerState: Equatable {
+        var offlineTitle: String?
+        var nativeUpdate: Bool
+        var whatsNew: Bool
+    }
+
+    /// HomeListHeader.tsx: the offline plaque, then the update banner. The
+    /// header is set again only when what it shows changed.
     private func updateBanners() {
         guard isViewLoaded else { return }
         var offlineTitle: String?
-        if let offline, !offline.isEmpty {
+        if let offline = model.offline, !offline.isEmpty {
             offlineTitle = offline.count == 1
                 ? Strings.Troubleshoot.bannerTitleOne(name: offline[0].name)
                 : Strings.Troubleshoot.bannerTitleMany
         }
-        banners.offlineTitle = offlineTitle
-        banners.showsNativeUpdate = NativeUpdateCheck.shared.updateURL != nil
-        banners.showsWhatsNew = changelogMarker.hasUnread(latestTitle: ChangelogViewController.bundled.latestTitle)
+        let state = BannerState(
+            offlineTitle: offlineTitle,
+            nativeUpdate: NativeUpdateCheck.shared.updateURL != nil,
+            whatsNew: changelogMarker.hasUnread(latestTitle: ChangelogViewController.bundled.latestTitle)
+        )
+        guard state != bannerState else { return }
+        bannerState = state
+        banners.offlineTitle = state.offlineTitle
+        banners.showsNativeUpdate = state.nativeUpdate
+        banners.showsWhatsNew = state.whatsNew
         if banners.isEmpty {
             tableView.tableHeaderView = nil
         } else {
@@ -355,7 +391,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
             expanded.insert(projectId)
         }
         context.account.localSettings.expandedProjects = expanded
-        apply(animated: true)
+        onExpandedProjectsChange?()
     }
 
     /// ProjectRow's `+`: home's composer on this project's "Create New"
@@ -380,14 +416,17 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
     // MARK: Delegate
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        guard let id = dataSource.itemIdentifier(for: indexPath), let item = items[id] else { return 0 }
-        let cell = sizingCell(item)
-        configure(cell, item)
-        return cell.sizeThatFits(CGSize(width: tableView.bounds.width, height: .greatestFiniteMagnitude)).height
+        guard let item = item(at: indexPath) else { return 0 }
+        let id = model.ids[indexPath.row]
+        let width = tableView.bounds.width
+        if let cached = heights[id], cached.width == width, cached.row == item { return cached.height }
+        let height = measure(item, width: width)
+        heights[id] = (item, width, height)
+        return height
     }
 
     func tableView(_ tableView: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
-        guard let id = dataSource.itemIdentifier(for: indexPath), let item = items[id] else { return false }
+        guard let item = item(at: indexPath) else { return false }
         switch item {
         case .flat(.session), .flat(.archiveToggle), .project(.archiveToggle), .project(.worktreeToggle):
             return true
@@ -398,7 +437,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        guard let id = dataSource.itemIdentifier(for: indexPath), let item = items[id] else { return }
+        guard let item = item(at: indexPath) else { return }
         switch item {
         case .flat(.archiveToggle(let hidden)), .project(.archiveToggle(let hidden)):
             session.updateSettings(["hideInactiveSessions": .bool(!hidden)])
@@ -414,8 +453,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
     /// FlatSessionRow.tsx's swipe: "Archive Session" on red. Only the flat
     /// rows swipe.
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
-        guard let id = dataSource.itemIdentifier(for: indexPath),
-              case .flat(.session(let row))? = items[id],
+        guard case .flat(.session(let row))? = item(at: indexPath),
               !row.archived
         else { return nil }
         let action = UIContextualAction(style: .destructive, title: Strings.SessionInfo.archiveSession) { [weak self] _, _, done in
@@ -435,8 +473,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
     @objc private func longPressed(_ gesture: UILongPressGestureRecognizer) {
         guard gesture.state == .began,
               let indexPath = tableView.indexPathForRow(at: gesture.location(in: tableView)),
-              let id = dataSource.itemIdentifier(for: indexPath),
-              let item = items[id]
+              let item = item(at: indexPath)
         else { return }
         switch item {
         case .flat(.session(let row)):

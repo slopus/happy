@@ -75,13 +75,13 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// The agent message whose copy button shows its tick.
     private var copiedMessageId: String?
     private let copiedTask = TaskHolder()
-    private var observation: StoreObservation?
+    private var observation: ApplyObservation?
     /// A `pending-chat:` screen's record, and the session it was started
     /// beside.
     private var pendingChat: PendingChat?
     private let pendingTask = TaskHolder()
     private var anchorMetadata: JSONValue?
-    private var anchorObservation: StoreObservation?
+    private var anchorObservation: ApplyObservation?
 
     private var snapshot: ChatSnapshot?
     private var session = ChatSessionState(record: nil, settings: AccountSettings())

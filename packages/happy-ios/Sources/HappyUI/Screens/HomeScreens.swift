@@ -29,8 +29,13 @@ public final class HomeViewController: UIViewController {
     private let header = HomeHeaderView()
     private let dockView = HomeDockView()
     private var dock: HomeDockController?
-    private var observation: StoreObservation?
-    private var state: HomeState?
+    /// Home's content worked out off the main thread from the account's
+    /// home feed (`HomeDerivation`); only what changed is applied here.
+    private var pipeline: ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>?
+    private var observation: ApplyObservation?
+    private var state: HomeContent?
+    /// The home filter's choice, as last derived.
+    private var grouping: SessionListGrouping = .flat
     private var content: UIViewController?
 
     public init(context: AppContext, session: AccountSession) {
@@ -57,9 +62,19 @@ public final class HomeViewController: UIViewController {
         dockView.isHidden = true
         view.addSubview(dockView)
         view.addSubview(header)
-        observation = session.store.observeHome { [weak self] snapshot in
-            self?.received(snapshot)
-        }
+        let pipeline = ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>(
+            input: HomeDerivation.Input(expandedProjects: context.account.localSettings.expandedProjects, includesDock: true),
+            state: HomeDerivation.Applied(),
+            derive: { HomeDerivation.derive($0, applied: $1) },
+            apply: { [weak self] update in
+                guard let self else { return false }
+                ApplyPerf.measure(.home) { self.apply(update) }
+                return true
+            }
+        )
+        pipeline.follow(session.homeFeed.snapshots()) { $0.snapshot = $1 }
+        self.pipeline = pipeline
+        observation = pipeline.observation
         // Tablet (HappyUI/Tablet): the shell flips this with the window's width.
         registerForTraitChanges([TabletLayoutTrait.self]) { (self: Self, _) in self.updateNavigation(animated: false) }
         // The stream ends when the session stops.
@@ -111,13 +126,24 @@ public final class HomeViewController: UIViewController {
         applyInsets(layout.insets)
     }
 
-    private func received(_ snapshot: HomeSnapshot) {
-        if let dock {
-            dock.update(snapshot)
-        } else {
-            dock = HomeDockController(restingView: dockView, host: self, context: context, session: session, snapshot: snapshot)
+    /// Returns how many rows it touched.
+    private func apply(_ update: HomeUpdate) -> Int {
+        grouping = update.grouping
+        if let snapshot = update.dock {
+            if let dock {
+                dock.update(snapshot)
+            } else {
+                dock = HomeDockController(restingView: dockView, host: self, context: context, session: session, snapshot: snapshot)
+            }
         }
-        show(HomeState(snapshot))
+        guard update.contentChanged else { return 0 }
+        return show(update)
+    }
+
+    /// The list's projects were opened or closed: derive the rows again.
+    private func expandedProjectsChanged() {
+        let expanded = context.account.localSettings.expandedProjects
+        pipeline?.update { $0.expandedProjects = expanded }
     }
 
     /// The list pads itself under the header; every other state sees the
@@ -138,31 +164,30 @@ public final class HomeViewController: UIViewController {
         if child.additionalSafeAreaInsets != insets { child.additionalSafeAreaInsets = insets }
     }
 
-    private func show(_ state: HomeState) {
-        guard state != self.state else { return }
+    private func show(_ update: HomeUpdate) -> Int {
+        let state = update.content
         let previous = self.state
         self.state = state
         // The scrim is for a list that scrolls under the dock.
-        if case .list = state {
-            dockView.showsScrim = true
-        } else {
-            dockView.showsScrim = false
-        }
+        dockView.showsScrim = state.kind == .list
+        var rows = 0
         switch (previous, state) {
         case (.offline?, .offline(let choices, let hasArchived)):
             let checklist = content as? OfflineChecklistViewController
-            checklist?.choices = choices
-            checklist?.hasArchived = hasArchived
-        case (.list?, .list(let list, let offline)):
-            (content as? SessionListViewController)?.update(list, offline: offline)
+            if checklist?.choices != choices { checklist?.choices = choices }
+            if checklist?.hasArchived != hasArchived { checklist?.hasArchived = hasArchived }
+        case (.list?, .list(let model)):
+            rows = (content as? SessionListViewController)?.apply(model, changeset: update.changeset, animated: view.window != nil) ?? 0
         default:
-            embed(makeContent(for: state), animated: previous != nil)
+            embed(makeContent(for: update), animated: previous != nil)
+            rows = state.list?.rows.count ?? 0
         }
-        updateNavigation(animated: previous != nil)
+        if update.kindChanged { updateNavigation(animated: previous != nil) }
+        return rows
     }
 
-    private func makeContent(for state: HomeState) -> UIViewController {
-        switch state {
+    private func makeContent(for update: HomeUpdate) -> UIViewController {
+        switch update.content {
         case .loading:
             LoadingViewController()
         case .link:
@@ -171,16 +196,18 @@ public final class HomeViewController: UIViewController {
             OfflineChecklistViewController(context: context, session: session, choices: choices, hasArchived: hasArchived)
         case .noSessions:
             NoSessionsViewController(context: context, session: session)
-        case .list(let list, let offline):
-            makeList(list, offline: offline)
+        case .list(let model):
+            makeList(model, changeset: update.changeset)
         }
     }
 
-    private func makeList(_ list: SessionList, offline: [MachineChoice]?) -> SessionListViewController {
-        let controller = SessionListViewController(context: context, session: session, list: list, offline: offline)
+    private func makeList(_ model: HomeListModel, changeset: RowChangeset) -> SessionListViewController {
+        let controller = SessionListViewController(context: context, session: session)
         controller.onCreateWorkspace = { [weak self] origin in
             self?.dock?.createWorkspace(origin) ?? false
         }
+        controller.onExpandedProjectsChange = { [weak self] in self?.expandedProjectsChanged() }
+        controller.apply(model, changeset: changeset, animated: false)
         return controller
     }
 
@@ -245,13 +272,13 @@ public final class HomeViewController: UIViewController {
     }
 
     private func filterMenuElements() -> [UIMenuElement] {
-        let settings = (try? session.store.settingsSnapshot()).map { AccountSettings($0) } ?? AccountSettings()
+        let current = grouping
         let options: [(SessionListGrouping, String)] = [
             (.flat, Strings.SessionsFilter.flatList),
             (.project, Strings.SessionsFilter.groupByProject),
         ]
         let choices = options.map { mode, title in
-            UIAction(title: title, state: settings.sessionListGrouping == mode ? .on : .off) { [weak self] _ in
+            UIAction(title: title, state: current == mode ? .on : .off) { [weak self] _ in
                 self?.session.updateSettings(["sessionListGrouping": .string(mode.rawValue)])
             }
         }
@@ -526,7 +553,7 @@ final class TroubleshootViewController: UIViewController {
     private let list = GroupedListView()
     private let guide = TroubleshootGuideView()
     private let prompt = CopyPromptView()
-    private var observation: StoreObservation?
+    private var observation: ApplyObservation?
     private var aiPrompt = ""
     private var copiedReset: Task<Void, Never>?
 
@@ -552,15 +579,37 @@ final class TroubleshootViewController: UIViewController {
             UIApplication.shared.open(Strings.Onboarding.desktopURL)
         }
         prompt.button.onTap = { [weak self] in self?.copyPrompt() }
-        observation = session.store.observeMachines { [weak self] snapshot in
-            self?.update(snapshot)
-        }
+        // The computers and the prompt are worked out off the main thread.
+        let pipeline = ApplyPipeline<HomeSnapshot?, TroubleshootModel?, TroubleshootModel>(
+            input: nil,
+            state: nil,
+            derive: { snapshot, applied in
+                guard let snapshot else { return nil }
+                let choices = MachineChoice.collect(snapshot.machines.machines)
+                let model = TroubleshootModel(choices: choices, aiPrompt: OfflineTroubleshooting(choices: choices, sessions: snapshot.sessions).aiPrompt)
+                return model == applied ? nil : (model, model)
+            },
+            apply: { [weak self] model in
+                guard let self else { return false }
+                ApplyPerf.measure(.screen) {
+                    self.update(model)
+                    return model.choices.count
+                }
+                return true
+            }
+        )
+        pipeline.follow(session.homeFeed.snapshots()) { $0 = $1 }
+        observation = pipeline.observation
     }
 
-    private func update(_ snapshot: MachinesSnapshot) {
-        let choices = MachineChoice.collect(snapshot.machines)
-        let sessions = (try? session.store.sessions()) ?? []
-        aiPrompt = OfflineTroubleshooting(choices: choices, sessions: sessions).aiPrompt
+    private struct TroubleshootModel: Equatable, Sendable {
+        var choices: [MachineChoice]
+        var aiPrompt: String
+    }
+
+    private func update(_ model: TroubleshootModel) {
+        let choices = model.choices
+        aiPrompt = model.aiPrompt
         var sections: [UIView] = [guide]
         if !choices.isEmpty {
             sections.append(ItemGroupView(title: Strings.Troubleshoot.machines, rows: choices.map { choice in
