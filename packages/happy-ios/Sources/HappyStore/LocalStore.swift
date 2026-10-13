@@ -232,17 +232,26 @@ public final class LocalStore: Sendable {
     /// had nothing more up to that seq, so the cursor can move there even
     /// if the final seqs were burned and no message carries them.
     public func applyMessagePage(sessionId: String, messages: [MessageRecord], syncedThrough: Int? = nil) throws {
+        try applyMessagePages([MessagePageWrite(sessionId: sessionId, messages: messages, syncedThrough: syncedThrough)])
+    }
+
+    /// One observable commit across pages and sessions. A deleted session is
+    /// skipped, exactly like the single-page path, without inserting orphans.
+    public func applyMessagePages(_ pages: [MessagePageWrite]) throws {
+        guard !pages.isEmpty else { return }
         try writer.write { db in
-            guard var session = try SessionRecord.fetchOne(db, key: sessionId) else { return }
-            let old = session
-            for message in messages {
-                try Self.insertMessage(message, db)
-            }
-            let last = max(messages.map(\.seq).max() ?? 0, syncedThrough ?? 0)
-            if last > session.syncedMessageSeq {
-                session.syncedMessageSeq = last
-                session.seq = max(session.seq, last)
-                _ = try session.updateChanges(db, from: old)
+            for page in pages {
+                guard var session = try SessionRecord.fetchOne(db, key: page.sessionId) else { continue }
+                let old = session
+                for message in page.messages {
+                    try Self.insertMessage(message, db)
+                }
+                let last = max(page.messages.map(\.seq).max() ?? 0, page.syncedThrough ?? 0)
+                if last > session.syncedMessageSeq {
+                    session.syncedMessageSeq = last
+                    session.seq = max(session.seq, last)
+                    _ = try session.updateChanges(db, from: old)
+                }
             }
         }
     }
