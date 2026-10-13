@@ -99,12 +99,31 @@ public final class LocalStore: Sendable {
 
     /// Merges sessions from a list fetch or a `new-session` update.
     public func upsertSessions(_ incoming: [SessionRecord], reconcileComposer: SessionComposerReconciliation? = nil) throws {
+        try applySessionListBatch(incoming, reconcileComposer: reconcileComposer)
+    }
+
+    /// Rows, readiness and the final cursors agree in one observable commit.
+    /// A failed or timed-out page flush passes no checkpoint.
+    public func applySessionListBatch(_ incoming: [SessionRecord], checkpoint: SessionListCheckpoint? = nil,
+                                      reconcileComposer: SessionComposerReconciliation? = nil) throws {
+        guard !incoming.isEmpty || checkpoint != nil else { return }
         try writer.write { db in
             for record in incoming {
                 let result = try Self.upsert(record, db)
                 if let reconcileComposer {
                     try Self.reconcileComposer(result.merged, previous: result.previous, db: db, transform: reconcileComposer)
                 }
+            }
+            if let checkpoint {
+                if let ids = checkpoint.fullIDs {
+                    for row in try Row.fetchAll(db, sql: "SELECT id, updatedAt FROM session") {
+                        let id: String = row["id"]
+                        let updatedAt: Int64 = row["updatedAt"]
+                        if !ids.contains(id), updatedAt <= checkpoint.changedSince { _ = try SessionRecord.deleteOne(db, key: id) }
+                    }
+                    if let completedAt = checkpoint.completedAt { try Self.saveCursor(.sessionsLastFullSync, completedAt, db) }
+                }
+                try Self.saveCursor(.sessionsChangedSince, checkpoint.changedSince, db)
             }
         }
     }
@@ -239,17 +258,26 @@ public final class LocalStore: Sendable {
     /// had nothing more up to that seq, so the cursor can move there even
     /// if the final seqs were burned and no message carries them.
     public func applyMessagePage(sessionId: String, messages: [MessageRecord], syncedThrough: Int? = nil) throws {
+        try applyMessagePages([MessagePageWrite(sessionId: sessionId, messages: messages, syncedThrough: syncedThrough)])
+    }
+
+    /// One observable commit across pages and sessions. A deleted session is
+    /// skipped, exactly like the single-page path, without inserting orphans.
+    public func applyMessagePages(_ pages: [MessagePageWrite]) throws {
+        guard !pages.isEmpty else { return }
         try writer.write { db in
-            guard var session = try SessionRecord.fetchOne(db, key: sessionId) else { return }
-            let old = session
-            for message in messages {
-                try Self.insertMessage(message, db)
-            }
-            let last = max(messages.map(\.seq).max() ?? 0, syncedThrough ?? 0)
-            if last > session.syncedMessageSeq {
-                session.syncedMessageSeq = last
-                session.seq = max(session.seq, last)
-                _ = try session.updateChanges(db, from: old)
+            for page in pages {
+                guard var session = try SessionRecord.fetchOne(db, key: page.sessionId) else { continue }
+                let old = session
+                for message in page.messages {
+                    try Self.insertMessage(message, db)
+                }
+                let last = max(page.messages.map(\.seq).max() ?? 0, page.syncedThrough ?? 0)
+                if last > session.syncedMessageSeq {
+                    session.syncedMessageSeq = last
+                    session.seq = max(session.seq, last)
+                    _ = try session.updateChanges(db, from: old)
+                }
             }
         }
     }
@@ -722,13 +750,15 @@ public final class LocalStore: Sendable {
     }
 
     public func setCursor(_ cursor: SyncCursor, _ value: Int64) throws {
-        try writer.write { db in
-            let record = SyncStateRecord(key: cursor.rawValue, value: value)
-            if let old = try SyncStateRecord.fetchOne(db, key: cursor.rawValue) {
-                if record != old { _ = try record.updateChanges(db, from: old) }
-            } else {
-                try record.insert(db)
-            }
+        try writer.write { db in try Self.saveCursor(cursor, value, db) }
+    }
+
+    private static func saveCursor(_ cursor: SyncCursor, _ value: Int64, _ db: Database) throws {
+        let record = SyncStateRecord(key: cursor.rawValue, value: value)
+        if let old = try SyncStateRecord.fetchOne(db, key: cursor.rawValue) {
+            if record != old { _ = try record.updateChanges(db, from: old) }
+        } else {
+            try record.insert(db)
         }
     }
 

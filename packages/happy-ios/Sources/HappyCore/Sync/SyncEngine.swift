@@ -49,6 +49,16 @@ public actor SyncEngine {
         public var changedSinceOverlapMs: Int64 = 5_000
         public var fullSessionReconcileIntervalMs: Int64 = 24 * 60 * 60 * 1000
         public var messageSessionsPerPass = 50
+        /// Downloaded pages are committed together, bounded by this record
+        /// count (plus at most one server page). No transaction spans an await.
+        public var messageWriteBatchSize = 1000
+        public var sessionWriteBatchSize = 1000
+        /// Approximate ciphertext bytes. A single oversized row is committed
+        /// immediately rather than retained in the pending buffer.
+        public var writeBatchMaximumBytes = 4 * 1024 * 1024
+        public var writeBatchMaximumDelay: Duration = .milliseconds(400)
+        /// Injectable deadline sleeper for deterministic operation-count tests.
+        public var writeBatchSleep: InvalidateSync.Sleep = { try await Task.sleep(for: $0) }
         /// Version conflicts tolerated per settings push before backing off.
         public var settingsPushAttempts = 3
         public var backoff: Backoff = .standard
@@ -198,24 +208,32 @@ public actor SyncEngine {
         var pageCursor: String?
         var seen = Set<String>()
         var maxUpdatedAt = since ?? 0
-        repeat {
-            let page = try await api.sessions(changedSince: changedSince, cursor: pageCursor, limit: options.sessionsPageSize)
-            let previous = Dictionary(uniqueKeysWithValues: try store.sessions(ids: page.sessions.map(\.id)).map { ($0.id, $0) })
-            let records = page.sessions.map { decoder.session($0, previous: previous[$0.id]) }
-            await presence.prepareSessions(records, previous: previous)
-            try store.upsertSessions(records, reconcileComposer: modePushes.reconciliation)
-            for session in page.sessions {
-                seen.insert(session.id)
-                maxUpdatedAt = max(maxUpdatedAt, session.updatedAt)
-            }
-            pageCursor = page.hasNext ? page.nextCursor : nil
-        } while pageCursor != nil
-
-        if full {
-            try store.retainSessions(ids: seen, updatedAtOrBefore: maxUpdatedAt)
-            try store.setCursor(.sessionsLastFullSync, startedAt)
+        let store = self.store
+        let reconcileComposer = modePushes.reconciliation
+        let batch = SyncWriteBatch<SessionRecord, SessionListCheckpoint>(
+            maximumRecords: options.sessionWriteBatchSize, maximumBytes: options.writeBatchMaximumBytes,
+            maximumDelay: options.writeBatchMaximumDelay, sleep: options.writeBatchSleep,
+            cost: { row in (1, row.metadataCipher.utf8.count + (row.agentStateCipher?.utf8.count ?? 0) + (row.dataKeyCipher?.utf8.count ?? 0)) },
+            commit: { records, checkpoint in try store.applySessionListBatch(records, checkpoint: checkpoint, reconcileComposer: reconcileComposer) })
+        do {
+            repeat {
+                let page = try await api.sessions(changedSince: changedSince, cursor: pageCursor, limit: options.sessionsPageSize)
+                let previous = Dictionary(uniqueKeysWithValues: try store.sessions(ids: page.sessions.map(\.id)).map { ($0.id, $0) })
+                let records = page.sessions.map { decoder.session($0, previous: previous[$0.id]) }
+                await presence.prepareSessions(records, previous: previous)
+                try await batch.append(records)
+                for session in page.sessions {
+                    seen.insert(session.id)
+                    maxUpdatedAt = max(maxUpdatedAt, session.updatedAt)
+                }
+                pageCursor = page.hasNext ? page.nextCursor : nil
+            } while pageCursor != nil
+        } catch {
+            try await batch.finish()
+            throw error
         }
-        try store.setCursor(.sessionsChangedSince, maxUpdatedAt)
+        try await batch.finish(SessionListCheckpoint(changedSince: maxUpdatedAt,
+                                                     fullIDs: full ? seen : nil, completedAt: full ? startedAt : nil))
     }
 
     func pullMachines() async throws {
@@ -264,33 +282,73 @@ public actor SyncEngine {
 
     func pullPendingMessages() async throws {
         let sessions = try store.sessionsNeedingMessageSync(limit: options.messageSessionsPerPass)
-        for session in sessions {
-            try await pullMessages(sessionId: session.id)
-        }
+        try await pullMessageBatch(sessions)
         if sessions.count == options.messageSessionsPerPass {
             await invalidate(.pendingMessages)
         }
     }
 
     func pullMessages(sessionId: String) async throws {
-        guard let session = try store.session(id: sessionId),
-              session.decryptable,
-              let cipher = keyRing.cipher(wrappedKey: session.dataKeyCipher)
-        else { return }
+        guard let session = try store.session(id: sessionId) else { return }
+        try await pullMessageBatch([session])
+    }
 
-        var afterSeq = session.syncedMessageSeq
-        while true {
-            let page = try await api.messages(sessionId: sessionId, afterSeq: afterSeq, limit: options.messagesPageSize)
-            let records = page.messages.map { decoder.message($0, sessionId: sessionId, cipher: cipher) }
-            let lastSeq = page.messages.map(\.seq).max()
-            try store.applyMessagePage(
-                sessionId: sessionId,
-                messages: records,
-                syncedThrough: page.hasMore ? nil : max(lastSeq ?? 0, session.seq)
-            )
-            guard page.hasMore, let lastSeq, lastSeq > afterSeq else { break }
-            afterSeq = lastSeq
+    private func pullMessageBatch(_ sessions: [SessionRecord]) async throws {
+        let store = self.store
+        let batch = SyncWriteBatch<MessageBatchItem, NoSyncCheckpoint>(
+            maximumRecords: options.messageWriteBatchSize, maximumBytes: options.writeBatchMaximumBytes,
+            maximumDelay: options.writeBatchMaximumDelay, sleep: options.writeBatchSleep,
+            cost: { item in
+                switch item {
+                case .record(let message): return (1, message.contentCipher.utf8.count)
+                case .cursor: return (0, 0)
+                }
+            },
+            commit: { items, _ in try store.applyMessagePages(Self.messageWrites(items)) })
+        do {
+            for session in sessions {
+                guard session.decryptable, let cipher = keyRing.cipher(wrappedKey: session.dataKeyCipher) else { continue }
+                var afterSeq = session.syncedMessageSeq
+                while true {
+                    let page = try await api.messages(sessionId: session.id, afterSeq: afterSeq, limit: options.messagesPageSize)
+                    let records = page.messages.map { decoder.message($0, sessionId: session.id, cipher: cipher) }
+                    let lastSeq = page.messages.map(\.seq).max()
+                    var items = records.map(MessageBatchItem.record)
+                    if !page.hasMore { items.append(.cursor(sessionId: session.id, through: max(lastSeq ?? 0, session.seq))) }
+                    try await batch.append(items)
+                    guard page.hasMore, let lastSeq, lastSeq > afterSeq else { break }
+                    afterSeq = lastSeq
+                }
+            }
+        } catch {
+            // Keep completed downloads and their page cursors on request
+            // failure/cancellation, just as the old per-page writes did.
+            try await batch.finish()
+            throw error
         }
+        try await batch.finish()
+    }
+
+    /// Group records back into page writes at commit time. Cursor markers
+    /// cost no records/bytes and follow only their successfully fetched page.
+    /// Splitting a page at a memory boundary cannot advance its final cursor.
+    private static func messageWrites(_ items: [MessageBatchItem]) -> [MessagePageWrite] {
+        var result: [MessagePageWrite] = []
+        for item in items {
+            switch item {
+            case .record(let message):
+                if result.last?.sessionId != message.sessionId {
+                    result.append(MessagePageWrite(sessionId: message.sessionId, messages: []))
+                }
+                result[result.count - 1].messages.append(message)
+            case .cursor(let sessionId, let through):
+                if result.last?.sessionId != sessionId { result.append(MessagePageWrite(sessionId: sessionId, messages: [])) }
+                let index = result.count - 1
+                let previous = result[index].syncedThrough ?? 0
+                result[index].syncedThrough = max(previous, through)
+            }
+        }
+        return result
     }
 
     // MARK: Settings
