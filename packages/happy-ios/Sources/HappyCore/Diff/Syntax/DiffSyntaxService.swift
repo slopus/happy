@@ -2,12 +2,17 @@ import Foundation
 
 /// syntax/service.ts's cache and queue, for owners that plan off the main
 /// thread. A plan colours its rows from the cache and tokenizes the hunks
-/// it lacks right there, until its first-paint deadline; hunks it
-/// couldn't reach are tokenized in the background into the cache, so a
-/// later plan has them and nothing a reader has seen is recoloured.
+/// it lacks right there, starting no new hunk once its first-paint
+/// deadline has passed; hunks it didn't start are tokenized in the
+/// background into the cache, so a later plan has them and nothing a
+/// reader has seen is recoloured.
 ///
-/// Call `colour` and `result` off the main thread: tokenizing a hunk can
-/// take up to `DiffSyntax.revealMilliseconds`.
+/// The deadline is cooperative, not a timeout. Prism runs synchronously
+/// and a single regex can't be interrupted, so a hunk started before the
+/// deadline finishes after it. happy-app's worker is the same; only its UI
+/// stops waiting at the second.
+///
+/// Call `colour` and `result` off the main thread.
 public final class DiffSyntaxService: @unchecked Sendable {
     public static let shared = DiffSyntaxService()
 
@@ -40,8 +45,9 @@ public final class DiffSyntaxService: @unchecked Sendable {
     }
 
     /// usePreparedSyntax: `displayed` with the colours of every hunk they
-    /// touch, tokenizing missing hunks until `deadline`. Hunks left after
-    /// it stay plain here and are tokenized in the background.
+    /// touch. A missing hunk is tokenized here if `deadline` hasn't passed
+    /// when its turn comes; the ones after stay plain here and are
+    /// tokenized in the background.
     public func colour(_ file: DiffFile, displayed: [DiffRow], until deadline: ContinuousClock.Instant) -> [DiffRow] {
         let hunks = DiffSyntaxPlan.plan(file, displayed: displayed)
         guard !hunks.isEmpty else { return displayed }

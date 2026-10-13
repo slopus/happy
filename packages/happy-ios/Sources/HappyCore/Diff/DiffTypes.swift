@@ -96,6 +96,15 @@ public enum DiffRow: Equatable, Sendable {
         if case .line(let line) = self { return line }
         return nil
     }
+
+    /// What Copy takes from a `selectable` row (DiffRowCode's Text): a
+    /// line's text as drawn, a space for an empty one. Hunk and message
+    /// rows aren't selectable.
+    public var selectableText: String? {
+        guard case .line(let line) = self else { return nil }
+        let text = line.spans.map(\.text).joined()
+        return text.isEmpty ? " " : text
+    }
 }
 
 public enum FileChangeKind: String, Equatable, Hashable, Sendable {
