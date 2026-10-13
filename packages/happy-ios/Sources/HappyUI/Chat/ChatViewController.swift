@@ -38,6 +38,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private let headerScrim = HeaderScrimView()
     private let titleView = ChatHeaderTitleView()
     private let avatarControl = ChatHeaderAvatarControl()
+    private let cliWarning = ChatCliWarningPill()
+    /// localSettings' `acknowledgedCliVersions`, read once.
+    private lazy var acknowledgedCliVersions = context.account.localSettings.acknowledgedCliVersions
     /// The spinner, an empty chat's EmptyMessages, or the deleted state.
     private let placeholder = ChatPlaceholderView()
     private var headerBackdropVisible = false
@@ -136,7 +139,13 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         view.addSubview(placeholder)
         headerScrim.overlayOpacity = ChatHeaderScrim.restingOpacity
         view.addSubview(headerScrim)
+        cliWarning.isHidden = true
+        cliWarning.addTarget(self, action: #selector(dismissCliWarning), for: .touchUpInside)
+        view.addSubview(cliWarning)
         view.addSubview(scrim)
+        registerForTraitChanges([UITraitVerticalSizeClass.self]) { (self: Self, _) in
+            self.updateCliWarning()
+        }
         composer.composerDelegate = self
         questionBanner.isHidden = true
         questionBanner.onOpen = { [weak self] in self?.openQuestionSheet() }
@@ -243,6 +252,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         list.setLayoutFrame(screen.list)
         list.setEdgeInsets(newest: screen.newestEdgeInset, oldest: screen.oldestEdgeInset)
         headerScrim.setLayoutFrame(screen.headerScrim)
+        if !cliWarning.isHidden {
+            cliWarning.place(CliWarningPillLayout(width: size.width, top: view.safeAreaInsets.top, label: cliWarning.labelMeasurable))
+        }
         // Loading the session and the deleted state take the whole screen;
         // an empty chat sits between the bar and the dock.
         placeholder.setLayoutFrame(dock.isHidden ? view.bounds : screen.placeholder)
@@ -259,6 +271,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private func sessionChanged(_ state: ChatSessionState) {
         session = state
         updateHeader()
+        updateCliWarning()
         updatePlaceholder()
         updateDockBars()
         updateComposer()
@@ -323,6 +336,23 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 monochrome: !model.connected || settings.avatarMonochrome
             )
         }
+    }
+
+    /// Not on a phone held sideways, as in happy-app.
+    private func updateCliWarning() {
+        let warning = CliVersionWarning(metadata: session.metadata, acknowledged: acknowledgedCliVersions)
+        cliWarning.warning = warning
+        let hidden = warning == nil || traitCollection.verticalSizeClass == .compact
+        guard hidden != cliWarning.isHidden else { return }
+        cliWarning.isHidden = hidden
+        view.setNeedsLayout()
+    }
+
+    @objc private func dismissCliWarning() {
+        guard let acknowledged = cliWarning.warning?.dismissed(in: acknowledgedCliVersions) else { return }
+        acknowledgedCliVersions = acknowledged
+        context.account.localSettings.acknowledgedCliVersions = acknowledged
+        updateCliWarning()
     }
 
     @objc private func openInfo() {

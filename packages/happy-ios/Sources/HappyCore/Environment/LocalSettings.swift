@@ -106,6 +106,22 @@ public final class LocalSettings: Sendable {
         }
     }
 
+    /// The CLI versions whose outdated warning was dismissed in the chat, by
+    /// machine id (localSettings.ts `acknowledgedCliVersions`).
+    public var acknowledgedCliVersions: [String: String] {
+        get {
+            guard let json = storage.string(forKey: Keys.acknowledgedCliVersions),
+                  let value = try? JSONDecoder().decode([String: String].self, from: Data(json.utf8)) else {
+                return [:]
+            }
+            return value
+        }
+        set {
+            let data = (try? JSONEncoder().encode(newValue)) ?? Data()
+            storage.set(newValue.isEmpty ? nil : String(decoding: data, as: UTF8.self), forKey: Keys.acknowledgedCliVersions)
+        }
+    }
+
     /// The new-session draft (persistence.ts `new-session-draft-v1`), nil
     /// until one is saved.
     public var newSessionDraft: NewSessionDraft? {
@@ -118,7 +134,7 @@ public final class LocalSettings: Sendable {
     }
 
     public func clear() {
-        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled, Keys.markdownCopyV2, Keys.expandedProjects, Keys.registeredPushToken, NewSessionDraft.storageKey] {
+        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled, Keys.markdownCopyV2, Keys.expandedProjects, Keys.acknowledgedCliVersions, Keys.registeredPushToken, NewSessionDraft.storageKey] {
             storage.set(nil, forKey: key)
         }
     }
@@ -136,6 +152,7 @@ public final class LocalSettings: Sendable {
         static let devModeEnabled = "devModeEnabled"
         static let markdownCopyV2 = "markdownCopyV2"
         static let expandedProjects = "expandedProjects"
+        static let acknowledgedCliVersions = "acknowledgedCliVersions"
         static let registeredPushToken = "registered-push-token-v1"
     }
 }

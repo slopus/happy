@@ -144,6 +144,58 @@ final class ChatHeaderAvatarControl: UIControl {
     }
 }
 
+/// SessionView's CLI version warning: "CLI Update Required" in an amber
+/// pill under the header. A tap dismisses it for that version on that
+/// machine.
+final class ChatCliWarningPill: UIControl {
+    var warning: CliVersionWarning?
+
+    private let icon = UIImageView(image: .icon(.ionicons("warning-outline"), size: CliWarningPillLayout.Metrics.iconSize))
+    private let label = ChatLabel(MeasuredText(ChatTextStyles.cliWarning.string(Strings.SessionDetail.cliVersionOutdated, color: Palette.cliWarningText), maxLines: 1))
+    private let close = UIImageView(image: .icon(.ionicons("close"), size: CliWarningPillLayout.Metrics.iconSize))
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = UIColor(Palette.cliWarningFill)
+        layer.shadowColor = UIColor.black.cgColor
+        layer.shadowOpacity = CliWarningPillLayout.Metrics.shadowOpacity
+        layer.shadowRadius = CliWarningPillLayout.Metrics.shadowRadius
+        layer.shadowOffset = CGSize(width: 0, height: CliWarningPillLayout.Metrics.shadowOffsetY)
+        icon.tintColor = UIColor(Palette.cliWarningIcon)
+        close.tintColor = UIColor(Palette.cliWarningText)
+        for view in [icon, label.view, close] {
+            view.contentMode = .center
+            view.isUserInteractionEnabled = false
+            addSubview(view)
+        }
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+        accessibilityLabel = Strings.SessionDetail.cliVersionOutdated
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    var labelMeasurable: Measurable { label.measurable }
+
+    /// Places the pill and its insides, from the screen's layout.
+    func place(_ layout: CliWarningPillLayout) {
+        setLayoutFrame(layout.pill)
+        layer.cornerRadius = layout.pill.height / 2
+        layer.shadowPath = UIBezierPath(roundedRect: CGRect(origin: .zero, size: layout.pill.size), cornerRadius: layout.pill.height / 2).cgPath
+        let origin = layout.pill.origin
+        icon.setLayoutFrame(layout.icon.offsetBy(dx: -origin.x, dy: -origin.y))
+        label.place(layout.label.offsetBy(dx: -origin.x, dy: -origin.y))
+        close.setLayoutFrame(layout.close.offsetBy(dx: -origin.x, dy: -origin.y))
+    }
+
+    override var isHighlighted: Bool {
+        didSet { alpha = isHighlighted ? 0.7 : 1 }
+    }
+}
+
 /// What fills the chat when there is no conversation to show: a spinner
 /// while it loads, EmptyMessages for a chat with nothing in it yet,
 /// PendingChatPlaceholder for one that hasn't started yet, or the deleted

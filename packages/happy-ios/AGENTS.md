@@ -124,6 +124,11 @@ nothing here is wired to the release skill or to EAS.
   edge, which on a phone (no padding for edits) clips the line numbers.
   Here text scrolls and Write's diff sits edge to edge like Edit's. Built
   in `MessageDetailRenderer`.
+- **The CLI-outdated pill sits under the header on every device.** happy-app
+  places it 8 below the top of the content area. On a phone in portrait that
+  area runs under the floating header, so the pill ends up behind the header
+  and the status bar. Here it sits 8 under the navigation bar, where happy-app
+  puts it on a tablet. Laid out in `CliWarningPillLayout`.
 - **Push notifications follow happy-app's iPhone behaviour**
   (`sync/pushRegistration.ts`, `app/_layout.tsx`). They are wired in
   `Sources/HappyApp/PushNotifications.swift`, and the logic lives in
