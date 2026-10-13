@@ -574,37 +574,52 @@ public final class ChangelogCardView: UIView {
     let summary: LinkTextView?
     let texts: [LinkTextView]
     let bullets: [StyledLabel?]
+    private let entry: Changelog.Entry
+    private let blocks: [ChangelogMarkdown.Block]
+    private var textScale: TextScale?
 
     public init(entry: Changelog.Entry) {
-        if entry.summary.isEmpty {
-            summary = nil
-        } else {
-            let view = LinkTextView()
-            view.attributedText = Self.summaryText(entry.summary)
-            summary = view
-        }
+        self.entry = entry
+        blocks = ChangelogMarkdown.parse(entry.markdown)
+        summary = entry.summary.isEmpty ? nil : LinkTextView()
         var texts: [LinkTextView] = []
         var bullets: [StyledLabel?] = []
-        for block in ChangelogMarkdown.parse(entry.markdown) {
-            let view = LinkTextView()
+        for block in blocks {
+            texts.append(LinkTextView())
             switch block {
-            case .bullet(let spans):
-                view.attributedText = Self.text(spans)
+            case .bullet:
                 let bullet = StyledLabel(style: TextStyles.changelogBody, color: Palette.text, lines: 1)
                 bullet.string = "•"
                 bullets.append(bullet)
-            case .paragraph(let spans):
-                view.attributedText = Self.text(spans)
+            case .paragraph:
                 bullets.append(nil)
             }
-            texts.append(view)
         }
         self.texts = texts
         self.bullets = bullets
         super.init(frame: .zero)
+        render()
         if let summary { addSubview(summary) }
         for view in texts { addSubview(view) }
         for case let bullet? in bullets { addSubview(bullet) }
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            let scale = self.traitCollection.textEnvironment?.scale
+            guard scale != self.textScale else { return }
+            self.textScale = scale
+            self.render()
+            self.setNeedsLayoutUpTheTree()
+        }
+    }
+
+    /// The text at the size it is drawn at.
+    private func render() {
+        summary?.attributedText = Self.summaryText(entry.summary, scale: textScale)
+        for (view, block) in zip(texts, blocks) {
+            switch block {
+            case .bullet(let spans), .paragraph(let spans):
+                view.attributedText = Self.text(spans, scale: textScale)
+            }
+        }
     }
 
     @available(*, unavailable)
@@ -639,15 +654,17 @@ public final class ChangelogCardView: UIView {
     }
 
     /// MarkdownView's text: regular, bold spans semibold, links underlined.
-    static func text(_ spans: [ChangelogMarkdown.Span]) -> NSAttributedString {
+    static func text(_ spans: [ChangelogMarkdown.Span], scale: TextScale? = nil) -> NSAttributedString {
         let text = NSMutableAttributedString()
         let color = UIColor(Palette.text)
+        let body = scale.map { TextStyles.changelogBody.scaled($0) } ?? TextStyles.changelogBody
+        let bold = scale.map { TextStyles.changelogBold.scaled($0) } ?? TextStyles.changelogBold
         for span in spans {
             switch span {
-            case .text(let string, let bold):
-                text.append((bold ? TextStyles.changelogBold : TextStyles.changelogBody).attributedString(string, color: color))
+            case .text(let string, let isBold):
+                text.append((isBold ? bold : body).attributedString(string, color: color))
             case .link(let label, let url):
-                var attributes = TextStyles.changelogBody.attributes(color: color)
+                var attributes = body.attributes(color: color)
                 if let url = URL(string: url) { attributes[.link] = url }
                 text.append(NSAttributedString(string: label, attributes: attributes))
             }
@@ -657,9 +674,9 @@ public final class ChangelogCardView: UIView {
 
     /// `SummaryLine`: plain text and underlined links. The changelog bundles
     /// no images, so an image segment has nothing to show.
-    static func summaryText(_ summary: String) -> NSAttributedString {
+    static func summaryText(_ summary: String, scale: TextScale? = nil) -> NSAttributedString {
         let text = NSMutableAttributedString()
-        let style = TextStyles.changelogSummary
+        let style = scale.map { TextStyles.changelogSummary.scaled($0) } ?? TextStyles.changelogSummary
         let color = UIColor(Palette.text)
         for segment in ChangelogSummary.parse(summary) {
             switch segment {
@@ -745,8 +762,10 @@ public final class ConnectCommandView: UIView {
     let bodyLabel = StyledLabel(style: TextStyles.connectBody, color: Palette.textSecondary, alignment: .center)
     let terminal = UIView()
     let commandLabel = UILabel()
+    private let command: String
 
     public init(title: String, body: String, command: String) {
+        self.command = command
         super.init(frame: .zero)
         backgroundColor = UIColor(Palette.groupedBackground)
         titleLabel.string = title
@@ -756,12 +775,7 @@ public final class ConnectCommandView: UIView {
         terminal.layer.cornerCurve = .continuous
         terminal.clipsToBounds = true
         commandLabel.numberOfLines = 0
-        let style = TextStyles.connectCommand
-        let text = NSMutableAttributedString(attributedString: style.attributedString("$ ", color: UIColor(Palette.commandPrompt)))
-        // happy-app draws it white on a transparent card, which vanishes in
-        // light mode; the text colour reads in both (see FEATURES.md).
-        text.append(style.attributedString(command, color: UIColor(Palette.text)))
-        commandLabel.attributedText = text
+        renderCommand()
         commandLabel.accessibilityLabel = command
         addSubview(titleLabel)
         addSubview(bodyLabel)
@@ -771,11 +785,25 @@ public final class ConnectCommandView: UIView {
         registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in
             self.updateBorder()
         }
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.renderCommand()
+            self.setNeedsLayout()
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    /// The command at the size it is drawn at.
+    private func renderCommand() {
+        let style = traitCollection.textEnvironment.map { TextStyles.connectCommand.scaled($0.scale) } ?? TextStyles.connectCommand
+        let text = NSMutableAttributedString(attributedString: style.attributedString("$ ", color: UIColor(Palette.commandPrompt)))
+        // happy-app draws it white on a transparent card, which vanishes in
+        // light mode; the text colour reads in both (see FEATURES.md).
+        text.append(style.attributedString(command, color: UIColor(Palette.text)))
+        commandLabel.attributedText = text
     }
 
     public func layout() -> ConnectCommandLayout {

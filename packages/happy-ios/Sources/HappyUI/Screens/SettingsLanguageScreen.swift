@@ -18,6 +18,7 @@ public final class SettingsLanguageViewController: UIViewController {
     public init(session: AccountSession) {
         self.session = session
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)

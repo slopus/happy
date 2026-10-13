@@ -14,6 +14,7 @@ public final class AccountServerConfirmationViewController: UIViewController, UI
         self.context = context
         self.accountID = account.id
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)

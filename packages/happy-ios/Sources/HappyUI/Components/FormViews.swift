@@ -37,12 +37,8 @@ public final class ServerFormView: UIView {
         fieldBackground.backgroundColor = UIColor(Palette.surfaceHigh)
         fieldBackground.layer.cornerRadius = ServerFormLayout.Metrics.fieldCornerRadius
         fieldBackground.layer.cornerCurve = .continuous
-        field.font = TextStyles.serverInput.font
         field.textColor = UIColor(Palette.inputText)
-        field.attributedPlaceholder = NSAttributedString(
-            string: Strings.Common.urlPlaceholder,
-            attributes: [.foregroundColor: UIColor(Palette.inputPlaceholder), .font: TextStyles.serverInput.font]
-        )
+        applyInputStyle()
         field.autocapitalizationType = .none
         field.autocorrectionType = .no
         field.keyboardType = .URL
@@ -54,6 +50,10 @@ public final class ServerFormView: UIView {
         }
         // Assignments in a class's own initializer skip didSet.
         apply()
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.applyInputStyle()
+            self.setNeedsLayoutUpTheTree()
+        }
     }
 
     @available(*, unavailable)
@@ -61,11 +61,26 @@ public final class ServerFormView: UIView {
         fatalError("init(coder:) is not supported")
     }
 
+    /// The field's text, as RN's TextInput draws it: at the person's text
+    /// size where the screen follows it.
+    private var inputStyle: TextStyle {
+        traitCollection.textEnvironment.map { TextStyles.serverInput.scaled($0.scale) } ?? TextStyles.serverInput
+    }
+
+    private func applyInputStyle() {
+        let font = inputStyle.font
+        field.font = font
+        field.attributedPlaceholder = NSAttributedString(
+            string: Strings.Common.urlPlaceholder,
+            attributes: [.foregroundColor: UIColor(Palette.inputPlaceholder), .font: font]
+        )
+    }
+
     public func layout(width: CGFloat) -> ServerFormLayout {
         ServerFormLayout(.init(
             width: width,
             label: label.measurable,
-            fieldLineHeight: TextStyles.serverInput.lineHeightValue,
+            fieldLineHeight: inputStyle.lineHeightValue,
             error: error == nil ? nil : errorLabel.measurable,
             validating: isValidating ? validatingLabel.measurable : nil,
             save: save.measurable,

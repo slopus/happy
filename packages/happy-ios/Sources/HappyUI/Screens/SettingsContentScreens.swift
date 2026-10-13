@@ -8,6 +8,7 @@ import UIKit
 /// commented out; the page tells you to connect from a terminal.
 public final class SettingsConnectClaudeViewController: UIViewController {
     public override func loadView() {
+        followsTextSize()
         view = ConnectCommandView(
             title: Strings.ConnectClaude.title,
             body: Strings.ConnectClaude.instruction,
@@ -34,6 +35,7 @@ public final class ChangelogViewController: UIViewController {
         self.readMarker = readMarker
         self.changelog = Self.bundled
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)
