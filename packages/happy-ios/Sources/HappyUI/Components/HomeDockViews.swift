@@ -141,8 +141,8 @@ final class HomeDockSendButton: ComposerPressableButton {
 
     private func apply() {
         isEnabled = appearance == .send
-        backgroundColor = UIColor(appearance == .send ? Palette.homeDockSendActive : Palette.surfaceHighest)
-        iconView.tintColor = UIColor(appearance == .send ? Palette.homeDockSendIcon : Palette.textSecondary)
+        backgroundColor = UIColor(appearance == .send ? Palette.composerNewSessionPrimaryFill : Palette.surfaceHighest)
+        iconView.tintColor = UIColor(appearance == .send ? Palette.composerNewSessionPrimaryIcon : Palette.textSecondary)
         if appearance == .busy {
             spinner.startAnimating()
             iconView.isHidden = true
