@@ -541,6 +541,13 @@ private final class FailingReads: ComposerStorage, @unchecked Sendable {
     func composerValues(sessionId: String) -> AsyncThrowingStream<ComposerStoreValue, any Error> { AsyncThrowingStream { _ in } }
 }
 
+private final class ThreadViolationLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [ThreadRules.Requirement] = []
+    var values: [ThreadRules.Requirement] { lock.withLock { recorded } }
+    func append(_ value: ThreadRules.Requirement) { lock.withLock { recorded.append(value) } }
+}
+
 /// A real store whose draft writes can be made to fail.
 private final class FlakyStorage: ComposerStorage, @unchecked Sendable {
     let base: OutboxSender
@@ -729,6 +736,40 @@ final class ComposerDraftStoreTests: XCTestCase {
         await writer.settle()
         XCTAssertNil(try store.draft(sessionId: "s"), "no retry brings the sent text back")
         XCTAssertEqual(try store.pendingOutbox().map(\.localId), [id])
+        writer.close()
+        await sync.stop()
+    }
+
+    /// With the thread checks on, the writer's whole round (open, observe,
+    /// write, send, plan) passes them, and a read from main is caught.
+    func testTheWritersStoreAccessPassesTheThreadChecks() async throws {
+        let (store, sync, sender, files) = try await fixture(rig: false)
+        defer { try? FileManager.default.removeItem(at: files) }
+        let violations = ThreadViolationLog()
+        let oldEnforcement = ThreadRules.isEnforced
+        let oldHandler = ThreadRules.violationHandler
+        ThreadRules.violationHandler = { violations.append($0) }
+        ThreadRules.isEnforced = true
+        defer {
+            ThreadRules.isEnforced = oldEnforcement
+            ThreadRules.violationHandler = oldHandler
+        }
+        let writer = ComposerDraftWriter(sessionId: "s", storage: sender, sending: sender)
+        let deliveries = Deliveries()
+        writer.start { deliveries.receive($0) }
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        writer.save("hello", generation: 1)
+        _ = try await writer.send(OutgoingMessage(text: "hello")).value
+        writer.save("", generation: 2)
+        await writer.settle()
+        try await Task.detached { try store.saveDraft(sessionId: "s", text: "remote", at: 5) }.value
+        await fulfillment(of: [deliveries.expect(2)], timeout: 5)
+        _ = try await sender.attachmentPlan(for: OutgoingMessage(text: "hi"), sessionId: "s")
+        await writer.settle()
+        XCTAssertEqual(violations.values, [])
+
+        _ = try sender.composerValue(sessionId: "s")
+        XCTAssertEqual(violations.values, [.offMain], "a read on main")
         writer.close()
         await sync.stop()
     }

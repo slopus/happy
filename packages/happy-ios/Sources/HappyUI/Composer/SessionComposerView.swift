@@ -175,7 +175,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             if sessionState != status?.state {
                 vibingWord = ComposerStatus.randomVibingWord()
             }
-            status = ComposerStatus(record: record, now: Self.now, vibingWord: vibingWord)
+            // A stopped session's "last seen" comes worked out on the
+            // presence clock, and changes only when its text does.
+            status = ComposerStatus(record: record, lastSeen: state.session.lastSeen, now: Self.now, vibingWord: vibingWord)
         } else {
             status = nil
         }

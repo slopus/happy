@@ -51,9 +51,6 @@ public struct OutboxSender: ChatSending {
     public func attachmentPlan(for message: OutgoingMessage, sessionId: String) async throws -> AttachmentSendPlan {
         let store = self.store
         return try await Task.detached(priority: .userInitiated) {
-            #if DEBUG
-            dispatchPrecondition(condition: .notOnQueue(.main))
-            #endif
             guard let session = try store.session(id: sessionId) else {
                 throw SendingError.unknownSession
             }
