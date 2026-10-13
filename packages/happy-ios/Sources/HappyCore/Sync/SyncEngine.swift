@@ -119,6 +119,7 @@ public actor SyncEngine {
 
     /// Launch and every socket (re)connect: pull everything that changed.
     public func syncAll() async {
+        ThreadRules.assertOffMain()
         guard !stopped else { return }
         await presence.start()
         for job in [Job.sessions, .machines, .settings, .profile, .outbox] {
@@ -144,6 +145,7 @@ public actor SyncEngine {
 
     /// Runs `job` now (or joins the run in flight) and waits for it to succeed.
     public func run(_ job: Job) async {
+        ThreadRules.assertOffMain()
         await self.job(job)?.invalidateAndAwait()
     }
 
@@ -197,6 +199,7 @@ public actor SyncEngine {
     // MARK: Pulls
 
     func pullSessions() async throws {
+        ThreadRules.assertOffMain()
         let since = try store.cursor(.sessionsChangedSince)
         let lastFull = try store.cursor(.sessionsLastFullSync)
         let startedAt = now()
@@ -237,6 +240,7 @@ public actor SyncEngine {
     }
 
     func pullMachines() async throws {
+        ThreadRules.assertOffMain()
         let rows = try await api.machines()
         let previous = Dictionary(uniqueKeysWithValues: try store.machines().map { ($0.id, $0) })
         let records = rows.map { decoder.machine($0, previous: previous[$0.id]) }
@@ -246,6 +250,7 @@ public actor SyncEngine {
     }
 
     func pullSettings() async throws {
+        ThreadRules.assertOffMain()
         let response = try await api.accountSettings()
         try store.applyAccountSettings(AccountSettingsRecord(
             version: response.settingsVersion,
@@ -255,10 +260,12 @@ public actor SyncEngine {
     }
 
     func pullProfile() async throws {
+        ThreadRules.assertOffMain()
         try store.applyProfile(try await api.profile())
     }
 
     func pullProjects() async throws {
+        ThreadRules.assertOffMain()
         let rows = try await api.projects(ids: try store.referencedProjectIds())
         try store.replaceProjects(rows.map(project))
     }
@@ -281,6 +288,7 @@ public actor SyncEngine {
     }
 
     func pullPendingMessages() async throws {
+        ThreadRules.assertOffMain()
         let sessions = try store.sessionsNeedingMessageSync(limit: options.messageSessionsPerPass)
         try await pullMessageBatch(sessions)
         if sessions.count == options.messageSessionsPerPass {
@@ -289,6 +297,7 @@ public actor SyncEngine {
     }
 
     func pullMessages(sessionId: String) async throws {
+        ThreadRules.assertOffMain()
         guard let session = try store.session(id: sessionId) else { return }
         try await pullMessageBatch([session])
     }
@@ -356,6 +365,7 @@ public actor SyncEngine {
     /// Changes account settings. The change shows at once and is pushed in
     /// the background; it survives a relaunch until the server accepts it.
     public func updateSettings(_ delta: [String: JSONValue]) async throws {
+        ThreadRules.assertOffMain()
         try store.addPendingSettings(delta)
         await invalidate(.settings)
     }
@@ -364,6 +374,7 @@ public actor SyncEngine {
     /// conflict re-bases them on the copy the server returns and tries
     /// again; local changes win key by key.
     func pushSettings() async throws {
+        ThreadRules.assertOffMain()
         var conflicts = 0
         while true {
             let pending = try store.pendingSettings()
@@ -401,12 +412,14 @@ public actor SyncEngine {
 
     /// The data key of a stored session, for calls that encrypt to it.
     public func cipher(forSession id: String) throws -> RecordCipher? {
+        ThreadRules.assertOffMain()
         guard let session = try store.session(id: id) else { return nil }
         return keyRing.cipher(wrappedKey: session.dataKeyCipher)
     }
 
     /// The stored machine's own wrapped data key seals machine-scoped RPC.
     public func cipher(forMachine id: String) throws -> RecordCipher? {
+        ThreadRules.assertOffMain()
         guard let machine = try store.machine(id: id) else { return nil }
         return keyRing.cipher(wrappedKey: machine.dataKeyCipher)
     }
@@ -414,6 +427,7 @@ public actor SyncEngine {
     /// The session data key for encrypted resume fallback to its owning machine.
     /// Missing or legacy keys return nil; the account master secret never leaves.
     public func sessionDataKey(forSession id: String) throws -> Data? {
+        ThreadRules.assertOffMain()
         guard let session = try store.session(id: id) else { return nil }
         return keyRing.dataKey(wrappedKey: session.dataKeyCipher)
     }
@@ -437,6 +451,7 @@ public actor SyncEngine {
     /// Ports sync.ts uploadSessionBlob using the outbox's same blob encryption.
     /// Upload requests count sealed bytes; the result reports plaintext bytes.
     public func uploadSessionBlob(sessionId: String, name: String, bytes: Data) async throws -> (ref: String, size: Int) {
+        ThreadRules.assertOffMain()
         guard !stopped, !backgrounded else { throw CancellationError() }
         try Task.checkCancellation()
         let blob = try encryptedSessionBlob(sessionId: sessionId, bytes: bytes)
@@ -485,6 +500,7 @@ public actor SyncEngine {
     /// Unsupported permission modes throw before any file is copied or enqueued.
     /// Rejected attachments are dropped; a rejected batch without text is refused.
     public func accept(_ message: OutgoingMessage, sessionId: String, filesDirectory: URL) async throws -> String {
+        ThreadRules.assertOffMain()
         guard !stopped, !Task.isCancelled else {
             throw SendingError.inactiveAccount
         }
@@ -579,12 +595,14 @@ public actor SyncEngine {
     }
 
     public func discardSend(localId: String, filesDirectory: URL) throws {
+        ThreadRules.assertOffMain()
         for attachment in try store.discardOutbox(localId: localId) {
             try? FileManager.default.removeItem(at: filesDirectory.appendingPathComponent(attachment.path))
         }
     }
 
     public func downloadAttachment(sessionId: String, ref: String) async throws -> Data {
+        ThreadRules.assertOffMain()
         guard !stopped, let session = try store.session(id: sessionId),
               let key = keyRing.blobKey(wrappedKey: session.dataKeyCipher) else {
             throw SendingError.unknownSession
@@ -625,6 +643,7 @@ public actor SyncEngine {
     }
 
     func flushOutbox() async throws {
+        ThreadRules.assertOffMain()
         guard !stopped, !backgrounded else {
             return
         }
@@ -787,6 +806,7 @@ public actor SyncEngine {
     // MARK: Live updates
 
     public func handle(_ update: UpdateContainer) async {
+        ThreadRules.assertOffMain()
         guard !stopped else { return }
         let followUp: Job?
         do {
@@ -889,6 +909,7 @@ public actor SyncEngine {
     }
 
     public func handle(_ event: EphemeralEvent) async {
+        ThreadRules.assertOffMain()
         guard !stopped else { return }
         switch event {
         case .activity(let sessionId, let active, let activeAt, let thinking):

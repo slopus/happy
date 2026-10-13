@@ -40,7 +40,7 @@ extension LocalStore {
     /// Reads appended plaintext records and the fields needed to render them.
     /// A rowid cursor catches lower-sequence records that arrive late.
     public func chatPage(sessionId: String, afterRowId: Int64 = 0) throws -> ChatStorePage {
-        try writer.read { db in
+        try performRead { db in
             ChatStorePage(
                 change: try Self.fetchChatChange(db, sessionId: sessionId),
                 // Rowid follows insertion, unlike seq: a socket record with

@@ -29,6 +29,7 @@ public final class LocalStore: Sendable {
     /// Opens (creating if needed) the store at `url`, in WAL mode so the UI
     /// can read while sync writes.
     public static func open(at url: URL) throws -> LocalStore {
+        ThreadRules.assertOffMain()
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         var configuration = Configuration()
         configuration.foreignKeysEnabled = true
@@ -39,12 +40,14 @@ public final class LocalStore: Sendable {
 
     /// A throwaway store for tests and previews.
     public static func inMemory() throws -> LocalStore {
+        ThreadRules.assertOffMain()
         var configuration = Configuration()
         configuration.foreignKeysEnabled = true
         return try LocalStore(writer: DatabaseQueue(configuration: configuration))
     }
 
     public init(writer: any DatabaseWriter) throws {
+        ThreadRules.assertOffMain()
         self.writer = writer
         let delivery = DispatchQueue(label: "HappyStore.observations", qos: .userInitiated)
         // Ciphertexts, versions and message cursors do not render on home.
@@ -74,7 +77,7 @@ public final class LocalStore: Sendable {
         // Live state from a previous run is stale: the server re-sends
         // `thinking` every few seconds while it holds, and an archive that
         // was in flight has since been answered.
-        try writer.write { db in
+        try performWrite { db in
             try db.execute(sql: "UPDATE session SET thinking = 0, thinkingAt = 0, archiving = 0 WHERE thinking = 1 OR archiving = 1")
             try db.execute(sql: "UPDATE outbox SET state = 'queued' WHERE state = 'sending'")
         }
@@ -82,19 +85,29 @@ public final class LocalStore: Sendable {
 
     // MARK: Sessions
 
+    func performWrite<Value>(_ body: (Database) throws -> Value) throws -> Value {
+        ThreadRules.assertOffMain()
+        return try writer.write(body)
+    }
+
+    func performRead<Value>(_ body: (Database) throws -> Value) throws -> Value {
+        ThreadRules.assertOffMain()
+        return try writer.read(body)
+    }
+
     public func sessions() throws -> [SessionRecord] {
-        try writer.read { db in
+        try performRead { db in
             try SessionRecord.order(Column("updatedAt").desc).fetchAll(db)
         }
     }
 
     public func session(id: String) throws -> SessionRecord? {
-        try writer.read { db in try SessionRecord.fetchOne(db, key: id) }
+        try performRead { db in try SessionRecord.fetchOne(db, key: id) }
     }
 
     public func sessions(ids: [String]) throws -> [SessionRecord] {
         guard !ids.isEmpty else { return [] }
-        return try writer.read { db in try SessionRecord.filter(ids.contains(Column("id"))).fetchAll(db) }
+        return try performRead { db in try SessionRecord.filter(ids.contains(Column("id"))).fetchAll(db) }
     }
 
     /// Merges sessions from a list fetch or a `new-session` update.
@@ -107,7 +120,7 @@ public final class LocalStore: Sendable {
     public func applySessionListBatch(_ incoming: [SessionRecord], checkpoint: SessionListCheckpoint? = nil,
                                       reconcileComposer: SessionComposerReconciliation? = nil) throws {
         guard !incoming.isEmpty || checkpoint != nil else { return }
-        try writer.write { db in
+        try performWrite { db in
             for record in incoming {
                 let result = try Self.upsert(record, db)
                 if let reconcileComposer {
@@ -148,7 +161,7 @@ public final class LocalStore: Sendable {
         projectId: String??,
         reconcileComposer: SessionComposerReconciliation? = nil
     ) throws -> Bool {
-        try writer.write { db in
+        try performWrite { db in
             guard var record = try SessionRecord.fetchOne(db, key: id) else { return false }
             let old = record
             if let metadata, metadata.version > record.metadataVersion, let cipher = metadata.cipher {
@@ -174,7 +187,7 @@ public final class LocalStore: Sendable {
     /// Applies an `activity` ephemeral: presence, and whether the agent is
     /// working on a turn.
     public func applySessionActivity(id: String, active: Bool, activeAt: Int64, thinking: Bool = false) throws {
-        try writer.write { db in
+        try performWrite { db in
             guard var record = try SessionRecord.fetchOne(db, key: id), activeAt >= record.activeAt else { return }
             let old = record
             record.active = active
@@ -188,7 +201,7 @@ public final class LocalStore: Sendable {
 
     /// The person has seen the session's latest turn.
     public func markSessionRead(id: String) throws {
-        try writer.write { db in
+        try performWrite { db in
             try db.execute(sql: "UPDATE session SET unread = 0 WHERE id = ? AND unread = 1", arguments: [id])
         }
     }
@@ -196,13 +209,13 @@ public final class LocalStore: Sendable {
     /// Takes a session out of the live list while its archive is in flight,
     /// or puts it back when the archive failed.
     public func setSessionArchiving(id: String, _ archiving: Bool) throws {
-        try writer.write { db in
+        try performWrite { db in
             try db.execute(sql: "UPDATE session SET archiving = ? WHERE id = ? AND archiving != ?", arguments: [archiving, id, archiving])
         }
     }
 
     public func deleteSession(id: String) throws {
-        _ = try writer.write { db in
+        _ = try performWrite { db in
             try SessionRecord.deleteOne(db, key: id)
         }
     }
@@ -213,7 +226,7 @@ public final class LocalStore: Sendable {
     /// socket while the pass was paging.
     @discardableResult
     public func retainSessions(ids: Set<String>, updatedAtOrBefore cutoff: Int64) throws -> Int {
-        try writer.write { db in
+        try performWrite { db in
             let local = try Row.fetchAll(db, sql: "SELECT id, updatedAt FROM session")
             var removed = 0
             for row in local {
@@ -228,7 +241,7 @@ public final class LocalStore: Sendable {
 
     /// Sessions whose message log is behind the server, most recent first.
     public func sessionsNeedingMessageSync(limit: Int = 50) throws -> [SessionRecord] {
-        try writer.read { db in
+        try performRead { db in
             try SessionRecord
                 .filter(sql: "decryptable = 1 AND seq > syncedMessageSeq")
                 .order(Column("updatedAt").desc)
@@ -240,7 +253,7 @@ public final class LocalStore: Sendable {
     // MARK: Messages
 
     public func messages(sessionId: String, limit: Int = 100, beforeSeq: Int? = nil) throws -> [MessageRecord] {
-        try writer.read { db in
+        try performRead { db in
             var request = MessageRecord.filter(Column("sessionId") == sessionId)
             if let beforeSeq {
                 request = request.filter(Column("seq") < beforeSeq)
@@ -265,7 +278,7 @@ public final class LocalStore: Sendable {
     /// skipped, exactly like the single-page path, without inserting orphans.
     public func applyMessagePages(_ pages: [MessagePageWrite]) throws {
         guard !pages.isEmpty else { return }
-        try writer.write { db in
+        try performWrite { db in
             for page in pages {
                 guard var session = try SessionRecord.fetchOne(db, key: page.sessionId) else { continue }
                 let old = session
@@ -295,7 +308,7 @@ public final class LocalStore: Sendable {
     /// after the cursor advances it; anything else leaves the cursor so the
     /// delta fetch fills the gap (the same fast path happy-app uses).
     public func applyLiveMessage(_ message: MessageRecord) throws -> LiveMessageResult {
-        try writer.write { db in
+        try performWrite { db in
             guard var session = try SessionRecord.fetchOne(db, key: message.sessionId) else {
                 return .unknownSession
             }
@@ -322,7 +335,7 @@ public final class LocalStore: Sendable {
     // MARK: Machines
 
     public func machines() throws -> [MachineRecord] {
-        try writer.read { db in
+        try performRead { db in
             try MachineRecord.order(Column("activeAt").desc).fetchAll(db)
         }
     }
@@ -330,7 +343,7 @@ public final class LocalStore: Sendable {
     /// Replaces the machine list with a full `GET /v1/machines` response,
     /// keeping newer versioned state already stored from live updates.
     public func replaceMachines(_ incoming: [MachineRecord]) throws {
-        try writer.write { db in
+        try performWrite { db in
             let ids = Set(incoming.map(\.id))
             for id in try String.fetchAll(db, sql: "SELECT id FROM machine") where !ids.contains(id) {
                 try MachineRecord.deleteOne(db, key: id)
@@ -342,11 +355,11 @@ public final class LocalStore: Sendable {
     }
 
     public func machine(id: String) throws -> MachineRecord? {
-        try writer.read { db in try MachineRecord.fetchOne(db, key: id) }
+        try performRead { db in try MachineRecord.fetchOne(db, key: id) }
     }
 
     public func upsertMachine(_ record: MachineRecord) throws {
-        try writer.write { db in try Self.upsert(record, db) }
+        try performWrite { db in try Self.upsert(record, db) }
     }
 
     public func applyMachineUpdate(
@@ -356,7 +369,7 @@ public final class LocalStore: Sendable {
         active: Bool?,
         activeAt: Int64?
     ) throws -> Bool {
-        try writer.write { db in
+        try performWrite { db in
             guard var record = try MachineRecord.fetchOne(db, key: id) else { return false }
             let old = record
             if let metadata, metadata.version > record.metadataVersion, let cipher = metadata.cipher {
@@ -379,11 +392,11 @@ public final class LocalStore: Sendable {
     }
 
     public func deleteMachine(id: String) throws {
-        _ = try writer.write { db in try MachineRecord.deleteOne(db, key: id) }
+        _ = try performWrite { db in try MachineRecord.deleteOne(db, key: id) }
     }
 
     public func machinesSnapshot() throws -> MachinesSnapshot {
-        try writer.read { db in try Self.fetchMachinesSnapshot(db) }
+        try performRead { db in try Self.fetchMachinesSnapshot(db) }
     }
 
     /// Calls `onChange` with the machines now and after every change to them
@@ -404,12 +417,12 @@ public final class LocalStore: Sendable {
     // MARK: Projects
 
     public func projects() throws -> [ProjectRecord] {
-        try writer.read { db in try ProjectRecord.fetchAll(db) }
+        try performRead { db in try ProjectRecord.fetchAll(db) }
     }
 
     /// Project ids the stored sessions point at, which is the set to fetch.
     public func referencedProjectIds() throws -> [String] {
-        try writer.read { db in
+        try performRead { db in
             try String.fetchAll(db, sql: "SELECT DISTINCT projectId FROM session WHERE projectId IS NOT NULL AND projectId != '' ORDER BY projectId")
         }
     }
@@ -417,7 +430,7 @@ public final class LocalStore: Sendable {
     /// Replaces the projects with a fetch of every referenced one. A project
     /// the fetch did not return is no longer referenced or no longer exists.
     public func replaceProjects(_ incoming: [ProjectRecord]) throws {
-        try writer.write { db in
+        try performWrite { db in
             let ids = Set(incoming.map(\.id))
             for id in try String.fetchAll(db, sql: "SELECT id FROM project") where !ids.contains(id) {
                 try ProjectRecord.deleteOne(db, key: id)
@@ -434,7 +447,7 @@ public final class LocalStore: Sendable {
     }
 
     public func deleteProject(id: String) throws {
-        try writer.write { db in
+        try performWrite { db in
             _ = try ProjectRecord.deleteOne(db, key: id)
             // The server unlinks the sessions in the same write.
             try db.execute(sql: "UPDATE session SET projectId = NULL WHERE projectId = ?", arguments: [id])
@@ -444,14 +457,14 @@ public final class LocalStore: Sendable {
     // MARK: Account profile
 
     public func profile() throws -> AccountProfile? {
-        try writer.read { db in try AccountProfileRecord.fetchOne(db, key: 1)?.profile }
+        try performRead { db in try AccountProfileRecord.fetchOne(db, key: 1)?.profile }
     }
 
     /// Stores a profile snapshot unless a newer one (or a newer live patch)
     /// is already stored.
     @discardableResult
     public func applyProfile(_ profile: AccountProfile) throws -> Bool {
-        try writer.write { db in
+        try performWrite { db in
             let incoming = AccountProfileRecord(profile: profile)
             if let existing = try AccountProfileRecord.fetchOne(db, key: 1) {
                 guard existing.timestamp <= profile.timestamp else { return false }
@@ -467,7 +480,7 @@ public final class LocalStore: Sendable {
     /// way sync.ts does: fields the update carries win, the rest stay.
     public func patchProfile(_ update: UpdateAccountUpdate, at timestamp: Int64) throws {
         guard update.patchesProfile else { return }
-        try writer.write { db in
+        try performWrite { db in
             let old = try AccountProfileRecord.fetchOne(db, key: 1)
             var profile = old?.profile
                 ?? AccountProfile(id: update.id, timestamp: 0)
@@ -490,7 +503,7 @@ public final class LocalStore: Sendable {
     /// Everything home draws: machines, sessions, the projects they belong
     /// to and the settings that shape the list.
     public func homeSnapshot() throws -> HomeSnapshot {
-        try writer.read { db in try Self.fetchHomeSnapshot(db) }
+        try performRead { db in try Self.fetchHomeSnapshot(db) }
     }
 
     @MainActor
@@ -510,7 +523,7 @@ public final class LocalStore: Sendable {
 
     /// The account settings (synced and pending) and the profile.
     public func settingsSnapshot() throws -> SettingsSnapshot {
-        try writer.read { db in try Self.fetchSettingsSnapshot(db) }
+        try performRead { db in try Self.fetchSettingsSnapshot(db) }
     }
 
     @MainActor
@@ -529,13 +542,13 @@ public final class LocalStore: Sendable {
     // MARK: Account settings
 
     public func accountSettings() throws -> AccountSettingsRecord? {
-        try writer.read { db in try AccountSettingsRecord.fetchOne(db, key: 1) }
+        try performRead { db in try AccountSettingsRecord.fetchOne(db, key: 1) }
     }
 
     /// Keeps whichever settings have the higher version.
     @discardableResult
     public func applyAccountSettings(_ incoming: AccountSettingsRecord) throws -> Bool {
-        try writer.write { db in
+        try performWrite { db in
             if let existing = try AccountSettingsRecord.fetchOne(db, key: 1), existing.version >= incoming.version {
                 return false
             }
@@ -546,14 +559,14 @@ public final class LocalStore: Sendable {
 
     /// Settings changed here that the server has not accepted yet.
     public func pendingSettings() throws -> [String: JSONValue] {
-        try writer.read { db in try Self.fetchPendingSettings(db) }
+        try performRead { db in try Self.fetchPendingSettings(db) }
     }
 
     /// Records a local settings change. It is shown at once (layered over
     /// the synced settings) and kept until the server accepts it.
     public func addPendingSettings(_ delta: [String: JSONValue]) throws {
         guard !delta.isEmpty else { return }
-        try writer.write { db in
+        try performWrite { db in
             var pending = try Self.fetchPendingSettings(db)
             let old = pending
             pending.merge(delta) { _, new in new }
@@ -564,7 +577,7 @@ public final class LocalStore: Sendable {
     /// The server accepted `sent`. Keys changed again since are kept for the
     /// next push.
     public func settlePendingSettings(sent: [String: JSONValue]) throws {
-        try writer.write { db in
+        try performWrite { db in
             var pending = try Self.fetchPendingSettings(db)
             let old = pending
             for (key, value) in sent where pending[key] == value {
@@ -583,7 +596,7 @@ public final class LocalStore: Sendable {
     /// version conflict. Unlike `applyAccountSettings` this takes the
     /// server's version even if it is not higher: the server is the judge.
     public func replaceAccountSettings(_ record: AccountSettingsRecord) throws {
-        try writer.write { db in
+        try performWrite { db in
             if let old = try AccountSettingsRecord.fetchOne(db, key: 1) {
                 if record != old { _ = try record.updateChanges(db, from: old) }
             } else {
@@ -599,17 +612,17 @@ public final class LocalStore: Sendable {
     // MARK: Outbox
 
     public func enqueue(_ record: OutboxRecord) throws {
-        try writer.write { db in try record.insert(db, onConflict: .ignore) }
+        try performWrite { db in try record.insert(db, onConflict: .ignore) }
     }
 
     public func pendingOutbox(limit: Int = 100) throws -> [OutboxRecord] {
-        try writer.read { db in
+        try performRead { db in
             try OutboxRecord.fetchAll(db, sql: "SELECT * FROM outbox ORDER BY rowid LIMIT ?", arguments: [limit])
         }
     }
 
     public func markOutboxFailed(localId: String, error: String) throws {
-        try writer.write { db in
+        try performWrite { db in
             guard var record = try OutboxRecord.fetchOne(db, key: localId) else { return }
             record.attempts += 1
             record.lastError = error
@@ -619,12 +632,12 @@ public final class LocalStore: Sendable {
     }
 
     public func removeFromOutbox(localId: String) throws {
-        _ = try writer.write { db in try OutboxRecord.deleteOne(db, key: localId) }
+        _ = try performWrite { db in try OutboxRecord.deleteOne(db, key: localId) }
     }
 
     /// One transaction accepts the files and text; observers never see a half send.
     public func enqueueBatch(_ items: [OutboxRecord], attachments: [AttachmentRecord]) throws {
-        try writer.write { db in
+        try performWrite { db in
             for attachment in attachments {
                 try attachment.insert(db)
             }
@@ -635,11 +648,11 @@ public final class LocalStore: Sendable {
     }
 
     public func outbox(localId: String) throws -> OutboxRecord? {
-        try writer.read { db in try OutboxRecord.fetchOne(db, key: localId) }
+        try performRead { db in try OutboxRecord.fetchOne(db, key: localId) }
     }
 
     public func updateOutbox(_ item: OutboxRecord) throws {
-        try writer.write { db in
+        try performWrite { db in
             // An echo or discard during a network call must never resurrect it.
             if try OutboxRecord.fetchOne(db, key: item.localId) != nil {
                 try item.update(db)
@@ -648,13 +661,13 @@ public final class LocalStore: Sendable {
     }
 
     public func recoverSendingOutbox() throws {
-        try writer.write { db in
+        try performWrite { db in
             try db.execute(sql: "UPDATE outbox SET state = 'queued' WHERE state = 'sending'")
         }
     }
 
     public func retryOutbox(localId: String) throws {
-        try writer.write { db in
+        try performWrite { db in
             guard var item = try OutboxRecord.fetchOne(db, key: localId) else {
                 return
             }
@@ -668,7 +681,7 @@ public final class LocalStore: Sendable {
 
     /// Discard the selected item and its dependency chain, including its files.
     public func discardOutbox(localId: String) throws -> [AttachmentRecord] {
-        try writer.write { db in
+        try performWrite { db in
             let items = try OutboxRecord.fetchAll(db)
             var ids: Set<String> = [localId]
             var changed = true
@@ -699,24 +712,24 @@ public final class LocalStore: Sendable {
     }
 
     public func attachment(outboxLocalId: String) throws -> AttachmentRecord? {
-        try writer.read { db in try AttachmentRecord.filter(Column("outboxLocalId") == outboxLocalId).fetchOne(db) }
+        try performRead { db in try AttachmentRecord.filter(Column("outboxLocalId") == outboxLocalId).fetchOne(db) }
     }
 
     public func saveAttachment(_ attachment: AttachmentRecord) throws {
-        try writer.write { db in try attachment.save(db) }
+        try performWrite { db in try attachment.save(db) }
     }
 
     public func composerState(sessionId: String) throws -> ComposerStateRecord {
-        try writer.read { db in try ComposerStateRecord.fetchOne(db, key: sessionId) ?? ComposerStateRecord(sessionId: sessionId) }
+        try performRead { db in try ComposerStateRecord.fetchOne(db, key: sessionId) ?? ComposerStateRecord(sessionId: sessionId) }
     }
 
     public func saveComposerState(_ state: ComposerStateRecord) throws {
-        try writer.write { db in try state.save(db) }
+        try performWrite { db in try state.save(db) }
     }
 
     /// Atomically saves a Rig edit's text, picks and monotonic draft stamp.
     public func saveRigComposer(_ composer: ComposerStateRecord, text: String?, at time: Int64) throws {
-        try writer.write { db in
+        try performWrite { db in
             try composer.save(db)
             if let text, !text.isEmpty {
                 try DraftRecord(sessionId: composer.sessionId, text: text, updatedAt: time).save(db)
@@ -729,12 +742,12 @@ public final class LocalStore: Sendable {
     // MARK: Drafts
 
     public func draft(sessionId: String) throws -> DraftRecord? {
-        try writer.read { db in try DraftRecord.fetchOne(db, key: sessionId) }
+        try performRead { db in try DraftRecord.fetchOne(db, key: sessionId) }
     }
 
     /// Saves the composer's text; empty text deletes the draft.
     public func saveDraft(sessionId: String, text: String, at time: Int64) throws {
-        try writer.write { db in
+        try performWrite { db in
             if text.isEmpty {
                 _ = try DraftRecord.deleteOne(db, key: sessionId)
             } else {
@@ -746,11 +759,11 @@ public final class LocalStore: Sendable {
     // MARK: Sync cursors
 
     public func cursor(_ cursor: SyncCursor) throws -> Int64? {
-        try writer.read { db in try SyncStateRecord.fetchOne(db, key: cursor.rawValue)?.value }
+        try performRead { db in try SyncStateRecord.fetchOne(db, key: cursor.rawValue)?.value }
     }
 
     public func setCursor(_ cursor: SyncCursor, _ value: Int64) throws {
-        try writer.write { db in try Self.saveCursor(cursor, value, db) }
+        try performWrite { db in try Self.saveCursor(cursor, value, db) }
     }
 
     private static func saveCursor(_ cursor: SyncCursor, _ value: Int64, _ db: Database) throws {
@@ -766,7 +779,7 @@ public final class LocalStore: Sendable {
 
     /// Logout: everything local belongs to the account that is leaving.
     public func eraseAll() throws {
-        try writer.write { db in
+        try performWrite { db in
             for table in [
                 "message", "outbox", "session", "machine", "project", "accountSettings", "pendingSettings",
                 "accountProfile", "syncState", "attachment", "draft", "composerState",
