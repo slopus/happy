@@ -141,7 +141,10 @@ final class RNAccountServerImportTests: XCTestCase {
         return AccountController(serverConfig: config, clientID: "ios/test",
             credentialStore: SecureStoreCredentialStore(backend: keychain), storeDirectory: directory,
             accountCredentialStore: KeychainAccountCredentialStore(backend: keychain),
-            rnServerImport: { RNServerConfigImporter.read(directory: rn) }, transport: http, connector: connector)
+            rnServerImport: {
+                dispatchPrecondition(condition: .notOnQueue(.main))
+                return RNServerConfigImporter.read(directory: rn)
+            }, transport: http, connector: connector)
     }
 
     func testImportedCustomServerIsUsedWithoutWritingRNFilesOrItem() async throws {

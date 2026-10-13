@@ -250,10 +250,14 @@ public enum TextStyles {
 
     // Navigation header (components/onboarding/OnboardingHeader.tsx)
     public static let headerTitle = TextStyle(.semiBold, size: 16, lineHeight: 20)
+    /// UIKit's header title through react-native-screens: semibold at its
+    /// default 17, which no `headerTitleStyle` in happy-app overrides.
+    public static let nativeHeaderTitle = TextStyle(.semiBold, size: 17)
     public static let headerSubtitle = TextStyle(.regular, size: 11, lineHeight: 14)
 
     // First run (components/onboarding/OnboardingContent.tsx)
-    public static let onboardingTitle = TextStyle(.semiBold, size: 28, lineHeight: 34)
+    /// OnboardingContent.tsx `TITLE_MAX_SCALE`: grows at most 1.2 times.
+    public static let onboardingTitle = TextStyle(.semiBold, size: 28, lineHeight: 34, maxScale: 1.2)
     public static let onboardingProp = TextStyle(.regular, size: 17, lineHeight: 24)
     public static let checklistTitle = TextStyle(.semiBold, size: 17, lineHeight: 22)
     public static let checklistBody = TextStyle(.regular, size: 15, lineHeight: 21)

@@ -14,8 +14,10 @@ final class MachineViewController: UIViewController {
     private let machineId: String
     private let list = GroupedListView()
     private let refresh = UIRefreshControl()
-    private var observation: StoreObservation?
-    private var snapshot: HomeSnapshot?
+    private var observation: ApplyObservation?
+    /// What the screen shows, worked out off the main thread; nil until the
+    /// first snapshot.
+    private var content: MachineScreenContent?
     private var stoppingDaemon = false
     private var renaming = false
     private var deleting = false
@@ -47,10 +49,30 @@ final class MachineViewController: UIViewController {
         dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
         refresh.addTarget(self, action: #selector(pulledToRefresh), for: .valueChanged)
         list.refreshControl = refresh
-        observation = session.store.observeHome { [weak self] snapshot in
-            self?.snapshot = snapshot
-            self?.rebuild()
-        }
+        let machineId = self.machineId
+        let pipeline = ApplyPipeline<HomeSnapshot?, MachineScreenContent?, MachineScreenContent>(
+            input: nil,
+            state: nil,
+            derive: { snapshot, applied in
+                guard let snapshot else { return nil }
+                let content = MachineScreenContent(snapshot, machineId: machineId)
+                return content == applied ? nil : (content, content)
+            },
+            apply: { [weak self] content in
+                guard let self, self.context.account.session === self.session else { return false }
+                ApplyPerf.measure(.screen) {
+                    // A new metadata version alone only updates what a
+                    // rename sends; the rows rebuild when what they show did.
+                    let rebuilds = content.model != self.content?.model || self.content == nil
+                    self.content = content
+                    if rebuilds { self.rebuild() }
+                    return rebuilds ? 1 : 0
+                }
+                return true
+            }
+        )
+        pipeline.follow(session.homeFeed.snapshots()) { $0 = $1 }
+        observation = pipeline.observation
     }
 
     override func viewDidLayoutSubviews() {
@@ -60,14 +82,14 @@ final class MachineViewController: UIViewController {
     }
 
     private var machine: MachineRecord? {
-        snapshot?.machines.machines.first { $0.id == machineId }
+        content?.machine
     }
 
     // MARK: Building
 
     private func rebuild() {
-        guard let snapshot else { return }
-        guard let machine else {
+        guard let content else { return }
+        guard let model = content.model else {
             title = ""
             navigationItem.rightBarButtonItem = nil
             list.isHidden = true
@@ -84,7 +106,6 @@ final class MachineViewController: UIViewController {
         notFound?.removeFromSuperview()
         notFound = nil
         list.isHidden = false
-        let model = MachineDetailsModel(machine: machine, sessions: snapshot.sessions)
         title = model.name
         navigationItem.rightBarButtonItem = renameButton()
 
@@ -255,8 +276,7 @@ final class MachineViewController: UIViewController {
 
     @objc private func renameTapped() {
         typealias S = Strings.MachineDetail
-        guard let machine, !renaming else { return }
-        let model = MachineDetailsModel(machine: machine, sessions: [])
+        guard let machine, let model = content?.model, !renaming else { return }
         let actions = session.detailActions
         Task { @MainActor [weak self] in
             guard let self, let name = await DetailAlerts.prompt(

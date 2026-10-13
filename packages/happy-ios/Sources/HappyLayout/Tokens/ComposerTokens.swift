@@ -41,6 +41,18 @@ extension Palette {
         light: RGBA(red: 39 / 255, green: 47 / 255, blue: 54 / 255, alpha: 0.16),
         dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.55)
     )
+    /// The wide composer's send (`sendButton`): theme.colors.button.primary
+    /// `background` with text (`sendButtonActive`), `disabled` without
+    /// (`sendButtonInactive`), and its `tint` for the arrow and spinner.
+    public static let composerSendFill = ColorToken("#000000")
+    public static let composerSendDisabled = ColorToken("#C0C0C0")
+    public static let composerSendIcon = ColorToken("#FFFFFF")
+    /// LocalBlurHalo's default `dimColor` over its blur, behind the
+    /// suggestion list.
+    public static let composerHaloDim = ColorToken(
+        light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.08),
+        dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.10)
+    )
     /// theme.colors.radio.inactive.
     public static let radioInactive = ColorToken("#C0C0C0", "#48484A")
 
@@ -53,8 +65,8 @@ extension Palette {
     public static let composer: [ColorToken] = [
         composerFrostedOverlay, composerPrimaryInactive, composerStopFill, composerStopIcon,
         composerNewSessionPrimaryFill, composerNewSessionPrimaryIcon, composerPrimaryFlash, glassOverlay,
-        glassShadow, radioInactive, sessionStatusDisconnected, sessionStatusAttention, sessionStatusThinking,
-        sessionStatusOnline,
+        glassShadow, composerSendFill, composerSendDisabled, composerSendIcon, composerHaloDim, radioInactive,
+        sessionStatusDisconnected, sessionStatusAttention, sessionStatusThinking, sessionStatusOnline,
     ]
 }
 

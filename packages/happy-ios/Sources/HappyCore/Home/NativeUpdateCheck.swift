@@ -9,6 +9,11 @@ import HappyWire
 /// The fields read are happy-app's, `update_required` and `update_url`.
 /// versionRoutes.ts answers `{ updateUrl }`, so against the current server
 /// the banner stays hidden, as it does in happy-app.
+///
+/// The answer is one server's: the server last asked about, which is the
+/// active account's. Asking another server lets the last answer go at once,
+/// and an answer from a server no longer asked about is dropped, so an
+/// account on one server never shows another server's banner.
 @MainActor
 public final class NativeUpdateCheck {
     /// `nativeUpdateStatus`.
@@ -60,6 +65,8 @@ public final class NativeUpdateCheck {
 
     /// Nil until answered, and after a request that failed.
     public private(set) var status: Status?
+    /// The server `status` is for, and the next answer must be from.
+    public private(set) var server: URL?
 
     /// `useNativeUpdate`: the store link while an update is required.
     public var updateURL: String? {
@@ -68,7 +75,8 @@ public final class NativeUpdateCheck {
 
     private var observers: [UUID: () -> Void] = [:]
     private var running = false
-    private var invalidated = false
+    /// Asked for while a request was on its way: the latest ask wins.
+    private var pending: (api: HappyAPI, request: Request)?
 
     public init() {}
 
@@ -81,29 +89,37 @@ public final class NativeUpdateCheck {
     }
 
     /// InvalidateSync: one request at a time, and one more after it when
-    /// asked again meanwhile. Returns once the requests are answered.
+    /// asked again meanwhile, of the server asked last. Returns once the
+    /// requests are answered.
     @discardableResult
     public func invalidate(api: HappyAPI, request: Request) -> Task<Void, Never>? {
+        if api.serverURL != server {
+            server = api.serverURL
+            set(nil)
+        }
         guard !running else {
-            invalidated = true
+            pending = (api, request)
             return nil
         }
         running = true
-        invalidated = false
+        pending = nil
         return Task { @MainActor [weak self] in
-            while true {
-                let outcome = await Self.fetch(api: api, request: request)
+            var next: (api: HappyAPI, request: Request)? = (api, request)
+            while let ask = next {
+                let outcome = await Self.fetch(api: ask.api, request: ask.request)
                 guard let self else { return }
-                self.apply(outcome)
-                guard self.invalidated else { break }
-                self.invalidated = false
+                if ask.api.serverURL == self.server, case .set(let status) = outcome {
+                    self.set(status)
+                }
+                next = self.pending
+                self.pending = nil
             }
             self?.running = false
         }
     }
 
-    private func apply(_ outcome: Outcome) {
-        guard case .set(let status) = outcome, status != self.status else { return }
+    private func set(_ status: Status?) {
+        guard status != self.status else { return }
         self.status = status
         for observer in observers.values { observer() }
     }

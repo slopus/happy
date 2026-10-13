@@ -7,16 +7,19 @@ import UIKit
 /// app/(app)/session/[id]/file.tsx: one file of the session, as its
 /// uncommitted diff or its syntax-coloured text. A revisit draws the last
 /// read at once and reads again behind it.
+///
+/// The session's root is read off the main thread. Until it is, the file
+/// is resolved against the root it had when one of its files was last
+/// shown, which is where its cached copy is. A copy kept on disk (after a
+/// relaunch) is read off the main thread too, before the computer is
+/// asked; offline, it stays on screen under the error alert.
 final class SessionFileViewController: UIViewController {
-    /// The store's sessionFileCache. It lives as long as the app, as
-    /// happy-app's in-memory store does.
-    private static let cache = SessionFileCache()
-
     private let context: AppContext
     private let session: AccountSession
     private let sessionId: String
-    private let target: FileViewer.Target
-    private let sessionPath: String?
+    private let rawPath: String
+    private var target: FileViewer.Target
+    private var sessionPath: String?
     private let requestedLine: Int?
     private let requestedColumn: Int?
 
@@ -52,13 +55,14 @@ final class SessionFileViewController: UIViewController {
         self.context = context
         self.session = session
         self.sessionId = sessionId
+        rawPath = path
         requestedLine = line
         requestedColumn = column
-        // file.tsx reads the session from the store as it renders.
-        let record = try? session.store.session(id: sessionId)
-        sessionPath = record?.metadata?["path"]?.stringValue
-        target = FileViewer.Target(rawPath: path, sessionPath: sessionPath)
-        let cached = Self.cache.get(sessionId: sessionId, path: target.filePath)
+        // This account's cache, which holds no SQL: the root it last saw.
+        let root = session.fileCache.root(sessionId: sessionId)
+        sessionPath = root?.path
+        target = FileViewer.Target(rawPath: path, sessionPath: root?.path)
+        let cached = root == nil ? nil : session.fileCache.get(sessionId: sessionId, path: target.filePath)
         content = cached?.content
         diff = cached?.diff
         isLoading = cached == nil
@@ -79,8 +83,7 @@ final class SessionFileViewController: UIViewController {
     override func loadView() {
         view = UIView()
         view.backgroundColor = UIColor(Palette.groupedBackground)
-        icon.fileName = target.fileName
-        pathLabel.string = FileViewer.headerPath(target.filePath, line: requestedLine, column: requestedColumn)
+        showTarget()
         headerBorder.backgroundColor = UIColor(Palette.glassBorder)
         toggleBorder.backgroundColor = UIColor(Palette.glassBorder)
         header.addSubview(icon)
@@ -149,19 +152,73 @@ final class SessionFileViewController: UIViewController {
         traitCollection.horizontalSizeClass == .regular ? ChatScreenLayout.Metrics.regularMaxContentWidth : .greatestFiniteMagnitude
     }
 
+    private func showTarget() {
+        icon.fileName = target.fileName
+        pathLabel.string = FileViewer.headerPath(target.filePath, line: requestedLine, column: requestedColumn)
+    }
+
     // MARK: Loading
 
-    /// file.tsx's loadFile: the spinner only without a cached copy.
+    /// file.tsx's loadFile: the spinner only without a cached copy. The
+    /// session's root is read off the main thread first; a read that ends
+    /// after another account took over shows and caches nothing.
     private func load() {
         error = nil
-        let target = target
-        let sessionPath = sessionPath
-        let transport = SessionShellTransport(actions: session.actions, sessionId: sessionId)
+        let store = session.store
+        let id = sessionId
         loadTask = Task { [weak self] in
-            let result = await FileViewer.load(target, sessionPath: sessionPath, transport: transport)
-            guard let self, !Task.isCancelled else { return }
+            let root = await Task.detached(priority: .userInitiated) {
+                (try? store.session(id: id))?.metadata?["path"]?.stringValue
+            }.value
+            guard !Task.isCancelled, let read = self?.resolve(root) else { return }
+            if read.needsCopy, let kept = await read.cache.snapshot(sessionId: id, path: read.target.filePath) {
+                guard !Task.isCancelled else { return }
+                self?.showKept(kept, for: read.target)
+            }
+            let result = await FileViewer.load(read.target, sessionPath: read.sessionPath, transport: read.transport,
+                                               cache: read.cache, sessionId: id)
+            guard let self, !Task.isCancelled, self.context.account.session === self.session else { return }
             self.apply(result)
         }
+    }
+
+    /// Takes the session's root as stored and says what to read. A root
+    /// other than the one the screen opened with resolves the file again,
+    /// with that file's cached copy, if any.
+    private func resolve(_ root: String?) -> (
+        target: FileViewer.Target, sessionPath: String?, transport: SessionShellTransport, cache: SessionFileCache, needsCopy: Bool
+    )? {
+        guard context.account.session === session else { return nil }
+        let cache = session.fileCache
+        cache.setRoot(sessionId: sessionId, SessionFileCache.Root(path: root))
+        if root != sessionPath {
+            let resolved = FileViewer.Target(rawPath: rawPath, sessionPath: root)
+            sessionPath = root
+            if resolved != target {
+                target = resolved
+                let cached = cache.get(sessionId: sessionId, path: resolved.filePath)
+                content = cached?.content
+                diff = cached?.diff
+                isLoading = cached == nil
+                plans = []
+                cancelPlan()
+                showTarget()
+                updateMode()
+                render()
+            }
+        }
+        return (target, sessionPath, SessionShellTransport(actions: session.actions, sessionId: sessionId), cache, content == nil)
+    }
+
+    /// The copy kept on disk, while nothing else shows.
+    private func showKept(_ kept: FileViewer.Snapshot, for read: FileViewer.Target) {
+        guard context.account.session === session, read == target, content == nil, error == nil else { return }
+        content = kept.content
+        if let keptDiff = kept.diff, diff == nil { diff = keptDiff }
+        isLoading = false
+        scrollsToLine = true
+        updateMode()
+        render()
     }
 
     private func apply(_ result: FileViewer.LoadResult) {
@@ -171,7 +228,6 @@ final class SessionFileViewController: UIViewController {
             if let newDiff = snapshot.diff { diff = newDiff }
             content = snapshot.content
             scrollsToLine = true
-            Self.cache.set(sessionId: sessionId, path: target.filePath, snapshot)
         case .failed(let failure, let newDiff):
             if let newDiff { diff = newDiff }
             let message = switch failure {
@@ -179,7 +235,9 @@ final class SessionFileViewController: UIViewController {
             case .read(nil): Strings.FilesDetail.failedToRead
             case .load: Strings.FilesDetail.failedToLoad
             }
-            error = message
+            // A kept copy stays on screen under the alert; file.tsx, which
+            // keeps nothing across launches, shows the error instead.
+            if content == nil { error = message }
             // Modal.alert: shown once the screen is on screen.
             if view.window != nil {
                 Alerts.show(Strings.Common.error, message, on: self)

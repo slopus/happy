@@ -48,6 +48,58 @@ public struct TextEnvironment: Hashable, Sendable {
     }
 }
 
+/// Whether the text in a view, and in everything in it, follows the
+/// person's text size. Off unless a screen turns it on, which it does once
+/// every height on it comes from text measured at that size; a screen
+/// whose heights are planned at the designed size stays at it
+/// (docs/DYNAMIC-TYPE.md).
+public struct FollowsTextSize: UITraitDefinition {
+    public static let defaultValue = false
+    public static let name = "FollowsTextSize"
+}
+
+extension UITraitCollection {
+    /// The environment text here is drawn in; nil where it stays at its
+    /// designed size.
+    @MainActor
+    public var textEnvironment: TextEnvironment? {
+        self[FollowsTextSize.self] ? TextEnvironment(self) : nil
+    }
+}
+
+extension UIMutableTraits {
+    /// Turns the person's text size on for a view and what is in it.
+    public var followsTextSize: Bool {
+        get { self[FollowsTextSize.self] }
+        set { self[FollowsTextSize.self] = newValue }
+    }
+}
+
+extension UIViewController {
+    /// Draws this screen's text at the person's text size, as React Native
+    /// does. Only for a screen whose every height is measured from its text
+    /// as drawn, with no plan made at the designed size.
+    func followsTextSize() {
+        traitOverrides.followsTextSize = true
+    }
+}
+
+extension UIView {
+    /// The traits a view's text environment comes from.
+    static var textSizeTraits: [UITrait] { [UITraitPreferredContentSizeCategory.self, FollowsTextSize.self] }
+
+    /// Measures this view and every view it is in again: a new text size
+    /// moves every frame measured from text, up to the screen.
+    func setNeedsLayoutUpTheTree() {
+        var view: UIView? = self
+        while let current = view {
+            current.invalidateIntrinsicContentSize()
+            current.setNeedsLayout()
+            view = current.superview
+        }
+    }
+}
+
 /// UIFonts by face and point size, shared by every thread. RN builds each
 /// font at exactly `size × multiplier`, unrounded (docs/DYNAMIC-TYPE.md).
 enum ScaledFonts {

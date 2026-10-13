@@ -21,10 +21,18 @@ public enum WebSocketError: Error, Equatable, Sendable {
 }
 
 public struct URLSessionWebSocketConnector: WebSocketConnector {
-    public init() {}
+    let session: URLSession
+
+    public init() {
+        session = NetworkSession.make()
+    }
+
+    public init(session: URLSession) {
+        self.session = session
+    }
 
     public func connect(to url: URL) async throws -> WebSocketConnection {
-        let task = URLSession.shared.webSocketTask(with: url)
+        let task = session.webSocketTask(with: url)
         // Session metadata can be large (see the server's maxHttpBufferSize).
         task.maximumMessageSize = 8 * 1024 * 1024
         task.resume()

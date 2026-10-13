@@ -18,7 +18,16 @@ public final class NewSessionComposer {
     public var onChange: (() -> Void)?
 
     private let ops: any HomeOps
+    private let deriver: NewSessionChoiceDeriver
     private var draftObservation: AccountsObservation?
+    private var refreshTask: Task<Void, Never>?
+    private var refreshGeneration: UInt64 = 0
+    private var snapshotRevision: UInt64 = 0
+    private var pendingChoiceChange = false
+    private var pendingDraftChange = false
+    private var appliedChoiceRevision: UInt64?
+    private var appliedRenderedRevision: UInt64?
+    private var canonicalSessions: [SessionRecord] = []
     private var refreshing = false
     private var needsRefresh = false
     private var worktreeTarget: WorktreeTarget?
@@ -30,36 +39,54 @@ public final class NewSessionComposer {
         var path: String
     }
 
-    public init(drafts: NewSessionDraftStore, snapshot: HomeSnapshot, ops: any HomeOps) {
+    public convenience init(drafts: NewSessionDraftStore, snapshot: HomeSnapshot, ops: any HomeOps) {
+        self.init(drafts: drafts, snapshot: snapshot, ops: ops, deriver: NewSessionChoiceDeriver())
+    }
+
+    init(drafts: NewSessionDraftStore, snapshot: HomeSnapshot, ops: any HomeOps, deriver: NewSessionChoiceDeriver) {
         self.drafts = drafts
         self.snapshot = snapshot
         self.ops = ops
-        choices = NewSessionChoices(.init(draft: drafts.draft, createsBot: drafts.createsBot, snapshot: snapshot))
+        self.deriver = deriver
+        // A bounded empty catalog supplies initial labels until the actor
+        // derives the account's choices. No account rows are read here.
+        choices = NewSessionChoices(.init(draft: drafts.draft, createsBot: drafts.createsBot, machines: [], sessions: []))
         draftObservation = drafts.observe { [weak self] _ in self?.draftChanged() }
         refresh()
     }
 
-    /// The draft the choices were last built from.
+    /// The draft the choices were last built from. Names and faces remain
+    /// immediate UI changes; they never enter the picker derivation actor.
     private var builtFrom: (draft: NewSessionDraft, createsBot: Bool)?
 
-    /// A bot's name and faces move no picker: what shows them is told, and
-    /// the choices stay as they are.
     private func draftChanged() {
         if let built = builtFrom, built.draft == drafts.draft, built.createsBot == drafts.createsBot, !refreshing {
             onChange?()
             return
         }
+        pendingDraftChange = true
         refresh()
     }
 
     deinit {
+        refreshTask?.cancel()
         worktreeTask?.cancel()
     }
 
     public func update(snapshot: HomeSnapshot) {
-        guard snapshot != self.snapshot else { return }
         self.snapshot = snapshot
+        snapshotRevision &+= 1
         refresh()
+    }
+
+    /// A drain seam for callers which must inspect settled draft corrections.
+    /// Interactive screens receive the same result through onChange.
+    func waitForIdle() async {
+        while let task = refreshTask {
+            let generation = refreshGeneration
+            await task.value
+            if generation == refreshGeneration { return }
+        }
     }
 
     /// The worktree picker is opening: list again, as `useWorktrees`'
@@ -156,7 +183,7 @@ public final class NewSessionComposer {
             draft: drafts.draft,
             pickedAgent: drafts.draft.pickedAgentType,
             machines: snapshot.machines.machines,
-            sessions: snapshot.sessions,
+            sessions: canonicalSessions,
             agentDefaultOverrides: AccountSettings(snapshot.settings).agentDefaultOverrides,
             prompt: prompt,
             attachments: attachments
@@ -171,7 +198,7 @@ public final class NewSessionComposer {
             pickedAgent: drafts.draft.pickedAgentType,
             bot: (name: drafts.botName, faceSeed: drafts.botFaceSeed),
             machines: snapshot.machines.machines,
-            sessions: snapshot.sessions,
+            sessions: canonicalSessions,
             agentDefaultOverrides: AccountSettings(snapshot.settings).agentDefaultOverrides,
             prompt: "",
             attachments: []
@@ -185,36 +212,74 @@ public final class NewSessionComposer {
         drafts.draft.sameTarget(as: started) && drafts.bot == bot
     }
 
+    /// Waits for current catalog corrections, then resolves off main from
+    /// its cached pool. UI callers keep their target guard across this await.
+    public func launchPrepared(prompt: String, attachments: [OutgoingAttachment]) async -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
+        await waitForIdle()
+        return await deriver.launch(snapshot: snapshot, revision: snapshotRevision, draft: drafts.draft,
+                                    prompt: prompt, attachments: attachments)
+    }
+
+    public func launchBotPrepared() async -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
+        await waitForIdle()
+        return await deriver.launch(snapshot: snapshot, revision: snapshotRevision, draft: drafts.draft,
+                                    bot: (name: drafts.botName, faceSeed: drafts.botFaceSeed), prompt: "", attachments: [])
+    }
+
     // MARK: Refresh
 
     /// Rebuilds the choices and makes the dock's corrections; a correction
     /// changes the draft, which rebuilds again until nothing moves.
-    private func refresh() {
-        guard !refreshing else {
-            needsRefresh = true
-            return
+    private func refresh(pass: Int = 0) {
+        guard !refreshing else { needsRefresh = true; return }
+        refreshGeneration &+= 1
+        let generation = refreshGeneration
+        let snapshot = self.snapshot
+        let revision = snapshotRevision
+        let draft = drafts.draft
+        let createsBot = drafts.createsBot
+        let worktrees = gitWorktrees
+        let deriver = self.deriver
+        refreshTask?.cancel()
+        refreshTask = Task { [weak self] in
+            guard !Task.isCancelled else { return }
+            let next = await deriver.choices(snapshot: snapshot, revision: revision, generation: generation, draft: draft,
+                                             createsBot: createsBot, worktrees: worktrees)
+            guard !Task.isCancelled, let next, let self, self.refreshGeneration == generation else { return }
+            self.canonicalSessions = next.sessions
+            if next.revision != self.appliedChoiceRevision {
+                self.choices = next.value
+                self.appliedChoiceRevision = next.revision
+                self.pendingChoiceChange = self.pendingChoiceChange || next.renderedRevision != self.appliedRenderedRevision
+                self.appliedRenderedRevision = next.renderedRevision
+            }
+            self.builtFrom = (draft, createsBot)
+            self.refreshing = true
+            self.needsRefresh = false
+            self.reconcile()
+            self.refreshing = false
+            // Preserve the dock's four-pass correction bound. Notifications
+            // during reconciliation coalesce into one follow-up derivation.
+            if self.needsRefresh && pass < 3 {
+                self.refresh(pass: pass + 1)
+                return
+            }
+            guard self.refreshGeneration == generation else { return }
+            self.updateWorktreeTarget()
+            guard self.refreshGeneration == generation else { return }
+            if self.pendingChoiceChange || self.pendingDraftChange {
+                self.pendingChoiceChange = false
+                self.pendingDraftChange = false
+                self.onChange?()
+            }
         }
-        refreshing = true
-        var passes = 0
-        repeat {
-            needsRefresh = false
-            choices = NewSessionChoices(.init(
-                draft: drafts.draft,
-                createsBot: drafts.createsBot,
-                snapshot: snapshot,
-                gitWorktrees: gitWorktrees
-            ))
-            builtFrom = (drafts.draft, drafts.createsBot)
-            reconcile()
-            passes += 1
-        } while needsRefresh && passes < 4
-        refreshing = false
-        updateWorktreeTarget()
-        onChange?()
     }
 
     /// HomeDock.tsx's effects that keep the draft in step with the store.
     private func reconcile() {
+        // The screen can precede its first disk value. An unknown empty
+        // catalog cannot establish that a persisted target disappeared.
+        guard snapshot.machines.synced || !snapshot.machines.machines.isEmpty else { return }
         let draft = drafts.draft
         // A draft from before the pair was coalesced names the computer
         // under its other daemon's id; a computer that left is replaced by

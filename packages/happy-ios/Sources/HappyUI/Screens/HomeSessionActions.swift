@@ -14,6 +14,8 @@ final class HomeSessionActions {
     private weak var host: UIViewController?
     /// useHappyAction: one run at a time per action.
     private var running: Set<String> = []
+    /// The session whose alert is being read from the store.
+    private var opening: String?
     /// useSessionQuickActions' `onBeforeArchive`: on the press, before the
     /// machine is asked anything, so a screen showing the chat can leave it
     /// while it is still whole (the worktree tab strip).
@@ -25,13 +27,33 @@ final class HomeSessionActions {
         self.host = host
     }
 
+    /// The record, its computer and the settings are read off the main
+    /// thread; the alert opens once they are in, if the account and the
+    /// screen are still there.
     func present(sessionId: String) {
-        guard let host, let record = try? session.store.session(id: sessionId) else { return }
-        let machine = record.metadata?["machineId"]?.stringValue.flatMap { try? session.store.machine(id: $0) }
-        let settings = (try? session.store.settingsSnapshot()).map(AccountSettings.init) ?? AccountSettings()
+        guard host != nil, opening == nil else { return }
+        opening = sessionId
+        let account = session
+        let store = account.store
+        Task { @MainActor [weak self] in
+            let read = await Task.detached(priority: .userInitiated) { () -> (SessionRecord, MachineRecord?, AccountSettings)? in
+                guard let record = try? store.session(id: sessionId) else { return nil }
+                let machine = record.metadata?["machineId"]?.stringValue.flatMap { try? store.machine(id: $0) }
+                let settings = (try? store.settingsSnapshot()).map(AccountSettings.init) ?? AccountSettings()
+                return (record, machine ?? nil, settings)
+            }.value
+            guard let self else { return }
+            self.opening = nil
+            guard let (record, machine, settings) = read, self.context.account.session === account else { return }
+            self.present(record, machine: machine, settings: settings)
+        }
+    }
+
+    private func present(_ record: SessionRecord, machine: MachineRecord?, settings: AccountSettings) {
+        guard let host, host.view.window != nil, host.presentedViewController == nil else { return }
         let actions = SessionQuickActions(
             session: record,
-            machine: machine ?? nil,
+            machine: machine,
             settings: settings,
             devModeEnabled: context.account.localSettings.devModeEnabled
         )
@@ -104,7 +126,11 @@ final class HomeSessionActions {
         guard availability.canResume, let machineId = record.metadata?["machineId"]?.stringValue else {
             throw HomeActionError(Self.message(availability.blocker ?? .missingMachine))
         }
-        let composer = (try? session.store.composerState(sessionId: record.id).values) ?? .object([:])
+        let store = session.store
+        let sessionId = record.id
+        let composer = await Task.detached(priority: .userInitiated) {
+            (try? store.composerState(sessionId: sessionId).values) ?? .object([:])
+        }.value
         let modes: (model: String?, permissionMode: String?)
         do {
             modes = try SessionQuickActions.resumeModes(session: record, composer: composer, settings: settings)

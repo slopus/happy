@@ -57,17 +57,30 @@ public enum DiffEngine {
         let source = CacheSource.patch(patch)
         let key = cacheKey("p", patch, options)
         if let hit = cache.get(key), hit.source == source, hit.options == options { return hit.document }
-        let started = ContinuousClock.now
-        let files = DiffPatchParser.parse(patch).map { buildFile($0, options) }
-        let document = finish(files, started: started)
+        let document = buildUncached(patch: patch, options: options)
         cache.set(key, CacheEntry(source: source, options: options, document: document))
         return document
+    }
+
+    /// Explicit owners use these builders without touching the legacy cache.
+    static func buildUncached(patch: String, options: Options) -> DiffDocument {
+        let started = ContinuousClock.now
+        let files = DiffPatchParser.parse(patch).map { buildFile($0, options) }
+        return finish(files, started: started)
     }
 
     public static func build(path: String, oldText: String, newText: String, options: Options = Options()) -> DiffDocument {
         let source = CacheSource.contents(path: path, oldText: oldText, newText: newText)
         let key = cacheKey("c", "\(path)\u{0}\(oldText)\u{0}\(newText)", options)
         if let hit = cache.get(key), hit.source == source, hit.options == options { return hit.document }
+        let document = buildUncached(path: path, oldText: oldText, newText: newText, options: options)
+        if document.error == nil {
+            cache.set(key, CacheEntry(source: source, options: options, document: document))
+        }
+        return document
+    }
+
+    static func buildUncached(path: String, oldText: String, newText: String, options: Options) -> DiffDocument {
         let started = ContinuousClock.now
         let emphasisDeadline = options.budget.map { Date().addingTimeInterval($0.timeoutMs / 1000) }
         let hunks: [DiffPatchParser.RawHunk]
@@ -86,9 +99,7 @@ public enum DiffEngine {
             : newText.isEmpty && !oldText.isEmpty ? .deleted
             : .modified
         let raw = DiffPatchParser.RawFile(path: path, kind: kind, hunks: hunks)
-        let document = finish([buildFile(raw, options, emphasisDeadline: emphasisDeadline)], started: started)
-        cache.set(key, CacheEntry(source: source, options: options, document: document))
-        return document
+        return finish([buildFile(raw, options, emphasisDeadline: emphasisDeadline)], started: started)
     }
 
     /// Drops every cached document.

@@ -84,7 +84,7 @@ public struct SessionActions: Sendable {
         guard let session = try store.session(id: sessionId) else { throw SessionActionError.unknownSession }
         if session.isBot { throw SessionActionError.botNeedsMachine }
         try await api.deleteSession(id: sessionId)
-        try store.deleteSession(id: sessionId)
+        try await sync.presence.deleteSession(sessionId)
     }
 
     public func markRead(sessionId: String) {

@@ -396,7 +396,7 @@ final class AgentInputLayoutTests: XCTestCase {
         XCTAssertNil(layout.usage)
         assertFrame(layout.card, rect(8, 8, 377, 102))
         XCTAssertEqual(layout.cardOffset, 8)
-        XCTAssertEqual(layout.cardLayout.size.width, 377)
+        XCTAssertEqual(layout.cardLayout?.size.width, 377)
         assertSize(layout.size, CGSize(width: 393, height: 118))
         assertFrame(layout.inner, rect(8, 8, 377, 102))
     }

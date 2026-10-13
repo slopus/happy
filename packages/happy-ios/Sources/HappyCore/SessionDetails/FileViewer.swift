@@ -162,6 +162,22 @@ public enum FileViewer {
         }
     }
 
+    /// `load`, keeping a fresh read in the account's `cache` (file.tsx's
+    /// `applyFileCache`); a failed one leaves the kept copy as it was.
+    public static func load(
+        _ target: Target,
+        sessionPath: String?,
+        transport: SessionShellTransport,
+        cache: SessionFileCache,
+        sessionId: String
+    ) async -> LoadResult {
+        let result = await load(target, sessionPath: sessionPath, transport: transport)
+        if case .loaded(let snapshot) = result {
+            cache.set(sessionId: sessionId, path: target.filePath, snapshot)
+        }
+        return result
+    }
+
     /// The view the screen opens on: the file when a line was asked for,
     /// else the diff when there is one, else the file once it has loaded.
     public static func displayMode(requestedLine: Int?, hasDiff: Bool, hasContent: Bool, current: DisplayMode) -> DisplayMode {
@@ -265,26 +281,5 @@ public enum FileViewer {
 
     private static func dropCarriageReturn(_ line: String) -> String {
         line.utf16.last == 13 ? String(line.utf16.dropLast()) ?? line : line
-    }
-}
-
-/// The store's `sessionFileCache`: what each file looked like when last
-/// read, so a revisit draws at once and refreshes behind it.
-public final class SessionFileCache: @unchecked Sendable {
-    private let lock = NSLock()
-    private var entries: [String: [String: FileViewer.Snapshot]] = [:]
-
-    public init() {}
-
-    public func get(sessionId: String, path: String) -> FileViewer.Snapshot? {
-        lock.lock()
-        defer { lock.unlock() }
-        return entries[sessionId]?[path]
-    }
-
-    public func set(sessionId: String, path: String, _ snapshot: FileViewer.Snapshot) {
-        lock.lock()
-        defer { lock.unlock() }
-        entries[sessionId, default: [:]][path] = snapshot
     }
 }

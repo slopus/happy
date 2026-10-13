@@ -8,6 +8,7 @@ import UIKit
 /// commented out; the page tells you to connect from a terminal.
 public final class SettingsConnectClaudeViewController: UIViewController {
     public override func loadView() {
+        followsTextSize()
         view = ConnectCommandView(
             title: Strings.ConnectClaude.title,
             body: Strings.ConnectClaude.instruction,
@@ -34,6 +35,7 @@ public final class ChangelogViewController: UIViewController {
         self.readMarker = readMarker
         self.changelog = Self.bundled
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)
@@ -72,7 +74,10 @@ public final class ChangelogViewController: UIViewController {
 
     public override func viewDidLoad() {
         super.viewDidLoad()
-        navigationItem.titleView = ChangelogTitleView(title: Strings.SettingsTitles.whatsNew)
+        // Header.tsx's title, which scales; the picture doesn't.
+        let titleView = ChangelogTitleView(title: Strings.SettingsTitles.whatsNew)
+        titleView.traitOverrides.followsTextSize = true
+        navigationItem.titleView = titleView
         title = Strings.SettingsTitles.whatsNew
         showsBackTitle()
         dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx

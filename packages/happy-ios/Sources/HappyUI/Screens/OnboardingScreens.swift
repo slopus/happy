@@ -16,6 +16,7 @@ public final class WelcomeViewController: UIViewController {
     public init(context: AppContext) {
         self.context = context
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)
@@ -29,6 +30,8 @@ public final class WelcomeViewController: UIViewController {
 
     public override func viewDidLoad() {
         super.viewDidLoad()
+        // OnboardingHeader's title, which scales in a header that doesn't.
+        titleView.traitOverrides.followsTextSize = true
         navigationItem.titleView = titleView
         showsBackTitle()
         // Signed out, the gear leads straight to the server: self-hosters
@@ -91,6 +94,7 @@ public final class RestoreQRViewController: UIViewController {
     public init(context: AppContext) {
         self.context = context
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)
@@ -189,6 +193,7 @@ public final class RestoreSecretKeyViewController: UIViewController, UITextViewD
     public init(context: AppContext) {
         self.context = context
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)
@@ -212,7 +217,7 @@ public final class RestoreSecretKeyViewController: UIViewController, UITextViewD
         textView.textContainerInset = UIEdgeInsets(top: padding, left: padding, bottom: padding, right: padding)
         textView.textContainer.lineFragmentPadding = 0
         textView.isScrollEnabled = false
-        textView.typingAttributes = TextStyles.secretKeyInput.attributes(color: UIColor(Palette.inputText))
+        applyInputStyle()
         textView.autocapitalizationType = .allCharacters
         textView.autocorrectionType = .no
         textView.spellCheckingType = .no
@@ -225,6 +230,10 @@ public final class RestoreSecretKeyViewController: UIViewController, UITextViewD
             scrollView.addSubview(subview)
         }
         restoreButton.action = { [weak self] in await self?.restore() }
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.applyInputStyle()
+            self.view.setNeedsLayout()
+        }
 
         view.keyboardLayoutGuide.usesBottomSafeArea = false
         keyboardTracker.isHidden = true
@@ -276,6 +285,19 @@ public final class RestoreSecretKeyViewController: UIViewController, UITextViewD
     public func textViewDidChange(_ textView: UITextView) {
         placeholder.isHidden = !textView.text.isEmpty
         view.setNeedsLayout()
+    }
+
+    /// The key's text, as RN's TextInput draws it: at the person's text
+    /// size, what is typed already included.
+    private func applyInputStyle() {
+        let style = traitCollection.textEnvironment.map { TextStyles.secretKeyInput.scaled($0.scale) } ?? TextStyles.secretKeyInput
+        let attributes = style.attributes(color: UIColor(Palette.inputText))
+        textView.typingAttributes = attributes
+        if !textView.text.isEmpty {
+            let selection = textView.selectedRange
+            textView.attributedText = NSAttributedString(string: textView.text, attributes: attributes)
+            textView.selectedRange = selection
+        }
     }
 
     private func restore() async {

@@ -275,8 +275,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         let chatId = self.chatId
         Task.detached(priority: .userInitiated) { actions.markRead(sessionId: chatId) }
         // sync.ts `onSessionVisible`: a session someone has opened is no
-        // longer an abandoned start.
-        SpawnRequests.shared.release(sessionId: chatId)
+        // longer an abandoned start, in this account.
+        account.spawnRequests.release(sessionId: chatId)
         updateHeaderVisibility(animated: animated)
     }
 
@@ -799,7 +799,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             // A store write: never on the main thread.
             let actions = account.actions
             Task.detached(priority: .userInitiated) { actions.markRead(sessionId: real) }
-            SpawnRequests.shared.release(sessionId: real)
+            account.spawnRequests.release(sessionId: real)
         }
     }
 

@@ -34,9 +34,14 @@ public protocol HTTPTransport: Sendable {
 
 public final class URLSessionTransport: HTTPTransport, @unchecked Sendable {
     // URLSession is thread-safe.
-    private let session: URLSession
+    let session: URLSession
 
-    public init(session: URLSession = .shared) {
+    public convenience init() {
+        self.init(session: NetworkSession.make())
+    }
+
+    /// Explicit sessions remain available to injected transports and tests.
+    public init(session: URLSession) {
         self.session = session
     }
 

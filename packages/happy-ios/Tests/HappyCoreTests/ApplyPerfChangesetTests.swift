@@ -164,6 +164,35 @@ final class ApplyPerfPipelineTests: XCTestCase {
         pipeline.cancel()
     }
 
+    /// The screen's next main-thread turn after an apply already sees it
+    /// as applied: the state moves with the count, not later on the
+    /// derivation's own thread.
+    @MainActor
+    func testTheAppliedStateMovesWithTheApplyItself() async {
+        let box = ApplyPerfPipelineBox<ApplyPipeline<Int, Int, Int>>()
+        let seen = ApplyPerfRecorder<[Int]>()
+        let pipeline = ApplyPipeline<Int, Int, Int>(
+            input: 0,
+            state: 0,
+            minimumInterval: .zero,
+            derive: { input, applied in input == applied ? nil : (input, input) },
+            apply: { _ in
+                Task { @MainActor in
+                    guard let pipeline = box.pipeline else { return }
+                    _ = seen.take([pipeline.counts.applies, pipeline.applied])
+                }
+                return true
+            }
+        )
+        box.pipeline = pipeline
+        for value in 1...40 {
+            pipeline.update { $0 = value }
+            await applyPerfWait { seen.outputs.count == value }
+        }
+        XCTAssertEqual(seen.outputs, (1...40).map { [$0, $0] }, "after apply n, n applies and state n")
+        pipeline.cancel()
+    }
+
     @MainActor
     func testRefusedApplyKeepsDiffingAgainstWhatIsOnScreen() async throws {
         let recorder = ApplyPerfRecorder<HomeUpdate>()
@@ -424,6 +453,132 @@ final class ApplyPerfPacingTests: XCTestCase {
         let format = { (durations: [Duration]) in durations.min().map { String(format: "%.2f", $0.milliseconds) } ?? "-" }
         print("APPLY_PERF pacing: inputs=\(value) applies=\(recorder.outputs.count) min_idle=\(format(idle))ms min_gap=\(format(gaps))ms (wall clock, not display frames)")
         pipeline.cancel()
+    }
+}
+
+final class ApplyPerfDockTests: XCTestCase {
+    /// The dock's pickers order sessions by whether they are online and by
+    /// their last meaningful message: both reach them, a heartbeat or a
+    /// cursor does not.
+    func testOrderingFieldsReachTheDockAndHeartbeatsDoNot() throws {
+        let snapshot = ApplyPerfFixtures.snapshot(5)
+        let applied = try XCTUnwrap(ApplyPerfFixtures.derive(snapshot, after: nil)).state
+        let dock = try XCTUnwrap(applied.dock)
+        XCTAssertEqual(dock.sessions.map(\.active), snapshot.sessions.map(\.active))
+        XCTAssertEqual(dock.sessions.map(\.lastActivityAt), snapshot.sessions.map(\.lastActivityAt))
+
+        var heartbeat = snapshot
+        heartbeat.sessions = heartbeat.sessions.map { ApplyPerfFixtures.invisiblyTouched($0, by: 2000) }
+        XCTAssertNil(ApplyPerfFixtures.derive(heartbeat, after: applied), "nothing for home or the dock")
+
+        var message = snapshot
+        message.sessions[3] = ApplyPerfFixtures.active(message.sessions[3], at: ApplyPerfFixtures.now + 5)
+        let messaged = try XCTUnwrap(ApplyPerfFixtures.derive(message, after: applied)).output
+        XCTAssertEqual(messaged.dock?.sessions[3].lastActivityAt, ApplyPerfFixtures.now + 5)
+
+        var stopped = snapshot
+        stopped.sessions[2].active = false
+        let stoppedUpdate = try XCTUnwrap(ApplyPerfFixtures.derive(stopped, after: applied)).output
+        XCTAssertEqual(stoppedUpdate.dock?.sessions[2].active, false)
+    }
+}
+
+extension ApplyPerfDockTests {
+    /// The new-session screen hears nothing until the computers are known,
+    /// so an empty first read never resets the draft; then only what its
+    /// pickers read.
+    func testTheNewSessionScreenWaitsForComputersAndIgnoresHeartbeats() throws {
+        var unknown = ApplyPerfFixtures.snapshot(3)
+        unknown.machines = MachinesSnapshot(synced: false, machines: [])
+        XCTAssertNil(NewSessionSnapshot.derive(unknown, applied: nil))
+        XCTAssertNil(NewSessionSnapshot.derive(nil, applied: nil))
+
+        var onDisk = ApplyPerfFixtures.snapshot(3)
+        onDisk.machines.synced = false
+        let first = try XCTUnwrap(NewSessionSnapshot.derive(onDisk, applied: nil))
+        XCTAssertEqual(first.output.machines.machines.count, 1, "computers from before, ahead of the refresh")
+
+        var noComputers = unknown
+        noComputers.machines.synced = true
+        XCTAssertNotNil(NewSessionSnapshot.derive(noComputers, applied: nil), "synced and empty is an answer")
+
+        var heartbeat = onDisk
+        heartbeat.sessions = heartbeat.sessions.map { ApplyPerfFixtures.invisiblyTouched($0, by: 2000) }
+        heartbeat.presenceNow = ApplyPerfFixtures.now + 60_000
+        XCTAssertNil(NewSessionSnapshot.derive(heartbeat, applied: first.state))
+
+        var message = onDisk
+        message.sessions[2] = ApplyPerfFixtures.active(message.sessions[2], at: ApplyPerfFixtures.now + 5)
+        XCTAssertNotNil(NewSessionSnapshot.derive(message, applied: first.state))
+    }
+}
+
+extension ApplyPerfDockTests {
+    /// Two sessions in one directory under different projects: the newer
+    /// one names the directory's project in the pickers. A send this device
+    /// accepted makes a session the newer one before the server stamps it,
+    /// on home's dock and on the new-session screen alike.
+    func testAnAcceptedSendReordersThePickersSamePathProject() async throws {
+        let store = try LocalStore.inMemory()
+        func session(_ id: String, createdAt: Int64, project: String) -> SessionRecord {
+            var record = ChatRecords.storeSession(id, metadata: .object([
+                "machineId": .string("m"), "path": .string("/work"),
+                "project": .object(["id": .string(project), "name": .string(project)]),
+            ]))
+            record.createdAt = createdAt
+            return record
+        }
+        try store.upsertSessions([session("x", createdAt: 1, project: "px"), session("y", createdAt: 2, project: "py")])
+        try store.upsertMachine(.init(id: "m", seq: 0, createdAt: 1, updatedAt: 1, active: false, activeAt: 1,
+            metadataVersion: 1, metadataCipher: "", metadata: .object(["host": .string("host")]), daemonStateVersion: 0,
+            daemonStateCipher: nil, daemonState: nil, dataKeyCipher: nil, decryptable: true))
+        let draft = NewSessionDraft(selectedMachineId: "m")
+        func project(_ snapshot: HomeSnapshot, revision: UInt64) async -> String? {
+            let choices = await NewSessionChoiceDeriver().choices(snapshot: snapshot, revision: revision, generation: revision,
+                                                                  draft: draft, createsBot: false, worktrees: [])
+            return choices?.value.sessionPlaces.first { $0.path == "/work" }?.projectId
+        }
+
+        let before = try store.homeSnapshot()
+        let screen = try XCTUnwrap(NewSessionSnapshot.derive(before, applied: nil))
+        let home = try XCTUnwrap(ApplyPerfFixtures.derive(before, after: nil)).state
+        let shownBefore = await project(screen.output, revision: 0)
+        XCTAssertEqual(shownBefore, "py")
+
+        try store.enqueueAcceptedSend([.init(localId: "sent", kind: .message, sessionId: "x", payload: .object([
+            "role": .string("user"), "content": .object(["type": .string("text"), "text": .string("hello")]),
+        ]), createdAt: 100)], attachments: [])
+        let after = try store.homeSnapshot()
+        XCTAssertEqual(after.sessions.first { $0.id == "x" }?.lastMessageSentAt, 100)
+
+        let screenAfter = try XCTUnwrap(NewSessionSnapshot.derive(after, applied: screen.state), "the new-session screen hears the send")
+        let shownAfter = await project(screenAfter.output, revision: 1)
+        XCTAssertEqual(shownAfter, "px")
+        let dock = try XCTUnwrap(ApplyPerfFixtures.derive(after, after: home)?.output.dock, "home's dock hears the send")
+        let dockShown = await project(dock, revision: 2)
+        XCTAssertEqual(dockShown, "px")
+        XCTAssertEqual(ChatSessionState(after, sessionId: "x"), ChatSessionState(before, sessionId: "x"), "the chat does not")
+    }
+}
+
+final class ApplyPerfMachineScreenTests: XCTestCase {
+    /// The machine screen rebuilds for what it shows: a session's
+    /// heartbeat or cursor is nothing to it, a title on this machine is.
+    func testTheMachineScreenIgnoresSessionHeartbeats() {
+        let snapshot = ApplyPerfFixtures.snapshot(8)
+        let shown = MachineScreenContent(snapshot, machineId: "computer")
+        XCTAssertEqual(shown.model?.recentSessions.count, MachineDetailsModel.recentSessionLimit)
+
+        var heartbeat = snapshot
+        heartbeat.sessions = heartbeat.sessions.map { ApplyPerfFixtures.invisiblyTouched($0, by: 2000) }
+        heartbeat.presenceNow = ApplyPerfFixtures.now + 60_000
+        XCTAssertEqual(MachineScreenContent(heartbeat, machineId: "computer"), shown)
+
+        var retitled = snapshot
+        retitled.sessions[0] = ApplyPerfFixtures.retitled(retitled.sessions[0], "Renamed")
+        XCTAssertNotEqual(MachineScreenContent(retitled, machineId: "computer"), shown)
+
+        XCTAssertNil(MachineScreenContent(snapshot, machineId: "elsewhere").model, "not found")
     }
 }
 

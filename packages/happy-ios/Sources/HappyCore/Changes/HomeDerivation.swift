@@ -243,17 +243,25 @@ public enum HomeDerivation {
 }
 
 /// What the new-session pickers (home's dock and the new-session screen)
-/// read from the store, without what changes on every heartbeat or
-/// message: they list machines, places and projects, never a session's
-/// state.
+/// read from the store, without what changes on every heartbeat or cursor:
+/// they list machines, places and projects, newest first. A session's
+/// `active`, `lastMeaningfulMessageAt` and `lastMessageSentAt` order them
+/// and stay; its heartbeat, thinking and agent state never show and are
+/// cleared.
 public enum NewSessionSnapshot {
     public static func rendered(_ snapshot: HomeSnapshot) -> HomeSnapshot {
         var snapshot = snapshot
         // The pickers show no last seen: a presence tick changes nothing.
         snapshot.presenceNow = nil
-        snapshot.sessions = snapshot.sessions.map { record in
-            var record = ChatSessionState.rendered(record)
-            record.active = false
+        snapshot.sessions = snapshot.sessions.map { original in
+            var record = ChatSessionState.rendered(original)
+            if let at = original.metadata?["lastMeaningfulMessageAt"], case .object(var fields)? = record.metadata {
+                fields["lastMeaningfulMessageAt"] = at
+                record.metadata = .object(fields)
+            }
+            // The device's own accepted send orders a session the server
+            // hasn't stamped yet.
+            record.lastMessageSentAt = original.lastMessageSentAt
             record.activeAt = 0
             record.agentState = nil
             record.thinking = false
@@ -261,5 +269,15 @@ public enum NewSessionSnapshot {
             return record
         }
         return snapshot
+    }
+
+    /// The new-session screen's derivation: the pickers' snapshot once the
+    /// computers are known (synced, or on disk from before), nil until then
+    /// and whenever it is what the screen has.
+    public static func derive(_ snapshot: HomeSnapshot?, applied: HomeSnapshot?) -> (output: HomeSnapshot, state: HomeSnapshot?)? {
+        guard let snapshot, snapshot.machines.synced || !snapshot.machines.machines.isEmpty else { return nil }
+        let rendered = rendered(snapshot)
+        guard rendered != applied else { return nil }
+        return (rendered, rendered)
     }
 }

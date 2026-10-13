@@ -69,6 +69,7 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
             isSimulator: isSimulator
         )
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)

@@ -30,6 +30,16 @@ private let logger = Logger(subsystem: "engineering.happy", category: "composer"
 /// A chat still being started (`pending-chat:`) writes every keystroke to
 /// its record (`environment.draftStorage`) and queues its send there; when
 /// the session arrives, `retarget` moves the same composer over.
+///
+/// In a window wider than 700 points (happy-app's `screenWidth`, the
+/// window's, not the chat column's) the card is the flat panel with the
+/// gear, Stop, image and send (`desktopActionControls`). The same text view
+/// carries across the line as the window is resized.
+///
+/// It follows the person's text size on its own (`FollowsTextSize`, set on
+/// itself), as React Native scales AgentInput: every height it reports is
+/// measured from its text as drawn, so the chat lays it out at that size
+/// whether or not the rest of the screen follows yet.
 final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegate {
     weak var composerDelegate: (any ChatComposerDelegate)?
 
@@ -56,6 +66,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private var draftSave: Task<Void, Never>?
     /// A read asked for after a composition ended, not yet delivered.
     private var draftRefreshPending = false
+    /// The panel is being switched for the window (`followWindow`): the
+    /// card's height change isn't passed on as it happens.
+    private var followingWindow = false
     private var isAborting = false
     /// Stop was pressed; Stop stays hidden until the agent stops working
     /// (`stopRequested`), so a late status update can't leave it up.
@@ -75,6 +88,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     private var statusSize: CGSize = .zero
     private var weekSize: CGSize = .zero
+    /// The text size the status and usage rows were last drawn at.
+    private var detailsScale: TextScale?
 
     private static let titles = ComposerChipSet.Titles(
         permission: Strings.Composer.permissionModeTitle,
@@ -92,6 +107,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         modes = ComposerModes(metadata: nil, picks: ComposerPicks(), agentDefaultOverrides: [:])
         card = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: Strings.Composer.inputPlaceholder))
         super.init(frame: .zero)
+        // Before anything is measured: every height here is measured as
+        // drawn (docs/DYNAMIC-TYPE.md).
+        traitOverrides.followsTextSize = true
 
         statusDot.isUserInteractionEnabled = false
         addSubview(statusDot)
@@ -131,6 +149,11 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         registerForTraitChanges([ZenModeTrait.self]) { (self: Self, _) in
             self.applyConfiguration()
         }
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            guard self.syncTextSize() else { return }
+            self.setNeedsLayout()
+            self.composerDelegate?.composerDidInvalidateHeight(self)
+        }
     }
 
     @available(*, unavailable)
@@ -158,7 +181,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     // MARK: ChatComposerView
 
     func composerHeight(fitting width: CGFloat) -> CGFloat {
-        layout(width: width).size.height
+        // The screen lays out with this answer.
+        followWindow()
+        return layout(width: width).size.height
     }
 
     var cardOffset: CGFloat {
@@ -264,16 +289,72 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         ContentWidth.maxWidth // Tablet (HappyUI/Tablet): layout.ts maxWidth, was 800 by size class.
     }
 
+    /// useLayoutDimensions' width: the window's. Before the composer is in
+    /// one, its own.
+    private var screenWidth: CGFloat {
+        window?.bounds.width ?? bounds.width
+    }
+
+    private var isWide: Bool {
+        AgentInputLayout.isWide(screenWidth: screenWidth)
+    }
+
+    /// The window crossed 700 points (Split View, Slide Over, Stage
+    /// Manager, a rotation, the composer arriving in its window): the
+    /// panel follows. True if it changed.
+    @discardableResult
+    private func followWindow() -> Bool {
+        guard isWide != (card.configuration.desktop != nil) else { return false }
+        followingWindow = true
+        applyConfiguration()
+        followingWindow = false
+        return true
+    }
+
+    /// The panel changed without the screen asking for a height: it hears
+    /// of it after the current pass, unanimated.
+    private func followWindowLater() {
+        guard followWindow() else { return }
+        setNeedsLayout()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.composerDelegate?.composerDidInvalidateHeight(self)
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        followWindowLater()
+    }
+
+    /// The person's text size, as the composer draws it.
+    private var textScale: TextScale? {
+        traitCollection.textEnvironment?.scale
+    }
+
+    /// Draws the rows again if the text size moved since; true if it did.
+    /// The card and the suggestion rows keep up on their own.
+    @discardableResult
+    private func syncTextSize() -> Bool {
+        guard textScale != detailsScale else { return false }
+        applyDetails()
+        return true
+    }
+
     private func layout(width: CGFloat) -> AgentInputLayout {
-        let paddingH = AgentInputLayout.paddingH(screenWidth: width)
+        // Measured before the first trait update: measure what will be drawn.
+        syncTextSize()
+        let screenWidth = self.screenWidth
+        let paddingH = AgentInputLayout.paddingH(screenWidth: screenWidth)
         let maxContentWidth = self.maxContentWidth
         let innerWidth = AgentInputLayout.innerWidth(width: width, paddingH: paddingH, maxContentWidth: maxContentWidth)
         return AgentInputLayout(.init(
             width: width,
             paddingH: paddingH,
             maxContentWidth: maxContentWidth,
+            screenWidth: screenWidth,
             statusText: status == nil ? nil : statusSize,
-            card: card.layoutInput(width: innerWidth),
+            panel: card.panelInput(width: innerWidth),
             usageWeek: usage?.weekPercent == nil ? nil : weekSize,
             usageContext: usage?.context == nil ? nil : contextButton.labelSize
         ))
@@ -281,6 +362,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        // Normally caught when the screen asks for the height.
+        followWindowLater()
         let layout = layout(width: bounds.width)
         if let row = layout.status {
             statusDot.setLayoutFrame(row.dot)
@@ -406,7 +489,33 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         configuration.attachments = canAttach
             ? images.images.map { AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL) }
             : []
+        configuration.desktop = isWide ? AgentInputDesktopConfiguration(
+            settings: chips.showsSettings ? AgentInputSettingsMenu(sections: chips.settings.map(Self.settingsSection)) : nil,
+            showsStop: SessionComposerRules.canAbort(record),
+            isStopBusy: isAborting,
+            // SessionView passes no `isSending`: a send never spins here.
+            send: AgentInputDesktopSend(
+                hasText: Self.hasContent(card.text),
+                hasComposerContent: hasComposerContent,
+                isSendBlocked: SessionComposerRules.isSendBlocked(record)
+            )
+        ) : nil
         card.configuration = configuration
+    }
+
+    private static func settingsSection(_ section: ComposerChipSet.SettingsSection) -> AgentInputSettingsMenu.Section {
+        let chip: AgentInputChip = switch section.kind {
+        case .permission: .permission
+        case .model: .model
+        case .effort: .effort
+        }
+        return AgentInputSettingsMenu.Section(
+            chip: chip,
+            title: section.title,
+            systemImage: section.systemImage,
+            options: section.options.map { .init(key: $0.key, label: $0.label, isDisabled: $0.isDisabled) },
+            selectedKey: section.selectedKey
+        )
     }
 
     /// Text or a picked image (`hasComposerContent`), read live.
@@ -432,8 +541,11 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         )
     }
 
+    /// Something besides whitespace (`trim().length > 0`). Stops at the
+    /// first such character rather than copying the trimmed text.
     private static func hasContent(_ text: String) -> Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let blank = CharacterSet.whitespacesAndNewlines
+        return text.unicodeScalars.contains { !blank.contains($0) }
     }
 
     func agentInputCardDidChangeText(_ card: AgentInputCardView) {
@@ -451,9 +563,21 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// Return picks the highlighted suggestion (or the first) instead of
     /// starting a line.
     func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool {
-        guard activeQuery != nil, !suggestions.items.isEmpty else { return true }
+        !pickSuggestionOnKey()
+    }
+
+    /// So does a hardware keyboard's Tab: Fabric reports the typed "\t" as
+    /// "Tab" (TextInputEventEmitter), which AgentInput's handleKeyPress
+    /// takes as Enter. With no list, the tab is typed.
+    func agentInputCardShouldInsertTab(_ card: AgentInputCardView) -> Bool {
+        !pickSuggestionOnKey()
+    }
+
+    /// Picks the highlighted suggestion, or the first; false with no list.
+    private func pickSuggestionOnKey() -> Bool {
+        guard activeQuery != nil, !suggestions.items.isEmpty else { return false }
         selectSuggestion(max(0, suggestions.selected))
-        return false
+        return true
     }
 
     func agentInputCardDidChangeFocus(_ card: AgentInputCardView) {
@@ -465,6 +589,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     }
 
     func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) {
+        guard !followingWindow else { return }
         UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
             self.composerDelegate?.composerDidInvalidateHeight(self)
         }
@@ -478,6 +603,15 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             return
         }
         sendPressed()
+    }
+
+    /// The flat panel's send and stop are buttons of their own.
+    func agentInputCardDidPressSend(_ card: AgentInputCardView) {
+        sendPressed()
+    }
+
+    func agentInputCardDidPressStop(_ card: AgentInputCardView) {
+        abort()
     }
 
     func agentInputCardDidPressAdd(_ card: AgentInputCardView) {
@@ -720,13 +854,14 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         let metadata = state?.session.record?.metadata
         let sessionId = environment.sessionId
         let actions = environment.account.actions
+        let files = environment.account.composerFileIndex
         suggestionTask = Task { [weak self] in
             // The search runs off main; only its list comes back.
             let results = await Task.detached(priority: .userInitiated) { () -> [ComposerSuggestion] in
                 if query.hasPrefix("/") {
                     return ComposerCommands.suggestions(query, metadata: metadata)
                 } else if query.hasPrefix("@") {
-                    return await ComposerFileIndex.shared.suggestions(query, sessionId: sessionId) { id in
+                    return await files.suggestions(query, sessionId: sessionId) { id in
                         try? await actions.sessionRipgrep(sessionId: id, args: ComposerFileIndex.ripgrepArguments)
                     }
                 }
@@ -802,7 +937,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     // MARK: Status and usage
 
     private func applyDetails() {
-        let style = TextStyles.composerStatus
+        let scale = textScale
+        detailsScale = scale
+        let style = scale.map { TextStyles.composerStatus.scaled($0) } ?? TextStyles.composerStatus
         if let status {
             let color = UIColor(Self.color(status.tone))
             statusLabel.attributedText = style.attributedString(Self.text(status.text), color: color, lineBreakMode: .byTruncatingTail)

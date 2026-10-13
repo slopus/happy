@@ -29,12 +29,14 @@ public struct OutboxSender: ChatSending {
     public let store: LocalStore
     public let sync: SyncEngine
     public let filesDirectory: URL
+    public let spawnRequests: SpawnRequests
 
     /// Uses this account's store, active sync engine and private files directory.
-    public init(store: LocalStore, sync: SyncEngine, filesDirectory: URL) {
+    public init(store: LocalStore, sync: SyncEngine, filesDirectory: URL, spawnRequests: SpawnRequests = SpawnRequests()) {
         self.store = store
         self.sync = sync
         self.filesDirectory = filesDirectory
+        self.spawnRequests = spawnRequests
     }
 
     /// Checks support without copying, enqueuing or performing network work.
@@ -105,7 +107,7 @@ public struct OutboxSender: ChatSending {
         let id = try await sync.accept(message, sessionId: sessionId, filesDirectory: filesDirectory)
         // sync.ts `releaseSpawnedSession`: a session written to is no longer
         // an abandoned start.
-        await MainActor.run { SpawnRequests.shared.release(sessionId: sessionId) }
+        await spawnRequests.release(sessionId: sessionId)
         // Once accepted, a cache failure must not report a failed send and invite a duplicate.
         try? sync.rigComposer.clearAfterSend(sessionId: sessionId, expectedStamp: draftStamp)
         return id

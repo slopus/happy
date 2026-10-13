@@ -345,6 +345,58 @@ final class SpawnRequestsTests: XCTestCase {
         XCTAssertNotEqual(requests.requestId(for: changed { $0.bot = (name: "Release Cap", faceSeed: "abc12345") }), first)
         XCTAssertNotEqual(base, changed { $0.bot = (name: "Bot", faceSeed: "abc12345") })
     }
+
+    func testTwoAccountsKeepIdenticalRequestsAndCallbacksSeparate() async {
+        let first = SpawnRequests()
+        let second = SpawnRequests()
+        let firstID = first.requestId(for: base)
+        let secondID = second.requestId(for: base)
+        XCTAssertNotEqual(firstID, secondID)
+        var firstAbandoned = 0
+        var secondAbandoned = 0
+        var firstReleased = 0
+        var secondReleased = 0
+        first.remember(firstID, sessionId: "same-server-id", abandon: { firstAbandoned += 1 }, release: { firstReleased += 1 })
+        second.remember(secondID, sessionId: "same-server-id", abandon: { secondAbandoned += 1 }, release: { secondReleased += 1 })
+        XCTAssertNil(first.spawnedSessionId(secondID))
+        XCTAssertNil(second.spawnedSessionId(firstID))
+        first.release(sessionId: "same-server-id")
+        XCTAssertEqual(firstReleased, 1)
+        XCTAssertEqual(secondReleased, 0)
+        XCTAssertEqual(second.spawnedSessionId(secondID), "same-server-id")
+        _ = second.requestId(for: changed { $0.place = "~/other" })
+        XCTAssertEqual(secondAbandoned, 1)
+        XCTAssertEqual(firstAbandoned, 0)
+    }
+
+    func testClosedScopeCannotBeRepopulatedByLateReplies() async {
+        let old = SpawnRequests()
+        let current = SpawnRequests()
+        let oldID = old.requestId(for: base)
+        let currentID = current.requestId(for: base)
+        var canceled = 0
+        var abandoned = 0
+        var lateAbandoned = 0
+        _ = old.registerAttempt { canceled += 1 }
+        old.remember(oldID, sessionId: "old", abandon: { abandoned += 1 })
+        current.remember(currentID, sessionId: "current", abandon: { XCTFail("old callbacks must not abandon the new account") })
+        old.close()
+        old.close()
+        XCTAssertTrue(old.isClosed)
+        XCTAssertEqual(canceled, 1)
+        XCTAssertEqual(abandoned, 1)
+        old.remember(oldID, sessionId: "late", abandon: { lateAbandoned += 1 })
+        XCTAssertEqual(lateAbandoned, 1)
+        let ignoredID = old.requestId(for: base)
+        XCTAssertNil(old.spawnedSessionId(oldID))
+        XCTAssertNil(old.spawnedSessionId(ignoredID))
+        XCTAssertNil(old.registerAttempt { XCTFail("closed scope registered an attempt") })
+        old.complete(currentID)
+        old.release(sessionId: "current")
+        XCTAssertEqual(current.requestId(for: base), currentID)
+        XCTAssertEqual(current.spawnedSessionId(currentID), "current")
+        current.complete()
+    }
 }
 
 // MARK: - Starting a session
@@ -808,6 +860,48 @@ final class SessionStarterTests: XCTestCase {
         let sent = await sender.sent
         XCTAssertTrue(sent.isEmpty)
         XCTAssertTrue(presenter.errors.isEmpty, "a stop is not news")
+    }
+
+    func testAccountScopeCloseCancelsHeldSpawnAndCleansUpOnlyOldReply() async {
+        await ops.script([.success(sessionId: "old-late")])
+        await ops.hold()
+        let starter = makeStarter()
+        let started = Task { await starter.start(launch(), isCurrentTarget: { true }) }
+        for _ in 0..<10_000 {
+            if await ops.isHolding { break }
+            await Task.yield()
+        }
+        let holding = await ops.isHolding
+        guard holding else {
+            XCTFail("spawn did not reach the gate")
+            starter.cancel()
+            await ops.answer()
+            _ = await started.value
+            return
+        }
+        let newScope = SpawnRequests()
+        let newID = newScope.requestId(for: launch().signature)
+        newScope.remember(newID, sessionId: "new", abandon: { XCTFail("old account stop affected the new account") })
+        requests.close()
+        let result = await started.value
+        XCTAssertNil(result)
+        XCTAssertFalse(starter.isStarting)
+        let refused = await starter.start(launch(), isCurrentTarget: { true })
+        XCTAssertNil(refused, "a stopped account cannot start again")
+        await ops.answer()
+        for _ in 0..<10_000 {
+            if await recorder.refreshes > 0 { break }
+            await Task.yield()
+        }
+        let stops = await ops.stops
+        XCTAssertEqual(stops, ["old-late"])
+        let spawned = await ops.spawned
+        XCTAssertEqual(spawned.count, 1)
+        let sent = await sender.sent
+        XCTAssertTrue(sent.isEmpty)
+        XCTAssertEqual(newScope.requestId(for: launch().signature), newID)
+        XCTAssertEqual(newScope.spawnedSessionId(newID), "new")
+        newScope.complete()
     }
 
     func testASessionThatFailedToOpenIsReusedOnTheNextPress() async {
@@ -1300,7 +1394,7 @@ final class NewSessionChoicesTests: XCTestCase {
     // MARK: The composer's corrections and picks
 
     @MainActor
-    private func composer(_ draft: NewSessionDraft, machines: [MachineRecord], sessions: [SessionRecord] = [], ops: FakeOps = FakeOps()) -> NewSessionComposer {
+    private func composer(_ draft: NewSessionDraft, machines: [MachineRecord], sessions: [SessionRecord] = [], ops: FakeOps = FakeOps()) async -> NewSessionComposer {
         let drafts = NewSessionDraftStore(settings: LocalSettings(storage: InMemoryKeyValueStore()))
         drafts.selectAgent(draft.agentType, picked: false, defaults: AgentDefaults.Config(permissionMode: draft.permissionMode ?? "", modelMode: draft.modelMode ?? "", effortLevel: draft.effortLevel))
         if let picked = draft.pickedAgentType { drafts.pickAgentType(picked) }
@@ -1308,16 +1402,18 @@ final class NewSessionChoicesTests: XCTestCase {
         if let path = draft.selectedPath { drafts.setPath(path) }
         drafts.setSessionType(draft.sessionType)
         drafts.setWorktreeKey(draft.worktreeKey)
-        return NewSessionComposer(
+        let composer = NewSessionComposer(
             drafts: drafts,
             snapshot: HomeSnapshot(machines: MachinesSnapshot(synced: true, machines: machines), sessions: sessions),
             ops: ops
         )
+        await composer.waitForIdle()
+        return composer
     }
 
     @MainActor
     func testTheComposerMovesAGoneComputerToTheFirstOffered() async {
-        let composer = composer(NewSessionDraft(selectedMachineId: "gone"), machines: [machine("m1")])
+        let composer = await composer(NewSessionDraft(selectedMachineId: "gone"), machines: [machine("m1")])
         XCTAssertEqual(composer.drafts.draft.selectedMachineId, "m1")
         XCTAssertEqual(composer.choices.currentMachine?.key, "m1")
     }
@@ -1325,7 +1421,7 @@ final class NewSessionChoicesTests: XCTestCase {
     @MainActor
     func testTheComposerFollowsTheHarnessTheComputerSettlesOn() async {
         let rig = rigMachine("rig1", sibling: "m1")
-        let composer = composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, permissionMode: "auto"), machines: [machine("m1"), rig])
+        let composer = await composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, permissionMode: "auto"), machines: [machine("m1"), rig])
         let creation = RigSessionCreation(metadata: rig.metadata)
         let draft = composer.drafts.draft
         XCTAssertEqual(draft.agentType, .rig)
@@ -1338,7 +1434,7 @@ final class NewSessionChoicesTests: XCTestCase {
     @MainActor
     func testTheComposerDropsAWorktreeTheHarnessCantMake() async {
         // Happy Agent without worktrees, in a plain directory.
-        let composer = composer(
+        let composer = await composer(
             NewSessionDraft(selectedMachineId: "m1", selectedPath: "~/x", agentType: .rig, sessionType: .worktree),
             machines: [machine("m1"), rigMachine("rig1", sibling: "m1", worktrees: false)]
         )
@@ -1350,9 +1446,10 @@ final class NewSessionChoicesTests: XCTestCase {
 
     @MainActor
     func testPickingACatalogProjectMovesTheHarnessToHappyAgent() async {
-        let composer = composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, pickedAgentType: .claude), machines: [machine("m1"), rigMachine("rig1", sibling: "m1")])
+        let composer = await composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, pickedAgentType: .claude), machines: [machine("m1"), rigMachine("rig1", sibling: "m1")])
         XCTAssertEqual(composer.drafts.draft.agentType, .claude)
         composer.selectProject(SessionPlaces.projectKey("p1"))
+        await composer.waitForIdle()
         let draft = composer.drafts.draft
         XCTAssertEqual(draft.selectedProjectId, "p1")
         XCTAssertNil(draft.selectedPath)
@@ -1364,7 +1461,7 @@ final class NewSessionChoicesTests: XCTestCase {
 
     @MainActor
     func testACustomPathIsTrimmedAndABlankOneChangesNothing() async {
-        let composer = composer(NewSessionDraft(selectedMachineId: "m1", selectedPath: "~/happy"), machines: [machine("m1")])
+        let composer = await composer(NewSessionDraft(selectedMachineId: "m1", selectedPath: "~/happy"), machines: [machine("m1")])
         composer.selectProject(NewSessionChoices.customPathKey)
         XCTAssertEqual(composer.drafts.draft.selectedPath, "~/happy")
         composer.selectCustomPath("   ")
@@ -1376,7 +1473,7 @@ final class NewSessionChoicesTests: XCTestCase {
 
     @MainActor
     func testPickingAHarnessStartsItOnItsDefaults() async {
-        let composer = composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, pickedAgentType: .claude, permissionMode: "plan"), machines: [machine("m1")])
+        let composer = await composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, pickedAgentType: .claude, permissionMode: "plan"), machines: [machine("m1")])
         composer.selectAgent("codex")
         let draft = composer.drafts.draft
         let defaults = AgentDefaults.resolve([:], .codex, cliVersion: nil)
@@ -1396,11 +1493,12 @@ final class NewSessionChoicesTests: XCTestCase {
             stdout: "worktree /Users/steve/happy\nbranch refs/heads/main\n\nworktree /Users/steve/happy/.dev/worktree/calm\nbranch refs/heads/calm",
             stderr: "", exitCode: 0, error: nil
         )])
-        let composer = composer(NewSessionDraft(selectedMachineId: "m1", selectedPath: "~/happy"), machines: [machine("m1")], ops: ops)
+        let composer = await composer(NewSessionDraft(selectedMachineId: "m1", selectedPath: "~/happy"), machines: [machine("m1")], ops: ops)
         for _ in 0..<100 where composer.gitWorktrees.isEmpty {
             try await Task.sleep(for: .milliseconds(5))
         }
         XCTAssertEqual(composer.gitWorktrees.map(\.branch), ["calm"])
+        await composer.waitForIdle()
         XCTAssertEqual(composer.choices.worktreeOptions.map(\.name), ["Create New Worktree", "No worktree", "calm"])
         let commands = await ops.commands
         XCTAssertEqual(commands, ["git worktree list --porcelain"])
@@ -1408,7 +1506,7 @@ final class NewSessionChoicesTests: XCTestCase {
 
     @MainActor
     func testTheBotIsResolvedFromTheDraft() async throws {
-        let composer = composer(
+        let composer = await composer(
             NewSessionDraft(selectedMachineId: "m1"),
             machines: [machine("m1"), rigMachine("rig1", sibling: "m1", bots: true)]
         )
@@ -1454,11 +1552,12 @@ final class NewSessionChoicesTests: XCTestCase {
     }
 
     @MainActor
-    func testABotsNameRebuildsNoPicker() {
-        let composer = composer(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1"), rigMachine("rig1", sibling: "m1", bots: true)])
+    func testABotsNameRebuildsNoPicker() async {
+        let composer = await composer(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1"), rigMachine("rig1", sibling: "m1", bots: true)])
         var changes = 0
         composer.onChange = { changes += 1 }
         composer.drafts.setCreatesBot(true)
+        await composer.waitForIdle()
         XCTAssertEqual(composer.choices.promptPlaceholder, "Name your bot")
         let choices = composer.choices
         composer.drafts.setBotName("Cap")
@@ -1594,7 +1693,7 @@ extension NewSessionChoicesTests {
 
     @MainActor
     func testTheScreensPicks() async {
-        let composer = composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, pickedAgentType: .claude, permissionMode: "plan"), machines: [machine("m1"), rigMachine("rig1", sibling: "m1")])
+        let composer = await composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, pickedAgentType: .claude, permissionMode: "plan"), machines: [machine("m1"), rigMachine("rig1", sibling: "m1")])
         composer.pickAgent("codex")
         XCTAssertEqual(composer.drafts.draft.agentType, .codex)
         XCTAssertEqual(composer.drafts.draft.pickedAgentType, .codex)

@@ -26,6 +26,8 @@ final class HomeDockController: NSObject {
     let images: ComposerImagePicker
     private let staging: ComposerAttachmentStaging
     private(set) var prompt = ""
+    /// Send was tapped and the start is being resolved, before it runs.
+    private(set) var launching = false
     private weak var host: UIViewController?
     private let context: AppContext
     private weak var focus: HomeDockFocusViewController?
@@ -80,7 +82,7 @@ final class HomeDockController: NSObject {
     /// A bot needs a name the daemon takes; a session, a prompt or a
     /// picture.
     var canSubmit: Bool {
-        guard !starter.isStarting else { return false }
+        guard !starter.isStarting, !launching else { return false }
         let drafts = composer.drafts
         return drafts.createsBot
             ? BotName.isValid(drafts.botName)
@@ -95,7 +97,7 @@ final class HomeDockController: NSObject {
 
     private func render() {
         restingView.prompt = prompt
-        restingView.sendButton.appearance = starter.isStarting ? .busy : canSubmit ? .send : .idle
+        restingView.sendButton.appearance = starter.isStarting || launching ? .busy : canSubmit ? .send : .idle
         focus?.render()
     }
 
@@ -142,7 +144,8 @@ final class HomeDockController: NSObject {
         if drafts.createsBot {
             guard !drafts.botName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
             let bot = drafts.bot
-            guard let sessionId = await start(composer.launchBot()) else { return false }
+            let composer = composer
+            guard let sessionId = await start({ await composer.launchBotPrepared() }) else { return false }
             // The next bot starts from a clean name and fresh faces; the
             // composer goes back to offering a session, the ordinary case.
             if drafts.botName == bot.botName { drafts.setBotName("") }
@@ -156,7 +159,9 @@ final class HomeDockController: NSObject {
         guard !text.isEmpty || !picked.isEmpty else { return false }
         drafts.setInput(text)
         let started = drafts.draft
-        guard let sessionId = await start(composer.launch(prompt: text, attachments: picked.map(\.attachment))) else { return false }
+        let composer = composer
+        let attachments = picked.map(\.attachment)
+        guard let sessionId = await start({ await composer.launchPrepared(prompt: text, attachments: attachments) }) else { return false }
         // Only what was sent is cleared: edits made while it ran stay. The
         // outbox holds its own copies of the pictures by now.
         if drafts.draft.input == started.input { drafts.setInput("") }
@@ -166,21 +171,33 @@ final class HomeDockController: NSObject {
         return true
     }
 
-    /// Runs a resolved start; the session's id once it is open.
-    private func start(_ resolved: Result<NewSessionLaunch, NewSessionLaunch.Refusal>) async -> String? {
+    /// Resolves a start off the main thread (`resolve`, the composer's
+    /// prepared launch), then runs it; the session's id once it is open.
+    /// One at a time: Send is busy while it resolves. If the target moved
+    /// meanwhile (another computer, path or harness), nothing starts.
+    private func start(_ resolve: () async -> Result<NewSessionLaunch, NewSessionLaunch.Refusal>) async -> String? {
+        guard !launching else { return nil }
+        let composer = composer
+        let started = composer.drafts.draft
+        let bot = composer.drafts.bot
+        launching = true
+        render()
+        let resolved = await resolve()
+        launching = false
+        guard composer.isCurrentTarget(started, bot: bot) else {
+            render()
+            return nil
+        }
         let launch: NewSessionLaunch
         switch resolved {
         case .success(let value):
             launch = value
         case .failure(let refusal):
+            render()
             showStartError(refusal.errorDescription ?? SessionStarter.Message.startFailed)
             return nil
         }
-        let drafts = composer.drafts
-        let started = drafts.draft
-        let bot = drafts.bot
         render()
-        let composer = composer
         guard let sessionId = await starter.start(launch, isCurrentTarget: { composer.isCurrentTarget(started, bot: bot) }) else {
             render()
             return nil

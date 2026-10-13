@@ -25,6 +25,12 @@ rule 8), and what the Linux benchmarks measure.
     cleared because the row draws `timestamp`.
   - The chat's record clears cursors, versions, ciphertexts, `updatedAt`,
     `activeAt` while online, `thinkingAt` and `unread`.
+  - Home's dock (the new-session pickers) gets the sessions without their
+    heartbeat, cursors, thinking or agent state. It keeps `active`,
+    `lastMeaningfulMessageAt` and the device's own `lastMessageSentAt`,
+    which order its places, so a new message or a send this phone accepted
+    reaches it and a heartbeat does not. The new-session screen reads the
+    same projection (`NewSessionSnapshot`).
   - A stopped session's "last seen" in the chat is a token written at the
     presence clock (`HomeSnapshot.presenceNow`), so it changes only when the
     shown text does. Home's stamps and headings never use that clock: it
@@ -46,6 +52,17 @@ rule 8), and what the Linux benchmarks measure.
 - Session, project-card, worktree and chat rows are one fixed height at any
   width (`HomeRowHeights`, checked by `HomeRowHeightTests`), so they are
   never measured.
+- Home's stamps and day headings are written at the time of the
+  derivation, and home is derived again, off the main thread, at the next
+  instant one can read differently (`HomeClockBoundary`): midnight, or the
+  first stamp to turn from a time into a weekday or from a weekday into a
+  date. `ClockWake` keeps one deadline; a significant time change and
+  becoming active derive again too. No minute timer: between boundaries
+  nothing runs, and a pass that changes no label reaches no one.
+- Day headings, archive toggles, and machine and section headers are one
+  line of their style (`HomeRowMeasurer`): their heights are arithmetic,
+  with no cell and no text layout. The notices above the rows are measured
+  off the main thread and set, with their content, once the height is in.
 - The chat's rows (`ChatRows`, in an `ApplyPipeline`) are derived off the
   main thread: the rendered window, work groups, one input per row, a plan
   per row, the footer, the list's geometry and the changeset.
@@ -60,17 +77,27 @@ rule 8), and what the Linux benchmarks measure.
   - An update planned for another width or layout is refused and planned
     again.
   - Marking the chat read on open is a store write, done off the main thread.
+  - The rows one pass measures share one syntax deadline (`SyntaxPass`): a
+    window full of diffs starts at most one second of tokenizing, not one
+    per diff. The deadline is not part of a row's input, so it never makes
+    a row measure again. Markdown code blocks in the chat are tokenized
+    with no deadline at all.
+- The troubleshoot screen follows `AccountSession.troubleshootingFeed`
+  (computers and the AI prompt, projected off the main thread) through
+  `VisibleFeed`: subscribed in `viewWillAppear`, cancelled in
+  `viewWillDisappear`. With the screen away the feed has no subscriber and
+  runs no SQL; coming back reads the database afresh, and a value equal to
+  the one on screen applies nothing.
 
 ## Known gaps
 
-- Day headings, archive toggles, and machine and section headers still
-  measure their label on the main thread. Each is measured once per value
-  and width, when shown.
-- The banner header is also measured on the main thread, once per banner
-  content and width.
-- Home's and the sidebar's stamps and day headings are written at the time
-  of the derivation. Nothing re-derives them when the clock alone moves; they
-  catch up with the next store change.
+- Heading heights are one line of their style, read from a
+  `HomeTextEnvironment` built on the main thread when the scale or text
+  size changes. `HomeRowMeasurerTests` compares them with the cells; it
+  builds for the simulator but has not been run.
+- The sidebar's stamps and day headings are written at the time of the
+  derivation and catch up with the next store change; it does not use
+  `ClockWake` yet.
 - None of the UIKit behaviour is verified: no simulator run, no device
   timings.
 
@@ -92,6 +119,7 @@ measure UIKit. "Before" is a model of the b1247fce screens:
 | `HomeState` for 1000 sessions | 14.7–31 ms on the main thread | 0 ms on main; 16–27 ms in the background |
 | Unrendered setting changes (`reviewPromptAnswered`, `lastUsedAgent`, …) | chat session applied | 0 chat applies |
 | Flat ⇄ grouped layout switch | `reloadData` | delete + insert, 0 reconfigures |
+| Crossing midnight with no store change | headings stale until the next store change | 1 derivation, 1 apply: the heading reconfigured |
 | Streaming 50 tokens into a 2000-message chat (46-row window) | window, grouping and row inputs built on the main thread per update; 1 row measured; every visible cell handed its plan | 0 main-thread derivation; 1 row measured and 1 reconfigure per token; 0 for an unchanged snapshot |
 | A page of older history | — | only the added rows measured, inserted after the oldest |
 | 300-odd inputs in 340 ms, 2 ms per apply | — | at most 22 applies, each starting at least 16.67 ms after the last one ended (wall clock) |

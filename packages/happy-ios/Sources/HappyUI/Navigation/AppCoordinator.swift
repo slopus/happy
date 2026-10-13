@@ -184,12 +184,25 @@ public final class AppCoordinator {
         openNotificationSession()
     }
 
+    /// The title of happy-app's UIKit headers (react-native-screens 4.22.0
+    /// RNSScreenStackHeaderConfig.mm 41, 480-505): `headerTitleStyle`'s
+    /// IBMPlexSans-SemiBold at the default 17, made with `scaleMultiplier`
+    /// 1, so it never scales; a font and a colour, nothing more. Screens
+    /// with happy-app's own header (Header.tsx, OnboardingHeader) draw a
+    /// 16pt title view instead.
+    static var nativeTitleAttributes: [NSAttributedString.Key: Any] {
+        [
+            .font: Fonts.font(.semiBold, size: TextStyles.nativeHeaderTitle.size),
+            .foregroundColor: UIColor(Palette.headerTint),
+        ]
+    }
+
     static func applyAppearance(to bar: UINavigationBar) {
         let appearance = UINavigationBarAppearance()
         appearance.configureWithOpaqueBackground()
         appearance.backgroundColor = UIColor(Palette.groupedBackground)
         appearance.shadowColor = .clear
-        appearance.titleTextAttributes = TextStyles.headerTitle.attributes(color: UIColor(Palette.headerTint))
+        appearance.titleTextAttributes = Self.nativeTitleAttributes
         bar.standardAppearance = appearance
         bar.scrollEdgeAppearance = appearance
         bar.compactAppearance = appearance

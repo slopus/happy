@@ -33,6 +33,9 @@ public final class HomeViewController: UIViewController {
     /// home feed (`HomeDerivation`); only what changed is applied here.
     private var pipeline: ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>?
     private var observation: ApplyObservation?
+    /// Derives home again when a stamp or heading can next read differently
+    /// (`HomeClockBoundary`), with no store change.
+    private let clockWake = ClockWake()
     private var state: HomeContent?
     /// The home filter's choice, as last derived.
     private var grouping: SessionListGrouping = .flat
@@ -52,6 +55,8 @@ public final class HomeViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.groupedBackground)
+        // OnboardingHeader's title, which scales; the rows below don't yet.
+        titleView.traitOverrides.followsTextSize = true
         navigationItem.titleView = titleView
         showsBackTitle()
         header.isHidden = true
@@ -65,7 +70,7 @@ public final class HomeViewController: UIViewController {
         let pipeline = ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HomeUpdate>(
             input: HomeDerivation.Input(expandedProjects: context.account.localSettings.expandedProjects, includesDock: true),
             state: HomeDerivation.Applied(),
-            derive: { HomeDerivation.derive($0, applied: $1) },
+            derive: { [clockWake] in HomeDerivation.derive($0, applied: $1, wake: clockWake) },
             apply: { [weak self] update in
                 // Nothing from an account that is no longer the active one.
                 guard let self, self.isCurrentAccount else { return false }
@@ -73,6 +78,7 @@ public final class HomeViewController: UIViewController {
                 return true
             }
         )
+        clockWake.onWake { [weak pipeline] in pipeline?.update { _ in } }
         pipeline.follow(session.homeFeed.snapshots()) { $0.snapshot = $1 }
         self.pipeline = pipeline
         observation = pipeline.observation
@@ -89,10 +95,23 @@ public final class HomeViewController: UIViewController {
         // becomes active.
         checkNativeUpdate()
         NotificationCenter.default.addObserver(self, selector: #selector(appBecameActive), name: UIApplication.didBecomeActiveNotification, object: nil)
+        // Midnight, a new time zone, a clock set by hand: the stamps are
+        // written again, off the main thread.
+        NotificationCenter.default.addObserver(self, selector: #selector(clockChanged), name: UIApplication.significantTimeChangeNotification, object: nil)
+    }
+
+    deinit {
+        clockWake.cancel()
     }
 
     @objc private func appBecameActive() {
         checkNativeUpdate()
+        // A wake that fell due while the app was suspended.
+        clockChanged()
+    }
+
+    @objc private func clockChanged() {
+        pipeline?.update { _ in }
     }
 
     private func checkNativeUpdate() {
@@ -342,6 +361,7 @@ final class LinkComputerViewController: UIViewController {
         self.context = context
         self.session = session
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)
@@ -468,6 +488,7 @@ final class OfflineChecklistViewController: UIViewController {
         self.choices = choices
         self.hasArchived = hasArchived
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)
@@ -540,10 +561,10 @@ final class OfflineChecklistViewController: UIViewController {
 enum ComputerRow {
     /// A computer as troubleshoot.tsx lists it; a tap opens its machine
     /// screen.
-    static func make(_ choice: MachineChoice, onTap: @escaping () -> Void) -> ItemRowView {
+    static func make(_ computer: TroubleshootComputer, onTap: @escaping () -> Void) -> ItemRowView {
         ItemRowView(
-            title: choice.name,
-            subtitle: choice.online ? nil : Strings.Troubleshoot.machineOffline,
+            title: computer.name,
+            subtitle: computer.online ? nil : Strings.Troubleshoot.machineOffline,
             icon: ItemIcon(.ionicons("desktop-outline"), tint: Palette.textSecondary, size: 28),
             onTap: onTap
         )
@@ -558,7 +579,6 @@ final class TroubleshootViewController: UIViewController {
     private let list = GroupedListView()
     private let guide = TroubleshootGuideView()
     private let prompt = CopyPromptView()
-    private var observation: ApplyObservation?
     private var aiPrompt = ""
     private var copiedReset: Task<Void, Never>?
 
@@ -566,6 +586,7 @@ final class TroubleshootViewController: UIViewController {
         self.context = context
         self.session = session
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)
@@ -584,43 +605,38 @@ final class TroubleshootViewController: UIViewController {
             UIApplication.shared.open(Strings.Onboarding.desktopURL)
         }
         prompt.button.onTap = { [weak self] in self?.copyPrompt() }
-        // The computers and the prompt are worked out off the main thread.
-        let pipeline = ApplyPipeline<HomeSnapshot?, TroubleshootModel?, TroubleshootModel>(
-            input: nil,
-            state: nil,
-            derive: { snapshot, applied in
-                guard let snapshot else { return nil }
-                let choices = MachineChoice.collect(snapshot.machines.machines)
-                let model = TroubleshootModel(choices: choices, aiPrompt: OfflineTroubleshooting(choices: choices, sessions: snapshot.sessions).aiPrompt)
-                return model == applied ? nil : (model, model)
-            },
-            apply: { [weak self] model in
-                guard let self, self.context.account.session === self.session else { return false }
-                ApplyPerf.measure(.screen) {
-                    self.update(model)
-                    return model.choices.count
-                }
-                return true
-            }
-        )
-        pipeline.follow(session.homeFeed.snapshots()) { $0 = $1 }
-        observation = pipeline.observation
     }
 
-    private struct TroubleshootModel: Equatable, Sendable {
-        var choices: [MachineChoice]
-        var aiPrompt: String
+    /// The computers and the prompt, worked out off the main thread by the
+    /// account's troubleshooting feed, and read only while this screen is
+    /// on screen.
+    private lazy var feed = VisibleFeed<TroubleshootState> { [weak self] state in
+        guard let self, self.context.account.session === self.session else { return false }
+        ApplyPerf.measure(.screen) {
+            self.update(state)
+            return state.computers.count
+        }
+        return true
     }
 
-    private func update(_ model: TroubleshootModel) {
-        let choices = model.choices
-        aiPrompt = model.aiPrompt
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        feed.start { session.troubleshootingFeed.snapshots() }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        feed.stop()
+    }
+
+    private func update(_ state: TroubleshootState) {
+        aiPrompt = state.aiPrompt
         var sections: [UIView] = [guide]
-        if !choices.isEmpty {
-            sections.append(ItemGroupView(title: Strings.Troubleshoot.machines, rows: choices.map { choice in
-                ComputerRow.make(choice) { [weak self] in
+        if !state.computers.isEmpty {
+            sections.append(ItemGroupView(title: Strings.Troubleshoot.machines, rows: state.computers.map { computer in
+                ComputerRow.make(computer) { [weak self] in
                     guard let self else { return }
-                    push(.machine(id: choice.id), context: context)
+                    push(.machine(id: computer.id), context: context)
                 }
             }))
         }

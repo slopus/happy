@@ -75,7 +75,7 @@ public struct MachineActions: Sendable {
     public func machineDelete(machineId: String) async -> MachineOperationResult {
         do {
             try await api.deleteMachine(id: machineId)
-            try store.deleteMachine(id: machineId)
+            try await sync.presence.deleteMachine(machineId)
             return MachineOperationResult(success: true)
         } catch { return MachineOperationResult(success: false, message: opsError(error)) }
     }

@@ -448,6 +448,30 @@ final class TabletSidebarChangesetTests: XCTestCase {
         XCTAssertEqual(flat.state.checkouts, [])
     }
 
+    func testCrossingMidnightReconfiguresOnlyTheArchiveHeading() throws {
+        // One archived chat, from 06:00; "last seen" on a still presence
+        // clock, as the presence actor keeps it.
+        var snapshot = Fixture.snapshot(presenceNow: Fixture.now)
+        snapshot.sessions.removeAll { $0.id == "a2" }
+        let midnight = ApplyPerfClockTests.midnight
+        func derive(at date: Date, after applied: TabletSidebarDerivation.Applied, wake: ClockWake) -> (output: TabletSidebarUpdate, state: TabletSidebarDerivation.Applied)? {
+            TabletSidebarDerivation.derive(TabletSidebarInput(snapshot: snapshot), applied: applied, wake: wake, clock: ApplyPerfClockTests.clock(date))
+        }
+        let wake = ClockWake()
+        defer { wake.cancel() }
+        let before = try XCTUnwrap(derive(at: midnight - 60, after: .init(), wake: wake))
+        // Nothing can read differently before midnight.
+        XCTAssertEqual(wake.deadline, midnight)
+        XCTAssertNil(derive(at: midnight - 30, after: before.state, wake: wake))
+
+        let after = try XCTUnwrap(derive(at: midnight + 60, after: before.state, wake: wake))
+        let list = try XCTUnwrap(after.output.frame.grouped)
+        let heading = try XCTUnwrap(list.ids.firstIndex(of: .archiveHeader(0)))
+        XCTAssertEqual(after.output.changeset, RowChangeset(reconfigures: [heading]))
+        XCTAssertEqual(list.rows[heading], .archiveHeader(.yesterday))
+        XCTAssertNil(after.output.checkouts)
+    }
+
     func testTheSpinnerKeepsBothLists() throws {
         let grouped = try XCTUnwrap(derive(Fixture.snapshot()))
         // Before the first fetch, with no computer stored.
