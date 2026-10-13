@@ -261,13 +261,8 @@ extension ChatRowRenderer {
         let chunks = ToolDiffInputs.chunks(kind, input: message.tool.input)
         // MultiEditView passes no line-number flag, so its diffs use the
         // same setting through ToolDiffView.
-        let pieces = chunks.enumerated().compactMap { index, chunk -> ChatPiece? in
-            let source = DiffChunkSource(oldText: chunk.oldText, newText: chunk.newText, fileName: chunk.fileName)
-            guard !DiffFileItem.document(source.source).files.isEmpty else { return nil }
-            let diff = ChatDiffPiece(source: source, showLineNumbers: style.showLineNumbers, expanded: views.diffExpanded[index] ?? [])
-            return ChatPiece(measurable: Measurable { diff.plan(width: $0).size }) { frame in
-                ([.diff(diff.plan(width: frame.width), frame: frame, toolId: message.id, chunk: index)], [])
-            }
+        let pieces = chunks.enumerated().compactMap { index, chunk in
+            diffPiece(chunk, index: index, toolId: message.id, showLineNumbers: style.showLineNumbers, expanded: views.diffExpanded[index] ?? [])
         }
         guard !pieces.isEmpty else { return nil }
         let entries = pieces.map { ChatStackEntry(piece: $0) }
@@ -278,6 +273,17 @@ extension ChatRowRenderer {
             piece: stack, marginTop: -M.contentPaddingTop, marginBottom: 12,
             padding: LayoutInsets(top: 0, left: -M.contentPaddingH, bottom: 0, right: -M.contentPaddingH)
         )
+    }
+
+    /// One DiffChunk: diff `index` of tool `toolId`, or nil when it draws
+    /// nothing (DiffChunk renders null).
+    static func diffPiece(_ chunk: ToolDiffChunk, index: Int, toolId: String, showLineNumbers: Bool, expanded: Set<Int>) -> ChatPiece? {
+        let source = DiffChunkSource(oldText: chunk.oldText, newText: chunk.newText, fileName: chunk.fileName)
+        guard !DiffFileItem.document(source.source).files.isEmpty else { return nil }
+        let diff = ChatDiffPiece(source: source, showLineNumbers: showLineNumbers, expanded: expanded)
+        return ChatPiece(measurable: Measurable { diff.plan(width: $0).size }) { frame in
+            ([.diff(diff.plan(width: frame.width), frame: frame, toolId: toolId, chunk: index)], [])
+        }
     }
 
     // MARK: Terminal views
@@ -348,9 +354,20 @@ extension ChatRowRenderer {
     /// CommandView: a dark terminal panel, "$ " then the command, then the
     /// error in red. Empty output is not mentioned (hideEmptyOutput).
     static func commandView(_ command: String, error: String?) -> ChatPiece {
-        let prompt = MeasuredText(ChatTextStyles.terminalPrompt.string("$ ", color: Palette.terminalPromptGreen), maxLines: 1)
+        var entries = [ChatStackEntry(piece: commandLine(command, prompt: true))]
+        if let error {
+            entries.append(ChatStackEntry(piece: .text(MeasuredText(ChatTextStyles.terminal.string(error, color: Palette.terminalError, lineBreakMode: .byCharWrapping))), marginTop: 8))
+        }
+        return terminalPanel(entries)
+    }
+
+    /// CommandView's first line: "$ " (when it ran a command), then the
+    /// command, wrapping under itself.
+    static func commandLine(_ command: String, prompt: Bool) -> ChatPiece {
         let text = MeasuredText(ChatTextStyles.terminalCommand.string(command, color: Palette.terminalCommand, lineBreakMode: .byCharWrapping))
-        let line = ChatPiece(measurable: Measurable { width in
+        guard prompt else { return .text(text) }
+        let prompt = MeasuredText(ChatTextStyles.terminalPrompt.string("$ ", color: Palette.terminalPromptGreen), maxLines: 1)
+        return ChatPiece(measurable: Measurable { width in
             ChatAccessoryRowLayout(width: width, leading: prompt.layout(width: width).size, text: text.measurable, gap: 0, alignment: .top).size
         }) { frame in
             let layout = ChatAccessoryRowLayout(width: frame.width, leading: prompt.layout(width: frame.width).size, text: text.measurable, gap: 0, alignment: .top)
@@ -358,11 +375,11 @@ extension ChatRowRenderer {
             let textFrame = layout.text.offsetBy(dx: frame.minX, dy: frame.minY)
             return ([.text(prompt.layout(width: frame.width), promptFrame), .text(text.layout(for: textFrame), textFrame)], [])
         }
-        var entries = [ChatStackEntry(piece: line)]
-        if let error {
-            entries.append(ChatStackEntry(piece: .text(MeasuredText(ChatTextStyles.terminal.string(error, color: Palette.terminalError, lineBreakMode: .byCharWrapping))), marginTop: 8))
-        }
-        return .stack([ChatStackEntry(
+    }
+
+    /// CommandView's panel: dark in both themes, 16 in, rounded 8.
+    static func terminalPanel(_ entries: [ChatStackEntry]) -> ChatPiece {
+        .stack([ChatStackEntry(
             piece: .stack(entries), padding: LayoutInsets(top: 16, left: 16, bottom: 16, right: 16),
             background: ChatBox(frame: .zero, fill: Palette.terminalPanel, radius: 8)
         )])

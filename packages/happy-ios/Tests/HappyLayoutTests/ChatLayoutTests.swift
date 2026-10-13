@@ -625,9 +625,62 @@ final class MessageDetailLayoutTests: XCTestCase {
         assertFrame(pad.content, rect(128, 12, 768, 300))
     }
 
+    func testAnEditsDiffsRunEdgeToEdgeOnAPhone() {
+        let phone = MessageDetailLayout(width: 393, kind: .wideTool, content: block(height: 300))
+        assertFrame(phone.content, rect(0, 12, 393, 300))
+        let pad = MessageDetailLayout(width: 1024, kind: .wideTool, content: block(height: 300), maxContentWidth: 800)
+        assertFrame(pad.content, rect(128, 12, 768, 300))
+    }
+
     func testATextMessageIsPaddedAllRound() {
         let layout = MessageDetailLayout(width: 393, kind: .text, content: block(height: 48))
         assertFrame(layout.content, rect(16, 16, 361, 48))
         assertSize(layout.contentSize, CGSize(width: 393, height: 80))
+    }
+
+    func testAMultiEditHeaderCarriesItsBadgeBesideTheNumber() {
+        // "Edit 2 of 3" at 8 a character beside a 12-high "Replace All".
+        let layout = MultiEditHeaderLayout(width: 361, number: text("Edit 2 of 3", lineHeight: 17), badge: text("Replace All", advance: 6, lineHeight: 15))
+        assertFrame(layout.number, rect(0, 3, 88, 17))
+        assertFrame(layout.badge, rect(96, 0, 82, 23))
+        assertFrame(layout.badgeText, rect(104, 4, 66, 15))
+        assertSize(layout.size, CGSize(width: 361, height: 23))
+
+        let plain = MultiEditHeaderLayout(width: 361, number: text("Edit 1 of 3", lineHeight: 17), badge: nil)
+        assertFrame(plain.number, rect(0, 0, 88, 17))
+        XCTAssertNil(plain.badge)
+        XCTAssertNil(plain.badgeText)
+    }
+}
+
+final class TextChunksTests: XCTestCase {
+    func testShortTextIsOnePiece() {
+        XCTAssertEqual(TextChunks.split("one\ntwo\n"), ["one\ntwo\n"])
+        XCTAssertEqual(TextChunks.split(""), [""])
+    }
+
+    func testLongTextIsCutAfterNewlines() {
+        let text = (1...7).map { "line \($0)" }.joined(separator: "\n")
+        let chunks = TextChunks.split(text, maxLines: 3, maxLength: 1000)
+        XCTAssertEqual(chunks, ["line 1\nline 2\nline 3\n", "line 4\nline 5\nline 6\n", "line 7"])
+        XCTAssertEqual(chunks.joined(), text)
+
+        let wide = TextChunks.split("aaaaaa\nbb\ncc", maxLines: 40, maxLength: 5)
+        XCTAssertEqual(wide, ["aaaaaa\n", "bb\ncc"], "past maxLength, the next newline ends the piece")
+    }
+
+    func testAVeryLongLineIsCutAfterItsLastSpace() {
+        let line = "alpha beta gamma delta"
+        XCTAssertEqual(TextChunks.split(line, maxLength: 6), ["alpha beta ", "gamma delta"])
+        XCTAssertEqual(TextChunks.split("abcdefghij", maxLength: 2), ["abcd", "efgh", "ij"], "no space: cut anywhere")
+        let emoji = String(repeating: "👍🏽", count: 5)
+        XCTAssertEqual(TextChunks.split(emoji, maxLength: 4).joined(), emoji, "never inside a character")
+    }
+
+    func testAPieceDrawsWithoutTheNewlineThatEndsIt() {
+        XCTAssertEqual(TextChunks.drawn("a\nb\n"), "a\nb")
+        XCTAssertEqual(TextChunks.drawn("a\n\n"), "a\n ", "an empty last line keeps its height")
+        XCTAssertEqual(TextChunks.drawn("\n"), " ")
+        XCTAssertEqual(TextChunks.drawn("abc"), "abc", "cut inside a line: nothing to drop")
     }
 }

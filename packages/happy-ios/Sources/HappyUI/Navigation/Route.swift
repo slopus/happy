@@ -52,7 +52,9 @@ enum Screens {
             return SessionInfoViewController(context: context, session: session, sessionId: id)
         case .sessionChanges(let id):
             return SessionChangesViewController(context: context, session: session, sessionId: id)
-        case .sessionFiles, .sessionFile, .sessionMessage, .textSelection:
+        case .sessionMessage(let id, let messageId):
+            return MessageDetailViewController(context: context, session: session, sessionId: id, messageId: messageId)
+        case .sessionFiles, .sessionFile, .textSelection:
             return PlaceholderViewController(title: "")
         case .machine(let id):
             return MachineViewController(context: context, session: session, machineId: id)

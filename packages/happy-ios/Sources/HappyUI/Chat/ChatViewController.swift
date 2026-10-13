@@ -178,6 +178,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         account.actions.markRead(sessionId: sessionId)
+        // sync.ts `onSessionVisible`: a session someone has opened is no
+        // longer an abandoned start.
+        SpawnRequests.shared.release(sessionId: sessionId)
     }
 
     // MARK: Layout

@@ -338,12 +338,58 @@ final class ToolFullPresentationTests: XCTestCase {
         XCTAssertEqual(named.description, "Deploy preview", "the display title stands in for a missing description")
     }
 
+    func testEditsShowTheirDiffsThenHowTheyWent() {
+        let edit = full(tool("Edit", ["file_path": "/repo/a.swift", "old_string": "a", "new_string": "b"], result: "Updated."))
+        XCTAssertEqual(edit.main, .diff(.edit, chunks: [ToolDiffChunk(oldText: "a", newText: "b", fileName: "/repo/a.swift")], replaceAll: []))
+        XCTAssertEqual(edit.outcome, .output("Updated."))
+        XCTAssertTrue(edit.wide)
+
+        let multi = full(tool("MultiEdit", ["file_path": "/repo/a.swift", "edits": [
+            ["old_string": "a", "new_string": "b"],
+            ["old_string": "c", "new_string": "d", "replace_all": .bool(true)],
+        ]], state: .error, result: "String not found"))
+        guard case .diff(.multiEdit, let chunks, let replaceAll) = multi.main else { return XCTFail("diff") }
+        XCTAssertEqual(chunks.count, 2)
+        XCTAssertEqual(replaceAll, [false, true])
+        XCTAssertEqual(multi.outcome, .error(.text("String not found")))
+
+        XCTAssertEqual(full(tool("write", ["file_path": "/repo/n.md", "content": "x"])).main,
+                       .diff(.write, chunks: [ToolDiffChunk(oldText: "", newText: "x", fileName: "/repo/n.md")], replaceAll: []))
+        XCTAssertFalse(full(tool("Task")).wide)
+        guard case .generic = full(tool("apply_patch", ["input": "*** Begin Patch"])).main else { return XCTFail("generic until the Codex parser lands") }
+    }
+
     func testATaskEndsWithHowItWent() {
         XCTAssertEqual(full(tool("Task", ["description": "Explore"], result: "Found it")).outcome, .output("Found it"))
         XCTAssertEqual(full(tool("Task", ["description": "Explore"], result: "")).outcome, .output(""), "an empty result is still an output")
         XCTAssertEqual(full(tool("Agent", state: .error)).outcome, .error(.unspecified))
         XCTAssertNil(full(tool("Task", state: .running)).outcome)
         XCTAssertEqual(full(tool("Task")).main, .task)
+    }
+
+    func testDevModeShowsTheCallAndItsSubAgentAsJSON() {
+        var call = tool("Task", ["description": "Explore"], result: "Found it")
+        call.callId = "toolu_1"
+        call.permission = ToolPermission(id: "p1", status: .approved, mode: "default")
+        let child = ToolCall(callId: "toolu_2", name: "Read", state: .running, input: ["file_path": "/repo/a"], createdAt: 5)
+        let message = ToolCallMessage(id: "m1", createdAt: 1, tool: call, children: [
+            .agentText(AgentTextMessage(id: "c1", createdAt: 2, text: "Looking")),
+            .toolCall(ToolCallMessage(id: "c2", localId: "l2", createdAt: 3, tool: child)),
+        ])
+        let json = ToolFullPresentation.rawJSON(message)
+        XCTAssertEqual(json["name"], "Task")
+        XCTAssertEqual(json["state"], "completed")
+        XCTAssertEqual(json["result"], "Found it")
+        XCTAssertEqual(json["startedAt"], .null, "nullable fields are written as null")
+        XCTAssertNil(json["title"], "absent optionals are left out")
+        XCTAssertNil(json["callId"], "the screen lists the call's fields by name, without its id")
+        XCTAssertEqual(json["permission"], ["id": "p1", "status": "approved", "mode": "default"])
+        let messages = json["messages"]?.arrayValue ?? []
+        XCTAssertEqual(messages.count, 2)
+        XCTAssertEqual(messages.first, ["kind": "agent-text", "id": "c1", "localId": .null, "createdAt": 2, "text": "Looking"])
+        XCTAssertEqual(messages.last?["tool"]?["callId"], "toolu_2", "a child's tool is the whole ToolCall")
+        XCTAssertEqual(messages.last?["children"], .array([]))
+        XCTAssertEqual(messages.last?["localId"], "l2")
     }
 }
 

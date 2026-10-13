@@ -23,12 +23,14 @@ public enum ChatFace: Hashable, Sendable {
     case menlo
     /// Menlo at weight '600', which iOS draws in Menlo Bold.
     case menloBold
+    /// Menlo with `fontStyle: 'italic'`.
+    case menloItalic
 
     public var isMonospaced: Bool {
         switch self {
         case .plex(let face): face == .mono || face == .monoItalic || face == .monoSemiBold
         case .system, .systemItalic: false
-        case .menlo, .menloBold: true
+        case .menlo, .menloBold, .menloItalic: true
         }
     }
 }
@@ -134,6 +136,15 @@ extension Palette {
     public static let onAccent = ColorToken("#FFFFFF")
     /// The answer sheet's required-question dot.
     public static let requiredDot = ColorToken("#FF9500")
+    /// ToolFullView's section glyphs: #5856D6 (description, input),
+    /// #34C759 (output), #FF3B30 (error), #FF9500 (raw JSON);
+    /// MultiEditViewFull's edit number and replace-all badge are the purple
+    /// too, its separator #E5E5EA.
+    public static let fullViewPurple = ColorToken("#5856D6")
+    public static let fullViewGreen = ColorToken("#34C759")
+    public static let fullViewRed = ColorToken("#FF3B30")
+    public static let fullViewOrange = ColorToken("#FF9500")
+    public static let multiEditSeparator = ColorToken("#E5E5EA")
     /// ChatHeaderView's subtitle in the glass capsule: rgba(24,23,28,0.72)
     /// in light, rgba(255,255,255,0.78) in dark.
     public static let headerGlassSubtitle = ColorToken(
@@ -154,7 +165,7 @@ extension Palette {
         terminalStdout, terminalStderr, terminalError, terminalEmptyOutput, diffRowAdded, diffRowRemoved,
         diffMarkerAdded, diffMarkerRemoved, diffText, diffSectionText, diffGutterBorder, buttonSecondaryTint, shadow,
         boxWarningText, todoCompleted, todoInProgress, todoPending, todoOther, onAccent, requiredDot,
-        headerGlassSubtitle,
+        headerGlassSubtitle, fullViewPurple, fullViewGreen, fullViewRed, fullViewOrange, multiEditSeparator,
     ]
 }
 
@@ -269,6 +280,18 @@ public enum ChatTextStyles {
     public static let sheetInput = ChatTextStyle(.system(.regular), size: 15)
     public static let sheetError = ChatTextStyle(.plex(.regular), size: 14)
     public static let sheetSubmit = ChatTextStyle(.plex(.semiBold), size: 16)
+
+    // The message screen: ToolFullView, MultiEditViewFull, CommandView's
+    // output and [messageId].tsx's text (plain <Text>s are the system font)
+    public static let fullSectionTitle = ChatTextStyle(.system(.semibold), size: 17)
+    public static let fullDescription = ChatTextStyle(.system(.regular), size: 14, lineHeight: 20)
+    public static let fullError = ChatTextStyle(.system(.regular), size: 14, lineHeight: 20)
+    public static let fullEmptyTitle = ChatTextStyle(.system(.semibold), size: 16)
+    public static let fullEmptySubtitle = ChatTextStyle(.system(.regular), size: 14)
+    public static let multiEditNumber = ChatTextStyle(.system(.semibold), size: 14)
+    public static let multiEditBadge = ChatTextStyle(.system(.semibold), size: 12)
+    public static let terminalEmptyOutput = ChatTextStyle(.menloItalic, size: 13, lineHeight: 18)
+    public static let detailMessage = ChatTextStyle(.plex(.regular), size: 16, lineHeight: 24)
 
     // The session deleted state (SessionView.tsx)
     public static let deletedTitle = ChatTextStyle(.system(.semibold), size: 20)

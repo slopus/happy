@@ -76,7 +76,9 @@ accident.
 - [ ] Permission prompts: allow, allow for session, deny, mode switch (`PermissionFooter`) — Chat
 - [ ] Agent questions: banner, modal, inline form (`AgentQuestionBanner`, `AgentQuestionModal`, `InlineQuestionForm`, `agentCommunications.ts`) — Chat
 - [ ] Image and file messages, decrypted on demand (`FileView`) — Chat + Sending
-- [ ] Message detail screen (`session/[id]/message/[messageId].tsx`) — Chat
+- [~] Message detail screen (`session/[id]/message/[messageId].tsx`) — Chat
+  - ToolHeader's title; ToolFullView's terminal (CommandView with all output), Task, Edit, Write and MultiEdit full views, the generic sections, the outcome after a specialized view, and dev mode's raw JSON; a text message's whole text. Long output is drawn in pieces near the screen only (`TextChunks`).
+  - Not yet: the Codex patch and diff full views (they show the generic sections until `codexUnifiedDiff` lands) and the `file` focus parameter; terminal output can't be selected in place (happy-app's `selectable` text).
 - [~] Agent goal bar, work group headers, rig activity bar (`AgentGoalBar`, `AgentWorkGroupHeader`, `RigActivityBar`) — Chat
   - Stop shows but sends nothing, as in happy-app (`agentGoalActionHandler.ts`). The goal bar has no details sheet; happy-app doesn't open one from the chat either.
 - [~] Empty and pending states (`EmptyMessages`, `ChatFooter`) — Chat
