@@ -289,9 +289,7 @@ public final class ComposerDraftWriter: @unchecked Sendable {
     }
 
     private func drain() async {
-        #if DEBUG
-        dispatchPrecondition(condition: .notOnQueue(.main))
-        #endif
+        ThreadRules.assertOffMain()
         while let batch = next() {
             var run = Run()
             for command in batch {
@@ -413,7 +411,8 @@ extension OutboxSender: ComposerStorage {
     private static let composerQueue = DispatchQueue(label: "HappyCore.composer", qos: .userInitiated)
 
     public func composerValue(sessionId: String) throws -> ComposerStoreValue {
-        try store.writer.read { db in try ComposerStoreValue.fetch(db, sessionId: sessionId) }
+        ThreadRules.assertOffMain()
+        return try store.writer.read { db in try ComposerStoreValue.fetch(db, sessionId: sessionId) }
     }
 
     public func composerValues(sessionId: String) -> AsyncThrowingStream<ComposerStoreValue, any Error> {
@@ -423,7 +422,10 @@ extension OutboxSender: ComposerStorage {
             // two fetches must still wake the writer, which compares with
             // what the composer holds.
             let cancellable = ValueObservation
-                .tracking { db in try ComposerStoreValue.fetch(db, sessionId: sessionId) }
+                .tracking { db in
+                    ThreadRules.assertOffMain()
+                    return try ComposerStoreValue.fetch(db, sessionId: sessionId)
+                }
                 .start(
                     in: writer,
                     scheduling: .async(onQueue: Self.composerQueue),
