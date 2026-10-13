@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyIcons
 import HappyLayout
 import UIKit
 
@@ -6,6 +7,8 @@ import UIKit
 /// Ionicon, or a picture (a harness logo, a GitHub avatar).
 public struct ItemIcon: Equatable {
     public enum Source: Equatable {
+        /// One of happy-app's icons, at Item.tsx's size 29.
+        case glyph(Icon)
         case symbol(String)
         /// An image in HappyUI's bundle.
         case bundled(String)
@@ -17,6 +20,11 @@ public struct ItemIcon: Equatable {
     public var tint: ColorToken?
     /// Clips a picture to a circle (the GitHub avatar).
     public var round = false
+
+    public init(_ icon: Icon, tint: ColorToken) {
+        self.source = .glyph(icon)
+        self.tint = tint
+    }
 
     public init(_ symbol: String, tint: ColorToken) {
         self.source = .symbol(symbol)
@@ -232,6 +240,9 @@ public final class ItemRowView: UIControl {
         iconView.isHidden = icon == nil
         if let icon {
             switch icon.source {
+            case .glyph(let glyph):
+                iconView.image = .icon(glyph, size: 29)
+                iconView.contentMode = .center
             case .symbol(let name):
                 iconView.image = .symbol(name, pointSize: 22)
                 iconView.contentMode = .center
