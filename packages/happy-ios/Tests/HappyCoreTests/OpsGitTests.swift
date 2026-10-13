@@ -8,7 +8,10 @@ final class OpsGitTests: XCTestCase {
     let ordinary = "1 MM N... 100644 100644 100644 abc def src/file with spaces.swift"
 
     func testSeparateIndexAndWorktreeStatsAndBranchTracking() {
-        let status = GitStatusParser.parse(status: "# branch.head main\n# branch.upstream origin/main\n# branch.ab +2 -3\n# stash 4\n\(ordinary)\n? new.txt\n", unstagedNumstat: "2\t1\tsrc/file with spaces.swift\n", stagedNumstat: "7\t3\tsrc/file with spaces.swift\n", now: 42)
+        let status = GitStatusParser.parse(
+            status: "# branch.head main\n# branch.upstream origin/main\n# branch.ab +2 -3\n# stash 4\n\(ordinary)\n? new.txt\n",
+            unstagedNumstat: "2\t1\tsrc/file with spaces.swift\n", stagedNumstat: "7\t3\tsrc/file with spaces.swift\n", now: 42
+        )
         XCTAssertEqual(status.branch, "main")
         XCTAssertEqual(status.upstreamBranch, "origin/main")
         XCTAssertEqual(status.aheadCount, 2)
@@ -30,7 +33,10 @@ final class OpsGitTests: XCTestCase {
     func testGitQuotesOctalUnicodeRenamesAndBinaryStats() {
         let path = #""caf\303\251\t\".txt""#
         XCTAssertEqual(GitStatusParser.decodePath(path), "café\t\".txt")
-        let status = GitStatusParser.parse(status: "2 R. N... 100644 100644 100644 abc def R100 new/file.txt\told/file.txt\n1 .M N... 100644 100644 100644 abc def \(path)\n", unstagedNumstat: "-\t-\t\(path)\n", stagedNumstat: "5\t2\t{old => new}/file.txt")
+        let status = GitStatusParser.parse(
+            status: "2 R. N... 100644 100644 100644 abc def R100 new/file.txt\told/file.txt\n1 .M N... 100644 100644 100644 abc def \(path)\n",
+            unstagedNumstat: "-\t-\t\(path)\n", stagedNumstat: "5\t2\t{old => new}/file.txt"
+        )
         XCTAssertEqual(status.stagedFiles.first?.fullPath, "new/file.txt")
         XCTAssertEqual(status.stagedFiles.first?.oldPath, "old/file.txt")
         XCTAssertEqual(status.stagedFiles.first?.status, .renamed)
@@ -73,7 +79,11 @@ final class OpsGitTests: XCTestCase {
         XCTAssertEqual(seenA!, result)
         XCTAssertEqual(seenB!, result)
         let calls = await rpc.calls
-        XCTAssertEqual(calls.map { $0.1["command"]?.stringValue }, ["git rev-parse --is-inside-work-tree", "git -c core.quotepath=false status --porcelain=v2 --branch --show-stash --untracked-files=all", "git -c core.quotepath=false diff --numstat", "git -c core.quotepath=false diff --cached --numstat"])
+        XCTAssertEqual(calls.map { $0.1["command"]?.stringValue }, [
+            "git rev-parse --is-inside-work-tree",
+            "git -c core.quotepath=false status --porcelain=v2 --branch --show-stash --untracked-files=all",
+            "git -c core.quotepath=false diff --numstat", "git -c core.quotepath=false diff --cached --numstat",
+        ])
         XCTAssertTrue(calls.allSatisfy { $0.0 == "a:bash" && $0.1["cwd"] == .string("/repo") })
         XCTAssertEqual(calls.first?.1["timeout"], .number(5000))
         XCTAssertEqual(calls.last?.1["timeout"], .number(10000))

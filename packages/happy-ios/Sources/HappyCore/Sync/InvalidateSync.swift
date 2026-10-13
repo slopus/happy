@@ -37,7 +37,7 @@ public actor InvalidateSync {
     private var task: Task<Void, Never>?
     private var dirty = false
     private var stopped = false
-    private var waiters: [CheckedContinuation<Void, Never>] = []
+    private var waiters: [UUID: CheckedContinuation<Void, Never>] = [:]
 
     public init(
         backoff: Backoff = .standard,
@@ -62,10 +62,17 @@ public actor InvalidateSync {
     /// Invalidates and returns once a run that started after this call has
     /// succeeded (or the sync was stopped).
     public func invalidateAndAwait() async {
+        guard !Task.isCancelled else { return }
         invalidate()
         guard task != nil else { return }
-        await withCheckedContinuation { continuation in
-            waiters.append(continuation)
+        let id = UUID()
+        await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                if Task.isCancelled { continuation.resume() }
+                else { waiters[id] = continuation }
+            }
+        } onCancel: {
+            Task { await self.cancelWaiter(id) }
         }
     }
 
@@ -101,10 +108,14 @@ public actor InvalidateSync {
     }
 
     private func resumeWaiters() {
-        let pending = waiters
-        waiters = []
+        let pending = waiters.values
+        waiters.removeAll()
         for waiter in pending {
             waiter.resume()
         }
+    }
+
+    private func cancelWaiter(_ id: UUID) {
+        waiters.removeValue(forKey: id)?.resume()
     }
 }

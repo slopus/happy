@@ -10,4 +10,8 @@ extension LocalSettings: PushRegistrationTokenCache {
     public func saveToken(_ token: String) async throws {
         registeredPushToken = token
     }
+
+    public func clearToken() async throws {
+        registeredPushToken = nil
+    }
 }

@@ -47,20 +47,32 @@ public actor GitStatusSync {
         let actions = self.actions
         let task = Task<FetchResult, Never> {
             do {
-                let check = try await actions.sessionBash(sessionId: sessionId, request: SessionBashRequest(command: "git rev-parse --is-inside-work-tree", cwd: project.path, timeout: 5000))
+                let check = try await actions.sessionBash(sessionId: sessionId, request: SessionBashRequest(
+                    command: "git rev-parse --is-inside-work-tree", cwd: project.path, timeout: 5000
+                ))
                 guard !Task.isCancelled else { return .failed }
                 guard check.success, check.exitCode == 0 else {
                     // A transport refusal retains a previous snapshot. Only a git
                     // process exit proves that this checkout is not a repository.
                     return check.exitCode > 0 ? .notRepository : .failed
                 }
-                let status = try await actions.sessionBash(sessionId: sessionId, request: SessionBashRequest(command: "git -c core.quotepath=false status --porcelain=v2 --branch --show-stash --untracked-files=all", cwd: project.path, timeout: 10000))
+                let status = try await actions.sessionBash(sessionId: sessionId, request: SessionBashRequest(
+                    command: "git -c core.quotepath=false status --porcelain=v2 --branch --show-stash --untracked-files=all",
+                    cwd: project.path, timeout: 10000
+                ))
                 guard status.success, status.exitCode == 0, !Task.isCancelled else { return .failed }
-                let unstaged = try await actions.sessionBash(sessionId: sessionId, request: SessionBashRequest(command: "git -c core.quotepath=false diff --numstat", cwd: project.path, timeout: 10000))
+                let unstaged = try await actions.sessionBash(sessionId: sessionId, request: SessionBashRequest(
+                    command: "git -c core.quotepath=false diff --numstat", cwd: project.path, timeout: 10000
+                ))
                 guard !Task.isCancelled else { return .failed }
-                let staged = try await actions.sessionBash(sessionId: sessionId, request: SessionBashRequest(command: "git -c core.quotepath=false diff --cached --numstat", cwd: project.path, timeout: 10000))
+                let staged = try await actions.sessionBash(sessionId: sessionId, request: SessionBashRequest(
+                    command: "git -c core.quotepath=false diff --cached --numstat", cwd: project.path, timeout: 10000
+                ))
                 guard !Task.isCancelled else { return .failed }
-                return .status(GitStatusParser.parse(status: status.stdout, unstagedNumstat: unstaged.success ? unstaged.stdout : "", stagedNumstat: staged.success ? staged.stdout : "", now: Int64(Date().timeIntervalSince1970 * 1000)))
+                return .status(GitStatusParser.parse(
+                    status: status.stdout, unstagedNumstat: unstaged.success ? unstaged.stdout : "",
+                    stagedNumstat: staged.success ? staged.stdout : "", now: Int64(Date().timeIntervalSince1970 * 1000)
+                ))
             } catch { return .failed }
         }
         refreshes[project] = task
@@ -118,7 +130,8 @@ public actor GitStatusSync {
     }
 
     private func project(_ sessionId: String) -> Project? {
-        guard let record = try? store.session(id: sessionId), let machineId = record.metadata?["machineId"]?.stringValue, let path = record.metadata?["path"]?.stringValue else { return nil }
+        guard let record = try? store.session(id: sessionId), let machineId = record.metadata?["machineId"]?.stringValue,
+              let path = record.metadata?["path"]?.stringValue else { return nil }
         let project = Project(machineId: machineId, path: path)
         sessions[sessionId] = project
         return project

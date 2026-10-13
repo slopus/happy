@@ -1,13 +1,16 @@
 import Foundation
+import HappyStore
 import HappyWire
 
 func opsJSON<T: Encodable>(_ value: T) throws -> JSONValue {
     try JSONValue.decode(JSONEncoder().encode(value))
 }
+
 func opsDecode<T: Decodable>(_ value: JSONValue?) throws -> T {
     guard let value else { throw SessionOpsError.malformedResponse }
     return try value.decode(as: T.self)
 }
+
 func opsError(_ error: Error) -> String {
     if case SessionActionError.failed(let message) = error { return message }
     if case SessionOpsError.unavailable(let message) = error { return message }
@@ -19,6 +22,7 @@ func opsVersion(_ value: JSONValue?) throws -> Int {
           number.rounded() == number, number < Double(Int.max) else { throw SessionOpsError.malformedResponse }
     return Int(number)
 }
+
 extension Dictionary where Key == String, Value == JSONValue {
     mutating func set(_ key: String, _ value: String?) {
         if let value { self[key] = .string(value) }
@@ -26,11 +30,8 @@ extension Dictionary where Key == String, Value == JSONValue {
 }
 
 enum SessionCapabilities {
-    static func rigV1(_ metadata: JSONValue?) -> Bool {
-        metadata?["client"]?["id"]?.stringValue == "rig" && (metadata?["rigMetadataVersion"]?.numberValue ?? 0) >= 1
-    }
     static func permits(_ metadata: JSONValue?, method: String) -> Bool {
-        guard rigV1(metadata) else { return true }
+        guard SessionMetadata.isRigV1(metadata) else { return true }
         guard metadata?["capabilities"]?["rpcMethods"]?.arrayValue?.contains(.string(method)) == true else { return false }
         switch method {
         case "abort": return metadata?["capabilities"]?["abort"]?.boolValue == true

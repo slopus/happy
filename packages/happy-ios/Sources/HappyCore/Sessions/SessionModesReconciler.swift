@@ -8,12 +8,51 @@ public enum SessionModesReconciler {
     /// wins, including null; an absent key keeps the local pick. Rig v1 owns
     /// its whole draft and is deliberately left to its separate writer.
     public static func reconcile(local: JSONValue, metadata: JSONValue?, pending: Set<String>) -> JSONValue {
-        guard !SessionCapabilities.rigV1(metadata) else { return local }
+        guard !SessionMetadata.isRigV1(metadata) else { return local }
         var values = local.objectValue ?? [:]
         for field in ["permissionMode", "modelMode", "effortLevel"] where !pending.contains(field) {
             if let value = metadata?[field] { values[field] = value }
         }
         return .object(values)
+    }
+
+    /// storage.applySessions' whole Rig draft rule, including equal-stamp adoption
+    /// and preserving captured picks when a clear echoes before lastMode changes.
+    public static func state(
+        session: SessionRecord, previous: SessionRecord?, composer: ComposerStateRecord,
+        draft: DraftRecord?, pending: Set<String>
+    ) -> SessionComposerState {
+        var result = SessionComposerState(composer: composer, draft: draft)
+        guard session.isRigV1 else {
+            result.composer.values = reconcile(local: composer.values, metadata: session.metadata, pending: pending)
+            return result
+        }
+        let remote = session.metadata?["draftUpdatedAt"]?.numberValue
+        let local = composer.values["draftUpdatedAt"]?.numberValue
+        if let local {
+            guard let remote, remote >= local else { return result }
+        }
+        let mode = session.metadata?["draft"]?.objectValue ?? session.metadata?["lastMode"]?.objectValue
+        let text = session.metadata?["draft"]?["text"]?.stringValue
+        let keepCleared = composer.values["draftIsNull"]?.boolValue == true && text == nil
+            && remote == local && previous?.metadata?["lastMode"] == session.metadata?["lastMode"]
+        var values = composer.values.objectValue ?? [:]
+        values["draftUpdatedAt"] = remote.map(JSONValue.number) ?? .null
+        values["draftIsNull"] = .bool(text == nil)
+        if !keepCleared {
+            if let provider = mode?["providerId"]?.stringValue, let model = mode?["modelId"]?.stringValue {
+                values["modelMode"] = .string("\(provider):\(model)")
+            } else { values["modelMode"] = .null }
+            values["effortLevel"] = mode?["effort"] ?? .null
+            values["permissionMode"] = mode?["permissionMode"] ?? .null
+            values["serviceTier"] = mode?["serviceTier"]
+        }
+        result.composer.values = .object(values)
+        if let text, !text.isEmpty {
+            let time = remote.flatMap { $0 >= 0 && $0 < Double(Int64.max) ? Int64($0) : nil } ?? session.updatedAt
+            result.draft = DraftRecord(sessionId: session.id, text: text, updatedAt: time)
+        } else { result.draft = nil }
+        return result
     }
 }
 
@@ -45,10 +84,11 @@ final class SessionModePushCounters: @unchecked Sendable {
     }
 
     var reconciliation: SessionComposerReconciliation {
-        { [self] session, composer in
-            var next = composer
-            next.values = SessionModesReconciler.reconcile(local: composer.values, metadata: session.metadata, pending: pending(sessionId: session.id))
-            return next
+        { [self] session, previous, composer, draft in
+            SessionModesReconciler.state(
+                session: session, previous: previous, composer: composer, draft: draft,
+                pending: pending(sessionId: session.id)
+            )
         }
     }
 }

@@ -19,6 +19,7 @@ public struct GitFileStatus: Equatable, Sendable {
     public var linesRemoved: Int
     public var oldPath: String?
 }
+
 /// The session header's counts and Changes screen's files for one checkout.
 public struct GitStatus: Equatable, Sendable {
     public var branch: String?
@@ -43,6 +44,7 @@ public struct GitStatus: Equatable, Sendable {
     public var linesRemoved: Int { stagedLinesRemoved + unstagedLinesRemoved }
     public var linesChanged: Int { linesAdded + linesRemoved }
 }
+
 /// File-level git status shares the same snapshot as the session header.
 public typealias GitStatusFiles = GitStatus
 
@@ -137,7 +139,8 @@ public enum GitStatusParser {
             guard parts.count == 3 else { continue }
             var path = decodePath(String(parts[2]))
             // git --numstat abbreviates renames as dir/{old => new}/file.
-            if let open = path.range(of: "{"), let arrow = path.range(of: " => ", range: open.upperBound..<path.endIndex), let close = path.range(of: "}", range: arrow.upperBound..<path.endIndex) {
+            if let open = path.range(of: "{"), let arrow = path.range(of: " => ", range: open.upperBound..<path.endIndex),
+               let close = path.range(of: "}", range: arrow.upperBound..<path.endIndex) {
                 path = String(path[..<open.lowerBound]) + String(path[arrow.upperBound..<close.lowerBound]) + String(path[close.upperBound...])
             } else if let arrow = path.range(of: " => ") {
                 path = String(path[arrow.upperBound...])
@@ -158,6 +161,10 @@ public enum GitStatusParser {
         default: kind = .modified
         }
         let parts = path.split(separator: "/", omittingEmptySubsequences: false)
-        return GitFileStatus(fileName: String(parts.last ?? ""), filePath: parts.dropLast().joined(separator: "/"), fullPath: path, status: kind, isStaged: staged, linesAdded: stats[path]?.added ?? 0, linesRemoved: stats[path]?.removed ?? 0, oldPath: oldPath)
+        return GitFileStatus(
+            fileName: String(parts.last ?? ""), filePath: parts.dropLast().joined(separator: "/"), fullPath: path,
+            status: kind, isStaged: staged, linesAdded: stats[path]?.added ?? 0,
+            linesRemoved: stats[path]?.removed ?? 0, oldPath: oldPath
+        )
     }
 }

@@ -8,6 +8,7 @@ public enum NewSessionStartPhase: String, Sendable {
     case opening
     case avatar
 }
+
 /// newSessionProgress.NewSessionPrimaryAction.
 public enum NewSessionPrimaryAction: String, Sendable {
     case send
@@ -15,6 +16,7 @@ public enum NewSessionPrimaryAction: String, Sendable {
     case busy
     case idle
 }
+
 /// Pure labels and button states used while starting a session.
 public enum NewSessionProgress {
     /// Ports newSessionProgress.resolveNewSessionProgressLabel.
@@ -27,12 +29,14 @@ public enum NewSessionProgress {
         case .opening: return createsBot ? "Opening bot…" : "Opening session…"
         }
     }
+
     /// Ports newSessionProgress.resolveNewSessionPrimaryAction.
     public static func primaryAction(canSubmit: Bool, phase: NewSessionStartPhase?, canCancel: Bool) -> NewSessionPrimaryAction {
         if phase != nil { return canCancel ? .stop : .busy }
         return canSubmit ? .send : .idle
     }
 }
+
 /// New sessions reuse the same account overrides and CLI gates as Settings.
 public enum NewSessionDefaults {
     /// Ports new/index.tsx default picks through shared AgentDefaults.resolve.
@@ -40,6 +44,7 @@ public enum NewSessionDefaults {
         AgentDefaults.resolve(settings["agentDefaultOverrides"]?.objectValue ?? [:], agent, cliVersion: cliVersion)
     }
 }
+
 /// pendingChats.PendingChat, intentionally memory-only for a start in flight.
 public struct PendingChat: Equatable, Sendable {
     /// A failed placeholder retains the anchor to return its screen to.
@@ -56,28 +61,37 @@ public struct PendingChat: Equatable, Sendable {
     public var queued: [String]
     public var createdAt: Int64
 }
+
 /// Per-account placeholder chats; text survives switching away during a spawn.
 public actor PendingChats {
     private var chats: [String: PendingChat] = [:]
     private var observers: [UUID: AsyncStream<[String: PendingChat]>.Continuation] = [:]
     private var handovers: Set<String> = []
+
     public init() {}
+
     /// Ports pendingChats.isPendingChatId.
     public nonisolated static func isPendingChatId(_ id: String) -> Bool {
         id.hasPrefix("pending-chat:")
     }
+
     /// Ports pendingChats.openPendingChat.
     public func open(anchorSessionId: String, knownSessionIds: [String]) -> PendingChat {
-        let chat = PendingChat(id: "pending-chat:\(UUID())", anchorSessionId: anchorSessionId, knownSessionIds: knownSessionIds, status: .starting, draft: "", queued: [], createdAt: Int64(Date().timeIntervalSince1970 * 1000))
+        let chat = PendingChat(
+            id: "pending-chat:\(UUID())", anchorSessionId: anchorSessionId, knownSessionIds: knownSessionIds,
+            status: .starting, draft: "", queued: [], createdAt: Int64(Date().timeIntervalSince1970 * 1000)
+        )
         chats = chats.filter { $0.value.status != .failed }
         chats[chat.id] = chat
         publish()
         return chat
     }
+
     /// Ports pendingChats.getPendingChat.
     public func get(id: String) -> PendingChat? {
         chats[id]
     }
+
     /// Ports pendingChats.usePendingChatRecords.
     public func observe() -> AsyncStream<[String: PendingChat]> {
         let id = UUID()
@@ -87,6 +101,7 @@ public actor PendingChats {
         continuation.onTermination = { [weak self] _ in Task { await self?.removeObserver(id) } }
         return stream
     }
+
     /// Ports pendingChats.setPendingChatDraft.
     public func setDraft(id: String, draft: String) {
         guard var chat = chats[id], chat.sessionId == nil, chat.draft != draft else { return }
@@ -94,6 +109,7 @@ public actor PendingChats {
         chats[id] = chat
         publish()
     }
+
     /// Ports pendingChats.submitPendingChat.
     public func submit(id: String, message: String) {
         guard var chat = chats[id], chat.sessionId == nil, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -102,6 +118,7 @@ public actor PendingChats {
         chats[id] = chat
         publish()
     }
+
     /// Ports pendingChats.settlePendingChat.
     public func settle(id: String, sessionId: String) {
         guard var chat = chats[id], chat.sessionId == nil else { return }
@@ -109,6 +126,7 @@ public actor PendingChats {
         chats[id] = chat
         publish()
     }
+
     /// Ports pendingChats.failPendingChat.
     public func fail(id: String) {
         guard var chat = chats[id], chat.sessionId == nil else { return }
@@ -116,13 +134,18 @@ public actor PendingChats {
         chats[id] = chat
         publish()
     }
+
     /// Ports pendingChats.dismissPendingChat.
     public func dismiss(id: String) {
         chats.removeValue(forKey: id)
         publish()
     }
+
     /// Ports pendingChatHandover.handOverPendingChat; send returns true on acceptance.
-    public func handOver(id: String, sessionId: String, send: @Sendable (String, String) async throws -> Bool, writeDraft: @Sendable (String, String) async throws -> Void) async throws {
+    public func handOver(
+        id: String, sessionId: String, send: @Sendable (String, String) async throws -> Bool,
+        writeDraft: @Sendable (String, String) async throws -> Void
+    ) async throws {
         guard chats[id]?.sessionId == nil, !handovers.contains(id) else { return }
         handovers.insert(id)
         defer { handovers.remove(id) }
@@ -153,7 +176,10 @@ public actor PendingChats {
         }
         if let sendError { throw sendError }
     }
+
     /// Ports pendingChatHandover.retirePendingChat and returnPendingChatDraft.
+    /// readDraft returns nil only if the anchor session is absent; an existing
+    /// anchor with no draft returns "", so its pending writing is preserved.
     public func retire(id: String, readDraft: @Sendable (String) async throws -> String?, writeDraft: @Sendable (String, String) async throws -> Void) async throws {
         guard let chat = chats[id], chat.status != .failed, chat.sessionId == nil, !handovers.contains(id) else { return }
         handovers.insert(id)
@@ -170,9 +196,11 @@ public actor PendingChats {
     private static func join(_ text: [String]) -> String {
         text.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }.joined(separator: "\n\n")
     }
+
     private func publish() {
         for observer in observers.values { observer.yield(chats) }
     }
+
     private func removeObserver(_ id: UUID) {
         observers.removeValue(forKey: id)
     }

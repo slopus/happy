@@ -9,7 +9,10 @@ final class OpsModeSyncTests: XCTestCase {
     func testPendingMasksStaleMetadataAndNullOtherwiseResets() {
         let local: JSONValue = .object(["permissionMode": .string("auto"), "modelMode": .string("local"), "serviceTier": .string("fast")])
         let metadata: JSONValue = .object(["permissionMode": .null, "modelMode": .string("stale")])
-        XCTAssertEqual(SessionModesReconciler.reconcile(local: local, metadata: metadata, pending: ["modelMode"]), .object(["permissionMode": .null, "modelMode": .string("local"), "serviceTier": .string("fast")]))
+        XCTAssertEqual(
+            SessionModesReconciler.reconcile(local: local, metadata: metadata, pending: ["modelMode"]),
+            .object(["permissionMode": .null, "modelMode": .string("local"), "serviceTier": .string("fast")])
+        )
         XCTAssertEqual(SessionModesReconciler.reconcile(local: local, metadata: .object([:]), pending: []), local)
     }
 
@@ -44,7 +47,11 @@ final class OpsModeSyncTests: XCTestCase {
     }
 
     func update(_ metadata: JSONValue, version: Int, fixture: ServerFixture) -> UpdateContainer {
-        UpdateContainer(id: "update-\(version)", seq: version, body: .updateSession(UpdateSessionUpdate(id: "s", metadata: VersionedValue(version: version, value: fixture.seal(metadata)))), createdAt: Int64(version))
+        UpdateContainer(
+            id: "update-\(version)", seq: version,
+            body: .updateSession(UpdateSessionUpdate(id: "s", metadata: VersionedValue(version: version, value: fixture.seal(metadata)))),
+            createdAt: Int64(version)
+        )
     }
 
     func testRealtimeHookKeepsPendingThenAppliesNullAndAbsentRules() async throws {

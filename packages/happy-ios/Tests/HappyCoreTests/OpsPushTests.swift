@@ -16,7 +16,11 @@ final class OpsPushTests: XCTestCase {
         let request = try XCTUnwrap(http.requests.first)
         XCTAssertEqual(request.url.absoluteString, "https://exp.host/--/api/v2/push/getExpoPushToken")
         XCTAssertEqual(request.headers, ["content-type": "application/json"])
-        XCTAssertEqual(try request.jsonBody(JSONValue.self), .object(["type": .string("apns"), "deviceId": .string("uuid-upper"), "development": .bool(true), "appId": .string("com.slopus.happy.dev"), "deviceToken": .string("000fff"), "projectId": .string("4558dd3d-cd5a-47cd-bad9-e591a241cc06")]))
+        XCTAssertEqual(try request.jsonBody(JSONValue.self), .object([
+            "type": .string("apns"), "deviceId": .string("uuid-upper"), "development": .bool(true),
+            "appId": .string("com.slopus.happy.dev"), "deviceToken": .string("000fff"),
+            "projectId": .string("4558dd3d-cd5a-47cd-bad9-e591a241cc06"),
+        ]))
     }
 
     func testExchangeRejectsMalformedAndHTTPFailure() async throws {
@@ -100,10 +104,54 @@ final class OpsPushTests: XCTestCase {
         let cleared = try await first.loadToken()
         XCTAssertNil(cleared)
     }
+
+    func testReplacementSavesNewTokenBeforeIgnoringOldRemovalFailure() async throws {
+        let http = FakeHTTP()
+        http.onRaw("POST /--/api/v2/push/getExpoPushToken", #"{"data":{"expoPushToken":"ExponentPushToken[new]"}}"#)
+        http.onRaw("POST /v1/push-tokens", #"{"success":true}"#)
+        http.onRaw("DELETE /v1/push-tokens/ExponentPushToken[old]", "offline", status: 503)
+        let cache = PushCache()
+        try await cache.saveToken("ExponentPushToken[old]")
+        let registration = TokenPushRegistration(source: exchange(http), cache: cache)
+        let token = try await registration.register(api: testAPI(http))
+        let saved = try await cache.loadToken()
+        XCTAssertEqual(token, "ExponentPushToken[new]")
+        XCTAssertEqual(saved, token)
+        XCTAssertEqual(http.requests("DELETE /v1/push-tokens/ExponentPushToken[old]").count, 1)
+        _ = try await registration.register(api: testAPI(http))
+        XCTAssertEqual(http.requests("DELETE /v1/push-tokens/ExponentPushToken[old]").count, 1)
+    }
+
+    func testRemovalClearsOnlyMatchingCacheAfterSuccessfulUnregistration() async throws {
+        let http = FakeHTTP()
+        http.onRaw("DELETE /v1/push-tokens/current", #"{"success":true}"#)
+        http.onRaw("DELETE /v1/push-tokens/other", #"{"success":true}"#)
+        let cache = PushCache()
+        try await cache.saveToken("current")
+        let registration = TokenPushRegistration(source: exchange(http, deviceToken: nil), cache: cache)
+        try await registration.removePushToken(api: testAPI(http), token: "other")
+        let retained = try await cache.loadToken()
+        XCTAssertEqual(retained, "current")
+        http.onRaw("DELETE /v1/push-tokens/current", "offline", status: 503)
+        do {
+            try await registration.removePushToken(api: testAPI(http), token: "current")
+            XCTFail("failed unregistration must retain cache")
+        } catch {}
+        let afterFailure = try await cache.loadToken()
+        XCTAssertEqual(afterFailure, "current")
+        http.onRaw("DELETE /v1/push-tokens/current", #"{"success":true}"#)
+        try await registration.removePushToken(api: testAPI(http), token: "current")
+        let cleared = await registration.currentToken()
+        XCTAssertNil(cleared)
+    }
 }
 
 private actor PushCache: PushRegistrationTokenCache {
     var token: String?
+
     func loadToken() async throws -> String? { token }
+
     func saveToken(_ token: String) async throws { self.token = token }
+
+    func clearToken() async throws { token = nil }
 }

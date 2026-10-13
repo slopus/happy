@@ -89,7 +89,11 @@ public struct OutboxSender: ChatSending {
 
     /// Atomically accepts supported files and encoded text into the local outbox.
     public func send(_ message: OutgoingMessage, sessionId: String) async throws -> String {
-        try await sync.accept(message, sessionId: sessionId, filesDirectory: filesDirectory)
+        let draftStamp = try store.composerState(sessionId: sessionId).values["draftUpdatedAt"]
+        let id = try await sync.accept(message, sessionId: sessionId, filesDirectory: filesDirectory)
+        // Once accepted, a cache failure must not report a failed send and invite a duplicate.
+        try? sync.rigComposer.clearAfterSend(sessionId: sessionId, expectedStamp: draftStamp)
+        return id
     }
 
     /// Clears a failed item's attempts and schedules another delivery.
@@ -109,6 +113,10 @@ public struct OutboxSender: ChatSending {
 
     /// Saves unsent text; an empty string clears the stored draft.
     public func saveDraft(sessionId: String, text: String) throws {
+        if try store.session(id: sessionId)?.isRigV1 == true {
+            try sync.rigComposer.setText(sessionId: sessionId, text: text)
+            return
+        }
         try store.saveDraft(sessionId: sessionId, text: text, at: Int64(Date().timeIntervalSince1970 * 1000))
     }
     /// Reads the local permission, model, effort and service-tier selections.
