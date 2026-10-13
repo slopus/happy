@@ -47,7 +47,7 @@ extension Route {
         switch self {
         case .session(let id), .sessionInfo(let id), .sessionFiles(let id), .sessionChanges(let id):
             id
-        case .sessionFile(let id, _), .sessionMessage(let id, _):
+        case .sessionFile(let id, _), .sessionMessage(let id, _, _):
             id
         default:
             nil

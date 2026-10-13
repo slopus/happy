@@ -73,6 +73,7 @@ final class ChatPlanView: UIView {
     private var timers: [ChatElapsedLabel] = []
     private var pulses: [ChatPulseView] = []
     private var diffs: [DiffChunkView] = []
+    private var diffHeaders: [DiffFileHeaderView] = []
     private var scrollers: [ChatScrollerView] = []
 
     override init(frame: CGRect) {
@@ -105,6 +106,7 @@ final class ChatPlanView: UIView {
         var timerIndex = 0
         var pulseIndex = 0
         var diffIndex = 0
+        var diffHeaderIndex = 0
         var scrollerIndex = 0
         var order: [UIView] = []
         for item in plan.items {
@@ -152,6 +154,18 @@ final class ChatPlanView: UIView {
                 view.setLayoutFrame(frame)
                 view.apply(diff)
                 order.append(view)
+            case .diffHeader(let header, let path, let frame):
+                let view = take(&diffHeaders, &diffHeaderIndex) {
+                    let view = DiffFileHeaderView()
+                    // The plan draws hunkBg behind it, shaped as it must be.
+                    view.backgroundColor = .clear
+                    // Its taps are the plan's hits.
+                    view.isUserInteractionEnabled = false
+                    return view
+                }
+                view.setLayoutFrame(frame)
+                view.apply(header, path: path)
+                order.append(view)
             case .scroller(let content, let frame, let radius):
                 // The same strip of the same row keeps where it was scrolled to.
                 let key = "\(plan.id)#\(scrollerIndex)"
@@ -182,6 +196,7 @@ final class ChatPlanView: UIView {
             view.onShowMore = nil
             view.isHidden = true
         }
+        for view in diffHeaders[diffHeaderIndex...] { view.isHidden = true }
         for view in scrollers[scrollerIndex...] { view.isHidden = true }
         for view in order {
             view.isHidden = false

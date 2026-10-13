@@ -14,7 +14,8 @@ enum Route: Hashable {
     case sessionFiles(id: String)
     case sessionFile(id: String, path: String)
     case sessionChanges(id: String)
-    case sessionMessage(id: String, messageId: String)
+    /// `file`: of a patch's files, the one to show alone.
+    case sessionMessage(id: String, messageId: String, file: String? = nil)
     case textSelection(text: String)
 
     // Starting work
@@ -54,8 +55,8 @@ enum Screens {
             return SessionChangesViewController(context: context, session: session, sessionId: id)
         case .sessionFile(let id, let path):
             return SessionFileViewController(context: context, session: session, sessionId: id, path: path)
-        case .sessionMessage(let id, let messageId):
-            return MessageDetailViewController(context: context, session: session, sessionId: id, messageId: messageId)
+        case .sessionMessage(let id, let messageId, let file):
+            return MessageDetailViewController(context: context, session: session, sessionId: id, messageId: messageId, file: file)
         case .textSelection(let text):
             return TextSelectionViewController(text: text)
         case .sessionFiles:

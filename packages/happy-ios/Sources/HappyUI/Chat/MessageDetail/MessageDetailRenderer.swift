@@ -17,6 +17,8 @@ struct MessageDetailInput: Equatable, Sendable {
     /// The files the reader opened past "Show N more lines", by diff.
     var diffExpanded: [Int: Set<Int>]
     var maxContentWidth: CGFloat
+    /// Of a patch's files, the one the reader tapped in the chat.
+    var focusFile: String?
 }
 
 /// Measures a message's screen off the main thread, once per input and
@@ -79,6 +81,15 @@ enum MessageDetailRenderer {
             if let view = ChatRowRenderer.taskView(call.children) { entries.append(view) }
         case .diff(let kind, let chunks, let replaceAll):
             if let view = diffs(kind, chunks: chunks, replaceAll: replaceAll, toolId: call.id, input: input) { entries.append(view) }
+        case .patch(let files):
+            entries.append(patch(files, tool: call.tool, toolId: call.id, input: input))
+        case .unifiedDiff(let diff):
+            if let diff, let card = diffCard(
+                header: diff.fileName.flatMap { $0.isEmpty ? nil : ($0, .modified, DiffStats.countPatch(diff.patch), nil) },
+                source: DiffChunkSource(patch: diff.patch, fileName: diff.fileName), index: 0, toolId: call.id, input: input
+            ) {
+                entries.append(ChatStackEntry(piece: card, marginBottom: 28, padding: LayoutInsets(top: 0, left: 12, bottom: 0, right: 12)))
+            }
         case .generic(let generic):
             entries += sections(generic)
         }
@@ -164,6 +175,55 @@ enum MessageDetailRenderer {
             guard !chunks.isEmpty, let piece = diff(0, showLineNumbers: true) else { return nil }
             return ChatStackEntry(piece: piece, marginBottom: 28)
         }
+    }
+
+    /// CodexPatchViewFull: the tapped file alone, or every file when none
+    /// was tapped or it is no longer in the patch, each in its own card,
+    /// 16 apart. PatchFallback without its error when the patch can't be
+    /// read.
+    static func patch(_ files: [ToolPatchFile]?, tool: ToolCall, toolId: String, input: MessageDetailInput) -> ChatStackEntry {
+        guard let files else {
+            let raw = ChatPatch.fallbackText(tool.input).flatMap { $0.isEmpty ? nil : $0 }
+            return ChatRowRenderer.section(Strings.Tools.name(.applyChanges), .stack(raw.map { [ChatStackEntry(piece: ChatRowRenderer.codeView($0))] } ?? []))
+        }
+        let focused = files.indices.filter { files[$0].file == input.focusFile }
+        let shown = focused.isEmpty ? Array(files.indices) : focused
+        let cards = shown.map { index in
+            let file = files[index]
+            let source: DiffChunkSource? = switch file.diff {
+            case .patch(let patch)?: DiffChunkSource(patch: patch, fileName: file.fileName)
+            case .pair(let old, let new)?: DiffChunkSource(oldText: old, newText: new, fileName: file.fileName)
+            case nil: nil
+            }
+            let card = diffCard(header: (file.path, file.kind, file.stats, file.movePath), source: source, index: index, toolId: toolId, input: input)
+            return ChatStackEntry(piece: card ?? .stack([]))
+        }
+        return ChatStackEntry(piece: .stack(cards, gap: 16), marginBottom: 28, padding: LayoutInsets(top: 0, left: 12, bottom: 0, right: 12))
+    }
+
+    /// The full views' card: surface, a 1 pt divider rim, 8 round, the
+    /// header and the diff inside the rim. Nil with neither.
+    static func diffCard(
+        header: (path: String, kind: FileChangeKind, stats: DiffStats.Counts, movePath: String?)?,
+        source: DiffChunkSource?, index: Int, toolId: String, input: MessageDetailInput
+    ) -> ChatPiece? {
+        let border: CGFloat = 1
+        let radius: CGFloat = 8
+        var parts: [ChatStackEntry] = []
+        if let header {
+            parts.append(ChatStackEntry(piece: ChatRowRenderer.patchHeader(
+                path: header.path, kind: header.kind, stats: header.stats, movePath: header.movePath, opens: nil, topRadius: radius - border
+            )))
+        }
+        if let source, let diff = ChatRowRenderer.diffPiece(source, index: index, toolId: toolId, showLineNumbers: input.showLineNumbers, expanded: input.diffExpanded[index] ?? []) {
+            parts.append(ChatStackEntry(piece: diff))
+        }
+        guard !parts.isEmpty else { return nil }
+        return .stack([ChatStackEntry(
+            piece: .stack(parts),
+            padding: LayoutInsets(top: border, left: border, bottom: border, right: border),
+            background: ChatBox(frame: .zero, fill: Palette.surface, border: Palette.divider, borderWidth: border, radius: radius)
+        )])
     }
 
     /// "Edit N of M", with the "Replace All" badge beside it.

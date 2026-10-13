@@ -356,7 +356,16 @@ final class ToolFullPresentationTests: XCTestCase {
         XCTAssertEqual(full(tool("write", ["file_path": "/repo/n.md", "content": "x"])).main,
                        .diff(.write, chunks: [ToolDiffChunk(oldText: "", newText: "x", fileName: "/repo/n.md")], replaceAll: []))
         XCTAssertFalse(full(tool("Task")).wide)
-        guard case .generic = full(tool("apply_patch", ["input": "*** Begin Patch"])).main else { return XCTFail("generic until the Codex parser lands") }
+    }
+
+    func testPatchesAndTurnDiffsHaveViewsOfTheirOwn() {
+        let patch = full(tool("CodexPatch", ["changes": ["/repo/a.ts": ["kind": ["type": "add"], "diff": "x"]]], result: "Done"))
+        XCTAssertEqual(patch.main, .patch([ToolPatchFile(file: "/repo/a.ts", path: "a.ts", movePath: nil, kind: .added, diff: .pair(old: "", new: "x"))]))
+        XCTAssertEqual(patch.outcome, .output("Done"))
+        XCTAssertEqual(full(tool("apply_patch", ["input": "*** Begin Patch"])).main, .patch(nil), "PatchFallback")
+        XCTAssertEqual(full(tool("GeminiDiff", ["unified_diff": "@@ -1 +1 @@\n-a\n+b", "path": "x.py"])).main,
+                       .unifiedDiff(ToolUnifiedDiff(["unified_diff": "@@ -1 +1 @@\n-a\n+b", "path": "x.py"])))
+        XCTAssertEqual(full(tool("CodexDiff")).main, .unifiedDiff(nil))
     }
 
     func testATaskEndsWithHowItWent() {
