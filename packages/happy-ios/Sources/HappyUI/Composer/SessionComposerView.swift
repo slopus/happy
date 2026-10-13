@@ -21,6 +21,11 @@ private let logger = Logger(subsystem: "engineering.happy", category: "composer"
 /// session's own (its composer state) over the agent defaults over the
 /// metadata (`ComposerModes`). A pick shows at once and goes out through
 /// `sessionSetAgentModes`.
+///
+/// The store is never touched on the main thread. The draft, the session's
+/// picks and the failed uploads arrive from `ComposerDraftWriter`, which
+/// reads and writes them in order on a background task and delivers only
+/// what moved; the view keeps the draft logic in `ComposerDraftModel`.
 final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegate {
     weak var composerDelegate: (any ChatComposerDelegate)?
 
@@ -41,14 +46,17 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private var showsPreciseContext = false
     private var detailsVisible = true
 
-    private var autosave: DraftAutosave
+    private var draft = ComposerDraftModel()
+    private let draftWriter: ComposerDraftWriter
+    /// The debounce of an edit to non-empty text (`DraftAutosave.interval`).
     private var draftSave: Task<Void, Never>?
+    /// A read asked for after a composition ended, not yet delivered.
+    private var draftRefreshPending = false
     private var isAborting = false
     /// Stop was pressed; Stop stays hidden until the agent stops working
     /// (`stopRequested`), so a late status update can't leave it up.
     private var stopRequested = false
     private var isSending = false
-    private var knownFailedAttachments: Int
     /// Picked images wait here until the outbox has its own copies.
     private let staging: ComposerAttachmentStaging
     private let images: ComposerImagePicker
@@ -74,11 +82,14 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     init(environment: ChatComposerEnvironment) {
         self.environment = environment
-        let sender = environment.account.sender
-        let sessionId = environment.sessionId
-        let draft = (try? sender.draft(sessionId: sessionId)) ?? ""
-        autosave = DraftAutosave(loaded: draft)
-        knownFailedAttachments = (try? sender.failedAttachmentCount(sessionId: sessionId)) ?? 0
+        draftWriter = ComposerDraftWriter(
+            sessionId: environment.sessionId,
+            storage: environment.account.sender,
+            sending: environment.sender,
+            onFailure: { failure in
+                logger.error("draft \(String(describing: failure.operation), privacy: .public) failed: \(String(describing: failure.error), privacy: .public)")
+            }
+        )
         staging = ComposerAttachmentStaging(filesDirectory: environment.account.filesDirectory)
         images = ComposerImagePicker(staging: staging)
         modes = ComposerModes(metadata: nil, picks: ComposerPicks(), agentDefaultOverrides: [:])
@@ -90,7 +101,6 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         statusLabel.isUserInteractionEnabled = false
         addSubview(statusLabel)
 
-        card.text = draft
         card.delegate = self
         addSubview(card)
         images.host = { [weak self] in self?.hostViewController }
@@ -109,6 +119,10 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
         applyConfiguration()
         applyDetails()
+        // The draft comes in once read; the text stays empty until then.
+        draftWriter.start { [weak self] delivery in
+            self?.receive(delivery)
+        }
 
         let center = NotificationCenter.default
         center.addObserver(self, selector: #selector(appWillResignActive), name: UIApplication.willResignActiveNotification, object: nil)
@@ -117,11 +131,18 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             self.applyDetails()
             self.composerDelegate?.composerDidInvalidateHeight(self)
         }
+        registerForTraitChanges([ZenModeTrait.self]) { (self: Self, _) in
+            self.applyConfiguration()
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    deinit {
+        draftWriter.close()
     }
 
     // MARK: ChatComposerView
@@ -138,18 +159,15 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         guard state != self.state else { return }
         let previous = self.state
         let before = (composerHeight(fitting: bounds.width), cardOffset)
+        let wasSynced = isDraftSynced
         self.state = state
         let record = state.session.record
 
-        // The session's picks live in its composer state, which
-        // sessionSetAgentModes and the metadata reconciler both write.
-        if previous?.session.record != record,
-           let values = try? environment.account.sender.composerState(sessionId: environment.sessionId).values {
-            picks = ComposerPicks(values: values)
-        }
         recomputeModes()
-        if previous?.session.record != record, RigCatalog.isRigV1(record?.metadata) {
-            applyRemoteDraft()
+        if isDraftSynced, !wasSynced, draft.isLoaded {
+            // A draft read before the session was known to be a Happy
+            // Agent's was not taken as a remote edit; look again.
+            draftWriter.refresh()
         }
 
         if let record {
@@ -173,9 +191,6 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         // Nothing to attach to: a picked image would be dropped at send.
         if !SessionComposerRules.canUseAttachments(record), !images.images.isEmpty {
             images.clear()
-        }
-        if previous?.delivery != state.delivery {
-            checkFailedAttachments()
         }
 
         applyDetails()
@@ -312,13 +327,25 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         applyConfiguration()
         let account = environment.account
         let sessionId = environment.sessionId
-        Task {
+        // It reads and writes the store before it goes out: not on main.
+        Task.detached(priority: .userInitiated) { [weak self] in
             do {
                 try await account.actions.sessionSetAgentModes(sessionId: sessionId, patch: patch, transport: account.realtime)
             } catch {
                 logger.error("sessionSetAgentModes failed: \(String(describing: error), privacy: .public)")
+                await self?.restoreStoredPicks()
             }
         }
+    }
+
+    /// A pick that never reached the store goes back to the stored one. One
+    /// that did (only the network failed) comes back with the store's next
+    /// read and stays.
+    private func restoreStoredPicks() {
+        guard let stored = draft.storePicks, stored != picks else { return }
+        picks = stored
+        recomputeModes()
+        applyConfiguration()
     }
 
     // MARK: Card
@@ -341,6 +368,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         configuration.primaryAction = primary
         configuration.isPrimaryBusy = isAborting
         configuration.showsAdd = canAttach
+        // localSettings.zenMode, as SessionView passes it.
+        configuration.zenMode = traitCollection.isZenMode
         configuration.attachments = canAttach
             ? images.images.map { AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL) }
             : []
@@ -446,13 +475,14 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private func send() {
         guard !isSending else { return }
         let text = card.text
-        let sessionId = environment.sessionId
         let picked = images.images
         let message = OutgoingMessage(text: text, attachments: picked.map(\.attachment))
         // sync.ts: images the agent can't take are named before anything
-        // goes; with nothing else to send, nothing does.
+        // goes; with nothing else to send, nothing does. A few pictures
+        // against the record the screen already holds.
         if !picked.isEmpty,
-           let plan = try? environment.account.sender.attachmentPlan(message, sessionId: sessionId),
+           let record = state?.session.record,
+           case let plan = OutboxSender.attachmentPlan(message, session: record),
            plan.shouldShowUnsupportedAlert {
             alert(Strings.ImageUpload.notSupportedTitle, Strings.ImageUpload.notSupportedMessage)
             if !plan.shouldSendText || (!Self.hasContent(text) && plan.accepted.isEmpty) {
@@ -460,19 +490,20 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             }
         }
         isSending = true
-        let sender = environment.sender
+        // Behind the draft writes before it, ahead of the ones after.
+        let sending = draftWriter.send(message)
         // The outbox copies the staged files; they outlive a composer
         // closed mid-send.
         let staging = staging
         Task { [weak self] in
             do {
-                let localId = try await sender.send(message, sessionId: sessionId)
+                let localId = try await sending.value
                 withExtendedLifetime(staging) {}
                 guard let self else { return }
                 self.isSending = false
                 // Only clear what was sent: typing may have gone on.
                 if self.card.text == text {
-                    self.clearDraft(stored: !RigCatalog.isRigV1(self.state?.session.record?.metadata))
+                    self.clearDraft(stored: !self.isDraftSynced)
                     self.card.text = ""
                 }
                 self.images.removeSent(picked.map(\.id))
@@ -481,6 +512,11 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             } catch {
                 self?.isSending = false
                 logger.error("send failed: \(String(describing: error), privacy: .public)")
+                if error is ComposerDraftWriter.UnsavedDraftError {
+                    // Nothing went; the text stays for another try.
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    self?.card.shake()
+                }
             }
         }
     }
@@ -516,21 +552,24 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     // MARK: Draft
 
+    /// A Happy Agent session: every edit is written at once and others'
+    /// edits come in through the store.
+    private var isDraftSynced: Bool {
+        RigCatalog.isRigV1(state?.session.record?.metadata)
+    }
+
     private func draftChanged(_ text: String) {
         draftSave?.cancel()
         draftSave = nil
-        let synced = RigCatalog.isRigV1(state?.session.record?.metadata)
-        switch autosave.textChanged(text, synced: synced) {
-        case .none:
-            break
-        case .saveNow(let value):
-            saveDraft(value)
-        case .saveLater(let value):
+        let (write, debounce) = draft.textChanged(text, synced: isDraftSynced)
+        if let write {
+            draftWriter.save(write.text, generation: write.generation)
+        }
+        if debounce {
             draftSave = Task { [weak self] in
                 try? await Task.sleep(for: DraftAutosave.interval)
                 guard !Task.isCancelled, let self else { return }
-                self.autosave.saved(value)
-                self.saveDraft(value)
+                self.flushDraft()
             }
         }
     }
@@ -538,8 +577,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private func flushDraft() {
         draftSave?.cancel()
         draftSave = nil
-        if let value = autosave.flush() {
-            saveDraft(value)
+        if let write = draft.flush() {
+            draftWriter.save(write.text, generation: write.generation)
         }
     }
 
@@ -548,37 +587,63 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private func clearDraft(stored: Bool) {
         draftSave?.cancel()
         draftSave = nil
-        autosave.clear()
-        if stored {
-            saveDraft("")
+        if let write = draft.clear(stored: stored) {
+            draftWriter.save(write.text, generation: write.generation)
         }
     }
 
-    /// useDraft's store subscription: another device edited a Happy Agent
-    /// session's draft. It replaces the text, caret at the end, but not
-    /// under an input method's composition, which it would cut off.
-    private func applyRemoteDraft() {
-        guard let draft = try? environment.account.sender.draft(sessionId: environment.sessionId),
-              let remote = autosave.storeChanged(draft, composing: card.hasMarkedText) else { return }
-        draftSave?.cancel()
-        draftSave = nil
-        card.text = remote
+    /// A read from the writer: the opening draft, useDraft's store
+    /// subscription (another device edited a Happy Agent session's draft:
+    /// it replaces the text, caret at the end, but not under an input
+    /// method's composition, which it would cut off), the session's picks
+    /// and the uploads the outbox gave up on.
+    private func receive(_ delivery: ComposerStoreDelivery) {
+        draftRefreshPending = false
+        let opening = !draft.isLoaded
+        let change = draft.receive(delivery, text: card.text, synced: isDraftSynced, composing: card.hasMarkedText)
+        // sessionSetAgentModes and the metadata reconciler write the picks.
+        if let picks = change.picks, picks != self.picks {
+            self.picks = picks
+            recomputeModes()
+            applyConfiguration()
+        }
+        if let text = change.text {
+            draftSave?.cancel()
+            draftSave = nil
+            if opening {
+                // The draft the chat opens with: no animated growth.
+                UIView.performWithoutAnimation { card.text = text }
+            } else {
+                card.text = text
+            }
+        }
+        if change.newlyFailedAttachments > 0 {
+            alert(Strings.ImageUpload.uploadFailedTitle, Strings.ImageUpload.uploadFailedMessage(change.newlyFailedAttachments))
+        }
     }
 
     /// The composition a remote edit waited for has ended (committed,
     /// cancelled or blurred). The text change runs first, so a committed
-    /// edit is saved before the store is read and stays.
+    /// edit is written before the store is read again, and stays.
     private func applyDeferredRemoteDraft() {
-        guard autosave.remoteDeferred, !card.hasMarkedText else { return }
-        applyRemoteDraft()
+        guard draft.autosave.remoteDeferred, !card.hasMarkedText, !draftRefreshPending else { return }
+        draftRefreshPending = true
+        draftWriter.refresh()
     }
 
-    private func saveDraft(_ text: String) {
-        try? environment.account.sender.saveDraft(sessionId: environment.sessionId, text: text)
-    }
-
+    /// On the way to the background: the pending edit goes to disk under a
+    /// background task, so a suspension right after can't drop it.
     @objc private func appWillResignActive() {
         flushDraft()
+        let writer = draftWriter
+        let lease = DraftWriteLease()
+        Task {
+            if !(await writer.settle()) {
+                // Still unsaved; the writer keeps trying while it can.
+                logger.error("draft not saved before the background")
+            }
+            lease.end()
+        }
     }
 
     // MARK: Autocomplete
@@ -600,16 +665,17 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         let sessionId = environment.sessionId
         let actions = environment.account.actions
         suggestionTask = Task { [weak self] in
-            let results: [ComposerSuggestion]
-            if query.hasPrefix("/") {
-                results = ComposerCommands.suggestions(query, metadata: metadata)
-            } else if query.hasPrefix("@") {
-                results = await ComposerFileIndex.shared.suggestions(query, sessionId: sessionId) { id in
-                    try? await actions.sessionRipgrep(sessionId: id, args: ComposerFileIndex.ripgrepArguments)
+            // The search runs off main; only its list comes back.
+            let results = await Task.detached(priority: .userInitiated) { () -> [ComposerSuggestion] in
+                if query.hasPrefix("/") {
+                    return ComposerCommands.suggestions(query, metadata: metadata)
+                } else if query.hasPrefix("@") {
+                    return await ComposerFileIndex.shared.suggestions(query, sessionId: sessionId) { id in
+                        try? await actions.sessionRipgrep(sessionId: id, args: ComposerFileIndex.ripgrepArguments)
+                    }
                 }
-            } else {
-                results = []
-            }
+                return []
+            }.value
             guard !Task.isCancelled, let self, self.activeQuery == query else { return }
             let selected = ComposerAutocomplete.selection(
                 previous: self.suggestions.selected, previousCount: self.suggestions.items.count, count: results.count
@@ -658,16 +724,6 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     }
 
     // MARK: Attachments
-
-    /// A failed upload is only known once the outbox gives up on it; the
-    /// alert counts the files that failed since the last look.
-    private func checkFailedAttachments() {
-        guard let count = try? environment.account.sender.failedAttachmentCount(sessionId: environment.sessionId) else { return }
-        if count > knownFailedAttachments {
-            alert(Strings.ImageUpload.uploadFailedTitle, Strings.ImageUpload.uploadFailedMessage(count - knownFailedAttachments))
-        }
-        knownFailedAttachments = count
-    }
 
     private func alert(_ title: String, _ message: String) {
         guard let host = hostViewController else { return }
@@ -795,6 +851,24 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     private static var now: Int64 {
         Int64(Date().timeIntervalSince1970 * 1000)
+    }
+}
+
+/// A background task held until the draft writes before it are on disk.
+@MainActor
+private final class DraftWriteLease {
+    private var task: UIBackgroundTaskIdentifier = .invalid
+
+    init() {
+        task = UIApplication.shared.beginBackgroundTask(withName: "happy.composer.draft") { [weak self] in
+            self?.end()
+        }
+    }
+
+    func end() {
+        guard task != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(task)
+        task = .invalid
     }
 }
 

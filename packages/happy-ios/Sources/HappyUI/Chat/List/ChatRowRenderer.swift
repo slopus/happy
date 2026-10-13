@@ -16,6 +16,9 @@ struct ChatRowStyle: Equatable, Sendable {
     var flavor: String?
     /// `settings.showLineNumbersInToolViews`.
     var showLineNumbers = false
+    /// `useIsTablet()`: permission buttons hug their labels at the
+    /// trailing edge (`TabletBranches.permissionButtonsTrailing`).
+    var tablet = false
 }
 
 /// Everything one row is drawn from. Equal inputs at the same width give
@@ -463,7 +466,8 @@ struct MarkdownPiece {
     }
 }
 
-/// SimpleSyntaxHighlighter's colours over the shared tokenizer.
+/// SimpleSyntaxHighlighter over the shared tokenizer, in the file viewer's
+/// colours (`FileSyntax`, its `getColors`), so the two cannot drift apart.
 enum ChatSyntax {
     static func string(_ code: String, language: String?) -> NSAttributedString {
         let style = ChatTextStyles.codeBlock
@@ -471,23 +475,10 @@ enum ChatSyntax {
         let regular = style.font
         let bold = style.with(.plex(.monoSemiBold)).font
         for token in SyntaxHighlighter.tokenize(code, language: language) {
-            let attributes = style.attributes(color: UIColor(color(token)), font: token.isBold ? bold : regular)
+            let attributes = style.attributes(color: UIColor(FileSyntax.color(token)), font: token.isBold ? bold : regular)
             result.append(NSAttributedString(string: token.text, attributes: attributes))
         }
         return result
-    }
-
-    static func color(_ token: SyntaxToken) -> ColorToken {
-        switch token.kind {
-        case .keyword, .controlFlow, .type, .modifier, .import: Palette.syntaxKeyword
-        case .string, .regex: Palette.syntaxString
-        case .comment, .docstring: Palette.syntaxComment
-        case .number, .boolean: Palette.syntaxNumber
-        case .function, .method, .decorator: Palette.syntaxFunction
-        case .bracket:
-            [Palette.syntaxBracket1, Palette.syntaxBracket2, Palette.syntaxBracket3, Palette.syntaxBracket4, Palette.syntaxBracket5][(token.nestLevel ?? 0) % 5]
-        default: Palette.syntaxDefault
-        }
     }
 }
 #endif

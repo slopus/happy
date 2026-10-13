@@ -133,6 +133,8 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
     public var isEditable: Bool
     /// The leading add button (`onPickImages`).
     public var showsAdd: Bool
+    /// Overrides "Add photo" for VoiceOver ("Add image" on home).
+    public var addAccessibilityLabel: String?
     public var attachments: [AgentInputAttachmentPreview]
     /// Nil hides the chip. The model chip shows whenever it is set; the
     /// separator and the effort chip go together.
@@ -147,16 +149,23 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
     /// `minHeight` for the input container; nil keeps 44.
     public var inputMinHeight: CGFloat?
     public var autocapitalization: UITextAutocapitalizationType
+    /// The keyboard's return key ("done" for a bot's name on home).
+    public var returnKey: UIReturnKeyType
     public var primaryStyle: AgentInputPrimaryStyle
     /// While true, add and the chips refuse presses: the pressed one shakes
     /// and the delegate hears `agentInputCardDidRefuse`. The primary button
     /// is unaffected (HomeDock's `RefusableControl` while a session starts).
     public var refusesControls: Bool
+    /// AgentInput.tsx `zenMode` (the tablet shell's zen control): the add
+    /// button and the chips go; the text, any picked pictures and the
+    /// round button stay.
+    public var zenMode: Bool
 
     public init(
         placeholder: String,
         isEditable: Bool = true,
         showsAdd: Bool = false,
+        addAccessibilityLabel: String? = nil,
         attachments: [AgentInputAttachmentPreview] = [],
         permission: AgentInputChipConfiguration? = nil,
         model: AgentInputChipConfiguration? = nil,
@@ -166,12 +175,15 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         primaryAccessibilityLabel: String? = nil,
         inputMinHeight: CGFloat? = nil,
         autocapitalization: UITextAutocapitalizationType = .sentences,
+        returnKey: UIReturnKeyType = .default,
         primaryStyle: AgentInputPrimaryStyle = .standard,
-        refusesControls: Bool = false
+        refusesControls: Bool = false,
+        zenMode: Bool = false
     ) {
         self.placeholder = placeholder
         self.isEditable = isEditable
         self.showsAdd = showsAdd
+        self.addAccessibilityLabel = addAccessibilityLabel
         self.attachments = attachments
         self.permission = permission
         self.model = model
@@ -181,8 +193,10 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         self.primaryAccessibilityLabel = primaryAccessibilityLabel
         self.inputMinHeight = inputMinHeight
         self.autocapitalization = autocapitalization
+        self.returnKey = returnKey
         self.primaryStyle = primaryStyle
         self.refusesControls = refusesControls
+        self.zenMode = zenMode
     }
 }
 
@@ -465,7 +479,8 @@ public final class AgentInputCardView: UIView {
             model: config.model.map { _ in .init(labelSize: modelChip.contentSize) },
             modelIsMenu: config.model?.menu != nil,
             effort: config.effort.map { _ in .init(labelSize: effortChip.contentSize) },
-            separator: config.effort == nil ? .zero : separator.sizeThatFits(.zero)
+            separator: config.effort == nil ? .zero : separator.sizeThatFits(.zero),
+            zenMode: config.zenMode
         )
     }
 
@@ -541,10 +556,17 @@ public final class AgentInputCardView: UIView {
         if !config.isEditable, textView.isFirstResponder {
             textView.resignFirstResponder()
         }
-        textView.autocapitalizationType = config.autocapitalization
+        if textView.autocapitalizationType != config.autocapitalization || textView.returnKeyType != config.returnKey {
+            textView.autocapitalizationType = config.autocapitalization
+            textView.returnKeyType = config.returnKey
+            // The keyboard is up through the change; it takes new traits
+            // only when asked.
+            if textView.isFirstResponder { textView.reloadInputViews() }
+        }
         textView.accessibilityLabel = config.placeholder
 
-        addButton.isHidden = !config.showsAdd
+        addButton.isHidden = !config.showsAdd || config.zenMode
+        addButton.accessibilityLabel = config.addAccessibilityLabel ?? Strings.Composer.addPhoto
         // The glyph turns blue while pictures are attached.
         addButton.tint = config.attachments.isEmpty ? Palette.text : Palette.radioActive
         attachmentStrip.attachments = config.attachments
@@ -552,10 +574,10 @@ public final class AgentInputCardView: UIView {
         for chip in [permissionChip, modelChip, effortChip] {
             chip.refuses = config.refusesControls
         }
-        permissionChip.configure(config.permission)
-        modelChip.configure(config.model)
-        effortChip.configure(config.effort)
-        separator.isHidden = config.effort == nil
+        permissionChip.configure(config.zenMode ? nil : config.permission)
+        modelChip.configure(config.zenMode ? nil : config.model)
+        effortChip.configure(config.zenMode ? nil : config.effort)
+        separator.isHidden = config.zenMode || config.effort == nil
 
         primaryButton.configure(
             action: config.primaryAction,
@@ -571,7 +593,8 @@ public final class AgentInputCardView: UIView {
             || previous.showsAdd != config.showsAdd
             || previous.permission != config.permission
             || previous.model != config.model
-            || previous.effort != config.effort {
+            || previous.effort != config.effort
+            || previous.zenMode != config.zenMode {
             delegate?.agentInputCardDidInvalidateHeight(self)
             setNeedsLayout()
         }

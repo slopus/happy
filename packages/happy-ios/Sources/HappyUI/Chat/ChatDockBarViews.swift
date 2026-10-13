@@ -7,6 +7,20 @@ import UIKit
 // question banner: InactiveArchivedHint and AgentGoalBar above it,
 // RigActivityBar below.
 
+/// The dock: the bars above the composer, then the composer. Anything in
+/// it that reaches past its bounds, as the composer's suggestion list
+/// rising above it does, still takes its own touches; everywhere else
+/// above the dock the conversation does.
+final class ChatDockView: UIView {
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        if super.point(inside: point, with: event) { return true }
+        return subviews.contains { view in
+            !view.isHidden && view.alpha > 0.01 && view.isUserInteractionEnabled
+                && view.point(inside: convert(point, to: view), with: event)
+        }
+    }
+}
+
 /// InactiveArchivedHint: "This session is inactive.", then Resume (a
 /// spinner while it runs), or "To resume it from the terminal:" and the
 /// commands, which a tap copies; their glyph ticks for two seconds.

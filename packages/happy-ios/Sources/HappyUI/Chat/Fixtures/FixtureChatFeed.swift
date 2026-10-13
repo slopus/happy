@@ -3,6 +3,7 @@ import Foundation
 import HappyCore
 import HappyStore
 import HappyWire
+import UIKit
 
 // Debug-only stand-ins for the chat feed, the outbox and the session RPCs,
 // so the chat can be exercised without a computer: push
@@ -301,6 +302,26 @@ public struct FixtureChatControls: ChatControls {
 
     public func abort(sessionId: String) async throws {
         await world.abort(sessionId: sessionId)
+    }
+}
+
+/// The fixture chats' pictures, drawn on demand after a short wait so the
+/// thumbhash shows first. `fixture-missing` never arrives.
+enum FixtureAttachments {
+    @Sendable static func data(_ ref: String) async throws -> Data {
+        try await Task.sleep(for: .milliseconds(600))
+        guard ref != "fixture-missing" else { throw URLError(.fileDoesNotExist) }
+        let portrait = ref == "fixture-portrait"
+        let size = portrait ? CGSize(width: 600, height: 1010) : CGSize(width: 1200, height: 675)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let image = UIGraphicsImageRenderer(size: size, format: format).image { context in
+            let colors = [UIColor(red: 0.05, green: 0, blue: 0.55, alpha: 1).cgColor, UIColor(red: 0.9, green: 0.78, blue: 0.29, alpha: 1).cgColor]
+            guard let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray, locations: [0, 1]) else { return }
+            context.cgContext.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: size.width, y: size.height), options: [])
+        }
+        guard let data = image.pngData() else { throw URLError(.cannotDecodeContentData) }
+        return data
     }
 }
 

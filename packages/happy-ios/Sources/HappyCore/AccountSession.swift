@@ -33,6 +33,8 @@ public final class AccountSession: Sendable {
     public let rigComposer: RigComposerSync
     /// Starts in flight stay within this account, including their unsent text.
     public let pendingChats = PendingChats()
+    /// The session pictures the chat has decoded, this account's alone.
+    public let attachmentPictures = AttachmentPictures()
     /// Socket status for the UI (connection dot in settings).
     public let statusUpdates: AsyncStream<RealtimeStatus>
 

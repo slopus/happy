@@ -17,6 +17,8 @@ struct MessageDetailInput: Equatable, Sendable {
     /// The files the reader opened past "Show N more lines", by diff.
     var diffExpanded: [Int: Set<Int>]
     var maxContentWidth: CGFloat
+    /// Of a patch's files, the one the reader tapped in the chat.
+    var focusFile: String?
 }
 
 /// Measures a message's screen off the main thread, once per input and
@@ -79,6 +81,15 @@ enum MessageDetailRenderer {
             if let view = ChatRowRenderer.taskView(call.children) { entries.append(view) }
         case .diff(let kind, let chunks, let replaceAll):
             if let view = diffs(kind, chunks: chunks, replaceAll: replaceAll, toolId: call.id, input: input) { entries.append(view) }
+        case .patch(let files):
+            entries.append(patch(files, tool: call.tool, toolId: call.id, input: input))
+        case .unifiedDiff(let diff):
+            if let diff, let card = diffCard(
+                header: diff.fileName.flatMap { $0.isEmpty ? nil : ($0, .modified, DiffStats.countPatch(diff.patch), nil) },
+                source: DiffChunkSource(patch: diff.patch, fileName: diff.fileName), index: 0, toolId: call.id, input: input
+            ) {
+                entries.append(ChatStackEntry(piece: card, marginBottom: 28, padding: LayoutInsets(top: 0, left: 12, bottom: 0, right: 12)))
+            }
         case .generic(let generic):
             entries += sections(generic)
         }
@@ -106,21 +117,47 @@ enum MessageDetailRenderer {
 
     /// CommandView on the tool's screen: the command, then everything it
     /// printed, in pieces when it is long. The command and its output are
-    /// selectable there (`syntaxHighlighting`); the error is not.
-    static func command(_ terminal: ToolFullTerminal) -> ChatPiece {
-        let line = ChatRowRenderer.commandLine(terminal.command, prompt: terminal.prompt)
+    /// selectable there and coloured (`syntaxHighlighting`), the command as
+    /// bash and the output as a shell session, all tokenized by `deadline`
+    /// or left plain; the error is neither.
+    static func command(_ terminal: ToolFullTerminal, syntaxDeadline deadline: ContinuousClock.Instant = DiffFilePlan.syntaxDeadline()) -> ChatPiece {
+        let style = ChatTextStyles.terminalCommand
+        let commandText = TerminalSyntax.spans(terminal.command, language: TerminalSyntax.commandLanguage(prompt: terminal.prompt), until: deadline)
+            .map { terminalString($0, style: style, color: Palette.terminalCommand, lineBreakMode: .byCharWrapping) }
+            ?? style.string(terminal.command, color: Palette.terminalCommand, lineBreakMode: .byCharWrapping)
+        let line = ChatRowRenderer.commandLine(commandText, prompt: terminal.prompt)
         var entries = [ChatStackEntry(piece: selectable(line, terminal.command))]
-        func output(_ text: String, _ style: ChatTextStyle, _ color: ColorToken, selectable copies: Bool) {
-            let piece = longText(text, style: style, color: color, lineBreakMode: .byCharWrapping)
-            entries.append(ChatStackEntry(piece: copies ? selectable(piece, text) : piece, marginTop: 8))
+        /// `terminalText` is CommandView's: selectable and coloured.
+        func output(_ text: String, _ style: ChatTextStyle, _ color: ColorToken, terminalText: Bool) {
+            let spans = terminalText ? TerminalSyntax.spans(text, language: TerminalSyntax.outputLanguage, until: deadline) : nil
+            let piece = longText(text, style: style, color: color, lineBreakMode: .byCharWrapping, syntax: spans)
+            entries.append(ChatStackEntry(piece: terminalText ? selectable(piece, text) : piece, marginTop: 8))
         }
-        if let stdout = terminal.visibleStdout { output(stdout, ChatTextStyles.terminal, Palette.terminalStdout, selectable: true) }
-        if let stderr = terminal.visibleStderr { output(stderr, ChatTextStyles.terminal, Palette.terminalStderr, selectable: true) }
-        if let error = terminal.error { output(text(error), ChatTextStyles.terminal, Palette.terminalError, selectable: false) }
+        if let stdout = terminal.visibleStdout { output(stdout, ChatTextStyles.terminal, Palette.terminalStdout, terminalText: true) }
+        if let stderr = terminal.visibleStderr { output(stderr, ChatTextStyles.terminal, Palette.terminalStderr, terminalText: true) }
+        if let error = terminal.error { output(text(error), ChatTextStyles.terminal, Palette.terminalError, terminalText: false) }
         if terminal.showsEmptyOutput {
-            output(Strings.Tools.commandNoOutput, ChatTextStyles.terminalEmptyOutput, Palette.terminalEmptyOutput, selectable: false)
+            output(Strings.Tools.commandNoOutput, ChatTextStyles.terminalEmptyOutput, Palette.terminalEmptyOutput, terminalText: false)
         }
         return ChatRowRenderer.terminalPanel(entries)
+    }
+
+    /// SyntaxText's runs on CommandView's panel, which stays dark: tokens
+    /// in the dark theme's diff colours whatever the appearance, plain runs
+    /// in the text's own colour.
+    static func terminalString(_ spans: [(text: String, kind: DiffSpanKind)], style: ChatTextStyle, color: ColorToken, lineBreakMode: NSLineBreakMode) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        var attributes: [DiffSpanKind: [NSAttributedString.Key: Any]] = [:]
+        for span in spans {
+            let runAttributes = attributes[span.kind] ?? {
+                let runColor = span.kind == .plain ? UIColor(color) : UIColor(DiffStyle.syntax(span.kind).dark)
+                let made = style.attributes(color: runColor, lineBreakMode: lineBreakMode)
+                attributes[span.kind] = made
+                return made
+            }()
+            result.append(NSAttributedString(string: span.text, attributes: runAttributes))
+        }
+        return result
     }
 
     /// React Native's `selectable` Text: a long press anywhere on it copies
@@ -164,6 +201,55 @@ enum MessageDetailRenderer {
             guard !chunks.isEmpty, let piece = diff(0, showLineNumbers: true) else { return nil }
             return ChatStackEntry(piece: piece, marginBottom: 28)
         }
+    }
+
+    /// CodexPatchViewFull: the tapped file alone, or every file when none
+    /// was tapped or it is no longer in the patch, each in its own card,
+    /// 16 apart. PatchFallback without its error when the patch can't be
+    /// read.
+    static func patch(_ files: [ToolPatchFile]?, tool: ToolCall, toolId: String, input: MessageDetailInput) -> ChatStackEntry {
+        guard let files else {
+            let raw = ChatPatch.fallbackText(tool.input).flatMap { $0.isEmpty ? nil : $0 }
+            return ChatRowRenderer.section(Strings.Tools.name(.applyChanges), .stack(raw.map { [ChatStackEntry(piece: ChatRowRenderer.codeView($0))] } ?? []))
+        }
+        let focused = files.indices.filter { files[$0].file == input.focusFile }
+        let shown = focused.isEmpty ? Array(files.indices) : focused
+        let cards = shown.map { index in
+            let file = files[index]
+            let source: DiffChunkSource? = switch file.diff {
+            case .patch(let patch)?: DiffChunkSource(patch: patch, fileName: file.fileName)
+            case .pair(let old, let new)?: DiffChunkSource(oldText: old, newText: new, fileName: file.fileName)
+            case nil: nil
+            }
+            let card = diffCard(header: (file.path, file.kind, file.stats, file.movePath), source: source, index: index, toolId: toolId, input: input)
+            return ChatStackEntry(piece: card ?? .stack([]))
+        }
+        return ChatStackEntry(piece: .stack(cards, gap: 16), marginBottom: 28, padding: LayoutInsets(top: 0, left: 12, bottom: 0, right: 12))
+    }
+
+    /// The full views' card: surface, a 1 pt divider rim, 8 round, the
+    /// header and the diff inside the rim. Nil with neither.
+    static func diffCard(
+        header: (path: String, kind: FileChangeKind, stats: DiffStats.Counts, movePath: String?)?,
+        source: DiffChunkSource?, index: Int, toolId: String, input: MessageDetailInput
+    ) -> ChatPiece? {
+        let border: CGFloat = 1
+        let radius: CGFloat = 8
+        var parts: [ChatStackEntry] = []
+        if let header {
+            parts.append(ChatStackEntry(piece: ChatRowRenderer.patchHeader(
+                path: header.path, kind: header.kind, stats: header.stats, movePath: header.movePath, opens: nil, topRadius: radius - border
+            )))
+        }
+        if let source, let diff = ChatRowRenderer.diffPiece(source, index: index, toolId: toolId, showLineNumbers: input.showLineNumbers, expanded: input.diffExpanded[index] ?? []) {
+            parts.append(ChatStackEntry(piece: diff))
+        }
+        guard !parts.isEmpty else { return nil }
+        return .stack([ChatStackEntry(
+            piece: .stack(parts),
+            padding: LayoutInsets(top: border, left: border, bottom: border, right: border),
+            background: ChatBox(frame: .zero, fill: Palette.surface, border: Palette.divider, borderWidth: border, radius: radius)
+        )])
     }
 
     /// "Edit N of M", with the "Replace All" badge beside it.
@@ -249,12 +335,27 @@ enum MessageDetailRenderer {
 
     /// Text that can run to thousands of lines, as pieces stacked with no
     /// gap; short text is one piece.
-    static func longText(_ text: String, style: ChatTextStyle, color: ColorToken, lineBreakMode: NSLineBreakMode = .byWordWrapping) -> ChatPiece {
+    /// With `syntax`, the text is drawn in those spans' colours
+    /// (`terminalString`), each piece cut from the whole.
+    static func longText(
+        _ text: String, style: ChatTextStyle, color: ColorToken, lineBreakMode: NSLineBreakMode = .byWordWrapping,
+        syntax: [(text: String, kind: DiffSpanKind)]? = nil
+    ) -> ChatPiece {
+        let whole = syntax
+            .map { terminalString($0, style: style, color: color, lineBreakMode: lineBreakMode) }
+            .flatMap { $0.length == text.utf16.count ? $0 : nil }
         let chunks = TextChunks.split(text)
-        guard chunks.count > 1 else { return .text(MeasuredText(style.string(text, color: color, lineBreakMode: lineBreakMode))) }
-        return .stack(chunks.enumerated().map { index, chunk in
-            let drawn = index == chunks.count - 1 ? chunk : TextChunks.drawn(chunk)
-            return ChatStackEntry(piece: .text(MeasuredText(style.string(drawn, color: color, lineBreakMode: lineBreakMode))))
+        guard chunks.count > 1 else { return .text(MeasuredText(whole ?? style.string(text, color: color, lineBreakMode: lineBreakMode))) }
+        guard let whole else {
+            return .stack(chunks.enumerated().map { index, chunk in
+                let drawn = index == chunks.count - 1 ? chunk : TextChunks.drawn(chunk)
+                return ChatStackEntry(piece: .text(MeasuredText(style.string(drawn, color: color, lineBreakMode: lineBreakMode))))
+            })
+        }
+        return .stack(TextChunks.cuts(chunks).map { cut in
+            let piece = NSMutableAttributedString(attributedString: whole.attributedSubstring(from: NSRange(location: cut.location, length: cut.length)))
+            if cut.space { piece.append(style.string(" ", color: color, lineBreakMode: lineBreakMode)) }
+            return ChatStackEntry(piece: .text(MeasuredText(piece)))
         })
     }
 }

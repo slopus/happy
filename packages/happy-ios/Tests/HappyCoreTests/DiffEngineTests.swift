@@ -693,3 +693,18 @@ final class DiffProgressiveRowsTests: XCTestCase {
         XCTAssertEqual(progress.count, 120)
     }
 }
+
+final class DiffSelectableTextTests: XCTestCase {
+    /// DiffRowCode's `selectable` Text copies its line as drawn.
+    func testSelectableText() throws {
+        let patch = "--- a/x.ts\n+++ b/x.ts\n@@ -1,2 +1,2 @@\n-\tconst a = 1;\n+\tconst a = 2;\n \n"
+        let file = try XCTUnwrap(DiffEngine.build(patch: patch).files.first)
+        XCTAssertNil(file.rows[0].selectableText)
+        // Tabs are expanded, as drawn; word emphasis doesn't split it.
+        XCTAssertEqual(file.rows[1].selectableText, "    const a = 1;")
+        XCTAssertEqual(file.rows[2].selectableText, "    const a = 2;")
+        // An empty line draws, and copies, a space.
+        XCTAssertEqual(file.rows[3].selectableText, " ")
+        XCTAssertNil(DiffRow.message(key: "binary", code: .binary).selectableText)
+    }
+}

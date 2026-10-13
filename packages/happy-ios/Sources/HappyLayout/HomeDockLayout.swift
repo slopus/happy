@@ -116,6 +116,10 @@ public struct HomeDockLayout: Equatable, Sendable {
 /// The status line sits in the 22 the rows leave clear, so showing it
 /// moves nothing. While the composer opens its shell grows from the
 /// capsule's 56 to the card's height and everything above rides on it.
+///
+/// A bot lives on a computer and nowhere else: making one keeps only the
+/// machine row, and the faces it may wear take the place of the rest,
+/// lined up with the icon column (`focusConfigFaces`).
 public struct HomeDockFocusLayout: Equatable, Sendable {
     public enum Metrics {
         public static let configPaddingHorizontal: CGFloat = 24
@@ -140,6 +144,10 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
         public static let progressPaddingHorizontal: CGFloat = 16
         public static let progressGap: CGFloat = 6
         public static let progressDot: CGFloat = 6
+        /// Around the faces a bot may wear.
+        public static let facesPaddingHorizontal: CGFloat = 6
+        public static let facesPaddingTop: CGFloat = 6
+        public static let facesPaddingBottom: CGFloat = 4
     }
 
     public struct Input {
@@ -154,6 +162,8 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
         public var progress: Measurable?
         /// "To interrupt press stop", while Stop can stop it.
         public var hint: Measurable?
+        /// The faces' words, while a bot is being made.
+        public var faces: BotFacePickerLayout.Text?
 
         public init(
             size: CGSize,
@@ -162,7 +172,8 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
             composerHeight: CGFloat,
             rows: [Measurable],
             progress: Measurable? = nil,
-            hint: Measurable? = nil
+            hint: Measurable? = nil,
+            faces: BotFacePickerLayout.Text? = nil
         ) {
             self.size = size
             self.safeBottom = safeBottom
@@ -171,6 +182,7 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
             self.rows = rows
             self.progress = progress
             self.hint = hint
+            self.faces = faces
         }
     }
 
@@ -190,6 +202,11 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
     }
 
     public var rows: [Row]
+    /// The faces' line, below the rows; it reveals as one more row.
+    public var faces: CGRect?
+    /// The picker inside that line, and its frames in its own space.
+    public var facePicker: CGRect?
+    public var facePickerLayout: BotFacePickerLayout?
     /// The composer's shell.
     public var composer: CGRect
     public var progress: CGRect?
@@ -252,7 +269,10 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
         let valueLane = max(0, triggerWidth - M.valueTrailing)
         let values = input.rows.map { $0.size(fitting: valueLane) }
         let heights = values.map { max(M.rowMinHeight, M.iconBox, $0.height) }
-        let total = heights.reduce(0, +) + CGFloat(max(0, heights.count - 1)) * M.rowSpacing
+        let picker = input.faces.map { BotFacePickerLayout(width: rowWidth - 2 * M.facesPaddingHorizontal, text: $0) }
+        let facesHeight = picker.map { M.facesPaddingTop + $0.size.height + M.facesPaddingBottom }
+        let lines = heights + (facesHeight.map { [$0] } ?? [])
+        let total = lines.reduce(0, +) + CGFloat(max(0, lines.count - 1)) * M.rowSpacing
         var y = composer.minY - M.configPaddingBottom - total
         rows = zip(values, heights).map { value, rowHeight in
             let frame = CGRect(x: rowX, y: y, width: rowWidth, height: rowHeight)
@@ -264,6 +284,21 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
                 value: CGRect(x: triggerX, y: frame.midY - value.height / 2, width: min(value.width, valueLane), height: value.height)
             )
         }
+        if let picker, let facesHeight {
+            let line = CGRect(x: rowX, y: y, width: rowWidth, height: facesHeight)
+            faces = line
+            facePicker = CGRect(
+                x: line.minX + M.facesPaddingHorizontal,
+                y: line.minY + M.facesPaddingTop,
+                width: picker.size.width,
+                height: picker.size.height
+            )
+            facePickerLayout = picker
+        } else {
+            faces = nil
+            facePicker = nil
+            facePickerLayout = nil
+        }
     }
 
     /// How far the dock rides up on the keyboard: the dock's foot follows
@@ -271,6 +306,68 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
     /// (`translateY: keyboard.height + safeArea.bottom * progress`).
     public static func keyboardShift(keyboardTop: CGFloat, size: CGSize, safeBottom: CGFloat) -> CGFloat {
         min(0, keyboardTop - (size.height - safeBottom))
+    }
+}
+
+/// Session | Bot, held at the top of the screen over the dimmed list
+/// (HomeDock.tsx `focusHeader`): it decides what everything below is for.
+/// A bot's lede sits beneath it. Only where the computer can make bots.
+///
+///              ( Session | Bot )            ← safe top + 8, at most 260
+///       Bots are virtual colleagues great   ← 10 below, at most 340
+///         for recurring work like …
+public struct HomeDockHeaderLayout: Equatable, Sendable {
+    public enum Metrics {
+        public static let paddingTop: CGFloat = 8
+        public static let paddingHorizontal: CGFloat = 24
+        public static let gap: CGFloat = 10
+        public static let segmentMaxWidth: CGFloat = 260
+        /// `NATIVE_SEGMENTED_CONTROL_HEIGHT`.
+        public static let segmentHeight: CGFloat = 32
+        public static let ledeMaxWidth: CGFloat = 340
+    }
+
+    public struct Input {
+        public var width: CGFloat
+        public var safeTop: CGFloat
+        public var maxWidth: CGFloat
+        /// The bot's lede, centred; nil for a session.
+        public var lede: Measurable?
+
+        public init(width: CGFloat, safeTop: CGFloat, maxWidth: CGFloat = .greatestFiniteMagnitude, lede: Measurable? = nil) {
+            self.width = width
+            self.safeTop = safeTop
+            self.maxWidth = maxWidth
+            self.lede = lede
+        }
+    }
+
+    /// The control and the lede together: what reveals and refuses.
+    public var content: CGRect
+    public var segment: CGRect
+    public var lede: CGRect?
+
+    public init(_ input: Input) {
+        typealias M = Metrics
+        let lane = max(0, input.width - 2 * M.paddingHorizontal)
+        let contentWidth = min(input.maxWidth, lane)
+        let left = M.paddingHorizontal + (lane - contentWidth) / 2
+        let top = input.safeTop + M.paddingTop
+
+        let segmentWidth = min(M.segmentMaxWidth, contentWidth)
+        segment = CGRect(x: left + (contentWidth - segmentWidth) / 2, y: top, width: segmentWidth, height: M.segmentHeight)
+        var bottom = segment.maxY
+        if let text = input.lede {
+            let ledeLane = min(M.ledeMaxWidth, contentWidth)
+            let size = text.size(fitting: ledeLane)
+            let width = min(size.width, ledeLane)
+            let frame = CGRect(x: left + (contentWidth - width) / 2, y: segment.maxY + M.gap, width: width, height: size.height)
+            lede = frame
+            bottom = frame.maxY
+        } else {
+            lede = nil
+        }
+        content = CGRect(x: left, y: top, width: contentWidth, height: bottom - top)
     }
 }
 

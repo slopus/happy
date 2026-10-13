@@ -61,9 +61,6 @@ public enum SecondaryPalette {
 /// DuplicateSheet.tsx's materials. expo-blur runs its effect to
 /// `intensity / 100`.
 public enum DuplicateSheetMaterial {
-    /// MobileGlassSurface's blur below iOS 26: intensity 88 capped at 36,
-    /// the ultra-thin material.
-    public static let cardBlurFraction: CGFloat = 0.36
     /// BaseModal's AnimatedBlurBackdrop: intensity 44, the regular material.
     public static let backdropBlurFraction: CGFloat = 0.44
     /// BaseModal: the content fades in from 0.9 scale over 200 ms.

@@ -356,7 +356,16 @@ final class ToolFullPresentationTests: XCTestCase {
         XCTAssertEqual(full(tool("write", ["file_path": "/repo/n.md", "content": "x"])).main,
                        .diff(.write, chunks: [ToolDiffChunk(oldText: "", newText: "x", fileName: "/repo/n.md")], replaceAll: []))
         XCTAssertFalse(full(tool("Task")).wide)
-        guard case .generic = full(tool("apply_patch", ["input": "*** Begin Patch"])).main else { return XCTFail("generic until the Codex parser lands") }
+    }
+
+    func testPatchesAndTurnDiffsHaveViewsOfTheirOwn() {
+        let patch = full(tool("CodexPatch", ["changes": ["/repo/a.ts": ["kind": ["type": "add"], "diff": "x"]]], result: "Done"))
+        XCTAssertEqual(patch.main, .patch([ToolPatchFile(file: "/repo/a.ts", path: "a.ts", movePath: nil, kind: .added, diff: .pair(old: "", new: "x"))]))
+        XCTAssertEqual(patch.outcome, .output("Done"))
+        XCTAssertEqual(full(tool("apply_patch", ["input": "*** Begin Patch"])).main, .patch(nil), "PatchFallback")
+        XCTAssertEqual(full(tool("GeminiDiff", ["unified_diff": "@@ -1 +1 @@\n-a\n+b", "path": "x.py"])).main,
+                       .unifiedDiff(ToolUnifiedDiff(["unified_diff": "@@ -1 +1 @@\n-a\n+b", "path": "x.py"])))
+        XCTAssertEqual(full(tool("CodexDiff")).main, .unifiedDiff(nil))
     }
 
     func testATaskEndsWithHowItWent() {
@@ -429,5 +438,21 @@ final class ToolDiffInputsTests: XCTestCase {
         XCTAssertEqual(ToolDiffInputs.chunks(.geminiEdit, input: ["old_string": "a", "newText": "b", "file_path": "/w/y.py"]),
                        [ToolDiffChunk(oldText: "a", newText: "b", fileName: "/w/y.py")])
         XCTAssertEqual(ToolDiffInputs.chunks(.bash, input: ["command": "ls"]), [])
+    }
+}
+
+final class ToolFileInputTests: XCTestCase {
+    func testTheAttachmentReadsLikeItsSchema() {
+        let input = ToolFileInput(["ref": "r1", "name": "photo.png", "size": 1200, "image": ["width": 640, "height": 480, "thumbhash": "abc"]])
+        XCTAssertEqual(input?.ref, "r1")
+        XCTAssertEqual(input?.name, "photo.png")
+        XCTAssertEqual(input?.imageWidth, 640)
+        XCTAssertEqual(input?.imageHeight, 480)
+        XCTAssertEqual(input?.thumbhash, "abc")
+        XCTAssertNil(ToolFileInput(["ref": "r1", "name": "a.png"])?.imageWidth, "no size given")
+        XCTAssertNil(ToolFileInput(["name": "a.png"]), "no ref")
+        XCTAssertNil(ToolFileInput(["ref": "r1", "name": "a.png", "size": "big"]))
+        XCTAssertNil(ToolFileInput(["ref": "r1", "name": "a.png", "image": ["width": 1]]), "an image without its height")
+        XCTAssertNil(ToolFileInput(["ref": "r1", "name": "a.png", "image": .null]))
     }
 }

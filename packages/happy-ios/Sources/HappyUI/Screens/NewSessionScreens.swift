@@ -14,7 +14,13 @@ extension SessionStarter {
             sessionOps: session.homeSessionOps,
             sender: session.sender,
             metadataTransport: session.realtime,
-            refreshSessions: { await sync.run(.sessions) }
+            refreshSessions: { await sync.run(.sessions) },
+            paintBotFace: { try await BotFacePainter.png(seed: $0) },
+            // The store read goes off main. Becomes
+            // `sender.attachmentPlan(for:sessionId:)` once that lands.
+            attachmentPlan: { [sender = session.sender] message, sessionId in
+                try await Task.detached { try sender.attachmentPlan(message, sessionId: sessionId) }.value
+            }
         ))
     }
 }
@@ -707,6 +713,7 @@ final class NewSessionViewController: UIViewController {
         closePicker()
         let drafts = composer.drafts
         let started = drafts.draft
+        let bot = drafts.bot
         let prompt = started.input.trimmingCharacters(in: .whitespacesAndNewlines)
         let launch: NewSessionLaunch
         switch composer.launch(prompt: prompt, attachments: []) {
@@ -719,7 +726,7 @@ final class NewSessionViewController: UIViewController {
         let composer = composer
         Task { @MainActor [weak self] in
             guard let self else { return }
-            guard let sessionId = await self.starter.start(launch, isCurrentTarget: { composer.isCurrentTarget(started) }) else {
+            guard let sessionId = await self.starter.start(launch, isCurrentTarget: { composer.isCurrentTarget(started, bot: bot) }) else {
                 self.render()
                 return
             }
@@ -758,6 +765,21 @@ extension NewSessionViewController: SessionStarterPresenter {
             Strings.Home.createDirectoryMessage(directory),
             confirmTitle: Strings.Home.create,
             on: self
+        )
+    }
+
+    func showAttachmentsNotSupported() {
+        Alerts.show(Strings.ImageUpload.notSupportedTitle, Strings.ImageUpload.notSupportedMessage, on: self)
+    }
+
+    /// Never asked here: this screen starts sessions, not bots.
+    func offerBotFaceRetry(_ message: String) async -> Bool {
+        await Alerts.confirm(
+            Strings.Home.botFaceNotSet,
+            message,
+            confirmTitle: Strings.Home.botFaceTryAgain,
+            cancelTitle: Strings.Home.botFaceNotNow,
+            on: navigationController ?? self
         )
     }
 }

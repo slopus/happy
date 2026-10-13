@@ -149,6 +149,34 @@ public enum TextChunks {
         if line.isEmpty || line.last?.isNewline == true { return line + " " }
         return line
     }
+
+    /// What each piece draws, as a range of the whole text in UTF-16 units
+    /// and whether `drawn` adds its space after it: for cutting text that
+    /// is already styled the way the pieces cut the plain text.
+    public struct Cut: Equatable, Sendable {
+        public var location: Int
+        public var length: Int
+        public var space: Bool
+
+        public init(location: Int, length: Int, space: Bool) {
+            self.location = location
+            self.length = length
+            self.space = space
+        }
+    }
+
+    /// `chunks` as `split` returns them; the last is drawn whole.
+    public static func cuts(_ chunks: [String]) -> [Cut] {
+        var location = 0
+        return chunks.enumerated().map { index, chunk in
+            let length = chunk.utf16.count
+            defer { location += length }
+            let drawn = index == chunks.count - 1 ? chunk : drawn(chunk)
+            guard drawn != chunk else { return Cut(location: location, length: length, space: false) }
+            let kept = chunk.dropLast().utf16.count
+            return Cut(location: location, length: kept, space: drawn.utf16.count > kept)
+        }
+    }
 }
 
 /// text-selection.tsx: the text in a card 16 in from the screen's edges,

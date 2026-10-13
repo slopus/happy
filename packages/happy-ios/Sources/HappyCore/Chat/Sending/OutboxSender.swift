@@ -46,6 +46,21 @@ public struct OutboxSender: ChatSending {
         return Self.attachmentPlan(message, session: session)
     }
 
+    /// `attachmentPlan(_:sessionId:)` with the session read on a background
+    /// task, never on the caller's executor, so the main thread can await it.
+    public func attachmentPlan(for message: OutgoingMessage, sessionId: String) async throws -> AttachmentSendPlan {
+        let store = self.store
+        return try await Task.detached(priority: .userInitiated) {
+            #if DEBUG
+            dispatchPrecondition(condition: .notOnQueue(.main))
+            #endif
+            guard let session = try store.session(id: sessionId) else {
+                throw SendingError.unknownSession
+            }
+            return Self.attachmentPlan(message, session: session)
+        }.value
+    }
+
     /// Pure port of getImageAttachmentSendPlan and isAttachmentAllowedByPolicy.
     public static func attachmentPlan(_ message: OutgoingMessage, session: SessionRecord) -> AttachmentSendPlan {
         let metadata = session.metadata ?? .object([:])

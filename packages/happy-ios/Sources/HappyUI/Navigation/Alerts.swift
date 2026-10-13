@@ -14,12 +14,13 @@ public enum Alerts {
         _ title: String,
         _ message: String? = nil,
         confirmTitle: String,
+        cancelTitle: String = Strings.Common.cancel,
         destructive: Bool = false,
         on controller: UIViewController
     ) async -> Bool {
         await withCheckedContinuation { continuation in
             let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel) { _ in continuation.resume(returning: false) })
+            alert.addAction(UIAlertAction(title: cancelTitle, style: .cancel) { _ in continuation.resume(returning: false) })
             alert.addAction(UIAlertAction(title: confirmTitle, style: destructive ? .destructive : .default) { _ in
                 continuation.resume(returning: true)
             })

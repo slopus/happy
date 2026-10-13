@@ -233,6 +233,8 @@ public enum ChatTextStyles {
     public static let toolOperationCommand = ChatTextStyle(.system(.regular), size: 12)
     public static let executeCwd = ChatTextStyle(.system(.regular), size: 12)
     public static let executeDescription = ChatTextStyle(.systemItalic, size: 13)
+    // FileView.tsx: the attachment's name under its picture.
+    public static let attachmentName = ChatTextStyle(.system(.medium), size: 13)
 
     // PermissionFooter.tsx
     public static let permissionButton = ChatTextStyle(.system(.medium), size: 14, lineHeight: 18)
@@ -257,6 +259,8 @@ public enum ChatTextStyles {
     // ChatHeaderView.tsx, in the glass capsule (mobileSubtitle: 14 high)
     public static let headerTitle = ChatTextStyle(.plex(.semiBold), size: 16, lineHeight: 20)
     public static let headerSubtitle = ChatTextStyle(.plex(.regular), size: 12, lineHeight: 14)
+    /// Without glass (a tablet) the subtitle keeps its own 16.
+    public static let headerPlainSubtitle = ChatTextStyle(.plex(.regular), size: 12, lineHeight: 16)
 
     // EmptyMessages.tsx
     public static let emptyHost = ChatTextStyle(.plex(.semiBold), size: 18)
@@ -266,6 +270,10 @@ public enum ChatTextStyles {
 
     // SessionView's CLI version warning (a plain <Text>: the system font)
     public static let cliWarning = ChatTextStyle(.system(.semibold), size: 12)
+
+    // CodexPatchView's move destination: `fontFamily: 'monospace'`, which
+    // React Native on iOS doesn't know, so the system font
+    public static let patchMovePath = ChatTextStyle(.system(.regular), size: 12)
 
     // PendingChatPlaceholder.tsx; its folder line is emptyPath's 14
     public static let pendingQueued = ChatTextStyle(.plex(.regular), size: 15, lineHeight: 21)

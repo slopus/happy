@@ -363,30 +363,27 @@ private final class SheetLabel: UILabel {
     }
 }
 
-/// MobileGlassSurface below iOS 26: the overlay colour under an ultra-thin
-/// blur and a diagonal sheen, clipped to 16pt corners inside a hairline
-/// glass border.
+/// The sheet's MobileGlassSurface (`nativeEffect`, `glassEffectStyle`
+/// "regular", tinted `glass.overlayTint`): Liquid Glass on iOS 26, the
+/// ultra-thin blur at intensity 36 below it. Under either, the `glass.overlay`
+/// colour; over it, the diagonal sheen; all clipped to 16pt corners inside a
+/// hairline glass rim. Home's LiquidGlassView draws exactly that.
 private final class DuplicateSheetCard: UIView {
-    let content = UIView()
-    private let blur = MaterialBlurView(fraction: DuplicateSheetMaterial.cardBlurFraction, light: .systemUltraThinMaterialLight, dark: .systemUltraThinMaterialDark)
-    private let sheen = CAGradientLayer()
+    private let glass = LiquidGlassView(
+        regular: true,
+        tint: Palette.glassOverlayTint,
+        fill: SecondaryPalette.sheetOverlay,
+        border: Palette.glassBorder,
+        shadow: nil
+    )
+
+    /// Put the sheet's views here: they sit over the sheen.
+    var content: UIView { glass.contentView }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        backgroundColor = UIColor(SecondaryPalette.sheetOverlay)
-        layer.cornerRadius = DuplicateSheetLayout.Metrics.cornerRadius
-        layer.cornerCurve = .continuous
-        clipsToBounds = true
-        sheen.startPoint = CGPoint(x: 0, y: 0)
-        sheen.endPoint = CGPoint(x: 1, y: 1)
-        sheen.locations = SecondaryPalette.sheenLocations.map { NSNumber(value: $0) }
-        addSubview(blur)
-        layer.addSublayer(sheen)
-        addSubview(content)
-        applyColors()
-        registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in
-            self.applyColors()
-        }
+        glass.cornerRadius = DuplicateSheetLayout.Metrics.cornerRadius
+        addSubview(glass)
     }
 
     @available(*, unavailable)
@@ -394,25 +391,9 @@ private final class DuplicateSheetCard: UIView {
         fatalError("init(coder:) is not supported")
     }
 
-    override func didMoveToWindow() {
-        super.didMoveToWindow()
-        applyColors()
-    }
-
-    private func applyColors() {
-        layer.borderWidth = hairline
-        layer.borderColor = UIColor(Palette.glassBorder).resolvedColor(with: traitCollection).cgColor
-        sheen.colors = SecondaryPalette.sheen.map { UIColor($0).resolvedColor(with: traitCollection).cgColor }
-    }
-
     override func layoutSubviews() {
         super.layoutSubviews()
-        blur.frame = bounds
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        sheen.frame = bounds
-        CATransaction.commit()
-        content.frame = bounds
+        glass.frame = bounds
     }
 }
 

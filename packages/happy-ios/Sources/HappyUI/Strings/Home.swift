@@ -96,6 +96,7 @@ extension Strings {
         public static let enterCustomPath = "Enter custom path"
         public static let customPathPlaceholder = "~/path/to/project"
         public static let interruptHint = "To interrupt press stop"
+        public static let addImage = "Add image"
         // useStartSessionFromDraft.ts's directory question.
         public static let createDirectoryTitle = "Create Directory?"
         public static func createDirectoryMessage(_ directory: String) -> String {
@@ -103,6 +104,21 @@ extension Strings {
         }
         /// `common.create`.
         public static let create = "Create"
+
+        // Making a bot (HomeDock.tsx, BotFacePicker.tsx).
+        public static let composerSession = "Session"
+        public static let composerBot = "Bot"
+        public static let composerKindLabel = "What to create"
+        public static let botLede = "Bots are virtual colleagues great for recurring work like releases, competitor analysis, or to own a large feature across several projects and worktrees"
+        public static let createBot = "Create bot"
+        public static let botFaceHeading = "Avatar"
+        public static func botFaceLabel(_ index: Int) -> String { "Face \(index + 1)" }
+        public static let rollBotFaces = "Roll four new faces"
+        public static let botFaceCreditLead = "Art by "
+        // useStartSessionFromDraft.ts `offerBotFaceRetry`.
+        public static let botFaceNotSet = "Picture not set"
+        public static let botFaceNotNow = "Not now"
+        public static let botFaceTryAgain = "Try again"
     }
 
     /// The new-session screen (app/(app)/new/index.tsx). Its picker copy

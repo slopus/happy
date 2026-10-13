@@ -57,6 +57,10 @@ public struct DiffFileLayout: Equatable, Sendable {
         /// The "show more" bar: a 1pt rule, 10 above and below its text.
         public static let showMoreBorder: CGFloat = 1
         public static let showMorePadding: CGFloat = 10
+        /// While "show more" waits for colour: a small spinner, 8 before
+        /// the text.
+        public static let showMoreSpinner: CGFloat = 20
+        public static let showMoreGap: CGFloat = 8
     }
 
     public struct Input: Equatable, Sendable {
@@ -186,14 +190,22 @@ public struct DiffFileLayout: Equatable, Sendable {
 
     /// The bar's text, centred, in the bar's coordinates.
     public func showMoreText(width textWidth: CGFloat) -> CGRect? {
+        showMoreContent(textWidth: textWidth, busy: false)?.text
+    }
+
+    /// The bar's text and, while it is busy, the spinner before it: the
+    /// pair centred, the spinner on the text's middle. The bar keeps its
+    /// height; the spinner's extra 3pt overhang its padding.
+    public func showMoreContent(textWidth: CGFloat, busy: Bool) -> (text: CGRect, spinner: CGRect?)? {
         guard let bar = showMore else { return nil }
-        let width = min(textWidth, bar.width)
-        return CGRect(
-            x: (bar.width - width) / 2,
-            y: Metrics.showMoreBorder + Metrics.showMorePadding,
-            width: width,
-            height: input.showMoreTextHeight
-        )
+        let lead = busy ? Metrics.showMoreSpinner + Metrics.showMoreGap : 0
+        let width = min(textWidth, max(0, bar.width - lead))
+        let x = (bar.width - width - lead) / 2
+        let text = CGRect(x: x + lead, y: Metrics.showMoreBorder + Metrics.showMorePadding, width: width, height: input.showMoreTextHeight)
+        let spinner = busy
+            ? CGRect(x: x, y: text.midY - Metrics.showMoreSpinner / 2, width: Metrics.showMoreSpinner, height: Metrics.showMoreSpinner)
+            : nil
+        return (text, spinner)
     }
 }
 

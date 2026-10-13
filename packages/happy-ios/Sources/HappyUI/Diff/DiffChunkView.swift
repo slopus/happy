@@ -38,19 +38,24 @@ final class DiffChunkPlan: @unchecked Sendable {
     let layout: DiffChunkLayout
     /// Files the reader opened with "show more", by index.
     let expanded: Set<Int>
+    let syntaxDeadline: ContinuousClock.Instant?
 
     /// DiffChunk's defaults: line numbers on, 80 rows before "show more",
-    /// hunk separators only when a file has more than one hunk.
+    /// hunk separators only when a file has more than one hunk. Rows are
+    /// syntax-coloured until `syntaxDeadline` (see `DiffFilePlan`); give
+    /// the plans of one pass the same deadline, or nil for none.
     init(
         source: DiffChunkSource,
         width: CGFloat,
         showLineNumbers: Bool = true,
         collapseAfter: Int = DiffChunkLayout.collapseAfter,
         fontSize: CGFloat = DiffMetrics.defaultFontSize,
-        expanded: Set<Int> = []
+        expanded: Set<Int> = [],
+        syntaxDeadline: ContinuousClock.Instant? = DiffFilePlan.syntaxDeadline()
     ) {
         self.source = source
         self.expanded = expanded
+        self.syntaxDeadline = syntaxDeadline
         let document = DiffFileItem.document(source.source)
         files = document.files.enumerated().map { index, file in
             let hunks = file.rows.reduce(0) { count, row in
@@ -58,7 +63,7 @@ final class DiffChunkPlan: @unchecked Sendable {
                 return count
             }
             let options = DiffViewOptions(fontSize: fontSize, showLineNumbers: showLineNumbers, showHunkHeaders: hunks > 1, collapseAfter: collapseAfter)
-            return DiffFilePlan(file: file, width: width, options: options, expanded: expanded.contains(index))
+            return DiffFilePlan(file: file, width: width, options: options, expanded: expanded.contains(index), syntaxDeadline: syntaxDeadline)
         }
         layout = DiffChunkLayout(files.map(\.layout.input))
     }
@@ -77,7 +82,8 @@ final class DiffChunkPlan: @unchecked Sendable {
             showLineNumbers: first?.showLineNumbers ?? true,
             collapseAfter: first?.collapseAfter ?? DiffChunkLayout.collapseAfter,
             fontSize: first?.fontSize ?? DiffMetrics.defaultFontSize,
-            expanded: expanded.union([index])
+            expanded: expanded.union([index]),
+            syntaxDeadline: syntaxDeadline == nil ? nil : DiffFilePlan.syntaxDeadline()
         )
     }
 }

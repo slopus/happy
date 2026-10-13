@@ -312,3 +312,84 @@ public enum ChatPatch {
         return (absolute ? "/" : "") + parts.joined(separator: "/")
     }
 }
+
+/// One file of CodexPatchView: what its DiffFileHeader names and what its
+/// ToolDiffView compares.
+public struct ToolPatchFile: Equatable, Sendable {
+    /// The change's own path, as the patch names it: the message screen's
+    /// `file` focus, and what a hunk-only diff is headed with.
+    public var file: String
+    /// The header's path, under the session's folder.
+    public var path: String
+    /// Where an update moves the file to, under the session's folder.
+    public var movePath: String?
+    public var kind: FileChangeKind
+    /// A patch with its file headers, or the text before and after; nil
+    /// when the change has nothing to show (the header stands alone).
+    public var diff: PatchInput?
+
+    /// The last path component, which names the language.
+    public var fileName: String {
+        file.split(separator: "/", omittingEmptySubsequences: false).last.map(String.init) ?? file
+    }
+
+    /// The header's `+N −M`: the patch's changed lines, or the line diff of
+    /// the two sides.
+    public var stats: DiffStats.Counts {
+        switch diff {
+        case .patch(let patch)?: DiffStats.countPatch(patch)
+        case .pair(let old, let new)?: DiffStats.countContents(old, new)
+        case nil: DiffStats.Counts(additions: 0, deletions: 0)
+        }
+    }
+}
+
+extension ChatPatch {
+    /// CodexPatchView's files, or nil when the input carries no patch it can
+    /// read and PatchFallback shows the raw text instead.
+    public static func viewFiles(_ input: JSONValue, root: String?) -> [ToolPatchFile]? {
+        guard let changes = changes(input), !changes.isEmpty else { return nil }
+        return changes.map { file, entry in
+            let diff: PatchInput?
+            switch entry.input {
+            case .patch(let patch)?:
+                diff = .patch(CodexUnifiedDiff.materializePatch(patch, fileName: file, kind: CodexUnifiedDiff.FileKind(entry.kind)))
+            case .pair(let old, let new)? where !old.isEmpty || !new.isEmpty:
+                diff = .pair(old: old, new: new)
+            default:
+                diff = nil
+            }
+            let movePath = entry.destination
+            let kind: FileChangeKind = movePath != nil ? .renamed : entry.kind == "add" ? .added : entry.kind == "delete" ? .deleted : .modified
+            return ToolPatchFile(
+                file: file,
+                path: ChatToolPresentation.resolvePath(file, root: root),
+                movePath: movePath.map { ChatToolPresentation.resolvePath($0, root: root) },
+                kind: kind,
+                diff: diff
+            )
+        }
+    }
+
+    /// PatchFallback's text: the raw `patch` or `input` argument, or the
+    /// whole input as JSON.
+    public static func fallbackText(_ input: JSONValue) -> String? {
+        if let patch = input["patch"]?.stringValue { return patch }
+        if let raw = input["input"]?.stringValue { return raw }
+        return ToolFullPresentation.resultText(input)
+    }
+}
+
+/// CodexDiffView's input: a turn's unified diff and the file it names.
+public struct ToolUnifiedDiff: Equatable, Sendable {
+    public var patch: String
+    /// Gemini's explicit `path` or `filePath`, else the diff's `+++` header.
+    public var fileName: String?
+
+    /// Nil without a diff, and CodexDiffView draws nothing.
+    public init?(_ input: JSONValue) {
+        guard let patch = input["unified_diff"]?.stringValue, !patch.isEmpty else { return nil }
+        self.patch = patch
+        fileName = input["path"]?.stringValue ?? input["filePath"]?.stringValue ?? CodexUnifiedDiff.parse(patch).fileName
+    }
+}

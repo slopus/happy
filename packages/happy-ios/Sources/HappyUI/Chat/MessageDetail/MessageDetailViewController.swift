@@ -14,6 +14,8 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     private let context: AppContext
     private let sessionId: String
     private let messageId: String
+    /// Of a patch's files, the one the reader tapped in the chat.
+    private let focusFile: String?
     private let services: ChatServices
     private let scrollView = UIScrollView()
     private let canvas = MessageDetailCanvas()
@@ -23,7 +25,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     private let holdRecognizer = UILongPressGestureRecognizer()
     private let copyCallout = ChatCopyCallout()
     private var feedTask: Task<Void, Never>?
-    private var observation: StoreObservation?
+    private var observation: ApplyObservation?
 
     private var session = ChatSessionState(record: nil, settings: AccountSettings())
     private var snapshot: ChatSnapshot?
@@ -35,11 +37,12 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     private var lastLayoutWidth: CGFloat = 0
     private var leaving = false
 
-    init(context: AppContext, session account: AccountSession, sessionId: String, messageId: String) {
+    init(context: AppContext, session account: AccountSession, sessionId: String, messageId: String, file: String? = nil) {
         self.context = context
         self.sessionId = sessionId
         self.messageId = messageId
-        services = ChatServices.make(account: account, sessionId: sessionId)
+        focusFile = file
+        services = ChatServices.make(account: account, sessionId: sessionId, isCurrent: { [weak context, weak account] in account != nil && context?.account.session === account })
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -209,7 +212,8 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
             showLineNumbers: session.settings.bool("showLineNumbersInToolViews"),
             devMode: devMode,
             diffExpanded: diffExpanded,
-            maxContentWidth: maxContentWidth
+            maxContentWidth: maxContentWidth,
+            focusFile: focusFile
         )
         let width = view.bounds.width
         let measurer = self.measurer

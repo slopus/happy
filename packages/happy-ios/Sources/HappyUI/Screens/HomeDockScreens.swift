@@ -12,15 +12,25 @@ import UIKit
 /// the account's new-session draft, which outlives it. A start runs
 /// through `SessionStarter`; the composer stays open, reporting each step,
 /// until the session is open, and Stop gives it back at once.
+///
+/// Where the computer's Happy Agent can make bots, the composer makes one
+/// instead: the text is the bot's name, and the face it wears is picked
+/// above.
 @MainActor
 final class HomeDockController: NSObject {
     let restingView: HomeDockView
     let composer: NewSessionComposer
     let starter: SessionStarter
+    /// Pictures for the first message (`useImagePicker`): home's own, kept
+    /// while home is, as the prompt is. A bot takes none.
+    let images: ComposerImagePicker
+    private let staging: ComposerAttachmentStaging
     private(set) var prompt = ""
     private weak var host: UIViewController?
     private let context: AppContext
     private weak var focus: HomeDockFocusViewController?
+    /// "Picture not set" offers waiting for the composer to go.
+    private var faceOffers: [(message: String, answer: CheckedContinuation<Bool, Never>)] = []
 
     init(restingView: HomeDockView, host: UIViewController, context: AppContext, session: AccountSession, snapshot: HomeSnapshot) {
         self.restingView = restingView
@@ -31,16 +41,13 @@ final class HomeDockController: NSObject {
             snapshot: snapshot,
             ops: session.homeOps
         )
-        let sync = session.sync
-        starter = SessionStarter(environment: .init(
-            ops: session.homeOps,
-            sessionOps: session.homeSessionOps,
-            sender: session.sender,
-            metadataTransport: session.realtime,
-            refreshSessions: { await sync.run(.sessions) }
-        ))
+        starter = SessionStarter.make(for: session)
+        staging = ComposerAttachmentStaging(filesDirectory: session.filesDirectory)
+        images = ComposerImagePicker(staging: staging)
         super.init()
         starter.presenter = self
+        images.host = { [weak self] in self?.presenterController }
+        images.onChange = { [weak self] in self?.render() }
         starter.onPhaseChange = { [weak self] _ in self?.render() }
         composer.onChange = { [weak self] in self?.render() }
         restingView.entryButton.addAction(UIAction { [weak self] _ in self?.openFocus() }, for: .touchUpInside)
@@ -70,8 +77,14 @@ final class HomeDockController: NSObject {
         restingView.isHidden = !isAvailable || focus != nil
     }
 
+    /// A bot needs a name the daemon takes; a session, a prompt or a
+    /// picture.
     var canSubmit: Bool {
-        !starter.isStarting && !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        guard !starter.isStarting else { return false }
+        let drafts = composer.drafts
+        return drafts.createsBot
+            ? BotName.isValid(drafts.botName)
+            : !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.images.isEmpty
     }
 
     func setPrompt(_ prompt: String) {
@@ -105,6 +118,7 @@ final class HomeDockController: NSObject {
         focus = nil
         updateVisibility()
         render()
+        showFaceOffers()
     }
 
     /// ProjectRow's `+` (ProjectHomeList.tsx `createWorkspace`): the draft
@@ -122,30 +136,78 @@ final class HomeDockController: NSObject {
     @discardableResult
     func submit() async -> Bool {
         guard canSubmit else { return false }
-        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         let drafts = composer.drafts
+        // A bot is made from its name, not from a prompt: the composer's
+        // text is the name, and the prompt typed for a session stays.
+        if drafts.createsBot {
+            guard !drafts.botName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
+            let bot = drafts.bot
+            guard let sessionId = await start(composer.launchBot()) else { return false }
+            // The next bot starts from a clean name and fresh faces; the
+            // composer goes back to offering a session, the ordinary case.
+            if drafts.botName == bot.botName { drafts.setBotName("") }
+            drafts.rollBotFaces()
+            drafts.setCreatesBot(false)
+            open(sessionId)
+            return true
+        }
+        let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let picked = images.images
+        guard !text.isEmpty || !picked.isEmpty else { return false }
         drafts.setInput(text)
         let started = drafts.draft
-        let launch: NewSessionLaunch
-        switch composer.launch(prompt: text, attachments: []) {
-        case .success(let resolved):
-            launch = resolved
-        case .failure(let refusal):
-            showStartError(refusal.errorDescription ?? SessionStarter.Message.startFailed)
-            return false
-        }
-        render()
-        let composer = composer
-        guard let sessionId = await starter.start(launch, isCurrentTarget: { composer.isCurrentTarget(started) }) else {
-            render()
-            return false
-        }
-        // Only what was sent is cleared: edits made while it ran stay.
+        guard let sessionId = await start(composer.launch(prompt: text, attachments: picked.map(\.attachment))) else { return false }
+        // Only what was sent is cleared: edits made while it ran stay. The
+        // outbox holds its own copies of the pictures by now.
         if drafts.draft.input == started.input { drafts.setInput("") }
         prompt = ""
+        images.clear()
+        open(sessionId)
+        return true
+    }
+
+    /// Runs a resolved start; the session's id once it is open.
+    private func start(_ resolved: Result<NewSessionLaunch, NewSessionLaunch.Refusal>) async -> String? {
+        let launch: NewSessionLaunch
+        switch resolved {
+        case .success(let value):
+            launch = value
+        case .failure(let refusal):
+            showStartError(refusal.errorDescription ?? SessionStarter.Message.startFailed)
+            return nil
+        }
+        let drafts = composer.drafts
+        let started = drafts.draft
+        let bot = drafts.bot
+        render()
+        let composer = composer
+        guard let sessionId = await starter.start(launch, isCurrentTarget: { composer.isCurrentTarget(started, bot: bot) }) else {
+            render()
+            return nil
+        }
+        return sessionId
+    }
+
+    private func open(_ sessionId: String) {
         render()
         host?.push(.session(id: sessionId), context: context)
-        return true
+    }
+
+    // MARK: Bots
+
+    /// Session | Bot.
+    func setCreatesBot(_ value: Bool) {
+        guard !starter.isStarting else { return }
+        composer.drafts.setCreatesBot(value)
+    }
+
+    /// The name field, as typed: a pasted line break becomes a space and
+    /// the daemon's ceiling is kept. Returns what the field should hold.
+    @discardableResult
+    func setBotName(_ name: String) -> String {
+        let sanitized = BotName.sanitize(name)
+        composer.drafts.setBotName(sanitized)
+        return sanitized
     }
 
     /// Stop: the composer back now, the session put down unwatched.
@@ -174,11 +236,52 @@ extension HomeDockController: SessionStarterPresenter {
             on: controller
         )
     }
+
+    func showAttachmentsNotSupported() {
+        guard let controller = presenterController else { return }
+        Alerts.show(Strings.ImageUpload.notSupportedTitle, Strings.ImageUpload.notSupportedMessage, on: controller)
+    }
+
+    /// Asked once the composer has gone: the bot's session opens beneath,
+    /// and the question must outlive the composer it was made from.
+    func offerBotFaceRetry(_ message: String) async -> Bool {
+        await withCheckedContinuation { continuation in
+            faceOffers.append((message, continuation))
+            showFaceOffers()
+        }
+    }
+
+    private func showFaceOffers() {
+        guard focus == nil, !faceOffers.isEmpty else { return }
+        let anchor = host?.navigationController ?? host
+        guard var top = anchor?.view.window?.rootViewController ?? anchor else {
+            for offer in faceOffers { offer.answer.resume(returning: false) }
+            faceOffers = []
+            return
+        }
+        while let presented = top.presentedViewController, !presented.isBeingDismissed { top = presented }
+        let offers = faceOffers
+        faceOffers = []
+        for offer in offers {
+            let controller = top
+            Task { @MainActor in
+                offer.answer.resume(returning: await Alerts.confirm(
+                    Strings.Home.botFaceNotSet,
+                    offer.message,
+                    confirmTitle: Strings.Home.botFaceTryAgain,
+                    cancelTitle: Strings.Home.botFaceNotNow,
+                    on: controller
+                ))
+            }
+        }
+    }
 }
 
 /// The open composer (HomeDock.tsx's focus mode): a modal over home that
 /// blurs and dims the list, stacks the machine, project, worktree and
 /// harness pickers over the composer card, and rides on the keyboard.
+/// Where bots can be made, Session | Bot heads the screen; a bot keeps the
+/// machine row and offers faces in place of the rest.
 ///
 /// Every frame comes from `HomeDockFocusLayout`, every opening and closing
 /// value from `HomeDockFocusMotion`, driven frame by frame. The pickers
@@ -197,6 +300,14 @@ final class HomeDockFocusViewController: UIViewController {
     private let backdrop = HomeDockBackdropView()
     private let dock = PassthroughView()
     private let rows = Row.allCases.map { _ in HomeDockRowView() }
+    /// Session | Bot, at the top over the backdrop, with the bot's lede.
+    private let header = HomeDockRevealLineView(passesThrough: true)
+    private let kindControl = UISegmentedControl(items: [Strings.Home.composerSession, Strings.Home.composerBot])
+    private let lede = StyledLabel(style: TextStyles.homeDockLede, color: Palette.textSecondary, lines: 0, alignment: .center)
+    private let facesLine = HomeDockRevealLineView(passesThrough: false)
+    private let facePicker = BotFacePickerView()
+    /// Which text the card holds: the prompt, or the bot's name.
+    private var cardHoldsBotName: Bool?
     private let progressDot = StatusDotView()
     private let progressLabel = StyledLabel(style: TextStyles.homeDockProgress, color: Palette.textSecondary, lines: 1)
     private let progressHint = StyledLabel(style: TextStyles.homeDockProgress, color: Palette.textSecondary, lines: 1)
@@ -256,6 +367,36 @@ final class HomeDockFocusViewController: UIViewController {
             dock.addSubview(row)
         }
 
+        kindControl.accessibilityLabel = Strings.Home.composerKindLabel
+        kindControl.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            self.controller?.setCreatesBot(self.kindControl.selectedSegmentIndex == 1)
+        }, for: .valueChanged)
+        lede.string = Strings.Home.botLede
+        header.addSubview(kindControl)
+        header.addSubview(lede)
+        header.blocker.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            AgentInputCardView.shake(self.header, .refusal)
+            self.refuse()
+        }, for: .touchUpInside)
+        view.addSubview(header)
+
+        facePicker.onPick = { [weak self] slot in self?.controller?.composer.drafts.setBotFaceSlot(slot) }
+        facePicker.onRoll = { [weak self] in self?.controller?.composer.drafts.rollBotFaces() }
+        facesLine.addSubview(facePicker)
+        facesLine.blocker.addAction(UIAction { [weak self] _ in
+            guard let self else { return }
+            AgentInputCardView.shake(self.facesLine, .refusal)
+            self.refuse()
+        }, for: .touchUpInside)
+        dock.addSubview(facesLine)
+        if controller?.composer.choices.supportsBots == true {
+            // The faces' outlines are parsed once, off the main thread,
+            // before anyone asks for a bot.
+            Task.detached(priority: .utility) { _ = BotFaceStyle.adventurerNeutral.canvas }
+        }
+
         progressDot.backgroundColor = UIColor(Palette.statusConnecting)
         progressDot.isPulsing = true
         progressHint.string = Strings.Home.interruptHint
@@ -294,7 +435,6 @@ final class HomeDockFocusViewController: UIViewController {
             self.applyShadow()
             self.applyFlash()
         }
-        card.setText(controller?.prompt ?? "", selection: NSRange(location: ((controller?.prompt ?? "") as NSString).length, length: 0))
         render()
     }
 
@@ -333,8 +473,27 @@ final class HomeDockFocusViewController: UIViewController {
     func render() {
         guard isViewLoaded, let controller else { return }
         let choices = controller.composer.choices
+        let drafts = controller.composer.drafts
+        let createsBot = drafts.createsBot
         let phase = controller.starter.phase
         let starting = phase != nil
+
+        header.isHidden = !choices.supportsBots
+        header.refusing = starting
+        kindControl.selectedSegmentIndex = createsBot ? 1 : 0
+        lede.isHidden = !createsBot
+        facesLine.isHidden = !createsBot
+        facesLine.refusing = starting
+        facePicker.seeds = drafts.botFaceSeeds
+        facePicker.slot = drafts.botFaceSlot
+        // One field for both: switching keeps the keyboard up.
+        let text = createsBot ? drafts.botName : controller.prompt
+        if cardHoldsBotName != createsBot || (createsBot && card.text != text) {
+            cardHoldsBotName = createsBot
+            revertingText = true
+            card.setText(text, selection: NSRange(location: (text as NSString).length, length: 0))
+            revertingText = false
+        }
 
         let values: [Row: String] = [
             .machine: choices.currentMachine?.name ?? Strings.Home.selectMachine,
@@ -350,6 +509,8 @@ final class HomeDockFocusViewController: UIViewController {
         ]
         for row in Row.allCases {
             let view = rows[row.rawValue]
+            // A bot lives on a computer and nowhere else.
+            view.isHidden = createsBot && row != .machine
             view.value = values[row] ?? ""
             view.iconView.icon = .ionicons(icons[row] ?? "")
             view.refusing = starting
@@ -368,14 +529,21 @@ final class HomeDockFocusViewController: UIViewController {
             }
         }
 
-        let label = NewSessionProgress.label(phase: phase, agentName: choices.currentAgent.name, picksWorkspaces: choices.picksWorkspaces)
+        let label = NewSessionProgress.label(
+            phase: phase,
+            agentName: choices.currentAgent.name,
+            picksWorkspaces: choices.picksWorkspaces,
+            createsBot: createsBot
+        )
         let primary = NewSessionProgress.primaryAction(canSubmit: controller.canSubmit, phase: phase, canCancel: true)
         progressLabel.string = label ?? ""
         progressDot.isHidden = label == nil
         progressLabel.isHidden = label == nil
         progressHint.isHidden = label == nil || primary != .stop
 
-        card.configuration = cardConfiguration(choices, primary: primary, starting: starting)
+        card.configuration = createsBot
+            ? botCardConfiguration(choices, primary: primary, starting: starting)
+            : cardConfiguration(choices, primary: primary, starting: starting)
         textBlocker.isHidden = !starting
         view.setNeedsLayout()
     }
@@ -389,8 +557,8 @@ final class HomeDockFocusViewController: UIViewController {
         }
     }
 
-    /// The card for the draft (`renderFocusedComposer`). The add button
-    /// is left out until there is an image picker to open.
+    /// The card for the draft (`renderFocusedComposer`), with the pictures
+    /// picked for the first message.
     private func cardConfiguration(_ choices: NewSessionChoices, primary: NewSessionPrimaryAction, starting: Bool) -> AgentInputCardConfiguration {
         let hasHarness = choices.hasAvailableHarness
         let permission: AgentInputChipConfiguration? = hasHarness && choices.currentPermission != nil
@@ -427,23 +595,45 @@ final class HomeDockFocusViewController: UIViewController {
                 )
             )
         } : nil
-        let action: AgentInputPrimaryAction = switch primary {
-        case .send: .send
-        case .stop: .stop
-        case .busy: .send
-        case .idle: .idle
-        }
+        let attachments = controller?.images.images.map { AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL) } ?? []
         return AgentInputCardConfiguration(
             placeholder: choices.promptPlaceholder,
+            showsAdd: true,
+            addAccessibilityLabel: Strings.Home.addImage,
+            attachments: attachments,
             permission: permission,
             model: model,
             effort: effort,
-            primaryAction: action,
+            primaryAction: Self.action(primary),
             isPrimaryBusy: primary == .busy,
             primaryAccessibilityLabel: primary == .stop ? Strings.Composer.stop : Strings.Composer.send,
             primaryStyle: .newSession,
             refusesControls: starting
         )
+    }
+
+    /// The card for a bot: its name and the button that makes it. A bot
+    /// takes no pictures and no modes.
+    private func botCardConfiguration(_ choices: NewSessionChoices, primary: NewSessionPrimaryAction, starting: Bool) -> AgentInputCardConfiguration {
+        AgentInputCardConfiguration(
+            placeholder: choices.promptPlaceholder,
+            primaryAction: Self.action(primary),
+            isPrimaryBusy: primary == .busy,
+            primaryAccessibilityLabel: primary == .stop ? Strings.Composer.stop : Strings.Home.createBot,
+            autocapitalization: .words,
+            returnKey: .done,
+            primaryStyle: .newSession,
+            refusesControls: starting
+        )
+    }
+
+    private static func action(_ primary: NewSessionPrimaryAction) -> AgentInputPrimaryAction {
+        switch primary {
+        case .send: .send
+        case .stop: .stop
+        case .busy: .send
+        case .idle: .idle
+        }
     }
 
     /// A picker row's native menu, built when it opens so it shows the
@@ -634,21 +824,47 @@ final class HomeDockFocusViewController: UIViewController {
         let cardLayout = card.layout(width: composerWidth)
         let cardHeight = cardLayout.size.height
         let showsProgress = !progressLabel.isHidden
+        let shownRows = rows.filter { !$0.isHidden }
         let layout = HomeDockFocusLayout(.init(
             size: size,
             safeBottom: view.safeAreaInsets.bottom,
             composerHeight: motion.composerHeight(full: cardHeight),
-            rows: rows.map(\.valueLabel.measurable),
+            rows: shownRows.map(\.valueLabel.measurable),
             progress: showsProgress ? progressLabel.measurable : nil,
-            hint: showsProgress && !progressHint.isHidden ? progressHint.measurable : nil
+            hint: showsProgress && !progressHint.isHidden ? progressHint.measurable : nil,
+            faces: facesLine.isHidden ? nil : facePicker.text
         ))
 
-        for (index, row) in rows.enumerated() {
+        // Each line reveals in turn from the top.
+        for (index, row) in shownRows.enumerated() {
             let frame = layout.rows[index]
             let reveal = motion.row(index)
             place(row, frame.frame, CGAffineTransform(translationX: 0, y: reveal.offsetY))
             row.alpha = reveal.alpha
             row.apply(frame)
+        }
+        if let line = layout.faces, let picker = layout.facePicker, let pickerLayout = layout.facePickerLayout {
+            let reveal = motion.row(shownRows.count)
+            place(facesLine, line, CGAffineTransform(translationX: 0, y: reveal.offsetY))
+            facesLine.alpha = reveal.alpha
+            facePicker.setLayoutFrame(picker.offsetBy(dx: -line.minX, dy: -line.minY))
+            facePicker.apply(pickerLayout)
+        }
+
+        // Session | Bot holds the top of the screen, off the keyboard, and
+        // reveals with the first row.
+        if !header.isHidden {
+            let headerLayout = HomeDockHeaderLayout(.init(
+                width: size.width,
+                safeTop: view.safeAreaInsets.top,
+                lede: lede.isHidden ? nil : lede.measurable
+            ))
+            let content = headerLayout.content
+            let reveal = motion.row(0)
+            place(header, content, CGAffineTransform(translationX: 0, y: reveal.offsetY))
+            header.alpha = reveal.alpha
+            kindControl.setLayoutFrame(headerLayout.segment.offsetBy(dx: -content.minX, dy: -content.minY))
+            if let frame = headerLayout.lede { lede.setLayoutFrame(frame.offsetBy(dx: -content.minX, dy: -content.minY)) }
         }
 
         if let frame = layout.progressDot { progressDot.setLayoutFrame(frame) }
@@ -679,17 +895,37 @@ final class HomeDockFocusViewController: UIViewController {
 extension HomeDockFocusViewController: AgentInputCardDelegate {
     func agentInputCardDidChangeText(_ card: AgentInputCardView) {
         guard !revertingText, let controller else { return }
+        let createsBot = controller.composer.drafts.createsBot
         // The keyboard stays up while a session starts, so the text is
         // locked by refusing each change rather than by disabling it.
         if controller.starter.isStarting {
             revertingText = true
-            let prompt = controller.prompt
-            card.setText(prompt, selection: NSRange(location: (prompt as NSString).length, length: 0))
+            let text = createsBot ? controller.composer.drafts.botName : controller.prompt
+            card.setText(text, selection: NSRange(location: (text as NSString).length, length: 0))
             revertingText = false
             refuseComposer()
             return
         }
+        if createsBot {
+            let typed = card.text
+            let kept = controller.setBotName(typed)
+            if kept != typed {
+                revertingText = true
+                let caret = min(card.selectedRange.location, (kept as NSString).length)
+                card.setText(kept, selection: NSRange(location: caret, length: 0))
+                revertingText = false
+            }
+            return
+        }
         controller.setPrompt(card.text)
+    }
+
+    /// Return makes the bot (`submitBehavior="submit"`); a session's
+    /// prompt takes the newline.
+    func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool {
+        guard let controller, controller.composer.drafts.createsBot else { return true }
+        submitFromFocus()
+        return false
     }
 
     func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) {
@@ -704,10 +940,14 @@ extension HomeDockFocusViewController: AgentInputCardDelegate {
             close()
             return
         }
-        controller.setPrompt(card.text)
-        guard controller.canSubmit else { return }
-        // The composer stays up until the session exists, so a failure
-        // lands where it was asked for.
+        if !controller.composer.drafts.createsBot { controller.setPrompt(card.text) }
+        submitFromFocus()
+    }
+
+    /// The composer stays up until the session exists, so a failure lands
+    /// where it was asked for.
+    private func submitFromFocus() {
+        guard let controller, controller.canSubmit else { return }
         Task { @MainActor [weak self] in
             if await controller.submit() { self?.close() }
         }
@@ -715,6 +955,16 @@ extension HomeDockFocusViewController: AgentInputCardDelegate {
 
     func agentInputCardDidRefuse(_ card: AgentInputCardView, control: AgentInputControl) {
         refuse()
+    }
+
+    func agentInputCardDidPressAdd(_ card: AgentInputCardView) {
+        guard let controller, !controller.starter.isStarting else { return }
+        controller.images.attach()
+    }
+
+    func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) {
+        guard let controller, !controller.starter.isStarting else { return }
+        controller.images.remove(id: id)
     }
 
     func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {

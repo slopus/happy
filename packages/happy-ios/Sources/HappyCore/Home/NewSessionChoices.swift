@@ -543,7 +543,8 @@ extension NewSessionLaunch {
                 permissionMode: permission.key,
                 effort: effort?.key,
                 bot: botName.map { (name: $0, faceSeed: bot?.faceSeed ?? "") }
-            )
+            ),
+            bot: botName.map { Bot(name: $0, faceSeed: bot?.faceSeed ?? "") }
         ))
     }
 }
