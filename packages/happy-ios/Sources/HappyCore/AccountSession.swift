@@ -21,6 +21,7 @@ public final class AccountSession: Sendable {
     public let homeFeed: HomeFeed
     public let settingsFeed: SettingsFeed
     public let machinesFeed: MachinesFeed
+    public let troubleshootingFeed: TroubleshootingFeed
     public let realtime: SocketIOClient
     public let pairing: PairingService
     /// Archive, delete and mark read, for the session list.
@@ -86,6 +87,7 @@ public final class AccountSession: Sendable {
         self.homeFeed = HomeFeed(store: store)
         self.settingsFeed = SettingsFeed(store: store)
         self.machinesFeed = MachinesFeed(store: store)
+        self.troubleshootingFeed = TroubleshootingFeed(store: store)
         self.pairing = PairingService(api: api, keys: keys)
 
         guard let socketURL = SocketIOURL.make(serverURL: dependencies.serverURL) else {
@@ -181,6 +183,7 @@ public final class AccountSession: Sendable {
         homeFeed.stop()
         settingsFeed.stop()
         machinesFeed.stop()
+        await troubleshootingFeed.stop()
         let task = pump.cancel()
         await gitStatus.stop()
         await rigComposer.setConnected(false)

@@ -156,6 +156,18 @@ Picker order follows happy-app's `useSessions`: active chats first, then
 Side chats are excluded. Updating `updatedAt` or reversing the raw SQL order
 does not rebuild pickers; meaningful activity and active-state changes do.
 
+Troubleshooting has its own atomic SQL snapshot: only computer-grouping
+metadata and the newest known-computer session's project/path/log-directory
+fields are decoded. One account-owned projection shares the computer list
+and prompt, caching computer grouping until those inputs change. A fixture
+with 1000 sessions and seven subscribers asserts one SQL fetch and one
+computer derivation. A real live message changes the recent project without
+regrouping computers; equal prompts and unrendered machine fields publish
+nothing. Machine deletion selects the next known session in the same value,
+and presence/account lifecycle tests cover server flags and fresh scopes.
+The Home `updatedAt` region remains until session info and troubleshooting
+screens have both switched to their scoped feeds.
+
 `HappyStore.ThreadRules` checks synchronous store reads/writes, migration,
 sync work and reducer entry points in debug builds. Its enforcement flag
 remains disabled until integration finishes migrating every screen caller.
