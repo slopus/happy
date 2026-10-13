@@ -50,7 +50,9 @@ enum Screens {
             return ChatViewController(context: context, session: session, sessionId: id)
         case .sessionInfo(let id):
             return SessionInfoViewController(context: context, session: session, sessionId: id)
-        case .sessionFiles, .sessionFile, .sessionChanges, .sessionMessage, .textSelection:
+        case .sessionChanges(let id):
+            return SessionChangesViewController(context: context, session: session, sessionId: id)
+        case .sessionFiles, .sessionFile, .sessionMessage, .textSelection:
             return PlaceholderViewController(title: "")
         case .machine(let id):
             return MachineViewController(context: context, session: session, machineId: id)
