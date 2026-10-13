@@ -7,8 +7,13 @@ import HappyWire
 struct RecordDecoder: Sendable {
     let keyRing: KeyRing
 
-    func session(_ row: APISession) -> SessionRecord {
+    func session(_ row: APISession, previous: SessionRecord? = nil) -> SessionRecord {
         let cipher = keyRing.cipher(wrappedKey: row.dataEncryptionKey)
+        let sameKey = previous?.dataKeyCipher == row.dataEncryptionKey
+        let cachedMetadata = sameKey && previous?.metadataVersion == row.metadataVersion
+            && previous?.metadataCipher == row.metadata ? previous?.metadata : nil
+        let cachedAgentState = sameKey && previous?.agentStateVersion == row.agentStateVersion
+            && previous?.agentStateCipher == row.agentState ? previous?.agentState : nil
         return SessionRecord(
             id: row.id,
             seq: row.seq,
@@ -19,17 +24,22 @@ struct RecordDecoder: Sendable {
             projectId: row.projectId,
             metadataVersion: row.metadataVersion,
             metadataCipher: row.metadata,
-            metadata: cipher?.decrypt(base64: row.metadata),
+            metadata: cachedMetadata ?? cipher?.decrypt(base64: row.metadata),
             agentStateVersion: row.agentStateVersion,
             agentStateCipher: row.agentState,
-            agentState: row.agentState.flatMap { cipher?.decrypt(base64: $0) },
+            agentState: cachedAgentState ?? row.agentState.flatMap { cipher?.decrypt(base64: $0) },
             dataKeyCipher: row.dataEncryptionKey,
             decryptable: cipher != nil
         )
     }
 
-    func machine(_ row: APIMachine) -> MachineRecord {
+    func machine(_ row: APIMachine, previous: MachineRecord? = nil) -> MachineRecord {
         let cipher = keyRing.cipher(wrappedKey: row.dataEncryptionKey)
+        let sameKey = previous?.dataKeyCipher == row.dataEncryptionKey
+        let cachedMetadata = sameKey && previous?.metadataVersion == row.metadataVersion
+            && previous?.metadataCipher == row.metadata ? previous?.metadata : nil
+        let cachedDaemonState = sameKey && previous?.daemonStateVersion == row.daemonStateVersion
+            && previous?.daemonStateCipher == row.daemonState ? previous?.daemonState : nil
         return MachineRecord(
             id: row.id,
             seq: row.seq,
@@ -39,10 +49,10 @@ struct RecordDecoder: Sendable {
             activeAt: row.activeAt,
             metadataVersion: row.metadataVersion,
             metadataCipher: row.metadata,
-            metadata: cipher?.decrypt(base64: row.metadata),
+            metadata: cachedMetadata ?? cipher?.decrypt(base64: row.metadata),
             daemonStateVersion: row.daemonStateVersion,
             daemonStateCipher: row.daemonState,
-            daemonState: row.daemonState.flatMap { cipher?.decrypt(base64: $0) },
+            daemonState: cachedDaemonState ?? row.daemonState.flatMap { cipher?.decrypt(base64: $0) },
             dataKeyCipher: row.dataEncryptionKey,
             decryptable: cipher != nil
         )
@@ -61,8 +71,8 @@ struct RecordDecoder: Sendable {
         )
     }
 
-    func versioned(_ value: VersionedValue?, cipher: RecordCipher?) -> VersionedPayload? {
-        guard let value else { return nil }
+    func versioned(_ value: VersionedValue?, cipher: RecordCipher?, after version: Int? = nil) -> VersionedPayload? {
+        guard let value, version.map({ value.version > $0 }) ?? true else { return nil }
         return VersionedPayload(
             version: value.version,
             cipher: value.value,

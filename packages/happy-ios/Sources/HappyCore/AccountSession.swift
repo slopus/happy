@@ -18,6 +18,9 @@ public final class AccountSession: Sendable {
     public let sender: OutboxSender
     /// The chat of any session, from this account's store.
     public let chatFeed: LocalChatFeed
+    public let homeFeed: HomeFeed
+    public let settingsFeed: SettingsFeed
+    public let machinesFeed: MachinesFeed
     public let realtime: SocketIOClient
     public let pairing: PairingService
     /// Archive, delete and mark read, for the session list.
@@ -78,6 +81,9 @@ public final class AccountSession: Sendable {
         self.sync = SyncEngine(api: api, store: store, keys: keys, options: syncOptions)
         self.sender = OutboxSender(store: store, sync: sync, filesDirectory: self.filesDirectory)
         self.chatFeed = LocalChatFeed(store: store)
+        self.homeFeed = HomeFeed(store: store)
+        self.settingsFeed = SettingsFeed(store: store)
+        self.machinesFeed = MachinesFeed(store: store)
         self.pairing = PairingService(api: api, keys: keys)
 
         guard let socketURL = SocketIOURL.make(serverURL: dependencies.serverURL) else {

@@ -19,6 +19,9 @@ import HappyWire
 ///   - messages are keyed by server id and `(sessionId, seq)`.
 public final class LocalStore: Sendable {
     public let writer: any DatabaseWriter
+    let homeObservation: SharedValueObservation<HomeSnapshot>
+    let settingsObservation: SharedValueObservation<SettingsSnapshot>
+    let machinesObservation: SharedValueObservation<MachinesSnapshot>
 
     /// Opens (creating if needed) the store at `url`, in WAL mode so the UI
     /// can read while sync writes.
@@ -39,6 +42,26 @@ public final class LocalStore: Sendable {
 
     public init(writer: any DatabaseWriter) throws {
         self.writer = writer
+        let delivery = DispatchQueue(label: "HappyStore.observations", qos: .userInitiated)
+        // Ciphertexts, versions and message cursors do not render on home.
+        // Scope invalidation to the columns its consumers actually use.
+        let homeSessionRegion = SQLRequest<Row>(sql: """
+            SELECT id, createdAt, updatedAt, active, activeAt, projectId,
+                   metadata, agentState, decryptable, thinking, unread, archiving
+            FROM session
+            """)
+        homeObservation = ValueObservation.tracking(
+            region: homeSessionRegion, MachineRecord.all(), ProjectRecord.all(),
+            AccountSettingsRecord.all(), PendingSettingsRecord.all(), AccountProfileRecord.all(),
+            SyncStateRecord.filter([SyncCursor.machinesLastSync.rawValue, SyncCursor.sessionsChangedSince.rawValue].contains(Column("key"))),
+            fetch: { db in try Self.fetchHomeSnapshot(db) }
+        ).removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))
+        settingsObservation = ValueObservation.trackingConstantRegion { db in
+            try Self.fetchSettingsSnapshot(db)
+        }.removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))
+        machinesObservation = ValueObservation.trackingConstantRegion { db in
+            try Self.fetchMachinesSnapshot(db)
+        }.removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))
         try Schema.migrator.migrate(writer)
         // Live state from a previous run is stale: the server re-sends
         // `thinking` every few seconds while it holds, and an archive that
@@ -61,14 +84,18 @@ public final class LocalStore: Sendable {
         try writer.read { db in try SessionRecord.fetchOne(db, key: id) }
     }
 
+    public func sessions(ids: [String]) throws -> [SessionRecord] {
+        guard !ids.isEmpty else { return [] }
+        return try writer.read { db in try SessionRecord.filter(ids.contains(Column("id"))).fetchAll(db) }
+    }
+
     /// Merges sessions from a list fetch or a `new-session` update.
     public func upsertSessions(_ incoming: [SessionRecord], reconcileComposer: SessionComposerReconciliation? = nil) throws {
         try writer.write { db in
             for record in incoming {
-                let previous = try SessionRecord.fetchOne(db, key: record.id)
-                try Self.upsert(record, db)
-                if let reconcileComposer, let merged = try SessionRecord.fetchOne(db, key: record.id) {
-                    try Self.reconcileComposer(merged, previous: previous, db: db, transform: reconcileComposer)
+                let result = try Self.upsert(record, db)
+                if let reconcileComposer {
+                    try Self.reconcileComposer(result.merged, previous: result.previous, db: db, transform: reconcileComposer)
                 }
             }
         }
@@ -111,7 +138,7 @@ public final class LocalStore: Sendable {
                 record.projectId = projectId
             }
             Self.settle(old: old, &record)
-            try record.update(db)
+            if record != old { _ = try record.updateChanges(db, from: old) }
             if let reconcileComposer { try Self.reconcileComposer(record, previous: old, db: db, transform: reconcileComposer) }
             return true
         }
@@ -128,7 +155,7 @@ public final class LocalStore: Sendable {
             record.thinking = thinking
             record.thinkingAt = activeAt
             Self.settle(old: old, &record)
-            try record.update(db)
+            if record != old { _ = try record.updateChanges(db, from: old) }
         }
     }
 
@@ -143,7 +170,7 @@ public final class LocalStore: Sendable {
     /// or puts it back when the archive failed.
     public func setSessionArchiving(id: String, _ archiving: Bool) throws {
         try writer.write { db in
-            try db.execute(sql: "UPDATE session SET archiving = ? WHERE id = ?", arguments: [archiving, id])
+            try db.execute(sql: "UPDATE session SET archiving = ? WHERE id = ? AND archiving != ?", arguments: [archiving, id, archiving])
         }
     }
 
@@ -206,6 +233,7 @@ public final class LocalStore: Sendable {
     public func applyMessagePage(sessionId: String, messages: [MessageRecord], syncedThrough: Int? = nil) throws {
         try writer.write { db in
             guard var session = try SessionRecord.fetchOne(db, key: sessionId) else { return }
+            let old = session
             for message in messages {
                 try Self.insertMessage(message, db)
             }
@@ -213,7 +241,7 @@ public final class LocalStore: Sendable {
             if last > session.syncedMessageSeq {
                 session.syncedMessageSeq = last
                 session.seq = max(session.seq, last)
-                try session.update(db)
+                _ = try session.updateChanges(db, from: old)
             }
         }
     }
@@ -235,6 +263,7 @@ public final class LocalStore: Sendable {
             guard var session = try SessionRecord.fetchOne(db, key: message.sessionId) else {
                 return .unknownSession
             }
+            let old = session
             try Self.insertMessage(message, db)
             session.seq = max(session.seq, message.seq)
             // The server bumps the session row in the same write that
@@ -249,7 +278,7 @@ public final class LocalStore: Sendable {
             } else {
                 result = .gap
             }
-            try session.update(db)
+            if session != old { _ = try session.updateChanges(db, from: old) }
             return result
         }
     }
@@ -293,6 +322,7 @@ public final class LocalStore: Sendable {
     ) throws -> Bool {
         try writer.write { db in
             guard var record = try MachineRecord.fetchOne(db, key: id) else { return false }
+            let old = record
             if let metadata, metadata.version > record.metadataVersion, let cipher = metadata.cipher {
                 record.metadataVersion = metadata.version
                 record.metadataCipher = cipher
@@ -307,7 +337,7 @@ public final class LocalStore: Sendable {
                 record.activeAt = activeAt
                 if let active { record.active = active }
             }
-            try record.update(db)
+            if record != old { _ = try record.updateChanges(db, from: old) }
             return true
         }
     }
@@ -324,7 +354,7 @@ public final class LocalStore: Sendable {
     /// or to the machine sync cursor. Home decides what to show from this.
     @MainActor
     public func observeMachines(onChange: @escaping @MainActor (MachinesSnapshot) -> Void) -> StoreObservation {
-        StoreObservation(observe({ db in try Self.fetchMachinesSnapshot(db) }, onChange: onChange))
+        Self.deliverOnMain(machineSnapshots(), onChange: onChange)
     }
 
     static func fetchMachinesSnapshot(_ db: Database) throws -> MachinesSnapshot {
@@ -357,11 +387,12 @@ public final class LocalStore: Sendable {
                 try ProjectRecord.deleteOne(db, key: id)
             }
             for record in incoming {
-                if let existing = try ProjectRecord.fetchOne(db, key: record.id),
-                   existing.metadataVersion > record.metadataVersion {
-                    continue
+                if let existing = try ProjectRecord.fetchOne(db, key: record.id) {
+                    guard existing.metadataVersion <= record.metadataVersion else { continue }
+                    if record != existing { _ = try record.updateChanges(db, from: existing) }
+                } else {
+                    try record.insert(db)
                 }
-                try record.save(db)
             }
         }
     }
@@ -385,10 +416,13 @@ public final class LocalStore: Sendable {
     @discardableResult
     public func applyProfile(_ profile: AccountProfile) throws -> Bool {
         try writer.write { db in
-            if let existing = try AccountProfileRecord.fetchOne(db, key: 1), existing.timestamp > profile.timestamp {
-                return false
+            let incoming = AccountProfileRecord(profile: profile)
+            if let existing = try AccountProfileRecord.fetchOne(db, key: 1) {
+                guard existing.timestamp <= profile.timestamp else { return false }
+                if incoming != existing { _ = try incoming.updateChanges(db, from: existing) }
+            } else {
+                try incoming.insert(db)
             }
-            try AccountProfileRecord(profile: profile).save(db)
             return true
         }
     }
@@ -398,14 +432,20 @@ public final class LocalStore: Sendable {
     public func patchProfile(_ update: UpdateAccountUpdate, at timestamp: Int64) throws {
         guard update.patchesProfile else { return }
         try writer.write { db in
-            var profile = try AccountProfileRecord.fetchOne(db, key: 1)?.profile
+            let old = try AccountProfileRecord.fetchOne(db, key: 1)
+            var profile = old?.profile
                 ?? AccountProfile(id: update.id, timestamp: 0)
             if let firstName = update.firstName { profile.firstName = firstName }
             if let lastName = update.lastName { profile.lastName = lastName }
             if let avatar = update.avatar { profile.avatar = avatar }
             if let github = update.github { profile.github = github }
             profile.timestamp = max(profile.timestamp, timestamp)
-            try AccountProfileRecord(profile: profile).save(db)
+            let record = AccountProfileRecord(profile: profile)
+            if let old {
+                if record != old { _ = try record.updateChanges(db, from: old) }
+            } else {
+                try record.insert(db)
+            }
         }
     }
 
@@ -419,7 +459,7 @@ public final class LocalStore: Sendable {
 
     @MainActor
     public func observeHome(onChange: @escaping @MainActor (HomeSnapshot) -> Void) -> StoreObservation {
-        StoreObservation(observe({ db in try Self.fetchHomeSnapshot(db) }, onChange: onChange))
+        Self.deliverOnMain(homeSnapshots(), onChange: onChange)
     }
 
     static func fetchHomeSnapshot(_ db: Database) throws -> HomeSnapshot {
@@ -427,7 +467,8 @@ public final class LocalStore: Sendable {
             machines: try fetchMachinesSnapshot(db),
             sessions: try SessionRecord.order(Column("updatedAt").desc).fetchAll(db),
             projects: try ProjectRecord.fetchAll(db),
-            settings: try fetchSettingsSnapshot(db)
+            settings: try fetchSettingsSnapshot(db),
+            sessionsSynced: try SyncStateRecord.exists(db, key: SyncCursor.sessionsChangedSince.rawValue)
         )
     }
 
@@ -438,7 +479,7 @@ public final class LocalStore: Sendable {
 
     @MainActor
     public func observeSettings(onChange: @escaping @MainActor (SettingsSnapshot) -> Void) -> StoreObservation {
-        StoreObservation(observe({ db in try Self.fetchSettingsSnapshot(db) }, onChange: onChange))
+        Self.deliverOnMain(settingsSnapshots(), onChange: onChange)
     }
 
     static func fetchSettingsSnapshot(_ db: Database) throws -> SettingsSnapshot {
@@ -478,8 +519,9 @@ public final class LocalStore: Sendable {
         guard !delta.isEmpty else { return }
         try writer.write { db in
             var pending = try Self.fetchPendingSettings(db)
+            let old = pending
             pending.merge(delta) { _, new in new }
-            try PendingSettingsRecord(delta: .object(pending)).save(db)
+            if pending != old { try PendingSettingsRecord(delta: .object(pending)).save(db) }
         }
     }
 
@@ -488,9 +530,11 @@ public final class LocalStore: Sendable {
     public func settlePendingSettings(sent: [String: JSONValue]) throws {
         try writer.write { db in
             var pending = try Self.fetchPendingSettings(db)
+            let old = pending
             for (key, value) in sent where pending[key] == value {
                 pending.removeValue(forKey: key)
             }
+            guard pending != old else { return }
             if pending.isEmpty {
                 _ = try PendingSettingsRecord.deleteOne(db, key: 1)
             } else {
@@ -503,7 +547,13 @@ public final class LocalStore: Sendable {
     /// version conflict. Unlike `applyAccountSettings` this takes the
     /// server's version even if it is not higher: the server is the judge.
     public func replaceAccountSettings(_ record: AccountSettingsRecord) throws {
-        try writer.write { db in try record.save(db) }
+        try writer.write { db in
+            if let old = try AccountSettingsRecord.fetchOne(db, key: 1) {
+                if record != old { _ = try record.updateChanges(db, from: old) }
+            } else {
+                try record.insert(db)
+            }
+        }
     }
 
     static func fetchPendingSettings(_ db: Database) throws -> [String: JSONValue] {
@@ -664,7 +714,14 @@ public final class LocalStore: Sendable {
     }
 
     public func setCursor(_ cursor: SyncCursor, _ value: Int64) throws {
-        try writer.write { db in try SyncStateRecord(key: cursor.rawValue, value: value).save(db) }
+        try writer.write { db in
+            let record = SyncStateRecord(key: cursor.rawValue, value: value)
+            if let old = try SyncStateRecord.fetchOne(db, key: cursor.rawValue) {
+                if record != old { _ = try record.updateChanges(db, from: old) }
+            } else {
+                try record.insert(db)
+            }
+        }
     }
 
     // MARK: Lifecycle
@@ -706,7 +763,8 @@ public final class LocalStore: Sendable {
         }
     }
 
-    static func upsert(_ incoming: SessionRecord, _ db: Database) throws {
+    @discardableResult
+    static func upsert(_ incoming: SessionRecord, _ db: Database) throws -> (previous: SessionRecord?, merged: SessionRecord) {
         guard var record = try SessionRecord.fetchOne(db, key: incoming.id) else {
             var fresh = incoming
             fresh.syncedMessageSeq = 0
@@ -714,7 +772,7 @@ public final class LocalStore: Sendable {
             fresh.unread = false
             fresh.archiving = false
             try fresh.insert(db)
-            return
+            return (nil, fresh)
         }
         let old = record
         if incoming.updatedAt >= record.updatedAt {
@@ -742,7 +800,8 @@ public final class LocalStore: Sendable {
             record.decryptable = incoming.decryptable
         }
         settle(old: old, &record)
-        try record.update(db)
+        if record != old { _ = try record.updateChanges(db, from: old) }
+        return (old, record)
     }
 
     /// The local fields that follow from a change to a session, after
@@ -771,6 +830,7 @@ public final class LocalStore: Sendable {
             try incoming.insert(db)
             return
         }
+        let old = record
         if incoming.updatedAt >= record.updatedAt {
             record.updatedAt = incoming.updatedAt
             record.createdAt = incoming.createdAt
@@ -796,7 +856,7 @@ public final class LocalStore: Sendable {
             record.dataKeyCipher = incoming.dataKeyCipher
             record.decryptable = incoming.decryptable
         }
-        try record.update(db)
+        if record != old { _ = try record.updateChanges(db, from: old) }
     }
 }
 
@@ -818,12 +878,15 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var sessions: [SessionRecord]
     public var projects: [ProjectRecord]
     public var settings: SettingsSnapshot
+    /// A successful list fetch has completed, including an empty first list.
+    public var sessionsSynced: Bool
 
-    public init(machines: MachinesSnapshot, sessions: [SessionRecord], projects: [ProjectRecord] = [], settings: SettingsSnapshot = SettingsSnapshot()) {
+    public init(machines: MachinesSnapshot, sessions: [SessionRecord], projects: [ProjectRecord] = [], settings: SettingsSnapshot = SettingsSnapshot(), sessionsSynced: Bool = false) {
         self.machines = machines
         self.sessions = sessions
         self.projects = projects
         self.settings = settings
+        self.sessionsSynced = sessionsSynced
     }
 }
 
