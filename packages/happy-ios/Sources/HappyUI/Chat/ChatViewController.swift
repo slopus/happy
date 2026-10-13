@@ -803,8 +803,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// configured like it. Its tab and screen are the person's on the press;
     /// the start runs underneath, behind any other.
     private func newTab() {
-        guard let checkout, let openId = session.record?.id ?? pendingChat?.anchorSessionId else { return }
-        let launcher = ChatPendingStarts.of(account).launcher!
+        guard let checkout, let openId = session.record?.id ?? pendingChat?.anchorSessionId,
+              let launcher = ChatPendingStarts.of(account, context: context)?.launcher else { return }
         let known = checkout.tabs.map(\.id)
         Task { [weak self] in
             let chat = await launcher.open(anchorSessionId: openId, knownSessionIds: known)

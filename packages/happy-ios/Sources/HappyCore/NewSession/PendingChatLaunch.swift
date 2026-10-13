@@ -138,6 +138,9 @@ public final class PendingChatLauncher {
         public var writeDraft: @Sendable (_ sessionId: String, _ text: String) async throws -> Void
         /// A message the new session wouldn't take: `Modal.alert`.
         public var reportSendFailure: @MainActor (any Error) -> Void
+        /// Stops the start running now (`SessionStarter.cancel`): whatever
+        /// the machine hands back later is put down.
+        public var cancelStart: @MainActor () -> Void
 
         public init(
             chats: PendingChats,
@@ -145,7 +148,8 @@ public final class PendingChatLauncher {
             send: @escaping @Sendable (String, String) async throws -> Bool,
             readDraft: @escaping @Sendable (String) async throws -> String?,
             writeDraft: @escaping @Sendable (String, String) async throws -> Void,
-            reportSendFailure: @escaping @MainActor (any Error) -> Void
+            reportSendFailure: @escaping @MainActor (any Error) -> Void,
+            cancelStart: @escaping @MainActor () -> Void = {}
         ) {
             self.chats = chats
             self.start = start
@@ -153,11 +157,13 @@ public final class PendingChatLauncher {
             self.readDraft = readDraft
             self.writeDraft = writeDraft
             self.reportSendFailure = reportSendFailure
+            self.cancelStart = cancelStart
         }
     }
 
     private let environment: Environment
     private var queue: Task<Void, Never>?
+    private var closed = false
 
     public init(environment: Environment) {
         self.environment = environment
@@ -176,14 +182,26 @@ public final class PendingChatLauncher {
         await queue?.value
     }
 
+    /// The account has stopped. The start running is stopped, and the ones
+    /// behind it never begin. Nothing more is written for any of them: the
+    /// records go with the account.
+    public func close() {
+        guard !closed else { return }
+        closed = true
+        environment.cancelStart()
+    }
+
     private func enqueue(_ chat: PendingChat) {
         let previous = queue
         let environment = self.environment
-        queue = Task { @MainActor in
+        queue = Task { @MainActor [weak self] in
             // Settled either way: a start that failed has said so, and must
             // not take the ones behind it down with it.
             await previous?.value
-            if let sessionId = await environment.start(chat) {
+            guard let self, !self.closed else { return }
+            let started = await environment.start(chat)
+            guard !self.closed else { return }
+            if let sessionId = started {
                 do {
                     try await environment.chats.handOver(id: chat.id, sessionId: sessionId, send: environment.send, writeDraft: environment.writeDraft)
                 } catch {

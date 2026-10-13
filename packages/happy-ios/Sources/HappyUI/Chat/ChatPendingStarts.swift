@@ -8,23 +8,33 @@ import UIKit
 /// is never refused for being busy, and errors shown over whatever is on
 /// screen when they land, as `Modal.alert` does. Kept with the account, not
 /// with a screen: a start outlives the tab that asked for it.
+///
+/// Only the open account has them. Once it stops being the open one (a
+/// switch, a sign-out, its removal) they are closed, the start running is
+/// stopped, and nothing here keeps any of that account.
 @MainActor
 final class ChatPendingStarts: NSObject {
-    private static let table = NSMapTable<AccountSession, ChatPendingStarts>.weakToStrongObjects()
+    private static var current: ChatPendingStarts?
 
-    static func of(_ account: AccountSession) -> ChatPendingStarts {
-        if let existing = table.object(forKey: account) { return existing }
-        let starts = ChatPendingStarts(account)
-        table.setObject(starts, forKey: account)
+    /// Nil when `account` isn't the open account.
+    static func of(_ account: AccountSession, context: AppContext) -> ChatPendingStarts? {
+        guard context.account.session === account else { return nil }
+        if let current, current.account === account { return current }
+        current?.close()
+        let starts = ChatPendingStarts(account, context: context)
+        current = starts
         return starts
     }
 
     private(set) var launcher: PendingChatLauncher!
     private let starter: SessionStarter
+    /// Only to tell whether it is still the open account.
+    private weak var account: AccountSession?
+    private var accounts: AccountsObservation?
+    private var closed = false
 
-    /// Holds what it needs from the account, never the account itself: the
-    /// table keys on it weakly.
-    private init(_ account: AccountSession) {
+    private init(_ account: AccountSession, context: AppContext) {
+        self.account = account
         starter = SessionStarter.make(for: account)
         super.init()
         starter.presenter = self
@@ -48,8 +58,23 @@ final class ChatPendingStarts: NSObject {
             },
             reportSendFailure: { [weak self] error in
                 self?.showStartError((error as? LocalizedError)?.errorDescription ?? Strings.Chat.firstMessageFailed)
-            }
+            },
+            cancelStart: { [weak self] in self?.starter.cancel() }
         ))
+        // Every change of the open account is told here.
+        accounts = context.account.observeAccounts { [weak self, weak context] _ in
+            guard let self else { return }
+            if let account = self.account, context?.account.session === account { return }
+            self.close()
+        }
+    }
+
+    private func close() {
+        closed = true
+        accounts?.cancel()
+        accounts = nil
+        launcher.close()
+        if Self.current === self { Self.current = nil }
     }
 
     /// `newSessionLikeSession` for the chat the stand-in was opened beside,
@@ -63,6 +88,9 @@ final class ChatPendingStarts: NSObject {
             let picks = ComposerPicks(values: (try? store.composerState(sessionId: anchorId))?.values)
             return (snapshot, anchor, picks)
         }.value
+        // Closed while the store was read: there is no starter to stop yet,
+        // so nothing may begin.
+        guard !closed else { return nil }
         guard let (snapshot, anchor, picks) = read else {
             showStartError(Strings.SessionDetail.sessionDeleted)
             return nil

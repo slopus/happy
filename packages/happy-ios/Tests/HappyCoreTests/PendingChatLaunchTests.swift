@@ -272,6 +272,150 @@ final class PendingChatLaunchTests: XCTestCase {
         XCTAssertEqual(two?.sessionId, "two")
     }
 
+    // MARK: The account stopping
+
+    @MainActor
+    func testClosingStopsTheStartRunningAndTheOnesBehindItAndWritesNothing() async {
+        let chats = PendingChats()
+        let starts = Starts()
+        let sessions = Sessions(drafts: ["anchor": "the anchor's own"])
+        var cancels = 0
+        let launcher = PendingChatLauncher(environment: .init(
+            chats: chats,
+            start: { await starts.start($0) },
+            send: { try await sessions.send($0, $1) },
+            readDraft: { await sessions.read($0) },
+            writeDraft: { await sessions.write($0, $1) },
+            reportSendFailure: { starts.reported.append(($0 as? LocalizedError)?.errorDescription ?? "") },
+            cancelStart: { cancels += 1 }
+        ))
+        starts.holdFirst = true
+        let first = await launcher.open(anchorSessionId: "anchor", knownSessionIds: [])
+        let second = await launcher.open(anchorSessionId: "anchor", knownSessionIds: [])
+        _ = await chats.submit(id: first.id, message: "hello")
+        starts.answers[first.id] = "one"
+        starts.answers[second.id] = "two"
+        while starts.gate == nil { await Task.yield() }
+
+        launcher.close()
+        launcher.close()
+        XCTAssertEqual(cancels, 1, "the start running is stopped once")
+        // What the running start hands back now is left alone.
+        starts.release()
+        await launcher.idle()
+        XCTAssertEqual(starts.asked, [first.id], "the start behind it never begins")
+        let one = await chats.get(id: first.id)
+        XCTAssertNil(one?.sessionId)
+        XCTAssertEqual(one?.status, .starting)
+        let sent = await sessions.sentTexts()
+        XCTAssertEqual(sent, [])
+        let anchorDraft = await sessions.read("anchor")
+        XCTAssertEqual(anchorDraft, "the anchor's own")
+        XCTAssertEqual(starts.reported, [])
+    }
+
+    /// The machine is asked for the session; the account stops before it
+    /// answers. With a real `SessionStarter` behind the launcher, the session
+    /// it hands back afterwards is put down and nothing is sent to it.
+    @MainActor
+    func testASessionTheMachineHandsBackAfterTheAccountStoppedIsPutDown() async {
+        let chats = PendingChats()
+        let sessions = Sessions()
+        let ops = HeldSpawn()
+        let refreshes = Counter()
+        let starter = SessionStarter(environment: .init(
+            ops: ops,
+            sessionOps: NoSessionOps(),
+            sender: RealStorage(sessions: sessions),
+            metadataTransport: NoTransport(),
+            refreshSessions: { await refreshes.add() },
+            paintBotFace: { _ in Data() },
+            attachmentPlan: { message, _ in AttachmentSendPlan(accepted: message.attachments, rejected: [], shouldShowUnsupportedAlert: false, shouldSendText: true) },
+            spawnRequests: SpawnRequests(),
+            sleep: { _ in }
+        ))
+        let launch = NewSessionLaunch(
+            machineId: "m1", agent: .claude, rigMetadata: nil, absolutePath: "/src/happy",
+            worktreeSelection: NewSessionDraft.noWorktreeKey, worktreeCreationMachineId: nil, target: nil,
+            permissionMode: "default", modelMode: "default", effortLevel: nil, prompt: "", attachments: [],
+            signature: SpawnRequests.Signature(machineId: "m1", agent: "claude", place: "/src/happy", worktree: nil, modelKey: nil, permissionMode: nil, effort: nil)
+        )
+        let launcher = PendingChatLauncher(environment: .init(
+            chats: chats,
+            start: { _ in await starter.start(launch, isCurrentTarget: { true }) },
+            send: { try await sessions.send($0, $1) },
+            readDraft: { await sessions.read($0) },
+            writeDraft: { await sessions.write($0, $1) },
+            reportSendFailure: { _ in },
+            cancelStart: { starter.cancel() }
+        ))
+        let chat = await launcher.open(anchorSessionId: "anchor", knownSessionIds: [])
+        _ = await chats.submit(id: chat.id, message: "hello")
+        while !(await ops.isHolding) { await Task.yield() }
+
+        launcher.close()
+        XCTAssertFalse(starter.isStarting)
+        await launcher.idle()
+        await ops.answer(.success(sessionId: "late"))
+        for _ in 0..<500 where await refreshes.count == 0 { await Task.yield() }
+        let stops = await ops.stops
+        XCTAssertEqual(stops, ["late"])
+        let record = await chats.get(id: chat.id)
+        XCTAssertNil(record?.sessionId, "the stand-in never names it")
+        let sent = await sessions.sentTexts()
+        XCTAssertEqual(sent, [], "the queued message is not sent to it")
+    }
+
+    private actor HeldSpawn: HomeOps {
+        var stops: [String] = []
+        private var held: CheckedContinuation<SpawnSessionResult, Never>?
+        var isHolding: Bool { held != nil }
+
+        func answer(_ result: SpawnSessionResult) {
+            held?.resume(returning: result)
+            held = nil
+        }
+
+        func machineSpawnNewSession(options: SpawnSessionOptions) async -> SpawnSessionResult {
+            await withCheckedContinuation { held = $0 }
+        }
+
+        func machineResumeSession(machineId: String, sessionId: String, model: String?, permissionMode: String?) async -> SpawnSessionResult {
+            .error(errorMessage: "unused")
+        }
+
+        func forkAndSpawn(source: ForkSource, options: ForkOptions) async -> SpawnSessionResult {
+            .error(errorMessage: "unused")
+        }
+
+        func machineStopSession(machineId: String, sessionId: String) async -> MachineOperationResult {
+            stops.append(sessionId)
+            return MachineOperationResult(success: true, message: nil)
+        }
+
+        func machineBash(machineId: String, command: String, cwd: String) async throws -> SessionBashResponse {
+            SessionBashResponse(success: true, stdout: "", stderr: "", exitCode: 0, error: nil)
+        }
+    }
+
+    private struct NoSessionOps: HomeSessionOps {
+        func sessionKill(sessionId: String) async throws -> SessionKillResponse { SessionKillResponse(success: true, message: "") }
+        func sessionSetAgentModes(sessionId: String, patch: SessionAgentModesPatch, transport: any MetadataUpdateTransport) async throws {}
+        func sessionSetAvatar(sessionId: String, picture: SessionAvatarPicture) async throws {}
+        func archive(sessionId: String) async throws {}
+        func ensureSessionReady(sessionId: String) async throws {}
+        func uploadSessionBlob(sessionId: String, name: String, bytes: Data) async throws -> (ref: String, size: Int) { ("", 0) }
+    }
+
+    private struct NoTransport: MetadataUpdateTransport {
+        func updateMetadata(event: String, payload: JSONValue) async throws -> JSONValue { .null }
+    }
+
+    private actor Counter {
+        var count = 0
+        func add() { count += 1 }
+    }
+
     // MARK: newSessionLikeSession
 
     private func record(_ metadata: [String: JSONValue]) -> SessionRecord {
