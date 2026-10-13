@@ -48,6 +48,31 @@ final class PresenceOverlay: @unchecked Sendable {
         }
     }
 
+    /// One session as `home` shows it.
+    func session(_ row: SessionRecord) -> SessionRecord {
+        lock.withLock {
+            guard let presence = sessions[row.id], presence.latestAt >= row.activeAt else { return row }
+            var value = row
+            value.active = presence.active
+            value.thinking = presence.thinking && presence.active
+            value.activeAt = presence.displayedAt
+            value.thinkingAt = presence.thinkingAt
+            LocalStore.settle(old: row, &value)
+            return value
+        }
+    }
+
+    /// One computer as `machineSnapshot` shows it.
+    func machine(_ row: MachineRecord) -> MachineRecord {
+        lock.withLock {
+            guard let presence = machines[row.id], presence.latestAt >= row.activeAt else { return row }
+            var value = row
+            value.active = presence.active
+            value.activeAt = presence.displayedAt
+            return value
+        }
+    }
+
     func machineSnapshot(_ raw: MachinesSnapshot) -> MachinesSnapshot {
         lock.withLock { overlayMachines(raw) }
     }

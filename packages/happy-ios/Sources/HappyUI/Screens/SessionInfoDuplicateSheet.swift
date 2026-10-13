@@ -91,7 +91,7 @@ final class DuplicateSheetViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        record = try? session.store.session(id: sessionId)
+        // The spinner shows until the session is read and its points listed.
         render()
         load()
     }
@@ -112,17 +112,18 @@ final class DuplicateSheetViewController: UIViewController {
         record.flatMap(SessionDetails.forkSource)
     }
 
+    /// Reads the session off the main thread, then lists its points. A
+    /// read finished after another account took over shows nothing.
     private func load() {
         let missingMetadata = Strings.SessionDetail.forkErrorMissingMetadata
-        guard let record, source != nil else {
-            points = .failed(missingMetadata)
-            render()
-            return
-        }
+        let store = session.store
+        let id = sessionId
         let machines = session.detailMachineActions
         loadTask = Task { @MainActor [weak self] in
+            let read = await Task.detached(priority: .userInitiated) { try? store.session(id: id) }.value
+            guard !Task.isCancelled, let record = self?.received(read) else { return }
             let points = await DuplicateSheetModel.loadPoints(record, machines: machines, missingMetadata: missingMetadata)
-            guard let self, !Task.isCancelled else { return }
+            guard let self, !Task.isCancelled, self.context.account.session === self.session else { return }
             self.points = points
             // A selection that isn't among the points is dropped.
             if case .loaded(let loaded) = points, let selectedId = self.selectedId, !loaded.contains(where: { $0.id == selectedId }) {
@@ -130,6 +131,19 @@ final class DuplicateSheetViewController: UIViewController {
             }
             self.render()
         }
+    }
+
+    /// Takes the session as read; it is returned when its points can be
+    /// listed. Without a forkable session the sheet says why.
+    private func received(_ read: SessionRecord?) -> SessionRecord? {
+        guard context.account.session === session else { return nil }
+        record = read
+        guard let read, source != nil else {
+            points = .failed(Strings.SessionDetail.forkErrorMissingMetadata)
+            render()
+            return nil
+        }
+        return read
     }
 
     private var loadedPoints: [DuplicateSheetModel.Point] {
@@ -248,7 +262,8 @@ final class DuplicateSheetViewController: UIViewController {
     }
 
     @objc private func confirmDuplicate() {
-        guard !duplicating else { return }
+        // Nothing to pick until the session has been read.
+        guard !duplicating, points != nil else { return }
         guard let record, source != nil else {
             Alerts.show(Strings.Common.error, Strings.SessionDetail.forkErrorMissingMetadata, on: self)
             return

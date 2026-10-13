@@ -269,12 +269,33 @@ public enum FileViewer {
 }
 
 /// The store's `sessionFileCache`: what each file looked like when last
-/// read, so a revisit draws at once and refreshes behind it.
+/// read, so a revisit draws at once and refreshes behind it. One per
+/// account (`AccountSession.fileCache`), never shared between accounts.
 public final class SessionFileCache: @unchecked Sendable {
+    /// A session's root as it was when one of its files was last shown.
+    public struct Root: Equatable, Sendable {
+        public var path: String?
+
+        public init(path: String?) {
+            self.path = path
+        }
+    }
+
     private let lock = NSLock()
     private var entries: [String: [String: FileViewer.Snapshot]] = [:]
+    private var roots: [String: Root] = [:]
 
     public init() {}
+
+    /// The session's root when a file of it was last shown, so a revisit
+    /// can find its cached copy before the store is read; nil if none was.
+    public func root(sessionId: String) -> Root? {
+        lock.withLock { roots[sessionId] }
+    }
+
+    public func setRoot(sessionId: String, _ root: Root) {
+        lock.withLock { roots[sessionId] = root }
+    }
 
     public func get(sessionId: String, path: String) -> FileViewer.Snapshot? {
         lock.lock()
