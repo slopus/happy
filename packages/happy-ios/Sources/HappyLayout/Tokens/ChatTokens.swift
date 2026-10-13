@@ -134,6 +134,12 @@ extension Palette {
     public static let onAccent = ColorToken("#FFFFFF")
     /// The answer sheet's required-question dot.
     public static let requiredDot = ColorToken("#FF9500")
+    /// ChatHeaderView's subtitle in the glass capsule: rgba(24,23,28,0.72)
+    /// in light, rgba(255,255,255,0.78) in dark.
+    public static let headerGlassSubtitle = ColorToken(
+        light: RGBA(red: 24 / 255, green: 23 / 255, blue: 28 / 255, alpha: 0.72),
+        dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.78)
+    )
 
     /// theme.colors.button.secondary.tint: the goal bar's action glyphs.
     public static let buttonSecondaryTint = ColorToken("#666666", "#8E8E93")
@@ -148,6 +154,7 @@ extension Palette {
         terminalStdout, terminalStderr, terminalError, terminalEmptyOutput, diffRowAdded, diffRowRemoved,
         diffMarkerAdded, diffMarkerRemoved, diffText, diffSectionText, diffGutterBorder, buttonSecondaryTint, shadow,
         boxWarningText, todoCompleted, todoInProgress, todoPending, todoOther, onAccent, requiredDot,
+        headerGlassSubtitle,
     ]
 }
 
@@ -230,13 +237,15 @@ public enum ChatTextStyles {
     public static let rigActivity = ChatTextStyle(.plex(.regular), size: 11)
     public static let chatFooterWarning = ChatTextStyle(.plex(.regular), size: 12)
 
-    // ChatHeaderView.tsx
+    // ChatHeaderView.tsx, in the glass capsule (mobileSubtitle: 14 high)
     public static let headerTitle = ChatTextStyle(.plex(.semiBold), size: 16, lineHeight: 20)
     public static let headerSubtitle = ChatTextStyle(.plex(.regular), size: 12, lineHeight: 14)
 
     // EmptyMessages.tsx
+    public static let emptyHost = ChatTextStyle(.plex(.semiBold), size: 18)
+    public static let emptyPath = ChatTextStyle(.plex(.regular), size: 14)
     public static let emptyTitle = ChatTextStyle(.plex(.regular), size: 20)
-    public static let emptySubtitle = ChatTextStyle(.plex(.regular), size: 15, lineHeight: 20)
+    public static let emptyCreated = ChatTextStyle(.plex(.regular), size: 16, lineHeight: 24)
 
     // InlineQuestionForm.tsx (plain <Text>: the system font)
     public static let inlineQuestionHeader = ChatTextStyle(.system(.semibold), size: 12, uppercase: true)

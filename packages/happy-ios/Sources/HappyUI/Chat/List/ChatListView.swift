@@ -5,9 +5,10 @@ import UIKit
 @MainActor
 protocol ChatListViewDelegate: AnyObject {
     /// `distanceFromNewest` is how far the reader has scrolled back from the
-    /// newest message; `nearOldest` is true within a screen of the oldest
-    /// row shown, where the next page of history should be added.
-    func chatList(_ list: ChatListView, didScroll distanceFromNewest: CGFloat, nearOldest: Bool)
+    /// newest message; `distanceFromOldest` how much more there is to
+    /// scroll before the oldest row shown, where the next page of history
+    /// should be added once it is within a screen.
+    func chatList(_ list: ChatListView, didScroll distanceFromNewest: CGFloat, distanceFromOldest: CGFloat)
     func chatList(_ list: ChatListView, perform action: ChatRowAction)
     func chatList(_ list: ChatListView, openLink url: String)
 }
@@ -29,8 +30,11 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     private var planById: [String: ChatRowPlan] = [:]
     private var hasContent = false
 
-    /// The ChatFooter just past the newest message (no warning: 4 + 2).
-    var newerEndHeight: CGFloat = ChatFooterLayout.Metrics.paddingTop + ChatFooterLayout.Metrics.paddingBottom
+    /// ChatFooter, just past the newest message: it scrolls with the rows,
+    /// as the inverted list's header does in happy-app.
+    private let footer = ChatPlanView()
+    /// The footer's height (no warning: 4 + 2).
+    private var newerEndHeight: CGFloat = ChatFooterLayout.Metrics.paddingTop + ChatFooterLayout.Metrics.paddingBottom
     /// The slot past the oldest message for the history spinner.
     var olderEndHeight: CGFloat = ChatOlderEndLayout.height
 
@@ -45,9 +49,18 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         collectionView.showsHorizontalScrollIndicator = false
         // Rows are measured before they arrive; there is nothing to prefetch.
         collectionView.isPrefetchingEnabled = false
+        if #available(iOS 26.0, *) {
+            // The screen draws its own scrims under the bar and behind the
+            // dock; and to the system, this flipped list's ends are swapped.
+            collectionView.topEdgeEffect.isHidden = true
+            collectionView.bottomEdgeEffect.isHidden = true
+        }
         collectionView.register(ChatRowCell.self, forCellWithReuseIdentifier: ChatRowCell.reuseIdentifier)
         collectionView.dataSource = self
         collectionView.delegate = self
+        footer.transform = ChatCollectionLayout.flip
+        footer.isUserInteractionEnabled = false
+        collectionView.addSubview(footer)
         addSubview(collectionView)
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
@@ -106,16 +119,17 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
 
     // MARK: Updates
 
-    /// Shows `newPlans` (newest first), measured at the list's width.
-    /// `pinning` is a row the reader just opened or closed: its top stays
-    /// where it is on screen.
-    func apply(_ newPlans: [ChatRowPlan], animated: Bool, pinning: String? = nil) {
+    /// Shows `newPlans` (newest first) under `footer`, all measured at the
+    /// list's width. `pinning` is a row the reader just opened or closed:
+    /// its top stays where it is on screen.
+    func apply(_ newPlans: [ChatRowPlan], footer footerPlan: ChatRowPlan? = nil, animated: Bool, pinning: String? = nil) {
         let width = newPlans.first?.size.width ?? bounds.width
+        if let footerPlan { newerEndHeight = footerPlan.size.height }
         let model = ChatListLayout(width: width, heights: newPlans.map(\.size.height), newerEndHeight: newerEndHeight, olderEndHeight: olderEndHeight)
 
         guard hasContent, !plans.isEmpty else {
             hasContent = !newPlans.isEmpty
-            install(newPlans, model: model)
+            install(newPlans, footer: footerPlan, model: model)
             layout.invalidateLayout()
             collectionView.reloadData()
             collectionView.layoutIfNeeded()
@@ -147,7 +161,7 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
 
         let update = {
             self.collectionView.performBatchUpdates {
-                self.install(newPlans, model: model)
+                self.install(newPlans, footer: footerPlan, model: model)
                 self.layout.anchoredVisibleMinY = target
                 self.collectionView.deleteItems(at: deletes)
                 self.collectionView.insertItems(at: inserts)
@@ -179,10 +193,16 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         scrollViewDidScroll(collectionView)
     }
 
-    private func install(_ newPlans: [ChatRowPlan], model: ChatListLayout) {
+    private func install(_ newPlans: [ChatRowPlan], footer footerPlan: ChatRowPlan?, model: ChatListLayout) {
         plans = newPlans
         planById = Dictionary(newPlans.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         layout.model = model
+        if let footerPlan { footer.apply(footerPlan) }
+        // Flipped like the cells; a transformed view is placed by bounds
+        // and center.
+        let frame = model.newerEndFrame
+        footer.bounds = CGRect(origin: .zero, size: frame.size)
+        footer.center = CGPoint(x: frame.midX, y: frame.midY)
     }
 
     // MARK: UICollectionViewDataSource
@@ -203,7 +223,7 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
 
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         let remaining = maxVisibleMinY(layout.model) - visibleMinY
-        delegate?.chatList(self, didScroll: distanceFromNewest, nearOldest: remaining < collectionView.bounds.height)
+        delegate?.chatList(self, didScroll: distanceFromNewest, distanceFromOldest: remaining)
     }
 
     @objc private func tapped(_ recognizer: UITapGestureRecognizer) {

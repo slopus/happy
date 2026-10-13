@@ -23,10 +23,14 @@ public struct ChatSessionState: Equatable, Sendable {
     /// Nil until the session is in the store, and once it is gone from it.
     public var record: SessionRecord?
     public var settings: AccountSettings
+    /// happy-app's `isDataReady`: sessions have been fetched at least once,
+    /// so a missing record means the session was deleted.
+    public var dataReady: Bool
 
-    public init(record: SessionRecord?, settings: AccountSettings) {
+    public init(record: SessionRecord?, settings: AccountSettings, dataReady: Bool = false) {
         self.record = record
         self.settings = settings
+        self.dataReady = dataReady
     }
 
     public var metadata: JSONValue? { record?.metadata }
@@ -62,6 +66,8 @@ struct ChatServices {
     var controls: any ChatControls
     /// The session record and settings, kept current.
     var observeSession: (_ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> StoreObservation
+    /// The checkout's git status for the header; nil for the fixtures.
+    var gitStatus: GitStatusSync?
     /// sessionSetAgentModes({ permissionMode }): a permission answer that
     /// changes the mode for the rest of the session.
     var setPermissionMode: @Sendable (_ mode: String) async -> Void = { _ in }
@@ -76,7 +82,8 @@ struct ChatServices {
                 feed: FixtureChatFeed(world: world),
                 sender: FixtureChatSender(world: world),
                 controls: FixtureChatControls(world: world),
-                observeSession: observe(store: store) { _ in record }
+                observeSession: observe(store: store) { _ in record },
+                gitStatus: nil
             )
         }
         #endif
@@ -87,6 +94,7 @@ struct ChatServices {
             observeSession: observe(store: store) { snapshot in
                 snapshot.sessions.first { $0.id == sessionId }
             },
+            gitStatus: account.gitStatus,
             setPermissionMode: { [actions = account.actions, transport = account.realtime] mode in
                 // Fire and forget, as in happy-app; the answer itself has gone.
                 try? await actions.sessionSetAgentModes(sessionId: sessionId, patch: SessionAgentModesPatch(permissionMode: .string(mode)), transport: transport)
@@ -103,7 +111,12 @@ struct ChatServices {
         { onChange in
             var last: ChatSessionState?
             return store.observeHome { snapshot in
-                let state = ChatSessionState(record: record(snapshot), settings: AccountSettings(snapshot.settings))
+                let fetched = ((try? store.cursor(.sessionsChangedSince)) ?? nil) != nil
+                let state = ChatSessionState(
+                    record: record(snapshot),
+                    settings: AccountSettings(snapshot.settings),
+                    dataReady: fetched || !snapshot.sessions.isEmpty
+                )
                 guard state != last else { return }
                 last = state
                 onChange(state)

@@ -56,7 +56,10 @@ enum FixtureScenarios {
             metadataVersion: 1, metadataCipher: "",
             metadata: json([
                 "path": "/Users/fixture/happy",
+                "homeDir": "/Users/fixture",
                 "host": "fixture-mac",
+                "os": "darwin",
+                "gitBranch": "main",
                 "name": scenario.title,
                 "summary": ["text": scenario.title],
                 "flavor": "claude",
@@ -70,7 +73,8 @@ enum FixtureScenarios {
     /// its request_user_input call, a written answer (the banner and the
     /// answer sheet) and a kind this build doesn't know.
     static func agentState(_ scenario: FixtureScenario) -> [String: Any] {
-        guard scenario == .question else { return ["controlledByUser": false] }
+        // The sending scenario has the terminal in control, for ChatFooter.
+        guard scenario == .question else { return ["controlledByUser": scenario == .sending] }
         return [
             "controlledByUser": false,
             "communications": [

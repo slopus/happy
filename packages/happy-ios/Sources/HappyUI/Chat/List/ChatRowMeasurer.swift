@@ -15,6 +15,7 @@ actor ChatRowMeasurer {
     }
 
     private var cache: [String: Entry] = [:]
+    private var footerCache: (controlledByUser: Bool, width: CGFloat, plan: ChatRowPlan)?
 
     func plans(_ inputs: [ChatRowInput], width: CGFloat) -> [ChatRowPlan] {
         var next: [String: Entry] = [:]
@@ -30,6 +31,14 @@ actor ChatRowMeasurer {
         }
         cache = next
         return plans
+    }
+
+    /// The ChatFooter past the newest message.
+    func footer(controlledByUser: Bool, width: CGFloat) -> ChatRowPlan {
+        if let cached = footerCache, cached.controlledByUser == controlledByUser, cached.width == width { return cached.plan }
+        let plan = ChatRowRenderer.footer(controlledByUser: controlledByUser, width: width)
+        footerCache = (controlledByUser, width, plan)
+        return plan
     }
 }
 #endif

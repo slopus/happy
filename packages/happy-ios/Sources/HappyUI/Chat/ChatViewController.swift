@@ -8,6 +8,10 @@ import HappyWire
 /// The session screen: session/[id].tsx → SessionView.tsx with
 /// AgentContentView's floating dock (the phone layout).
 ///
+/// ChatHeaderView rides the system navigation bar, made transparent: its
+/// title capsule is the bar's title view and the avatar its right item,
+/// over a scrim that strengthens once content scrolls under it.
+///
 /// The list runs under the navigation bar and the dock. The dock (the bars
 /// above the composer, then the composer) sits on the keyboard, or on the
 /// safe area while the keyboard is down, and follows the keyboard during an
@@ -31,6 +35,14 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     private let list = ChatListView()
     private let scrim = ChatScrimView()
+    private let headerScrim = HeaderScrimView()
+    private let titleView = ChatHeaderTitleView()
+    private let avatarControl = ChatHeaderAvatarControl()
+    /// The spinner, an empty chat's EmptyMessages, or the deleted state.
+    private let placeholder = ChatPlaceholderView()
+    private var headerBackdropVisible = false
+    private let gitTask = TaskHolder()
+    private var gitStatus: GitStatus?
     private let dock = UIView()
     private let composer: any ChatComposerView
     /// A request the chat can't show inline, above the composer.
@@ -93,12 +105,14 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         view.backgroundColor = UIColor(Palette.surface)
         showsBackTitle()
         navigationItem.largeTitleDisplayMode = .never
-        #if DEBUG
-        navigationItem.rightBarButtonItem = fixturesMenu()
-        #endif
+        setUpHeader()
 
         list.delegate = self
         view.addSubview(list)
+        placeholder.isHidden = true
+        view.addSubview(placeholder)
+        headerScrim.overlayOpacity = ChatHeaderScrim.restingOpacity
+        view.addSubview(headerScrim)
         view.addSubview(scrim)
         composer.composerDelegate = self
         questionBanner.isHidden = true
@@ -125,6 +139,17 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
         observation = services.observeSession { [weak self] state in
             self?.sessionChanged(state)
+        }
+        if let git = services.gitStatus {
+            let sessionId = self.sessionId
+            gitTask.task = Task { [weak self] in
+                for await status in await git.observe(sessionId: sessionId) {
+                    guard let self, !Task.isCancelled else { return }
+                    self.gitStatus = status
+                    self.updateHeader()
+                }
+            }
+            Task { await git.refresh(sessionId: sessionId) }
         }
         let stream = services.feed.snapshots(sessionId: sessionId)
         feedTask.task = Task { [weak self] in
@@ -173,6 +198,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         ))
         list.setLayoutFrame(screen.list)
         list.setEdgeInsets(newest: screen.newestEdgeInset, oldest: screen.oldestEdgeInset)
+        headerScrim.setLayoutFrame(screen.headerScrim)
+        // Loading the session and the deleted state take the whole screen;
+        // an empty chat sits between the bar and the dock.
+        placeholder.setLayoutFrame(dock.isHidden ? view.bounds : screen.placeholder)
+        titleView.maxWidth = ChatHeaderTitleLayout.maxWidth(headerWidth: size.width)
         dock.setLayoutFrame(screen.dock)
         if let frame = screen.accessories.first, !questionBanner.isHidden { questionBanner.setLayoutFrame(frame) }
         composer.setLayoutFrame(screen.composer)
@@ -184,10 +214,120 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     private func sessionChanged(_ state: ChatSessionState) {
         session = state
-        navigationItem.title = Self.title(state)
+        updateHeader()
+        updatePlaceholder()
         updateQuestionBanner()
         updateComposer()
         scheduleMeasure()
+    }
+
+    // MARK: Header
+
+    /// ChatHeaderView over a transparent bar: the system back button, the
+    /// title capsule, the avatar; the scrim is the screen's own.
+    private func setUpHeader() {
+        let appearance = UINavigationBarAppearance()
+        appearance.configureWithTransparentBackground()
+        appearance.titleTextAttributes = TextStyles.headerTitle.attributes(color: UIColor(Palette.headerTint))
+        navigationItem.standardAppearance = appearance
+        navigationItem.scrollEdgeAppearance = appearance
+        navigationItem.compactAppearance = appearance
+        navigationItem.compactScrollEdgeAppearance = appearance
+
+        titleView.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
+        navigationItem.titleView = titleView
+        avatarControl.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
+        let avatarItem = UIBarButtonItem(customView: avatarControl)
+        if #available(iOS 26.0, *) {
+            // The control is its own glass.
+            avatarItem.hidesSharedBackground = true
+        }
+        var items = [avatarItem]
+        #if DEBUG
+        items.append(fixturesMenu())
+        #endif
+        navigationItem.rightBarButtonItems = items
+        updateHeader()
+    }
+
+    private func updateHeader() {
+        let model = ChatHeaderModel(session: session.record, dataReady: session.dataReady || isFixture, gitStatus: gitStatus, pending: isPendingChat)
+        let title = switch model.title {
+        case .loading: ""
+        case .deleted: Strings.SessionDetail.sessionDeleted
+        case .name(let name): name ?? Strings.Session.newChat
+        }
+        navigationItem.title = title
+        titleView.update(title: title, subtitle: model.subtitle, changes: model.changes)
+        titleView.isEnabled = session.record != nil
+        titleView.sizeToFit()
+
+        let settings = session.settings
+        avatarControl.isHidden = session.record == nil
+        avatarControl.accessibilityLabel = title
+        if let record = session.record {
+            let metadata = record.metadata
+            avatarControl.content = AvatarView.Content(
+                avatar: SessionAvatar(
+                    seed: record.avatarSeed,
+                    isBot: record.isBot,
+                    harness: settings.bool("showHarnessIconInSessionHeader")
+                        ? SessionAvatar.harness(flavor: metadata?["flavor"]?.stringValue, clientId: metadata?["client"]?["id"]?.stringValue)
+                        : nil
+                ),
+                style: settings.avatarStyle,
+                monochrome: !model.connected || settings.avatarMonochrome
+            )
+        }
+    }
+
+    @objc private func openInfo() {
+        guard session.record != nil else { return }
+        push(.sessionInfo(id: sessionId), context: context)
+    }
+
+    private var isPendingChat: Bool {
+        PendingChats.isPendingChatId(sessionId) && session.record == nil
+    }
+
+    private var isFixture: Bool {
+        #if DEBUG
+        FixtureScenarios.isFixture(sessionId)
+        #else
+        false
+        #endif
+    }
+
+    /// SessionView's states around the conversation: a spinner until
+    /// sessions have been fetched, the deleted state once they have and
+    /// this one is gone; in a session, a spinner until its messages are in
+    /// and EmptyMessages if there are none.
+    private func updatePlaceholder() {
+        let content: ChatPlaceholderView.Content?
+        var fullScreen = false
+        if let record = session.record {
+            if let snapshot, !snapshot.messages.isEmpty {
+                content = nil
+            } else if snapshot?.isLoaded == true {
+                content = .empty(ChatEmptyState(metadata: record.metadata, createdAt: record.createdAt, now: Int64(Date().timeIntervalSince1970 * 1000)))
+            } else {
+                content = .loading
+            }
+        } else if isPendingChat {
+            // PendingChatPlaceholder is not ported; the composer stays.
+            content = .loading
+        } else {
+            content = session.dataReady ? .deleted : .loading
+            fullScreen = true
+        }
+        if let content { placeholder.show(content) }
+        placeholder.isHidden = content == nil
+        list.isHidden = fullScreen
+        if dock.isHidden != fullScreen {
+            dock.isHidden = fullScreen
+            scrim.isHidden = fullScreen
+            view.setNeedsLayout()
+        }
     }
 
     /// AgentQuestionBanner: the first request the chat can't show inline.
@@ -241,17 +381,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         Task { try? await controls.cancelQuestion(sessionId: sessionId, id: pending.id, kind: pending.rawKind) }
     }
 
-    /// getSessionName: the bot's name, the summary, or "New chat".
-    static func title(_ state: ChatSessionState) -> String {
-        if let bot = state.metadata?["bot"]?["name"]?.stringValue { return bot }
-        if let summary = state.metadata?["summary"]?["text"]?.stringValue { return summary }
-        return Strings.Session.newChat
-    }
-
     private func receive(_ snapshot: ChatSnapshot) {
         guard snapshot != self.snapshot else { return }
         self.snapshot = snapshot
         dismissAnsweredQuestions(snapshot)
+        updatePlaceholder()
         updateComposer()
         scheduleMeasure()
     }
@@ -352,12 +486,14 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         let measurer = self.measurer
         let pin = pendingPin
         pendingPin = nil
+        let controlledByUser = session.controlledByUser
         Task { [weak self] in
             let plans = await measurer.plans(inputs, width: width)
+            let footer = await measurer.footer(controlledByUser: controlledByUser, width: width)
             guard let self else { return }
             self.measuring = false
             if self.list.bounds.width == width {
-                self.list.apply(plans, animated: true, pinning: pin)
+                self.list.apply(plans, footer: footer, animated: true, pinning: pin)
             } else {
                 self.pendingPin = self.pendingPin ?? pin
                 self.needsMeasure = true
@@ -381,7 +517,15 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     // MARK: ChatListViewDelegate
 
-    func chatList(_ list: ChatListView, didScroll distanceFromNewest: CGFloat, nearOldest: Bool) {
+    func chatList(_ list: ChatListView, didScroll distanceFromNewest: CGFloat, distanceFromOldest: CGFloat) {
+        let backdrop = ChatScreenLayout.headerBackdropVisible(distanceFromOldest: distanceFromOldest)
+        if backdrop != headerBackdropVisible {
+            headerBackdropVisible = backdrop
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(ChatHeaderScrim.fadeDuration)
+            headerScrim.overlayOpacity = backdrop ? ChatHeaderScrim.underlapOpacity : ChatHeaderScrim.restingOpacity
+            CATransaction.commit()
+        }
         let showButton = ChatScreenLayout.showsScrollButton(distanceFromNewest: distanceFromNewest)
         if (scrollButton.alpha > 0) != showButton {
             UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
@@ -397,7 +541,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 self.questionBanner.alpha = details ? 1 : 0
             }
         }
-        if nearOldest && !measuring { growWindow() }
+        if distanceFromOldest < list.bounds.height && !measuring { growWindow() }
     }
 
     func chatList(_ list: ChatListView, perform action: ChatRowAction) {

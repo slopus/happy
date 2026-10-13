@@ -21,6 +21,20 @@ extension Strings {
         public static func unsupported(_ kind: String) -> String { "This message can't be shown here (\(kind))" }
         /// ChatFooter.tsx (not in en.ts)
         public static let controlledByTerminal = "Permissions shown in terminal only. Reset or send a message to control from app."
+        /// EmptyMessages.tsx (not in en.ts)
+        public static let noMessages = "No messages yet"
+        /// EmptyMessages.tsx (not in en.ts)
+        public static func created(_ time: String) -> String { "Created \(time)" }
+        /// EmptyMessages.tsx `formatRelativeTime`: time.justNow,
+        /// time.minutesAgo, time.hoursAgo, sessionHistory.daysAgo.
+        public static func age(_ age: DuplicateSheetModel.Age) -> String {
+            switch age {
+            case .justNow: SessionDetail.justNow
+            case .minutes(let count): SessionDetail.minutesAgo(count)
+            case .hours(let count): SessionDetail.hoursAgo(count)
+            case .days(let count): SessionDetail.daysAgo(count)
+            }
+        }
     }
 
     /// en.ts `message`

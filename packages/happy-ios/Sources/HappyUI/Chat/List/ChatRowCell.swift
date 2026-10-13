@@ -3,12 +3,54 @@ import HappyIcons
 import HappyLayout
 import UIKit
 
-/// The one cell every row uses: it draws a `ChatRowPlan` with a pool of
-/// plain views (boxes, text, icons) it reuses from row to row. It measures
-/// nothing and lays out nothing of its own.
+/// The one cell every row uses: a `ChatPlanView` that draws the row's
+/// plan. It measures nothing and lays out nothing of its own.
 final class ChatRowCell: UICollectionViewCell {
     static let reuseIdentifier = "ChatRowCell"
 
+    private let canvas = ChatPlanView()
+
+    var plan: ChatRowPlan? { canvas.plan }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        contentView.backgroundColor = .clear
+        contentView.addSubview(canvas)
+        isAccessibilityElement = true
+        accessibilityTraits = .staticText
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        canvas.frame = contentView.bounds
+    }
+
+    func apply(_ plan: ChatRowPlan) {
+        canvas.apply(plan)
+        accessibilityLabel = plan.accessibilityLabel
+    }
+
+    /// What a tap at `point` (in this cell) does, if anything.
+    func action(at point: CGPoint) -> ChatRowAction? {
+        canvas.action(at: point)
+    }
+
+    /// The link under `point`, if the tap landed on one.
+    func link(at point: CGPoint) -> String? {
+        canvas.link(at: point)
+    }
+}
+
+/// Draws a `ChatRowPlan` with a pool of plain views (boxes, text, icons)
+/// it reuses from plan to plan: a list row, the footer past the newest
+/// message, or a whole tool on the message screen.
+final class ChatPlanView: UIView {
     private(set) var plan: ChatRowPlan?
     private var boxes: [UIView] = []
     private var texts: [ChatTextView] = []
@@ -20,9 +62,6 @@ final class ChatRowCell: UICollectionViewCell {
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear
-        contentView.backgroundColor = .clear
-        isAccessibilityElement = true
-        accessibilityTraits = .staticText
         // CGColor borders don't follow the appearance by themselves.
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
             guard let plan = self.plan else { return }
@@ -39,8 +78,7 @@ final class ChatRowCell: UICollectionViewCell {
     func apply(_ plan: ChatRowPlan) {
         guard plan !== self.plan else { return }
         self.plan = plan
-        contentView.alpha = plan.alpha
-        accessibilityLabel = plan.accessibilityLabel
+        alpha = plan.alpha
 
         // Views are taken in draw order; keeping them in one subview order
         // means a box always sits under the text that follows it.
@@ -107,7 +145,7 @@ final class ChatRowCell: UICollectionViewCell {
         }
         for view in order {
             view.isHidden = false
-            contentView.bringSubviewToFront(view)
+            bringSubviewToFront(view)
         }
     }
 
@@ -126,13 +164,13 @@ final class ChatRowCell: UICollectionViewCell {
         if index == pool.count {
             let view = make()
             pool.append(view)
-            contentView.addSubview(view)
+            addSubview(view)
         }
         defer { index += 1 }
         return pool[index]
     }
 
-    /// What a tap at `point` (in this cell) does, if anything.
+    /// What a tap at `point` (in this view) does, if anything.
     func action(at point: CGPoint) -> ChatRowAction? {
         guard let plan else { return nil }
         return plan.hits.first { $0.frame.contains(point) }?.action

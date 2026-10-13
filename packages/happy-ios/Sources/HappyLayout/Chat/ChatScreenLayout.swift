@@ -19,7 +19,10 @@ import CoreGraphics
 ///   - the scroll-to-bottom button floats 16 above the composer's card,
 ///     centred (SessionView's scrollButtonInset). The bars above the card fade
 ///     out but keep their space while the reader is scrolled back, so the
-///     button floats over an empty band.
+///     button floats over an empty band;
+///   - the header's scrim covers the bar and 8 past it (ChatHeaderView's
+///     headerBackdrop), and an empty chat's placeholder is centred between
+///     the bar and the dock (AgentContentView).
 public struct ChatScreenLayout: Equatable, Sendable {
     public enum Metrics {
         /// sessionInputHorizontalPadding on a phone.
@@ -37,6 +40,8 @@ public struct ChatScreenLayout: Equatable, Sendable {
         public static let dockDetailsShowOffset: CGFloat = 16
         /// The fade behind the dock reaches 28 above it.
         public static let scrimExtra: CGFloat = 28
+        /// The header's scrim runs 8 past the bar (headerBackdrop bottom -8).
+        public static let headerScrimOverhang: CGFloat = 8
         /// layout.maxWidth off a phone (tablet and web: 800; a phone is never
         /// limited).
         public static let regularMaxContentWidth: CGFloat = 800
@@ -82,6 +87,11 @@ public struct ChatScreenLayout: Equatable, Sendable {
     public var scrollButton: CGRect
     /// The fade behind the dock, from 28 above it to the screen's bottom.
     public var scrim: CGRect
+    /// The scrim behind the navigation bar.
+    public var headerScrim: CGRect
+    /// Where an empty chat's placeholder is centred: under the bar, above
+    /// the dock.
+    public var placeholder: CGRect
 
     public init(_ input: Input) {
         typealias M = Metrics
@@ -115,6 +125,15 @@ public struct ChatScreenLayout: Equatable, Sendable {
             height: M.scrollButtonSize
         )
         scrim = CGRect(x: 0, y: dock.minY - M.scrimExtra, width: width, height: max(0, height - dock.minY + M.scrimExtra))
+        headerScrim = CGRect(x: 0, y: 0, width: width, height: max(0, input.safeArea.top) + M.headerScrimOverhang)
+        placeholder = CGRect(x: 0, y: input.safeArea.top, width: width, height: max(0, dock.minY - input.safeArea.top))
+    }
+
+    /// ChatList's header backdrop: stronger once anything is scrolled under
+    /// the header, which in the inverted list means the reader is short of
+    /// the oldest end. Half a point absorbs a resting offset's rounding.
+    public static func headerBackdropVisible(distanceFromOldest: CGFloat) -> Bool {
+        distanceFromOldest > 0.5
     }
 
     /// ChatList's hysteresis for the bars above the composer: shown at the
