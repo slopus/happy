@@ -89,3 +89,58 @@ final class ChatEmptyStateTests: XCTestCase {
         XCTAssertEqual(ChatEmptyState(metadata: nil, createdAt: 0, now: 2 * 86_400_000).created, .days(2))
     }
 }
+
+final class ChatDockBarsTests: XCTestCase {
+    private func session(active: Bool = true, metadata: JSONValue?, goal: JSONValue?) -> SessionRecord {
+        SessionRecord(
+            id: "s", seq: 1, createdAt: 1, updatedAt: 1, active: active, activeAt: 1, projectId: nil,
+            metadataVersion: 1, metadataCipher: "c", metadata: metadata,
+            agentStateVersion: 1, agentStateCipher: nil, agentState: goal.map { ["agentGoalStatus": $0] }, dataKeyCipher: "k", decryptable: true
+        )
+    }
+
+    private let goal: JSONValue = [
+        "status": "active", "source": "codex", "text": "  review the branch ", "sourceSessionId": "thread-1", "observedAt": 1,
+        "capabilities": ["clear": .bool(true), "stop": .bool(true), "edit": .bool(false)],
+    ]
+
+    func testAnActiveGoalFromThisRunWhileOnline() {
+        let shown = VisibleAgentGoal(session(metadata: ["codexThreadId": "thread-1"], goal: goal))
+        XCTAssertEqual(shown?.text, "review the branch")
+        XCTAssertEqual(shown?.actions, [.stop, .clear], "edit, stop, clear, for the capabilities reported")
+
+        XCTAssertNil(VisibleAgentGoal(session(active: false, metadata: ["codexThreadId": "thread-1"], goal: goal)), "offline")
+        XCTAssertNil(VisibleAgentGoal(session(metadata: ["codexThreadId": "thread-2"], goal: goal)), "another run's goal")
+        XCTAssertNil(VisibleAgentGoal(session(metadata: ["claudeSessionId": "thread-1"], goal: goal)), "the source names which id")
+        XCTAssertNil(VisibleAgentGoal(session(metadata: ["codexThreadId": "thread-1"], goal: ["status": "inactive", "source": "codex", "sourceSessionId": "thread-1", "observedAt": 1])))
+        XCTAssertNil(VisibleAgentGoal(session(metadata: ["claudeSessionId": "c"], goal: ["status": "active", "source": "claude", "text": "   ", "sourceSessionId": "c", "observedAt": 1])))
+        XCTAssertEqual(VisibleAgentGoal(session(metadata: ["claudeSessionId": "c"], goal: ["status": "active", "source": "claude", "text": "ship", "sourceSessionId": "c", "observedAt": 1]))?.actions, [])
+    }
+
+    func testWhatEachButtonSends() {
+        XCTAssertNil(VisibleAgentGoal.dispatch(.stop, current: "a", edited: nil), "stop sends nothing yet")
+        XCTAssertEqual(VisibleAgentGoal.dispatch(.clear, current: "a", edited: nil)?.action, .clear)
+        XCTAssertNil(VisibleAgentGoal.dispatch(.edit, current: "a", edited: nil), "cancelled")
+        XCTAssertNil(VisibleAgentGoal.dispatch(.edit, current: "ship it", edited: " ship it "), "unchanged")
+        XCTAssertNil(VisibleAgentGoal.dispatch(.edit, current: "a", edited: "   "), "emptied")
+        let edit = VisibleAgentGoal.dispatch(.edit, current: "a", edited: " b ")
+        XCTAssertEqual(edit?.action, .edit)
+        XCTAssertEqual(edit?.objective, "b")
+    }
+
+    func testRigActivity() {
+        let metadata: JSONValue = ["client": ["id": "rig"], "activity": [
+            "subagents": ["running": 0, "queued": 2],
+            "workflows": ["running": 0],
+            "processes": ["running": 1],
+            "tasks": ["pending": 3, "inProgress": 1],
+        ]]
+        XCTAssertEqual(RigActivityIndicator.indicators(metadata), [
+            RigActivityIndicator(kind: .subagents, count: 0, queued: 2),
+            RigActivityIndicator(kind: .processes, count: 1),
+            RigActivityIndicator(kind: .tasks, count: 1, queued: 3),
+        ])
+        XCTAssertEqual(RigActivityIndicator.indicators(["activity": ["processes": ["running": 1]]]), [], "only Happy Agent sessions")
+        XCTAssertEqual(RigActivityIndicator.indicators(["client": ["id": "rig"]]), [])
+    }
+}

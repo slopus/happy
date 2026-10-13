@@ -412,7 +412,7 @@ final class ToolRowLayoutTests: XCTestCase {
 
 final class ChatScreenLayoutTests: XCTestCase {
     private func screen(keyboardTop: CGFloat?) -> ChatScreenLayout {
-        ChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: keyboardTop, accessories: [block(height: 60)], composerHeight: 70))
+        ChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: keyboardTop, accessories: [.inset(block(height: 60))], composerHeight: 70))
     }
 
     func testTheDockRestsOnTheSafeArea() {
@@ -426,6 +426,13 @@ final class ChatScreenLayoutTests: XCTestCase {
         // 16 above the composer, over the accessories' band.
         assertFrame(layout.scrollButton, rect(180.5, 700, 32, 32))
         assertFrame(layout.scrim, rect(0, 660, 393, 192))
+    }
+
+    func testTheRigActivityBarRunsFullWidthUnderTheInsetBars() {
+        let layout = ChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: nil, accessories: [.inset(block(height: 57)), .fullWidth(block(height: 23))], composerHeight: 70))
+        XCTAssertEqual(layout.accessories, [rect(8, 0, 377, 57), rect(0, 57, 393, 23)])
+        assertFrame(layout.composer, rect(0, 80, 393, 70))
+        assertFrame(layout.dock, rect(0, 668, 393, 150))
     }
 
     func testTheScrollButtonSitsAboveTheComposerCard() {
@@ -592,7 +599,7 @@ final class ChatHeaderLayoutTests: XCTestCase {
     }
 
     func testTheHeaderScrimAndTheEmptyChatsPlace() {
-        let layout = ChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: nil, accessories: [block(height: 60)], composerHeight: 70))
+        let layout = ChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: nil, accessories: [.inset(block(height: 60))], composerHeight: 70))
         // The bar and 8 past it; the placeholder between the bar and the dock.
         assertFrame(layout.headerScrim, rect(0, 0, 393, 111))
         assertFrame(layout.placeholder, rect(0, 103, 393, 585))

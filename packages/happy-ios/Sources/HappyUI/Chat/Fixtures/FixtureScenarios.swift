@@ -51,19 +51,31 @@ enum FixtureScenarios {
     /// The store has no record for a fixture session; this stands in.
     static func record(sessionId: String) -> SessionRecord {
         let scenario = scenario(for: sessionId)
+        var metadata: [String: Any] = [
+            "path": "/Users/fixture/happy",
+            "homeDir": "/Users/fixture",
+            "host": "fixture-mac",
+            "os": "darwin",
+            "gitBranch": "main",
+            "name": scenario.title,
+            "summary": ["text": scenario.title],
+            "flavor": "claude",
+            "claudeSessionId": "fixture-claude",
+        ]
+        if scenario == .live {
+            // The goal bar's run, and RigActivityBar's counts.
+            metadata["client"] = ["id": "rig", "name": "Happy Agent"]
+            metadata["activity"] = [
+                "subagents": ["running": 2, "queued": 1],
+                "workflows": ["running": 0],
+                "processes": ["running": 1],
+                "tasks": ["pending": 3, "inProgress": 1],
+            ]
+        }
         return SessionRecord(
             id: sessionId, seq: 1, createdAt: now, updatedAt: now, active: true, activeAt: now, projectId: nil,
             metadataVersion: 1, metadataCipher: "",
-            metadata: json([
-                "path": "/Users/fixture/happy",
-                "homeDir": "/Users/fixture",
-                "host": "fixture-mac",
-                "os": "darwin",
-                "gitBranch": "main",
-                "name": scenario.title,
-                "summary": ["text": scenario.title],
-                "flavor": "claude",
-            ]),
+            metadata: json(metadata),
             agentStateVersion: 1, agentStateCipher: nil, agentState: json(agentState(scenario)),
             dataKeyCipher: nil, decryptable: true, thinking: scenario == .live
         )
@@ -73,6 +85,16 @@ enum FixtureScenarios {
     /// its request_user_input call, a written answer (the banner and the
     /// answer sheet) and a kind this build doesn't know.
     static func agentState(_ scenario: FixtureScenario) -> [String: Any] {
+        if scenario == .live {
+            return [
+                "controlledByUser": false,
+                "agentGoalStatus": [
+                    "status": "active", "source": "claude", "sourceSessionId": "fixture-claude", "observedAt": Int(now),
+                    "text": "Ship the native chat screen to TestFlight with every fixture passing",
+                    "capabilities": ["edit": true, "stop": true, "clear": true],
+                ],
+            ]
+        }
         // The sending scenario has the terminal in control, for ChatFooter.
         guard scenario == .question else { return ["controlledByUser": scenario == .sending] }
         return [
