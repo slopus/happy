@@ -3,7 +3,8 @@ import HappyLayout
 import UIKit
 
 /// components/onboarding/TerminalBlock.tsx: shell lines in the website's
-/// terminal colours, dark in both appearances.
+/// terminal colours, dark in both appearances. Every line can be selected
+/// and copied; a command's `$ ` prompt can't (`selectable={false}`).
 public final class TerminalBlockView: UIView {
     public enum Line: Equatable {
         /// Drawn after a green `$ ` prompt.
@@ -11,10 +12,10 @@ public final class TerminalBlockView: UIView {
         case comment(String)
     }
 
-    let labels: [StyledLabel]
+    let lines: [TerminalLineView]
 
     public init(lines: [Line]) {
-        labels = lines.map(Self.label(for:))
+        self.lines = lines.map(TerminalLineView.init(line:))
         super.init(frame: .zero)
         backgroundColor = UIColor(Palette.terminalBackground)
         layer.cornerRadius = TerminalBlockLayout.Metrics.cornerRadius
@@ -22,7 +23,7 @@ public final class TerminalBlockView: UIView {
         // The same colour in both appearances, so a fixed CGColor is fine.
         layer.borderColor = UIColor(Palette.terminalBorder).resolvedColor(with: traitCollection).cgColor
         layer.borderWidth = TerminalBlockLayout.Metrics.borderWidth
-        labels.forEach(addSubview)
+        self.lines.forEach(addSubview)
     }
 
     @available(*, unavailable)
@@ -31,7 +32,7 @@ public final class TerminalBlockView: UIView {
     }
 
     public func layout(width: CGFloat) -> TerminalBlockLayout {
-        TerminalBlockLayout(width: width, lines: labels.map(\.measurable))
+        TerminalBlockLayout(width: width, lines: lines.map(\.measurable))
     }
 
     public override func sizeThatFits(_ size: CGSize) -> CGSize {
@@ -40,33 +41,59 @@ public final class TerminalBlockView: UIView {
 
     public override func layoutSubviews() {
         super.layoutSubviews()
-        for (label, frame) in zip(labels, layout(width: bounds.width).lines) {
-            label.setLayoutFrame(frame)
+        for (line, frame) in zip(lines, layout(width: bounds.width).lines) {
+            line.setLayoutFrame(frame)
         }
     }
+}
 
-    private static func label(for line: Line) -> StyledLabel {
+/// One terminal line as selectable text (`<Text selectable>`), laid out as
+/// a label would be: no insets, no scrolling, nothing to edit. A command's
+/// prompt stays out of every selection, so a copy is the command alone.
+final class TerminalLineView: UITextView, UITextViewDelegate {
+    /// The `$ ` a selection never reaches into.
+    private let promptLength: Int
+
+    init(line: TerminalBlockView.Line) {
+        let style = TextStyles.terminalLine
+        let text: NSAttributedString
         switch line {
-        case .comment(let text):
-            let label = StyledLabel(style: TextStyles.terminalLine, color: Palette.terminalComment)
-            label.string = text
-            return label
-        case .command(let text):
-            let label = StyledLabel(style: TextStyles.terminalLine, color: Palette.terminalText)
+        case .comment(let comment):
+            promptLength = 0
+            text = style.attributedString(comment, color: UIColor(Palette.terminalComment))
+        case .command(let command):
             let prompt = "$ "
-            label.string = prompt + text
-            if let styled = label.attributedText?.mutableCopy() as? NSMutableAttributedString {
-                styled.addAttribute(
-                    .foregroundColor,
-                    value: UIColor(Palette.terminalPrompt),
-                    range: NSRange(location: 0, length: (prompt as NSString).length)
-                )
-                label.attributedText = styled
-            }
-            // VoiceOver reads the command, not the prompt.
-            label.accessibilityLabel = text
-            return label
+            promptLength = (prompt as NSString).length
+            let styled = NSMutableAttributedString(attributedString: style.attributedString(prompt + command, color: UIColor(Palette.terminalText)))
+            styled.addAttribute(.foregroundColor, value: UIColor(Palette.terminalPrompt), range: NSRange(location: 0, length: promptLength))
+            text = styled
         }
+        super.init(frame: .zero, textContainer: nil)
+        attributedText = text
+        isEditable = false
+        isSelectable = true
+        isScrollEnabled = false
+        backgroundColor = .clear
+        textContainerInset = .zero
+        textContainer.lineFragmentPadding = 0
+        dataDetectorTypes = []
+        delegate = self
+        // VoiceOver reads the command, not the prompt.
+        if case .command(let command) = line { accessibilityLabel = command }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    func textViewDidChangeSelection(_ textView: UITextView) {
+        let range = selectedRange
+        guard promptLength > 0, range.length > 0, range.location < promptLength else { return }
+        let end = range.location + range.length
+        selectedRange = end > promptLength
+            ? NSRange(location: promptLength, length: end - promptLength)
+            : NSRange(location: promptLength, length: 0)
     }
 }
 
