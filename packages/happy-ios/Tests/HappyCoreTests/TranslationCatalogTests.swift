@@ -119,6 +119,18 @@ final class TranslationCatalogTests: XCTestCase {
         XCTAssertEqual(AppLanguage.resolve(preferred: "zh-Hant", deviceLanguages: ["en"]), "zh-Hant")
     }
 
+    func testTheCurrentLanguageChangesOnlyWhenItDiffers() {
+        defer { AppLocalization.use("en") }
+        AppLocalization.use("en")
+        XCTAssertEqual(AppLocalization.text("common.cancel"), "Cancel")
+        XCTAssertTrue(AppLocalization.use("pl"))
+        XCTAssertFalse(AppLocalization.use("pl"))
+        XCTAssertEqual(AppLocalization.current.language, "pl")
+        XCTAssertEqual(AppLocalization.text("time.minutesAgo", ["count": 22]), TranslationCatalog.catalog(for: "pl")("time.minutesAgo", ["count": 22]))
+        XCTAssertTrue(AppLocalization.use("xx"), "an unknown language is English")
+        XCTAssertEqual(AppLocalization.current.language, "en")
+    }
+
     func testCatalogsAreReadFromAnyThread() async {
         let languages = AppLanguage.supported.map(\.code)
         let answers = await withTaskGroup(of: String.self) { group in
