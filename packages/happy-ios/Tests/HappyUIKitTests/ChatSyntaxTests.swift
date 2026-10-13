@@ -43,5 +43,22 @@ final class ChatSyntaxTests: XCTestCase {
             )
         }
     }
+
+    /// CommandView's panel stays dark: tokens take the dark theme's diff
+    /// colours in light appearance too; plain runs keep the output's colour.
+    func testTerminalTokensTakeTheDarkDiffColours() {
+        let string = MessageDetailRenderer.terminalString(
+            [("echo", .function), (" hi ", .plain), ("# note", .comment)],
+            style: ChatTextStyles.terminal, color: Palette.terminalStdout, lineBreakMode: .byCharWrapping
+        )
+        XCTAssertEqual(string.string, "echo hi # note")
+        let light = UITraitCollection(userInterfaceStyle: .light)
+        func color(at offset: Int) -> UIColor? {
+            (string.attribute(.foregroundColor, at: offset, effectiveRange: nil) as? UIColor)?.resolvedColor(with: light)
+        }
+        XCTAssertEqual(color(at: 0), UIColor(DiffPalette.Syntax.function.dark))
+        XCTAssertEqual(color(at: 5), UIColor(Palette.terminalStdout).resolvedColor(with: light))
+        XCTAssertEqual(color(at: 8), UIColor(DiffPalette.Syntax.comment.dark))
+    }
 }
 #endif

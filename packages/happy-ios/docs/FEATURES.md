@@ -76,6 +76,7 @@ accident.
 - [x] Messages: user bubbles, agent text, thinking, events, unsupported placeholder (`MessageView`) — Chat
   - User bubbles with their delivery status, agent text with its copy button, events and the unsupported line. Thinking is hidden, as happy-app's reducer hides it.
 - [~] Markdown: blocks, spans, links, lists, tables, code blocks with syntax highlighting, copy (`markdown/*`, `SyntaxText`, `SimpleSyntaxHighlighter`) — Chat
+  - Code blocks take SimpleSyntaxHighlighter's colours through the file viewer's mapping (`FileSyntax`): the outermost bracket takes the first bracket colour, and decorators and operator words are keywords.
 - [~] Text selection screen (`text-selection.tsx`) and long-press copy (`LongPressCopyable`, MarkdownView's `selectable`) — Chat
   - A user's message copies through LongPressCopyable's menu; an agent's paragraphs, list items, code blocks and table cells, and on a tool's screen the command and its output, bring up the edit menu's Copy for that text. With Markdown Copy v2 (`LocalSettings.markdownCopyV2`) a long press on an agent's message opens the text selection screen instead.
   - Not yet: the Developer screen's toggle for Markdown Copy v2 (the screen isn't ported), so the text selection screen can't be reached in the app yet. Copy puts plain text on the pasteboard, without React Native's RTF. In the chat both long presses take 400 ms; React Native's selectable text takes 500.
@@ -93,6 +94,7 @@ accident.
 - [ ] Image and file messages, decrypted on demand (`FileView`) — Chat + Sending
 - [~] Message detail screen (`session/[id]/message/[messageId].tsx`) — Chat
   - ToolHeader's title; ToolFullView's terminal (CommandView with all output), Task, Edit, Write and MultiEdit full views, the generic sections, the outcome after a specialized view, and dev mode's raw JSON; a text message's whole text. Long output is drawn in pieces near the screen only (`TextChunks`).
+  - The terminal is coloured as BashViewFull's SyntaxText does: the command as bash (not the activity label shown when there is no command), stdout and stderr as a shell session, by Secondary's Prism port and cache (`TerminalSyntax`), in the dark theme's diff colours over the panel in either appearance. It is tokenized while the screen's plan is made, off the main thread, waiting at most a second; what it didn't reach stays plain and is tokenized in the background for the next plan. The error and the empty-output line stay plain.
   - The Codex patch and diff full views are cards; a patch opened from one file's header shows that file alone (`file`), or every file when it is no longer in the patch.
   - Partial: those cards round their header's corners but don't clip the diff at their bottom corners, as React Native's `overflow: hidden` does.
 - [~] Agent goal bar, work group headers, rig activity bar (`AgentGoalBar`, `AgentWorkGroupHeader`, `RigActivityBar`) — Chat

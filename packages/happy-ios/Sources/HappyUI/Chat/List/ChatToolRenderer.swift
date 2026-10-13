@@ -475,7 +475,12 @@ extension ChatRowRenderer {
     /// CommandView's first line: "$ " (when it ran a command), then the
     /// command, wrapping under itself.
     static func commandLine(_ command: String, prompt: Bool) -> ChatPiece {
-        let text = MeasuredText(ChatTextStyles.terminalCommand.string(command, color: Palette.terminalCommand, lineBreakMode: .byCharWrapping))
+        commandLine(ChatTextStyles.terminalCommand.string(command, color: Palette.terminalCommand, lineBreakMode: .byCharWrapping), prompt: prompt)
+    }
+
+    /// The command already styled, as the tool's own screen colours it.
+    static func commandLine(_ command: NSAttributedString, prompt: Bool) -> ChatPiece {
+        let text = MeasuredText(command)
         guard prompt else { return .text(text) }
         let prompt = MeasuredText(ChatTextStyles.terminalPrompt.string("$ ", color: Palette.terminalPromptGreen), maxLines: 1)
         return ChatPiece(measurable: Measurable { width in

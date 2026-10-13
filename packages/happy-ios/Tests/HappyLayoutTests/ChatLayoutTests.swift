@@ -716,6 +716,37 @@ final class TextChunksTests: XCTestCase {
         XCTAssertEqual(TextChunks.drawn("\n"), " ")
         XCTAssertEqual(TextChunks.drawn("abc"), "abc", "cut inside a line: nothing to drop")
     }
+
+    func testCutsAreWhatEachPieceDrawsInTheWholeText() {
+        let text = "ab\n\ncd\r\nef 🙂\ng"
+        let chunks = TextChunks.split(text, maxLines: 1, maxLength: 1000)
+        XCTAssertEqual(chunks, ["ab\n", "\n", "cd\r\n", "ef 🙂\n", "g"])
+        let cuts = TextChunks.cuts(chunks)
+        XCTAssertEqual(cuts, [
+            TextChunks.Cut(location: 0, length: 2, space: false),
+            // An empty line: nothing kept, and a space for its height.
+            TextChunks.Cut(location: 3, length: 0, space: true),
+            // "\r\n" is one character but two units.
+            TextChunks.Cut(location: 4, length: 2, space: false),
+            TextChunks.Cut(location: 8, length: 5, space: false),
+            // The last piece is drawn whole.
+            TextChunks.Cut(location: 14, length: 1, space: false),
+        ])
+        let units = Array(text.utf16)
+        for (chunk, cut) in zip(chunks, cuts) {
+            let kept = String(decoding: units[cut.location..<(cut.location + cut.length)], as: UTF16.self)
+            XCTAssertEqual(kept + (cut.space ? " " : ""), chunks.last == chunk ? chunk : TextChunks.drawn(chunk))
+        }
+    }
+
+    func testAPieceCutInsideALineIsDrawnWhole() {
+        XCTAssertEqual(TextChunks.cuts(["abcd", "efgh", "ij"]), [
+            TextChunks.Cut(location: 0, length: 4, space: false),
+            TextChunks.Cut(location: 4, length: 4, space: false),
+            TextChunks.Cut(location: 8, length: 2, space: false),
+        ])
+        XCTAssertEqual(TextChunks.cuts([""]), [TextChunks.Cut(location: 0, length: 0, space: false)])
+    }
 }
 
 final class CopyMenuLayoutTests: XCTestCase {
