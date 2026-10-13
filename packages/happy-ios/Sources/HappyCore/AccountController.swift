@@ -2,8 +2,8 @@ import Foundation
 import HappyCrypto
 import HappyStore
 
-/// Owns the signed-in/signed-out state of the app. The UI layer observes
-/// `onChange` and swaps its root screen; nothing else creates sessions.
+/// Only this controller opens sessions. Account transitions are serialized
+/// across suspension points, and only the active session runs sync.
 @MainActor
 public final class AccountController {
     public enum State {
@@ -14,19 +14,25 @@ public final class AccountController {
     public private(set) var state: State = .signedOut {
         didSet { onChange?(state) }
     }
-
     public var onChange: ((State) -> Void)?
+    /// Candidate server for onboarding/add-account; sessions use the registry.
     public let serverConfig: ServerConfig
     public let clientID: String
-    /// Device-only settings of the signed-in account; logout clears them.
-    public let localSettings: LocalSettings
+    public private(set) var localSettings: LocalSettings
+    public private(set) var isAddingAccount = false
 
     private let credentialStore: CredentialStore
-    /// Where account stores live; nil keeps them in memory (tests).
+    private let accountCredentialStore: AccountCredentialStore
     private let storeDirectory: URL?
     private let transport: HTTPTransport
     private let connector: WebSocketConnector
     private let appState: @Sendable () async -> String
+    private let settingsFactory: ((String) -> KeyValueStore)?
+    private var settingsStores: [String: LocalSettings] = [:]
+    private var memoryStores: [String: LocalStore] = [:]
+    private var registry = AccountRegistry()
+    private var registryLoaded = false
+    private var busy = false
 
     public init(
         serverConfig: ServerConfig,
@@ -34,6 +40,8 @@ public final class AccountController {
         credentialStore: CredentialStore,
         storeDirectory: URL?,
         localSettings: KeyValueStore = InMemoryKeyValueStore(),
+        accountCredentialStore: AccountCredentialStore? = nil,
+        localSettingsFactory: ((String) -> KeyValueStore)? = nil,
         transport: HTTPTransport = URLSessionTransport(),
         connector: WebSocketConnector = URLSessionWebSocketConnector(),
         appState: @escaping @Sendable () async -> String = { "active" }
@@ -41,8 +49,10 @@ public final class AccountController {
         self.serverConfig = serverConfig
         self.clientID = clientID
         self.credentialStore = credentialStore
+        self.accountCredentialStore = accountCredentialStore ?? InMemoryAccountCredentialStore(sharedStore: credentialStore)
         self.storeDirectory = storeDirectory
         self.localSettings = LocalSettings(storage: localSettings)
+        self.settingsFactory = localSettingsFactory
         self.transport = transport
         self.connector = connector
         self.appState = appState
@@ -53,89 +63,200 @@ public final class AccountController {
         return nil
     }
 
-    // MARK: Accounts (multi-account lands here; see AGENTS.md "Accounts")
-
-    /// Every account signed in on this device, the active one included.
-    /// Placeholder: only the active account until the registry lands.
     public var accounts: [AccountSummary] {
-        guard let session else { return [] }
-        return [AccountSummary(
-            id: session.keys.anonID,
-            serverURL: serverConfig.serverURL,
-            isActive: true,
-            usesSharedItem: true
-        )]
+        registry.entries.sorted { $0.addedOrder < $1.addedOrder }.map { entry in
+            AccountSummary(id: entry.id, serverURL: entry.serverURL,
+                           isActive: session?.keys.anonID == entry.id,
+                           usesSharedItem: entry.location == .shared)
+        }
     }
 
-    /// Makes another signed-in account the active one. Its local data shows
-    /// at once; the previous account's sync stops.
+    /// Presents onboarding without logging out. Cancel leaves the current
+    /// account and session intact. signIn adds and activates the result.
+    public func beginAddingAccount() { isAddingAccount = true }
+    public func cancelAddingAccount() { isAddingAccount = false }
+
     public func switchAccount(to id: AccountSummary.ID) async throws {
-        guard accounts.contains(where: { $0.id == id }) else { throw AccountSwitchError.unknownAccount }
-        if accounts.first(where: { $0.id == id })?.isActive == true { return }
-        throw AccountSwitchError.notAvailable
+        guard !busy else { throw AccountSwitchError.operationInProgress }
+        busy = true
+        defer { busy = false }
+        let values = try reconcile()
+        guard let entry = registry.entries.first(where: { $0.id == id }), let value = values[id] else {
+            throw AccountSwitchError.unknownAccount
+        }
+        guard session?.keys.anonID != id else { return }
+        let next = try makeSession(value.credentials, entry: entry)
+        var updated = registry
+        updated.activeID = id
+        try updated.save(directory: storeDirectory)
+        await activate(next, registry: updated)
     }
 
-    /// Unauthenticated API for sign-in flows, against the configured server.
     public var authService: AuthService {
-        AuthService(api: HappyAPI(serverURL: serverConfig.serverURL, clientID: clientID, transport: transport))
+        AuthService(api: HappyAPI(serverURL: authenticationServerURL, clientID: clientID, transport: transport))
     }
 
-    /// Checks a custom server URL with the app's own transport.
+    private var authenticationServerURL: URL {
+        isAddingAccount ? serverConfig.serverURL : (session?.api.serverURL ?? serverConfig.serverURL)
+    }
+
     public func checkServer(_ url: URL) async -> ServerCheckResult {
         await ServerProbe(transport: transport).check(url)
     }
 
-    /// Launch: reopen the stored account, if any. The state flips to signed
-    /// in before the first sync starts, so the UI shows local data at once.
     public func restore() async {
-        guard case .signedOut = state, let credentials = try? credentialStore.load() else { return }
+        guard session == nil, !busy else { return }
+        busy = true
+        defer { busy = false }
         do {
-            try await open(credentials)
+            let values = try reconcile()
+            guard let id = registry.activeID,
+                  let entry = registry.entries.first(where: { $0.id == id }), let value = values[id] else { return }
+            let next = try makeSession(value.credentials, entry: entry)
+            await activate(next, registry: registry)
         } catch {
-            // Stay signed out but keep the item. It is shared with the RN
-            // build, and a local failure such as a store that won't open
-            // must not sign that out too. Only signOut() deletes it.
+            // A locked Keychain or an unreadable cache never deletes credentials.
         }
     }
 
+    /// Adds/reauthenticates and activates; other signed-in accounts survive.
     public func signIn(_ credentials: Credentials) async throws {
-        try credentialStore.save(credentials)
-        if let session { await session.stop() }
-        try await open(credentials)
+        guard !busy else { throw AccountSwitchError.operationInProgress }
+        busy = true
+        defer { busy = false }
+        let id = try accountID(credentials)
+        _ = try reconcile()
+        let existing = registry.entries.first { $0.id == id }
+        let location = try existing?.location ?? (accountCredentialStore.sharedIsEmpty() ? .shared : .own)
+        let entry = AccountRegistryEntry(id: id, serverURL: authenticationServerURL, location: location,
+                                         addedOrder: existing?.addedOrder ?? nextOrder)
+        let next = try makeSession(credentials, entry: entry)
+        try accountCredentialStore.save(StoredAccountCredentials(credentials: credentials, serverURL: entry.serverURL), id: id, location: location)
+        var updated = registry
+        updated.entries.removeAll { $0.id == id }
+        updated.entries.append(entry)
+        updated.activeID = id
+        try updated.save(directory: storeDirectory)
+        isAddingAccount = false
+        await activate(next, registry: updated)
     }
 
-    /// Stops sync, deletes the account's local data and forgets the account.
+    /// Signs out the active account only. The next account by added order
+    /// becomes active. Failures leave credentials and the active UI intact.
     public func signOut() async {
-        if let session {
-            await session.stop()
-            try? session.store.eraseAll()
+        guard let id = session?.keys.anonID else {
+            // Preserve the legacy explicit logout of malformed credentials.
+            if !busy, let value = try? accountCredentialStore.shared(), (try? accountID(value)) == nil {
+                try? credentialStore.clear()
+            }
+            if !busy { localSettings.clear() }
+            return
         }
-        try? credentialStore.clear()
-        localSettings.clear()
-        state = .signedOut
+        try? await signOut(accountID: id)
     }
 
-    private func open(_ credentials: Credentials) async throws {
-        guard let secret = credentials.secretData else { throw CryptoError.invalidInput("credentials secret") }
-        let keys = try AccountKeys(secret: secret)
-        let store: LocalStore
-        if let storeDirectory {
-            store = try LocalStore.open(at: AccountSession.storeURL(directory: storeDirectory, keys: keys))
-        } else {
-            store = try LocalStore.inMemory()
+    public func signOut(accountID id: AccountSummary.ID) async throws {
+        guard !busy else { throw AccountSwitchError.operationInProgress }
+        busy = true
+        defer { busy = false }
+        let values = try reconcile()
+        guard let entry = registry.entries.first(where: { $0.id == id }) else { throw AccountSwitchError.unknownAccount }
+        var updated = registry
+        updated.entries.removeAll { $0.id == id }
+        let wasActive = session?.keys.anonID == id
+        let following = updated.entries.sorted { $0.addedOrder < $1.addedOrder }.first
+        let next: AccountSession?
+        if wasActive, let following, let value = values[following.id] {
+            next = try makeSession(value.credentials, entry: following)
+        } else { next = nil }
+        if wasActive { updated.activeID = following?.id }
+        try updated.save(directory: storeDirectory)
+        do {
+            try accountCredentialStore.remove(id: id, location: entry.location)
+        } catch {
+            try? registry.save(directory: storeDirectory)
+            throw error
         }
-        let session = try AccountSession(
-            credentials: credentials,
-            store: store,
-            dependencies: AccountSession.Dependencies(
-                serverURL: serverConfig.serverURL,
-                clientID: clientID,
-                transport: transport,
-                connector: connector,
-                appState: appState
-            )
-        )
-        state = .signedIn(session)
-        await session.start()
+        if wasActive { await session?.stop() }
+        settings(for: id).clear()
+        memoryStores.removeValue(forKey: id)
+        if let directory = storeDirectory {
+            try? FileManager.default.removeItem(at: AccountSession.accountDirectory(directory: directory, id: id))
+        }
+        registry = updated
+        if wasActive {
+            if let next {
+                localSettings = settings(for: next.keys.anonID)
+                state = .signedIn(next)
+                await next.start()
+            } else {
+                localSettings = LocalSettings(storage: InMemoryKeyValueStore())
+                state = .signedOut
+            }
+        } else { onChange?(state) }
+    }
+
+    private var nextOrder: Int { (registry.entries.map(\.addedOrder).max() ?? -1) + 1 }
+
+    /// Reconciles only after every credential read succeeds. A missing item
+    /// is different from a temporary Keychain access error.
+    private func reconcile() throws -> [String: StoredAccountCredentials] {
+        var updated = registryLoaded ? registry : try AccountRegistry.load(directory: storeDirectory)
+        let shared = try accountCredentialStore.shared()
+        let own = try accountCredentialStore.ownAccounts()
+        let sharedID = shared.flatMap { try? accountID($0) }
+        updated.entries.removeAll { entry in
+            entry.location == .shared ? entry.id != sharedID : own[entry.id] == nil || entry.id == sharedID
+        }
+        var values = own
+        if let shared, let sharedID {
+            let url = updated.entries.first { $0.id == sharedID }?.serverURL ?? serverConfig.serverURL
+            values[sharedID] = StoredAccountCredentials(credentials: shared, serverURL: url)
+        }
+        for id in values.keys.sorted() where !updated.entries.contains(where: { $0.id == id }) {
+            let value = values[id]!
+            updated.entries.append(AccountRegistryEntry(id: id, serverURL: value.serverURL,
+                location: id == sharedID ? .shared : .own,
+                addedOrder: (updated.entries.map(\.addedOrder).max() ?? -1) + 1))
+        }
+        if !updated.entries.contains(where: { $0.id == updated.activeID }) {
+            updated.activeID = updated.entries.min { $0.addedOrder < $1.addedOrder }?.id
+        }
+        try updated.save(directory: storeDirectory)
+        registry = updated
+        registryLoaded = true
+        return values
+    }
+
+    private func settings(for id: String) -> LocalSettings {
+        if let value = settingsStores[id] { return value }
+        let value = LocalSettings(storage: settingsFactory?(id) ?? InMemoryKeyValueStore())
+        settingsStores[id] = value
+        return value
+    }
+
+    private func makeSession(_ credentials: Credentials, entry: AccountRegistryEntry) throws -> AccountSession {
+        let store: LocalStore
+        var files: URL?
+        if let directory = storeDirectory {
+            try AccountSession.prepareDirectory(directory: directory, id: entry.id)
+            store = try LocalStore.open(at: AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("store.sqlite"))
+            files = AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("files", isDirectory: true)
+        } else if let existing = memoryStores[entry.id] { store = existing }
+        else {
+            store = try LocalStore.inMemory()
+            memoryStores[entry.id] = store
+        }
+        return try AccountSession(credentials: credentials, store: store, dependencies: .init(
+            serverURL: entry.serverURL, clientID: clientID, transport: transport,
+            connector: connector, appState: appState), filesDirectory: files)
+    }
+
+    private func activate(_ next: AccountSession, registry: AccountRegistry) async {
+        await session?.stop()
+        self.registry = registry
+        localSettings = settings(for: next.keys.anonID)
+        state = .signedIn(next)
+        await next.start()
     }
 }

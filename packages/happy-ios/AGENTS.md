@@ -129,6 +129,22 @@ nothing here is wired to the release skill or to EAS.
     `Application Support/Happy/accounts.json`. It holds no secrets. On
     launch, a shared item that the registry doesn't know (the RN app's,
     after an upgrade) is imported as an account, never copied.
+    Writes are atomic. Missing credentials drop an entry; corrupt JSON is
+    rebuilt by enumerating the secondary Keychain service and reading the
+    shared item. Keychain access errors leave the registry untouched.
+  - **Servers.** Auth uses the active session's server while signed in,
+    or the `ServerConfig` candidate while adding an account or signed out.
+    Every session uses its account's registry URL. Secondary items store a
+    JSON envelope with `credentials` and `serverURL`, so recovery after a
+    corrupt registry retains their servers. The shared item's layout stays
+    unchanged; its server is recovered from `ServerConfig` if its registry
+    entry is lost. The RN server preference is not imported from MMKV.
+  - **Adding and logout.** `beginAddingAccount()` marks onboarding as an
+    add flow while retaining the active session; `cancelAddingAccount()`
+    leaves it intact. `signIn(_:)` always adds/reauthenticates and activates
+    without signing other accounts out. `signOut()` removes only the active
+    account; `signOut(accountID:)` can remove an inactive one. The next
+    account in added order becomes active when the active one signs out.
   - **Account id.** The account's anonymous id, derived from its secret,
     so it is known offline and the same account is never listed twice.
   - **Separate caches.** Each account has its own directory,
@@ -136,6 +152,9 @@ nothing here is wired to the release skill or to EAS.
     (`store.sqlite`), attachment files (`files/`) and anything else
     cached for it. Device-only settings that belong to an account live in
     a per-account defaults suite. Nothing is shared between accounts.
+    `AccountSession.filesDirectory` exposes `files/`. The old
+    `Happy/happy-<id>.sqlite` and its WAL/SHM sidecars move into the account
+    directory on first open, before SQLite opens the new path.
   - **Switching** stops the active account's sync and socket, opens the
     other account's store (its home shows from disk at once) and starts
     its sync. Only the active account syncs.
@@ -147,8 +166,9 @@ nothing here is wired to the release skill or to EAS.
 - **Credentials stay in the RN app's Keychain item.** This app reads and
   writes happy-app's `auth_credentials` exactly as expo-secure-store 55
   stores it, so an in-place upgrade (same bundle ids) stays signed in and a
-  rollback to an RN build still works. Never copy credentials into an item
-  of our own, and don't change the item's layout:
+  rollback to an RN build still works for the shared account. Never copy
+  shared credentials into an item of our own, and don't change its layout
+  (secondary accounts use the separate service described above):
   - generic password, service `app:no-auth`;
   - account and generic set to the UTF-8 bytes of `auth_credentials`;
   - `kSecAttrAccessibleWhenUnlocked`, the default access group;

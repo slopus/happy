@@ -33,6 +33,8 @@ public struct AccountSummary: Equatable, Sendable, Identifiable {
 
 public enum AccountSwitchError: Error, Equatable, Sendable {
     case unknownAccount
+    case operationInProgress
+    case sharedItemOccupied
     /// Multi-account isn't wired yet (placeholder until it lands).
     case notAvailable
 }
