@@ -495,6 +495,43 @@ private actor FakeSender: ChatSending {
     func discard(localId: String) async throws {}
 }
 
+/// Whether the new session's agent takes pictures (`attachmentPlan`).
+private final class PictureSupport: @unchecked Sendable {
+    var supported = true
+
+    func plan(_ message: OutgoingMessage) -> AttachmentSendPlan {
+        let text = !message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return supported
+            ? AttachmentSendPlan(accepted: message.attachments, rejected: [], shouldShowUnsupportedAlert: false, shouldSendText: true)
+            : AttachmentSendPlan(
+                accepted: [], rejected: message.attachments,
+                shouldShowUnsupportedAlert: !message.attachments.isEmpty,
+                shouldSendText: message.attachments.isEmpty || text
+            )
+    }
+}
+
+/// Holds the plan's store read, the way a slow disk would.
+private actor PlanGate {
+    private var holds = false
+    private var waiting: CheckedContinuation<Void, Never>?
+    private(set) var reads = 0
+
+    func hold() { holds = true }
+    var isHolding: Bool { waiting != nil }
+
+    func pass() async {
+        reads += 1
+        if holds { await withCheckedContinuation { waiting = $0 } }
+    }
+
+    func release() {
+        holds = false
+        waiting?.resume()
+        waiting = nil
+    }
+}
+
 private struct FakeTransport: MetadataUpdateTransport {
     func updateMetadata(event: String, payload: JSONValue) async throws -> JSONValue { .null }
 }
@@ -534,6 +571,9 @@ private final class FakePresenter: SessionStarterPresenter {
         return retriesFace.isEmpty ? false : retriesFace.removeFirst()
     }
 
+    var notSupported = 0
+    func showAttachmentsNotSupported() { notSupported += 1 }
+
     func confirmDirectoryCreation(_ directory: String) async -> Bool {
         asked.append(directory)
         return approves
@@ -547,6 +587,8 @@ final class SessionStarterTests: XCTestCase {
     private let sender = FakeSender()
     private let recorder = Recorder()
     private let presenter = FakePresenter()
+    private let pictures = PictureSupport()
+    private let planGate = PlanGate()
     private var phases: [NewSessionStartPhase?] = []
     private lazy var requests = SpawnRequests()
 
@@ -559,6 +601,10 @@ final class SessionStarterTests: XCTestCase {
             metadataTransport: FakeTransport(),
             refreshSessions: { await recorder.refreshed() },
             paintBotFace: { try await recorder.paint($0) },
+            attachmentPlan: { [pictures, planGate] message, _ in
+                await planGate.pass()
+                return pictures.plan(message)
+            },
             spawnRequests: requests,
             sleep: { await recorder.slept($0) }
         ))
@@ -576,6 +622,7 @@ final class SessionStarterTests: XCTestCase {
         model: String = "default",
         effort: String? = "medium",
         prompt: String = "Fix the build",
+        attachments: [OutgoingAttachment] = [],
         bot: NewSessionLaunch.Bot? = nil
     ) -> NewSessionLaunch {
         NewSessionLaunch(
@@ -590,7 +637,7 @@ final class SessionStarterTests: XCTestCase {
             modelMode: model,
             effortLevel: effort,
             prompt: prompt,
-            attachments: [],
+            attachments: attachments,
             signature: SpawnRequests.Signature(
                 machineId: "m1", agent: agent.rawValue, place: "~/happy", worktree: worktree,
                 modelKey: model, permissionMode: permission, effort: effort,
@@ -790,6 +837,106 @@ final class SessionStarterTests: XCTestCase {
 }
 
 extension SessionStarterTests {
+    // MARK: Pictures with the first message
+
+    private var picture: OutgoingAttachment {
+        OutgoingAttachment(fileURL: URL(fileURLWithPath: "/tmp/a.jpg"), name: "a.jpg", mimeType: "image/jpeg", size: 10, width: 4, height: 3)
+    }
+
+    func testPicturesGoWithTheFirstMessage() async {
+        await ops.script([.success(sessionId: "p1")])
+        let sessionId = await makeStarter().start(launch(prompt: "", attachments: [picture]), isCurrentTarget: { true })
+        XCTAssertEqual(sessionId, "p1", "a picture alone is a first message")
+        let sent = await sender.sent
+        XCTAssertEqual(sent.first?.0.attachments, [picture])
+        XCTAssertEqual(sent.first?.0.source, .newSession)
+        XCTAssertEqual(presenter.notSupported, 0)
+    }
+
+    func testPicturesTheAgentCantTakeAloneSendNothing() async {
+        pictures.supported = false
+        await ops.script([.success(sessionId: "p2")])
+        let starter = makeStarter()
+        let sessionId = await starter.start(launch(prompt: "", attachments: [picture]), isCurrentTarget: { true })
+        await settle()
+        XCTAssertNil(sessionId)
+        XCTAssertEqual(presenter.notSupported, 1)
+        let sent = await sender.sent
+        XCTAssertTrue(sent.isEmpty)
+        let kills = await sessionOps.kills
+        XCTAssertTrue(kills.isEmpty, "the session the composer still asks for stays")
+
+        // The next press opens the same session.
+        pictures.supported = true
+        let again = await makeStarter().start(launch(prompt: "", attachments: [picture]), isCurrentTarget: { true })
+        XCTAssertEqual(again, "p2")
+        let spawned = await ops.spawned
+        XCTAssertEqual(spawned.count, 1)
+    }
+
+    func testPicturesTheAgentCantTakeAreNamedAndTheTextStillGoes() async {
+        pictures.supported = false
+        await ops.script([.success(sessionId: "p3")])
+        let sessionId = await makeStarter().start(launch(prompt: "Look", attachments: [picture]), isCurrentTarget: { true })
+        XCTAssertEqual(sessionId, "p3")
+        XCTAssertEqual(presenter.notSupported, 1)
+        let sent = await sender.sent
+        XCTAssertEqual(sent.map(\.0.text), ["Look"])
+    }
+
+    func testThePlanIsReadOnlyForPictures() async {
+        await ops.script([.success(sessionId: "p4")])
+        _ = await makeStarter().start(launch(), isCurrentTarget: { true })
+        let reads = await planGate.reads
+        XCTAssertEqual(reads, 0, "a text-only start reads no plan")
+    }
+
+    func testStopWhileThePlanIsReadPutsTheSessionDown() async {
+        await ops.script([.success(sessionId: "p5")])
+        await planGate.hold()
+        let starter = makeStarter()
+        let started = Task { await starter.start(launch(attachments: [picture]), isCurrentTarget: { true }) }
+        while !(await planGate.isHolding) { await Task.yield() }
+        XCTAssertEqual(starter.phase, .opening)
+
+        starter.cancel()
+        XCTAssertNil(starter.phase, "the composer is back at once")
+        let result = await started.value
+        XCTAssertNil(result)
+        for _ in 0..<200 where await recorder.refreshes == 0 { await Task.yield() }
+        let stops = await ops.stops
+        XCTAssertEqual(stops, ["p5"])
+        await planGate.release()
+        await settle()
+        let sent = await sender.sent
+        XCTAssertTrue(sent.isEmpty, "nothing is sent after Stop")
+        XCTAssertEqual(presenter.notSupported, 0)
+        XCTAssertTrue(presenter.errors.isEmpty)
+    }
+
+    func testAComposerThatMovedWhileThePlanWasReadPutsTheSessionDown() async {
+        await ops.script([.success(sessionId: "p6")])
+        await planGate.hold()
+        var current = true
+        let starter = makeStarter()
+        let started = Task { await starter.start(launch(attachments: [picture]), isCurrentTarget: { current }) }
+        while !(await planGate.isHolding) { await Task.yield() }
+        current = false
+        await planGate.release()
+        let result = await started.value
+        XCTAssertNil(result)
+        for _ in 0..<200 where await recorder.refreshes == 0 { await Task.yield() }
+        let stops = await ops.stops
+        XCTAssertEqual(stops, ["p6"])
+        let sent = await sender.sent
+        XCTAssertTrue(sent.isEmpty)
+
+        // Spent: the next press for the same start spawns again.
+        await ops.script([.success(sessionId: "p7")])
+        let again = await makeStarter().start(launch(attachments: [picture]), isCurrentTarget: { true })
+        XCTAssertEqual(again, "p7")
+    }
+
     // MARK: A bot's face (`wearBotFace`)
 
     func testABotWearsItsFaceBeforeItOpens() async {

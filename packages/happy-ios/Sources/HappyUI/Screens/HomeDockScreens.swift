@@ -21,6 +21,10 @@ final class HomeDockController: NSObject {
     let restingView: HomeDockView
     let composer: NewSessionComposer
     let starter: SessionStarter
+    /// Pictures for the first message (`useImagePicker`): home's own, kept
+    /// while home is, as the prompt is. A bot takes none.
+    let images: ComposerImagePicker
+    private let staging: ComposerAttachmentStaging
     private(set) var prompt = ""
     private weak var host: UIViewController?
     private let context: AppContext
@@ -38,8 +42,12 @@ final class HomeDockController: NSObject {
             ops: session.homeOps
         )
         starter = SessionStarter.make(for: session)
+        staging = ComposerAttachmentStaging(filesDirectory: session.filesDirectory)
+        images = ComposerImagePicker(staging: staging)
         super.init()
         starter.presenter = self
+        images.host = { [weak self] in self?.presenterController }
+        images.onChange = { [weak self] in self?.render() }
         starter.onPhaseChange = { [weak self] _ in self?.render() }
         composer.onChange = { [weak self] in self?.render() }
         restingView.entryButton.addAction(UIAction { [weak self] _ in self?.openFocus() }, for: .touchUpInside)
@@ -69,13 +77,14 @@ final class HomeDockController: NSObject {
         restingView.isHidden = !isAvailable || focus != nil
     }
 
-    /// A bot needs a name the daemon takes; a session, a prompt.
+    /// A bot needs a name the daemon takes; a session, a prompt or a
+    /// picture.
     var canSubmit: Bool {
         guard !starter.isStarting else { return false }
         let drafts = composer.drafts
         return drafts.createsBot
             ? BotName.isValid(drafts.botName)
-            : !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            : !prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !images.images.isEmpty
     }
 
     func setPrompt(_ prompt: String) {
@@ -143,12 +152,16 @@ final class HomeDockController: NSObject {
             return true
         }
         let text = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
+        let picked = images.images
+        guard !text.isEmpty || !picked.isEmpty else { return false }
         drafts.setInput(text)
         let started = drafts.draft
-        guard let sessionId = await start(composer.launch(prompt: text, attachments: [])) else { return false }
-        // Only what was sent is cleared: edits made while it ran stay.
+        guard let sessionId = await start(composer.launch(prompt: text, attachments: picked.map(\.attachment))) else { return false }
+        // Only what was sent is cleared: edits made while it ran stay. The
+        // outbox holds its own copies of the pictures by now.
         if drafts.draft.input == started.input { drafts.setInput("") }
         prompt = ""
+        images.clear()
         open(sessionId)
         return true
     }
@@ -222,6 +235,11 @@ extension HomeDockController: SessionStarterPresenter {
             confirmTitle: Strings.Home.create,
             on: controller
         )
+    }
+
+    func showAttachmentsNotSupported() {
+        guard let controller = presenterController else { return }
+        Alerts.show(Strings.ImageUpload.notSupportedTitle, Strings.ImageUpload.notSupportedMessage, on: controller)
     }
 
     /// Asked once the composer has gone: the bot's session opens beneath,
@@ -539,8 +557,8 @@ final class HomeDockFocusViewController: UIViewController {
         }
     }
 
-    /// The card for the draft (`renderFocusedComposer`). The add button
-    /// is left out until there is an image picker to open.
+    /// The card for the draft (`renderFocusedComposer`), with the pictures
+    /// picked for the first message.
     private func cardConfiguration(_ choices: NewSessionChoices, primary: NewSessionPrimaryAction, starting: Bool) -> AgentInputCardConfiguration {
         let hasHarness = choices.hasAvailableHarness
         let permission: AgentInputChipConfiguration? = hasHarness && choices.currentPermission != nil
@@ -577,8 +595,12 @@ final class HomeDockFocusViewController: UIViewController {
                 )
             )
         } : nil
+        let attachments = controller?.images.images.map { AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL) } ?? []
         return AgentInputCardConfiguration(
             placeholder: choices.promptPlaceholder,
+            showsAdd: true,
+            addAccessibilityLabel: Strings.Home.addImage,
+            attachments: attachments,
             permission: permission,
             model: model,
             effort: effort,
@@ -933,6 +955,16 @@ extension HomeDockFocusViewController: AgentInputCardDelegate {
 
     func agentInputCardDidRefuse(_ card: AgentInputCardView, control: AgentInputControl) {
         refuse()
+    }
+
+    func agentInputCardDidPressAdd(_ card: AgentInputCardView) {
+        guard let controller, !controller.starter.isStarting else { return }
+        controller.images.attach()
+    }
+
+    func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) {
+        guard let controller, !controller.starter.isStarting else { return }
+        controller.images.remove(id: id)
     }
 
     func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {

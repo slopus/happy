@@ -96,6 +96,7 @@ extension Strings {
         public static let enterCustomPath = "Enter custom path"
         public static let customPathPlaceholder = "~/path/to/project"
         public static let interruptHint = "To interrupt press stop"
+        public static let addImage = "Add image"
         // useStartSessionFromDraft.ts's directory question.
         public static let createDirectoryTitle = "Create Directory?"
         public static func createDirectoryMessage(_ directory: String) -> String {

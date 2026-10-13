@@ -15,7 +15,12 @@ extension SessionStarter {
             sender: session.sender,
             metadataTransport: session.realtime,
             refreshSessions: { await sync.run(.sessions) },
-            paintBotFace: { try await BotFacePainter.png(seed: $0) }
+            paintBotFace: { try await BotFacePainter.png(seed: $0) },
+            // The store read goes off main. Becomes
+            // `sender.attachmentPlan(for:sessionId:)` once that lands.
+            attachmentPlan: { [sender = session.sender] message, sessionId in
+                try await Task.detached { try sender.attachmentPlan(message, sessionId: sessionId) }.value
+            }
         ))
     }
 }
@@ -761,6 +766,10 @@ extension NewSessionViewController: SessionStarterPresenter {
             confirmTitle: Strings.Home.create,
             on: self
         )
+    }
+
+    func showAttachmentsNotSupported() {
+        Alerts.show(Strings.ImageUpload.notSupportedTitle, Strings.ImageUpload.notSupportedMessage, on: self)
     }
 
     /// Never asked here: this screen starts sessions, not bots.

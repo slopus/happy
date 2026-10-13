@@ -133,6 +133,8 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
     public var isEditable: Bool
     /// The leading add button (`onPickImages`).
     public var showsAdd: Bool
+    /// Overrides "Add photo" for VoiceOver ("Add image" on home).
+    public var addAccessibilityLabel: String?
     public var attachments: [AgentInputAttachmentPreview]
     /// Nil hides the chip. The model chip shows whenever it is set; the
     /// separator and the effort chip go together.
@@ -163,6 +165,7 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         placeholder: String,
         isEditable: Bool = true,
         showsAdd: Bool = false,
+        addAccessibilityLabel: String? = nil,
         attachments: [AgentInputAttachmentPreview] = [],
         permission: AgentInputChipConfiguration? = nil,
         model: AgentInputChipConfiguration? = nil,
@@ -180,6 +183,7 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         self.placeholder = placeholder
         self.isEditable = isEditable
         self.showsAdd = showsAdd
+        self.addAccessibilityLabel = addAccessibilityLabel
         self.attachments = attachments
         self.permission = permission
         self.model = model
@@ -562,6 +566,7 @@ public final class AgentInputCardView: UIView {
         textView.accessibilityLabel = config.placeholder
 
         addButton.isHidden = !config.showsAdd || config.zenMode
+        addButton.accessibilityLabel = config.addAccessibilityLabel ?? Strings.Composer.addPhoto
         // The glyph turns blue while pictures are attached.
         addButton.tint = config.attachments.isEmpty ? Palette.text : Palette.radioActive
         attachmentStrip.attachments = config.attachments
