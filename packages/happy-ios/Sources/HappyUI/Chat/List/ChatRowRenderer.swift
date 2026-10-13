@@ -19,6 +19,9 @@ struct ChatRowStyle: Equatable, Sendable {
     /// `useIsTablet()`: permission buttons hug their labels at the
     /// trailing edge (`TabletBranches.permissionButtonsTrailing`).
     var tablet = false
+    /// PermissionFooter's `optionsScroll` maxHeight, min(260, 35% of the
+    /// window): a taller list of buttons scrolls.
+    var permissionListMaxHeight = PermissionFooterLayout.Metrics.maxListHeight
 }
 
 /// Everything one row is drawn from. Equal inputs at the same width give
@@ -396,13 +399,17 @@ struct MarkdownPiece {
                     ], [])
                 }
 
-            case .image(let alt, _):
+            case .image(let alt, let url):
                 let caption = alt.isEmpty ? nil : MeasuredText(ChatTextStyles.imageCaption.string(alt, color: Palette.textSecondary))
+                let source = URL(string: url)
                 blocks.append(.image(caption: caption?.measurable))
                 drawers.append { placed, origin in
                     guard case .image(let frame, let picture, let captionFrame) = placed else { return ([], []) }
                     let shifted = frame.offsetBy(dx: origin.x, dy: origin.y)
-                    var items: [ChatDrawItem] = [.box(ChatBox(frame: picture.offsetBy(dx: shifted.minX, dy: shifted.minY), fill: Palette.surfaceHighest, radius: MarkdownLayout.Metrics.imageRadius))]
+                    let pictureFrame = picture.offsetBy(dx: shifted.minX, dy: shifted.minY)
+                    var items: [ChatDrawItem] = [.box(ChatBox(frame: pictureFrame, fill: Palette.surfaceHighest, radius: MarkdownLayout.Metrics.imageRadius))]
+                    // `accessibilityLabel={alt || 'Markdown image'}`.
+                    if let source { items.append(.webImage(source, frame: pictureFrame, label: alt.isEmpty ? "Markdown image" : alt)) }
                     if let caption, let captionFrame {
                         items.append(.text(caption.layout(for: captionFrame), captionFrame.offsetBy(dx: shifted.minX, dy: shifted.minY)))
                     }

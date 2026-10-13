@@ -26,10 +26,14 @@ private let logger = Logger(subsystem: "engineering.happy", category: "composer"
 /// picks and the failed uploads arrive from `ComposerDraftWriter`, which
 /// reads and writes them in order on a background task and delivers only
 /// what moved; the view keeps the draft logic in `ComposerDraftModel`.
+///
+/// A chat still being started (`pending-chat:`) writes every keystroke to
+/// its record (`environment.draftStorage`) and queues its send there; when
+/// the session arrives, `retarget` moves the same composer over.
 final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegate {
     weak var composerDelegate: (any ChatComposerDelegate)?
 
-    private let environment: ChatComposerEnvironment
+    private var environment: ChatComposerEnvironment
     private let card: AgentInputCardView
     private let statusDot = StatusDotView()
     private let statusLabel = UILabel()
@@ -47,11 +51,13 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private var detailsVisible = true
 
     private var draft = ComposerDraftModel()
-    private let draftWriter: ComposerDraftWriter
+    private var draftWriter: ComposerDraftWriter
     /// The debounce of an edit to non-empty text (`DraftAutosave.interval`).
     private var draftSave: Task<Void, Never>?
     /// A read asked for after a composition ended, not yet delivered.
     private var draftRefreshPending = false
+    /// A first read put off until the send in flight returns.
+    private var draftLoadAfterSend = false
     private var isAborting = false
     /// Stop was pressed; Stop stays hidden until the agent stops working
     /// (`stopRequested`), so a late status update can't leave it up.
@@ -82,14 +88,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     init(environment: ChatComposerEnvironment) {
         self.environment = environment
-        draftWriter = ComposerDraftWriter(
-            sessionId: environment.sessionId,
-            storage: environment.account.sender,
-            sending: environment.sender,
-            onFailure: { failure in
-                logger.error("draft \(String(describing: failure.operation), privacy: .public) failed: \(String(describing: failure.error), privacy: .public)")
-            }
-        )
+        draftWriter = Self.makeWriter(environment, generation: 0, after: nil)
         staging = ComposerAttachmentStaging(filesDirectory: environment.account.filesDirectory)
         images = ComposerImagePicker(staging: staging)
         modes = ComposerModes(metadata: nil, picks: ComposerPicks(), agentDefaultOverrides: [:])
@@ -145,6 +144,19 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         draftWriter.close()
     }
 
+    private static func makeWriter(_ environment: ChatComposerEnvironment, generation: Int, after predecessor: ComposerDraftWriter?) -> ComposerDraftWriter {
+        ComposerDraftWriter(
+            sessionId: environment.sessionId,
+            storage: environment.draftStorage,
+            sending: environment.sender,
+            generation: generation,
+            after: predecessor,
+            onFailure: { failure in
+                logger.error("draft \(String(describing: failure.operation), privacy: .public) failed: \(String(describing: failure.error), privacy: .public)")
+            }
+        )
+    }
+
     // MARK: ChatComposerView
 
     func composerHeight(fitting width: CGFloat) -> CGFloat {
@@ -175,7 +187,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             if sessionState != status?.state {
                 vibingWord = ComposerStatus.randomVibingWord()
             }
-            status = ComposerStatus(record: record, now: Self.now, vibingWord: vibingWord)
+            // A stopped session's "last seen" comes worked out on the
+            // presence clock, and changes only when its text does.
+            status = ComposerStatus(record: record, lastSeen: state.session.lastSeen, now: Self.now, vibingWord: vibingWord)
         } else {
             status = nil
         }
@@ -203,6 +217,28 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             composerDelegate?.composerDidInvalidateHeight(self)
         }
         setNeedsLayout()
+    }
+
+    func retarget(_ environment: ChatComposerEnvironment) {
+        guard environment.sessionId != self.environment.sessionId else { return }
+        // The pending edit goes to the old store; the new writer waits for
+        // the old one before it reads or writes.
+        flushDraft()
+        let previous = draftWriter
+        previous.close()
+        self.environment = environment
+        draft.retarget()
+        draftRefreshPending = false
+        draftLoadAfterSend = false
+        draftWriter = Self.makeWriter(environment, generation: draft.generation, after: previous)
+        draftWriter.start { [weak self] delivery in
+            self?.receive(delivery)
+        }
+        // File suggestions come from the new session.
+        activeQuery = nil
+        suggestionTask?.cancel()
+        suggestionTask = nil
+        updateActiveWord()
     }
 
     func setDetailsVisible(_ visible: Bool, animated: Bool) {
@@ -490,6 +526,10 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             }
         }
         isSending = true
+        // What the send does with the draft is its target's: a pending
+        // chat's submit empties its record even if the session arrives
+        // before it returns, and the handover carries the record over.
+        let clearsStored = !isDraftSynced && !isPending
         // Behind the draft writes before it, ahead of the ones after.
         let sending = draftWriter.send(message)
         // The outbox copies the staged files; they outlive a composer
@@ -502,15 +542,19 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
                 guard let self else { return }
                 self.isSending = false
                 // Only clear what was sent: typing may have gone on.
+                // A Happy Agent's send cleared its draft, a pending chat's
+                // submit its record's.
                 if self.card.text == text {
-                    self.clearDraft(stored: !self.isDraftSynced)
+                    self.clearDraft(stored: clearsStored)
                     self.card.text = ""
                 }
                 self.images.removeSent(picked.map(\.id))
                 self.applyConfiguration()
+                self.loadAfterSend()
                 self.composerDelegate?.composer(self, didSend: localId)
             } catch {
                 self?.isSending = false
+                self?.loadAfterSend()
                 logger.error("send failed: \(String(describing: error), privacy: .public)")
                 if error is ComposerDraftWriter.UnsavedDraftError {
                     // Nothing went; the text stays for another try.
@@ -555,13 +599,19 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// A Happy Agent session: every edit is written at once and others'
     /// edits come in through the store.
     private var isDraftSynced: Bool {
-        RigCatalog.isRigV1(state?.session.record?.metadata)
+        !isPending && RigCatalog.isRigV1(state?.session.record?.metadata)
+    }
+
+    /// A chat still being started: every keystroke goes to its record at
+    /// once (setPendingChatDraft), and nothing else writes there.
+    private var isPending: Bool {
+        PendingChats.isPendingChatId(environment.sessionId)
     }
 
     private func draftChanged(_ text: String) {
         draftSave?.cancel()
         draftSave = nil
-        let (write, debounce) = draft.textChanged(text, synced: isDraftSynced)
+        let (write, debounce) = draft.textChanged(text, synced: isDraftSynced || isPending)
         if let write {
             draftWriter.save(write.text, generation: write.generation)
         }
@@ -599,6 +649,13 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// and the uploads the outbox gave up on.
     private func receive(_ delivery: ComposerStoreDelivery) {
         draftRefreshPending = false
+        if !draft.isLoaded, isSending {
+            // A send queued before the retarget: until it returns, the
+            // field's text may be what it sent, which the new store
+            // mustn't be given.
+            draftLoadAfterSend = true
+            return
+        }
         let opening = !draft.isLoaded
         let change = draft.receive(delivery, text: card.text, synced: isDraftSynced, composing: card.hasMarkedText)
         // sessionSetAgentModes and the metadata reconciler write the picks.
@@ -606,6 +663,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             self.picks = picks
             recomputeModes()
             applyConfiguration()
+        }
+        if let write = change.write {
+            draftWriter.save(write.text, generation: write.generation)
         }
         if let text = change.text {
             draftSave?.cancel()
@@ -620,6 +680,14 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         if change.newlyFailedAttachments > 0 {
             alert(Strings.ImageUpload.uploadFailedTitle, Strings.ImageUpload.uploadFailedMessage(change.newlyFailedAttachments))
         }
+    }
+
+    /// The send is back, the field cleared if it went: the first read put
+    /// off for it is asked for again.
+    private func loadAfterSend() {
+        guard draftLoadAfterSend else { return }
+        draftLoadAfterSend = false
+        draftWriter.refresh()
     }
 
     /// The composition a remote edit waited for has ended (committed,

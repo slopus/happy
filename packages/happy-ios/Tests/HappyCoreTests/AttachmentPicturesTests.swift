@@ -64,6 +64,15 @@ final class AttachmentPicturesTests: XCTestCase {
         XCTAssertEqual(name(pictures.cached(key("r1", session: "s1"))), "one")
     }
 
+    func testAMarkdownImageIsNeverASessionsAttachment() async {
+        let pictures = AttachmentPictures()
+        _ = await pictures.picture(key("https://example.com/a.png"), load: load("attachment"))
+        XCTAssertNil(pictures.cached(.web("https://example.com/a.png")))
+        _ = await pictures.picture(.web("https://example.com/a.png"), load: load("web"))
+        XCTAssertEqual(name(pictures.cached(.web("https://example.com/a.png"))), "web")
+        XCTAssertEqual(name(pictures.cached(key("https://example.com/a.png"))), "attachment")
+    }
+
     func testAKeptPictureIsNotLoadedAgain() async {
         let pictures = AttachmentPictures()
         let loads = Loads()

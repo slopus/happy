@@ -224,13 +224,17 @@ public struct TextStyle: Equatable, Hashable, Sendable {
     public var lineHeight: CGFloat?
     public var letterSpacing: CGFloat
     public var uppercase: Bool
+    /// `maxFontSizeMultiplier`: the most the person's text size may grow
+    /// this style; nil lets it grow as far as the setting goes.
+    public var maxScale: CGFloat?
 
-    public init(_ face: FontFace, size: CGFloat, lineHeight: CGFloat? = nil, letterSpacing: CGFloat = 0, uppercase: Bool = false) {
+    public init(_ face: FontFace, size: CGFloat, lineHeight: CGFloat? = nil, letterSpacing: CGFloat = 0, uppercase: Bool = false, maxScale: CGFloat? = nil) {
         self.face = face
         self.size = size
         self.lineHeight = lineHeight
         self.letterSpacing = letterSpacing
         self.uppercase = uppercase
+        self.maxScale = maxScale
     }
 }
 

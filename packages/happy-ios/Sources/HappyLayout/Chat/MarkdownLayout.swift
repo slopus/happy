@@ -300,6 +300,17 @@ public struct MarkdownLayout: Equatable, Sendable {
         return min(widest, available)
     }
 
+    /// How many pixels to decode an image block's picture of `size` pixels
+    /// to: `resizeMode="contain"` in the largest box it is drawn in
+    /// (`imageMaxWidth` by `imageHeight`), on a 3x screen, never more than
+    /// it has.
+    public static func decodedImageSize(_ size: CGSize) -> CGSize {
+        typealias M = Metrics
+        guard size.width > 0, size.height > 0 else { return size }
+        let scale = min(1, 3 * M.imageMaxWidth / size.width, 3 * M.imageHeight / size.height)
+        return CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+    }
+
     /// RenderTableBlock's column widths: the longest cell's character count
     /// at 8.5 pt a character plus padding, clamped to 80…360.
     public static func columnWidths(lengths: [[Int]]) -> [CGFloat] {

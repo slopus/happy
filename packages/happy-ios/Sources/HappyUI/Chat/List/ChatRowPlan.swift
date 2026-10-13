@@ -45,6 +45,7 @@ struct ChatBox {
 extension CACornerMask {
     static let all: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
     static let top: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
+    static let bottom: CACornerMask = [.layerMinXMaxYCorner, .layerMaxXMaxYCorner]
 }
 
 enum ChatDrawItem {
@@ -59,16 +60,21 @@ enum ChatDrawItem {
     /// (PermissionFooter's loading ring).
     case pulse(ChatBox)
     /// A DiffChunk, planned at the frame's width. Its "Show N more lines"
-    /// asks for `diffShowMore(toolId:chunk:file:)`.
-    case diff(DiffChunkPlan, frame: CGRect, toolId: String, chunk: Int)
+    /// asks for `diffShowMore(toolId:chunk:file:)`. A card it ends clips
+    /// `corners` to `radius` (`overflow: hidden`).
+    case diff(DiffChunkPlan, frame: CGRect, toolId: String, chunk: Int, radius: CGFloat = 0, corners: CACornerMask = .all)
     /// A DiffFileHeader, planned at the frame's width, naming `path`.
     case diffHeader(DiffHeaderPlan, path: String, frame: CGRect)
     /// A strip that scrolls sideways (HorizontalScrollView: a code block, a
-    /// table), showing `content` through `frame`, its corners rounded by
-    /// `radius`. The content's items and hits are in its own coordinates.
-    case scroller(ChatRowPlan, frame: CGRect, radius: CGFloat = 0)
+    /// table), or up and down with `vertical` (a long permission list),
+    /// showing `content` through `frame`, its corners rounded by `radius`.
+    /// The content's items and hits are in its own coordinates.
+    case scroller(ChatRowPlan, frame: CGRect, radius: CGFloat = 0, vertical: Bool = false)
     /// FileView's picture, loaded once it is on screen.
     case attachment(ChatAttachment, frame: CGRect)
+    /// A markdown image block's picture, loaded once it is on screen;
+    /// `label` is what VoiceOver reads.
+    case webImage(URL, frame: CGRect, label: String)
 }
 
 /// A picture the person attached: `ref` under the session's attachments,

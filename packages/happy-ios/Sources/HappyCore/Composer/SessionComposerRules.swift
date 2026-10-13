@@ -91,12 +91,14 @@ public struct ComposerStatus: Equatable, Sendable {
     public var isPulsing: Bool
 
     /// `vibingWord` is drawn afresh each time the state changes
-    /// (`randomVibingWord`).
-    public init(record: SessionRecord, now: Int64, vibingWord: String) {
+    /// (`randomVibingWord`). `lastSeen`, worked out on the presence clock
+    /// (`ChatSessionState.lastSeen`), is shown as it is; without it a
+    /// stopped session's is worked out from `now`.
+    public init(record: SessionRecord, lastSeen: LastSeen? = nil, now: Int64, vibingWord: String) {
         state = SessionState(record)
         switch state {
         case .disconnected:
-            text = .lastSeen(Self.lastSeen(activeAt: record.activeAt, now: now))
+            text = .lastSeen(lastSeen ?? Self.lastSeen(activeAt: record.activeAt, now: now))
             tone = .disconnected
             isPulsing = false
         case .permissionRequired:

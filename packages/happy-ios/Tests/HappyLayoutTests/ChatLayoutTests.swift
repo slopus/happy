@@ -92,6 +92,15 @@ final class ChatScrollAnchorTests: XCTestCase {
 }
 
 final class MarkdownLayoutTests: XCTestCase {
+    func testAnImageIsDecodedNoLargerThanItsBoxAt3x() {
+        // Contained in 520 x 240: a wide picture by its width, a tall one
+        // by its height.
+        assertSize(MarkdownLayout.decodedImageSize(CGSize(width: 4000, height: 1000)), CGSize(width: 1560, height: 390))
+        assertSize(MarkdownLayout.decodedImageSize(CGSize(width: 1000, height: 3000)), CGSize(width: 240, height: 720))
+        assertSize(MarkdownLayout.decodedImageSize(CGSize(width: 64, height: 64)), CGSize(width: 64, height: 64))
+        assertSize(MarkdownLayout.decodedImageSize(.zero), .zero)
+    }
+
     func testBlocksStackWithTheirOwnMargins() {
         let layout = MarkdownLayout(width: 300, blocks: [
             .text(text("hello world", lineHeight: 25)),
@@ -447,6 +456,31 @@ final class ToolRowLayoutTests: XCTestCase {
         assertFrame(layout.buttons[1], rect(6, 45, 365, 52))
         assertFrame(layout.labels[1], rect(20.5, 53, 336, 36))
         XCTAssertEqual(layout.size.height, 105)
+        assertFrame(layout.list, rect(6, 4, 365, 93))
+        XCTAssertFalse(layout.scrolls)
+    }
+
+    func testTheListIsAtMost260OrAThirdAndABitOfTheWindow() {
+        XCTAssertEqual(PermissionFooterLayout.maxListHeight(windowHeight: 852), 260)
+        // An iPhone SE in landscape: round(375 * 0.35) = 131.
+        XCTAssertEqual(PermissionFooterLayout.maxListHeight(windowHeight: 375), 131)
+        XCTAssertEqual(PermissionFooterLayout.maxListHeight(windowHeight: 667), 233)
+    }
+
+    func testALongPermissionListScrollsInsideTheCap() {
+        // Five 34-tall buttons, 7 apart: 198 of list.
+        let labels = Array(repeating: text("Yes", lineHeight: 18), count: 5)
+        let layout = PermissionFooterLayout(width: 377, labels: labels, maxListHeight: 131)
+        XCTAssertEqual(layout.listContentHeight, 198)
+        assertFrame(layout.list, rect(6, 4, 365, 131))
+        XCTAssertTrue(layout.scrolls)
+        XCTAssertEqual(layout.size.height, 143)
+        // The buttons keep their places in the list, scrolled to its top.
+        assertFrame(layout.buttons[4], rect(6, 168, 365, 34))
+
+        let roomy = PermissionFooterLayout(width: 377, labels: labels, maxListHeight: 260)
+        XCTAssertFalse(roomy.scrolls)
+        XCTAssertEqual(roomy.size.height, 210)
     }
 }
 
@@ -497,6 +531,47 @@ final class ChatScreenLayoutTests: XCTestCase {
         XCTAssertEqual(layout.scrim.height, 0)
         XCTAssertEqual(layout.headerScrim.height, 0)
         assertFrame(layout.placeholder, rect(0, 74, 664, 544))
+        XCTAssertNil(layout.backButton)
+        XCTAssertNil(layout.statusBarShadow)
+    }
+
+    func testAPhoneOnItsSideHasNoHeader() {
+        // An iPhone SE held sideways: below the tablet width, no status bar.
+        let layout = ChatScreenLayout(.init(
+            size: CGSize(width: 667, height: 375), safeArea: LayoutInsets(top: 0, left: 0, bottom: 0, right: 0), keyboardTop: nil,
+            accessories: [.inset(block(height: 60))], composerHeight: 70, composerCardOffset: 20, hidesHeader: true
+        ))
+        assertFrame(layout.dock, rect(0, 245, 667, 130))
+        assertFrame(layout.list, rect(0, 0, 667, 245))
+        XCTAssertEqual(layout.newestEdgeInset, 8)
+        // chatListTopContentInset's 12, with nothing above it.
+        XCTAssertEqual(layout.oldestEdgeInset, 12)
+        assertFrame(layout.scrollButton, rect(317.5, 209, 32, 32))
+        XCTAssertEqual(layout.scrim.height, 0)
+        XCTAssertEqual(layout.headerScrim.height, 0)
+        assertFrame(layout.placeholder, rect(0, 0, 667, 245))
+        XCTAssertEqual(layout.backButton, rect(16, 8, 44, 44))
+        XCTAssertEqual(layout.statusBarShadow, rect(0, 0, 667, 0))
+    }
+
+    func testWithoutTheHeaderTheListStartsUnderTheStatusBar() {
+        // A short, wide window with a status bar (Stage Manager).
+        let layout = ChatScreenLayout(.init(
+            size: CGSize(width: 700, height: 500), safeArea: LayoutInsets(top: 24, left: 0, bottom: 20, right: 0), keyboardTop: nil,
+            composerHeight: 70, hidesHeader: true
+        ))
+        assertFrame(layout.dock, rect(0, 410, 700, 70))
+        assertFrame(layout.list, rect(0, 24, 700, 386))
+        XCTAssertEqual(layout.oldestEdgeInset, 12)
+        XCTAssertEqual(layout.backButton, rect(16, 32, 44, 44))
+        XCTAssertEqual(layout.statusBarShadow, rect(0, 0, 700, 24))
+        // The keyboard still carries the dock.
+        let typing = ChatScreenLayout(.init(
+            size: CGSize(width: 700, height: 500), safeArea: LayoutInsets(top: 24, left: 0, bottom: 20, right: 0), keyboardTop: 300,
+            composerHeight: 70, hidesHeader: true
+        ))
+        assertFrame(typing.dock, rect(0, 230, 700, 70))
+        assertFrame(typing.list, rect(0, 24, 700, 206))
     }
 
     func testTheDockRidesTheKeyboard() {

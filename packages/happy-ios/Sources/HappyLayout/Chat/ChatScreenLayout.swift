@@ -32,6 +32,12 @@ import CoreGraphics
 /// status bar and 32 more, on top of starting under the bar), the scroll
 /// button floats 4 above the list's bottom, there is no fade behind the
 /// dock, and the bars above the composer sit 12 in.
+///
+/// A phone on its side (`hidesHeader`, SessionView's
+/// `hidesLandscapeHeader`) is docked the same way with no header at all:
+/// the list starts under the status bar with 12 before its oldest end, a
+/// 44pt round back button floats 16 in and 8 under the status bar, and
+/// the status bar gets a shadowed strip of its own.
 public struct ChatScreenLayout: Equatable, Sendable {
     public enum Metrics {
         /// sessionInputHorizontalPadding on a phone.
@@ -55,6 +61,12 @@ public struct ChatScreenLayout: Equatable, Sendable {
         public static let dockedOlderEdgeExtra: CGFloat = 32
         /// The header's scrim runs 8 past the bar (headerBackdrop bottom -8).
         public static let headerScrimOverhang: CGFloat = 8
+        /// Without the header: `chatListTopContentInset`'s 12.
+        public static let headerlessOlderEdgeExtra: CGFloat = 12
+        /// The floating back button that stands in for the header.
+        public static let backButtonSize: CGFloat = 44
+        public static let backButtonLeft: CGFloat = 16
+        public static let backButtonTop: CGFloat = 8
         /// layout.maxWidth off a phone (tablet and web: 800; a phone is never
         /// limited).
         public static let regularMaxContentWidth: CGFloat = 800
@@ -90,11 +102,14 @@ public struct ChatScreenLayout: Equatable, Sendable {
         public var docked: Bool
         /// `sessionInputHorizontalPadding`: 8 on a phone, 12 on a tablet.
         public var accessoryPaddingH: CGFloat
+        /// A phone on its side: no header, docked. `safeArea.top` is then
+        /// the status bar's alone.
+        public var hidesHeader: Bool
 
         public init(
             size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat?, accessories: [Accessory] = [], composerHeight: CGFloat,
             composerCardOffset: CGFloat = 0, maxContentWidth: CGFloat = .greatestFiniteMagnitude,
-            docked: Bool = false, accessoryPaddingH: CGFloat = Metrics.accessoryPaddingH
+            docked: Bool = false, accessoryPaddingH: CGFloat = Metrics.accessoryPaddingH, hidesHeader: Bool = false
         ) {
             self.size = size
             self.safeArea = safeArea
@@ -105,6 +120,7 @@ public struct ChatScreenLayout: Equatable, Sendable {
             self.maxContentWidth = maxContentWidth
             self.docked = docked
             self.accessoryPaddingH = accessoryPaddingH
+            self.hidesHeader = hidesHeader
         }
     }
 
@@ -127,6 +143,10 @@ public struct ChatScreenLayout: Equatable, Sendable {
     /// Where an empty chat's placeholder is centred: under the bar, above
     /// the dock.
     public var placeholder: CGRect
+    /// Without the header: the back button that stands in for it, and the
+    /// status bar's strip.
+    public var backButton: CGRect?
+    public var statusBarShadow: CGRect?
 
     public init(_ input: Input) {
         typealias M = Metrics
@@ -165,14 +185,21 @@ public struct ChatScreenLayout: Equatable, Sendable {
         headerScrim = CGRect(x: 0, y: 0, width: width, height: max(0, input.safeArea.top) + M.headerScrimOverhang)
         placeholder = CGRect(x: 0, y: input.safeArea.top, width: width, height: max(0, dock.minY - input.safeArea.top))
 
-        if input.docked {
+        backButton = nil
+        statusBarShadow = nil
+        if input.docked || input.hidesHeader {
             let top = max(0, input.safeArea.top)
             list = CGRect(x: 0, y: top, width: width, height: max(0, dock.minY - top))
             newestEdgeInset = M.newerEdgeExtra
-            oldestEdgeInset = top + M.dockedOlderEdgeExtra
+            oldestEdgeInset = input.hidesHeader ? M.headerlessOlderEdgeExtra : top + M.dockedOlderEdgeExtra
             scrollButton.origin.y = list.maxY - M.dockedScrollButtonGap - M.scrollButtonSize
             scrim = CGRect(x: 0, y: dock.minY, width: width, height: 0)
             headerScrim = CGRect(x: 0, y: 0, width: width, height: 0)
+        }
+        if input.hidesHeader {
+            let top = max(0, input.safeArea.top)
+            backButton = CGRect(x: M.backButtonLeft, y: top + M.backButtonTop, width: M.backButtonSize, height: M.backButtonSize)
+            statusBarShadow = CGRect(x: 0, y: 0, width: width, height: top)
         }
     }
 

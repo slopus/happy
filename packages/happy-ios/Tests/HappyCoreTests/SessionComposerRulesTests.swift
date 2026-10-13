@@ -103,6 +103,15 @@ final class ComposerStatusTests: XCTestCase {
         XCTAssertFalse(online.isPulsing)
     }
 
+    func testThePresenceClocksLastSeenIsShownAsGiven() {
+        let now: Int64 = 10_000_000
+        let stopped = sessionRecord(active: false, activeAt: now - 5 * 60_000)
+        // The chat's state carries the clock's text; the device clock is ignored.
+        XCTAssertEqual(ComposerStatus(record: stopped, lastSeen: .hours(2), now: now, vibingWord: "Vibing").text, .lastSeen(.hours(2)))
+        // Only a stopped session shows it.
+        XCTAssertEqual(ComposerStatus(record: sessionRecord(), lastSeen: .hours(2), now: now, vibingWord: "Vibing").text, .online)
+    }
+
     func testLastSeen() {
         let now: Int64 = 100 * 86_400_000
         XCTAssertEqual(ComposerStatus.lastSeen(activeAt: now - 59_999, now: now), .justNow)
