@@ -418,7 +418,13 @@ public final class AccountController {
         var importedServer: ImportedAccountServer?
         if let shared, let sharedID {
             let known = updated.entries.first { $0.id == sharedID }
-            if known == nil { importedServer = rnServerImport() }
+            if known == nil {
+                // MMKV reads, replay and CRC validation belong off main. Busy
+                // keeps account transitions serialized; the generation captured
+                // above still merges profiles delivered during this await.
+                let importServer = rnServerImport
+                importedServer = await Task.detached(priority: .userInitiated) { importServer() }.value
+            }
             let url: URL
             if let known {
                 url = known.serverURL
