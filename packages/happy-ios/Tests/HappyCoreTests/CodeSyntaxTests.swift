@@ -83,16 +83,20 @@ private enum WholeBlockHighlighter {
 }
 
 /// The real tokenizer, counted, on a clock that moves one millisecond per
-/// line tokenized; optionally held on its first line.
+/// line tokenized; optionally held, uncounted, on the line it is asked for
+/// once `holdsAfter` lines are done (its first line, for `holdsFirstLine`),
+/// until the gate opens.
 private final class CodeSyntaxProbe: @unchecked Sendable {
     private let lock = NSLock()
     private var lines: [String] = []
     private var ticks = 0
     private let base = ContinuousClock.now
+    private let holdsAfter: Int?
     let gate: ApplyPerfGate?
 
-    init(holdsFirstLine: Bool = false) {
-        gate = holdsFirstLine ? ApplyPerfGate() : nil
+    init(holdsFirstLine: Bool = false, holdsAfter: Int? = nil) {
+        self.holdsAfter = holdsAfter ?? (holdsFirstLine ? 0 : nil)
+        gate = self.holdsAfter == nil ? nil : ApplyPerfGate()
     }
 
     var calls: Int { lock.withLock { lines.count } }
@@ -104,7 +108,7 @@ private final class CodeSyntaxProbe: @unchecked Sendable {
                  queueCountLimit: Int = 64, queuePayloadLimit: Int = 4 * 1024 * 1024) -> CodeSyntaxService {
         CodeSyntaxService(lineCountLimit: lineCountLimit, payloadLimit: payloadLimit, queueCountLimit: queueCountLimit,
                           queuePayloadLimit: queuePayloadLimit, now: { self.now }) { text, grammar, stack in
-            self.gate?.pass()
+            if let holdsAfter = self.holdsAfter, self.calls >= holdsAfter { self.gate?.pass() }
             self.lock.withLock {
                 self.lines.append(text)
                 self.ticks += 1
@@ -227,8 +231,9 @@ final class CodeSyntaxServiceTests: XCTestCase {
 
     /// One pass shares one deadline: what the first block spends, the
     /// second does not get; the rest is tokenized in the background, once.
+    /// The background is held on its first line until the pass is counted.
     func testAPassDeadlineIsSharedAndTheRestFinishesInTheBackground() async throws {
-        let probe = CodeSyntaxProbe()
+        let probe = CodeSyntaxProbe(holdsAfter: 5)
         let service = probe.service()
         let signals = service.completions()
         let first = code(lines: 3, tag: "a")
@@ -238,8 +243,11 @@ final class CodeSyntaxServiceTests: XCTestCase {
         }
         XCTAssertEqual(a, .highlighted(SyntaxHighlighter.tokenize(first, language: "ts")))
         XCTAssertEqual(b, .pending)
+        probe.gate?.waitUntilHeld()
         XCTAssertEqual(probe.calls, 5, "three lines, then two of four")
+        XCTAssertEqual(service.queuedUsage.count, 1, "the rest of the second block, running")
 
+        probe.gate?.open()
         let signal: Void? = try await syncPerfNext(signals)
         XCTAssertNotNil(signal)
         await service.idle()
