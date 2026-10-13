@@ -14,7 +14,10 @@ import HappyCrypto
 ///     no SQL, so a screen can ask for it as it opens.
 ///   - On disk, the most recently used `maxFiles`, at most `maxDiskBytes`;
 ///     `snapshot` reads one off the main thread, once however many ask.
-///     A read bigger than `maxEntryBytes` is shown but never written.
+///     A read bigger than `maxEntryBytes` is shown but never written, and
+///     a file on disk bigger than that is never read. At most
+///     `maxPendingReads` files are being read at once; a read asked for
+///     past that is a miss, and the screen asks the computer.
 ///   - Writes and reads run one at a time on the cache's own queue, and a
 ///     read sees every write asked for before it. Writes waiting for the
 ///     queue are one per file, the newest; at most `maxPendingBytes` of
@@ -43,6 +46,7 @@ public final class SessionFileCache: @unchecked Sendable {
     public static let defaultMaxPendingBytes = 8 * 1024 * 1024
     public static let defaultMaxPendingChanges = 64
     public static let defaultMaxRoots = 256
+    public static let defaultMaxPendingReads = 8
 
     struct Key: Hashable, Sendable {
         var sessionId: String
@@ -57,6 +61,7 @@ public final class SessionFileCache: @unchecked Sendable {
     /// is older than what is kept now.
     private var overtaken: Set<Key> = []
     private var closed = false
+    private let maxPendingReads: Int
     let disk: FileCacheDisk?
 
     /// Memory only, as happy-app's.
@@ -95,8 +100,10 @@ public final class SessionFileCache: @unchecked Sendable {
         maxEntryBytes: Int = defaultMaxEntryBytes,
         maxPendingBytes: Int = defaultMaxPendingBytes,
         maxPendingChanges: Int = defaultMaxPendingChanges,
-        maxRoots: Int = defaultMaxRoots
+        maxRoots: Int = defaultMaxRoots,
+        maxPendingReads: Int = defaultMaxPendingReads
     ) {
+        self.maxPendingReads = max(1, maxPendingReads)
         memory = KeptFiles(maxCount: maxCount, maxCost: maxCost)
         roots = KeptRoots(maxCount: maxRoots)
         disk = directory.map {
@@ -135,14 +142,15 @@ public final class SessionFileCache: @unchecked Sendable {
     }
 
     /// The read kept in memory, else on disk (read off the main thread, and
-    /// then kept in memory). Asks no computer for anything.
+    /// then kept in memory). Asks no computer for anything. With
+    /// `maxPendingReads` other files being read already, only memory.
     public func snapshot(sessionId: String, path: String) async -> FileViewer.Snapshot? {
         let key = Key(sessionId: sessionId, path: path)
         let pending: Task<FileViewer.Snapshot?, Never>? = lock.withLock {
             guard !closed else { return nil }
             if memory.contains(key) { return nil }
             if let read = reads[key] { return read }
-            guard let disk else { return nil }
+            guard let disk, reads.count < maxPendingReads else { return nil }
             let read = Task.detached(priority: .userInitiated) { [self] in
                 finishRead(key, await disk.read(key))
             }
@@ -209,6 +217,7 @@ public final class SessionFileCache: @unchecked Sendable {
 
     var keptCount: Int { lock.withLock { memory.count } }
     var rootCount: Int { lock.withLock { roots.count } }
+    var pendingReadCount: Int { lock.withLock { reads.count } }
 }
 
 /// Sessions' roots, least recently used let go first.
@@ -538,6 +547,12 @@ final class FileCacheDisk: @unchecked Sendable {
         guard !closed else { return nil }
         readCount += 1
         let file = directory.appendingPathComponent(Self.name(key))
+        guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return nil }
+        guard size <= maxEntryBytes else {
+            // Never written this big: not this cache's.
+            try? FileManager.default.removeItem(at: file)
+            return nil
+        }
         guard let data = try? Data(contentsOf: file) else { return nil }
         guard let entry = try? JSONDecoder().decode(Entry.self, from: data), entry.version == Self.version,
               entry.sessionId == key.sessionId, entry.path == key.path else {

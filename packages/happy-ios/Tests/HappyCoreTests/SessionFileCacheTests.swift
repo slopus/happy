@@ -463,6 +463,56 @@ final class SessionFileCacheTests: XCTestCase {
         XCTAssertEqual(cache.rootCount, 1)
     }
 
+    func testHeldReadsAreAdmittedUpToTheirLimit() async throws {
+        let directory = try await account("one")
+        await seed(directory, ["a", "b", "c"].map { ("s", "/repo/\($0)") })
+        let cache = SessionFileCache(directory: directory, maxPendingReads: 2)
+        let disk = try XCTUnwrap(cache.disk)
+        let release = disk.hold()
+        let first = Task { await cache.snapshot(sessionId: "s", path: "/repo/a") }
+        let second = Task { await cache.snapshot(sessionId: "s", path: "/repo/b") }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(cache.pendingReadCount, 2)
+        // The same file again joins its read.
+        let again = Task { await cache.snapshot(sessionId: "s", path: "/repo/a") }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(cache.pendingReadCount, 2)
+        // A third file is a miss at once, with the disk still held.
+        let third = await cache.snapshot(sessionId: "s", path: "/repo/c")
+        XCTAssertNil(third)
+        XCTAssertEqual(cache.pendingReadCount, 2)
+        release()
+        let a = await first.value
+        let b = await second.value
+        let a2 = await again.value
+        XCTAssertEqual(a, snapshot("old"))
+        XCTAssertEqual(b, snapshot("old"))
+        XCTAssertEqual(a2, snapshot("old"))
+        XCTAssertEqual(cache.pendingReadCount, 0)
+        let reads = await disk.reads
+        XCTAssertEqual(reads, 2)
+        // Admitted once the others are done.
+        let later = await cache.snapshot(sessionId: "s", path: "/repo/c")
+        XCTAssertEqual(later, snapshot("old"))
+        let after = await disk.reads
+        XCTAssertEqual(after, 3)
+    }
+
+    func testAFileOnDiskBiggerThanAnEntryIsNeverRead() async throws {
+        let directory = try await account("one")
+        await seed(directory, [("s", path)])
+        let file = directory.appendingPathComponent(try XCTUnwrap(files(directory).first))
+        // As if written by something else: valid, but past the entry cap.
+        let big = SessionFileCache(directory: directory, maxEntryBytes: 10_000)
+        big.set(sessionId: "s", path: path, snapshot(String(repeating: "x", count: 2_000)))
+        await big.close()
+        XCTAssertGreaterThan(try XCTUnwrap(file.resourceValues(forKeys: [.fileSizeKey]).fileSize), 1_000)
+        let cache = SessionFileCache(directory: directory, maxEntryBytes: 1_000)
+        let read = await cache.snapshot(sessionId: "s", path: path)
+        XCTAssertNil(read)
+        XCTAssertTrue(files(directory).isEmpty)
+    }
+
     func testAnUnreadableFileIsAMiss() async throws {
         let directory = try await account("one")
         let cache = SessionFileCache(directory: directory)
