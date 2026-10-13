@@ -42,14 +42,26 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
         public var project: Measurable
         /// nil in a project's primary checkout.
         public var workspace: Measurable?
+        /// The 13pt branch glyph's RN box (`Icon.layout`): one line of the
+        /// icon font tall, 13 x 13.33 on a 3x screen.
+        public var branchIcon: CGSize
         public var showsDivider: Bool
 
-        public init(width: CGFloat, title: Measurable, timestamp: Measurable, project: Measurable, workspace: Measurable?, showsDivider: Bool) {
+        public init(
+            width: CGFloat,
+            title: Measurable,
+            timestamp: Measurable,
+            project: Measurable,
+            workspace: Measurable?,
+            branchIcon: CGSize = CGSize(width: Metrics.branchIconSize, height: Metrics.branchIconSize),
+            showsDivider: Bool
+        ) {
             self.width = width
             self.title = title
             self.timestamp = timestamp
             self.project = project
             self.workspace = workspace
+            self.branchIcon = branchIcon
             self.showsDivider = showsDivider
         }
     }
@@ -92,7 +104,8 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
 
         let workspaceY = projectY + M.projectHeight + M.workspaceMarginTop
         if let workspace = input.workspace {
-            let textSize = workspace.size(fitting: max(0, contentWidth - M.workspaceIconGap - M.branchIconSize))
+            let icon = input.branchIcon
+            let textSize = workspace.size(fitting: max(0, contentWidth - M.workspaceIconGap - icon.width))
             self.workspace = CGRect(
                 x: x,
                 y: workspaceY + (M.workspaceMinHeight - textSize.height) / 2,
@@ -101,9 +114,9 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
             )
             branchIcon = CGRect(
                 x: x + textSize.width + M.workspaceIconGap,
-                y: workspaceY + (M.workspaceMinHeight - M.branchIconSize) / 2,
-                width: M.branchIconSize,
-                height: M.branchIconSize
+                y: workspaceY + (M.workspaceMinHeight - icon.height) / 2,
+                width: icon.width,
+                height: icon.height
             )
         } else {
             self.workspace = nil
@@ -157,17 +170,26 @@ public struct ArchiveToggleLayout: Equatable, Sendable {
     public var leadingLine: CGRect
     public var trailingLine: CGRect
 
-    public init(width: CGFloat, label: Measurable) {
+    /// The project list's toggle divides the page rather than heading a
+    /// band: 20 above and 12 below (ProjectHomeList.tsx `archiveToggle`).
+    public static let unbanded = (top: CGFloat(20), bottom: CGFloat(12))
+
+    public init(
+        width: CGFloat,
+        label: Measurable,
+        paddingTop: CGFloat = Metrics.paddingTop,
+        paddingBottom: CGFloat = Metrics.paddingBottom
+    ) {
         typealias M = Metrics
         let width = max(0, width)
         let inner = max(0, width - M.paddingHorizontal * 2)
         let text = label.size(fitting: max(0, inner - M.gap * 2))
         let lineWidth = max(0, (inner - text.width - M.gap * 2) / 2)
-        let midY = M.paddingTop + text.height / 2
+        let midY = paddingTop + text.height / 2
         leadingLine = CGRect(x: M.paddingHorizontal, y: midY - M.lineHeight / 2, width: lineWidth, height: M.lineHeight)
-        self.label = CGRect(x: leadingLine.maxX + M.gap, y: M.paddingTop, width: text.width, height: text.height)
+        self.label = CGRect(x: leadingLine.maxX + M.gap, y: paddingTop, width: text.width, height: text.height)
         trailingLine = CGRect(x: self.label.maxX + M.gap, y: leadingLine.minY, width: lineWidth, height: M.lineHeight)
-        size = CGSize(width: width, height: M.paddingTop + text.height + M.paddingBottom)
+        size = CGSize(width: width, height: paddingTop + text.height + paddingBottom)
     }
 }
 
@@ -190,13 +212,24 @@ public struct NoSessionsLayout: Equatable, Sendable {
     public struct Input {
         public var size: CGSize
         public var safeArea: LayoutInsets
+        /// The 56pt terminal glyph's RN box (`Icon.layout`): one line of the
+        /// icon font tall, 56 x 57.67 on a 3x screen.
+        public var icon: CGSize
         public var title: Measurable
         public var description: Measurable
         public var action: Measurable?
 
-        public init(size: CGSize, safeArea: LayoutInsets, title: Measurable, description: Measurable, action: Measurable?) {
+        public init(
+            size: CGSize,
+            safeArea: LayoutInsets,
+            icon: CGSize = CGSize(width: Metrics.iconSize, height: Metrics.iconSize),
+            title: Measurable,
+            description: Measurable,
+            action: Measurable?
+        ) {
             self.size = size
             self.safeArea = safeArea
+            self.icon = icon
             self.title = title
             self.description = description
             self.action = action
@@ -218,7 +251,7 @@ public struct NoSessionsLayout: Equatable, Sendable {
         let descriptionSize = input.description.size(fitting: max(0, descriptionWidth))
         let actionSize = input.action?.size(fitting: textWidth)
 
-        var height = M.iconSize + M.iconMarginBottom + titleSize.height + M.titleMarginBottom
+        var height = input.icon.height + M.iconMarginBottom + titleSize.height + M.titleMarginBottom
             + descriptionSize.height + M.descriptionMarginBottom
         if let actionSize { height += M.actionMarginTop + actionSize.height }
 
@@ -227,7 +260,7 @@ public struct NoSessionsLayout: Equatable, Sendable {
         func centred(_ size: CGSize, _ y: CGFloat) -> CGRect {
             CGRect(x: insets.left + (width - size.width) / 2, y: y, width: size.width, height: size.height)
         }
-        icon = centred(CGSize(width: M.iconSize, height: M.iconSize), y)
+        icon = centred(input.icon, y)
         y = icon.maxY + M.iconMarginBottom
         title = centred(titleSize, y)
         y = title.maxY + M.titleMarginBottom

@@ -80,6 +80,7 @@ final class SessionRowCell: UITableViewCell {
             timestamp: timestampLabel.measurable,
             project: projectLabel.measurable,
             workspace: row?.workspaceName == nil ? nil : workspaceLabel.measurable,
+            branchIcon: branchIcon.sizeThatFits(.zero),
             showsDivider: row?.showsDivider ?? false
         ))
     }
@@ -260,13 +261,30 @@ final class ArchiveToggleCell: UITableViewCell {
         setNeedsLayout()
     }
 
+    /// The flat list's toggle heads a band; the project list's divides
+    /// the page.
+    var banded = true {
+        didSet { if banded != oldValue { setNeedsLayout() } }
+    }
+
+    private func layout(width: CGFloat) -> ArchiveToggleLayout {
+        banded
+            ? ArchiveToggleLayout(width: width, label: label.measurable)
+            : ArchiveToggleLayout(
+                width: width,
+                label: label.measurable,
+                paddingTop: ArchiveToggleLayout.unbanded.top,
+                paddingBottom: ArchiveToggleLayout.unbanded.bottom
+            )
+    }
+
     override func sizeThatFits(_ size: CGSize) -> CGSize {
-        ArchiveToggleLayout(width: size.width, label: label.measurable).size
+        layout(width: size.width).size
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let layout = ArchiveToggleLayout(width: contentView.bounds.width, label: label.measurable)
+        let layout = layout(width: contentView.bounds.width)
         label.setLayoutFrame(layout.label)
         leading.setLayoutFrame(layout.leadingLine)
         trailing.setLayoutFrame(layout.trailingLine)
@@ -358,6 +376,7 @@ public final class NoSessionsView: UIView {
         let layout = NoSessionsLayout(.init(
             size: bounds.size,
             safeArea: LayoutInsets(safeAreaInsets),
+            icon: icon.sizeThatFits(.zero),
             title: titleLabel.measurable,
             description: descriptionLabel.measurable,
             action: showsArchivedAction ? showArchived.measurable : nil
