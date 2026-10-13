@@ -14,6 +14,7 @@ import CoreGraphics
 ///     options   8 ┬ buttons, 8 apart ┬ 8
 ///     table     8 ┬ bordered grid ┬ 8                (scrolls sideways)
 ///     image     8 ┬ 240 picture, 8, caption ┬ 8
+///     mermaid   8 ┬ diagram, 200 to 600 ┬ 8        (scrolls inside)
 ///
 /// Frames are relative to the markdown view's origin.
 public struct MarkdownLayout: Equatable, Sendable {
@@ -50,6 +51,14 @@ public struct MarkdownLayout: Equatable, Sendable {
         public static let imageHeight: CGFloat = 240
         public static let imageCaptionGap: CGFloat = 8
         public static let imageRadius: CGFloat = 12
+        /// MermaidRenderer: the diagram's height before its page reports
+        /// one, which is also the least it shows, and the most, past which
+        /// the page scrolls inside.
+        public static let mermaidInitialHeight: CGFloat = 200
+        public static let mermaidMaxHeight: CGFloat = 600
+        public static let mermaidRadius: CGFloat = 8
+        /// The page's own padding around the diagram (its body's).
+        public static let mermaidPadding: CGFloat = 16
 
         public static func headerMargins(_ level: Int) -> (top: CGFloat, bottom: CGFloat) {
             switch level {
@@ -95,6 +104,8 @@ public struct MarkdownLayout: Equatable, Sendable {
         case options([Measurable])
         case table(Table)
         case image(caption: Measurable?)
+        /// A diagram, and the height its page reported, if it has yet.
+        case mermaid(reported: CGFloat?)
     }
 
     public struct PlacedListItem: Equatable, Sendable {
@@ -134,6 +145,7 @@ public struct MarkdownLayout: Equatable, Sendable {
         case options(frame: CGRect, buttons: [CGRect], labels: [CGRect])
         case table(PlacedTable)
         case image(frame: CGRect, picture: CGRect, caption: CGRect?)
+        case mermaid(CGRect)
 
         public var frame: CGRect {
             switch self {
@@ -143,6 +155,7 @@ public struct MarkdownLayout: Equatable, Sendable {
             case .options(let frame, _, _): frame
             case .table(let table): table.frame
             case .image(let frame, _, _): frame
+            case .mermaid(let frame): frame
             }
         }
     }
@@ -260,6 +273,12 @@ public struct MarkdownLayout: Equatable, Sendable {
                 }
                 placed.append(.image(frame: CGRect(x: 0, y: y, width: imageWidth, height: height), picture: picture, caption: captionFrame))
                 y += height + M.blockMargin
+
+            case .mermaid(let reported):
+                y += M.blockMargin
+                let height = Self.mermaidHeight(reported: reported)
+                placed.append(.mermaid(CGRect(x: 0, y: y, width: width, height: height)))
+                y += height + M.blockMargin
             }
         }
 
@@ -294,10 +313,34 @@ public struct MarkdownLayout: Equatable, Sendable {
                 width = table.columnWidths.reduce(0, +) + 2 * M.tableBorder
             case .image:
                 width = M.imageMaxWidth
+            case .mermaid:
+                // `width: '100%'`.
+                width = available
             }
             widest = max(widest, width)
         }
         return min(widest, available)
+    }
+
+    /// MermaidRenderer's box: 200 until the page reports, then the most it
+    /// has reported (`Math.max(prev.height, data.height)`, from 200), never
+    /// more than 600.
+    public static func mermaidHeight(reported: CGFloat?) -> CGFloat {
+        typealias M = Metrics
+        return min(max(M.mermaidInitialHeight, reported ?? 0), M.mermaidMaxHeight)
+    }
+
+    /// What to keep of a height a diagram's page reported, given what is
+    /// kept already: rounded up to whole pixels, no more than the box can
+    /// show, and only if the box grows by it. Nil keeps what there is, so
+    /// a page settling by a fraction of a pixel, or past 600, plans nothing
+    /// again.
+    public static func mermaidHeightToKeep(reported: CGFloat, kept: CGFloat?, scale: CGFloat) -> CGFloat? {
+        typealias M = Metrics
+        guard reported.isFinite, scale > 0 else { return nil }
+        let height = min((reported * scale).rounded(.up) / scale, M.mermaidMaxHeight)
+        guard height > max(kept ?? 0, M.mermaidInitialHeight) else { return nil }
+        return height
     }
 
     /// How many pixels to decode an image block's picture of `size` pixels

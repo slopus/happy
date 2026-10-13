@@ -63,6 +63,7 @@ struct ChatStackEntry {
 struct ChatToolViews {
     var question: ChatQuestionState?
     var diffExpanded: [Int: Set<Int>] = [:]
+    var diagrams = ChatMermaidHeights()
     var flush = true
 }
 
@@ -245,7 +246,7 @@ extension ChatRowRenderer {
         case .codexPatch: codexPatchView(message, views: views, style: style)
         case .codexDiff: codexDiffView(message, views: views, style: style)
         case .todo: todoView(message.tool)
-        case .exitPlan: exitPlanView(message.tool)
+        case .exitPlan: exitPlanView(message.tool, diagrams: views.diagrams)
         case .task: taskView(message.children)
         case .bash: bashView(message.tool)
         case .codexBash: codexBashView(message.tool, root: style.root)
@@ -594,9 +595,9 @@ extension ChatRowRenderer {
     }
 
     /// ExitPlanToolView: the plan as markdown, 8 in, pulled 10 up.
-    static func exitPlanView(_ tool: ToolCall) -> ChatStackEntry {
+    static func exitPlanView(_ tool: ToolCall, diagrams: ChatMermaidHeights) -> ChatStackEntry {
         let plan = tool.input["plan"]?.stringValue ?? "<empty>"
-        let markdown = ChatPiece.markdown(MarkdownPiece(plan, color: Palette.text))
+        let markdown = ChatPiece.markdown(MarkdownPiece(plan, color: Palette.text, diagrams: diagrams))
         let inset = ChatStackEntry(piece: markdown, marginTop: -10, padding: LayoutInsets(top: 0, left: 8, bottom: 0, right: 8))
         return section(nil, .stack([inset]))
     }

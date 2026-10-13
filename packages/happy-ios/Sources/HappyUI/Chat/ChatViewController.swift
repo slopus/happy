@@ -157,6 +157,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// latest snapshot has it, and what the reader has done to it.
     private var questionForms: [String: ChatQuestionForm] = [:]
     private var questionDrafts: [String: ChatQuestionState] = [:]
+    /// How tall each diagram's page said it is: by row id, then by its
+    /// place in the row. For as long as the screen lives.
+    private var mermaidHeights: [String: [Int: CGFloat]] = [:]
 
     init(context: AppContext, session account: AccountSession, sessionId: String) {
         self.context = context
@@ -362,6 +365,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         questionForms = [:]
         questionDrafts = [:]
         questionsToDismiss = [:]
+        mermaidHeights = [:]
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -1058,7 +1062,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             requests: windowRequests,
             pin: pin,
             pins: pins,
-            tick: graceTick
+            tick: graceTick,
+            mermaidHeights: mermaidHeights
         )
         guard view != sentRowsView else { return }
         sentRowsView = view
@@ -1145,6 +1150,13 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             scheduleMeasure()
         case .questionSubmit(let toolId):
             submitQuestion(toolId)
+        case .mermaidHeight(let row, let index, let height):
+            // Planned again off the main thread, only if the box grows.
+            guard let kept = MarkdownLayout.mermaidHeightToKeep(
+                reported: height, kept: mermaidHeights[row]?[index], scale: traitCollection.displayScale
+            ) else { return }
+            mermaidHeights[row, default: [:]][index] = kept
+            scheduleMeasure()
         case .diffShowMore(let toolId, let chunk, let file):
             diffExpanded[toolId, default: [:]][chunk, default: []].insert(file)
             pin = toolId

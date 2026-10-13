@@ -147,6 +147,35 @@ final class MarkdownLayoutTests: XCTestCase {
         assertSize(layout.size, CGSize(width: 300, height: 674))
     }
 
+    func testAMermaidDiagramIs200TallUntilItsPageSaysMoreAndScrollsPast600() {
+        let layout = MarkdownLayout(width: 300, blocks: [
+            .mermaid(reported: nil),
+            .mermaid(reported: 120),
+            .mermaid(reported: 345.5),
+            .mermaid(reported: 1800),
+        ])
+        assertFrame(layout.blocks[0].frame, rect(0, 8, 300, 200))
+        assertFrame(layout.blocks[1].frame, rect(0, 224, 300, 200))
+        assertFrame(layout.blocks[2].frame, rect(0, 440, 300, 345.5))
+        assertFrame(layout.blocks[3].frame, rect(0, 801.5, 300, 600))
+        assertSize(layout.size, CGSize(width: 300, height: 1409.5))
+    }
+
+    func testOnlyAMermaidHeightThatGrowsTheBoxIsKept() {
+        XCTAssertNil(MarkdownLayout.mermaidHeightToKeep(reported: 180, kept: nil, scale: 3), "200 is shown anyway")
+        XCTAssertNil(MarkdownLayout.mermaidHeightToKeep(reported: 200, kept: nil, scale: 3))
+        XCTAssertEqual(MarkdownLayout.mermaidHeightToKeep(reported: 345.1, kept: nil, scale: 3)!, 1036.0 / 3, accuracy: 0.0001)
+        XCTAssertNil(MarkdownLayout.mermaidHeightToKeep(reported: 345.1, kept: 1036.0 / 3, scale: 3), "the same pixel again")
+        XCTAssertNil(MarkdownLayout.mermaidHeightToKeep(reported: 300, kept: 345, scale: 3), "never shrinks")
+        XCTAssertEqual(MarkdownLayout.mermaidHeightToKeep(reported: 5000, kept: 345, scale: 2), 600)
+        XCTAssertNil(MarkdownLayout.mermaidHeightToKeep(reported: 5100, kept: 600, scale: 2), "past the cap the page scrolls")
+        XCTAssertNil(MarkdownLayout.mermaidHeightToKeep(reported: .nan, kept: nil, scale: 2))
+    }
+
+    func testAMermaidDiagramTakesTheWholeWidth() {
+        XCTAssertEqual(MarkdownLayout.naturalWidth(of: [.text(text("hi", lineHeight: 25)), .mermaid(reported: nil)], available: 280), 280)
+    }
+
     func testShortCodeKeepsTheBlockFullWidth() {
         let layout = MarkdownLayout(width: 300, blocks: [.code(language: nil, code: CGSize(width: 50, height: 20))])
         guard case .code(let code) = layout.blocks[0] else { return XCTFail() }

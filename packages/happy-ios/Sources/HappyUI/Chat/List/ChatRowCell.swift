@@ -77,6 +77,7 @@ final class ChatPlanView: UIView {
     private var scrollers: [ChatScrollerView] = []
     private var attachments: [ChatAttachmentView] = []
     private var webImages: [ChatWebImageView] = []
+    private var mermaids: [ChatMermaidView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -112,6 +113,7 @@ final class ChatPlanView: UIView {
         var scrollerIndex = 0
         var attachmentIndex = 0
         var webImageIndex = 0
+        var mermaidIndex = 0
         var order: [UIView] = []
         for item in plan.items {
             switch item {
@@ -196,6 +198,16 @@ final class ChatPlanView: UIView {
                 view.setLayoutFrame(frame)
                 view.apply(url, label: label)
                 order.append(view)
+            case .mermaid(let diagram, let frame):
+                // Taken in order, so a row planned again keeps its pages.
+                let view = take(&mermaids, &mermaidIndex) { ChatMermaidView() }
+                view.onHeight = { [weak self] diagram, height in
+                    self?.onAction?(.mermaidHeight(row: diagram.row, index: diagram.index, height: height))
+                }
+                // Before the page measures: it reports at least its box.
+                view.setLayoutFrame(frame)
+                view.apply(diagram)
+                order.append(view)
             }
         }
         for view in boxes[boxIndex...] { view.isHidden = true }
@@ -225,6 +237,10 @@ final class ChatPlanView: UIView {
         }
         for view in webImages[webImageIndex...] {
             view.apply(nil, label: nil)
+            view.isHidden = true
+        }
+        for view in mermaids[mermaidIndex...] {
+            view.onHeight = nil
             view.isHidden = true
         }
         for view in order {

@@ -45,6 +45,8 @@ struct ChatRowInput: Equatable, Sendable {
     var userStatus: UserMessageStatus?
     /// For an agent's message: copied a moment ago, so its button shows a tick.
     var copied = false
+    /// The heights the row's diagrams reported, by their place in the row.
+    var mermaid: [Int: CGFloat] = [:]
     var style: ChatRowStyle
 
     var id: String { item.id }
@@ -70,6 +72,7 @@ enum ChatRowRenderer {
     }
 
     static func plan(_ input: ChatRowInput, width: CGFloat) -> ChatRowPlan {
+        let diagrams = ChatMermaidHeights(row: input.id, heights: input.mermaid)
         switch input.item {
         case .workHeader(let group, let placement):
             return workHeader(input.id, group: group, placement: placement, expanded: input.expanded, width: width, style: input.style)
@@ -77,10 +80,10 @@ enum ChatRowRenderer {
             switch message {
             case .userText(let user):
                 let status = input.userStatus ?? userStatus(user, delivery: input.delivery, now: Int64(Date().timeIntervalSince1970 * 1000))
-                return userText(user, delivery: input.delivery, status: status, width: width, style: input.style)
-            case .agentText(let agent): return agentText(agent, copied: input.copied, width: width, style: input.style)
+                return userText(user, delivery: input.delivery, status: status, diagrams: diagrams, width: width, style: input.style)
+            case .agentText(let agent): return agentText(agent, copied: input.copied, diagrams: diagrams, width: width, style: input.style)
             case .toolCall(let call):
-                let views = ChatToolViews(question: input.question, diffExpanded: input.diffExpanded)
+                let views = ChatToolViews(question: input.question, diffExpanded: input.diffExpanded, diagrams: diagrams)
                 return toolCall(call, expanded: input.expanded, busy: input.permissionBusy, views: views, width: width, style: input.style)
             case .agentEvent(let event): return agentEvent(event, width: width, style: input.style)
             case .unsupported(let unsupported): return unsupportedRow(unsupported, width: width, style: input.style)
@@ -120,7 +123,10 @@ enum ChatRowRenderer {
         )
     }
 
-    static func userText(_ message: UserTextMessage, delivery: OutboxDelivery?, status messageStatus: UserMessageStatus, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
+    static func userText(
+        _ message: UserTextMessage, delivery: OutboxDelivery?, status messageStatus: UserMessageStatus, diagrams: ChatMermaidHeights,
+        width: CGFloat, style: ChatRowStyle
+    ) -> ChatRowPlan {
         let palette = bubblePalette(style.bubble)
         let author = message.author.flatMap { $0.owner == true ? nil : $0 }
         let authorText = author.map { MeasuredText(ChatTextStyles.userAuthor.string($0.name, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail), maxLines: 1) }
@@ -133,19 +139,19 @@ enum ChatRowRenderer {
         let copyText: String
         switch parsed {
         case .goalRun(let goal):
-            let piece = MarkdownPiece(goal, color: Palette.userMessageText, selectable: false)
+            let piece = MarkdownPiece(goal, color: Palette.userMessageText, selectable: false, diagrams: diagrams)
             sentText = MeasuredText(ChatTextStyles.goalSent.string(Strings.ChatMessage.sentAsGoal, color: Palette.textSecondary))
             content = .goal(piece.blocks, sentLabel: sentText!.measurable)
             markdown = piece
             copyText = goal
         case .commandRun(let name, let arguments):
             chipText = MeasuredText(ChatTextStyles.commandChip.string("/\(name)", color: Palette.userMessageText), maxLines: 1)
-            let piece = arguments.map { MarkdownPiece($0, color: Palette.userMessageText, selectable: false) }
+            let piece = arguments.map { MarkdownPiece($0, color: Palette.userMessageText, selectable: false, diagrams: diagrams) }
             content = .command(chip: chipText!.measurable, arguments: piece?.blocks)
             markdown = piece
             copyText = arguments.map { "/\(name) \($0)" } ?? "/\(name)"
         case .text(let text):
-            let piece = MarkdownPiece(text, color: Palette.userMessageText, selectable: false)
+            let piece = MarkdownPiece(text, color: Palette.userMessageText, selectable: false, diagrams: diagrams)
             content = .text(piece.blocks)
             markdown = piece
             copyText = text
@@ -218,8 +224,8 @@ enum ChatRowRenderer {
 
     /// MessageView's agent text: the markdown, then the copy button, which
     /// shows a tick for a moment after copying.
-    static func agentText(_ message: AgentTextMessage, copied: Bool, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
-        let markdown = MarkdownPiece(message.text, color: Palette.text)
+    static func agentText(_ message: AgentTextMessage, copied: Bool, diagrams: ChatMermaidHeights, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
+        let markdown = MarkdownPiece(message.text, color: Palette.text, diagrams: diagrams)
         let layout = AgentTextLayout(width: width, maxContentWidth: style.maxContentWidth, blocks: markdown.blocks)
         let drawn = markdown.draw(layout.markdown, origin: layout.markdownOrigin)
         let slop = AgentTextLayout.Metrics.copyHitSlop
@@ -292,7 +298,9 @@ struct MarkdownPiece {
     /// `selectable`: each paragraph, list item, code block and table cell
     /// answers a long press (MarkdownView's `selectable` Text). Off where
     /// the message copies as a whole instead (`externalCopyHandler`).
-    init(_ markdown: String, color: ColorToken, selectable: Bool = true) {
+    /// `diagrams`: the row the markdown is in, and the heights its
+    /// diagrams' pages reported.
+    init(_ markdown: String, color: ColorToken, selectable: Bool = true, diagrams: ChatMermaidHeights) {
         var blocks: [MarkdownLayout.Block] = []
         var drawers: [(MarkdownLayout.Placed, CGPoint) -> ([ChatDrawItem], [ChatHit])] = []
 
@@ -307,6 +315,7 @@ struct MarkdownPiece {
             }
         }
 
+        var diagramIndex = 0
         for block in Markdown.parse(markdown) {
             switch block {
             case .text(let spans):
@@ -345,7 +354,14 @@ struct MarkdownPiece {
                 Self.code(language: language, content: content, blocks: &blocks, drawers: &drawers, hold: hold)
 
             case .mermaid(let content):
-                Self.code(language: "mermaid", content: content, blocks: &blocks, drawers: &drawers, hold: hold)
+                // MermaidRenderer: the diagram drawn by mermaid in a web page,
+                // as tall as the page last said, from 200 up to 600.
+                let diagram = ChatMermaid(row: diagrams.row, index: diagramIndex, content: content)
+                blocks.append(.mermaid(reported: diagrams.heights[diagramIndex]))
+                diagramIndex += 1
+                drawers.append { placed, origin in
+                    ([.mermaid(diagram, frame: placed.frame.offsetBy(dx: origin.x, dy: origin.y))], [])
+                }
 
             case .options(let options):
                 let labels = options.map { MeasuredText(ChatTextStyles.option.string($0, color: color)) }

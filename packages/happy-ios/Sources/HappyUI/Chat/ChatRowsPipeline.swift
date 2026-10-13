@@ -25,6 +25,9 @@ struct ChatRowsView: Equatable, Sendable {
     var pins = 0
     /// Moves when a waiting message's quiet spell ends, so its status shows.
     var tick = 0
+    /// The heights diagrams' pages reported, by row id, then by the
+    /// diagram's place in the row.
+    var mermaidHeights: [String: [Int: CGFloat]] = [:]
 }
 
 struct ChatRowsInput: Sendable {
@@ -244,7 +247,7 @@ enum ChatRows {
             }
             return ChatRowInput(
                 item: item, delivery: delivery, expanded: expanded, permissionBusy: busy, question: question, diffExpanded: diffs,
-                userStatus: userStatus, copied: copied, style: style
+                userStatus: userStatus, copied: copied, mermaid: view.mermaidHeights[item.id] ?? [:], style: style
             )
         }
     }
