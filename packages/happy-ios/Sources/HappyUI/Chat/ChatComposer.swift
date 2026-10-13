@@ -33,12 +33,22 @@ public struct ChatComposerEnvironment {
     public var sender: any ChatSending
     /// Stop (`abort`), and the permission and question answers.
     public var controls: any ChatControls
+    /// Where the draft is kept. `account.sender` for a session; a chat still
+    /// being started (`pending-chat:`) keeps it in its own record.
+    public var draftStorage: any ComposerStorage
 
-    public init(sessionId: String, account: AccountSession, sender: any ChatSending, controls: any ChatControls) {
+    public init(
+        sessionId: String,
+        account: AccountSession,
+        sender: any ChatSending,
+        controls: any ChatControls,
+        draftStorage: (any ComposerStorage)? = nil
+    ) {
         self.sessionId = sessionId
         self.account = account
         self.sender = sender
         self.controls = controls
+        self.draftStorage = draftStorage ?? account.sender
     }
 }
 
@@ -84,6 +94,13 @@ public protocol ChatComposerView: UIView {
 
     /// The latest session, usage and outbox state.
     func update(_ state: ChatComposerState)
+
+    /// The chat being started arrived as a session: write there from now
+    /// on. The same composer carries the text, caret, composition and
+    /// keyboard across; nothing is read back over them. Call it once the
+    /// pending chat has handed its draft over, then `update` with the
+    /// session's state.
+    func retarget(_ environment: ChatComposerEnvironment)
 
     /// The status rows above the card fade out while the reader is scrolled
     /// back through history and return at the newest message (ChatList's

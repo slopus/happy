@@ -48,11 +48,13 @@ public struct ComposerStoreDelivery: Equatable, Sendable {
     }
 }
 
-/// Where a composer's writer reads and writes: `OutboxSender` in the app.
-/// Every call comes from the writer's background drain.
+/// Where a composer's writer reads and writes: `OutboxSender` for a
+/// session, the chat's own store for a chat still being started. Every call
+/// comes from the writer's background drain, one at a time; an actor can
+/// implement it directly, and synchronous methods satisfy it.
 public protocol ComposerStorage: Sendable {
-    func composerValue(sessionId: String) throws -> ComposerStoreValue
-    func saveDraft(sessionId: String, text: String) throws
+    func composerValue(sessionId: String) async throws -> ComposerStoreValue
+    func saveDraft(sessionId: String, text: String) async throws
     /// The current value, then one after each commit to what it reads,
     /// produced off the main thread. It ends by throwing if the database
     /// observation fails.
@@ -87,7 +89,10 @@ public protocol ComposerStorage: Sendable {
 /// one repeating); its first value catches up on anything missed.
 ///
 /// `close()` stops reads and deliveries. Writes and sends handed over
-/// before or after it still run, so a teardown flush lands.
+/// before or after it still run, so a teardown flush lands. A writer that
+/// takes over from another (`after:`) runs nothing until the other has
+/// settled, so the old storage's last write never lands after the new one's
+/// first read.
 public final class ComposerDraftWriter: @unchecked Sendable {
     public typealias Deliver = @MainActor @Sendable (ComposerStoreDelivery) -> Void
 
@@ -117,6 +122,7 @@ public final class ComposerDraftWriter: @unchecked Sendable {
         case send(OutgoingMessage, AsyncThrowingStream<String, any Error>.Continuation)
         case barrier(CheckedContinuation<Bool, Never>)
         case retry
+        case wait(@Sendable () async -> Void)
     }
 
     public let sessionId: String
@@ -144,10 +150,15 @@ public final class ComposerDraftWriter: @unchecked Sendable {
     /// write's text in place of its draft.
     private var held: ComposerStoreValue?
 
+    /// `generation`: the composer's newest write so far, which a writer
+    /// taking over from another (`predecessor`) starts from, so the store's
+    /// reads keep the composer's numbering.
     public init(
         sessionId: String,
         storage: any ComposerStorage,
         sending: any ChatSending,
+        generation: Int = 0,
+        after predecessor: ComposerDraftWriter? = nil,
         retryDelays: [Duration] = ComposerDraftWriter.defaultRetryDelays,
         onFailure: @escaping @Sendable (Failure) -> Void = { _ in }
     ) {
@@ -156,6 +167,10 @@ public final class ComposerDraftWriter: @unchecked Sendable {
         self.sending = sending
         self.retryDelays = retryDelays
         self.onFailure = onFailure
+        settled = generation
+        if let predecessor {
+            enqueue(.wait { await predecessor.settle() })
+        }
     }
 
     deinit {
@@ -311,7 +326,7 @@ public final class ComposerDraftWriter: @unchecked Sendable {
                     await finish(run)
                     run = Run()
                     // One more try; a send never goes ahead of its draft.
-                    if let error = commitUnsaved() {
+                    if let error = await commitUnsaved() {
                         continuation.finish(throwing: UnsavedDraftError(underlying: error))
                         continue
                     }
@@ -324,7 +339,11 @@ public final class ComposerDraftWriter: @unchecked Sendable {
                 case .barrier(let continuation):
                     await finish(run)
                     run = Run()
-                    continuation.resume(returning: commitUnsaved() == nil)
+                    continuation.resume(returning: await commitUnsaved() == nil)
+                case .wait(let work):
+                    await finish(run)
+                    run = Run()
+                    await work()
                 }
             }
             await finish(run)
@@ -347,7 +366,7 @@ public final class ComposerDraftWriter: @unchecked Sendable {
             retries = 0
         }
         if run.save != nil || run.retry {
-            commitUnsaved()
+            await commitUnsaved()
         }
         if let forced = run.read {
             await read(forced: forced)
@@ -356,10 +375,10 @@ public final class ComposerDraftWriter: @unchecked Sendable {
 
     /// Writes the unsaved draft, if any. The error if it failed again.
     @discardableResult
-    private func commitUnsaved() -> (any Error)? {
+    private func commitUnsaved() async -> (any Error)? {
         guard let write = unsaved else { return nil }
         do {
-            try storage.saveDraft(sessionId: sessionId, text: write.text)
+            try await storage.saveDraft(sessionId: sessionId, text: write.text)
         } catch {
             onFailure(Failure(operation: .save, error: error))
             scheduleRetry()
@@ -387,7 +406,7 @@ public final class ComposerDraftWriter: @unchecked Sendable {
         guard isOpen else { return }
         let value: ComposerStoreValue
         do {
-            value = try storage.composerValue(sessionId: sessionId)
+            value = try await storage.composerValue(sessionId: sessionId)
         } catch {
             onFailure(Failure(operation: .read, error: error))
             return
@@ -442,9 +461,9 @@ extension OutboxSender: ComposerStorage {
 /// (`ComposerDraftWriter`).
 ///
 /// It numbers the writes it hands over (`generation`, never reset, not by a
-/// send's clear either), so a read from before the newest write is never
-/// taken for a remote edit, and it decides what each delivery changes on
-/// screen.
+/// send's clear or a `retarget()` either), so a read from before the newest
+/// write is never taken for a remote edit, and it decides what each
+/// delivery changes on screen.
 public struct ComposerDraftModel: Equatable, Sendable {
     /// A write to hand to the writer.
     public struct Write: Equatable, Sendable {
@@ -465,11 +484,15 @@ public struct ComposerDraftModel: Equatable, Sendable {
         public var picks: ComposerPicks?
         /// Uploads that failed since the last look, for the alert.
         public var newlyFailedAttachments = 0
+        /// A write to hand to the writer: the text a retargeted composer
+        /// holds, which its new store doesn't.
+        public var write: Write?
 
-        public init(text: String? = nil, picks: ComposerPicks? = nil, newlyFailedAttachments: Int = 0) {
+        public init(text: String? = nil, picks: ComposerPicks? = nil, newlyFailedAttachments: Int = 0, write: Write? = nil) {
             self.text = text
             self.picks = picks
             self.newlyFailedAttachments = newlyFailedAttachments
+            self.write = write
         }
     }
 
@@ -482,8 +505,22 @@ public struct ComposerDraftModel: Equatable, Sendable {
     /// out falls back to.
     public private(set) var storePicks: ComposerPicks?
     private var knownFailedAttachments = 0
+    /// `generation` when the store last changed under the composer (its
+    /// opening, or `retarget()`): writing since then means typing.
+    private var loadGeneration = 0
+    private var retargeted = false
 
     public init() {}
+
+    /// The composer now writes to another store (a chat that was being
+    /// started arrived): its next read is a first read again. The text
+    /// stays, and so does the numbering.
+    public mutating func retarget() {
+        isLoaded = false
+        retargeted = true
+        loadGeneration = generation
+        storePicks = nil
+    }
 
     /// A text change. `.saveNow` comes back as a write; `.saveLater` leaves
     /// `autosave.pending` and asks for the debounce (`flush` when it ends).
@@ -520,10 +557,19 @@ public struct ComposerDraftModel: Equatable, Sendable {
         guard isLoaded else {
             isLoaded = true
             knownFailedAttachments = value.failedAttachments
-            // useDraft's load: only into a composer nobody has written in.
-            if generation == 0, text.isEmpty, !value.draft.isEmpty {
+            let typed = generation != loadGeneration
+            if !typed, text.isEmpty, !value.draft.isEmpty {
+                // useDraft's load: only into a composer nobody has written
+                // in, and never over text the composer holds.
                 autosave = DraftAutosave(loaded: value.draft)
                 change.text = value.draft
+            } else if retargeted, !typed, !text.isEmpty {
+                // Carried over from the old store: the text is the truth
+                // (SessionView's ChatComposer), so the new store gets it.
+                autosave = DraftAutosave(loaded: text)
+                if value.draft != text {
+                    change.write = write(text)
+                }
             }
             return change
         }
