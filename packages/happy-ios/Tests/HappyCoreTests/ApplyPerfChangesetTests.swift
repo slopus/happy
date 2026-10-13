@@ -164,6 +164,35 @@ final class ApplyPerfPipelineTests: XCTestCase {
         pipeline.cancel()
     }
 
+    /// The screen's next main-thread turn after an apply already sees it
+    /// as applied: the state moves with the count, not later on the
+    /// derivation's own thread.
+    @MainActor
+    func testTheAppliedStateMovesWithTheApplyItself() async {
+        let box = ApplyPerfPipelineBox<ApplyPipeline<Int, Int, Int>>()
+        let seen = ApplyPerfRecorder<[Int]>()
+        let pipeline = ApplyPipeline<Int, Int, Int>(
+            input: 0,
+            state: 0,
+            minimumInterval: .zero,
+            derive: { input, applied in input == applied ? nil : (input, input) },
+            apply: { _ in
+                Task { @MainActor in
+                    guard let pipeline = box.pipeline else { return }
+                    _ = seen.take([pipeline.counts.applies, pipeline.applied])
+                }
+                return true
+            }
+        )
+        box.pipeline = pipeline
+        for value in 1...40 {
+            pipeline.update { $0 = value }
+            await applyPerfWait { seen.outputs.count == value }
+        }
+        XCTAssertEqual(seen.outputs, (1...40).map { [$0, $0] }, "after apply n, n applies and state n")
+        pipeline.cancel()
+    }
+
     @MainActor
     func testRefusedApplyKeepsDiffingAgainstWhatIsOnScreen() async throws {
         let recorder = ApplyPerfRecorder<HomeUpdate>()

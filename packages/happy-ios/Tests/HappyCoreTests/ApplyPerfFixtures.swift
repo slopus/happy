@@ -107,6 +107,12 @@ final class ApplyPerfGate: @unchecked Sendable {
     func open() { release.signal() }
 }
 
+/// Lets an apply closure reach the pipeline it belongs to.
+@MainActor
+final class ApplyPerfPipelineBox<Pipeline: AnyObject> {
+    var pipeline: Pipeline?
+}
+
 /// Counts what a main-thread apply closure was handed.
 @MainActor
 final class ApplyPerfRecorder<Output> {
