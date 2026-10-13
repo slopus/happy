@@ -27,9 +27,11 @@ final class SyncPerfThreadRulesTests: XCTestCase {
         try await MainActor.run {
             _ = try store.session(id: "missing")
             try store.markSessionRead(id: "missing")
+            var reducer = ChatReducer()
+            _ = reducer.reduce([])
             ThreadRules.assertOnMain()
         }
-        XCTAssertEqual(violations.values, [.offMain, .offMain])
+        XCTAssertEqual(violations.values, [.offMain, .offMain, .offMain])
 
         try await Task.detached {
             try store.upsertSessions([ChatRecords.storeSession("s")])
@@ -41,6 +43,6 @@ final class SyncPerfThreadRulesTests: XCTestCase {
         let engine = SyncEngine(api: testAPI(FakeHTTP()), store: store, keys: try AccountKeys(secret: Data(repeating: 3, count: 32)))
         await engine.handle(.activity(sessionId: "s", active: true, activeAt: 1, thinking: false))
         await engine.stop()
-        XCTAssertEqual(violations.values, [.offMain, .offMain])
+        XCTAssertEqual(violations.values, [.offMain, .offMain, .offMain])
     }
 }

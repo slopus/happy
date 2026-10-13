@@ -29,6 +29,14 @@ final class PresenceOverlay: @unchecked Sendable {
     func setSession(_ id: String, _ value: PresenceOverlayValue) { lock.withLock { sessions[id] = value } }
     func setMachine(_ id: String, _ value: PresenceOverlayValue) { lock.withLock { machines[id] = value } }
     func setClock(_ now: Int64) { lock.withLock { displayedNow = now } }
+    func removeSessions(_ ids: Set<String>) { lock.withLock { for id in ids { sessions.removeValue(forKey: id) } } }
+    func removeMachines(_ ids: Set<String>) { lock.withLock { for id in ids { machines.removeValue(forKey: id) } } }
+    func retain(sessionIDs: Set<String>, machineIDs: Set<String>) {
+        lock.withLock {
+            sessions = sessions.filter { sessionIDs.contains($0.key) }
+            machines = machines.filter { machineIDs.contains($0.key) }
+        }
+    }
 
     func home(_ raw: HomeSnapshot) -> HomeSnapshot {
         lock.withLock {
