@@ -365,20 +365,22 @@ final class ToolRowLayoutTests: XCTestCase {
         assertSize(layout.size, CGSize(width: 300, height: 104))
     }
 
+    func testAFullWidthSectionRunsToTheCardsEdgesUnderItsHeader() {
+        // ToolSectionView fullWidth: -12 either side, -8 on top, 12 below,
+        // inside a card body that is 12 in and 8 down.
+        let layout = ChatStackLayout(width: 329, items: [
+            .init(block(height: 120), marginTop: -8, marginBottom: 12, padding: LayoutInsets(top: 0, left: -12, bottom: 0, right: -12)),
+        ])
+        assertFrame(layout.contents[0], rect(-12, -8, 353, 120))
+        assertSize(layout.size, CGSize(width: 329, height: 124))
+    }
+
     func testAClippedBox() {
         let layout = ChatStackLayout(width: 300, items: [
             .init(block(height: 200), padding: LayoutInsets(top: 12, left: 12, bottom: 12, right: 12), maxHeight: 115),
         ])
         assertFrame(layout.boxes[0], rect(0, 0, 300, 115))
         assertFrame(layout.contents[0], rect(12, 12, 276, 91))
-    }
-
-    func testADiffBlock() {
-        let layout = ToolDiffLayout(width: 300, lineCount: 3, lineWidth: 500)
-        assertFrame(layout.gutter, rect(0, 0, 20, 62))
-        assertFrame(layout.scroll, rect(20, 0, 280, 62))
-        assertSize(layout.contentSize, CGSize(width: 516, height: 62))
-        assertFrame(layout.lines[1], rect(0, 22, 516, 18))
     }
 
     func testAnErrorLineHangsItsGlyphAtTheTop() {
@@ -611,5 +613,21 @@ final class ChatHeaderLayoutTests: XCTestCase {
         XCTAssertFalse(ChatScreenLayout.headerBackdropVisible(distanceFromOldest: 0))
         XCTAssertFalse(ChatScreenLayout.headerBackdropVisible(distanceFromOldest: 0.4))
         XCTAssertTrue(ChatScreenLayout.headerBackdropVisible(distanceFromOldest: 1))
+    }
+}
+
+final class MessageDetailLayoutTests: XCTestCase {
+    func testAToolSitsInAReadableColumn() {
+        let phone = MessageDetailLayout(width: 393, kind: .tool, content: block(height: 300))
+        assertFrame(phone.content, rect(16, 12, 361, 300))
+        assertSize(phone.contentSize, CGSize(width: 393, height: 344))
+        let pad = MessageDetailLayout(width: 1024, kind: .tool, content: block(height: 300))
+        assertFrame(pad.content, rect(128, 12, 768, 300))
+    }
+
+    func testATextMessageIsPaddedAllRound() {
+        let layout = MessageDetailLayout(width: 393, kind: .text, content: block(height: 48))
+        assertFrame(layout.content, rect(16, 16, 361, 48))
+        assertSize(layout.contentSize, CGSize(width: 393, height: 80))
     }
 }

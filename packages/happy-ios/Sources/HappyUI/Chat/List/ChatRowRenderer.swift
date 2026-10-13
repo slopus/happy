@@ -14,6 +14,8 @@ struct ChatRowStyle: Equatable, Sendable {
     /// metadata.path: tool paths under it are shown relative to it.
     var root: String?
     var flavor: String?
+    /// `settings.showLineNumbersInToolViews`.
+    var showLineNumbers = false
 }
 
 /// Everything one row is drawn from. Equal inputs at the same width give
@@ -29,6 +31,9 @@ struct ChatRowInput: Equatable, Sendable {
     var permissionBusy: PermissionButton.Kind?
     /// For a question tool: its form and what has been picked.
     var question: ChatQuestionState?
+    /// For a diff tool: the files the reader opened past "Show N more
+    /// lines", by diff.
+    var diffExpanded: [Int: Set<Int>] = [:]
     var style: ChatRowStyle
 
     var id: String { item.id }
@@ -61,7 +66,9 @@ enum ChatRowRenderer {
             switch message {
             case .userText(let user): return userText(user, delivery: input.delivery, width: width, style: input.style)
             case .agentText(let agent): return agentText(agent, width: width, style: input.style)
-            case .toolCall(let call): return toolCall(call, expanded: input.expanded, busy: input.permissionBusy, question: input.question, width: width, style: input.style)
+            case .toolCall(let call):
+                let views = ChatToolViews(question: input.question, diffExpanded: input.diffExpanded)
+                return toolCall(call, expanded: input.expanded, busy: input.permissionBusy, views: views, width: width, style: input.style)
             case .agentEvent(let event): return agentEvent(event, width: width, style: input.style)
             case .unsupported(let unsupported): return unsupportedRow(unsupported, width: width, style: input.style)
             }

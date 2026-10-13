@@ -71,7 +71,8 @@ accident.
 - [ ] Tool calls, hidden by default; tool headers, sections, errors, full view (`tools/*`, `knownTools.tsx`) — Chat
   - Deviation from happy-app, on purpose: tool output is collapsed by default (header only, compact row or card as `compactToolCalls` picks); tap the header to expand, in memory for the screen's lifetime; a pending permission, question or plan keeps its input open, never its output.
   - Partial: on iPad, permission buttons stretch instead of right-aligning, and a long permission list doesn't scroll at min(260, 35% of the window).
-- [ ] Tool views: Bash, Edit, MultiEdit, Write, Todo, Task, MCP, Codex patch/diff/bash, Gemini edit/execute, file, exit plan, ask user question, request user input (`tools/views/*`) — Chat
+- [~] Tool views: Bash, Edit, MultiEdit, Write, Todo, Task, MCP, Codex patch/diff/bash, Gemini edit/execute, file, exit plan, ask user question, request user input (`tools/views/*`) — Chat
+  - Edit, Write, MultiEdit and Gemini edit draw Secondary's DiffChunk (`HappyUI/Diff`), without syntax colour until its tokenizer lands. Codex patch and diff cards (CodexPatch, CodexDiff, apply_patch, GeminiPatch, GeminiDiff) are header-only until the shared `codexUnifiedDiff` parser lands. FileView is not ported.
 - [ ] Permission prompts: allow, allow for session, deny, mode switch (`PermissionFooter`) — Chat
 - [ ] Agent questions: banner, modal, inline form (`AgentQuestionBanner`, `AgentQuestionModal`, `InlineQuestionForm`, `agentCommunications.ts`) — Chat
 - [ ] Image and file messages, decrypted on demand (`FileView`) — Chat + Sending

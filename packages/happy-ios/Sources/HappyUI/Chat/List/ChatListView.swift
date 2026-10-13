@@ -21,7 +21,7 @@ protocol ChatListViewDelegate: AnyObject {
 /// newest message is carried along as rows arrive and grow, animated; a
 /// reader further back keeps the row they are looking at exactly where it
 /// is, with no animation, whatever changed around it.
-final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDelegate {
+final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDelegate, UIGestureRecognizerDelegate {
     weak var delegate: (any ChatListViewDelegate)?
 
     let collectionView: UICollectionView
@@ -65,6 +65,7 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
         tap.cancelsTouchesInView = false
+        tap.delegate = self
         collectionView.addGestureRecognizer(tap)
     }
 
@@ -215,6 +216,10 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         let cell = collectionView.dequeueReusableCell(withReuseIdentifier: ChatRowCell.reuseIdentifier, for: indexPath)
         if let cell = cell as? ChatRowCell, indexPath.item < plans.count {
             cell.apply(plans[indexPath.item])
+            cell.onAction = { [weak self] action in
+                guard let self else { return }
+                self.delegate?.chatList(self, perform: action)
+            }
         }
         return cell
     }
@@ -224,6 +229,17 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     func scrollViewDidScroll(_ scrollView: UIScrollView) {
         let remaining = maxVisibleMinY(layout.model) - visibleMinY
         delegate?.chatList(self, didScroll: distanceFromNewest, distanceFromOldest: remaining)
+    }
+
+    /// A control inside a row (a diff's "Show N more lines") handles its
+    /// own taps; the row's hits never see them.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        var view = touch.view
+        while let current = view, current !== collectionView {
+            if current is UIControl { return false }
+            view = current.superview
+        }
+        return true
     }
 
     @objc private func tapped(_ recognizer: UITapGestureRecognizer) {

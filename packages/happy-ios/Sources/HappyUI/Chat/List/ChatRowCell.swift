@@ -12,6 +12,12 @@ final class ChatRowCell: UICollectionViewCell {
 
     var plan: ChatRowPlan? { canvas.plan }
 
+    /// Actions from views inside the row that handle their own touches.
+    var onAction: ((ChatRowAction) -> Void)? {
+        get { canvas.onAction }
+        set { canvas.onAction = newValue }
+    }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear
@@ -51,6 +57,9 @@ final class ChatRowCell: UICollectionViewCell {
 /// it reuses from plan to plan: a list row, the footer past the newest
 /// message, or a whole tool on the message screen.
 final class ChatPlanView: UIView {
+    /// Actions from views inside the plan that handle their own touches
+    /// (a diff's "Show N more lines").
+    var onAction: ((ChatRowAction) -> Void)?
     private(set) var plan: ChatRowPlan?
     private var boxes: [UIView] = []
     private var texts: [ChatTextView] = []
@@ -58,6 +67,7 @@ final class ChatPlanView: UIView {
     private var spinners: [UIActivityIndicatorView] = []
     private var timers: [ChatElapsedLabel] = []
     private var pulses: [ChatPulseView] = []
+    private var diffs: [DiffChunkView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -88,6 +98,7 @@ final class ChatPlanView: UIView {
         var spinnerIndex = 0
         var timerIndex = 0
         var pulseIndex = 0
+        var diffIndex = 0
         var order: [UIView] = []
         for item in plan.items {
             switch item {
@@ -126,6 +137,14 @@ final class ChatPlanView: UIView {
                 style(view, box)
                 view.startPulsing()
                 order.append(view)
+            case .diff(let diff, let frame, let toolId, let chunk):
+                let view = take(&diffs, &diffIndex) { DiffChunkView() }
+                view.onShowMore = { [weak self] file in
+                    self?.onAction?(.diffShowMore(toolId: toolId, chunk: chunk, file: file))
+                }
+                view.setLayoutFrame(frame)
+                view.apply(diff)
+                order.append(view)
             }
         }
         for view in boxes[boxIndex...] { view.isHidden = true }
@@ -141,6 +160,10 @@ final class ChatPlanView: UIView {
         }
         for view in pulses[pulseIndex...] {
             view.stopPulsing()
+            view.isHidden = true
+        }
+        for view in diffs[diffIndex...] {
+            view.onShowMore = nil
             view.isHidden = true
         }
         for view in order {

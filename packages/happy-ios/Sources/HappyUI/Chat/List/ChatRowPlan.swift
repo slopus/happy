@@ -58,6 +58,9 @@ enum ChatDrawItem {
     /// A ring whose opacity breathes while a reply is on its way
     /// (PermissionFooter's loading ring).
     case pulse(ChatBox)
+    /// A DiffChunk, planned at the frame's width. Its "Show N more lines"
+    /// asks for `diffShowMore(toolId:chunk:file:)`.
+    case diff(DiffChunkPlan, frame: CGRect, toolId: String, chunk: Int)
 }
 
 /// What a tap on part of a row does.
@@ -74,6 +77,8 @@ enum ChatRowAction: Equatable, Sendable {
     /// An option in a tool's question form, by tool message id.
     case questionOption(toolId: String, questionId: String, option: Int)
     case questionSubmit(toolId: String)
+    /// "Show N more lines" on file `file` of a tool's diff `chunk`.
+    case diffShowMore(toolId: String, chunk: Int, file: Int)
 }
 
 /// A permission button, with what its reply needs.

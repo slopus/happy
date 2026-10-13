@@ -230,6 +230,17 @@ enum FixtureScenarios {
             "old_string": "case .session:\n    return PlaceholderViewController(title: \"\")",
             "new_string": "case .session(let id):\n    return ChatViewController(context: context, session: session, sessionId: id)",
         ], result: "The file has been updated.")
+        b.tool("MultiEdit", [
+            "file_path": "/Users/fixture/happy/packages/happy-ios/Sources/HappyUI/Chat/ChatViewController.swift",
+            "edits": [
+                ["old_string": "navigationItem.title = title", "new_string": "navigationItem.title = title\ntitleView.update(title: title)"],
+                ["old_string": "private var pendingPin: String?", "new_string": "private var pendingPin: String?\nprivate var diffExpanded: [String: [Int: Set<Int>]] = [:]", "replace_all": true],
+            ],
+        ], result: "Applied 2 edits.")
+        b.tool("Write", [
+            "file_path": "/Users/fixture/happy/packages/happy-ios/docs/CHAT.md",
+            "content": (1...120).map { "Line \($0) of the chat notes: every row is measured before it is shown." }.joined(separator: "\n"),
+        ], result: "File created successfully.")
         b.tool("TodoWrite", ["todos": [
             ["content": "Wire the route", "status": "completed", "activeForm": "Wiring the route"],
             ["content": "Push from the session list", "status": "in_progress", "activeForm": "Pushing from the list"],
@@ -253,6 +264,11 @@ enum FixtureScenarios {
         b.agent("Understood, I won't push. Here is the plan for the remaining work.")
         b.tool("ExitPlanMode", ["plan": "1. Fix the two expectations\n2. Re-run `swift test`\n3. Report back"], state: .running,
                permission: ToolPermission(id: "perm-plan", status: .pending))
+        b.tool("Edit", [
+            "file_path": "/Users/fixture/happy/packages/happy-ios/Tests/HappyLayoutTests/ChatLayoutTests.swift",
+            "old_string": "XCTAssertEqual(layout.newestEdgeInset, 170)",
+            "new_string": "XCTAssertEqual(layout.newestEdgeInset, 172)",
+        ], state: .running, permission: ToolPermission(id: "perm-edit", status: .pending))
         b.tool("Bash", ["command": "rm -rf .build && swift build", "description": "Clean build"], state: .running,
                description: "Clean build", permission: ToolPermission(id: "perm-bash", status: .pending))
     }
