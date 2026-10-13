@@ -9,42 +9,66 @@ public final class RigComposerSync: Sendable {
     private let now: @Sendable () -> Int64
     private let editLock = NSLock()
     private let writer: Writer
+    private let commands: AsyncStream<Command>.Continuation
+    private let commandPump: Task<Void, Never>
+
+    private enum Command: Sendable {
+        case schedule(String, Duration, Double)
+        case configure(any MetadataUpdateTransport, CheckedContinuation<Void, Never>)
+        case flush(String, CheckedContinuation<Void, any Error>)
+        case flushAhead(CheckedContinuation<Void, Never>)
+        case connected(Bool, CheckedContinuation<Void, Never>)
+    }
 
     public init(store: LocalStore, keyRing: KeyRing, now: @escaping @Sendable () -> Int64,
                 sleep: @escaping InvalidateSync.Sleep = { try await Task.sleep(for: $0) }) {
         self.store = store
         self.now = now
-        self.writer = Writer(store: store, keyRing: keyRing, sleep: sleep)
+        let writer = Writer(store: store, keyRing: keyRing, sleep: sleep)
+        let (stream, continuation) = AsyncStream<Command>.makeStream()
+        self.writer = writer
+        self.commands = continuation
+        self.commandPump = Task { await writer.consume(stream) }
     }
+
+    deinit { commands.finish() }
 
     /// Supplies the account's versioned metadata acknowledgements.
     public func configure(transport: any MetadataUpdateTransport) async {
-        await writer.configure(transport)
+        await withCheckedContinuation { continuation in
+            if case .terminated = commands.yield(.configure(transport, continuation)) { continuation.resume() }
+        }
     }
 
     /// Ports rigComposerSetText: 250ms debounce, empty text written immediately.
     public func setText(sessionId: String, text: String) throws {
-        let stamp: Double? = try editLock.withLock {
-            guard let session = try store.session(id: sessionId), session.isRigV1 else { return nil }
+        try editLock.withLock {
+            guard let session = try store.session(id: sessionId), session.isRigV1 else { return }
             let existing = try store.draft(sessionId: sessionId)?.text ?? ""
-            if existing == text { return nil }
+            if existing == text { return }
             try edit(session: session, text: text, changes: [:], clear: false)
-            return try store.composerState(sessionId: sessionId).values["draftUpdatedAt"]?.numberValue
-        }
-        if let stamp {
-            Task { await writer.schedule(sessionId, delay: text.isEmpty ? .zero : .milliseconds(250), stamp: stamp) }
+            if let stamp = try store.composerState(sessionId: sessionId).values["draftUpdatedAt"]?.numberValue {
+                commands.yield(.schedule(sessionId, text.isEmpty ? .zero : .milliseconds(250), stamp))
+            }
         }
     }
 
     /// Ports rigComposerSetMode: writes all picks together with the current text.
     public func setModes(sessionId: String, changes: [String: JSONValue], transport: any MetadataUpdateTransport) async throws {
-        await writer.configure(transport)
-        try editLock.withLock {
-            guard let session = try store.session(id: sessionId), session.isRigV1 else { return }
-            let text = try store.draft(sessionId: sessionId)?.text ?? ""
-            try edit(session: session, text: text, changes: changes, clear: false)
+        await configure(transport: transport)
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            do {
+                try editLock.withLock {
+                    guard let session = try store.session(id: sessionId), session.isRigV1 else {
+                        continuation.resume(throwing: SessionActionError.notDecryptable)
+                        return
+                    }
+                    let text = try store.draft(sessionId: sessionId)?.text ?? ""
+                    try edit(session: session, text: text, changes: changes, clear: false)
+                    enqueueFlush(sessionId, continuation: continuation)
+                }
+            } catch { continuation.resume(throwing: error) }
         }
-        try await writer.flushAndAwait(sessionId)
     }
 
     /// Ports rigComposerClear: clears text under a fresh stamp, retaining picks.
@@ -58,42 +82,49 @@ public final class RigComposerSync: Sendable {
     }
 
     private func clear(sessionId: String, expectedStamp: JSONValue?, conditional: Bool) throws {
-        let stamp: Double? = try editLock.withLock {
-            guard let session = try store.session(id: sessionId), session.isRigV1 else { return nil }
+        try editLock.withLock {
+            guard let session = try store.session(id: sessionId), session.isRigV1 else { return }
             let values = try store.composerState(sessionId: sessionId).values
             guard !conditional || values["draftUpdatedAt"] == expectedStamp,
-                  values["draftIsNull"] != .bool(true) else { return nil }
+                  values["draftIsNull"] != .bool(true) else { return }
             if values["draftIsNull"] == nil, try store.draft(sessionId: sessionId) == nil,
-               session.metadata?["draft"]?.objectValue == nil { return nil }
+               session.metadata?["draft"]?.objectValue == nil { return }
             try edit(session: session, text: nil, changes: [:], clear: true)
-            return try store.composerState(sessionId: sessionId).values["draftUpdatedAt"]?.numberValue
+            if let stamp = try store.composerState(sessionId: sessionId).values["draftUpdatedAt"]?.numberValue {
+                commands.yield(.schedule(sessionId, .zero, stamp))
+            }
         }
-        if let stamp { Task { await writer.schedule(sessionId, delay: .zero, stamp: stamp) } }
     }
 
     /// Ports rigComposerFlushPending; bypasses any text debounce.
     public func flushPending(sessionId: String) async throws {
-        try await writer.flushAndAwait(sessionId)
+        try await withCheckedThrowingContinuation { enqueueFlush(sessionId, continuation: $0) }
+    }
+
+    private func enqueueFlush(_ id: String, continuation: CheckedContinuation<Void, any Error>) {
+        if case .terminated = commands.yield(.flush(id, continuation)) {
+            continuation.resume(throwing: CancellationError())
+        }
     }
 
     /// Ports rigComposerFlushAheadSessions on foreground/reconnect.
     public func flushAheadSessions() async {
-        guard let sessions = try? store.sessions() else { return }
-        for session in sessions where session.isRigV1 {
-            guard let local = try? store.composerState(sessionId: session.id).values["draftUpdatedAt"]?.numberValue,
-                  local > (session.metadata?["draftUpdatedAt"]?.numberValue ?? -1) else { continue }
-            await writer.schedule(session.id, delay: .zero)
+        await withCheckedContinuation { continuation in
+            if case .terminated = commands.yield(.flushAhead(continuation)) { continuation.resume() }
         }
     }
 
     /// Retries only while connected; reconnect replays local drafts still ahead.
     public func setConnected(_ value: Bool) async {
-        let changed = await writer.setConnected(value)
-        if value, changed { await flushAheadSessions() }
+        await withCheckedContinuation { continuation in
+            if case .terminated = commands.yield(.connected(value, continuation)) { continuation.resume() }
+        }
     }
 
     /// Cancels this account's timers and writers on switch/sign-out.
     public func stop() async {
+        commands.finish()
+        await commandPump.value
         await writer.stop()
     }
 
@@ -118,6 +149,7 @@ public final class RigComposerSync: Sendable {
         struct State {
             var running: Task<Void, Never>?
             var timer: Task<Void, Never>?
+            var timerID: UUID?
             var dirty = false
             var retryMs = 1000
             var scheduledStamp: Double?
@@ -138,7 +170,36 @@ public final class RigComposerSync: Sendable {
             self.sleep = sleep
         }
 
-        func configure(_ transport: any MetadataUpdateTransport) { self.transport = transport }
+        /// One consumer orders every edit and barrier; it never waits for an RPC.
+        func consume(_ stream: AsyncStream<Command>) async {
+            for await command in stream {
+                switch command {
+                case .schedule(let id, let delay, let stamp):
+                    schedule(id, delay: delay, stamp: stamp)
+                case .configure(let transport, let continuation):
+                    self.transport = transport
+                    continuation.resume()
+                case .flush(let id, let continuation):
+                    schedule(id, delay: .zero)
+                    states[id, default: State()].waiters.append(continuation)
+                case .flushAhead(let continuation):
+                    flushAhead()
+                    continuation.resume()
+                case .connected(let value, let continuation):
+                    if setConnected(value), value { flushAhead() }
+                    continuation.resume()
+                }
+            }
+        }
+
+        func flushAhead() {
+            guard let sessions = try? store.sessions() else { return }
+            for session in sessions where session.isRigV1 {
+                guard let local = try? store.composerState(sessionId: session.id).values["draftUpdatedAt"]?.numberValue,
+                      local > (session.metadata?["draftUpdatedAt"]?.numberValue ?? -1) else { continue }
+                schedule(session.id, delay: .zero)
+            }
+        }
 
         func setConnected(_ connected: Bool) -> Bool {
             let changed = self.connected != connected
@@ -147,6 +208,7 @@ public final class RigComposerSync: Sendable {
                 for id in Array(states.keys) {
                     states[id]?.timer?.cancel()
                     states[id]?.timer = nil
+                    states[id]?.timerID = nil
                 }
             }
             return changed
@@ -164,26 +226,25 @@ public final class RigComposerSync: Sendable {
             }
             states[id]?.timer?.cancel()
             states[id]?.timer = nil
+            states[id]?.timerID = nil
             if delay == .zero {
                 start(id)
             } else {
                 let sleep = self.sleep
+                let timerID = UUID()
+                states[id]?.timerID = timerID
                 states[id]?.timer = Task { [weak self] in
                     do { try await sleep(delay) } catch { return }
                     guard !Task.isCancelled else { return }
-                    await self?.timerFired(id, retry: retry)
+                    await self?.timerFired(id, retry: retry, timerID: timerID)
                 }
             }
         }
 
-        func flushAndAwait(_ id: String) async throws {
-            guard !stopped else { throw CancellationError() }
-            schedule(id, delay: .zero)
-            try await withCheckedThrowingContinuation { states[id, default: State()].waiters.append($0) }
-        }
-
-        func timerFired(_ id: String, retry: Bool) {
+        func timerFired(_ id: String, retry: Bool, timerID: UUID) {
+            guard states[id]?.timerID == timerID else { return }
             states[id]?.timer = nil
+            states[id]?.timerID = nil
             if retry {
                 guard connected, let session = try? store.session(id: id), session.isRigV1,
                       let local = try? store.composerState(sessionId: id).values["draftUpdatedAt"]?.numberValue,
