@@ -173,6 +173,12 @@ extension Strings {
         public static let failedToLoad = "Failed to load file"
     }
 
+    /// common.fileViewer: file.tsx's title. Its back title, common.files,
+    /// never shows: iOS draws the back button minimal.
+    public enum FileViewerDetail {
+        public static let title = "File Viewer"
+    }
+
     /// changes.tsx's title (sessionInfo.viewChanges) and the copy
     /// HappyAgentDiffView.tsx and useHappyAgentGitFiles.ts hard-code.
     public enum ChangesDetail {
