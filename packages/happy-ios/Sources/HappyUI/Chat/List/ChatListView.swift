@@ -18,7 +18,8 @@ protocol ChatListViewDelegate: AnyObject {
 
 /// The chat's message list: a flipped UICollectionView whose rows were all
 /// measured before they were handed over (`ChatRowPlan`), so every frame
-/// is exact and nothing jumps.
+/// is exact and nothing jumps. The rows, their geometry and their changes
+/// arrive worked out (`ChatListUpdate`); the list only applies them.
 ///
 /// An update keeps the reader's place (`ChatScrollAnchor`): a reader at the
 /// newest message is carried along as rows arrive and grow, animated; a
@@ -30,17 +31,13 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     let collectionView: UICollectionView
     private let layout = ChatCollectionLayout()
     private(set) var plans: [ChatRowPlan] = []
-    private var planById: [String: ChatRowPlan] = [:]
+    private var ids: [String] = []
     private var hasContent = false
     private let holdRecognizer = UILongPressGestureRecognizer()
 
     /// ChatFooter, just past the newest message: it scrolls with the rows,
     /// as the inverted list's header does in happy-app.
     private let footer = ChatPlanView()
-    /// The footer's height (no warning: 4 + 2).
-    private var newerEndHeight: CGFloat = ChatFooterLayout.Metrics.paddingTop + ChatFooterLayout.Metrics.paddingBottom
-    /// The slot past the oldest message for the history spinner.
-    var olderEndHeight: CGFloat = ChatOlderEndLayout.height
 
     override init(frame: CGRect) {
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
@@ -132,59 +129,58 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
 
     // MARK: Updates
 
-    /// Shows `newPlans` (newest first) under `footer`, all measured at the
-    /// list's width. `pinning` is a row the reader just opened or closed:
-    /// its top stays where it is on screen.
-    func apply(_ newPlans: [ChatRowPlan], footer footerPlan: ChatRowPlan? = nil, animated: Bool, pinning: String? = nil) {
-        let width = newPlans.first?.size.width ?? bounds.width
-        if let footerPlan { newerEndHeight = footerPlan.size.height }
-        let model = ChatListLayout(width: width, heights: newPlans.map(\.size.height), newerEndHeight: newerEndHeight, olderEndHeight: olderEndHeight)
-
+    /// Shows `update`'s rows (newest first) under its footer, all measured
+    /// at the list's width. Only the rows its changeset names are touched:
+    /// deleted, inserted, moved, or given their new plan if on screen.
+    /// `update.pinning` is a row the reader just opened or closed: its top
+    /// stays where it is on screen. Returns how many rows it touched.
+    @discardableResult
+    func apply(_ update: ChatListUpdate, animated: Bool) -> Int {
+        let model = update.model
         guard hasContent, !plans.isEmpty else {
-            hasContent = !newPlans.isEmpty
-            install(newPlans, footer: footerPlan, model: model)
+            hasContent = !update.plans.isEmpty
+            install(update)
             layout.invalidateLayout()
             collectionView.reloadData()
             collectionView.layoutIfNeeded()
             scrollToNewest(animated: false)
             scrollViewDidScroll(collectionView)
-            return
+            return update.plans.count
         }
 
-        let oldIds = plans.map(\.id)
-        let newIds = newPlans.map(\.id)
+        let oldIds = ids
+        let newIds = update.ids
+        let changeset = update.changeset
         let current = visibleMinY
         // Never snap to the newest edge under the reader's finger or while
         // the list coasts.
         let moving = collectionView.isTracking || collectionView.isDecelerating
-        let pinned = pinning.flatMap { id in
+        let pinned = update.pinning.flatMap { id in
             newIds.contains(id) ? ChatScrollAnchor.pinning(id, layout: layout.model, ids: oldIds, visibleMinY: current) : nil
         }
         let anchor = pinned ?? ChatScrollAnchor.capture(layout: layout.model, ids: oldIds, visibleMinY: current, follow: !moving)
         let target = anchor.visibleMinY(in: model, ids: newIds, current: current, maxVisibleMinY: maxVisibleMinY(model))
 
-        var deletes: [IndexPath] = []
-        var inserts: [IndexPath] = []
-        for change in newIds.difference(from: oldIds) {
-            switch change {
-            case .remove(let offset, _, _): deletes.append(IndexPath(item: offset, section: 0))
-            case .insert(let offset, _, _): inserts.append(IndexPath(item: offset, section: 0))
-            }
-        }
-
-        let update = {
+        // Rows whose content changed, by id: on screen they take their new
+        // plan in place; off screen, `cellForItemAt` reads it later.
+        let changed = Dictionary(changeset.reconfigures.map { (newIds[$0], update.plans[$0]) }, uniquingKeysWith: { first, _ in first })
+        let apply = {
             self.collectionView.performBatchUpdates {
-                self.install(newPlans, footer: footerPlan, model: model)
+                self.install(update)
                 self.layout.anchoredVisibleMinY = target
-                self.collectionView.deleteItems(at: deletes)
-                self.collectionView.insertItems(at: inserts)
-                if deletes.isEmpty && inserts.isEmpty {
+                self.collectionView.deleteItems(at: changeset.deletes.map { IndexPath(item: $0, section: 0) })
+                self.collectionView.insertItems(at: changeset.inserts.map { IndexPath(item: $0, section: 0) })
+                for move in changeset.moves {
+                    self.collectionView.moveItem(at: IndexPath(item: move.from, section: 0), to: IndexPath(item: move.to, section: 0))
+                }
+                if !changeset.isStructural {
                     self.layout.invalidateLayout()
                 }
-                // Visible rows take their new content inside the same
-                // transaction, so a growing message animates with its frame.
+                // Inside the same transaction, so a growing message animates
+                // with its frame.
+                guard !changed.isEmpty else { return }
                 for cell in self.collectionView.visibleCells {
-                    guard let cell = cell as? ChatRowCell, let id = cell.plan?.id, let plan = self.planById[id] else { continue }
+                    guard let cell = cell as? ChatRowCell, let id = cell.plan?.id, let plan = changed[id] else { continue }
                     cell.apply(plan)
                 }
             }
@@ -197,23 +193,24 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         // Only a reader at the newest edge sees rows move; anyone else is
         // held still, and an animation would only show the correction.
         if animated, case .newest = anchor.kind {
-            update()
+            apply()
         } else {
-            UIView.performWithoutAnimation(update)
+            UIView.performWithoutAnimation(apply)
         }
-        hasContent = !newPlans.isEmpty
+        hasContent = !update.plans.isEmpty
         // A short window may not reach a screen back; let the delegate page.
         scrollViewDidScroll(collectionView)
+        return changeset.touchedRows
     }
 
-    private func install(_ newPlans: [ChatRowPlan], footer footerPlan: ChatRowPlan?, model: ChatListLayout) {
-        plans = newPlans
-        planById = Dictionary(newPlans.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        layout.model = model
-        if let footerPlan { footer.apply(footerPlan) }
+    private func install(_ update: ChatListUpdate) {
+        plans = update.plans
+        ids = update.ids
+        layout.model = update.model
+        if let footerPlan = update.footer { footer.apply(footerPlan) }
         // Flipped like the cells; a transformed view is placed by bounds
         // and center.
-        let frame = model.newerEndFrame
+        let frame = update.model.newerEndFrame
         footer.bounds = CGRect(origin: .zero, size: frame.size)
         footer.center = CGPoint(x: frame.midX, y: frame.midY)
     }

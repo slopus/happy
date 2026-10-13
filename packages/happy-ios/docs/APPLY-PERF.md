@@ -46,6 +46,20 @@ rule 8), and what the Linux benchmarks measure.
 - Session, project-card, worktree and chat rows are one fixed height at any
   width (`HomeRowHeights`, checked by `HomeRowHeightTests`), so they are
   never measured.
+- The chat's rows (`ChatRows`, in an `ApplyPipeline`) are derived off the
+  main thread: the rendered window, work groups, one input per row, a plan
+  per row, the footer, the list's geometry and the changeset.
+  - The main thread hands over only what it decides (`ChatRowsView`: the
+    width, the layout, what the reader opened or picked, pages and group
+    toggles as running tallies), and only when it changed.
+  - `RowPlanner` measures a row once per (id, input, width). It also reuses
+    the plans the list applied, so a pass that never reached the screen
+    costs nothing later.
+  - `ChatListView.apply` takes the changeset as is: deletes, inserts, moves,
+    and a new plan only for the changed rows that are on screen.
+  - An update planned for another width or layout is refused and planned
+    again.
+  - Marking the chat read on open is a store write, done off the main thread.
 
 ## Known gaps
 
@@ -78,4 +92,6 @@ measure UIKit. "Before" is a model of the b1247fce screens:
 | `HomeState` for 1000 sessions | 14.7–31 ms on the main thread | 0 ms on main; 16–27 ms in the background |
 | Unrendered setting changes (`reviewPromptAnswered`, `lastUsedAgent`, …) | chat session applied | 0 chat applies |
 | Flat ⇄ grouped layout switch | `reloadData` | delete + insert, 0 reconfigures |
+| Streaming 50 tokens into a 2000-message chat (46-row window) | window, grouping and row inputs built on the main thread per update; 1 row measured; every visible cell handed its plan | 0 main-thread derivation; 1 row measured and 1 reconfigure per token; 0 for an unchanged snapshot |
+| A page of older history | — | only the added rows measured, inserted after the oldest |
 | 300-odd inputs in 340 ms, 2 ms per apply | — | at most 22 applies, each starting at least 16.67 ms after the last one ended (wall clock) |
