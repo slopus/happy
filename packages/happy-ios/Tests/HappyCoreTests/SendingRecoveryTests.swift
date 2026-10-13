@@ -105,5 +105,9 @@ private actor SuspendedDelivery: HTTPTransport {
         let localId = try JSONDecoder().decode(SendMessagesRequest.self, from: request.body!).messages[0].localId
         return HTTPResponse(status: 200, body: Data("{\"messages\":[{\"id\":\"m\(seq)\",\"seq\":\(seq),\"localId\":\"\(localId)\",\"createdAt\":1,\"updatedAt\":1}]}".utf8))
     }
-    func release() { waiting = false; continuation?.resume(); continuation = nil }
+    func release() {
+        waiting = false
+        continuation?.resume()
+        continuation = nil
+    }
 }

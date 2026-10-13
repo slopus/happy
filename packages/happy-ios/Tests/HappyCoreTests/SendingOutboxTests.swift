@@ -84,7 +84,10 @@ final class SendingOutboxTests: XCTestCase, @unchecked Sendable {
             return (200, Data("{\"messages\":[{\"id\":\"m\(sequence)\",\"seq\":\(sequence),\"localId\":\"\(item.localId)\",\"createdAt\":1,\"updatedAt\":1}]}".utf8))
         }
         let sender = OutboxSender(store: store, sync: engine, filesDirectory: directory.appendingPathComponent("files"))
-        _ = try await sender.send(OutgoingMessage(text: "hello", attachments: [OutgoingAttachment(fileURL: source, name: "image.png", mimeType: "image/png", size: 4, width: 10, height: 20)]), sessionId: "s")
+        let picked = OutgoingAttachment(
+            fileURL: source, name: "image.png", mimeType: "image/png", size: 4, width: 10, height: 20
+        )
+        _ = try await sender.send(OutgoingMessage(text: "hello", attachments: [picked]), sessionId: "s")
         await engine.waitForIdle()
         XCTAssertEqual(http.requests.map { $0.url.path }, ["/v1/sessions/s/attachments/request-upload", "/blob", "/v3/sessions/s/messages", "/v3/sessions/s/messages"])
         XCTAssertTrue(try store.pendingOutbox().isEmpty)
@@ -131,8 +134,10 @@ final class SendingOutboxTests: XCTestCase, @unchecked Sendable {
         session.metadataVersion += 1
         try store.upsertSessions([session])
         try sender.saveComposerState(ComposerStateRecord(sessionId: "s", values: .object(["permissionMode": .string("auto")])))
-        do { _ = try await sender.send(OutgoingMessage(text: "refused"), sessionId: "s"); XCTFail("expected refusal") }
-        catch is UnsupportedPermissionModeError {}
+        do {
+            _ = try await sender.send(OutgoingMessage(text: "refused"), sessionId: "s")
+            XCTFail("expected refusal")
+        } catch is UnsupportedPermissionModeError {}
         XCTAssertEqual(try store.pendingOutbox().count, 1)
         try await sender.discard(localId: id)
         XCTAssertTrue(try store.pendingOutbox().isEmpty)
@@ -143,5 +148,10 @@ final class SendingOutboxTests: XCTestCase, @unchecked Sendable {
 private final class Counter: @unchecked Sendable {
     private let lock = NSLock()
     private var value = 0
-    func next() -> Int { lock.withLock { value += 1; return value } }
+    func next() -> Int {
+        lock.withLock {
+            value += 1
+            return value
+        }
+    }
 }

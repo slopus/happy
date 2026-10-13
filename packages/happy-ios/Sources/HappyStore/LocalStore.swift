@@ -522,8 +522,12 @@ public final class LocalStore: Sendable {
     /// One transaction accepts the files and text; observers never see a half send.
     public func enqueueBatch(_ items: [OutboxRecord], attachments: [AttachmentRecord]) throws {
         try writer.write { db in
-            for attachment in attachments { try attachment.insert(db) }
-            for item in items { try item.insert(db) }
+            for attachment in attachments {
+                try attachment.insert(db)
+            }
+            for item in items {
+                try item.insert(db)
+            }
         }
     }
 
@@ -534,7 +538,9 @@ public final class LocalStore: Sendable {
     public func updateOutbox(_ item: OutboxRecord) throws {
         try writer.write { db in
             // An echo or discard during a network call must never resurrect it.
-            if try OutboxRecord.fetchOne(db, key: item.localId) != nil { try item.update(db) }
+            if try OutboxRecord.fetchOne(db, key: item.localId) != nil {
+                try item.update(db)
+            }
         }
     }
 
@@ -546,7 +552,9 @@ public final class LocalStore: Sendable {
 
     public func retryOutbox(localId: String) throws {
         try writer.write { db in
-            guard var item = try OutboxRecord.fetchOne(db, key: localId) else { return }
+            guard var item = try OutboxRecord.fetchOne(db, key: localId) else {
+                return
+            }
             item.state = .queued
             item.attempts = 0
             item.nextAttemptAt = 0
@@ -565,18 +573,24 @@ public final class LocalStore: Sendable {
                 changed = false
                 for item in items where !ids.contains(item.localId) {
                     if let dependency = item.dependsOn, ids.contains(dependency) {
-                        ids.insert(item.localId); changed = true
+                        ids.insert(item.localId)
+                        changed = true
                     }
                 }
             }
             // A text owns the file chain immediately before it.
             var predecessor = items.first { $0.localId == localId }?.dependsOn
             while let id = predecessor, let item = items.first(where: { $0.localId == id && $0.kind == .file }) {
-                ids.insert(id); predecessor = item.dependsOn
+                ids.insert(id)
+                predecessor = item.dependsOn
             }
             let attachments = try AttachmentRecord.fetchAll(db).filter { ids.contains($0.outboxLocalId ?? "") }
-            for attachment in attachments { _ = try AttachmentRecord.deleteOne(db, key: attachment.localId) }
-            for id in ids { _ = try OutboxRecord.deleteOne(db, key: id) }
+            for attachment in attachments {
+                _ = try AttachmentRecord.deleteOne(db, key: attachment.localId)
+            }
+            for id in ids {
+                _ = try OutboxRecord.deleteOne(db, key: id)
+            }
             return attachments
         }
     }

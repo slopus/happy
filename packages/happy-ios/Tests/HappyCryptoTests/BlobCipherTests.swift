@@ -4,10 +4,15 @@ import HappyCrypto
 
 final class BlobCipherTests: XCTestCase {
     func testNodeSessionKeyDerivation() throws {
-        struct Fixture: Decodable { let dataKey: String; let blobKey: String }
+        struct Fixture: Decodable {
+            let dataKey: String
+            let blobKey: String
+        }
         let url = try XCTUnwrap(Bundle.module.url(forResource: "blob-keys", withExtension: "json", subdirectory: "Fixtures"))
         let fixtures = try JSONDecoder().decode([Fixture].self, from: Data(contentsOf: url))
-        for fixture in fixtures { XCTAssertEqual(BlobCipher.sessionKey(dataKey: b64(fixture.dataKey)), b64(fixture.blobKey)) }
+        for fixture in fixtures {
+            XCTAssertEqual(BlobCipher.sessionKey(dataKey: b64(fixture.dataKey)), b64(fixture.blobKey))
+        }
     }
 
     func testTweetnaclRawBlobBundles() throws {

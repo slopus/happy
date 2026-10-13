@@ -6,7 +6,10 @@ import HappyWire
 final class SendingAttachmentAPITests: XCTestCase {
     func testMultipartUploadDoesNotSendAccountTokenToStorage() async throws {
         let http = FakeHTTP()
-        http.onRaw("POST /v1/sessions/s/attachments/request-upload", #"{"ref":"ref","uploadUrl":"https://storage.example.test/upload","method":"POST","formFields":{"policy":"p","Content-Type":"application/octet-stream"}}"#)
+        http.onRaw("POST /v1/sessions/s/attachments/request-upload", """
+        {"ref":"ref","uploadUrl":"https://storage.example.test/upload","method":"POST",
+        "formFields":{"policy":"p","Content-Type":"application/octet-stream"}}
+        """)
         http.on("POST /upload") { request in
             XCTAssertEqual(request.url.host, "storage.example.test")
             XCTAssertNil(request.headers["Authorization"])

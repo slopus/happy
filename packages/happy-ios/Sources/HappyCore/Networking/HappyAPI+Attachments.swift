@@ -32,7 +32,9 @@ extension HappyAPI {
             var multipart = Data()
             for (key, value) in (upload.formFields ?? [:]).sorted(by: { $0.key < $1.key }) {
                 // Header values must never inject another multipart header.
-                guard !key.contains("\r"), !key.contains("\n"), !key.contains("\"") else { throw APIError.decoding("invalid form field") }
+                guard !key.contains("\r"), !key.contains("\n"), !key.contains("\"") else {
+                    throw APIError.decoding("invalid form field")
+                }
                 multipart.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"\(key)\"\r\n\r\n\(value)\r\n".utf8))
             }
             multipart.append(Data("--\(boundary)\r\nContent-Disposition: form-data; name=\"file\"; filename=\"blob\"\r\nContent-Type: application/octet-stream\r\n\r\n".utf8))
@@ -41,7 +43,9 @@ extension HappyAPI {
             body = multipart
         } else if upload.method == "PUT" {
             headers["Content-Type"] = "application/octet-stream"
-            if isAttachmentServerURL(url), let token { headers["Authorization"] = "Bearer \(token)" }
+            if isAttachmentServerURL(url), let token {
+                headers["Authorization"] = "Bearer \(token)"
+            }
             body = data
         } else {
             throw APIError.decoding("unsupported upload method")
@@ -58,7 +62,9 @@ extension HappyAPI {
 
     private func rewriteLoopbackHost(_ raw: String) -> String {
         guard var components = URLComponents(string: raw),
-              ["localhost", "127.0.0.1", "::1", "[::1]"].contains(components.host ?? "") else { return raw }
+              ["localhost", "127.0.0.1", "::1", "[::1]"].contains(components.host ?? "") else {
+            return raw
+        }
         components.scheme = serverURL.scheme
         components.host = serverURL.host
         components.port = serverURL.port
@@ -71,9 +77,13 @@ extension HappyAPI {
         try validateAttachmentResponse(response)
         let value = try JSONValue.decode(response.body)
         guard let raw = value["downloadUrl"]?.stringValue, let url = URL(string: rewriteLoopbackHost(raw), relativeTo: serverURL)?.absoluteURL,
-              ["http", "https"].contains(url.scheme ?? "") else { throw APIError.decoding("invalid download URL") }
+              ["http", "https"].contains(url.scheme ?? "") else {
+            throw APIError.decoding("invalid download URL")
+        }
         var headers: [String: String] = [:]
-        if isAttachmentServerURL(url), let token { headers["Authorization"] = "Bearer \(token)" }
+        if isAttachmentServerURL(url), let token {
+            headers["Authorization"] = "Bearer \(token)"
+        }
         let blob = try await transport.send(HTTPRequest(method: "GET", url: url, headers: headers))
         try validateAttachmentResponse(blob)
         return blob.body
@@ -81,7 +91,9 @@ extension HappyAPI {
 
     private func validateAttachmentResponse(_ response: HTTPResponse) throws {
         guard (200..<300).contains(response.status) else {
-            if response.status == 401 { throw APIError.unauthorized }
+            if response.status == 401 {
+                throw APIError.unauthorized
+            }
             throw APIError.http(status: response.status, body: String(decoding: response.body.prefix(512), as: UTF8.self))
         }
     }
