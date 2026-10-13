@@ -50,7 +50,7 @@ final class AppConfigurationTests: XCTestCase {
         XCTAssertEqual(try shared(plist(.preview)), development)
         XCTAssertEqual(try shared(plist(.production)), development)
         let info = try plist(.development)
-        XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "1.8.0")
+        XCTAssertEqual(info["CFBundleShortVersionString"] as? String, "2026.10.1")
         let schemes = (info["CFBundleURLTypes"] as? [[String: Any]])?.first?["CFBundleURLSchemes"] as? [String]
         XCTAssertEqual(schemes, ["happy"])
     }

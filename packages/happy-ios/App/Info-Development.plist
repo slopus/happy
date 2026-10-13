@@ -3,9 +3,9 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>Happy (dev)</string>
+	<string>Happy v2 (dev)</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.8.0</string>
+	<string>2026.10.1</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -33,9 +33,9 @@
 		<true/>
 	</dict>
 	<key>NSCameraUsageDescription</key>
-	<string>Allow Happy (dev) to access your camera to scan QR codes and share photos with AI.</string>
+	<string>Allow Happy v2 (dev) to access your camera to scan QR codes and share photos with AI.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>Allow Happy (dev) to find and connect to local devices on your network.</string>
+	<string>Allow Happy v2 (dev) to find and connect to local devices on your network.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

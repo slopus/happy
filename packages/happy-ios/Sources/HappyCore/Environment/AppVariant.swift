@@ -21,9 +21,9 @@ public enum AppVariant: String, Sendable, CaseIterable {
 
     public var displayName: String {
         switch self {
-        case .development: return "Happy (dev)"
-        case .preview: return "Happy (preview)"
-        case .production: return "Happy"
+        case .development: return "Happy v2 (dev)"
+        case .preview: return "Happy v2 (preview)"
+        case .production: return "Happy v2"
         }
     }
 
@@ -40,7 +40,7 @@ public enum AppVariant: String, Sendable, CaseIterable {
     }
 }
 
-/// `X-Happy-Client`, e.g. `ios/1.8.0`. The server uses it for metrics
+/// `X-Happy-Client`, e.g. `ios/2026.10.1`. The server uses it for metrics
 /// and compatibility decisions.
 public enum HappyClientID {
     public static func make(version: String) -> String {

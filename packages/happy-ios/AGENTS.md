@@ -139,9 +139,9 @@ Linux test targets also run from Xcode: open `Package.swift` and use the
 
 | Variant | Configuration | Bundle id | Name |
 | --- | --- | --- | --- |
-| development | Debug | `com.slopus.happy.dev` | Happy (dev) |
-| preview | Preview | `com.slopus.happy.preview` | Happy (preview) |
-| production | Release | `com.ex3ndr.happy` | Happy |
+| development | Debug | `com.slopus.happy.dev` | Happy v2 (dev) |
+| preview | Preview | `com.slopus.happy.preview` | Happy v2 (preview) |
+| production | Release | `com.ex3ndr.happy` | Happy v2 |
 
 The bundle ids are the RN app's. Each variant has its own
 `App/Info-*.plist`. Those files are plain plists, because xtool doesn't
@@ -153,6 +153,21 @@ identical and checks the variant keys:
 - ATS: local networking everywhere, arbitrary loads outside production.
 
 Only production has entitlements (associated domains).
+
+### Versioning
+
+This app uses a new versioning scheme, separate from happy-app's semver
+(`1.x.y`): **`vYYYY.MM.N`**, where `N` counts releases within that month,
+starting at 1 (e.g. `v2026.10.1`). The "v2" in the display names likewise
+tells it apart from the legacy RN app.
+
+- `CFBundleShortVersionString` must be integers only, so it holds the
+  version without the `v` (`2026.10.1`).
+- Bump it in all three `App/Info-*.plist` files, `MARKETING_VERSION` in
+  `project.yml` and the assertion in `AppConfigurationTests`.
+- `CFBundleVersion` (`CURRENT_PROJECT_VERSION`) stays the build number.
+- The version also goes out as `X-Happy-Client: ios/2026.10.1`. The
+  server uses it only for metrics labels.
 
 ## Conventions
 
