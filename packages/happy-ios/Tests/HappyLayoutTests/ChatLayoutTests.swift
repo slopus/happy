@@ -48,6 +48,13 @@ final class ChatScrollAnchorTests: XCTestCase {
         XCTAssertEqual(anchor.visibleMinY(in: layout, ids: ids, current: 200, maxVisibleMinY: 900), 0)
     }
 
+    func testAReaderDraggingNearTheNewestMessageKeepsTheirRow() {
+        let anchor = ChatScrollAnchor.capture(layout: layout, ids: ids, visibleMinY: 150, follow: false)
+        XCTAssertEqual(anchor.kind, .row(id: "r1", distance: -50))
+        let grown = layout.replacingHeight(at: 0, with: 130)
+        XCTAssertEqual(anchor.visibleMinY(in: grown, ids: ids, current: 150, maxVisibleMinY: 1000), 180)
+    }
+
     func testAReaderInHistoryKeepsTheirRowWhenNewerRowsArrive() {
         let anchor = ChatScrollAnchor.capture(layout: layout, ids: ids, visibleMinY: 450)
         XCTAssertEqual(anchor.kind, .row(id: "r4", distance: -50))
@@ -377,8 +384,15 @@ final class ChatScreenLayoutTests: XCTestCase {
         assertFrame(layout.dock, rect(0, 688, 393, 130))
         XCTAssertEqual(layout.newestEdgeInset, 172)
         XCTAssertEqual(layout.oldestEdgeInset, 115)
-        assertFrame(layout.scrollButton, rect(180.5, 640, 32, 32))
+        // 16 above the composer, over the accessories' band.
+        assertFrame(layout.scrollButton, rect(180.5, 700, 32, 32))
         assertFrame(layout.scrim, rect(0, 660, 393, 192))
+    }
+
+    func testTheScrollButtonSitsAboveTheComposerCard() {
+        let layout = ChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: nil, composerHeight: 70, composerCardOffset: 20))
+        assertFrame(layout.dock, rect(0, 748, 393, 70))
+        assertFrame(layout.scrollButton, rect(180.5, 720, 32, 32))
     }
 
     func testTheDockRidesTheKeyboard() {
@@ -438,5 +452,26 @@ final class ChatTokenTests: XCTestCase {
             XCTAssertNotEqual(token.light, invalid)
             XCTAssertNotEqual(token.dark, invalid)
         }
+    }
+}
+
+final class ComposerPlaceholderLayoutTests: XCTestCase {
+    func testOneLine() {
+        let layout = ComposerPlaceholderLayout(width: 393, textHeight: 20, lineHeight: 20)
+        assertFrame(layout.card, rect(8, 4, 377, 44))
+        assertFrame(layout.text, rect(22, 16, 319, 20))
+        assertFrame(layout.sendButton, rect(347, 10, 32, 32))
+        XCTAssertEqual(layout.size.height, 56)
+        XCTAssertFalse(layout.textScrolls)
+        XCTAssertEqual(ComposerPlaceholderLayout.textWidth(for: 393), 319)
+    }
+
+    func testGrowsToFiveLinesThenScrolls() {
+        let layout = ComposerPlaceholderLayout(width: 393, textHeight: 140, lineHeight: 20)
+        assertFrame(layout.card, rect(8, 4, 377, 116))
+        assertFrame(layout.text, rect(22, 12, 319, 100))
+        assertFrame(layout.sendButton, rect(347, 82, 32, 32))
+        XCTAssertEqual(layout.size.height, 128)
+        XCTAssertTrue(layout.textScrolls)
     }
 }

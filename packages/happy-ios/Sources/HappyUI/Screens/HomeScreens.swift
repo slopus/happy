@@ -78,7 +78,7 @@ public final class HomeViewController: UIViewController {
         case .noSessions:
             NoSessionsViewController(session: session)
         case .list(let list, let offline):
-            SessionListViewController(session: session, list: list, offline: offline)
+            SessionListViewController(context: context, session: session, list: list, offline: offline)
         }
     }
 

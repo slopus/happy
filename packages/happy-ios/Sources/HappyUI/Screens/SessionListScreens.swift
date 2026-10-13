@@ -16,6 +16,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         case day(Int)
     }
 
+    private let context: AppContext
     private let session: AccountSession
     private(set) var list: SessionList
     private var offline: [MachineChoice]?
@@ -27,7 +28,8 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
     private let sizingToggle = ArchiveToggleCell(style: .default, reuseIdentifier: nil)
     private var plaque: ItemGroupView?
 
-    init(session: AccountSession, list: SessionList, offline: [MachineChoice]?) {
+    init(context: AppContext, session: AccountSession, list: SessionList, offline: [MachineChoice]?) {
+        self.context = context
         self.session = session
         self.list = list
         self.offline = offline
@@ -192,6 +194,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         switch items[id] {
         case .session(let row)?:
             session.actions.markRead(sessionId: row.id)
+            push(.session(id: row.id), context: context)
         case .archiveToggle(let hidden)?:
             session.updateSettings(["hideInactiveSessions": .bool(!hidden)])
         default:
