@@ -4,8 +4,9 @@ import Foundation
 /// Prism's tokens folded into the dozen colours the theme has, per line,
 /// for one contiguous hunk at a time.
 public enum DiffSyntax {
-    /// How long a first paint waits for colour; the tokenizer also stops
-    /// starting new work past it.
+    /// How long a first paint waits for colour. The tokenizer also starts
+    /// no new pass once it is spent; none of this can stop a regex that is
+    /// already running.
     public static let revealMilliseconds = 1000
     public static let maxCharacters = 128_000
     public static let maxLine = 2000

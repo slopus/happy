@@ -84,7 +84,8 @@ final class DiffSectionPlan: @unchecked Sendable {
                     sized = .image(height: layout.size.height)
                 }
             case .files(let files):
-                let options = DiffViewOptions(collapseAfter: Self.collapseAfter, canExpandContext: input.canExpandContext)
+                // DiffFilesList: `selectable={Platform.OS !== 'android'}`.
+                let options = DiffViewOptions(collapseAfter: Self.collapseAfter, canExpandContext: input.canExpandContext, selectable: true)
                 let plans = files.enumerated().map { index, file in
                     DiffFilePlan(file: file, width: width, options: options, expanded: input.expandedFiles.contains(index), syntaxDeadline: syntaxDeadline)
                 }
