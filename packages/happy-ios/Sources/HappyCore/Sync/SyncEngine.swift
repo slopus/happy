@@ -237,6 +237,7 @@ public actor SyncEngine {
         }
         try await batch.finish(SessionListCheckpoint(changedSince: maxUpdatedAt,
                                                      fullIDs: full ? seen : nil, completedAt: full ? startedAt : nil))
+        if full { await presence.reconcileStoredRows() }
     }
 
     func pullMachines() async throws {
@@ -246,6 +247,7 @@ public actor SyncEngine {
         let records = rows.map { decoder.machine($0, previous: previous[$0.id]) }
         await presence.prepareMachines(records)
         try store.replaceMachines(records)
+        await presence.reconcileStoredRows()
         try store.setCursor(.machinesLastSync, now())
     }
 
@@ -855,6 +857,7 @@ public actor SyncEngine {
 
         case .deleteSession(let sessionId):
             try store.deleteSession(id: sessionId)
+            await presence.removeSession(sessionId)
             return nil
 
         case .newMachine(let body):
@@ -883,6 +886,7 @@ public actor SyncEngine {
 
         case .deleteMachine(let machineId):
             try store.deleteMachine(id: machineId)
+            await presence.removeMachine(machineId)
             return nil
 
         case .updateAccount(let body):

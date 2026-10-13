@@ -120,7 +120,8 @@ public final class LocalStore: Sendable {
     public func applySessionListBatch(_ incoming: [SessionRecord], checkpoint: SessionListCheckpoint? = nil,
                                       reconcileComposer: SessionComposerReconciliation? = nil) throws {
         guard !incoming.isEmpty || checkpoint != nil else { return }
-        try performWrite { db in
+        let removed = try performWrite { db in
+            var removed = Set<String>()
             for record in incoming {
                 let result = try Self.upsert(record, db)
                 if let reconcileComposer {
@@ -132,13 +133,16 @@ public final class LocalStore: Sendable {
                     for row in try Row.fetchAll(db, sql: "SELECT id, updatedAt FROM session") {
                         let id: String = row["id"]
                         let updatedAt: Int64 = row["updatedAt"]
-                        if !ids.contains(id), updatedAt <= checkpoint.changedSince { _ = try SessionRecord.deleteOne(db, key: id) }
+                        if !ids.contains(id), updatedAt <= checkpoint.changedSince,
+                           try SessionRecord.deleteOne(db, key: id) { removed.insert(id) }
                     }
                     if let completedAt = checkpoint.completedAt { try Self.saveCursor(.sessionsLastFullSync, completedAt, db) }
                 }
                 try Self.saveCursor(.sessionsChangedSince, checkpoint.changedSince, db)
             }
+            return removed
         }
+        presenceOverlay.removeSessions(removed)
     }
 
     private static func reconcileComposer(_ session: SessionRecord, previous: SessionRecord?, db: Database, transform: SessionComposerReconciliation) throws {
@@ -218,6 +222,7 @@ public final class LocalStore: Sendable {
         _ = try performWrite { db in
             try SessionRecord.deleteOne(db, key: id)
         }
+        presenceOverlay.removeSessions([id])
     }
 
     /// Deletes local sessions the server no longer lists. Only called with
@@ -226,17 +231,19 @@ public final class LocalStore: Sendable {
     /// socket while the pass was paging.
     @discardableResult
     public func retainSessions(ids: Set<String>, updatedAtOrBefore cutoff: Int64) throws -> Int {
-        try performWrite { db in
+        let removed = try performWrite { db in
             let local = try Row.fetchAll(db, sql: "SELECT id, updatedAt FROM session")
-            var removed = 0
+            var removed = Set<String>()
             for row in local {
                 let id: String = row["id"]
                 let updatedAt: Int64 = row["updatedAt"]
                 guard !ids.contains(id), updatedAt <= cutoff else { continue }
-                if try SessionRecord.deleteOne(db, key: id) { removed += 1 }
+                if try SessionRecord.deleteOne(db, key: id) { removed.insert(id) }
             }
             return removed
         }
+        presenceOverlay.removeSessions(removed)
+        return removed.count
     }
 
     /// Sessions whose message log is behind the server, most recent first.
@@ -343,15 +350,18 @@ public final class LocalStore: Sendable {
     /// Replaces the machine list with a full `GET /v1/machines` response,
     /// keeping newer versioned state already stored from live updates.
     public func replaceMachines(_ incoming: [MachineRecord]) throws {
-        try performWrite { db in
+        let removed = try performWrite { db in
             let ids = Set(incoming.map(\.id))
+            var removed = Set<String>()
             for id in try String.fetchAll(db, sql: "SELECT id FROM machine") where !ids.contains(id) {
-                try MachineRecord.deleteOne(db, key: id)
+                if try MachineRecord.deleteOne(db, key: id) { removed.insert(id) }
             }
             for record in incoming {
                 try Self.upsert(record, db)
             }
+            return removed
         }
+        presenceOverlay.removeMachines(removed)
     }
 
     public func machine(id: String) throws -> MachineRecord? {
@@ -393,6 +403,7 @@ public final class LocalStore: Sendable {
 
     public func deleteMachine(id: String) throws {
         _ = try performWrite { db in try MachineRecord.deleteOne(db, key: id) }
+        presenceOverlay.removeMachines([id])
     }
 
     public func machinesSnapshot() throws -> MachinesSnapshot {

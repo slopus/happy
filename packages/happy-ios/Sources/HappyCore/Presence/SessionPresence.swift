@@ -134,6 +134,30 @@ public actor SessionPresence {
         }
     }
 
+    var trackedCounts: (sessions: Int, machines: Int) { (sessions.count, machines.count) }
+
+    func removeSession(_ id: String) {
+        sessions.removeValue(forKey: id)
+        dirtySessions.remove(id)
+    }
+
+    func removeMachine(_ id: String) {
+        machines.removeValue(forKey: id)
+        dirtyMachines.remove(id)
+    }
+
+    /// Full listings preserve rows newer than their cutoff. Read the actual
+    /// retained ids on this actor so those late arrivals keep their presence.
+    func reconcileStoredRows() {
+        do {
+            let ids = try store.storedPresenceIDs()
+            sessions = sessions.filter { ids.sessions.contains($0.key) }
+            machines = machines.filter { ids.machines.contains($0.key) }
+            dirtySessions.formIntersection(ids.sessions)
+            dirtyMachines.formIntersection(ids.machines)
+        } catch { print("HappyStore presence pruning failed: \(error)") }
+    }
+
     /// Also called directly by deterministic tests after advancing the clock.
     public func tick() async {
         guard !stopped else { return }
