@@ -66,8 +66,9 @@ public final class AccountController {
         do {
             try await open(credentials)
         } catch {
-            // Unreadable credentials are as good as none.
-            try? credentialStore.clear()
+            // Stay signed out but keep the item. It is shared with the RN
+            // build, and a local failure such as a store that won't open
+            // must not sign that out too. Only signOut() deletes it.
         }
     }
 

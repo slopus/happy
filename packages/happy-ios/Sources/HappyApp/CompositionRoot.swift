@@ -4,8 +4,9 @@ import HappyCore
 import HappyUI
 import UIKit
 
-/// Builds the real dependencies: Keychain credentials, the server setting
-/// in its own defaults suite, and account stores in Application Support.
+/// Builds the real dependencies: credentials in expo-secure-store's Keychain
+/// item, the server setting in its own defaults suite, and account stores in
+/// Application Support.
 @MainActor
 enum CompositionRoot {
     static func makeContext(bundle: Bundle = .main) -> AppContext {
@@ -14,7 +15,8 @@ enum CompositionRoot {
         let account = AccountController(
             serverConfig: ServerConfig(storage: UserDefaultsStore(suiteName: ServerConfig.storageSuite)),
             clientID: HappyClientID.make(version: version),
-            credentialStore: KeychainCredentialStore(service: variant.bundleIdentifier),
+            // The RN app's own Keychain item, so upgrades stay signed in.
+            credentialStore: SecureStoreCredentialStore(backend: SecurityKeychainBackend()),
             storeDirectory: storeDirectory(),
             appState: {
                 await MainActor.run {

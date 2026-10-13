@@ -44,6 +44,22 @@ nothing here is wired to the release skill or to EAS.
   - versioned settings;
   - an idempotent outbox for writes.
 - **Tool outputs are hidden by default** when chat lands.
+- **Credentials stay in the RN app's Keychain item.** This app reads and
+  writes happy-app's `auth_credentials` exactly as expo-secure-store 55
+  stores it, so an in-place upgrade (same bundle ids) stays signed in and a
+  rollback to an RN build still works. Never copy credentials into an item
+  of our own, and don't change the item's layout:
+  - generic password, service `app:no-auth`;
+  - account and generic set to the UTF-8 bytes of `auth_credentials`;
+  - `kSecAttrAccessibleWhenUnlocked`, the default access group;
+  - the value is the UTF-8 of `JSON.stringify({ token, secret })`.
+
+  Reads go `app:no-auth`, then `app:auth`, then legacy `app`. Writes add to
+  `app:no-auth` (updating on a duplicate) and then delete the other two.
+  Logout deletes all three. `Sources/HappyCore/Auth/SecureStore.swift`
+  implements this behind `KeychainBackend`, and `SecureStoreTests` pins it
+  on Linux. Any other iOS-only secret gets its own item and must never
+  touch this one.
 - **Copy comes from happy-app.** English strings are copied verbatim from
   `packages/happy-app/sources/text/translations/en.ts` into
   `Sources/HappyUI/Strings.swift`.
@@ -161,9 +177,12 @@ Only production has entitlements (associated domains).
   session-protocol user messages from phones before chat lands.
 - `happy-wire`'s session protocol is marked frozen. Confirm it is the
   long-term format, not a transitional one.
-- Upgrading in place from the RN app: credentials are under keychain
-  account `auth_credentials`. expo-secure-store's service naming is not
-  matched yet, so an upgraded install signs out.
+- Closed: upgrading in place from the RN app. Credentials share
+  expo-secure-store's item; see Scope. The logic is tested on Linux, but a
+  real upgrade from an RN build on a device has not been tried yet.
+- The shared item is `WhenUnlocked`, as the RN app wrote it. A cold launch
+  in the background while the phone is locked therefore can't read the
+  credentials, which matters once background sync exists.
 - Deletions:
   - Sessions are reconciled by a daily full listing, because the API has
     no tombstone or "deleted since" feed. A server-side deletion feed
