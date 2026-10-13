@@ -89,3 +89,44 @@ public enum ComposerSuggestionListLayout {
         }
     }
 }
+
+/// AnimatedOverlay.tsx's LocalBlurHalo: the backdrop blurred
+/// (`blurIntensity` on the ultra-thin material, under `dimColor`) for
+/// `2.5 × expansion` past the popup on every side, seen through a mask
+/// that is the popup's rounded rect feathered out by a white shadow of
+/// `1.35 × expansion`. It takes no touches.
+public struct LocalBlurHaloLayout: Equatable, Sendable {
+    public var borderRadius: CGFloat
+    public var expansion: CGFloat
+    /// `blurIntensity` / 100, the blur's fraction.
+    public var intensity: CGFloat
+
+    public init(borderRadius: CGFloat = 30, expansion: CGFloat = 14, intensity: CGFloat = 0.34) {
+        self.borderRadius = borderRadius
+        self.expansion = expansion
+        self.intensity = intensity
+    }
+
+    /// AgentInputAutocomplete's: `<LocalBlurHalo borderRadius={24} />`.
+    public static let autocomplete = LocalBlurHaloLayout(borderRadius: 24)
+
+    /// `maskExpansion`: how far the halo reaches past the popup.
+    public var reach: CGFloat { expansion * 2.5 }
+    /// `maskShadowRadius`: the mask core's white shadow.
+    public var feather: CGFloat { expansion * 1.35 }
+
+    /// The halo, in the popup's bounds.
+    public func frame(popup bounds: CGRect) -> CGRect {
+        bounds.insetBy(dx: -reach, dy: -reach)
+    }
+
+    /// The mask's solid core, in the halo's bounds: the popup's own rect.
+    public func maskCore(halo bounds: CGRect) -> CGRect {
+        CGRect(
+            x: reach,
+            y: reach,
+            width: max(0, bounds.width - 2 * reach),
+            height: max(0, bounds.height - 2 * reach)
+        )
+    }
+}

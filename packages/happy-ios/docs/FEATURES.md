@@ -128,7 +128,12 @@ accident.
   - Not ported: the voice button and microphone (voice mode is excluded); Enter to send and Shift+Tab, which are web only.
 - [~] Autocomplete: slash commands and file mentions (`autocomplete/*`, `AgentInputAutocomplete`) — Composer
   - Done: `findActiveWord`, `applySuggestion` and suggestions.ts, tested on happy-app's own cases; commands from the defaults, `slashCommands` and `skills`; files and folders from `rg --files --follow`, kept five minutes, each account's apart (`AccountSession.composerFileIndex`), since a session id in one account says nothing about another's tree; Fuse.js 7.1's ranking, checked against fuse.js on the same lists and queries; the glass list (48pt rows, 320 at most), picked by tap or Return.
-  - Rows above the chat dock's top edge take taps: the dock passes touches outside its own bounds to the composer's visible views (`ChatDockView`). Not ported: `LocalBlurHalo` behind the list; arrow keys and Escape, which React Native's iOS input never reports.
+  - Rows above the chat dock's top edge take taps: the dock passes touches outside its own bounds to the composer's visible views (`ChatDockView`).
+  - Done: `LocalBlurHalo` behind the list (`LocalBlurHaloLayout`), as the new-session pickers draw theirs. The chat is blurred at intensity 34 under the default dim for 35pt around the list, through a mask of the list's 24pt rounded rect feathered by an 18.9pt white shadow. It sits under the glass and its shadow and moves with the list as the list fades in and out.
+  - The halo takes no touches. A tap beside the list reaches whatever is under it, as it would without the halo. The rows, their scrolling and their taps (which keep the keyboard up) are unchanged.
+  - The mask core's web `boxShadow` isn't drawn; RN's iOS mask may also draw it (unverified).
+  - The halo's geometry is tested on Linux. Its pass-through hit test is a UIKit test that is built, not run. How it looks has not been seen on a device or simulator.
+  - Not ported: arrow keys and Escape, which React Native's iOS input never reports.
 - [x] Attachments: picker (photos, camera, files), strip, upload progress (`AgentInputAttachmentStrip`, `attachmentSupport.ts`) — Composer + Sending
   - Done: the add button where `canUseAttachments` allows, "Add Image" with Paste from Clipboard and Photo Library (PHPicker, no permission prompt), images as JPEG at most 3072 on the long edge at 0.92, the 20-image and 10MB limits with their alerts, the strip, the not-supported alert before sending and the upload-failed alert after.
   - Not ported: camera and files, which happy-app's iPhone composer doesn't offer; upload progress, which it doesn't show; thumbhashes, which it can't make natively either.
