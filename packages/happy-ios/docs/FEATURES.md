@@ -81,10 +81,17 @@ accident.
   - Stop shows but sends nothing, as in happy-app (`agentGoalActionHandler.ts`). The goal bar has no details sheet; happy-app doesn't open one from the chat either.
 - [~] Empty and pending states (`EmptyMessages`, `ChatFooter`) — Chat
   - Not yet: EmptyMessages paging back through invisible older pages (Retry, Load more), since the chat feed has no older-page signal; `PendingChatPlaceholder` (a `pending-chat:` route shows a spinner over the composer).
-- [ ] Composer: growing text input, send/stop button, drafts (`AgentInput`, `MultiTextInput`, `agentInputLayout.ts`, `agentInputPrimaryAction.ts`) — Composer
-- [ ] Autocomplete: slash commands and file mentions (`autocomplete/*`, `AgentInputAutocomplete`) — Composer
-- [ ] Attachments: picker (photos, camera, files), strip, upload progress (`AgentInputAttachmentStrip`, `attachmentSupport.ts`) — Composer + Sending
-- [ ] Permission mode, model and effort pickers (`PermissionModeSelector`, `modelModeOptions.ts`, `NativeOptionsPicker`) — Composer
+- [x] Composer: growing text input, send/stop button, drafts (`AgentInput`, `MultiTextInput`, `agentInputLayout.ts`, `agentInputPrimaryAction.ts`) — Composer
+  - Done: the card (`AgentInputCardView`, shared with Home's dock) with the status row and its vibing words, the week quota menu and the context gauge; send, Stop (at least 300ms of spinner), the locked button and its shake; drafts as useDraft.ts keeps them, Happy Agent drafts synced on every edit, remote edits taken (not mid-composition), the post-send clear left to the sender.
+  - Not ported: the voice button and microphone (voice mode is excluded); zen mode, Enter to send and Shift+Tab, which are desktop and web only.
+- [~] Autocomplete: slash commands and file mentions (`autocomplete/*`, `AgentInputAutocomplete`) — Composer
+  - Done: `findActiveWord`, `applySuggestion` and suggestions.ts, tested on happy-app's own cases; commands from the defaults, `slashCommands` and `skills`; files and folders from `rg --files --follow`, kept five minutes; Fuse.js 7.1's ranking, checked against fuse.js on the same lists and queries; the glass list (48pt rows, 320 at most), picked by tap or Return.
+  - Not yet: rows above the chat dock's top edge can't be tapped until the dock passes touches through to the composer (ChatViewController). Not ported: `LocalBlurHalo` behind the list; arrow keys and Escape, which React Native's iOS input never reports.
+- [x] Attachments: picker (photos, camera, files), strip, upload progress (`AgentInputAttachmentStrip`, `attachmentSupport.ts`) — Composer + Sending
+  - Done: the add button where `canUseAttachments` allows, "Add Image" with Paste from Clipboard and Photo Library (PHPicker, no permission prompt), images as JPEG at most 3072 on the long edge at 0.92, the 20-image and 10MB limits with their alerts, the strip, the not-supported alert before sending and the upload-failed alert after.
+  - Not ported: camera and files, which happy-app's iPhone composer doesn't offer; upload progress, which it doesn't show; thumbhashes, which it can't make natively either.
+- [x] Permission mode, model and effort pickers (`PermissionModeSelector`, `modelModeOptions.ts`, `NativeOptionsPicker`) — Composer
+  - Native menus on the chips; a pick shows at once and goes out through `sessionSetAgentModes`. Happy Agent sessions offer their own models and reasoning levels.
 - [ ] Session info: metadata, machine, path, archive, delete, duplicate, fork (`session/[id]/info.tsx`) — Secondary + Ops
   - The duplicate sheet is `Screens/SessionInfoDuplicateSheet.swift`, entered through `UIViewController.presentDuplicateSheet(sessionId:context:)`, which works like `push(_:context:)`. Home's row alert and the chat call that entry point instead of building their own.
   - The duplicate sheet draws its pre-iOS 26 look (blur material, sheen and hairline) on every iOS. happy-app's Liquid Glass card on iOS 26 is a follow-up, with this BlurView look kept as the fallback before 26.
