@@ -113,13 +113,10 @@ public protocol ChatComposerDelegate: AnyObject {
 }
 
 /// Makes the composer the chat docks.
-///
-/// SEAM for the Composer worker: replace the placeholder with the real
-/// composer here (one line); nothing else in the chat changes.
 @MainActor
 public enum ChatComposerFactory {
     public static func make(_ environment: ChatComposerEnvironment) -> any ChatComposerView {
-        PlaceholderComposerView(environment: environment)
+        SessionComposerView(environment: environment)
     }
 }
 #endif
