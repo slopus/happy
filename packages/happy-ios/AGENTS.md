@@ -167,6 +167,60 @@ nothing here is wired to the release skill or to EAS.
   and the component stylesheets (iOS values) into
   `Sources/HappyLayout/DesignTokens.swift`.
 
+## Record kinds: current vs retired
+
+The reducer consumes the formats used by current producers, not every schema
+alternative in `typesRaw.ts`. Paths below are relative to `packages/` and
+line numbers describe the source inspected for this port. `ChatNormalizer`
+keeps the raw JSON; unknown, retired and malformed records produce an
+`unsupported` row. Recognized control/metrics records are intentionally
+invisible, as in happy-app. Gemini ACP and `role: 'agent'` events are current.
+
+| Record kind | Status | Evidence and normalization |
+| --- | --- | --- |
+| `user` / `text`, with every `meta` field | Current | `happy-app/sources/sync/sync.ts:883`, `happy-agent/src/session.ts:194`; user bubble, metadata preserved. |
+| `session` direct envelope and wrapped `content: {type:'session',data}` | Current | `happy-cli/src/api/apiSession.ts:805`, `happy-app/sources/sync/sync.ts:810`; same envelope decoder. |
+| Session `text`, user | Current | `happy-cli/src/claude/utils/sessionProtocolMapper.ts:634`, `happy-cli/src/codex/utils/sessionProtocolMapper.ts:654`; user bubble, author and fork IDs preserved. |
+| Session `text`, agent | Current | `happy-cli/src/claude/utils/sessionProtocolMapper.ts:554`, `happy-cli/src/agent/acp/AcpSessionManager.ts:73`; agent text. |
+| Session `text` / `thinking:true` | Current | `happy-cli/src/claude/utils/sessionProtocolMapper.ts:559`, `happy-cli/src/agent/acp/AcpSessionManager.ts:71`; thinking block. |
+| Session `service` | Current | `happy-cli/src/codex/utils/sessionProtocolMapper.ts:422`, `happy-cli/src/agent/acp/AcpSessionManager.ts:136`; visible agent text. |
+| Session empty `service` with `usage`, without `turn` | Current | `happy-cli/src/codex/utils/sessionProtocolMapper.ts:1040`; context usage only. |
+| Session `tool-call-start` | Current | `happy-cli/src/claude/utils/sessionProtocolMapper.ts:591`, `happy-cli/src/agent/acp/AcpSessionManager.ts:162`; tool call, title and args preserved. |
+| Session `tool-call-end` | Current | `happy-cli/src/claude/utils/sessionProtocolMapper.ts:688`, `happy-cli/src/agent/acp/AcpSessionManager.ts:177`; result joined by `call`. |
+| Session `file` | Current | `happy-app/sources/sync/sync.ts:818`, `happy-cli/src/api/apiSession.ts:487`; completed `file` tool with optional image metadata. |
+| Session `turn-start` | Current | `happy-cli/src/claude/utils/sessionProtocolMapper.ts:405`, `happy-cli/src/agent/acp/AcpSessionManager.ts:84`; invisible lifecycle. |
+| Session `turn-end` | Current | `happy-cli/src/claude/utils/sessionProtocolMapper.ts:460`, `happy-cli/src/agent/acp/AcpSessionManager.ts:99`; invisible ready event. |
+| Session `start` | Current | `happy-cli/src/claude/utils/sessionProtocolMapper.ts:354`, `happy-cli/src/codex/utils/sessionProtocolMapper.ts:108`; invisible subagent lifecycle. |
+| Session `stop` | Current | `happy-cli/src/claude/utils/sessionProtocolMapper.ts:372`, `happy-cli/src/codex/utils/sessionProtocolMapper.ts:125`; invisible subagent lifecycle. |
+| Session `user-message-accepted` / `user-message-rejected` | Current, external daemon, not in repo | Consumer evidence: `happy-app/sources/sync/rig.ts:188`, `happy-app/sources/sync/storageTypes.ts:115`, `happy-app/sources/sync/typesRaw.ts:111` and `:118`; settle original user row, never render receipts. |
+| Agent `event` / `switch` | Current | `happy-cli/src/claude/runClaude.ts:949`, transport `happy-cli/src/api/apiSession.ts:866`; mode event. |
+| Agent `event` / `message` | Current | `happy-cli/src/gemini/runGemini.ts:1161`, `happy-cli/src/codex/runCodex.ts:922`; centered event, reset/compaction handled. |
+| Agent `event` / `ready` | Current | `happy-cli/src/gemini/runGemini.ts:304`, `happy-cli/src/agent/acp/runAcp.ts:938`; invisible ready signal. |
+| Agent `event` / `limit-reached` | Current consumer; external daemon, not in repo | `happy-app/sources/sync/typesRaw.ts:29`; `happy-app/sources/sync/reducer/messageToEvent.ts:33` also derives it from current text. |
+| Agent `event` / `user-message-accepted` / `user-message-rejected` | Current, external daemon, not in repo | Consumer evidence: `happy-app/sources/sync/typesRaw.ts:37` and `:40`, `happy-app/sources/sync/reducer/reducer.ts:434`; same receipt join. |
+| Gemini ACP `message` | Current | `happy-cli/src/gemini/runGemini.ts:653` and `:1266`; agent text. |
+| Gemini ACP `reasoning` | Current | `happy-cli/src/utils/BaseReasoningProcessor.ts:229`, forwarded by `happy-cli/src/gemini/runGemini.ts:520`; agent text, matching happy-app. |
+| Gemini ACP `thinking` | Current | `happy-cli/src/gemini/runGemini.ts:883`; thinking block. |
+| Gemini ACP `tool-call` | Current | `happy-cli/src/gemini/runGemini.ts:675`; call keyed by `callId`. |
+| Gemini ACP `tool-result` | Current | `happy-cli/src/gemini/runGemini.ts:724`; result with optional `isError`. |
+| Gemini ACP `tool-call-result` | Current | `happy-cli/src/gemini/utils/diffProcessor.ts:26`, forwarded by `happy-cli/src/gemini/runGemini.ts:526`; result (still emitted despite its compatibility label). |
+| Gemini ACP `file-edit` | Current | `happy-cli/src/gemini/runGemini.ts:739`; file-edit tool, arguments preserved. |
+| Gemini ACP `terminal-output` | Current | `happy-cli/src/gemini/runGemini.ts:764`; tool result by `callId`. |
+| Gemini ACP `permission-request` | Current | `happy-cli/src/gemini/runGemini.ts:776`; tool call by `permissionId`, joined with agent state. |
+| Gemini ACP `task_started` / `task_complete` / `turn_aborted` | Current | `happy-cli/src/gemini/runGemini.ts:596`, `:1273`, `:356`; invisible status events. |
+| Gemini ACP `token_count` / `token-count` | Current | `happy-cli/src/gemini/runGemini.ts:754` spreads backend fields after `type`, so both spellings may arrive; invisible metrics. |
+| Agent `output` (Claude system/result/summary/assistant/user, underscore or hyphenated blocks) | Retired | `happy-cli/src/api/apiSession.ts:742` maps all Claude transcript records into session envelopes before sending; no current output-wrapper call site. Unsupported placeholder, no decoder. |
+| Agent `codex` | Retired | `happy-cli/src/api/apiSession.ts:791` retains an unused method; actual calls in `happy-cli/src/codex/runCodex.ts:567` send session envelopes. Unsupported placeholder. |
+| Agent `session` wrapper | Retired | Current `happy-cli/src/api/apiSession.ts:805` sends `role:'session'`; the agent-wrapper alternative remains only in `happy-app/sources/sync/typesRaw.ts:1123`. Unsupported placeholder. |
+| Non-Gemini ACP wrappers | Retired | `happy-cli/src/agent/acp/runAcp.ts:595`, `happy-cli/src/openclaw/runOpenClaw.ts:229` use session envelopes; the only active `sendAgentMessage` producer is Gemini. Unsupported placeholder. |
+
+`LocalChatFeed` reads disk first, observes a small session/count/outbox value,
+and fetches only message rows inserted after its SQLite rowid cursor. This
+handles socket records arriving before lower-sequence delta records. Message
+deletion rebuilds the reducer; normal append, permission and outbox updates do
+not. Outbox rows are a removable overlay and delivery state comes from schema
+v3. Usage and todos travel on `ChatSnapshot` for the composer and chat.
+
 ## Layout
 
 | Target | Platforms | What it holds |

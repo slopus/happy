@@ -86,7 +86,7 @@ extension SessionEvent: Codable {
                 name: try container.decode(String.self, forKey: .name),
                 title: try container.decode(String.self, forKey: .title),
                 description: try container.decode(String.self, forKey: .description),
-                args: try container.decodeIfPresent([String: JSONValue].self, forKey: .args) ?? [:]
+                args: try container.decode([String: JSONValue].self, forKey: .args)
             )
         case "tool-call-end":
             self = .toolCallEnd(

@@ -56,9 +56,10 @@ public struct MessageMeta: Codable, Hashable, Sendable {
 
 /// The decrypted top-level payload of a session message.
 ///
-/// Only the session protocol (`role: "session"`) is modelled. Anything else
-/// is kept verbatim as `.other` so it is stored and can be re-read once a
-/// renderer needs it, but no legacy decoding path exists.
+/// Typed session envelopes are exposed here; other records stay verbatim.
+/// HappyCore normalizes all formats current producers exchange, including
+/// user text, agent events and Gemini ACP. Retired or unknown formats render
+/// as unsupported placeholders rather than disappearing from history.
 public enum MessageContent: Hashable, Sendable {
     case session(SessionEnvelope, meta: MessageMeta?)
     case other(role: String?, raw: JSONValue)
@@ -67,7 +68,7 @@ public enum MessageContent: Hashable, Sendable {
         let role = value["role"]?.stringValue
         if role == "session",
            let envelopeValue = value["content"],
-           let envelope = try? envelopeValue.decode(as: SessionEnvelope.self) {
+           let envelope = try? (envelopeValue["data"] ?? envelopeValue).decode(as: SessionEnvelope.self) {
             let meta = try? value["meta"]?.decode(as: MessageMeta.self)
             self = .session(envelope, meta: meta)
         } else {
