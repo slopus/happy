@@ -531,6 +531,47 @@ final class ChatScreenLayoutTests: XCTestCase {
         XCTAssertEqual(layout.scrim.height, 0)
         XCTAssertEqual(layout.headerScrim.height, 0)
         assertFrame(layout.placeholder, rect(0, 74, 664, 544))
+        XCTAssertNil(layout.backButton)
+        XCTAssertNil(layout.statusBarShadow)
+    }
+
+    func testAPhoneOnItsSideHasNoHeader() {
+        // An iPhone SE held sideways: below the tablet width, no status bar.
+        let layout = ChatScreenLayout(.init(
+            size: CGSize(width: 667, height: 375), safeArea: LayoutInsets(top: 0, left: 0, bottom: 0, right: 0), keyboardTop: nil,
+            accessories: [.inset(block(height: 60))], composerHeight: 70, composerCardOffset: 20, hidesHeader: true
+        ))
+        assertFrame(layout.dock, rect(0, 245, 667, 130))
+        assertFrame(layout.list, rect(0, 0, 667, 245))
+        XCTAssertEqual(layout.newestEdgeInset, 8)
+        // chatListTopContentInset's 12, with nothing above it.
+        XCTAssertEqual(layout.oldestEdgeInset, 12)
+        assertFrame(layout.scrollButton, rect(317.5, 209, 32, 32))
+        XCTAssertEqual(layout.scrim.height, 0)
+        XCTAssertEqual(layout.headerScrim.height, 0)
+        assertFrame(layout.placeholder, rect(0, 0, 667, 245))
+        XCTAssertEqual(layout.backButton, rect(16, 8, 44, 44))
+        XCTAssertEqual(layout.statusBarShadow, rect(0, 0, 667, 0))
+    }
+
+    func testWithoutTheHeaderTheListStartsUnderTheStatusBar() {
+        // A short, wide window with a status bar (Stage Manager).
+        let layout = ChatScreenLayout(.init(
+            size: CGSize(width: 700, height: 500), safeArea: LayoutInsets(top: 24, left: 0, bottom: 20, right: 0), keyboardTop: nil,
+            composerHeight: 70, hidesHeader: true
+        ))
+        assertFrame(layout.dock, rect(0, 410, 700, 70))
+        assertFrame(layout.list, rect(0, 24, 700, 386))
+        XCTAssertEqual(layout.oldestEdgeInset, 12)
+        XCTAssertEqual(layout.backButton, rect(16, 32, 44, 44))
+        XCTAssertEqual(layout.statusBarShadow, rect(0, 0, 700, 24))
+        // The keyboard still carries the dock.
+        let typing = ChatScreenLayout(.init(
+            size: CGSize(width: 700, height: 500), safeArea: LayoutInsets(top: 24, left: 0, bottom: 20, right: 0), keyboardTop: 300,
+            composerHeight: 70, hidesHeader: true
+        ))
+        assertFrame(typing.dock, rect(0, 230, 700, 70))
+        assertFrame(typing.list, rect(0, 24, 700, 206))
     }
 
     func testTheDockRidesTheKeyboard() {

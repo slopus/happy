@@ -161,6 +161,14 @@ extension Palette {
     public static let cliWarningFill = ColorToken("#FFF3CD")
     public static let cliWarningText = ColorToken("#856404")
     public static let cliWarningIcon = ColorToken("#FF9500")
+    /// SessionView's floating back button on a phone held sideways:
+    /// rgba(255,255,255,0.9) in light, rgba(28,23,28,0.9) in dark, and a
+    /// black chevron in both (happy-app's own choice, kept).
+    public static let landscapeBackFill = ColorToken(
+        light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.9),
+        dark: RGBA(red: 28 / 255, green: 23 / 255, blue: 28 / 255, alpha: 0.9)
+    )
+    public static let landscapeBackGlyph = ColorToken("#000000")
 
     public static let chat: [ColorToken] = [
         userMessageText, agentEventText, surfacePressed, warning, boxWarningBackground, boxErrorBackground,
@@ -171,7 +179,7 @@ extension Palette {
         diffMarkerAdded, diffMarkerRemoved, diffText, diffSectionText, diffGutterBorder, buttonSecondaryTint, shadow,
         boxWarningText, todoCompleted, todoInProgress, todoPending, todoOther, onAccent, requiredDot,
         headerGlassSubtitle, fullViewPurple, fullViewGreen, fullViewRed, fullViewOrange, multiEditSeparator,
-        cliWarningFill, cliWarningText, cliWarningIcon,
+        cliWarningFill, cliWarningText, cliWarningIcon, landscapeBackFill, landscapeBackGlyph,
     ]
 }
 

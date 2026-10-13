@@ -251,7 +251,6 @@ extension ChatRowRenderer {
         case .codexBash: codexBashView(message.tool, root: style.root)
         case .geminiExecute: geminiExecuteView(message.tool)
         case .file: fileView(message.tool)
-        default: nil
         }
     }
 

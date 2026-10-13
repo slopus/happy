@@ -42,6 +42,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// The title on a tablet, without glass.
     private let plainTitleView = ChatPlainHeaderTitleView()
     private let cliWarning = ChatCliWarningPill()
+    /// SessionView's `hidesLandscapeHeader`: a phone held sideways drops the
+    /// header for a floating back button and a strip behind the status bar.
+    private var hidesHeader = false
+    private let landscapeBack = ChatLandscapeBackButton()
+    private let statusBarStrip = ChatStatusBarStrip()
     /// localSettings' `acknowledgedCliVersions`, read once.
     private lazy var acknowledgedCliVersions = context.account.localSettings.acknowledgedCliVersions
     /// The spinner, an empty chat's EmptyMessages, or the deleted state.
@@ -159,9 +164,6 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         cliWarning.addTarget(self, action: #selector(dismissCliWarning), for: .touchUpInside)
         view.addSubview(cliWarning)
         view.addSubview(scrim)
-        registerForTraitChanges([UITraitVerticalSizeClass.self]) { (self: Self, _) in
-            self.updateCliWarning()
-        }
         registerForTraitChanges([TabletLayoutTrait.self]) { (self: Self, _) in
             self.tabletLayoutChanged()
         }
@@ -183,6 +185,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         scrollButton.alpha = 0
         scrollButton.addTarget(self, action: #selector(scrollToNewest), for: .touchUpInside)
         view.addSubview(scrollButton)
+        statusBarStrip.isHidden = true
+        view.addSubview(statusBarStrip)
+        landscapeBack.isHidden = true
+        landscapeBack.addTarget(self, action: #selector(goBack), for: .touchUpInside)
+        view.addSubview(landscapeBack)
 
         keyboardTracker.isHidden = true
         keyboardTracker.isUserInteractionEnabled = false
@@ -238,12 +245,22 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         // sync.ts `onSessionVisible`: a session someone has opened is no
         // longer an abandoned start.
         SpawnRequests.shared.release(sessionId: sessionId)
+        updateHeaderVisibility(animated: animated)
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Screens pushed from here, and the one under it, have their bar.
+        if hidesHeader, navigationController?.topViewController !== self {
+            navigationController?.setNavigationBarHidden(false, animated: animated)
+        }
     }
 
     // MARK: Layout
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
+        updateHeaderVisibility(animated: false)
         layoutScreen()
         updatePermissionListMaxHeight()
         if view.bounds.width != lastLayoutWidth {
@@ -270,7 +287,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             maxContentWidth: maxContentWidth,
             // TabletBranches: chatFloatingDock and chatInputPaddingH.
             docked: isTabletLayout,
-            accessoryPaddingH: isTabletLayout ? TabletBranches.Metrics.tabletInputPaddingH : TabletBranches.Metrics.phoneInputPaddingH
+            accessoryPaddingH: isTabletLayout ? TabletBranches.Metrics.tabletInputPaddingH : TabletBranches.Metrics.phoneInputPaddingH,
+            hidesHeader: hidesHeader
         ))
         list.setLayoutFrame(screen.list)
         list.setEdgeInsets(newest: screen.newestEdgeInset, oldest: screen.oldestEdgeInset)
@@ -288,6 +306,45 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         composer.setLayoutFrame(screen.composer)
         scrollButton.setLayoutFrame(screen.scrollButton)
         scrim.setLayoutFrame(screen.scrim)
+        if let back = screen.backButton { landscapeBack.setLayoutFrame(back) }
+        if let strip = screen.statusBarShadow { statusBarStrip.setLayoutFrame(strip) }
+    }
+
+    /// TabletBranches' `chatFloatingDock`: only the portrait phone floats
+    /// the dock over the list, with the fades behind the bar and the dock
+    /// and the bars above the composer that hide while the reader is back.
+    private var floatingDock: Bool {
+        !isTabletLayout && !hidesHeader
+    }
+
+    /// TabletBranches' `chatHidesHeaderInLandscape`, as the window is now.
+    /// Only the screen on top owns the bar; the ones pushed from here get it
+    /// back in `viewWillDisappear`.
+    private func updateHeaderVisibility(animated: Bool) {
+        let hides = tabletBranches.chatHidesHeaderInLandscape
+        if let navigation = navigationController, navigation.topViewController === self, navigation.isNavigationBarHidden != hides {
+            navigation.setNavigationBarHidden(hides, animated: animated)
+        }
+        guard hides != hidesHeader else { return }
+        hidesHeader = hides
+        landscapeBack.isHidden = !hides
+        statusBarStrip.isHidden = !hides
+        floatingDockChanged()
+        updateCliWarning()
+        view.setNeedsLayout()
+    }
+
+    /// The fades come and go with the floating dock, and the bars above the
+    /// composer always show without it.
+    private func floatingDockChanged() {
+        headerScrim.isHidden = !floatingDock
+        scrim.isHidden = !floatingDock || dock.isHidden
+        if !floatingDock && !dockDetailsVisible { setDockDetailsVisible(true) }
+    }
+
+    /// SessionView's `router.back()`.
+    @objc private func goBack() {
+        navigationController?.popViewController(animated: true)
     }
 
     // MARK: Data
@@ -344,8 +401,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         items.append(fixturesMenu())
         #endif
         navigationItem.rightBarButtonItems = items
-        headerScrim.isHidden = tablet
-        scrim.isHidden = tablet || dock.isHidden
+        floatingDockChanged()
     }
 
     private func updateHeader() {
@@ -381,11 +437,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         }
     }
 
-    /// Not on a phone held sideways, as in happy-app.
+    /// Not on a phone held sideways (TabletBranches' `chatShowsCliWarning`).
     private func updateCliWarning() {
         let warning = CliVersionWarning(metadata: session.metadata, acknowledged: acknowledgedCliVersions)
         cliWarning.warning = warning
-        let hidden = warning == nil || traitCollection.verticalSizeClass == .compact
+        let hidden = warning == nil || hidesHeader
         guard hidden != cliWarning.isHidden else { return }
         cliWarning.isHidden = hidden
         view.setNeedsLayout()
@@ -398,8 +454,6 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         updateCliWarning()
     }
 
-    /// The window crossed the tablet width: rows plan their tablet
-    /// branches again.
     /// `Math.min(260, Math.round(windowHeight * 0.35))`, as the window is now.
     private func updatePermissionListMaxHeight() {
         guard let window = view.window else { return }
@@ -409,6 +463,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         scheduleMeasure()
     }
 
+    /// The window crossed the tablet width: rows plan their tablet
+    /// branches again.
     private func tabletLayoutChanged() {
         let tablet = traitCollection.isTabletLayout
         guard tablet != isTabletLayout else { return }
@@ -479,7 +535,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         list.isHidden = fullScreen
         if dock.isHidden != fullScreen {
             dock.isHidden = fullScreen
-            scrim.isHidden = fullScreen || isTabletLayout
+            scrim.isHidden = fullScreen || !floatingDock
             view.setNeedsLayout()
         }
     }
@@ -804,17 +860,20 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 self.scrollButton.alpha = showButton ? 1 : 0
             }
         }
-        let details = ChatScreenLayout.dockDetailsVisible(distanceFromNewest: distanceFromNewest, currentlyVisible: dockDetailsVisible)
-        if details != dockDetailsVisible {
-            dockDetailsVisible = details
-            composer.setDetailsVisible(details, animated: true)
-            // The bars above the composer fade but keep their space.
-            let bars = dockBars.map { $0.view }
-            UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
-                for bar in bars { bar.alpha = details ? 1 : 0 }
-            }
-        }
+        let details = !floatingDock || ChatScreenLayout.dockDetailsVisible(distanceFromNewest: distanceFromNewest, currentlyVisible: dockDetailsVisible)
+        if details != dockDetailsVisible { setDockDetailsVisible(details) }
         if distanceFromOldest < list.bounds.height && !measuring { growWindow() }
+    }
+
+    /// The composer's status rows and the bars above it fade, but keep
+    /// their space.
+    private func setDockDetailsVisible(_ visible: Bool) {
+        dockDetailsVisible = visible
+        composer.setDetailsVisible(visible, animated: true)
+        let bars = dockBars.map { $0.view }
+        UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+            for bar in bars { bar.alpha = visible ? 1 : 0 }
+        }
     }
 
     func chatList(_ list: ChatListView, perform action: ChatRowAction) {
