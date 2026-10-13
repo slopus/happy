@@ -25,6 +25,7 @@ public struct AccountDisplay: Codable, Equatable, Sendable {
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         var configuration = Configuration()
         configuration.readonly = true
+        configuration.busyMode = .timeout(2)
         let database = try DatabaseQueue(path: url.path, configuration: configuration)
         return try database.read { db in
             let profile = try AccountProfileRecord.fetchOne(db, key: 1)?.profile

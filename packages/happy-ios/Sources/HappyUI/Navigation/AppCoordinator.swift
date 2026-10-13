@@ -23,6 +23,7 @@ public final class AppCoordinator {
     private var notificationSessionID: String?
     private var accountRestored = false
     private var switchingForNotification = false
+    private var lookingUpNotification = false
 
     public init(window: UIWindow, context: AppContext) {
         self.window = window
@@ -68,27 +69,42 @@ public final class AppCoordinator {
             if accountRestored, account.session == nil { notificationSessionID = nil }
             return
         }
-        if let owner = account.accountHoldingSession(sessionId), owner != active.keys.anonID {
-            // restore() holds the account controller through the first sync,
-            // so the switch waits for it. show() opens the session once the
-            // owner's home is the root.
-            guard accountRestored, !switchingForNotification else { return }
-            switchingForNotification = true
-            Task { @MainActor [weak self] in
-                do {
-                    try await account.switchAccount(to: owner)
-                } catch {
-                    if self?.notificationSessionID == sessionId {
-                        self?.notificationSessionID = nil
-                        self?.showNotificationSession(sessionId)
-                    }
-                }
-                self?.switchingForNotification = false
+        guard !lookingUpNotification else { return }
+        lookingUpNotification = true
+        Task { @MainActor [weak self] in
+            let owner: AccountSummary.ID?
+            do { owner = try await account.accountHoldingSession(sessionId) }
+            catch { owner = nil } // Keep the active-account fallback on lookup failure.
+            guard let self else { return }
+            self.lookingUpNotification = false
+            guard self.notificationSessionID == sessionId,
+                  account.session === active,
+                  self.navigation.viewControllers.first is HomeViewController else {
+                self.openNotificationSession()
+                return
             }
-            return
+            if let owner, owner != active.keys.anonID {
+                // restore() holds the account controller through the first sync,
+                // so the switch waits for it. show() opens the session once the
+                // owner's home is the root.
+                guard self.accountRestored, !self.switchingForNotification else { return }
+                self.switchingForNotification = true
+                Task { @MainActor [weak self] in
+                    do {
+                        try await account.switchAccount(to: owner)
+                    } catch {
+                        if self?.notificationSessionID == sessionId {
+                            self?.notificationSessionID = nil
+                            self?.showNotificationSession(sessionId)
+                        }
+                    }
+                    self?.switchingForNotification = false
+                }
+                return
+            }
+            self.notificationSessionID = nil
+            self.showNotificationSession(sessionId)
         }
-        notificationSessionID = nil
-        showNotificationSession(sessionId)
     }
 
     /// Home, then the chat. Nothing changes when that chat is already on top.
