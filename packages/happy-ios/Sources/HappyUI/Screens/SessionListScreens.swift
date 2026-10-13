@@ -180,7 +180,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
     }
 
     private func openTroubleshoot() {
-        navigationController?.pushViewController(TroubleshootViewController(session: session), animated: true)
+        navigationController?.pushViewController(TroubleshootViewController(context: context, session: session), animated: true)
     }
 
     // MARK: Delegate
