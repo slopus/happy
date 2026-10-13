@@ -127,6 +127,29 @@ public enum DiffPalette {
     ]
 }
 
+/// components/diff's type, beside the rows' own (`DiffStyle` in HappyUI,
+/// which follow the font size a view is given).
+public enum DiffTextStyles {
+    /// DiffFileView's "Show N more lines": Typography.default('semiBold') 13.
+    public static let showMore = TextStyle(.semiBold, size: 13)
+    /// DiffFileHeader: the directory (mono 12), the file name (mono
+    /// semibold 12.5), the change badge (mono semibold 10.5, upper case) and
+    /// the +N / −N counts (mono 12).
+    public static let headerDir = TextStyle(.mono, size: 12)
+    public static let headerFileName = TextStyle(.monoSemiBold, size: 12.5)
+    public static let headerBadge = TextStyle(.monoSemiBold, size: 10.5, uppercase: true)
+    public static let headerCount = TextStyle(.mono, size: 12)
+    /// FileSection's size hint and messages, and DiffImageView's "binary".
+    public static let sectionMessage = TextStyle(.regular, size: 13)
+    /// DiffImageView's Before / After.
+    public static let imageLabel = TextStyle(.monoSemiBold, size: 10.5, uppercase: true)
+    /// DiffFilesList's empty text, the changes screen's centred messages and
+    /// HappyAgentDiffView's notices: Typography.default() at RN's 14.
+    public static let body = TextStyle(.regular, size: 14)
+    /// HappyAgentDiffView's Retry.
+    public static let retry = TextStyle(.semiBold, size: 14)
+}
+
 public enum SecondaryTextStyles {
     // info.tsx's loading and deleted states.
     public static let infoLoading = TextStyle(.semiBold, size: 17)
