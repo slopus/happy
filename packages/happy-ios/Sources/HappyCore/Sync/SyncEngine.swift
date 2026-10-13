@@ -49,6 +49,9 @@ public actor SyncEngine {
         public var changedSinceOverlapMs: Int64 = 5_000
         public var fullSessionReconcileIntervalMs: Int64 = 24 * 60 * 60 * 1000
         public var messageSessionsPerPass = 50
+        /// Downloaded pages are committed together, bounded by this record
+        /// count (plus at most one server page). No transaction spans an await.
+        public var messageWriteBatchSize = 1000
         /// Version conflicts tolerated per settings push before backing off.
         public var settingsPushAttempts = 3
         public var backoff: Backoff = .standard
@@ -264,33 +267,49 @@ public actor SyncEngine {
 
     func pullPendingMessages() async throws {
         let sessions = try store.sessionsNeedingMessageSync(limit: options.messageSessionsPerPass)
-        for session in sessions {
-            try await pullMessages(sessionId: session.id)
-        }
+        try await pullMessageBatch(sessions)
         if sessions.count == options.messageSessionsPerPass {
             await invalidate(.pendingMessages)
         }
     }
 
     func pullMessages(sessionId: String) async throws {
-        guard let session = try store.session(id: sessionId),
-              session.decryptable,
-              let cipher = keyRing.cipher(wrappedKey: session.dataKeyCipher)
-        else { return }
+        guard let session = try store.session(id: sessionId) else { return }
+        try await pullMessageBatch([session])
+    }
 
-        var afterSeq = session.syncedMessageSeq
-        while true {
-            let page = try await api.messages(sessionId: sessionId, afterSeq: afterSeq, limit: options.messagesPageSize)
-            let records = page.messages.map { decoder.message($0, sessionId: sessionId, cipher: cipher) }
-            let lastSeq = page.messages.map(\.seq).max()
-            try store.applyMessagePage(
-                sessionId: sessionId,
-                messages: records,
-                syncedThrough: page.hasMore ? nil : max(lastSeq ?? 0, session.seq)
-            )
-            guard page.hasMore, let lastSeq, lastSeq > afterSeq else { break }
-            afterSeq = lastSeq
+    private func pullMessageBatch(_ sessions: [SessionRecord]) async throws {
+        var writes: [MessagePageWrite] = []
+        var recordCount = 0
+        do {
+            for session in sessions {
+                guard session.decryptable, let cipher = keyRing.cipher(wrappedKey: session.dataKeyCipher) else { continue }
+                var afterSeq = session.syncedMessageSeq
+                while true {
+                    let page = try await api.messages(sessionId: session.id, afterSeq: afterSeq, limit: options.messagesPageSize)
+                    let records = page.messages.map { decoder.message($0, sessionId: session.id, cipher: cipher) }
+                    let lastSeq = page.messages.map(\.seq).max()
+                    writes.append(MessagePageWrite(
+                        sessionId: session.id, messages: records,
+                        syncedThrough: page.hasMore ? nil : max(lastSeq ?? 0, session.seq)))
+                    recordCount += records.count
+                    if recordCount >= max(1, options.messageWriteBatchSize) {
+                        let ready = writes
+                        writes.removeAll(keepingCapacity: true)
+                        recordCount = 0
+                        try store.applyMessagePages(ready)
+                    }
+                    guard page.hasMore, let lastSeq, lastSeq > afterSeq else { break }
+                    afterSeq = lastSeq
+                }
+            }
+        } catch {
+            // Keep completed downloads and their page cursors on request
+            // failure/cancellation, just as the old per-page writes did.
+            try store.applyMessagePages(writes)
+            throw error
         }
+        try store.applyMessagePages(writes)
     }
 
     // MARK: Settings
