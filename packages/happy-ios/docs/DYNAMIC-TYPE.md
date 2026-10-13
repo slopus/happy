@@ -63,10 +63,26 @@ Following now:
   are measured at the same size. The titles stop at 1.2.
 - Their inputs (the server field, the secret key) and the text not drawn by
   `StyledLabel` (What's New's paragraphs, the Claude command).
+- The chat's composer, on its own: `SessionComposerView` sets the trait on
+  itself, because its height is measured on main from its text as drawn
+  every time the chat lays out, and nothing plans it off main. The card
+  (`AgentInputCardView`) draws its input, placeholder and line, chip labels
+  and "·" scaled; the status, week and context text and the suggestion rows
+  are scaled too. Each re-reads the traits before it measures, so a height
+  asked for before the trait update is measured at the size it then draws,
+  and a size change redraws, drops the cached text height (keyed on the
+  scale) and asks the chat to lay out again. Tap targets are the measured
+  frames, so they grow with the text; the slop around them is fixed, as
+  RN's `hitSlop` is.
 
 Fixed RN sizes stay fixed: icons, the wordmark, the checklist boxes,
 paddings, and minimum heights (rows 44, buttons 50/44/32, Get help 36),
-which taller text grows past.
+which taller text grows past. In the composer: the 44 and 40 input
+minimums and the 120 cap (two lines at the largest size already scroll),
+the 42 and 40 action rows and the 40 chips in them, the 32 send, the 48
+suggestion rows. Text taller than a fixed row is centred on it and spills
+past; in the 42 row it is cut by the middle box, as RN's
+`overflow: 'hidden'` cuts it.
 
 ## Not yet wired
 
@@ -76,7 +92,12 @@ which taller text grows past.
   text size change invalidates every height as a width change does, and
   then their screens opt in. `HomeRowHeights.flatSession` comes from the
   scaled lines instead of 81.
-- The composer and the new-session screen.
+- Home's dock (the same card, under a screen that doesn't follow, so it
+  stays at the designed size) and the new-session screen.
+- On a device: the composer at each size, the chips' native menus over
+  their scaled labels, and a size change while typing (the typed text is
+  restyled in place, which may end an IME composition in progress) have
+  not been looked at; only the geometry is tested.
 - Navigation bar titles (`NavigationTitleView`, What's New's title).
 - Measured text boxes ceil to pixels as RN's do.
 - Fonts made outside `TextStyle` (session info's duplicate sheet, code

@@ -68,6 +68,10 @@ public struct AgentInputDesktopLayout: Equatable, Sendable {
         /// The text view's height for its text, its 8 + 8 padding included.
         public var textContentHeight: CGFloat
         public var hasText: Bool
+        /// One line of the text as drawn: 22, times the text size's
+        /// multiplier where the composer follows it. The 40 minimum and the
+        /// 120 cap stay.
+        public var lineHeight: CGFloat
         /// `minHeight` for the input container; nil keeps 40.
         public var inputMinHeight: CGFloat?
         /// The gear (`onPermissionModeChange`).
@@ -86,6 +90,7 @@ public struct AgentInputDesktopLayout: Equatable, Sendable {
             attachmentCount: Int = 0,
             textContentHeight: CGFloat,
             hasText: Bool,
+            lineHeight: CGFloat = Metrics.lineHeight,
             inputMinHeight: CGFloat? = nil,
             showsSettings: Bool = false,
             stopContentWidth: CGFloat? = nil,
@@ -96,6 +101,7 @@ public struct AgentInputDesktopLayout: Equatable, Sendable {
             self.attachmentCount = attachmentCount
             self.textContentHeight = textContentHeight
             self.hasText = hasText
+            self.lineHeight = lineHeight
             self.inputMinHeight = inputMinHeight
             self.showsSettings = showsSettings
             self.stopContentWidth = stopContentWidth
@@ -161,7 +167,7 @@ public struct AgentInputDesktopLayout: Equatable, Sendable {
             contentHeight: input.textContentHeight,
             hasText: input.hasText,
             maxHeight: M.inputMaxHeight,
-            lineHeight: M.lineHeight,
+            lineHeight: input.lineHeight,
             paddingTop: M.textPaddingTop,
             paddingBottom: M.textPaddingBottom
         )
