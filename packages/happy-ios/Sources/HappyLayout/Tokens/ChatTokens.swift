@@ -21,12 +21,14 @@ public enum ChatFace: Hashable, Sendable {
     case systemItalic
     /// `Platform.select({ ios: 'Menlo' })`.
     case menlo
+    /// Menlo at weight '600', which iOS draws in Menlo Bold.
+    case menloBold
 
     public var isMonospaced: Bool {
         switch self {
         case .plex(let face): face == .mono || face == .monoItalic || face == .monoSemiBold
         case .system, .systemItalic: false
-        case .menlo: true
+        case .menlo, .menloBold: true
         }
     }
 }
@@ -194,6 +196,14 @@ public enum ChatTextStyles {
     public static let codeView = ChatTextStyle(.menlo, size: 12, lineHeight: 18)
     // CommandView.tsx
     public static let terminal = ChatTextStyle(.menlo, size: 13, lineHeight: 18)
+    public static let terminalPrompt = ChatTextStyle(.menloBold, size: 14, lineHeight: 20)
+    public static let terminalCommand = ChatTextStyle(.menlo, size: 14, lineHeight: 20)
+    // CodexBashView.tsx ('monospace' is not an iOS font, so React Native
+    // draws the system font), GeminiExecuteView.tsx
+    public static let toolOperation = ChatTextStyle(.system(.medium), size: 14)
+    public static let toolOperationCommand = ChatTextStyle(.system(.regular), size: 12)
+    public static let executeCwd = ChatTextStyle(.system(.regular), size: 12)
+    public static let executeDescription = ChatTextStyle(.systemItalic, size: 13)
 
     // PermissionFooter.tsx
     public static let permissionButton = ChatTextStyle(.system(.medium), size: 14, lineHeight: 18)

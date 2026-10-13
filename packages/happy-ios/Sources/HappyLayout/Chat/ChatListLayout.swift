@@ -118,7 +118,12 @@ public struct ChatScrollAnchor: Equatable, Sendable {
 
     public enum Kind: Equatable, Sendable {
         case newest
+        /// The row's near edge (its bottom on screen) stays this far from
+        /// the visible min y.
         case row(id: String, distance: CGFloat)
+        /// The row's far edge (its top on screen) stays this far from the
+        /// visible min y.
+        case rowEnd(id: String, distance: CGFloat)
     }
 
     public var kind: Kind
@@ -139,6 +144,17 @@ public struct ChatScrollAnchor: Equatable, Sendable {
         return ChatScrollAnchor(kind: .row(id: ids[index], distance: frame.minY - visibleMinY))
     }
 
+    /// Holds one row's top on screen where it is: a row the reader just
+    /// opened grows down towards the newest messages, under their finger,
+    /// as a table row would, instead of pushing what they tapped up. A
+    /// reader at the newest edge stays there and the row grows upwards, so
+    /// what opened is on screen. Nil when the row isn't there.
+    public static func pinning(_ id: String, layout: ChatListLayout, ids: [String], visibleMinY: CGFloat) -> ChatScrollAnchor? {
+        guard let index = ids.firstIndex(of: id), index < layout.count else { return nil }
+        if visibleMinY <= 0.5 { return ChatScrollAnchor(kind: .newest) }
+        return ChatScrollAnchor(kind: .rowEnd(id: id, distance: layout.frame(ofRow: index).maxY - visibleMinY))
+    }
+
     /// Where the visible min y must be after the update. `maxVisibleMinY`
     /// is the furthest the list can scroll (content height minus the
     /// visible height), so the anchor never asks for an overscroll.
@@ -149,6 +165,10 @@ public struct ChatScrollAnchor: Equatable, Sendable {
         case .row(let id, let distance):
             guard let index = ids.firstIndex(of: id) else { return min(current, max(0, maxVisibleMinY)) }
             let target = layout.frame(ofRow: index).minY - distance
+            return min(max(0, target), max(0, maxVisibleMinY))
+        case .rowEnd(let id, let distance):
+            guard let index = ids.firstIndex(of: id) else { return min(current, max(0, maxVisibleMinY)) }
+            let target = layout.frame(ofRow: index).maxY - distance
             return min(max(0, target), max(0, maxVisibleMinY))
         }
     }

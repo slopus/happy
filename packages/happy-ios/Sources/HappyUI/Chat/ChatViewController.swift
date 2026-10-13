@@ -51,6 +51,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private var lastLayoutWidth: CGFloat = 0
     /// Permission buttons whose reply is on its way, by permission id.
     private var permissionBusy: [String: PermissionButton.Kind] = [:]
+    /// Tools the reader opened, by message id: for as long as the screen
+    /// lives, never stored.
+    private var expandedTools: Set<String> = []
+    /// The tool just opened or closed, held still by the next update.
+    private var pendingPin: String?
 
     init(context: AppContext, session account: AccountSession, sessionId: String) {
         self.context = context
@@ -225,6 +230,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             flavor: flavor
         )
         let permissionBusy = self.permissionBusy
+        let expandedTools = self.expandedTools
         return items.filter { ChatRowRenderer.isShown($0, style: style) }.map { item in
             var delivery: OutboxDelivery?
             if case .message(.userText(let message)) = item, let localId = message.localId {
@@ -235,8 +241,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 expanded = groups.isExpanded(group, inForeground: inForeground)
             }
             var busy: PermissionButton.Kind?
-            if case .message(.toolCall(let call)) = item, let permission = call.tool.permission {
-                busy = permissionBusy[permission.id]
+            if case .message(.toolCall(let call)) = item {
+                expanded = expandedTools.contains(call.id)
+                busy = call.tool.permission.flatMap { permissionBusy[$0.id] }
             }
             return ChatRowInput(item: item, delivery: delivery, expanded: expanded, permissionBusy: busy, style: style)
         }
@@ -252,13 +259,16 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         let inputs = makeInputs()
         let width = list.bounds.width
         let measurer = self.measurer
+        let pin = pendingPin
+        pendingPin = nil
         Task { [weak self] in
             let plans = await measurer.plans(inputs, width: width)
             guard let self else { return }
             self.measuring = false
             if self.list.bounds.width == width {
-                self.list.apply(plans, animated: true)
+                self.list.apply(plans, animated: true, pinning: pin)
             } else {
+                self.pendingPin = self.pendingPin ?? pin
                 self.needsMeasure = true
             }
             if self.needsMeasure {
@@ -303,6 +313,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             for case .workGroup(let group) in display where group.id == id {
                 groups.toggle(group, inForeground: inForeground)
             }
+            scheduleMeasure()
+        case .toggleTool(let id):
+            if expandedTools.remove(id) == nil { expandedTools.insert(id) }
+            pendingPin = id
             scheduleMeasure()
         case .openMessage(let messageId):
             push(.sessionMessage(id: sessionId, messageId: messageId), context: context)

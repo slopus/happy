@@ -6,6 +6,12 @@ import HappyWire
 // subtitle, icon and status glyph; and what goes in the card. A port of
 // ToolView.tsx's decisions and of the knownTools table (knownTools.tsx), with
 // the copy left to the UI as `ToolText`.
+//
+// One deliberate difference from happy-app: a tool's body (its view, its
+// error, its raw input and output) is collapsed by default, and only the
+// header shows. Tapping the header opens it (`ToolDisplayState.expanded`).
+// While the person has to decide something (a pending permission, a running
+// question), what they need to decide is open, but never the output.
 
 /// Copy a tool's header shows, resolved to strings by the UI (en.ts
 /// `tools.names` / `tools.desc` / `tools.askUserQuestion`).
@@ -53,6 +59,51 @@ public enum ToolViewKind: Equatable, Sendable {
         guard let kind = Self.registry[toolName] else { return nil }
         self = kind
     }
+
+    /// Whether the view draws anything for this call (several return null
+    /// for an empty input).
+    public func hasContent(_ tool: ToolCall, children: [ChatMessage]) -> Bool {
+        let input = tool.input
+        switch self {
+        case .todo:
+            return !(input["todos"]?.arrayValue ?? []).isEmpty || !(tool.result?["newTodos"]?.arrayValue ?? []).isEmpty
+        case .task:
+            return children.contains { child in
+                guard case .toolCall(let call) = child else { return false }
+                return !ChatToolDisplay.isHidden(call.tool.name)
+            }
+        case .multiEdit:
+            return !(input["edits"]?.arrayValue ?? []).isEmpty
+        case .codexDiff:
+            return input["unified_diff"]?.stringValue != nil
+        case .geminiExecute:
+            guard let title = input["toolCall"]?["title"]?.stringValue else { return false }
+            return !title.isEmpty
+        default:
+            return true
+        }
+    }
+}
+
+extension ToolPresentation.Body {
+    /// What a decision needs: the input, never the result or an error.
+    var inputOnly: ToolPresentation.Body {
+        switch self {
+        case .none, .error: .none
+        case .view(let kind, _): .view(kind, error: nil)
+        case .raw(let input, _): input.map { .raw(input: $0, output: nil) } ?? .none
+        }
+    }
+}
+
+/// What the reader has done to one tool row.
+public struct ToolDisplayState: Equatable, Sendable {
+    /// They tapped its header open.
+    public var expanded: Bool
+
+    public init(expanded: Bool = false) {
+        self.expanded = expanded
+    }
 }
 
 public struct ToolPresentation: Equatable, Sendable {
@@ -95,9 +146,16 @@ public struct ToolPresentation: Equatable, Sendable {
     public var statusGlyph: StatusGlyph?
     /// The running timer.
     public var showsElapsed: Bool
-    /// Patch tools head each file themselves; attachments have no header.
+    /// Every row has a header but an attachment.
     public var showsHeader: Bool
+    /// What shows under the header now: nothing while collapsed, unless a
+    /// decision is waiting on what it shows.
     public var body: Body
+    /// What tapping the header open shows; `.none` when there is nothing
+    /// to open, and the header opens the tool's screen instead.
+    public var expandedBody: Body
+    /// A pending permission or a running question: the input stays open.
+    public var awaitingDecision: Bool
     public var showsPermissionFooter: Bool
     /// The compact row's label.
     public var activityLabel: String
@@ -139,7 +197,9 @@ public enum ChatToolPresentation {
     static let fileEditNames: Set<String> = ["Edit", "MultiEdit", "Write"]
 
     /// `nil` for a tool that renders as nothing.
-    public static func present(_ tool: ToolCall, children: [ChatMessage] = [], context: ToolContext, words: ToolActionWords) -> ToolPresentation? {
+    public static func present(
+        _ tool: ToolCall, children: [ChatMessage] = [], context: ToolContext, state: ToolDisplayState = ToolDisplayState(), words: ToolActionWords
+    ) -> ToolPresentation? {
         let name = tool.name
         if ChatToolDisplay.isHidden(name) { return nil }
         let known = knownNames.contains(name)
@@ -196,18 +256,31 @@ public enum ChatToolPresentation {
         )
         let form: ToolPresentation.Form = compact ? .compact : name == "file" ? .inline : .card
 
-        var body = ToolPresentation.Body.none
-        if !compact {
-            let errorText = tool.state == .error && truthy(tool.result) && !stoppedByPermission ? tool.result.map(resultText) : nil
-            if let view {
-                body = .view(view, error: hideDefaultError ? nil : errorText)
-            } else if let errorText, !isToolUseError {
-                body = .error(errorText)
-            } else {
-                let input = truthy(tool.input) ? pretty(tool.input) : nil
-                let output = tool.state == .completed && truthy(tool.result) ? tool.result.map { $0.stringValue ?? pretty($0) } : nil
-                body = .raw(input: input, output: output)
-            }
+        // What ToolView draws in the card. A compact row has none in
+        // happy-app; here it opens to the same body as the card would.
+        let errorText = tool.state == .error && truthy(tool.result) && !stoppedByPermission ? tool.result.map(resultText) : nil
+        var full = ToolPresentation.Body.none
+        if let view {
+            let error = hideDefaultError ? nil : errorText
+            if view.hasContent(tool, children: children) || error != nil { full = .view(view, error: error) }
+        } else if let errorText, !isToolUseError {
+            full = .error(errorText)
+        } else {
+            let input = truthy(tool.input) ? pretty(tool.input) : nil
+            let output = tool.state == .completed && truthy(tool.result) ? tool.result.map { $0.stringValue ?? pretty($0) } : nil
+            if input != nil || output != nil { full = .raw(input: input, output: output) }
+        }
+
+        let awaitingDecision = tool.permission?.status == .pending
+            || (ChatToolDisplay.isInteractiveQuestion(name) && tool.state == .running)
+        let body: ToolPresentation.Body
+        if form == .inline || state.expanded {
+            // An attachment is the person's own picture, not tool output.
+            body = full
+        } else if awaitingDecision {
+            body = full.inputOnly
+        } else {
+            body = .none
         }
 
         let filePath = fileEditNames.contains(name) ? tool.input["file_path"]?.stringValue : nil
@@ -219,8 +292,12 @@ public enum ChatToolPresentation {
             icon: icon,
             statusGlyph: statusGlyph,
             showsElapsed: tool.state == .running,
-            showsHeader: compact || ChatToolDisplay.rendersCardHeader(name),
+            // The header is what opens and closes the body, so even a patch,
+            // which heads each file itself in happy-app, keeps it.
+            showsHeader: form != .inline,
             body: body,
+            expandedBody: form == .inline ? .none : full,
+            awaitingDecision: awaitingDecision,
             showsPermissionFooter: tool.permission != nil && name != "AskUserQuestion",
             activityLabel: ChatToolDisplay.activityLabel(tool, words: words),
             opensFile: filePath
@@ -522,7 +599,7 @@ public enum ChatToolPresentation {
     }
 
     /// `/\(([^)]+)\)$/`: the text in the parentheses that close the title.
-    static func trailingParenthesis(_ title: String) -> String? {
+    public static func trailingParenthesis(_ title: String) -> String? {
         guard title.hasSuffix(")") else { return nil }
         let body = title.dropLast()
         let tail = body.lastIndex(of: ")").map { body[body.index(after: $0)...] } ?? body

@@ -64,6 +64,8 @@ enum ChatDrawItem {
 enum ChatRowAction: Equatable, Sendable {
     case copy(String)
     case toggleGroup(String)
+    /// Open or close a tool's body, by message id.
+    case toggleTool(String)
     case openMessage(String)
     case openFile(String)
     case option(String)

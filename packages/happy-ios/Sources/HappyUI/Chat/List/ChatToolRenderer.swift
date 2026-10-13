@@ -60,13 +60,23 @@ struct ChatStackEntry {
 // MARK: Tool rows (ToolView.tsx)
 
 extension ChatRowRenderer {
-    static func toolCall(_ message: ToolCallMessage, busy: PermissionButton.Kind?, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
+    /// A tool row: its header always, its body only once the reader opens
+    /// it or while a decision needs it (`ChatToolPresentation`).
+    static func toolCall(_ message: ToolCallMessage, expanded: Bool, busy: PermissionButton.Kind?, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
         let tool = message.tool
         let context = ToolContext(root: style.root, flavor: style.flavor, compactMode: style.compactTools)
-        guard let presentation = ChatToolPresentation.present(tool, children: message.children, context: context, words: Strings.ToolGroup.words) else {
+        guard let presentation = ChatToolPresentation.present(
+            tool, children: message.children, context: context, state: ToolDisplayState(expanded: expanded), words: Strings.ToolGroup.words
+        ) else {
             return ChatRowPlan(id: message.id, size: CGSize(width: width, height: 0), items: [])
         }
-        let tap: ChatRowAction = presentation.opensFile.map(ChatRowAction.openFile) ?? .openMessage(message.id)
+        let body = toolBody(presentation.body, message: message, style: style)
+        // The header opens and closes the body. With nothing to open, or
+        // while a decision holds it open, it opens the tool's own screen.
+        let open: ChatRowAction = presentation.opensFile.map(ChatRowAction.openFile) ?? .openMessage(message.id)
+        let expandable = !presentation.awaitingDecision && presentation.expandedBody != .none
+            && (body != nil || toolBody(presentation.expandedBody, message: message, style: style) != nil)
+        let tap: ChatRowAction = expandable ? .toggleTool(message.id) : open
         let footer = presentation.showsPermissionFooter ? tool.permission.map { permissionFooter($0, tool: tool, busy: busy, flavor: style.flavor) } : nil
         let elapsed = presentation.showsElapsed ? elapsedSize : nil
         let glyph = presentation.statusGlyph.map { _ in CGSize(width: ToolCardLayout.Metrics.statusIconSize, height: ToolCardLayout.Metrics.statusIconSize) }
@@ -75,7 +85,7 @@ extension ChatRowRenderer {
             let label = MeasuredText(ChatTextStyles.compactActivity.string(presentation.activityLabel, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail), maxLines: 1)
             let layout = CompactToolRowLayout(
                 width: width, maxContentWidth: style.maxContentWidth, label: label.measurable,
-                elapsed: elapsed.map { Measurable.fixed($0) }, statusIcon: glyph, footer: footer?.measurable
+                elapsed: elapsed.map { Measurable.fixed($0) }, statusIcon: glyph, body: body?.measurable, footer: footer?.measurable
             )
             var items: [ChatDrawItem] = [
                 headerIcon(presentation.icon, frame: layout.icon),
@@ -84,6 +94,13 @@ extension ChatRowRenderer {
             if let frame = layout.elapsed { items.append(.elapsed(since: tool.createdAt, frame: frame)) }
             if let frame = layout.statusIcon, let glyph = presentation.statusGlyph { items.append(statusGlyph(glyph, frame: frame)) }
             var hits: [ChatHit] = []
+            if let body, let box = layout.bodyBox, let frame = layout.body {
+                items.append(.box(ChatBox(frame: box, fill: Palette.surfaceHigh, radius: CompactToolRowLayout.Metrics.bodyRadius)))
+                let drawn = body.draw(frame)
+                items += drawn.items
+                hits += drawn.hits
+                hits.append(ChatHit(frame: box, action: open))
+            }
             if let footer, let frame = layout.footer {
                 let drawn = footer.draw(frame)
                 items += drawn.items
@@ -109,7 +126,6 @@ extension ChatRowRenderer {
             }
             header = ToolCardLayout.Header(title: title!.measurable, description: subtitle?.measurable, elapsed: elapsed.map { Measurable.fixed($0) }, statusIcon: glyph)
         }
-        let body = toolBody(presentation.body, message: message, style: style)
         let layout = ToolCardLayout(.init(
             width: width, maxContentWidth: style.maxContentWidth, header: header,
             body: body?.measurable, footer: footer?.measurable, inline: presentation.form == .inline
@@ -137,7 +153,8 @@ extension ChatRowRenderer {
         if let body, let frame = layout.body {
             let drawn = body.draw(place(frame))
             items += drawn.items
-            hits = drawn.hits + hits
+            // The opened body leads to the tool's screen.
+            hits = drawn.hits + hits + [ChatHit(frame: place(frame), action: open)]
         }
         if let footer, let frame = layout.footer {
             let drawn = footer.draw(place(frame))
@@ -188,34 +205,124 @@ extension ChatRowRenderer {
 
     // MARK: Card bodies
 
+    /// The body's pieces, or nil when they draw nothing.
     static func toolBody(_ body: ToolPresentation.Body, message: ToolCallMessage, style: ChatRowStyle) -> ChatPiece? {
+        var entries: [ChatStackEntry] = []
         switch body {
         case .none:
-            return nil
+            break
         case .error(let text):
-            return .stack([toolError(text)])
+            entries.append(toolError(text))
         case .raw(let input, let output):
-            var entries: [ChatStackEntry] = []
             if let input { entries.append(section(Strings.Tools.input, codeView(input))) }
             if let output { entries.append(section(Strings.Tools.output, codeView(output))) }
-            return .stack(entries)
         case .view(let kind, let error):
-            var entries: [ChatStackEntry] = []
             if let view = toolView(kind, message: message, style: style) { entries.append(view) }
             if let error { entries.append(toolError(error)) }
-            return .stack(entries)
         }
+        return entries.isEmpty ? nil : .stack(entries)
     }
 
     /// The tool's own view. Diffs, questions and attachments are drawn by
-    /// views still to come; until then their cards show the header alone.
+    /// views still to come; until then those rows have nothing to open.
     static func toolView(_ kind: ToolViewKind, message: ToolCallMessage, style: ChatRowStyle) -> ChatStackEntry? {
         switch kind {
         case .todo: todoView(message.tool)
         case .exitPlan: exitPlanView(message.tool)
         case .task: taskView(message.children)
+        case .bash: bashView(message.tool)
+        case .codexBash: codexBashView(message.tool, root: style.root)
+        case .geminiExecute: geminiExecuteView(message.tool)
         default: nil
         }
+    }
+
+    // MARK: Terminal views
+
+    /// BashView: the command in CommandView, with the error when it failed;
+    /// never its output (BashViewFull, on the tool's screen, has that).
+    static func bashView(_ tool: ToolCall) -> ChatStackEntry? {
+        guard let command = tool.input["command"]?.stringValue ?? ChatToolDisplay.stringifyCommand(tool.input["command"]) else { return nil }
+        let error = tool.state == .error ? tool.result?.stringValue : nil
+        return section(nil, commandView(command, error: error))
+    }
+
+    /// CodexBashView: a read or a write as what it does to which file;
+    /// anything else as a command.
+    static func codexBashView(_ tool: ToolCall, root: String?) -> ChatStackEntry? {
+        let first = tool.input["parsed_cmd"]?.arrayValue?.first
+        let type = first?["type"]?.stringValue
+        let command = first?["cmd"]?.stringValue
+        if let type, type == "read" || type == "write", let name = first?["name"]?.stringValue, !name.isEmpty {
+            let path = ChatToolPresentation.resolvePath(name, root: root)
+            let label = MeasuredText(ChatTextStyles.toolOperation.string(type == "read" ? Strings.Tools.readingFile(path) : Strings.Tools.writingFile(path), color: Palette.text))
+            let glyph = CGSize(width: 18, height: 18)
+            let icon: Icon = type == "read" ? .octicons("eye") : .octicons("file-diff")
+            let row = ChatPiece(measurable: Measurable { ChatAccessoryRowLayout(width: $0, leading: glyph, text: label.measurable).size }) { frame in
+                let layout = ChatAccessoryRowLayout(width: frame.width, leading: glyph, text: label.measurable)
+                let text = layout.text.offsetBy(dx: frame.minX, dy: frame.minY)
+                return ([
+                    .icon(icon, size: 18, frame: layout.leading!.offsetBy(dx: frame.minX, dy: frame.minY), tint: Palette.textSecondary),
+                    .text(label.layout(for: text), text),
+                ], [])
+            }
+            var entries = [ChatStackEntry(piece: row)]
+            if let command {
+                let text = MeasuredText(ChatTextStyles.toolOperationCommand.string(command, color: Palette.textSecondary, lineBreakMode: .byCharWrapping))
+                entries.append(ChatStackEntry(piece: .text(text), marginTop: 8))
+            }
+            let box = ChatStackEntry(
+                piece: .stack(entries), padding: LayoutInsets(top: 12, left: 12, bottom: 12, right: 12),
+                background: ChatBox(frame: .zero, fill: Palette.surfaceHigh, radius: 8)
+            )
+            return section(nil, .stack([box]))
+        }
+        let display = command ?? ChatToolDisplay.stringifyCommand(tool.input["command"]) ?? ""
+        let error = tool.state == .error ? tool.result?.stringValue : nil
+        return section(nil, commandView(display, error: error))
+    }
+
+    /// GeminiExecuteView: the command, then where it ran and why.
+    static func geminiExecuteView(_ tool: ToolCall) -> ChatStackEntry? {
+        guard let title = tool.input["toolCall"]?["title"]?.stringValue, !title.isEmpty else { return nil }
+        var command = title
+        if let bracket = title.range(of: " ["), bracket.lowerBound > title.startIndex { command = String(title[..<bracket.lowerBound]) }
+        var entries = [section(nil, codeView(command))]
+        var info: [ChatStackEntry] = []
+        if let open = title.range(of: "[current working directory "), let close = title[open.upperBound...].firstIndex(of: "]") {
+            let cwd = String(title[open.upperBound..<close])
+            info.append(ChatStackEntry(piece: .text(MeasuredText(ChatTextStyles.executeCwd.string("📁 \(cwd)", color: Palette.textSecondary))), marginBottom: 4))
+        }
+        if let description = ChatToolPresentation.trailingParenthesis(title) {
+            info.append(ChatStackEntry(piece: .text(MeasuredText(ChatTextStyles.executeDescription.string(description, color: Palette.textSecondary)))))
+        }
+        if !info.isEmpty {
+            entries.append(ChatStackEntry(piece: .stack(info), padding: LayoutInsets(top: 0, left: 12, bottom: 8, right: 12)))
+        }
+        return ChatStackEntry(piece: .stack(entries))
+    }
+
+    /// CommandView: a dark terminal panel, "$ " then the command, then the
+    /// error in red. Empty output is not mentioned (hideEmptyOutput).
+    static func commandView(_ command: String, error: String?) -> ChatPiece {
+        let prompt = MeasuredText(ChatTextStyles.terminalPrompt.string("$ ", color: Palette.terminalPromptGreen), maxLines: 1)
+        let text = MeasuredText(ChatTextStyles.terminalCommand.string(command, color: Palette.terminalCommand, lineBreakMode: .byCharWrapping))
+        let line = ChatPiece(measurable: Measurable { width in
+            ChatAccessoryRowLayout(width: width, leading: prompt.layout(width: width).size, text: text.measurable, gap: 0, alignment: .top).size
+        }) { frame in
+            let layout = ChatAccessoryRowLayout(width: frame.width, leading: prompt.layout(width: frame.width).size, text: text.measurable, gap: 0, alignment: .top)
+            let promptFrame = layout.leading!.offsetBy(dx: frame.minX, dy: frame.minY)
+            let textFrame = layout.text.offsetBy(dx: frame.minX, dy: frame.minY)
+            return ([.text(prompt.layout(width: frame.width), promptFrame), .text(text.layout(for: textFrame), textFrame)], [])
+        }
+        var entries = [ChatStackEntry(piece: line)]
+        if let error {
+            entries.append(ChatStackEntry(piece: .text(MeasuredText(ChatTextStyles.terminal.string(error, color: Palette.terminalError, lineBreakMode: .byCharWrapping))), marginTop: 8))
+        }
+        return .stack([ChatStackEntry(
+            piece: .stack(entries), padding: LayoutInsets(top: 16, left: 16, bottom: 16, right: 16),
+            background: ChatBox(frame: .zero, fill: Palette.terminalPanel, radius: 8)
+        )])
     }
 
     /// ToolSectionView: an optional uppercase title, then the content, 12 below.

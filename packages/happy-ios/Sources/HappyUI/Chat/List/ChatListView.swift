@@ -107,7 +107,9 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     // MARK: Updates
 
     /// Shows `newPlans` (newest first), measured at the list's width.
-    func apply(_ newPlans: [ChatRowPlan], animated: Bool) {
+    /// `pinning` is a row the reader just opened or closed: its top stays
+    /// where it is on screen.
+    func apply(_ newPlans: [ChatRowPlan], animated: Bool, pinning: String? = nil) {
         let width = newPlans.first?.size.width ?? bounds.width
         let model = ChatListLayout(width: width, heights: newPlans.map(\.size.height), newerEndHeight: newerEndHeight, olderEndHeight: olderEndHeight)
 
@@ -128,7 +130,10 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         // Never snap to the newest edge under the reader's finger or while
         // the list coasts.
         let moving = collectionView.isTracking || collectionView.isDecelerating
-        let anchor = ChatScrollAnchor.capture(layout: layout.model, ids: oldIds, visibleMinY: current, follow: !moving)
+        let pinned = pinning.flatMap { id in
+            newIds.contains(id) ? ChatScrollAnchor.pinning(id, layout: layout.model, ids: oldIds, visibleMinY: current) : nil
+        }
+        let anchor = pinned ?? ChatScrollAnchor.capture(layout: layout.model, ids: oldIds, visibleMinY: current, follow: !moving)
         let target = anchor.visibleMinY(in: model, ids: newIds, current: current, maxVisibleMinY: maxVisibleMinY(model))
 
         var deletes: [IndexPath] = []

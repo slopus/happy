@@ -175,8 +175,12 @@ public struct ToolCardLayout: Equatable, Sendable {
 ///
 ///     2
 ///     8 [icon 20] 10 label ………………… 8 [1.2s] 10 [status]   min 28, 3 padding
+///     ┌ body, once opened: surfaceHigh, 12 in, 8 down ┐       2 below the row
 ///     [permission footer]
 ///     2
+///
+/// happy-app's compact row has no body; here a tapped row opens to the
+/// same body a card would show.
 public struct CompactToolRowLayout: Equatable, Sendable {
     public enum Metrics {
         public static let marginV: CGFloat = 2
@@ -186,18 +190,26 @@ public struct CompactToolRowLayout: Equatable, Sendable {
         public static let iconSize: CGFloat = 20
         public static let gap: CGFloat = 10
         public static let elapsedMarginLeft: CGFloat = 8
+        public static let bodyMarginTop: CGFloat = 2
+        public static let bodyRadius: CGFloat = 8
     }
 
     public var size: CGSize
-    /// The tap target (it opens the tool's detail).
+    /// The tap target (it opens and closes the body).
     public var header: CGRect
     public var icon: CGRect
     public var label: CGRect
     public var elapsed: CGRect?
     public var statusIcon: CGRect?
+    /// The opened body's box, and its content inside the card padding.
+    public var bodyBox: CGRect?
+    public var body: CGRect?
     public var footer: CGRect?
 
-    public init(width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, label: Measurable, elapsed: Measurable?, statusIcon: CGSize?, footer: Measurable?) {
+    public init(
+        width: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude, label: Measurable, elapsed: Measurable?, statusIcon: CGSize?,
+        body: Measurable? = nil, footer: Measurable?
+    ) {
         typealias M = Metrics
         let (x, cardWidth) = ToolRowMetrics.cardFrame(rowWidth: width, maxContentWidth: maxContentWidth)
         var right = x + cardWidth - M.paddingH
@@ -226,6 +238,18 @@ public struct CompactToolRowLayout: Equatable, Sendable {
         self.elapsed = elapsedFrame.map { CGRect(x: $0.minX, y: centred($0.height), width: $0.width, height: $0.height) }
         self.statusIcon = statusFrame.map { CGRect(x: $0.minX, y: centred($0.height), width: $0.width, height: $0.height) }
         var y = top + headerHeight
+        if let body {
+            typealias Card = ToolCardLayout.Metrics
+            let contentWidth = max(0, cardWidth - 2 * Card.contentPaddingH)
+            let height = body.height(fitting: contentWidth)
+            y += M.bodyMarginTop
+            bodyBox = CGRect(x: x, y: y, width: cardWidth, height: Card.contentPaddingTop + height)
+            self.body = CGRect(x: x + Card.contentPaddingH, y: y + Card.contentPaddingTop, width: contentWidth, height: height)
+            y += Card.contentPaddingTop + height
+        } else {
+            bodyBox = nil
+            self.body = nil
+        }
         if let footer {
             let height = footer.height(fitting: cardWidth)
             self.footer = CGRect(x: x, y: y, width: cardWidth, height: height)
