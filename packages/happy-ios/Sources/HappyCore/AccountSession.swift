@@ -22,6 +22,12 @@ public final class AccountSession: Sendable {
     public let pairing: PairingService
     /// Archive, delete and mark read, for the session list.
     public let actions: SessionActions
+    /// The account's machine-scoped operations, sealed with each machine key.
+    public let machineActions: MachineActions
+    /// Checkout status shared by this account's sessions.
+    public let gitStatus: GitStatusSync
+    /// Starts in flight stay within this account, including their unsent text.
+    public let pendingChats = PendingChats()
     /// Socket status for the UI (connection dot in settings).
     public let statusUpdates: AsyncStream<RealtimeStatus>
 
@@ -88,6 +94,8 @@ public final class AccountSession: Sendable {
         }
         (statusUpdates, statusContinuation) = AsyncStream.makeStream(of: RealtimeStatus.self, bufferingPolicy: .bufferingNewest(1))
         self.actions = SessionActions(api: api, store: store, sync: sync, rpc: realtime)
+        self.machineActions = MachineActions(api: api, store: store, sync: sync, rpc: realtime, metadataTransport: realtime)
+        self.gitStatus = GitStatusSync(actions: actions, store: store)
     }
 
     /// Changes synced account settings (sync.ts `applySettings`).
@@ -147,9 +155,10 @@ public final class AccountSession: Sendable {
         let realtime = self.realtime
         let sync = self.sync
         let statusContinuation = self.statusContinuation
+        let gitStatus = self.gitStatus
         pump.set(Task {
             for await event in realtime.events {
-                await Self.route(event, sync: sync, status: statusContinuation)
+                await Self.route(event, sync: sync, status: statusContinuation, gitStatus: gitStatus)
             }
         })
         await realtime.connect()
@@ -157,6 +166,7 @@ public final class AccountSession: Sendable {
 
     public func stop() async {
         let task = pump.cancel()
+        await gitStatus.stop()
         await realtime.disconnect()
         await sync.stop()
         await task?.value
@@ -170,7 +180,7 @@ public final class AccountSession: Sendable {
         try? await realtime.emit("app-state", .object(["state": .string(state)]))
     }
 
-    static func route(_ event: RealtimeEvent, sync: SyncEngine, status: AsyncStream<RealtimeStatus>.Continuation) async {
+    static func route(_ event: RealtimeEvent, sync: SyncEngine, status: AsyncStream<RealtimeStatus>.Continuation, gitStatus: GitStatusSync? = nil) async {
         switch event {
         case .status(let value):
             status.yield(value)
@@ -179,6 +189,12 @@ public final class AccountSession: Sendable {
         case .event("update", let payload?):
             if let update = try? payload.decode(as: UpdateContainer.self) {
                 await sync.handle(update)
+                switch update.body {
+                case .newMessage(let id, _): await gitStatus?.invalidate(sessionId: id)
+                case .updateSession(let body): await gitStatus?.invalidate(sessionId: body.id)
+                case .deleteSession(let id): await gitStatus?.clearForSession(sessionId: id)
+                default: break
+                }
             }
         case .event("ephemeral", let payload?):
             if let ephemeral = try? payload.decode(as: EphemeralEvent.self) {

@@ -99,9 +99,16 @@ public final class LocalSettings: Sendable {
     }
 
     public func clear() {
-        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled, Keys.expandedProjects] {
+        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled, Keys.expandedProjects, Keys.registeredPushToken] {
             storage.set(nil, forKey: key)
         }
+    }
+
+    /// persistence.registered-push-token-v1, scoped to this account's local-settings suite.
+    /// Sign-out clears it so a later sign-in registers the installation again.
+    public var registeredPushToken: String? {
+        get { storage.string(forKey: Keys.registeredPushToken) }
+        set { storage.set(newValue, forKey: Keys.registeredPushToken) }
     }
 
     private enum Keys {
@@ -109,5 +116,6 @@ public final class LocalSettings: Sendable {
         static let themePreference = "themePreference"
         static let devModeEnabled = "devModeEnabled"
         static let expandedProjects = "expandedProjects"
+        static let registeredPushToken = "registered-push-token-v1"
     }
 }

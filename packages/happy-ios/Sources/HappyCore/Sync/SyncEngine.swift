@@ -65,6 +65,8 @@ public actor SyncEngine {
     private let api: HappyAPI
     private let store: LocalStore
     private let keyRing: KeyRing
+    /// This account's in-flight mode pushes, sampled by the store transaction.
+    nonisolated let modePushes = SessionModePushCounters()
     private let decoder: RecordDecoder
     private let accountCipher: AccountCipher
     private let options: Options
@@ -189,7 +191,7 @@ public actor SyncEngine {
         var maxUpdatedAt = since ?? 0
         repeat {
             let page = try await api.sessions(changedSince: changedSince, cursor: pageCursor, limit: options.sessionsPageSize)
-            try store.upsertSessions(page.sessions.map(decoder.session))
+            try store.upsertSessions(page.sessions.map(decoder.session), reconcileComposer: modePushes.reconciliation)
             for session in page.sessions {
                 seen.insert(session.id)
                 maxUpdatedAt = max(maxUpdatedAt, session.updatedAt)
@@ -328,6 +330,19 @@ public actor SyncEngine {
     public func cipher(forSession id: String) throws -> RecordCipher? {
         guard let session = try store.session(id: id) else { return nil }
         return keyRing.cipher(wrappedKey: session.dataKeyCipher)
+    }
+
+    /// The stored machine's own wrapped data key seals machine-scoped RPC.
+    public func cipher(forMachine id: String) throws -> RecordCipher? {
+        guard let machine = try store.machine(id: id) else { return nil }
+        return keyRing.cipher(wrappedKey: machine.dataKeyCipher)
+    }
+
+    /// The session data key for encrypted resume fallback to its owning machine.
+    /// Missing or legacy keys return nil; the account master secret never leaves.
+    public func sessionDataKey(forSession id: String) throws -> Data? {
+        guard let session = try store.session(id: id) else { return nil }
+        return keyRing.dataKey(wrappedKey: session.dataKeyCipher)
     }
 
     // MARK: Outbox
@@ -683,7 +698,7 @@ public actor SyncEngine {
 
         case .newSession(let body):
             guard let row = body.asSession else { return .sessions }
-            try store.upsertSessions([decoder.session(row)])
+            try store.upsertSessions([decoder.session(row)], reconcileComposer: modePushes.reconciliation)
             return row.projectId == nil ? nil : .projects
 
         case .updateSession(let body):
@@ -693,7 +708,8 @@ public actor SyncEngine {
                 id: body.id,
                 metadata: decoder.versioned(body.metadata, cipher: cipher),
                 agentState: decoder.versioned(body.agentState, cipher: cipher),
-                projectId: body.projectId
+                projectId: body.projectId,
+                reconcileComposer: modePushes.reconciliation
             )
             return body.projectId == nil ? nil : .projects
 

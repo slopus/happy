@@ -22,6 +22,6 @@ extension AccountSession {
     /// OPS SEAM: `MachineActions` is built here until the Ops workstream
     /// puts one on `AccountSession`; then this returns that one.
     public var homeOps: any HomeOps {
-        MachineActions(api: api, store: store, sync: sync, rpc: realtime, metadataTransport: realtime)
+        machineActions
     }
 }
