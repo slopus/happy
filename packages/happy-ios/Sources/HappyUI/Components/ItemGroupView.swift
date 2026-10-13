@@ -138,9 +138,14 @@ public final class GroupedListView: UIScrollView {
         fatalError("init(coder:) is not supported")
     }
 
+    /// Sections in both lists stay where they are, so a screen that swaps
+    /// one group doesn't take the others off the window and back.
     private func installSections(replacing old: [UIView]) {
-        for section in old where section.superview === self { section.removeFromSuperview() }
-        for section in sections { addSubview(section) }
+        let kept = Set(sections.map(ObjectIdentifier.init))
+        for section in old where section.superview === self && !kept.contains(ObjectIdentifier(section)) {
+            section.removeFromSuperview()
+        }
+        for section in sections where section.superview !== self { addSubview(section) }
         setNeedsLayout()
     }
 
