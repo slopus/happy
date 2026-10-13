@@ -22,6 +22,9 @@ public final class LocalStore: Sendable {
     let homeObservation: SharedValueObservation<HomeSnapshot>
     let settingsObservation: SharedValueObservation<SettingsSnapshot>
     let machinesObservation: SharedValueObservation<MachinesSnapshot>
+    let homeHub: SnapshotHub<HomeSnapshot>
+    let machinesHub: SnapshotHub<MachinesSnapshot>
+    let presenceOverlay: PresenceOverlay
 
     /// Opens (creating if needed) the store at `url`, in WAL mode so the UI
     /// can read while sync writes.
@@ -63,6 +66,10 @@ public final class LocalStore: Sendable {
         machinesObservation = ValueObservation.trackingConstantRegion { db in
             try Self.fetchMachinesSnapshot(db)
         }.removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))
+        let overlay = PresenceOverlay()
+        presenceOverlay = overlay
+        homeHub = SnapshotHub(observation: homeObservation, project: { overlay.home($0) })
+        machinesHub = SnapshotHub(observation: machinesObservation, project: { overlay.machineSnapshot($0) })
         try Schema.migrator.migrate(writer)
         // Live state from a previous run is stale: the server re-sends
         // `thinking` every few seconds while it holds, and an archive that
@@ -881,6 +888,9 @@ public struct HomeSnapshot: Equatable, Sendable {
     public var settings: SettingsSnapshot
     /// A successful list fetch has completed, including an empty first list.
     public var sessionsSynced: Bool
+    /// Updated only when disconnected last-seen text crosses its display
+    /// granularity. Consumers use this clock when deriving status text.
+    public var presenceNow: Int64?
 
     public init(machines: MachinesSnapshot, sessions: [SessionRecord], projects: [ProjectRecord] = [], settings: SettingsSnapshot = SettingsSnapshot(), sessionsSynced: Bool = false) {
         self.machines = machines
@@ -888,6 +898,7 @@ public struct HomeSnapshot: Equatable, Sendable {
         self.projects = projects
         self.settings = settings
         self.sessionsSynced = sessionsSynced
+        self.presenceNow = nil
     }
 }
 
