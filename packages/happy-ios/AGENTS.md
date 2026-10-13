@@ -113,6 +113,64 @@ nothing here is wired to the release skill or to EAS.
   decide stays open, but never the output. The synced `compactToolCalls`
   setting is untouched: it still picks a compact row or a card. Decided in
   `ChatToolPresentation` (`ToolDisplayState`).
+- **Push notifications follow happy-app's iPhone behaviour**
+  (`sync/pushRegistration.ts`, `app/_layout.tsx`). They are wired in
+  `Sources/HappyApp/PushNotifications.swift`, and the logic lives in
+  `Core/Push/`.
+  - **Registration.** The server sends through Expo, so the app registers
+    an Expo token. `ExpoDevicePushTokenSource` exchanges the APNs bytes
+    together with three other inputs:
+    - expo-notifications' installation id (`ExpoInstallationID`), read from
+      the RN build's own Keychain item and never replaced;
+    - the APNs environment from `embedded.mobileprovision`
+      (`ProvisioningProfile`);
+    - the bundle id.
+  - **When it syncs.** `PushTokenSync` ports `pushTokenSync`. It runs when
+    the active account's session starts (sign-in, restore, switch, or the
+    next account taking over after a sign-out) and on every
+    app-became-active. It asks for permission while iOS still can, so the
+    first sign-in prompts. Runs coalesce like `InvalidateSync`.
+  - **Several accounts.** Only the active account registers, and its
+    `LocalSettings` caches the token: each account change builds a new
+    `TokenPushRegistration` and sets `SettingsHooks.pushRegistration`.
+    Switching never unregisters, so every signed-in account keeps
+    notifying. Sign-out removes the token from that account's own server
+    with that account's own credentials, as `AuthContext.tsx` `logout`
+    does, but never from a server the user hasn't confirmed.
+  - **Presentation.** In the foreground a push only sets the badge and goes
+    in the list. When the app is inactive or in the background, it shows
+    in full.
+  - **Opening.** A tap (default action only, once per request id) reads
+    `sessionId`, or a `url` naming `/session/<id>`, from the payload's
+    `body`, then calls `AppCoordinator.openSession(fromNotification:)`:
+    - if another signed-in account's store holds the session
+      (`AccountController.accountHoldingSession`), the app switches to that
+      account first;
+    - if no store holds it, it opens in the active account;
+    - the stack becomes home, then the chat, unless that chat is already
+      on top.
+
+    A tap that launches the app waits for the stored account. One that
+    needs a switch also waits for the restored account's first sync, which
+    holds the account controller.
+  - **Deliberate differences from happy-app:**
+    - happy-app's backoff retries the server calls forever. Here each sync
+      makes one registration attempt, and the next session start or
+      foreground tries again.
+    - The sign-out unregister is one attempt capped at 5 seconds, where
+      happy-app holds logout until the server answers.
+    - Concurrent APNs requests share one callback, where expo rejects the
+      older request.
+    - Expo's background re-registration when APNs rotates the token is not
+      ported; the next foreground registers the new token.
+    - Opening an already visible chat does nothing, where happy-app pushes
+      a second copy.
+    - The background-send watchdog's local notifications don't exist (see
+      Offline first).
+  - **Signing.** All three variants have `aps-environment` "development"
+    and the `remote-notification` background mode, as the RN app's
+    expo-notifications plugin writes them. Distribution signing swaps in
+    the profile's "production".
 - **Onboarding follows happy-app step by step.** Signed in, home decides
   from the stored machines (`HomeState`, after happy-app's
   `shouldShowFirstRunInstall` and `resolveHomeEmptyState`):
@@ -303,7 +361,7 @@ the observed session projection. Equal visible snapshots are not re-emitted.
 | `HappyLayout` | all | Pure layout functions, design tokens, the wordmark's vector paths. |
 | `HappyIcons` | all | happy-app's icon fonts as generated vector outlines, looked up by RN name (`Icon.ionicons("chevron-forward")`). |
 | `HappyUI` | iOS (UIKit) | Views, screens and the coordinator. Wrapped in `#if canImport(UIKit)`. |
-| `HappyApp` | iOS | `@main` AppDelegate, SceneDelegate and the composition root. |
+| `HappyApp` | iOS | `@main` AppDelegate, SceneDelegate, the composition root and push notifications. |
 
 Products:
 
@@ -434,6 +492,7 @@ change a file another workstream owns, ask the coordinator.
 | Sending | `Core/Chat/` sending and attachments, the outbox in `SyncEngine` and `LocalStore`, `HappyStore` schema |
 | Reducer | `Core/Chat/` reducer and `ChatFeed`, `HappyWire` session-protocol decoding |
 | Ops | `Core/Sessions/` RPC operations (`sync/ops.ts`) |
+| Push | `Sources/HappyApp/PushNotifications.swift`, `Core/Push/` routing, installation id, APNs source and token sync, the entitlements, `AppCoordinator.openSession(fromNotification:)` |
 
 Shared seams, changed only through the coordinator:
 
@@ -497,7 +556,8 @@ To keep parallel work from colliding:
   form first.
 - Text sizes are fixed. Dynamic Type scaling, which RN applies by default,
   is not wired yet.
-- Not verified anywhere yet: a run in the simulator or on a device,
+- Not verified anywhere yet: push delivery, presentation and taps,
+  a run in the simulator or on a device,
   `HappyUIKitTests` (built, never run), and a real in-place upgrade from an
   RN build.
 - Accounts import: the real-device MMKV path and decoding still need an

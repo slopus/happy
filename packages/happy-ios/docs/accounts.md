@@ -73,6 +73,18 @@ the remaining moves. Per-account local defaults use
 Logout publishes the new navigation root before erasing the old store and
 deleting its directory; lingering store references then read empty data.
 
+Push notifications register only the active account, caching its token in
+that account's local settings. Switching never unregisters, so every
+signed-in account keeps notifying. `signOut(accountID:)` first removes the
+account's cached token from the account's own server, using its own
+credentials: one attempt, capped at 5 seconds, with any failure ignored and
+nothing sent to an unconfirmed server. The settings are cleared afterwards.
+
+`accountHoldingSession(_:)` finds which account a tapped notification
+belongs to. It checks the active store first, then the other confirmed
+accounts in added order. Inactive stores are opened with GRDB's read-only
+configuration, as profile recovery does.
+
 Linux tests cover the rollback matrix, item updates, missing/corrupt registry,
 locked Keychain, separate caches/settings/servers, active-account restore,
 socket shutdown, SQLite migration, interrupted sidecar migration, cancellation,

@@ -113,6 +113,37 @@ public final class AccountController {
         }
     }
 
+    /// The signed-in account whose store holds `sessionId`, so a tapped
+    /// notification opens in the account it came from: the active account
+    /// first, then the others in added order. Inactive stores are read with
+    /// GRDB's read-only configuration, like `AccountDisplay.read`. Accounts
+    /// waiting for server confirmation have no session to open and are
+    /// skipped. Nil when no store holds it.
+    public func accountHoldingSession(_ sessionId: String) -> AccountSummary.ID? {
+        if let session, (try? session.store.session(id: sessionId)) != nil {
+            return session.keys.anonID
+        }
+        let others = registry.entries
+            .filter { $0.serverConfirmed && $0.id != session?.keys.anonID }
+            .sorted { $0.addedOrder < $1.addedOrder }
+        for entry in others {
+            if let store = memoryStores[entry.id] {
+                if (try? store.session(id: sessionId)) != nil { return entry.id }
+                continue
+            }
+            guard let directory = storeDirectory else { continue }
+            let url = AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("store.sqlite")
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            var configuration = Configuration()
+            configuration.readonly = true
+            let found = try? DatabaseQueue(path: url.path, configuration: configuration).read { db in
+                try SessionRecord.exists(db, key: sessionId)
+            }
+            if found == true { return entry.id }
+        }
+        return nil
+    }
+
     /// Presents onboarding without logging out. Cancel leaves the current
     /// account and session intact. signIn adds and activates the result.
     public func beginAddingAccount() { isAddingAccount = true }
@@ -228,6 +259,7 @@ public final class AccountController {
         defer { busy = false }
         let values = try reconcile()
         guard let entry = registry.entries.first(where: { $0.id == id }) else { throw AccountSwitchError.unknownAccount }
+        await unregisterPushToken(of: entry, credentials: values[id]?.credentials)
         var updated = registry
         updated.entries.removeAll { $0.id == id }
         let wasActive = session.map { $0.keys.anonID == id } ?? (registry.activeID == id)
@@ -293,6 +325,26 @@ public final class AccountController {
         memoryStores.removeValue(forKey: id)
         if wasActive { await next?.start() }
         if let cleanupError { throw cleanupError }
+    }
+
+    /// How long sign-out waits for the push token's removal.
+    static let pushUnregisterTimeout: Duration = .seconds(5)
+
+    /// AuthContext.tsx `logout`: the token this device registered for the
+    /// account is removed from that account's own server before its
+    /// credentials go, and a failure is ignored. One attempt, bounded, where
+    /// happy-app's backoff retries forever and holds logout until the
+    /// server answers. Never sent for an unconfirmed server.
+    private func unregisterPushToken(of entry: AccountRegistryEntry, credentials: Credentials?) async {
+        guard entry.serverConfirmed, let credentials, let token = settings(for: entry.id).registeredPushToken else { return }
+        let api = HappyAPI(serverURL: entry.serverURL, clientID: clientID, transport: transport, token: credentials.token)
+        let timeout = Self.pushUnregisterTimeout
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { try? await api.unregisterPushToken(token) }
+            group.addTask { try? await Task.sleep(for: timeout) }
+            await group.next()
+            group.cancelAll()
+        }
     }
 
     private var nextOrder: Int { (registry.entries.map(\.addedOrder).max() ?? -1) + 1 }

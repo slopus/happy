@@ -24,7 +24,9 @@ import HappyWire
 final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComposerDelegate {
     private let context: AppContext
     private let account: AccountSession
-    private let sessionId: String
+    /// Read by `AppCoordinator` to skip reopening the chat a tapped
+    /// notification names when it is already on top.
+    let sessionId: String
     private let services: ChatServices
 
     private let list = ChatListView()

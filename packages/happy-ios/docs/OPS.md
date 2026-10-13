@@ -94,6 +94,11 @@ CompositionRoot must supply:
   current-device identity across relaunch, then register against that account's
   API when APNs provides a token and when the active account changes.
 
+`Sources/HappyApp/PushNotifications.swift` supplies all of the above. It
+uses `ExpoDevicePushTokenSource`, `ExpoInstallationID`, `ProvisioningProfile`,
+`APNsTokenSource` and `PushTokenSync`; AGENTS.md, "Push notifications",
+describes the behaviour.
+
 Linux tests pin the exchange body and nested response, authenticated push API,
 encrypted RPC scopes and payloads, mode conflict handling and atomic observation,
 git parsing, and ordered pending-chat handover. Device notification delivery,

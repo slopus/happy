@@ -90,7 +90,7 @@ accident.
 - [x] Agents: machines and agent defaults (`settings/agents.tsx`) — Settings
 - [x] Connect Claude (`settings/connect/claude.tsx`) — Settings. Diverges on purpose: the command is in the text colour, because happy-app's white-on-transparent card vanishes in light mode.
 - [x] What's new (`changelog.tsx`) — Settings
-- [~] Push notification settings and registration (`apiPush.ts`) — Settings + Ops (settings rows done; APNs registration is Ops)
+- [x] Push notification settings and registration (`apiPush.ts`) — Settings + Ops + Push. The rows read the active account's registration (`SettingsHooks.pushRegistration`).
 - [x] Synced settings model with pending deltas (`AccountSettings`, `SyncEngine.pushSettings`)
 
 ## Platform
@@ -106,4 +106,5 @@ accident.
 - [x] Light and dark theme switching (`themePreference`) — Icons
 - [ ] Dynamic Type — unassigned
 - [ ] iPad layout (sidebar + detail) — unassigned
-- [ ] Push notifications (APNs registration, open from a notification) — Ops
+- [x] Push notifications (APNs registration, open from a notification) — Ops + Push. See AGENTS.md, "Push notifications".
+  - Delivery, foreground presentation and taps are untested on a device or simulator; the routing, registration, installation id and signing-environment logic is tested on Linux.

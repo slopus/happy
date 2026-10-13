@@ -24,6 +24,9 @@ public struct KeychainItemQuery: Equatable, Hashable, Sendable {
 public enum KeychainAccessibility: Equatable, Sendable {
     /// kSecAttrAccessibleWhenUnlocked, expo's default.
     case whenUnlocked
+    /// kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly, expo-notifications'
+    /// installation id (`ExpoInstallationID`).
+    case afterFirstUnlockThisDeviceOnly
 }
 
 public enum KeychainAddResult: Equatable, Sendable {
@@ -246,6 +249,7 @@ public struct SecurityKeychainBackend: AccountKeychainBackend {
         attributes[kSecValueData as String] = data
         switch accessibility {
         case .whenUnlocked: attributes[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
+        case .afterFirstUnlockThisDeviceOnly: attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
         }
         let status = SecItemAdd(attributes as CFDictionary, nil)
         switch status {
