@@ -44,7 +44,7 @@ public enum UserMessageEncoder {
     ) throws -> JSONValue {
         var meta: [String: JSONValue] = ["sentFrom": .string(sentFrom)]
         let metadata = session.metadata ?? .object([:])
-        if isRig(metadata), metadata["capabilities"]?["messageReceipts"]?.boolValue == true {
+        if SessionMetadata.sendsMessageReceipts(metadata) {
             let requests = !(session.agentState?["requests"]?.objectValue ?? [:]).isEmpty
             let questions = (session.agentState?["communications"]?.objectValue ?? [:]).contains { id, communication in
                 if let completed = session.agentState?["completedCommunications"]?[id],
@@ -77,7 +77,7 @@ public enum UserMessageEncoder {
     }
 
     public static func isRig(_ metadata: JSONValue) -> Bool {
-        metadata["client"]?["id"]?.stringValue == "rig" && (metadata["rigMetadataVersion"]?.numberValue ?? 0) >= 1
+        SessionMetadata.isRigV1(metadata)
     }
 
     static func modeMeta(metadata m: JSONValue, composer c: JSONValue, settings: JSONValue?) throws -> [String: JSONValue] {

@@ -23,6 +23,18 @@ extension SessionRecord {
         metadata?["client"]?["id"]?.stringValue == "rig"
     }
 
+    /// A Happy Agent session on rig metadata v1 or later (rig.ts
+    /// `isRigMetadataV1`).
+    public var isRigV1: Bool {
+        SessionMetadata.isRigV1(metadata)
+    }
+
+    /// The agent confirms each user message it takes into context
+    /// (rig.ts `rigSendsMessageReceipts`).
+    public var sendsMessageReceipts: Bool {
+        SessionMetadata.sendsMessageReceipts(metadata)
+    }
+
     /// storage.ts `isSessionArchived`, without the local in-flight archive:
     /// archived by its lifecycle, or any other session that is not active.
     public var isArchivedOnServer: Bool {
@@ -32,5 +44,19 @@ extension SessionRecord {
     /// Archived, or being archived from this device.
     public var isArchived: Bool {
         archiving || isArchivedOnServer
+    }
+}
+
+/// Checks on decrypted session metadata, for code that holds only the
+/// metadata (the chat feed's projection, the message encoder).
+public enum SessionMetadata {
+    /// rig.ts `isRigMetadataV1`.
+    public static func isRigV1(_ metadata: JSONValue?) -> Bool {
+        metadata?["client"]?["id"]?.stringValue == "rig" && (metadata?["rigMetadataVersion"]?.numberValue ?? 0) >= 1
+    }
+
+    /// rig.ts `rigSendsMessageReceipts`.
+    public static func sendsMessageReceipts(_ metadata: JSONValue?) -> Bool {
+        isRigV1(metadata) && metadata?["capabilities"]?["messageReceipts"]?.boolValue == true
     }
 }

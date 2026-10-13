@@ -10,8 +10,14 @@ public final class AccountSession: Sendable {
     public let keys: AccountKeys
     public let api: HappyAPI
     public let store: LocalStore
+    /// The account's own `files/` directory (copied attachments). Accounts
+    /// without a store directory (in-memory, tests) get a temporary one.
+    public let filesDirectory: URL
     public let sync: SyncEngine
+    /// Sends chat messages through the outbox.
     public let sender: OutboxSender
+    /// The chat of any session, from this account's store.
+    public let chatFeed: LocalChatFeed
     public let realtime: SocketIOClient
     public let pairing: PairingService
     /// Archive, delete and mark read, for the session list.
@@ -28,20 +34,25 @@ public final class AccountSession: Sendable {
         public var transport: HTTPTransport
         public var connector: WebSocketConnector
         public var appState: @Sendable () async -> String
-        public var deliveryActivity: @Sendable (Bool) async -> Void = { _ in }
+        /// Called with true before an upload or post and false after it, so
+        /// the app can keep a send alive in the background (see
+        /// `SyncEngine.Options.deliveryActivity`).
+        public var deliveryActivity: @Sendable (Bool) async -> Void
 
         public init(
             serverURL: URL,
             clientID: String,
             transport: HTTPTransport,
             connector: WebSocketConnector = URLSessionWebSocketConnector(),
-            appState: @escaping @Sendable () async -> String = { "active" }
+            appState: @escaping @Sendable () async -> String = { "active" },
+            deliveryActivity: @escaping @Sendable (Bool) async -> Void = { _ in }
         ) {
             self.serverURL = serverURL
             self.clientID = clientID
             self.transport = transport
             self.connector = connector
             self.appState = appState
+            self.deliveryActivity = deliveryActivity
         }
     }
 
@@ -50,14 +61,15 @@ public final class AccountSession: Sendable {
         self.credentials = credentials
         self.keys = try AccountKeys(secret: secret)
         self.store = store
+        self.filesDirectory = filesDirectory ?? FileManager.default.temporaryDirectory
+            .appendingPathComponent("happy-files-\(keys.anonID)", isDirectory: true)
         self.api = HappyAPI(serverURL: dependencies.serverURL, clientID: dependencies.clientID, transport: dependencies.transport)
             .authenticated(token: credentials.token)
         var syncOptions = SyncEngine.Options()
         syncOptions.deliveryActivity = dependencies.deliveryActivity
         self.sync = SyncEngine(api: api, store: store, keys: keys, options: syncOptions)
-        let accountFiles = filesDirectory ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("Happy/accounts/\(keys.anonID)/files", isDirectory: true)
-        self.sender = OutboxSender(store: store, sync: sync, filesDirectory: accountFiles)
+        self.sender = OutboxSender(store: store, sync: sync, filesDirectory: self.filesDirectory)
+        self.chatFeed = LocalChatFeed(store: store)
         self.pairing = PairingService(api: api, keys: keys)
 
         guard let socketURL = SocketIOURL.make(serverURL: dependencies.serverURL) else {
@@ -103,7 +115,29 @@ public final class AccountSession: Sendable {
     /// The store file for an account. Named by the account's analytics id so
     /// two accounts on one device can never read each other's data.
     public static func storeURL(directory: URL, keys: AccountKeys) -> URL {
-        directory.appendingPathComponent("happy-\(keys.anonID).sqlite")
+        accountDirectory(directory: directory, id: keys.anonID).appendingPathComponent("store.sqlite")
+    }
+
+    public static func accountDirectory(directory: URL, id: String) -> URL {
+        directory.appendingPathComponent("accounts", isDirectory: true).appendingPathComponent(id, isDirectory: true)
+    }
+
+    /// Move sidecars before the database, which is the migration's commit
+    /// marker. Retrying an interrupted migration completes the remaining moves.
+    public static func prepareDirectory(directory: URL, id: String) throws {
+        let manager = FileManager.default
+        let target = accountDirectory(directory: directory, id: id)
+        try manager.createDirectory(at: target.appendingPathComponent("files", isDirectory: true), withIntermediateDirectories: true)
+        let old = directory.appendingPathComponent("happy-\(id).sqlite")
+        let new = target.appendingPathComponent("store.sqlite")
+        guard manager.fileExists(atPath: old.path), !manager.fileExists(atPath: new.path) else { return }
+        for suffix in ["-wal", "-shm", ""] {
+            let source = URL(fileURLWithPath: old.path + suffix)
+            let destination = URL(fileURLWithPath: new.path + suffix)
+            if manager.fileExists(atPath: source.path), !manager.fileExists(atPath: destination.path) {
+                try manager.moveItem(at: source, to: destination)
+            }
+        }
     }
 
     /// Shows local data immediately; sync and the socket catch up behind it.
@@ -122,9 +156,10 @@ public final class AccountSession: Sendable {
     }
 
     public func stop() async {
-        pump.cancel()
+        let task = pump.cancel()
         await realtime.disconnect()
         await sync.stop()
+        await task?.value
         statusContinuation.finish()
     }
 
@@ -167,11 +202,12 @@ private final class PumpHolder: @unchecked Sendable {
         previous?.cancel()
     }
 
-    func cancel() {
+    func cancel() -> Task<Void, Never>? {
         lock.lock()
         let task = self.task
         self.task = nil
         lock.unlock()
         task?.cancel()
+        return task
     }
 }

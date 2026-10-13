@@ -19,9 +19,16 @@ enum CompositionRoot {
             credentialStore: SecureStoreCredentialStore(backend: SecurityKeychainBackend()),
             storeDirectory: storeDirectory(),
             localSettings: UserDefaultsStore(suiteName: LocalSettings.storageSuite),
+            accountCredentialStore: KeychainAccountCredentialStore(backend: SecurityKeychainBackend()),
+            localSettingsFactory: { UserDefaultsStore(suiteName: LocalSettings.storageSuite(accountID: $0)) },
             appState: {
                 await MainActor.run {
                     UIApplication.shared.applicationState == .background ? "background" : "active"
+                }
+            },
+            deliveryActivity: { active in
+                await MainActor.run {
+                    if active { DeliveryLease.shared.acquire() } else { DeliveryLease.shared.release() }
                 }
             }
         )
@@ -46,6 +53,36 @@ enum CompositionRoot {
             return nil
         }
         return directory
+    }
+}
+/// One background task for however many sends are in flight, so a send
+/// that started in the foreground can finish after the app is backgrounded.
+/// New sends don't start while backgrounded (`SyncEngine.setBackgrounded`).
+@MainActor
+final class DeliveryLease {
+    static let shared = DeliveryLease()
+    private var count = 0
+    private var task: UIBackgroundTaskIdentifier = .invalid
+
+    func acquire() {
+        count += 1
+        guard task == .invalid else { return }
+        task = UIApplication.shared.beginBackgroundTask(withName: "happy.delivery") { [weak self] in
+            // Out of time: iOS ends the task; the outbox retries the send
+            // on the next launch or foreground.
+            self?.end()
+        }
+    }
+
+    func release() {
+        count = max(0, count - 1)
+        if count == 0 { end() }
+    }
+
+    private func end() {
+        guard task != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(task)
+        task = .invalid
     }
 }
 #endif

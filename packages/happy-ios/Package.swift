@@ -57,7 +57,10 @@ let package = Package(
         ),
         .target(
             name: "HappyCore",
-            dependencies: ["HappyCrypto", "HappyWire", "HappyStore"]
+            dependencies: [
+                "HappyCrypto", "HappyWire", "HappyStore",
+                .product(name: "GRDB", package: "GRDB.swift"),
+            ]
         ),
         .target(
             // Foundation only, no UIKit: sizes in, frames out.

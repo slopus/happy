@@ -30,8 +30,15 @@ public struct Credentials: Codable, Equatable, Sendable {
 /// `SecureStoreCredentialStore`; tests use `InMemoryCredentialStore`.
 public protocol CredentialStore: Sendable {
     func load() throws -> Credentials?
+    /// Distinguishes an empty slot from an occupied item that this version
+    /// cannot parse. Keychain stores inspect raw presence for this check.
+    func isEmpty() throws -> Bool
     func save(_ credentials: Credentials) throws
     func clear() throws
+}
+
+public extension CredentialStore {
+    func isEmpty() throws -> Bool { try load() == nil }
 }
 
 public final class InMemoryCredentialStore: CredentialStore, @unchecked Sendable {

@@ -180,6 +180,13 @@ public struct SecureStoreCredentialStore: CredentialStore {
         return CredentialsJSON.decode(json)
     }
 
+    public func isEmpty() throws -> Bool {
+        for query in Self.item.readOrder {
+            if try backend.copyData(query) != nil { return false }
+        }
+        return true
+    }
+
     public func save(_ credentials: Credentials) throws {
         try Self.item.write(CredentialsJSON.encode(credentials), to: backend)
     }
@@ -194,8 +201,32 @@ import Security
 
 /// The real Keychain. Queries carry no access group, so they resolve to the
 /// app's default group (team id + bundle id), the same one the RN build used.
-public struct SecurityKeychainBackend: KeychainBackend {
+public struct SecurityKeychainBackend: AccountKeychainBackend {
     public init() {}
+
+    public func accounts(service: String) throws -> [String] {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: service,
+            kSecMatchLimit as String: kSecMatchLimitAll,
+            kSecReturnAttributes as String: kCFBooleanTrue,
+        ]
+        var result: CFTypeRef?
+        let status = SecItemCopyMatching(query as CFDictionary, &result)
+        if status == errSecItemNotFound { return [] }
+        guard status == errSecSuccess else { throw KeychainStatusError(status) }
+        let items = result as? [[String: Any]] ?? []
+        return items.compactMap { item in
+            if let string = item[kSecAttrAccount as String] as? String { return string }
+            if let data = item[kSecAttrAccount as String] as? Data { return String(data: data, encoding: .utf8) }
+            return nil
+        }
+    }
+
+    public func removeAccount(_ query: KeychainItemQuery) throws {
+        let status = SecItemDelete(Self.attributes(query) as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else { throw KeychainStatusError(status) }
+    }
 
     public func copyData(_ query: KeychainItemQuery) throws -> Data? {
         var attributes = Self.attributes(query)

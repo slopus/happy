@@ -46,6 +46,10 @@ public enum ThemePreference: String, CaseIterable, Sendable {
 public final class LocalSettings: Sendable {
     public static let storageSuite = "local-settings"
 
+    public static func storageSuite(accountID: String) -> String {
+        "happy-ios.local-settings.\(accountID)"
+    }
+
     private let storage: KeyValueStore
 
     public init(storage: KeyValueStore) {

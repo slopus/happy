@@ -80,10 +80,7 @@ struct FeedState: Sendable {
             }
         }
         let metadata = change.session?.metadata
-        let hold =
-            metadata?["client"]?["id"]?.stringValue == "rig"
-            && (metadata?["rigMetadataVersion"]?.numberValue ?? 0) >= 1
-            && metadata?["capabilities"]?["messageReceipts"]?.boolValue == true
+        let hold = SessionMetadata.sendsMessageReceipts(metadata)
         _ = reducer.reduce(
             records, agentState: change.session?.agentState, holdUserMessagesUntilAccepted: hold)
         var messages = reducer.messages
