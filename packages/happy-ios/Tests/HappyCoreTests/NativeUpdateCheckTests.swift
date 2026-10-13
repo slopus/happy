@@ -3,6 +3,59 @@ import XCTest
 @testable import HappyCore
 import HappyWire
 
+/// Answers every request with `body`, once opened.
+private final class HeldHTTP: HTTPTransport, @unchecked Sendable {
+    private let lock = NSLock()
+    private let body: String
+    private var opened = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+    private var asked: [CheckedContinuation<Void, Never>] = []
+    private var count = 0
+
+    init(_ body: String) { self.body = body }
+
+    var requests: Int { lock.withLock { count } }
+
+    /// Returns once a request has come in.
+    func untilAsked() async {
+        await withCheckedContinuation { continuation in
+            let now: Bool = lock.withLock {
+                guard count == 0 else { return true }
+                asked.append(continuation)
+                return false
+            }
+            if now { continuation.resume() }
+        }
+    }
+
+    func open() {
+        let waiting = lock.withLock {
+            opened = true
+            defer { self.waiting = [] }
+            return self.waiting
+        }
+        for continuation in waiting { continuation.resume() }
+    }
+
+    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        let asked = lock.withLock {
+            count += 1
+            defer { self.asked = [] }
+            return self.asked
+        }
+        for continuation in asked { continuation.resume() }
+        await withCheckedContinuation { continuation in
+            let now: Bool = lock.withLock {
+                guard !opened else { return true }
+                waiting.append(continuation)
+                return false
+            }
+            if now { continuation.resume() }
+        }
+        return HTTPResponse(status: 200, body: Data(body.utf8))
+    }
+}
+
 /// sync.ts `fetchNativeUpdate` and UpdateBanner's `useNativeUpdate`.
 @MainActor
 final class NativeUpdateCheckTests: XCTestCase {
@@ -80,5 +133,64 @@ final class NativeUpdateCheckTests: XCTestCase {
         XCTAssertNil(check.invalidate(api: api(http), request: request))
         await first?.value
         XCTAssertEqual(http.requests("POST /v1/version").count, 2)
+    }
+
+    // MARK: One server's answer
+
+    private let required = #"{"update_required":true,"update_url":"https://store.test/a"}"#
+
+    private func api(_ server: String, _ transport: HTTPTransport) -> HappyAPI {
+        HappyAPI(serverURL: URL(string: server)!, clientID: "ios/2026.10.1", transport: transport)
+    }
+
+    /// Account A's server is still answering when account B's is asked:
+    /// B's server is the one asked next, and A's late answer never shows.
+    func testAnotherServerAskedMeanwhileIsAskedNextAndTheFirstAnswerIsDropped() async {
+        let first = HeldHTTP(required)
+        let second = FakeHTTP()
+        second.onRaw("POST /v1/version", #"{"update_required":false}"#)
+        let check = NativeUpdateCheck()
+        let running = check.invalidate(api: api("https://a.test", first), request: request)
+        await first.untilAsked()
+
+        XCTAssertNil(check.invalidate(api: api("https://b.test", second), request: request))
+        XCTAssertEqual(check.server, URL(string: "https://b.test"))
+        first.open()
+        await running?.value
+
+        XCTAssertEqual(first.requests, 1, "A's server is not asked again")
+        XCTAssertEqual(second.requests("POST /v1/version").count, 1)
+        XCTAssertEqual(check.status, NativeUpdateCheck.Status(available: false))
+        XCTAssertNil(check.updateURL, "A's banner is not B's")
+    }
+
+    func testAnotherServerLetsTheLastAnswerGoAtOnce() async {
+        let first = FakeHTTP()
+        first.onRaw("POST /v1/version", required)
+        let check = NativeUpdateCheck()
+        await check.invalidate(api: api("https://a.test", first), request: request)?.value
+        XCTAssertEqual(check.updateURL, "https://store.test/a")
+
+        var changes = 0
+        let observation = check.observe { changes += 1 }
+        let second = HeldHTTP("busy")
+        let running = check.invalidate(api: api("https://b.test", second), request: request)
+        XCTAssertNil(check.status, "before B answers")
+        XCTAssertEqual(changes, 1)
+        second.open()
+        await running?.value
+        observation.cancel()
+    }
+
+    func testTheSameServerKeepsItsAnswerWhileAskedAgain() async {
+        let http = FakeHTTP()
+        http.onRaw("POST /v1/version", required)
+        let check = NativeUpdateCheck()
+        await check.invalidate(api: api("https://a.test", http), request: request)?.value
+        // Another account on the same server: the check needs no account.
+        let again = check.invalidate(api: api("https://a.test", http).authenticated(token: "other"), request: request)
+        XCTAssertEqual(check.updateURL, "https://store.test/a")
+        await again?.value
+        XCTAssertEqual(check.updateURL, "https://store.test/a")
     }
 }
