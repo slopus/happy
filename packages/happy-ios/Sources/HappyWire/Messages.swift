@@ -46,6 +46,7 @@ public struct MessageMeta: Codable, Hashable, Sendable {
     public var allowedTools: [String]?
     public var disallowedTools: [String]?
     public var effort: String?
+    public var serviceTier: String?
     public var displayText: String?
 
     public init(sentFrom: String? = nil) {

@@ -118,6 +118,46 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v3") { db in
+            // The outbox carries every write the chat makes, in order per
+            // session: file events before the text they belong to, retried
+            // with backoff, failed items kept until retried or discarded.
+            try db.alter(table: "outbox") { t in
+                t.add(column: "state", .text).notNull().defaults(to: "queued")
+                t.add(column: "nextAttemptAt", .integer).notNull().defaults(to: 0)
+                // The localId that has to be delivered before this one.
+                t.add(column: "dependsOn", .text)
+            }
+            try db.create(index: "outbox_session", on: "outbox", columns: ["sessionId", "createdAt"])
+
+            // A picked file, copied into the account's files directory until
+            // its blob is uploaded and the file event that names it is sent.
+            try db.create(table: "attachment") { t in
+                t.primaryKey("localId", .text)
+                t.column("sessionId", .text).notNull()
+                // The outbox item (a file event) that carries it.
+                t.column("outboxLocalId", .text)
+                // Relative to the account's files directory.
+                t.column("path", .text).notNull()
+                t.column("name", .text).notNull()
+                t.column("mimeType", .text).notNull()
+                t.column("size", .integer).notNull()
+                t.column("width", .integer)
+                t.column("height", .integer)
+                t.column("thumbhash", .text)
+                // The server's blob ref once uploaded.
+                t.column("ref", .text)
+                t.column("createdAt", .integer).notNull()
+            }
+
+            // Unsent composer text per session (happy-app keeps it in MMKV).
+            try db.create(table: "draft") { t in
+                t.primaryKey("sessionId", .text)
+                t.column("text", .text).notNull()
+                t.column("updatedAt", .integer).notNull()
+            }
+        }
+
         return migrator
     }
 }

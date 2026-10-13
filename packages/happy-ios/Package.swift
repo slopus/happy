@@ -34,7 +34,7 @@ let package = Package(
         // The app itself. xtool expects this to be the product it packages.
         .library(name: "HappyApp", targets: ["HappyApp"]),
         // Everything the app is built from, for the XcodeGen app target.
-        .library(name: "HappyKit", targets: ["HappyCrypto", "HappyWire", "HappyStore", "HappyCore", "HappyLayout", "HappyUI"]),
+        .library(name: "HappyKit", targets: ["HappyCrypto", "HappyWire", "HappyStore", "HappyCore", "HappyLayout", "HappyIcons", "HappyUI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
@@ -64,8 +64,15 @@ let package = Package(
             name: "HappyLayout"
         ),
         .target(
+            // happy-app's icon fonts as vector outlines: generated code, no
+            // fonts at runtime. Foundation only, like HappyLayout.
+            name: "HappyIcons",
+            dependencies: ["HappyLayout"],
+            exclude: ["LICENSES.md"]
+        ),
+        .target(
             name: "HappyUI",
-            dependencies: ["HappyCore", "HappyCrypto", "HappyWire", "HappyStore", "HappyLayout"],
+            dependencies: ["HappyCore", "HappyCrypto", "HappyWire", "HappyStore", "HappyLayout", "HappyIcons"],
             // Fonts and images live with the code that draws them, so
             // `Bundle.module` resolves the same way under xtool and Xcode.
             resources: [.process("Resources")]
@@ -96,10 +103,14 @@ let package = Package(
             dependencies: ["HappyLayout"]
         ),
         .testTarget(
+            name: "HappyIconsTests",
+            dependencies: ["HappyIcons", "HappyLayout"]
+        ),
+        .testTarget(
             // Needs UIKit to measure real views. Compiles to nothing on Linux;
             // runs in the iOS simulator through the XcodeGen project.
             name: "HappyUIKitTests",
-            dependencies: ["HappyUI", "HappyLayout", "HappyCore"]
+            dependencies: ["HappyUI", "HappyLayout", "HappyIcons", "HappyCore"]
         ),
     ]
 )

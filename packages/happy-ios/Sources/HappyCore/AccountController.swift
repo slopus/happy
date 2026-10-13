@@ -53,6 +53,28 @@ public final class AccountController {
         return nil
     }
 
+    // MARK: Accounts (multi-account lands here; see AGENTS.md "Accounts")
+
+    /// Every account signed in on this device, the active one included.
+    /// Placeholder: only the active account until the registry lands.
+    public var accounts: [AccountSummary] {
+        guard let session else { return [] }
+        return [AccountSummary(
+            id: session.keys.anonID,
+            serverURL: serverConfig.serverURL,
+            isActive: true,
+            usesSharedItem: true
+        )]
+    }
+
+    /// Makes another signed-in account the active one. Its local data shows
+    /// at once; the previous account's sync stops.
+    public func switchAccount(to id: AccountSummary.ID) async throws {
+        guard accounts.contains(where: { $0.id == id }) else { throw AccountSwitchError.unknownAccount }
+        if accounts.first(where: { $0.id == id })?.isActive == true { return }
+        throw AccountSwitchError.notAvailable
+    }
+
     /// Unauthenticated API for sign-in flows, against the configured server.
     public var authService: AuthService {
         AuthService(api: HappyAPI(serverURL: serverConfig.serverURL, clientID: clientID, transport: transport))

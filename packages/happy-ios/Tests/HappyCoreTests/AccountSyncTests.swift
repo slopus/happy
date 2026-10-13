@@ -313,6 +313,23 @@ final class SessionActionsTests: XCTestCase {
         XCTAssertNil(try store.session(id: "s"))
     }
 
+    func testPermissionRequestsLeaveOutWhatWasNotSet() {
+        XCTAssertEqual(
+            SessionActions.permission(id: "p", approved: true, mode: nil, allowedTools: nil, decision: nil, updatedInput: nil),
+            .object(["id": .string("p"), "approved": .bool(true)])
+        )
+        XCTAssertEqual(
+            SessionActions.permission(id: "p", approved: false, mode: "plan", allowedTools: ["Bash"], decision: .abort, updatedInput: nil),
+            .object([
+                "id": .string("p"),
+                "approved": .bool(false),
+                "mode": .string("plan"),
+                "allowTools": .array([.string("Bash")]),
+                "decision": .string("abort"),
+            ])
+        )
+    }
+
     func testMarkRead() throws {
         try storeSession()
         try store.applySessionActivity(id: "s", active: true, activeAt: 2, thinking: true)

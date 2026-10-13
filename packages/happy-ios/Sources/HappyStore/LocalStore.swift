@@ -517,6 +517,23 @@ public final class LocalStore: Sendable {
         _ = try writer.write { db in try OutboxRecord.deleteOne(db, key: localId) }
     }
 
+    // MARK: Drafts
+
+    public func draft(sessionId: String) throws -> DraftRecord? {
+        try writer.read { db in try DraftRecord.fetchOne(db, key: sessionId) }
+    }
+
+    /// Saves the composer's text; empty text deletes the draft.
+    public func saveDraft(sessionId: String, text: String, at time: Int64) throws {
+        try writer.write { db in
+            if text.isEmpty {
+                _ = try DraftRecord.deleteOne(db, key: sessionId)
+            } else {
+                try DraftRecord(sessionId: sessionId, text: text, updatedAt: time).save(db)
+            }
+        }
+    }
+
     // MARK: Sync cursors
 
     public func cursor(_ cursor: SyncCursor) throws -> Int64? {
@@ -534,7 +551,7 @@ public final class LocalStore: Sendable {
         try writer.write { db in
             for table in [
                 "message", "outbox", "session", "machine", "project", "accountSettings", "pendingSettings",
-                "accountProfile", "syncState",
+                "accountProfile", "syncState", "attachment", "draft",
             ] {
                 try db.execute(sql: "DELETE FROM \(table)")
             }

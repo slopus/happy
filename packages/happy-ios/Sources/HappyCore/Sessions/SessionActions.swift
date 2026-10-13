@@ -91,6 +91,77 @@ public struct SessionActions: Sendable {
         try? store.markSessionRead(id: sessionId)
     }
 
+    // MARK: Chat controls (sync/ops.ts)
+
+    /// Approves a permission request (`sessionAllow`). `mode` is one of
+    /// default, acceptEdits, bypassPermissions or plan.
+    public func allow(
+        sessionId: String,
+        permissionId: String,
+        mode: String? = nil,
+        allowedTools: [String]? = nil,
+        decision: ToolPermission.Decision? = nil,
+        updatedInput: JSONValue? = nil
+    ) async throws {
+        _ = try await call(sessionId: sessionId, method: "permission", params: Self.permission(
+            id: permissionId, approved: true, mode: mode, allowedTools: allowedTools, decision: decision, updatedInput: updatedInput
+        ))
+    }
+
+    /// Denies a permission request (`sessionDeny`); `decision` is denied or abort.
+    public func deny(
+        sessionId: String,
+        permissionId: String,
+        mode: String? = nil,
+        allowedTools: [String]? = nil,
+        decision: ToolPermission.Decision? = nil
+    ) async throws {
+        _ = try await call(sessionId: sessionId, method: "permission", params: Self.permission(
+            id: permissionId, approved: false, mode: mode, allowedTools: allowedTools, decision: decision, updatedInput: nil
+        ))
+    }
+
+    /// Answers a question the agent asked (`sessionAnswerQuestion`), echoing
+    /// the `kind` the agent published.
+    public func answerQuestion(sessionId: String, id: String, answers: JSONValue, kind: String = "form") async throws {
+        _ = try await call(sessionId: sessionId, method: "communication", params: .object([
+            "id": .string(id),
+            "kind": .string(kind),
+            "status": .string("answered"),
+            "answers": answers,
+        ]))
+    }
+
+    /// Dismisses a question without answering (`sessionCancelCommunication`).
+    public func cancelQuestion(sessionId: String, id: String, kind: String = "form") async throws {
+        _ = try await call(sessionId: sessionId, method: "communication", params: .object([
+            "id": .string(id),
+            "kind": .string(kind),
+            "status": .string("cancelled"),
+        ]))
+    }
+
+    /// Stops the agent's current turn (`sessionAbort`). Rig sessions take no
+    /// reason.
+    public func abort(sessionId: String) async throws {
+        guard let session = try store.session(id: sessionId) else { throw SessionActionError.unknownSession }
+        let params: JSONValue = session.isRig ? .object([:]) : .object(["reason": .string(Self.abortReason)])
+        _ = try await call(sessionId: sessionId, method: "abort", params: params)
+    }
+
+    static let abortReason = "The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed."
+
+    /// `SessionPermissionRequest`; absent options are left out, as
+    /// JSON.stringify leaves out undefined.
+    static func permission(id: String, approved: Bool, mode: String?, allowedTools: [String]?, decision: ToolPermission.Decision?, updatedInput: JSONValue?) -> JSONValue {
+        var request: [String: JSONValue] = ["id": .string(id), "approved": .bool(approved)]
+        if let mode { request["mode"] = .string(mode) }
+        if let allowedTools { request["allowTools"] = .array(allowedTools.map(JSONValue.string)) }
+        if let decision { request["decision"] = .string(decision.rawValue) }
+        if let updatedInput { request["updatedInput"] = updatedInput }
+        return .object(request)
+    }
+
     /// True when the CLI confirmed it stopped.
     private func kill(sessionId: String) async -> Bool {
         do {

@@ -167,7 +167,16 @@ public struct OutboxRecord: Codable, Hashable, Sendable, FetchableRecord, Persis
     public static let databaseTableName = "outbox"
 
     public enum Kind: String, Codable, Sendable {
+        /// A `role: 'user'` text record.
         case message
+        /// A session-protocol `file` event; its attachment is uploaded first.
+        case file
+    }
+
+    public enum State: String, Codable, Sendable {
+        case queued
+        case sending
+        case failed
     }
 
     public var localId: String
@@ -178,8 +187,13 @@ public struct OutboxRecord: Codable, Hashable, Sendable, FetchableRecord, Persis
     public var createdAt: Int64
     public var attempts: Int
     public var lastError: String?
+    public var state: State
+    /// Not retried before this time (ms); 0 means now.
+    public var nextAttemptAt: Int64
+    /// The localId that has to be delivered first.
+    public var dependsOn: String?
 
-    public init(localId: String, kind: Kind, sessionId: String, payload: JSONValue, createdAt: Int64, attempts: Int = 0, lastError: String? = nil) {
+    public init(localId: String, kind: Kind, sessionId: String, payload: JSONValue, createdAt: Int64, attempts: Int = 0, lastError: String? = nil, state: State = .queued, nextAttemptAt: Int64 = 0, dependsOn: String? = nil) {
         self.localId = localId
         self.kind = kind
         self.sessionId = sessionId
@@ -187,6 +201,59 @@ public struct OutboxRecord: Codable, Hashable, Sendable, FetchableRecord, Persis
         self.createdAt = createdAt
         self.attempts = attempts
         self.lastError = lastError
+        self.state = state
+        self.nextAttemptAt = nextAttemptAt
+        self.dependsOn = dependsOn
+    }
+}
+
+/// A file picked to send, kept on disk until its blob is uploaded.
+public struct AttachmentRecord: Codable, Hashable, Sendable, FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "attachment"
+
+    public var localId: String
+    public var sessionId: String
+    public var outboxLocalId: String?
+    /// Relative to the account's files directory.
+    public var path: String
+    public var name: String
+    public var mimeType: String
+    public var size: Int
+    public var width: Int?
+    public var height: Int?
+    public var thumbhash: String?
+    /// The server's blob ref once uploaded.
+    public var ref: String?
+    public var createdAt: Int64
+
+    public init(localId: String, sessionId: String, outboxLocalId: String? = nil, path: String, name: String, mimeType: String, size: Int, width: Int? = nil, height: Int? = nil, thumbhash: String? = nil, ref: String? = nil, createdAt: Int64) {
+        self.localId = localId
+        self.sessionId = sessionId
+        self.outboxLocalId = outboxLocalId
+        self.path = path
+        self.name = name
+        self.mimeType = mimeType
+        self.size = size
+        self.width = width
+        self.height = height
+        self.thumbhash = thumbhash
+        self.ref = ref
+        self.createdAt = createdAt
+    }
+}
+
+/// Unsent composer text for a session.
+public struct DraftRecord: Codable, Hashable, Sendable, FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "draft"
+
+    public var sessionId: String
+    public var text: String
+    public var updatedAt: Int64
+
+    public init(sessionId: String, text: String, updatedAt: Int64) {
+        self.sessionId = sessionId
+        self.text = text
+        self.updatedAt = updatedAt
     }
 }
 

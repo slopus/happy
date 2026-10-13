@@ -28,14 +28,55 @@ nothing here is wired to the release skill or to EAS.
    - Anything that needs UIKit to measure goes in `Tests/HappyUIKitTests`.
      That target compiles to nothing on Linux and runs only in the iOS
      simulator.
+6. **No icon fonts.** Icons are happy-app's glyphs as vector outlines
+   (`HappyIcons`), drawn as template images. Keep the fonts' license
+   notices in `Sources/HappyIcons/LICENSES.md`.
+7. **Telegram-iOS is a reference, never a source.** It is GPL-2.0. Study
+   its techniques (async text layout, bubble animations, keyboard
+   handling) and reimplement them; never copy its code, and don't depend
+   on AsyncDisplayKit/Texture or its Display framework.
 
 ## Scope
 
-- **Latest Happy protocol only.** There are no legacy code paths.
-  `packages/happy-wire` and happy-app's current sync code
-  (`packages/happy-app/sources/sync`) are the source of truth. When they
-  disagree with this package, this package is wrong.
-- **No voice mode.**
+- **The current Happy protocol, meaning what the current CLI, happy-app
+  and happy-agent actually exchange today** (not what the files are
+  called). `packages/happy-wire`, happy-app's sync code
+  (`packages/happy-app/sources/sync`) and the CLI's routing are the source
+  of truth; when they disagree with this package, this package is wrong.
+  - **User text goes out as `role: 'user'` records**,
+    `{ role: 'user', content: { type: 'text', text }, meta }`, field for
+    field as `sync.ts` `sendMessage` builds them, every meta field
+    included (sentFrom, the delivery meta, appendSystemPrompt,
+    permissionMode, model, modelProviderId, effort, serviceTier,
+    displayText). A byte-compatibility test pins it against what `sync.ts`
+    produces.
+  - **Attachments go out as session-protocol `file` events**, sent before
+    the text they belong to (`sync.ts:809`).
+  - **Agent output arrives as session-protocol envelopes**
+    (`role: 'session'`).
+  - **No legacy paths.** There are no decoders for formats the current CLI
+    no longer emits. Such records in old sessions render as a compact
+    "unsupported message" placeholder, never as a crash or a silent gap.
+    The chat reducer documents which record kinds are current and which
+    are retired.
+  - **The session protocol is not extended.** happy-wire marks it frozen
+    ("do not add new consumers"), so this app consumes only what happy-app
+    consumes and adds no new user-message shapes.
+  - Encoding a user message is one function. If the session protocol is
+    redesigned (its header mentions aligning with pi.dev), that function is
+    the one to switch.
+- **Every happy-app feature an iPhone user can reach**, tracked in
+  [`docs/FEATURES.md`](docs/FEATURES.md). Excluded on purpose, with the
+  reasons in that file:
+  - voice mode;
+  - anything gated by the `experiments` setting: the Usage page and the
+    Rig file browser in the chat;
+  - developer tools and every `dev/*` screen;
+  - friends, user profiles, the inbox and the feed, which an iPhone can't
+    reach in happy-app;
+  - artifacts and the recent-sessions screen, which have no entry point;
+  - web and desktop-only UI (command palette, shortcut hints, sidebar
+    navigator, web tab bar), purchases and analytics.
 - **Offline first.** Everything the account has is kept in the local
   SQLite store, and the UI reads only from that store. The network only
   moves deltas:
@@ -45,7 +86,10 @@ nothing here is wired to the release skill or to EAS.
     with `expectedVersion` and re-based on the server's copy on conflict;
   - the profile and the projects sessions point at, fetched whole;
   - an idempotent outbox for writes.
-- **Tool outputs are hidden by default** when chat lands.
+- **Writes are optimistic.** A message is stored in the outbox and shows in
+  the chat at once; delivery retries with backoff, and a failed item stays
+  visible until retried or discarded. Settings use the pending delta above.
+- **Tool outputs are hidden by default** in the chat.
 - **Onboarding follows happy-app step by step.** Signed in, home decides
   from the stored machines (`HomeState`, after happy-app's
   `shouldShowFirstRunInstall` and `resolveHomeEmptyState`):
@@ -68,6 +112,38 @@ nothing here is wired to the release skill or to EAS.
 
   Home stays the navigation root and swaps its content, so screens pushed
   over it stay put when a computer arrives.
+- **Accounts.** Several accounts can be signed in; one is active at a time
+  and switching is global (the whole UI follows the active account). The
+  design, which the Accounts workstream implements:
+  - **Credentials.** The RN app's item (`app:no-auth` /
+    `auth_credentials`, described below) holds exactly one account, the
+    *shared* account. It is never overwritten with another account's
+    credentials and never deleted except by signing that account out.
+    Every other account has its own generic-password item: service
+    `happy-ios:account`, account = the account id, same accessibility.
+    Signing in a new account writes the shared item only when it is empty;
+    otherwise the account gets its own item. Signing the same account in
+    again updates the item that already holds it.
+  - **Registry.** The list of accounts (id, server URL, which item holds
+    the credentials, the order they were added, the active one) lives in
+    `Application Support/Happy/accounts.json`. It holds no secrets. On
+    launch, a shared item that the registry doesn't know (the RN app's,
+    after an upgrade) is imported as an account, never copied.
+  - **Account id.** The account's anonymous id, derived from its secret,
+    so it is known offline and the same account is never listed twice.
+  - **Separate caches.** Each account has its own directory,
+    `Application Support/Happy/accounts/<id>/`, holding its SQLite store
+    (`store.sqlite`), attachment files (`files/`) and anything else
+    cached for it. Device-only settings that belong to an account live in
+    a per-account defaults suite. Nothing is shared between accounts.
+  - **Switching** stops the active account's sync and socket, opens the
+    other account's store (its home shows from disk at once) and starts
+    its sync. Only the active account syncs.
+  - **What an RN rollback sees.** The RN build reads only the shared item,
+    so it comes back signed in to the shared account and knows nothing of
+    the others. Their items and caches stay on disk, unused, and are picked
+    up again when this app is reinstalled. If the shared account was
+    signed out here, the RN build starts signed out.
 - **Credentials stay in the RN app's Keychain item.** This app reads and
   writes happy-app's `auth_credentials` exactly as expo-secure-store 55
   stores it, so an in-place upgrade (same bundle ids) stays signed in and a
@@ -98,8 +174,9 @@ nothing here is wired to the release skill or to EAS.
 | `HappyCrypto` | all | Key tree, X25519 box, XSalsa20-Poly1305 secretbox (pure Swift), AES-GCM, Ed25519, secret key backup format. CryptoKit on Apple, swift-crypto on Linux. |
 | `HappyWire` | all | Wire types: API payloads, update and ephemeral events, the session protocol, pairing links. |
 | `HappyStore` | all | GRDB schema, records and the merge rules: versions only move forward, deletes are explicit. |
-| `HappyCore` | all | Server config, HTTP API, auth, QR login, pairing, record decryption, the delta `SyncEngine`, Socket.IO client, `AccountSession`, `AccountController`, and what home shows (`MachineChoice`, `HomeState`). |
+| `HappyCore` | all | Server config, HTTP API, auth, QR login, pairing, record decryption, the delta `SyncEngine`, Socket.IO client, `AccountSession`, `AccountController`, what home shows (`MachineChoice`, `HomeState`, `SessionList`), settings logic, and the chat's model and seams (`Chat/`). |
 | `HappyLayout` | all | Pure layout functions, design tokens, the wordmark's vector paths. |
+| `HappyIcons` | all | happy-app's icon fonts as generated vector outlines, looked up by RN name (`Icon.ionicons("chevron-forward")`). |
 | `HappyUI` | iOS (UIKit) | Views, screens and the coordinator. Wrapped in `#if canImport(UIKit)`. |
 | `HappyApp` | iOS | `@main` AppDelegate, SceneDelegate and the composition root. |
 
@@ -214,13 +291,60 @@ tells it apart from the legacy RN app.
   - swift-crypto, Linux only;
   - swift-asn1, which swift-crypto pulls in.
 
+## Workstreams
+
+The port is built by parallel workers, each on its own branch, merged into
+the integration branch by the coordinator. A worker owns its files; to
+change a file another workstream owns, ask the coordinator.
+
+| Workstream | Owns |
+| --- | --- |
+| Icons | `Sources/HappyIcons`, `scripts/generate-icons.*`, `Sources/HappyUI/Theme/IconImages.swift`, `ItemIcon`'s icon source, swapping SF Symbols for happy-app's icons in onboarding and troubleshoot, light/dark theme application |
+| Home | `Screens/HomeScreens.swift`, `Screens/SessionListScreens.swift`, `Components/SessionListViews.swift`, home header and dock, new session screen, `Core/Home/` |
+| Settings | `Screens/SettingsScreens.swift` and every settings screen, the account switcher UI, `Core/Settings/` |
+| Chat | `Sources/HappyUI/Chat/`, `Sources/HappyLayout/Chat/`, the session screen, `docs/telegram-notes.md` |
+| Composer | `Sources/HappyUI/Composer/`, `Sources/HappyLayout/Composer/` |
+| Secondary | session info, files, changes, machine screens |
+| Accounts | `Core/Accounts/`, `AccountController`, `AccountSession` lifecycle, `CompositionRoot`, `Auth/` |
+| Sending | `Core/Chat/` sending and attachments, the outbox in `SyncEngine` and `LocalStore`, `HappyStore` schema |
+| Reducer | `Core/Chat/` reducer and `ChatFeed`, `HappyWire` session-protocol decoding |
+| Ops | `Core/Sessions/` RPC operations (`sync/ops.ts`) |
+
+Shared seams, changed only through the coordinator:
+
+- `Sources/HappyCore/Chat/ChatMessage.swift` and `ChatContracts.swift`:
+  the reducer produces `ChatMessage`, the UI reads `ChatSnapshot` from a
+  `ChatFeed` and sends through `ChatSending`;
+- `SessionActions` (permission, abort, questions, archive);
+- `AccountController.accounts` and `switchAccount(to:)`;
+- `Sources/HappyUI/Navigation/Route.swift`: screens open each other only
+  through `push(_ route:context:)`. Each workstream replaces only its own
+  placeholders in `Screens.make`;
+- `Schema.swift`: migrations are added by the Sending workstream or the
+  coordinator. v3 can still change until the app first ships.
+
+To keep parallel work from colliding:
+
+- New strings go in a file of their own, `Sources/HappyUI/Strings/<Area>.swift`,
+  as `extension Strings { enum <Area> { … } }`, still copied verbatim from
+  en.ts. Don't append to `Strings.swift`.
+- New tokens go in `Sources/HappyLayout/Tokens/<Area>Tokens.swift` as
+  extensions of `Palette`, `TextStyles` and friends. Don't append to
+  `DesignTokens.swift`.
+- Tests go in new files named after the area.
+
 ## Open questions
 
-- The RN app still sends legacy `role: 'user'` message envelopes. This app
-  speaks only the session protocol. Confirm the server and CLI accept
-  session-protocol user messages from phones before chat lands.
-- `happy-wire`'s session protocol is marked frozen. Confirm it is the
-  long-term format, not a transitional one.
+- Closed: which user-message format to send. The CLI accepts only
+  `role: 'user'` text records and session-protocol `file` events from a
+  phone: `happy-cli/src/api/apiSession.ts:574` (`routeIncomingMessage`)
+  tries `UserMessageSchema` and `FileEventMessageSchema` and nothing else.
+  Session-protocol user text would be dropped without an error. happy-app
+  (`sync.ts:883`) and happy-agent (`src/session.ts:194`) send
+  `role: 'user'`, and happy-wire's `sessionProtocol.ts` header says it is
+  under review and frozen. Decision: send what they send (see Scope).
+- Still open: the session protocol's long-term shape. Its header points at
+  aligning with pi.dev. When it changes, switch the one encoding function.
 - Closed: upgrading in place from the RN app. Credentials share
   expo-secure-store's item; see Scope. The logic is tested on Linux, but a
   real upgrade from an RN build on a device has not been tried yet.
@@ -242,6 +366,9 @@ tells it apart from the legacy RN app.
   form first.
 - Text sizes are fixed. Dynamic Type scaling, which RN applies by default,
   is not wired yet.
+- Not verified anywhere yet: a run in the simulator or on a device,
+  `HappyUIKitTests` (built, never run), and a real in-place upgrade from an
+  RN build.
 - Not ported yet from the onboarding screens:
   - the machine screen that Troubleshoot's computer rows open in
     happy-app (the rows are inert here);
