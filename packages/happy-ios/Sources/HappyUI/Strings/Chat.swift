@@ -17,6 +17,8 @@ extension Strings {
         public static let retry = "Retry"
         /// common.loadMore
         public static let loadMore = "Load more"
+        /// sessionsFilter.worktreeTabs: the header's subtitle over the strip.
+        public static func worktreeTabs(_ count: Int) -> String { count == 1 ? "1 tab" : "\(count) tabs" }
         /// common.copy
         public static let copy = "Copy"
         /// common.copied

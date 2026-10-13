@@ -92,6 +92,21 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private let pendingTask = TaskHolder()
     private var anchorMetadata: JSONValue?
     private var anchorObservation: ApplyObservation?
+    /// Every chat being opened, for the strip's stand-ins.
+    private var pendingChats: [String: PendingChat] = [:]
+    /// Grouped by project, the checkout the header speaks for and its chats
+    /// as tabs under it (`useProjectWorktreeSummary`, WorktreeTabStrip).
+    private var checkout: WorktreeCheckout?
+    private var checkoutObservation: ApplyObservation?
+    private var checkoutSessionId: String?
+    private let tabStrip = ChatWorktreeTabStrip()
+    /// The strip's scroll on the screen this one replaced, to start from.
+    private var inheritedStripOffset: CGFloat?
+    private lazy var sessionActions: HomeSessionActions = {
+        let actions = HomeSessionActions(context: context, session: account, host: self)
+        actions.onBeforeArchive = { [weak self] id in self?.tabArchiving(id) }
+        return actions
+    }()
 
     private var snapshot: ChatSnapshot?
     private var session = ChatSessionState(record: nil, settings: AccountSettings())
@@ -185,6 +200,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         scrollButton.alpha = 0
         scrollButton.addTarget(self, action: #selector(scrollToNewest), for: .touchUpInside)
         view.addSubview(scrollButton)
+        tabStrip.isHidden = true
+        tabStrip.onSelect = { [weak self] id in self?.selectTab(id) }
+        tabStrip.onLongPress = { [weak self] id in self?.sessionActions.present(sessionId: id) }
+        view.addSubview(tabStrip)
         statusBarStrip.isHidden = true
         view.addSubview(statusBarStrip)
         landscapeBack.isHidden = true
@@ -206,14 +225,17 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         observation = services.observeSession { [weak self] state in
             self?.sessionChanged(state)
         }
-        if PendingChats.isPendingChatId(sessionId) {
-            let pendingChats = services.pendingChats
-            let sessionId = self.sessionId
-            pendingTask.task = Task { [weak self] in
-                for await chats in await pendingChats.observe() {
-                    guard let self, !Task.isCancelled else { return }
-                    self.pendingChatChanged(chats[sessionId])
+        // Every chat being opened: this screen's own record when it is one,
+        // and the strip's stand-ins.
+        let pendingChats = services.pendingChats
+        pendingTask.task = Task { [weak self] in
+            for await chats in await pendingChats.observe() {
+                guard let self, !Task.isCancelled else { return }
+                self.pendingChats = chats
+                if PendingChats.isPendingChatId(self.sessionId) {
+                    self.pendingChatChanged(chats[self.sessionId])
                 }
+                self.updateTabStrip()
             }
         }
         if let git = services.gitStatus {
@@ -250,6 +272,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        keepStripOffset()
         // Screens pushed from here, and the one under it, have their bar.
         if hidesHeader, navigationController?.topViewController !== self {
             navigationController?.setNavigationBarHidden(false, animated: animated)
@@ -288,13 +311,18 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             // TabletBranches: chatFloatingDock and chatInputPaddingH.
             docked: isTabletLayout,
             accessoryPaddingH: isTabletLayout ? TabletBranches.Metrics.tabletInputPaddingH : TabletBranches.Metrics.phoneInputPaddingH,
-            hidesHeader: hidesHeader
+            hidesHeader: hidesHeader,
+            headerAccessory: tabStrip.isHidden ? 0 : WorktreeTabStripLayout.Metrics.height
         ))
         list.setLayoutFrame(screen.list)
         list.setEdgeInsets(newest: screen.newestEdgeInset, oldest: screen.oldestEdgeInset)
         headerScrim.setLayoutFrame(screen.headerScrim)
+        if let frame = screen.headerAccessory, !tabStrip.isHidden {
+            tabStrip.maxWidth = ContentWidth.headerMaxWidth
+            tabStrip.setLayoutFrame(frame)
+        }
         if !cliWarning.isHidden {
-            cliWarning.place(CliWarningPillLayout(width: size.width, top: view.safeAreaInsets.top, label: cliWarning.labelMeasurable))
+            cliWarning.place(CliWarningPillLayout(width: size.width, top: screen.headerBottom, label: cliWarning.labelMeasurable))
         }
         // Loading the session and the deleted state take the whole screen;
         // an empty chat sits between the bar and the dock.
@@ -329,6 +357,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         hidesHeader = hides
         landscapeBack.isHidden = !hides
         statusBarStrip.isHidden = !hides
+        updateTabStrip()
         floatingDockChanged()
         updateCliWarning()
         view.setNeedsLayout()
@@ -401,21 +430,30 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         items.append(fixturesMenu())
         #endif
         navigationItem.rightBarButtonItems = items
+        tabStrip.glass = !tablet // TabletBranches.worktreeStripGlass
         floatingDockChanged()
     }
 
     private func updateHeader() {
+        updateCheckoutObservation()
         let model = ChatHeaderModel(session: session.record, dataReady: session.dataReady || isFixture, gitStatus: gitStatus, pending: isPendingChat)
-        let title = switch model.title {
+        var title = switch model.title {
         case .loading: ""
         case .deleted: Strings.SessionDetail.sessionDeleted
         case .name(let name): name ?? Strings.Session.newChat
         }
+        var subtitle = model.subtitle
+        // Grouped by project the header names the checkout, and says how
+        // many tabs the strip under it holds.
+        if let checkout {
+            title = checkout.workspaceName ?? model.subtitle ?? checkout.projectName
+            subtitle = Strings.Chat.worktreeTabs(stripTabs(checkout).count)
+        }
         navigationItem.title = title
-        titleView.update(title: title, subtitle: model.subtitle, changes: model.changes)
+        titleView.update(title: title, subtitle: subtitle, changes: model.changes)
         titleView.isEnabled = session.record != nil
         titleView.sizeToFit()
-        plainTitleView.update(title: title, subtitle: model.subtitle, changes: model.changes)
+        plainTitleView.update(title: title, subtitle: subtitle, changes: model.changes)
         plainTitleView.isEnabled = session.record != nil
 
         let settings = session.settings
@@ -435,6 +473,114 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 monochrome: !model.connected || settings.avatarMonochrome
             )
         }
+    }
+
+    // MARK: Worktree tabs
+
+    /// The chat the header speaks for: this one once it exists, the one a
+    /// chat being opened was started beside until then.
+    private var headerSessionId: String {
+        session.record != nil ? sessionId : pendingChat?.anchorSessionId ?? sessionId
+    }
+
+    /// The chip that stands for the open chat: the stand-in while the chat
+    /// is unnamed, its session from the moment it is not.
+    private var selectedTabId: String {
+        pendingChat?.sessionId ?? sessionId
+    }
+
+    private func updateCheckoutObservation() {
+        let id = headerSessionId
+        guard id != checkoutSessionId else { return }
+        checkoutSessionId = id
+        checkoutObservation = services.observeCheckout(id) { [weak self] checkout in
+            guard let self else { return }
+            self.checkout = checkout
+            self.updateHeader()
+            self.updateTabStrip()
+        }
+    }
+
+    /// `resolveWorktreeTabs`: the checkout's chats, then the ones still
+    /// being opened beside them, each chat once.
+    private func stripTabs(_ checkout: WorktreeCheckout) -> [ChatWorktreeTabStrip.Item] {
+        let pending = WorktreeTabs.pendingBeside(pendingChats, tabIds: checkout.tabs.map(\.id))
+        let resolved = WorktreeTabs.resolve(tabs: checkout.tabs, pending: pending)
+        return resolved.tabs.map { tab in
+            ChatWorktreeTabStrip.Item(
+                id: tab.id, title: tab.title ?? Strings.Session.newChat, shimmers: tab.working,
+                blocked: tab.blocked, unread: tab.unread, pending: false
+            )
+        } + resolved.pending.map { chat in
+            ChatWorktreeTabStrip.Item(id: chat.id, title: Strings.Session.newChat, shimmers: true, blocked: false, unread: false, pending: true)
+        }
+    }
+
+    /// SessionView's `showTabStrip`, inside the header, so not on a phone
+    /// held sideways.
+    private func updateTabStrip() {
+        let shown = checkout != nil && !hidesHeader
+        if let checkout {
+            if tabStrip.isHidden, shown {
+                tabStrip.restore(offset: inheritedStripOffset ?? Self.stripOffsets(account)[checkout.id] ?? 0)
+                inheritedStripOffset = nil
+            }
+            tabStrip.update(items: stripTabs(checkout), selectedId: selectedTabId)
+        }
+        guard shown == tabStrip.isHidden else { return }
+        tabStrip.isHidden = !shown
+        view.setNeedsLayout()
+    }
+
+    /// Switching swaps the chat in place rather than pushing a screen, so
+    /// back still returns to the list.
+    private func selectTab(_ id: String) {
+        guard id != sessionId, id != selectedTabId else { return }
+        switchChat(to: id)
+    }
+
+    private func switchChat(to id: String) {
+        guard let navigation = navigationController, let index = navigation.viewControllers.firstIndex(of: self) else { return }
+        keepStripOffset()
+        let next = ChatViewController(context: context, session: account, sessionId: id)
+        next.inheritedStripOffset = tabStrip.isHidden ? nil : tabStrip.offset
+        TabletRoutes.record(.session(id: id), for: next)
+        var stack = navigation.viewControllers
+        stack[index] = next
+        navigation.setViewControllers(stack, animated: false)
+    }
+
+    /// Archiving the open tab moves the screen to its neighbour first, the
+    /// tab to its left, so the chat is never seen coming apart; with no tab
+    /// left the screen goes back.
+    private func tabArchiving(_ archivedId: String) {
+        guard let checkout, archivedId == selectedTabId else { return }
+        let pending = WorktreeTabs.pendingBeside(pendingChats, tabIds: checkout.tabs.map(\.id))
+        let tabs = WorktreeTabs.resolve(tabs: checkout.tabs, pending: pending).tabs
+        if let neighbour = WorktreeTabs.neighbour(of: archivedId, in: tabs) {
+            switchChat(to: neighbour)
+        } else {
+            navigationController?.popViewController(animated: true)
+        }
+    }
+
+    /// Where each checkout's strip was last scrolled to, per account, so a
+    /// screen on the same checkout comes back where the finger left it.
+    private final class StripOffsets {
+        var offsets: [String: CGFloat] = [:]
+    }
+
+    private static let stripOffsetTable = NSMapTable<AccountSession, StripOffsets>.weakToStrongObjects()
+
+    private static func stripOffsets(_ account: AccountSession) -> [String: CGFloat] {
+        stripOffsetTable.object(forKey: account)?.offsets ?? [:]
+    }
+
+    private func keepStripOffset() {
+        guard let checkout, !tabStrip.isHidden else { return }
+        let table = Self.stripOffsetTable.object(forKey: account) ?? StripOffsets()
+        table.offsets[checkout.id] = tabStrip.offset
+        Self.stripOffsetTable.setObject(table, forKey: account)
     }
 
     /// Not on a phone held sideways (TabletBranches' `chatShowsCliWarning`).
@@ -496,6 +642,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             }
         }
         pendingChat = chat
+        updateHeader()
         updatePlaceholder()
     }
 
