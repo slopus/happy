@@ -125,7 +125,7 @@ public final class HomeViewController: UIViewController {
         case .link:
             LinkComputerViewController(context: context, session: session)
         case .offline(let choices, let hasArchived):
-            OfflineChecklistViewController(session: session, choices: choices, hasArchived: hasArchived)
+            OfflineChecklistViewController(context: context, session: session, choices: choices, hasArchived: hasArchived)
         case .noSessions:
             NoSessionsViewController(session: session)
         case .list(let list, let offline):
@@ -367,13 +367,15 @@ final class OfflineChecklistViewController: UIViewController {
         didSet { applyChoices() }
     }
 
+    private let context: AppContext
     private let session: AccountSession
     private let checklist = OfflineChecklistView()
     private var linking = false
     private var approved = false
     private var approvalTimeout: Task<Void, Never>?
 
-    init(session: AccountSession, choices: [MachineChoice], hasArchived: Bool = false) {
+    init(context: AppContext, session: AccountSession, choices: [MachineChoice], hasArchived: Bool = false) {
+        self.context = context
         self.session = session
         self.choices = choices
         self.hasArchived = hasArchived
@@ -393,7 +395,7 @@ final class OfflineChecklistViewController: UIViewController {
         super.viewDidLoad()
         checklist.troubleshoot.onTap = { [weak self] in
             guard let self else { return }
-            navigationController?.pushViewController(TroubleshootViewController(session: session), animated: true)
+            navigationController?.pushViewController(TroubleshootViewController(context: context, session: session), animated: true)
         }
         checklist.linkAnother.onTap = { [weak self] in self?.scan() }
         checklist.showArchived.onTap = { [weak self] in
@@ -448,13 +450,14 @@ final class OfflineChecklistViewController: UIViewController {
 
 @MainActor
 enum ComputerRow {
-    /// A computer as troubleshoot.tsx lists it. happy-app opens the machine
-    /// screen on tap; that screen isn't ported yet, so the row is inert.
-    static func make(_ choice: MachineChoice) -> ItemRowView {
+    /// A computer as troubleshoot.tsx lists it; a tap opens its machine
+    /// screen.
+    static func make(_ choice: MachineChoice, onTap: @escaping () -> Void) -> ItemRowView {
         ItemRowView(
             title: choice.name,
             subtitle: choice.online ? nil : Strings.Troubleshoot.machineOffline,
-            icon: ItemIcon(.ionicons("desktop-outline"), tint: Palette.textSecondary, size: 28)
+            icon: ItemIcon(.ionicons("desktop-outline"), tint: Palette.textSecondary, size: 28),
+            onTap: onTap
         )
     }
 }
@@ -462,6 +465,7 @@ enum ComputerRow {
 /// app/(app)/troubleshoot.tsx: what to check when every linked computer is
 /// offline, the computers, and an AI prompt pointed at the local logs.
 final class TroubleshootViewController: UIViewController {
+    private let context: AppContext
     private let session: AccountSession
     private let list = GroupedListView()
     private let guide = TroubleshootGuideView()
@@ -470,7 +474,8 @@ final class TroubleshootViewController: UIViewController {
     private var aiPrompt = ""
     private var copiedReset: Task<Void, Never>?
 
-    init(session: AccountSession) {
+    init(context: AppContext, session: AccountSession) {
+        self.context = context
         self.session = session
         super.init(nibName: nil, bundle: nil)
     }
@@ -502,7 +507,12 @@ final class TroubleshootViewController: UIViewController {
         aiPrompt = OfflineTroubleshooting(choices: choices, sessions: sessions).aiPrompt
         var sections: [UIView] = [guide]
         if !choices.isEmpty {
-            sections.append(ItemGroupView(title: Strings.Troubleshoot.machines, rows: choices.map(ComputerRow.make)))
+            sections.append(ItemGroupView(title: Strings.Troubleshoot.machines, rows: choices.map { choice in
+                ComputerRow.make(choice) { [weak self] in
+                    guard let self else { return }
+                    push(.machine(id: choice.id), context: context)
+                }
+            }))
         }
         sections.append(prompt)
         list.sections = sections
