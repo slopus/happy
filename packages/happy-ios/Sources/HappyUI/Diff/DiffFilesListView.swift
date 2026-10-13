@@ -39,7 +39,7 @@ final class DiffSectionPlan: @unchecked Sendable {
 
     var id: String { input.item.id }
 
-    init(_ input: DiffSectionInput, width: CGFloat, scale: CGFloat) {
+    init(_ input: DiffSectionInput, width: CGFloat, scale: CGFloat, syntaxDeadline: ContinuousClock.Instant? = DiffFilePlan.syntaxDeadline()) {
         self.input = input
         self.width = width
         let item = input.item
@@ -86,7 +86,7 @@ final class DiffSectionPlan: @unchecked Sendable {
             case .files(let files):
                 let options = DiffViewOptions(collapseAfter: Self.collapseAfter, canExpandContext: input.canExpandContext)
                 let plans = files.enumerated().map { index, file in
-                    DiffFilePlan(file: file, width: width, options: options, expanded: input.expandedFiles.contains(index))
+                    DiffFilePlan(file: file, width: width, options: options, expanded: input.expandedFiles.contains(index), syntaxDeadline: syntaxDeadline)
                 }
                 body = .files(plans)
                 sized = .files(plans.map(\.height))
@@ -102,13 +102,15 @@ actor DiffSectionMeasurer {
     private var cache: [String: DiffSectionPlan] = [:]
 
     func plans(_ inputs: [DiffSectionInput], width: CGFloat, scale: CGFloat) -> [DiffSectionPlan] {
+        // The sections of one pass wait for colour together.
+        let deadline = DiffFilePlan.syntaxDeadline()
         var next: [String: DiffSectionPlan] = [:]
         let plans = inputs.map { input in
             if let cached = cache[input.item.id], cached.width == width, cached.input == input {
                 next[input.item.id] = cached
                 return cached
             }
-            let plan = DiffSectionPlan(input, width: width, scale: scale)
+            let plan = DiffSectionPlan(input, width: width, scale: scale, syntaxDeadline: deadline)
             next[input.item.id] = plan
             return plan
         }

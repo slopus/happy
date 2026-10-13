@@ -64,6 +64,10 @@ final class DiffFileLayoutTests: XCTestCase {
         assertFrame(layout.gutter, rect(0, 4, 48, 180))
         assertFrame(layout.showMore, rect(0, 188, 393, 38))
         assertFrame(layout.showMoreText(width: 120), rect(136.5, 11, 120, 17))
+        // Busy: [spinner 20] 8 [text 120], centred in 393.
+        let busy = layout.showMoreContent(textWidth: 120, busy: true)
+        assertFrame(busy?.spinner, rect(122.5, 9.5, 20, 20))
+        assertFrame(busy?.text, rect(150.5, 11, 120, 17))
         XCTAssertEqual(layout.height, 226)
     }
 
