@@ -1,0 +1,243 @@
+#if canImport(UIKit)
+import HappyLayout
+import UIKit
+
+/// components/ItemGroup.tsx: header, rounded card of rows, footer. Rows are
+/// any views that answer `sizeThatFits`; `ItemRowView`s get their dividers
+/// switched on for all but the last.
+public final class ItemGroupView: UIView {
+    public var title: String? {
+        didSet { headerLabel.string = title ?? ""; headerLabel.isHidden = title == nil; invalidate() }
+    }
+
+    public var footer: String? {
+        didSet { footerLabel.string = footer ?? ""; footerLabel.isHidden = footer == nil; invalidate() }
+    }
+
+    public var rows: [UIView] = [] {
+        didSet {
+            for row in oldValue where row.superview === card { row.removeFromSuperview() }
+            for (index, row) in rows.enumerated() {
+                card.addSubview(row)
+                (row as? ItemRowView)?.showsDivider = index < rows.count - 1
+            }
+            invalidate()
+        }
+    }
+
+    let headerLabel = StyledLabel(style: TextStyles.groupHeader, color: Palette.groupedSectionTitle)
+    let footerLabel = StyledLabel(style: TextStyles.groupFooter, color: Palette.groupedSectionTitle)
+    let card = UIView()
+
+    public init(title: String? = nil, footer: String? = nil, rows: [UIView]) {
+        super.init(frame: .zero)
+        card.backgroundColor = UIColor(Palette.surface)
+        card.layer.cornerRadius = ItemGroupLayout.Metrics.cardCornerRadius
+        card.layer.cornerCurve = .continuous
+        card.clipsToBounds = true
+        addSubview(headerLabel)
+        addSubview(card)
+        addSubview(footerLabel)
+        self.title = title
+        self.footer = footer
+        self.rows = rows
+        updateBorder()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in
+            self.updateBorder()
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    public func layout(width: CGFloat) -> ItemGroupLayout {
+        ItemGroupLayout(.init(
+            width: width,
+            title: title == nil ? nil : headerLabel.measurable,
+            footer: footer == nil ? nil : footerLabel.measurable,
+            rows: rows.map(\.measurable)
+        ))
+    }
+
+    public override func sizeThatFits(_ size: CGSize) -> CGSize {
+        layout(width: size.width).size
+    }
+
+    public override func layoutSubviews() {
+        super.layoutSubviews()
+        let layout = layout(width: bounds.width)
+        if let frame = layout.header { headerLabel.setLayoutFrame(frame) }
+        card.setLayoutFrame(layout.card)
+        for (row, frame) in zip(rows, layout.rows) {
+            row.setLayoutFrame(frame)
+        }
+        if let frame = layout.footer { footerLabel.setLayoutFrame(frame) }
+    }
+
+    private func updateBorder() {
+        // CGColor does not follow appearance changes by itself.
+        card.layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+        card.layer.borderWidth = 1 / max(traitCollection.displayScale, 1)
+    }
+
+    private func invalidate() {
+        setNeedsLayout()
+        superview?.setNeedsLayout()
+    }
+}
+
+/// components/ItemList.tsx: a vertical scroll of sections on the grouped
+/// background. It ignores UIKit's automatic insets and applies the safe area
+/// through `GroupedListLayout`, so every frame comes from the pure layout.
+public final class GroupedListView: UIScrollView {
+    public var sections: [UIView] = [] {
+        didSet {
+            for section in oldValue where section.superview === self { section.removeFromSuperview() }
+            for section in sections { addSubview(section) }
+            setNeedsLayout()
+        }
+    }
+
+    public init(sections: [UIView] = []) {
+        super.init(frame: .zero)
+        backgroundColor = UIColor(Palette.groupedBackground)
+        contentInsetAdjustmentBehavior = .never
+        alwaysBounceVertical = true
+        keyboardDismissMode = .interactive
+        self.sections = sections
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    public func layout() -> GroupedListLayout {
+        GroupedListLayout(.init(size: bounds.size, safeArea: LayoutInsets(safeAreaInsets), sections: sections.map(\.measurable)))
+    }
+
+    public override func layoutSubviews() {
+        super.layoutSubviews()
+        let layout = layout()
+        for (section, frame) in zip(sections, layout.sections) {
+            section.setLayoutFrame(frame)
+        }
+        if contentSize != layout.contentSize {
+            contentSize = layout.contentSize
+        }
+        let indicators = UIEdgeInsets(top: safeAreaInsets.top, left: 0, bottom: safeAreaInsets.bottom, right: 0)
+        if verticalScrollIndicatorInsets != indicators {
+            verticalScrollIndicatorInsets = indicators
+        }
+    }
+}
+
+/// The logotype card at the top of Settings.
+public final class SettingsHeaderView: UIView {
+    let card = UIView()
+    let logoView = UIImageView()
+
+    public override init(frame: CGRect) {
+        super.init(frame: frame)
+        card.backgroundColor = UIColor(Palette.surface)
+        card.layer.cornerRadius = SettingsHeaderLayout.Metrics.cornerRadius
+        card.layer.cornerCurve = .continuous
+        logoView.contentMode = .scaleAspectFit
+        addSubview(card)
+        card.addSubview(logoView)
+        updateAppearance()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in
+            self.updateAppearance()
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    public override func sizeThatFits(_ size: CGSize) -> CGSize {
+        SettingsHeaderLayout(width: size.width).size
+    }
+
+    public override func layoutSubviews() {
+        super.layoutSubviews()
+        let layout = SettingsHeaderLayout(width: bounds.width)
+        card.setLayoutFrame(layout.card)
+        logoView.setLayoutFrame(layout.logo)
+    }
+
+    private func updateAppearance() {
+        // logotype-dark is the dark artwork for light backgrounds.
+        let dark = traitCollection.userInterfaceStyle == .dark
+        logoView.image = .happy(dark ? "logotype-light" : "logotype-dark")
+        logoView.accessibilityLabel = "Happy"
+        card.layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+        card.layer.borderWidth = 0.5
+    }
+}
+
+/// The revealed secret key: tap to copy.
+public final class SecretKeyCardView: UIControl {
+    let label = StyledLabel(style: TextStyles.secretKeyLabel, color: Palette.textSecondary, lines: 1)
+    let iconView = UIImageView()
+    let valueLabel = StyledLabel(style: TextStyles.secretKeyValue, color: Palette.text)
+    public var onCopy: (() -> Void)?
+
+    public var copiedRecently = false {
+        didSet { updateIcon() }
+    }
+
+    public init(formattedKey: String) {
+        super.init(frame: .zero)
+        label.string = "SECRET KEY (TAP TO COPY)"
+        valueLabel.string = formattedKey
+        iconView.contentMode = .center
+        for view in [label, iconView, valueLabel] {
+            view.isUserInteractionEnabled = false
+            addSubview(view)
+        }
+        updateIcon()
+        isAccessibilityElement = true
+        accessibilityLabel = Strings.SettingsAccount.secretKeyLabel
+        accessibilityTraits = .button
+        addTarget(self, action: #selector(tapped), for: .touchUpInside)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    public func layout(width: CGFloat) -> SecretKeyCardLayout {
+        SecretKeyCardLayout(width: width, label: label.measurable, value: valueLabel.measurable)
+    }
+
+    public override func sizeThatFits(_ size: CGSize) -> CGSize {
+        layout(width: size.width).size
+    }
+
+    public override func layoutSubviews() {
+        super.layoutSubviews()
+        let layout = layout(width: bounds.width)
+        label.setLayoutFrame(layout.label)
+        iconView.setLayoutFrame(layout.icon)
+        valueLabel.setLayoutFrame(layout.value)
+    }
+
+    public override var isHighlighted: Bool {
+        didSet { backgroundColor = isHighlighted ? UIColor(Palette.surfacePressedOverlay) : nil }
+    }
+
+    private func updateIcon() {
+        iconView.image = .symbol(copiedRecently ? "checkmark.circle.fill" : "doc.on.doc", pointSize: 15)
+        iconView.tintColor = UIColor(copiedRecently ? Palette.success : Palette.textSecondary)
+    }
+
+    @objc private func tapped() {
+        onCopy?()
+    }
+}
+#endif

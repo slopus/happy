@@ -1,0 +1,104 @@
+import Foundation
+
+/// Exponential backoff, capped.
+public struct Backoff: Sendable {
+    public var initial: Duration
+    public var maximum: Duration
+
+    public init(initial: Duration, maximum: Duration) {
+        self.initial = initial
+        self.maximum = maximum
+    }
+
+    public static let standard = Backoff(initial: .seconds(1), maximum: .seconds(30))
+
+    /// Delay before retry number `attempt` (1-based).
+    public func delay(attempt: Int) -> Duration {
+        var delay = initial
+        for _ in 1..<max(1, attempt) {
+            delay = delay * 2
+            if delay >= maximum { return maximum }
+        }
+        return min(delay, maximum)
+    }
+}
+
+/// Runs an operation whenever it is invalidated, coalescing invalidations
+/// that arrive while it is running into a single follow-up run, and
+/// retrying failures with backoff. The Swift counterpart of happy-app's
+/// InvalidateSync: every sync job (sessions, machines, one session's
+/// messages, the outbox) is one of these.
+public actor InvalidateSync {
+    public typealias Sleep = @Sendable (Duration) async throws -> Void
+
+    private let operation: @Sendable () async throws -> Void
+    private let backoff: Backoff
+    private let sleep: Sleep
+    private var task: Task<Void, Never>?
+    private var dirty = false
+    private var stopped = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    public init(
+        backoff: Backoff = .standard,
+        sleep: @escaping Sleep = { try await Task.sleep(for: $0) },
+        operation: @escaping @Sendable () async throws -> Void
+    ) {
+        self.backoff = backoff
+        self.sleep = sleep
+        self.operation = operation
+    }
+
+    public var isRunning: Bool { task != nil }
+
+    public func invalidate() {
+        guard !stopped else { return }
+        dirty = true
+        if task == nil {
+            task = Task { await self.drain() }
+        }
+    }
+
+    /// Invalidates and returns once a run that started after this call has
+    /// succeeded (or the sync was stopped).
+    public func invalidateAndAwait() async {
+        invalidate()
+        guard task != nil else { return }
+        await withCheckedContinuation { continuation in
+            waiters.append(continuation)
+        }
+    }
+
+    public func stop() {
+        stopped = true
+        task?.cancel()
+        task = nil
+        resumeWaiters()
+    }
+
+    private func drain() async {
+        var attempt = 0
+        while dirty && !stopped {
+            dirty = false
+            do {
+                try await operation()
+                attempt = 0
+            } catch {
+                if stopped || Task.isCancelled { break }
+                dirty = true
+                attempt += 1
+                try? await sleep(backoff.delay(attempt: attempt))
+            }
+        }
+        task = nil
+        resumeWaiters()
+    }
+
+    private func resumeWaiters() {
+        let pending = waiters
+        waiters = []
+        for waiter in pending {
+            waiter.resume()
+        }
+    }
+}

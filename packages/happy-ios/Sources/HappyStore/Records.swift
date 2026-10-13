@@ -1,0 +1,213 @@
+import Foundation
+import GRDB
+import HappyWire
+
+// Rows of the on-device store. Each synced record keeps two copies of its
+// encrypted fields: the ciphertext exactly as the server sent it, and the
+// decrypted JSON. The ciphertext lets the app re-derive the plaintext after
+// a model change without refetching; the JSON is what the UI reads.
+
+/// A session as last seen from the server, plus local sync bookkeeping.
+public struct SessionRecord: Codable, Hashable, Sendable, FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "session"
+
+    public var id: String
+    /// Highest message seq the server has allocated in this session.
+    public var seq: Int
+    public var createdAt: Int64
+    public var updatedAt: Int64
+    public var active: Bool
+    public var activeAt: Int64
+    public var projectId: String?
+
+    public var metadataVersion: Int
+    public var metadataCipher: String
+    public var metadata: JSONValue?
+
+    public var agentStateVersion: Int
+    public var agentStateCipher: String?
+    public var agentState: JSONValue?
+
+    /// The wrapped data encryption key (`0x00 || box`), base64. Kept so the
+    /// key can be reopened from the account secret on the next launch; the
+    /// raw key is never written to disk.
+    public var dataKeyCipher: String?
+    /// False when this session cannot be opened with the current protocol
+    /// (no data key, or a key not wrapped to this account).
+    public var decryptable: Bool
+
+    /// Every message with `seq <= syncedMessageSeq` is stored locally. The
+    /// next delta fetch asks for `after_seq = syncedMessageSeq`.
+    public var syncedMessageSeq: Int
+
+    public init(
+        id: String, seq: Int, createdAt: Int64, updatedAt: Int64, active: Bool, activeAt: Int64,
+        projectId: String?, metadataVersion: Int, metadataCipher: String, metadata: JSONValue?,
+        agentStateVersion: Int, agentStateCipher: String?, agentState: JSONValue?,
+        dataKeyCipher: String?, decryptable: Bool, syncedMessageSeq: Int = 0
+    ) {
+        self.id = id
+        self.seq = seq
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.active = active
+        self.activeAt = activeAt
+        self.projectId = projectId
+        self.metadataVersion = metadataVersion
+        self.metadataCipher = metadataCipher
+        self.metadata = metadata
+        self.agentStateVersion = agentStateVersion
+        self.agentStateCipher = agentStateCipher
+        self.agentState = agentState
+        self.dataKeyCipher = dataKeyCipher
+        self.decryptable = decryptable
+        self.syncedMessageSeq = syncedMessageSeq
+    }
+
+    /// True when the server has messages this device has not fetched yet.
+    public var hasUnsyncedMessages: Bool {
+        decryptable && seq > syncedMessageSeq
+    }
+}
+
+public struct MachineRecord: Codable, Hashable, Sendable, FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "machine"
+
+    public var id: String
+    public var seq: Int
+    public var createdAt: Int64
+    public var updatedAt: Int64
+    public var active: Bool
+    public var activeAt: Int64
+
+    public var metadataVersion: Int
+    public var metadataCipher: String
+    public var metadata: JSONValue?
+
+    public var daemonStateVersion: Int
+    public var daemonStateCipher: String?
+    public var daemonState: JSONValue?
+
+    public var dataKeyCipher: String?
+    public var decryptable: Bool
+
+    public init(
+        id: String, seq: Int, createdAt: Int64, updatedAt: Int64, active: Bool, activeAt: Int64,
+        metadataVersion: Int, metadataCipher: String, metadata: JSONValue?,
+        daemonStateVersion: Int, daemonStateCipher: String?, daemonState: JSONValue?,
+        dataKeyCipher: String?, decryptable: Bool
+    ) {
+        self.id = id
+        self.seq = seq
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.active = active
+        self.activeAt = activeAt
+        self.metadataVersion = metadataVersion
+        self.metadataCipher = metadataCipher
+        self.metadata = metadata
+        self.daemonStateVersion = daemonStateVersion
+        self.daemonStateCipher = daemonStateCipher
+        self.daemonState = daemonState
+        self.dataKeyCipher = dataKeyCipher
+        self.decryptable = decryptable
+    }
+}
+
+public struct MessageRecord: Codable, Hashable, Sendable, FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "message"
+
+    /// Server message id.
+    public var id: String
+    public var sessionId: String
+    public var seq: Int
+    public var localId: String?
+    public var createdAt: Int64
+    public var updatedAt: Int64
+    public var contentCipher: String
+    /// Decrypted payload, or nil if it could not be opened.
+    public var content: JSONValue?
+
+    public init(
+        id: String, sessionId: String, seq: Int, localId: String?, createdAt: Int64, updatedAt: Int64,
+        contentCipher: String, content: JSONValue?
+    ) {
+        self.id = id
+        self.sessionId = sessionId
+        self.seq = seq
+        self.localId = localId
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+        self.contentCipher = contentCipher
+        self.content = content
+    }
+}
+
+/// A local write that has not reached the server yet. Sends are replayed
+/// until acknowledged; the server deduplicates by `localId`, so a replay
+/// after an unseen success is harmless.
+public struct OutboxRecord: Codable, Hashable, Sendable, FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "outbox"
+
+    public enum Kind: String, Codable, Sendable {
+        case message
+    }
+
+    public var localId: String
+    public var kind: Kind
+    public var sessionId: String
+    /// The plaintext record, encrypted at send time with the session key.
+    public var payload: JSONValue
+    public var createdAt: Int64
+    public var attempts: Int
+    public var lastError: String?
+
+    public init(localId: String, kind: Kind, sessionId: String, payload: JSONValue, createdAt: Int64, attempts: Int = 0, lastError: String? = nil) {
+        self.localId = localId
+        self.kind = kind
+        self.sessionId = sessionId
+        self.payload = payload
+        self.createdAt = createdAt
+        self.attempts = attempts
+        self.lastError = lastError
+    }
+}
+
+/// Account settings: one row, versioned by the server.
+public struct AccountSettingsRecord: Codable, Hashable, Sendable, FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "accountSettings"
+
+    public var id: Int = 1
+    public var version: Int
+    public var cipher: String?
+    public var settings: JSONValue?
+
+    public init(version: Int, cipher: String?, settings: JSONValue?) {
+        self.version = version
+        self.cipher = cipher
+        self.settings = settings
+    }
+}
+
+/// Named sync cursors and timestamps.
+public struct SyncStateRecord: Codable, Hashable, Sendable, FetchableRecord, PersistableRecord {
+    public static let databaseTableName = "syncState"
+
+    public var key: String
+    public var value: Int64
+
+    public init(key: String, value: Int64) {
+        self.key = key
+        self.value = value
+    }
+}
+
+public enum SyncCursor: String, Sendable, CaseIterable {
+    /// Highest session `updatedAt` applied from `GET /v2/sessions`.
+    case sessionsChangedSince = "sessions.changedSince"
+    /// When the session list was last fully reconciled (to catch deletions
+    /// that happened while offline).
+    case sessionsLastFullSync = "sessions.lastFullSync"
+    /// When machines were last fetched.
+    case machinesLastSync = "machines.lastSync"
+}
