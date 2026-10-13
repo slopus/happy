@@ -220,6 +220,12 @@ handles socket records arriving before lower-sequence delta records. Message
 deletion rebuilds the reducer; normal append, permission and outbox updates do
 not. Outbox rows are a removable overlay and delivery state comes from schema
 v3. Usage and todos travel on `ChatSnapshot` for the composer and chat.
+Tool outcomes and sidechain children whose calls or owners have not reached
+disk yet are buffered across batches and joined when their missing records
+arrive. This deliberately improves on the RN reducer's discarded early
+results, because rowid-based replay can fill a sequence gap in a later batch.
+Activity, unread, archive and unrelated metadata changes are excluded from
+the observed session projection. Equal visible snapshots are not re-emitted.
 
 ## Layout
 

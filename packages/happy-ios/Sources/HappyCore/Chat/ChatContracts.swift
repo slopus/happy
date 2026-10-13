@@ -49,8 +49,8 @@ public struct ChatSnapshot: Equatable, Sendable {
     public var messages: [ChatMessage]
     /// Outbox state by `localId`, for messages the server doesn't have yet.
     public var delivery: [String: OutboxDelivery]
-    /// False until the session's messages have been pulled at least once,
-    /// so an empty chat can tell "nothing yet" from "not loaded".
+    /// False until messages have been pulled or the server confirms the
+    /// session is empty (seq == 0), so chat can distinguish loading from empty.
     public var isLoaded: Bool
     public var usage: ChatUsage?
     public var todos: JSONValue?
