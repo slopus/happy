@@ -73,6 +73,7 @@ final class ChatPlanView: UIView {
     private var timers: [ChatElapsedLabel] = []
     private var pulses: [ChatPulseView] = []
     private var diffs: [DiffChunkView] = []
+    private var scrollers: [ChatScrollerView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -104,6 +105,7 @@ final class ChatPlanView: UIView {
         var timerIndex = 0
         var pulseIndex = 0
         var diffIndex = 0
+        var scrollerIndex = 0
         var order: [UIView] = []
         for item in plan.items {
             switch item {
@@ -150,6 +152,15 @@ final class ChatPlanView: UIView {
                 view.setLayoutFrame(frame)
                 view.apply(diff)
                 order.append(view)
+            case .scroller(let content, let frame, let radius):
+                // The same strip of the same row keeps where it was scrolled to.
+                let key = "\(plan.id)#\(scrollerIndex)"
+                let view = take(&scrollers, &scrollerIndex) { ChatScrollerView() }
+                view.setLayoutFrame(frame)
+                view.layer.cornerRadius = radius
+                view.layer.cornerCurve = .continuous
+                view.apply(content, key: key)
+                order.append(view)
             }
         }
         for view in boxes[boxIndex...] { view.isHidden = true }
@@ -171,6 +182,7 @@ final class ChatPlanView: UIView {
             view.onShowMore = nil
             view.isHidden = true
         }
+        for view in scrollers[scrollerIndex...] { view.isHidden = true }
         for view in order {
             view.isHidden = false
             bringSubviewToFront(view)
@@ -201,22 +213,77 @@ final class ChatPlanView: UIView {
     /// What a tap at `point` (in this view) does, if anything.
     func action(at point: CGPoint) -> ChatRowAction? {
         guard let plan else { return nil }
+        if let scroller = scroller(at: point), let action = scroller.content.action(at: scroller.content.convert(point, from: self)) {
+            return action
+        }
         return plan.hits.first { !$0.hold && $0.frame.contains(point) }?.action
     }
 
-    /// The long-press target under `point` (in this view), if any.
+    /// The long-press target under `point` (in this view), if any, with
+    /// its frame in this view.
     func hold(at point: CGPoint) -> ChatHit? {
-        plan?.hits.first { $0.hold && $0.frame.contains(point) }
+        if let scroller = scroller(at: point), var hit = scroller.content.hold(at: scroller.content.convert(point, from: self)) {
+            hit.frame = scroller.content.convert(hit.frame, to: self)
+            return hit
+        }
+        return plan?.hits.first { $0.hold && $0.frame.contains(point) }
+    }
+
+    /// The sideways strip under `point`; what it shows is in front.
+    private func scroller(at point: CGPoint) -> ChatScrollerView? {
+        scrollers.first { !$0.isHidden && $0.frame.contains(point) }
     }
 
     /// The link under `point`, if the tap landed on one.
     func link(at point: CGPoint) -> String? {
+        if let scroller = scroller(at: point), let link = scroller.content.link(at: scroller.content.convert(point, from: self)) {
+            return link
+        }
         for view in texts where !view.isHidden && view.frame.contains(point) {
             if let link = view.link(at: CGPoint(x: point.x - view.frame.minX, y: point.y - view.frame.minY)) {
                 return link
             }
         }
         return nil
+    }
+}
+
+/// HorizontalScrollView inside a row: a plan of its own, wider than the
+/// strip that shows it, scrolled sideways. Like React Native's horizontal
+/// ScrollView it shows its indicator and always bounces sideways.
+final class ChatScrollerView: UIScrollView {
+    let content = ChatPlanView()
+    private var key: String?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .clear
+        showsHorizontalScrollIndicator = true
+        showsVerticalScrollIndicator = false
+        alwaysBounceHorizontal = true
+        alwaysBounceVertical = false
+        scrollsToTop = false
+        contentInsetAdjustmentBehavior = .never
+        addSubview(content)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    /// Shows `plan`; `key` names the strip, and a new one starts scrolled
+    /// to the start.
+    func apply(_ plan: ChatRowPlan, key: String) {
+        if key != self.key {
+            self.key = key
+            contentOffset = .zero
+        }
+        contentSize = plan.size
+        content.frame = CGRect(origin: .zero, size: plan.size)
+        content.apply(plan)
+        let maxX = max(0, plan.size.width - bounds.width)
+        if contentOffset.x > maxX { contentOffset.x = maxX }
     }
 }
 

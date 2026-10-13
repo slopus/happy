@@ -367,28 +367,30 @@ struct MarkdownPiece {
                 drawers.append { placed, origin in
                     guard case .table(let table) = placed else { return ([], []) }
                     let frame = table.frame.offsetBy(dx: origin.x, dy: origin.y)
-                    // Wider tables scroll sideways once the scroll views land;
-                    // until then the grid is clipped at the column's edge.
-                    let content = CGPoint(x: frame.minX + table.scroll.minX, y: frame.minY + table.scroll.minY)
-                    let clip = frame.insetBy(dx: MarkdownLayout.Metrics.tableBorder, dy: MarkdownLayout.Metrics.tableBorder)
-                    var items: [ChatDrawItem] = [.box(ChatBox(frame: frame, border: Palette.divider, borderWidth: MarkdownLayout.Metrics.tableBorder, radius: MarkdownLayout.Metrics.tableRadius))]
+                    // The border stays put; the grid inside scrolls sideways,
+                    // clipped to the border's rounded inside (overflow: hidden).
+                    var grid: [ChatDrawItem] = []
                     if let header = table.rows.first {
-                        items.append(.box(ChatBox(frame: header.offsetBy(dx: content.x, dy: content.y).intersection(clip), fill: Palette.surfaceHigh)))
+                        grid.append(.box(ChatBox(frame: header, fill: Palette.surfaceHigh)))
                     }
                     for separator in table.separators {
-                        let line = separator.offsetBy(dx: content.x, dy: content.y).intersection(clip)
-                        if !line.isNull { items.append(.box(ChatBox(frame: line, fill: Palette.divider))) }
+                        grid.append(.box(ChatBox(frame: separator, fill: Palette.divider)))
                     }
                     var hits: [ChatHit] = []
                     for (rowIndex, cells) in table.cells.enumerated() where rowIndex < measured.count {
                         for (column, cell) in cells.enumerated() where column < measured[rowIndex].count {
-                            let cellFrame = cell.offsetBy(dx: content.x, dy: content.y)
-                            guard cellFrame.maxX <= clip.maxX + 0.5 else { continue }
-                            items.append(.text(measured[rowIndex][column].layout(for: cell), cellFrame))
-                            hits += hold(cellFrame, measured[rowIndex][column].string.string)
+                            grid.append(.text(measured[rowIndex][column].layout(for: cell), cell))
+                            hits += hold(cell, measured[rowIndex][column].string.string)
                         }
                     }
-                    return (items, hits)
+                    let content = ChatRowPlan(id: "table", size: table.contentSize, items: grid, hits: hits)
+                    return ([
+                        .box(ChatBox(frame: frame, border: Palette.divider, borderWidth: MarkdownLayout.Metrics.tableBorder, radius: MarkdownLayout.Metrics.tableRadius)),
+                        .scroller(
+                            content, frame: table.scroll.offsetBy(dx: frame.minX, dy: frame.minY),
+                            radius: MarkdownLayout.Metrics.tableRadius - MarkdownLayout.Metrics.tableBorder
+                        ),
+                    ], [])
                 }
 
             case .image(let alt, _):
@@ -438,8 +440,8 @@ struct MarkdownPiece {
         }
     }
 
-    /// A code block, unwrapped like happy-app's. It is clipped at the card
-    /// until the code view brings sideways scrolling.
+    /// A code block, unwrapped like happy-app's: the language on top, the
+    /// code scrolling sideways under it.
     private static func code(
         language: String?, content: String, blocks: inout [MarkdownLayout.Block],
         drawers: inout [(MarkdownLayout.Placed, CGPoint) -> ([ChatDrawItem], [ChatHit])], hold: @escaping (CGRect, String) -> [ChatHit]
@@ -454,9 +456,8 @@ struct MarkdownPiece {
             if let label, let languageFrame = placedCode.language {
                 items.append(.text(label.layout(for: languageFrame), languageFrame.offsetBy(dx: frame.minX, dy: frame.minY)))
             }
-            let textFrame = placedCode.text.offsetBy(dx: frame.minX + placedCode.scroll.minX, dy: frame.minY + placedCode.scroll.minY)
-            let visible = frame.insetBy(dx: MarkdownLayout.Metrics.codePadding, dy: 0)
-            items.append(.text(code, textFrame.intersection(visible)))
+            let strip = ChatRowPlan(id: "code", size: placedCode.contentSize, items: [.text(code, placedCode.text)])
+            items.append(.scroller(strip, frame: placedCode.scroll.offsetBy(dx: frame.minX, dy: frame.minY)))
             return (items, hold(frame, content))
         }
     }

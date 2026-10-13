@@ -30,6 +30,10 @@ public struct MarkdownLayout: Equatable, Sendable {
         public static let blockMargin: CGFloat = 8
         public static let codePadding: CGFloat = 16
         public static let codeLanguageTop: CGFloat = 8
+        /// The widest a code block's text is drawn; a longer line (minified
+        /// code, say) is cut off there rather than drawn into a bitmap
+        /// hundreds of screens wide.
+        public static let codeMaxWidth: CGFloat = 4096
         public static let codeRadius: CGFloat = 8
         public static let optionGap: CGFloat = 8
         public static let optionPaddingH: CGFloat = 12
@@ -201,13 +205,14 @@ public struct MarkdownLayout: Equatable, Sendable {
                     inner = M.codeLanguageTop + size.height
                 }
                 let scrollHeight = code.height + 2 * M.codePadding
+                let codeWidth = min(code.width, M.codeMaxWidth)
                 let frame = CGRect(x: 0, y: y, width: width, height: inner + scrollHeight)
                 placed.append(.code(PlacedCode(
                     frame: frame,
                     language: languageFrame,
                     scroll: CGRect(x: 0, y: inner, width: width, height: scrollHeight),
-                    contentSize: CGSize(width: max(width, code.width + 2 * M.codePadding), height: scrollHeight),
-                    text: CGRect(x: M.codePadding, y: M.codePadding, width: code.width, height: code.height)
+                    contentSize: CGSize(width: max(width, codeWidth + 2 * M.codePadding), height: scrollHeight),
+                    text: CGRect(x: M.codePadding, y: M.codePadding, width: codeWidth, height: code.height)
                 )))
                 y += frame.height + M.blockMargin
 

@@ -61,6 +61,10 @@ enum ChatDrawItem {
     /// A DiffChunk, planned at the frame's width. Its "Show N more lines"
     /// asks for `diffShowMore(toolId:chunk:file:)`.
     case diff(DiffChunkPlan, frame: CGRect, toolId: String, chunk: Int)
+    /// A strip that scrolls sideways (HorizontalScrollView: a code block, a
+    /// table), showing `content` through `frame`, its corners rounded by
+    /// `radius`. The content's items and hits are in its own coordinates.
+    case scroller(ChatRowPlan, frame: CGRect, radius: CGFloat = 0)
 }
 
 /// What a tap on part of a row does.

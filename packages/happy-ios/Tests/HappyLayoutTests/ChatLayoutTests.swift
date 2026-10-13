@@ -146,6 +146,13 @@ final class MarkdownLayoutTests: XCTestCase {
         assertSize(code.contentSize, CGSize(width: 300, height: 52))
     }
 
+    func testAVeryLongLineOfCodeIsCutOff() {
+        let layout = MarkdownLayout(width: 300, blocks: [.code(language: nil, code: CGSize(width: 90_000, height: 20))])
+        guard case .code(let code) = layout.blocks[0] else { return XCTFail() }
+        assertSize(code.contentSize, CGSize(width: 4128, height: 52))
+        assertFrame(code.text, rect(16, 16, 4096, 20))
+    }
+
     func testTableGrid() {
         let layout = MarkdownLayout(width: 300, blocks: [.table(.init(
             columnWidths: [80, 120],
