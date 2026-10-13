@@ -63,7 +63,7 @@ final class SyncPerfTests: XCTestCase {
             XCTAssertEqual(decoder.versioned(body.metadata, cipher: RecordCipher(key: key))?.value?["title"], .string("fixed title"))
         }
         _ = try median("decode-decrypt-50-sessions") {
-            let rows = try JSONDecoder().decode(SessionsPage.self, from: page).sessions.map(decoder.session)
+            let rows = try JSONDecoder().decode(SessionsPage.self, from: page).sessions.map { decoder.session($0) }
             XCTAssertEqual(rows.count, 50)
             XCTAssertTrue(rows.allSatisfy { $0.metadata?["title"] == .string("fixed title") })
         }
@@ -80,13 +80,13 @@ final class SyncPerfTests: XCTestCase {
         let commits = SyncPerfCommits()
         store.writer.add(transactionObserver: commits)
         _ = try median("unchanged-1000-sessions") { try store.upsertSessions(rows) }
-        XCTAssertEqual(commits.value, 7) // Baseline; tightened when skip-if-unchanged lands.
+        XCTAssertEqual(commits.value, 0)
         _ = try median("unchanged-50-sessions") { try store.upsertSessions(Array(rows.prefix(50))) }
         _ = try median("unchanged-update-session") {
             _ = try store.applySessionUpdate(id: "s0", metadata: nil, agentState: nil, projectId: nil)
         }
         print("SYNC_PERF merges: modifying_commits=\(commits.value)")
-        XCTAssertEqual(commits.value, 21)
+        XCTAssertEqual(commits.value, 0)
     }
 
     func testOneReducerAppendInto2000Messages() throws {

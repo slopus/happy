@@ -195,7 +195,8 @@ public actor SyncEngine {
         var maxUpdatedAt = since ?? 0
         repeat {
             let page = try await api.sessions(changedSince: changedSince, cursor: pageCursor, limit: options.sessionsPageSize)
-            try store.upsertSessions(page.sessions.map(decoder.session), reconcileComposer: modePushes.reconciliation)
+            let previous = Dictionary(uniqueKeysWithValues: try store.sessions(ids: page.sessions.map(\.id)).map { ($0.id, $0) })
+            try store.upsertSessions(page.sessions.map { decoder.session($0, previous: previous[$0.id]) }, reconcileComposer: modePushes.reconciliation)
             for session in page.sessions {
                 seen.insert(session.id)
                 maxUpdatedAt = max(maxUpdatedAt, session.updatedAt)
@@ -212,7 +213,8 @@ public actor SyncEngine {
 
     func pullMachines() async throws {
         let rows = try await api.machines()
-        try store.replaceMachines(rows.map(decoder.machine))
+        let previous = Dictionary(uniqueKeysWithValues: try store.machines().map { ($0.id, $0) })
+        try store.replaceMachines(rows.map { decoder.machine($0, previous: previous[$0.id]) })
         try store.setCursor(.machinesLastSync, now())
     }
 
@@ -752,8 +754,8 @@ public actor SyncEngine {
             let cipher = keyRing.cipher(wrappedKey: session.dataKeyCipher)
             _ = try store.applySessionUpdate(
                 id: body.id,
-                metadata: decoder.versioned(body.metadata, cipher: cipher),
-                agentState: decoder.versioned(body.agentState, cipher: cipher),
+                metadata: decoder.versioned(body.metadata, cipher: cipher, after: session.metadataVersion),
+                agentState: decoder.versioned(body.agentState, cipher: cipher, after: session.agentStateVersion),
                 projectId: body.projectId,
                 reconcileComposer: modePushes.reconciliation
             )
@@ -772,8 +774,8 @@ public actor SyncEngine {
             let cipher = keyRing.cipher(wrappedKey: machine.dataKeyCipher)
             _ = try store.applyMachineUpdate(
                 id: body.machineId,
-                metadata: decoder.versioned(body.metadata, cipher: cipher),
-                daemonState: decoder.versioned(body.daemonState, cipher: cipher),
+                metadata: decoder.versioned(body.metadata, cipher: cipher, after: machine.metadataVersion),
+                daemonState: decoder.versioned(body.daemonState, cipher: cipher, after: machine.daemonStateVersion),
                 active: body.active,
                 activeAt: body.activeAt
             )
