@@ -150,18 +150,26 @@ final class SendingOutboxTests: XCTestCase, @unchecked Sendable {
         let (store, engine, _, _) = try setup()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let sender = OutboxSender(store: store, sync: engine, filesDirectory: directory)
+        let requests = SpawnRequests()
+        let otherAccount = SpawnRequests()
+        let sender = OutboxSender(store: store, sync: engine, filesDirectory: directory, spawnRequests: requests)
         await engine.setBackgrounded(true)
         let released = await MainActor.run { () -> Counter in
             let counter = Counter()
-            let requests = SpawnRequests.shared
             let id = requests.requestId(for: .init(machineId: "m", agent: "claude", place: "~", worktree: nil, modelKey: nil, permissionMode: nil, effort: nil))
             requests.remember(id, sessionId: "s", abandon: {}, release: { _ = counter.next() })
+            let otherID = otherAccount.requestId(for: .init(machineId: "m", agent: "claude", place: "~", worktree: nil, modelKey: nil, permissionMode: nil, effort: nil))
+            otherAccount.remember(otherID, sessionId: "s", abandon: {}, release: { XCTFail("sending in one account must not release another account's same session ID") })
             return counter
         }
         _ = try await sender.send(OutgoingMessage(text: "hello"), sessionId: "s")
         XCTAssertEqual(released.next(), 2, "released once")
-        await MainActor.run { SpawnRequests.shared.complete() }
+        await MainActor.run {
+            let otherID = otherAccount.requestId(for: .init(machineId: "m", agent: "claude", place: "~", worktree: nil, modelKey: nil, permissionMode: nil, effort: nil))
+            XCTAssertEqual(otherAccount.spawnedSessionId(otherID), "s")
+            requests.complete()
+            otherAccount.complete()
+        }
         await engine.stop()
     }
 }
