@@ -71,6 +71,7 @@ struct FeedState: Sendable {
     init(sessionId: String) { self.sessionId = sessionId }
 
     mutating func apply(_ page: ChatStorePage) -> ChatSnapshot {
+        ThreadRules.assertOffMain()
         let change = page.change
         let records = page.records.compactMap(ChatNormalizer.normalize)
         normalizedRecordCount += page.records.count

@@ -5,7 +5,7 @@ extension LocalStore {
     /// cannot overwrite a newer wire stamp already stored by another merge.
     public func persistPresence(sessions: [String: PresenceOverlayValue], machines: [String: PresenceOverlayValue]) throws {
         guard !sessions.isEmpty || !machines.isEmpty else { return }
-        try writer.write { db in
+        try performWrite { db in
             for (id, presence) in sessions {
                 guard var record = try SessionRecord.fetchOne(db, key: id), presence.latestAt >= record.activeAt else { continue }
                 let old = record
