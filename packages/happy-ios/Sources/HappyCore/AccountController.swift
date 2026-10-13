@@ -18,6 +18,8 @@ public final class AccountController {
     public var onChange: ((State) -> Void)?
     public let serverConfig: ServerConfig
     public let clientID: String
+    /// Device-only settings of the signed-in account; logout clears them.
+    public let localSettings: LocalSettings
 
     private let credentialStore: CredentialStore
     /// Where account stores live; nil keeps them in memory (tests).
@@ -31,6 +33,7 @@ public final class AccountController {
         clientID: String,
         credentialStore: CredentialStore,
         storeDirectory: URL?,
+        localSettings: KeyValueStore = InMemoryKeyValueStore(),
         transport: HTTPTransport = URLSessionTransport(),
         connector: WebSocketConnector = URLSessionWebSocketConnector(),
         appState: @escaping @Sendable () async -> String = { "active" }
@@ -39,6 +42,7 @@ public final class AccountController {
         self.clientID = clientID
         self.credentialStore = credentialStore
         self.storeDirectory = storeDirectory
+        self.localSettings = LocalSettings(storage: localSettings)
         self.transport = transport
         self.connector = connector
         self.appState = appState
@@ -85,6 +89,7 @@ public final class AccountController {
             try? session.store.eraseAll()
         }
         try? credentialStore.clear()
+        localSettings.clear()
         state = .signedOut
     }
 

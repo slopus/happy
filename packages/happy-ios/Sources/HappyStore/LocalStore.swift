@@ -269,6 +269,25 @@ public final class LocalStore: Sendable {
         _ = try writer.write { db in try MachineRecord.deleteOne(db, key: id) }
     }
 
+    public func machinesSnapshot() throws -> MachinesSnapshot {
+        try writer.read { db in try Self.fetchMachinesSnapshot(db) }
+    }
+
+    /// Calls `onChange` with the machines now and after every change to them
+    /// or to the machine sync cursor. Home decides what to show from this.
+    @MainActor
+    public func observeMachines(onChange: @escaping @MainActor (MachinesSnapshot) -> Void) -> StoreObservation {
+        StoreObservation(observe({ db in try Self.fetchMachinesSnapshot(db) }, onChange: onChange))
+    }
+
+    static func fetchMachinesSnapshot(_ db: Database) throws -> MachinesSnapshot {
+        MachinesSnapshot(
+            synced: try SyncStateRecord.fetchOne(db, key: SyncCursor.machinesLastSync.rawValue) != nil,
+            // Newest first, as happy-app's useAllMachines sorts them.
+            machines: try MachineRecord.order(Column("createdAt").desc, Column("id")).fetchAll(db)
+        )
+    }
+
     // MARK: Account settings
 
     public func accountSettings() throws -> AccountSettingsRecord? {
@@ -423,6 +442,31 @@ public final class LocalStore: Sendable {
             record.decryptable = incoming.decryptable
         }
         try record.update(db)
+    }
+}
+
+/// The account's machines as stored, and whether they have been fetched at
+/// least once. Until then an empty list means "not known yet", not "none".
+public struct MachinesSnapshot: Equatable, Sendable {
+    public var synced: Bool
+    public var machines: [MachineRecord]
+
+    public init(synced: Bool, machines: [MachineRecord]) {
+        self.synced = synced
+        self.machines = machines
+    }
+}
+
+/// Keeps a store observation running until it is cancelled or released.
+public final class StoreObservation {
+    private let cancellable: AnyDatabaseCancellable
+
+    init(_ cancellable: AnyDatabaseCancellable) {
+        self.cancellable = cancellable
+    }
+
+    public func cancel() {
+        cancellable.cancel()
     }
 }
 

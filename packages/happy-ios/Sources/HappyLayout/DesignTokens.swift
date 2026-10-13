@@ -124,13 +124,22 @@ public enum Palette {
         dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.55)
     )
 
+    /// TerminalBlock.tsx: the terminal on happy.engineering, dark in both
+    /// appearances.
+    public static let terminalBackground = ColorToken("#14352f")
+    public static let terminalBorder = ColorToken("#24463f")
+    public static let terminalText = ColorToken("#f0ebe0")
+    public static let terminalPrompt = ColorToken("#6fae74")
+    public static let terminalComment = ColorToken("#8fae8a")
+
     public static let all: [ColorToken] = [
         text, textSecondary, textDestructive, textLink, surface, surfaceHigh, surfacePressedOverlay,
         divider, itemDivider, groupedBackground, groupedChevron, groupedSectionTitle, headerBackground,
         headerTint, inputBackground, inputText, inputPlaceholder, statusConnected, statusConnecting,
         statusDisconnected, statusError, success, warningCritical, roundButtonFill, roundButtonFillPressed,
         roundButtonText, iconBlue, iconOrange, iconRed, iconPurple, iconGreen, wordmarkHappy,
-        wordmarkEngineering, qrBackground, scannerDimming,
+        wordmarkEngineering, qrBackground, scannerDimming, terminalBackground, terminalBorder, terminalText,
+        terminalPrompt, terminalComment,
     ]
 }
 
@@ -187,6 +196,10 @@ public enum TextStyles {
     public static let checklistBody = TextStyle(.regular, size: 15, lineHeight: 21)
     public static let onboardingError = TextStyle(.regular, size: 15, lineHeight: 20)
     public static let getHelp = TextStyle(.semiBold, size: 15, lineHeight: 20)
+    /// The offline checklist's title and the troubleshoot heading.
+    public static let emptyStateTitle = TextStyle(.semiBold, size: 24, lineHeight: 30)
+    public static let terminalLine = TextStyle(.mono, size: 14, lineHeight: 24)
+    public static let promptHint = TextStyle(.regular, size: 13, lineHeight: 18)
 
     // Restore (app/(app)/restore/index.tsx and manual.tsx)
     public static let restoreInstruction = TextStyle(.regular, size: 17, lineHeight: 22)

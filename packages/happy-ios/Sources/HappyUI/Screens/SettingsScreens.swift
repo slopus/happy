@@ -30,7 +30,7 @@ public final class SettingsViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         title = Strings.Settings.title
-        navigationItem.backButtonDisplayMode = .minimal
+        showsBackTitle()
     }
 
     public override func viewWillAppear(_ animated: Bool) {
@@ -116,7 +116,7 @@ public final class SettingsViewController: UIViewController {
 
     private func scanTerminal() {
         Task { @MainActor in
-            guard let text = await PairingFlow.scan(from: self) else { return }
+            guard let text = await PairingFlow.scan(.terminal, from: self) else { return }
             await approve(text, kind: .terminal)
         }
     }
@@ -136,15 +136,15 @@ public final class SettingsViewController: UIViewController {
 
     private func linkDevice() {
         Task { @MainActor in
-            guard let text = await PairingFlow.scan(from: self) else { return }
+            guard let text = await PairingFlow.scan(.account, from: self) else { return }
             await approve(text, kind: .account)
         }
     }
 
     private func approve(_ text: String, kind: PairingFlow.Kind) async {
         guard let session = context.account.session else { return }
-        let result = await PairingFlow.approve(text, expecting: kind, session: session)
-        Alerts.show(result.succeeded ? Strings.Common.success : Strings.Common.error, result.message, on: self)
+        let outcome = await PairingFlow.approve(text, expecting: kind, session: session)
+        PairingFlow.report(outcome, kind: kind, on: self)
     }
 
     private func toggleSecret() {
@@ -175,6 +175,82 @@ public final class SettingsViewController: UIViewController {
                 on: self
             )
             guard confirmed else { return }
+            await context.account.signOut()
+        }
+    }
+}
+
+/// The gear on Link Your Computer, app/(app)/onboarding/settings.tsx. Two
+/// things a person may need before a computer is linked: another server, or
+/// throwing the new account away. Nothing is linked yet, so logging out
+/// loses nothing.
+public final class OnboardingSettingsViewController: UIViewController {
+    private let context: AppContext
+    private let list = GroupedListView()
+
+    public init(context: AppContext) {
+        self.context = context
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    public override func loadView() {
+        view = list
+    }
+
+    public override func viewDidLoad() {
+        super.viewDidLoad()
+        title = Strings.Onboarding.settingsTitle
+        showsBackTitle()
+    }
+
+    public override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // Rebuilt on every return, so a changed server shows.
+        rebuild()
+    }
+
+    private func rebuild() {
+        let server = ItemRowView(
+            title: Strings.Onboarding.settingsServer,
+            detail: context.customServerHost ?? Strings.Onboarding.settingsServerDefault,
+            icon: ItemIcon("server.rack", tint: Palette.textSecondary)
+        ) { [weak self] in
+            self?.openServer()
+        }
+        let logout = ItemRowView(
+            title: Strings.Onboarding.logoutStartOver,
+            icon: ItemIcon("rectangle.portrait.and.arrow.right", tint: Palette.textDestructive),
+            isDestructive: true
+        ) { [weak self] in
+            self?.logout()
+        }
+        logout.showsChevron = false
+        list.sections = [
+            ItemGroupView(rows: [server]),
+            ItemGroupView(footer: Strings.Onboarding.logoutFooter, rows: [logout]),
+        ]
+    }
+
+    private func openServer() {
+        navigationController?.pushViewController(ServerConfigViewController(context: context), animated: true)
+    }
+
+    private func logout() {
+        Task { @MainActor in
+            let confirmed = await Alerts.confirm(
+                Strings.Onboarding.logoutConfirmTitle,
+                Strings.Onboarding.logoutConfirmBody,
+                confirmTitle: Strings.Common.logout,
+                destructive: true,
+                on: self
+            )
+            guard confirmed else { return }
+            // The coordinator swaps back to Welcome.
             await context.account.signOut()
         }
     }

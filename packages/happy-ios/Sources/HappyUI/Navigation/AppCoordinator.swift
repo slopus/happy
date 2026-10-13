@@ -11,7 +11,9 @@ public final class AppCoordinator {
     public let window: UIWindow
     public let context: AppContext
     private let navigation = UINavigationController()
-    private var signedIn: Bool?
+    /// The session the root was built for; nil while signed out, unset
+    /// before the first state arrives.
+    private var shownSession: ObjectIdentifier??
 
     public init(window: UIWindow, context: AppContext) {
         self.window = window
@@ -62,19 +64,24 @@ public final class AppCoordinator {
                 on: top
             )
             guard confirmed, let session = context.account.session else { return }
-            let result = await PairingFlow.approve(text, expecting: kind, session: session)
-            Alerts.show(result.succeeded ? Strings.Common.success : Strings.Common.error, result.message, on: top)
+            let outcome = await PairingFlow.approve(text, expecting: kind, session: session)
+            PairingFlow.report(outcome, kind: kind, on: top)
         }
         return true
     }
 
+    /// Swaps the root only when the account changes. While signed in, home
+    /// stays the root and swaps its own content, so screens pushed over it
+    /// stay put when a computer arrives.
     private func show(_ state: AccountController.State) {
-        let isSignedIn: Bool
-        if case .signedIn = state { isSignedIn = true } else { isSignedIn = false }
-        guard isSignedIn != signedIn else { return }
-        let animated = signedIn != nil
-        signedIn = isSignedIn
-        let root: UIViewController = isSignedIn ? HomeViewController(context: context) : WelcomeViewController(context: context)
+        let session: AccountSession?
+        if case .signedIn(let value) = state { session = value } else { session = nil }
+        let identity = session.map(ObjectIdentifier.init)
+        if let shownSession, shownSession == identity { return }
+        let animated = shownSession != nil
+        shownSession = .some(identity)
+        let root: UIViewController = session.map { HomeViewController(context: context, session: $0) }
+            ?? WelcomeViewController(context: context)
         navigation.presentedViewController?.dismiss(animated: false)
         navigation.setViewControllers([root], animated: animated)
     }

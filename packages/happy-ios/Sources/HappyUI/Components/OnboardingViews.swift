@@ -119,11 +119,11 @@ public final class NavigationTitleView: UIView {
     let subtitleLabel = StyledLabel(style: TextStyles.headerSubtitle, color: Palette.textSecondary, lines: 1, alignment: .center)
 
     public var title: String? {
-        didSet { titleLabel.string = title ?? ""; titleLabel.isHidden = title == nil; invalidate() }
+        didSet { apply() }
     }
 
     public var subtitle: String? {
-        didSet { subtitleLabel.string = subtitle ?? ""; subtitleLabel.isHidden = subtitle == nil; invalidate() }
+        didSet { apply() }
     }
 
     public init(title: String? = nil, subtitle: String? = nil) {
@@ -131,8 +131,10 @@ public final class NavigationTitleView: UIView {
         subtitleLabel.lineBreakMode = .byTruncatingMiddle
         addSubview(titleLabel)
         addSubview(subtitleLabel)
+        // Assignments in a class's own initializer skip didSet.
         self.title = title
         self.subtitle = subtitle
+        apply()
     }
 
     @available(*, unavailable)
@@ -170,7 +172,11 @@ public final class NavigationTitleView: UIView {
         if let frame = layout.subtitle { subtitleLabel.setLayoutFrame(frame.offsetBy(dx: dx, dy: dy)) }
     }
 
-    private func invalidate() {
+    private func apply() {
+        titleLabel.string = title ?? ""
+        titleLabel.isHidden = title == nil
+        subtitleLabel.string = subtitle ?? ""
+        subtitleLabel.isHidden = subtitle == nil
         invalidateIntrinsicContentSize()
         setNeedsLayout()
     }
@@ -311,6 +317,8 @@ public final class LinkComputerContentView: UIView {
     }
 
     public var onOpenWebsite: (() -> Void)?
+    /// A box was ticked or unticked by hand.
+    public var onToggle: ((Set<Step>) -> Void)?
 
     let titleLabel = StyledLabel(style: TextStyles.onboardingTitle, color: Palette.text)
     let heads: [UIControl] = Step.allCases.map { _ in UIControl() }
@@ -382,8 +390,7 @@ public final class LinkComputerContentView: UIView {
     private func updateBoxes() {
         for (index, step) in Step.allCases.enumerated() {
             let checked = ticked.contains(step)
-            boxes[index].image = .symbol(checked ? "checkmark.circle.fill" : "circle", pointSize: 22)
-            boxes[index].tintColor = UIColor(checked ? Palette.success : Palette.textSecondary)
+            boxes[index].showChecklistBox(checked: checked)
             heads[index].accessibilityTraits = checked ? [.button, .selected] : .button
         }
     }
@@ -403,10 +410,19 @@ public final class LinkComputerContentView: UIView {
         guard let index = heads.firstIndex(of: sender) else { return }
         let step = Step.allCases[index]
         if ticked.contains(step) { ticked.remove(step) } else { ticked.insert(step) }
+        onToggle?(ticked)
     }
 
     @objc private func openWebsite() {
         onOpenWebsite?()
+    }
+}
+
+extension UIImageView {
+    /// ChecklistRow's box: a green tick or an empty circle.
+    func showChecklistBox(checked: Bool) {
+        image = .symbol(checked ? "checkmark.circle.fill" : "circle", pointSize: 22)
+        tintColor = UIColor(checked ? Palette.success : Palette.textSecondary)
     }
 }
 #endif

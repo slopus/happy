@@ -168,6 +168,27 @@ final class LocalStoreTests: XCTestCase {
         XCTAssertEqual(machines.first?.active, false)
     }
 
+    func testMachinesSnapshotKnowsWhetherMachinesWereFetched() throws {
+        func machine(_ id: String, createdAt: Int64) -> MachineRecord {
+            MachineRecord(
+                id: id, seq: 0, createdAt: createdAt, updatedAt: 1, active: false, activeAt: 1,
+                metadataVersion: 1, metadataCipher: "c", metadata: nil,
+                daemonStateVersion: 0, daemonStateCipher: nil, daemonState: nil, dataKeyCipher: "k", decryptable: true
+            )
+        }
+        // An empty, never-fetched store is "not known", not "no machines".
+        XCTAssertEqual(try store.machinesSnapshot(), MachinesSnapshot(synced: false, machines: []))
+
+        try store.replaceMachines([machine("old", createdAt: 1), machine("new", createdAt: 5)])
+        try store.setCursor(.machinesLastSync, 10)
+        let snapshot = try store.machinesSnapshot()
+        XCTAssertTrue(snapshot.synced)
+        XCTAssertEqual(snapshot.machines.map(\.id), ["new", "old"], "newest first, like useAllMachines")
+
+        try store.eraseAll()
+        XCTAssertFalse(try store.machinesSnapshot().synced)
+    }
+
     func testAccountSettingsKeepHighestVersion() throws {
         XCTAssertTrue(try store.applyAccountSettings(AccountSettingsRecord(version: 2, cipher: "c2", settings: .string("two"))))
         XCTAssertFalse(try store.applyAccountSettings(AccountSettingsRecord(version: 1, cipher: "c1", settings: .string("one"))))

@@ -22,39 +22,33 @@ public final class ItemRowView: UIControl {
     }
 
     public var subtitle: String? {
-        didSet {
-            subtitleLabel.string = subtitle ?? ""
-            subtitleLabel.isHidden = subtitle == nil
-            // A subtitle caps the title at one line, as in Item.tsx.
-            titleLabel.numberOfLines = subtitle == nil ? 2 : 1
-            invalidate()
-        }
+        didSet { apply() }
     }
 
     public var detail: String? {
-        didSet { detailLabel.string = detail ?? ""; detailLabel.isHidden = detail == nil; invalidate() }
+        didSet { apply() }
     }
 
     public var icon: ItemIcon? {
-        didSet { applyIcon(); invalidate() }
+        didSet { apply() }
     }
 
     public var isDestructive = false {
-        didSet { titleLabel.color = isDestructive ? Palette.textDestructive : Palette.text }
+        didSet { apply() }
     }
 
     /// Shown only when the row is tappable, like happy-app.
     public var showsChevron = true {
-        didSet { invalidate() }
+        didSet { apply() }
     }
 
     /// Set by the group: every row but the last.
     public var showsDivider = false {
-        didSet { dividerView.isHidden = !showsDivider; invalidate() }
+        didSet { apply() }
     }
 
     public var onTap: (() -> Void)? {
-        didSet { isUserInteractionEnabled = onTap != nil; invalidate() }
+        didSet { apply() }
     }
 
     let titleLabel = StyledLabel(style: TextStyles.itemTitle, color: Palette.text, lines: 2)
@@ -84,11 +78,14 @@ public final class ItemRowView: UIControl {
         }
         isAccessibilityElement = true
         self.title = title
+        // Assignments in a class's own initializer skip didSet, so apply()
+        // runs by hand once everything is set.
         self.subtitle = subtitle
         self.detail = detail
         self.icon = icon
         self.isDestructive = isDestructive
         self.onTap = onTap
+        apply()
         addTarget(self, action: #selector(tapped), for: .touchUpInside)
     }
 
@@ -147,11 +144,23 @@ public final class ItemRowView: UIControl {
         set {}
     }
 
-    private func applyIcon() {
+    /// Brings every subview in line with the properties above.
+    private func apply() {
+        subtitleLabel.string = subtitle ?? ""
+        subtitleLabel.isHidden = subtitle == nil
+        // A subtitle caps the title at one line, as in Item.tsx.
+        titleLabel.numberOfLines = subtitle == nil ? 2 : 1
+        titleLabel.color = isDestructive ? Palette.textDestructive : Palette.text
+        detailLabel.string = detail ?? ""
+        detailLabel.isHidden = detail == nil
         iconView.isHidden = icon == nil
-        guard let icon else { return }
-        iconView.image = .symbol(icon.symbol, pointSize: 22)
-        iconView.tintColor = UIColor(icon.tint)
+        if let icon {
+            iconView.image = .symbol(icon.symbol, pointSize: 22)
+            iconView.tintColor = UIColor(icon.tint)
+        }
+        dividerView.isHidden = !showsDivider
+        isUserInteractionEnabled = onTap != nil
+        invalidate()
     }
 
     private func invalidate() {

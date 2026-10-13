@@ -7,22 +7,15 @@ import UIKit
 /// switched on for all but the last.
 public final class ItemGroupView: UIView {
     public var title: String? {
-        didSet { headerLabel.string = title ?? ""; headerLabel.isHidden = title == nil; invalidate() }
+        didSet { applyText() }
     }
 
     public var footer: String? {
-        didSet { footerLabel.string = footer ?? ""; footerLabel.isHidden = footer == nil; invalidate() }
+        didSet { applyText() }
     }
 
     public var rows: [UIView] = [] {
-        didSet {
-            for row in oldValue where row.superview === card { row.removeFromSuperview() }
-            for (index, row) in rows.enumerated() {
-                card.addSubview(row)
-                (row as? ItemRowView)?.showsDivider = index < rows.count - 1
-            }
-            invalidate()
-        }
+        didSet { installRows(replacing: oldValue) }
     }
 
     let headerLabel = StyledLabel(style: TextStyles.groupHeader, color: Palette.groupedSectionTitle)
@@ -38,9 +31,12 @@ public final class ItemGroupView: UIView {
         addSubview(headerLabel)
         addSubview(card)
         addSubview(footerLabel)
+        // Assignments in a class's own initializer skip didSet.
         self.title = title
         self.footer = footer
         self.rows = rows
+        applyText()
+        installRows(replacing: [])
         updateBorder()
         registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in
             self.updateBorder()
@@ -76,6 +72,23 @@ public final class ItemGroupView: UIView {
         if let frame = layout.footer { footerLabel.setLayoutFrame(frame) }
     }
 
+    private func applyText() {
+        headerLabel.string = title ?? ""
+        headerLabel.isHidden = title == nil
+        footerLabel.string = footer ?? ""
+        footerLabel.isHidden = footer == nil
+        invalidate()
+    }
+
+    private func installRows(replacing old: [UIView]) {
+        for row in old where row.superview === card { row.removeFromSuperview() }
+        for (index, row) in rows.enumerated() {
+            card.addSubview(row)
+            (row as? ItemRowView)?.showsDivider = index < rows.count - 1
+        }
+        invalidate()
+    }
+
     private func updateBorder() {
         // CGColor does not follow appearance changes by itself.
         card.layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
@@ -93,11 +106,7 @@ public final class ItemGroupView: UIView {
 /// through `GroupedListLayout`, so every frame comes from the pure layout.
 public final class GroupedListView: UIScrollView {
     public var sections: [UIView] = [] {
-        didSet {
-            for section in oldValue where section.superview === self { section.removeFromSuperview() }
-            for section in sections { addSubview(section) }
-            setNeedsLayout()
-        }
+        didSet { installSections(replacing: oldValue) }
     }
 
     public init(sections: [UIView] = []) {
@@ -106,12 +115,20 @@ public final class GroupedListView: UIScrollView {
         contentInsetAdjustmentBehavior = .never
         alwaysBounceVertical = true
         keyboardDismissMode = .interactive
+        // Assignments in a class's own initializer skip didSet.
         self.sections = sections
+        installSections(replacing: [])
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    private func installSections(replacing old: [UIView]) {
+        for section in old where section.superview === self { section.removeFromSuperview() }
+        for section in sections { addSubview(section) }
+        setNeedsLayout()
     }
 
     public func layout() -> GroupedListLayout {

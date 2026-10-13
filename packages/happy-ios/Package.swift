@@ -65,7 +65,7 @@ let package = Package(
         ),
         .target(
             name: "HappyUI",
-            dependencies: ["HappyCore", "HappyCrypto", "HappyWire", "HappyLayout"],
+            dependencies: ["HappyCore", "HappyCrypto", "HappyWire", "HappyStore", "HappyLayout"],
             // Fonts and images live with the code that draws them, so
             // `Bundle.module` resolves the same way under xtool and Xcode.
             resources: [.process("Resources")]

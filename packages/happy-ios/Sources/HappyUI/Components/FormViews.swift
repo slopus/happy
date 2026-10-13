@@ -12,22 +12,15 @@ public final class ServerFormView: UIView {
     public let reset = RoundButton(title: Strings.Server.resetToDefault, size: .normal, display: .inverted)
 
     public var error: String? {
-        didSet { errorLabel.string = error ?? ""; errorLabel.isHidden = error == nil; invalidate() }
+        didSet { apply() }
     }
 
     public var isValidating = false {
-        didSet {
-            validatingLabel.isHidden = !isValidating
-            field.isEnabled = !isValidating
-            field.alpha = isValidating ? 0.6 : 1
-            save.title = isValidating ? Strings.Server.validating : Strings.Common.save
-            save.isEnabled = !isValidating
-            invalidate()
-        }
+        didSet { apply() }
     }
 
     public var isCustomServer = false {
-        didSet { reset.isHidden = !isCustomServer; statusLabel.isHidden = !isCustomServer; invalidate() }
+        didSet { apply() }
     }
 
     let label = StyledLabel(style: TextStyles.fieldLabel, color: Palette.textSecondary, lines: 1)
@@ -59,9 +52,8 @@ public final class ServerFormView: UIView {
         for view in [label, fieldBackground, field, errorLabel, validatingLabel, save, reset, statusLabel] {
             addSubview(view)
         }
-        error = nil
-        isValidating = false
-        isCustomServer = false
+        // Assignments in a class's own initializer skip didSet.
+        apply()
     }
 
     @available(*, unavailable)
@@ -98,6 +90,19 @@ public final class ServerFormView: UIView {
         save.setLayoutFrame(layout.save)
         if let frame = layout.reset { reset.setLayoutFrame(frame) }
         if let frame = layout.status { statusLabel.setLayoutFrame(frame) }
+    }
+
+    private func apply() {
+        errorLabel.string = error ?? ""
+        errorLabel.isHidden = error == nil
+        validatingLabel.isHidden = !isValidating
+        field.isEnabled = !isValidating
+        field.alpha = isValidating ? 0.6 : 1
+        save.title = isValidating ? Strings.Server.validating : Strings.Common.save
+        save.isEnabled = !isValidating
+        reset.isHidden = !isCustomServer
+        statusLabel.isHidden = !isCustomServer
+        invalidate()
     }
 
     private func invalidate() {

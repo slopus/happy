@@ -15,6 +15,7 @@ public enum Strings {
         public static let version = "Version"
         public static let urlPlaceholder = "https://example.com"
         public static let ok = "OK"
+        public static let back = "Back"
     }
 
     public enum Onboarding {
@@ -38,6 +39,17 @@ public enum Strings {
         public static let pasteLinkConfirm = "Link"
         public static let linking = "Linking…"
         public static let linkFailed = "Couldn’t link. Scan the code again."
+        public static let terminalComment = "# Prefer the terminal?"
+        public static let terminalInstall = "npm install -g happy"
+        public static let terminalRun = "happy"
+        public static func offlineTitleOne(name: String) -> String { "\(name) is offline" }
+        public static let offlineTitleMany = "Your computers are offline"
+        public static func offlineLinkedStep(name: String) -> String { "Linked \(name)" }
+        public static func offlineLinkedStepMany(count: Int) -> String { "Linked \(count) computers" }
+        public static let offlineOpenStep = "Open Happy on your computer"
+        public static let offlineOpenBody = "Open Happy Desktop, or run happy in a terminal. This screen updates as soon as it connects."
+        public static let offlineTroubleshoot = "Troubleshoot"
+        public static let linkAnother = "Link another computer"
         public static let getHelp = "Get help"
         public static let helpMessage = "Stuck? Come ask us."
         public static let helpDiscord = "Ask on Discord"
@@ -45,6 +57,12 @@ public enum Strings {
         public static let helpEx3ndr = "DM @Ex3NDR on X"
         public static let helpIssues = "Browse known issues"
         public static let settingsTitle = "Settings"
+        public static let settingsServer = "Server"
+        public static let settingsServerDefault = "Default"
+        public static let logoutStartOver = "Log out and start over"
+        public static let logoutFooter = "This account has nothing in it yet, so nothing is lost."
+        public static let logoutConfirmTitle = "Log out and start over?"
+        public static let logoutConfirmBody = "You will go back to Create account. Nothing on your computer changes."
         public static let restoreTitle = "Restore Account"
         public static let restoreScan = "Scan this code with your other phone."
         public static let restoreScanPath = "Happy › Settings › Account › Link New Device"
@@ -62,6 +80,31 @@ public enum Strings {
         (Onboarding.helpEx3ndr, URL(string: "https://x.com/Ex3NDR")!),
         (Onboarding.helpIssues, URL(string: "https://github.com/slopus/happy/issues")!),
     ]
+
+    public enum Troubleshoot {
+        public static let title = "Troubleshoot"
+        public static let heading = "Happy is not running on your computer"
+        public static let intro = "Your phone talks to Happy on your computer. When nothing is running there, everything here is offline."
+        public static let awakeStep = "Is the computer awake and online?"
+        public static let awakeBody = "Sleep and a dropped connection are the usual causes."
+        public static let desktopStep = "Is Happy Desktop open?"
+        public static let desktopBodyPrefix = "Open it, or download it from "
+        public static let desktopBodyLink = "happy.engineering"
+        public static let desktopBodySuffix = ". We recommend it."
+        public static let terminalStep = "Using the terminal?"
+        public static let terminalBody = "Run happy again. The computer comes back online as soon as it starts."
+        public static let terminalComment = "# Not using Happy Desktop?"
+        public static let machines = "Machines"
+        public static let machineOffline = "Offline"
+        public static let copyAiPrompt = "Copy AI prompt"
+        public static let copyAiPromptHint = "Paste it into Claude Code or Codex on your computer to diagnose from the logs."
+        public static let copied = "Copied"
+        public static let copyFailed = "Could not copy the AI prompt."
+    }
+
+    public enum Sidebar {
+        public static let sessionsTitle = "Happy"
+    }
 
     public enum Connect {
         public static let enterSecretKey = "Please enter a secret key"

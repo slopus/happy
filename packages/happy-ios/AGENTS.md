@@ -44,6 +44,20 @@ nothing here is wired to the release skill or to EAS.
   - versioned settings;
   - an idempotent outbox for writes.
 - **Tool outputs are hidden by default** when chat lands.
+- **Onboarding follows happy-app step by step.** Signed in, home decides
+  from the stored machines (`HomeState`, after happy-app's
+  `shouldShowFirstRunInstall` and `resolveHomeEmptyState`):
+  - a spinner until machines have been fetched once. An empty store is
+    "not known yet", so an account restored or upgraded from the RN app
+    is never asked to link a computer it already has;
+  - Link Your Computer when there are none;
+  - the offline checklist when none is reachable;
+  - the list of computers otherwise. This is a placeholder until the
+    session list lands. happy-app also counts sessions, and lists them
+    even while every computer is offline.
+
+  Home stays the navigation root and swaps its content, so screens pushed
+  over it stay put when a computer arrives.
 - **Credentials stay in the RN app's Keychain item.** This app reads and
   writes happy-app's `auth_credentials` exactly as expo-secure-store 55
   stores it, so an in-place upgrade (same bundle ids) stays signed in and a
@@ -74,7 +88,7 @@ nothing here is wired to the release skill or to EAS.
 | `HappyCrypto` | all | Key tree, X25519 box, XSalsa20-Poly1305 secretbox (pure Swift), AES-GCM, Ed25519, secret key backup format. CryptoKit on Apple, swift-crypto on Linux. |
 | `HappyWire` | all | Wire types: API payloads, update and ephemeral events, the session protocol, pairing links. |
 | `HappyStore` | all | GRDB schema, records and the merge rules: versions only move forward, deletes are explicit. |
-| `HappyCore` | all | Server config, HTTP API, auth, QR login, pairing, record decryption, the delta `SyncEngine`, Socket.IO client, `AccountSession` and `AccountController`. |
+| `HappyCore` | all | Server config, HTTP API, auth, QR login, pairing, record decryption, the delta `SyncEngine`, Socket.IO client, `AccountSession`, `AccountController`, and what home shows (`MachineChoice`, `HomeState`). |
 | `HappyLayout` | all | Pure layout functions, design tokens, the wordmark's vector paths. |
 | `HappyUI` | iOS (UIKit) | Views, screens and the coordinator. Wrapped in `#if canImport(UIKit)`. |
 | `HappyApp` | iOS | `@main` AppDelegate, SceneDelegate and the composition root. |
@@ -173,6 +187,11 @@ tells it apart from the legacy RN app.
 
 - Swift 6 language mode and strict concurrency. UI is `@MainActor`;
   network and sync code is actors and `Sendable` values.
+- Property observers don't run for assignments in a class's own
+  initializer, even after `super.init`. A view whose `didSet` updates
+  its subviews must call the same update from its init, as
+  `ItemRowView.apply()` does. Missing this once left Settings and Server
+  as empty cards. `InitialStateTests` checks the shared components.
 - Tests use fakes, never the network:
   - `FakeHTTP` and `FakeWebSocket` in `Tests/HappyCoreTests/Fakes.swift`;
   - in-memory GRDB stores.
@@ -213,3 +232,7 @@ tells it apart from the legacy RN app.
   form first.
 - Text sizes are fixed. Dynamic Type scaling, which RN applies by default,
   is not wired yet.
+- Not ported yet from the onboarding screens:
+  - the machine screen that Troubleshoot's computer rows open in
+    happy-app (the rows are inert here);
+  - copying terminal commands by selecting them.

@@ -3,13 +3,15 @@ import AVFoundation
 import HappyLayout
 import UIKit
 
-/// Full-screen camera QR scanner. Reports the first code it reads, or nil
-/// when closed, then dismisses itself. Without camera access it explains
+/// Full-screen camera QR scanner. Reports the first code it reads that
+/// `accepts` lets through, or nil when closed, then dismisses itself. Without camera access it explains
 /// why and offers the Settings app; in the simulator there is no camera, so
 /// it says so.
 public final class QRScannerViewController: UIViewController {
     /// Called exactly once.
     public var onFinish: ((String?) -> Void)?
+    /// Codes this rejects are ignored and scanning goes on.
+    public var accepts: (String) -> Bool = { _ in true }
 
     private enum Mode {
         case scanning
@@ -137,8 +139,7 @@ public final class QRScannerViewController: UIViewController {
     }
 
     private func found(_ value: String) {
-        guard !finished else { return }
-        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        guard !finished, accepts(value) else { return }
         finish(value)
     }
 

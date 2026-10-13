@@ -173,12 +173,6 @@ public struct WelcomeContentLayout: Equatable, Sendable {
 public struct LinkComputerContentLayout: Equatable, Sendable {
     public enum Metrics {
         public static let checklistMarginTop: CGFloat = 24
-        public static let rowMarginBottom: CGFloat = 20
-        public static let rowHeadMinHeight: CGFloat = 32
-        public static let boxSize: CGFloat = 26
-        public static let boxSpacing: CGFloat = 12
-        public static let bodyPaddingLeft: CGFloat = 38
-        public static let bodyPaddingTop: CGFloat = 6
         public static let errorMarginTop: CGFloat = 16
     }
 
@@ -192,17 +186,9 @@ public struct LinkComputerContentLayout: Equatable, Sendable {
         }
     }
 
-    public struct RowFrames: Equatable, Sendable {
-        public var box: CGRect
-        public var title: CGRect
-        public var body: CGRect?
-        /// The tappable head: box and title.
-        public var head: CGRect
-    }
-
     public var size: CGSize
     public var title: CGRect
-    public var rows: [RowFrames]
+    public var rows: [ChecklistRowLayout]
     /// Always reserved, one line high, so an error never moves the buttons.
     public var error: CGRect
 
@@ -214,27 +200,13 @@ public struct LinkComputerContentLayout: Equatable, Sendable {
         self.title = CGRect(x: 0, y: 0, width: width, height: titleHeight)
 
         var y = self.title.maxY + M.checklistMarginTop
-        let textX = M.boxSize + M.boxSpacing
-        let textWidth = max(0, width - textX)
-        var frames: [RowFrames] = []
+        var frames: [ChecklistRowLayout] = []
         for (index, row) in rows.enumerated() {
-            let rowTitleHeight = row.title.height(fitting: textWidth)
-            let headHeight = max(M.rowHeadMinHeight, rowTitleHeight, M.boxSize)
-            let head = CGRect(x: 0, y: y, width: width, height: headHeight)
-            let box = CGRect(x: 0, y: y + (headHeight - M.boxSize) / 2, width: M.boxSize, height: M.boxSize)
-            let rowTitle = CGRect(x: textX, y: y + (headHeight - rowTitleHeight) / 2, width: textWidth, height: rowTitleHeight)
-            y = head.maxY
-            var body: CGRect?
-            if let measurable = row.body {
-                let bodyWidth = max(0, width - M.bodyPaddingLeft)
-                let bodyHeight = measurable.height(fitting: bodyWidth)
-                let frame = CGRect(x: M.bodyPaddingLeft, y: y + M.bodyPaddingTop, width: bodyWidth, height: bodyHeight)
-                body = frame
-                y = frame.maxY
-            }
-            frames.append(RowFrames(box: box, title: rowTitle, body: body, head: head))
+            let frame = ChecklistRowLayout(origin: CGPoint(x: 0, y: y), width: width, title: row.title, body: row.body)
+            frames.append(frame)
+            y = frame.maxY
             if index < rows.count - 1 {
-                y += M.rowMarginBottom
+                y += ChecklistRowLayout.Metrics.marginBottom
             }
         }
         self.rows = frames

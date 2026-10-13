@@ -30,10 +30,10 @@ public final class WelcomeViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         navigationItem.titleView = titleView
-        navigationItem.backButtonDisplayMode = .minimal
-        // Signed out, the gear leads to the server: self-hosters set it
-        // before creating an account.
-        navigationItem.rightBarButtonItem = settingsBarButton(action: #selector(openServer))
+        showsBackTitle()
+        // Signed out, the gear leads straight to the server: self-hosters
+        // set it before creating an account.
+        navigationItem.rightBarButtonItem = settingsBarButton(action: #selector(openServer), label: Strings.Server.title)
         screen.primary.action = { [weak self] in await self?.createAccount() }
         screen.secondary.onTap = { [weak self] in self?.openRestore() }
         screen.help.onTap = { [weak self] in
@@ -63,103 +63,6 @@ public final class WelcomeViewController: UIViewController {
 
     @objc private func openServer() {
         navigationController?.pushViewController(ServerConfigViewController(context: context), animated: true)
-    }
-}
-
-/// Signed in: the home placeholder. Until sessions exist in this app, home
-/// is happy-app's Link Your Computer screen (components/onboarding/LinkComputer.tsx).
-public final class HomeViewController: UIViewController {
-    private let context: AppContext
-    private let titleView = NavigationTitleView()
-    private let content = LinkComputerContentView()
-    private lazy var screen = OnboardingScreenView(
-        content: content,
-        primary: RoundButton(title: Strings.Onboarding.scanButton),
-        secondary: RoundButton(title: Strings.Onboarding.pasteLink, size: .normal, display: .inverted)
-    )
-
-    private var busy = false {
-        didSet {
-            screen.primary.isLoading = busy
-            screen.secondary.isEnabled = !busy
-            content.isEnabled = !busy
-        }
-    }
-
-    public init(context: AppContext) {
-        self.context = context
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    public override func loadView() {
-        view = screen
-    }
-
-    public override func viewDidLoad() {
-        super.viewDidLoad()
-        navigationItem.titleView = titleView
-        navigationItem.backButtonDisplayMode = .minimal
-        navigationItem.rightBarButtonItem = settingsBarButton(action: #selector(openSettings))
-        screen.primary.loadingTitle = Strings.Onboarding.linking
-        screen.primary.onTap = { [weak self] in self?.scan() }
-        screen.secondary.onTap = { [weak self] in self?.paste() }
-        screen.help.onTap = { [weak self] in
-            guard let self else { return }
-            Alerts.help(on: self)
-        }
-        content.onOpenWebsite = {
-            UIApplication.shared.open(Strings.Onboarding.desktopURL)
-        }
-    }
-
-    public override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        titleView.subtitle = context.customServerHost
-        titleView.sizeToFit()
-    }
-
-    private func scan() {
-        content.error = nil
-        Task { @MainActor in
-            guard let text = await PairingFlow.scan(from: self) else { return }
-            await link(text)
-        }
-    }
-
-    private func paste() {
-        content.error = nil
-        Task { @MainActor in
-            guard let text = await Alerts.prompt(
-                Strings.Onboarding.pasteLinkTitle,
-                Strings.Onboarding.pasteLinkMessage,
-                placeholder: "happy://terminal?…",
-                confirmTitle: Strings.Onboarding.pasteLinkConfirm,
-                on: self
-            ) else { return }
-            await link(text)
-        }
-    }
-
-    private func link(_ text: String) async {
-        guard let session = context.account.session, !busy else { return }
-        busy = true
-        let result = await PairingFlow.approve(text, expecting: .terminal, session: session)
-        busy = false
-        if result.succeeded {
-            content.ticked = Set(LinkComputerContentView.Step.allCases)
-            Alerts.show(Strings.Common.success, result.message, on: self)
-        } else {
-            content.error = result.message == Strings.Modals.failedToConnectTerminal ? Strings.Onboarding.linkFailed : result.message
-        }
-    }
-
-    @objc private func openSettings() {
-        navigationController?.pushViewController(SettingsViewController(context: context), animated: true)
     }
 }
 
@@ -198,7 +101,7 @@ public final class RestoreQRViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         title = Strings.Onboarding.restoreTitle
-        navigationItem.backButtonDisplayMode = .minimal
+        showsBackTitle()
         view.backgroundColor = UIColor(Palette.groupedBackground)
         scrollView.contentInsetAdjustmentBehavior = .never
         view.addSubview(scrollView)
