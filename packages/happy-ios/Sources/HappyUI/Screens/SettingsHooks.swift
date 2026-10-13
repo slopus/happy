@@ -7,9 +7,9 @@ import UIKit
 /// choice and the page works, it just has nothing to call.
 @MainActor
 public enum SettingsHooks {
-    /// This device's push registration, for Settings › Account's push rows.
-    /// TODO(ops): set once push notifications land; nil means this device
-    /// has no token of its own yet.
+    /// The active account's push registration, for Settings › Account's
+    /// push rows. HappyApp's `PushNotifications` replaces it on every
+    /// account change; nil while signed out.
     public static var pushRegistration: (any PushRegistration)?
 }
 #endif

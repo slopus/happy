@@ -47,13 +47,19 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_STYLE: Automatic
+        # Every variant has aps-environment "development", as the RN app's
+        # expo-notifications plugin writes it; signing for distribution
+        # replaces it with the profile's "production". Production also has
+        # its associated domain.
       configs:
         Debug:
           PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.dev
           INFOPLIST_FILE: App/Info-Development.plist
+          CODE_SIGN_ENTITLEMENTS: App/Happy.entitlements
         Preview:
           PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.preview
           INFOPLIST_FILE: App/Info-Preview.plist
+          CODE_SIGN_ENTITLEMENTS: App/Happy.entitlements
         Release:
           PRODUCT_BUNDLE_IDENTIFIER: com.ex3ndr.happy
           INFOPLIST_FILE: App/Info-Production.plist

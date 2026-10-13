@@ -15,6 +15,11 @@ public final class AppCoordinator {
     /// before the first state arrives.
     private var shownSession: ObjectIdentifier??
     private var shownServerConfirmationID: AccountSummary.ID?
+    /// The session a tapped notification named, until a signed-in home can
+    /// open it.
+    private var notificationSessionID: String?
+    private var accountRestored = false
+    private var switchingForNotification = false
 
     public init(window: UIWindow, context: AppContext) {
         self.window = window
@@ -37,6 +42,67 @@ public final class AppCoordinator {
             guard let account = self?.context.account else { return }
             await account.restore()
             self?.show(account.state)
+            self?.accountRestored = true
+            self?.openNotificationSession()
+        }
+    }
+
+    /// Opens the session a tapped notification names (`app/_layout.tsx`
+    /// `handleNotificationResponse`, then `navigateToSession`). A session in
+    /// another signed-in account's store switches to that account first;
+    /// one in no store opens in the active account, as happy-app navigates
+    /// regardless. A tap that launched the app waits for the stored account.
+    public func openSession(fromNotification sessionId: String) {
+        notificationSessionID = sessionId
+        openNotificationSession()
+    }
+
+    private func openNotificationSession() {
+        guard let sessionId = notificationSessionID else { return }
+        let account = context.account
+        guard let active = account.session, navigation.viewControllers.first is HomeViewController else {
+            // Signed out once restored: there is nothing to open it in.
+            if accountRestored, account.session == nil { notificationSessionID = nil }
+            return
+        }
+        if let owner = account.accountHoldingSession(sessionId), owner != active.keys.anonID {
+            // restore() holds the account controller through the first sync,
+            // so the switch waits for it. show() opens the session once the
+            // owner's home is the root.
+            guard accountRestored, !switchingForNotification else { return }
+            switchingForNotification = true
+            Task { @MainActor [weak self] in
+                do {
+                    try await account.switchAccount(to: owner)
+                } catch {
+                    if self?.notificationSessionID == sessionId {
+                        self?.notificationSessionID = nil
+                        self?.showNotificationSession(sessionId)
+                    }
+                }
+                self?.switchingForNotification = false
+            }
+            return
+        }
+        notificationSessionID = nil
+        showNotificationSession(sessionId)
+    }
+
+    /// Home, then the chat. Nothing changes when that chat is already on top.
+    private func showNotificationSession(_ sessionId: String) {
+        let open = { [weak self] in
+            guard let self, let session = self.context.account.session,
+                  let home = self.navigation.viewControllers.first as? HomeViewController else { return }
+            if let chat = self.navigation.topViewController as? ChatViewController, chat.sessionId == sessionId { return }
+            self.navigation.presentedViewController?.dismiss(animated: false)
+            let chat = Screens.make(.session(id: sessionId), context: self.context, session: session)
+            self.navigation.setViewControllers([home, chat], animated: true)
+        }
+        // A new root may still be animating in after an account switch.
+        if let transition = navigation.transitionCoordinator {
+            transition.animate(alongsideTransition: nil) { _ in open() }
+        } else {
+            open()
         }
     }
 
@@ -95,6 +161,7 @@ public final class AppCoordinator {
         }
         navigation.presentedViewController?.dismiss(animated: false)
         navigation.setViewControllers([root], animated: animated)
+        openNotificationSession()
     }
 
     static func applyAppearance(to bar: UINavigationBar) {

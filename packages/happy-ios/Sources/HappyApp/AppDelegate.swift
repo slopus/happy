@@ -13,7 +13,26 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         Fonts.registerBundledFonts()
+        PushNotifications.shared.install()
         return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        PushNotifications.shared.didRegister(deviceToken)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: any Error) {
+        PushNotifications.shared.didFail(error)
+    }
+
+    /// The `remote-notification` background mode delivers pushes here too.
+    /// happy-app runs no background task for them, so there is no data.
+    func application(
+        _ application: UIApplication,
+        didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+        fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void
+    ) {
+        completionHandler(.noData)
     }
 
     func application(
@@ -38,6 +57,10 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
         self.coordinator = coordinator
         coordinator.start()
+        PushNotifications.shared.attach(context: coordinator.context, coordinator: coordinator)
+        if let response = connectionOptions.notificationResponse {
+            PushNotifications.shared.handle(response)
+        }
         for context in connectionOptions.urlContexts {
             coordinator.open(context.url)
         }
@@ -51,6 +74,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         coordinator?.appStateChanged(active: true)
+        PushNotifications.shared.appBecameActive()
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
