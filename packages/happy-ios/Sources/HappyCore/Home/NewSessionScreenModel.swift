@@ -142,9 +142,8 @@ public struct NewSessionScreenModel: Equatable, Sendable {
         // Both daemons contribute places, whichever harness is chosen.
         let homeDir = choices.homeDir
         self.homeDir = homeDir
-        let machineIds = choice?.machineIds ?? []
         let selectedPath = draft.selectedPath
-        let places = SessionPlaces.collect(machineIds: machineIds, sessions: snapshot.sessions, selectedPath: selectedPath)
+        let places = choices.sessionPlaces
         let draftProjectId = draft.selectedProjectId
         let draftProjectPlace = draftProjectId.flatMap { id in places.first { $0.projectId == id } }
         var pathItems: [Item] = places.map { place in
@@ -196,7 +195,7 @@ public struct NewSessionScreenModel: Equatable, Sendable {
         if picksWorkspaces {
             // A project named only by the catalog has no directory to list
             // workspaces under.
-            worktreeItems = normalizedValue == nil ? [] : SessionPlaces.workspaces(machineIds: machineIds, projectId: choices.selectedProjectId, sessions: snapshot.sessions)
+            worktreeItems = normalizedValue == nil ? [] : choices.sessionWorkspaces
                 .map { Item(key: $0.key, label: $0.name, subtitle: $0.path) }
         } else {
             worktreeItems = (choices.listsGitWorktrees ? gitWorktrees : []).map { Item(key: $0.path, label: $0.branch, subtitle: $0.path) }

@@ -16,6 +16,67 @@ private struct PickerNoOps: HomeOps {
 
 final class SyncPerfNewSessionTests: XCTestCase {
     @MainActor
+    func testCanonicalPoolChoosesTheSameDuplicateProjectAndWorkspaceForPickerScreenAndLaunch() async throws {
+        let violations = PageCounter()
+        let oldEnforcement = ThreadRules.isEnforced
+        let oldHandler = ThreadRules.violationHandler
+        ThreadRules.violationHandler = { _ in violations.count += 1 }
+        ThreadRules.isEnforced = true
+        defer { ThreadRules.isEnforced = oldEnforcement; ThreadRules.violationHandler = oldHandler }
+        let drafts = NewSessionDraftStore(settings: LocalSettings(storage: InMemoryKeyValueStore()))
+        drafts.setMachineId("m")
+        drafts.setPath("/shared")
+        drafts.pickAgentType(.rig)
+        var fixture = snapshot(count: 0)
+        fixture.machines.machines[0].active = true
+        fixture.machines.machines[0].metadata = RigSessionCreationTests.rigMachine
+        func row(_ id: String, activity: Double, project: String, path: String, workspace: Bool = false) -> SessionRecord {
+            var value = ChatRecords.storeSession(id)
+            var fields: [String: JSONValue] = ["machineId": .string("m"), "path": .string(path),
+                "project": .object(["id": .string(project), "name": .string(project)]), "lastMeaningfulMessageAt": .number(activity)]
+            if workspace { fields["workspace"] = .object(["id": .string("workspace"), "name": .string(path)]) }
+            value.metadata = .object(fields)
+            return value
+        }
+        fixture.sessions = [row("old", activity: 10, project: "old-project", path: "/shared"),
+                            row("old-workspace", activity: 20, project: "new-project", path: "/old-workspace", workspace: true),
+                            row("new", activity: 100, project: "new-project", path: "/shared"),
+                            row("new-workspace", activity: 90, project: "new-project", path: "/new-workspace", workspace: true)]
+        let deriver = NewSessionChoiceDeriver()
+        let composer = NewSessionComposer(drafts: drafts, snapshot: fixture, ops: PickerNoOps(), deriver: deriver)
+        // Launch also waits for a pending first catalog instead of using raw order.
+        let launch = try await composer.launchPrepared(prompt: "hello", attachments: []).get()
+        XCTAssertEqual(composer.choices.selectedProjectId, "new-project")
+        XCTAssertEqual(launch.target, .project(id: "new-project"))
+        XCTAssertEqual(try composer.launch(prompt: "hello", attachments: []).get().target, launch.target)
+        let screen = NewSessionScreenModel(choices: composer.choices, draft: drafts.draft, snapshot: fixture,
+                                          gitWorktrees: [], isStarting: false, now: 0)
+        XCTAssertEqual(screen.pathItems.first { $0.key == "/shared" }?.label, "new-project")
+        XCTAssertEqual(screen.worktreeItems.map(\.key), ["/new-workspace"])
+        composer.selectWorktree("/new-workspace")
+        let workspaceLaunch = try await composer.launchPrepared(prompt: "hello", attachments: []).get()
+        XCTAssertEqual(workspaceLaunch.target, .workspace(id: "workspace"))
+        let sorts = await deriver.canonicalPoolBuildCount
+        XCTAssertEqual(sorts, 1, "draft picks and launch reuse the account's background canonical pool")
+        XCTAssertEqual(violations.count, 0, "prepared launch resolution runs on the background actor")
+    }
+
+    @MainActor
+    func testMissingMeaningfulMetadataFallsBackToCreationRatherThanWireUpdatedAt() async {
+        var fixture = snapshot(count: 2)
+        fixture.sessions[0].createdAt = 10
+        fixture.sessions[0].updatedAt = 10000
+        fixture.sessions[1].createdAt = 20
+        fixture.sessions[1].updatedAt = 1
+        let drafts = NewSessionDraftStore(settings: LocalSettings(storage: InMemoryKeyValueStore()))
+        drafts.setMachineId("m")
+        let composer = NewSessionComposer(drafts: drafts, snapshot: fixture, ops: PickerNoOps())
+        await composer.waitForIdle()
+        XCTAssertEqual(composer.choices.projectOptions.filter { $0.key.hasPrefix("/work/") }.map(\.key), ["/work/1", "/work/0"])
+        XCTAssertEqual(fixture.sessions[0].lastActivityAt, 10, "native records currently have no local lastMessageSentAt field")
+    }
+
+    @MainActor
     func testEmptyUnsyncedStartupPreservesPersistedDraftUntilCatalogIsKnown() async {
         let drafts = NewSessionDraftStore(settings: LocalSettings(storage: InMemoryKeyValueStore()))
         drafts.setMachineId("saved-machine")

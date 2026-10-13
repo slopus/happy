@@ -95,6 +95,9 @@ public struct NewSessionChoices: Equatable, Sendable {
     public var projectOptions: [Option]
     public var currentProject: Option?
     public var selectedProjectId: String?
+    /// Prepared from the same canonical pool used by the picker and launch.
+    public var sessionPlaces: [NewSessionPlace]
+    public var sessionWorkspaces: [SessionWorkspace]
     /// Happy Agent calls these workspaces and names them; git calls them
     /// worktrees.
     public var picksWorkspaces: Bool
@@ -160,6 +163,11 @@ public struct NewSessionChoices: Equatable, Sendable {
         let placeMachineIds = selectedChoice?.machineIds ?? []
         let selectedPath = draft.selectedPath
         let places = SessionPlaces.collect(machineIds: placeMachineIds, sessions: inputs.sessions, selectedPath: selectedPath ?? "~")
+        // The phone's catalog-project screen has no typed path. Home's
+        // picker still offers its default '~' row for an empty path.
+        sessionPlaces = selectedPath == nil
+            ? SessionPlaces.collect(machineIds: placeMachineIds, sessions: inputs.sessions)
+            : places
         let rigSelectionCreation = RigSessionCreation(metadata: selectedChoice?.rigMachine?.metadata)
 
         let draftProjectId = draft.selectedProjectId
@@ -199,9 +207,9 @@ public struct NewSessionChoices: Equatable, Sendable {
         let listsGitWorktrees = !picksWorkspaces && supportsWorktree && happyMachine?.active == true
         self.listsGitWorktrees = listsGitWorktrees
         gitWorktreeMachineId = listsGitWorktrees ? happyMachine?.id : nil
+        sessionWorkspaces = SessionPlaces.workspaces(machineIds: placeMachineIds, projectId: selectedProjectId, sessions: inputs.sessions)
         let existing: [Option] = picksWorkspaces
-            ? SessionPlaces.workspaces(machineIds: placeMachineIds, projectId: selectedProjectId, sessions: inputs.sessions)
-                .map { Option(key: $0.key, name: $0.name, description: $0.path) }
+            ? sessionWorkspaces.map { Option(key: $0.key, name: $0.name, description: $0.path) }
             : (listsGitWorktrees ? inputs.gitWorktrees : []).map { Option(key: $0.path, name: $0.branch, description: $0.path) }
         let createsNativeWorkspace = agent == .rig && picksWorkspaces && rigCreation != nil
         let creationMachine = selectedChoice?.worktreeCreationMachine(agent: agent.rawValue, agentSupportsWorktrees: supportsWorktree)

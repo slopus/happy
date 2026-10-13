@@ -9,6 +9,7 @@ actor NewSessionChoiceDeriver {
         var value: NewSessionChoices
         var revision: UInt64
         var renderedRevision: UInt64
+        var sessions: [SessionRecord]
     }
     private struct Machine: Equatable {
         var id: String
@@ -42,6 +43,7 @@ actor NewSessionChoiceDeriver {
     private var latestGeneration: UInt64 = 0
     private(set) var derivationCount = 0
     private(set) var catalogProjectionCount = 0
+    private(set) var canonicalPoolBuildCount = 0
 
     init(beforeDerivation: @escaping @Sendable (HomeSnapshot, NewSessionDraft) async -> Void = { _, _ in }) {
         self.beforeDerivation = beforeDerivation
@@ -56,14 +58,11 @@ actor NewSessionChoiceDeriver {
         ThreadRules.assertOffMain()
         if snapshotRevision != revision {
             catalogProjectionCount += 1
+            canonicalPoolBuildCount += 1
             // happy-app useSessions supplies active chats first, then
             // meaningful activity. Background updatedAt writes do not reorder
             // the picker; side chats never enter its source list.
-            let rows = snapshot.sessions.filter { $0.metadata?["isSideChat"]?.boolValue != true }.sorted {
-                if $0.active != $1.active { return $0.active }
-                if $0.lastActivityAt != $1.lastActivityAt { return $0.lastActivityAt > $1.lastActivityAt }
-                return $0.id < $1.id
-            }
+            let rows = Self.canonicalPool(snapshot.sessions)
             orderedSessions = rows
             let next = Catalog(
                 machines: snapshot.machines.machines.map {
@@ -96,6 +95,7 @@ actor NewSessionChoiceDeriver {
         pickerDraft.input = ""
         pickerDraft.updatedAt = 0
         let nextRequest = Request(catalog: catalogVersion, draft: pickerDraft, createsBot: createsBot, worktrees: worktrees)
+        result?.sessions = orderedSessions
         if nextRequest == request, let result { return result }
         let next = NewSessionChoices(.init(
             draft: pickerDraft, createsBot: createsBot, machines: snapshot.machines.machines,
@@ -112,8 +112,33 @@ actor NewSessionChoiceDeriver {
             visible.agentDefaultOverrides = [:]
             if visible != rendered { renderedRevision &+= 1; rendered = visible }
             result = DerivedChoices(value: next, revision: (result?.revision ?? 0) &+ 1,
-                                    renderedRevision: renderedRevision)
+                                    renderedRevision: renderedRevision, sessions: orderedSessions)
         }
         return result
+    }
+
+    func launch(snapshot: HomeSnapshot, revision: UInt64, draft: NewSessionDraft,
+                bot: (name: String, faceSeed: String)? = nil, prompt: String,
+                attachments: [OutgoingAttachment]) -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
+        ThreadRules.assertOffMain()
+        let rows: [SessionRecord]
+        if snapshotRevision == revision {
+            rows = orderedSessions
+        } else {
+            canonicalPoolBuildCount += 1
+            rows = Self.canonicalPool(snapshot.sessions)
+        }
+        return NewSessionLaunch.resolve(draft: draft, pickedAgent: draft.pickedAgentType, bot: bot,
+                                        machines: snapshot.machines.machines, sessions: rows,
+                                        agentDefaultOverrides: AccountSettings(snapshot.settings).agentDefaultOverrides,
+                                        prompt: prompt, attachments: attachments)
+    }
+
+    private static func canonicalPool(_ sessions: [SessionRecord]) -> [SessionRecord] {
+        sessions.filter { $0.metadata?["isSideChat"]?.boolValue != true }.sorted {
+            if $0.active != $1.active { return $0.active }
+            if $0.lastActivityAt != $1.lastActivityAt { return $0.lastActivityAt > $1.lastActivityAt }
+            return $0.id < $1.id
+        }
     }
 }

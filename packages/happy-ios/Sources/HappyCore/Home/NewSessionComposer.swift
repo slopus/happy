@@ -27,6 +27,7 @@ public final class NewSessionComposer {
     private var pendingDraftChange = false
     private var appliedChoiceRevision: UInt64?
     private var appliedRenderedRevision: UInt64?
+    private var canonicalSessions: [SessionRecord] = []
     private var refreshing = false
     private var needsRefresh = false
     private var worktreeTarget: WorktreeTarget?
@@ -182,7 +183,7 @@ public final class NewSessionComposer {
             draft: drafts.draft,
             pickedAgent: drafts.draft.pickedAgentType,
             machines: snapshot.machines.machines,
-            sessions: snapshot.sessions,
+            sessions: canonicalSessions,
             agentDefaultOverrides: AccountSettings(snapshot.settings).agentDefaultOverrides,
             prompt: prompt,
             attachments: attachments
@@ -197,7 +198,7 @@ public final class NewSessionComposer {
             pickedAgent: drafts.draft.pickedAgentType,
             bot: (name: drafts.botName, faceSeed: drafts.botFaceSeed),
             machines: snapshot.machines.machines,
-            sessions: snapshot.sessions,
+            sessions: canonicalSessions,
             agentDefaultOverrides: AccountSettings(snapshot.settings).agentDefaultOverrides,
             prompt: "",
             attachments: []
@@ -209,6 +210,20 @@ public final class NewSessionComposer {
     /// it makes changed.
     public func isCurrentTarget(_ started: NewSessionDraft, bot: NewSessionBotDraft) -> Bool {
         drafts.draft.sameTarget(as: started) && drafts.bot == bot
+    }
+
+    /// Waits for current catalog corrections, then resolves off main from
+    /// its cached pool. UI callers keep their target guard across this await.
+    public func launchPrepared(prompt: String, attachments: [OutgoingAttachment]) async -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
+        await waitForIdle()
+        return await deriver.launch(snapshot: snapshot, revision: snapshotRevision, draft: drafts.draft,
+                                    prompt: prompt, attachments: attachments)
+    }
+
+    public func launchBotPrepared() async -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
+        await waitForIdle()
+        return await deriver.launch(snapshot: snapshot, revision: snapshotRevision, draft: drafts.draft,
+                                    bot: (name: drafts.botName, faceSeed: drafts.botFaceSeed), prompt: "", attachments: [])
     }
 
     // MARK: Refresh
@@ -231,6 +246,7 @@ public final class NewSessionComposer {
             let next = await deriver.choices(snapshot: snapshot, revision: revision, generation: generation, draft: draft,
                                              createsBot: createsBot, worktrees: worktrees)
             guard !Task.isCancelled, let next, let self, self.refreshGeneration == generation else { return }
+            self.canonicalSessions = next.sessions
             if next.revision != self.appliedChoiceRevision {
                 self.choices = next.value
                 self.appliedChoiceRevision = next.revision
