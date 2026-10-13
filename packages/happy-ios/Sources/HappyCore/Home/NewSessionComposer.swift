@@ -93,6 +93,29 @@ public final class NewSessionComposer {
         selectAgent(agent, picked: true)
     }
 
+    // MARK: The new-session screen's picks
+
+    /// new/index.tsx's harness picker: the harness alone. The modes stay
+    /// as picked, read against the new harness's list.
+    public func pickAgent(_ key: String) {
+        guard let agent = NewSessionDraft.Agent(rawValue: key), choices.agentOptions.contains(where: { $0.key == key }) else { return }
+        drafts.pickAgentType(agent)
+    }
+
+    /// new/index.tsx `selectProjectPlace`: a catalog project, and Happy
+    /// Agent, the only harness that can find it, when this computer runs it.
+    public func pickProject(_ projectId: String) {
+        drafts.setProjectId(projectId)
+        if choices.agentOptions.contains(where: { $0.key == NewSessionDraft.Agent.rig.rawValue }) {
+            drafts.pickAgentType(.rig)
+        }
+    }
+
+    /// The path field, as typed: every keystroke is the place.
+    public func typePath(_ path: String) {
+        drafts.setPath(path)
+    }
+
     public func selectPermission(_ key: String) {
         drafts.setPermissionMode(key)
     }

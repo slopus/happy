@@ -336,13 +336,13 @@ public final class TextActionButton: UIControl {
     }
 }
 
-/// EmptyMainScreen.tsx with a computer linked and nothing run on it yet.
-/// happy-app's "Start New Session" button is left out until the new
-/// session screen exists; the archive link stays.
+/// EmptyMainScreen.tsx with a computer linked and nothing run on it yet:
+/// "Start New Session", and the archive link when there is an archive.
 public final class NoSessionsView: UIView {
     let icon = IconView(.ionicons("terminal-outline"), size: NoSessionsLayout.Metrics.iconSize)
     let titleLabel = StyledLabel(style: TextStyles.emptyStateTitle, color: Palette.text, alignment: .center)
     let descriptionLabel = StyledLabel(style: TextStyles.emptyStateDescription, color: Palette.textSecondary, alignment: .center)
+    public let startNewSession = RoundButton(title: Strings.NewSession.startNewSession)
     public let showArchived = TextActionButton(title: Strings.Sidebar.showArchived)
 
     public var showsArchivedAction = false {
@@ -360,7 +360,7 @@ public final class NoSessionsView: UIView {
         titleLabel.string = Strings.EmptyMain.noSessionsTitle
         titleLabel.accessibilityTraits = .header
         descriptionLabel.string = Strings.EmptyMain.noSessionsDescription
-        for view in [icon, titleLabel, descriptionLabel, showArchived] {
+        for view in [icon, titleLabel, descriptionLabel, startNewSession, showArchived] {
             addSubview(view)
         }
         showArchived.isHidden = true
@@ -379,11 +379,13 @@ public final class NoSessionsView: UIView {
             icon: icon.sizeThatFits(.zero),
             title: titleLabel.measurable,
             description: descriptionLabel.measurable,
+            buttonHeight: startNewSession.layout(width: bounds.width).size.height,
             action: showsArchivedAction ? showArchived.measurable : nil
         ))
         icon.setLayoutFrame(layout.icon)
         titleLabel.setLayoutFrame(layout.title)
         descriptionLabel.setLayoutFrame(layout.description)
+        if let frame = layout.button { startNewSession.setLayoutFrame(frame) }
         if let frame = layout.action { showArchived.setLayoutFrame(frame) }
     }
 }

@@ -475,6 +475,12 @@ public struct WorkspaceOrigin: Equatable, Sendable {
     /// The project's main checkout; nil when named by identity.
     public var path: String?
 
+    init(machineId: String, projectId: String?, path: String?) {
+        self.machineId = machineId
+        self.projectId = projectId
+        self.path = path
+    }
+
     init?(_ member: ProjectHomeData.Member) {
         guard let machineId = member.machineId else { return nil }
         if let projectId = member.projectId {

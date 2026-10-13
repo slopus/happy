@@ -217,6 +217,9 @@ public struct NoSessionsLayout: Equatable, Sendable {
         public var icon: CGSize
         public var title: Measurable
         public var description: Measurable
+        /// "Start New Session": a RoundButton this tall, stretched across
+        /// the screen (`alignSelf: 'stretch'`).
+        public var buttonHeight: CGFloat?
         public var action: Measurable?
 
         public init(
@@ -225,6 +228,7 @@ public struct NoSessionsLayout: Equatable, Sendable {
             icon: CGSize = CGSize(width: Metrics.iconSize, height: Metrics.iconSize),
             title: Measurable,
             description: Measurable,
+            buttonHeight: CGFloat? = nil,
             action: Measurable?
         ) {
             self.size = size
@@ -232,6 +236,7 @@ public struct NoSessionsLayout: Equatable, Sendable {
             self.icon = icon
             self.title = title
             self.description = description
+            self.buttonHeight = buttonHeight
             self.action = action
         }
     }
@@ -239,6 +244,7 @@ public struct NoSessionsLayout: Equatable, Sendable {
     public var icon: CGRect
     public var title: CGRect
     public var description: CGRect
+    public var button: CGRect?
     public var action: CGRect?
 
     public init(_ input: Input) {
@@ -253,6 +259,7 @@ public struct NoSessionsLayout: Equatable, Sendable {
 
         var height = input.icon.height + M.iconMarginBottom + titleSize.height + M.titleMarginBottom
             + descriptionSize.height + M.descriptionMarginBottom
+        if let buttonHeight = input.buttonHeight { height += buttonHeight }
         if let actionSize { height += M.actionMarginTop + actionSize.height }
 
         let available = max(0, input.size.height - insets.vertical - M.marginBottom)
@@ -266,6 +273,8 @@ public struct NoSessionsLayout: Equatable, Sendable {
         y = title.maxY + M.titleMarginBottom
         description = centred(descriptionSize, y)
         y = description.maxY + M.descriptionMarginBottom
+        button = input.buttonHeight.map { CGRect(x: insets.left, y: y, width: width, height: $0) }
+        y = button?.maxY ?? y
         action = actionSize.map { centred($0, y + M.actionMarginTop) }
     }
 }

@@ -266,6 +266,21 @@ public final class NewSessionDraftStore {
         }
     }
 
+    /// ProjectRow's `+` (ProjectHomeList.tsx `createWorkspace`): the
+    /// project's computer and place, asking for a new workspace. A catalog
+    /// project is an identity, so the harness moves to Happy Agent.
+    public func prepareWorkspace(_ origin: WorkspaceOrigin) {
+        setMachineId(origin.machineId)
+        if let projectId = origin.projectId {
+            pickAgentType(.rig)
+            setProjectId(projectId)
+        } else {
+            setPath(origin.path)
+        }
+        setSessionType(.worktree)
+        setWorktreeKey(nil)
+    }
+
     public func setCreatesBot(_ value: Bool) {
         createsBot = value
         notify()

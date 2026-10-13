@@ -56,8 +56,8 @@ enum Screens {
             return PlaceholderViewController(title: "")
         case .machine(let id):
             return MachineViewController(context: context, session: session, machineId: id)
-        case .newSession:
-            return PlaceholderViewController(title: "")
+        case .newSession(let machineId, let path, let prompt):
+            return NewSessionViewController(context: context, session: session, machineId: machineId, path: path, prompt: prompt)
         case .settingsAccount:
             return SettingsAccountViewController(context: context, session: session)
         case .settingsAppearance:

@@ -330,11 +330,12 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
     }
 
     /// ProjectRow's `+`: home's composer on this project's "Create New"
-    /// workspace, or the new-session screen without a dock.
+    /// workspace, or the new-session screen on it when the dock can't open.
     private func createWorkspace(_ entry: ProjectHomeEntry) {
         guard let origin = entry.origin else { return }
         if onCreateWorkspace?(origin) == true { return }
-        push(.newSession(machineId: origin.machineId, path: origin.path, prompt: nil), context: context)
+        NewSessionDraftStore.shared(for: context.account.localSettings).prepareWorkspace(origin)
+        push(.newSession(machineId: nil, path: nil, prompt: nil), context: context)
     }
 
     private func showProjectActions(_ entry: ProjectHomeEntry) {
@@ -420,10 +421,12 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
 
 /// A reachable computer with nothing on it yet.
 final class NoSessionsViewController: UIViewController {
+    private let context: AppContext
     private let session: AccountSession
     private let content = NoSessionsView()
 
-    init(session: AccountSession) {
+    init(context: AppContext, session: AccountSession) {
+        self.context = context
         self.session = session
         super.init(nibName: nil, bundle: nil)
     }
@@ -441,6 +444,10 @@ final class NoSessionsViewController: UIViewController {
         super.viewDidLoad()
         content.showArchived.onTap = { [weak self] in
             self?.session.updateSettings(["hideInactiveSessions": .bool(false)])
+        }
+        content.startNewSession.onTap = { [weak self] in
+            guard let self else { return }
+            self.push(.newSession(machineId: nil, path: nil, prompt: nil), context: self.context)
         }
     }
 }

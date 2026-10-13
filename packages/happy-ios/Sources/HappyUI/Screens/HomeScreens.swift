@@ -155,7 +155,7 @@ public final class HomeViewController: UIViewController {
         case .offline(let choices, let hasArchived):
             OfflineChecklistViewController(context: context, session: session, choices: choices, hasArchived: hasArchived)
         case .noSessions:
-            NoSessionsViewController(session: session)
+            NoSessionsViewController(context: context, session: session)
         case .list(let list, let offline):
             makeList(list, offline: offline)
         }

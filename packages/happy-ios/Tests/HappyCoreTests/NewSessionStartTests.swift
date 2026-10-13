@@ -1112,3 +1112,153 @@ final class NewSessionChoicesTests: XCTestCase {
         XCTAssertFalse(moved.sameTarget(as: draft))
     }
 }
+
+// MARK: - The new-session screen
+
+extension NewSessionChoicesTests {
+    private func screen(
+        _ draft: NewSessionDraft,
+        machines: [MachineRecord],
+        sessions: [SessionRecord] = [],
+        isStarting: Bool = false,
+        now: Int64 = 1
+    ) -> NewSessionScreenModel {
+        let snapshot = HomeSnapshot(machines: MachinesSnapshot(synced: true, machines: machines), sessions: sessions)
+        let choices = NewSessionChoices(.init(draft: draft, createsBot: false, snapshot: snapshot))
+        return NewSessionScreenModel(choices: choices, draft: draft, snapshot: snapshot, gitWorktrees: [], isStarting: isStarting, now: now)
+    }
+
+    func testTheScreenForAPlainClaudeDraft() {
+        let draft = NewSessionDraft(selectedMachineId: "m1", selectedPath: "/Users/steve/happy")
+        let machines = [machine("m1"), machine("m2", name: "Studio", active: false, createdAt: 5)]
+        let sessions = [session("s1", path: "/Users/steve/happy"), session("s2", path: "/tmp/other")]
+        let model = screen(draft, machines: machines, sessions: sessions, now: 1 + 3 * 60_000)
+
+        XCTAssertEqual(model.machineName, "MacBook")
+        XCTAssertEqual(model.machineItems.map(\.key), ["m1", "m2"], "online first")
+        XCTAssertEqual(model.machineItems.map(\.status), [.online, .lastSeen(.minutes(3))])
+        XCTAssertEqual(model.machineItems.map(\.isDimmed), [false, true])
+        XCTAssertEqual(model.selectedMachineKey, "m1")
+        XCTAssertNil(model.offlineHelp)
+
+        XCTAssertEqual(model.pathItems.map(\.label), ["~/happy", "/tmp/other"])
+        XCTAssertEqual(model.pathName, "~/happy")
+        XCTAssertEqual(model.pathValue, "/Users/steve/happy")
+        XCTAssertEqual(model.matchedPathKey, "/Users/steve/happy")
+        XCTAssertNil(model.selectedProjectKey)
+
+        XCTAssertTrue(model.canPickWorktree)
+        XCTAssertFalse(model.picksWorkspaces)
+        XCTAssertEqual(model.worktreeFixedItems.map(\.label), ["new worktree", "no worktree"])
+        XCTAssertEqual(model.worktreeLabel, "no worktree")
+
+        XCTAssertEqual(model.agentItems.map(\.label), ["claude code", "codex"])
+        XCTAssertEqual(model.agentLabel, "claude code")
+        XCTAssertEqual(model.placeholder, "Ask claude code")
+        XCTAssertFalse(model.isCodex)
+        XCTAssertEqual(model.settings.map(\.kind), [.permission, .model, .effort])
+        XCTAssertEqual(model.settings[0].value, "Auto")
+        XCTAssertEqual(model.settings[0].icon, "shield-outline", "the ambient mode has no accent")
+
+        XCTAssertTrue(model.canSend, "no prompt needed")
+        XCTAssertFalse(screen(draft, machines: machines, sessions: sessions, isStarting: true).canSend)
+    }
+
+    func testAnOfflineDaemonStopsSendAndExplains() {
+        let model = screen(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1", active: false)])
+        XCTAssertEqual(model.offlineHelp, .happyCLI)
+        XCTAssertFalse(model.canSend)
+        XCTAssertEqual(model.pathName, "~")
+        XCTAssertFalse(screen(NewSessionDraft(), machines: [machine("m1")]).canSend, "a computer must be chosen")
+    }
+
+    func testCodexWordsItsOwnPlaceholder() {
+        let model = screen(NewSessionDraft(selectedMachineId: "m1", agentType: .codex, pickedAgentType: .codex), machines: [machine("m1")])
+        XCTAssertEqual(model.agentLabel, "codex")
+        XCTAssertEqual(model.placeholder, "Ask Codex")
+        XCTAssertTrue(model.isCodex)
+    }
+
+    func testAHappyAgentProjectOffersItsWorkspaces() {
+        let sessions = [
+            session("s1", machine: "rig1", path: "/Users/steve/happy/.dev/worktree/fix", project: (id: "p1", name: "happy"), workspace: (id: "w1", name: "fix")),
+            session("s2", machine: "rig1", path: "/Users/steve/happy", project: (id: "p1", name: "happy")),
+        ]
+        let model = screen(
+            NewSessionDraft(selectedMachineId: "m1", selectedPath: "/Users/steve/happy", agentType: .rig, pickedAgentType: .rig),
+            machines: [machine("m1"), rigMachine("rig1", sibling: "m1")],
+            sessions: sessions
+        )
+        XCTAssertEqual(model.pathItems, [NewSessionScreenModel.Item(key: "/Users/steve/happy", label: "happy", subtitle: "~/happy")])
+        XCTAssertEqual(model.matchedPathKey, "/Users/steve/happy")
+        XCTAssertTrue(model.picksWorkspaces)
+        XCTAssertEqual(model.worktreeFixedItems.map(\.label), ["Create New", "Main"])
+        XCTAssertEqual(model.worktreeItems.map(\.label), ["fix"])
+        XCTAssertEqual(model.worktreeLabel, "Main")
+        XCTAssertEqual(model.agentItems.map(\.key), ["claude", "codex", "rig"])
+        XCTAssertEqual(model.agentLabel, "happy")
+        XCTAssertEqual(model.placeholder, "Ask happy")
+        XCTAssertEqual(model.settings.map(\.kind), [.permission, .model, .effort])
+        XCTAssertEqual(model.settings[0].icon, "shield-outline")
+        XCTAssertEqual(model.settings[1].items.compactMap(\.section), ["OpenAI Codex", "Anthropic Claude"])
+        XCTAssertTrue(model.canSend)
+    }
+
+    func testACatalogProjectWithNoChatsLeftKeepsItsRow() {
+        let model = screen(
+            NewSessionDraft(selectedMachineId: "m1", selectedProjectId: "p9", agentType: .rig, pickedAgentType: .rig),
+            machines: [machine("m1"), rigMachine("rig1", sibling: "m1")]
+        )
+        XCTAssertEqual(model.pathItems, [NewSessionScreenModel.Item(key: "project:p9", label: "Project", projectId: "p9")])
+        XCTAssertEqual(model.selectedProjectKey, "project:p9")
+        XCTAssertEqual(model.selectedProjectName, "Project")
+        XCTAssertEqual(model.pathName, "Project")
+        XCTAssertEqual(model.fieldValue(for: model.pathItems[0]), "", "a project has no folder to type")
+        XCTAssertTrue(model.worktreeItems.isEmpty)
+    }
+
+    func testPathsAndIcons() {
+        XCTAssertEqual(NewSessionScreenModel.normalizedPath(" ~/happy/ ", homeDir: "/Users/steve"), "/Users/steve/happy")
+        XCTAssertEqual(NewSessionScreenModel.normalizedPath("/", homeDir: nil), "/")
+        XCTAssertEqual(NewSessionScreenModel.normalizedPath("C:\\", homeDir: nil), "C:\\")
+        XCTAssertNil(NewSessionScreenModel.normalizedPath("  ", homeDir: nil))
+        XCTAssertEqual(NewSessionScreenModel.permissionIcon("plan"), "pause")
+        XCTAssertEqual(NewSessionScreenModel.permissionIcon("yolo"), "play-forward")
+        XCTAssertNil(NewSessionScreenModel.permissionIcon("default"))
+    }
+
+    @MainActor
+    func testTheScreensPicks() async {
+        let composer = composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, pickedAgentType: .claude, permissionMode: "plan"), machines: [machine("m1"), rigMachine("rig1", sibling: "m1")])
+        composer.pickAgent("codex")
+        XCTAssertEqual(composer.drafts.draft.agentType, .codex)
+        XCTAssertEqual(composer.drafts.draft.pickedAgentType, .codex)
+        XCTAssertEqual(composer.drafts.draft.permissionMode, "plan", "the harness alone")
+        composer.pickAgent("openclaw")
+        XCTAssertEqual(composer.drafts.draft.agentType, .codex, "not offered here")
+
+        composer.typePath("~/w")
+        XCTAssertEqual(composer.drafts.draft.selectedPath, "~/w", "as typed")
+        composer.pickProject("p1")
+        XCTAssertEqual(composer.drafts.draft.selectedProjectId, "p1")
+        XCTAssertNil(composer.drafts.draft.selectedPath)
+        XCTAssertEqual(composer.drafts.draft.agentType, .rig)
+    }
+
+    @MainActor
+    func testAProjectsPlusPreparesANewWorkspace() {
+        let drafts = NewSessionDraftStore(settings: LocalSettings(storage: InMemoryKeyValueStore()))
+        drafts.setInput("keep")
+        drafts.prepareWorkspace(WorkspaceOrigin(machineId: "m1", projectId: nil, path: "/src/happy"))
+        XCTAssertEqual(drafts.draft.selectedMachineId, "m1")
+        XCTAssertEqual(drafts.draft.selectedPath, "/src/happy")
+        XCTAssertEqual(drafts.draft.sessionType, .worktree)
+        XCTAssertNil(drafts.draft.worktreeKey)
+        XCTAssertEqual(drafts.draft.input, "keep")
+
+        drafts.prepareWorkspace(WorkspaceOrigin(machineId: "m2", projectId: "p1", path: nil))
+        XCTAssertEqual(drafts.draft.selectedProjectId, "p1")
+        XCTAssertNil(drafts.draft.selectedPath)
+        XCTAssertEqual(drafts.draft.pickedAgentType, .rig)
+    }
+}
