@@ -119,6 +119,9 @@ accident.
 - [x] Icons as vector outlines, no icon fonts — Icons
 - [x] Light and dark theme switching (`themePreference`) — Icons
 - [ ] Dynamic Type — unassigned
-- [ ] iPad layout (sidebar + detail) — unassigned
+- [~] iPad layout (sidebar + detail) (`SidebarNavigator`, `SidebarView`, `EmptySessionsTablet`, `useIsTablet`, `deviceCalculations.ts`, `layout.ts`) — Tablet
+  - Done: a window 768 points wide or more switches live to the tablet shell (`TabletShellViewController`): the sidebar at 30% of the width clamped to 250–360, the persistent header with zen mode and back, zen mode kept in local settings, Home's session list reused in the sidebar with the open session selected, new session, show/hide archived, the Settings row, the blank detail and the tablet empty state. The 50-point header on iPad, the plain header's back button dropped on a tablet with the edge swipe kept, and `layout.ts`'s content width (800 only on 13-inch iPads) for the chat, the composer and item groups.
+  - Not yet: the chat header's tablet branch (plain title, no avatar, no glass, 50 high) and its landscape hiding, the session screen's tablet spacing (content top, docked composer, 12-point input padding, oldest-end spacer), right-aligned permission buttons (the frames are `PermissionFooterLayout.tablet`), zen mode in the composer, the worktree strip's glass, the header's max width, and project grouping in the sidebar (happy-app uses `SessionsList`'s machine and project headers there). The rules for each are in `HappyLayout/Tablet/TabletBranches.swift`.
+  - Untested on a device or simulator: rendering, rotation, Split View and Slide Over resizing. The layout math and rules are tested on Linux.
 - [x] Push notifications (APNs registration, open from a notification) — Ops + Push. See AGENTS.md, "Push notifications".
   - Delivery, foreground presentation and taps are untested on a device or simulator; the routing, registration, installation id and signing-environment logic is tested on Linux.

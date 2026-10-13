@@ -498,6 +498,7 @@ change a file another workstream owns, ask the coordinator.
 | Reducer | `Core/Chat/` reducer and `ChatFeed`, `HappyWire` session-protocol decoding |
 | Ops | `Core/Sessions/` RPC operations (`sync/ops.ts`) |
 | Push | `Sources/HappyApp/PushNotifications.swift`, `Core/Push/` routing, installation id, APNs source and token sync, the entitlements, `AppCoordinator.openSession(fromNotification:)` |
+| Tablet | `Sources/HappyUI/Tablet/`, `Sources/HappyLayout/Tablet/`, `Sources/HappyCore/Tablet/`, the root container switch in `AppCoordinator` |
 
 Shared seams, changed only through the coordinator:
 
@@ -515,6 +516,12 @@ Shared seams, changed only through the coordinator:
 - `Sources/HappyUI/Navigation/Route.swift`: screens open each other only
   through `push(_ route:context:)`. Each workstream replaces only its own
   placeholders in `Screens.make`;
+- the iPad shell: the window's root is `TabletShellViewController`, which
+  embeds `AppCoordinator`'s navigation controller as its detail and is
+  that controller's delegate, so nothing else sets `navigation.delegate`.
+  Tablet branches read `traitCollection.isTabletLayout` and `isZenMode`
+  (re-laid out through `registerForTraitChanges([TabletLayoutTrait.self])`);
+  their rules are in `HappyLayout/Tablet/TabletBranches.swift`;
 - `Schema.swift`: migrations are added by the Sending workstream or the
   coordinator. v3 can still change until the app first ships.
 

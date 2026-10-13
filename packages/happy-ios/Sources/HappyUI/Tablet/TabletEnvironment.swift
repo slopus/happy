@@ -146,7 +146,8 @@ public enum ContentWidth {
             return (.greatestFiniteMagnitude, .greatestFiniteMagnitude)
         }
         let screen = scene.screen.bounds.size
-        let window = scene.windows.first(where: \.isKeyWindow)?.bounds.size ?? screen
+        // The scene's own size, which is the window's even before one is key.
+        let window = scene.coordinateSpace.bounds.size
         let type = DeviceCalculations.deviceType(screen: screen, isPad: UIDevice.current.userInterfaceIdiom == .pad)
         let limits = (
             maxWidth: ContentWidthLimit.maxWidth(deviceType: type, window: window),
