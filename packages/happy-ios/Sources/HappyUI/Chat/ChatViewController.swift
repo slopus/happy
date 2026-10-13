@@ -56,6 +56,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// id: dismissed once it is delivered.
     private var questionsToDismiss: [String: [PendingAgentCommunication]] = [:]
     private let scrollButton = ChatScrollButton()
+    private let copyCallout = ChatCopyCallout()
     private let keyboardTracker = UIView()
     private let measurer = ChatRowMeasurer()
     private let feedTask = TaskHolder()
@@ -654,6 +655,26 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         case .retry(let localId):
             let sender = services.sender
             Task { try? await sender.retry(localId: localId) }
+        case .copyMenu, .selectable, .markdownSelectable:
+            // Long presses; see `chatList(_:hold:frame:at:)`.
+            break
+        }
+    }
+
+    func chatList(_ list: ChatListView, hold action: ChatRowAction, frame: CGRect, at point: CGPoint) {
+        switch action {
+        case .copyMenu(let text):
+            ChatCopyMenu.present(copying: text, anchor: frame, in: list)
+        case .selectable(let text):
+            copyCallout.present(copying: text, at: point, in: list)
+        case .markdownSelectable(let paragraph, let markdown):
+            if context.account.localSettings.markdownCopyV2 {
+                push(.textSelection(text: markdown), context: context)
+            } else {
+                copyCallout.present(copying: paragraph, at: point, in: list)
+            }
+        default:
+            chatList(list, perform: action)
         }
     }
 

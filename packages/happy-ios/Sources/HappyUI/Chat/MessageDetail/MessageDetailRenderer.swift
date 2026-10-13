@@ -105,17 +105,31 @@ enum MessageDetailRenderer {
     }
 
     /// CommandView on the tool's screen: the command, then everything it
-    /// printed, in pieces when it is long.
+    /// printed, in pieces when it is long. The command and its output are
+    /// selectable there (`syntaxHighlighting`); the error is not.
     static func command(_ terminal: ToolFullTerminal) -> ChatPiece {
-        var entries = [ChatStackEntry(piece: ChatRowRenderer.commandLine(terminal.command, prompt: terminal.prompt))]
-        func output(_ text: String, _ style: ChatTextStyle, _ color: ColorToken) {
-            entries.append(ChatStackEntry(piece: longText(text, style: style, color: color, lineBreakMode: .byCharWrapping), marginTop: 8))
+        let line = ChatRowRenderer.commandLine(terminal.command, prompt: terminal.prompt)
+        var entries = [ChatStackEntry(piece: selectable(line, terminal.command))]
+        func output(_ text: String, _ style: ChatTextStyle, _ color: ColorToken, selectable copies: Bool) {
+            let piece = longText(text, style: style, color: color, lineBreakMode: .byCharWrapping)
+            entries.append(ChatStackEntry(piece: copies ? selectable(piece, text) : piece, marginTop: 8))
         }
-        if let stdout = terminal.visibleStdout { output(stdout, ChatTextStyles.terminal, Palette.terminalStdout) }
-        if let stderr = terminal.visibleStderr { output(stderr, ChatTextStyles.terminal, Palette.terminalStderr) }
-        if let error = terminal.error { output(text(error), ChatTextStyles.terminal, Palette.terminalError) }
-        if terminal.showsEmptyOutput { output(Strings.Tools.commandNoOutput, ChatTextStyles.terminalEmptyOutput, Palette.terminalEmptyOutput) }
+        if let stdout = terminal.visibleStdout { output(stdout, ChatTextStyles.terminal, Palette.terminalStdout, selectable: true) }
+        if let stderr = terminal.visibleStderr { output(stderr, ChatTextStyles.terminal, Palette.terminalStderr, selectable: true) }
+        if let error = terminal.error { output(text(error), ChatTextStyles.terminal, Palette.terminalError, selectable: false) }
+        if terminal.showsEmptyOutput {
+            output(Strings.Tools.commandNoOutput, ChatTextStyles.terminalEmptyOutput, Palette.terminalEmptyOutput, selectable: false)
+        }
         return ChatRowRenderer.terminalPanel(entries)
+    }
+
+    /// React Native's `selectable` Text: a long press anywhere on it copies
+    /// all of `text`.
+    static func selectable(_ piece: ChatPiece, _ text: String) -> ChatPiece {
+        ChatPiece(measurable: piece.measurable) { frame in
+            let drawn = piece.draw(frame)
+            return (drawn.items, drawn.hits + [ChatHit(frame: frame, action: .selectable(text), hold: true)])
+        }
     }
 
     /// EditViewFull and MultiEditViewFull draw their diffs with line

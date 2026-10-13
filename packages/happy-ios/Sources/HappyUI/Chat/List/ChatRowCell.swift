@@ -47,6 +47,11 @@ final class ChatRowCell: UICollectionViewCell {
         canvas.action(at: point)
     }
 
+    /// The long-press target under `point` (in this cell), if any.
+    func hold(at point: CGPoint) -> ChatHit? {
+        canvas.hold(at: point)
+    }
+
     /// The link under `point`, if the tap landed on one.
     func link(at point: CGPoint) -> String? {
         canvas.link(at: point)
@@ -196,7 +201,12 @@ final class ChatPlanView: UIView {
     /// What a tap at `point` (in this view) does, if anything.
     func action(at point: CGPoint) -> ChatRowAction? {
         guard let plan else { return nil }
-        return plan.hits.first { $0.frame.contains(point) }?.action
+        return plan.hits.first { !$0.hold && $0.frame.contains(point) }?.action
+    }
+
+    /// The long-press target under `point` (in this view), if any.
+    func hold(at point: CGPoint) -> ChatHit? {
+        plan?.hits.first { $0.hold && $0.frame.contains(point) }
     }
 
     /// The link under `point`, if the tap landed on one.

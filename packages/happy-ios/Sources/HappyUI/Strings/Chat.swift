@@ -5,6 +5,13 @@ import HappyCore
 // is noted where the name differs).
 
 extension Strings {
+    /// textSelection
+    public enum TextSelection {
+        public static let title = "Select Text"
+        public static let noTextProvided = "No text provided"
+        public static let textCopied = "Text copied to clipboard"
+    }
+
     public enum Chat {
         /// common.retry
         public static let retry = "Retry"

@@ -81,6 +81,14 @@ public final class LocalSettings: Sendable {
         set { storage.set(newValue ? "true" : nil, forKey: Keys.devModeEnabled) }
     }
 
+    /// Developer › Markdown Copy v2: a long press on an agent's markdown
+    /// opens the text selection screen instead of copying the paragraph
+    /// (localSettings.ts `markdownCopyV2`).
+    public var markdownCopyV2: Bool {
+        get { storage.string(forKey: Keys.markdownCopyV2) == "true" }
+        set { storage.set(newValue ? "true" : nil, forKey: Keys.markdownCopyV2) }
+    }
+
     /// The projects showing every worktree on the grouped home list
     /// (localSettings.ts `expandedProjects`, keyed by project id).
     public var expandedProjects: Set<String> {
@@ -110,7 +118,7 @@ public final class LocalSettings: Sendable {
     }
 
     public func clear() {
-        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled, Keys.expandedProjects, Keys.registeredPushToken, NewSessionDraft.storageKey] {
+        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled, Keys.markdownCopyV2, Keys.expandedProjects, Keys.registeredPushToken, NewSessionDraft.storageKey] {
             storage.set(nil, forKey: key)
         }
     }
@@ -126,6 +134,7 @@ public final class LocalSettings: Sendable {
         static let linkComputerChecklist = "linkComputerChecklist"
         static let themePreference = "themePreference"
         static let devModeEnabled = "devModeEnabled"
+        static let markdownCopyV2 = "markdownCopyV2"
         static let expandedProjects = "expandedProjects"
         static let registeredPushToken = "registered-push-token-v1"
     }

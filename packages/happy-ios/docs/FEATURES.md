@@ -67,7 +67,9 @@ accident.
 - [ ] Keyboard: input bar tracks the keyboard, interactive dismiss, list insets — Chat
 - [ ] Messages: user bubbles, agent text, thinking, events, unsupported placeholder (`MessageView`) — Chat
 - [~] Markdown: blocks, spans, links, lists, tables, code blocks with syntax highlighting, copy (`markdown/*`, `SyntaxText`, `SimpleSyntaxHighlighter`) — Chat
-- [ ] Text selection screen (`text-selection.tsx`) — Chat
+- [~] Text selection screen (`text-selection.tsx`) and long-press copy (`LongPressCopyable`, MarkdownView's `selectable`) — Chat
+  - A user's message copies through LongPressCopyable's menu; an agent's paragraphs, list items, code blocks and table cells, and on a tool's screen the command and its output, bring up the edit menu's Copy for that text. With Markdown Copy v2 (`LocalSettings.markdownCopyV2`) a long press on an agent's message opens the text selection screen instead.
+  - Not yet: the Developer screen's toggle for Markdown Copy v2 (the screen isn't ported), so the text selection screen can't be reached in the app yet. Copy puts plain text on the pasteboard, without React Native's RTF. In the chat both long presses take 400 ms; React Native's selectable text takes 500.
 - [ ] Tool calls, hidden by default; tool headers, sections, errors, full view (`tools/*`, `knownTools.tsx`) — Chat
   - Deviation from happy-app, on purpose: tool output is collapsed by default (header only, compact row or card as `compactToolCalls` picks); tap the header to expand, in memory for the screen's lifetime; a pending permission, question or plan keeps its input open, never its output.
   - Partial: on iPad, permission buttons stretch instead of right-aligning, and a long permission list doesn't scroll at min(260, 35% of the window).
@@ -78,7 +80,7 @@ accident.
 - [ ] Image and file messages, decrypted on demand (`FileView`) — Chat + Sending
 - [~] Message detail screen (`session/[id]/message/[messageId].tsx`) — Chat
   - ToolHeader's title; ToolFullView's terminal (CommandView with all output), Task, Edit, Write and MultiEdit full views, the generic sections, the outcome after a specialized view, and dev mode's raw JSON; a text message's whole text. Long output is drawn in pieces near the screen only (`TextChunks`).
-  - Not yet: the Codex patch and diff full views (they show the generic sections until `codexUnifiedDiff` lands) and the `file` focus parameter; terminal output can't be selected in place (happy-app's `selectable` text).
+  - Not yet: the Codex patch and diff full views (they show the generic sections until `codexUnifiedDiff` lands) and the `file` focus parameter.
 - [~] Agent goal bar, work group headers, rig activity bar (`AgentGoalBar`, `AgentWorkGroupHeader`, `RigActivityBar`) — Chat
   - Stop shows but sends nothing, as in happy-app (`agentGoalActionHandler.ts`). The goal bar has no details sheet; happy-app doesn't open one from the chat either.
 - [~] Empty and pending states (`EmptyMessages`, `ChatFooter`) — Chat

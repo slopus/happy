@@ -10,7 +10,7 @@ import UIKit
 ///
 /// A spinner until the session and its messages have loaded; once they
 /// have, a message that isn't there sends the reader back.
-final class MessageDetailViewController: UIViewController, UIScrollViewDelegate {
+final class MessageDetailViewController: UIViewController, UIScrollViewDelegate, UIGestureRecognizerDelegate {
     private let context: AppContext
     private let sessionId: String
     private let messageId: String
@@ -20,6 +20,8 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate 
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let titleLabel = UILabel()
     private let measurer = MessageDetailMeasurer()
+    private let holdRecognizer = UILongPressGestureRecognizer()
+    private let copyCallout = ChatCopyCallout()
     private var feedTask: Task<Void, Never>?
     private var observation: StoreObservation?
 
@@ -66,6 +68,11 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate 
         scrollView.isHidden = true
         canvas.onAction = { [weak self] action in self?.perform(action) }
         scrollView.addSubview(canvas)
+        // UILongPressGestureRecognizer's own half second, as React Native's
+        // selectable text uses it.
+        holdRecognizer.addTarget(self, action: #selector(held(_:)))
+        holdRecognizer.delegate = self
+        scrollView.addGestureRecognizer(holdRecognizer)
         view.addSubview(scrollView)
         spinner.color = UIColor(Palette.textSecondary)
         spinner.hidesWhenStopped = true
@@ -233,6 +240,27 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate 
         canvas.visibleRect = scrollView.bounds
     }
 
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        guard gestureRecognizer === holdRecognizer else { return true }
+        return canvas.hold(at: gestureRecognizer.location(in: canvas)) != nil
+    }
+
+    /// A control inside the content (a diff's "Show N more lines") handles
+    /// its own touches.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+        var view = touch.view
+        while let current = view, current !== scrollView {
+            if current is UIControl { return false }
+            view = current.superview
+        }
+        return true
+    }
+
+    @objc private func held(_ recognizer: UILongPressGestureRecognizer) {
+        guard recognizer.state == .began, case .selectable(let text)? = canvas.hold(at: recognizer.location(in: canvas))?.action else { return }
+        copyCallout.present(copying: text, at: recognizer.location(in: scrollView), in: scrollView)
+    }
+
     private func perform(_ action: ChatRowAction) {
         switch action {
         case .diffShowMore(_, let chunk, let file):
@@ -280,6 +308,11 @@ final class MessageDetailCanvas: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         background.frame = bounds
+    }
+
+    /// The long-press target under `point`, if any.
+    func hold(at point: CGPoint) -> ChatHit? {
+        background.hold(at: point)
     }
 
     func apply(_ plan: ChatRowPlan) {

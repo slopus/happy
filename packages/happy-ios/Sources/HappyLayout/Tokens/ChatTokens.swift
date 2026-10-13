@@ -293,6 +293,11 @@ public enum ChatTextStyles {
     public static let terminalEmptyOutput = ChatTextStyle(.menloItalic, size: 13, lineHeight: 18)
     public static let detailMessage = ChatTextStyle(.plex(.regular), size: 16, lineHeight: 24)
 
+    // LongPressCopyable's menu and the text selection screen
+    public static let copyMenuLabel = ChatTextStyle(.plex(.regular), size: 15, lineHeight: 20)
+    public static let textSelection = ChatTextStyle(.plex(.mono), size: 14, lineHeight: 20)
+    public static let textSelectionLoading = ChatTextStyle(.plex(.regular), size: 16)
+
     // The session deleted state (SessionView.tsx)
     public static let deletedTitle = ChatTextStyle(.system(.semibold), size: 20)
     public static let deletedBody = ChatTextStyle(.system(.regular), size: 15)

@@ -653,6 +653,14 @@ final class MessageDetailLayoutTests: XCTestCase {
     }
 }
 
+final class TextSelectionLayoutTests: XCTestCase {
+    func testTheCardRunsToTheFootOfTheScreenAndTheTextClearsTheHomeIndicator() {
+        let layout = TextSelectionLayout(size: CGSize(width: 393, height: 852), safeArea: LayoutInsets(top: 103, left: 0, bottom: 34, right: 0))
+        assertFrame(layout.card, rect(16, 119, 361, 717))
+        XCTAssertEqual(layout.textInsets, LayoutInsets(top: 16, left: 16, bottom: 66, right: 16))
+    }
+}
+
 final class TextChunksTests: XCTestCase {
     func testShortTextIsOnePiece() {
         XCTAssertEqual(TextChunks.split("one\ntwo\n"), ["one\ntwo\n"])
@@ -682,5 +690,25 @@ final class TextChunksTests: XCTestCase {
         XCTAssertEqual(TextChunks.drawn("a\n\n"), "a\n ", "an empty last line keeps its height")
         XCTAssertEqual(TextChunks.drawn("\n"), " ")
         XCTAssertEqual(TextChunks.drawn("abc"), "abc", "cut inside a line: nothing to drop")
+    }
+}
+
+final class CopyMenuLayoutTests: XCTestCase {
+    private let window = CGSize(width: 393, height: 852)
+
+    func testTheMenuSitsAboveTheMessageWithItsRightEdgeOnTheMessages() {
+        let layout = CopyMenuLayout(anchor: rect(150, 400, 227, 60), window: window, label: text("Copy", lineHeight: 20))
+        assertFrame(layout.menu, rect(225, 348, 152, 44))
+        assertFrame(layout.icon, rect(14, 13.5, 17, 17))
+        assertFrame(layout.label, rect(41, 12, 32, 20))
+    }
+
+    func testNearTheTopItDropsBelowAndStaysOnScreen() {
+        let below = CopyMenuLayout(anchor: rect(16, 40, 80, 30), window: window, label: text("Copy", lineHeight: 20))
+        // 8 below, and 12 in from the left.
+        assertFrame(below.menu, rect(12, 78, 152, 44))
+        let tall = CopyMenuLayout(anchor: rect(16, 40, 361, 900), window: window, label: text("Copy", lineHeight: 20))
+        // Never within 12 of the bottom.
+        assertFrame(tall.menu, rect(225, 796, 152, 44))
     }
 }

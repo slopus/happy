@@ -306,3 +306,50 @@ public struct ChatOlderEndLayout: Equatable, Sendable {
         self.control = CGRect(x: (width - control.width) / 2, y: (Self.height - control.height) / 2, width: control.width, height: control.height)
     }
 }
+
+/// LongPressCopyable's menu, in window coordinates: 152 by 44, 8 above the
+/// message, or 8 below it when above would come within 12 of the top (and
+/// never within 12 of the bottom). Its right edge lines up with the
+/// message's, as a user's bubble hugs the right, kept 12 from either side.
+/// Inside it: the copy glyph 14 in, then the label 10 after it.
+public struct CopyMenuLayout: Equatable, Sendable {
+    public enum Metrics {
+        public static let width: CGFloat = 152
+        public static let height: CGFloat = 44
+        public static let gap: CGFloat = 8
+        public static let screenMargin: CGFloat = 12
+        public static let radius: CGFloat = 14
+        public static let paddingH: CGFloat = 14
+        public static let iconSize: CGFloat = 17
+        public static let iconGap: CGFloat = 10
+        /// theme.colors.shadow, radius 16, 6 down.
+        public static let shadowOpacity: Float = 0.1
+        public static let shadowRadius: CGFloat = 16
+        public static let shadowOffsetY: CGFloat = 6
+        /// AnimatedPopup: in over 190 ms (ease-out cubic) from 0.96 and 8
+        /// lower, out over 140 ms (ease-in cubic), fading.
+        public static let enterDuration: TimeInterval = 0.19
+        public static let enterScale: CGFloat = 0.96
+        public static let enterOffsetY: CGFloat = 8
+        public static let exitDuration: TimeInterval = 0.14
+        /// The long press that opens it.
+        public static let pressDuration: TimeInterval = 0.4
+    }
+
+    public var menu: CGRect
+    /// In the menu's own coordinates.
+    public var icon: CGRect
+    public var label: CGRect
+
+    public init(anchor: CGRect, window: CGSize, label: Measurable) {
+        typealias M = Metrics
+        let above = anchor.minY - M.height - M.gap
+        let top = above >= M.screenMargin ? above : min(anchor.maxY + M.gap, window.height - M.height - M.screenMargin)
+        let left = max(M.screenMargin, min(window.width - M.width - M.screenMargin, anchor.maxX - M.width))
+        menu = CGRect(x: left, y: top, width: M.width, height: M.height)
+        icon = CGRect(x: M.paddingH, y: (M.height - M.iconSize) / 2, width: M.iconSize, height: M.iconSize)
+        let labelX = icon.maxX + M.iconGap
+        let size = label.size(fitting: max(0, M.width - labelX - M.paddingH))
+        self.label = CGRect(x: labelX, y: (M.height - size.height) / 2, width: size.width, height: size.height)
+    }
+}

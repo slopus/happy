@@ -150,3 +150,30 @@ public enum TextChunks {
         return line
     }
 }
+
+/// text-selection.tsx: the text in a card 16 in from the screen's edges,
+/// from under the header down to the foot of the screen, rounded 22; the
+/// text 16 inside it, with the home indicator's height and 16 more after
+/// its last line.
+public struct TextSelectionLayout: Equatable, Sendable {
+    public enum Metrics {
+        public static let margin: CGFloat = 16
+        public static let radius: CGFloat = 22
+        public static let padding: CGFloat = 16
+    }
+
+    public var card: CGRect
+    /// Around the text, inside the card.
+    public var textInsets: LayoutInsets
+
+    public init(size: CGSize, safeArea: LayoutInsets) {
+        typealias M = Metrics
+        card = CGRect(
+            x: safeArea.left + M.margin,
+            y: safeArea.top + M.margin,
+            width: max(0, size.width - safeArea.left - safeArea.right - 2 * M.margin),
+            height: max(0, size.height - safeArea.top - 2 * M.margin)
+        )
+        textInsets = LayoutInsets(top: M.padding, left: M.padding, bottom: M.padding + safeArea.bottom + M.padding, right: M.padding)
+    }
+}
