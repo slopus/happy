@@ -18,6 +18,7 @@ accident.
 | Voice mode: the voice assistant, its settings and language picker, voice bars and status bar, the voice upsell | Out of scope for this app | `settings/voice.tsx`, `settings/voice/language.tsx`, `VoiceAssistantStatusBar`, `VoiceBars`, `apiVoice.ts`, `realtime/` |
 | Usage page | Gated by `experiments` | `settings/usage.tsx`, `components/usage/` |
 | Rig file browser in the chat | Gated by `experiments` (`SessionView.tsx` `onFileViewerPress`) | `FilesSidebar`, `FileViewPanel` |
+| Session files browser (`/session/[id]/files`) | Gated by `experiments` | `session/[id]/files.tsx` |
 | The `experiments` toggle's other effects | Anything gated by `experiments` | `SettingsView.tsx` |
 | Developer tools and every `dev/*` screen | Dev-only | `app/(app)/dev/*` |
 | Friends, user profiles, the inbox and the activity feed | Not reachable on an iPhone in happy-app: the Friends row is commented out in `SettingsView.tsx`, and the inbox tab exists only in the web `TabBar` | `friends/*`, `user/[id].tsx`, `inbox/index.tsx`, `InboxView`, `FeedItemCard`, `apiFriends.ts`, `apiFeed.ts` |
@@ -72,7 +73,9 @@ accident.
 - [ ] Attachments: picker (photos, camera, files), strip, upload progress (`AgentInputAttachmentStrip`, `attachmentSupport.ts`) — Composer + Sending
 - [ ] Permission mode, model and effort pickers (`PermissionModeSelector`, `modelModeOptions.ts`, `NativeOptionsPicker`) — Composer
 - [ ] Session info: metadata, machine, path, archive, delete, duplicate, fork (`session/[id]/info.tsx`) — Secondary + Ops
-- [ ] Files, file viewer and changes with diffs (`files.tsx`, `file.tsx`, `changes.tsx`, `diff/*`, `CodeView`) — Secondary
+  - The duplicate sheet is `Screens/SessionInfoDuplicateSheet.swift`, entered through `presentDuplicateSheet(sessionId:from:)`. Home's row alert and the chat call that entry point instead of building their own.
+- [ ] File viewer and changes with diffs (`file.tsx`, `changes.tsx`, `diff/*`, `CodeView`) — Secondary
+  - The `/files` browser is gated behind `experiments` and excluded (see Exclusions). The `/file` viewer is reachable without it, from tool rows and changes, and is in scope.
 
 ## Settings
 
