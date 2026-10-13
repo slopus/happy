@@ -84,7 +84,7 @@ accident.
   - On a tablet the permission buttons hug their labels at the trailing edge (`PermissionFooterLayout.tablet`).
   - Partial: a long permission list doesn't scroll at min(260, 35% of the window).
 - [~] Tool views: Bash, Edit, MultiEdit, Write, Todo, Task, MCP, Codex patch/diff/bash, Gemini edit/execute, file, exit plan, ask user question, request user input (`tools/views/*`) — Chat
-  - Edit, Write, MultiEdit and Gemini edit draw Secondary's DiffChunk (`HappyUI/Diff`), without syntax colour until its tokenizer lands. Codex patches (CodexPatch, apply_patch, GeminiPatch) open to each file under its DiffFileHeader, which opens that file alone on the message's screen, and Codex diffs (CodexDiff, GeminiDiff) to the turn's diff under its file's header; both use Secondary's `CodexUnifiedDiff`. A file header shows no pressed state. FileView is not ported.
+  - Edit, Write, MultiEdit and Gemini edit draw Secondary's DiffChunk (`HappyUI/Diff`), syntax-coloured by its Prism port within each plan's deadline (`DiffChunkPlan.syntaxDeadline`), as are the Codex patch and diff cards. Codex patches (CodexPatch, apply_patch, GeminiPatch) open to each file under its DiffFileHeader, which opens that file alone on the message's screen, and Codex diffs (CodexDiff, GeminiDiff) to the turn's diff under its file's header; both use Secondary's `CodexUnifiedDiff`. A file header shows no pressed state. FileView is not ported.
 - [~] Permission prompts: allow, allow for session, deny, mode switch (`PermissionFooter`) — Chat
   - Claude's and Codex's buttons, the busy ring while a reply is on its way, and the mode change an answer brings.
   - On a tablet the buttons hug their labels at the trailing edge; see Tool calls.
