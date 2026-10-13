@@ -32,7 +32,8 @@ private actor GitSettledProbe: RPCTransport {
 
 final class OpsHappyAgentGitTests: XCTestCase {
     let base = String(repeating: "a", count: 40)
-    let hash = String(repeating: "b", count: 64)
+    // Not `hash`: XCTestCase is an NSObject on Darwin, which has `hash: Int`.
+    let contentHash = String(repeating: "b", count: 64)
     var store: LocalStore!
     var fixture: ServerFixture!
     var rpc: FakeRPC!
@@ -84,7 +85,7 @@ final class OpsHappyAgentGitTests: XCTestCase {
 
     func encoded(old: String = "", new: String = "") {
         let cipher = RecordCipher(key: fixture.dataKey)
-        let hash = self.hash
+        let hash = contentHash
         rpc.answer = { method in
             let after = method.hasSuffix(":readFile")
             var response: [String: JSONValue] = ["success": .bool(true), "content": .string(after ? new : old)]
@@ -246,7 +247,7 @@ final class OpsHappyAgentGitTests: XCTestCase {
 
     func testReadFailuresRejectInvalidHashContentAndNativeErrors() async throws {
         for response in [
-            JSONValue.object(["success": .bool(true), "content": .number(7), "hash": .string(hash)]),
+            JSONValue.object(["success": .bool(true), "content": .number(7), "hash": .string(contentHash)]),
             .object(["success": .bool(true), "content": .string(""), "hash": .string("bad")]),
         ] {
             answer(response)
