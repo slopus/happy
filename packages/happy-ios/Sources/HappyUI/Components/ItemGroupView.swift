@@ -261,7 +261,7 @@ public final class SecretKeyCardView: UIControl {
     }
 
     private func updateIcon() {
-        iconView.image = .symbol(copiedRecently ? "checkmark.circle.fill" : "doc.on.doc", pointSize: 15)
+        iconView.image = .icon(.ionicons(copiedRecently ? "checkmark-circle" : "copy-outline"), size: SecretKeyCardLayout.Metrics.iconSize)
         iconView.tintColor = UIColor(copiedRecently ? Palette.success : Palette.textSecondary)
     }
 

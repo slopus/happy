@@ -47,10 +47,10 @@ public final class SettingsViewController: UIViewController {
         var sections: [UIView] = [SettingsHeaderView()]
 
         sections.append(ItemGroupView(rows: [
-            ItemRowView(title: Strings.Settings.scanQrCodeToAuthenticate, icon: ItemIcon("qrcode", tint: blue)) { [weak self] in
+            ItemRowView(title: Strings.Settings.scanQrCodeToAuthenticate, icon: ItemIcon(.ionicons("qr-code-outline"), tint: blue)) { [weak self] in
                 self?.scanTerminal()
             },
-            ItemRowView(title: Strings.Connect.enterUrlManually, icon: ItemIcon("link", tint: blue)) { [weak self] in
+            ItemRowView(title: Strings.Connect.enterUrlManually, icon: ItemIcon(.ionicons("link-outline"), tint: blue)) { [weak self] in
                 self?.enterTerminalURL()
             },
         ]))
@@ -61,7 +61,7 @@ public final class SettingsViewController: UIViewController {
             ItemRowView(
                 title: Strings.SettingsAccount.linkNewDevice,
                 subtitle: Strings.SettingsAccount.linkNewDeviceSubtitle,
-                icon: ItemIcon("qrcode", tint: blue)
+                icon: ItemIcon(.ionicons("qr-code-outline"), tint: blue)
             ) { [weak self] in
                 self?.linkDevice()
             },
@@ -70,7 +70,7 @@ public final class SettingsViewController: UIViewController {
         let secretRow = ItemRowView(
             title: Strings.SettingsAccount.secretKey,
             subtitle: revealsSecret ? Strings.SettingsAccount.tapToHide : Strings.SettingsAccount.tapToReveal,
-            icon: ItemIcon(revealsSecret ? "eye.slash" : "eye", tint: Palette.iconOrange)
+            icon: ItemIcon(.ionicons(revealsSecret ? "eye-off-outline" : "eye-outline"), tint: Palette.iconOrange)
         ) { [weak self] in
             self?.toggleSecret()
         }
@@ -87,7 +87,7 @@ public final class SettingsViewController: UIViewController {
             ItemRowView(
                 title: Strings.SettingsAccount.server,
                 detail: context.customServerHost ?? Strings.Server.defaultServer,
-                icon: ItemIcon("server.rack", tint: Palette.iconPurple)
+                icon: ItemIcon(.ionicons("server-outline"), tint: Palette.iconPurple)
             ) { [weak self] in
                 self?.openServer()
             },
@@ -97,7 +97,7 @@ public final class SettingsViewController: UIViewController {
             ItemRowView(
                 title: Strings.Common.version,
                 detail: context.variant == .production ? context.version : "\(context.version) (\(context.variant.rawValue))",
-                icon: ItemIcon("info.circle", tint: Palette.textSecondary)
+                icon: ItemIcon(.ionicons("information-circle-outline"), tint: Palette.textSecondary)
             ),
         ]))
 
@@ -105,7 +105,7 @@ public final class SettingsViewController: UIViewController {
             ItemRowView(
                 title: Strings.SettingsAccount.logout,
                 subtitle: Strings.SettingsAccount.logoutSubtitle,
-                icon: ItemIcon("rectangle.portrait.and.arrow.right", tint: Palette.iconRed),
+                icon: ItemIcon(.ionicons("log-out-outline"), tint: Palette.iconRed),
                 isDestructive: true
             ) { [weak self] in
                 self?.logout()
@@ -218,13 +218,13 @@ public final class OnboardingSettingsViewController: UIViewController {
         let server = ItemRowView(
             title: Strings.Onboarding.settingsServer,
             detail: context.customServerHost ?? Strings.Onboarding.settingsServerDefault,
-            icon: ItemIcon("server.rack", tint: Palette.textSecondary)
+            icon: ItemIcon(.ionicons("server-outline"), tint: Palette.textSecondary, size: 28)
         ) { [weak self] in
             self?.openServer()
         }
         let logout = ItemRowView(
             title: Strings.Onboarding.logoutStartOver,
-            icon: ItemIcon("rectangle.portrait.and.arrow.right", tint: Palette.textDestructive),
+            icon: ItemIcon(.ionicons("log-out-outline"), tint: Palette.textDestructive, size: 28),
             isDestructive: true
         ) { [weak self] in
             self?.logout()

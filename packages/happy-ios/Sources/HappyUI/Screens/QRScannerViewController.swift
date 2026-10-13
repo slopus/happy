@@ -57,7 +57,9 @@ public final class QRScannerViewController: UIViewController {
             UIApplication.shared.open(url)
         }
         view.addSubview(settingsButton)
-        closeButton.setImage(.symbol("xmark", pointSize: 17, weight: .semibold), for: .normal)
+        // happy-app shows the system scanner, so there is no RN icon to
+        // match; Ionicons' close, as happy-app's own close buttons use.
+        closeButton.setImage(.icon(.ionicons("close"), size: 22), for: .normal)
         closeButton.tintColor = .white
         closeButton.backgroundColor = UIColor(white: 0, alpha: 0.4)
         closeButton.layer.cornerRadius = QRScannerLayout.Metrics.closeButtonSize / 2

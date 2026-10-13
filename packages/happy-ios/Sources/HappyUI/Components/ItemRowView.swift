@@ -3,12 +3,15 @@ import HappyIcons
 import HappyLayout
 import UIKit
 
-/// What sits in a row's 29pt icon slot: an SF Symbol standing in for an
-/// Ionicon, or a picture (a harness logo, a GitHub avatar).
+/// What sits in a row's 29pt icon slot: one of happy-app's icons, or a
+/// picture (a harness logo, a GitHub avatar).
 public struct ItemIcon: Equatable {
     public enum Source: Equatable {
-        /// One of happy-app's icons, at Item.tsx's size 29.
+        /// One of happy-app's icons, centred in the slot as Item.tsx centres
+        /// `<Ionicons size={29} />`.
         case glyph(Icon)
+        /// An SF Symbol. Nothing in happy-app draws one; kept only so
+        /// branches written before the icons landed still build.
         case symbol(String)
         /// An image in HappyUI's bundle.
         case bundled(String)
@@ -20,12 +23,17 @@ public struct ItemIcon: Equatable {
     public var tint: ColorToken?
     /// Clips a picture to a circle (the GitHub avatar).
     public var round = false
+    /// A glyph's RN `size`. Item.tsx rows use 29; a few screens pass 28
+    /// (troubleshoot's computers, onboarding settings).
+    public var size: CGFloat = ItemRowLayout.Metrics.iconSize
 
-    public init(_ icon: Icon, tint: ColorToken) {
+    public init(_ icon: Icon, tint: ColorToken, size: CGFloat = ItemRowLayout.Metrics.iconSize) {
         self.source = .glyph(icon)
         self.tint = tint
+        self.size = size
     }
 
+    @available(*, deprecated, message: "Name happy-app's icon: ItemIcon(.ionicons(\"…\"), tint:)")
     public init(_ symbol: String, tint: ColorToken) {
         self.source = .symbol(symbol)
         self.tint = tint
@@ -100,8 +108,12 @@ public final class ItemRowView: UIControl {
     let titleLabel = StyledLabel(style: TextStyles.itemTitle, color: Palette.text, lines: 2)
     let subtitleLabel = StyledLabel(style: TextStyles.itemSubtitle, color: Palette.textSecondary, lines: 2)
     let detailLabel = StyledLabel(style: TextStyles.itemDetail, color: Palette.textSecondary, lines: 1)
+    /// Pictures. Glyphs draw in `glyphView`, which centres them on RN's
+    /// pixels.
     let iconView = UIImageView()
-    let chevronView = UIImageView(image: .symbol("chevron.forward", pointSize: 14, weight: .semibold))
+    let glyphView = IconView(size: ItemRowLayout.Metrics.iconSize)
+    /// Item.tsx: `<Ionicons name="chevron-forward" size={17} />` on iOS.
+    let chevronView = IconView(.ionicons("chevron-forward"), size: 17)
     let spinner = UIActivityIndicatorView(style: .medium)
     let dividerView = UIView()
     private lazy var longPress = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
@@ -118,11 +130,10 @@ public final class ItemRowView: UIControl {
         iconView.contentMode = .center
         iconView.clipsToBounds = true
         chevronView.tintColor = UIColor(Palette.groupedChevron)
-        chevronView.contentMode = .center
         spinner.color = UIColor(Palette.textSecondary)
         dividerView.backgroundColor = UIColor(Palette.itemDivider)
         dividerView.isHidden = true
-        for view in [iconView, titleLabel, subtitleLabel, detailLabel, chevronView, spinner, dividerView] {
+        for view in [iconView, glyphView, titleLabel, subtitleLabel, detailLabel, chevronView, spinner, dividerView] {
             view.isUserInteractionEnabled = false
             addSubview(view)
         }
@@ -168,7 +179,7 @@ public final class ItemRowView: UIControl {
             subtitle: subtitle == nil ? nil : subtitleLabel.measurable,
             detail: detail == nil || trailingView != nil ? nil : detailLabel.measurable,
             trailing: trailingSize,
-            accessory: showsAccessory ? chevronView.image?.size : nil,
+            accessory: showsAccessory ? chevronView.sizeThatFits(.zero) : nil,
             showsDivider: showsDivider
         ))
     }
@@ -180,9 +191,9 @@ public final class ItemRowView: UIControl {
     public override func layoutSubviews() {
         super.layoutSubviews()
         let layout = layout(width: bounds.width)
-        iconView.isHidden = layout.icon == nil
         if let frame = layout.icon {
             iconView.setLayoutFrame(frame)
+            glyphView.setLayoutFrame(frame)
             iconView.layer.cornerRadius = icon?.round == true ? frame.width / 2 : 0
         }
         titleLabel.setLayoutFrame(layout.title)
@@ -193,7 +204,7 @@ public final class ItemRowView: UIControl {
             (isLoading ? spinner : trailingView)?.setLayoutFrame(frame)
         }
         chevronView.isHidden = layout.accessory == nil
-        if let frame = layout.accessory { chevronView.setLayoutFrame(frame) }
+        if let frame = layout.accessory { chevronView.setLayoutFrame(IconLayout.textFrame(frame, scale: layoutScale)) }
         if let frame = layout.divider { dividerView.setLayoutFrame(frame) }
     }
 
@@ -237,12 +248,13 @@ public final class ItemRowView: UIControl {
         titleLabel.numberOfLines = subtitle == nil ? 2 : 1
         titleLabel.color = isDestructive ? Palette.textDestructive : Palette.text
         detailLabel.string = detail ?? ""
-        iconView.isHidden = icon == nil
+        var isGlyph = false
         if let icon {
             switch icon.source {
             case .glyph(let glyph):
-                iconView.image = .icon(glyph, size: 29)
-                iconView.contentMode = .center
+                glyphView.icon = glyph
+                glyphView.size = icon.size
+                isGlyph = true
             case .symbol(let name):
                 iconView.image = .symbol(name, pointSize: 22)
                 iconView.contentMode = .center
@@ -255,7 +267,11 @@ public final class ItemRowView: UIControl {
                 iconView.contentMode = .scaleAspectFill
             }
             iconView.tintColor = icon.tint.map(UIColor.init)
+            glyphView.tintColor = icon.tint.map(UIColor.init)
         }
+        iconView.isHidden = icon == nil || isGlyph
+        glyphView.isHidden = !isGlyph
+        if !isGlyph { glyphView.icon = nil }
         spinner.isHidden = !isLoading
         if isLoading { spinner.startAnimating() } else { spinner.stopAnimating() }
         trailingView?.isHidden = isLoading
@@ -315,9 +331,8 @@ extension ItemRowView {
         let row = ItemRowView(title: title, subtitle: subtitle, icon: icon, onTap: onTap)
         row.showsChevron = false
         if selected {
-            let check = UIImageView(image: .symbol("checkmark", pointSize: 17, weight: .semibold))
-            check.tintColor = UIColor(checkTint)
-            check.contentMode = .center
+            // language.tsx and agents.tsx: `<Ionicons name="checkmark" size={20} />`.
+            let check = IconView(.ionicons("checkmark"), size: 20, tint: checkTint)
             check.accessibilityLabel = "selected"
             row.trailingView = check
         }

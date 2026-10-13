@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyIcons
 import HappyLayout
 import UIKit
 
@@ -7,7 +8,8 @@ import UIKit
 public final class TroubleshootGuideView: UIView {
     @MainActor
     struct Step {
-        let icon = UIImageView()
+        /// troubleshoot.tsx: a 22pt Ionicon centred in a 26 x 22 box.
+        let icon = IconView(size: 22)
         let title = StyledLabel(style: TextStyles.checklistTitle, color: Palette.text)
         let body = StyledLabel(style: TextStyles.checklistBody, color: Palette.textSecondary)
         let terminal: TerminalBlockView?
@@ -35,16 +37,15 @@ public final class TroubleshootGuideView: UIView {
         intro.string = Strings.Troubleshoot.intro
         addSubview(heading)
         addSubview(intro)
-        let content: [(symbol: String, title: String, body: String)] = [
-            ("moon", Strings.Troubleshoot.awakeStep, Strings.Troubleshoot.awakeBody),
-            ("desktopcomputer", Strings.Troubleshoot.desktopStep,
+        let content: [(icon: Icon, title: String, body: String)] = [
+            (.ionicons("moon-outline"), Strings.Troubleshoot.awakeStep, Strings.Troubleshoot.awakeBody),
+            (.ionicons("desktop-outline"), Strings.Troubleshoot.desktopStep,
              Strings.Troubleshoot.desktopBodyPrefix + Strings.Troubleshoot.desktopBodyLink + Strings.Troubleshoot.desktopBodySuffix),
-            ("terminal", Strings.Troubleshoot.terminalStep, Strings.Troubleshoot.terminalBody),
+            (.ionicons("terminal-outline"), Strings.Troubleshoot.terminalStep, Strings.Troubleshoot.terminalBody),
         ]
         for (step, content) in zip(steps, content) {
-            step.icon.image = .symbol(content.symbol, pointSize: 20)
+            step.icon.icon = content.icon
             step.icon.tintColor = UIColor(Palette.textSecondary)
-            step.icon.contentMode = .center
             step.title.string = content.title
             step.body.string = content.body
             addSubview(step.icon)

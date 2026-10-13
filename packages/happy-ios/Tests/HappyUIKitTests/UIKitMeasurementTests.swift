@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyIcons
 import HappyLayout
 @testable import HappyUI
 import UIKit
@@ -49,7 +50,7 @@ final class UIKitMeasurementTests: XCTestCase {
         let subtitled = ItemRowView(
             title: Strings.SettingsAccount.linkNewDevice,
             subtitle: Strings.SettingsAccount.linkNewDeviceSubtitle,
-            icon: ItemIcon("qrcode", tint: Palette.iconBlue),
+            icon: ItemIcon(.ionicons("qr-code-outline"), tint: Palette.iconBlue),
             onTap: {}
         )
         XCTAssertEqual(height(subtitled, width: 343), 66)
@@ -58,18 +59,19 @@ final class UIKitMeasurementTests: XCTestCase {
     }
 
     func testItemRowAppliesItsLayout() {
-        let row = ItemRowView(title: "Version", detail: "1.8.0", icon: ItemIcon("info.circle", tint: Palette.textSecondary), onTap: {})
+        let row = ItemRowView(title: "Version", detail: "1.8.0", icon: ItemIcon(.ionicons("information-circle-outline"), tint: Palette.textSecondary), onTap: {})
         row.frame = CGRect(x: 0, y: 0, width: 343, height: 46)
         row.layoutIfNeeded()
         let layout = row.layout(width: 343)
         let scale = row.traitCollection.displayScale
         XCTAssertEqual(row.titleLabel.frame, PixelGrid.snap(layout.title, scale: scale))
         XCTAssertEqual(row.detailLabel.frame, PixelGrid.snap(layout.detail!, scale: scale))
-        XCTAssertEqual(row.chevronView.frame, PixelGrid.snap(layout.accessory!, scale: scale))
-        XCTAssertEqual(row.iconView.frame, PixelGrid.snap(layout.icon!, scale: scale))
+        // The chevron is a text box: Yoga floors its position.
+        XCTAssertEqual(row.chevronView.frame, IconLayout.textFrame(layout.accessory!, scale: scale))
+        XCTAssertEqual(row.glyphView.frame, PixelGrid.snap(layout.icon!, scale: scale))
         XCTAssertFalse(row.chevronView.isHidden)
-        // The detail is one 17pt line; the chevron glyph is narrower than 17.
-        XCTAssertLessThanOrEqual(layout.accessory!.width, 17)
+        // Item.tsx's chevron: Ionicons at 17, one em wide.
+        XCTAssertEqual(layout.accessory!.width, 17)
     }
 
     func testRowWithoutActionHasNoChevron() {
