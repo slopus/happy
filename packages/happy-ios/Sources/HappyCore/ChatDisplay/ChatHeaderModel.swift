@@ -95,3 +95,27 @@ public struct ChatEmptyState: Equatable, Sendable {
         return "hardware-chip-outline"
     }
 }
+
+/// PendingChatPlaceholder.tsx, for a chat no machine has agreed to run yet:
+/// under "Starting a new chat…", what was sent before it existed, or else
+/// the folder of the chat it was started beside, which is where it will run.
+public struct PendingChatPlaceholderModel: Equatable, Sendable {
+    public enum Detail: Equatable, Sendable {
+        /// The queued messages, a blank line between them.
+        case queued(String)
+        /// The anchor's folder, with the home directory as `~`.
+        case path(String)
+    }
+
+    public var detail: Detail?
+
+    public init(queued: [String], anchorMetadata: JSONValue?) {
+        if !queued.isEmpty {
+            detail = .queued(queued.joined(separator: "\n\n"))
+        } else if let path = anchorMetadata?["path"]?.stringValue, !path.isEmpty {
+            detail = .path(SessionDetails.pathRelativeToHome(path, homeDir: anchorMetadata?["homeDir"]?.stringValue))
+        } else {
+            detail = nil
+        }
+    }
+}

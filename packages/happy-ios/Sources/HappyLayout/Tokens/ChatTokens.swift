@@ -258,6 +258,9 @@ public enum ChatTextStyles {
     public static let emptyTitle = ChatTextStyle(.plex(.regular), size: 20)
     public static let emptyCreated = ChatTextStyle(.plex(.regular), size: 16, lineHeight: 24)
 
+    // PendingChatPlaceholder.tsx; its folder line is emptyPath's 14
+    public static let pendingQueued = ChatTextStyle(.plex(.regular), size: 15, lineHeight: 21)
+
     // InlineQuestionForm.tsx (plain <Text>: the system font)
     public static let inlineQuestionHeader = ChatTextStyle(.system(.semibold), size: 12, uppercase: true)
     public static let inlineQuestionText = ChatTextStyle(.system(.medium), size: 15)
@@ -306,4 +309,9 @@ public enum ChatTextStyles {
     // The session deleted state (SessionView.tsx)
     public static let deletedTitle = ChatTextStyle(.system(.semibold), size: 20)
     public static let deletedBody = ChatTextStyle(.system(.regular), size: 15)
+}
+
+extension TextStyles {
+    /// PendingChatPlaceholder's shimmering "Starting a new chat…".
+    public static let pendingChatTitle = TextStyle(.semiBold, size: 18)
 }

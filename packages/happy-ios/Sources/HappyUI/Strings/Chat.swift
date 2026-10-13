@@ -32,6 +32,8 @@ extension Strings {
         public static let inactiveArchived = "This session is inactive."
         /// session.resumeFromTerminal
         public static let resumeFromTerminal = "To resume it from the terminal:"
+        /// session.startingChat
+        public static let startingChat = "Starting a new chat…"
         /// EmptyMessages.tsx (not in en.ts)
         public static let noMessages = "No messages yet"
         /// EmptyMessages.tsx (not in en.ts)

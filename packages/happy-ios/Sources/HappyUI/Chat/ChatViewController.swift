@@ -70,6 +70,12 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private var copiedMessageId: String?
     private let copiedTask = TaskHolder()
     private var observation: StoreObservation?
+    /// A `pending-chat:` screen's record, and the session it was started
+    /// beside.
+    private var pendingChat: PendingChat?
+    private let pendingTask = TaskHolder()
+    private var anchorMetadata: JSONValue?
+    private var anchorObservation: StoreObservation?
 
     private var snapshot: ChatSnapshot?
     private var session = ChatSessionState(record: nil, settings: AccountSettings())
@@ -164,6 +170,16 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
         observation = services.observeSession { [weak self] state in
             self?.sessionChanged(state)
+        }
+        if PendingChats.isPendingChatId(sessionId) {
+            let pendingChats = services.pendingChats
+            let sessionId = self.sessionId
+            pendingTask.task = Task { [weak self] in
+                for await chats in await pendingChats.observe() {
+                    guard let self, !Task.isCancelled else { return }
+                    self.pendingChatChanged(chats[sessionId])
+                }
+            }
         }
         if let git = services.gitStatus {
             let sessionId = self.sessionId
@@ -318,6 +334,22 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         PendingChats.isPendingChatId(sessionId) && session.record == nil
     }
 
+    private func pendingChatChanged(_ chat: PendingChat?) {
+        guard chat != pendingChat else { return }
+        if chat?.anchorSessionId != pendingChat?.anchorSessionId {
+            anchorMetadata = nil
+            anchorObservation = chat.map { chat in
+                services.observeOtherSession(chat.anchorSessionId) { [weak self] state in
+                    guard let self, state.metadata != self.anchorMetadata else { return }
+                    self.anchorMetadata = state.metadata
+                    self.updatePlaceholder()
+                }
+            }
+        }
+        pendingChat = chat
+        updatePlaceholder()
+    }
+
     private var isFixture: Bool {
         #if DEBUG
         FixtureScenarios.isFixture(sessionId)
@@ -342,8 +374,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 content = .loading
             }
         } else if isPendingChat {
-            // PendingChatPlaceholder is not ported; the composer stays.
-            content = .loading
+            // The composer stays: it is the one thing on this screen that
+            // survives the chat's arrival.
+            content = pendingChat.map { .pendingChat(PendingChatPlaceholderModel(queued: $0.queued, anchorMetadata: anchorMetadata)) } ?? .loading
         } else {
             content = session.dataReady ? .deleted : .loading
             fullScreen = true

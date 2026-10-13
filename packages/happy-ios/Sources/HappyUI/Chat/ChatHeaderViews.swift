@@ -145,18 +145,22 @@ final class ChatHeaderAvatarControl: UIControl {
 }
 
 /// What fills the chat when there is no conversation to show: a spinner
-/// while it loads, EmptyMessages for a chat with nothing in it yet, or the
-/// deleted state (SessionView.tsx). Centred in the frame it is given.
+/// while it loads, EmptyMessages for a chat with nothing in it yet,
+/// PendingChatPlaceholder for one that hasn't started yet, or the deleted
+/// state (SessionView.tsx). Centred in the frame it is given.
 final class ChatPlaceholderView: UIView {
     enum Content: Equatable {
         case loading
         case empty(ChatEmptyState)
+        case pendingChat(PendingChatPlaceholderModel)
         case deleted
     }
 
     private(set) var content: Content?
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let icon = IconView(size: 72, tint: Palette.textSecondary)
+    /// PendingChatPlaceholder's "Starting a new chat…".
+    private let shimmer = ShimmerLabel(style: TextStyles.pendingChatTitle)
     private var labels: [(label: ChatLabel, spacing: CGFloat, padding: CGFloat)] = []
 
     override init(frame: CGRect) {
@@ -164,6 +168,9 @@ final class ChatPlaceholderView: UIView {
         spinner.color = UIColor(Palette.textSecondary)
         addSubview(spinner)
         addSubview(icon)
+        shimmer.string = Strings.Chat.startingChat
+        shimmer.isHidden = true
+        addSubview(shimmer)
     }
 
     @available(*, unavailable)
@@ -178,6 +185,8 @@ final class ChatPlaceholderView: UIView {
         labels = []
         spinner.isHidden = content != .loading
         icon.isHidden = content == .loading
+        shimmer.isHidden = !isPendingChat
+        shimmer.isShimmering = isPendingChat
         switch content {
         case .loading:
             spinner.startAnimating()
@@ -198,6 +207,28 @@ final class ChatPlaceholderView: UIView {
             }
             add(ChatTextStyles.emptyTitle, Strings.Chat.noMessages, color: Palette.textSecondary, spacing: spacing, padding: 48)
             add(ChatTextStyles.emptyCreated, Strings.Chat.created(Strings.Chat.age(state.created)), color: Palette.textSecondary, spacing: 8, padding: 48)
+        case .pendingChat(let model):
+            spinner.stopAnimating()
+            icon.icon = .ionicons("chatbubbles-outline")
+            icon.size = 64
+            switch model.detail {
+            case .queued(let text)?:
+                let label = ChatLabel(MeasuredText(
+                    ChatTextStyles.pendingQueued.string(text, color: Palette.text, alignment: .center, lineBreakMode: .byTruncatingTail),
+                    maxLines: 6
+                ))
+                addSubview(label.view)
+                labels.append((label, 10, 48))
+            case .path(let path)?:
+                let label = ChatLabel(MeasuredText(
+                    ChatTextStyles.emptyPath.string(path, color: Palette.textSecondary, alignment: .center, lineBreakMode: .byTruncatingTail),
+                    maxLines: 1
+                ))
+                addSubview(label.view)
+                labels.append((label, 6, 48))
+            case nil:
+                break
+            }
         case .deleted:
             spinner.stopAnimating()
             icon.icon = .ionicons("trash-outline")
@@ -214,15 +245,28 @@ final class ChatPlaceholderView: UIView {
         labels.append((label, spacing, padding))
     }
 
+    private var isPendingChat: Bool {
+        if case .pendingChat = content { return true }
+        return false
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         spinner.center = CGPoint(x: bounds.midX, y: bounds.midY)
         guard content != .loading, content != nil else { return }
         var items = [CenteredStackLayout.Item(.fixed(icon.sizeThatFits(.zero)))]
+        if isPendingChat {
+            // The icon's marginBottom, and the placeholder's paddingHorizontal.
+            let title = Measurable { [shimmer] width in
+                shimmer.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+            }
+            items.append(CenteredStackLayout.Item(title, spacingBefore: 16, horizontalPadding: 48))
+        }
         items += labels.map { CenteredStackLayout.Item($0.label.measurable, spacingBefore: $0.spacing, horizontalPadding: $0.padding) }
-        let frames = CenteredStackLayout(.init(size: bounds.size, items: items)).items
-        icon.setLayoutFrame(frames[0])
-        for (entry, frame) in zip(labels, frames.dropFirst()) {
+        var frames = CenteredStackLayout(.init(size: bounds.size, items: items)).items[...]
+        icon.setLayoutFrame(frames.removeFirst())
+        if isPendingChat { shimmer.setLayoutFrame(frames.removeFirst()) }
+        for (entry, frame) in zip(labels, frames) {
             entry.label.place(frame)
         }
     }

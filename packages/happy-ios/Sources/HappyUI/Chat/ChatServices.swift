@@ -69,6 +69,11 @@ struct ChatServices {
     var controls: any ChatControls
     /// The session record and settings, kept current.
     var observeSession: (_ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> StoreObservation
+    /// The same for another session: the one a pending chat was started
+    /// beside.
+    var observeOtherSession: (_ id: String, _ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> StoreObservation
+    /// The chats still on their way to a machine; a `pending-chat:` id is one.
+    var pendingChats: PendingChats
     /// The checkout's git status for the header; nil for the fixtures.
     var gitStatus: GitStatusSync?
     /// sessionSetAgentModes({ permissionMode }): a permission answer that
@@ -91,6 +96,8 @@ struct ChatServices {
                 sender: FixtureChatSender(world: world),
                 controls: FixtureChatControls(world: world),
                 observeSession: observe(store: store) { _ in record },
+                observeOtherSession: observeOther(store: store),
+                pendingChats: account.pendingChats,
                 gitStatus: nil
             )
         }
@@ -102,6 +109,8 @@ struct ChatServices {
             observeSession: observe(store: store) { snapshot in
                 snapshot.sessions.first { $0.id == sessionId }
             },
+            observeOtherSession: observeOther(store: store),
+            pendingChats: account.pendingChats,
             gitStatus: account.gitStatus,
             setPermissionMode: { [actions = account.actions, transport = account.realtime] mode in
                 // Fire and forget, as in happy-app; the answer itself has gone.
@@ -124,6 +133,14 @@ struct ChatServices {
                 return try await account.detailActions.resume(session, machine: machine, settings: settings, composer: composer, messages: messages)
             }
         )
+    }
+
+    private static func observeOther(
+        store: LocalStore
+    ) -> (_ id: String, _ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> StoreObservation {
+        { id, onChange in
+            observe(store: store) { snapshot in snapshot.sessions.first { $0.id == id } }(onChange)
+        }
     }
 
     /// Through the home observation: public, and one read for the record and

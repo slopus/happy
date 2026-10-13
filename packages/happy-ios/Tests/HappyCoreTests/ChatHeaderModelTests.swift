@@ -90,6 +90,16 @@ final class ChatEmptyStateTests: XCTestCase {
     }
 }
 
+final class PendingChatPlaceholderTests: XCTestCase {
+    func testQueuedMessagesComeBeforeTheAnchorsFolder() {
+        let anchor: JSONValue = ["path": "/Users/a/repo", "homeDir": "/Users/a"]
+        XCTAssertEqual(PendingChatPlaceholderModel(queued: ["one", "two"], anchorMetadata: anchor).detail, .queued("one\n\ntwo"))
+        XCTAssertEqual(PendingChatPlaceholderModel(queued: [], anchorMetadata: anchor).detail, .path("~/repo"))
+        XCTAssertNil(PendingChatPlaceholderModel(queued: [], anchorMetadata: ["path": ""]).detail)
+        XCTAssertNil(PendingChatPlaceholderModel(queued: [], anchorMetadata: nil).detail, "the anchor isn't loaded")
+    }
+}
+
 final class InactiveSessionHintTests: XCTestCase {
     private func session(active: Bool = false, metadata: JSONValue) -> SessionRecord {
         SessionRecord(

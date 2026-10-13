@@ -85,7 +85,8 @@ accident.
 - [~] Agent goal bar, work group headers, rig activity bar (`AgentGoalBar`, `AgentWorkGroupHeader`, `RigActivityBar`) — Chat
   - Stop shows but sends nothing, as in happy-app (`agentGoalActionHandler.ts`). The goal bar has no details sheet; happy-app doesn't open one from the chat either.
 - [~] Empty and pending states (`EmptyMessages`, `ChatFooter`) — Chat
-  - Not yet: EmptyMessages paging back through invisible older pages (Retry, Load more), since the chat feed has no older-page signal; `PendingChatPlaceholder` (a `pending-chat:` route shows a spinner over the composer).
+  - A `pending-chat:` screen draws `PendingChatPlaceholder` over the composer: the shimmering title, then what was sent before the chat existed or the folder of the chat it was started beside.
+  - Not yet: EmptyMessages paging back through invisible older pages (Retry, Load more), since the chat feed has no older-page signal. On a `pending-chat:` screen, becoming the chat once it settles, going back to the anchor when it fails, and the header reading the anchor's checkout meanwhile: nothing opens a pending chat yet (the worktree strip's `+` isn't ported).
 - [ ] Composer: growing text input, send/stop button, drafts (`AgentInput`, `MultiTextInput`, `agentInputLayout.ts`, `agentInputPrimaryAction.ts`) — Composer
 - [ ] Autocomplete: slash commands and file mentions (`autocomplete/*`, `AgentInputAutocomplete`) — Composer
 - [ ] Attachments: picker (photos, camera, files), strip, upload progress (`AgentInputAttachmentStrip`, `attachmentSupport.ts`) — Composer + Sending
