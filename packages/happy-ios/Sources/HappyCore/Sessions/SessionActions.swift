@@ -145,6 +145,7 @@ public struct SessionActions: Sendable {
     /// reason.
     public func abort(sessionId: String) async throws {
         guard let session = try store.session(id: sessionId) else { throw SessionActionError.unknownSession }
+        guard SessionCapabilities.permits(session.metadata, method: "abort") else { throw SessionOpsError.unavailable("Abort is not available for this session") }
         let params: JSONValue = session.isRig ? .object([:]) : .object(["reason": .string(Self.abortReason)])
         _ = try await call(sessionId: sessionId, method: "abort", params: params)
     }

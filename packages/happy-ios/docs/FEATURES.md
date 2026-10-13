@@ -46,6 +46,7 @@ accident.
 - [ ] Home dock: the prompt that starts a session from home (`HomeDock`, `homeDock*.ts`) — Home
 - [ ] Project grouping and expanded projects (`ProjectHomeList`, `ProjectGroup`, `projectGroups.ts`, `sessionListGrouping` setting) — Home
 - [ ] Session row actions as the iPhone shows them: the "Session" alert from `useSessionQuickActions.ts` (details, resume, fork, duplicate, archive). `SessionActionsPopover` is web-only — Home + Ops
+  - Rename is absent from current happy-app and is not ported.
 - [ ] Pending chats placeholder (`PendingChatPlaceholder`, `pendingChats.ts`) — Home
 - [ ] Update banner (`UpdateBanner`) and offline machines banner (`OfflineMachinesBanner`) — Home
 - [ ] New session screen: machine, path, agent, model, permission mode, worktree (`new/index.tsx`, `newSessionProgress.ts`, `machineChoices.ts`) — Home + Ops
