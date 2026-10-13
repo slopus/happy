@@ -26,9 +26,11 @@ rule 8), and what the Linux benchmarks measure.
   - The chat's record clears cursors, versions, ciphertexts, `updatedAt`,
     `activeAt` while online, `thinkingAt` and `unread`.
   - Home's dock (the new-session pickers) gets the sessions without their
-    heartbeat, cursors, thinking or agent state. It keeps `active` and
-    `lastMeaningfulMessageAt`, which order its places, so a new message
-    reaches it and a heartbeat does not.
+    heartbeat, cursors, thinking or agent state. It keeps `active`,
+    `lastMeaningfulMessageAt` and the device's own `lastMessageSentAt`,
+    which order its places, so a new message or a send this phone accepted
+    reaches it and a heartbeat does not. The new-session screen reads the
+    same projection (`NewSessionSnapshot`).
   - A stopped session's "last seen" in the chat is a token written at the
     presence clock (`HomeSnapshot.presenceNow`), so it changes only when the
     shown text does. Home's stamps and headings never use that clock: it
@@ -80,6 +82,12 @@ rule 8), and what the Linux benchmarks measure.
     per diff. The deadline is not part of a row's input, so it never makes
     a row measure again. Markdown code blocks in the chat are tokenized
     with no deadline at all.
+- The troubleshoot screen follows `AccountSession.troubleshootingFeed`
+  (computers and the AI prompt, projected off the main thread) through
+  `VisibleFeed`: subscribed in `viewWillAppear`, cancelled in
+  `viewWillDisappear`. With the screen away the feed has no subscriber and
+  runs no SQL; coming back reads the database afresh, and a value equal to
+  the one on screen applies nothing.
 
 ## Known gaps
 
