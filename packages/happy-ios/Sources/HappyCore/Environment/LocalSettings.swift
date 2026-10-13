@@ -81,6 +81,13 @@ public final class LocalSettings: Sendable {
         set { storage.set(newValue ? "true" : nil, forKey: Keys.devModeEnabled) }
     }
 
+    /// localSettings.ts `zenMode`: the tablet shell's zen control collapses
+    /// the sidebar, and the composer trims its controls.
+    public var zenMode: Bool {
+        get { storage.string(forKey: Keys.zenMode) == "true" }
+        set { storage.set(newValue ? "true" : nil, forKey: Keys.zenMode) }
+    }
+
     /// The projects showing every worktree on the grouped home list
     /// (localSettings.ts `expandedProjects`, keyed by project id).
     public var expandedProjects: Set<String> {
@@ -110,7 +117,7 @@ public final class LocalSettings: Sendable {
     }
 
     public func clear() {
-        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled, Keys.expandedProjects, Keys.registeredPushToken, NewSessionDraft.storageKey] {
+        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled, Keys.expandedProjects, Keys.registeredPushToken, Keys.zenMode, NewSessionDraft.storageKey] {
             storage.set(nil, forKey: key)
         }
     }
@@ -128,5 +135,6 @@ public final class LocalSettings: Sendable {
         static let devModeEnabled = "devModeEnabled"
         static let expandedProjects = "expandedProjects"
         static let registeredPushToken = "registered-push-token-v1"
+        static let zenMode = "zenMode"
     }
 }

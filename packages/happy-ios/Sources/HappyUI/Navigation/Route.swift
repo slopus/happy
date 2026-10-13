@@ -77,9 +77,19 @@ enum Screens {
 extension UIViewController {
     /// Pushes a route on this screen's navigation stack. Needs a signed-in
     /// account; does nothing while signed out.
+    ///
+    /// The tablet sidebar has no stack of its own: it pushes onto the one
+    /// beside it, as SidebarNavigator.tsx's single stack does, and not
+    /// again onto the chat already on top. The route is recorded so the
+    /// sidebar can keep that chat's row selected (`HappyUI/Tablet`).
     func push(_ route: Route, context: AppContext, animated: Bool = true) {
-        guard let session = context.account.session else { return }
-        navigationController?.pushViewController(Screens.make(route, context: context, session: session), animated: animated)
+        guard let session = context.account.session,
+              let stack = navigationController ?? tabletDetailNavigation,
+              navigationController != nil || !TabletRoutes.isShowing(route, in: stack)
+        else { return }
+        let controller = Screens.make(route, context: context, session: session)
+        TabletRoutes.record(route, for: controller)
+        stack.pushViewController(controller, animated: animated)
     }
 }
 
