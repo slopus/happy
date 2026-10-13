@@ -22,6 +22,15 @@ extension Palette {
     public static let composerStopFill = ColorToken("#000000", "#F5F5F5")
     /// The stop glyph on it.
     public static let composerStopIcon = ColorToken("#FFFFFF", "#000000")
+    /// HomeDock.tsx `sendButtonActive`: send and stop on the new-session
+    /// card (button.primary.background in light, #F5F5F5 in dark).
+    public static let composerNewSessionPrimaryFill = ColorToken("#000000", "#F5F5F5")
+    /// HomeDock.tsx `primaryActionIconColor`: button.primary.tint in light,
+    /// #111111 in dark.
+    public static let composerNewSessionPrimaryIcon = ColorToken("#FFFFFF", "#111111")
+    /// HomeDock.tsx `primaryActionFlash`: the wash over Stop's fill when a
+    /// press is refused.
+    public static let composerPrimaryFlash = ColorToken("#FFFFFF", "#4A4A4E")
     /// theme.colors.glass.overlay: the suggestion list's fill.
     public static let glassOverlay = ColorToken(
         light: RGBA(red: 245 / 255, green: 245 / 255, blue: 248 / 255, alpha: 0.58),
@@ -42,7 +51,8 @@ extension Palette {
     public static let sessionStatusOnline = ColorToken("#34C759")
 
     public static let composer: [ColorToken] = [
-        composerFrostedOverlay, composerPrimaryInactive, composerStopFill, composerStopIcon, glassOverlay,
+        composerFrostedOverlay, composerPrimaryInactive, composerStopFill, composerStopIcon,
+        composerNewSessionPrimaryFill, composerNewSessionPrimaryIcon, composerPrimaryFlash, glassOverlay,
         glassShadow, radioInactive, sessionStatusDisconnected, sessionStatusAttention, sessionStatusThinking,
         sessionStatusOnline,
     ]
