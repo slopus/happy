@@ -41,3 +41,39 @@ public enum AgentInputPrimaryAction: String, Equatable, Sendable {
         return .idle
     }
 }
+
+/// AgentInput.tsx's wide composer (`desktopActionControls`, a window wider
+/// than 700 points): its send button is only send. Stop has its own button
+/// beside the gear, and with voice not ported the empty composer's
+/// microphone isn't there either (`onMicPress` unset).
+public struct AgentInputDesktopSend: Equatable, Sendable {
+    public enum Fill: Equatable, Sendable {
+        /// `sendButtonLocked`: surfaceHigh in a 1pt divider ring.
+        case locked
+        /// `sendButtonActive`: button.primary.background.
+        case active
+        /// `sendButtonInactive`: button.primary.disabled.
+        case inactive
+    }
+
+    public enum Glyph: Equatable, Sendable {
+        case spinner
+        /// Ionicons `lock-closed` 15, textSecondary.
+        case lock
+        /// Octicons `arrow-up` 16, button.primary.tint.
+        case arrow
+    }
+
+    public var fill: Fill
+    public var glyph: Glyph
+    /// `desktopCanPressSendButton`.
+    public var isEnabled: Bool
+
+    /// `hasText` is the text alone (it colours the button); content counts
+    /// picked images too (it enables it).
+    public init(hasText: Bool, hasComposerContent: Bool, isSendBlocked: Bool, isSending: Bool = false, isSendDisabled: Bool = false) {
+        fill = isSendBlocked ? .locked : hasText || isSending ? .active : .inactive
+        glyph = isSending ? .spinner : isSendBlocked ? .lock : .arrow
+        isEnabled = !isSending && !isSendDisabled && hasComposerContent
+    }
+}

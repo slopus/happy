@@ -57,6 +57,9 @@ extension Strings {
         /// sessionHistory.daysAgo
         public static func daysAgo(_ count: Int) -> String { "\(count) \(count == 1 ? "day" : "days") ago" }
 
+        /// settings.title: the wide composer's gear.
+        public static let settingsTitle = "Settings"
+
         public static let addPhoto = "Add photo"
         public static let stop = "Stop"
         public static let send = "Send"

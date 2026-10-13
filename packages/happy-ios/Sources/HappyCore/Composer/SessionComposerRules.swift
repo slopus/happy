@@ -440,12 +440,37 @@ public struct ComposerChipSet: Equatable, Sendable {
         }
     }
 
+    /// A section of the wide composer's settings menu, under its heading.
+    public struct SettingsSection: Equatable, Sendable {
+        public enum Kind: Equatable, Sendable {
+            case permission
+            case model
+            case effort
+        }
+
+        public var kind: Kind
+        public var title: String
+        /// The SF Symbol beside the heading.
+        public var systemImage: String
+        public var options: [Option]
+        public var selectedKey: String?
+    }
+
     /// Nil hides the chip: no session, Happy Agent locks the choice, or
     /// there is nothing to pick.
     public var permission: Chip?
     public var model: Chip
     /// Nil hides the chip and the "·" before it.
     public var effort: Chip?
+    /// The wide composer's gear (a window wider than 700 points), there
+    /// wherever the permission can be picked (`onPermissionModeChange`)
+    /// however little its menu holds.
+    public var showsSettings: Bool
+    /// The gear's menu (`permissionSettingsGroups` and
+    /// `modelSettingsGroups`): the permission modes ("shield"), each
+    /// provider's models ("cube"), the effort ("bolt"), wherever the chip
+    /// would open.
+    public var settings: [SettingsSection]
 
     /// `record` nil is a chat that doesn't exist yet: nothing can be picked.
     public init(modes: ComposerModes, record: SessionRecord?, titles: Titles) {
@@ -458,13 +483,14 @@ public struct ComposerChipSet: Equatable, Sendable {
 
         let current = modes.permissionMode.map(ModeHacks.hack)
         let availableModes = ModeHacks.hack(modes.availableModes)
+        let permissionTitle = !isRig && flavor == "codex"
+            ? titles.codexPermission
+            : flavor == "gemini" ? titles.geminiPermission : titles.permission
         if canPickPermission, !availableModes.isEmpty {
             let sandboxed = ModelModeOptions.isSandboxEnabled(metadata: metadata)
             permission = Chip(
                 label: PermissionModeLabels.shortLabel(current),
-                accessibilityLabel: !isRig && flavor == "codex"
-                    ? titles.codexPermission
-                    : flavor == "gemini" ? titles.geminiPermission : titles.permission,
+                accessibilityLabel: permissionTitle,
                 sections: [Section(title: nil, options: availableModes.map { mode in
                     Option(
                         key: mode.key,
@@ -508,6 +534,25 @@ public struct ComposerChipSet: Equatable, Sendable {
         } else {
             effort = nil
         }
+
+        showsSettings = canPickPermission
+        var settings: [SettingsSection] = []
+        if let permission, let options = permission.sections?.first?.options {
+            settings.append(SettingsSection(
+                kind: .permission, title: permissionTitle, systemImage: "shield", options: options, selectedKey: permission.selectedKey
+            ))
+        }
+        for group in model.sections ?? [] {
+            settings.append(SettingsSection(
+                kind: .model, title: group.title ?? titles.model, systemImage: "cube", options: group.options, selectedKey: model.selectedKey
+            ))
+        }
+        if let effort, let options = effort.sections?.first?.options {
+            settings.append(SettingsSection(
+                kind: .effort, title: titles.effort, systemImage: "bolt", options: options, selectedKey: effort.selectedKey
+            ))
+        }
+        self.settings = settings
     }
 }
 
