@@ -54,18 +54,20 @@ public enum DiffEngine {
     // MARK: Building
 
     public static func build(patch: String, options: Options = Options()) -> DiffDocument {
+        let source = CacheSource.patch(patch)
         let key = cacheKey("p", patch, options)
-        if let hit = cache.get(key) { return hit }
+        if let hit = cache.get(key), hit.source == source, hit.options == options { return hit.document }
         let started = ContinuousClock.now
         let files = DiffPatchParser.parse(patch).map { buildFile($0, options) }
         let document = finish(files, started: started)
-        cache.set(key, document)
+        cache.set(key, CacheEntry(source: source, options: options, document: document))
         return document
     }
 
     public static func build(path: String, oldText: String, newText: String, options: Options = Options()) -> DiffDocument {
+        let source = CacheSource.contents(path: path, oldText: oldText, newText: newText)
         let key = cacheKey("c", "\(path)\u{0}\(oldText)\u{0}\(newText)", options)
-        if let hit = cache.get(key) { return hit }
+        if let hit = cache.get(key), hit.source == source, hit.options == options { return hit.document }
         let started = ContinuousClock.now
         let emphasisDeadline = options.budget.map { Date().addingTimeInterval($0.timeoutMs / 1000) }
         let hunks: [DiffPatchParser.RawHunk]
@@ -85,7 +87,7 @@ public enum DiffEngine {
             : .modified
         let raw = DiffPatchParser.RawFile(path: path, kind: kind, hunks: hunks)
         let document = finish([buildFile(raw, options, emphasisDeadline: emphasisDeadline)], started: started)
-        cache.set(key, document)
+        cache.set(key, CacheEntry(source: source, options: options, document: document))
         return document
     }
 
@@ -251,7 +253,21 @@ public enum DiffEngine {
 
     // MARK: Cache
 
-    static let cache = DiffLRUCache<DiffDocument>(limit: 48)
+    // The compact FNV key selects a bucket, never establishes identity. Keep
+    // source fields separate: NUL-delimited blob pairs can also have identical
+    // serialized inputs despite differing old/new boundaries.
+    private enum CacheSource: Equatable, Sendable {
+        case patch(String)
+        case contents(path: String, oldText: String, newText: String)
+    }
+
+    private struct CacheEntry: Sendable {
+        var source: CacheSource
+        var options: Options
+        var document: DiffDocument
+    }
+
+    private static let cache = DiffLRUCache<CacheEntry>(limit: 48)
 
     static func cacheKey(_ prefix: String, _ input: String, _ options: Options) -> String {
         let flags = "\(options.contextLines):\(options.ignoreWhitespace ? 1 : 0):0:\(options.intraline ? 1 : 0):\(options.tabWidth):\(options.maxHighlightLines)"
