@@ -7,7 +7,11 @@ public struct TabletSidebarFrame: Equatable, Sendable {
     public enum Content: Equatable, Sendable {
         case loading
         case empty(TabletEmptySessions)
+        /// The flat grouping: home's own flat list.
         case list(HomeListModel)
+        /// Grouped by project: SessionsList.tsx's machine and checkout
+        /// hierarchy (`TabletGroupedList`), not home's project cards.
+        case grouped(TabletGroupedList)
 
         /// Which view fills the sidebar.
         public var kind: Int {
@@ -15,6 +19,7 @@ public struct TabletSidebarFrame: Equatable, Sendable {
             case .loading: 0
             case .empty: 1
             case .list: 2
+            case .grouped: 3
             }
         }
     }
@@ -24,11 +29,14 @@ public struct TabletSidebarFrame: Equatable, Sendable {
     public var hidesArchived: Bool
     public var showsInstallStep: Bool
 
-    public init(_ state: TabletSidebarState) {
+    public init(_ state: TabletSidebarState, snapshot: HomeSnapshot, clock: SessionList.Clock = SessionList.Clock()) {
         switch state.content {
         case .loading: content = .loading
         case .empty(let variant): content = .empty(variant)
-        case .list(let list, let offline): content = .list(HomeListModel(list, offline: offline, expandedProjects: []))
+        case .list(let list, let offline) where list.grouping == .project:
+            content = .grouped(TabletGroupedList(snapshot, offline: offline, clock: clock))
+        case .list(let list, let offline):
+            content = .list(HomeListModel(list, offline: offline, expandedProjects: []))
         }
         hasArchived = state.hasArchived
         hidesArchived = state.hidesArchived
@@ -39,38 +47,58 @@ public struct TabletSidebarFrame: Equatable, Sendable {
         if case .list(let model) = content { return model }
         return nil
     }
+
+    public var grouped: TabletGroupedList? {
+        if case .grouped(let model) = content { return model }
+        return nil
+    }
 }
 
-/// One sidebar update: the frame, and the list's changes against the rows
-/// its list last showed.
+/// One sidebar update: the frame, and the shown list's changes against the
+/// rows that list last showed.
 public struct TabletSidebarUpdate: Sendable {
     public var frame: TabletSidebarFrame
-    /// Nil when the list is not shown and keeps its rows.
+    /// For the flat list on `.list`, the grouped one on `.grouped`; nil
+    /// when neither shows, and both keep their rows.
     public var changeset: RowChangeset?
 }
 
 public enum TabletSidebarDerivation {
-    /// The frame on screen, and the rows the list holds: the list stays
-    /// (hidden) while the sidebar shows a spinner or the empty state.
+    /// The frame on screen, and the rows each list holds: a list stays
+    /// (hidden) while the sidebar shows the other grouping, a spinner or
+    /// the empty state.
     public struct Applied: Equatable, Sendable {
         public var frame: TabletSidebarFrame?
         public var list: HomeListModel?
+        public var grouped: TabletGroupedList?
 
-        public init(frame: TabletSidebarFrame? = nil, list: HomeListModel? = nil) {
+        public init(frame: TabletSidebarFrame? = nil, list: HomeListModel? = nil, grouped: TabletGroupedList? = nil) {
             self.frame = frame
             self.list = list
+            self.grouped = grouped
         }
     }
 
     public static func derive(_ snapshot: HomeSnapshot?, applied: Applied, clock: SessionList.Clock? = nil) -> (output: TabletSidebarUpdate, state: Applied)? {
         guard let snapshot else { return nil }
-        let frame = TabletSidebarFrame(TabletSidebarState(snapshot, clock: clock ?? HomeDerivation.clock(snapshot)))
+        let clock = clock ?? SessionList.Clock()
+        let frame = TabletSidebarFrame(TabletSidebarState(snapshot, clock: clock), snapshot: snapshot, clock: clock)
         guard frame != applied.frame else { return nil }
-        guard let after = frame.list else {
-            return (TabletSidebarUpdate(frame: frame, changeset: nil), Applied(frame: frame, list: applied.list))
+        var state = applied
+        state.frame = frame
+        let changeset: RowChangeset?
+        switch frame.content {
+        case .list(let after):
+            let before = applied.list ?? .empty
+            changeset = RowChangeset(oldIds: before.ids, newIds: after.ids) { before.rows[$0] != after.rows[$1] }
+            state.list = after
+        case .grouped(let after):
+            let before = applied.grouped ?? .empty
+            changeset = RowChangeset(oldIds: before.ids, newIds: after.ids) { before.rows[$0] != after.rows[$1] }
+            state.grouped = after
+        case .loading, .empty:
+            changeset = nil
         }
-        let before = applied.list ?? .empty
-        let changeset = RowChangeset(oldIds: before.ids, newIds: after.ids) { before.rows[$0] != after.rows[$1] }
-        return (TabletSidebarUpdate(frame: frame, changeset: changeset), Applied(frame: frame, list: after))
+        return (TabletSidebarUpdate(frame: frame, changeset: changeset), state)
     }
 }

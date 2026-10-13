@@ -18,5 +18,12 @@ extension Strings {
         public static let offlineDescription = "Bring a machine online to start a session."
         public static let troubleshoot = "Troubleshoot"
         public static let noMachinesDescription = "Install and run Happy on your computer to connect it."
+
+        // The list grouped by project (SessionsList.tsx).
+        /// "Bots", hard-coded in SessionsList.tsx as in ProjectHomeList.tsx.
+        public static let bots = "Bots"
+        /// `status.unknown`: an archived chat with no metadata to name a
+        /// place (`getSessionSubtitle`).
+        public static let unknown = "unknown"
     }
 }

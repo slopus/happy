@@ -5,11 +5,13 @@ import HappyStore
 import UIKit
 
 /// SidebarView.tsx: New session and the archive button on top, then
-/// MainView.tsx's sidebar variant (a spinner, EmptySessionsTablet, or the
-/// session list), then Settings at the foot. The list is home's own
-/// `SessionListViewController`; a tap on a row pushes the chat onto the
-/// stack beside the sidebar (`push(_:context:)` finds it), where every
-/// other screen the sidebar opens goes too.
+/// MainView.tsx's sidebar variant (a spinner, EmptySessionsTablet, or
+/// SessionsList.tsx), then Settings at the foot. The flat list is home's
+/// own `SessionListViewController`; grouped by project it is
+/// SessionsList's own hierarchy (`TabletGroupedListViewController`), not
+/// home's project cards. A tap on a row pushes the chat onto the stack
+/// beside the sidebar (`push(_:context:)` finds it), where every other
+/// screen the sidebar opens goes too.
 ///
 /// It reads the same home snapshot as the phone home and tells the shell
 /// when home turns into Link Your Computer, which the shell steps aside
@@ -23,6 +25,7 @@ final class TabletSidebarViewController: UIViewController {
     private let empty = TabletEmptySessionsView()
     private let spinner = UIActivityIndicatorView(style: .medium)
     private var list: SessionListViewController?
+    private var grouped: TabletGroupedListViewController?
     /// Worked out off the main thread from the account's home feed
     /// (`TabletSidebarDerivation`); only what changed is applied here.
     private var observation: ApplyObservation?
@@ -39,7 +42,11 @@ final class TabletSidebarViewController: UIViewController {
     /// The chat open beside the sidebar, whose row stays selected
     /// (SessionsList.tsx `selectedSessionId`).
     var selectedSessionId: String? {
-        didSet { if selectedSessionId != oldValue { list?.selectedSessionId = selectedSessionId } }
+        didSet {
+            guard selectedSessionId != oldValue else { return }
+            list?.selectedSessionId = selectedSessionId
+            grouped?.selectedSessionId = selectedSessionId
+        }
     }
 
     init(context: AppContext, session: AccountSession) {
@@ -77,7 +84,10 @@ final class TabletSidebarViewController: UIViewController {
             state: TabletSidebarDerivation.Applied(),
             derive: { TabletSidebarDerivation.derive($0, applied: $1) },
             apply: { [weak self] update in
-                guard let self else { return false }
+                // A result worked out for an account that is no longer the
+                // active one (a switch while this sidebar is still on
+                // screen) is refused; the shell builds a new sidebar.
+                guard let self, self.context.account.session === self.session else { return false }
                 ApplyPerf.measure(.sidebar) { self.received(update) }
                 return true
             }
@@ -124,6 +134,8 @@ final class TabletSidebarViewController: UIViewController {
 
         empty.setLayoutFrame(layout.content)
         list?.view.setLayoutFrame(layout.content)
+        grouped?.view.setLayoutFrame(layout.content)
+        grouped?.bottomInset = layout.listBottomInset
         spinner.setLayoutFrame(layout.spinner)
         // Home's list pads itself under its floating header; here nothing
         // floats over it.
@@ -149,15 +161,23 @@ final class TabletSidebarViewController: UIViewController {
             spinner.startAnimating()
             empty.isHidden = true
             list?.view.isHidden = true
+            grouped?.view.isHidden = true
         case .empty(let variant):
             spinner.stopAnimating()
             empty.state = variant
             empty.isHidden = false
             list?.view.isHidden = true
+            grouped?.view.isHidden = true
         case .list(let model):
             spinner.stopAnimating()
             empty.isHidden = true
+            grouped?.view.isHidden = true
             rows = showList(model, changeset: update.changeset ?? RowChangeset())
+        case .grouped(let model):
+            spinner.stopAnimating()
+            empty.isHidden = true
+            list?.view.isHidden = true
+            rows = showGrouped(model, changeset: update.changeset ?? RowChangeset())
         }
         // Only a change of what fills the sidebar moves anything.
         if previous?.content.kind != state.content.kind || previous?.hasArchived != state.hasArchived {
@@ -180,6 +200,24 @@ final class TabletSidebarViewController: UIViewController {
         view.insertSubview(controller.view, belowSubview: settingsRow)
         controller.didMove(toParent: self)
         list = controller
+        view.setNeedsLayout()
+        return model.rows.count
+    }
+
+    private func showGrouped(_ model: TabletGroupedList, changeset: RowChangeset) -> Int {
+        if let grouped {
+            let rows = grouped.apply(model, changeset: changeset, animated: view.window != nil)
+            grouped.view.isHidden = false
+            return rows
+        }
+        let controller = TabletGroupedListViewController(context: context, session: session)
+        controller.apply(model, changeset: changeset, animated: false)
+        controller.selectedSessionId = selectedSessionId
+        addChild(controller)
+        view.insertSubview(controller.view, belowSubview: settingsRow)
+        controller.didMove(toParent: self)
+        grouped = controller
+        view.setNeedsLayout()
         return model.rows.count
     }
 
