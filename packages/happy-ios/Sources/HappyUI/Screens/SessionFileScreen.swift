@@ -10,7 +10,9 @@ import UIKit
 ///
 /// The session's root is read off the main thread. Until it is, the file
 /// is resolved against the root it had when one of its files was last
-/// shown, which is where its cached copy is.
+/// shown, which is where its cached copy is. A copy kept on disk (after a
+/// relaunch) is read off the main thread too, before the computer is
+/// asked; offline, it stays on screen under the error alert.
 final class SessionFileViewController: UIViewController {
     private let context: AppContext
     private let session: AccountSession
@@ -169,7 +171,12 @@ final class SessionFileViewController: UIViewController {
                 (try? store.session(id: id))?.metadata?["path"]?.stringValue
             }.value
             guard !Task.isCancelled, let read = self?.resolve(root) else { return }
-            let result = await FileViewer.load(read.target, sessionPath: read.sessionPath, transport: read.transport)
+            if read.needsCopy, let kept = await read.cache.snapshot(sessionId: id, path: read.target.filePath) {
+                guard !Task.isCancelled else { return }
+                self?.showKept(kept, for: read.target)
+            }
+            let result = await FileViewer.load(read.target, sessionPath: read.sessionPath, transport: read.transport,
+                                               cache: read.cache, sessionId: id)
             guard let self, !Task.isCancelled, self.context.account.session === self.session else { return }
             self.apply(result)
         }
@@ -178,7 +185,9 @@ final class SessionFileViewController: UIViewController {
     /// Takes the session's root as stored and says what to read. A root
     /// other than the one the screen opened with resolves the file again,
     /// with that file's cached copy, if any.
-    private func resolve(_ root: String?) -> (target: FileViewer.Target, sessionPath: String?, transport: SessionShellTransport)? {
+    private func resolve(_ root: String?) -> (
+        target: FileViewer.Target, sessionPath: String?, transport: SessionShellTransport, cache: SessionFileCache, needsCopy: Bool
+    )? {
         guard context.account.session === session else { return nil }
         let cache = session.fileCache
         cache.setRoot(sessionId: sessionId, SessionFileCache.Root(path: root))
@@ -198,7 +207,18 @@ final class SessionFileViewController: UIViewController {
                 render()
             }
         }
-        return (target, sessionPath, SessionShellTransport(actions: session.actions, sessionId: sessionId))
+        return (target, sessionPath, SessionShellTransport(actions: session.actions, sessionId: sessionId), cache, content == nil)
+    }
+
+    /// The copy kept on disk, while nothing else shows.
+    private func showKept(_ kept: FileViewer.Snapshot, for read: FileViewer.Target) {
+        guard context.account.session === session, read == target, content == nil, error == nil else { return }
+        content = kept.content
+        if let keptDiff = kept.diff, diff == nil { diff = keptDiff }
+        isLoading = false
+        scrollsToLine = true
+        updateMode()
+        render()
     }
 
     private func apply(_ result: FileViewer.LoadResult) {
@@ -208,7 +228,6 @@ final class SessionFileViewController: UIViewController {
             if let newDiff = snapshot.diff { diff = newDiff }
             content = snapshot.content
             scrollsToLine = true
-            session.fileCache.set(sessionId: sessionId, path: target.filePath, snapshot)
         case .failed(let failure, let newDiff):
             if let newDiff { diff = newDiff }
             let message = switch failure {
@@ -216,7 +235,9 @@ final class SessionFileViewController: UIViewController {
             case .read(nil): Strings.FilesDetail.failedToRead
             case .load: Strings.FilesDetail.failedToLoad
             }
-            error = message
+            // A kept copy stays on screen under the alert; file.tsx, which
+            // keeps nothing across launches, shows the error instead.
+            if content == nil { error = message }
             // Modal.alert: shown once the screen is on screen.
             if view.window != nil {
                 Alerts.show(Strings.Common.error, message, on: self)
