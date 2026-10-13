@@ -98,9 +98,14 @@ public enum ChatHeaderScrim {
 
 /// ChatHeaderView without glass (a tablet): the title over the workspace or
 /// branch and the line changes, at the start of the header's row rather
-/// than in a capsule. The row is the bar's width held to `maxWidth`
-/// (`layout.headerMaxWidth`) and centred, 16 in from its sides; the column
-/// is centred top to bottom in the bar.
+/// than in a capsule. The row is the navigation bar's width held to
+/// `maxWidth` (`layout.headerMaxWidth`) and centred, 16 in from its sides;
+/// the column is centred top to bottom in the title view.
+///
+/// UIKit insets a title view inside the bar, so the row is placed from the
+/// bar's frame as the title view sees it, then clipped to the title view,
+/// where its touches land. The title and its row are measured to what is
+/// left after clipping.
 public struct ChatPlainHeaderLayout: Equatable, Sendable {
     public enum Metrics {
         /// The header's `content` paddingHorizontal.
@@ -109,18 +114,25 @@ public struct ChatPlainHeaderLayout: Equatable, Sendable {
         public static let rowGap: CGFloat = 4
     }
 
-    /// The column the title and its row take, in the bar.
+    /// The column the title and its row take, in the title view.
     public var column: CGRect
+    /// In the column, as are `subtitle` and `changes`.
     public var title: CGRect
     public var subtitle: CGRect?
     public var changes: CGRect?
 
-    public init(barWidth: CGFloat, barHeight: CGFloat, maxWidth: CGFloat, title: Measurable, subtitle: Measurable?, changes: CGSize?) {
+    /// `bar` is the navigation bar's frame in the title view's coordinates
+    /// (the view's own bounds when it has no bar); `size` is the title
+    /// view's.
+    public init(bar: CGRect, size: CGSize, maxWidth: CGFloat, title: Measurable, subtitle: Measurable?, changes: CGSize?) {
         typealias M = Metrics
-        let barWidth = max(0, barWidth)
+        let barWidth = max(0, bar.width)
         let row = min(barWidth, max(0, maxWidth))
-        let x = (barWidth - row) / 2 + M.paddingH
-        let width = max(0, row - 2 * M.paddingH)
+        let start = bar.minX + (barWidth - row) / 2 + M.paddingH
+        let end = start + max(0, row - 2 * M.paddingH)
+        let viewWidth = max(0, size.width)
+        let x = min(max(start, 0), viewWidth)
+        let width = max(0, min(end, viewWidth) - x)
         let titleSize = title.size(fitting: width)
 
         var subtitleSize: CGSize?
@@ -134,11 +146,10 @@ public struct ChatPlainHeaderLayout: Equatable, Sendable {
         if let changes { rowHeight = max(rowHeight, changes.height) }
 
         let height = titleSize.height + rowHeight
-        let top = (barHeight - height) / 2
-        column = CGRect(x: x, y: top, width: width, height: height)
-        self.title = CGRect(x: x, y: top, width: titleSize.width, height: titleSize.height)
-        let rowTop = top + titleSize.height
-        var rowX = x
+        column = CGRect(x: x, y: (size.height - height) / 2, width: width, height: height)
+        self.title = CGRect(origin: .zero, size: titleSize)
+        let rowTop = titleSize.height
+        var rowX: CGFloat = 0
         if let subtitleSize {
             self.subtitle = CGRect(x: rowX, y: rowTop + (rowHeight - subtitleSize.height) / 2, width: subtitleSize.width, height: subtitleSize.height)
             rowX += subtitleSize.width + M.rowGap

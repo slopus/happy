@@ -157,22 +157,17 @@ final class ChatPlainHeaderTitleView: UIControl {
         // The row is the bar's, not this view's: UIKit insets a title view.
         var bar: UIView? = superview
         while let current = bar, !(current is UINavigationBar) { bar = current.superview }
-        let barFrame = bar.map { $0.convert($0.bounds, to: self) } ?? bounds
         let layout = ChatPlainHeaderLayout(
-            barWidth: barFrame.width, barHeight: bounds.height, maxWidth: maxWidth,
+            bar: bar.map { $0.convert($0.bounds, to: self) } ?? bounds, size: bounds.size, maxWidth: maxWidth,
             title: title.measurable, subtitle: hasSubtitle ? subtitle.measurable : nil,
             changes: changes.isHidden ? nil : changes.sizeThatFits(.zero)
         )
-        // Kept inside this view, where its touches land.
-        var frame = layout.column.offsetBy(dx: barFrame.minX, dy: 0)
-        frame.origin.x = min(max(frame.minX, 0), bounds.width)
-        frame.size.width = max(0, min(frame.width, bounds.width - frame.minX))
-        column.bounds = CGRect(origin: .zero, size: frame.size)
-        column.center = CGPoint(x: frame.midX, y: frame.midY)
-        let origin = layout.column.origin
-        title.place(layout.title.offsetBy(dx: -origin.x, dy: -origin.y))
-        if let rect = layout.subtitle { subtitle.place(rect.offsetBy(dx: -origin.x, dy: -origin.y)) }
-        if let rect = layout.changes { changes.setLayoutFrame(rect.offsetBy(dx: -origin.x, dy: -origin.y)) }
+        // Bounds and centre rather than a frame: the column scales when pressed.
+        column.bounds = CGRect(origin: .zero, size: layout.column.size)
+        column.center = CGPoint(x: layout.column.midX, y: layout.column.midY)
+        title.place(layout.title)
+        if let rect = layout.subtitle { subtitle.place(rect) }
+        if let rect = layout.changes { changes.setLayoutFrame(rect) }
     }
 
     /// BubblePressable's `bubbleScale={1.012}`.

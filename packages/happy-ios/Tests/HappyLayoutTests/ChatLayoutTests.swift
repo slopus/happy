@@ -781,18 +781,75 @@ final class InactiveHintLayoutTests: XCTestCase {
 final class ChatPlainHeaderLayoutTests: XCTestCase {
     func testTheTitleSitsAtTheStartOfTheRow() {
         let layout = ChatPlainHeaderLayout(
-            barWidth: 664, barHeight: 50, maxWidth: 800,
+            bar: rect(0, 0, 664, 50), size: CGSize(width: 664, height: 50), maxWidth: 800,
             title: fixed(120, 20), subtitle: fixed(60, 16), changes: CGSize(width: 40, height: 14)
         )
         assertFrame(layout.column, rect(16, 7, 632, 36))
-        assertFrame(layout.title, rect(16, 7, 120, 20))
-        assertFrame(layout.subtitle, rect(16, 27, 60, 16))
-        assertFrame(layout.changes, rect(80, 28, 40, 14))
+        // The column's children are in the column.
+        assertFrame(layout.title, rect(0, 0, 120, 20))
+        assertFrame(layout.subtitle, rect(0, 20, 60, 16))
+        assertFrame(layout.changes, rect(64, 21, 40, 14))
     }
 
     func testAWideBarHoldsTheRowToTheHeadersMaxWidth() {
-        let layout = ChatPlainHeaderLayout(barWidth: 1000, barHeight: 50, maxWidth: 800, title: fixed(120, 20), subtitle: nil, changes: nil)
+        let layout = ChatPlainHeaderLayout(bar: rect(0, 0, 1000, 50), size: CGSize(width: 1000, height: 50), maxWidth: 800, title: fixed(120, 20), subtitle: nil, changes: nil)
         assertFrame(layout.column, rect(116, 15, 768, 20))
+        assertFrame(layout.title, rect(0, 0, 120, 20))
         XCTAssertNil(layout.subtitle)
+        XCTAssertNil(layout.changes)
+    }
+
+    func testAnInsetTitleViewPlacesTheRowFromTheBarsEdges() {
+        // UIKit put the title view 80 into a 1000-wide bar, 840 wide and 3
+        // down: the row is where it would be in the bar (116), which is 36
+        // into the view, and centred in the view's own height.
+        let layout = ChatPlainHeaderLayout(
+            bar: rect(-80, -3, 1000, 50), size: CGSize(width: 840, height: 44), maxWidth: 800,
+            title: fixed(120, 20), subtitle: nil, changes: nil
+        )
+        assertFrame(layout.column, rect(36, 12, 768, 20))
+        assertFrame(layout.title, rect(0, 0, 120, 20))
+    }
+
+    func testARowStartingBeforeTheTitleViewIsClippedAndMeasuredToWhatIsLeft() {
+        // The row starts 16 into the bar, which is 104 before the view.
+        let layout = ChatPlainHeaderLayout(
+            bar: rect(-120, 0, 664, 50), size: CGSize(width: 500, height: 50), maxWidth: 800,
+            title: fixed(600, 20), subtitle: fixed(480, 16), changes: CGSize(width: 40, height: 14)
+        )
+        assertFrame(layout.column, rect(0, 7, 500, 36))
+        assertFrame(layout.title, rect(0, 0, 500, 20))
+        // 500 less the changes and their gap.
+        assertFrame(layout.subtitle, rect(0, 20, 456, 16))
+        assertFrame(layout.changes, rect(460, 21, 40, 14))
+    }
+
+    func testARowEndingPastTheTitleViewIsClipped() {
+        let layout = ChatPlainHeaderLayout(
+            bar: rect(0, 0, 664, 50), size: CGSize(width: 400, height: 50), maxWidth: 800,
+            title: fixed(600, 20), subtitle: nil, changes: nil
+        )
+        assertFrame(layout.column, rect(16, 15, 384, 20))
+        assertFrame(layout.title, rect(0, 0, 384, 20))
+    }
+
+    func testATitleViewOutsideTheRowGetsAnEmptyColumn() {
+        // The row ends 16 before the view starts.
+        let layout = ChatPlainHeaderLayout(
+            bar: rect(-900, 0, 1000, 50), size: CGSize(width: 100, height: 50), maxWidth: 800,
+            title: fixed(120, 20), subtitle: nil, changes: nil
+        )
+        assertFrame(layout.column, rect(0, 15, 0, 20))
+        assertFrame(layout.title, rect(0, 0, 0, 20))
+    }
+
+    func testWithoutABarTheRowIsTheTitleViews() {
+        let size = CGSize(width: 664, height: 44)
+        let layout = ChatPlainHeaderLayout(
+            bar: CGRect(origin: .zero, size: size), size: size, maxWidth: 800,
+            title: fixed(120, 20), subtitle: fixed(60, 16), changes: nil
+        )
+        assertFrame(layout.column, rect(16, 4, 632, 36))
+        assertFrame(layout.subtitle, rect(0, 20, 60, 16))
     }
 }
