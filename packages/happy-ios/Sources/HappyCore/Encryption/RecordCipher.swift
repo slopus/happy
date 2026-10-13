@@ -63,6 +63,12 @@ public final class KeyRing: @unchecked Sendable {
         return BlobCipher.sessionKey(dataKey: dataKey)
     }
 
+    /// Opens only a wrapped record data key; never returns the account secret.
+    public func dataKey(wrappedKey: String?) -> Data? {
+        guard let wrappedKey else { return nil }
+        return keys.unwrapDataKey(base64: wrappedKey)
+    }
+
     /// Nil when there is no key (a legacy record) or it does not open.
     public func cipher(wrappedKey: String?) -> RecordCipher? {
         guard let wrappedKey else { return nil }

@@ -62,12 +62,21 @@ public final class LocalStore: Sendable {
     }
 
     /// Merges sessions from a list fetch or a `new-session` update.
-    public func upsertSessions(_ incoming: [SessionRecord]) throws {
+    public func upsertSessions(_ incoming: [SessionRecord], reconcileComposer: SessionComposerReconciliation? = nil) throws {
         try writer.write { db in
             for record in incoming {
                 try Self.upsert(record, db)
+                if let reconcileComposer, let merged = try SessionRecord.fetchOne(db, key: record.id) {
+                    try Self.reconcileComposer(merged, db: db, transform: reconcileComposer)
+                }
             }
         }
+    }
+
+    private static func reconcileComposer(_ session: SessionRecord, db: Database, transform: SessionComposerReconciliation) throws {
+        let composer = try ComposerStateRecord.fetchOne(db, key: session.id) ?? ComposerStateRecord(sessionId: session.id)
+        let next = transform(session, composer)
+        if next != composer { try next.save(db) }
     }
 
     /// Applies an `update-session` event. Each field is applied only if its
@@ -76,7 +85,8 @@ public final class LocalStore: Sendable {
         id: String,
         metadata: VersionedPayload?,
         agentState: VersionedPayload?,
-        projectId: String??
+        projectId: String??,
+        reconcileComposer: SessionComposerReconciliation? = nil
     ) throws -> Bool {
         try writer.write { db in
             guard var record = try SessionRecord.fetchOne(db, key: id) else { return false }
@@ -96,6 +106,7 @@ public final class LocalStore: Sendable {
             }
             Self.settle(old: old, &record)
             try record.update(db)
+            if let reconcileComposer { try Self.reconcileComposer(record, db: db, transform: reconcileComposer) }
             return true
         }
     }

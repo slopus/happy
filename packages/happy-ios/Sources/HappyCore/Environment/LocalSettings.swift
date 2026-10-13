@@ -81,15 +81,41 @@ public final class LocalSettings: Sendable {
         set { storage.set(newValue ? "true" : nil, forKey: Keys.devModeEnabled) }
     }
 
+    /// The projects showing every worktree on the grouped home list
+    /// (localSettings.ts `expandedProjects`, keyed by project id).
+    public var expandedProjects: Set<String> {
+        get {
+            guard let json = storage.string(forKey: Keys.expandedProjects),
+                  let value = try? JSONDecoder().decode([String: Bool].self, from: Data(json.utf8)) else {
+                return []
+            }
+            return Set(value.filter(\.value).keys)
+        }
+        set {
+            let record = Dictionary(uniqueKeysWithValues: newValue.map { ($0, true) })
+            let data = (try? JSONEncoder().encode(record)) ?? Data()
+            storage.set(newValue.isEmpty ? nil : String(decoding: data, as: UTF8.self), forKey: Keys.expandedProjects)
+        }
+    }
+
     public func clear() {
-        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled] {
+        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled, Keys.expandedProjects, Keys.registeredPushToken] {
             storage.set(nil, forKey: key)
         }
+    }
+
+    /// persistence.registered-push-token-v1, scoped to this account's local-settings suite.
+    /// Sign-out clears it so a later sign-in registers the installation again.
+    public var registeredPushToken: String? {
+        get { storage.string(forKey: Keys.registeredPushToken) }
+        set { storage.set(newValue, forKey: Keys.registeredPushToken) }
     }
 
     private enum Keys {
         static let linkComputerChecklist = "linkComputerChecklist"
         static let themePreference = "themePreference"
         static let devModeEnabled = "devModeEnabled"
+        static let expandedProjects = "expandedProjects"
+        static let registeredPushToken = "registered-push-token-v1"
     }
 }

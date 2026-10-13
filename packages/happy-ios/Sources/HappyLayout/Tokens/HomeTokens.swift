@@ -77,3 +77,31 @@ extension TextStyles {
     /// the app bundles, which is SemiBold (0.3 is nearer 0.23 than 0).
     public static let homeHeaderStatus = TextStyle(.semiBold, size: 11, lineHeight: 16)
 }
+
+// The project list (components/ProjectHomeList.tsx). Its pressed highlight
+// (`surfacePressed`) and line-change colours (`gitAddedText`,
+// `gitRemovedText`) are the chat's tokens in ChatTokens.swift.
+extension TextStyles {
+    /// A project's name on its card.
+    public static let projectName = TextStyle(.regular, size: 17, lineHeight: 22)
+    /// A worktree's name under its project.
+    public static let worktreeName = TextStyle(.regular, size: 16, lineHeight: 21)
+    /// "Show all 7 workspaces" / "Show fewer".
+    public static let worktreeToggle = TextStyle(.regular, size: 15, lineHeight: 20)
+    /// "BOTS", "PROJECTS" and the archive's days.
+    public static let projectSection = TextStyle(.semiBold, size: 11, lineHeight: 14, letterSpacing: 0.6, uppercase: true)
+    /// The computer's name over its projects.
+    public static let projectMachine = TextStyle(.regular, size: 11, lineHeight: 14)
+    /// A bot's or an archived chat's time.
+    public static let projectTimestamp = TextStyle(.regular, size: 13, lineHeight: 18)
+    /// "≈" ahead of approximate line counts.
+    public static let gitApproximate = TextStyle(.regular, size: 11, lineHeight: 18)
+    /// "+12" and "-3".
+    public static let gitLineCount = TextStyle(.semiBold, size: 13, lineHeight: 18)
+}
+
+/// RowPressable's highlight: up in 70ms, gone over 240ms.
+public enum RowHighlight {
+    public static let fadeIn: Double = 0.07
+    public static let fadeOut: Double = 0.24
+}
