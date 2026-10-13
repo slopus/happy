@@ -38,6 +38,6 @@ extension Strings {
             "Sign out of \(name)? Its data is removed from this phone. Make sure you have backed up its secret key!"
         }
         public static let switchFailed = "Couldn’t switch accounts. Try again."
-        public static let notAvailableYet = "Not available yet."
+        public static let signOutFailed = "Couldn’t sign out of that account. Try again."
     }
 }

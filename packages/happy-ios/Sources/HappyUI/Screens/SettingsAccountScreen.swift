@@ -16,7 +16,8 @@ import UserNotifications
 /// a row with its picture, the active one checked; a tap switches, touch and
 /// hold offers Sign Out, and Add Account starts a sign-in that keeps the
 /// current account.
-public final class SettingsAccountViewController: UIViewController, UIContextMenuInteractionDelegate {
+public final class SettingsAccountViewController: UIViewController, UIContextMenuInteractionDelegate,
+    UIAdaptivePresentationControllerDelegate {
     private let context: AppContext
     private let session: AccountSession
     private let list = GroupedListView()
@@ -24,7 +25,10 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
     private var observation: StoreObservation?
     private var snapshot = SettingsSnapshot()
 
-    private var switchingTo: String?
+    private var accountsObservation: AccountsObservation?
+    private var accounts: [AccountSummary] = []
+    /// The account being switched to or signed out of.
+    private var busyAccount: String?
     private var accountEntries: [ObjectIdentifier: AccountSwitcherEntry] = [:]
     private var avatarImages: [URL: UIImage] = [:]
 
@@ -78,6 +82,12 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
         super.viewDidLoad()
         title = Strings.Settings.account
         showsBackTitle()
+        // Before the settings, whose first snapshot draws the page.
+        accountsObservation = context.account.observeAccounts { [weak self] accounts in
+            guard let self, accounts != self.accounts else { return }
+            self.accounts = accounts
+            self.rebuild()
+        }
         observation = session.store.observeSettings { [weak self] snapshot in
             self?.snapshot = snapshot
             self?.rebuild()
@@ -249,7 +259,7 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
     private func accountSwitcher() -> UIView {
         let settings = AccountSettings(snapshot)
         let entries = AccountSwitcherEntry.entries(
-            context.account.accounts,
+            accounts,
             activeProfile: snapshot.profile,
             defaultServer: ServerConfig.defaultServerURL,
             fallbackTitle: Strings.AccountSwitcher.fallbackTitle
@@ -271,27 +281,22 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
             if entry.isActive {
                 row.trailingView = SettingsCheckmark.view(tint: Palette.iconBlue)
             }
-            row.isLoading = switchingTo == entry.id
+            row.isLoading = busyAccount == entry.id
             row.addInteraction(UIContextMenuInteraction(delegate: self))
             accountEntries[ObjectIdentifier(row)] = entry
             return row
         }
-        // TODO(accounts): enable once AccountController has
-        // beginAddingAccount()/cancelAddingAccount() and signIn adds rather
-        // than replaces. Until then the row shows, disabled.
         let add = ItemRowView(title: Strings.AccountSwitcher.addAccount, icon: ItemIcon(.ionicons("add-circle-outline"), tint: Palette.iconBlue)) { [weak self] in
             self?.addAccount()
         }
-        rows.append(disabled(add, !Self.addingAccountAvailable))
+        add.showsChevron = false
+        rows.append(add)
         return ItemGroupView(title: Strings.AccountSwitcher.title, footer: Strings.AccountSwitcher.footer, rows: rows)
     }
 
-    /// Flips when the Accounts workstream's add-account API lands.
-    static let addingAccountAvailable = false
-
     private func switchAccount(to entry: AccountSwitcherEntry) {
-        guard switchingTo == nil else { return }
-        switchingTo = entry.id
+        guard busyAccount == nil else { return }
+        busyAccount = entry.id
         rebuild()
         Task { @MainActor in
             do {
@@ -301,17 +306,36 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
             } catch {
                 Alerts.show(Strings.Common.error, Strings.AccountSwitcher.switchFailed, on: self)
             }
-            switchingTo = nil
+            busyAccount = nil
             rebuild()
         }
     }
 
+    /// The sign-in screens in a sheet, over an account that stays signed in.
+    /// A sign-in there adds the account and makes it active, and the
+    /// coordinator swaps the whole stack (closing this sheet) to its home.
     private func addAccount() {
-        // TODO(accounts): context.account.beginAddingAccount(), then present
-        // Welcome (create or restore). Cancelling calls
-        // cancelAddingAccount(); a sign-in calls signIn(credentials), which
-        // makes the new account active.
-        Alerts.show(Strings.AccountSwitcher.addAccount, Strings.AccountSwitcher.notAvailableYet, on: self)
+        guard presentedViewController == nil else { return }
+        context.account.beginAddingAccount()
+        let welcome = WelcomeViewController(context: context)
+        welcome.navigationItem.leftBarButtonItem = UIBarButtonItem(
+            title: Strings.Common.cancel,
+            primaryAction: UIAction { [weak self] _ in self?.cancelAddingAccount() }
+        )
+        let navigation = UINavigationController(rootViewController: welcome)
+        AppCoordinator.applyAppearance(to: navigation.navigationBar)
+        navigation.presentationController?.delegate = self
+        present(navigation, animated: true)
+    }
+
+    private func cancelAddingAccount() {
+        context.account.cancelAddingAccount()
+        presentedViewController?.dismiss(animated: true)
+    }
+
+    /// Swiping the sheet away cancels too.
+    public func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+        context.account.cancelAddingAccount()
     }
 
     private func signOut(_ entry: AccountSwitcherEntry) {
@@ -327,11 +351,18 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
                 destructive: true,
                 on: self
             )
-            guard confirmed else { return }
-            // TODO(accounts): context.account.signOut(accountId: entry.id),
-            // which removes an inactive account's item and cache without
-            // touching the active one.
-            Alerts.show(Strings.AccountSwitcher.signOut, Strings.AccountSwitcher.notAvailableYet, on: self)
+            guard confirmed, busyAccount == nil else { return }
+            busyAccount = entry.id
+            rebuild()
+            do {
+                // Removes that account's credentials and cache; the active
+                // account is untouched, and the list redraws without it.
+                try await context.account.signOut(accountID: entry.id)
+            } catch {
+                Alerts.show(Strings.Common.error, Strings.AccountSwitcher.signOutFailed, on: self)
+            }
+            busyAccount = nil
+            rebuild()
         }
     }
 
