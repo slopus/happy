@@ -266,3 +266,85 @@ final class TabletSidebarLayoutTests: XCTestCase {
         assertFrame(layout.icon, rect(147.5, 329, 64, 66))
     }
 }
+
+/// The tablet branches inside other screens (ChatHeaderView.tsx,
+/// SessionView.tsx, PermissionFooter.tsx, WorktreeTabStrip.tsx,
+/// navigation/Header.tsx).
+final class TabletBranchesTests: XCTestCase {
+    func testATabletChatHasAPlainHeaderAndADockedComposer() {
+        let tablet = TabletBranches(isTablet: true, isLandscape: false, headerHeight: 50)
+        XCTAssertFalse(tablet.chatShowsBackButton)
+        XCTAssertFalse(tablet.chatHeaderGlass)
+        XCTAssertEqual(tablet.chatHeaderContentHeight, 50)
+        XCTAssertFalse(tablet.chatShowsAvatar)
+        XCTAssertFalse(tablet.chatGlassBackdrop)
+        XCTAssertFalse(tablet.chatHidesHeaderInLandscape)
+        XCTAssertFalse(tablet.chatShowsLandscapeBackButton)
+        XCTAssertFalse(tablet.chatContentRunsUnderHeader)
+        XCTAssertEqual(tablet.chatContentTop(safeTop: 24, tabStrip: 0), 74)
+        XCTAssertEqual(tablet.chatContentTop(safeTop: 24, tabStrip: 40), 114)
+        XCTAssertFalse(tablet.chatFloatingDock)
+        XCTAssertEqual(tablet.chatInputPaddingH, 12)
+        XCTAssertEqual(tablet.chatOldestEndSpacer(safeTop: 24, headerAccessory: 40), 106)
+        XCTAssertTrue(tablet.chatShowsCliWarning)
+        XCTAssertTrue(tablet.permissionButtonsTrailing)
+        XCTAssertFalse(tablet.worktreeStripGlass)
+        XCTAssertFalse(tablet.headerGlassControls)
+        XCTAssertFalse(tablet.plainHeaderShowsBackButton(isOnboardingRoute: false))
+        XCTAssertTrue(tablet.plainHeaderShowsBackButton(isOnboardingRoute: true))
+    }
+
+    func testATabletOnItsSideKeepsItsHeader() {
+        let tablet = TabletBranches(isTablet: true, isLandscape: true, headerHeight: 50)
+        XCTAssertFalse(tablet.chatHidesHeaderInLandscape)
+        XCTAssertEqual(tablet.chatContentTop(safeTop: 24, tabStrip: 0), 74)
+        XCTAssertTrue(tablet.chatShowsCliWarning)
+    }
+
+    func testAPortraitPhone() {
+        let phone = TabletBranches(isTablet: false, isLandscape: false, headerHeight: 44)
+        XCTAssertTrue(phone.chatShowsBackButton)
+        XCTAssertTrue(phone.chatHeaderGlass)
+        XCTAssertEqual(phone.chatHeaderContentHeight, 52)
+        XCTAssertTrue(phone.chatShowsAvatar)
+        XCTAssertTrue(phone.chatContentRunsUnderHeader)
+        XCTAssertEqual(phone.chatContentTop(safeTop: 59, tabStrip: 40), 0)
+        XCTAssertTrue(phone.chatFloatingDock)
+        XCTAssertEqual(phone.chatInputPaddingH, 8)
+        XCTAssertEqual(phone.chatOldestEndSpacer(safeTop: 59, headerAccessory: 40), 163)
+        XCTAssertFalse(phone.permissionButtonsTrailing)
+        XCTAssertTrue(phone.worktreeStripGlass)
+        XCTAssertTrue(phone.plainHeaderShowsBackButton(isOnboardingRoute: false))
+    }
+
+    func testALandscapePhoneDropsTheHeader() {
+        let phone = TabletBranches(isTablet: false, isLandscape: true, headerHeight: 44)
+        XCTAssertTrue(phone.chatHidesHeaderInLandscape)
+        XCTAssertTrue(phone.chatShowsLandscapeBackButton)
+        XCTAssertFalse(phone.chatContentRunsUnderHeader)
+        XCTAssertEqual(phone.chatContentTop(safeTop: 0, tabStrip: 0), 0)
+        XCTAssertFalse(phone.chatFloatingDock)
+        XCTAssertEqual(phone.chatOldestEndSpacer(safeTop: 0, headerAccessory: 0), 12)
+        XCTAssertFalse(phone.chatShowsCliWarning)
+    }
+
+    func testANarrowIPadWindowIsAPhoneWithAnIPadHeader() {
+        let window = TabletBranches(isTablet: false, isLandscape: false, headerHeight: 50)
+        XCTAssertEqual(window.chatHeaderContentHeight, 52)
+        XCTAssertTrue(window.chatShowsBackButton)
+    }
+
+    func testTabletPermissionButtonsHugTheirLabelsAtTheTrailingEdge() {
+        let labels = [text("Yes", lineHeight: 18), text(String(repeating: "a", count: 60), lineHeight: 18)]
+        let phone = PermissionFooterLayout(width: 400, labels: labels)
+        assertFrame(phone.buttons[0], rect(6, 4, 388, 34))
+        let tablet = PermissionFooterLayout.tablet(width: 400, labels: labels)
+        assertFrame(tablet.buttons[0], rect(348, 4, 46, 34))
+        assertFrame(tablet.labels[0], rect(359, 12, 24, 18))
+        // Two lines of 45 at 366: 360 wide, 22 of padding and border.
+        assertFrame(tablet.buttons[1], rect(12, 45, 382, 52))
+        assertFrame(tablet.labels[1], rect(23, 53, 360, 36))
+        assertSize(tablet.size, phone.size)
+        assertSize(tablet.size, CGSize(width: 400, height: 105))
+    }
+}

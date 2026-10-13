@@ -87,6 +87,32 @@ enum TabletRoutes {
 }
 
 extension UIViewController {
+    /// The branches of happy-app's tablet layout this screen's window gets
+    /// (`TabletBranches`): the shell's width rule, the screen's
+    /// orientation, the device's header height.
+    var tabletBranches: TabletBranches {
+        let size = view.window?.bounds.size ?? view.bounds.size
+        return TabletBranches(
+            isTablet: traitCollection.isTabletLayout,
+            isLandscape: TabletBreakpoint.isLandscape(size),
+            headerHeight: DeviceCalculations.headerHeight(isPad: traitCollection.userInterfaceIdiom == .pad)
+        )
+    }
+
+    /// navigation/Header.tsx :322. The screens with happy-app's plain header
+    /// (settings, session info, machine, changes, message, What's New) and
+    /// the chat (ChatHeaderView.tsx :59) have no back button on a tablet:
+    /// the persistent header's back serves instead. Call once from
+    /// `viewDidLoad`; it follows the window as it resizes.
+    func dropsBackButtonOnTablet() {
+        applyTabletBackButton()
+        registerForTraitChanges([TabletLayoutTrait.self], action: #selector(applyTabletBackButton))
+    }
+
+    @objc private func applyTabletBackButton() {
+        navigationItem.hidesBackButton = !tabletBranches.plainHeaderShowsBackButton(isOnboardingRoute: false)
+    }
+
     /// The tablet shell's stack, for a screen beside it rather than in it
     /// (the sidebar and the list it hosts).
     var tabletDetailNavigation: UINavigationController? {
@@ -96,6 +122,38 @@ extension UIViewController {
             current = controller.parent
         }
         return nil
+    }
+}
+
+/// components/layout.ts: how wide content may grow. happy-app works it out
+/// once, when the module loads, from the screen and the window of that
+/// moment; so does this, the first time it is read. Only a 13-inch iPad is
+/// a tablet there (800); every other iPad and every iPhone is unlimited.
+@MainActor
+public enum ContentWidth {
+    /// `layout.maxWidth`: messages, item groups, the session list.
+    public static var maxWidth: CGFloat { limits.maxWidth }
+    /// `layout.headerMaxWidth`: header rows.
+    public static var headerMaxWidth: CGFloat { limits.headerMaxWidth }
+
+    private static var cached: (maxWidth: CGFloat, headerMaxWidth: CGFloat)?
+
+    private static var limits: (maxWidth: CGFloat, headerMaxWidth: CGFloat) {
+        if let cached { return cached }
+        // Before the scene connects there is nothing to measure yet: no
+        // limit, and nothing kept.
+        guard let scene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first else {
+            return (.greatestFiniteMagnitude, .greatestFiniteMagnitude)
+        }
+        let screen = scene.screen.bounds.size
+        let window = scene.windows.first(where: \.isKeyWindow)?.bounds.size ?? screen
+        let type = DeviceCalculations.deviceType(screen: screen, isPad: UIDevice.current.userInterfaceIdiom == .pad)
+        let limits = (
+            maxWidth: ContentWidthLimit.maxWidth(deviceType: type, window: window),
+            headerMaxWidth: ContentWidthLimit.headerMaxWidth(deviceType: type, window: window)
+        )
+        cached = limits
+        return limits
     }
 }
 #endif

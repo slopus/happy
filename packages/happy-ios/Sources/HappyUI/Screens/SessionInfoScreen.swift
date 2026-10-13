@@ -52,6 +52,7 @@ final class SessionInfoViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         showsBackTitle()
+        dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
         observation = session.store.observeHome { [weak self] snapshot in
             self?.snapshot = snapshot
             self?.rebuild()

@@ -40,6 +40,7 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
     private var isTablet = false
     private var showsShell = false
     private var zenMode = false
+    private var popGesture: TabletPopGestureDelegate?
 
     public init(context: AppContext, detail: UINavigationController) {
         self.context = context
@@ -63,6 +64,7 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
         view.addSubview(detail.view)
         detail.didMove(toParent: self)
         detail.delegate = self
+        popGesture = TabletPopGestureDelegate(navigation: detail)
         header.isHidden = true
         header.zenButton.addAction(UIAction { [weak self] _ in self?.toggleZen() }, for: .touchUpInside)
         header.backButton.addAction(UIAction { [weak self] _ in self?.goBack() }, for: .touchUpInside)
@@ -142,6 +144,7 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
         if isTablet != self.isTablet {
             self.isTablet = isTablet
             traitOverrides.isTabletLayout = isTablet
+            popGesture?.isTablet = isTablet
         }
         if isTablet, sidebar == nil, let session {
             installSidebar(for: session)
@@ -212,6 +215,40 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
     private func goBack() {
         guard detail.viewControllers.count > 1 else { return }
         detail.popViewController(animated: true)
+    }
+}
+
+/// Keeps the edge swipe back on a tablet. Screens with happy-app's plain
+/// header hide their back button there (`dropsBackButtonOnTablet`), and
+/// UIKit stops the swipe for a screen without one; react-native-screens'
+/// stack keeps it. On a tablet the swipe may begin whenever there is
+/// something to go back to and no transition is running. Everything else,
+/// and every decision off a tablet, is UIKit's own delegate's.
+final class TabletPopGestureDelegate: NSObject, UIGestureRecognizerDelegate {
+    var isTablet = false
+    private weak var navigation: UINavigationController?
+    nonisolated(unsafe) private weak var system: (any UIGestureRecognizerDelegate)?
+
+    init(navigation: UINavigationController) {
+        self.navigation = navigation
+        system = navigation.interactivePopGestureRecognizer?.delegate
+        super.init()
+        navigation.interactivePopGestureRecognizer?.delegate = self
+    }
+
+    func gestureRecognizerShouldBegin(_ gesture: UIGestureRecognizer) -> Bool {
+        if isTablet, let navigation {
+            return navigation.viewControllers.count > 1 && navigation.transitionCoordinator == nil
+        }
+        return system?.gestureRecognizerShouldBegin?(gesture) ?? true
+    }
+
+    nonisolated override func responds(to selector: Selector!) -> Bool {
+        super.responds(to: selector) || system?.responds(to: selector) == true
+    }
+
+    nonisolated override func forwardingTarget(for selector: Selector!) -> Any? {
+        system?.responds(to: selector) == true ? system : super.forwardingTarget(for: selector)
     }
 }
 #endif

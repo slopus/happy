@@ -108,6 +108,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.surface)
         showsBackTitle()
+        dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): ChatHeaderView.tsx
         navigationItem.largeTitleDisplayMode = .never
         setUpHeader()
 
