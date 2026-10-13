@@ -9,8 +9,12 @@ extension LocalStore {
     public func setSessionPresenceOverlay(id: String, value: PresenceOverlayValue) { presenceOverlay.setSession(id, value) }
     public func setMachinePresenceOverlay(id: String, value: PresenceOverlayValue) { presenceOverlay.setMachine(id, value) }
 
+    /// Set before a presence transaction can wake an observation. The raw
+    /// DB callback and explicit hub refresh then project the same clock.
+    public func setPresenceDisplayClock(_ now: Int64) { presenceOverlay.setClock(now) }
+
     public func refreshPresenceDisplay(at now: Int64) async {
-        presenceOverlay.setClock(now)
+        setPresenceDisplayClock(now)
         await homeHub.refresh()
         await machinesHub.refresh()
     }

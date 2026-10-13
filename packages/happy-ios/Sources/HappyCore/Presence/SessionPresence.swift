@@ -76,6 +76,7 @@ public actor SessionPresence {
         sessions[id] = state
         dirtySessions.insert(id)
         store.setSessionPresenceOverlay(id: id, value: state.overlay)
+        if flip || textChanged { store.setPresenceDisplayClock(now()) }
         if flip || criticalTimestamp || now() - lastFlush >= options.persistenceIntervalMs { checkpoint() }
         if flip || textChanged { await store.refreshPresenceDisplay(at: now()) }
     }
@@ -92,6 +93,7 @@ public actor SessionPresence {
         machines[id] = state
         dirtyMachines.insert(id)
         store.setMachinePresenceOverlay(id: id, value: state.overlay)
+        if flip { store.setPresenceDisplayClock(now()) }
         if flip || criticalTimestamp || now() - lastFlush >= options.persistenceIntervalMs { checkpoint() }
         if flip { await store.refreshPresenceDisplay(at: now()) }
     }
@@ -150,6 +152,7 @@ public actor SessionPresence {
             sessions[id] = state
             store.setSessionPresenceOverlay(id: id, value: state.overlay)
         }
+        if changed { store.setPresenceDisplayClock(time) }
         if changed || time - lastFlush >= options.persistenceIntervalMs { checkpoint() }
         if changed { await store.refreshPresenceDisplay(at: time) }
     }
