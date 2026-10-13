@@ -82,7 +82,9 @@ final class OnboardingLayoutTests: XCTestCase {
 
     func testGetHelpPill() {
         assertSize(help.size, CGSize(width: 107, height: 36))
-        assertFrame(help.icon, rect(12, 9.5, 17, 17))
+        // The icon's column: OnboardingScreen.tsx's 17pt help-circle-outline
+        // is centred in the whole row.
+        assertFrame(help.icon, rect(12, 0, 17, 36))
         assertFrame(help.label, rect(35, 8, 60, 20))
     }
 

@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyIcons
 import HappyLayout
 import UIKit
 
@@ -58,7 +59,7 @@ extension VectorPath {
 
 /// The Get help pill in the bottom-right corner of the first-run screens.
 public final class GetHelpButton: UIControl {
-    let iconView = UIImageView(image: .symbol("questionmark.circle", pointSize: 15))
+    let iconView = IconView(.ionicons("help-circle-outline"), size: GetHelpButtonLayout.Metrics.iconSize)
     let label = StyledLabel(style: TextStyles.getHelp, color: Palette.textSecondary, lines: 1)
     public var onTap: (() -> Void)?
 
@@ -66,7 +67,6 @@ public final class GetHelpButton: UIControl {
         super.init(frame: frame)
         label.string = Strings.Onboarding.getHelp
         iconView.tintColor = UIColor(Palette.textSecondary)
-        iconView.contentMode = .center
         for view in [iconView, label] {
             view.isUserInteractionEnabled = false
             addSubview(view)
@@ -322,7 +322,7 @@ public final class LinkComputerContentView: UIView {
 
     let titleLabel = StyledLabel(style: TextStyles.onboardingTitle, color: Palette.text)
     let heads: [UIControl] = Step.allCases.map { _ in UIControl() }
-    let boxes: [UIImageView] = Step.allCases.map { _ in UIImageView() }
+    let boxes: [IconView] = Step.allCases.map { _ in IconView(size: ChecklistRowLayout.Metrics.boxSize) }
     let rowTitles: [StyledLabel] = Step.allCases.map { _ in StyledLabel(style: TextStyles.checklistTitle, color: Palette.text) }
     let bodies: [StyledLabel] = Step.allCases.map { _ in StyledLabel(style: TextStyles.checklistBody, color: Palette.textSecondary) }
     let errorLabel = StyledLabel(style: TextStyles.onboardingError, color: Palette.warningCritical, lines: 1, alignment: .center)
@@ -342,7 +342,6 @@ public final class LinkComputerContentView: UIView {
             head.addTarget(self, action: #selector(toggle(_:)), for: .touchUpInside)
             head.isAccessibilityElement = true
             head.accessibilityLabel = rowTitles[index].string
-            boxes[index].contentMode = .center
             boxes[index].isUserInteractionEnabled = false
             rowTitles[index].isUserInteractionEnabled = false
             addSubview(head)
@@ -418,10 +417,11 @@ public final class LinkComputerContentView: UIView {
     }
 }
 
-extension UIImageView {
-    /// ChecklistRow's box: a green tick or an empty circle.
+extension IconView {
+    /// OnboardingContent.tsx's ChecklistRow box: a 26pt green
+    /// checkmark-circle, or an empty ellipse-outline.
     func showChecklistBox(checked: Bool) {
-        image = .symbol(checked ? "checkmark.circle.fill" : "circle", pointSize: 22)
+        icon = .ionicons(checked ? "checkmark-circle" : "ellipse-outline")
         tintColor = UIColor(checked ? Palette.success : Palette.textSecondary)
     }
 }

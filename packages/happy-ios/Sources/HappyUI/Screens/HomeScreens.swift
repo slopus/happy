@@ -361,7 +361,7 @@ enum ComputerRow {
         ItemRowView(
             title: choice.name,
             subtitle: choice.online ? nil : Strings.Troubleshoot.machineOffline,
-            icon: ItemIcon("desktopcomputer", tint: Palette.textSecondary)
+            icon: ItemIcon(.ionicons("desktop-outline"), tint: Palette.textSecondary, size: 28)
         )
     }
 }

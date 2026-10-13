@@ -33,13 +33,15 @@ public struct Icon: Hashable, Sendable {
 }
 
 /// A glyph's outline and the font metrics needed to place it the way RN's
-/// `<Text style={{ fontSize }}>` places it.
+/// `<Text style={{ fontSize }}>` places it (see `IconLayout`).
 public struct IconGlyph: Equatable, Sendable {
-    /// The outline in font units, y pointing down, origin at the top of the
-    /// em box on the baseline's left edge minus the ascender.
+    /// The outline in font units, y pointing down, origin on the ascender
+    /// line at the pen position: a font-space point (x, y) is at
+    /// (x, ascender - y) here.
     public var path: VectorPath
     public var unitsPerEm: CGFloat
     public var advance: CGFloat
+    /// The font's hhea ascender (positive) and descender (negative).
     public var ascender: CGFloat
     public var descender: CGFloat
 
@@ -50,14 +52,81 @@ public struct IconGlyph: Equatable, Sendable {
         self.ascender = ascender
         self.descender = descender
     }
+
+    public var metrics: IconMetrics {
+        IconMetrics(unitsPerEm: unitsPerEm, advance: advance, ascender: ascender, descender: descender)
+    }
+
+    /// Where RN draws this glyph at `size` on a screen of `scale`.
+    public func layout(size: CGFloat, scale: CGFloat) -> IconLayout {
+        IconLayout(metrics: metrics, size: size, scale: scale)
+    }
 }
 
-/// Every icon the app ships. The table is generated from the icon fonts by
+/// Every icon the app ships. The tables are generated from the icon fonts by
 /// `scripts/generate-icons.py`; only icons happy-app references are included.
 public enum IconCatalog {
     /// Nil for an icon that was not generated. Tests check that every icon
     /// the app names is in the table.
     public static func glyph(for icon: Icon) -> IconGlyph? {
-        generatedGlyph(icon)
+        guard let entry = index[icon] else { return nil }
+        let font = generatedFonts[entry.font]
+        guard let path = GlyphOutline.decode(entry.outline) else { return nil }
+        return IconGlyph(
+            path: path,
+            unitsPerEm: CGFloat(font.unitsPerEm),
+            advance: entry.advance,
+            ascender: CGFloat(font.ascender),
+            descender: CGFloat(font.descender)
+        )
     }
+
+    /// Every generated icon, in table order.
+    public static var allIcons: [Icon] {
+        generatedFonts.flatMap { font in
+            font.glyphs.split(separator: "\n").compactMap { line in
+                line.split(separator: " ", maxSplits: 1).first.map { Icon(font.family, String($0)) }
+            }
+        }
+    }
+
+    /// The @expo/vector-icons version the tables were generated from.
+    public static var sourceVersion: String { generatedIconsVersion }
+
+    /// Whether the tables still match the checksum the generator wrote: FNV-1a
+    /// 64 over each font's family, metrics and glyph lines.
+    public static var checksumMatches: Bool {
+        var hash: UInt64 = 0xCBF2_9CE4_8422_2325
+        for font in generatedFonts {
+            let block = "\(font.family.rawValue)\n\(font.unitsPerEm) \(font.ascender) \(font.descender)\n\(font.glyphs)\n"
+            for byte in block.utf8 {
+                hash ^= UInt64(byte)
+                hash = hash &* 0x0000_0100_0000_01B3
+            }
+        }
+        return hash == generatedIconsChecksum
+    }
+
+    private struct Entry: Sendable {
+        let font: Int
+        let advance: CGFloat
+        let outline: Substring
+    }
+
+    /// Built on first use: one line per glyph, split but not decoded.
+    private static let index: [Icon: Entry] = {
+        var index: [Icon: Entry] = [:]
+        for (fontIndex, font) in generatedFonts.enumerated() {
+            for line in font.glyphs.split(separator: "\n") {
+                let fields = line.split(separator: " ")
+                guard fields.count == 3, let advance = Int(fields[1]) else { continue }
+                index[Icon(font.family, String(fields[0]))] = Entry(
+                    font: fontIndex,
+                    advance: CGFloat(advance),
+                    outline: fields[2]
+                )
+            }
+        }
+        return index
+    }()
 }

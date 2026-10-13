@@ -62,7 +62,11 @@ public final class AvatarView: UIView {
         pixels.setLayoutFrame(disc.bounds)
         if let content {
             if content.avatar.isBot {
-                glyph.setLayoutFrame(GeneratedAvatar.botGlyphFrame(avatarSize: size))
+                // Avatar.tsx: hardware-chip-outline at round(size * 0.55),
+                // centred in the disc. Drawn here, where the size is known.
+                let iconSize = GeneratedAvatar.botGlyphFrame(avatarSize: size).width
+                glyph.image = .icon(.ionicons("hardware-chip-outline"), size: iconSize)
+                glyph.setLayoutFrame(disc.bounds)
             } else if content.style == .brutalist {
                 glyph.setLayoutFrame(GeneratedAvatar.brutalistGlyphFrame(avatarSize: size))
             } else {
@@ -89,9 +93,10 @@ public final class AvatarView: UIView {
         glyph.isHidden = false
         if content.avatar.isBot {
             disc.backgroundColor = UIColor(Palette.surface)
-            glyph.image = .symbol("cpu", pointSize: 24)
-            glyph.contentMode = .scaleAspectFit
+            glyph.image = nil
+            glyph.contentMode = .center
             glyph.tintColor = UIColor(content.monochrome ? Palette.textSecondary : Palette.text)
+            setNeedsLayout()
         } else {
             switch content.style {
             case .brutalist:

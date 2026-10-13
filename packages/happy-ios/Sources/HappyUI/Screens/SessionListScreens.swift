@@ -135,7 +135,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         let row = ItemRowView(
             title: title,
             subtitle: Strings.Troubleshoot.bannerSubtitle,
-            icon: ItemIcon("exclamationmark.triangle", tint: Palette.warningText)
+            icon: ItemIcon(.ionicons("warning-outline"), tint: Palette.warningText, size: 28)
         ) { [weak self] in
             self?.openTroubleshoot()
         }
@@ -206,7 +206,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
             done(true)
             self?.archive(row.id)
         }
-        action.image = .symbol("archivebox", pointSize: 20)
+        action.image = .icon(.ionicons("archive-outline"), size: 20)
         action.backgroundColor = UIColor(Palette.statusError)
         let configuration = UISwipeActionsConfiguration(actions: [action])
         configuration.performsFirstActionWithFullSwipe = false

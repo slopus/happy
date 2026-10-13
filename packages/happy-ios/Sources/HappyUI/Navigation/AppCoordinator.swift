@@ -22,6 +22,7 @@ public final class AppCoordinator {
 
     public func start() {
         Self.applyAppearance(to: navigation.navigationBar)
+        ThemeController.apply(from: context, to: window)
         window.rootViewController = navigation
         window.tintColor = UIColor(Palette.headerTint)
         window.makeKeyAndVisible()
@@ -74,6 +75,8 @@ public final class AppCoordinator {
     /// stays the root and swaps its own content, so screens pushed over it
     /// stay put when a computer arrives.
     private func show(_ state: AccountController.State) {
+        // Each account keeps its own theme; logout clears it to adaptive.
+        ThemeController.apply(from: context, to: window)
         let session: AccountSession?
         if case .signedIn(let value) = state { session = value } else { session = nil }
         let identity = session.map(ObjectIdentifier.init)

@@ -106,6 +106,9 @@ public struct GetHelpButtonLayout: Equatable, Sendable {
     }
 
     public var size: CGSize
+    /// The icon's slot: its width, the pill's full height. The icon centres
+    /// itself in it (`IconView`), as `alignItems: 'center'` centres it in
+    /// the row.
     public var icon: CGRect
     public var label: CGRect
 
@@ -113,7 +116,7 @@ public struct GetHelpButtonLayout: Equatable, Sendable {
     public init(label: CGSize) {
         typealias M = Metrics
         let height = max(M.minHeight, label.height, M.iconSize)
-        icon = CGRect(x: M.paddingHorizontal, y: (height - M.iconSize) / 2, width: M.iconSize, height: M.iconSize)
+        icon = CGRect(x: M.paddingHorizontal, y: 0, width: M.iconSize, height: height)
         self.label = CGRect(x: icon.maxX + M.spacing, y: (height - label.height) / 2, width: label.width, height: label.height)
         size = CGSize(width: self.label.maxX + M.paddingHorizontal, height: height)
     }

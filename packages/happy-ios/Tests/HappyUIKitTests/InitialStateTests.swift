@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyIcons
 import HappyLayout
 @testable import HappyUI
 import UIKit
@@ -40,7 +41,7 @@ final class InitialStateTests: XCTestCase {
             title: "Log out and start over",
             subtitle: "Subtitle",
             detail: "Default",
-            icon: ItemIcon("server.rack", tint: Palette.textSecondary),
+            icon: ItemIcon(.ionicons("server-outline"), tint: Palette.textSecondary, size: 28),
             isDestructive: true,
             onTap: {}
         )
@@ -49,8 +50,10 @@ final class InitialStateTests: XCTestCase {
         XCTAssertEqual(row.titleLabel.numberOfLines, 1, "a subtitle caps the title at one line")
         XCTAssertEqual(row.detailLabel.string, "Default")
         XCTAssertFalse(row.detailLabel.isHidden)
-        XCTAssertNotNil(row.iconView.image)
-        XCTAssertFalse(row.iconView.isHidden)
+        XCTAssertEqual(row.glyphView.icon, .ionicons("server-outline"))
+        XCTAssertEqual(row.glyphView.size, 28)
+        XCTAssertFalse(row.glyphView.isHidden)
+        XCTAssertTrue(row.iconView.isHidden, "pictures only")
         XCTAssertEqual(row.titleLabel.color, Palette.textDestructive)
         XCTAssertTrue(row.isUserInteractionEnabled)
     }
@@ -60,6 +63,7 @@ final class InitialStateTests: XCTestCase {
         XCTAssertTrue(row.subtitleLabel.isHidden)
         XCTAssertTrue(row.detailLabel.isHidden)
         XCTAssertTrue(row.iconView.isHidden)
+        XCTAssertTrue(row.glyphView.isHidden)
         XCTAssertFalse(row.isUserInteractionEnabled)
     }
 

@@ -105,7 +105,8 @@ enum PairingFlow {
 extension UIViewController {
     /// A gear in the navigation bar.
     func settingsBarButton(action: Selector, label: String = Strings.Onboarding.settingsTitle) -> UIBarButtonItem {
-        let item = UIBarButtonItem(image: .symbol("gearshape", pointSize: 17), style: .plain, target: self, action: action)
+        // HomeHeader.tsx: settings-outline at 22.
+        let item = UIBarButtonItem(image: .icon(.ionicons("settings-outline"), size: 22), style: .plain, target: self, action: action)
         item.accessibilityLabel = label
         return item
     }

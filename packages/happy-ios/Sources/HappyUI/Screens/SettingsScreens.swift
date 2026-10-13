@@ -372,13 +372,13 @@ public final class OnboardingSettingsViewController: UIViewController {
         let server = ItemRowView(
             title: Strings.Onboarding.settingsServer,
             detail: activeServerHost(context) ?? Strings.Onboarding.settingsServerDefault,
-            icon: ItemIcon(.ionicons("server-outline"), tint: Palette.textSecondary)
+            icon: ItemIcon(.ionicons("server-outline"), tint: Palette.textSecondary, size: 28)
         ) { [weak self] in
             self?.openServer()
         }
         let logout = ItemRowView(
             title: Strings.Onboarding.logoutStartOver,
-            icon: ItemIcon(.ionicons("log-out-outline"), tint: Palette.textDestructive),
+            icon: ItemIcon(.ionicons("log-out-outline"), tint: Palette.textDestructive, size: 28),
             isDestructive: true
         ) { [weak self] in
             self?.logout()

@@ -274,9 +274,7 @@ public final class SettingsAppearanceViewController: UIViewController {
     /// Adaptive, Light, Dark, and round again. The choice stays on this
     /// device.
     private func cycleTheme() {
-        let next = context.account.localSettings.themePreference.next
-        context.account.localSettings.themePreference = next
-        SettingsHooks.applyTheme?(next)
+        ThemeController.set(context.account.localSettings.themePreference.next, in: context)
         rebuild()
     }
 

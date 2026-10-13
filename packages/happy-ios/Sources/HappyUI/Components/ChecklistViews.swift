@@ -99,9 +99,9 @@ public final class OfflineChecklistView: UIView {
     }
 
     let titleLabel = StyledLabel(style: TextStyles.emptyStateTitle, color: Palette.text)
-    let linkedBox = UIImageView()
+    let linkedBox = IconView(size: ChecklistRowLayout.Metrics.boxSize)
     let linkedLabel = StyledLabel(style: TextStyles.checklistTitle, color: Palette.text)
-    let openBox = UIImageView()
+    let openBox = IconView(size: ChecklistRowLayout.Metrics.boxSize)
     let openLabel = StyledLabel(style: TextStyles.checklistTitle, color: Palette.text)
     let openBody = StyledLabel(style: TextStyles.checklistBody, color: Palette.textSecondary)
     let terminal = TerminalBlockView(lines: [.command(Strings.Onboarding.terminalRun)])
@@ -115,9 +115,6 @@ public final class OfflineChecklistView: UIView {
         titleLabel.accessibilityTraits = .header
         linkedBox.showChecklistBox(checked: true)
         openBox.showChecklistBox(checked: false)
-        for box in [linkedBox, openBox] {
-            box.contentMode = .center
-        }
         openLabel.string = Strings.Onboarding.offlineOpenStep
         openBody.string = Strings.Onboarding.offlineOpenBody
         for view in [titleLabel, linkedBox, linkedLabel, openBox, openLabel, openBody, terminal, troubleshoot, linkAnother, showArchived] {

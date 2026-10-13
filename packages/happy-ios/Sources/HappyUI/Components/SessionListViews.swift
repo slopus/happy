@@ -14,7 +14,7 @@ final class SessionRowCell: UITableViewCell {
     let dot = UIView()
     let projectLabel = StyledLabel(style: TextStyles.sessionProject, color: Palette.textSecondary, lines: 1)
     let workspaceLabel = StyledLabel(style: TextStyles.sessionWorkspace, color: Palette.textSecondary, lines: 1)
-    let branchIcon = UIImageView(image: .symbol("arrow.triangle.branch", pointSize: 11))
+    let branchIcon = IconView(.ionicons("git-branch-outline"), size: FlatSessionRowLayout.Metrics.branchIconSize)
     let divider = UIView()
     private(set) var row: SessionRow?
 
@@ -322,7 +322,7 @@ public final class TextActionButton: UIControl {
 /// happy-app's "Start New Session" button is left out until the new
 /// session screen exists; the archive link stays.
 public final class NoSessionsView: UIView {
-    let icon = UIImageView(image: .symbol("terminal", pointSize: 48))
+    let icon = IconView(.ionicons("terminal-outline"), size: NoSessionsLayout.Metrics.iconSize)
     let titleLabel = StyledLabel(style: TextStyles.emptyStateTitle, color: Palette.text, alignment: .center)
     let descriptionLabel = StyledLabel(style: TextStyles.emptyStateDescription, color: Palette.textSecondary, alignment: .center)
     public let showArchived = TextActionButton(title: Strings.Sidebar.showArchived)
