@@ -67,7 +67,8 @@ public final class HomeViewController: UIViewController {
             state: HomeDerivation.Applied(),
             derive: { HomeDerivation.derive($0, applied: $1) },
             apply: { [weak self] update in
-                guard let self else { return false }
+                // Nothing from an account that is no longer the active one.
+                guard let self, self.isCurrentAccount else { return false }
                 ApplyPerf.measure(.home) { self.apply(update) }
                 return true
             }
@@ -124,6 +125,10 @@ public final class HomeViewController: UIViewController {
         header.frame = layout.header
         dockView.frame = view.bounds
         applyInsets(layout.insets)
+    }
+
+    private var isCurrentAccount: Bool {
+        context.account.session === session
     }
 
     /// Returns how many rows it touched.
@@ -590,7 +595,7 @@ final class TroubleshootViewController: UIViewController {
                 return model == applied ? nil : (model, model)
             },
             apply: { [weak self] model in
-                guard let self else { return false }
+                guard let self, self.context.account.session === self.session else { return false }
                 ApplyPerf.measure(.screen) {
                     self.update(model)
                     return model.choices.count

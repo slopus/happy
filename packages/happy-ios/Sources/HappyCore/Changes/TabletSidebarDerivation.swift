@@ -64,7 +64,7 @@ public enum TabletSidebarDerivation {
 
     public static func derive(_ snapshot: HomeSnapshot?, applied: Applied, clock: SessionList.Clock? = nil) -> (output: TabletSidebarUpdate, state: Applied)? {
         guard let snapshot else { return nil }
-        let frame = TabletSidebarFrame(TabletSidebarState(snapshot, clock: clock ?? SessionList.Clock()))
+        let frame = TabletSidebarFrame(TabletSidebarState(snapshot, clock: clock ?? HomeDerivation.clock(snapshot)))
         guard frame != applied.frame else { return nil }
         guard let after = frame.list else {
             return (TabletSidebarUpdate(frame: frame, changeset: nil), Applied(frame: frame, list: applied.list))

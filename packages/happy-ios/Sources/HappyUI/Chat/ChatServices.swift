@@ -46,7 +46,9 @@ struct ChatServices {
     /// useAttachmentImage's download and decryption: a picture's bytes.
     var attachment: @Sendable (_ ref: String) async throws -> Data = { _ in throw URLError(.fileDoesNotExist) }
 
-    static func make(account: AccountSession, sessionId: String) -> ChatServices {
+    /// `isCurrent` says whether `account` is still the active one; once it
+    /// is not, nothing derived from its store reaches the screen.
+    static func make(account: AccountSession, sessionId: String, isCurrent: @escaping @MainActor () -> Bool = { true }) -> ChatServices {
         let store = account.store
         let feed = account.homeFeed
         #if DEBUG
@@ -57,8 +59,8 @@ struct ChatServices {
                 feed: FixtureChatFeed(world: world),
                 sender: FixtureChatSender(world: world),
                 controls: FixtureChatControls(world: world),
-                observeSession: observe(feed: feed, sessionId: sessionId, record: record),
-                observeOtherSession: observeOther(feed: feed),
+                observeSession: observe(feed: feed, sessionId: sessionId, record: record, isCurrent: isCurrent),
+                observeOtherSession: observeOther(feed: feed, isCurrent: isCurrent),
                 pendingChats: account.pendingChats,
                 gitStatus: nil,
                 attachment: FixtureAttachments.data
@@ -69,8 +71,8 @@ struct ChatServices {
             feed: account.chatFeed,
             sender: account.sender,
             controls: account.actions,
-            observeSession: observe(feed: feed, sessionId: sessionId),
-            observeOtherSession: observeOther(feed: feed),
+            observeSession: observe(feed: feed, sessionId: sessionId, isCurrent: isCurrent),
+            observeOtherSession: observeOther(feed: feed, isCurrent: isCurrent),
             pendingChats: account.pendingChats,
             gitStatus: account.gitStatus,
             setPermissionMode: { [actions = account.actions, transport = account.realtime] mode in
@@ -104,10 +106,11 @@ struct ChatServices {
     }
 
     private static func observeOther(
-        feed: HomeFeed
+        feed: HomeFeed,
+        isCurrent: @escaping @MainActor () -> Bool
     ) -> (_ id: String, _ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation {
         { id, onChange in
-            observe(feed: feed, sessionId: id)(onChange)
+            observe(feed: feed, sessionId: id, isCurrent: isCurrent)(onChange)
         }
     }
 
@@ -119,7 +122,8 @@ struct ChatServices {
     static func observe(
         feed: HomeFeed,
         sessionId: String,
-        record: SessionRecord? = nil
+        record: SessionRecord? = nil,
+        isCurrent: @escaping @MainActor () -> Bool
     ) -> (_ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation {
         { onChange in
             let pipeline = ApplyPipeline<HomeSnapshot?, ChatSessionState?, ChatSessionState>(
@@ -131,6 +135,8 @@ struct ChatServices {
                     return state == applied ? nil : (state, state)
                 },
                 apply: { state in
+                    // Another account took over while this was derived.
+                    guard isCurrent() else { return false }
                     ApplyPerf.measure(.chatSession) {
                         onChange(state)
                         return 1

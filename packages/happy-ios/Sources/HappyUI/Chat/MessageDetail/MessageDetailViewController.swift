@@ -42,7 +42,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
         self.sessionId = sessionId
         self.messageId = messageId
         focusFile = file
-        services = ChatServices.make(account: account, sessionId: sessionId)
+        services = ChatServices.make(account: account, sessionId: sessionId, isCurrent: { [weak context, weak account] in account != nil && context?.account.session === account })
         super.init(nibName: nil, bundle: nil)
     }
 
