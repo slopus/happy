@@ -46,7 +46,7 @@ final class SessionChangesViewController: UIViewController {
         self.session = session
         self.sessionId = sessionId
         super.init(nibName: nil, bundle: nil)
-        title = Strings.ChangesDetail.title
+        setPlainHeaderTitle(Strings.ChangesDetail.title)
     }
 
     @available(*, unavailable)
