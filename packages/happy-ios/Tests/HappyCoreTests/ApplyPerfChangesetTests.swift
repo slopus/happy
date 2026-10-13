@@ -414,3 +414,57 @@ final class ApplyPerfPacingTests: XCTestCase {
         pipeline.cancel()
     }
 }
+
+final class ApplyPerfPresenceClockTests: XCTestCase {
+    private func stopped(_ snapshot: HomeSnapshot, index: Int, lastSeen: Int64) -> HomeSnapshot {
+        var snapshot = snapshot
+        snapshot.sessions[index].active = false
+        snapshot.sessions[index].activeAt = lastSeen
+        return snapshot
+    }
+
+    func testChatLastSeenChangesOnlyWithItsShownText() {
+        let now = ApplyPerfFixtures.now
+        var snapshot = stopped(ApplyPerfFixtures.snapshot(3), index: 1, lastSeen: now - 5 * 60_000)
+        snapshot.presenceNow = now
+        let first = ChatSessionState(snapshot, sessionId: "session-0001")
+        XCTAssertEqual(first.lastSeen, .minutes(5))
+        snapshot.presenceNow = now + 30_000
+        XCTAssertEqual(ChatSessionState(snapshot, sessionId: "session-0001"), first, "still 5 minutes")
+        snapshot.presenceNow = now + 60_000
+        XCTAssertEqual(ChatSessionState(snapshot, sessionId: "session-0001").lastSeen, .minutes(6))
+        // An online session shows no last seen: the clock changes nothing.
+        let online = ChatSessionState(snapshot, sessionId: "session-0002")
+        snapshot.presenceNow = now + 3_600_000
+        XCTAssertNil(online.lastSeen)
+        XCTAssertEqual(ChatSessionState(snapshot, sessionId: "session-0002"), online)
+    }
+
+    func testHomeRowsUseThePresenceClockAndIgnoreItsTicks() throws {
+        var snapshot = ApplyPerfFixtures.snapshot(5)
+        snapshot.presenceNow = ApplyPerfFixtures.now
+        let input = { (snapshot: HomeSnapshot) in HomeDerivation.Input(snapshot: snapshot, includesDock: true) }
+        let applied = try XCTUnwrap(HomeDerivation.derive(input(snapshot), applied: .init())).state
+        // A tick that changes no shown text: nothing for the main thread.
+        snapshot.presenceNow = ApplyPerfFixtures.now + 60_000
+        XCTAssertNil(HomeDerivation.derive(input(snapshot), applied: applied))
+        // A day later every stamp turns into a weekday: one reconfigure each.
+        snapshot.presenceNow = ApplyPerfFixtures.now + 25 * 3_600_000
+        let update = try XCTUnwrap(HomeDerivation.derive(input(snapshot), applied: applied)).output
+        XCTAssertEqual(update.changeset.reconfigures.count, 5)
+        XCTAssertFalse(update.changeset.isStructural)
+    }
+}
+
+final class ApplyPerfChatFactsTests: XCTestCase {
+    func testFactsComeFromOnePassOverTheMessages() throws {
+        var reducer = ChatReducer()
+        _ = reducer.reduce([ChatRecords.user("u1", localId: "local-1"), ChatRecords.text("a1")])
+        let messages = reducer.messages
+        let facts = ChatSnapshotFacts(ChatSnapshot(sessionId: "s", messages: messages, isLoaded: true))
+        XCTAssertTrue(facts.isLoaded)
+        XCTAssertFalse(facts.isEmpty)
+        XCTAssertFalse(facts.hasPendingQuestion)
+        XCTAssertEqual(facts.storedLocalIds, ["local-1"])
+    }
+}

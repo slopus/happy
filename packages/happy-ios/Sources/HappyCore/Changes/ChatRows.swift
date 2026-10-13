@@ -186,3 +186,76 @@ public final class RowPlanner<Input: Equatable & Sendable, Plan: Sendable>: @unc
         return (rows, changeset, measured)
     }
 }
+
+/// What the chat screen reads from a snapshot besides its rows: the
+/// placeholder, the composer and the questions a sent message answers.
+/// Worked out with the rows, so the main thread never scans the messages.
+public struct ChatSnapshotFacts: Equatable, Sendable {
+    public var isLoaded: Bool
+    public var isEmpty: Bool
+    public var usage: ChatUsage?
+    public var delivery: [String: OutboxDelivery]
+    /// The agent waits on a question the person can answer by typing.
+    public var hasPendingQuestion: Bool
+    /// Local ids of the user messages the server has stored.
+    public var storedLocalIds: Set<String>
+
+    public init(_ snapshot: ChatSnapshot) {
+        isLoaded = snapshot.isLoaded
+        isEmpty = snapshot.messages.isEmpty
+        usage = snapshot.usage
+        delivery = snapshot.delivery
+        var pendingQuestion = false
+        var stored = Set<String>()
+        for message in snapshot.messages {
+            switch message {
+            case .toolCall(let call):
+                if !pendingQuestion, ChatToolDisplay.isInteractiveQuestion(call.tool.name), call.tool.state == .running {
+                    pendingQuestion = true
+                }
+            case .userText(let user):
+                if let localId = user.localId { stored.insert(localId) }
+            default:
+                break
+            }
+        }
+        hasPendingQuestion = pendingQuestion
+        storedLocalIds = stored
+    }
+}
+
+/// The chat's rows from a snapshot, off the main thread: the window, the
+/// display items, one row input each (`makeRows`, the screen's own), then
+/// a plan per row measured only when its input or the width changed, and
+/// the changeset against the rows the list applied last.
+public enum ChatRowsDerivation {
+    public struct Result<Row: Equatable & Sendable, Plan: Sendable>: Sendable {
+        public var window: ChatWindowItems
+        public var rows: PlannedRows<Row, Plan>
+        public var changeset: RowChangeset
+        /// Rows measured for this result.
+        public var measured: Int
+    }
+
+    public static func derive<Row: Equatable & Sendable, Plan: Sendable>(
+        messages: [ChatMessage],
+        window: ChatWindowState,
+        requests: ChatWindowRequests,
+        groupToolCalls: Bool,
+        currentTurnComplete: Bool,
+        inForeground: Bool,
+        width: CGFloat,
+        planner: RowPlanner<Row, Plan>,
+        applied: PlannedRows<Row, Plan>,
+        makeRows: (_ items: [ChatListItem], _ groups: ChatWorkGroupState) -> [Row],
+        id: (Row) -> String
+    ) -> Result<Row, Plan> {
+        let items = ChatWindowing.items(
+            messages, state: window, requests: requests, groupToolCalls: groupToolCalls,
+            currentTurnComplete: currentTurnComplete, inForeground: inForeground
+        )
+        let rows = makeRows(items.items, items.state.groups)
+        let planned = planner.plan(rows, id: id, width: width, applied: applied)
+        return Result(window: items, rows: planned.rows, changeset: planned.changeset, measured: planned.measured)
+    }
+}

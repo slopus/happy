@@ -17,12 +17,17 @@ public struct ChatSessionState: Equatable, Sendable {
     public var dataReady: Bool
     /// The machine a stopped session ran on, for whether it can be resumed.
     public var machine: MachineRecord?
+    /// A stopped session's "last seen" as the composer's status shows it,
+    /// at the presence clock (`HomeSnapshot.presenceNow`). It changes only
+    /// when the shown text does, so the clock moving changes nothing else.
+    public var lastSeen: ComposerStatus.LastSeen?
 
-    public init(record: SessionRecord?, settings: AccountSettings, dataReady: Bool = false, machine: MachineRecord? = nil) {
+    public init(record: SessionRecord?, settings: AccountSettings, dataReady: Bool = false, machine: MachineRecord? = nil, lastSeen: ComposerStatus.LastSeen? = nil) {
         self.record = record
         self.settings = settings
         self.dataReady = dataReady
         self.machine = machine
+        self.lastSeen = lastSeen
     }
 
     public var metadata: JSONValue? { record?.metadata }
@@ -52,15 +57,19 @@ extension ChatSessionState {
     /// Session `sessionId` as the chat screen draws it, from one home
     /// snapshot (one read, so the record and the settings agree). `record`
     /// replaces the stored one (the debug fixtures).
-    public init(_ snapshot: HomeSnapshot, sessionId: String, record override: SessionRecord? = nil) {
+    /// `now` (ms) stands in when the presence clock has not started.
+    public init(_ snapshot: HomeSnapshot, sessionId: String, record override: SessionRecord? = nil, now: Int64? = nil) {
         let record = override ?? snapshot.sessions.first { $0.id == sessionId }
+        let stopped = record.map { SessionState($0) == .disconnected } ?? false
         // Only a stopped session needs its machine, for resuming.
-        let machineId = record.flatMap { SessionState($0) == .disconnected ? $0.metadata?["machineId"]?.stringValue : nil }
+        let machineId = stopped ? record?.metadata?["machineId"]?.stringValue : nil
+        let clock = snapshot.presenceNow ?? now ?? Int64(Date().timeIntervalSince1970 * 1000)
         self.init(
             record: record.map(Self.rendered),
             settings: Self.rendered(AccountSettings(snapshot.settings)),
             dataReady: snapshot.sessionsSynced || !snapshot.sessions.isEmpty,
-            machine: machineId.flatMap { id in snapshot.machines.machines.first { $0.id == id } }.map(Self.rendered)
+            machine: machineId.flatMap { id in snapshot.machines.machines.first { $0.id == id } }.map(Self.rendered),
+            lastSeen: stopped ? record.map { ComposerStatus.lastSeen(activeAt: $0.activeAt, now: clock) } : nil
         )
     }
 

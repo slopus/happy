@@ -123,7 +123,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         self.context = context
         self.account = account
         self.sessionId = sessionId
-        let services = ChatServices.make(account: account, sessionId: sessionId)
+        let services = ChatServices.make(account: account, sessionId: sessionId, isCurrent: { [weak context, weak account] in account != nil && context?.account.session === account })
         self.services = services
         composer = ChatComposerFactory.make(ChatComposerEnvironment(
             sessionId: sessionId, account: account, sender: services.sender, controls: services.controls
