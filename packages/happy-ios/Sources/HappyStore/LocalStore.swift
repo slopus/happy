@@ -24,6 +24,7 @@ public final class LocalStore: Sendable {
     let machinesObservation: SharedValueObservation<MachinesSnapshot>
     let homeHub: SnapshotHub<HomeSnapshot>
     let machinesHub: SnapshotHub<MachinesSnapshot>
+    let troubleshootingHub: SnapshotHub<TroubleshootingSnapshot>
     let presenceOverlay: PresenceOverlay
 
     /// Opens (creating if needed) the store at `url`, in WAL mode so the UI
@@ -73,6 +74,12 @@ public final class LocalStore: Sendable {
         presenceOverlay = overlay
         homeHub = SnapshotHub(observation: homeObservation, project: { overlay.home($0) })
         machinesHub = SnapshotHub(observation: machinesObservation, project: { overlay.machineSnapshot($0) })
+        let troubleRegion = SQLRequest<Row>(sql: "SELECT id, updatedAt, active, createdAt, metadata FROM session")
+        let troubleMachines = SQLRequest<Row>(sql: "SELECT id, createdAt, active, activeAt, metadata FROM machine")
+        let troubleshootingObservation = ValueObservation.tracking(region: troubleRegion, troubleMachines,
+            fetch: { db in try Self.fetchTroubleshootingSnapshot(db) }
+        ).removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))
+        troubleshootingHub = SnapshotHub(observation: troubleshootingObservation, project: { overlay.troubleshooting($0) })
         try Schema.migrator.migrate(writer)
         // Live state from a previous run is stale: the server re-sends
         // `thinking` every few seconds while it holds, and an archive that

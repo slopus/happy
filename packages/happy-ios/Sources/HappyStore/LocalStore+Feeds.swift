@@ -9,6 +9,7 @@ extension LocalStore {
     public func stopSnapshotProducers() async {
         await homeHub.stop()
         await machinesHub.stop()
+        await troubleshootingHub.stop()
     }
 
     public func setSessionPresenceOverlay(id: String, value: PresenceOverlayValue) { presenceOverlay.setSession(id, value) }
@@ -21,6 +22,7 @@ extension LocalStore {
     public func refreshPresenceDisplay() async {
         await homeHub.refresh()
         await machinesHub.refresh()
+        await troubleshootingHub.refresh()
     }
 
     private static func stream<Value: Sendable>(_ observation: SharedValueObservation<Value>) -> AsyncStream<Value> {

@@ -85,6 +85,14 @@ final class PresenceOverlay: @unchecked Sendable {
         lock.withLock { overlayMachines(raw) }
     }
 
+    func troubleshooting(_ raw: TroubleshootingSnapshot) -> TroubleshootingSnapshot {
+        lock.withLock {
+            var value = raw
+            value.machines = overlayMachines(MachinesSnapshot(synced: true, machines: raw.machines)).machines
+            return value
+        }
+    }
+
     private func overlayMachines(_ raw: MachinesSnapshot) -> MachinesSnapshot {
         var value = raw
         for index in value.machines.indices {
