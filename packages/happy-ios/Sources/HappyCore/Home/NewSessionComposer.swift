@@ -35,7 +35,20 @@ public final class NewSessionComposer {
         self.snapshot = snapshot
         self.ops = ops
         choices = NewSessionChoices(.init(draft: drafts.draft, createsBot: drafts.createsBot, snapshot: snapshot))
-        draftObservation = drafts.observe { [weak self] _ in self?.refresh() }
+        draftObservation = drafts.observe { [weak self] _ in self?.draftChanged() }
+        refresh()
+    }
+
+    /// The draft the choices were last built from.
+    private var builtFrom: (draft: NewSessionDraft, createsBot: Bool)?
+
+    /// A bot's name and faces move no picker: what shows them is told, and
+    /// the choices stay as they are.
+    private func draftChanged() {
+        if let built = builtFrom, built.draft == drafts.draft, built.createsBot == drafts.createsBot, !refreshing {
+            onChange?()
+            return
+        }
         refresh()
     }
 
@@ -150,10 +163,26 @@ public final class NewSessionComposer {
         )
     }
 
+    /// The bot the draft names: Happy Agent on the chosen computer, named
+    /// and wearing the picked face. A bot takes no first message.
+    public func launchBot() -> Result<NewSessionLaunch, NewSessionLaunch.Refusal> {
+        NewSessionLaunch.resolve(
+            draft: drafts.draft,
+            pickedAgent: drafts.draft.pickedAgentType,
+            bot: (name: drafts.botName, faceSeed: drafts.botFaceSeed),
+            machines: snapshot.machines.machines,
+            sessions: snapshot.sessions,
+            agentDefaultOverrides: AccountSettings(snapshot.settings).agentDefaultOverrides,
+            prompt: "",
+            attachments: []
+        )
+    }
+
     /// Whether the composer still asks for the session a start began with
-    /// (`isCurrentTarget`): false once any of its pickers moved.
-    public func isCurrentTarget(_ started: NewSessionDraft) -> Bool {
-        drafts.draft.sameTarget(as: started)
+    /// (`isCurrentTarget`): false once any of its pickers moved, or the bot
+    /// it makes changed.
+    public func isCurrentTarget(_ started: NewSessionDraft, bot: NewSessionBotDraft) -> Bool {
+        drafts.draft.sameTarget(as: started) && drafts.bot == bot
     }
 
     // MARK: Refresh
@@ -175,6 +204,7 @@ public final class NewSessionComposer {
                 snapshot: snapshot,
                 gitWorktrees: gitWorktrees
             ))
+            builtFrom = (drafts.draft, drafts.createsBot)
             reconcile()
             passes += 1
         } while needsRefresh && passes < 4
