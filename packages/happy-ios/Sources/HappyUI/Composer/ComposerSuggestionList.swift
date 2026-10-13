@@ -208,11 +208,32 @@ final class ComposerSuggestionRowView: UIControl {
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
             self.applyContent()
         }
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.syncTextSize()
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    /// The person's text size, where the composer follows it: the text
+    /// grows inside the fixed 48pt row (`itemHeight`), as RN's does.
+    private var textScale: TextScale?
+
+    private func style(_ style: TextStyle) -> TextStyle {
+        textScale.map { style.scaled($0) } ?? style
+    }
+
+    /// Draws again when the text size here moved; true if it did.
+    @discardableResult
+    private func syncTextSize() -> Bool {
+        let scale = traitCollection.textEnvironment?.scale
+        guard scale != textScale else { return false }
+        textScale = scale
+        applyContent()
+        return true
     }
 
     private func applyBackground() {
@@ -226,13 +247,14 @@ final class ComposerSuggestionRowView: UIControl {
     }
 
     private func applyContent() {
+        textScale = traitCollection.textEnvironment?.scale
         applyBackground()
         iconCircle.backgroundColor = UIColor(Palette.surfaceHigh)
         switch suggestion?.kind {
         case .command(let name, let description):
-            nameLabel.attributedText = TextStyles.suggestionCommand.attributedString("/\(name)", color: UIColor(Palette.text))
+            nameLabel.attributedText = style(TextStyles.suggestionCommand).attributedString("/\(name)", color: UIColor(Palette.text))
             detailLabel.attributedText = description.map {
-                TextStyles.suggestionDescription.attributedString($0, color: UIColor(Palette.textSecondary), lineBreakMode: .byTruncatingTail)
+                style(TextStyles.suggestionDescription).attributedString($0, color: UIColor(Palette.textSecondary), lineBreakMode: .byTruncatingTail)
             }
             nameLabel.isHidden = false
             detailLabel.isHidden = description == nil
@@ -242,10 +264,10 @@ final class ComposerSuggestionRowView: UIControl {
             accessibilityLabel = description.map { "/\(name), \($0)" } ?? "/\(name)"
         case .file(let name, let path, let isFolder):
             let tag = isFolder ? Strings.Composer.folderLabel : Strings.Composer.fileLabel
-            detailLabel.attributedText = TextStyles.suggestionFile.attributedString(
+            detailLabel.attributedText = style(TextStyles.suggestionFile).attributedString(
                 path + name, color: UIColor(Palette.textSecondary), lineBreakMode: .byTruncatingTail
             )
-            tagLabel.attributedText = TextStyles.suggestionLabel.attributedString(tag, color: UIColor(Palette.textSecondary))
+            tagLabel.attributedText = style(TextStyles.suggestionLabel).attributedString(tag, color: UIColor(Palette.textSecondary))
             iconView.icon = .ionicons(isFolder ? "folder" : "document-text")
             nameLabel.isHidden = true
             detailLabel.isHidden = false
@@ -265,6 +287,8 @@ final class ComposerSuggestionRowView: UIControl {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        // Measured as drawn.
+        syncTextSize()
         switch suggestion?.kind {
         case .command(_, let description):
             let layout = ComposerSuggestionRowLayout(
