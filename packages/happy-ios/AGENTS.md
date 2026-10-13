@@ -432,10 +432,12 @@ Shared seams, changed only through the coordinator:
 - `Sources/HappyCore/Chat/ChatMessage.swift` and `ChatContracts.swift`:
   the reducer produces `ChatMessage`, the UI reads `ChatSnapshot` from a
   `ChatFeed` and sends through `ChatSending`;
-- `Sources/HappyUI/Composer/ChatComposer.swift`: the chat screen hosts
-  whatever `ComposerFactory.make` returns, feeds it `ComposerState` and
-  re-lays out on `onHeightChange`; the composer never handles the
-  keyboard;
+- `Sources/HappyUI/Chat/ChatComposer.swift`: the chat screen hosts
+  whatever `ChatComposerFactory.make` returns (a `ChatComposerView`),
+  feeds it `ChatComposerState` and re-lays out on
+  `composerDidInvalidateHeight`; the composer never handles the
+  keyboard. The Composer workstream swaps only the one line in
+  `ChatComposerFactory.make`;
 - `SessionActions` (permission, abort, questions, archive);
 - `AccountController.accounts` and `switchAccount(to:)`;
 - `Sources/HappyUI/Navigation/Route.swift`: screens open each other only

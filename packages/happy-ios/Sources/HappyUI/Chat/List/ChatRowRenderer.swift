@@ -1,0 +1,441 @@
+#if canImport(UIKit)
+import HappyCore
+import HappyIcons
+import HappyLayout
+import UIKit
+
+/// The settings and session facts that change how every row looks.
+struct ChatRowStyle: Equatable, Sendable {
+    var bubble: BubbleColor = .gray
+    var compactTools = false
+    /// Absent flavor is Claude: its SDK echoes slash commands as chips.
+    var claudeFlavor = true
+    var maxContentWidth: CGFloat = .greatestFiniteMagnitude
+}
+
+/// Everything one row is drawn from. Equal inputs at the same width give
+/// the same plan, which is what the measuring cache relies on.
+struct ChatRowInput: Equatable, Sendable {
+    var item: ChatListItem
+    /// Outbox state, for a message this device hasn't delivered yet.
+    var delivery: OutboxDelivery?
+    /// For a work header: whether its group is open.
+    var expanded = false
+    var style: ChatRowStyle
+
+    var id: String { item.id }
+}
+
+/// Builds a row's plan from its input: measures the text with TextKit,
+/// places it with the pure layouts in HappyLayout, and lists what to draw.
+/// Runs on the measuring actor, never on the main thread.
+enum ChatRowRenderer {
+    /// Rows that render as nothing (MessageView returns null): the SDK's
+    /// caveats and goal confirmations, and the echo of a slash command the
+    /// SDK re-emits as a chip.
+    static func isShown(_ item: ChatListItem, style: ChatRowStyle) -> Bool {
+        guard case .message(.userText(let message)) = item else { return true }
+        if style.claudeFlavor && LocalCommandMessage.isSlashCommandEcho(message.text, hasLocalId: message.localId != nil) {
+            return false
+        }
+        switch LocalCommandMessage(message.displayText ?? message.text) {
+        case .caveat, .goalConfirmation: return false
+        default: return true
+        }
+    }
+
+    static func plan(_ input: ChatRowInput, width: CGFloat) -> ChatRowPlan {
+        switch input.item {
+        case .workHeader(let group, let placement):
+            return workHeader(input.id, group: group, placement: placement, expanded: input.expanded, width: width, style: input.style)
+        case .message(let message):
+            switch message {
+            case .userText(let user): return userText(user, delivery: input.delivery, width: width, style: input.style)
+            case .agentText(let agent): return agentText(agent, width: width, style: input.style)
+            case .toolCall(let call): return toolCall(call, width: width, style: input.style)
+            case .agentEvent(let event): return agentEvent(event, width: width, style: input.style)
+            case .unsupported(let unsupported): return unsupportedRow(unsupported, width: width, style: input.style)
+            }
+        }
+    }
+
+    // MARK: User messages
+
+    static func userText(_ message: UserTextMessage, delivery: OutboxDelivery?, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
+        let palette = bubblePalette(style.bubble)
+        let author = message.author.flatMap { $0.owner == true ? nil : $0 }
+        let authorText = author.map { MeasuredText(ChatTextStyles.userAuthor.string($0.name, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail), maxLines: 1) }
+
+        let parsed = LocalCommandMessage(message.displayText ?? message.text)
+        var markdown: MarkdownPiece?
+        var chipText: MeasuredText?
+        var sentText: MeasuredText?
+        let content: UserMessageLayout.Content
+        let copyText: String
+        switch parsed {
+        case .goalRun(let goal):
+            let piece = MarkdownPiece(goal, color: Palette.userMessageText)
+            sentText = MeasuredText(ChatTextStyles.goalSent.string(Strings.ChatMessage.sentAsGoal, color: Palette.textSecondary))
+            content = .goal(piece.blocks, sentLabel: sentText!.measurable)
+            markdown = piece
+            copyText = goal
+        case .commandRun(let name, let arguments):
+            chipText = MeasuredText(ChatTextStyles.commandChip.string("/\(name)", color: Palette.userMessageText), maxLines: 1)
+            let piece = arguments.map { MarkdownPiece($0, color: Palette.userMessageText) }
+            content = .command(chip: chipText!.measurable, arguments: piece?.blocks)
+            markdown = piece
+            copyText = arguments.map { "/\(name) \($0)" } ?? "/\(name)"
+        case .text(let text):
+            let piece = MarkdownPiece(text, color: Palette.userMessageText)
+            content = .text(piece.blocks)
+            markdown = piece
+            copyText = text
+        case .caveat, .goalConfirmation:
+            return ChatRowPlan(id: message.id, size: CGSize(width: width, height: 0), items: [])
+        }
+
+        let layout = UserMessageLayout(.init(width: width, maxContentWidth: style.maxContentWidth, author: authorText?.measurable, content: content))
+        var items: [ChatDrawItem] = []
+        var hits: [ChatHit] = []
+        if let frame = layout.author, let authorText { items.append(.text(authorText.layout(for: frame), frame)) }
+        if let bubble = layout.bubble {
+            items.append(.box(ChatBox(frame: bubble, fill: palette.background, border: palette.border, borderWidth: 1, radius: UserMessageLayout.Metrics.bubbleRadius)))
+            hits.append(ChatHit(frame: bubble, action: .copy(copyText)))
+        }
+        if let placed = layout.markdown, let markdown {
+            let drawn = markdown.draw(placed, origin: layout.markdownOrigin)
+            items += drawn.items
+            hits = drawn.hits + hits
+        }
+        if let chip = layout.chip, let label = layout.chipLabel, let chipText {
+            items.append(.box(ChatBox(frame: chip, fill: palette.background, border: palette.border, borderWidth: UserMessageLayout.Metrics.chipBorder, radius: UserMessageLayout.Metrics.chipRadius)))
+            items.append(.text(chipText.layout(for: label), label))
+        }
+        if let icon = layout.goalIcon, let label = layout.goalLabel, let sentText {
+            items.append(.icon(.ionicons("locate-outline"), size: UserMessageLayout.Metrics.goalIconSize, frame: icon, tint: Palette.textSecondary))
+            items.append(.text(sentText.layout(for: label), label))
+        }
+
+        // The status line is always there at one line's height, so a row
+        // never changes height when a message settles.
+        let failure = message.sendError ?? { if case .failed(let reason) = delivery { return reason } else { return nil } }()
+        let status: String
+        if let failure {
+            status = Strings.ChatMessage.sendFailed(failure)
+        } else if message.pending || delivery != nil {
+            status = message.meta?.queuedWhileBusy == true ? Strings.ChatMessage.sendsAfterThisTurn : Strings.ChatMessage.sending
+        } else {
+            status = ""
+        }
+        if !status.isEmpty {
+            let color = failure != nil ? Palette.statusError : Palette.textSecondary
+            let text = ChatTextLayout(ChatTextStyles.pendingStatus.string(status, color: color, alignment: layout.alignsLeft ? .left : .right, lineBreakMode: .byTruncatingTail), width: layout.status.width, maxLines: 1)
+            items.append(.text(text, layout.status))
+            if case .failed = delivery, let localId = message.localId {
+                hits.insert(ChatHit(frame: layout.status, action: .retry(localId: localId)), at: 0)
+            }
+        }
+        // A message the agent hasn't read yet is dimmed; a refused one is not.
+        let dimmed = message.pending && failure == nil
+        return ChatRowPlan(
+            id: message.id, size: layout.size, items: items, hits: hits,
+            alpha: dimmed ? UserMessageLayout.Metrics.pendingOpacity : 1,
+            accessibilityLabel: [author?.name, copyText, status.isEmpty ? nil : status].compactMap { $0 }.joined(separator: ", ")
+        )
+    }
+
+    static func bubblePalette(_ color: BubbleColor) -> BubblePalette {
+        let index = BubbleColor.allCases.firstIndex(of: color) ?? 0
+        return BubblePalette.all.indices.contains(index) ? BubblePalette.all[index] : .gray
+    }
+
+    // MARK: Agent rows
+
+    static func agentText(_ message: AgentTextMessage, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
+        let markdown = MarkdownPiece(message.text, color: Palette.text)
+        let layout = AgentTextLayout(width: width, maxContentWidth: style.maxContentWidth, blocks: markdown.blocks)
+        let drawn = markdown.draw(layout.markdown, origin: layout.markdownOrigin)
+        let slop = AgentTextLayout.Metrics.copyHitSlop
+        let copyTarget = CGRect(
+            x: layout.copyButton.minX - slop.left, y: layout.copyButton.minY - slop.top,
+            width: layout.copyButton.width + slop.left + slop.right, height: layout.copyButton.height + slop.top + slop.bottom
+        )
+        return ChatRowPlan(
+            id: message.id, size: layout.size,
+            items: drawn.items + [.icon(.ionicons("copy-outline"), size: AgentTextLayout.Metrics.copyIconSize, frame: layout.copyIcon, tint: Palette.text)],
+            hits: [ChatHit(frame: copyTarget, action: .copy(message.text))] + drawn.hits,
+            accessibilityLabel: message.text
+        )
+    }
+
+    static func agentEvent(_ message: AgentEventMessage, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
+        let label: String
+        switch message.event {
+        case .modeSwitch(let mode): label = Strings.ChatMessage.switchedToMode(mode)
+        case .message(let text): label = text
+        case .limitReached(let endsAt):
+            let formatter = DateFormatter()
+            formatter.timeStyle = .short
+            formatter.dateStyle = .none
+            label = Strings.ChatMessage.usageLimitUntil(formatter.string(from: Date(timeIntervalSince1970: TimeInterval(endsAt))))
+        default: label = Strings.ChatMessage.unknownEvent
+        }
+        return centredLine(message.id, label, style: ChatTextStyles.agentEvent, color: Palette.agentEventText, width: width, maxContentWidth: style.maxContentWidth)
+    }
+
+    static func unsupportedRow(_ message: UnsupportedMessage, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
+        centredLine(message.id, Strings.Chat.unsupported(message.kind), style: ChatTextStyles.unsupported, color: Palette.textSecondary, width: width, maxContentWidth: style.maxContentWidth)
+    }
+
+    static func centredLine(_ id: String, _ label: String, style textStyle: ChatTextStyle, color: ColorToken, width: CGFloat, maxContentWidth: CGFloat) -> ChatRowPlan {
+        let text = MeasuredText(textStyle.string(label, color: color, alignment: .center))
+        let layout = ChatEventLayout(width: width, maxContentWidth: maxContentWidth, label: text.measurable)
+        return ChatRowPlan(id: id, size: layout.size, items: [.text(text.layout(for: layout.label), layout.label)], accessibilityLabel: label)
+    }
+
+    /// For now every tool is its compact activity row; the cards, the
+    /// tool views and the permission buttons come next.
+    static func toolCall(_ message: ToolCallMessage, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
+        let tool = message.tool
+        let label = ChatToolDisplay.activityLabel(tool, words: Strings.ToolGroup.words)
+        let text = MeasuredText(ChatTextStyles.compactActivity.string(label, color: Palette.text, lineBreakMode: .byTruncatingTail), maxLines: 1)
+        let layout = CompactToolRowLayout(width: width, maxContentWidth: style.maxContentWidth, label: text.measurable, elapsed: nil, statusIcon: nil, footer: nil)
+        let icon: Icon = switch ChatToolDisplay.category(tool.name) {
+        case .terminal: .octicons("terminal")
+        case .edit: .octicons("file-diff")
+        case .read: .octicons("eye")
+        case .search: .octicons("search")
+        case .web: .ionicons("globe-outline")
+        case .task: .octicons("rocket")
+        case .other: .ionicons("construct-outline")
+        }
+        let tint = tool.state == .error ? Palette.statusError : Palette.textSecondary
+        return ChatRowPlan(
+            id: message.id, size: layout.size,
+            items: [
+                .icon(icon, size: 16, frame: layout.icon, tint: tint),
+                .text(text.layout(for: layout.label), layout.label),
+            ],
+            hits: [ChatHit(frame: layout.header, action: .openMessage(message.id))],
+            accessibilityLabel: label
+        )
+    }
+
+    static func workHeader(_ id: String, group: ChatWorkGroup, placement: ChatListItem.Placement, expanded: Bool, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
+        let trailing = placement == .trailing
+        let duration = (group.completedAt ?? group.startedAt) - group.startedAt
+        let label = trailing ? Strings.ToolGroup.hide : Strings.ToolGroup.workedFor(ChatDisplay.formatWorkDuration(milliseconds: duration))
+        let text = MeasuredText(ChatTextStyles.workGroup.string(label, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail), maxLines: 1)
+        let layout = WorkGroupHeaderLayout(width: width, maxContentWidth: style.maxContentWidth, label: text.measurable)
+        let chevron: Icon = trailing || expanded ? .ionicons("chevron-up") : .ionicons("chevron-forward")
+        return ChatRowPlan(
+            id: id, size: layout.size,
+            items: [
+                .text(text.layout(for: layout.label), layout.label),
+                .icon(chevron, size: WorkGroupHeaderLayout.Metrics.chevronSize, frame: layout.chevron, tint: Palette.textSecondary),
+            ],
+            hits: [ChatHit(frame: layout.header, action: .toggleGroup(group.id))],
+            accessibilityLabel: label
+        )
+    }
+}
+
+// MARK: Markdown
+
+/// A markdown text measured block by block: the blocks for a pure layout,
+/// and once that layout has placed them, what to draw where.
+struct MarkdownPiece {
+    let blocks: [MarkdownLayout.Block]
+    private let drawers: [(MarkdownLayout.Placed, CGPoint) -> ([ChatDrawItem], [ChatHit])]
+
+    static let bullets = ["•", "◦", "▪"]
+
+    init(_ markdown: String, color: ColorToken) {
+        var blocks: [MarkdownLayout.Block] = []
+        var drawers: [(MarkdownLayout.Placed, CGPoint) -> ([ChatDrawItem], [ChatHit])] = []
+
+        func text(_ measured: MeasuredText) -> (MarkdownLayout.Placed, CGPoint) -> ([ChatDrawItem], [ChatHit]) {
+            { placed, origin in
+                let frame = placed.frame.offsetBy(dx: origin.x, dy: origin.y)
+                return ([.text(measured.layout(for: placed.frame), frame)], [])
+            }
+        }
+
+        for block in Markdown.parse(markdown) {
+            switch block {
+            case .text(let spans):
+                let measured = MeasuredText(ChatSpans.string(spans, style: ChatTextStyles.markdownText, color: color))
+                blocks.append(.text(measured.measurable))
+                drawers.append(text(measured))
+
+            case .header(let level, let spans):
+                let measured = MeasuredText(ChatSpans.string(spans, style: ChatTextStyles.markdownHeader(level), color: color))
+                blocks.append(.header(level: level, measured.measurable))
+                drawers.append(text(measured))
+
+            case .horizontalRule:
+                blocks.append(.rule)
+                drawers.append { placed, origin in
+                    ([.box(ChatBox(frame: placed.frame.offsetBy(dx: origin.x, dy: origin.y), fill: Palette.divider))], [])
+                }
+
+            case .list(let items):
+                let rows = items.map { item in
+                    (MeasuredText(ChatTextStyles.markdownText.string(Self.bullets[min(item.depth, Self.bullets.count - 1)], color: color)),
+                     MeasuredText(ChatSpans.string(item.spans, style: ChatTextStyles.markdownText, color: color)), item.depth)
+                }
+                blocks.append(.list(rows.map { .init(depth: $0.2, marker: $0.0.measurable, text: $0.1.measurable) }))
+                drawers.append(Self.listDrawer(rows.map { ($0.0, $0.1) }))
+
+            case .numberedList(let items):
+                let rows = items.map { item in
+                    (MeasuredText(ChatTextStyles.markdownText.string("\(item.number).", color: color)),
+                     MeasuredText(ChatSpans.string(item.spans, style: ChatTextStyles.markdownText, color: color)), item.depth)
+                }
+                blocks.append(.list(rows.map { .init(depth: $0.2, marker: $0.0.measurable, text: $0.1.measurable) }))
+                drawers.append(Self.listDrawer(rows.map { ($0.0, $0.1) }))
+
+            case .codeBlock(let language, let content):
+                Self.code(language: language, content: content, blocks: &blocks, drawers: &drawers)
+
+            case .mermaid(let content):
+                Self.code(language: "mermaid", content: content, blocks: &blocks, drawers: &drawers)
+
+            case .options(let options):
+                let labels = options.map { MeasuredText(ChatTextStyles.option.string($0, color: color)) }
+                blocks.append(.options(labels.map(\.measurable)))
+                drawers.append { placed, origin in
+                    guard case .options(_, let buttons, let frames) = placed else { return ([], []) }
+                    var items: [ChatDrawItem] = []
+                    var hits: [ChatHit] = []
+                    for (index, button) in buttons.enumerated() where index < labels.count {
+                        let frame = button.offsetBy(dx: origin.x, dy: origin.y)
+                        items.append(.box(ChatBox(frame: frame, fill: Palette.surfaceHighest, radius: MarkdownLayout.Metrics.optionRadius)))
+                        items.append(.text(labels[index].layout(for: frames[index]), frames[index].offsetBy(dx: origin.x, dy: origin.y)))
+                        hits.append(ChatHit(frame: frame, action: .option(options[index])))
+                    }
+                    return (items, hits)
+                }
+
+            case .table(let headers, let rows):
+                let all = [headers] + rows
+                let measured = all.enumerated().map { rowIndex, row in
+                    row.map { MeasuredText(ChatSpans.string($0, style: rowIndex == 0 ? ChatTextStyles.tableHeader : ChatTextStyles.tableCell, color: color)) }
+                }
+                let lengths = all.map { row in row.map { $0.reduce(0) { $0 + $1.text.utf16.count } } }
+                blocks.append(.table(.init(columnWidths: MarkdownLayout.columnWidths(lengths: lengths), rows: measured.map { $0.map(\.measurable) })))
+                drawers.append { placed, origin in
+                    guard case .table(let table) = placed else { return ([], []) }
+                    let frame = table.frame.offsetBy(dx: origin.x, dy: origin.y)
+                    // Wider tables scroll sideways once the scroll views land;
+                    // until then the grid is clipped at the column's edge.
+                    let content = CGPoint(x: frame.minX + table.scroll.minX, y: frame.minY + table.scroll.minY)
+                    let clip = frame.insetBy(dx: MarkdownLayout.Metrics.tableBorder, dy: MarkdownLayout.Metrics.tableBorder)
+                    var items: [ChatDrawItem] = [.box(ChatBox(frame: frame, border: Palette.divider, borderWidth: MarkdownLayout.Metrics.tableBorder, radius: MarkdownLayout.Metrics.tableRadius))]
+                    if let header = table.rows.first {
+                        items.append(.box(ChatBox(frame: header.offsetBy(dx: content.x, dy: content.y).intersection(clip), fill: Palette.surfaceHigh)))
+                    }
+                    for separator in table.separators {
+                        let line = separator.offsetBy(dx: content.x, dy: content.y).intersection(clip)
+                        if !line.isNull { items.append(.box(ChatBox(frame: line, fill: Palette.divider))) }
+                    }
+                    for (rowIndex, cells) in table.cells.enumerated() where rowIndex < measured.count {
+                        for (column, cell) in cells.enumerated() where column < measured[rowIndex].count {
+                            let cellFrame = cell.offsetBy(dx: content.x, dy: content.y)
+                            guard cellFrame.maxX <= clip.maxX + 0.5 else { continue }
+                            items.append(.text(measured[rowIndex][column].layout(for: cell), cellFrame))
+                        }
+                    }
+                    return (items, [])
+                }
+
+            case .image(let alt, _):
+                let caption = alt.isEmpty ? nil : MeasuredText(ChatTextStyles.imageCaption.string(alt, color: Palette.textSecondary))
+                blocks.append(.image(caption: caption?.measurable))
+                drawers.append { placed, origin in
+                    guard case .image(let frame, let picture, let captionFrame) = placed else { return ([], []) }
+                    let shifted = frame.offsetBy(dx: origin.x, dy: origin.y)
+                    var items: [ChatDrawItem] = [.box(ChatBox(frame: picture.offsetBy(dx: shifted.minX, dy: shifted.minY), fill: Palette.surfaceHighest, radius: MarkdownLayout.Metrics.imageRadius))]
+                    if let caption, let captionFrame {
+                        items.append(.text(caption.layout(for: captionFrame), captionFrame.offsetBy(dx: shifted.minX, dy: shifted.minY)))
+                    }
+                    return (items, [])
+                }
+            }
+        }
+        self.blocks = blocks
+        self.drawers = drawers
+    }
+
+    func draw(_ layout: MarkdownLayout, origin: CGPoint) -> (items: [ChatDrawItem], hits: [ChatHit]) {
+        var items: [ChatDrawItem] = []
+        var hits: [ChatHit] = []
+        for (placed, drawer) in zip(layout.blocks, drawers) {
+            let drawn = drawer(placed, origin)
+            items += drawn.0
+            hits += drawn.1
+        }
+        return (items, hits)
+    }
+
+    private static func listDrawer(_ rows: [(marker: MeasuredText, text: MeasuredText)]) -> (MarkdownLayout.Placed, CGPoint) -> ([ChatDrawItem], [ChatHit]) {
+        { placed, origin in
+            guard case .list(_, let items) = placed else { return ([], []) }
+            var drawn: [ChatDrawItem] = []
+            for (index, item) in items.enumerated() where index < rows.count {
+                drawn.append(.text(rows[index].marker.layout(for: item.marker), item.marker.offsetBy(dx: origin.x, dy: origin.y)))
+                drawn.append(.text(rows[index].text.layout(for: item.text), item.text.offsetBy(dx: origin.x, dy: origin.y)))
+            }
+            return (drawn, [])
+        }
+    }
+
+    /// A code block, unwrapped like happy-app's. It is clipped at the card
+    /// until the code view brings sideways scrolling.
+    private static func code(language: String?, content: String, blocks: inout [MarkdownLayout.Block], drawers: inout [(MarkdownLayout.Placed, CGPoint) -> ([ChatDrawItem], [ChatHit])]) {
+        let label = language.map { MeasuredText(ChatTextStyles.codeLanguage.string($0, color: Palette.textSecondary), maxLines: 1) }
+        let code = ChatTextLayout(unwrapped: ChatSyntax.string(content, language: language))
+        blocks.append(.code(language: label?.measurable, code: code.size))
+        drawers.append { placed, origin in
+            guard case .code(let placedCode) = placed else { return ([], []) }
+            let frame = placedCode.frame.offsetBy(dx: origin.x, dy: origin.y)
+            var items: [ChatDrawItem] = [.box(ChatBox(frame: frame, fill: Palette.surfaceHighest, radius: MarkdownLayout.Metrics.codeRadius))]
+            if let label, let languageFrame = placedCode.language {
+                items.append(.text(label.layout(for: languageFrame), languageFrame.offsetBy(dx: frame.minX, dy: frame.minY)))
+            }
+            let textFrame = placedCode.text.offsetBy(dx: frame.minX + placedCode.scroll.minX, dy: frame.minY + placedCode.scroll.minY)
+            let visible = frame.insetBy(dx: MarkdownLayout.Metrics.codePadding, dy: 0)
+            items.append(.text(code, textFrame.intersection(visible)))
+            return (items, [])
+        }
+    }
+}
+
+/// SimpleSyntaxHighlighter's colours over the shared tokenizer.
+enum ChatSyntax {
+    static func string(_ code: String, language: String?) -> NSAttributedString {
+        let style = ChatTextStyles.codeBlock
+        let result = NSMutableAttributedString()
+        let regular = style.font
+        let bold = style.with(.plex(.monoSemiBold)).font
+        for token in SyntaxHighlighter.tokenize(code, language: language) {
+            let attributes = style.attributes(color: UIColor(color(token)), font: token.isBold ? bold : regular)
+            result.append(NSAttributedString(string: token.text, attributes: attributes))
+        }
+        return result
+    }
+
+    static func color(_ token: SyntaxToken) -> ColorToken {
+        switch token.kind {
+        case .keyword, .controlFlow, .type, .modifier, .import: Palette.syntaxKeyword
+        case .string, .regex: Palette.syntaxString
+        case .comment, .docstring: Palette.syntaxComment
+        case .number, .boolean: Palette.syntaxNumber
+        case .function, .method, .decorator: Palette.syntaxFunction
+        case .bracket:
+            [Palette.syntaxBracket1, Palette.syntaxBracket2, Palette.syntaxBracket3, Palette.syntaxBracket4, Palette.syntaxBracket5][(token.nestLevel ?? 0) % 5]
+        default: Palette.syntaxDefault
+        }
+    }
+}
+#endif

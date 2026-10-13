@@ -127,9 +127,11 @@ public struct ChatScrollAnchor: Equatable, Sendable {
         self.kind = kind
     }
 
-    /// Notes where the reader is before an update.
-    public static func capture(layout: ChatListLayout, ids: [String], visibleMinY: CGFloat) -> ChatScrollAnchor {
-        if visibleMinY <= followThreshold || layout.count == 0 {
+    /// Notes where the reader is before an update. `follow` is false while
+    /// the reader's finger is on the list: snapping to the newest edge then
+    /// would fight the drag, so even near it the row under them holds.
+    public static func capture(layout: ChatListLayout, ids: [String], visibleMinY: CGFloat, follow: Bool = true) -> ChatScrollAnchor {
+        if layout.count == 0 || (follow && visibleMinY <= followThreshold) {
             return ChatScrollAnchor(kind: .newest)
         }
         let index = min(layout.firstRow(endingAfter: visibleMinY), layout.count - 1)

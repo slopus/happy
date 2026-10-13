@@ -16,7 +16,10 @@ import CoreGraphics
 ///   - inside the dock, the bars above the composer (question banner, goal,
 ///     rig activity…) stack top to bottom, 8 in from the sides
 ///     (CenteredInputWidth), then the composer, full width;
-///   - the scroll-to-bottom button floats 16 above the dock, centred.
+///   - the scroll-to-bottom button floats 16 above the composer's card,
+///     centred (SessionView's scrollButtonInset). The bars above the card fade
+///     out but keep their space while the reader is scrolled back, so the
+///     button floats over an empty band.
 public struct ChatScreenLayout: Equatable, Sendable {
     public enum Metrics {
         /// sessionInputHorizontalPadding on a phone.
@@ -34,6 +37,9 @@ public struct ChatScreenLayout: Equatable, Sendable {
         public static let dockDetailsShowOffset: CGFloat = 16
         /// The fade behind the dock reaches 28 above it.
         public static let scrimExtra: CGFloat = 28
+        /// layout.maxWidth off a phone (tablet and web: 800; a phone is never
+        /// limited).
+        public static let regularMaxContentWidth: CGFloat = 800
     }
 
     public struct Input {
@@ -46,14 +52,18 @@ public struct ChatScreenLayout: Equatable, Sendable {
         /// Bars above the composer, top to bottom.
         public var accessories: [Measurable]
         public var composerHeight: CGFloat
+        /// Where the composer's card starts below the composer's top (its
+        /// status rows sit above the card).
+        public var composerCardOffset: CGFloat
         public var maxContentWidth: CGFloat
 
-        public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat?, accessories: [Measurable] = [], composerHeight: CGFloat, maxContentWidth: CGFloat = .greatestFiniteMagnitude) {
+        public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat?, accessories: [Measurable] = [], composerHeight: CGFloat, composerCardOffset: CGFloat = 0, maxContentWidth: CGFloat = .greatestFiniteMagnitude) {
             self.size = size
             self.safeArea = safeArea
             self.keyboardTop = keyboardTop
             self.accessories = accessories
             self.composerHeight = composerHeight
+            self.composerCardOffset = composerCardOffset
             self.maxContentWidth = maxContentWidth
         }
     }
@@ -100,7 +110,7 @@ public struct ChatScreenLayout: Equatable, Sendable {
         oldestEdgeInset = input.safeArea.top + M.olderEdgeExtra
         scrollButton = CGRect(
             x: (width - M.scrollButtonSize) / 2,
-            y: dock.minY - M.scrollButtonGap - M.scrollButtonSize,
+            y: dock.minY + composer.minY + min(max(0, input.composerCardOffset), composer.height) - M.scrollButtonGap - M.scrollButtonSize,
             width: M.scrollButtonSize,
             height: M.scrollButtonSize
         )

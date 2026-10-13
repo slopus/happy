@@ -215,4 +215,7 @@ public enum ChatTextStyles {
     // The session deleted state (SessionView.tsx)
     public static let deletedTitle = ChatTextStyle(.system(.semibold), size: 20)
     public static let deletedBody = ChatTextStyle(.system(.regular), size: 15)
+
+    // The placeholder composer (MultiTextInput: 16 / 22, Typography.default())
+    public static let composerText = ChatTextStyle(.plex(.regular), size: 16, lineHeight: 22)
 }

@@ -46,8 +46,8 @@ enum Screens {
             return ServerConfigViewController(context: context)
         case .troubleshoot:
             return TroubleshootViewController(session: session)
-        case .session:
-            return PlaceholderViewController(title: "")
+        case .session(let id):
+            return ChatViewController(context: context, session: session, sessionId: id)
         case .sessionInfo:
             return PlaceholderViewController(title: "")
         case .sessionFiles, .sessionFile, .sessionChanges, .sessionMessage, .textSelection:
