@@ -323,6 +323,42 @@ public struct RigActivityLayout: Equatable, Sendable {
     }
 }
 
+/// SessionView's CLI version warning: a pill centred 8 under the header,
+/// 14 and 7 inside, the warning glyph, the label 6 after it and the close
+/// glyph 8 after that, all on one middle line.
+public struct CliWarningPillLayout: Equatable, Sendable {
+    public enum Metrics {
+        public static let top: CGFloat = 8
+        public static let paddingH: CGFloat = 14
+        public static let paddingV: CGFloat = 7
+        public static let iconSize: CGFloat = 14
+        public static let iconGap: CGFloat = 6
+        public static let closeGap: CGFloat = 8
+        public static let shadowOpacity: Float = 0.15
+        public static let shadowRadius: CGFloat = 4
+        public static let shadowOffsetY: CGFloat = 2
+    }
+
+    public var pill: CGRect
+    public var icon: CGRect
+    public var label: CGRect
+    public var close: CGRect
+
+    /// `top` is the header's bottom.
+    public init(width: CGFloat, top: CGFloat, label: Measurable) {
+        typealias M = Metrics
+        let chrome = 2 * M.paddingH + 2 * M.iconSize + M.iconGap + M.closeGap
+        let labelSize = label.size(fitting: max(0, width - chrome))
+        let line = max(M.iconSize, labelSize.height)
+        let size = CGSize(width: chrome + labelSize.width, height: line + 2 * M.paddingV)
+        pill = CGRect(x: (max(0, width) - size.width) / 2, y: top + M.top, width: size.width, height: size.height)
+        let mid = pill.minY + M.paddingV + line / 2
+        icon = CGRect(x: pill.minX + M.paddingH, y: mid - M.iconSize / 2, width: M.iconSize, height: M.iconSize)
+        self.label = CGRect(x: icon.maxX + M.iconGap, y: mid - labelSize.height / 2, width: labelSize.width, height: labelSize.height)
+        close = CGRect(x: self.label.maxX + M.closeGap, y: icon.minY, width: M.iconSize, height: M.iconSize)
+    }
+}
+
 /// InactiveArchivedHint: the notice (and, without Resume, "To resume it
 /// from the terminal:") 8 in, then 10 below it either the Resume button, 8
 /// in and 44 tall with its label in the middle, or the command block, edge

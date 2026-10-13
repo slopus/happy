@@ -90,6 +90,20 @@ final class ChatEmptyStateTests: XCTestCase {
     }
 }
 
+final class CliVersionWarningTests: XCTestCase {
+    func testAnOldCliWarnsUntilItsVersionIsDismissedOnThatMachine() {
+        let old: JSONValue = ["version": "0.9.4", "machineId": "m1"]
+        let warning = CliVersionWarning(metadata: old, acknowledged: [:])
+        XCTAssertEqual(warning, CliVersionWarning(metadata: old, acknowledged: ["m1": "0.9.3"]), "an older dismissal")
+        let dismissed = warning?.dismissed(in: ["m2": "0.8.0"])
+        XCTAssertEqual(dismissed, ["m1": "0.9.4", "m2": "0.8.0"])
+        XCTAssertNil(CliVersionWarning(metadata: old, acknowledged: dismissed ?? [:]))
+        XCTAssertNil(CliVersionWarning(metadata: ["version": "0.10.0", "machineId": "m1"], acknowledged: [:]))
+        XCTAssertNil(CliVersionWarning(metadata: ["machineId": "m1"], acknowledged: [:]), "no version")
+        XCTAssertNil(CliVersionWarning(metadata: ["version": "0.9.4"], acknowledged: [:])?.dismissed(in: [:]), "no machine to keep it for")
+    }
+}
+
 final class PendingChatPlaceholderTests: XCTestCase {
     func testQueuedMessagesComeBeforeTheAnchorsFolder() {
         let anchor: JSONValue = ["path": "/Users/a/repo", "homeDir": "/Users/a"]

@@ -720,6 +720,16 @@ final class CopyMenuLayoutTests: XCTestCase {
     }
 }
 
+final class CliWarningPillLayoutTests: XCTestCase {
+    func testThePillIsCentredUnderTheHeader() {
+        let layout = CliWarningPillLayout(width: 393, top: 103, label: fixed(115, 15))
+        assertFrame(layout.pill, rect(104, 111, 185, 29))
+        assertFrame(layout.icon, rect(118, 118.5, 14, 14))
+        assertFrame(layout.label, rect(138, 118, 115, 15))
+        assertFrame(layout.close, rect(261, 118.5, 14, 14))
+    }
+}
+
 final class InactiveHintLayoutTests: XCTestCase {
     func testResumeSitsUnderTheNotice() {
         let layout = InactiveHintLayout(

@@ -96,6 +96,32 @@ public struct ChatEmptyState: Equatable, Sendable {
     }
 }
 
+/// SessionView's CLI version warning, the pill under the header: the
+/// session's CLI predates `MINIMUM_CLI_VERSION`, and the warning for that
+/// version on its machine hasn't been dismissed.
+public struct CliVersionWarning: Equatable, Sendable {
+    /// Where a dismissal is kept; without one a tap does nothing.
+    public var machineId: String?
+    public var version: String
+
+    public init?(metadata: JSONValue?, acknowledged: [String: String]) {
+        guard let version = metadata?["version"]?.stringValue, !version.isEmpty,
+              !SessionDetails.isVersionSupported(version) else { return nil }
+        let machineId = metadata?["machineId"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+        if let machineId, acknowledged[machineId] == version { return nil }
+        self.machineId = machineId
+        self.version = version
+    }
+
+    /// `acknowledged` with this warning dismissed, or nil if it can't be.
+    public func dismissed(in acknowledged: [String: String]) -> [String: String]? {
+        guard let machineId else { return nil }
+        var acknowledged = acknowledged
+        acknowledged[machineId] = version
+        return acknowledged
+    }
+}
+
 /// PendingChatPlaceholder.tsx, for a chat no machine has agreed to run yet:
 /// under "Starting a new chat…", what was sent before it existed, or else
 /// the folder of the chat it was started beside, which is where it will run.

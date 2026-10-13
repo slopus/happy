@@ -64,7 +64,8 @@ accident.
 
 - [~] Session screen shell: header (title, avatar, status, git status), back, info (`session/[id].tsx`, `SessionView.tsx`, `ChatHeaderView`) — Chat
   - The title capsule and the avatar circle sit on the system navigation bar, made transparent, so back, its swipe and its menu are the platform's. Off iOS 26 the back button is the plain chevron and "Back", not happy-app's glass circle.
-  - Not yet: the worktree tab strip and its title, the CLI-outdated pill, the landscape layout without a header, and the file-view path segment.
+  - Not yet: the worktree tab strip and its title, the landscape layout without a header, and the file-view path segment.
+  - Done: the CLI-outdated pill (dismissed per machine and version in `LocalSettings.acknowledgedCliVersions`), under the header on every device; see AGENTS.md.
   - Done: the stopped session's hint above the composer (`InactiveArchivedHint`), with Resume when its machine can run it, or the terminal commands, which a tap copies.
 - [ ] Inverted list engine with precomputed, off-main text layout, manual frames, bubble resize animations, scroll position keeping (`ChatList`) — Chat
 - [ ] Keyboard: input bar tracks the keyboard, interactive dismiss, list insets — Chat

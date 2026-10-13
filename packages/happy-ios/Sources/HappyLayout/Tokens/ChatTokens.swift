@@ -156,6 +156,11 @@ extension Palette {
     public static let buttonSecondaryTint = ColorToken("#666666", "#8E8E93")
     /// theme.colors.shadow: the scroll-to-bottom button.
     public static let shadow = ColorToken("#000000")
+    /// The CLI version warning's pill, the same in both themes: its fill,
+    /// its label and close glyph, and its warning glyph.
+    public static let cliWarningFill = ColorToken("#FFF3CD")
+    public static let cliWarningText = ColorToken("#856404")
+    public static let cliWarningIcon = ColorToken("#FF9500")
 
     public static let chat: [ColorToken] = [
         userMessageText, agentEventText, surfacePressed, warning, boxWarningBackground, boxErrorBackground,
@@ -166,6 +171,7 @@ extension Palette {
         diffMarkerAdded, diffMarkerRemoved, diffText, diffSectionText, diffGutterBorder, buttonSecondaryTint, shadow,
         boxWarningText, todoCompleted, todoInProgress, todoPending, todoOther, onAccent, requiredDot,
         headerGlassSubtitle, fullViewPurple, fullViewGreen, fullViewRed, fullViewOrange, multiEditSeparator,
+        cliWarningFill, cliWarningText, cliWarningIcon,
     ]
 }
 
@@ -257,6 +263,9 @@ public enum ChatTextStyles {
     public static let emptyPath = ChatTextStyle(.plex(.regular), size: 14)
     public static let emptyTitle = ChatTextStyle(.plex(.regular), size: 20)
     public static let emptyCreated = ChatTextStyle(.plex(.regular), size: 16, lineHeight: 24)
+
+    // SessionView's CLI version warning (a plain <Text>: the system font)
+    public static let cliWarning = ChatTextStyle(.system(.semibold), size: 12)
 
     // PendingChatPlaceholder.tsx; its folder line is emptyPath's 14
     public static let pendingQueued = ChatTextStyle(.plex(.regular), size: 15, lineHeight: 21)
