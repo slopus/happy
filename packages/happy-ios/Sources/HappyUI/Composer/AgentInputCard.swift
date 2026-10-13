@@ -152,6 +152,10 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
     /// and the delegate hears `agentInputCardDidRefuse`. The primary button
     /// is unaffected (HomeDock's `RefusableControl` while a session starts).
     public var refusesControls: Bool
+    /// AgentInput.tsx `zenMode` (the tablet shell's zen control): the add
+    /// button and the chips go; the text, any picked pictures and the
+    /// round button stay.
+    public var zenMode: Bool
 
     public init(
         placeholder: String,
@@ -167,7 +171,8 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         inputMinHeight: CGFloat? = nil,
         autocapitalization: UITextAutocapitalizationType = .sentences,
         primaryStyle: AgentInputPrimaryStyle = .standard,
-        refusesControls: Bool = false
+        refusesControls: Bool = false,
+        zenMode: Bool = false
     ) {
         self.placeholder = placeholder
         self.isEditable = isEditable
@@ -183,6 +188,7 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         self.autocapitalization = autocapitalization
         self.primaryStyle = primaryStyle
         self.refusesControls = refusesControls
+        self.zenMode = zenMode
     }
 }
 
@@ -465,7 +471,8 @@ public final class AgentInputCardView: UIView {
             model: config.model.map { _ in .init(labelSize: modelChip.contentSize) },
             modelIsMenu: config.model?.menu != nil,
             effort: config.effort.map { _ in .init(labelSize: effortChip.contentSize) },
-            separator: config.effort == nil ? .zero : separator.sizeThatFits(.zero)
+            separator: config.effort == nil ? .zero : separator.sizeThatFits(.zero),
+            zenMode: config.zenMode
         )
     }
 
@@ -544,7 +551,7 @@ public final class AgentInputCardView: UIView {
         textView.autocapitalizationType = config.autocapitalization
         textView.accessibilityLabel = config.placeholder
 
-        addButton.isHidden = !config.showsAdd
+        addButton.isHidden = !config.showsAdd || config.zenMode
         // The glyph turns blue while pictures are attached.
         addButton.tint = config.attachments.isEmpty ? Palette.text : Palette.radioActive
         attachmentStrip.attachments = config.attachments
@@ -552,10 +559,10 @@ public final class AgentInputCardView: UIView {
         for chip in [permissionChip, modelChip, effortChip] {
             chip.refuses = config.refusesControls
         }
-        permissionChip.configure(config.permission)
-        modelChip.configure(config.model)
-        effortChip.configure(config.effort)
-        separator.isHidden = config.effort == nil
+        permissionChip.configure(config.zenMode ? nil : config.permission)
+        modelChip.configure(config.zenMode ? nil : config.model)
+        effortChip.configure(config.zenMode ? nil : config.effort)
+        separator.isHidden = config.zenMode || config.effort == nil
 
         primaryButton.configure(
             action: config.primaryAction,
@@ -571,7 +578,8 @@ public final class AgentInputCardView: UIView {
             || previous.showsAdd != config.showsAdd
             || previous.permission != config.permission
             || previous.model != config.model
-            || previous.effort != config.effort {
+            || previous.effort != config.effort
+            || previous.zenMode != config.zenMode {
             delegate?.agentInputCardDidInvalidateHeight(self)
             setNeedsLayout()
         }

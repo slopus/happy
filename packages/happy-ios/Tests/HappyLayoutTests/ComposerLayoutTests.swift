@@ -219,7 +219,8 @@ final class AgentInputCardLayoutTests: XCTestCase {
         model: CGSize? = nil,
         modelIsMenu: Bool = true,
         effort: CGSize? = nil,
-        minHeight: CGFloat? = nil
+        minHeight: CGFloat? = nil,
+        zenMode: Bool = false
     ) -> AgentInputCardLayout {
         AgentInputCardLayout(.init(
             width: 377,
@@ -233,7 +234,8 @@ final class AgentInputCardLayoutTests: XCTestCase {
             model: model.map(AgentInputCardLayout.Chip.init),
             modelIsMenu: modelIsMenu,
             effort: effort.map(AgentInputCardLayout.Chip.init),
-            separator: effort == nil ? .zero : CGSize(width: 5, height: 17)
+            separator: effort == nil ? .zero : CGSize(width: 5, height: 17),
+            zenMode: zenMode
         ))
     }
 
@@ -325,6 +327,27 @@ final class AgentInputCardLayoutTests: XCTestCase {
         assertFrame(content.effort?.frame, rect(197, 1, 64, 40))
         assertFrame(content.effort?.label, rect(0, 11.5, 40, 17))
         XCTAssertEqual(content.effort?.frame.maxX, layout.middle.width)
+    }
+
+    /// AgentInput.tsx in zen mode: `!zenMode &&` drops add, permission,
+    /// model and effort; the middle box keeps only its spacer.
+    func testZenModeLeavesTheTextAndSend() {
+        let layout = card(
+            attachments: 1,
+            showsAdd: true,
+            permission: CGSize(width: 30, height: 17),
+            model: CGSize(width: 80, height: 17),
+            effort: CGSize(width: 40, height: 17),
+            zenMode: true
+        )
+        XCTAssertNil(layout.add)
+        assertFrame(layout.middle, rect(10, 124, 305, 42))
+        assertFrame(layout.primary, rect(325, 124, 42, 42))
+        XCTAssertEqual(layout.middleContent, AgentInputCardLayout.MiddleContent())
+        // Pictures already picked stay, and the height doesn't move.
+        assertFrame(layout.attachments, rect(18, 8, 341, 64))
+        XCTAssertEqual(layout.size.height, card(attachments: 1, showsAdd: true).size.height)
+        XCTAssertEqual(card(zenMode: true), card())
     }
 
     /// A long model name is the only thing cut; effort keeps its corner.
