@@ -1,0 +1,917 @@
+#if canImport(UIKit)
+import HappyCore
+import HappyIcons
+import HappyLayout
+import UIKit
+
+// The compact mobile composer's card, as one reusable view: the attachment
+// strip, the growing text input, and the action row
+//
+//     [+] [ permission ········· model · effort ] [send/stop]
+//
+// It is AgentInput.tsx's `mobileUnifiedPanel`, which HomeDock.tsx's focused
+// composer shares metric for metric (agentInputLayout.ts). The chat's
+// composer is one client (`SessionComposerView`); the home dock and the
+// new-session screen are others.
+//
+// The card is configured by a value (`AgentInputCardConfiguration`): which
+// chips, which menus, which primary action. It owns the text; everything it
+// does is reported to its delegate, which decides what a press means.
+// `AgentInputCardLayout` places every subview.
+
+/// A chip in the action row.
+public enum AgentInputChip: Sendable {
+    case permission
+    case model
+    case effort
+}
+
+/// A native menu a chip opens (NativeSettingsMenu.ios.tsx): sections of
+/// checkable rows, drawn in the order given.
+public struct AgentInputMenu: Equatable, Sendable {
+    public struct Option: Equatable, Sendable {
+        public var key: String
+        public var label: String
+        public var isDisabled: Bool
+
+        public init(key: String, label: String, isDisabled: Bool = false) {
+            self.key = key
+            self.label = label
+            self.isDisabled = isDisabled
+        }
+    }
+
+    public struct Section: Equatable, Sendable {
+        /// The heading above the rows; nil for none.
+        public var title: String?
+        public var options: [Option]
+
+        public init(title: String? = nil, options: [Option]) {
+            self.title = title
+            self.options = options
+        }
+    }
+
+    public var sections: [Section]
+    /// The checked row.
+    public var selectedKey: String?
+
+    public init(sections: [Section], selectedKey: String?) {
+        self.sections = sections
+        self.selectedKey = selectedKey
+    }
+}
+
+/// One chip: what it shows and the menu it opens.
+public struct AgentInputChipConfiguration: Equatable, Sendable {
+    public enum Content: Equatable, Sendable {
+        case label(String)
+        /// A glyph at `AgentInputCardLayout.Metrics.permissionIconSize`
+        /// (the permission chip's `shield-outline` when the mode has no name).
+        case icon(Icon)
+    }
+
+    public var content: Content
+    public var accessibilityLabel: String
+    /// Nil draws a chip that does nothing, dimmed to 0.58 (a model chip with
+    /// no models to pick).
+    public var menu: AgentInputMenu?
+
+    public init(content: Content, accessibilityLabel: String, menu: AgentInputMenu?) {
+        self.content = content
+        self.accessibilityLabel = accessibilityLabel
+        self.menu = menu
+    }
+}
+
+/// A picture waiting to be sent, as the strip shows it.
+public struct AgentInputAttachmentPreview: Equatable, Sendable {
+    public var id: String
+    /// A local image file.
+    public var fileURL: URL
+
+    public init(id: String, fileURL: URL) {
+        self.id = id
+        self.fileURL = fileURL
+    }
+}
+
+/// Everything about the card that is not the text.
+public struct AgentInputCardConfiguration: Equatable, Sendable {
+    public var placeholder: String
+    /// False keeps the card on screen but out of reach: no caret, no
+    /// keyboard, the text at 0.58.
+    public var isEditable: Bool
+    /// The leading add button (`onPickImages`).
+    public var showsAdd: Bool
+    public var attachments: [AgentInputAttachmentPreview]
+    /// Nil hides the chip. The model chip shows whenever it is set; the
+    /// separator and the effort chip go together.
+    public var permission: AgentInputChipConfiguration?
+    public var model: AgentInputChipConfiguration?
+    public var effort: AgentInputChipConfiguration?
+    public var primaryAction: AgentInputPrimaryAction
+    /// A spinner instead of the glyph (`isAborting`).
+    public var isPrimaryBusy: Bool
+    /// Overrides "Send" / "Stop" for VoiceOver ("Create bot" on home).
+    public var primaryAccessibilityLabel: String?
+    /// `minHeight` for the input container; nil keeps 44.
+    public var inputMinHeight: CGFloat?
+    public var autocapitalization: UITextAutocapitalizationType
+
+    public init(
+        placeholder: String,
+        isEditable: Bool = true,
+        showsAdd: Bool = false,
+        attachments: [AgentInputAttachmentPreview] = [],
+        permission: AgentInputChipConfiguration? = nil,
+        model: AgentInputChipConfiguration? = nil,
+        effort: AgentInputChipConfiguration? = nil,
+        primaryAction: AgentInputPrimaryAction = .idle,
+        isPrimaryBusy: Bool = false,
+        primaryAccessibilityLabel: String? = nil,
+        inputMinHeight: CGFloat? = nil,
+        autocapitalization: UITextAutocapitalizationType = .sentences
+    ) {
+        self.placeholder = placeholder
+        self.isEditable = isEditable
+        self.showsAdd = showsAdd
+        self.attachments = attachments
+        self.permission = permission
+        self.model = model
+        self.effort = effort
+        self.primaryAction = primaryAction
+        self.isPrimaryBusy = isPrimaryBusy
+        self.primaryAccessibilityLabel = primaryAccessibilityLabel
+        self.inputMinHeight = inputMinHeight
+        self.autocapitalization = autocapitalization
+    }
+}
+
+/// What the card reports. Every method has an empty default.
+@MainActor
+public protocol AgentInputCardDelegate: AnyObject {
+    /// The text changed (typed, pasted or dictated).
+    func agentInputCardDidChangeText(_ card: AgentInputCardView)
+    /// The caret or selection moved without the text changing.
+    func agentInputCardDidChangeSelection(_ card: AgentInputCardView)
+    func agentInputCardDidChangeFocus(_ card: AgentInputCardView)
+    /// `height(fitting:)` changed; lay the card out again (inside an
+    /// animation block to animate it).
+    func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView)
+    /// The round button. What it means depends on the live text: read
+    /// `card.text`, not the configuration, which may lag a fast tap.
+    func agentInputCardDidPressPrimary(_ card: AgentInputCardView)
+    func agentInputCardDidPressAdd(_ card: AgentInputCardView)
+    func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String)
+    func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip)
+    /// Return was typed. False swallows the newline (an autocomplete pick).
+    func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool
+}
+
+extension AgentInputCardDelegate {
+    public func agentInputCardDidChangeText(_ card: AgentInputCardView) {}
+    public func agentInputCardDidChangeSelection(_ card: AgentInputCardView) {}
+    public func agentInputCardDidChangeFocus(_ card: AgentInputCardView) {}
+    public func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) {}
+    public func agentInputCardDidPressPrimary(_ card: AgentInputCardView) {}
+    public func agentInputCardDidPressAdd(_ card: AgentInputCardView) {}
+    public func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) {}
+    public func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {}
+    public func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool { true }
+}
+
+/// The card. Give it a frame from `height(fitting:)`; it lays itself out.
+public final class AgentInputCardView: UIView {
+    public weak var delegate: (any AgentInputCardDelegate)?
+
+    public var configuration: AgentInputCardConfiguration {
+        didSet {
+            guard configuration != oldValue else { return }
+            apply(previous: oldValue)
+        }
+    }
+
+    public let metrics: MobileComposerMetrics
+
+    /// The text view, for owners that need it (input accessories, first
+    /// responder chains). Don't set its delegate.
+    public let textView = UITextView()
+
+    private let surface = UIView()
+    private let material = PartialBlurView(fraction: ComposerShadow.materialFraction)
+    private let frosted = UIView()
+    private let placeholderLabel = UILabel()
+    private let attachmentStrip = AttachmentStripView()
+    private let addButton = ComposerIconButton(icon: .ionicons("add"), size: MobileComposerMetrics.mobile.addIconSize)
+    private let middle = UIView()
+    private let permissionChip = ComposerChipButton(chip: .permission)
+    private let modelChip = ComposerChipButton(chip: .model)
+    private let separator = UILabel()
+    private let effortChip = ComposerChipButton(chip: .effort)
+    private let primaryButton = ComposerPrimaryButton()
+    private var measured: (width: CGFloat, text: String, height: CGFloat)?
+
+    private static let inputStyle = TextStyles.composerInput
+
+    public init(configuration: AgentInputCardConfiguration, metrics: MobileComposerMetrics = .mobile) {
+        self.configuration = configuration
+        self.metrics = metrics
+        super.init(frame: .zero)
+
+        layer.shadowColor = UIColor(Palette.shadow).cgColor
+        surface.clipsToBounds = true
+        surface.layer.cornerRadius = metrics.shellRadius
+        surface.layer.cornerCurve = .continuous
+        addSubview(surface)
+        material.clipsToBounds = true
+        surface.addSubview(material)
+        frosted.backgroundColor = UIColor(Palette.composerFrostedOverlay)
+        frosted.isUserInteractionEnabled = false
+        surface.addSubview(frosted)
+
+        attachmentStrip.onRemove = { [weak self] id in
+            guard let self else { return }
+            self.delegate?.agentInputCard(self, didRemoveAttachment: id)
+        }
+        surface.addSubview(attachmentStrip)
+
+        textView.backgroundColor = .clear
+        textView.textContainerInset = UIEdgeInsets(top: metrics.inputPaddingTop, left: 0, bottom: metrics.inputPaddingBottom, right: 0)
+        textView.textContainer.lineFragmentPadding = 0
+        textView.font = Self.inputStyle.font
+        textView.textColor = UIColor(Palette.inputText)
+        textView.typingAttributes = Self.inputStyle.attributes(color: UIColor(Palette.inputText))
+        textView.isScrollEnabled = false
+        textView.autocorrectionType = .yes
+        textView.keyboardType = .default
+        textView.returnKeyType = .default
+        textView.textContentType = nil
+        textView.tintColor = UIColor(Palette.radioActive)
+        textView.delegate = self
+        surface.addSubview(textView)
+        placeholderLabel.isAccessibilityElement = false
+        placeholderLabel.isUserInteractionEnabled = false
+        surface.addSubview(placeholderLabel)
+
+        addButton.accessibilityLabel = Strings.Composer.addPhoto
+        addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
+        surface.addSubview(addButton)
+
+        middle.clipsToBounds = true
+        surface.addSubview(middle)
+        for chip in [permissionChip, modelChip, effortChip] {
+            chip.onSelect = { [weak self] key, which in
+                guard let self else { return }
+                self.delegate?.agentInputCard(self, didSelect: key, in: which)
+            }
+            middle.addSubview(chip)
+        }
+        separator.attributedText = TextStyles.composerChip.attributedString("·", color: UIColor(Palette.textSecondary))
+        middle.addSubview(separator)
+
+        primaryButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
+        surface.addSubview(primaryButton)
+
+        // didSet doesn't run in the initializer.
+        apply(previous: nil)
+        applyAppearance()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
+            self.applyAppearance()
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    // MARK: Text
+
+    /// The live text.
+    public var text: String {
+        get { textView.text ?? "" }
+        set { setText(newValue, selection: NSRange(location: (newValue as NSString).length, length: 0)) }
+    }
+
+    public var selectedRange: NSRange { textView.selectedRange }
+
+    /// Replaces the text and moves the caret (`setTextAndSelection`).
+    /// Reports the change to the delegate, as a keystroke would.
+    public func setText(_ text: String, selection: NSRange) {
+        textView.attributedText = Self.inputStyle.attributedString(text, color: UIColor(Palette.inputText))
+        textView.typingAttributes = Self.inputStyle.attributes(color: UIColor(Palette.inputText))
+        let length = (text as NSString).length
+        let location = min(max(0, selection.location), length)
+        textView.selectedRange = NSRange(location: location, length: min(selection.length, length - location))
+        textChanged()
+    }
+
+    public var isTextFocused: Bool { textView.isFirstResponder }
+
+    public func focus() {
+        guard configuration.isEditable else { return }
+        textView.becomeFirstResponder()
+    }
+
+    public func blur() {
+        textView.resignFirstResponder()
+    }
+
+    // MARK: Feedback
+
+    /// The whole card shakes: a send the agent refuses (`sendBlockShakerRef`).
+    public func shake() {
+        Self.shake(self)
+    }
+
+    /// Only the round button shakes: a stop that failed (`shakerRef`).
+    public func shakePrimary() {
+        Self.shake(primaryButton)
+    }
+
+    /// Shaker.tsx: 0, 3, -3, 3, -3, 0 over 300ms.
+    static func shake(_ view: UIView) {
+        let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
+        animation.values = [0, 3, -3, 3, -3, 0]
+        animation.duration = 0.3
+        animation.timingFunctions = Array(repeating: CAMediaTimingFunction(name: .easeInEaseOut), count: 5)
+        view.layer.add(animation, forKey: "shake")
+    }
+
+    // MARK: Layout
+
+    /// The card's frames at `width`.
+    public func layout(width: CGFloat) -> AgentInputCardLayout {
+        AgentInputCardLayout(layoutInput(width: width))
+    }
+
+    /// The card's height at `width`. Cached by width and text.
+    public func height(fitting width: CGFloat) -> CGFloat {
+        layout(width: width).size.height
+    }
+
+    func layoutInput(width: CGFloat) -> AgentInputCardLayout.Input {
+        let config = configuration
+        let border = hairline
+        let contentWidth = max(0, width - 2 * border - 2 * metrics.shellInset)
+        let insets = AgentInputInsets(shellInset: metrics.shellInset, actionSize: metrics.actionSize, addIconSize: metrics.addIconSize)
+        let textWidth = max(0, contentWidth - insets.inputContainerPaddingLeft - insets.inputContainerPaddingRight)
+        let text = self.text
+        let height: CGFloat
+        if let measured, measured.width == textWidth, measured.text == text {
+            height = measured.height
+        } else {
+            height = ceil(textView.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude)).height)
+            measured = (textWidth, text, height)
+        }
+        return AgentInputCardLayout.Input(
+            width: width,
+            metrics: metrics,
+            borderWidth: border,
+            attachmentCount: config.attachments.count,
+            textContentHeight: height,
+            hasText: !text.isEmpty,
+            inputMinHeight: config.inputMinHeight,
+            showsAdd: config.showsAdd,
+            permission: config.permission.map { _ in .init(labelSize: permissionChip.contentSize) },
+            model: config.model.map { _ in .init(labelSize: modelChip.contentSize) },
+            modelIsMenu: config.model?.menu != nil,
+            effort: config.effort.map { _ in .init(labelSize: effortChip.contentSize) },
+            separator: config.effort == nil ? .zero : separator.sizeThatFits(.zero)
+        )
+    }
+
+    public override func sizeThatFits(_ size: CGSize) -> CGSize {
+        CGSize(width: size.width, height: height(fitting: size.width))
+    }
+
+    public override func layoutSubviews() {
+        super.layoutSubviews()
+        let layout = layout(width: bounds.width)
+        surface.frame = bounds
+        material.frame = surface.bounds
+        frosted.frame = surface.bounds
+        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: metrics.shellRadius).cgPath
+
+        if let strip = layout.attachments {
+            attachmentStrip.isHidden = false
+            attachmentStrip.setLayoutFrame(strip)
+        } else {
+            attachmentStrip.isHidden = true
+        }
+        textView.setLayoutFrame(layout.text)
+        if textView.isScrollEnabled != layout.textScrolls {
+            textView.isScrollEnabled = layout.textScrolls
+        }
+        placeholderLabel.setLayoutFrame(CGRect(
+            x: layout.text.minX,
+            y: layout.text.minY + metrics.inputPaddingTop,
+            width: layout.text.width,
+            height: metrics.inputLineHeight
+        ))
+        if let add = layout.add {
+            addButton.setLayoutFrame(add)
+        }
+        middle.setLayoutFrame(layout.middle)
+        let content = layout.middleContent
+        place(permissionChip, content.permission)
+        place(modelChip, content.model)
+        place(effortChip, content.effort)
+        if let frame = content.separator {
+            separator.setLayoutFrame(frame)
+        }
+        primaryButton.setLayoutFrame(layout.primary)
+    }
+
+    private func place(_ chip: ComposerChipButton, _ frame: AgentInputCardLayout.ChipFrame?) {
+        guard let frame else { return }
+        chip.setLayoutFrame(frame.frame)
+        chip.labelFrame = frame.label
+    }
+
+    // MARK: Configuration
+
+    private func apply(previous: AgentInputCardConfiguration?) {
+        let config = configuration
+        placeholderLabel.attributedText = Self.inputStyle.attributedString(
+            config.placeholder,
+            color: UIColor(Palette.inputPlaceholder),
+            lineBreakMode: .byTruncatingTail
+        )
+        textView.isEditable = config.isEditable
+        textView.isSelectable = config.isEditable
+        textView.alpha = config.isEditable ? 1 : AgentInputCardLayout.Metrics.readOnlyTextOpacity
+        placeholderLabel.alpha = textView.alpha
+        if !config.isEditable, textView.isFirstResponder {
+            textView.resignFirstResponder()
+        }
+        textView.autocapitalizationType = config.autocapitalization
+        textView.accessibilityLabel = config.placeholder
+
+        addButton.isHidden = !config.showsAdd
+        // The glyph turns blue while pictures are attached.
+        addButton.tint = config.attachments.isEmpty ? Palette.text : Palette.radioActive
+        attachmentStrip.attachments = config.attachments
+
+        permissionChip.configure(config.permission)
+        modelChip.configure(config.model)
+        effortChip.configure(config.effort)
+        separator.isHidden = config.effort == nil
+
+        primaryButton.configure(
+            action: config.primaryAction,
+            busy: config.isPrimaryBusy,
+            accessibilityLabel: config.primaryAccessibilityLabel
+        )
+        updatePlaceholder()
+
+        guard let previous else { return }
+        if previous.attachments.count != config.attachments.count
+            || previous.inputMinHeight != config.inputMinHeight
+            || previous.showsAdd != config.showsAdd
+            || previous.permission != config.permission
+            || previous.model != config.model
+            || previous.effort != config.effort {
+            delegate?.agentInputCardDidInvalidateHeight(self)
+            setNeedsLayout()
+        }
+    }
+
+    private func applyAppearance() {
+        let dark = traitCollection.userInterfaceStyle == .dark
+        layer.shadowOffset = CGSize(width: 0, height: dark ? ComposerShadow.darkOffsetY : ComposerShadow.lightOffsetY)
+        layer.shadowRadius = dark ? ComposerShadow.darkRadius : ComposerShadow.lightRadius
+        layer.shadowOpacity = dark ? ComposerShadow.darkOpacity : ComposerShadow.lightOpacity
+        surface.layer.borderWidth = hairline
+        surface.layer.borderColor = UIColor(Palette.glassBorder).resolvedColor(with: traitCollection).cgColor
+        // The typed text keeps the colour it was typed in; re-colour it.
+        let selection = textView.selectedRange
+        if !(textView.text ?? "").isEmpty {
+            textView.attributedText = Self.inputStyle.attributedString(text, color: UIColor(Palette.inputText))
+            textView.selectedRange = selection
+        }
+        textView.typingAttributes = Self.inputStyle.attributes(color: UIColor(Palette.inputText))
+    }
+
+    private func updatePlaceholder() {
+        placeholderLabel.isHidden = !(textView.text ?? "").isEmpty
+    }
+
+    fileprivate func textChanged() {
+        let width = bounds.width
+        let before = width > 0 ? height(fitting: width) : 0
+        measured = nil
+        let after = width > 0 ? height(fitting: width) : 0
+        updatePlaceholder()
+        delegate?.agentInputCardDidChangeText(self)
+        if before != after {
+            delegate?.agentInputCardDidInvalidateHeight(self)
+        }
+        setNeedsLayout()
+    }
+
+    // MARK: Actions
+
+    @objc private func addTapped() {
+        delegate?.agentInputCardDidPressAdd(self)
+    }
+
+    @objc private func primaryTapped() {
+        delegate?.agentInputCardDidPressPrimary(self)
+    }
+}
+
+extension AgentInputCardView: UITextViewDelegate {
+    public func textViewDidChange(_ textView: UITextView) {
+        textChanged()
+    }
+
+    public func textViewDidChangeSelection(_ textView: UITextView) {
+        delegate?.agentInputCardDidChangeSelection(self)
+    }
+
+    public func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText text: String) -> Bool {
+        guard text == "\n" else { return true }
+        return delegate?.agentInputCardShouldInsertNewline(self) ?? true
+    }
+
+    public func textViewDidBeginEditing(_ textView: UITextView) {
+        delegate?.agentInputCardDidChangeFocus(self)
+    }
+
+    public func textViewDidEndEditing(_ textView: UITextView) {
+        delegate?.agentInputCardDidChangeFocus(self)
+    }
+}
+
+// MARK: - Parts
+
+/// BubblePressable's press: 0.7 opacity and a 1.025 swell, settling back.
+class ComposerPressableButton: UIControl {
+    override var isHighlighted: Bool {
+        didSet {
+            guard isHighlighted != oldValue else { return }
+            let pressed = isHighlighted && isEnabled
+            UIView.animate(
+                withDuration: pressed ? 0.065 : 0.25,
+                delay: 0,
+                usingSpringWithDamping: pressed ? 1 : 0.55,
+                initialSpringVelocity: 0,
+                options: [.beginFromCurrentState, .allowUserInteraction]
+            ) {
+                self.transform = pressed ? CGAffineTransform(scaleX: 1.025, y: 1.025) : .identity
+                self.pressedAlphaChanged(pressed)
+            }
+        }
+    }
+
+    func pressedAlphaChanged(_ pressed: Bool) {
+        alpha = pressed ? 0.7 : 1
+    }
+
+    /// `hitSlop={6}`.
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        bounds.insetBy(dx: -6, dy: -6).contains(point)
+    }
+}
+
+/// The add button: a 26pt Ionicon centred in a 42pt circle.
+final class ComposerIconButton: ComposerPressableButton {
+    private let iconView: IconView
+
+    var tint: ColorToken = Palette.text {
+        didSet { iconView.tintColor = UIColor(tint) }
+    }
+
+    init(icon: Icon, size: CGFloat) {
+        iconView = IconView(icon, size: size, tint: Palette.text)
+        super.init(frame: .zero)
+        addSubview(iconView)
+        accessibilityTraits = .button
+        isAccessibilityElement = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerRadius = bounds.height / 2
+        iconView.frame = bounds
+    }
+}
+
+/// A chip that opens its menu on tap, with the label where the native
+/// trigger draws it.
+final class ComposerChipButton: UIButton {
+    let chip: AgentInputChip
+    var onSelect: ((String, AgentInputChip) -> Void)?
+    private let label = UILabel()
+    private let iconView = IconView(size: AgentInputCardLayout.Metrics.permissionIconSize, tint: Palette.text)
+    private var chipConfiguration: AgentInputChipConfiguration?
+
+    /// The label, in the chip, from the layout.
+    var labelFrame: CGRect = .zero {
+        didSet { setNeedsLayout() }
+    }
+
+    init(chip: AgentInputChip) {
+        self.chip = chip
+        super.init(frame: .zero)
+        label.lineBreakMode = .byTruncatingTail
+        label.isUserInteractionEnabled = false
+        addSubview(label)
+        addSubview(iconView)
+        showsMenuAsPrimaryAction = true
+        // The menus list their rows top-down in our order (SwiftUI's
+        // `.menuOrder(.fixed)`, which happy-app gets by pre-reversing).
+        preferredMenuElementOrder = .fixed
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    /// The label's or glyph's one-line size.
+    var contentSize: CGSize {
+        switch chipConfiguration?.content {
+        case .icon: iconView.sizeThatFits(.zero)
+        case .label: label.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude))
+        case nil: .zero
+        }
+    }
+
+    func configure(_ configuration: AgentInputChipConfiguration?) {
+        guard configuration != chipConfiguration else { return }
+        chipConfiguration = configuration
+        isHidden = configuration == nil
+        guard let configuration else { return }
+        switch configuration.content {
+        case .label(let text):
+            label.attributedText = TextStyles.composerChip.attributedString(text, color: UIColor(Palette.text), lineBreakMode: .byTruncatingTail)
+            label.isHidden = false
+            iconView.isHidden = true
+        case .icon(let icon):
+            iconView.icon = icon
+            iconView.isHidden = false
+            label.isHidden = true
+        }
+        accessibilityLabel = configuration.accessibilityLabel
+        menu = configuration.menu.map(makeMenu)
+        isEnabled = configuration.menu != nil
+        alpha = configuration.menu != nil ? 1 : AgentInputCardLayout.Metrics.disabledChipOpacity
+    }
+
+    private func makeMenu(_ model: AgentInputMenu) -> UIMenu {
+        let chip = self.chip
+        let sections: [UIMenuElement] = model.sections.map { section in
+            let actions = section.options.map { option in
+                UIAction(
+                    title: option.label,
+                    attributes: option.isDisabled ? .disabled : [],
+                    state: option.key == model.selectedKey ? .on : .off
+                ) { [weak self] _ in
+                    self?.onSelect?(option.key, chip)
+                }
+            }
+            return UIMenu(title: section.title ?? "", options: .displayInline, children: actions)
+        }
+        if sections.count == 1, let only = sections.first as? UIMenu, only.title.isEmpty {
+            return UIMenu(children: only.children)
+        }
+        return UIMenu(children: sections)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        label.frame = labelFrame
+        iconView.frame = labelFrame
+    }
+
+    override var isHighlighted: Bool {
+        didSet { label.alpha = isHighlighted ? 0.7 : 1; iconView.alpha = label.alpha }
+    }
+
+    /// `hitSlop={6}`.
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        bounds.insetBy(dx: -6, dy: -6).contains(point)
+    }
+}
+
+/// The round send / stop button (`mobilePrimaryButton`): 42pt.
+final class ComposerPrimaryButton: ComposerPressableButton {
+    private let iconView = IconView(size: AgentInputCardLayout.Metrics.primaryIconSize)
+    private let spinner = UIActivityIndicatorView(style: .medium)
+    private var action: AgentInputPrimaryAction = .idle
+    private var busy = false
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        addSubview(iconView)
+        spinner.hidesWhenStopped = true
+        addSubview(spinner)
+        isAccessibilityElement = true
+        accessibilityTraits = .button
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
+            self.applyColors()
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    func configure(action: AgentInputPrimaryAction, busy: Bool, accessibilityLabel: String?) {
+        self.action = action
+        self.busy = busy
+        switch action {
+        case .stop:
+            iconView.icon = .octicons("stop")
+            iconView.size = AgentInputCardLayout.Metrics.primaryIconSize
+        case .blocked:
+            iconView.icon = .ionicons("lock-closed")
+            iconView.size = AgentInputCardLayout.Metrics.lockIconSize
+        case .send, .idle, .voice:
+            iconView.icon = .octicons("arrow-up")
+            iconView.size = AgentInputCardLayout.Metrics.primaryIconSize
+        }
+        // `disabled={!canPressSendButton}`: idle can't be pressed, nor can
+        // anything while a stop is in flight.
+        isEnabled = !busy && action != .idle
+        if busy {
+            spinner.startAnimating()
+            iconView.isHidden = true
+        } else {
+            spinner.stopAnimating()
+            iconView.isHidden = false
+        }
+        self.accessibilityLabel = accessibilityLabel ?? (action == .stop ? Strings.Composer.stop : Strings.Composer.send)
+        applyColors()
+    }
+
+    private func applyColors() {
+        // Stop first: a blank composer on a non-steerable agent is both
+        // blocked and abortable, and must not look locked.
+        layer.borderWidth = 0
+        switch action {
+        case .stop:
+            backgroundColor = UIColor(Palette.composerStopFill)
+            iconView.tintColor = UIColor(Palette.composerStopIcon)
+        case .blocked:
+            backgroundColor = UIColor(Palette.surfaceHigh)
+            layer.borderWidth = 1
+            layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+            iconView.tintColor = UIColor(Palette.textSecondary)
+        case .send, .voice:
+            backgroundColor = UIColor(Palette.surfaceHighest)
+            iconView.tintColor = UIColor(Palette.text)
+        case .idle:
+            backgroundColor = UIColor(Palette.composerPrimaryInactive)
+            iconView.tintColor = UIColor(Palette.textSecondary)
+        }
+        spinner.color = action == .stop
+            ? UIColor(Palette.composerStopIcon)
+            : UIColor(Palette.text)
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        layer.cornerRadius = bounds.height / 2
+        iconView.frame = bounds
+        spinner.center = CGPoint(x: bounds.midX, y: bounds.midY)
+    }
+}
+
+/// AgentInputAttachmentStrip: 64pt thumbnails in a horizontal scroll, each
+/// with a remove button hanging over its corner. The scroll view clips, as
+/// React Native's does.
+final class AttachmentStripView: UIScrollView {
+    var onRemove: ((String) -> Void)?
+
+    var attachments: [AgentInputAttachmentPreview] = [] {
+        didSet {
+            guard attachments != oldValue else { return }
+            rebuild()
+        }
+    }
+
+    private var thumbnails: [AttachmentThumbnailView] = []
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        showsHorizontalScrollIndicator = false
+        showsVerticalScrollIndicator = false
+        alwaysBounceHorizontal = false
+        clipsToBounds = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    private func rebuild() {
+        let existing = Dictionary(thumbnails.map { ($0.attachment.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var next: [AttachmentThumbnailView] = []
+        for attachment in attachments {
+            if let view = existing[attachment.id], view.attachment == attachment {
+                next.append(view)
+            } else {
+                let view = AttachmentThumbnailView(attachment: attachment)
+                view.onRemove = { [weak self] id in self?.onRemove?(id) }
+                addSubview(view)
+                next.append(view)
+            }
+        }
+        let kept = Set(next.map(ObjectIdentifier.init))
+        for view in thumbnails where !kept.contains(ObjectIdentifier(view)) {
+            view.removeFromSuperview()
+        }
+        thumbnails = next
+        setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let placed = AgentInputCardLayout.attachmentThumbnails(count: thumbnails.count)
+        for (view, frame) in zip(thumbnails, placed.frames) {
+            view.setLayoutFrame(frame)
+        }
+        contentSize = CGSize(width: placed.contentWidth, height: bounds.height)
+    }
+}
+
+/// One thumbnail: the picture (cover, radius 8) in a 1pt divider ring,
+/// and an 18pt remove button.
+final class AttachmentThumbnailView: UIView {
+    let attachment: AgentInputAttachmentPreview
+    var onRemove: ((String) -> Void)?
+    private let imageView = UIImageView()
+    private let removeButton = ComposerIconButton(icon: .ionicons("close"), size: AgentInputCardLayout.Metrics.attachmentRemoveIconSize)
+
+    init(attachment: AgentInputAttachmentPreview) {
+        self.attachment = attachment
+        super.init(frame: .zero)
+        layer.cornerRadius = AgentInputCardLayout.Metrics.attachmentRadius
+        layer.borderWidth = AgentInputCardLayout.Metrics.attachmentBorder
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.layer.cornerRadius = AgentInputCardLayout.Metrics.attachmentRadius
+        imageView.alpha = 0
+        addSubview(imageView)
+        removeButton.backgroundColor = UIColor(Palette.surfaceHigh)
+        removeButton.addTarget(self, action: #selector(removeTapped), for: .touchUpInside)
+        addSubview(removeButton)
+        applyColors()
+        registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
+            self.applyColors()
+        }
+        load()
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    private func applyColors() {
+        layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
+    }
+
+    private func load() {
+        let url = attachment.fileURL
+        let side = AgentInputCardLayout.Metrics.attachmentSize * max(1, traitCollection.displayScale)
+        Task { [weak self] in
+            let image = await Task.detached(priority: .userInitiated) { () -> UIImage? in
+                guard let image = UIImage(contentsOfFile: url.path) else { return nil }
+                let scale = side / max(1, min(image.size.width, image.size.height))
+                let size = CGSize(width: image.size.width * min(1, scale), height: image.size.height * min(1, scale))
+                return image.preparingThumbnail(of: size) ?? image
+            }.value
+            guard let self, let image else { return }
+            self.imageView.image = image
+            // expo-image's `transition={150}`.
+            UIView.animate(withDuration: 0.15) { self.imageView.alpha = 1 }
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        imageView.frame = bounds
+        removeButton.frame = AgentInputCardLayout.attachmentRemoveButton
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        super.point(inside: point, with: event) || removeButton.frame.insetBy(dx: -4, dy: -4).contains(point)
+    }
+
+    @objc private func removeTapped() {
+        onRemove?(attachment.id)
+    }
+}
+#endif
