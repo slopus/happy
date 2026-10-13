@@ -257,6 +257,8 @@ public enum ChatTextStyles {
     // ChatHeaderView.tsx, in the glass capsule (mobileSubtitle: 14 high)
     public static let headerTitle = ChatTextStyle(.plex(.semiBold), size: 16, lineHeight: 20)
     public static let headerSubtitle = ChatTextStyle(.plex(.regular), size: 12, lineHeight: 14)
+    /// Without glass (a tablet) the subtitle keeps its own 16.
+    public static let headerPlainSubtitle = ChatTextStyle(.plex(.regular), size: 12, lineHeight: 16)
 
     // EmptyMessages.tsx
     public static let emptyHost = ChatTextStyle(.plex(.semiBold), size: 18)

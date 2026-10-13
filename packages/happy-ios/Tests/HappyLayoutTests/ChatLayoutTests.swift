@@ -450,6 +450,24 @@ final class ChatScreenLayoutTests: XCTestCase {
         assertFrame(layout.scrollButton, rect(180.5, 720, 32, 32))
     }
 
+    func testOnATabletTheListStopsAtTheDock() {
+        // An iPad's chat: 1024 by 768, status bar 24 and a 50 bar.
+        let layout = ChatScreenLayout(.init(
+            size: CGSize(width: 664, height: 768), safeArea: LayoutInsets(top: 74, left: 0, bottom: 20, right: 0), keyboardTop: nil,
+            accessories: [.inset(block(height: 60))], composerHeight: 70, composerCardOffset: 20, docked: true, accessoryPaddingH: 12
+        ))
+        assertFrame(layout.accessories[0], rect(12, 0, 640, 60))
+        assertFrame(layout.dock, rect(0, 618, 664, 130))
+        assertFrame(layout.list, rect(0, 74, 664, 544))
+        XCTAssertEqual(layout.newestEdgeInset, 8)
+        XCTAssertEqual(layout.oldestEdgeInset, 106)
+        // 4 above the list's bottom.
+        assertFrame(layout.scrollButton, rect(316, 582, 32, 32))
+        XCTAssertEqual(layout.scrim.height, 0)
+        XCTAssertEqual(layout.headerScrim.height, 0)
+        assertFrame(layout.placeholder, rect(0, 74, 664, 544))
+    }
+
     func testTheDockRidesTheKeyboard() {
         let layout = screen(keyboardTop: 500)
         assertFrame(layout.dock, rect(0, 370, 393, 130))
@@ -757,5 +775,24 @@ final class InactiveHintLayoutTests: XCTestCase {
         let short = InactiveHintLayout(width: 361, notice: text("x", lineHeight: 18), terminalNotice: nil, action: .command(block(height: 18)))
         // At least 48 tall.
         assertFrame(short.command, rect(0, 40, 361, 48))
+    }
+}
+
+final class ChatPlainHeaderLayoutTests: XCTestCase {
+    func testTheTitleSitsAtTheStartOfTheRow() {
+        let layout = ChatPlainHeaderLayout(
+            barWidth: 664, barHeight: 50, maxWidth: 800,
+            title: fixed(120, 20), subtitle: fixed(60, 16), changes: CGSize(width: 40, height: 14)
+        )
+        assertFrame(layout.column, rect(16, 7, 632, 36))
+        assertFrame(layout.title, rect(16, 7, 120, 20))
+        assertFrame(layout.subtitle, rect(16, 27, 60, 16))
+        assertFrame(layout.changes, rect(80, 28, 40, 14))
+    }
+
+    func testAWideBarHoldsTheRowToTheHeadersMaxWidth() {
+        let layout = ChatPlainHeaderLayout(barWidth: 1000, barHeight: 50, maxWidth: 800, title: fixed(120, 20), subtitle: nil, changes: nil)
+        assertFrame(layout.column, rect(116, 15, 768, 20))
+        XCTAssertNil(layout.subtitle)
     }
 }

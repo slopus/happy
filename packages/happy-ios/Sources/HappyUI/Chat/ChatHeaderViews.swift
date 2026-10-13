@@ -97,6 +97,90 @@ final class ChatHeaderTitleView: UIControl {
     }
 }
 
+/// ChatHeaderView on a tablet: no glass and no capsule. The title and its
+/// workspace or branch line sit at the start of the header's row
+/// (`ChatPlainHeaderLayout`), the subtitle in `textSecondary`. The view
+/// stretches across the navigation bar and places the column from the bar's
+/// own edges, wherever the bar put it. Tapping it opens the session's info.
+final class ChatPlainHeaderTitleView: UIControl {
+    private let column = UIView()
+    private let title = ChatLabel(MeasuredText(NSAttributedString()))
+    private let subtitle = ChatLabel(MeasuredText(NSAttributedString()))
+    private let changes = GitChangesView()
+    private var hasSubtitle = false
+
+    /// `layout.headerMaxWidth`.
+    var maxWidth: CGFloat = .greatestFiniteMagnitude {
+        didSet { if maxWidth != oldValue { setNeedsLayout() } }
+    }
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        column.isUserInteractionEnabled = false
+        addSubview(column)
+        for view in [title.view, subtitle.view, changes] {
+            column.addSubview(view)
+        }
+        isAccessibilityElement = true
+        accessibilityTraits = [.button, .header]
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    func update(title: String, subtitle: String?, changes: SessionDetails.LineChanges?) {
+        let heading = title.isEmpty ? (subtitle ?? "") : title
+        self.title.update(MeasuredText(ChatTextStyles.headerTitle.string(heading, color: Palette.headerTint, lineBreakMode: .byTruncatingTail), maxLines: 1))
+        hasSubtitle = subtitle != nil
+        self.subtitle.update(MeasuredText(ChatTextStyles.headerPlainSubtitle.string(subtitle ?? "", color: Palette.textSecondary, lineBreakMode: .byTruncatingTail), maxLines: 1))
+        self.subtitle.view.isHidden = subtitle == nil
+        self.changes.changes = changes.map { GitLineChanges(approximate: $0.approximate, insertions: $0.insertions, deletions: $0.deletions) }
+        self.changes.isHidden = changes == nil
+        accessibilityLabel = heading
+        accessibilityValue = subtitle
+        setNeedsLayout()
+    }
+
+    /// As wide as the bar lets a title view grow.
+    override var intrinsicContentSize: CGSize {
+        CGSize(width: UIView.layoutFittingExpandedSize.width, height: UIView.noIntrinsicMetric)
+    }
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        size
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // The row is the bar's, not this view's: UIKit insets a title view.
+        var bar: UIView? = superview
+        while let current = bar, !(current is UINavigationBar) { bar = current.superview }
+        let barFrame = bar.map { $0.convert($0.bounds, to: self) } ?? bounds
+        let layout = ChatPlainHeaderLayout(
+            barWidth: barFrame.width, barHeight: bounds.height, maxWidth: maxWidth,
+            title: title.measurable, subtitle: hasSubtitle ? subtitle.measurable : nil,
+            changes: changes.isHidden ? nil : changes.sizeThatFits(.zero)
+        )
+        // Kept inside this view, where its touches land.
+        var frame = layout.column.offsetBy(dx: barFrame.minX, dy: 0)
+        frame.origin.x = min(max(frame.minX, 0), bounds.width)
+        frame.size.width = max(0, min(frame.width, bounds.width - frame.minX))
+        column.bounds = CGRect(origin: .zero, size: frame.size)
+        column.center = CGPoint(x: frame.midX, y: frame.midY)
+        let origin = layout.column.origin
+        title.place(layout.title.offsetBy(dx: -origin.x, dy: -origin.y))
+        if let rect = layout.subtitle { subtitle.place(rect.offsetBy(dx: -origin.x, dy: -origin.y)) }
+        if let rect = layout.changes { changes.setLayoutFrame(rect.offsetBy(dx: -origin.x, dy: -origin.y)) }
+    }
+
+    /// BubblePressable's `bubbleScale={1.012}`.
+    override var isHighlighted: Bool {
+        didSet { column.transform = isHighlighted ? CGAffineTransform(scaleX: 1.012, y: 1.012) : .identity }
+    }
+}
+
 /// SessionView's `headerRight`: the session's avatar, grey while it is
 /// offline, in a glass circle. It opens the session's info.
 final class ChatHeaderAvatarControl: UIControl {

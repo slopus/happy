@@ -16,6 +16,9 @@ struct ChatRowStyle: Equatable, Sendable {
     var flavor: String?
     /// `settings.showLineNumbersInToolViews`.
     var showLineNumbers = false
+    /// `useIsTablet()`: permission buttons hug their labels at the
+    /// trailing edge (`TabletBranches.permissionButtonsTrailing`).
+    var tablet = false
 }
 
 /// Everything one row is drawn from. Equal inputs at the same width give

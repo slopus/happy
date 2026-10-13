@@ -95,3 +95,54 @@ public enum ChatHeaderScrim {
     public static let underlapOpacity: Float = 0.96
     public static let fadeDuration: TimeInterval = 0.2
 }
+
+/// ChatHeaderView without glass (a tablet): the title over the workspace or
+/// branch and the line changes, at the start of the header's row rather
+/// than in a capsule. The row is the bar's width held to `maxWidth`
+/// (`layout.headerMaxWidth`) and centred, 16 in from its sides; the column
+/// is centred top to bottom in the bar.
+public struct ChatPlainHeaderLayout: Equatable, Sendable {
+    public enum Metrics {
+        /// The header's `content` paddingHorizontal.
+        public static let paddingH: CGFloat = 16
+        /// subtitleRow's gap.
+        public static let rowGap: CGFloat = 4
+    }
+
+    /// The column the title and its row take, in the bar.
+    public var column: CGRect
+    public var title: CGRect
+    public var subtitle: CGRect?
+    public var changes: CGRect?
+
+    public init(barWidth: CGFloat, barHeight: CGFloat, maxWidth: CGFloat, title: Measurable, subtitle: Measurable?, changes: CGSize?) {
+        typealias M = Metrics
+        let barWidth = max(0, barWidth)
+        let row = min(barWidth, max(0, maxWidth))
+        let x = (barWidth - row) / 2 + M.paddingH
+        let width = max(0, row - 2 * M.paddingH)
+        let titleSize = title.size(fitting: width)
+
+        var subtitleSize: CGSize?
+        var rowHeight: CGFloat = 0
+        if let subtitle {
+            let room = max(0, width - (changes.map { $0.width + M.rowGap } ?? 0))
+            let size = subtitle.size(fitting: room)
+            subtitleSize = size
+            rowHeight = size.height
+        }
+        if let changes { rowHeight = max(rowHeight, changes.height) }
+
+        let height = titleSize.height + rowHeight
+        let top = (barHeight - height) / 2
+        column = CGRect(x: x, y: top, width: width, height: height)
+        self.title = CGRect(x: x, y: top, width: titleSize.width, height: titleSize.height)
+        let rowTop = top + titleSize.height
+        var rowX = x
+        if let subtitleSize {
+            self.subtitle = CGRect(x: rowX, y: rowTop + (rowHeight - subtitleSize.height) / 2, width: subtitleSize.width, height: subtitleSize.height)
+            rowX += subtitleSize.width + M.rowGap
+        }
+        self.changes = changes.map { CGRect(x: rowX, y: rowTop + (rowHeight - $0.height) / 2, width: $0.width, height: $0.height) }
+    }
+}
