@@ -720,13 +720,14 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         let metadata = state?.session.record?.metadata
         let sessionId = environment.sessionId
         let actions = environment.account.actions
+        let files = environment.account.composerFileIndex
         suggestionTask = Task { [weak self] in
             // The search runs off main; only its list comes back.
             let results = await Task.detached(priority: .userInitiated) { () -> [ComposerSuggestion] in
                 if query.hasPrefix("/") {
                     return ComposerCommands.suggestions(query, metadata: metadata)
                 } else if query.hasPrefix("@") {
-                    return await ComposerFileIndex.shared.suggestions(query, sessionId: sessionId) { id in
+                    return await files.suggestions(query, sessionId: sessionId) { id in
                         try? await actions.sessionRipgrep(sessionId: id, args: ComposerFileIndex.ripgrepArguments)
                     }
                 }

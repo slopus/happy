@@ -319,7 +319,8 @@ public enum ComposerFiles {
 /// suggestionFile.ts's FileSearchCache: each session's file list, fetched
 /// with `rg --files --follow` and kept five minutes. Refreshes don't
 /// overlap, and one within a second of the last is skipped. A failed
-/// fetch keeps what was there.
+/// fetch keeps what was there. One per account
+/// (`AccountSession.composerFileIndex`), keyed by session id within it.
 public actor ComposerFileIndex {
     /// `sessionRipgrep(sessionId, ['--files', '--follow'])`; nil if it threw.
     public typealias Fetch = @Sendable (_ sessionId: String) async -> SessionRipgrepResponse?
@@ -334,7 +335,6 @@ public actor ComposerFileIndex {
     }
 
     public static let lifetime: TimeInterval = 5 * 60
-    public static let shared = ComposerFileIndex()
 
     private var caches: [String: Cache] = [:]
     private let now: @Sendable () -> Date
