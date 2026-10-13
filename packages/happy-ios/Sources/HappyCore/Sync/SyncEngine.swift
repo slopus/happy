@@ -69,6 +69,7 @@ public actor SyncEngine {
     nonisolated let modePushes = SessionModePushCounters()
     /// This account's durable Rig drafts and serialized metadata writer.
     public nonisolated let rigComposer: RigComposerSync
+    public nonisolated let presence: SessionPresence
     private let decoder: RecordDecoder
     private let accountCipher: AccountCipher
     private let options: Options
@@ -95,6 +96,7 @@ public actor SyncEngine {
         let keyRing = KeyRing(keys: keys)
         self.keyRing = keyRing
         self.rigComposer = RigComposerSync(store: store, keyRing: keyRing, now: now, sleep: sleep)
+        self.presence = SessionPresence(store: store, now: now)
         self.decoder = RecordDecoder(keyRing: keyRing)
         self.accountCipher = AccountCipher(secret: keys.secret)
         self.options = options
@@ -107,6 +109,8 @@ public actor SyncEngine {
 
     /// Launch and every socket (re)connect: pull everything that changed.
     public func syncAll() async {
+        guard !stopped else { return }
+        await presence.start()
         for job in [Job.sessions, .machines, .settings, .profile, .outbox] {
             await invalidate(job)
         }
@@ -121,6 +125,7 @@ public actor SyncEngine {
             await job.stop()
         }
         jobs = [:]
+        try? await presence.stop()
     }
 
     public func invalidate(_ job: Job) async {
@@ -196,7 +201,9 @@ public actor SyncEngine {
         repeat {
             let page = try await api.sessions(changedSince: changedSince, cursor: pageCursor, limit: options.sessionsPageSize)
             let previous = Dictionary(uniqueKeysWithValues: try store.sessions(ids: page.sessions.map(\.id)).map { ($0.id, $0) })
-            try store.upsertSessions(page.sessions.map { decoder.session($0, previous: previous[$0.id]) }, reconcileComposer: modePushes.reconciliation)
+            let records = page.sessions.map { decoder.session($0, previous: previous[$0.id]) }
+            await presence.prepareSessions(records, previous: previous)
+            try store.upsertSessions(records, reconcileComposer: modePushes.reconciliation)
             for session in page.sessions {
                 seen.insert(session.id)
                 maxUpdatedAt = max(maxUpdatedAt, session.updatedAt)
@@ -214,7 +221,9 @@ public actor SyncEngine {
     func pullMachines() async throws {
         let rows = try await api.machines()
         let previous = Dictionary(uniqueKeysWithValues: try store.machines().map { ($0.id, $0) })
-        try store.replaceMachines(rows.map { decoder.machine($0, previous: previous[$0.id]) })
+        let records = rows.map { decoder.machine($0, previous: previous[$0.id]) }
+        await presence.prepareMachines(records)
+        try store.replaceMachines(records)
         try store.setCursor(.machinesLastSync, now())
     }
 
@@ -406,6 +415,7 @@ public actor SyncEngine {
     public func setBackgrounded(_ value: Bool) async {
         backgrounded = value
         if value {
+            try? await presence.flush()
             retryTask?.cancel()
             retryTask = nil
         } else {
@@ -719,9 +729,10 @@ public actor SyncEngine {
     // MARK: Live updates
 
     public func handle(_ update: UpdateContainer) async {
+        guard !stopped else { return }
         let followUp: Job?
         do {
-            followUp = try apply(update.body, at: update.createdAt)
+            followUp = try await apply(update.body, at: update.createdAt)
         } catch {
             // A merge that failed locally is recovered by the delta pulls.
             await syncAll()
@@ -733,7 +744,7 @@ public actor SyncEngine {
     }
 
     /// Merges one update; returns the pull to run when it did not line up.
-    private func apply(_ body: UpdateBody, at timestamp: Int64) throws -> Job? {
+    private func apply(_ body: UpdateBody, at timestamp: Int64) async throws -> Job? {
         switch body {
         case .newMessage(let sessionId, let message):
             guard let session = try store.session(id: sessionId) else { return .sessions }
@@ -746,7 +757,10 @@ public actor SyncEngine {
 
         case .newSession(let body):
             guard let row = body.asSession else { return .sessions }
-            try store.upsertSessions([decoder.session(row)], reconcileComposer: modePushes.reconciliation)
+            let record = decoder.session(row)
+            let previous = try store.session(id: row.id).map { [row.id: $0] } ?? [:]
+            await presence.prepareSessions([record], previous: previous)
+            try store.upsertSessions([record], reconcileComposer: modePushes.reconciliation)
             return row.projectId == nil ? nil : .projects
 
         case .updateSession(let body):
@@ -766,12 +780,20 @@ public actor SyncEngine {
             return nil
 
         case .newMachine(let body):
-            try store.upsertMachine(decoder.machine(body.asMachine))
+            let record = decoder.machine(body.asMachine)
+            await presence.prepareMachines([record])
+            try store.upsertMachine(record)
             return nil
 
         case .updateMachine(let body):
             guard let machine = try store.machine(id: body.machineId) else { return .machines }
             let cipher = keyRing.cipher(wrappedKey: machine.dataKeyCipher)
+            if let activeAt = body.activeAt, activeAt >= machine.activeAt {
+                var presenceRow = machine
+                presenceRow.activeAt = activeAt
+                if let active = body.active { presenceRow.active = active }
+                await presence.prepareMachines([presenceRow])
+            }
             _ = try store.applyMachineUpdate(
                 id: body.machineId,
                 metadata: decoder.versioned(body.metadata, cipher: cipher, after: machine.metadataVersion),
@@ -809,11 +831,12 @@ public actor SyncEngine {
     }
 
     public func handle(_ event: EphemeralEvent) async {
+        guard !stopped else { return }
         switch event {
         case .activity(let sessionId, let active, let activeAt, let thinking):
-            try? store.applySessionActivity(id: sessionId, active: active, activeAt: activeAt, thinking: thinking)
+            await presence.activity(id: sessionId, active: active, activeAt: activeAt, thinking: thinking)
         case .machineActivity(let machineId, let active, let activeAt):
-            _ = try? store.applyMachineUpdate(id: machineId, metadata: nil, daemonState: nil, active: active, activeAt: activeAt)
+            await presence.machineActivity(id: machineId, active: active, activeAt: activeAt)
         case .machineStatus, .sessionEvent, .unsupported:
             break
         }

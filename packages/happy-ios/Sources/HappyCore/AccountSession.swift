@@ -178,6 +178,9 @@ public final class AccountSession: Sendable {
     }
 
     public func stop() async {
+        homeFeed.stop()
+        settingsFeed.stop()
+        machinesFeed.stop()
         let task = pump.cancel()
         await gitStatus.stop()
         await rigComposer.setConnected(false)

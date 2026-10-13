@@ -131,7 +131,7 @@ final class SyncPerfTests: XCTestCase {
     }
 
     @MainActor
-    func testHeartbeatBaseline() async throws {
+    func testHeartbeatsPublishNothingAndCheckpointOnceOnStop() async throws {
         let store = try LocalStore.inMemory()
         try store.upsertSessions((0..<10).map { index in
             var row = ChatRecords.storeSession()
@@ -147,29 +147,43 @@ final class SyncPerfTests: XCTestCase {
                                 keys: try AccountKeys(secret: Data(repeating: 3, count: 32)), now: { clock.now })
         let before = try store.chatPage(sessionId: "s0").change
         var deliveries = 0
-        var expectedDelivery: XCTestExpectation? = expectation(description: "first home")
-        let initial = expectedDelivery!
+        let initial = expectation(description: "first home")
+        let churn = expectation(description: "no heartbeat home value")
+        churn.isInverted = true
         let observation = store.observeHome { _ in
             deliveries += 1
-            expectedDelivery?.fulfill()
-            expectedDelivery = nil
+            if deliveries == 1 { initial.fulfill() }
+            else { churn.fulfill() }
         }
         await fulfillment(of: [initial], timeout: 2)
         defer { observation.cancel() }
+        let firstChat = expectation(description: "first chat")
+        let chatChurn = expectation(description: "no heartbeat chat value")
+        chatChurn.isInverted = true
+        var chatValues = 0
+        let chatTask = Task {
+            for await _ in LocalChatFeed(store: store).snapshots(sessionId: "s0") {
+                chatValues += 1
+                if chatValues == 1 { firstChat.fulfill() }
+                else { chatChurn.fulfill() }
+            }
+        }
+        await fulfillment(of: [firstChat], timeout: 2)
+        defer { chatTask.cancel() }
         let start = ContinuousClock.now
         for tick in 1...15 {
             clock.now = 1_000_000 + Int64(tick * 2000)
             for index in 0..<10 {
-                let expected = expectation(description: "heartbeat home")
-                expectedDelivery = expected
                 await engine.handle(.activity(sessionId: "s\(index)", active: true, activeAt: clock.now, thinking: false))
-                await fulfillment(of: [expected], timeout: 2)
             }
         }
-        XCTAssertEqual(commits.value, 150) // Baseline; becomes <=1 with presence.
-        XCTAssertEqual(deliveries - 1, 150)
+        await fulfillment(of: [churn, chatChurn], timeout: 0.05)
+        XCTAssertEqual(commits.value, 0)
+        XCTAssertEqual(deliveries - 1, 0)
+        XCTAssertEqual(chatValues - 1, 0)
         XCTAssertEqual(try store.chatPage(sessionId: "s0").change, before)
         print("SYNC_PERF 10x30s-heartbeats: modifying_commits=\(commits.value) home_values=\(deliveries - 1) duration=\(start.duration(to: .now))")
         await engine.stop()
+        XCTAssertEqual(commits.value, 1, "stop flushes all ten dirty rows in one transaction, outside the 30s scenario")
     }
 }
