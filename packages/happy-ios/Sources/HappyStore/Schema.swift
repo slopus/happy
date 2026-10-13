@@ -82,6 +82,42 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v2") { db in
+            // Live state the server only sends as ephemerals, and local
+            // read state. `thinking` and `archiving` are cleared on every
+            // open (see LocalStore.open); `unread` is kept.
+            try db.alter(table: "session") { t in
+                t.add(column: "thinking", .boolean).notNull().defaults(to: false)
+                t.add(column: "thinkingAt", .integer).notNull().defaults(to: 0)
+                t.add(column: "unread", .boolean).notNull().defaults(to: false)
+                t.add(column: "archiving", .boolean).notNull().defaults(to: false)
+            }
+
+            try db.create(table: "project") { t in
+                t.primaryKey("id", .text)
+                t.column("externalId", .text).notNull()
+                t.column("createdAt", .integer).notNull()
+                t.column("updatedAt", .integer).notNull()
+                t.column("metadataVersion", .integer).notNull()
+                t.column("metadataCipher", .text).notNull()
+                t.column("metadata", .text)
+                t.column("dataKeyCipher", .text)
+            }
+
+            try db.create(table: "accountProfile") { t in
+                t.primaryKey("id", .integer)
+                t.column("timestamp", .integer).notNull()
+                t.column("profile", .text).notNull()
+            }
+
+            // Settings changed on this device and not yet accepted by the
+            // server: a partial settings object layered over the synced one.
+            try db.create(table: "pendingSettings") { t in
+                t.primaryKey("id", .integer)
+                t.column("delta", .text).notNull()
+            }
+        }
+
         return migrator
     }
 }

@@ -27,13 +27,27 @@ public struct ItemGroupLayout: Equatable, Sendable {
         public var rows: [Measurable]
         /// The group is centred at this width on wide screens.
         public var maxWidth: CGFloat?
+        /// Overrides the space above an untitled card (`headerStyle`).
+        public var untitledPaddingTop: CGFloat?
+        /// Space below the group (`style.paddingBottom`).
+        public var paddingBottom: CGFloat
 
-        public init(width: CGFloat, title: Measurable? = nil, footer: Measurable? = nil, rows: [Measurable], maxWidth: CGFloat? = nil) {
+        public init(
+            width: CGFloat,
+            title: Measurable? = nil,
+            footer: Measurable? = nil,
+            rows: [Measurable],
+            maxWidth: CGFloat? = nil,
+            untitledPaddingTop: CGFloat? = nil,
+            paddingBottom: CGFloat = 0
+        ) {
             self.width = width
             self.title = title
             self.footer = footer
             self.rows = rows
             self.maxWidth = maxWidth
+            self.untitledPaddingTop = untitledPaddingTop
+            self.paddingBottom = paddingBottom
         }
     }
 
@@ -68,7 +82,7 @@ public struct ItemGroupLayout: Equatable, Sendable {
             y = M.headerPaddingTop + height + M.headerPaddingBottom
         } else {
             header = nil
-            y = M.untitledPaddingTop
+            y = input.untitledPaddingTop ?? M.untitledPaddingTop
         }
 
         let cardWidth = Self.cardWidth(forWidth: width, maxWidth: input.maxWidth)
@@ -91,7 +105,7 @@ public struct ItemGroupLayout: Equatable, Sendable {
         } else {
             self.footer = nil
         }
-        size = CGSize(width: width, height: y)
+        size = CGSize(width: width, height: y + input.paddingBottom)
     }
 }
 

@@ -16,6 +16,11 @@ import HappyWire
 ///   only for sessions whose server `seq` is ahead of the local log.
 /// - Machines: the list is small and has no delta endpoint; it is fetched
 ///   whole and merged by version.
+/// - Settings: local changes are stored as pending first, pushed with the
+///   version they were based on, and re-based on the server's copy when
+///   another device got there first (sync.ts `syncSettings`).
+/// - Profile and projects: small, fetched whole. Projects are only the ones
+///   stored sessions point at.
 /// - Live updates are merged directly. Anything that does not line up (a
 ///   seq gap, an unknown session) schedules the matching delta pull instead
 ///   of being trusted. Live updates never move a cursor.
@@ -24,9 +29,16 @@ public actor SyncEngine {
         case sessions
         case machines
         case settings
+        case profile
+        case projects
         case pendingMessages
         case messages(sessionId: String)
         case outbox
+    }
+
+    public enum SyncError: Error, Equatable {
+        /// Settings kept colliding with other devices' writes.
+        case settingsConflict
     }
 
     public struct Options: Sendable {
@@ -37,6 +49,8 @@ public actor SyncEngine {
         public var changedSinceOverlapMs: Int64 = 5_000
         public var fullSessionReconcileIntervalMs: Int64 = 24 * 60 * 60 * 1000
         public var messageSessionsPerPass = 50
+        /// Version conflicts tolerated per settings push before backing off.
+        public var settingsPushAttempts = 3
         public var backoff: Backoff = .standard
 
         public init() {}
@@ -79,7 +93,7 @@ public actor SyncEngine {
 
     /// Launch and every socket (re)connect: pull everything that changed.
     public func syncAll() async {
-        for job in [Job.sessions, .machines, .settings, .outbox] {
+        for job in [Job.sessions, .machines, .settings, .profile, .outbox] {
             await invalidate(job)
         }
     }
@@ -129,10 +143,16 @@ public actor SyncEngine {
         case .sessions:
             try await pullSessions()
             await invalidate(.pendingMessages)
+            await invalidate(.projects)
         case .machines:
             try await pullMachines()
         case .settings:
+            try await pushSettings()
             try await pullSettings()
+        case .profile:
+            try await pullProfile()
+        case .projects:
+            try await pullProjects()
         case .pendingMessages:
             try await pullPendingMessages()
         case .messages(let sessionId):
@@ -188,6 +208,32 @@ public actor SyncEngine {
         ))
     }
 
+    func pullProfile() async throws {
+        try store.applyProfile(try await api.profile())
+    }
+
+    func pullProjects() async throws {
+        let rows = try await api.projects(ids: try store.referencedProjectIds())
+        try store.replaceProjects(rows.map(project))
+    }
+
+    /// A project's metadata is sealed with its own data key or, for older
+    /// projects without one, with the account secret.
+    private func project(_ row: APIProject) -> ProjectRecord {
+        let metadata = row.dataEncryptionKey.map { keyRing.cipher(wrappedKey: $0)?.decrypt(base64: row.metadata) }
+            ?? accountCipher.decrypt(base64: row.metadata)
+        return ProjectRecord(
+            id: row.id,
+            externalId: row.externalId,
+            createdAt: row.createdAt,
+            updatedAt: row.updatedAt,
+            metadataVersion: row.metadataVersion,
+            metadataCipher: row.metadata,
+            metadata: metadata,
+            dataKeyCipher: row.dataEncryptionKey
+        )
+    }
+
     func pullPendingMessages() async throws {
         let sessions = try store.sessionsNeedingMessageSync(limit: options.messageSessionsPerPass)
         for session in sessions {
@@ -217,6 +263,60 @@ public actor SyncEngine {
             guard page.hasMore, let lastSeq, lastSeq > afterSeq else { break }
             afterSeq = lastSeq
         }
+    }
+
+    // MARK: Settings
+
+    /// Changes account settings. The change shows at once and is pushed in
+    /// the background; it survives a relaunch until the server accepts it.
+    public func updateSettings(_ delta: [String: JSONValue]) async throws {
+        try store.addPendingSettings(delta)
+        await invalidate(.settings)
+    }
+
+    /// Pushes pending settings on top of the server's copy. A version
+    /// conflict re-bases them on the copy the server returns and tries
+    /// again; local changes win key by key.
+    func pushSettings() async throws {
+        var conflicts = 0
+        while true {
+            let pending = try store.pendingSettings()
+            guard !pending.isEmpty else { return }
+            guard conflicts < options.settingsPushAttempts else { throw SyncError.settingsConflict }
+
+            let synced = try store.accountSettings()
+            var values = synced?.settings?.objectValue ?? [:]
+            values.merge(pending) { _, local in local }
+            let payload = AccountSettings(values).syncPayload
+            let cipher = try accountCipher.encrypt(payload, random: random)
+            let response = try await api.updateAccountSettings(UpdateAccountSettingsRequest(
+                settings: cipher,
+                expectedVersion: synced?.version ?? 0
+            ))
+            switch response {
+            case .success(let version):
+                try store.applyAccountSettings(AccountSettingsRecord(version: version, cipher: cipher, settings: payload))
+                // Only what was sent is settled; a change made during the
+                // round trip goes out on the next pass.
+                try store.settlePendingSettings(sent: pending)
+                return
+            case .versionMismatch(let currentVersion, let currentSettings):
+                try store.replaceAccountSettings(AccountSettingsRecord(
+                    version: currentVersion,
+                    cipher: currentSettings,
+                    settings: currentSettings.flatMap(accountCipher.decrypt(base64:))
+                ))
+                conflicts += 1
+            }
+        }
+    }
+
+    // MARK: Session state
+
+    /// The data key of a stored session, for calls that encrypt to it.
+    public func cipher(forSession id: String) throws -> RecordCipher? {
+        guard let session = try store.session(id: id) else { return nil }
+        return keyRing.cipher(wrappedKey: session.dataKeyCipher)
     }
 
     // MARK: Outbox
@@ -265,7 +365,7 @@ public actor SyncEngine {
     public func handle(_ update: UpdateContainer) async {
         let followUp: Job?
         do {
-            followUp = try apply(update.body)
+            followUp = try apply(update.body, at: update.createdAt)
         } catch {
             // A merge that failed locally is recovered by the delta pulls.
             await syncAll()
@@ -277,7 +377,7 @@ public actor SyncEngine {
     }
 
     /// Merges one update; returns the pull to run when it did not line up.
-    private func apply(_ body: UpdateBody) throws -> Job? {
+    private func apply(_ body: UpdateBody, at timestamp: Int64) throws -> Job? {
         switch body {
         case .newMessage(let sessionId, let message):
             guard let session = try store.session(id: sessionId) else { return .sessions }
@@ -291,7 +391,7 @@ public actor SyncEngine {
         case .newSession(let body):
             guard let row = body.asSession else { return .sessions }
             try store.upsertSessions([decoder.session(row)])
-            return nil
+            return row.projectId == nil ? nil : .projects
 
         case .updateSession(let body):
             guard let session = try store.session(id: body.id) else { return .sessions }
@@ -302,7 +402,7 @@ public actor SyncEngine {
                 agentState: decoder.versioned(body.agentState, cipher: cipher),
                 projectId: body.projectId
             )
-            return nil
+            return body.projectId == nil ? nil : .projects
 
         case .deleteSession(let sessionId):
             try store.deleteSession(id: sessionId)
@@ -336,6 +436,14 @@ public actor SyncEngine {
                     settings: settings.value.flatMap(accountCipher.decrypt(base64:))
                 ))
             }
+            try store.patchProfile(body, at: timestamp)
+            return nil
+
+        case .newProject, .updateProject:
+            return .projects
+
+        case .deleteProject(let projectId):
+            try store.deleteProject(id: projectId)
             return nil
 
         case .kvBatchUpdate, .unsupported:
@@ -345,8 +453,8 @@ public actor SyncEngine {
 
     public func handle(_ event: EphemeralEvent) async {
         switch event {
-        case .activity(let sessionId, let active, let activeAt, _):
-            try? store.applySessionActivity(id: sessionId, active: active, activeAt: activeAt)
+        case .activity(let sessionId, let active, let activeAt, let thinking):
+            try? store.applySessionActivity(id: sessionId, active: active, activeAt: activeAt, thinking: thinking)
         case .machineActivity(let machineId, let active, let activeAt):
             _ = try? store.applyMachineUpdate(id: machineId, metadata: nil, daemonState: nil, active: active, activeAt: activeAt)
         case .machineStatus, .sessionEvent, .unsupported:

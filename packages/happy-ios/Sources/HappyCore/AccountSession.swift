@@ -13,6 +13,8 @@ public final class AccountSession: Sendable {
     public let sync: SyncEngine
     public let realtime: SocketIOClient
     public let pairing: PairingService
+    /// Archive, delete and mark read, for the session list.
+    public let actions: SessionActions
     /// Socket status for the UI (connection dot in settings).
     public let statusUpdates: AsyncStream<RealtimeStatus>
 
@@ -66,6 +68,29 @@ public final class AccountSession: Sendable {
             ])
         }
         (statusUpdates, statusContinuation) = AsyncStream.makeStream(of: RealtimeStatus.self, bufferingPolicy: .bufferingNewest(1))
+        self.actions = SessionActions(api: api, store: store, sync: sync, rpc: realtime)
+    }
+
+    /// Changes synced account settings (sync.ts `applySettings`).
+    public func updateSettings(_ delta: [String: JSONValue]) {
+        let sync = self.sync
+        Task { try? await sync.updateSettings(delta) }
+    }
+
+    /// The account's id on the server: the token's `sub` claim, which
+    /// happy-app shows as the Public ID.
+    public var serverID: String? {
+        Self.subject(ofToken: credentials.token)
+    }
+
+    /// A JWT's `sub` claim, read without verifying the signature.
+    static func subject(ofToken token: String) -> String? {
+        let parts = token.split(separator: ".", omittingEmptySubsequences: false)
+        guard parts.count == 3 else { return nil }
+        var payload = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
+        guard let data = Data(base64Encoded: payload), let claims = try? JSONValue.decode(data) else { return nil }
+        return claims["sub"]?.stringValue
     }
 
     /// The store file for an account. Named by the account's analytics id so

@@ -18,6 +18,16 @@ public final class ItemGroupView: UIView {
         didSet { installRows(replacing: oldValue) }
     }
 
+    /// `headerStyle` padding over an untitled card; nil keeps the default.
+    public var untitledPaddingTop: CGFloat? {
+        didSet { invalidate() }
+    }
+
+    /// `style.paddingBottom` under the group.
+    public var paddingBottom: CGFloat = 0 {
+        didSet { invalidate() }
+    }
+
     let headerLabel = StyledLabel(style: TextStyles.groupHeader, color: Palette.groupedSectionTitle)
     let footerLabel = StyledLabel(style: TextStyles.groupFooter, color: Palette.groupedSectionTitle)
     let card = UIView()
@@ -53,7 +63,9 @@ public final class ItemGroupView: UIView {
             width: width,
             title: title == nil ? nil : headerLabel.measurable,
             footer: footer == nil ? nil : footerLabel.measurable,
-            rows: rows.map(\.measurable)
+            rows: rows.map(\.measurable),
+            untitledPaddingTop: untitledPaddingTop,
+            paddingBottom: paddingBottom
         ))
     }
 

@@ -76,6 +76,15 @@ public final class OfflineChecklistView: UIView {
     public let scrollView = UIScrollView()
     public let troubleshoot = RoundButton(title: Strings.Onboarding.offlineTroubleshoot)
     public let linkAnother = RoundButton(title: Strings.Onboarding.linkAnother, size: .normal, display: .inverted)
+    /// Shown when the account has archived sessions to look at instead.
+    public let showArchived = RoundButton(title: Strings.Sidebar.showArchived, size: .normal, display: .inverted)
+
+    public var showsArchivedButton = false {
+        didSet {
+            showArchived.isHidden = !showsArchivedButton
+            setNeedsLayout()
+        }
+    }
 
     /// "MacBook is offline", or the many-computers form.
     public var title: String {
@@ -111,9 +120,10 @@ public final class OfflineChecklistView: UIView {
         }
         openLabel.string = Strings.Onboarding.offlineOpenStep
         openBody.string = Strings.Onboarding.offlineOpenBody
-        for view in [titleLabel, linkedBox, linkedLabel, openBox, openLabel, openBody, terminal, troubleshoot, linkAnother] {
+        for view in [titleLabel, linkedBox, linkedLabel, openBox, openLabel, openBody, terminal, troubleshoot, linkAnother, showArchived] {
             scrollView.addSubview(view)
         }
+        showArchived.isHidden = true
     }
 
     @available(*, unavailable)
@@ -130,7 +140,7 @@ public final class OfflineChecklistView: UIView {
             openTitle: openLabel.measurable,
             openBody: openBody.measurable,
             terminal: terminal.measurable,
-            buttons: [troubleshoot.measurable, linkAnother.measurable]
+            buttons: [troubleshoot.measurable, linkAnother.measurable] + (showsArchivedButton ? [showArchived.measurable] : [])
         ))
     }
 
@@ -150,6 +160,9 @@ public final class OfflineChecklistView: UIView {
         terminal.setLayoutFrame(layout.terminal)
         troubleshoot.setLayoutFrame(layout.buttons[0])
         linkAnother.setLayoutFrame(layout.buttons[1])
+        if showsArchivedButton, layout.buttons.count > 2 {
+            showArchived.setLayoutFrame(layout.buttons[2])
+        }
     }
 }
 

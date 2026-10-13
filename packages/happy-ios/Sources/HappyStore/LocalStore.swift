@@ -40,6 +40,12 @@ public final class LocalStore: Sendable {
     public init(writer: any DatabaseWriter) throws {
         self.writer = writer
         try Schema.migrator.migrate(writer)
+        // Live state from a previous run is stale: the server re-sends
+        // `thinking` every few seconds while it holds, and an archive that
+        // was in flight has since been answered.
+        try writer.write { db in
+            try db.execute(sql: "UPDATE session SET thinking = 0, thinkingAt = 0, archiving = 0 WHERE thinking = 1 OR archiving = 1")
+        }
     }
 
     // MARK: Sessions
@@ -73,6 +79,7 @@ public final class LocalStore: Sendable {
     ) throws -> Bool {
         try writer.write { db in
             guard var record = try SessionRecord.fetchOne(db, key: id) else { return false }
+            let old = record
             if let metadata, metadata.version > record.metadataVersion, let cipher = metadata.cipher {
                 record.metadataVersion = metadata.version
                 record.metadataCipher = cipher
@@ -86,17 +93,39 @@ public final class LocalStore: Sendable {
             if let projectId {
                 record.projectId = projectId
             }
+            Self.settle(old: old, &record)
             try record.update(db)
             return true
         }
     }
 
-    public func applySessionActivity(id: String, active: Bool, activeAt: Int64) throws {
+    /// Applies an `activity` ephemeral: presence, and whether the agent is
+    /// working on a turn.
+    public func applySessionActivity(id: String, active: Bool, activeAt: Int64, thinking: Bool = false) throws {
         try writer.write { db in
             guard var record = try SessionRecord.fetchOne(db, key: id), activeAt >= record.activeAt else { return }
+            let old = record
             record.active = active
             record.activeAt = activeAt
+            record.thinking = thinking
+            record.thinkingAt = activeAt
+            Self.settle(old: old, &record)
             try record.update(db)
+        }
+    }
+
+    /// The person has seen the session's latest turn.
+    public func markSessionRead(id: String) throws {
+        try writer.write { db in
+            try db.execute(sql: "UPDATE session SET unread = 0 WHERE id = ? AND unread = 1", arguments: [id])
+        }
+    }
+
+    /// Takes a session out of the live list while its archive is in flight,
+    /// or puts it back when the archive failed.
+    public func setSessionArchiving(id: String, _ archiving: Bool) throws {
+        try writer.write { db in
+            try db.execute(sql: "UPDATE session SET archiving = ? WHERE id = ?", arguments: [archiving, id])
         }
     }
 
@@ -288,6 +317,120 @@ public final class LocalStore: Sendable {
         )
     }
 
+    // MARK: Projects
+
+    public func projects() throws -> [ProjectRecord] {
+        try writer.read { db in try ProjectRecord.fetchAll(db) }
+    }
+
+    /// Project ids the stored sessions point at, which is the set to fetch.
+    public func referencedProjectIds() throws -> [String] {
+        try writer.read { db in
+            try String.fetchAll(db, sql: "SELECT DISTINCT projectId FROM session WHERE projectId IS NOT NULL AND projectId != '' ORDER BY projectId")
+        }
+    }
+
+    /// Replaces the projects with a fetch of every referenced one. A project
+    /// the fetch did not return is no longer referenced or no longer exists.
+    public func replaceProjects(_ incoming: [ProjectRecord]) throws {
+        try writer.write { db in
+            let ids = Set(incoming.map(\.id))
+            for id in try String.fetchAll(db, sql: "SELECT id FROM project") where !ids.contains(id) {
+                try ProjectRecord.deleteOne(db, key: id)
+            }
+            for record in incoming {
+                if let existing = try ProjectRecord.fetchOne(db, key: record.id),
+                   existing.metadataVersion > record.metadataVersion {
+                    continue
+                }
+                try record.save(db)
+            }
+        }
+    }
+
+    public func deleteProject(id: String) throws {
+        try writer.write { db in
+            _ = try ProjectRecord.deleteOne(db, key: id)
+            // The server unlinks the sessions in the same write.
+            try db.execute(sql: "UPDATE session SET projectId = NULL WHERE projectId = ?", arguments: [id])
+        }
+    }
+
+    // MARK: Account profile
+
+    public func profile() throws -> AccountProfile? {
+        try writer.read { db in try AccountProfileRecord.fetchOne(db, key: 1)?.profile }
+    }
+
+    /// Stores a profile snapshot unless a newer one (or a newer live patch)
+    /// is already stored.
+    @discardableResult
+    public func applyProfile(_ profile: AccountProfile) throws -> Bool {
+        try writer.write { db in
+            if let existing = try AccountProfileRecord.fetchOne(db, key: 1), existing.timestamp > profile.timestamp {
+                return false
+            }
+            try AccountProfileRecord(profile: profile).save(db)
+            return true
+        }
+    }
+
+    /// Applies an `update-account` patch on top of the stored profile, the
+    /// way sync.ts does: fields the update carries win, the rest stay.
+    public func patchProfile(_ update: UpdateAccountUpdate, at timestamp: Int64) throws {
+        guard update.patchesProfile else { return }
+        try writer.write { db in
+            var profile = try AccountProfileRecord.fetchOne(db, key: 1)?.profile
+                ?? AccountProfile(id: update.id, timestamp: 0)
+            if let firstName = update.firstName { profile.firstName = firstName }
+            if let lastName = update.lastName { profile.lastName = lastName }
+            if let avatar = update.avatar { profile.avatar = avatar }
+            if let github = update.github { profile.github = github }
+            profile.timestamp = max(profile.timestamp, timestamp)
+            try AccountProfileRecord(profile: profile).save(db)
+        }
+    }
+
+    // MARK: Snapshots
+
+    /// Everything home draws: machines, sessions, the projects they belong
+    /// to and the settings that shape the list.
+    public func homeSnapshot() throws -> HomeSnapshot {
+        try writer.read { db in try Self.fetchHomeSnapshot(db) }
+    }
+
+    @MainActor
+    public func observeHome(onChange: @escaping @MainActor (HomeSnapshot) -> Void) -> StoreObservation {
+        StoreObservation(observe({ db in try Self.fetchHomeSnapshot(db) }, onChange: onChange))
+    }
+
+    static func fetchHomeSnapshot(_ db: Database) throws -> HomeSnapshot {
+        HomeSnapshot(
+            machines: try fetchMachinesSnapshot(db),
+            sessions: try SessionRecord.order(Column("updatedAt").desc).fetchAll(db),
+            projects: try ProjectRecord.fetchAll(db),
+            settings: try fetchSettingsSnapshot(db)
+        )
+    }
+
+    /// The account settings (synced and pending) and the profile.
+    public func settingsSnapshot() throws -> SettingsSnapshot {
+        try writer.read { db in try Self.fetchSettingsSnapshot(db) }
+    }
+
+    @MainActor
+    public func observeSettings(onChange: @escaping @MainActor (SettingsSnapshot) -> Void) -> StoreObservation {
+        StoreObservation(observe({ db in try Self.fetchSettingsSnapshot(db) }, onChange: onChange))
+    }
+
+    static func fetchSettingsSnapshot(_ db: Database) throws -> SettingsSnapshot {
+        SettingsSnapshot(
+            synced: try AccountSettingsRecord.fetchOne(db, key: 1),
+            pending: try fetchPendingSettings(db),
+            profile: try AccountProfileRecord.fetchOne(db, key: 1)?.profile
+        )
+    }
+
     // MARK: Account settings
 
     public func accountSettings() throws -> AccountSettingsRecord? {
@@ -304,6 +447,49 @@ public final class LocalStore: Sendable {
             try incoming.save(db)
             return true
         }
+    }
+
+    /// Settings changed here that the server has not accepted yet.
+    public func pendingSettings() throws -> [String: JSONValue] {
+        try writer.read { db in try Self.fetchPendingSettings(db) }
+    }
+
+    /// Records a local settings change. It is shown at once (layered over
+    /// the synced settings) and kept until the server accepts it.
+    public func addPendingSettings(_ delta: [String: JSONValue]) throws {
+        guard !delta.isEmpty else { return }
+        try writer.write { db in
+            var pending = try Self.fetchPendingSettings(db)
+            pending.merge(delta) { _, new in new }
+            try PendingSettingsRecord(delta: .object(pending)).save(db)
+        }
+    }
+
+    /// The server accepted `sent`. Keys changed again since are kept for the
+    /// next push.
+    public func settlePendingSettings(sent: [String: JSONValue]) throws {
+        try writer.write { db in
+            var pending = try Self.fetchPendingSettings(db)
+            for (key, value) in sent where pending[key] == value {
+                pending.removeValue(forKey: key)
+            }
+            if pending.isEmpty {
+                _ = try PendingSettingsRecord.deleteOne(db, key: 1)
+            } else {
+                try PendingSettingsRecord(delta: .object(pending)).save(db)
+            }
+        }
+    }
+
+    /// Replaces the synced settings with the server's current copy after a
+    /// version conflict. Unlike `applyAccountSettings` this takes the
+    /// server's version even if it is not higher: the server is the judge.
+    public func replaceAccountSettings(_ record: AccountSettingsRecord) throws {
+        try writer.write { db in try record.save(db) }
+    }
+
+    static func fetchPendingSettings(_ db: Database) throws -> [String: JSONValue] {
+        try PendingSettingsRecord.fetchOne(db, key: 1)?.delta.objectValue ?? [:]
     }
 
     // MARK: Outbox
@@ -346,7 +532,10 @@ public final class LocalStore: Sendable {
     /// Logout: everything local belongs to the account that is leaving.
     public func eraseAll() throws {
         try writer.write { db in
-            for table in ["message", "outbox", "session", "machine", "accountSettings", "syncState"] {
+            for table in [
+                "message", "outbox", "session", "machine", "project", "accountSettings", "pendingSettings",
+                "accountProfile", "syncState",
+            ] {
                 try db.execute(sql: "DELETE FROM \(table)")
             }
         }
@@ -381,9 +570,13 @@ public final class LocalStore: Sendable {
         guard var record = try SessionRecord.fetchOne(db, key: incoming.id) else {
             var fresh = incoming
             fresh.syncedMessageSeq = 0
+            fresh.thinking = false
+            fresh.unread = false
+            fresh.archiving = false
             try fresh.insert(db)
             return
         }
+        let old = record
         if incoming.updatedAt >= record.updatedAt {
             record.updatedAt = incoming.updatedAt
             record.createdAt = incoming.createdAt
@@ -408,7 +601,29 @@ public final class LocalStore: Sendable {
             record.dataKeyCipher = incoming.dataKeyCipher
             record.decryptable = incoming.decryptable
         }
+        settle(old: old, &record)
         try record.update(db)
+    }
+
+    /// The local fields that follow from a change to a session, after
+    /// storage.ts `applySessions`:
+    ///   - an inactive session is not thinking;
+    ///   - a session that was busy (thinking, or waiting on a permission)
+    ///     and is now idle and online has a turn nobody has seen;
+    ///   - an archive in flight is done once the server shows the session
+    ///     archived too.
+    static func settle(old: SessionRecord, _ record: inout SessionRecord) {
+        if !record.active {
+            record.thinking = false
+        }
+        let wasBusy = old.thinking || old.hasPendingPermissionRequests
+        let isIdle = !record.thinking && record.active && !record.hasPendingPermissionRequests
+        if wasBusy && isIdle {
+            record.unread = true
+        }
+        if record.archiving && record.isArchivedOnServer {
+            record.archiving = false
+        }
     }
 
     static func upsert(_ incoming: MachineRecord, _ db: Database) throws {
@@ -454,6 +669,35 @@ public struct MachinesSnapshot: Equatable, Sendable {
     public init(synced: Bool, machines: [MachineRecord]) {
         self.synced = synced
         self.machines = machines
+    }
+}
+
+/// What home is built from, read in one transaction so the parts agree.
+public struct HomeSnapshot: Equatable, Sendable {
+    public var machines: MachinesSnapshot
+    public var sessions: [SessionRecord]
+    public var projects: [ProjectRecord]
+    public var settings: SettingsSnapshot
+
+    public init(machines: MachinesSnapshot, sessions: [SessionRecord], projects: [ProjectRecord] = [], settings: SettingsSnapshot = SettingsSnapshot()) {
+        self.machines = machines
+        self.sessions = sessions
+        self.projects = projects
+        self.settings = settings
+    }
+}
+
+/// The account settings as stored: the server's copy, the local changes it
+/// has not accepted yet, and the profile.
+public struct SettingsSnapshot: Equatable, Sendable {
+    public var synced: AccountSettingsRecord?
+    public var pending: [String: JSONValue]
+    public var profile: AccountProfile?
+
+    public init(synced: AccountSettingsRecord? = nil, pending: [String: JSONValue] = [:], profile: AccountProfile? = nil) {
+        self.synced = synced
+        self.pending = pending
+        self.profile = profile
     }
 }
 

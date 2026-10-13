@@ -41,7 +41,9 @@ nothing here is wired to the release skill or to EAS.
   moves deltas:
   - sessions changed since a cursor;
   - messages after a session's last synced `seq`;
-  - versioned settings;
+  - versioned settings, changed locally as a pending delta that is pushed
+    with `expectedVersion` and re-based on the server's copy on conflict;
+  - the profile and the projects sessions point at, fetched whole;
   - an idempotent outbox for writes.
 - **Tool outputs are hidden by default** when chat lands.
 - **Onboarding follows happy-app step by step.** Signed in, home decides
@@ -51,10 +53,18 @@ nothing here is wired to the release skill or to EAS.
     "not known yet", so an account restored or upgraded from the RN app
     is never asked to link a computer it already has;
   - Link Your Computer when there are none;
-  - the offline checklist when none is reachable;
-  - the list of computers otherwise. This is a placeholder until the
-    session list lands. happy-app also counts sessions, and lists them
-    even while every computer is offline.
+  - the offline checklist when none is reachable and nothing is listed
+    (with "Show archived" when there is an archive);
+  - "No sessions yet" on a reachable computer with no sessions;
+  - the session list otherwise, even while every computer is offline (the
+    offline plaque heads it then).
+
+  The session list is a `UITableView` over `SessionList` (happy-app's flat
+  grouping): live rows by activity, the archive toggle, archived rows by
+  day. Swipe or long press archives (`SessionActions`: `killSession` over
+  `rpc-call`, then `POST /v1/sessions/:id/archive`). A tap only marks the
+  row read until chat lands. Local-only row state (`thinking`, `unread`,
+  `archiving`) lives on the session row and follows `LocalStore.settle`.
 
   Home stays the navigation root and swaps its content, so screens pushed
   over it stay put when a computer arrives.

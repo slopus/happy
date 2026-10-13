@@ -132,6 +132,45 @@ public enum Palette {
     public static let terminalPrompt = ColorToken("#6fae74")
     public static let terminalComment = ColorToken("#8fae8a")
 
+    /// The flat session list paints rows and page alike: white in light,
+    /// the page's own black in dark (FlatSessionRow.tsx
+    /// `flatListBackgroundColor`).
+    public static let flatListBackground = ColorToken("#FFFFFF", "#000000")
+    public static let surfaceSelected = ColorToken("#C6C6C8", "#242424")
+    public static let surfaceHighest = ColorToken("#f0f0f0", "#282828")
+    /// flatSessionRowPresentation.ts: the agent waits on the person.
+    public static let sessionBlockedDot = ColorToken("#FF9500")
+    /// flatSessionRowPresentation.ts: a finished turn nobody has seen.
+    public static let sessionReadyDot = ColorToken("#007AFF")
+    /// theme.colors.radio.active: selected segments and checkmarks.
+    public static let radioActive = ColorToken("#007AFF", "#0A84FF")
+    /// theme.colors.box.warning.text: the offline plaque's glyph.
+    public static let warningText = ColorToken("#FF9500", "#FFAB00")
+    public static let iconTeal = ColorToken("#5AC8FA")
+    public static let iconViolet = ColorToken("#AF52DE")
+    public static let switchOn = ColorToken("#34C759")
+    /// theme.colors.glass.backgroundSubtle: the chosen option under an
+    /// open dropdown.
+    public static let optionSelected = ColorToken(
+        light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.42),
+        dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.07)
+    )
+    /// theme.colors.glass.border, around Connect Claude's terminal card.
+    public static let glassBorder = ColorToken(
+        light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.82),
+        dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.14)
+    )
+    /// Connect Claude's terminal text: Menlo green prompt, white command.
+    public static let commandPrompt = ColorToken("#00ff00")
+    public static let commandText = ColorToken("#ffffff")
+    /// AvatarBrutalist.tsx's black-and-white pair and AvatarGradient's
+    /// saturation sheet.
+    public static let avatarBrutalistMonoTint = ColorToken("#999999")
+    public static let avatarBrutalistMonoBackground = ColorToken("#F0F0F0")
+    /// UsageChart.tsx bars.
+    public static let usageTokens = ColorToken("#007AFF")
+    public static let usageCost = ColorToken("#FF9500")
+
     public static let all: [ColorToken] = [
         text, textSecondary, textDestructive, textLink, surface, surfaceHigh, surfacePressedOverlay,
         divider, itemDivider, groupedBackground, groupedChevron, groupedSectionTitle, headerBackground,
@@ -139,8 +178,28 @@ public enum Palette {
         statusDisconnected, statusError, success, warningCritical, roundButtonFill, roundButtonFillPressed,
         roundButtonText, iconBlue, iconOrange, iconRed, iconPurple, iconGreen, wordmarkHappy,
         wordmarkEngineering, qrBackground, scannerDimming, terminalBackground, terminalBorder, terminalText,
-        terminalPrompt, terminalComment,
-    ]
+        terminalPrompt, terminalComment, flatListBackground, surfaceSelected, surfaceHighest, sessionBlockedDot,
+        sessionReadyDot, radioActive, warningText, iconTeal, iconViolet, switchOn, optionSelected, glassBorder,
+        commandPrompt, commandText, avatarBrutalistMonoTint, avatarBrutalistMonoBackground, usageTokens, usageCost,
+    ] + BubblePalette.all.flatMap { [$0.background, $0.border, $0.indicator] }
+}
+
+/// A user-message bubble preset (utils/userMessageBubbleColor.ts), shown as
+/// a swatch in Settings › Appearance until chat lands.
+public struct BubblePalette: Equatable, Sendable {
+    public var background: ColorToken
+    public var border: ColorToken
+    public var indicator: ColorToken
+
+    public static let gray = BubblePalette(background: ColorToken("#f0eee6", "#2C2C2E"), border: ColorToken("#f0eee6", "#2C2C2E"), indicator: ColorToken("#8E8E93", "#8E8E93"))
+    public static let blue = BubblePalette(background: ColorToken("#E8F2FF", "#17324D"), border: ColorToken("#9CC9FF", "#2F6EA8"), indicator: ColorToken("#0A84FF", "#64B5FF"))
+    public static let green = BubblePalette(background: ColorToken("#E9F7EF", "#173A27"), border: ColorToken("#96D6AE", "#3D8B58"), indicator: ColorToken("#34C759", "#65D385"))
+    public static let purple = BubblePalette(background: ColorToken("#F0EBFF", "#2B214A"), border: ColorToken("#B7A2FF", "#7D68CF"), indicator: ColorToken("#7D68CF", "#B8A8FF"))
+    public static let rose = BubblePalette(background: ColorToken("#FFF0F5", "#462232"), border: ColorToken("#F3A4BF", "#C85E82"), indicator: ColorToken("#D85D85", "#FF9DBB"))
+    public static let sand = BubblePalette(background: ColorToken("#F1E7D0", "#3A3326"), border: ColorToken("#D9C292", "#8D7A55"), indicator: ColorToken("#B28B3D", "#E8C878"))
+
+    /// In `USER_MESSAGE_BUBBLE_COLORS` order.
+    public static let all: [BubblePalette] = [gray, blue, green, purple, rose, sand]
 }
 
 /// The bundled typefaces. Raw values are PostScript names, which is what
@@ -215,6 +274,48 @@ public enum TextStyles {
     // Secret key reveal (app/(app)/settings/account.tsx)
     public static let secretKeyLabel = TextStyle(.semiBold, size: 11, letterSpacing: 0.5, uppercase: true)
     public static let secretKeyValue = TextStyle(.mono, size: 13, lineHeight: 20, letterSpacing: 0.5)
+
+    // Flat session list (components/FlatSessionRow.tsx, SessionsList.tsx)
+    public static let sessionTitle = TextStyle(.semiBold, size: 17, lineHeight: 22)
+    public static let sessionTimestamp = TextStyle(.regular, size: 13, lineHeight: 22)
+    public static let sessionProject = TextStyle(.regular, size: 15, lineHeight: 20)
+    public static let sessionWorkspace = TextStyle(.regular, size: 13, lineHeight: 18)
+    public static let sessionDayHeader = TextStyle(.semiBold, size: 14, lineHeight: 18, letterSpacing: 0.1)
+    public static let archiveToggle = TextStyle(.regular, size: 14, lineHeight: 18)
+    public static let swipeAction = TextStyle(.semiBold, size: 12, lineHeight: 15)
+
+    // Empty home (components/EmptyMainScreen.tsx)
+    public static let emptyStateDescription = TextStyle(.regular, size: 16, lineHeight: 22)
+    public static let secondaryAction = TextStyle(.semiBold, size: 15, lineHeight: 20)
+
+    // Settings header with a profile (components/SettingsView.tsx)
+    public static let profileName = TextStyle(.semiBold, size: 20, lineHeight: 25)
+    public static let profileBio = TextStyle(.regular, size: 14, lineHeight: 19)
+
+    // Option rows under a dropdown (settings/appearance.tsx)
+    public static let optionTitle = TextStyle(.regular, size: 16, lineHeight: 21)
+    public static let dropdownValue = TextStyle(.regular, size: 15, lineHeight: 20)
+
+    // Usage (components/usage)
+    public static let usagePeriod = TextStyle(.semiBold, size: 14, lineHeight: 18)
+    public static let usageStatLabel = TextStyle(.regular, size: 16, lineHeight: 21)
+    public static let usageStatValue = TextStyle(.semiBold, size: 20, lineHeight: 25)
+    public static let usageSectionTitle = TextStyle(.semiBold, size: 18, lineHeight: 23)
+    public static let usageBarLabel = TextStyle(.regular, size: 14, lineHeight: 18)
+    public static let usageBarValue = TextStyle(.semiBold, size: 14, lineHeight: 18)
+    public static let usageChartLabel = TextStyle(.semiBold, size: 10, lineHeight: 13)
+    public static let usageError = TextStyle(.regular, size: 14, lineHeight: 18)
+
+    // What's New (app/(app)/changelog.tsx, MarkdownView's text and lists)
+    public static let changelogTitle = TextStyle(.semiBold, size: 20, lineHeight: 28)
+    public static let changelogSummary = TextStyle(.regular, size: 16, lineHeight: 23)
+    public static let changelogBody = TextStyle(.regular, size: 16, lineHeight: 25)
+    public static let changelogBold = TextStyle(.semiBold, size: 16, lineHeight: 25)
+
+    // Connect Claude (settings/connect/claude.tsx)
+    public static let connectTitle = TextStyle(.semiBold, size: 18, lineHeight: 23)
+    public static let connectBody = TextStyle(.regular, size: 14, lineHeight: 19)
+    public static let connectCommand = TextStyle(.mono, size: 14, lineHeight: 19)
 
     // QR scanner, which happy-app leaves to the system scanner.
     public static let scannerHint = TextStyle(.semiBold, size: 17, lineHeight: 22)

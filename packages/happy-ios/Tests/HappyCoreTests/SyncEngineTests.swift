@@ -99,7 +99,7 @@ final class SyncEngineTests: XCTestCase {
 
     func testDailyFullSyncDropsSessionsDeletedWhileOffline() async throws {
         let fixture = self.fixture!
-        let remaining = SessionList([fixture.session("a", updatedAt: 100), fixture.session("b", updatedAt: 100)])
+        let remaining = ServerSessions([fixture.session("a", updatedAt: 100), fixture.session("b", updatedAt: 100)])
         http.on("GET /v2/sessions") { _ in (200, try JSONEncoder().encode(SessionsPage(sessions: remaining.value, nextCursor: nil, hasNext: false))) }
         await engine.run(.sessions)
         XCTAssertEqual(Set(try store.sessions().map(\.id)), ["a", "b"])
@@ -303,7 +303,7 @@ final class PageCounter: @unchecked Sendable {
     }
 }
 
-final class SessionList: @unchecked Sendable {
+final class ServerSessions: @unchecked Sendable {
     var value: [APISession]
     init(_ value: [APISession]) { self.value = value }
 }

@@ -1,0 +1,111 @@
+import Foundation
+import HappyStore
+import HappyWire
+
+/// Calls a method on whatever answers for a session or machine (its CLI or
+/// daemon), relayed by the server over the socket as `rpc-call`.
+public protocol RPCTransport: Sendable {
+    func call(method: String, params: String) async throws -> RPCCallResult
+}
+
+extension SocketIOClient: RPCTransport {
+    public func call(method: String, params: String) async throws -> RPCCallResult {
+        // The server allows a reconnecting daemon a grace period before the
+        // call itself, so this waits as long as happy-app does.
+        let arguments = try await emitWithAck("rpc-call", .object([
+            "method": .string(method),
+            "params": .string(params),
+        ]), timeout: .seconds(50))
+        guard let first = arguments.first else { throw SessionActionError.noAnswer }
+        return try first.decode(as: RPCCallResult.self)
+    }
+}
+
+public enum SessionActionError: Error, Equatable, Sendable {
+    /// The session is not in the local store.
+    case unknownSession
+    /// The session's key cannot be opened, so nothing can be encrypted to it.
+    case notDecryptable
+    /// The computer never answered the call.
+    case noAnswer
+    /// A bot is one continuous conversation: only its machine can stop it.
+    case botNeedsMachine
+    case failed(String)
+}
+
+/// What the session list can do to a session, after happy-app's
+/// useSessionQuickActions.ts and sync/ops.ts.
+public struct SessionActions: Sendable {
+    let api: HappyAPI
+    let store: LocalStore
+    let sync: SyncEngine
+    let rpc: RPCTransport
+    let now: @Sendable () -> Int64
+
+    public init(
+        api: HappyAPI,
+        store: LocalStore,
+        sync: SyncEngine,
+        rpc: RPCTransport,
+        now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) }
+    ) {
+        self.api = api
+        self.store = store
+        self.sync = sync
+        self.rpc = rpc
+        self.now = now
+    }
+
+    /// Archives a session. The row leaves the live list at once and only
+    /// comes back if the archive fails:
+    ///   1. ask the session's CLI to stop (`killSession`);
+    ///   2. if it can't be reached, mark the session inactive on the server.
+    /// A bot can only be stopped by its machine, so step 2 is skipped for it.
+    public func archive(sessionId: String) async throws {
+        guard let session = try store.session(id: sessionId) else { throw SessionActionError.unknownSession }
+        try store.setSessionArchiving(id: sessionId, true)
+        do {
+            let killed = await kill(sessionId: sessionId)
+            if !killed {
+                if session.isBot { throw SessionActionError.botNeedsMachine }
+                try await api.archiveSession(id: sessionId)
+                // The server tells every client with an `activity`
+                // ephemeral; apply it here too in case the socket is down.
+                try store.applySessionActivity(id: sessionId, active: false, activeAt: now())
+            }
+        } catch {
+            try? store.setSessionArchiving(id: sessionId, false)
+            throw error
+        }
+    }
+
+    /// Deletes a session and its messages for good.
+    public func delete(sessionId: String) async throws {
+        guard let session = try store.session(id: sessionId) else { throw SessionActionError.unknownSession }
+        if session.isBot { throw SessionActionError.botNeedsMachine }
+        try await api.deleteSession(id: sessionId)
+        try store.deleteSession(id: sessionId)
+    }
+
+    public func markRead(sessionId: String) {
+        try? store.markSessionRead(id: sessionId)
+    }
+
+    /// True when the CLI confirmed it stopped.
+    private func kill(sessionId: String) async -> Bool {
+        do {
+            let answer = try await call(sessionId: sessionId, method: "killSession", params: .object([:]))
+            return answer?["success"]?.boolValue ?? false
+        } catch {
+            return false
+        }
+    }
+
+    /// A session RPC: params and result are sealed with the session's key.
+    func call(sessionId: String, method: String, params: JSONValue) async throws -> JSONValue? {
+        guard let cipher = try await sync.cipher(forSession: sessionId) else { throw SessionActionError.notDecryptable }
+        let result = try await rpc.call(method: "\(sessionId):\(method)", params: try cipher.encrypt(params))
+        guard result.ok else { throw SessionActionError.failed(result.error ?? "RPC call failed") }
+        return result.result.flatMap(cipher.decrypt(base64:))
+    }
+}

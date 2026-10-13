@@ -6,11 +6,12 @@ import UIKit
 
 /// Signed in: app/(app)/index.tsx and SessionsListWrapper.tsx. Home stays
 /// the navigation root for the whole session and swaps its content as the
-/// stored machines change:
+/// store changes (`HomeState`):
 ///   - a spinner until the machines are known;
 ///   - Link Your Computer while none is linked;
-///   - the offline checklist while none is reachable;
-///   - the computers otherwise, until the session list lands.
+///   - the offline checklist while none is reachable and nothing is listed;
+///   - "No sessions yet" on a reachable computer with nothing on it;
+///   - the session list otherwise.
 ///
 /// Screens pushed over it (settings, server, troubleshoot) stay where they
 /// are when a computer arrives, as they do in happy-app.
@@ -54,10 +55,12 @@ public final class HomeViewController: UIViewController {
         let previous = self.state
         self.state = state
         switch (previous, state) {
-        case (.offline?, .offline(let choices)):
-            (content as? OfflineChecklistViewController)?.choices = choices
-        case (.ready?, .ready(let choices)):
-            (content as? ComputersViewController)?.choices = choices
+        case (.offline?, .offline(let choices, let hasArchived)):
+            let checklist = content as? OfflineChecklistViewController
+            checklist?.choices = choices
+            checklist?.hasArchived = hasArchived
+        case (.list?, .list(let list, let offline)):
+            (content as? SessionListViewController)?.update(list, offline: offline)
         default:
             embed(makeContent(for: state), animated: previous != nil)
         }
@@ -70,10 +73,12 @@ public final class HomeViewController: UIViewController {
             LoadingViewController()
         case .link:
             LinkComputerViewController(context: context, session: session)
-        case .offline(let choices):
-            OfflineChecklistViewController(session: session, choices: choices)
-        case .ready(let choices):
-            ComputersViewController(choices: choices)
+        case .offline(let choices, let hasArchived):
+            OfflineChecklistViewController(session: session, choices: choices, hasArchived: hasArchived)
+        case .noSessions:
+            NoSessionsViewController(session: session)
+        case .list(let list, let offline):
+            SessionListViewController(session: session, list: list, offline: offline)
         }
     }
 
@@ -264,15 +269,21 @@ final class OfflineChecklistViewController: UIViewController {
         didSet { applyChoices() }
     }
 
+    /// Offers "Show archived", which turns the archive on and so lists it.
+    var hasArchived: Bool {
+        didSet { applyChoices() }
+    }
+
     private let session: AccountSession
     private let checklist = OfflineChecklistView()
     private var linking = false
     private var approved = false
     private var approvalTimeout: Task<Void, Never>?
 
-    init(session: AccountSession, choices: [MachineChoice]) {
+    init(session: AccountSession, choices: [MachineChoice], hasArchived: Bool = false) {
         self.session = session
         self.choices = choices
+        self.hasArchived = hasArchived
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -292,12 +303,16 @@ final class OfflineChecklistViewController: UIViewController {
             navigationController?.pushViewController(TroubleshootViewController(session: session), animated: true)
         }
         checklist.linkAnother.onTap = { [weak self] in self?.scan() }
+        checklist.showArchived.onTap = { [weak self] in
+            self?.session.updateSettings(["hideInactiveSessions": .bool(false)])
+        }
         applyChoices()
         update()
     }
 
     private func applyChoices() {
         guard isViewLoaded else { return }
+        checklist.showsArchivedButton = hasArchived
         if choices.count == 1 {
             checklist.title = Strings.Onboarding.offlineTitleOne(name: choices[0].name)
             checklist.linkedTitle = Strings.Onboarding.offlineLinkedStep(name: choices[0].name)
@@ -335,40 +350,6 @@ final class OfflineChecklistViewController: UIViewController {
             approved = false
             update()
         }
-    }
-}
-
-/// A computer is reachable. This app has no session list yet, so home lists
-/// the computers the way the troubleshoot screen does.
-final class ComputersViewController: UIViewController {
-    var choices: [MachineChoice] {
-        didSet { rebuild() }
-    }
-
-    private let list = GroupedListView()
-
-    init(choices: [MachineChoice]) {
-        self.choices = choices
-        super.init(nibName: nil, bundle: nil)
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) is not supported")
-    }
-
-    override func loadView() {
-        view = list
-    }
-
-    override func viewDidLoad() {
-        super.viewDidLoad()
-        rebuild()
-    }
-
-    private func rebuild() {
-        guard isViewLoaded else { return }
-        list.sections = [ItemGroupView(title: Strings.Troubleshoot.machines, rows: choices.map(ComputerRow.make))]
     }
 }
 

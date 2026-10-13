@@ -91,6 +91,79 @@ public struct HappyAPI: Sendable {
         try await send("POST", "/v1/account/settings", body: body)
     }
 
+    public func profile() async throws -> AccountProfile {
+        try await send("GET", "/v1/account/profile")
+    }
+
+    /// `ids` are fetched in batches of 100, as apiProjects.ts does. A batch
+    /// the server answers 404 (an older server) contributes nothing.
+    public func projects(ids: [String]) async throws -> [APIProject] {
+        var unique: [String] = []
+        for id in ids where !id.isEmpty && !unique.contains(id) {
+            unique.append(id)
+        }
+        var projects: [APIProject] = []
+        var start = 0
+        while start < unique.count {
+            let batch = unique[start..<min(start + 100, unique.count)]
+            start += 100
+            do {
+                let page: ProjectsResponse = try await send("GET", "/v1/projects", query: [
+                    URLQueryItem(name: "ids", value: batch.joined(separator: ",")),
+                ])
+                projects.append(contentsOf: page.projects)
+            } catch APIError.http(status: 404, _) {
+                continue
+            }
+        }
+        return projects
+    }
+
+    // MARK: Sessions
+
+    /// Marks a session inactive on the server when its agent is already
+    /// gone and cannot be asked to stop.
+    public func archiveSession(id: String) async throws {
+        let _: SuccessResponse = try await send("POST", "/v1/sessions/\(Self.escape(id))/archive")
+    }
+
+    /// Permanently deletes a session and its messages.
+    public func deleteSession(id: String) async throws {
+        let _: SuccessResponse = try await send("DELETE", "/v1/sessions/\(Self.escape(id))")
+    }
+
+    // MARK: Connected services
+
+    public func githubOAuthParams() async throws -> GitHubOAuthParams {
+        try await send("GET", "/v1/connect/github/params")
+    }
+
+    public func disconnectGitHub() async throws {
+        let _: SuccessResponse = try await send("DELETE", "/v1/connect/github")
+    }
+
+    /// Removes a vendor token, e.g. `anthropic`.
+    public func disconnectService(_ vendor: String) async throws {
+        let _: SuccessResponse = try await send("DELETE", "/v1/connect/\(Self.escape(vendor))")
+    }
+
+    // MARK: Push tokens
+
+    public func pushTokens() async throws -> [PushToken] {
+        let response: PushTokensResponse = try await send("GET", "/v1/push-tokens")
+        return response.tokens
+    }
+
+    public func deletePushToken(_ token: String) async throws {
+        let _: SuccessResponse = try await send("DELETE", "/v1/push-tokens/\(Self.escape(token))")
+    }
+
+    // MARK: Usage
+
+    public func usage(_ query: UsageQuery) async throws -> UsageResponse {
+        try await send("POST", "/v1/usage/query", body: query)
+    }
+
     // MARK: Plumbing
 
     func makeRequest(_ method: String, _ path: String, query: [URLQueryItem] = [], body: Data? = nil, authenticated: Bool = true) throws -> HTTPRequest {

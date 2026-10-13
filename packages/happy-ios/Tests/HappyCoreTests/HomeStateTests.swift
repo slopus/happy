@@ -97,6 +97,16 @@ final class MachineChoiceTests: XCTestCase {
 }
 
 final class HomeStateTests: XCTestCase {
+    private func home(_ machines: [MachineRecord], synced: Bool = true, _ sessions: [SessionRecord] = []) -> HomeState {
+        HomeState(HomeSnapshot(machines: MachinesSnapshot(synced: synced, machines: machines), sessions: sessions))
+    }
+
+    private func live(_ id: String, rig: Bool = false) -> SessionRecord {
+        var record = session(id, updatedAt: 5, rig ? ["client": .object(["id": .string("rig")])] : [:])
+        record.active = !rig
+        return record
+    }
+
     func testNothingFetchedYetIsLoadingNotLink() {
         // An account restored from another phone has computers; asking it
         // to link one before the first fetch would be wrong.
@@ -107,21 +117,51 @@ final class HomeStateTests: XCTestCase {
         XCTAssertEqual(HomeState(MachinesSnapshot(synced: true, machines: [])), .link)
     }
 
-    func testComputersAllOfflineIsOffline() {
-        let state = HomeState(MachinesSnapshot(synced: true, machines: [machine("a"), machine("b")]))
-        guard case .offline(let choices) = state else { return XCTFail("\(state)") }
+    func testComputersAllOfflineWithNothingListedIsOffline() {
+        let state = home([machine("a"), machine("b")])
+        guard case .offline(let choices, let hasArchived) = state else { return XCTFail("\(state)") }
         XCTAssertEqual(choices.map(\.id), ["a", "b"])
+        XCTAssertFalse(hasArchived)
     }
 
-    func testAnyReachableComputerIsReady() {
-        let state = HomeState(MachinesSnapshot(synced: true, machines: [machine("a"), machine("b", active: true)]))
-        guard case .ready(let choices) = state else { return XCTFail("\(state)") }
-        XCTAssertEqual(choices.count, 2)
+    func testTheOfflineChecklistKnowsAboutTheArchive() {
+        // Archived rows are hidden by default, so nothing is listed.
+        let state = home([machine("a")], [session("old", updatedAt: 5, [:])])
+        guard case .offline(_, let hasArchived) = state else { return XCTFail("\(state)") }
+        XCTAssertTrue(hasArchived)
+    }
+
+    func testLiveSessionsListEvenWhileEveryComputerIsOffline() {
+        // A Happy Agent session stays live while disconnected.
+        let state = home([machine("a")], [live("s", rig: true)])
+        guard case .list(let list, let offline) = state else { return XCTFail("\(state)") }
+        XCTAssertEqual(list.items.compactMap(\.sessionId), ["s"])
+        XCTAssertEqual(offline?.map(\.id), ["a"])
+    }
+
+    func testAReachableComputerClearsTheOfflinePlaque() {
+        let state = home([machine("a"), machine("b", active: true)], [live("s")])
+        guard case .list(_, let offline) = state else { return XCTFail("\(state)") }
+        XCTAssertNil(offline)
+    }
+
+    func testAReachableComputerWithNoSessionsIsNoSessions() {
+        XCTAssertEqual(home([machine("a", active: true)]), .noSessions)
+    }
+
+    func testOnlyAnArchiveListsTheToggle() {
+        let state = home([machine("a", active: true)], [session("old", updatedAt: 5, [:])])
+        guard case .list(let list, nil) = state else { return XCTFail("\(state)") }
+        XCTAssertEqual(list.items, [.archiveToggle(hidden: true)])
+    }
+
+    func testSessionsListWithoutAnyComputer() {
+        let state = home([], [live("s")])
+        guard case .list(_, nil) = state else { return XCTFail("\(state)") }
     }
 
     func testStoredMachinesShowBeforeTheFirstFullFetch() {
-        let state = HomeState(MachinesSnapshot(synced: false, machines: [machine("a", active: true)]))
-        guard case .ready = state else { return XCTFail("\(state)") }
+        XCTAssertEqual(home([machine("a", active: true)], synced: false), .noSessions)
     }
 }
 

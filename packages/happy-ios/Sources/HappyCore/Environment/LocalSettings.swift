@@ -23,6 +23,22 @@ public struct LinkChecklist: Codable, Equatable, Sendable {
     }
 }
 
+/// sync/localSettings.ts `themePreference`: follow the system, or pin one.
+public enum ThemePreference: String, CaseIterable, Sendable {
+    case adaptive
+    case light
+    case dark
+
+    /// The order the Appearance row cycles through.
+    public var next: ThemePreference {
+        switch self {
+        case .adaptive: .light
+        case .light: .dark
+        case .dark: .adaptive
+        }
+    }
+}
+
 /// Device-only settings that belong to the signed-in account, like
 /// happy-app's `local-settings`. Logout clears them, as happy-app's
 /// `clearPersistence()` does; the server setting lives elsewhere because it
@@ -50,11 +66,26 @@ public final class LocalSettings: Sendable {
         }
     }
 
+    public var themePreference: ThemePreference {
+        get { storage.string(forKey: Keys.themePreference).flatMap(ThemePreference.init(rawValue:)) ?? .adaptive }
+        set { storage.set(newValue.rawValue, forKey: Keys.themePreference) }
+    }
+
+    /// Ten taps on Settings › Version.
+    public var devModeEnabled: Bool {
+        get { storage.string(forKey: Keys.devModeEnabled) == "true" }
+        set { storage.set(newValue ? "true" : nil, forKey: Keys.devModeEnabled) }
+    }
+
     public func clear() {
-        storage.set(nil, forKey: Keys.linkComputerChecklist)
+        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled] {
+            storage.set(nil, forKey: key)
+        }
     }
 
     private enum Keys {
         static let linkComputerChecklist = "linkComputerChecklist"
+        static let themePreference = "themePreference"
+        static let devModeEnabled = "devModeEnabled"
     }
 }

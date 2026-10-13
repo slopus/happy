@@ -143,11 +143,50 @@ public struct UpdateMachineUpdate: Codable, Hashable, Sendable {
     }
 }
 
-public struct UpdateAccountUpdate: Codable, Hashable, Sendable {
+/// `update-account`. Each profile field is a patch: absent leaves it
+/// alone, `null` clears it.
+public struct UpdateAccountUpdate: Decodable, Hashable, Sendable {
     public var id: String
     public var settings: VersionedValue?
-    public var firstName: String?
-    public var lastName: String?
+    public var firstName: String??
+    public var lastName: String??
+    public var avatar: ImageRef??
+    public var github: GitHubProfile??
+
+    public init(
+        id: String, settings: VersionedValue? = nil, firstName: String?? = nil, lastName: String?? = nil,
+        avatar: ImageRef?? = nil, github: GitHubProfile?? = nil
+    ) {
+        self.id = id
+        self.settings = settings
+        self.firstName = firstName
+        self.lastName = lastName
+        self.avatar = avatar
+        self.github = github
+    }
+
+    private enum Keys: String, CodingKey {
+        case id, settings, firstName, lastName, avatar, github
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: Keys.self)
+        id = try container.decode(String.self, forKey: .id)
+        settings = try container.decodeIfPresent(VersionedValue.self, forKey: .settings)
+        firstName = try Self.patch(container, .firstName)
+        lastName = try Self.patch(container, .lastName)
+        avatar = container.contains(.avatar) ? .some(try? container.decodeIfPresent(ImageRef.self, forKey: .avatar)) : nil
+        github = container.contains(.github) ? .some(try? container.decodeIfPresent(GitHubProfile.self, forKey: .github)) : nil
+    }
+
+    private static func patch(_ container: KeyedDecodingContainer<Keys>, _ key: Keys) throws -> String?? {
+        container.contains(key) ? .some(try container.decodeIfPresent(String.self, forKey: key)) : nil
+    }
+
+    /// True when the update touches the profile, not just settings.
+    public var patchesProfile: Bool {
+        firstName != nil || lastName != nil || avatar != nil || github != nil
+    }
 }
 
 public struct KVChange: Codable, Hashable, Sendable {
@@ -166,13 +205,17 @@ public enum UpdateBody: Sendable {
     case deleteMachine(machineId: String)
     case updateAccount(UpdateAccountUpdate)
     case kvBatchUpdate([KVChange])
-    /// Projects, artifacts, feed and friends: not synced by this app yet.
+    /// A project was created or changed; the update carries only its id.
+    case newProject(projectId: String)
+    case updateProject(projectId: String)
+    case deleteProject(projectId: String)
+    /// Artifacts, feed and friends: not synced by this app yet.
     case unsupported(type: String)
 }
 
 extension UpdateBody: Decodable {
     private enum Keys: String, CodingKey {
-        case t, sid, message, changes, machineId
+        case t, sid, message, changes, machineId, projectId
     }
 
     public init(from decoder: Decoder) throws {
@@ -200,6 +243,12 @@ extension UpdateBody: Decodable {
             self = .updateAccount(try UpdateAccountUpdate(from: decoder))
         case "kv-batch-update":
             self = .kvBatchUpdate(try container.decode([KVChange].self, forKey: .changes))
+        case "new-project":
+            self = .newProject(projectId: try container.decode(String.self, forKey: .projectId))
+        case "update-project":
+            self = .updateProject(projectId: try container.decode(String.self, forKey: .projectId))
+        case "delete-project":
+            self = .deleteProject(projectId: try container.decode(String.self, forKey: .projectId))
         default:
             self = .unsupported(type: type)
         }
