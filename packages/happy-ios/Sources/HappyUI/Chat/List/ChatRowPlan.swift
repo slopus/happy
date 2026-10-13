@@ -67,6 +67,15 @@ enum ChatDrawItem {
     /// table), showing `content` through `frame`, its corners rounded by
     /// `radius`. The content's items and hits are in its own coordinates.
     case scroller(ChatRowPlan, frame: CGRect, radius: CGFloat = 0)
+    /// FileView's picture, loaded once it is on screen.
+    case attachment(ChatAttachment, frame: CGRect)
+}
+
+/// A picture the person attached: `ref` under the session's attachments,
+/// and its thumbhash, shown until the picture arrives.
+struct ChatAttachment: Equatable, Sendable {
+    var ref: String
+    var thumbhash: String?
 }
 
 /// What a tap on part of a row does.

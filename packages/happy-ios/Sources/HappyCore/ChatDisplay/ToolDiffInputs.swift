@@ -99,3 +99,43 @@ public enum ToolDiffInputs {
         }
     }
 }
+
+/// FileView's input: the picture a person attached, read the way its zod
+/// schema reads it. Nil when it doesn't parse, and FileView draws nothing.
+public struct ToolFileInput: Equatable, Sendable {
+    /// The encrypted blob, under the session's attachments.
+    public var ref: String
+    public var name: String
+    /// The picture's size, when the sender reported it.
+    public var imageWidth: Double?
+    public var imageHeight: Double?
+    /// Shown until the picture itself arrives.
+    public var thumbhash: String?
+
+    public init?(_ input: JSONValue) {
+        guard let ref = input["ref"]?.stringValue, let name = input["name"]?.stringValue else { return nil }
+        switch input["size"] {
+        case nil, .number?: break
+        default: return nil
+        }
+        var width: Double?
+        var height: Double?
+        var thumbhash: String?
+        if let image = input["image"] {
+            // image: { width: number, height: number, thumbhash?: string }
+            guard let w = image["width"]?.numberValue, let h = image["height"]?.numberValue else { return nil }
+            switch image["thumbhash"] {
+            case nil: break
+            case .string(let hash)?: thumbhash = hash
+            default: return nil
+            }
+            width = w
+            height = h
+        }
+        self.ref = ref
+        self.name = name
+        imageWidth = width
+        imageHeight = height
+        self.thumbhash = thumbhash
+    }
+}

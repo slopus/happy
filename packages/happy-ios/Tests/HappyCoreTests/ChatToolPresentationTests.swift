@@ -440,3 +440,19 @@ final class ToolDiffInputsTests: XCTestCase {
         XCTAssertEqual(ToolDiffInputs.chunks(.bash, input: ["command": "ls"]), [])
     }
 }
+
+final class ToolFileInputTests: XCTestCase {
+    func testTheAttachmentReadsLikeItsSchema() {
+        let input = ToolFileInput(["ref": "r1", "name": "photo.png", "size": 1200, "image": ["width": 640, "height": 480, "thumbhash": "abc"]])
+        XCTAssertEqual(input?.ref, "r1")
+        XCTAssertEqual(input?.name, "photo.png")
+        XCTAssertEqual(input?.imageWidth, 640)
+        XCTAssertEqual(input?.imageHeight, 480)
+        XCTAssertEqual(input?.thumbhash, "abc")
+        XCTAssertNil(ToolFileInput(["ref": "r1", "name": "a.png"])?.imageWidth, "no size given")
+        XCTAssertNil(ToolFileInput(["name": "a.png"]), "no ref")
+        XCTAssertNil(ToolFileInput(["ref": "r1", "name": "a.png", "size": "big"]))
+        XCTAssertNil(ToolFileInput(["ref": "r1", "name": "a.png", "image": ["width": 1]]), "an image without its height")
+        XCTAssertNil(ToolFileInput(["ref": "r1", "name": "a.png", "image": .null]))
+    }
+}

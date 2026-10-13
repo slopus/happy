@@ -233,6 +233,8 @@ public enum ChatTextStyles {
     public static let toolOperationCommand = ChatTextStyle(.system(.regular), size: 12)
     public static let executeCwd = ChatTextStyle(.system(.regular), size: 12)
     public static let executeDescription = ChatTextStyle(.systemItalic, size: 13)
+    // FileView.tsx: the attachment's name under its picture.
+    public static let attachmentName = ChatTextStyle(.system(.medium), size: 13)
 
     // PermissionFooter.tsx
     public static let permissionButton = ChatTextStyle(.system(.medium), size: 14, lineHeight: 18)

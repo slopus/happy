@@ -84,6 +84,8 @@ struct ChatServices {
     /// useSessionQuickActions' resume, for the inactive hint: the session
     /// to open, or nil when there is nothing to open yet.
     var resume: @MainActor (_ session: SessionRecord, _ machine: MachineRecord?) async throws -> String? = { _, _ in nil }
+    /// useAttachmentImage's download and decryption: a picture's bytes.
+    var attachment: @Sendable (_ ref: String) async throws -> Data = { _ in throw URLError(.fileDoesNotExist) }
 
     static func make(account: AccountSession, sessionId: String) -> ChatServices {
         let store = account.store
@@ -98,7 +100,8 @@ struct ChatServices {
                 observeSession: observe(store: store) { _ in record },
                 observeOtherSession: observeOther(store: store),
                 pendingChats: account.pendingChats,
-                gitStatus: nil
+                gitStatus: nil,
+                attachment: FixtureAttachments.data
             )
         }
         #endif
@@ -131,6 +134,9 @@ struct ChatServices {
                     unexpectedDirectoryPrompt: S.resumeSessionUnexpectedDirectoryPrompt
                 )
                 return try await account.detailActions.resume(session, machine: machine, settings: settings, composer: composer, messages: messages)
+            },
+            attachment: { [sync = account.sync] ref in
+                try await sync.downloadAttachment(sessionId: sessionId, ref: ref)
             }
         )
     }
