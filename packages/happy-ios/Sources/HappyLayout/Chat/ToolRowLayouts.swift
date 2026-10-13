@@ -412,3 +412,72 @@ public struct ChatAccessoryRowLayout: Equatable, Sendable {
         size = CGSize(width: width, height: height)
     }
 }
+
+/// FileView, a picture a person attached: the picture at its own size, at
+/// most 280 wide and 360 tall (4:3 at 280 when the message doesn't give its
+/// size) and never wider than the row, rounded 8, its name 4 under it, 12
+/// and 8 inside. A picture that couldn't be loaded wears a 24 pt badge 4 in
+/// from its top-right corner.
+public struct FileViewLayout: Equatable, Sendable {
+    public enum Metrics {
+        public static let paddingH: CGFloat = 12
+        public static let paddingV: CGFloat = 8
+        public static let gap: CGFloat = 4
+        public static let radius: CGFloat = 8
+        public static let maxImageWidth: CGFloat = 280
+        public static let maxImageHeight: CGFloat = 360
+        public static let defaultAspect: CGFloat = 4 / 3
+        public static let badgeSize: CGFloat = 24
+        public static let badgeInset: CGFloat = 4
+        public static let badgeIconSize: CGFloat = 20
+        /// expo-image's `transition={150}`.
+        public static let fadeIn: TimeInterval = 0.15
+    }
+
+    public var size: CGSize
+    public var image: CGRect
+    public var name: CGRect
+
+    public init(width: CGFloat, imageWidth: Double?, imageHeight: Double?, name: Measurable) {
+        typealias M = Metrics
+        let available = max(0, width - 2 * M.paddingH)
+        var picture = Self.imageSize(width: imageWidth, height: imageHeight)
+        if picture.width > available, picture.width > 0 {
+            picture = CGSize(width: available, height: picture.height * available / picture.width)
+        }
+        image = CGRect(x: M.paddingH, y: M.paddingV, width: picture.width, height: picture.height)
+        let nameHeight = name.height(fitting: available)
+        self.name = CGRect(x: M.paddingH, y: image.maxY + M.gap, width: available, height: nameHeight)
+        size = CGSize(width: max(0, width), height: self.name.maxY + M.paddingV)
+    }
+
+    /// The picture's size before the row has a say.
+    public static func imageSize(width: Double?, height: Double?) -> CGSize {
+        typealias M = Metrics
+        let width = CGFloat(width ?? 0)
+        let height = CGFloat(height ?? 0)
+        let aspect = width > 0 && height > 0 ? width / height : M.defaultAspect
+        var displayWidth = min(width > 0 ? width : M.maxImageWidth, M.maxImageWidth)
+        var displayHeight = displayWidth / aspect
+        if displayHeight > M.maxImageHeight {
+            displayHeight = M.maxImageHeight
+            displayWidth = displayHeight * aspect
+        }
+        return CGSize(width: displayWidth, height: displayHeight)
+    }
+
+    /// How many pixels to decode a picture of `size` pixels to: no more
+    /// than the largest one FileView draws needs on a 3x screen.
+    public static func decodedSize(_ size: CGSize) -> CGSize {
+        typealias M = Metrics
+        guard size.width > 0, size.height > 0 else { return size }
+        let scale = min(1, 3 * M.maxImageWidth / size.width, 3 * M.maxImageHeight / size.height)
+        return CGSize(width: (size.width * scale).rounded(), height: (size.height * scale).rounded())
+    }
+
+    /// The failed picture's badge, in the picture.
+    public static func badge(in picture: CGSize) -> CGRect {
+        typealias M = Metrics
+        return CGRect(x: picture.width - M.badgeInset - M.badgeSize, y: M.badgeInset, width: M.badgeSize, height: M.badgeSize)
+    }
+}

@@ -75,6 +75,7 @@ final class ChatPlanView: UIView {
     private var diffs: [DiffChunkView] = []
     private var diffHeaders: [DiffFileHeaderView] = []
     private var scrollers: [ChatScrollerView] = []
+    private var attachments: [ChatAttachmentView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -108,6 +109,7 @@ final class ChatPlanView: UIView {
         var diffIndex = 0
         var diffHeaderIndex = 0
         var scrollerIndex = 0
+        var attachmentIndex = 0
         var order: [UIView] = []
         for item in plan.items {
             switch item {
@@ -175,6 +177,11 @@ final class ChatPlanView: UIView {
                 view.layer.cornerCurve = .continuous
                 view.apply(content, key: key)
                 order.append(view)
+            case .attachment(let attachment, let frame):
+                let view = take(&attachments, &attachmentIndex) { ChatAttachmentView() }
+                view.setLayoutFrame(frame)
+                view.apply(attachment)
+                order.append(view)
             }
         }
         for view in boxes[boxIndex...] { view.isHidden = true }
@@ -198,6 +205,10 @@ final class ChatPlanView: UIView {
         }
         for view in diffHeaders[diffHeaderIndex...] { view.isHidden = true }
         for view in scrollers[scrollerIndex...] { view.isHidden = true }
+        for view in attachments[attachmentIndex...] {
+            view.apply(nil)
+            view.isHidden = true
+        }
         for view in order {
             view.isHidden = false
             bringSubviewToFront(view)

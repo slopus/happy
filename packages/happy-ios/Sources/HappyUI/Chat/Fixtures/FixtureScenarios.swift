@@ -211,6 +211,11 @@ enum FixtureScenarios {
 
         See https://developer.apple.com/documentation/uikit/uicollectionview for context.
         """)
+        // FileView: two pictures with their thumbhashes, one without its
+        // size that never arrives.
+        b.tool("file", ["ref": "fixture-landscape", "name": "anchoring-before.png", "size": 48213, "image": ["width": 1200, "height": 675, "thumbhash": "HwgKPJxwd3dweHiHiHdwgAf3iA"]])
+        b.tool("file", ["ref": "fixture-portrait", "name": "keyboard-up.png", "size": 31877, "image": ["width": 600, "height": 1010, "thumbhash": "W5eFGw43M0B3eHczQDjzi4+IiIiIiHg="]])
+        b.tool("file", ["ref": "fixture-missing", "name": "a-picture-that-never-arrives-with-a-long-name.heic", "size": 1200])
         b.agent(optionsAnswer)
         b.event(.modeSwitch(mode: "plan"))
         b.unsupported("rig-artifact")

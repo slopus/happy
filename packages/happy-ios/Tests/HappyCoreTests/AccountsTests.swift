@@ -33,6 +33,9 @@ final class AccountsKeychain: AccountKeychainBackend, @unchecked Sendable {
     }
 }
 
+/// A decoded picture, for `AttachmentPictures`.
+private final class AccountPicture: Sendable {}
+
 @MainActor
 final class AccountsTests: XCTestCase {
     private let shared = TokenStorageFixtures.typical
@@ -86,6 +89,19 @@ final class AccountsTests: XCTestCase {
         XCTAssertFalse(account.session === previous)
         XCTAssertEqual(account.session?.credentials, shared)
         XCTAssertEqual(keychain.items.stored(rn)?.data, Data(TokenStorageFixtures.typicalJSON.utf8))
+        await account.session?.stop()
+    }
+
+    func testAttachmentPicturesStayWithTheirAccount() async throws {
+        let keychain = AccountsKeychain()
+        let account = try await twoAccounts(keychain)
+        let key = AttachmentPictures.Key(sessionId: "s1", ref: "same-ref")
+        let previous = try XCTUnwrap(account.session)
+        _ = await previous.attachmentPictures.picture(key) { (picture: AccountPicture(), cost: 1) }
+        try await account.switchAccount(to: accountID(shared))
+        let current = try XCTUnwrap(account.session)
+        XCTAssertFalse(current.attachmentPictures === previous.attachmentPictures)
+        XCTAssertNil(current.attachmentPictures.cached(key), "the same ref in another account is not its picture")
         await account.session?.stop()
     }
 

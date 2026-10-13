@@ -164,8 +164,9 @@ extension ChatRowRenderer {
         if let body, let frame = layout.body {
             let drawn = body.draw(place(frame))
             items += drawn.items
-            // The opened body leads to the tool's screen.
-            hits = drawn.hits + hits + [ChatHit(frame: place(frame), action: open)]
+            // The opened body leads to the tool's screen; an attachment's
+            // picture leads nowhere.
+            hits = drawn.hits + hits + (presentation.form == .inline ? [] : [ChatHit(frame: place(frame), action: open)])
         }
         if let footer, let frame = layout.footer {
             let drawn = footer.draw(place(frame))
@@ -234,8 +235,7 @@ extension ChatRowRenderer {
         return entries.isEmpty ? nil : .stack(entries)
     }
 
-    /// The tool's own view. Attachments wait for FileView; until then
-    /// those rows have nothing to open.
+    /// The tool's own view.
     static func toolView(_ kind: ToolViewKind, message: ToolCallMessage, views: ChatToolViews, style: ChatRowStyle) -> ChatStackEntry? {
         switch kind {
         case .askUserQuestion, .requestUserInput: views.question.map { questionForm($0, toolId: message.id) }
@@ -248,6 +248,7 @@ extension ChatRowRenderer {
         case .bash: bashView(message.tool)
         case .codexBash: codexBashView(message.tool, root: style.root)
         case .geminiExecute: geminiExecuteView(message.tool)
+        case .file: fileView(message.tool)
         default: nil
         }
     }
@@ -460,6 +461,23 @@ extension ChatRowRenderer {
             entries.append(ChatStackEntry(piece: .stack(info), padding: LayoutInsets(top: 0, left: 12, bottom: 8, right: 12)))
         }
         return ChatStackEntry(piece: .stack(entries))
+    }
+
+    /// FileView: the picture a person attached, at its own shape, then its
+    /// name on one line. Nothing when the input doesn't read as one.
+    static func fileView(_ tool: ToolCall) -> ChatStackEntry? {
+        guard let file = ToolFileInput(tool.input) else { return nil }
+        let name = MeasuredText(ChatTextStyles.attachmentName.string(file.name, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail), maxLines: 1)
+        let attachment = ChatAttachment(ref: file.ref, thumbhash: file.thumbhash)
+        func layout(_ width: CGFloat) -> FileViewLayout {
+            FileViewLayout(width: width, imageWidth: file.imageWidth, imageHeight: file.imageHeight, name: name.measurable)
+        }
+        return ChatStackEntry(piece: ChatPiece(measurable: Measurable { layout($0).size }) { frame in
+            let layout = layout(frame.width)
+            let image = layout.image.offsetBy(dx: frame.minX, dy: frame.minY)
+            let nameFrame = layout.name.offsetBy(dx: frame.minX, dy: frame.minY)
+            return ([.attachment(attachment, frame: image), .text(name.layout(for: nameFrame), nameFrame)], [])
+        })
     }
 
     /// CommandView: a dark terminal panel, "$ " then the command, then the

@@ -60,6 +60,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private var goalInFlight: SessionGoalAction?
     private let questionBanner = ChatQuestionBannerView()
     private let rigActivity = ChatRigActivityView()
+    /// The session's pictures, for the attachments in the list, kept with
+    /// this account's.
+    private(set) lazy var chatAttachments: ChatAttachmentImages? = ChatAttachmentImages(
+        pictures: account.attachmentPictures, sessionId: sessionId, load: services.attachment
+    )
     private weak var questionSheet: AgentQuestionSheetController?
     /// Questions a sent message answers instead, by the message's local
     /// id: dismissed once it is delivered.
@@ -1000,6 +1005,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         inForeground = true
     }
 }
+
+extension ChatViewController: ChatAttachmentProviding {}
 
 #if DEBUG
 extension ChatViewController {

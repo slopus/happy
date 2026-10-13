@@ -302,6 +302,37 @@ final class MessageRowLayoutTests: XCTestCase {
     }
 }
 
+final class FileViewLayoutTests: XCTestCase {
+    func testThePictureKeepsItsShapeInsideTheBox() {
+        assertSize(FileViewLayout.imageSize(width: 1000, height: 500), CGSize(width: 280, height: 140))
+        assertSize(FileViewLayout.imageSize(width: 300, height: 1200), CGSize(width: 90, height: 360))
+        assertSize(FileViewLayout.imageSize(width: 100, height: 50), CGSize(width: 100, height: 50))
+        assertSize(FileViewLayout.imageSize(width: nil, height: nil), CGSize(width: 280, height: 210))
+        // A width without a height keeps its width at 4:3.
+        assertSize(FileViewLayout.imageSize(width: 200, height: 0), CGSize(width: 200, height: 150))
+    }
+
+    func testTheNameSitsUnderThePicture() {
+        let layout = FileViewLayout(width: 361, imageWidth: 1000, imageHeight: 500, name: text("photo.png", lineHeight: 16, maxLines: 1))
+        assertFrame(layout.image, rect(12, 8, 280, 140))
+        assertFrame(layout.name, rect(12, 152, 337, 16))
+        assertSize(layout.size, CGSize(width: 361, height: 176))
+        assertFrame(FileViewLayout.badge(in: layout.image.size), rect(252, 4, 24, 24))
+
+        let narrow = FileViewLayout(width: 164, imageWidth: nil, imageHeight: nil, name: text("a", lineHeight: 16))
+        // Never wider than the row.
+        assertFrame(narrow.image, rect(12, 8, 140, 105))
+    }
+
+    func testAPictureIsDecodedNoLargerThanItIsDrawn() {
+        // A 12 MP photo: 840 x 1080 is the most it is drawn at 3x.
+        assertSize(FileViewLayout.decodedSize(CGSize(width: 4032, height: 3024)), CGSize(width: 840, height: 630))
+        assertSize(FileViewLayout.decodedSize(CGSize(width: 1170, height: 2532)), CGSize(width: 499, height: 1080))
+        assertSize(FileViewLayout.decodedSize(CGSize(width: 300, height: 200)), CGSize(width: 300, height: 200))
+        assertSize(FileViewLayout.decodedSize(.zero), .zero)
+    }
+}
+
 final class ToolRowLayoutTests: XCTestCase {
     func testAToolCard() {
         let layout = ToolCardLayout(.init(
