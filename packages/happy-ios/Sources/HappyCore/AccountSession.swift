@@ -14,6 +14,8 @@ public final class AccountSession: Sendable {
     /// without a store directory (in-memory, tests) get a temporary one.
     public let filesDirectory: URL
     public let sync: SyncEngine
+    /// Retry keys and abandoned starts belong to this account session alone.
+    public let spawnRequests = SpawnRequests()
     /// Sends chat messages through the outbox.
     public let sender: OutboxSender
     /// The chat of any session, from this account's store.
@@ -90,7 +92,7 @@ public final class AccountSession: Sendable {
         var syncOptions = SyncEngine.Options()
         syncOptions.deliveryActivity = dependencies.deliveryActivity
         self.sync = SyncEngine(api: api, store: store, keys: keys, options: syncOptions)
-        self.sender = OutboxSender(store: store, sync: sync, filesDirectory: self.filesDirectory)
+        self.sender = OutboxSender(store: store, sync: sync, filesDirectory: self.filesDirectory, spawnRequests: spawnRequests)
         self.chatFeed = LocalChatFeed(store: store)
         self.homeFeed = HomeFeed(store: store)
         self.settingsFeed = SettingsFeed(store: store)
@@ -188,6 +190,7 @@ public final class AccountSession: Sendable {
     }
 
     public func stop() async {
+        await spawnRequests.close()
         homeFeed.stop()
         settingsFeed.stop()
         machinesFeed.stop()
