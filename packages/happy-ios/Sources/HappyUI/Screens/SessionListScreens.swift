@@ -30,6 +30,9 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
     private let context: AppContext
     private let session: AccountSession
     private(set) var list: SessionList
+    /// Opens home's composer on a project's new workspace
+    /// (`requestHomeDockFocus`); false when there is no dock to open.
+    var onCreateWorkspace: ((WorkspaceOrigin) -> Bool)?
     private var offline: [MachineChoice]?
     private let tableView = UITableView(frame: .zero, style: .plain)
     private var dataSource: UITableViewDiffableDataSource<Int, ItemID>!
@@ -326,10 +329,11 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         apply(animated: true)
     }
 
-    /// ProjectRow's `+`: the new-session screen in this project's
-    /// "Create New" worktree choice.
+    /// ProjectRow's `+`: home's composer on this project's "Create New"
+    /// workspace, or the new-session screen without a dock.
     private func createWorkspace(_ entry: ProjectHomeEntry) {
         guard let origin = entry.origin else { return }
+        if onCreateWorkspace?(origin) == true { return }
         push(.newSession(machineId: origin.machineId, path: origin.path, prompt: nil), context: context)
     }
 

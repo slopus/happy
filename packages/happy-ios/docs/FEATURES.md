@@ -26,6 +26,7 @@ accident.
 | Recent sessions screen | No entry point on a phone | `session/recent.tsx` |
 | Web/desktop-only UI: command palette, keyboard shortcut hints, sidebar navigator, web tab bar | Not on iPhone | `CommandPalette/`, `ShortcutHints`, `SidebarNavigator`, `TabBar` |
 | RevenueCat purchases and the paywall | Not shown in the iPhone UI | `purchases.ts`, `dev/purchases.tsx` |
+| Over-the-air update banner | A native build has no over-the-air JavaScript bundle to update; the store-version check stays in scope | `UpdateBanner.tsx` (`useUpdates`) |
 | Analytics (PostHog) | Not ported yet; the `analyticsOptOut` setting is kept and synced | `track/` |
 
 ## Onboarding and sign-in
@@ -42,13 +43,17 @@ accident.
 - [x] Home states: loading, link, offline, no sessions, list
 - [x] Flat session list in a `UITableView`: live rows, archive toggle, archived by day
 - [x] Archive by swipe and long press
-- [ ] Home header as the iPhone renders it (`MainView.tsx` phone header): logo, "Sessions" with the socket status, the filter menu and the settings gear. `HomeHeader.tsx` is not mounted on iPhone, so there is no new-session button or server entry; a signed-in iPhone reaches Server from the onboarding settings, and a new account picks its server at sign-in — Home
-- [ ] Home dock: the prompt that starts a session from home (`HomeDock`, `homeDock*.ts`) — Home
-- [ ] Project grouping and expanded projects (`ProjectHomeList`, `ProjectGroup`, `projectGroups.ts`, `sessionListGrouping` setting) — Home
-- [ ] Session row actions as the iPhone shows them: the "Session" alert from `useSessionQuickActions.ts` (details, resume, fork, duplicate, archive). `SessionActionsPopover` is web-only — Home + Ops
+- [x] Home header as the iPhone renders it (`MainView.tsx` phone header): logo, "Sessions" with the socket status, the filter menu and the settings gear. `HomeHeader.tsx` is not mounted on iPhone, so there is no new-session button or server entry; a signed-in iPhone reaches Server from the onboarding settings, and a new account picks its server at sign-in — Home
+- [~] Home dock: the prompt that starts a session from home (`HomeDock`, `homeDock*.ts`) — Home
+  - Done: the resting capsule and its scrim, the composer it opens (backdrop, machine/project/worktree/harness menus, "Enter custom path", git worktrees, Composer's card with the permission, model and effort chips), the opening and closing motion, the start through `SessionStarter` with its status line and Stop, refusals while starting, and the project card's `+` opening it on a new workspace.
+  - Not yet: bots (the Session | Bot switch, faces, avatar), picture attachments (the add button is hidden until there is an image picker), and three card options Composer is adding: the dock's filled send/stop button, Stop's refusal flash, and the text and action row rising in their own beats.
+- [x] Project grouping and expanded projects (`ProjectHomeList`, `ProjectGroup`, `projectGroups.ts`, `sessionListGrouping` setting) — Home
+- [x] Session row actions as the iPhone shows them: the "Session" alert from `useSessionQuickActions.ts` (details, resume, fork, duplicate, archive). `SessionActionsPopover` is web-only — Home + Ops
   - Rename is absent from current happy-app and is not ported.
 - [ ] Pending chats placeholder (`PendingChatPlaceholder`, `pendingChats.ts`) — Home
-- [ ] Update banner (`UpdateBanner`) and offline machines banner (`OfflineMachinesBanner`) — Home
+- [~] Update banner (`UpdateBanner`) and offline machines banner (`OfflineMachinesBanner`) — Home
+  - Done: the offline machines banner and the changelog's "What's new". Not yet: the store-version check (`POST /v1/version`).
+  - The OTA update banner is excluded: a native build has no over-the-air JavaScript updates.
 - [ ] New session screen: machine, path, agent, model, permission mode, worktree (`new/index.tsx`, `newSessionProgress.ts`, `machineChoices.ts`) — Home + Ops
   - Current happy-app does not use recent paths; `recentMachinePaths` remains an untouched synced settings key for compatibility.
 - [ ] Machine screen: status, sessions, resume, stop daemon, rename (`machine/[id].tsx`) — Secondary + Ops

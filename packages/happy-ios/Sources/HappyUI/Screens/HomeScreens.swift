@@ -17,6 +17,9 @@ import UIKit
 /// Every other state is MainView.tsx's phone home: the bar is hidden, and
 /// the home header floats over content that scrolls under it.
 ///
+/// The dock sits at the foot of every state but Link Your Computer, which
+/// is not MainView in happy-app; content leaves it 108pt.
+///
 /// Screens pushed over it (settings, server, troubleshoot) stay where they
 /// are when a computer arrives, as they do in happy-app.
 public final class HomeViewController: UIViewController {
@@ -24,6 +27,8 @@ public final class HomeViewController: UIViewController {
     private let session: AccountSession
     private let titleView = NavigationTitleView()
     private let header = HomeHeaderView()
+    private let dockView = HomeDockView()
+    private var dock: HomeDockController?
     private var observation: StoreObservation?
     private var state: HomeState?
     private var content: UIViewController?
@@ -49,9 +54,11 @@ public final class HomeViewController: UIViewController {
         header.filterButton.menu = filterMenu()
         header.filterButton.showsMenuAsPrimaryAction = true
         header.filterButton.preferredMenuElementOrder = .fixed
+        dockView.isHidden = true
+        view.addSubview(dockView)
         view.addSubview(header)
-        observation = session.observeHome { [weak self] state in
-            self?.show(state)
+        observation = session.store.observeHome { [weak self] snapshot in
+            self?.received(snapshot)
         }
         // The stream ends when the session stops.
         let statusUpdates = session.statusUpdates
@@ -78,9 +85,24 @@ public final class HomeViewController: UIViewController {
 
     public override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
-        let layout = HomeScreenLayout(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), dock: 0)
+        let showsDock = state != nil && state != .link
+        let layout = HomeScreenLayout(
+            size: view.bounds.size,
+            safeArea: LayoutInsets(view.safeAreaInsets),
+            dock: showsDock ? HomeDockLayout.Metrics.contentInset : 0
+        )
         header.frame = layout.header
+        dockView.frame = view.bounds
         applyInsets(layout.insets)
+    }
+
+    private func received(_ snapshot: HomeSnapshot) {
+        if let dock {
+            dock.update(snapshot)
+        } else {
+            dock = HomeDockController(restingView: dockView, host: self, context: context, session: session, snapshot: snapshot)
+        }
+        show(HomeState(snapshot))
     }
 
     /// The list pads itself under the header; every other state sees the
@@ -105,6 +127,12 @@ public final class HomeViewController: UIViewController {
         guard state != self.state else { return }
         let previous = self.state
         self.state = state
+        // The scrim is for a list that scrolls under the dock.
+        if case .list = state {
+            dockView.showsScrim = true
+        } else {
+            dockView.showsScrim = false
+        }
         switch (previous, state) {
         case (.offline?, .offline(let choices, let hasArchived)):
             let checklist = content as? OfflineChecklistViewController
@@ -129,8 +157,16 @@ public final class HomeViewController: UIViewController {
         case .noSessions:
             NoSessionsViewController(session: session)
         case .list(let list, let offline):
-            SessionListViewController(context: context, session: session, list: list, offline: offline)
+            makeList(list, offline: offline)
         }
+    }
+
+    private func makeList(_ list: SessionList, offline: [MachineChoice]?) -> SessionListViewController {
+        let controller = SessionListViewController(context: context, session: session, list: list, offline: offline)
+        controller.onCreateWorkspace = { [weak self] origin in
+            self?.dock?.createWorkspace(origin) ?? false
+        }
+        return controller
     }
 
     private func embed(_ next: UIViewController, animated: Bool) {
@@ -142,7 +178,7 @@ public final class HomeViewController: UIViewController {
         next.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         let swap = {
             previous?.view.removeFromSuperview()
-            self.view.insertSubview(next.view, belowSubview: self.header)
+            self.view.insertSubview(next.view, belowSubview: self.dockView)
         }
         if animated {
             UIView.transition(with: view, duration: 0.25, options: .transitionCrossDissolve, animations: swap)
@@ -161,6 +197,7 @@ public final class HomeViewController: UIViewController {
         guard let state else { return }
         let floating = state != .link
         header.isHidden = !floating
+        dock?.isAvailable = floating
         if navigationController?.topViewController === self {
             navigationController?.setNavigationBarHidden(floating, animated: animated)
         }

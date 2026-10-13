@@ -98,8 +98,19 @@ public final class LocalSettings: Sendable {
         }
     }
 
+    /// The new-session draft (persistence.ts `new-session-draft-v1`), nil
+    /// until one is saved.
+    public var newSessionDraft: NewSessionDraft? {
+        get {
+            storage.string(forKey: NewSessionDraft.storageKey).flatMap {
+                NewSessionDraft(json: $0, now: Int64(Date().timeIntervalSince1970 * 1000))
+            }
+        }
+        set { storage.set(newValue?.json, forKey: NewSessionDraft.storageKey) }
+    }
+
     public func clear() {
-        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled, Keys.expandedProjects, Keys.registeredPushToken] {
+        for key in [Keys.linkComputerChecklist, Keys.themePreference, Keys.devModeEnabled, Keys.expandedProjects, Keys.registeredPushToken, NewSessionDraft.storageKey] {
             storage.set(nil, forKey: key)
         }
     }

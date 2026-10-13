@@ -105,3 +105,37 @@ public enum RowHighlight {
     public static let fadeIn: Double = 0.07
     public static let fadeOut: Double = 0.24
 }
+
+// The dock (components/HomeDock.tsx).
+extension Palette {
+    /// The dock's send and stop buttons when they can be pressed
+    /// (`sendButtonActive`): button.primary in light, #F5F5F5 in dark.
+    public static let homeDockSendActive = ColorToken("#000000", "#F5F5F5")
+    /// The glyph on them (`primaryActionIconColor`).
+    public static let homeDockSendIcon = ColorToken("#FFFFFF", "#111111")
+    /// The wash over Stop when a press is refused (`primaryActionFlash`).
+    public static let homeDockStopFlash = ColorToken("#FFFFFF", "#4A4A4E")
+    /// The dim over the list while the composer is open
+    /// (`focusBackdropDim`): rgba(255,255,255,0.88) and rgba(0,0,0,0.88).
+    public static let homeDockBackdropDim = ColorToken(
+        light: RGBA(red: 1, green: 1, blue: 1, alpha: 0.88),
+        dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.88)
+    )
+
+    public static let homeDock: [ColorToken] = [homeDockSendActive, homeDockSendIcon, homeDockStopFlash, homeDockBackdropDim]
+}
+
+/// The open composer's blur: expo-blur `intensity` 8 on the ultra-thin
+/// material, as the animator fraction.
+public enum HomeDockBackdrop {
+    public static let blurFraction: CGFloat = 0.08
+}
+
+extension TextStyles {
+    /// The resting capsule's prompt or placeholder (`inputEntryText`).
+    public static let homeDockEntry = TextStyle(.regular, size: 17)
+    /// A picker row's value (`focusConfigValue`).
+    public static let homeDockRowValue = TextStyle(.regular, size: 17)
+    /// The status line above the composer and its hint.
+    public static let homeDockProgress = TextStyle(.regular, size: 11)
+}
