@@ -11,56 +11,61 @@ protocol ChatAttachmentProviding: AnyObject {
     var chatAttachments: ChatAttachmentImages? { get }
 }
 
-/// useAttachmentImage: a session's pictures, downloaded and decrypted by
-/// `load`, decoded off the main thread at no more than FileView shows, the
-/// last 50 kept so scrolling back doesn't load them again, and one request
-/// per picture at a time.
+/// useAttachmentImage for one session of one account: its pictures,
+/// downloaded and decrypted by `load`, decoded off the main thread at no
+/// more than FileView draws, and kept in the account's own
+/// `AttachmentPictures`, never another account's.
 @MainActor
-final class ChatAttachmentImages {
-    /// `MAX_CACHE_ENTRIES`.
-    static let maxCached = 50
-
-    private static var cache: [String: UIImage] = [:]
-    private static var order: [String] = []
-    private var inFlight: [String: Task<UIImage?, Never>] = [:]
+final class ChatAttachmentImages: NSObject {
+    private let pictures: AttachmentPictures
+    private let sessionId: String
     private let load: @Sendable (_ ref: String) async throws -> Data
 
-    init(load: @escaping @Sendable (_ ref: String) async throws -> Data) {
+    init(pictures: AttachmentPictures, sessionId: String, load: @escaping @Sendable (_ ref: String) async throws -> Data) {
+        self.pictures = pictures
+        self.sessionId = sessionId
         self.load = load
+        super.init()
+        NotificationCenter.default.addObserver(self, selector: #selector(memoryWarning), name: UIApplication.didReceiveMemoryWarningNotification, object: nil)
     }
 
-    static func cached(_ ref: String) -> UIImage? {
-        cache[ref]
+    @objc private func memoryWarning() {
+        pictures.removeAll()
+    }
+
+    func cached(_ ref: String) -> UIImage? {
+        pictures.cached(key(ref)) as? UIImage
     }
 
     /// The picture, or nil when it couldn't be downloaded, decrypted or
     /// read.
     func image(_ ref: String) async -> UIImage? {
-        if let image = Self.cache[ref] { return image }
-        if let task = inFlight[ref] { return await task.value }
         let load = self.load
-        let task = Task.detached(priority: .userInitiated) { () -> UIImage? in
+        let picture = await pictures.picture(key(ref)) {
             guard let data = try? await load(ref), let image = UIImage(data: data) else { return nil }
-            return image.preparingThumbnail(of: FileViewLayout.decodedSize(image.size)) ?? image
+            let decoded = image.preparingThumbnail(of: FileViewLayout.decodedSize(image.size)) ?? image
+            return (picture: decoded as AttachmentPictures.Picture, cost: ChatAttachmentImages.cost(decoded))
         }
-        inFlight[ref] = task
-        let image = await task.value
-        inFlight[ref] = nil
-        if let image { Self.remember(ref, image) }
-        return image
+        return picture as? UIImage
     }
 
-    private static func remember(_ ref: String, _ image: UIImage) {
-        if cache.updateValue(image, forKey: ref) != nil { order.removeAll { $0 == ref } }
-        order.append(ref)
-        while order.count > maxCached { cache[order.removeFirst()] = nil }
+    private func key(_ ref: String) -> AttachmentPictures.Key {
+        AttachmentPictures.Key(sessionId: sessionId, ref: ref)
+    }
+
+    /// The decoded bitmap's bytes.
+    nonisolated static func cost(_ image: UIImage) -> Int {
+        if let cgImage = image.cgImage { return cgImage.bytesPerRow * cgImage.height }
+        return Int(image.size.width * image.scale * image.size.height * image.scale * 4)
     }
 }
 
 /// FileView's picture: the thumbhash, then the picture faded in over it
 /// (expo-image's `transition={150}`, `contentFit="cover"`), rounded 8. One
 /// that couldn't be loaded keeps its thumbhash under an alert badge. It
-/// loads once it is on screen, from the screen up its responder chain.
+/// loads once it is on screen, from the screen up its responder chain,
+/// which is also where it looks for a picture already kept: it holds none
+/// of its own.
 final class ChatAttachmentView: UIView {
     private let placeholder = UIImageView()
     private let picture = UIImageView()
@@ -102,7 +107,7 @@ final class ChatAttachmentView: UIView {
         task = nil
         self.attachment = attachment
         placeholder.image = attachment?.thumbhash.flatMap(ThumbHashImages.image(base64:))
-        picture.image = attachment.flatMap { ChatAttachmentImages.cached($0.ref) }
+        picture.image = nil
         picture.alpha = 1
         badge.isHidden = true
         loadIfNeeded()
@@ -124,6 +129,11 @@ final class ChatAttachmentView: UIView {
 
     private func loadIfNeeded() {
         guard task == nil, window != nil, let attachment, picture.image == nil, badge.isHidden, let images = source() else { return }
+        // Before the first frame it is drawn in, so no fade.
+        if let image = images.cached(attachment.ref) {
+            picture.image = image
+            return
+        }
         task = Task { @MainActor [weak self] in
             let image = await images.image(attachment.ref)
             guard !Task.isCancelled, let self, self.attachment == attachment else { return }
