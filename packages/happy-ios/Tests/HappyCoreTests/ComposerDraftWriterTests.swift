@@ -1,0 +1,603 @@
+import Foundation
+import GRDB
+import XCTest
+@testable import HappyCore
+import HappyCrypto
+import HappyStore
+import HappyWire
+
+/// A store that records every call, in order, and where it ran. A save can
+/// be held at the gate until the test lets it go.
+private final class ProbeStorage: ComposerStorage, @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: ComposerStoreValue
+    private var calls: [String] = []
+    private var mainThreadCalls = 0
+    private var holdNextSave = false
+    private let gate = DispatchSemaphore(value: 0)
+    private let entered = DispatchSemaphore(value: 0)
+    /// The writer the observation reports to, in the test's order.
+    weak var writer: ComposerDraftWriter?
+
+    init(_ value: ComposerStoreValue = ComposerStoreValue()) {
+        current = value
+    }
+
+    var log: [String] { lock.withLock { calls } }
+    var reads: Int { log.filter { $0 == "read" }.count }
+    var saves: [String] { log.compactMap { $0.hasPrefix("save ") ? String($0.dropFirst(5)) : nil } }
+    var callsOnMain: Int { lock.withLock { mainThreadCalls } }
+    var value: ComposerStoreValue { lock.withLock { current } }
+
+    func record(_ call: String) {
+        lock.withLock {
+            calls.append(call)
+            if Thread.isMainThread { mainThreadCalls += 1 }
+        }
+    }
+
+    /// Another device (or the sync engine) changed the store.
+    func change(_ edit: (inout ComposerStoreValue) -> Void) {
+        let value = lock.withLock { () -> ComposerStoreValue in
+            edit(&current)
+            return current
+        }
+        writer?.observed(value)
+    }
+
+    /// The observation delivers `value`, which may be stale.
+    func observe(_ value: ComposerStoreValue) { writer?.observed(value) }
+
+    /// The next save blocks until `release()`; `waitForHeldSave()` returns
+    /// once it has started.
+    func holdTheNextSave() { lock.withLock { holdNextSave = true } }
+    func waitForHeldSave() { entered.wait() }
+    func release() { gate.signal() }
+
+    func composerValue(sessionId: String) throws -> ComposerStoreValue {
+        record("read")
+        return value
+    }
+
+    func saveDraft(sessionId: String, text: String) throws {
+        let hold = lock.withLock {
+            defer { holdNextSave = false }
+            return holdNextSave
+        }
+        if hold {
+            entered.signal()
+            gate.wait()
+        }
+        record("save \(text)")
+        lock.withLock { current.draft = text }
+    }
+
+    /// The tests report observations themselves (`observe`, `change`).
+    func composerValues(sessionId: String) -> AsyncStream<ComposerStoreValue> { AsyncStream { _ in } }
+}
+
+/// Sends by logging into the storage's log, so order is visible; the send
+/// can be held until released.
+private final class ProbeSending: ChatSending, @unchecked Sendable {
+    let storage: ProbeStorage
+    private let lock = NSLock()
+    private var held: CheckedContinuation<Void, Never>?
+    private var holding = false
+    private var waiting: CheckedContinuation<Void, Never>?
+    private var count = 0
+
+    init(_ storage: ProbeStorage) { self.storage = storage }
+
+    func hold() { lock.withLock { holding = true } }
+
+    /// Returns once a held send is waiting.
+    func waitForHeldSend() async {
+        await withCheckedContinuation { continuation in
+            let ready = lock.withLock {
+                if held != nil { return true }
+                waiting = continuation
+                return false
+            }
+            if ready { continuation.resume() }
+        }
+    }
+
+    func release() {
+        let continuation = lock.withLock {
+            holding = false
+            defer { held = nil }
+            return held
+        }
+        continuation?.resume()
+    }
+
+    func send(_ message: OutgoingMessage, sessionId: String) async throws -> String {
+        storage.record("send \(message.text) over \(storage.value.draft)")
+        if lock.withLock({ holding }) {
+            await withCheckedContinuation { continuation in
+                let waiter = lock.withLock {
+                    held = continuation
+                    defer { waiting = nil }
+                    return waiting
+                }
+                waiter?.resume()
+            }
+        }
+        return lock.withLock {
+            count += 1
+            return "local-\(count)"
+        }
+    }
+
+    func retry(localId: String) async throws {}
+    func discard(localId: String) async throws {}
+}
+
+/// Collects deliveries on the main actor.
+@MainActor
+private final class Deliveries {
+    var all: [ComposerStoreDelivery] = []
+    var offMain = 0
+    private var expected: (count: Int, expectation: XCTestExpectation)?
+
+    func receive(_ delivery: ComposerStoreDelivery) {
+        if !Thread.isMainThread { offMain += 1 }
+        all.append(delivery)
+        if let expected, all.count >= expected.count {
+            expected.expectation.fulfill()
+            self.expected = nil
+        }
+    }
+
+    func expect(_ count: Int) -> XCTestExpectation {
+        let expectation = XCTestExpectation(description: "\(count) deliveries")
+        if all.count >= count { expectation.fulfill() } else { expected = (count, expectation) }
+        return expectation
+    }
+}
+
+@MainActor
+final class ComposerDraftWriterTests: XCTestCase {
+    private func writer(_ storage: ProbeStorage) -> (ComposerDraftWriter, ProbeSending, Deliveries) {
+        let sending = ProbeSending(storage)
+        let writer = ComposerDraftWriter(sessionId: "s", storage: storage, sending: sending)
+        storage.writer = writer
+        let deliveries = Deliveries()
+        writer.start { deliveries.receive($0) }
+        return (writer, sending, deliveries)
+    }
+
+    /// Everything handed over before it has run.
+    private func barrier(_ writer: ComposerDraftWriter) async throws {
+        _ = try await writer.send(OutgoingMessage(text: "barrier")).value
+    }
+
+    func testOpeningReadsOnceOffTheMainThreadAndDeliversOnceOnIt() async throws {
+        let storage = ProbeStorage(ComposerStoreValue(draft: "unsent", failedAttachments: 1))
+        let (writer, _, deliveries) = writer(storage)
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        // The observation's first value is the one just read.
+        storage.observe(storage.value)
+        try await barrier(writer)
+        XCTAssertEqual(storage.reads, 1)
+        XCTAssertEqual(storage.callsOnMain, 0)
+        XCTAssertEqual(deliveries.all, [ComposerStoreDelivery(value: ComposerStoreValue(draft: "unsent", failedAttachments: 1), generation: 0)])
+        XCTAssertEqual(deliveries.offMain, 0)
+    }
+
+    func testFastTypingCollapsesIntoTheNewestText() async throws {
+        let storage = ProbeStorage()
+        let (writer, _, deliveries) = writer(storage)
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        storage.holdTheNextSave()
+        writer.save("a", generation: 1)
+        storage.waitForHeldSave()
+        for (index, text) in ["ab", "abc", "abcd", "abcde", "abcdef"].enumerated() {
+            writer.save(text, generation: index + 2)
+        }
+        storage.release()
+        try await barrier(writer)
+        XCTAssertEqual(storage.saves, ["a", "abcdef"], "one write in flight, then only the newest")
+        XCTAssertEqual(storage.value.draft, "abcdef")
+        XCTAssertEqual(storage.callsOnMain, 0)
+    }
+
+    func testASendWaitsForEarlierWritesAndHoldsBackLaterOnes() async throws {
+        let storage = ProbeStorage()
+        let (writer, sending, deliveries) = writer(storage)
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        storage.holdTheNextSave()
+        writer.save("hello", generation: 1)
+        storage.waitForHeldSave()
+        sending.hold()
+        let sent = writer.send(OutgoingMessage(text: "hello"))
+        storage.release()
+        await sending.waitForHeldSend()
+        // Typing while the send is in flight.
+        writer.save("hello again", generation: 2)
+        sending.release()
+        _ = try await sent.value
+        try await barrier(writer)
+        XCTAssertEqual(storage.log.filter { $0 != "read" }, [
+            "save hello", "send hello over hello", "save hello again", "send barrier over hello again",
+        ])
+    }
+
+    func testItsOwnWriteComingBackIsNeitherReadNorDelivered() async throws {
+        let storage = ProbeStorage()
+        let (writer, _, deliveries) = writer(storage)
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        for (index, text) in ["h", "he", "hel"].enumerated() {
+            writer.save(text, generation: index + 1)
+            try await barrier(writer)
+            storage.observe(storage.value)
+        }
+        try await barrier(writer)
+        XCTAssertEqual(storage.reads, 1, "only the opening read")
+        XCTAssertEqual(deliveries.all.count, 1)
+    }
+
+    func testAStaleObservationIsReadAgainAndNotDelivered() async throws {
+        let storage = ProbeStorage()
+        let (writer, _, deliveries) = writer(storage)
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        writer.save("a", generation: 1)
+        writer.save("ab", generation: 2)
+        try await barrier(writer)
+        // The observation lags: it still shows the first write.
+        storage.observe(ComposerStoreValue(draft: "a"))
+        try await barrier(writer)
+        XCTAssertEqual(storage.reads, 2)
+        XCTAssertEqual(deliveries.all.count, 1)
+    }
+
+    func testARemoteEditIsDeliveredWithTheNewestCommittedWrite() async throws {
+        let storage = ProbeStorage()
+        let (writer, _, deliveries) = writer(storage)
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        writer.save("mine", generation: 1)
+        try await barrier(writer)
+        storage.change { $0.draft = "from the laptop" }
+        await fulfillment(of: [deliveries.expect(2)], timeout: 5)
+        XCTAssertEqual(deliveries.all.last, ComposerStoreDelivery(value: ComposerStoreValue(draft: "from the laptop"), generation: 1))
+        // The edit back to what the composer last wrote is news too.
+        storage.change { $0.draft = "mine" }
+        await fulfillment(of: [deliveries.expect(3)], timeout: 5)
+        XCTAssertEqual(deliveries.all.last?.value.draft, "mine")
+    }
+
+    func testPicksAndFailuresAreDeliveredOnlyWhenTheyMove() async throws {
+        let storage = ProbeStorage()
+        let (writer, _, deliveries) = writer(storage)
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        storage.change { $0.picks = ComposerPicks(permissionMode: "plan") }
+        await fulfillment(of: [deliveries.expect(2)], timeout: 5)
+        storage.observe(storage.value)
+        storage.change { $0.failedAttachments = 2 }
+        await fulfillment(of: [deliveries.expect(3)], timeout: 5)
+        try await barrier(writer)
+        XCTAssertEqual(deliveries.all.map(\.value), [
+            ComposerStoreValue(),
+            ComposerStoreValue(picks: ComposerPicks(permissionMode: "plan")),
+            ComposerStoreValue(picks: ComposerPicks(permissionMode: "plan"), failedAttachments: 2),
+        ])
+    }
+
+    func testRefreshDeliversEvenWhenNothingMoved() async throws {
+        let storage = ProbeStorage(ComposerStoreValue(draft: "x"))
+        let (writer, _, deliveries) = writer(storage)
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        writer.refresh()
+        await fulfillment(of: [deliveries.expect(2)], timeout: 5)
+        XCTAssertEqual(deliveries.all[1], deliveries.all[0])
+        XCTAssertEqual(storage.reads, 2)
+    }
+
+    func testClosingStopsReadsButTheTeardownFlushLands() async throws {
+        let storage = ProbeStorage()
+        let (writer, _, deliveries) = writer(storage)
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        writer.close()
+        writer.save("bye", generation: 1)
+        writer.refresh()
+        storage.change { $0.draft = "remote" }
+        try await barrier(writer)
+        XCTAssertEqual(storage.saves, ["bye"])
+        XCTAssertEqual(storage.reads, 1)
+        XCTAssertEqual(deliveries.all.count, 1)
+    }
+
+    func testAWriterOutlivesItsComposerUntilItsWritesLand() async throws {
+        let storage = ProbeStorage()
+        var writer: ComposerDraftWriter? = ComposerDraftWriter(sessionId: "s", storage: storage, sending: ProbeSending(storage))
+        storage.holdTheNextSave()
+        writer?.save("draft", generation: 1)
+        writer?.close()
+        weak let released = writer
+        writer = nil
+        storage.waitForHeldSave()
+        XCTAssertNotNil(released, "held by its drain")
+        storage.release()
+        for _ in 0..<500 where released != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(released)
+        XCTAssertEqual(storage.saves, ["draft"])
+    }
+}
+
+/// The writer over a real store: what wakes it, and what a send leaves.
+@MainActor
+final class ComposerDraftStoreTests: XCTestCase {
+    private func rigMetadata() -> JSONValue {
+        .object([
+            "client": .object(["id": .string("rig")]), "rigMetadataVersion": .number(1),
+            "draftUpdatedAt": .number(10), "draft": .null,
+            "lastMode": .object(["providerId": .string("p"), "modelId": .string("used")]),
+        ])
+    }
+
+    private func fixture(rig: Bool, writer: DatabaseQueue? = nil) async throws -> (LocalStore, SyncEngine, OutboxSender, URL) {
+        let fixture = ServerFixture()
+        let store = try writer.map { try LocalStore(writer: $0) } ?? LocalStore.inMemory()
+        let sync = SyncEngine(api: testAPI(FakeHTTP()), store: store, keys: fixture.keys, now: { 100 })
+        await sync.setBackgrounded(true)
+        var session = RecordDecoder(keyRing: KeyRing(keys: fixture.keys)).session(fixture.session("s", updatedAt: 1))
+        if rig { session.metadata = rigMetadata() }
+        try store.upsertSessions([session], reconcileComposer: sync.modePushes.reconciliation)
+        let files = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        return (store, sync, OutboxSender(store: store, sync: sync, filesDirectory: files), files)
+    }
+
+    func testHeartbeatsAndOtherSessionsWakeNothing() async throws {
+        let counter = DraftFetchCounter()
+        var configuration = Configuration()
+        configuration.prepareDatabase { db in db.trace { counter.trace($0) } }
+        let (store, sync, sender, files) = try await fixture(rig: false, writer: DatabaseQueue(configuration: configuration))
+        defer { try? FileManager.default.removeItem(at: files) }
+        try store.saveDraft(sessionId: "s", text: "unsent", at: 1)
+        let writer = ComposerDraftWriter(sessionId: "s", storage: sender, sending: sender)
+        let deliveries = Deliveries()
+        writer.start { deliveries.receive($0) }
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        // The opening read and the observation's start (GRDB fetches twice).
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(counter.value, 3)
+        for at in Int64(200)..<Int64(215) {
+            try store.applySessionActivity(id: "s", active: true, activeAt: at)
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(counter.value, 3, "the session row is outside what the composer reads")
+        try store.saveDraft(sessionId: "other", text: "elsewhere", at: 2)
+        try store.saveComposerState(ComposerStateRecord(sessionId: "other", values: .object(["permissionMode": .string("plan")])))
+        // Something it does show, after all of the above.
+        try store.enqueue(OutboxRecord(localId: "f", kind: .file, sessionId: "s", payload: .null, createdAt: 1, state: .failed))
+        await fulfillment(of: [deliveries.expect(2)], timeout: 5)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(deliveries.all.map(\.value), [
+            ComposerStoreValue(draft: "unsent"),
+            ComposerStoreValue(draft: "unsent", failedAttachments: 1),
+        ])
+        XCTAssertEqual(deliveries.offMain, 0)
+        XCTAssertEqual(counter.value, 7, "the two other-session writes and the failed upload: three observation fetches, one read")
+        writer.close()
+        await sync.stop()
+    }
+
+    func testTheAttachmentPlanReadsTheSessionOffTheMainThread() async throws {
+        let (_, sync, sender, files) = try await fixture(rig: false)
+        defer { try? FileManager.default.removeItem(at: files) }
+        let picture = OutgoingAttachment(fileURL: files, name: "a.jpg", mimeType: "image/jpeg", size: 1, width: 1, height: 1)
+        let plan = try await sender.attachmentPlan(for: OutgoingMessage(text: "hi", attachments: [picture]), sessionId: "s")
+        XCTAssertEqual(plan.accepted, [picture])
+        do {
+            _ = try await sender.attachmentPlan(for: OutgoingMessage(text: "hi"), sessionId: "missing")
+            XCTFail("an unknown session")
+        } catch {
+            XCTAssertEqual(error as? SendingError, .unknownSession)
+        }
+        await sync.stop()
+    }
+
+    /// The model and the writer together, as the composer drives them.
+    private func type(_ text: String, into model: inout ComposerDraftModel, synced: Bool, writer: ComposerDraftWriter) {
+        if let write = model.textChanged(text, synced: synced).write {
+            writer.save(write.text, generation: write.generation)
+        }
+    }
+
+    func testAnOldSaveCannotOutliveTheClearAfterASend() async throws {
+        let (store, sync, sender, files) = try await fixture(rig: false)
+        defer { try? FileManager.default.removeItem(at: files) }
+        let writer = ComposerDraftWriter(sessionId: "s", storage: sender, sending: sender)
+        let deliveries = Deliveries()
+        writer.start { deliveries.receive($0) }
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        var model = ComposerDraftModel()
+        _ = model.receive(deliveries.all[0], text: "", synced: false, composing: false)
+        type("h", into: &model, synced: false, writer: writer)
+        type("hello", into: &model, synced: false, writer: writer)
+        XCTAssertEqual(model.autosave.pending, "hello", "waiting for the debounce")
+        // Send: the pending edit goes first, then the send, then the clear.
+        if let write = model.flush() { writer.save(write.text, generation: write.generation) }
+        let id = try await writer.send(OutgoingMessage(text: "hello")).value
+        if let write = model.clear(stored: true) { writer.save(write.text, generation: write.generation) }
+        await writer.settle()
+        XCTAssertNil(try store.draft(sessionId: "s"))
+        XCTAssertNotNil(try store.outbox(localId: id))
+        XCTAssertEqual(model.generation, 3)
+        writer.close()
+        await sync.stop()
+    }
+
+    func testAHappyAgentSendClearsItsDraftAndTypingDuringItSurvives() async throws {
+        let (store, sync, sender, files) = try await fixture(rig: true)
+        defer { try? FileManager.default.removeItem(at: files) }
+        await sync.rigComposer.configure(transport: NeverAcknowledges())
+        let writer = ComposerDraftWriter(sessionId: "s", storage: sender, sending: sender)
+        let deliveries = Deliveries()
+        writer.start { deliveries.receive($0) }
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        var model = ComposerDraftModel()
+        _ = model.receive(deliveries.all[0], text: "", synced: true, composing: false)
+        for text in ["h", "he", "hello"] { type(text, into: &model, synced: true, writer: writer) }
+        // Queued at once: the send reads the stamp of the last keystroke's
+        // write, so its clear goes through, and the next keystroke is
+        // written after the clear.
+        let sent = writer.send(OutgoingMessage(text: "hello"))
+        type("hello again", into: &model, synced: true, writer: writer)
+        _ = try await sent.value
+        await writer.settle()
+        XCTAssertEqual(try store.draft(sessionId: "s")?.text, "hello again")
+        XCTAssertEqual(model.generation, 4)
+
+        // Nothing typed during the send: the store is cleared and the
+        // composer, clearing too, sees no remote edit.
+        let (store2, sync2, sender2, files2) = try await fixture(rig: true)
+        defer { try? FileManager.default.removeItem(at: files2) }
+        await sync2.rigComposer.configure(transport: NeverAcknowledges())
+        let writer2 = ComposerDraftWriter(sessionId: "s", storage: sender2, sending: sender2)
+        let deliveries2 = Deliveries()
+        writer2.start { deliveries2.receive($0) }
+        await fulfillment(of: [deliveries2.expect(1)], timeout: 5)
+        var model2 = ComposerDraftModel()
+        _ = model2.receive(deliveries2.all[0], text: "", synced: true, composing: false)
+        type("hello", into: &model2, synced: true, writer: writer2)
+        _ = try await writer2.send(OutgoingMessage(text: "hello")).value
+        XCTAssertNil(model2.clear(stored: false))
+        XCTAssertNil(try store2.draft(sessionId: "s"))
+        await fulfillment(of: [deliveries2.expect(2)], timeout: 5)
+        let cleared = try XCTUnwrap(deliveries2.all.last)
+        XCTAssertEqual(cleared.value.draft, "")
+        XCTAssertNil(model2.receive(cleared, text: "", synced: true, composing: false).text)
+
+        writer.close()
+        writer2.close()
+        await sync.stop()
+        await sync2.stop()
+    }
+}
+
+/// Counts the composer's reads: one per draft lookup.
+private final class DraftFetchCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+    var value: Int { lock.withLock { count } }
+    func trace(_ event: Database.TraceEvent) {
+        if event.description.contains("FROM \"draft\"") { lock.withLock { count += 1 } }
+    }
+}
+
+/// A Happy Agent's metadata writer that never hears back, so the test's
+/// drafts stay local.
+private struct NeverAcknowledges: MetadataUpdateTransport {
+    func updateMetadata(event: String, payload: JSONValue) async throws -> JSONValue {
+        throw CancellationError()
+    }
+}
+
+/// useDraft.ts over an asynchronous store.
+final class ComposerDraftModelTests: XCTestCase {
+    private func delivery(_ draft: String, _ generation: Int, picks: ComposerPicks = ComposerPicks(), failed: Int = 0) -> ComposerStoreDelivery {
+        ComposerStoreDelivery(value: ComposerStoreValue(draft: draft, picks: picks, failedAttachments: failed), generation: generation)
+    }
+
+    func testTheOpeningDraftLoadsIntoAnUntouchedComposer() {
+        var model = ComposerDraftModel()
+        XCTAssertEqual(model.receive(delivery("unsent", 0), text: "", synced: false, composing: false).text, "unsent")
+        XCTAssertTrue(model.isLoaded)
+        // The text view takes it, which writes nothing back.
+        XCTAssertNil(model.textChanged("unsent", synced: false).write)
+        XCTAssertEqual(model.generation, 0)
+    }
+
+    func testTypingBeforeTheFirstReadKeepsTheTyping() {
+        var model = ComposerDraftModel()
+        XCTAssertEqual(model.textChanged("x", synced: false).write, .init(text: "x", generation: 1))
+        let change = model.receive(delivery("stored", 0), text: "x", synced: false, composing: false)
+        XCTAssertNil(change.text)
+        XCTAssertTrue(model.isLoaded)
+        XCTAssertEqual(model.autosave.lastSaved, "x")
+        // Typed and deleted again: the write that emptied it still counts.
+        var cleared = ComposerDraftModel()
+        _ = cleared.textChanged("x", synced: false)
+        _ = cleared.textChanged("", synced: false)
+        XCTAssertNil(cleared.receive(delivery("stored", 0), text: "", synced: false, composing: false).text)
+    }
+
+    func testAReadOlderThanTheNewestWriteIsNotARemoteEdit() {
+        var model = ComposerDraftModel()
+        _ = model.receive(delivery("", 0), text: "", synced: true, composing: false)
+        XCTAssertEqual(model.textChanged("a", synced: true).write?.generation, 1)
+        XCTAssertEqual(model.textChanged("ab", synced: true).write?.generation, 2)
+        XCTAssertNil(model.receive(delivery("a", 1), text: "ab", synced: true, composing: false).text)
+        XCTAssertNil(model.receive(delivery("ab", 2), text: "ab", synced: true, composing: false).text)
+        XCTAssertEqual(model.receive(delivery("from the laptop", 2), text: "ab", synced: true, composing: false).text, "from the laptop")
+    }
+
+    func testOnlyHappyAgentDraftsTakeRemoteText() {
+        var model = ComposerDraftModel()
+        _ = model.receive(delivery("", 0), text: "", synced: false, composing: false)
+        XCTAssertNil(model.receive(delivery("elsewhere", 0), text: "", synced: false, composing: false).text)
+    }
+
+    func testARemoteEditWaitsForTheCompositionAndTheRefreshTakesIt() {
+        var model = ComposerDraftModel()
+        _ = model.receive(delivery("", 0), text: "", synced: true, composing: false)
+        _ = model.textChanged("a", synced: true)
+        XCTAssertNil(model.receive(delivery("from the laptop", 1), text: "a", synced: true, composing: true).text)
+        XCTAssertTrue(model.autosave.remoteDeferred)
+        // The composition was cancelled; the refresh reads the same value.
+        XCTAssertEqual(model.receive(delivery("from the laptop", 1), text: "a", synced: true, composing: false).text, "from the laptop")
+        XCTAssertFalse(model.autosave.remoteDeferred)
+    }
+
+    func testACommittedCompositionWinsOverTheDeferredRemoteEdit() {
+        var model = ComposerDraftModel()
+        _ = model.receive(delivery("", 0), text: "", synced: true, composing: false)
+        _ = model.textChanged("a", synced: true)
+        XCTAssertNil(model.receive(delivery("from the laptop", 1), text: "a", synced: true, composing: true).text)
+        // The commit is written over the remote text, then the store read.
+        XCTAssertEqual(model.textChanged("a日本", synced: true).write, .init(text: "a日本", generation: 2))
+        XCTAssertNil(model.receive(delivery("from the laptop", 1), text: "a日本", synced: true, composing: false).text, "read before the commit's write")
+        XCTAssertTrue(model.autosave.remoteDeferred)
+        XCTAssertNil(model.receive(delivery("a日本", 2), text: "a日本", synced: true, composing: false).text)
+        XCTAssertFalse(model.autosave.remoteDeferred)
+    }
+
+    func testTheGenerationKeepsCountingThroughASendsClear() {
+        var model = ComposerDraftModel()
+        _ = model.receive(delivery("", 0), text: "", synced: false, composing: false)
+        XCTAssertEqual(model.textChanged("hello", synced: false).write?.generation, 1)
+        XCTAssertEqual(model.clear(stored: true), .init(text: "", generation: 2))
+        XCTAssertNil(model.clear(stored: false))
+        XCTAssertEqual(model.textChanged("next", synced: false).write?.generation, 3)
+        // A read from before the clear is not news.
+        var synced = ComposerDraftModel()
+        _ = synced.receive(delivery("", 0), text: "", synced: true, composing: false)
+        _ = synced.textChanged("hello", synced: true)
+        _ = synced.clear(stored: true)
+        XCTAssertNil(synced.receive(delivery("hello", 1), text: "", synced: true, composing: false).text)
+    }
+
+    func testDebouncedEditsFlushOnce() {
+        var model = ComposerDraftModel()
+        _ = model.receive(delivery("", 0), text: "", synced: false, composing: false)
+        _ = model.textChanged("h", synced: false)
+        XCTAssertEqual(model.textChanged("he", synced: false).debounce, true)
+        XCTAssertEqual(model.textChanged("hel", synced: false).debounce, true)
+        XCTAssertEqual(model.flush(), .init(text: "hel", generation: 2))
+        XCTAssertNil(model.flush())
+    }
+
+    func testPicksAndFailuresChangeOnlyWhenTheyMove() {
+        var model = ComposerDraftModel()
+        let plan = ComposerPicks(permissionMode: "plan")
+        XCTAssertEqual(model.receive(delivery("", 0, picks: plan, failed: 1), text: "", synced: false, composing: false),
+                       .init(picks: plan), "failures before opening are not news")
+        XCTAssertEqual(model.receive(delivery("", 0, picks: plan, failed: 1), text: "", synced: false, composing: false), .init())
+        XCTAssertEqual(model.receive(delivery("", 0, picks: plan, failed: 3), text: "", synced: false, composing: false),
+                       .init(newlyFailedAttachments: 2))
+        XCTAssertEqual(model.receive(delivery("", 0, picks: plan, failed: 0), text: "", synced: false, composing: false), .init())
+        XCTAssertEqual(model.receive(delivery("", 0, failed: 1), text: "", synced: false, composing: false),
+                       .init(picks: ComposerPicks(), newlyFailedAttachments: 1))
+    }
+}
