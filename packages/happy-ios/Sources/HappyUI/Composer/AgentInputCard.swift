@@ -365,6 +365,10 @@ public final class AgentInputCardView: UIView {
 
     public var isTextFocused: Bool { textView.isFirstResponder }
 
+    /// An input method is composing (marked text): replacing the text now
+    /// would cut the composition off.
+    public var hasMarkedText: Bool { textView.markedTextRange != nil }
+
     public func focus() {
         guard configuration.isEditable else { return }
         textView.becomeFirstResponder()

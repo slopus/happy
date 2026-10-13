@@ -270,6 +270,27 @@ final class DraftAutosaveTests: XCTestCase {
         XCTAssertEqual(autosave.pending, "draft!")
     }
 
+    func testARemoteEditWaitsForTheCompositionToEnd() {
+        var autosave = DraftAutosave(loaded: "a")
+        _ = autosave.textChanged("ab", synced: true)
+        XCTAssertNil(autosave.storeChanged("from the laptop", composing: true))
+        XCTAssertTrue(autosave.remoteDeferred)
+        XCTAssertEqual(autosave.lastSaved, "ab", "nothing taken yet")
+        // Committed without a change: the remote edit is still the newest.
+        XCTAssertEqual(autosave.storeChanged("from the laptop"), "from the laptop")
+        XCTAssertFalse(autosave.remoteDeferred)
+    }
+
+    func testACommittedCompositionWinsOverTheDeferredEdit() {
+        var autosave = DraftAutosave(loaded: "a")
+        _ = autosave.textChanged("ab", synced: true)
+        XCTAssertNil(autosave.storeChanged("from the laptop", composing: true))
+        // The commit is saved first, over the remote text in the store.
+        XCTAssertEqual(autosave.textChanged("ab日本", synced: true), .saveNow("ab日本"))
+        XCTAssertNil(autosave.storeChanged("ab日本"))
+        XCTAssertFalse(autosave.remoteDeferred)
+    }
+
     func testTheClearAfterASyncedSendIsNotARemoteEdit() {
         var autosave = DraftAutosave(loaded: "")
         _ = autosave.textChanged("hello", synced: true)

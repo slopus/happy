@@ -324,6 +324,9 @@ public struct DraftAutosave: Equatable, Sendable {
     /// The stored draft at the last look or save: the subscription's
     /// `previous`.
     public private(set) var stored: String
+    /// A remote edit came while an input method was composing; look again
+    /// when the composition ends.
+    public private(set) var remoteDeferred = false
 
     /// Seeded with the draft the composer opened with, so loading it
     /// doesn't write it back.
@@ -376,7 +379,16 @@ public struct DraftAutosave: Equatable, Sendable {
     /// changed. Text that moved, and not to this composer's last save, is
     /// a remote edit: it drops the pending save, counts as saved, and is
     /// returned for the text view. Nil leaves the text alone.
-    public mutating func storeChanged(_ draft: String) -> String? {
+    ///
+    /// While `composing`, nothing is taken: the edit waits in
+    /// `remoteDeferred`, and the composition's end reads the store again.
+    /// By then a local edit may have been saved over it, and wins.
+    public mutating func storeChanged(_ draft: String, composing: Bool = false) -> String? {
+        if composing {
+            remoteDeferred = true
+            return nil
+        }
+        remoteDeferred = false
         let previous = stored
         stored = draft
         guard draft != previous, draft != lastSaved else { return nil }
