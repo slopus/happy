@@ -17,7 +17,9 @@ import UIKit
 // The card is configured by a value (`AgentInputCardConfiguration`): which
 // chips, which menus, which primary action. It owns the text; everything it
 // does is reported to its delegate, which decides what a press means.
-// `AgentInputCardLayout` places every subview.
+// `AgentInputCardLayout` places every subview. The chat's composer in a
+// window wider than 700 points makes it the flat panel instead
+// (`desktop`, AgentInputDesktopControls.swift), keeping the text view.
 
 /// A chip in the action row.
 public enum AgentInputChip: Sendable {
@@ -160,6 +162,12 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
     /// button and the chips go; the text, any picked pictures and the
     /// round button stay.
     public var zenMode: Bool
+    /// The flat panel and its `desktopActionControls`, AgentInput.tsx in a
+    /// window wider than 700 points; nil is the compact card. The chips and
+    /// the primary action are then unused, `showsAdd` is the image button,
+    /// and `refusesControls` is not consulted (only Home's dock refuses,
+    /// and it has no panel).
+    public var desktop: AgentInputDesktopConfiguration?
 
     public init(
         placeholder: String,
@@ -178,7 +186,8 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         returnKey: UIReturnKeyType = .default,
         primaryStyle: AgentInputPrimaryStyle = .standard,
         refusesControls: Bool = false,
-        zenMode: Bool = false
+        zenMode: Bool = false,
+        desktop: AgentInputDesktopConfiguration? = nil
     ) {
         self.placeholder = placeholder
         self.isEditable = isEditable
@@ -197,6 +206,7 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         self.primaryStyle = primaryStyle
         self.refusesControls = refusesControls
         self.zenMode = zenMode
+        self.desktop = desktop
     }
 }
 
@@ -214,6 +224,11 @@ public protocol AgentInputCardDelegate: AnyObject {
     /// The round button. What it means depends on the live text: read
     /// `card.text`, not the configuration, which may lag a fast tap.
     func agentInputCardDidPressPrimary(_ card: AgentInputCardView)
+    /// The flat panel's send, which is only send.
+    func agentInputCardDidPressSend(_ card: AgentInputCardView)
+    /// The flat panel's stop.
+    func agentInputCardDidPressStop(_ card: AgentInputCardView)
+    /// The add button, or the flat panel's image button.
     func agentInputCardDidPressAdd(_ card: AgentInputCardView)
     func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String)
     func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip)
@@ -229,6 +244,8 @@ extension AgentInputCardDelegate {
     public func agentInputCardDidChangeFocus(_ card: AgentInputCardView) {}
     public func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) {}
     public func agentInputCardDidPressPrimary(_ card: AgentInputCardView) {}
+    public func agentInputCardDidPressSend(_ card: AgentInputCardView) {}
+    public func agentInputCardDidPressStop(_ card: AgentInputCardView) {}
     public func agentInputCardDidPressAdd(_ card: AgentInputCardView) {}
     public func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) {}
     public func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {}
@@ -271,6 +288,7 @@ public final class AgentInputCardView: UIView {
     private let effortChip = ComposerChipButton(chip: .effort)
     private let primaryHost = PassthroughView()
     private let primaryButton = ComposerPrimaryButton()
+    private let desktopControls = AgentInputDesktopControlsView()
     private var primaryFlash: CGFloat = 0
     private var measured: (width: CGFloat, text: String, height: CGFloat)?
 
@@ -343,6 +361,24 @@ public final class AgentInputCardView: UIView {
         primaryHost.addSubview(primaryButton)
         actionsGroup.addSubview(primaryHost)
 
+        desktopControls.onSelect = { [weak self] key, chip in
+            guard let self else { return }
+            self.delegate?.agentInputCard(self, didSelect: key, in: chip)
+        }
+        desktopControls.onStop = { [weak self] in
+            guard let self else { return }
+            self.delegate?.agentInputCardDidPressStop(self)
+        }
+        desktopControls.onImage = { [weak self] in
+            guard let self else { return }
+            self.delegate?.agentInputCardDidPressAdd(self)
+        }
+        desktopControls.onSend = { [weak self] in
+            guard let self else { return }
+            self.delegate?.agentInputCardDidPressSend(self)
+        }
+        actionsGroup.addSubview(desktopControls)
+
         // didSet doesn't run in the initializer.
         apply(previous: nil)
         applyAppearance()
@@ -399,9 +435,14 @@ public final class AgentInputCardView: UIView {
         Self.shake(self)
     }
 
-    /// Only the round button shakes: a stop that failed (`shakerRef`).
+    /// Only the round button shakes, or the flat panel's stop: a stop that
+    /// failed (`shakerRef`).
     public func shakePrimary() {
-        Self.shake(primaryButton)
+        if configuration.desktop != nil {
+            desktopControls.shakeStop()
+        } else {
+            Self.shake(primaryButton)
+        }
     }
 
     /// Shaker.tsx (`ComposerShake.shaker`).
@@ -447,9 +488,47 @@ public final class AgentInputCardView: UIView {
         AgentInputCardLayout(layoutInput(width: width))
     }
 
+    /// The flat panel's frames at `width`; nil for the compact card.
+    public func desktopLayout(width: CGFloat) -> AgentInputDesktopLayout? {
+        desktopLayoutInput(width: width).map(AgentInputDesktopLayout.init)
+    }
+
     /// The card's height at `width`. Cached by width and text.
     public func height(fitting width: CGFloat) -> CGFloat {
-        layout(width: width).size.height
+        desktopLayout(width: width)?.size.height ?? layout(width: width).size.height
+    }
+
+    /// What `AgentInputLayout` places between its rows.
+    public func panelInput(width: CGFloat) -> AgentInputLayout.Panel {
+        desktopLayoutInput(width: width).map { .desktop($0) } ?? .card(layoutInput(width: width))
+    }
+
+    /// The text's height at `textWidth`, its padding included.
+    private func textHeight(width textWidth: CGFloat) -> CGFloat {
+        let text = self.text
+        if let measured, measured.width == textWidth, measured.text == text {
+            return measured.height
+        }
+        let height = ceil(textView.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude)).height)
+        measured = (textWidth, text, height)
+        return height
+    }
+
+    func desktopLayoutInput(width: CGFloat) -> AgentInputDesktopLayout.Input? {
+        let config = configuration
+        guard let desktop = config.desktop else { return nil }
+        let text = self.text
+        return AgentInputDesktopLayout.Input(
+            width: width,
+            attachmentCount: config.attachments.count,
+            textContentHeight: textHeight(width: AgentInputDesktopLayout.textWidth(panelWidth: width)),
+            hasText: !text.isEmpty,
+            inputMinHeight: config.inputMinHeight,
+            showsSettings: desktop.settings != nil,
+            stopContentWidth: desktop.showsStop ? desktopControls.stopContentWidth : nil,
+            imageContentWidth: config.showsAdd ? desktopControls.imageContentWidth : nil,
+            zenMode: config.zenMode
+        )
     }
 
     func layoutInput(width: CGFloat) -> AgentInputCardLayout.Input {
@@ -459,13 +538,7 @@ public final class AgentInputCardView: UIView {
         let insets = AgentInputInsets(shellInset: metrics.shellInset, actionSize: metrics.actionSize, addIconSize: metrics.addIconSize)
         let textWidth = max(0, contentWidth - insets.inputContainerPaddingLeft - insets.inputContainerPaddingRight)
         let text = self.text
-        let height: CGFloat
-        if let measured, measured.width == textWidth, measured.text == text {
-            height = measured.height
-        } else {
-            height = ceil(textView.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude)).height)
-            measured = (textWidth, text, height)
-        }
+        let height = textHeight(width: textWidth)
         return AgentInputCardLayout.Input(
             width: width,
             metrics: metrics,
@@ -490,7 +563,6 @@ public final class AgentInputCardView: UIView {
 
     public override func layoutSubviews() {
         super.layoutSubviews()
-        let layout = layout(width: bounds.width)
         surface.frame = bounds
         material.frame = surface.bounds
         frosted.frame = surface.bounds
@@ -498,6 +570,11 @@ public final class AgentInputCardView: UIView {
             group.bounds = CGRect(origin: .zero, size: surface.bounds.size)
             group.center = CGPoint(x: surface.bounds.midX, y: surface.bounds.midY)
         }
+        if let desktop = desktopLayout(width: bounds.width) {
+            layoutDesktop(desktop)
+            return
+        }
+        let layout = layout(width: bounds.width)
         layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: metrics.shellRadius).cgPath
 
         if let strip = layout.attachments {
@@ -534,6 +611,31 @@ public final class AgentInputCardView: UIView {
         primaryButton.frame = primaryHost.bounds
     }
 
+    /// The flat panel: the strip and text where `AgentInputDesktopLayout`
+    /// puts them, and its own action row.
+    private func layoutDesktop(_ layout: AgentInputDesktopLayout) {
+        typealias M = AgentInputDesktopLayout.Metrics
+        layer.shadowPath = nil
+        if let strip = layout.attachments {
+            attachmentStrip.isHidden = false
+            attachmentStrip.setLayoutFrame(strip)
+        } else {
+            attachmentStrip.isHidden = true
+        }
+        textView.setLayoutFrame(layout.text)
+        if textView.isScrollEnabled != layout.textScrolls {
+            textView.isScrollEnabled = layout.textScrolls
+        }
+        placeholderLabel.setLayoutFrame(CGRect(
+            x: layout.text.minX,
+            y: layout.text.minY + M.textPaddingTop,
+            width: layout.text.width,
+            height: M.lineHeight
+        ))
+        desktopControls.frame = actionsGroup.bounds
+        desktopControls.place(layout)
+    }
+
     private func place(_ chip: ComposerChipButton, _ frame: AgentInputCardLayout.ChipFrame?) {
         guard let frame else { return }
         chip.setLayoutFrame(frame.frame)
@@ -565,7 +667,11 @@ public final class AgentInputCardView: UIView {
         }
         textView.accessibilityLabel = config.placeholder
 
-        addButton.isHidden = !config.showsAdd || config.zenMode
+        let isDesktop = config.desktop != nil
+        if isDesktop != (previous?.desktop != nil) || previous == nil {
+            applyPanel()
+        }
+        addButton.isHidden = !config.showsAdd || config.zenMode || isDesktop
         addButton.accessibilityLabel = config.addAccessibilityLabel ?? Strings.Composer.addPhoto
         // The glyph turns blue while pictures are attached.
         addButton.tint = config.attachments.isEmpty ? Palette.text : Palette.radioActive
@@ -585,6 +691,14 @@ public final class AgentInputCardView: UIView {
             busy: config.isPrimaryBusy,
             accessibilityLabel: config.primaryAccessibilityLabel
         )
+        if let desktop = config.desktop {
+            desktopControls.configure(
+                desktop,
+                showsImage: config.showsAdd,
+                hasAttachments: !config.attachments.isEmpty,
+                imageAccessibilityLabel: config.addAccessibilityLabel ?? Strings.Composer.addPhoto
+            )
+        }
         updatePlaceholder()
 
         guard let previous else { return }
@@ -594,18 +708,48 @@ public final class AgentInputCardView: UIView {
             || previous.permission != config.permission
             || previous.model != config.model
             || previous.effort != config.effort
-            || previous.zenMode != config.zenMode {
+            || previous.zenMode != config.zenMode
+            || Self.panelShape(previous.desktop) != Self.panelShape(config.desktop) {
             delegate?.agentInputCardDidInvalidateHeight(self)
             setNeedsLayout()
         }
     }
 
+    /// What of the flat panel moves its frames: whether it is there, the
+    /// gear, stop and stop's spinner.
+    private static func panelShape(_ desktop: AgentInputDesktopConfiguration?) -> [Bool]? {
+        desktop.map { [$0.settings != nil, $0.showsStop, $0.isStopBusy] }
+    }
+
+    /// The compact card's frosted glass and its controls, or the flat
+    /// panel's fill and its row. The text view stays, with its padding.
+    private func applyPanel() {
+        let isDesktop = configuration.desktop != nil
+        material.isHidden = isDesktop
+        frosted.isHidden = isDesktop
+        middle.isHidden = isDesktop
+        primaryHost.isHidden = isDesktop
+        desktopControls.isHidden = !isDesktop
+        surface.layer.cornerRadius = isDesktop ? AgentInputDesktopLayout.Metrics.panelRadius : metrics.shellRadius
+        let padding = isDesktop
+            ? (top: AgentInputDesktopLayout.Metrics.textPaddingTop, bottom: AgentInputDesktopLayout.Metrics.textPaddingBottom)
+            : (top: metrics.inputPaddingTop, bottom: metrics.inputPaddingBottom)
+        textView.textContainerInset = UIEdgeInsets(top: padding.top, left: 0, bottom: padding.bottom, right: 0)
+        // Measured with the other padding.
+        measured = nil
+        applyAppearance()
+    }
+
     private func applyAppearance() {
         let dark = traitCollection.userInterfaceStyle == .dark
+        // The flat panel (`unifiedPanel`) has no shadow and no rim; its
+        // fill is input.background.
+        let isDesktop = configuration.desktop != nil
         layer.shadowOffset = CGSize(width: 0, height: dark ? ComposerShadow.darkOffsetY : ComposerShadow.lightOffsetY)
         layer.shadowRadius = dark ? ComposerShadow.darkRadius : ComposerShadow.lightRadius
-        layer.shadowOpacity = dark ? ComposerShadow.darkOpacity : ComposerShadow.lightOpacity
-        surface.layer.borderWidth = hairline
+        layer.shadowOpacity = isDesktop ? 0 : dark ? ComposerShadow.darkOpacity : ComposerShadow.lightOpacity
+        surface.backgroundColor = isDesktop ? UIColor(Palette.inputBackground) : nil
+        surface.layer.borderWidth = isDesktop ? 0 : hairline
         surface.layer.borderColor = UIColor(Palette.glassBorder).resolvedColor(with: traitCollection).cgColor
         // The typed text keeps the colour it was typed in; re-colour it.
         let selection = textView.selectedRange

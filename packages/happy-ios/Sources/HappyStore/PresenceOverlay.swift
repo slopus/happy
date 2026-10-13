@@ -29,6 +29,14 @@ final class PresenceOverlay: @unchecked Sendable {
     func setSession(_ id: String, _ value: PresenceOverlayValue) { lock.withLock { sessions[id] = value } }
     func setMachine(_ id: String, _ value: PresenceOverlayValue) { lock.withLock { machines[id] = value } }
     func setClock(_ now: Int64) { lock.withLock { displayedNow = now } }
+    func removeSessions(_ ids: Set<String>) { lock.withLock { for id in ids { sessions.removeValue(forKey: id) } } }
+    func removeMachines(_ ids: Set<String>) { lock.withLock { for id in ids { machines.removeValue(forKey: id) } } }
+    func retain(sessionIDs: Set<String>, machineIDs: Set<String>) {
+        lock.withLock {
+            sessions = sessions.filter { sessionIDs.contains($0.key) }
+            machines = machines.filter { machineIDs.contains($0.key) }
+        }
+    }
 
     func home(_ raw: HomeSnapshot) -> HomeSnapshot {
         lock.withLock {
@@ -48,8 +56,41 @@ final class PresenceOverlay: @unchecked Sendable {
         }
     }
 
+    /// One session as `home` shows it.
+    func session(_ row: SessionRecord) -> SessionRecord {
+        lock.withLock {
+            guard let presence = sessions[row.id], presence.latestAt >= row.activeAt else { return row }
+            var value = row
+            value.active = presence.active
+            value.thinking = presence.thinking && presence.active
+            value.activeAt = presence.displayedAt
+            value.thinkingAt = presence.thinkingAt
+            LocalStore.settle(old: row, &value)
+            return value
+        }
+    }
+
+    /// One computer as `machineSnapshot` shows it.
+    func machine(_ row: MachineRecord) -> MachineRecord {
+        lock.withLock {
+            guard let presence = machines[row.id], presence.latestAt >= row.activeAt else { return row }
+            var value = row
+            value.active = presence.active
+            value.activeAt = presence.displayedAt
+            return value
+        }
+    }
+
     func machineSnapshot(_ raw: MachinesSnapshot) -> MachinesSnapshot {
         lock.withLock { overlayMachines(raw) }
+    }
+
+    func troubleshooting(_ raw: TroubleshootingSnapshot) -> TroubleshootingSnapshot {
+        lock.withLock {
+            var value = raw
+            value.machines = overlayMachines(MachinesSnapshot(synced: true, machines: raw.machines)).machines
+            return value
+        }
     }
 
     private func overlayMachines(_ raw: MachinesSnapshot) -> MachinesSnapshot {

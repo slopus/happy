@@ -108,9 +108,14 @@ final class TextScaleTests: XCTestCase {
         XCTAssertEqual(title.scaled(TextScale(.small)).size, 28 * float(0.882))
     }
 
-    func testTheCapIsOptInAndChangesNoToken() {
-        XCTAssertNil(TextStyles.itemTitle.maxScale)
-        XCTAssertNil(TextStyles.onboardingTitle.maxScale)
+    func testOnlyTheOnboardingTitlesAreCapped() {
+        // OnboardingContent.tsx's TITLE_MAX_SCALE, happy-app's only cap.
+        XCTAssertEqual(TextStyles.onboardingTitle.maxScale, 1.2)
+        XCTAssertEqual(TextStyles.onboardingTitle.scaled(TextScale(.accessibilityExtraExtraExtraLarge)).size, 28 * float(1.2))
+        XCTAssertEqual(TextStyles.onboardingTitle.scaled(TextScale(.extraLarge)).size, 28 * float(1.118))
+        for style in [TextStyles.itemTitle, TextStyles.onboardingProp, TextStyles.checklistTitle, TextStyles.headerTitle] {
+            XCTAssertNil(style.maxScale)
+        }
         XCTAssertEqual(TextStyle(.regular, size: 17), TextStyle(.regular, size: 17, maxScale: nil))
         XCTAssertNotEqual(TextStyle(.regular, size: 17), TextStyle(.regular, size: 17, maxScale: 1.2))
     }

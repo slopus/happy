@@ -24,6 +24,7 @@ public final class SettingsViewController: UIViewController {
     public init(context: AppContext) {
         self.context = context
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)
@@ -38,6 +39,12 @@ public final class SettingsViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         title = Strings.Settings.title
+        // createPlainHeader: Header.tsx's own title, which scales, where the
+        // pages under Settings get UIKit's, which doesn't.
+        let titleView = NavigationTitleView(title: Strings.Settings.title)
+        titleView.traitOverrides.followsTextSize = true
+        titleView.sizeToFit()
+        navigationItem.titleView = titleView
         showsBackTitle()
         dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
         observation = context.account.session?.store.observeSettings { [weak self] snapshot in
@@ -175,11 +182,14 @@ public final class SettingsViewController: UIViewController {
                 style: settings.avatarStyle,
                 monochrome: settings.avatarMonochrome
             )
+            // This account's own pictures, never another's.
+            let pictures = context.account.session.flatMap { context.account.pictures(for: $0.keys.anonID) }
             if let profileHeader {
                 profileHeader.content = content
+                profileHeader.pictures = pictures
                 return profileHeader
             }
-            let view = SettingsProfileHeaderView(content: content)
+            let view = SettingsProfileHeaderView(content: content, pictures: pictures)
             profileHeader = view
             return view
         }
@@ -347,6 +357,7 @@ public final class OnboardingSettingsViewController: UIViewController {
     public init(context: AppContext) {
         self.context = context
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)
@@ -422,6 +433,7 @@ public final class ServerConfigViewController: UIViewController, UITextFieldDele
     public init(context: AppContext) {
         self.context = context
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
     }
 
     @available(*, unavailable)

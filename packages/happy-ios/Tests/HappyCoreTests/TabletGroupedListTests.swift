@@ -139,6 +139,54 @@ final class TabletGroupedListTests: XCTestCase {
         XCTAssertEqual(nowhere.place, TabletNewSessionPlace(machineId: nil, path: nil, worktreeKey: nil))
     }
 
+    func testCheckoutHeadingsReadTheLiveStatus() {
+        let happy = GitCheckoutKey(machineId: "m1", path: "/work/happy")
+        let worktree = GitCheckoutKey(machineId: "m1", path: Self.worktreePath)
+        let list = TabletGroupedList(Self.snapshot(), offline: nil, clock: ApplyPerfFixtures.clock, git: [
+            happy: GitHeadingStatus(branch: "feature", unstagedLinesAdded: 3, unstagedLinesRemoved: 1),
+            worktree: GitHeadingStatus(branch: "other", unstagedLinesAdded: 0, unstagedLinesRemoved: 0),
+        ])
+        guard case .workspace(let primary) = list.rows[8], case .workspace(let fix) = list.rows[10],
+              case .workspace(let nowhere) = list.rows[13]
+        else { return XCTFail("\(list.rows)") }
+        XCTAssertEqual(primary.branch, "feature")
+        XCTAssertEqual(primary.changes, GitLineChanges(approximate: false, insertions: 3, deletions: 1))
+        XCTAssertEqual(primary.checkout, happy)
+        // The worktree's own name comes before its live branch.
+        XCTAssertEqual(fix.branch, "fix-x")
+        XCTAssertNil(fix.changes)
+        // No computer, no path: no status to read.
+        XCTAssertNil(nowhere.checkout)
+        XCTAssertEqual(nowhere.branch, "main")
+        XCTAssertEqual(list.checkouts, [
+            happy, worktree,
+            GitCheckoutKey(machineId: "m1", path: "/work/alpha"),
+            GitCheckoutKey(machineId: "m2", path: "/home/u/proj"),
+        ])
+    }
+
+    func testLiveLinesBeforeHappyAgentsOwnCounts() {
+        let key = GitCheckoutKey(machineId: "m1", path: "/work/rig")
+        var snapshot = Self.snapshot()
+        snapshot.sessions = [Self.session("r", machine: "m1", path: "/work/rig", metadata: [
+            "client": .object(["id": .string("rig")]),
+            "git": .object(["insertions": .number(5), "deletions": .number(2), "countsExact": .bool(false)]),
+        ])]
+        func changes(_ status: GitHeadingStatus?) -> GitLineChanges? {
+            let list = TabletGroupedList(snapshot, offline: nil, clock: ApplyPerfFixtures.clock, git: status.map { [key: $0] } ?? [:])
+            guard case .workspace(let header)? = list.rows.first(where: { if case .workspace = $0 { true } else { false } }) else { return nil }
+            return header.changes
+        }
+        let own = GitLineChanges(approximate: true, insertions: 5, deletions: 2)
+        XCTAssertEqual(changes(nil), own)
+        // A clean working tree shows the agent's counts, not nothing.
+        XCTAssertEqual(changes(GitHeadingStatus(branch: "main", unstagedLinesAdded: 0, unstagedLinesRemoved: 0)), own)
+        XCTAssertEqual(
+            changes(GitHeadingStatus(branch: "main", unstagedLinesAdded: 0, unstagedLinesRemoved: 4)),
+            GitLineChanges(approximate: false, insertions: 0, deletions: 4)
+        )
+    }
+
     func testChatsInTheirCards() {
         let list = Self.list(Self.snapshot())
         XCTAssertEqual(list.rows[7], .chat(TabletChatRow(
@@ -364,6 +412,64 @@ final class TabletSidebarChangesetTests: XCTestCase {
         XCTAssertEqual(back.output.frame.list, flatRows)
         XCTAssertEqual(back.output.changeset, RowChangeset())
         XCTAssertEqual(back.state.grouped, groupedRows)
+    }
+
+    func testALiveStatusReconfiguresExactlyItsHeading() throws {
+        let happy = GitCheckoutKey(machineId: "m1", path: "/work/happy")
+        let first = try XCTUnwrap(derive(Fixture.snapshot()))
+        let status = GitHeadingStatus(branch: "feature", unstagedLinesAdded: 3, unstagedLinesRemoved: 1)
+        let update = try XCTUnwrap(TabletSidebarDerivation.derive(
+            TabletSidebarInput(snapshot: Fixture.snapshot(), git: [happy: status]), applied: first.state, clock: ApplyPerfFixtures.clock
+        ))
+        XCTAssertEqual(update.output.changeset, RowChangeset(reconfigures: [8]))
+        // The same headings: nobody is told to refresh anything new.
+        XCTAssertNil(update.output.checkouts)
+        // A checkout no heading shows (an archived chat's) derives nothing.
+        XCTAssertNil(TabletSidebarDerivation.derive(
+            TabletSidebarInput(snapshot: Fixture.snapshot(), git: [
+                happy: status,
+                GitCheckoutKey(machineId: "m1", path: "/work/old"): status,
+            ]),
+            applied: update.state, clock: ApplyPerfFixtures.clock
+        ))
+    }
+
+    func testTheHeadingsCheckoutsFollowWhatShows() throws {
+        let first = try XCTUnwrap(derive(Fixture.snapshot()))
+        XCTAssertEqual(first.output.checkouts, first.output.frame.grouped?.checkouts)
+        XCTAssertEqual(first.output.checkouts?.count, 4)
+        // A retitled chat keeps them.
+        var retitled = Fixture.snapshot()
+        retitled.sessions[1] = ApplyPerfFixtures.retitled(retitled.sessions[1], "Renamed")
+        XCTAssertNil(try XCTUnwrap(derive(retitled, after: first.state)).output.checkouts)
+        // The flat list shows no headings.
+        let flat = try XCTUnwrap(derive(Fixture.snapshot(grouping: "flat"), after: first.state))
+        XCTAssertEqual(flat.output.checkouts, [])
+        XCTAssertEqual(flat.state.checkouts, [])
+    }
+
+    func testCrossingMidnightReconfiguresOnlyTheArchiveHeading() throws {
+        // One archived chat, from 06:00; "last seen" on a still presence
+        // clock, as the presence actor keeps it.
+        var snapshot = Fixture.snapshot(presenceNow: Fixture.now)
+        snapshot.sessions.removeAll { $0.id == "a2" }
+        let midnight = ApplyPerfClockTests.midnight
+        func derive(at date: Date, after applied: TabletSidebarDerivation.Applied, wake: ClockWake) -> (output: TabletSidebarUpdate, state: TabletSidebarDerivation.Applied)? {
+            TabletSidebarDerivation.derive(TabletSidebarInput(snapshot: snapshot), applied: applied, wake: wake, clock: ApplyPerfClockTests.clock(date))
+        }
+        let wake = ClockWake()
+        defer { wake.cancel() }
+        let before = try XCTUnwrap(derive(at: midnight - 60, after: .init(), wake: wake))
+        // Nothing can read differently before midnight.
+        XCTAssertEqual(wake.deadline, midnight)
+        XCTAssertNil(derive(at: midnight - 30, after: before.state, wake: wake))
+
+        let after = try XCTUnwrap(derive(at: midnight + 60, after: before.state, wake: wake))
+        let list = try XCTUnwrap(after.output.frame.grouped)
+        let heading = try XCTUnwrap(list.ids.firstIndex(of: .archiveHeader(0)))
+        XCTAssertEqual(after.output.changeset, RowChangeset(reconfigures: [heading]))
+        XCTAssertEqual(list.rows[heading], .archiveHeader(.yesterday))
+        XCTAssertNil(after.output.checkouts)
     }
 
     func testTheSpinnerKeepsBothLists() throws {

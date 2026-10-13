@@ -23,6 +23,7 @@ public final class AccountSession: Sendable {
     public let homeFeed: HomeFeed
     public let settingsFeed: SettingsFeed
     public let machinesFeed: MachinesFeed
+    public let troubleshootingFeed: TroubleshootingFeed
     public let realtime: SocketIOClient
     public let pairing: PairingService
     /// Archive, delete and mark read, for the session list.
@@ -31,12 +32,21 @@ public final class AccountSession: Sendable {
     public let machineActions: MachineActions
     /// Checkout status shared by this account's sessions.
     public let gitStatus: GitStatusSync
+    /// The composer's `@` file lists, this account's alone: another
+    /// account's session with the same id is another machine's tree.
+    public let composerFileIndex = ComposerFileIndex()
     /// This account's Rig whole-draft synchronization.
     public let rigComposer: RigComposerSync
     /// Starts in flight stay within this account, including their unsent text.
     public let pendingChats = PendingChats()
     /// The session pictures the chat has decoded, this account's alone.
     public let attachmentPictures = AttachmentPictures()
+    /// What each file looked like when last read (the store's
+    /// `sessionFileCache`), this account's alone.
+    public let fileCache = SessionFileCache()
+    /// One session's record, computer, settings and composer, for the
+    /// session's own screens.
+    public let sessionDetails: SessionDetailFeed
     /// Socket status for the UI (connection dot in settings).
     public let statusUpdates: AsyncStream<RealtimeStatus>
 
@@ -88,6 +98,8 @@ public final class AccountSession: Sendable {
         self.homeFeed = HomeFeed(store: store)
         self.settingsFeed = SettingsFeed(store: store)
         self.machinesFeed = MachinesFeed(store: store)
+        self.sessionDetails = SessionDetailFeed(store: store)
+        self.troubleshootingFeed = TroubleshootingFeed(store: store)
         self.pairing = PairingService(api: api, keys: keys)
 
         guard let socketURL = SocketIOURL.make(serverURL: dependencies.serverURL) else {
@@ -184,6 +196,8 @@ public final class AccountSession: Sendable {
         homeFeed.stop()
         settingsFeed.stop()
         machinesFeed.stop()
+        sessionDetails.stop()
+        await troubleshootingFeed.stop()
         let task = pump.cancel()
         await gitStatus.stop()
         await rigComposer.setConnected(false)

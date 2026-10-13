@@ -80,14 +80,20 @@ public final class SettingsProfileHeaderView: UIView {
         didSet { if content != oldValue { apply() } }
     }
 
+    /// The account the picture is fetched for, from its own cache.
+    public var pictures: AccountPictures? {
+        didSet { if pictures !== oldValue { apply() } }
+    }
+
     let card = UIView()
     let avatarView = AvatarView()
     let photo = RemoteImageView(size: SettingsProfileHeaderLayout.Metrics.avatarSize)
     let nameLabel = StyledLabel(style: TextStyles.profileName, color: Palette.text, alignment: .center)
     let bioLabel = StyledLabel(style: TextStyles.profileBio, color: Palette.textSecondary, alignment: .center)
 
-    public init(content: Content) {
+    public init(content: Content, pictures: AccountPictures? = nil) {
         self.content = content
+        self.pictures = pictures
         super.init(frame: .zero)
         card.backgroundColor = UIColor(Palette.surface)
         card.layer.cornerRadius = SettingsProfileHeaderLayout.Metrics.cornerRadius
@@ -137,8 +143,7 @@ public final class SettingsProfileHeaderView: UIView {
             style: content.style,
             monochrome: content.monochrome
         )
-        photo.placeholder = content.thumbhash.flatMap(ThumbHashImages.image(base64:))
-        photo.url = content.avatarURL
+        photo.show(content.avatarURL, thumbhash: content.thumbhash, from: pictures)
         setNeedsLayout()
         superview?.setNeedsLayout()
     }
@@ -149,20 +154,13 @@ public final class SettingsProfileHeaderView: UIView {
     }
 }
 
-/// A round picture fetched from a URL (expo-image with a disk cache). The
-/// placeholder (a decoded thumbhash) shows until the picture arrives.
+/// A round picture fetched from a URL (expo-image with a disk cache),
+/// from its account's own `AccountPictures`. The placeholder (a decoded
+/// thumbhash) shows until the picture arrives.
 public final class RemoteImageView: UIImageView {
-    public var url: URL? {
-        didSet {
-            guard url != oldValue else { return }
-            load()
-        }
-    }
-
-    public var placeholder: UIImage? {
-        didSet { if image == nil || image === oldValue { image = placeholder } }
-    }
-
+    public private(set) var url: URL?
+    private var thumbhash: String?
+    private weak var pictures: AccountPictures?
     private var task: Task<Void, Never>?
 
     public init(size: CGFloat) {
@@ -178,81 +176,35 @@ public final class RemoteImageView: UIImageView {
         fatalError("init(coder:) is not supported")
     }
 
-    private func load() {
+    /// Shows `url`'s picture from `pictures`, the thumbhash until it comes.
+    public func show(_ url: URL?, thumbhash: String?, from pictures: AccountPictures?) {
+        guard url != self.url || thumbhash != self.thumbhash || pictures !== self.pictures else { return }
         task?.cancel()
+        task = nil
+        self.url = url
+        self.thumbhash = thumbhash
+        self.pictures = pictures
         isHidden = url == nil
-        guard let url else {
-            image = nil
-            return
-        }
-        if let cached = RemoteImages.shared.cached(url) {
+        image = nil
+        guard let url, let pictures else { return }
+        if let cached = pictures.cachedImage(url) {
             image = cached
             return
         }
-        image = placeholder
+        image = thumbhash.flatMap(pictures.cachedPlaceholderImage)
         task = Task { @MainActor [weak self] in
-            let image = await RemoteImages.shared.load(url)
-            guard !Task.isCancelled, let self, self.url == url, let image else { return }
+            if self?.image == nil, let thumbhash, let placeholder = await pictures.placeholderImage(thumbhash) {
+                guard !Task.isCancelled, let self, self.isShowing(url, from: pictures) else { return }
+                if self.image == nil { self.image = placeholder }
+            }
+            let image = await pictures.image(url)
+            guard !Task.isCancelled, let self, self.isShowing(url, from: pictures), let image else { return }
             self.image = image
         }
     }
-}
 
-/// Fetched pictures, kept in memory and in URLCache's disk cache so they
-/// show offline once seen.
-@MainActor
-final class RemoteImages {
-    static let shared = RemoteImages()
-
-    private let cache = NSCache<NSURL, UIImage>()
-    private var inFlight: [URL: Task<UIImage?, Never>] = [:]
-
-    func cached(_ url: URL) -> UIImage? {
-        cache.object(forKey: url as NSURL)
-    }
-
-    func load(_ url: URL) async -> UIImage? {
-        if let image = cached(url) { return image }
-        if let task = inFlight[url] { return await task.value }
-        let task = Task<UIImage?, Never> {
-            let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
-            guard let (data, _) = try? await URLSession.shared.data(for: request) else { return nil }
-            return UIImage(data: data)
-        }
-        inFlight[url] = task
-        let image = await task.value
-        inFlight[url] = nil
-        if let image { cache.setObject(image, forKey: url as NSURL) }
-        return image
-    }
-}
-
-/// Thumbhash placeholders as images, decoded once per hash.
-@MainActor
-enum ThumbHashImages {
-    private static let cache = NSCache<NSString, UIImage>()
-
-    static func image(base64: String) -> UIImage? {
-        if let image = cache.object(forKey: base64 as NSString) { return image }
-        guard let decoded = ThumbHash.decode(base64: base64) else { return nil }
-        let bytesPerRow = decoded.width * 4
-        guard let provider = CGDataProvider(data: Data(decoded.rgba) as CFData),
-              let cgImage = CGImage(
-                  width: decoded.width,
-                  height: decoded.height,
-                  bitsPerComponent: 8,
-                  bitsPerPixel: 32,
-                  bytesPerRow: bytesPerRow,
-                  space: CGColorSpaceCreateDeviceRGB(),
-                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
-                  provider: provider,
-                  decode: nil,
-                  shouldInterpolate: true,
-                  intent: .defaultIntent
-              ) else { return nil }
-        let image = UIImage(cgImage: cgImage)
-        cache.setObject(image, forKey: base64 as NSString)
-        return image
+    private func isShowing(_ url: URL, from pictures: AccountPictures) -> Bool {
+        self.url == url && self.pictures === pictures
     }
 }
 
@@ -622,37 +574,52 @@ public final class ChangelogCardView: UIView {
     let summary: LinkTextView?
     let texts: [LinkTextView]
     let bullets: [StyledLabel?]
+    private let entry: Changelog.Entry
+    private let blocks: [ChangelogMarkdown.Block]
+    private var textScale: TextScale?
 
     public init(entry: Changelog.Entry) {
-        if entry.summary.isEmpty {
-            summary = nil
-        } else {
-            let view = LinkTextView()
-            view.attributedText = Self.summaryText(entry.summary)
-            summary = view
-        }
+        self.entry = entry
+        blocks = ChangelogMarkdown.parse(entry.markdown)
+        summary = entry.summary.isEmpty ? nil : LinkTextView()
         var texts: [LinkTextView] = []
         var bullets: [StyledLabel?] = []
-        for block in ChangelogMarkdown.parse(entry.markdown) {
-            let view = LinkTextView()
+        for block in blocks {
+            texts.append(LinkTextView())
             switch block {
-            case .bullet(let spans):
-                view.attributedText = Self.text(spans)
+            case .bullet:
                 let bullet = StyledLabel(style: TextStyles.changelogBody, color: Palette.text, lines: 1)
                 bullet.string = "•"
                 bullets.append(bullet)
-            case .paragraph(let spans):
-                view.attributedText = Self.text(spans)
+            case .paragraph:
                 bullets.append(nil)
             }
-            texts.append(view)
         }
         self.texts = texts
         self.bullets = bullets
         super.init(frame: .zero)
+        render()
         if let summary { addSubview(summary) }
         for view in texts { addSubview(view) }
         for case let bullet? in bullets { addSubview(bullet) }
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            let scale = self.traitCollection.textEnvironment?.scale
+            guard scale != self.textScale else { return }
+            self.textScale = scale
+            self.render()
+            self.setNeedsLayoutUpTheTree()
+        }
+    }
+
+    /// The text at the size it is drawn at.
+    private func render() {
+        summary?.attributedText = Self.summaryText(entry.summary, scale: textScale)
+        for (view, block) in zip(texts, blocks) {
+            switch block {
+            case .bullet(let spans), .paragraph(let spans):
+                view.attributedText = Self.text(spans, scale: textScale)
+            }
+        }
     }
 
     @available(*, unavailable)
@@ -687,15 +654,17 @@ public final class ChangelogCardView: UIView {
     }
 
     /// MarkdownView's text: regular, bold spans semibold, links underlined.
-    static func text(_ spans: [ChangelogMarkdown.Span]) -> NSAttributedString {
+    static func text(_ spans: [ChangelogMarkdown.Span], scale: TextScale? = nil) -> NSAttributedString {
         let text = NSMutableAttributedString()
         let color = UIColor(Palette.text)
+        let body = scale.map { TextStyles.changelogBody.scaled($0) } ?? TextStyles.changelogBody
+        let bold = scale.map { TextStyles.changelogBold.scaled($0) } ?? TextStyles.changelogBold
         for span in spans {
             switch span {
-            case .text(let string, let bold):
-                text.append((bold ? TextStyles.changelogBold : TextStyles.changelogBody).attributedString(string, color: color))
+            case .text(let string, let isBold):
+                text.append((isBold ? bold : body).attributedString(string, color: color))
             case .link(let label, let url):
-                var attributes = TextStyles.changelogBody.attributes(color: color)
+                var attributes = body.attributes(color: color)
                 if let url = URL(string: url) { attributes[.link] = url }
                 text.append(NSAttributedString(string: label, attributes: attributes))
             }
@@ -705,9 +674,9 @@ public final class ChangelogCardView: UIView {
 
     /// `SummaryLine`: plain text and underlined links. The changelog bundles
     /// no images, so an image segment has nothing to show.
-    static func summaryText(_ summary: String) -> NSAttributedString {
+    static func summaryText(_ summary: String, scale: TextScale? = nil) -> NSAttributedString {
         let text = NSMutableAttributedString()
-        let style = TextStyles.changelogSummary
+        let style = scale.map { TextStyles.changelogSummary.scaled($0) } ?? TextStyles.changelogSummary
         let color = UIColor(Palette.text)
         for segment in ChangelogSummary.parse(summary) {
             switch segment {
@@ -739,11 +708,29 @@ public final class ChangelogTitleView: UIView {
         isAccessibilityElement = true
         accessibilityLabel = title
         accessibilityTraits = .header
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.fitTextSize()
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    /// The text size the view was last fitted to; nil at the designed size.
+    private var textScale: TextScale?
+
+    /// The title grows with the text size; the picture keeps its 40pt.
+    /// Fitted again in the bar, which keeps its height.
+    private func fitTextSize() {
+        let scale = traitCollection.textEnvironment?.scale
+        guard scale != textScale else { return }
+        textScale = scale
+        label.updateTraitsIfNeeded()
+        invalidateIntrinsicContentSize()
+        if frame.size != .zero { frame.size = intrinsicContentSize }
+        superview?.setNeedsLayout()
     }
 
     public override func sizeThatFits(_ size: CGSize) -> CGSize {
@@ -793,8 +780,10 @@ public final class ConnectCommandView: UIView {
     let bodyLabel = StyledLabel(style: TextStyles.connectBody, color: Palette.textSecondary, alignment: .center)
     let terminal = UIView()
     let commandLabel = UILabel()
+    private let command: String
 
     public init(title: String, body: String, command: String) {
+        self.command = command
         super.init(frame: .zero)
         backgroundColor = UIColor(Palette.groupedBackground)
         titleLabel.string = title
@@ -804,12 +793,7 @@ public final class ConnectCommandView: UIView {
         terminal.layer.cornerCurve = .continuous
         terminal.clipsToBounds = true
         commandLabel.numberOfLines = 0
-        let style = TextStyles.connectCommand
-        let text = NSMutableAttributedString(attributedString: style.attributedString("$ ", color: UIColor(Palette.commandPrompt)))
-        // happy-app draws it white on a transparent card, which vanishes in
-        // light mode; the text colour reads in both (see FEATURES.md).
-        text.append(style.attributedString(command, color: UIColor(Palette.text)))
-        commandLabel.attributedText = text
+        renderCommand()
         commandLabel.accessibilityLabel = command
         addSubview(titleLabel)
         addSubview(bodyLabel)
@@ -819,11 +803,25 @@ public final class ConnectCommandView: UIView {
         registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in
             self.updateBorder()
         }
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.renderCommand()
+            self.setNeedsLayout()
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    /// The command at the size it is drawn at.
+    private func renderCommand() {
+        let style = traitCollection.textEnvironment.map { TextStyles.connectCommand.scaled($0.scale) } ?? TextStyles.connectCommand
+        let text = NSMutableAttributedString(attributedString: style.attributedString("$ ", color: UIColor(Palette.commandPrompt)))
+        // happy-app draws it white on a transparent card, which vanishes in
+        // light mode; the text colour reads in both (see FEATURES.md).
+        text.append(style.attributedString(command, color: UIColor(Palette.text)))
+        commandLabel.attributedText = text
     }
 
     public func layout() -> ConnectCommandLayout {

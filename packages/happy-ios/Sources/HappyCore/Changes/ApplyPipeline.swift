@@ -54,10 +54,11 @@ public final class ApplyObservation: Sendable {
 ///   - a result that is about to apply while a newer input already waits
 ///     is dropped for the newer one, but never twice in a row, so a steady
 ///     stream still reaches the screen;
-///   - applies are at least `minimumInterval` apart (a 60 Hz frame by
-///     default). The wait is spent before deriving, so whatever arrives
-///     meanwhile is merged into the next result. This is wall-clock
-///     spacing, not the display's frame clock.
+///   - an apply starts at least `minimumInterval` (a 60 Hz frame by
+///     default) after the previous one finished, refused or not. The wait
+///     is spent before deriving, so whatever arrives meanwhile is merged
+///     into the next result. This is wall-clock spacing, not the display's
+///     frame clock.
 ///
 /// The input is a value the feeds and the screen both write to: a feed sets
 /// its snapshot, the screen the things it decides on the main thread (a
@@ -86,6 +87,7 @@ public final class ApplyPipeline<Input: Sendable, State: Sendable, Output: Senda
     private let apply: Apply
     private let priority: TaskPriority
     private let minimumInterval: Duration
+    /// When the last apply finished.
     private var lastApply: ContinuousClock.Instant?
 
     /// One 60 Hz frame.
@@ -170,11 +172,10 @@ public final class ApplyPipeline<Input: Sendable, State: Sendable, Output: Senda
 
     private func run() async {
         while true {
-            let wait: Duration? = lock.withLock {
-                lastApply.map { $0 + minimumInterval - ContinuousClock.now }
-            }
-            if let wait, wait > .zero {
-                try? await Task.sleep(for: wait)
+            // Checked again on waking: a timer may fire a little early.
+            while let wait = lock.withLock({ cancelled ? nil : lastApply.map { $0 + minimumInterval - ContinuousClock.now } }),
+                  wait > .zero {
+                do { try await Task.sleep(for: wait) } catch { break }
             }
             let next: (Input, State)? = lock.withLock {
                 guard !cancelled, dirty else {
@@ -194,16 +195,16 @@ public final class ApplyPipeline<Input: Sendable, State: Sendable, Output: Senda
                 if result == nil { counters.unchanged += 1 }
             }
             guard let result else { continue }
-            let output = result.output
-            let outcome = await MainActor.run { self.deliver(output) }
-            if case .applied = outcome {
-                lock.withLock { self.state = result.state }
-            }
+            let (output, derived) = result
+            _ = await MainActor.run { self.deliver(output, state: derived) }
         }
     }
 
+    /// Applies `output` unless cancelled or superseded. An apply the screen
+    /// takes moves the applied state to `state` in the same step that counts
+    /// it, so `applied` and `counts` never disagree.
     @MainActor
-    private func deliver(_ output: Output) -> Outcome {
+    private func deliver(_ output: Output, state next: State) -> Outcome {
         let proceed: Outcome? = lock.withLock {
             if cancelled { return .cancelled }
             if dirty && !lastSuperseded {
@@ -216,11 +217,19 @@ public final class ApplyPipeline<Input: Sendable, State: Sendable, Output: Senda
         }
         if let proceed { return proceed }
         let start = ContinuousClock.now
-        lock.withLock { lastApply = start }
         let took = apply(output)
-        let elapsed = start.duration(to: .now).milliseconds
+        let end = ContinuousClock.now
+        let elapsed = start.duration(to: end).milliseconds
         lock.withLock {
-            if took { counters.applies += 1 } else { counters.rejected += 1 }
+            // Paced from the end, so a slow apply still leaves the main
+            // thread a whole interval before the next one.
+            lastApply = end
+            if took {
+                state = next
+                counters.applies += 1
+            } else {
+                counters.rejected += 1
+            }
             counters.mainMilliseconds += elapsed
             counters.longestApplyMilliseconds = max(counters.longestApplyMilliseconds, elapsed)
         }

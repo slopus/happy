@@ -26,10 +26,19 @@ private let logger = Logger(subsystem: "engineering.happy", category: "composer"
 /// picks and the failed uploads arrive from `ComposerDraftWriter`, which
 /// reads and writes them in order on a background task and delivers only
 /// what moved; the view keeps the draft logic in `ComposerDraftModel`.
+///
+/// A chat still being started (`pending-chat:`) writes every keystroke to
+/// its record (`environment.draftStorage`) and queues its send there; when
+/// the session arrives, `retarget` moves the same composer over.
+///
+/// In a window wider than 700 points (happy-app's `screenWidth`, the
+/// window's, not the chat column's) the card is the flat panel with the
+/// gear, Stop, image and send (`desktopActionControls`). The same text view
+/// carries across the line as the window is resized.
 final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegate {
     weak var composerDelegate: (any ChatComposerDelegate)?
 
-    private let environment: ChatComposerEnvironment
+    private var environment: ChatComposerEnvironment
     private let card: AgentInputCardView
     private let statusDot = StatusDotView()
     private let statusLabel = UILabel()
@@ -47,11 +56,14 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private var detailsVisible = true
 
     private var draft = ComposerDraftModel()
-    private let draftWriter: ComposerDraftWriter
+    private var draftWriter: ComposerDraftWriter
     /// The debounce of an edit to non-empty text (`DraftAutosave.interval`).
     private var draftSave: Task<Void, Never>?
     /// A read asked for after a composition ended, not yet delivered.
     private var draftRefreshPending = false
+    /// The panel is being switched for the window (`followWindow`): the
+    /// card's height change isn't passed on as it happens.
+    private var followingWindow = false
     private var isAborting = false
     /// Stop was pressed; Stop stays hidden until the agent stops working
     /// (`stopRequested`), so a late status update can't leave it up.
@@ -82,14 +94,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     init(environment: ChatComposerEnvironment) {
         self.environment = environment
-        draftWriter = ComposerDraftWriter(
-            sessionId: environment.sessionId,
-            storage: environment.account.sender,
-            sending: environment.sender,
-            onFailure: { failure in
-                logger.error("draft \(String(describing: failure.operation), privacy: .public) failed: \(String(describing: failure.error), privacy: .public)")
-            }
-        )
+        draftWriter = Self.makeWriter(environment, generation: 0, after: nil)
         staging = ComposerAttachmentStaging(filesDirectory: environment.account.filesDirectory)
         images = ComposerImagePicker(staging: staging)
         modes = ComposerModes(metadata: nil, picks: ComposerPicks(), agentDefaultOverrides: [:])
@@ -145,10 +150,25 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         draftWriter.close()
     }
 
+    private static func makeWriter(_ environment: ChatComposerEnvironment, generation: Int, after predecessor: ComposerDraftWriter?) -> ComposerDraftWriter {
+        ComposerDraftWriter(
+            sessionId: environment.sessionId,
+            storage: environment.draftStorage,
+            sending: environment.sender,
+            generation: generation,
+            after: predecessor,
+            onFailure: { failure in
+                logger.error("draft \(String(describing: failure.operation), privacy: .public) failed: \(String(describing: failure.error), privacy: .public)")
+            }
+        )
+    }
+
     // MARK: ChatComposerView
 
     func composerHeight(fitting width: CGFloat) -> CGFloat {
-        layout(width: width).size.height
+        // The screen lays out with this answer.
+        followWindow()
+        return layout(width: width).size.height
     }
 
     var cardOffset: CGFloat {
@@ -207,6 +227,27 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         setNeedsLayout()
     }
 
+    func retarget(_ environment: ChatComposerEnvironment) {
+        guard environment.sessionId != self.environment.sessionId else { return }
+        // The pending edit goes to the old store; the new writer waits for
+        // the old one before it reads or writes.
+        flushDraft()
+        let previous = draftWriter
+        previous.close()
+        self.environment = environment
+        draft.retarget()
+        draftRefreshPending = false
+        draftWriter = Self.makeWriter(environment, generation: draft.generation, after: previous)
+        draftWriter.start { [weak self] delivery in
+            self?.receive(delivery)
+        }
+        // File suggestions come from the new session.
+        activeQuery = nil
+        suggestionTask?.cancel()
+        suggestionTask = nil
+        updateActiveWord()
+    }
+
     func setDetailsVisible(_ visible: Bool, animated: Bool) {
         guard visible != detailsVisible else { return }
         detailsVisible = visible
@@ -233,16 +274,56 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         ContentWidth.maxWidth // Tablet (HappyUI/Tablet): layout.ts maxWidth, was 800 by size class.
     }
 
+    /// useLayoutDimensions' width: the window's. Before the composer is in
+    /// one, its own.
+    private var screenWidth: CGFloat {
+        window?.bounds.width ?? bounds.width
+    }
+
+    private var isWide: Bool {
+        AgentInputLayout.isWide(screenWidth: screenWidth)
+    }
+
+    /// The window crossed 700 points (Split View, Slide Over, Stage
+    /// Manager, a rotation, the composer arriving in its window): the
+    /// panel follows. True if it changed.
+    @discardableResult
+    private func followWindow() -> Bool {
+        guard isWide != (card.configuration.desktop != nil) else { return false }
+        followingWindow = true
+        applyConfiguration()
+        followingWindow = false
+        return true
+    }
+
+    /// The panel changed without the screen asking for a height: it hears
+    /// of it after the current pass, unanimated.
+    private func followWindowLater() {
+        guard followWindow() else { return }
+        setNeedsLayout()
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.composerDelegate?.composerDidInvalidateHeight(self)
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        followWindowLater()
+    }
+
     private func layout(width: CGFloat) -> AgentInputLayout {
-        let paddingH = AgentInputLayout.paddingH(screenWidth: width)
+        let screenWidth = self.screenWidth
+        let paddingH = AgentInputLayout.paddingH(screenWidth: screenWidth)
         let maxContentWidth = self.maxContentWidth
         let innerWidth = AgentInputLayout.innerWidth(width: width, paddingH: paddingH, maxContentWidth: maxContentWidth)
         return AgentInputLayout(.init(
             width: width,
             paddingH: paddingH,
             maxContentWidth: maxContentWidth,
+            screenWidth: screenWidth,
             statusText: status == nil ? nil : statusSize,
-            card: card.layoutInput(width: innerWidth),
+            panel: card.panelInput(width: innerWidth),
             usageWeek: usage?.weekPercent == nil ? nil : weekSize,
             usageContext: usage?.context == nil ? nil : contextButton.labelSize
         ))
@@ -250,6 +331,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        // Normally caught when the screen asks for the height.
+        followWindowLater()
         let layout = layout(width: bounds.width)
         if let row = layout.status {
             statusDot.setLayoutFrame(row.dot)
@@ -375,7 +458,33 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         configuration.attachments = canAttach
             ? images.images.map { AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL) }
             : []
+        configuration.desktop = isWide ? AgentInputDesktopConfiguration(
+            settings: chips.showsSettings ? AgentInputSettingsMenu(sections: chips.settings.map(Self.settingsSection)) : nil,
+            showsStop: SessionComposerRules.canAbort(record),
+            isStopBusy: isAborting,
+            // SessionView passes no `isSending`: a send never spins here.
+            send: AgentInputDesktopSend(
+                hasText: Self.hasContent(card.text),
+                hasComposerContent: hasComposerContent,
+                isSendBlocked: SessionComposerRules.isSendBlocked(record)
+            )
+        ) : nil
         card.configuration = configuration
+    }
+
+    private static func settingsSection(_ section: ComposerChipSet.SettingsSection) -> AgentInputSettingsMenu.Section {
+        let chip: AgentInputChip = switch section.kind {
+        case .permission: .permission
+        case .model: .model
+        case .effort: .effort
+        }
+        return AgentInputSettingsMenu.Section(
+            chip: chip,
+            title: section.title,
+            systemImage: section.systemImage,
+            options: section.options.map { .init(key: $0.key, label: $0.label, isDisabled: $0.isDisabled) },
+            selectedKey: section.selectedKey
+        )
     }
 
     /// Text or a picked image (`hasComposerContent`), read live.
@@ -434,6 +543,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     }
 
     func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) {
+        guard !followingWindow else { return }
         UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
             self.composerDelegate?.composerDidInvalidateHeight(self)
         }
@@ -447,6 +557,15 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             return
         }
         sendPressed()
+    }
+
+    /// The flat panel's send and stop are buttons of their own.
+    func agentInputCardDidPressSend(_ card: AgentInputCardView) {
+        sendPressed()
+    }
+
+    func agentInputCardDidPressStop(_ card: AgentInputCardView) {
+        abort()
     }
 
     func agentInputCardDidPressAdd(_ card: AgentInputCardView) {
@@ -492,6 +611,10 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             }
         }
         isSending = true
+        // What the send does with the draft is its target's: a pending
+        // chat's submit empties its record even if the session arrives
+        // before it returns, and the handover carries the record over.
+        let clearsStored = !isDraftSynced && !isPending
         // Behind the draft writes before it, ahead of the ones after.
         let sending = draftWriter.send(message)
         // The outbox copies the staged files; they outlive a composer
@@ -504,15 +627,19 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
                 guard let self else { return }
                 self.isSending = false
                 // Only clear what was sent: typing may have gone on.
+                // A Happy Agent's send cleared its draft, a pending chat's
+                // submit its record's.
                 if self.card.text == text {
-                    self.clearDraft(stored: !self.isDraftSynced)
+                    self.clearDraft(stored: clearsStored)
                     self.card.text = ""
                 }
                 self.images.removeSent(picked.map(\.id))
                 self.applyConfiguration()
+                self.loadAfterSend()
                 self.composerDelegate?.composer(self, didSend: localId)
             } catch {
                 self?.isSending = false
+                self?.loadAfterSend()
                 logger.error("send failed: \(String(describing: error), privacy: .public)")
                 if error is ComposerDraftWriter.UnsavedDraftError {
                     // Nothing went; the text stays for another try.
@@ -557,13 +684,19 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// A Happy Agent session: every edit is written at once and others'
     /// edits come in through the store.
     private var isDraftSynced: Bool {
-        RigCatalog.isRigV1(state?.session.record?.metadata)
+        !isPending && RigCatalog.isRigV1(state?.session.record?.metadata)
+    }
+
+    /// A chat still being started: every keystroke goes to its record at
+    /// once (setPendingChatDraft), and nothing else writes there.
+    private var isPending: Bool {
+        PendingChats.isPendingChatId(environment.sessionId)
     }
 
     private func draftChanged(_ text: String) {
         draftSave?.cancel()
         draftSave = nil
-        let (write, debounce) = draft.textChanged(text, synced: isDraftSynced)
+        let (write, debounce) = draft.textChanged(text, synced: isDraftSynced || isPending)
         if let write {
             draftWriter.save(write.text, generation: write.generation)
         }
@@ -602,12 +735,15 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private func receive(_ delivery: ComposerStoreDelivery) {
         draftRefreshPending = false
         let opening = !draft.isLoaded
-        let change = draft.receive(delivery, text: card.text, synced: isDraftSynced, composing: card.hasMarkedText)
+        let change = draft.receive(delivery, text: card.text, synced: isDraftSynced, composing: card.hasMarkedText, sending: isSending)
         // sessionSetAgentModes and the metadata reconciler write the picks.
         if let picks = change.picks, picks != self.picks {
             self.picks = picks
             recomputeModes()
             applyConfiguration()
+        }
+        if let write = change.write {
+            draftWriter.save(write.text, generation: write.generation)
         }
         if let text = change.text {
             draftSave?.cancel()
@@ -622,6 +758,12 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         if change.newlyFailedAttachments > 0 {
             alert(Strings.ImageUpload.uploadFailedTitle, Strings.ImageUpload.uploadFailedMessage(change.newlyFailedAttachments))
         }
+    }
+
+    /// The send is back, the field cleared if it went: a first read put
+    /// off for it (`ComposerDraftModel.receive`) is asked for again.
+    private func loadAfterSend() {
+        if draft.sendReturned() { draftWriter.refresh() }
     }
 
     /// The composition a remote edit waited for has ended (committed,
@@ -666,13 +808,14 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         let metadata = state?.session.record?.metadata
         let sessionId = environment.sessionId
         let actions = environment.account.actions
+        let files = environment.account.composerFileIndex
         suggestionTask = Task { [weak self] in
             // The search runs off main; only its list comes back.
             let results = await Task.detached(priority: .userInitiated) { () -> [ComposerSuggestion] in
                 if query.hasPrefix("/") {
                     return ComposerCommands.suggestions(query, metadata: metadata)
                 } else if query.hasPrefix("@") {
-                    return await ComposerFileIndex.shared.suggestions(query, sessionId: sessionId) { id in
+                    return await files.suggestions(query, sessionId: sessionId) { id in
                         try? await actions.sessionRipgrep(sessionId: id, args: ComposerFileIndex.ripgrepArguments)
                     }
                 }

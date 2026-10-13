@@ -29,12 +29,17 @@ public struct TabletSidebarFrame: Equatable, Sendable {
     public var hidesArchived: Bool
     public var showsInstallStep: Bool
 
-    public init(_ state: TabletSidebarState, snapshot: HomeSnapshot, clock: SessionList.Clock = SessionList.Clock()) {
+    public init(
+        _ state: TabletSidebarState,
+        snapshot: HomeSnapshot,
+        clock: SessionList.Clock = SessionList.Clock(),
+        git: [GitCheckoutKey: GitHeadingStatus] = [:]
+    ) {
         switch state.content {
         case .loading: content = .loading
         case .empty(let variant): content = .empty(variant)
         case .list(let list, let offline) where list.grouping == .project:
-            content = .grouped(TabletGroupedList(snapshot, offline: offline, clock: clock))
+            content = .grouped(TabletGroupedList(snapshot, offline: offline, clock: clock, git: git))
         case .list(let list, let offline):
             content = .list(HomeListModel(list, offline: offline, expandedProjects: []))
         }
@@ -54,6 +59,18 @@ public struct TabletSidebarFrame: Equatable, Sendable {
     }
 }
 
+/// What the sidebar is worked out from: home's snapshot and each
+/// checkout's status as far as it is known.
+public struct TabletSidebarInput: Sendable {
+    public var snapshot: HomeSnapshot?
+    public var git: [GitCheckoutKey: GitHeadingStatus]
+
+    public init(snapshot: HomeSnapshot? = nil, git: [GitCheckoutKey: GitHeadingStatus] = [:]) {
+        self.snapshot = snapshot
+        self.git = git
+    }
+}
+
 /// One sidebar update: the frame, and the shown list's changes against the
 /// rows that list last showed.
 public struct TabletSidebarUpdate: Sendable {
@@ -61,6 +78,9 @@ public struct TabletSidebarUpdate: Sendable {
     /// For the flat list on `.list`, the grouped one on `.grouped`; nil
     /// when neither shows, and both keep their rows.
     public var changeset: RowChangeset?
+    /// The checkouts whose headings now show, when that changed: the ones
+    /// a new message refreshes (`GitStatusSync.interest()`).
+    public var checkouts: Set<GitCheckoutKey>?
 }
 
 public enum TabletSidebarDerivation {
@@ -71,18 +91,52 @@ public enum TabletSidebarDerivation {
         public var frame: TabletSidebarFrame?
         public var list: HomeListModel?
         public var grouped: TabletGroupedList?
+        /// The checkouts whose headings show.
+        public var checkouts: Set<GitCheckoutKey>
 
-        public init(frame: TabletSidebarFrame? = nil, list: HomeListModel? = nil, grouped: TabletGroupedList? = nil) {
+        public init(
+            frame: TabletSidebarFrame? = nil,
+            list: HomeListModel? = nil,
+            grouped: TabletGroupedList? = nil,
+            checkouts: Set<GitCheckoutKey> = []
+        ) {
             self.frame = frame
             self.list = list
             self.grouped = grouped
+            self.checkouts = checkouts
         }
     }
 
-    public static func derive(_ snapshot: HomeSnapshot?, applied: Applied, clock: SessionList.Clock? = nil) -> (output: TabletSidebarUpdate, state: Applied)? {
+    public static func derive(_ input: TabletSidebarInput, applied: Applied, clock: SessionList.Clock? = nil) -> (output: TabletSidebarUpdate, state: Applied)? {
+        derive(input.snapshot, git: input.git, applied: applied, clock: clock)
+    }
+
+    /// `derive` at one instant (`clock`, or now), with `wake` set for the
+    /// next instant a stamp or a day heading can change, so the sidebar is
+    /// derived again then even if the store never changes. The result is
+    /// nil, and the main thread hears nothing, if nothing did.
+    public static func derive(
+        _ input: TabletSidebarInput,
+        applied: Applied,
+        wake: ClockWake,
+        clock: SessionList.Clock? = nil
+    ) -> (output: TabletSidebarUpdate, state: Applied)? {
+        let clock = clock ?? SessionList.Clock()
+        if let snapshot = input.snapshot {
+            wake.schedule(HomeClockBoundary.next(after: clock, snapshot: snapshot))
+        }
+        return derive(input, applied: applied, clock: clock)
+    }
+
+    public static func derive(
+        _ snapshot: HomeSnapshot?,
+        git: [GitCheckoutKey: GitHeadingStatus] = [:],
+        applied: Applied,
+        clock: SessionList.Clock? = nil
+    ) -> (output: TabletSidebarUpdate, state: Applied)? {
         guard let snapshot else { return nil }
         let clock = clock ?? SessionList.Clock()
-        let frame = TabletSidebarFrame(TabletSidebarState(snapshot, clock: clock), snapshot: snapshot, clock: clock)
+        let frame = TabletSidebarFrame(TabletSidebarState(snapshot, clock: clock), snapshot: snapshot, clock: clock, git: git)
         guard frame != applied.frame else { return nil }
         var state = applied
         state.frame = frame
@@ -99,6 +153,8 @@ public enum TabletSidebarDerivation {
         case .loading, .empty:
             changeset = nil
         }
-        return (TabletSidebarUpdate(frame: frame, changeset: changeset), state)
+        let checkouts = frame.grouped?.checkouts ?? []
+        state.checkouts = checkouts
+        return (TabletSidebarUpdate(frame: frame, changeset: changeset, checkouts: checkouts == applied.checkouts ? nil : checkouts), state)
     }
 }

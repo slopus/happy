@@ -6,6 +6,46 @@ Elapsed values below are debug medians on the shared Linux build machine;
 operation counts are the stable regression guard. Commit counts count
 transactions which actually changed a row, rather than empty SQL transactions.
 
+## Reproduce
+
+From `packages/happy-ios`, with Swift 6 and the system SQLite development
+headers installed on Linux:
+
+```sh
+swift test --build-system native --disable-build-manifest-caching
+swift test --build-system native --disable-build-manifest-caching --filter SyncPerf
+```
+
+The second command runs the fixed decrypt/merge/2000-message reducer fixtures,
+shared SQL observations, presence actors and production `SyncEngine` catch-up
+paths. Narrow a run with `--filter SyncPerfTests` for the seven-run medians,
+`--filter 'SyncPerfBatchTests|SyncPerfSessionBatchTests'` for batch budgets and
+held-HTTP publication, or `--filter 'SyncPerfPresenceTests|SyncPerfObservationTests'`
+for presence counts and account lifecycle. `SyncPerfNewSessionTests` covers
+background picker projection, ordering and stale replies. The `SYNC_PERF`
+stdout lines report elapsed values and exact counters; assertions verify
+modifying commits, SQL fetches and feed publications, rather than UIKit calls.
+
+With xtool's Darwin SDK installed, compile the device and simulator targets:
+
+```sh
+swift build --build-system native --swift-sdk arm64-apple-ios --disable-build-manifest-caching
+swift build --build-system native --swift-sdk arm64-apple-ios-simulator --build-tests --disable-build-manifest-caching
+```
+
+If SwiftPM cannot locate the installed SDK, add `--swift-sdks-path /path/to/sdks`.
+Linux compiles simulator tests but cannot run them. Run `HappyUIKitTests` on an
+Xcode simulator to measure actual applies. Disabling manifest caching avoids
+stale target selections when alternating Linux and Darwin builds.
+
+Elapsed heartbeat intervals use an injected clock: 15 two-second ticks over
+ten sessions mean 150 total events over a simulated 30 seconds. Tests never
+wait 30 real seconds. Exact batch-count fixtures hold the injected deadline
+so host scheduling cannot split an otherwise complete fixture. Separate
+held-response tests exercise the real 400ms deadline while HTTP is still
+pending. Small inverted waits are included in some elapsed values. Shared
+machine debug wall times are context, not device frame or speedup claims.
+
 ## Before
 
 Measured before changing observations, merges or presence (2026-10-13):
@@ -82,3 +122,54 @@ The shared home producer still fetches and compares an O(N) snapshot after a
 meaningful home-region change or coarse presence checkpoint. It performs
 that work off main once per account, rather than once per screen. This is a
 remaining producer cost, separate from the minimal UIKit changesets.
+
+Presence flips publish from the post-checkpoint database observation. An
+explicit projection of an older cached raw row could otherwise expose the
+wrong unread state between busy and idle. One captured clock value is set
+synchronously before the checkpoint; async refreshes only project the latest
+overlay. The busy/idle/read fixture asserts three modifying commits, three
+new home values, and four home SQL fetches including the initial value.
+An advancing clock verifies one value each for session offline, machine
+offline and a last-seen tick. Those tests and account stop/restart each passed
+50 repeated isolated runs. Account stop drains both active and retiring hub
+tasks; producer generations reject late callbacks from an older scope.
+
+Wire deletion and full-list reconciliation prune cached presence and dirty
+ids. Store overlays discard only deleted rows; reconciliation reads retained
+ids without decoding JSON, preserving socket rows newer than a list cutoff.
+Tests verify deleted ids produce no phantom last-seen ticks and an id
+reintroduced with a lower stamp starts from its current stored row.
+
+New-session picker catalogs, choice derivation and equality run on a dedicated
+actor. The UI receives a choice revision and installs the prepared value.
+Session place/workspace fields, machine choice inputs, project names and
+agent defaults drive that revision; unread, message cursors, title, profile
+and the presence display clock do not. A 1000-session fixture asserts zero
+picker rebuilds and zero change callbacks for those unrelated fields, then
+one rebuild and callback for a changed path. Draft text edits reuse the
+catalog, and generation guards discard a held bootstrap after a newer pick.
+Bot names and faces still notify their views immediately, and draft
+corrections retain the existing four-pass bound.
+
+Picker order follows happy-app's `useSessions`: active chats first, then
+`lastMeaningfulMessageAt` or creation time, with a stable id tie-breaker.
+Side chats are excluded. Updating `updatedAt` or reversing the raw SQL order
+does not rebuild pickers; meaningful activity and active-state changes do.
+
+Troubleshooting has its own atomic SQL snapshot: only computer-grouping
+metadata and the newest known-computer session's project/path/log-directory
+fields are decoded. One account-owned projection shares the computer list
+and prompt, caching computer grouping until those inputs change. A fixture
+with 1000 sessions and seven subscribers asserts one SQL fetch and one
+computer derivation. A real live message changes the recent project without
+regrouping computers; equal prompts and unrendered machine fields publish
+nothing. Machine deletion selects the next known session in the same value,
+and presence/account lifecycle tests cover server flags and fresh scopes.
+The Home `updatedAt` region remains until session info and troubleshooting
+screens have both switched to their scoped feeds.
+
+`HappyStore.ThreadRules` checks synchronous store reads/writes, migration,
+sync work and reducer entry points in debug builds. Its enforcement flag
+remains disabled until integration finishes migrating every screen caller.
+Tests enable a recording handler to prove main store access is caught and
+background sync, reducer and picker work produces no violations.

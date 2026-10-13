@@ -164,6 +164,35 @@ final class ApplyPerfPipelineTests: XCTestCase {
         pipeline.cancel()
     }
 
+    /// The screen's next main-thread turn after an apply already sees it
+    /// as applied: the state moves with the count, not later on the
+    /// derivation's own thread.
+    @MainActor
+    func testTheAppliedStateMovesWithTheApplyItself() async {
+        let box = ApplyPerfPipelineBox<ApplyPipeline<Int, Int, Int>>()
+        let seen = ApplyPerfRecorder<[Int]>()
+        let pipeline = ApplyPipeline<Int, Int, Int>(
+            input: 0,
+            state: 0,
+            minimumInterval: .zero,
+            derive: { input, applied in input == applied ? nil : (input, input) },
+            apply: { _ in
+                Task { @MainActor in
+                    guard let pipeline = box.pipeline else { return }
+                    _ = seen.take([pipeline.counts.applies, pipeline.applied])
+                }
+                return true
+            }
+        )
+        box.pipeline = pipeline
+        for value in 1...40 {
+            pipeline.update { $0 = value }
+            await applyPerfWait { seen.outputs.count == value }
+        }
+        XCTAssertEqual(seen.outputs, (1...40).map { [$0, $0] }, "after apply n, n applies and state n")
+        pipeline.cancel()
+    }
+
     @MainActor
     func testRefusedApplyKeepsDiffingAgainstWhatIsOnScreen() async throws {
         let recorder = ApplyPerfRecorder<HomeUpdate>()
@@ -383,16 +412,24 @@ final class ApplyPerfChatSessionTests: XCTestCase {
 }
 
 final class ApplyPerfPacingTests: XCTestCase {
+    /// Each apply starts at least a frame after the previous one finished.
+    /// Every apply here does 2 ms of work (spinning, not sleeping), so pacing
+    /// from when an apply started would leave gaps of about 14.7 ms.
     @MainActor
-    func testAppliesAreAtLeastAFrameApart() async throws {
+    func testEachApplyStartsAFrameAfterThePreviousOneFinished() async throws {
         let recorder = ApplyPerfRecorder<Int>()
-        var times: [ContinuousClock.Instant] = []
+        let frame = ApplyPipeline<Int, Int, Int>.frame
+        var starts: [ContinuousClock.Instant] = []
+        var ends: [ContinuousClock.Instant] = []
         let pipeline = ApplyPipeline<Int, Int, Int>(
             input: 0,
             state: 0,
             derive: { input, applied in input == applied ? nil : (input, input) },
             apply: { value in
-                times.append(.now)
+                let start = ContinuousClock.now
+                starts.append(start)
+                while start.duration(to: .now) < .milliseconds(2) {}
+                defer { ends.append(.now) }
                 return recorder.take(value)
             }
         )
@@ -406,12 +443,94 @@ final class ApplyPerfPacingTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(1))
         }
         await applyPerfWait { pipeline.applied == value }
-        let gaps = zip(times.dropFirst(), times).map { $0.duration(to: $1) * -1 }
-        XCTAssertTrue(gaps.allSatisfy { $0 >= ApplyPipeline<Int, Int, Int>.frame }, "\(gaps)")
-        XCTAssertLessThanOrEqual(recorder.outputs.count, 22, "\(value) inputs in 340 ms became at most one apply per 16.7 ms")
+        // From the end of one apply to the start of the next.
+        let idle = zip(ends, starts.dropFirst()).map { $0.duration(to: $1) }
+        XCTAssertTrue(idle.allSatisfy { $0 >= frame }, "\(idle)")
+        let gaps = zip(starts, starts.dropFirst()).map { $0.duration(to: $1) }
+        XCTAssertTrue(gaps.allSatisfy { $0 >= frame + .milliseconds(2) }, "\(gaps)")
+        XCTAssertLessThanOrEqual(recorder.outputs.count, 22, "\(value) inputs in 340 ms became at most one apply per 18.7 ms")
         XCTAssertGreaterThan(value, recorder.outputs.count)
-        print("APPLY_PERF pacing: inputs=\(value) applies=\(recorder.outputs.count) min_gap=\(gaps.min().map { String(format: "%.2f", $0.milliseconds) } ?? "-")ms (wall clock, not display frames)")
+        let format = { (durations: [Duration]) in durations.min().map { String(format: "%.2f", $0.milliseconds) } ?? "-" }
+        print("APPLY_PERF pacing: inputs=\(value) applies=\(recorder.outputs.count) min_idle=\(format(idle))ms min_gap=\(format(gaps))ms (wall clock, not display frames)")
         pipeline.cancel()
+    }
+}
+
+final class ApplyPerfDockTests: XCTestCase {
+    /// The dock's pickers order sessions by whether they are online and by
+    /// their last meaningful message: both reach them, a heartbeat or a
+    /// cursor does not.
+    func testOrderingFieldsReachTheDockAndHeartbeatsDoNot() throws {
+        let snapshot = ApplyPerfFixtures.snapshot(5)
+        let applied = try XCTUnwrap(ApplyPerfFixtures.derive(snapshot, after: nil)).state
+        let dock = try XCTUnwrap(applied.dock)
+        XCTAssertEqual(dock.sessions.map(\.active), snapshot.sessions.map(\.active))
+        XCTAssertEqual(dock.sessions.map(\.lastActivityAt), snapshot.sessions.map(\.lastActivityAt))
+
+        var heartbeat = snapshot
+        heartbeat.sessions = heartbeat.sessions.map { ApplyPerfFixtures.invisiblyTouched($0, by: 2000) }
+        XCTAssertNil(ApplyPerfFixtures.derive(heartbeat, after: applied), "nothing for home or the dock")
+
+        var message = snapshot
+        message.sessions[3] = ApplyPerfFixtures.active(message.sessions[3], at: ApplyPerfFixtures.now + 5)
+        let messaged = try XCTUnwrap(ApplyPerfFixtures.derive(message, after: applied)).output
+        XCTAssertEqual(messaged.dock?.sessions[3].lastActivityAt, ApplyPerfFixtures.now + 5)
+
+        var stopped = snapshot
+        stopped.sessions[2].active = false
+        let stoppedUpdate = try XCTUnwrap(ApplyPerfFixtures.derive(stopped, after: applied)).output
+        XCTAssertEqual(stoppedUpdate.dock?.sessions[2].active, false)
+    }
+}
+
+extension ApplyPerfDockTests {
+    /// The new-session screen hears nothing until the computers are known,
+    /// so an empty first read never resets the draft; then only what its
+    /// pickers read.
+    func testTheNewSessionScreenWaitsForComputersAndIgnoresHeartbeats() throws {
+        var unknown = ApplyPerfFixtures.snapshot(3)
+        unknown.machines = MachinesSnapshot(synced: false, machines: [])
+        XCTAssertNil(NewSessionSnapshot.derive(unknown, applied: nil))
+        XCTAssertNil(NewSessionSnapshot.derive(nil, applied: nil))
+
+        var onDisk = ApplyPerfFixtures.snapshot(3)
+        onDisk.machines.synced = false
+        let first = try XCTUnwrap(NewSessionSnapshot.derive(onDisk, applied: nil))
+        XCTAssertEqual(first.output.machines.machines.count, 1, "computers from before, ahead of the refresh")
+
+        var noComputers = unknown
+        noComputers.machines.synced = true
+        XCTAssertNotNil(NewSessionSnapshot.derive(noComputers, applied: nil), "synced and empty is an answer")
+
+        var heartbeat = onDisk
+        heartbeat.sessions = heartbeat.sessions.map { ApplyPerfFixtures.invisiblyTouched($0, by: 2000) }
+        heartbeat.presenceNow = ApplyPerfFixtures.now + 60_000
+        XCTAssertNil(NewSessionSnapshot.derive(heartbeat, applied: first.state))
+
+        var message = onDisk
+        message.sessions[2] = ApplyPerfFixtures.active(message.sessions[2], at: ApplyPerfFixtures.now + 5)
+        XCTAssertNotNil(NewSessionSnapshot.derive(message, applied: first.state))
+    }
+}
+
+final class ApplyPerfMachineScreenTests: XCTestCase {
+    /// The machine screen rebuilds for what it shows: a session's
+    /// heartbeat or cursor is nothing to it, a title on this machine is.
+    func testTheMachineScreenIgnoresSessionHeartbeats() {
+        let snapshot = ApplyPerfFixtures.snapshot(8)
+        let shown = MachineScreenContent(snapshot, machineId: "computer")
+        XCTAssertEqual(shown.model?.recentSessions.count, MachineDetailsModel.recentSessionLimit)
+
+        var heartbeat = snapshot
+        heartbeat.sessions = heartbeat.sessions.map { ApplyPerfFixtures.invisiblyTouched($0, by: 2000) }
+        heartbeat.presenceNow = ApplyPerfFixtures.now + 60_000
+        XCTAssertEqual(MachineScreenContent(heartbeat, machineId: "computer"), shown)
+
+        var retitled = snapshot
+        retitled.sessions[0] = ApplyPerfFixtures.retitled(retitled.sessions[0], "Renamed")
+        XCTAssertNotEqual(MachineScreenContent(retitled, machineId: "computer"), shown)
+
+        XCTAssertNil(MachineScreenContent(snapshot, machineId: "elsewhere").model, "not found")
     }
 }
 
@@ -440,19 +559,53 @@ final class ApplyPerfPresenceClockTests: XCTestCase {
         XCTAssertEqual(ChatSessionState(snapshot, sessionId: "session-0002"), online)
     }
 
-    func testHomeRowsUseThePresenceClockAndIgnoreItsTicks() throws {
-        var snapshot = ApplyPerfFixtures.snapshot(5)
+    /// The presence clock stands still while nothing is disconnected, here
+    /// 30 hours. Home and the sidebar write headings at the real time, so
+    /// last night's archived chat is "Yesterday", not "Today".
+    func testHomeHeadingsIgnoreAStalePresenceClock() throws {
+        let now = Date()
+        let calendar = Calendar.autoupdatingCurrent
+        let today = calendar.startOfDay(for: now)
+        let millis = { (date: Date) in Int64(date.timeIntervalSince1970 * 1000) }
+        var snapshot = ApplyPerfFixtures.snapshot(3)
+        snapshot.sessions[1] = ApplyPerfFixtures.active(snapshot.sessions[1], at: millis(max(today, now - 2 * 3600)))
+        snapshot.sessions[1].active = false
+        snapshot.sessions[2] = ApplyPerfFixtures.active(snapshot.sessions[2], at: millis(today - 3600))
+        snapshot.sessions[2].active = false
+        snapshot.settings = SettingsSnapshot(pending: ["hideInactiveSessions": .bool(false)])
+        snapshot.presenceNow = millis(now) - 30 * 3_600_000
+
+        let home = try XCTUnwrap(HomeDerivation.derive(HomeDerivation.Input(snapshot: snapshot), applied: .init())).output
+        let headings = try XCTUnwrap(home.content.list).rows.compactMap { row -> SessionList.DayAge? in
+            if case .flat(.dayHeader(let age)) = row { return age }
+            return nil
+        }
+        XCTAssertEqual(headings, [.today, .yesterday])
+
+        let sidebar = try XCTUnwrap(TabletSidebarDerivation.derive(snapshot, applied: .init())).output
+        guard case .list(let list) = sidebar.frame.content else { return XCTFail("the sidebar lists the live session") }
+        let sidebarHeadings = list.rows.compactMap { row -> SessionList.DayAge? in
+            if case .flat(.dayHeader(let age)) = row { return age }
+            return nil
+        }
+        XCTAssertEqual(sidebarHeadings, [.today, .yesterday])
+    }
+
+    /// With the time fixed, presence ticks alone reach neither home nor the
+    /// sidebar, a minute or a day apart.
+    func testPresenceTicksAloneChangeNothingOnHome() throws {
+        var snapshot = stopped(ApplyPerfFixtures.snapshot(5), index: 1, lastSeen: ApplyPerfFixtures.now - 5 * 60_000)
         snapshot.presenceNow = ApplyPerfFixtures.now
-        let input = { (snapshot: HomeSnapshot) in HomeDerivation.Input(snapshot: snapshot, includesDock: true) }
-        let applied = try XCTUnwrap(HomeDerivation.derive(input(snapshot), applied: .init())).state
-        // A tick that changes no shown text: nothing for the main thread.
-        snapshot.presenceNow = ApplyPerfFixtures.now + 60_000
-        XCTAssertNil(HomeDerivation.derive(input(snapshot), applied: applied))
-        // A day later every stamp turns into a weekday: one reconfigure each.
-        snapshot.presenceNow = ApplyPerfFixtures.now + 25 * 3_600_000
-        let update = try XCTUnwrap(HomeDerivation.derive(input(snapshot), applied: applied)).output
-        XCTAssertEqual(update.changeset.reconfigures.count, 5)
-        XCTAssertFalse(update.changeset.isStructural)
+        let input = { (snapshot: HomeSnapshot) in
+            HomeDerivation.Input(snapshot: snapshot, includesDock: true, clock: ApplyPerfFixtures.clock)
+        }
+        let home = try XCTUnwrap(HomeDerivation.derive(input(snapshot), applied: .init())).state
+        let sidebar = try XCTUnwrap(TabletSidebarDerivation.derive(snapshot, applied: .init(), clock: ApplyPerfFixtures.clock)).state
+        for tick: Int64 in [60_000, 25 * 3_600_000] {
+            snapshot.presenceNow = ApplyPerfFixtures.now + tick
+            XCTAssertNil(HomeDerivation.derive(input(snapshot), applied: home))
+            XCTAssertNil(TabletSidebarDerivation.derive(snapshot, applied: sidebar, clock: ApplyPerfFixtures.clock))
+        }
     }
 }
 

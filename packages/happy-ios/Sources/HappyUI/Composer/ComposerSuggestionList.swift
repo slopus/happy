@@ -8,9 +8,21 @@ import UIKit
 /// (24pt corners, a hairline rim, glass.shadow 0/16 radius 36), 48pt rows,
 /// scrolling past 320. The highlighted row is `surfaceSelected`, a pressed
 /// one `surfacePressed`. It fades and rises in (AnimatedPopup).
+///
+/// Behind the glass and its shadow, LocalBlurHalo blurs the chat for 35pt
+/// around the list, fading out (`LocalBlurHaloLayout`), as the new-session
+/// pickers' halo does. It is drawn outside the list's bounds and takes no
+/// touches (`pointerEvents="none"`): a tap beside the list reaches
+/// whatever is under it.
 final class ComposerSuggestionListView: UIView {
     var onSelect: ((Int) -> Void)?
 
+    private let halo = UIView()
+    private let haloBlur = PartialBlurView(fraction: LocalBlurHaloLayout.autocomplete.intensity)
+    private let haloDim = UIView()
+    private let haloMask = CALayer()
+    /// The glass's shadow, over the halo; the glass clips inside it.
+    private let shadowHost = UIView()
     private let surface = UIView()
     private let material = PartialBlurView(fraction: AutocompleteShadow.materialFraction)
     private let fill = UIView()
@@ -21,14 +33,30 @@ final class ComposerSuggestionListView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        layer.shadowColor = UIColor(Palette.glassShadow).cgColor
-        layer.shadowOpacity = 1
-        layer.shadowOffset = CGSize(width: 0, height: AutocompleteShadow.offsetY)
-        layer.shadowRadius = AutocompleteShadow.radius
+        let haloLayout = LocalBlurHaloLayout.autocomplete
+        halo.isUserInteractionEnabled = false
+        halo.addSubview(haloBlur)
+        haloDim.isUserInteractionEnabled = false
+        halo.addSubview(haloDim)
+        haloMask.backgroundColor = UIColor.white.cgColor
+        haloMask.shadowColor = UIColor.white.cgColor
+        haloMask.shadowOpacity = 1
+        haloMask.shadowOffset = .zero
+        haloMask.shadowRadius = haloLayout.feather
+        haloMask.cornerRadius = haloLayout.borderRadius
+        let maskHost = CALayer()
+        maskHost.addSublayer(haloMask)
+        halo.layer.mask = maskHost
+        addSubview(halo)
+
+        shadowHost.layer.shadowOpacity = 1
+        shadowHost.layer.shadowOffset = CGSize(width: 0, height: AutocompleteShadow.offsetY)
+        shadowHost.layer.shadowRadius = AutocompleteShadow.radius
+        addSubview(shadowHost)
         surface.clipsToBounds = true
         surface.layer.cornerRadius = AgentInputLayout.Metrics.autocompleteRadius
         surface.layer.cornerCurve = .continuous
-        addSubview(surface)
+        shadowHost.addSubview(surface)
         material.clipsToBounds = true
         surface.addSubview(material)
         fill.isUserInteractionEnabled = false
@@ -83,7 +111,8 @@ final class ComposerSuggestionListView: UIView {
     }
 
     private func applyAppearance() {
-        layer.shadowColor = UIColor(Palette.glassShadow).resolvedColor(with: traitCollection).cgColor
+        shadowHost.layer.shadowColor = UIColor(Palette.glassShadow).resolvedColor(with: traitCollection).cgColor
+        haloDim.backgroundColor = UIColor(Palette.composerHaloDim)
         fill.backgroundColor = UIColor(Palette.glassOverlay)
         surface.layer.borderWidth = hairline
         surface.layer.borderColor = UIColor(Palette.glassBorder).resolvedColor(with: traitCollection).cgColor
@@ -91,10 +120,20 @@ final class ComposerSuggestionListView: UIView {
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        let haloLayout = LocalBlurHaloLayout.autocomplete
+        halo.frame = haloLayout.frame(popup: bounds)
+        haloBlur.frame = halo.bounds
+        haloDim.frame = halo.bounds
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        halo.layer.mask?.frame = halo.bounds
+        haloMask.frame = haloLayout.maskCore(halo: halo.bounds)
+        CATransaction.commit()
+        shadowHost.frame = bounds
+        shadowHost.layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: AgentInputLayout.Metrics.autocompleteRadius).cgPath
         surface.frame = bounds
         material.frame = surface.bounds
         fill.frame = surface.bounds
-        layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: AgentInputLayout.Metrics.autocompleteRadius).cgPath
         let rim = border
         scrollView.frame = bounds.insetBy(dx: rim, dy: rim)
         let frames = ComposerSuggestionListLayout.rows(count: suggestions.count, width: bounds.width, border: rim)

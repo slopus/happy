@@ -9,20 +9,30 @@ import UIKit
 /// app/(app)/session/[id]/info.tsx: quick actions, the session's ids and
 /// state, its metadata, agent state and activity. Reads only the local
 /// store; git status comes from `GitStatusSync`.
+///
+/// What it shows is worked out off the main thread from this session's own
+/// snapshot (`SessionDetailFeed`), never home's: `apply` builds only the
+/// groups that changed, and a new message retexts "Last updated" and
+/// "Sequence" in place. A tap reads what it acts on off the main thread too.
 final class SessionInfoViewController: UIViewController {
     private let context: AppContext
     private let session: AccountSession
     private let sessionId: String
     private let list = GroupedListView()
-    private var observation: StoreObservation?
+    private var observation: ApplyObservation?
+    private var pipeline: ApplyPipeline<SessionInfoInput, SessionInfoFrame?, SessionInfoUpdate>?
     private var gitTask: Task<Void, Never>?
-    private var snapshot: HomeSnapshot?
-    private var gitStatus: GitStatus?
-    private var forking = false
+    /// What the screen shows now.
+    private var frame: SessionInfoFrame?
     private var busy = Set<Action>()
-    private var copiedResumeCommand = false
     private var copiedReset: Task<Void, Never>?
     private var stateView: UIView?
+    /// The groups on screen, and the rows retexted in place.
+    private var sectionViews: [SessionInfoSection: UIView] = [:]
+    private var shownSections: [SessionInfoSection] = []
+    private weak var lastUpdatedRow: ItemRowView?
+    private weak var sequenceRow: ItemRowView?
+    private var rawBlockViews: [CodeBlockView] = []
 
     private enum Action: Hashable { case archive, delete, resume, fork }
 
@@ -53,17 +63,32 @@ final class SessionInfoViewController: UIViewController {
         super.viewDidLoad()
         showsBackTitle()
         dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
-        observation = session.store.observeHome { [weak self] snapshot in
-            self?.snapshot = snapshot
-            self?.rebuild()
-        }
+        #if DEBUG
+        let includesRaw = true
+        #else
+        let includesRaw = false
+        #endif
+        let pipeline = ApplyPipeline<SessionInfoInput, SessionInfoFrame?, SessionInfoUpdate>(
+            input: SessionInfoInput(includesRaw: includesRaw),
+            state: nil,
+            derive: { SessionInfoDerivation.derive($0, applied: $1) },
+            apply: { [weak self] update in
+                // Worked out for an account that is no longer the active one.
+                guard let self, self.context.account.session === self.session else { return false }
+                self.apply(update)
+                return true
+            }
+        )
+        pipeline.follow(session.sessionDetails.snapshots(sessionId: sessionId)) { $0.detail = $1 }
+        self.pipeline = pipeline
+        observation = pipeline.observation
         let git = session.detailGitStatus
         let id = sessionId
-        gitTask = Task { [weak self] in
-            for await status in await git.observe(sessionId: id) {
-                guard let self, !Task.isCancelled else { return }
-                self.gitStatus = status
-                self.rebuild()
+        gitTask = Task { [weak pipeline] in
+            let statuses = await git.observe(sessionId: id)
+            for await status in statuses {
+                guard let pipeline, !Task.isCancelled else { return }
+                pipeline.update { $0.git = status }
             }
         }
         Task { await git.refresh(sessionId: id) }
@@ -75,64 +100,64 @@ final class SessionInfoViewController: UIViewController {
         stateView?.frame = view.bounds
     }
 
-    // MARK: Model
-
-    private var record: SessionRecord? {
-        snapshot?.sessions.first { $0.id == sessionId }
-    }
-
-    private func machine(for record: SessionRecord) -> MachineRecord? {
-        guard let id = record.metadata?["machineId"]?.stringValue else { return nil }
-        return snapshot?.machines.machines.first { $0.id == id }
-    }
-
-    private var settings: AccountSettings {
-        AccountSettings(snapshot?.settings ?? SettingsSnapshot())
-    }
-
-    private var composer: JSONValue {
-        (try? session.store.composerState(sessionId: sessionId))?.values ?? .object([:])
-    }
-
-    /// happy-app's `isDataReady`: sessions have been fetched at least once.
-    private var isDataReady: Bool {
-        ((try? session.store.cursor(.sessionsChangedSince)) ?? nil) != nil || snapshot?.sessions.isEmpty == false
-    }
-
     // MARK: Building
 
-    private func rebuild() {
-        guard snapshot != nil else { return }
-        guard let record else {
-            showState(isDataReady ? deletedView() : loadingView(), title: isDataReady ? Strings.SessionDetail.sessionDeleted : "")
-            return
+    /// Shows `update.frame`, touching only what `update.changes` names.
+    private func apply(_ update: SessionInfoUpdate) {
+        let next = update.frame
+        let changes = update.changes
+        frame = next
+        ApplyPerf.measure(.screen) {
+            switch next.content {
+            case .loading:
+                if changes.state { showState(loadingView(), title: "") }
+            case .deleted:
+                if changes.state { showState(deletedView(), title: Strings.SessionDetail.sessionDeleted) }
+            case .shown(let model):
+                if changes.state {
+                    stateView?.removeFromSuperview()
+                    stateView = nil
+                    list.isHidden = false
+                }
+                if changes.title { title = model.title ?? Strings.Session.newChat }
+                for section in changes.rebuilt {
+                    sectionViews[section] = build(section, model: model, frame: next)
+                }
+                if changes.lastUpdated { lastUpdatedRow?.subtitle = SessionDetails.localeDateTime(model.updatedAt) }
+                if changes.sequence { sequenceRow?.detail = String(model.seq) }
+                for index in changes.rawBlocks where rawBlockViews.indices.contains(index) {
+                    rawBlockViews[index].code = next.raw[index].code
+                }
+                let order = next.sections
+                for gone in Set(shownSections).subtracting(order) { sectionViews.removeValue(forKey: gone) }
+                if order != shownSections || !changes.rebuilt.isEmpty {
+                    shownSections = order
+                    list.sections = order.compactMap { sectionViews[$0] }
+                }
+            }
+            return changes.rebuilt.count + changes.rawBlocks.count + (changes.lastUpdated ? 1 : 0) + (changes.sequence ? 1 : 0)
         }
-        stateView?.removeFromSuperview()
-        stateView = nil
-        list.isHidden = false
-        let model = SessionInfoModel(
-            session: record,
-            machine: machine(for: record),
-            settings: settings,
-            gitStatus: gitStatus,
-            permissionMode: composer["permissionMode"]?.stringValue ?? record.metadata?["permissionMode"]?.stringValue
-        )
-        title = model.title ?? Strings.Session.newChat
-        var sections: [UIView] = [quickActions(model, record: record)]
-        if model.cliOutdated { sections.append(cliWarning()) }
-        sections.append(details(model))
-        if let metadata = model.metadata { sections.append(metadataGroup(metadata, model: model, record: record)) }
-        if let state = model.agentState { sections.append(agentStateGroup(state)) }
-        sections.append(activityGroup(model))
-        #if DEBUG
-        sections.append(rawJSON(record))
-        #endif
-        list.sections = sections
+    }
+
+    private func build(_ section: SessionInfoSection, model: SessionInfoModel, frame: SessionInfoFrame) -> UIView {
+        switch section {
+        case .quickActions: return quickActions(model, forking: frame.forking)
+        case .cliWarning: return cliWarning()
+        case .details: return details(model, copied: frame.copiedResumeCommand)
+        case .metadata: return model.metadata.map { metadataGroup($0, model: model) } ?? UIView()
+        case .agentState: return model.agentState.map(agentStateGroup) ?? UIView()
+        case .activity: return activityGroup(model)
+        case .raw: return rawJSON(frame.raw)
+        }
     }
 
     private func showState(_ view: UIView, title: String) {
         self.title = title
         list.isHidden = true
+        list.sections = []
+        sectionViews = [:]
+        shownSections = []
+        rawBlockViews = []
         stateView?.removeFromSuperview()
         stateView = view
         self.view.addSubview(view)
@@ -163,7 +188,7 @@ final class SessionInfoViewController: UIViewController {
         return row
     }
 
-    private func quickActions(_ model: SessionInfoModel, record: SessionRecord) -> ItemGroupView {
+    private func quickActions(_ model: SessionInfoModel, forking: Bool) -> ItemGroupView {
         typealias S = Strings.SessionDetail
         var rows: [ItemRowView] = []
         let changes = ItemRowView(
@@ -229,7 +254,7 @@ final class SessionInfoViewController: UIViewController {
         return ItemGroupView(rows: [row])
     }
 
-    private func details(_ model: SessionInfoModel) -> ItemGroupView {
+    private func details(_ model: SessionInfoModel, copied: Bool) -> ItemGroupView {
         typealias S = Strings.SessionDetail
         var rows: [ItemRowView] = []
         rows.append(ItemRowView(title: S.happySessionId, subtitle: model.sessionIdShort, icon: icon("finger-print-outline", SecondaryPalette.blue)) { [weak self] in
@@ -251,7 +276,7 @@ final class SessionInfoViewController: UIViewController {
                 self?.copyResumeCommand(command)
             }
             row.showsChevron = false
-            row.trailingView = copiedResumeCommand
+            row.trailingView = copied
                 ? DetailTrailingIcon(.ionicons("checkmark"), size: 18, tint: SecondaryPalette.copied)
                 : DetailTrailingIcon(.ionicons("copy-outline"), size: 18, tint: SecondaryPalette.gray)
             rows.append(row)
@@ -262,12 +287,16 @@ final class SessionInfoViewController: UIViewController {
             icon: icon("pulse-outline", model.isConnected ? SecondaryPalette.green : SecondaryPalette.gray)
         ))
         rows.append(info(S.created, subtitle: SessionDetails.localeDateTime(model.createdAt), icon: icon("calendar-outline", SecondaryPalette.blue)))
-        rows.append(info(S.lastUpdated, subtitle: SessionDetails.localeDateTime(model.updatedAt), icon: icon("time-outline", SecondaryPalette.blue)))
-        rows.append(info(S.sequence, detail: String(model.seq), icon: icon("git-commit-outline", SecondaryPalette.blue)))
+        let lastUpdated = info(S.lastUpdated, subtitle: SessionDetails.localeDateTime(model.updatedAt), icon: icon("time-outline", SecondaryPalette.blue))
+        let sequence = info(S.sequence, detail: String(model.seq), icon: icon("git-commit-outline", SecondaryPalette.blue))
+        lastUpdatedRow = lastUpdated
+        sequenceRow = sequence
+        rows.append(lastUpdated)
+        rows.append(sequence)
         return ItemGroupView(rows: rows)
     }
 
-    private func metadataGroup(_ metadata: SessionInfoModel.Metadata, model: SessionInfoModel, record: SessionRecord) -> ItemGroupView {
+    private func metadataGroup(_ metadata: SessionInfoModel.Metadata, model: SessionInfoModel) -> ItemGroupView {
         typealias S = Strings.SessionDetail
         let purple = SecondaryPalette.purple
         var rows: [ItemRowView] = []
@@ -300,10 +329,10 @@ final class SessionInfoViewController: UIViewController {
             rows.append(info(S.happyHome, subtitle: home, icon: icon("home-outline", purple)))
         }
         rows.append(ItemRowView(title: S.copyMetadata, icon: icon("copy-outline", SecondaryPalette.blue)) { [weak self] in
-            self?.copyMetadata(record, withLogs: false)
+            self?.copyMetadata(withLogs: false)
         })
         rows.append(ItemRowView(title: S.copyMetadataAndLogs, icon: icon("document-text-outline", SecondaryPalette.blue)) { [weak self] in
-            self?.copyMetadata(record, withLogs: true)
+            self?.copyMetadata(withLogs: true)
         })
         return ItemGroupView(title: S.metadata, rows: rows)
     }
@@ -345,43 +374,27 @@ final class SessionInfoViewController: UIViewController {
         return group
     }
 
-    #if DEBUG
     /// info.tsx's "Raw JSON (Dev Mode)" group, shown in `__DEV__` builds;
-    /// here in Debug builds. The rows sit in fragments, so every one keeps
-    /// Item's default divider.
-    private func rawJSON(_ record: SessionRecord) -> ItemGroupView {
+    /// here in Debug builds, printed off the main thread. The rows sit in
+    /// fragments, so every one keeps Item's default divider.
+    private func rawJSON(_ blocks: [SessionInfoRawBlock]) -> ItemGroupView {
         typealias S = Strings.SessionDetail
         var rows: [UIView] = []
-        func block(_ title: String, _ icon: ItemIcon, _ value: JSONValue) {
-            let row = info(title, icon: icon)
-            rows.append(row)
-            rows.append(CodeBlockView(code: SessionDetails.prettyJSON(value)))
+        rawBlockViews = []
+        for block in blocks {
+            switch block.kind {
+            case .agentState: rows.append(info(S.rawAgentState, icon: icon("code-working-outline", SecondaryPalette.orange)))
+            case .metadata: rows.append(info(S.rawMetadata, icon: icon("information-circle-outline", SecondaryPalette.purple)))
+            case .session: rows.append(info(S.rawSession, icon: icon("document-text-outline", SecondaryPalette.green)))
+            }
+            let code = CodeBlockView(code: block.code)
+            rawBlockViews.append(code)
+            rows.append(code)
         }
-        if let state = record.agentState, state != .null {
-            block(S.rawAgentState, icon("code-working-outline", SecondaryPalette.orange), state)
-        }
-        if let metadata = record.metadata, metadata != .null {
-            block(S.rawMetadata, icon("information-circle-outline", SecondaryPalette.purple), metadata)
-        }
-        block(S.rawSession, icon("document-text-outline", SecondaryPalette.green), .object([
-            "id": .string(record.id),
-            "seq": .number(Double(record.seq)),
-            "createdAt": .number(Double(record.createdAt)),
-            "updatedAt": .number(Double(record.updatedAt)),
-            "active": .bool(record.active),
-            "activeAt": .number(Double(record.activeAt)),
-            "metadata": record.metadata ?? .null,
-            "metadataVersion": .number(Double(record.metadataVersion)),
-            "agentState": record.agentState ?? .null,
-            "agentStateVersion": .number(Double(record.agentStateVersion)),
-            "thinking": .bool(record.thinking),
-            "thinkingAt": .number(Double(record.thinkingAt)),
-        ]))
         let group = ItemGroupView(title: S.rawJSON, rows: rows)
         group.keepsLastDivider(true)
         return group
     }
-    #endif
 
     // MARK: Actions
 
@@ -403,24 +416,40 @@ final class SessionInfoViewController: UIViewController {
 
     private func copyResumeCommand(_ command: String) {
         UIPasteboard.general.string = command
-        copiedResumeCommand = true
-        rebuild()
+        pipeline?.update { $0.copiedResumeCommand = true }
         copiedReset?.cancel()
         copiedReset = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(2))
             guard !Task.isCancelled, let self else { return }
-            self.copiedResumeCommand = false
-            self.rebuild()
+            self.pipeline?.update { $0.copiedResumeCommand = false }
         }
     }
 
-    private func copyMetadata(_ record: SessionRecord, withLogs: Bool) {
-        guard let metadata = record.metadata, metadata != .null else {
-            Alerts.show(Strings.Common.error, Strings.SessionDetail.failedToCopyMetadata, on: self)
-            return
+    /// The metadata as stored now, read and printed off the main thread.
+    private func copyMetadata(withLogs: Bool) {
+        let details = session.sessionDetails
+        let id = sessionId
+        Task { @MainActor [weak self] in
+            let text: String? = await Task.detached(priority: .userInitiated) {
+                guard let metadata = await details.current(sessionId: id)?.session?.metadata, metadata != .null else { return nil }
+                return SessionDetails.metadataClipboard(metadata, withLogs: withLogs)
+            }.value
+            guard let self, self.context.account.session === self.session else { return }
+            guard let text else {
+                Alerts.show(Strings.Common.error, Strings.SessionDetail.failedToCopyMetadata, on: self)
+                return
+            }
+            UIPasteboard.general.string = text
+            Alerts.show(Strings.Common.success, Strings.SessionDetail.metadataCopied, on: self)
         }
-        UIPasteboard.general.string = SessionDetails.metadataClipboard(metadata, withLogs: withLogs)
-        Alerts.show(Strings.Common.success, Strings.SessionDetail.metadataCopied, on: self)
+    }
+
+    /// The session, its computer, the settings and its composer as stored
+    /// now, read off the main thread; nil once another account is active.
+    private func current() async -> SessionDetailSnapshot? {
+        let detail = await session.sessionDetails.current(sessionId: sessionId)
+        guard context.account.session === session else { return nil }
+        return detail
     }
 
     /// useHappyAction: one run at a time; a failure is an alert.
@@ -455,10 +484,10 @@ final class SessionInfoViewController: UIViewController {
     }
 
     private func archive() {
-        guard let record else { return }
         let actions = session.detailActions
         let confirm = confirmWorktreeCleanup
         perform(.archive, on: { [weak self] in self?.navigationController ?? self }) { [weak self] in
+            guard let record = await self?.current()?.session else { return }
             try await actions.archive(record, confirmWorktreeCleanup: confirm)
             // Leave this screen and the chat behind it.
             self?.leaveSession()
@@ -474,15 +503,12 @@ final class SessionInfoViewController: UIViewController {
     }
 
     private func delete() {
-        guard let record else { return }
         let actions = session.detailActions
         let navigation = navigationController
         let confirm = confirmWorktreeCleanup
-        if record.isBot {
-            DetailActionAlert.show(SessionDetailActions.Failure(SessionDetailActions.botDeleteMessage), on: self)
-            return
-        }
         perform(.delete, on: { navigation }) { [weak self] in
+            guard let record = await self?.current()?.session else { return }
+            if record.isBot { throw SessionDetailActions.Failure(SessionDetailActions.botDeleteMessage) }
             // happy-app asks about the worktree, then leaves before deleting.
             await actions.maybeCleanupWorktree(
                 sessionId: record.id,
@@ -496,33 +522,28 @@ final class SessionInfoViewController: UIViewController {
     }
 
     private func resume() {
-        guard let record else { return }
         let actions = session.detailActions
-        let machineRecord = machine(for: record)
-        let settings = snapshot?.settings.synced?.settings
-        let composerValues = composer
         let messages = resumeMessages
         perform(.resume, on: { [weak self] in self }) { [weak self] in
-            guard let sessionId = try await actions.resume(record, machine: machineRecord, settings: settings, composer: composerValues, messages: messages),
-                  let self else { return }
+            guard let detail = await self?.current(), let record = detail.session else { return }
+            guard let sessionId = try await actions.resume(
+                record, machine: detail.machine, settings: detail.settings.synced?.settings, composer: detail.composer, messages: messages
+            ), let self else { return }
             push(.session(id: sessionId), context: context)
         }
     }
 
     private func fork(canFork: Bool) {
-        guard let record else { return }
         let actions = session.detailActions
         let messages = SessionDetailActions.ForkMessages(
             missingMetadata: Strings.SessionDetail.forkErrorMissingMetadata,
             generic: Strings.SessionDetail.forkErrorGeneric
         )
-        forking = true
-        rebuild()
+        guard !busy.contains(.fork) else { return }
+        pipeline?.update { $0.forking = true }
         perform(.fork, on: { [weak self] in self }) { [weak self] in
-            defer {
-                self?.forking = false
-                self?.rebuild()
-            }
+            defer { self?.pipeline?.update { $0.forking = false } }
+            guard let record = await self?.current()?.session else { return }
             let sessionId = try await actions.fork(record, canFork: canFork, messages: messages)
             guard let self else { return }
             push(.session(id: sessionId), context: context)

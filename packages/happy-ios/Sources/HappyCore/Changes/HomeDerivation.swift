@@ -189,7 +189,9 @@ public enum HomeDerivation {
         public var expandedProjects: Set<String>
         /// Home's dock also wants the new-session pickers' snapshot.
         public var includesDock: Bool
-        /// Nil uses the time of the derivation; tests fix it.
+        /// Nil uses the time of the derivation; tests fix it. Never the
+        /// presence clock: that one stands still while nothing is
+        /// disconnected, and headings and stamps would go stale with it.
         public var clock: SessionList.Clock?
 
         public init(snapshot: HomeSnapshot? = nil, expandedProjects: Set<String> = [], includesDock: Bool = false, clock: SessionList.Clock? = nil) {
@@ -216,7 +218,7 @@ public enum HomeDerivation {
     /// Nil when the screen already shows exactly this.
     public static func derive(_ input: Input, applied: Applied) -> (output: HomeUpdate, state: Applied)? {
         guard let snapshot = input.snapshot else { return nil }
-        let state = HomeState(snapshot, clock: input.clock ?? clock(snapshot))
+        let state = HomeState(snapshot, clock: input.clock ?? SessionList.Clock())
         let content = HomeContent(state, expandedProjects: input.expandedProjects)
         let dock = input.includesDock ? NewSessionSnapshot.rendered(snapshot) : nil
         let dockChanged = dock != nil && dock != applied.dock
@@ -240,27 +242,22 @@ public enum HomeDerivation {
     }
 }
 
-extension HomeDerivation {
-    /// The time rows are written at: the presence clock, which moves only
-    /// when a shown "last seen" would, or the time now before it starts.
-    public static func clock(_ snapshot: HomeSnapshot) -> SessionList.Clock {
-        guard let now = snapshot.presenceNow else { return SessionList.Clock() }
-        return SessionList.Clock(now: Date(timeIntervalSince1970: Double(now) / 1000))
-    }
-}
-
 /// What the new-session pickers (home's dock and the new-session screen)
-/// read from the store, without what changes on every heartbeat or
-/// message: they list machines, places and projects, never a session's
-/// state.
+/// read from the store, without what changes on every heartbeat or cursor:
+/// they list machines, places and projects, newest first. A session's
+/// `active` and `lastMeaningfulMessageAt` order them and stay; its
+/// heartbeat, thinking and agent state never show and are cleared.
 public enum NewSessionSnapshot {
     public static func rendered(_ snapshot: HomeSnapshot) -> HomeSnapshot {
         var snapshot = snapshot
-        // The pickers keep their own clock, as before the presence clock.
+        // The pickers show no last seen: a presence tick changes nothing.
         snapshot.presenceNow = nil
-        snapshot.sessions = snapshot.sessions.map { record in
-            var record = ChatSessionState.rendered(record)
-            record.active = false
+        snapshot.sessions = snapshot.sessions.map { original in
+            var record = ChatSessionState.rendered(original)
+            if let at = original.metadata?["lastMeaningfulMessageAt"], case .object(var fields)? = record.metadata {
+                fields["lastMeaningfulMessageAt"] = at
+                record.metadata = .object(fields)
+            }
             record.activeAt = 0
             record.agentState = nil
             record.thinking = false
@@ -268,5 +265,15 @@ public enum NewSessionSnapshot {
             return record
         }
         return snapshot
+    }
+
+    /// The new-session screen's derivation: the pickers' snapshot once the
+    /// computers are known (synced, or on disk from before), nil until then
+    /// and whenever it is what the screen has.
+    public static func derive(_ snapshot: HomeSnapshot?, applied: HomeSnapshot?) -> (output: HomeSnapshot, state: HomeSnapshot?)? {
+        guard let snapshot, snapshot.machines.synced || !snapshot.machines.machines.isEmpty else { return nil }
+        let rendered = rendered(snapshot)
+        guard rendered != applied else { return nil }
+        return (rendered, rendered)
     }
 }

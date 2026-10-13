@@ -525,6 +525,106 @@ final class ComposerDraftWriterFailureTests: XCTestCase {
     }
 }
 
+/// A chat that was being started arrives: one writer hands over to the next.
+@MainActor
+final class ComposerDraftHandoverTests: XCTestCase {
+    func testTheNewWriterWaitsForTheOldOnesLastWrite() async throws {
+        let pending = ProbeStorage()
+        let old = ComposerDraftWriter(sessionId: "pending-chat:1", storage: pending, sending: ProbeSending(pending))
+        pending.writer = old
+        let oldDeliveries = Deliveries()
+        old.start { oldDeliveries.receive($0) }
+        await fulfillment(of: [oldDeliveries.expect(1)], timeout: 5)
+        pending.holdTheNextSave()
+        old.save("hello", generation: 3)
+        pending.waitForHeldSave()
+        old.close()
+
+        let session = ProbeStorage(ComposerStoreValue(draft: "handed over"))
+        let new = ComposerDraftWriter(sessionId: "s", storage: session, sending: ProbeSending(session), generation: 3, after: old)
+        session.writer = new
+        let deliveries = Deliveries()
+        // Typed before the opening read is asked for, so the two land in
+        // one order however the drain batches them.
+        new.save("hello!", generation: 4)
+        new.start { deliveries.receive($0) }
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertTrue(session.log.isEmpty, "nothing until the old write lands")
+        XCTAssertTrue(deliveries.all.isEmpty)
+
+        pending.release()
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        XCTAssertEqual(pending.saves, ["hello"])
+        XCTAssertEqual(session.log, ["save hello!", "read"])
+        XCTAssertEqual(deliveries.all, [ComposerStoreDelivery(value: ComposerStoreValue(draft: "hello!"), generation: 4)])
+        XCTAssertEqual(oldDeliveries.all.count, 1, "the old writer delivers nothing more")
+    }
+
+    func testAnOldWriteThatStillFailedIsReportedBehindTheComposer() async throws {
+        let pending = ProbeStorage()
+        let old = ComposerDraftWriter(sessionId: "pending-chat:1", storage: pending, sending: ProbeSending(pending), retryDelays: [])
+        let oldDeliveries = Deliveries()
+        old.start { oldDeliveries.receive($0) }
+        await fulfillment(of: [oldDeliveries.expect(1)], timeout: 5)
+        old.save("old", generation: 1)
+        _ = await old.settle()
+        pending.failSaves(true)
+        old.save("", generation: 2)
+        old.close()
+
+        let session = ProbeStorage(ComposerStoreValue(draft: "old"))
+        let new = ComposerDraftWriter(sessionId: "s", storage: session, sending: ProbeSending(session), generation: 2, after: old)
+        let deliveries = Deliveries()
+        new.start { deliveries.receive($0) }
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        XCTAssertEqual(deliveries.all, [ComposerStoreDelivery(value: ComposerStoreValue(draft: "old"), generation: 1)],
+                       "the newest write the old store holds")
+        XCTAssertEqual(pending.saveAttempts, 3, "tried once more before the new writer read")
+        // The composer writes the field here; its numbering is whole again.
+        new.save("", generation: 3)
+        new.refresh()
+        await fulfillment(of: [deliveries.expect(2)], timeout: 5)
+        XCTAssertEqual(deliveries.all.last, ComposerStoreDelivery(value: ComposerStoreValue(draft: ""), generation: 3))
+        let saved = await new.settle()
+        XCTAssertTrue(saved)
+        let oldSaved = await old.settle()
+        XCTAssertFalse(oldSaved, "the old write is still the old writer's, unsaved")
+    }
+
+    func testTheNewWriterKeepsTheComposersNumbering() async throws {
+        let session = ProbeStorage(ComposerStoreValue(draft: "hello"))
+        let writer = ComposerDraftWriter(sessionId: "s", storage: session, sending: ProbeSending(session), generation: 7)
+        let deliveries = Deliveries()
+        writer.start { deliveries.receive($0) }
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        XCTAssertEqual(deliveries.all.first?.generation, 7)
+    }
+
+    func testAnActorCanBeTheStorage() async throws {
+        let record = PendingRecord()
+        let writer = ComposerDraftWriter(sessionId: "pending-chat:1", storage: record, sending: ProbeSending(ProbeStorage()))
+        let deliveries = Deliveries()
+        writer.start { deliveries.receive($0) }
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        for (index, text) in ["h", "he", "hel"].enumerated() {
+            writer.save(text, generation: index + 1)
+        }
+        let saved = await writer.settle()
+        XCTAssertTrue(saved)
+        let draft = await record.draft
+        XCTAssertEqual(draft, "hel")
+        writer.close()
+    }
+}
+
+/// A chat's record held by an actor, as PendingChats holds it.
+private actor PendingRecord: ComposerStorage {
+    var draft = ""
+    func composerValue(sessionId: String) async throws -> ComposerStoreValue { ComposerStoreValue(draft: draft) }
+    func saveDraft(sessionId: String, text: String) async throws { draft = text }
+    nonisolated func composerValues(sessionId: String) -> AsyncThrowingStream<ComposerStoreValue, any Error> { AsyncThrowingStream { _ in } }
+}
+
 /// Fails the first read.
 private final class FailingReads: ComposerStorage, @unchecked Sendable {
     private let lock = NSLock()
@@ -985,6 +1085,115 @@ final class ComposerDraftModelTests: XCTestCase {
         XCTAssertEqual(model.textChanged("hel", synced: false).debounce, true)
         XCTAssertEqual(model.flush(), .init(text: "hel", generation: 2))
         XCTAssertNil(model.flush())
+    }
+
+    /// A pending chat's composer: every keystroke written, nothing taken
+    /// from its record, then moved to the session that arrived.
+    private func pending(_ typed: [String]) -> ComposerDraftModel {
+        var model = ComposerDraftModel()
+        _ = model.receive(delivery("", 0), text: "", synced: false, composing: false)
+        for text in typed { _ = model.textChanged(text, synced: true) }
+        return model
+    }
+
+    func testARetargetedComposerKeepsItsTextAndWritesItWhereTheStoreDiffers() {
+        var model = pending(["h", "hello"])
+        XCTAssertEqual(model.generation, 2)
+        model.retarget()
+        XCTAssertFalse(model.isLoaded)
+        // The handover wrote something else (an earlier queued message too).
+        let change = model.receive(delivery("queued\n\nhello", 2), text: "hello", synced: false, composing: false)
+        XCTAssertNil(change.text, "never reseeded over the field")
+        XCTAssertEqual(change.write, .init(text: "hello", generation: 3))
+        XCTAssertEqual(model.autosave.lastSaved, "hello")
+        XCTAssertNil(model.textChanged("hello", synced: false).write)
+    }
+
+    func testARetargetedComposerWritesNothingWhenTheStoreAgrees() {
+        var model = pending(["hello"])
+        model.retarget()
+        // Only the new session's picks, which are always shown on arrival.
+        XCTAssertEqual(model.receive(delivery("hello", 1), text: "hello", synced: true, composing: false), .init(picks: ComposerPicks()))
+        XCTAssertEqual(model.generation, 1)
+        // A remote edit after that is news again.
+        XCTAssertEqual(model.receive(delivery("from the laptop", 1), text: "hello", synced: true, composing: false).text, "from the laptop")
+    }
+
+    func testAnEmptyRetargetedComposerLoadsTheSessionsDraft() {
+        var model = pending(["x", ""])
+        model.retarget()
+        let change = model.receive(delivery("queued", 2), text: "", synced: false, composing: false)
+        XCTAssertEqual(change.text, "queued")
+        XCTAssertNil(change.write)
+    }
+
+    func testTypingAfterTheRetargetIsLeftToItsOwnWrites() {
+        var model = pending(["hello"])
+        model.retarget()
+        XCTAssertEqual(model.textChanged("hello!", synced: true).write?.generation, 2)
+        let change = model.receive(delivery("hello!", 2), text: "hello!", synced: true, composing: false)
+        XCTAssertNil(change.write)
+        XCTAssertNil(change.text)
+        // Nor does an empty field take the session's draft once typed in.
+        var cleared = pending(["x"])
+        cleared.retarget()
+        _ = cleared.textChanged("", synced: true)
+        XCTAssertNil(cleared.receive(delivery("stored", 2), text: "", synced: false, composing: false).text)
+    }
+
+    func testARetargetedFirstReadDuringASendWaitsForIt() {
+        var model = pending(["hello"])
+        model.retarget()
+        // The pending submit went; the field still shows what it sent.
+        XCTAssertEqual(model.receive(delivery("", 1), text: "hello", synced: false, composing: false, sending: true), .init(),
+                       "the sent text is not written to the session")
+        XCTAssertFalse(model.isLoaded)
+        XCTAssertEqual(model.generation, 1)
+        XCTAssertNil(model.clear(stored: false))
+        XCTAssertTrue(model.sendReturned(), "the read is asked for again")
+        XCTAssertFalse(model.sendReturned())
+        XCTAssertEqual(model.receive(delivery("", 1), text: "", synced: false, composing: false), .init(picks: ComposerPicks()))
+        XCTAssertTrue(model.isLoaded)
+        // A refused submit keeps the text, which the handover wrote too.
+        var refused = pending(["hello"])
+        refused.retarget()
+        _ = refused.receive(delivery("hello", 1), text: "hello", synced: false, composing: false, sending: true)
+        XCTAssertTrue(refused.sendReturned())
+        XCTAssertNil(refused.receive(delivery("hello", 1), text: "hello", synced: false, composing: false).write)
+    }
+
+    func testAnOpeningDuringASendIsNotPutOff() {
+        var model = ComposerDraftModel()
+        _ = model.textChanged("hi", synced: false)
+        _ = model.receive(delivery("", 0), text: "hi", synced: false, composing: false, sending: true)
+        XCTAssertTrue(model.isLoaded)
+        XCTAssertFalse(model.sendReturned())
+    }
+
+    func testAStoreBehindTheFieldGetsTheFieldEvenEmpty() {
+        // The old store's last write (clearing the field) failed: the
+        // handover carried the text before it.
+        var model = pending(["old", ""])
+        model.retarget()
+        let change = model.receive(delivery("old", 1), text: "", synced: false, composing: false)
+        XCTAssertNil(change.text, "the deleted text is not loaded back")
+        XCTAssertEqual(change.write, .init(text: "", generation: 3))
+        // Agreeing text is written again, so the numbering catches up.
+        var same = pending(["a", "ab"])
+        same.retarget()
+        XCTAssertEqual(same.receive(delivery("ab", 1), text: "ab", synced: true, composing: false).write, .init(text: "ab", generation: 3))
+        XCTAssertEqual(same.receive(delivery("from the laptop", 3), text: "ab", synced: true, composing: false).text, "from the laptop")
+    }
+
+    func testARetargetStartsThePicksAndFailuresAfresh() {
+        var model = ComposerDraftModel()
+        let plan = ComposerPicks(permissionMode: "plan")
+        _ = model.receive(delivery("", 0, picks: plan, failed: 2), text: "", synced: false, composing: false)
+        model.retarget()
+        let change = model.receive(delivery("", 0, picks: plan, failed: 5), text: "", synced: false, composing: false)
+        XCTAssertEqual(change.picks, plan, "the new session's picks are shown")
+        XCTAssertEqual(change.newlyFailedAttachments, 0, "its old failures are not news")
+        XCTAssertEqual(model.receive(delivery("", 0, picks: plan, failed: 6), text: "", synced: false, composing: false).newlyFailedAttachments, 1)
     }
 
     func testPicksAndFailuresChangeOnlyWhenTheyMove() {

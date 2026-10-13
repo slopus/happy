@@ -15,7 +15,7 @@ final class SessionChangesViewController: UIViewController {
     private let sessionId: String
     private let list = DiffFilesListView()
     private var stateView: UIView?
-    private var observation: StoreObservation?
+    private var observation: ApplyObservation?
     private var metadata: JSONValue?
     private var appeared = false
     private var mode: Mode?
@@ -69,11 +69,29 @@ final class SessionChangesViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         showsBackTitle()
-        observation = session.store.observeHome { [weak self] snapshot in
-            guard let self else { return }
-            let record = snapshot.sessions.first { $0.id == self.sessionId }
-            self.metadataChanged(record?.metadata)
-        }
+        // The session's metadata from the account's shared feed, found and
+        // compared off the main thread; a new message's activity stamp is
+        // not something these viewers read.
+        let sessionId = self.sessionId
+        let pipeline = ApplyPipeline<HomeSnapshot?, JSONValue??, JSONValue?>(
+            input: nil,
+            state: nil,
+            derive: { snapshot, applied in
+                guard let snapshot else { return nil }
+                let metadata = snapshot.sessions.first { $0.id == sessionId }.map { ChatSessionState.rendered($0).metadata } ?? nil
+                return applied == .some(metadata) ? nil : (metadata, metadata)
+            },
+            apply: { [weak self] metadata in
+                guard let self, self.context.account.session === self.session else { return false }
+                ApplyPerf.measure(.screen) {
+                    self.metadataChanged(metadata)
+                    return 1
+                }
+                return true
+            }
+        )
+        pipeline.follow(session.homeFeed.snapshots()) { $0 = $1 }
+        observation = pipeline.observation
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -98,8 +116,8 @@ final class SessionChangesViewController: UIViewController {
         stateView?.frame = view.bounds
     }
 
-    /// The store calls this on every change; only what the viewers read
-    /// from the metadata counts. Streaming metadata never re-scans Git.
+    /// Called when the metadata changed; only what the viewers read from it
+    /// counts. Streaming metadata never re-scans Git.
     private func metadataChanged(_ metadata: JSONValue?) {
         guard let metadata else {
             if mode == nil, stateView == nil { show(state: spinner(color: nil)) }
