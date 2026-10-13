@@ -559,3 +559,50 @@ final class QuestionSheetLayoutTests: XCTestCase {
         assertFrame(layout.scroll, rect(0, 107.5, 393, 318))
     }
 }
+
+final class ChatHeaderLayoutTests: XCTestCase {
+    func testTheCapsuleHugsATitleAlone() {
+        let layout = ChatHeaderTitleLayout(maxWidth: 245, title: text("Fix the login", lineHeight: 20, maxLines: 1), subtitle: nil, changes: nil)
+        assertSize(layout.size, CGSize(width: 132, height: 44))
+        assertFrame(layout.title, rect(14, 12, 104, 20))
+        XCTAssertNil(layout.subtitle)
+        XCTAssertNil(layout.changes)
+    }
+
+    func testTheBranchAndLineChangesShareARowUnderTheTitle() {
+        let layout = ChatHeaderTitleLayout(maxWidth: 245, title: text("Chat", lineHeight: 20, maxLines: 1), subtitle: text("main", lineHeight: 14, maxLines: 1), changes: CGSize(width: 40, height: 13))
+        assertSize(layout.size, CGSize(width: 104, height: 44))
+        assertFrame(layout.title, rect(36, 5, 32, 20))
+        assertFrame(layout.subtitle!, rect(14, 25, 32, 14))
+        assertFrame(layout.changes!, rect(50, 25.5, 40, 13))
+    }
+
+    func testALongTitleStopsAtTheInsetAndTheBranchGivesWayToTheCounts() {
+        XCTAssertEqual(ChatHeaderTitleLayout.maxWidth(headerWidth: 393), 245)
+        let layout = ChatHeaderTitleLayout(
+            maxWidth: ChatHeaderTitleLayout.maxWidth(headerWidth: 393),
+            title: text(String(repeating: "t", count: 40), lineHeight: 20, maxLines: 1),
+            subtitle: text(String(repeating: "b", count: 30), lineHeight: 14, maxLines: 1),
+            changes: CGSize(width: 40, height: 13)
+        )
+        assertSize(layout.size, CGSize(width: 245, height: 44))
+        assertFrame(layout.title, rect(14, 5, 217, 20))
+        assertFrame(layout.subtitle!, rect(14, 25, 173, 14))
+        assertFrame(layout.changes!, rect(191, 25.5, 40, 13))
+    }
+
+    func testTheHeaderScrimAndTheEmptyChatsPlace() {
+        let layout = ChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: nil, accessories: [block(height: 60)], composerHeight: 70))
+        // The bar and 8 past it; the placeholder between the bar and the dock.
+        assertFrame(layout.headerScrim, rect(0, 0, 393, 111))
+        assertFrame(layout.placeholder, rect(0, 103, 393, 585))
+        let typing = ChatScreenLayout(.init(size: phone, safeArea: phoneUnderBar, keyboardTop: 500, composerHeight: 70))
+        assertFrame(typing.placeholder, rect(0, 103, 393, 327))
+    }
+
+    func testTheBackdropStrengthensOnceContentIsUnderTheHeader() {
+        XCTAssertFalse(ChatScreenLayout.headerBackdropVisible(distanceFromOldest: 0))
+        XCTAssertFalse(ChatScreenLayout.headerBackdropVisible(distanceFromOldest: 0.4))
+        XCTAssertTrue(ChatScreenLayout.headerBackdropVisible(distanceFromOldest: 1))
+    }
+}

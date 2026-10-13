@@ -126,6 +126,13 @@ final class HeaderScrimView: UIView {
         fatalError("init(coder:) is not supported")
     }
 
+    /// MobileHeaderScrim's `overlayOpacity`: scales the wash, never the
+    /// blur. The chat's header strengthens it once content is under it.
+    var overlayOpacity: Float {
+        get { tint.opacity }
+        set { tint.opacity = newValue }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         CATransaction.begin()

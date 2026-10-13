@@ -113,6 +113,11 @@ nothing here is wired to the release skill or to EAS.
   decide stays open, but never the output. The synced `compactToolCalls`
   setting is untouched: it still picks a compact row or a card. Decided in
   `ChatToolPresentation` (`ToolDisplayState`).
+- **The agent question sheet keeps "Send answer" above the keyboard.**
+  happy-app's AgentQuestionModal leaves its footer at the bottom of the
+  screen, under the keyboard. Here the footer rides the keyboard, so someone
+  typing their own answer can send it without dismissing the keyboard first.
+  Laid out in `QuestionSheetLayout`.
 - **Onboarding follows happy-app step by step.** Signed in, home decides
   from the stored machines (`HomeState`, after happy-app's
   `shouldShowFirstRunInstall` and `resolveHomeEmptyState`):

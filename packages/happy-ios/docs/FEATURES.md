@@ -55,7 +55,9 @@ accident.
 
 ## Chat
 
-- [ ] Session screen shell: header (title, avatar, status, git status), back, info (`session/[id].tsx`, `SessionView.tsx`, `ChatHeaderView`) — Chat
+- [~] Session screen shell: header (title, avatar, status, git status), back, info (`session/[id].tsx`, `SessionView.tsx`, `ChatHeaderView`) — Chat
+  - The title capsule and the avatar circle sit on the system navigation bar, made transparent, so back, its swipe and its menu are the platform's. Off iOS 26 the back button is the plain chevron and "Back", not happy-app's glass circle.
+  - Not yet: the worktree tab strip and its title, the CLI-outdated pill, the landscape layout without a header, the file-view path segment.
 - [ ] Inverted list engine with precomputed, off-main text layout, manual frames, bubble resize animations, scroll position keeping (`ChatList`) — Chat
 - [ ] Keyboard: input bar tracks the keyboard, interactive dismiss, list insets — Chat
 - [ ] Messages: user bubbles, agent text, thinking, events, unsupported placeholder (`MessageView`) — Chat
@@ -70,7 +72,8 @@ accident.
 - [ ] Image and file messages, decrypted on demand (`FileView`) — Chat + Sending
 - [ ] Message detail screen (`session/[id]/message/[messageId].tsx`) — Chat
 - [ ] Agent goal bar, work group headers, rig activity bar (`AgentGoalBar`, `AgentWorkGroupHeader`, `RigActivityBar`) — Chat
-- [ ] Empty and pending states (`EmptyMessages`, `ChatFooter`) — Chat
+- [~] Empty and pending states (`EmptyMessages`, `ChatFooter`) — Chat
+  - Not yet: EmptyMessages paging back through invisible older pages (Retry, Load more), since the chat feed has no older-page signal; `PendingChatPlaceholder` (a `pending-chat:` route shows a spinner over the composer).
 - [ ] Composer: growing text input, send/stop button, drafts (`AgentInput`, `MultiTextInput`, `agentInputLayout.ts`, `agentInputPrimaryAction.ts`) — Composer
 - [ ] Autocomplete: slash commands and file mentions (`autocomplete/*`, `AgentInputAutocomplete`) — Composer
 - [ ] Attachments: picker (photos, camera, files), strip, upload progress (`AgentInputAttachmentStrip`, `attachmentSupport.ts`) — Composer + Sending

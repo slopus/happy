@@ -68,6 +68,26 @@ enum ChatRowRenderer {
         }
     }
 
+    /// ChatFooter, just past the newest message: padding only, or the
+    /// "permissions shown in terminal only" box while the terminal has
+    /// control.
+    static func footer(controlledByUser: Bool, width: CGFloat) -> ChatRowPlan {
+        guard controlledByUser else {
+            return ChatRowPlan(id: footerId, size: ChatFooterLayout(width: width, warning: nil).size, items: [])
+        }
+        let text = MeasuredText(ChatTextStyles.chatFooterWarning.string(Strings.Chat.controlledByTerminal, color: Palette.boxWarningText))
+        let layout = ChatFooterLayout(width: width, warning: text.measurable)
+        var items: [ChatDrawItem] = []
+        if let box = layout.warning, let icon = layout.icon, let label = layout.label {
+            items.append(.box(ChatBox(frame: box, fill: Palette.boxWarningBackground, radius: ChatFooterLayout.Metrics.warningRadius)))
+            items.append(.icon(.ionicons("information-circle"), size: ChatFooterLayout.Metrics.iconSize, frame: icon, tint: Palette.boxWarningText))
+            items.append(.text(text.layout(for: label), label))
+        }
+        return ChatRowPlan(id: footerId, size: layout.size, items: items, accessibilityLabel: Strings.Chat.controlledByTerminal)
+    }
+
+    static let footerId = "chat-footer"
+
     // MARK: User messages
 
     static func userText(_ message: UserTextMessage, delivery: OutboxDelivery?, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
