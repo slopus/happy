@@ -229,6 +229,54 @@ final class DraftAutosaveTests: XCTestCase {
     func testHappyAgentDraftsSaveEveryEdit() {
         var autosave = DraftAutosave(loaded: "a")
         XCTAssertEqual(autosave.textChanged("ab", synced: true), .saveNow("ab"))
+        XCTAssertEqual(autosave.textChanged("abc", synced: true), .saveNow("abc"))
+        XCTAssertNil(autosave.pending)
+        XCTAssertNil(autosave.flush(), "nothing waits")
+        XCTAssertEqual(autosave.textChanged("", synced: true), .saveNow(""))
+        XCTAssertEqual(autosave.textChanged("", synced: true), .none)
+        XCTAssertEqual(autosave.lastSaved, "")
+    }
+
+    func testARemoteEditReplacesTheText() {
+        var autosave = DraftAutosave(loaded: "a")
+        _ = autosave.textChanged("ab", synced: true)
+        XCTAssertNil(autosave.storeChanged("ab"), "our own save")
+        XCTAssertEqual(autosave.storeChanged("from the laptop"), "from the laptop")
+        XCTAssertEqual(autosave.lastSaved, "from the laptop")
+        // The text view takes it, which reads as an unchanged edit.
+        XCTAssertEqual(autosave.textChanged("from the laptop", synced: true), .none)
+        XCTAssertNil(autosave.storeChanged("from the laptop"), "the record changed for another reason")
+    }
+
+    func testARemoteRevertToTheOpeningTextApplies() {
+        var autosave = DraftAutosave(loaded: "a")
+        _ = autosave.textChanged("ab", synced: true)
+        XCTAssertEqual(autosave.storeChanged("a"), "a")
+    }
+
+    func testARemoteEditDropsThePendingSave() {
+        // A session that turns out synced after a debounced edit.
+        var autosave = DraftAutosave(loaded: "draft")
+        XCTAssertEqual(autosave.textChanged("draft!"), .saveLater("draft!"))
+        XCTAssertEqual(autosave.storeChanged("remote"), "remote")
+        XCTAssertNil(autosave.pending)
+        XCTAssertNil(autosave.flush())
+    }
+
+    func testAnUnmovedStoreLeavesTheTextAlone() {
+        var autosave = DraftAutosave(loaded: "draft")
+        XCTAssertEqual(autosave.textChanged("draft!"), .saveLater("draft!"))
+        XCTAssertNil(autosave.storeChanged("draft"))
+        XCTAssertEqual(autosave.pending, "draft!")
+    }
+
+    func testTheClearAfterASyncedSendIsNotARemoteEdit() {
+        var autosave = DraftAutosave(loaded: "")
+        _ = autosave.textChanged("hello", synced: true)
+        autosave.clear()
+        XCTAssertNil(autosave.storeChanged(""))
+        // Writing that landed during the send survives the clear.
+        XCTAssertEqual(autosave.storeChanged("hello again"), "hello again")
     }
 
     func testClearingAfterASend() {
