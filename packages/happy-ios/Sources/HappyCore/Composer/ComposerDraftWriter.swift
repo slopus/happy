@@ -92,7 +92,9 @@ public protocol ComposerStorage: Sendable {
 /// before or after it still run, so a teardown flush lands. A writer that
 /// takes over from another (`after:`) runs nothing until the other has
 /// settled, so the old storage's last write never lands after the new one's
-/// first read.
+/// first read. If that write still failed, the new writer's deliveries say
+/// so until its own first write lands: their generation is the newest one
+/// the old storage holds, behind the composer's.
 public final class ComposerDraftWriter: @unchecked Sendable {
     public typealias Deliver = @MainActor @Sendable (ComposerStoreDelivery) -> Void
 
@@ -120,9 +122,9 @@ public final class ComposerDraftWriter: @unchecked Sendable {
         case save(String, generation: Int)
         case read(forced: Bool, observed: ComposerStoreValue?)
         case send(OutgoingMessage, AsyncThrowingStream<String, any Error>.Continuation)
-        case barrier(CheckedContinuation<Bool, Never>)
+        case barrier(CheckedContinuation<Settled, Never>)
         case retry
-        case wait(@Sendable () async -> Void)
+        case after(ComposerDraftWriter)
     }
 
     public let sessionId: String
@@ -142,6 +144,13 @@ public final class ComposerDraftWriter: @unchecked Sendable {
     // Touched only by the drain, which never runs twice at once.
     /// The newest write the store holds.
     private var settled = 0
+
+    /// What a barrier found: whether every write handed over is on disk,
+    /// and the newest one that is.
+    private struct Settled {
+        var saved: Bool
+        var generation: Int
+    }
     /// The newest write handed over that hasn't landed.
     private var unsaved: (text: String, generation: Int)?
     private var retries = 0
@@ -169,7 +178,7 @@ public final class ComposerDraftWriter: @unchecked Sendable {
         self.onFailure = onFailure
         settled = generation
         if let predecessor {
-            enqueue(.wait { await predecessor.settle() })
+            enqueue(.after(predecessor))
         }
     }
 
@@ -261,6 +270,10 @@ public final class ComposerDraftWriter: @unchecked Sendable {
     /// over is on disk; false if the newest still isn't.
     @discardableResult
     public func settle() async -> Bool {
+        await landed().saved
+    }
+
+    private func landed() async -> Settled {
         await withCheckedContinuation { continuation in
             enqueue(.barrier(continuation))
         }
@@ -339,11 +352,16 @@ public final class ComposerDraftWriter: @unchecked Sendable {
                 case .barrier(let continuation):
                     await finish(run)
                     run = Run()
-                    continuation.resume(returning: await commitUnsaved() == nil)
-                case .wait(let work):
+                    let saved = await commitUnsaved() == nil
+                    continuation.resume(returning: Settled(saved: saved, generation: settled))
+                case .after(let predecessor):
                     await finish(run)
                     run = Run()
-                    await work()
+                    // Its unsaved write stays its own to retry; the
+                    // composer, told by the generation, writes the text
+                    // it holds here.
+                    let landed = await predecessor.landed()
+                    if !landed.saved { settled = min(settled, landed.generation) }
                 }
             }
             await finish(run)
@@ -509,6 +527,8 @@ public struct ComposerDraftModel: Equatable, Sendable {
     /// opening, or `retarget()`): writing since then means typing.
     private var loadGeneration = 0
     private var retargeted = false
+    /// A retargeted composer's first read came during a send.
+    private var loadDeferred = false
 
     public init() {}
 
@@ -518,8 +538,16 @@ public struct ComposerDraftModel: Equatable, Sendable {
     public mutating func retarget() {
         isLoaded = false
         retargeted = true
+        loadDeferred = false
         loadGeneration = generation
         storePicks = nil
+    }
+
+    /// The send in flight returned, its text cleared from the field if it
+    /// went: true if a first read waited for it and must be asked for again.
+    public mutating func sendReturned() -> Bool {
+        defer { loadDeferred = false }
+        return loadDeferred
     }
 
     /// A text change. `.saveNow` comes back as a write; `.saveLater` leaves
@@ -546,10 +574,17 @@ public struct ComposerDraftModel: Equatable, Sendable {
     }
 
     /// A read from the writer. `text` and `composing` describe the text
-    /// view; `synced` is a Happy Agent session, whose draft others edit.
-    public mutating func receive(_ delivery: ComposerStoreDelivery, text: String, synced: Bool, composing: Bool) -> Change {
+    /// view; `synced` is a Happy Agent session, whose draft others edit;
+    /// `sending`, a send is in flight.
+    public mutating func receive(_ delivery: ComposerStoreDelivery, text: String, synced: Bool, composing: Bool, sending: Bool = false) -> Change {
         let value = delivery.value
         var change = Change()
+        if !isLoaded, retargeted, sending {
+            // A send queued before the retarget: until it returns, the
+            // field may hold what it sent, which the new store mustn't get.
+            loadDeferred = true
+            return change
+        }
         if value.picks != storePicks {
             storePicks = value.picks
             change.picks = value.picks
@@ -558,18 +593,24 @@ public struct ComposerDraftModel: Equatable, Sendable {
             isLoaded = true
             knownFailedAttachments = value.failedAttachments
             let typed = generation != loadGeneration
-            if !typed, text.isEmpty, !value.draft.isEmpty {
+            // The old store missed the composer's newest write (it failed):
+            // what it handed over is older than the field.
+            let behind = delivery.generation != generation
+            if typed {
+                // Its own writes follow this read.
+            } else if retargeted, !text.isEmpty || behind {
+                // Carried over from the old store: the text is the truth
+                // (SessionView's ChatComposer), so the new store gets it,
+                // and a store behind gets it again to catch the numbering up.
+                autosave = DraftAutosave(loaded: text)
+                if value.draft != text || behind {
+                    change.write = write(text)
+                }
+            } else if text.isEmpty, !value.draft.isEmpty {
                 // useDraft's load: only into a composer nobody has written
                 // in, and never over text the composer holds.
                 autosave = DraftAutosave(loaded: value.draft)
                 change.text = value.draft
-            } else if retargeted, !typed, !text.isEmpty {
-                // Carried over from the old store: the text is the truth
-                // (SessionView's ChatComposer), so the new store gets it.
-                autosave = DraftAutosave(loaded: text)
-                if value.draft != text {
-                    change.write = write(text)
-                }
             }
             return change
         }

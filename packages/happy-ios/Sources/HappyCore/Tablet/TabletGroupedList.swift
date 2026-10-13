@@ -26,6 +26,14 @@ public struct TabletGroupedList: Equatable, Sendable {
 
     public static let empty = TabletGroupedList(ids: [], rows: [], avatarStyle: .gradient, avatarMonochrome: false, offline: nil)
 
+    /// The checkouts its headings show the status of.
+    public var checkouts: Set<GitCheckoutKey> {
+        Set(rows.compactMap { row in
+            if case .workspace(let header) = row { return header.checkout }
+            return nil
+        })
+    }
+
     public init(ids: [TabletGroupedRow.ID], rows: [TabletGroupedRow], avatarStyle: AvatarStyle, avatarMonochrome: Bool, offline: [MachineChoice]?) {
         self.ids = ids
         self.rows = rows
@@ -35,8 +43,14 @@ public struct TabletGroupedList: Equatable, Sendable {
     }
 
     /// `clock` is the time now (rows' dates and the day headings), never
-    /// the presence clock, which can stand still for hours.
-    public init(_ snapshot: HomeSnapshot, offline: [MachineChoice]?, clock: SessionList.Clock = SessionList.Clock()) {
+    /// the presence clock, which can stand still for hours. `git` is each
+    /// checkout's status as far as it is known (`useSessionGitStatus`).
+    public init(
+        _ snapshot: HomeSnapshot,
+        offline: [MachineChoice]?,
+        clock: SessionList.Clock = SessionList.Clock(),
+        git: [GitCheckoutKey: GitHeadingStatus] = [:]
+    ) {
         let settings = AccountSettings(snapshot.settings)
         let machines = Dictionary(snapshot.machines.machines.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let projects = Dictionary(snapshot.projects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -147,7 +161,7 @@ public struct TabletGroupedList: Equatable, Sendable {
             for project in group.projects {
                 let checkouts = project.checkouts.filter { !$0.sessions.isEmpty }
                 for (checkoutIndex, checkout) in checkouts.enumerated() {
-                    let header = Self.header(project, checkout, record: records[checkout.sessions[0].row.id])
+                    let header = Self.header(project, checkout, record: records[checkout.sessions[0].row.id], git: git)
                     append(.workspace(header.id), .workspace(header))
                     for (index, chat) in checkout.sessions.enumerated() {
                         let last = index == checkout.sessions.count - 1
@@ -245,22 +259,39 @@ public struct TabletGroupedList: Equatable, Sendable {
     }
 
     /// ProjectGroup.tsx `WorkspaceSection`'s heading, from the checkout's
-    /// first chat.
-    static func header(_ project: ProjectHomeData.Project, _ checkout: ProjectHomeData.Checkout, record: SessionRecord?) -> TabletWorkspaceHeader {
+    /// first chat and that chat's checkout status (`useSessionGitStatus`).
+    static func header(
+        _ project: ProjectHomeData.Project,
+        _ checkout: ProjectHomeData.Checkout,
+        record: SessionRecord?,
+        git: [GitCheckoutKey: GitHeadingStatus]
+    ) -> TabletWorkspaceHeader {
         let first = checkout.sessions[0]
         let path = first.path ?? ""
         let marker = path.range(of: SessionPlace.worktreeMarker)
         let repoPath = marker.map { String(path[..<$0.lowerBound]) } ?? path
         let homeDir = record?.metadata?["homeDir"]?.stringValue
+        // `getSessionPathKey`: none without a computer or a path.
+        let key = nonBlank(first.machineId).flatMap { machineId in
+            path.isEmpty ? nil : GitCheckoutKey(machineId: machineId, path: path)
+        }
+        let status = key.flatMap { git[$0] }
+        let added = status?.unstagedLinesAdded ?? 0
+        let removed = status?.unstagedLinesRemoved ?? 0
         return TabletWorkspaceHeader(
             id: "\(project.id)\u{0}\(checkout.id)",
             projectName: project.name,
             // `flavor={null}` and no `bot`: a plain face, never badged.
             avatar: SessionAvatar(seed: first.row.avatar.seed),
             // `workspace.name ?? (workspace.id || null)`, then the live
-            // branch (not yet), then "main".
-            branch: checkout.name ?? (checkout.id.isEmpty ? nil : checkout.id) ?? "main",
-            changes: first.git,
+            // branch, then "main".
+            branch: checkout.name ?? (checkout.id.isEmpty ? nil : checkout.id) ?? status?.branch ?? "main",
+            // The live unstaged lines when there are any, else the first
+            // chat's own counts.
+            changes: added > 0 || removed > 0
+                ? GitLineChanges(approximate: false, insertions: added, deletions: removed)
+                : first.git,
+            checkout: key,
             place: TabletNewSessionPlace(
                 machineId: nonBlank(first.machineId),
                 path: repoPath.isEmpty ? nil : NewSessionChoices.relativeToHome(repoPath, homeDir: homeDir),
@@ -336,6 +367,8 @@ public struct TabletWorkspaceHeader: Equatable, Sendable {
     public var avatar: SessionAvatar
     public var branch: String
     public var changes: GitLineChanges?
+    /// The checkout whose status it shows, if it has one.
+    public var checkout: GitCheckoutKey?
     /// Where `+` points the new-session draft.
     public var place: TabletNewSessionPlace
 }

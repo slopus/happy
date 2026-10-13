@@ -32,6 +32,9 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
     private var bannerState: BannerState?
     private var headerSized: (state: BannerState, width: CGFloat)?
     private lazy var actions = HomeSessionActions(context: context, session: session, host: self)
+    /// useHappyAction: one kill at a time per chat; its swipe is off
+    /// meanwhile (`enabled={!archivingSession}`).
+    private var killing: Set<String> = []
     private let changelogMarker = ChangelogReadMarker(storage: UserDefaultsStore(suiteName: ChangelogReadMarker.suiteName))
     private var nativeUpdateObservation: AccountsObservation?
 
@@ -387,23 +390,50 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
         applySelection()
     }
 
-    /// "Archive Session" on red: FlatSessionRow's swipe on the bots and
-    /// CompactSessionRow's on the chats. Archived cards don't swipe.
+    /// "Archive Session" on red: FlatSessionRow's swipe on the bots, which
+    /// archives, and CompactSessionRow's on the chats, which only stops the
+    /// session. Archived cards don't swipe.
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
         guard let row = row(at: indexPath), let sessionId = row.sessionId else { return nil }
+        let kills: Bool
         switch row {
-        case .bot, .chat: break
+        case .bot: kills = false
+        case .chat: kills = true
         default: return nil
         }
+        if kills, killing.contains(sessionId) { return nil }
         let action = UIContextualAction(style: .destructive, title: Strings.SessionInfo.archiveSession) { [weak self] _, _, done in
+            // The swipe closes first (`swipeableRef.current?.close()`).
             done(true)
-            self?.actions.archive(sessionId)
+            if kills { self?.kill(sessionId) } else { self?.actions.archive(sessionId) }
         }
         action.image = .icon(.ionicons("archive-outline"), size: 20)
         action.backgroundColor = UIColor(Palette.statusError)
         let configuration = UISwipeActionsConfiguration(actions: [action])
         configuration.performsFirstActionWithFullSwipe = false
         return configuration
+    }
+
+    /// CompactSessionRow's `performArchive`: `sessionKill`, and its message
+    /// (or "Failed to archive session") when the CLI says no.
+    private func kill(_ sessionId: String) {
+        guard killing.insert(sessionId).inserted else { return }
+        let ops = session.homeSessionOps
+        Task { @MainActor [weak self] in
+            let outcome = await TabletChatArchive.run(ops, sessionId: sessionId)
+            guard let self else { return }
+            killing.remove(sessionId)
+            switch outcome {
+            case .killed: break
+            case .refused(let message): alert(message ?? Strings.SessionInfo.failedToArchiveSession)
+            case .failed: alert(Strings.Home.actionUnknownError)
+            }
+        }
+    }
+
+    /// useHappyAction's "Error" alert.
+    private func alert(_ message: String) {
+        Alerts.show(Strings.Home.actionError, message, on: presentedViewController ?? self)
     }
 
     /// A long press on a chat opens the "Session" alert

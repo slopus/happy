@@ -56,8 +56,6 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private var draftSave: Task<Void, Never>?
     /// A read asked for after a composition ended, not yet delivered.
     private var draftRefreshPending = false
-    /// A first read put off until the send in flight returns.
-    private var draftLoadAfterSend = false
     private var isAborting = false
     /// Stop was pressed; Stop stays hidden until the agent stops working
     /// (`stopRequested`), so a late status update can't leave it up.
@@ -229,7 +227,6 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         self.environment = environment
         draft.retarget()
         draftRefreshPending = false
-        draftLoadAfterSend = false
         draftWriter = Self.makeWriter(environment, generation: draft.generation, after: previous)
         draftWriter.start { [weak self] delivery in
             self?.receive(delivery)
@@ -649,15 +646,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// and the uploads the outbox gave up on.
     private func receive(_ delivery: ComposerStoreDelivery) {
         draftRefreshPending = false
-        if !draft.isLoaded, isSending {
-            // A send queued before the retarget: until it returns, the
-            // field's text may be what it sent, which the new store
-            // mustn't be given.
-            draftLoadAfterSend = true
-            return
-        }
         let opening = !draft.isLoaded
-        let change = draft.receive(delivery, text: card.text, synced: isDraftSynced, composing: card.hasMarkedText)
+        let change = draft.receive(delivery, text: card.text, synced: isDraftSynced, composing: card.hasMarkedText, sending: isSending)
         // sessionSetAgentModes and the metadata reconciler write the picks.
         if let picks = change.picks, picks != self.picks {
             self.picks = picks
@@ -682,12 +672,10 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         }
     }
 
-    /// The send is back, the field cleared if it went: the first read put
-    /// off for it is asked for again.
+    /// The send is back, the field cleared if it went: a first read put
+    /// off for it (`ComposerDraftModel.receive`) is asked for again.
     private func loadAfterSend() {
-        guard draftLoadAfterSend else { return }
-        draftLoadAfterSend = false
-        draftWriter.refresh()
+        if draft.sendReturned() { draftWriter.refresh() }
     }
 
     /// The composition a remote edit waited for has ended (committed,

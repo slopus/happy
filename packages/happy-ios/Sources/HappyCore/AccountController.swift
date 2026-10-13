@@ -45,6 +45,11 @@ public final class AccountController {
     var registryWriter = AccountRegistryWriter()
     var readRegistryDisplays: @Sendable ([AccountRegistryEntry], [String: LocalStore], URL?) throws -> [String: AccountDisplay?] = AccountController.readDisplays
     var prepareSessionDirectory: @Sendable (URL, String) throws -> Void = AccountSession.prepareDirectory
+    /// How every account's pictures are fetched.
+    var pictureFetch: AccountPictures.Fetch = { [downloader = PictureDownloader()] url, limit in
+        await downloader.data(url, limit: limit)
+    }
+    private var pictureCaches: [AccountSummary.ID: AccountPictures] = [:]
     private var registryRevision: UInt64 = 0
     private var profileGeneration: UInt64 = 0
     private var profileGenerations: [String: UInt64] = [:]
@@ -101,6 +106,19 @@ public final class AccountController {
     public var pendingServerConfirmation: AccountSummary? {
         guard session == nil else { return nil }
         return accounts.first { $0.id == registry.activeID && !$0.serverConfirmed }
+    }
+
+    /// The pictures of a signed-in account, active or not, kept in its own
+    /// directory; nil for an account that isn't signed in here.
+    public func pictures(for id: AccountSummary.ID) -> AccountPictures? {
+        guard registry.entries.contains(where: { $0.id == id }) else { return nil }
+        if let pictures = pictureCaches[id] { return pictures }
+        let directory = storeDirectory.map {
+            AccountSession.accountDirectory(directory: $0, id: id).appendingPathComponent("pictures", isDirectory: true)
+        }
+        let pictures = AccountPictures(owner: id, directory: directory, fetch: pictureFetch)
+        pictureCaches[id] = pictures
+        return pictures
     }
 
     /// Delivers a snapshot now and on inventory, active-account or profile
@@ -327,6 +345,7 @@ public final class AccountController {
         }
         registry = updated
         profileGenerations.removeValue(forKey: id)
+        let closingPictures = pictureCaches.removeValue(forKey: id)
         if wasActive {
             if let next {
                 localSettings = settings(for: next.keys.anonID)
@@ -340,6 +359,9 @@ public final class AccountController {
         // Publish the new root before erasing/removing the old cache. Even
         // readers retaining its pool then see empty data, not a live account.
         notifyAccounts()
+        // No picture is written once this returns, so none lands in the
+        // directory being removed.
+        await closingPictures?.close()
         var cleanupError: Error?
         do {
             let removedStore = oldSession?.store ?? memoryStores[id]
