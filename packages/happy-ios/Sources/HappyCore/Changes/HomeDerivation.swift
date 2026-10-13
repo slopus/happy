@@ -243,17 +243,21 @@ public enum HomeDerivation {
 }
 
 /// What the new-session pickers (home's dock and the new-session screen)
-/// read from the store, without what changes on every heartbeat or
-/// message: they list machines, places and projects, never a session's
-/// state.
+/// read from the store, without what changes on every heartbeat or cursor:
+/// they list machines, places and projects, newest first. A session's
+/// `active` and `lastMeaningfulMessageAt` order them and stay; its
+/// heartbeat, thinking and agent state never show and are cleared.
 public enum NewSessionSnapshot {
     public static func rendered(_ snapshot: HomeSnapshot) -> HomeSnapshot {
         var snapshot = snapshot
         // The pickers show no last seen: a presence tick changes nothing.
         snapshot.presenceNow = nil
-        snapshot.sessions = snapshot.sessions.map { record in
-            var record = ChatSessionState.rendered(record)
-            record.active = false
+        snapshot.sessions = snapshot.sessions.map { original in
+            var record = ChatSessionState.rendered(original)
+            if let at = original.metadata?["lastMeaningfulMessageAt"], case .object(var fields)? = record.metadata {
+                fields["lastMeaningfulMessageAt"] = at
+                record.metadata = .object(fields)
+            }
             record.activeAt = 0
             record.agentState = nil
             record.thinking = false

@@ -427,6 +427,33 @@ final class ApplyPerfPacingTests: XCTestCase {
     }
 }
 
+final class ApplyPerfDockTests: XCTestCase {
+    /// The dock's pickers order sessions by whether they are online and by
+    /// their last meaningful message: both reach them, a heartbeat or a
+    /// cursor does not.
+    func testOrderingFieldsReachTheDockAndHeartbeatsDoNot() throws {
+        let snapshot = ApplyPerfFixtures.snapshot(5)
+        let applied = try XCTUnwrap(ApplyPerfFixtures.derive(snapshot, after: nil)).state
+        let dock = try XCTUnwrap(applied.dock)
+        XCTAssertEqual(dock.sessions.map(\.active), snapshot.sessions.map(\.active))
+        XCTAssertEqual(dock.sessions.map(\.lastActivityAt), snapshot.sessions.map(\.lastActivityAt))
+
+        var heartbeat = snapshot
+        heartbeat.sessions = heartbeat.sessions.map { ApplyPerfFixtures.invisiblyTouched($0, by: 2000) }
+        XCTAssertNil(ApplyPerfFixtures.derive(heartbeat, after: applied), "nothing for home or the dock")
+
+        var message = snapshot
+        message.sessions[3] = ApplyPerfFixtures.active(message.sessions[3], at: ApplyPerfFixtures.now + 5)
+        let messaged = try XCTUnwrap(ApplyPerfFixtures.derive(message, after: applied)).output
+        XCTAssertEqual(messaged.dock?.sessions[3].lastActivityAt, ApplyPerfFixtures.now + 5)
+
+        var stopped = snapshot
+        stopped.sessions[2].active = false
+        let stoppedUpdate = try XCTUnwrap(ApplyPerfFixtures.derive(stopped, after: applied)).output
+        XCTAssertEqual(stoppedUpdate.dock?.sessions[2].active, false)
+    }
+}
+
 final class ApplyPerfPresenceClockTests: XCTestCase {
     private func stopped(_ snapshot: HomeSnapshot, index: Int, lastSeen: Int64) -> HomeSnapshot {
         var snapshot = snapshot
