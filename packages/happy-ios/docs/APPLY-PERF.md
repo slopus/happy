@@ -25,6 +25,10 @@ rule 8), and what the Linux benchmarks measure.
     cleared because the row draws `timestamp`.
   - The chat's record clears cursors, versions, ciphertexts, `updatedAt`,
     `activeAt` while online, `thinkingAt` and `unread`.
+  - Home's dock (the new-session pickers) gets the sessions without their
+    heartbeat, cursors, thinking or agent state. It keeps `active` and
+    `lastMeaningfulMessageAt`, which order its places, so a new message
+    reaches it and a heartbeat does not.
   - A stopped session's "last seen" in the chat is a token written at the
     presence clock (`HomeSnapshot.presenceNow`), so it changes only when the
     shown text does. Home's stamps and headings never use that clock: it
