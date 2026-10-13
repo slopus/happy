@@ -189,6 +189,10 @@ enum FixtureScenarios {
         b.agent("Two tests failed because the fixture ids changed. I'll fix the expectations, then I need to push to your branch.")
         b.tool("Bash", ["command": "git push origin HEAD:chat-native", "description": "Push the branch"], state: .error,
                description: "Push the branch", permission: ToolPermission(id: "perm-denied", status: .denied, decision: .denied))
+        b.tool("Write", ["file_path": "/Users/fixture/happy/packages/happy-ios/README.md", "content": "# Native chat"], state: .error,
+               result: "<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>")
+        b.tool("deploy_preview", ["environment": "staging", "ref": "chat-native", "notify": ["#ios", "#release"]], state: .running,
+               permission: ToolPermission(id: "perm-deploy", status: .pending))
         b.agent("Understood, I won't push. Here is the plan for the remaining work.")
         b.tool("ExitPlanMode", ["plan": "1. Fix the two expectations\n2. Re-run `swift test`\n3. Report back"], state: .running,
                permission: ToolPermission(id: "perm-plan", status: .pending))

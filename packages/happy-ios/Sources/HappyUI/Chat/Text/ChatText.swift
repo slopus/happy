@@ -19,6 +19,7 @@ extension ChatTextStyle {
         switch face {
         case .plex(let face): Fonts.font(face, size: size)
         case .system(let weight): .systemFont(ofSize: size, weight: weight.uiWeight)
+        case .systemItalic: .italicSystemFont(ofSize: size)
         case .menlo: UIFont(name: "Menlo-Regular", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
         }
     }
@@ -95,6 +96,7 @@ extension NSAttributedString.Key {
 final class ChatTextLayout: @unchecked Sendable {
     /// The width the text was wrapped at.
     let width: CGFloat
+    let maxLines: Int
     /// The used size, rounded up to whole points.
     let size: CGSize
     let string: NSAttributedString
@@ -105,6 +107,7 @@ final class ChatTextLayout: @unchecked Sendable {
     init(_ string: NSAttributedString, width: CGFloat, maxLines: Int = 0) {
         self.string = string
         self.width = width
+        self.maxLines = maxLines
         storage = NSTextStorage(attributedString: string)
         manager = NSLayoutManager()
         container = NSTextContainer(size: CGSize(width: max(0, width), height: .greatestFiniteMagnitude))

@@ -201,13 +201,15 @@ public actor FixtureChatWorld {
 
     // MARK: Controls
 
-    func resolvePermission(sessionId: String, permissionId: String, approved: Bool, decision: ToolPermission.Decision?) {
+    func resolvePermission(sessionId: String, permissionId: String, approved: Bool, mode: String? = nil, allowedTools: [String]? = nil, decision: ToolPermission.Decision?) {
         guard let index = chats[sessionId]?.messages.firstIndex(where: {
             if case .toolCall(let call) = $0 { return call.tool.permission?.id == permissionId }
             return false
         }), case .toolCall(var call) = chats[sessionId]!.messages[index] else { return }
         call.tool.permission?.status = approved ? .approved : .denied
         call.tool.permission?.decision = decision ?? (approved ? .approved : .denied)
+        call.tool.permission?.mode = mode
+        call.tool.permission?.allowedTools = allowedTools
         call.tool.state = approved ? .completed : .error
         call.tool.completedAt = tick()
         call.tool.result = .string(approved ? "Done." : "The user doesn't want to proceed with this tool use.")
@@ -280,7 +282,7 @@ public struct FixtureChatControls: ChatControls {
 
     public func allow(sessionId: String, permissionId: String, mode: String?, allowedTools: [String]?, decision: ToolPermission.Decision?, updatedInput: JSONValue?) async throws {
         try await Task.sleep(for: .milliseconds(300))
-        await world.resolvePermission(sessionId: sessionId, permissionId: permissionId, approved: true, decision: decision)
+        await world.resolvePermission(sessionId: sessionId, permissionId: permissionId, approved: true, mode: mode, allowedTools: allowedTools, decision: decision)
     }
 
     public func deny(sessionId: String, permissionId: String, mode: String?, allowedTools: [String]?, decision: ToolPermission.Decision?) async throws {

@@ -37,12 +37,27 @@ struct ChatBox {
     var border: ColorToken?
     var borderWidth: CGFloat = 0
     var radius: CGFloat = 0
+    var alpha: CGFloat = 1
+    /// Which corners `radius` rounds.
+    var corners: CACornerMask = .all
+}
+
+extension CACornerMask {
+    static let all: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner, .layerMinXMaxYCorner, .layerMaxXMaxYCorner]
+    static let top: CACornerMask = [.layerMinXMinYCorner, .layerMaxXMinYCorner]
 }
 
 enum ChatDrawItem {
     case box(ChatBox)
     case text(ChatTextLayout, CGRect)
     case icon(Icon, size: CGFloat, frame: CGRect, tint: ColorToken)
+    /// ActivityIndicator size="small", scaled.
+    case spinner(CGRect, tint: ColorToken, scale: CGFloat)
+    /// A running tool's timer: whole seconds since `since` (ms), as "12.0s".
+    case elapsed(since: Int64, frame: CGRect)
+    /// A ring whose opacity breathes while a reply is on its way
+    /// (PermissionFooter's loading ring).
+    case pulse(ChatBox)
 }
 
 /// What a tap on part of a row does.
@@ -50,8 +65,17 @@ enum ChatRowAction: Equatable, Sendable {
     case copy(String)
     case toggleGroup(String)
     case openMessage(String)
+    case openFile(String)
     case option(String)
     case retry(localId: String)
+    case permission(ChatPermissionTap)
+}
+
+/// A permission button, with what its reply needs.
+struct ChatPermissionTap: Equatable, Sendable {
+    var permissionId: String
+    var kind: PermissionButton.Kind
+    var reply: PermissionReply
 }
 
 struct ChatHit {
