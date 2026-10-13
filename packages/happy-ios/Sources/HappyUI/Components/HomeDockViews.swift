@@ -276,12 +276,4 @@ final class HomeDockBackdropView: UIView {
     }
 }
 
-/// A box that takes touches only on its subviews, so what is behind it
-/// still gets the rest (`pointerEvents="box-none"`).
-final class PassthroughView: UIView {
-    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
-        let hit = super.hitTest(point, with: event)
-        return hit === self ? nil : hit
-    }
-}
 #endif
