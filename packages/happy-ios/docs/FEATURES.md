@@ -35,7 +35,7 @@ accident.
 - [x] Custom server (`server.tsx`), onboarding settings (`onboarding/settings.tsx`)
 - [x] Link Your Computer, offline checklist, troubleshoot (`troubleshoot.tsx`)
 - [x] Connect a terminal by QR or URL; `happy://terminal` deep links (`terminal/*`)
-- [ ] The machine screen that troubleshoot rows open — Secondary
+- [x] The machine screen that troubleshoot rows open — Secondary
 - [x] Copy terminal commands by selecting them (`TerminalBlock.tsx`): every line in the offline checklist and on troubleshoot is selectable, and a selection never takes in the `$ ` prompt — Home
 
 ## Home
@@ -58,7 +58,8 @@ accident.
 - [x] New session screen as a phone shows it (`new/index.tsx`, `machineChoices.ts`): the machine, path and worktree rows over a glass composer with the harness, its settings (permission, model, effort), the microphone and Send. Each picker opens in a glass popover above the control that opened it: a search field once there are more than four rows, the path field with the computer's places, and a page per setting. The offline help shows while the harness's daemon is down. Send starts through `SessionStarter`, as the dock does, and the session then replaces the screen. The screen shares the account's draft with home's dock. It opens from "Start New Session" on the empty home, and from a project's `+` when the dock can't open — Home
   - Deviations: back is the system navigation bar's, so off iOS 26 it is the plain chevron rather than happy-app's glass circle. The soft blur around a popover (`LocalBlurHalo`) is approximated with a partial blur. `autoSubmit` is not read, since nothing in happy-app sets it. The iPad sidebar, sheet and web layouts are not ported.
   - Current happy-app does not use recent paths; `recentMachinePaths` remains an untouched synced settings key for compatibility.
-- [ ] Machine screen: status, sessions, resume, stop daemon, rename (`machine/[id].tsx`) — Secondary + Ops
+- [x] Machine screen: status, sessions, resume, stop daemon, rename (`machine/[id].tsx`) — Secondary + Ops
+  - `Screens/MachineScreen.swift`. machine/[id].tsx has no resume of its own; a session is resumed from session info.
 
 ## Chat
 
@@ -109,13 +110,15 @@ accident.
   - Not ported: camera and files, which happy-app's iPhone composer doesn't offer; upload progress, which it doesn't show; thumbhashes, which it can't make natively either.
 - [x] Permission mode, model and effort pickers (`PermissionModeSelector`, `modelModeOptions.ts`, `NativeOptionsPicker`) — Composer
   - Native menus on the chips; a pick shows at once and goes out through `sessionSetAgentModes`. Happy Agent sessions offer their own models and reasoning levels.
-- [ ] Session info: metadata, machine, path, archive, delete, duplicate, fork (`session/[id]/info.tsx`) — Secondary + Ops
+- [~] Session info: metadata, machine, path, archive, delete, duplicate, fork (`session/[id]/info.tsx`) — Secondary + Ops
+  - Not yet: the duplicate sheet's Liquid Glass card on iOS 26 (below).
   - The duplicate sheet is `Screens/SessionInfoDuplicateSheet.swift`, entered through `UIViewController.presentDuplicateSheet(sessionId:context:)`, which works like `push(_:context:)`. Home's row alert and the chat call that entry point instead of building their own.
   - The duplicate sheet draws its pre-iOS 26 look (blur material, sheen and hairline) on every iOS. happy-app's Liquid Glass card on iOS 26 is a follow-up, with this BlurView look kept as the fallback before 26.
-- [ ] File viewer and changes with diffs (`file.tsx`, `changes.tsx`, `diff/*`, `CodeView`) — Secondary
+- [~] File viewer and changes with diffs (`file.tsx`, `changes.tsx`, `diff/*`, `CodeView`) — Secondary
+  - Not yet: selecting text in diff rows (below).
   - The `/files` browser is gated behind `experiments` and excluded (see Exclusions). The `/file` viewer is reachable without it, from tool rows and changes, and is in scope.
   - The diff engine (`HappyCore/Diff`) and its layout (`HappyLayout/Diff`) are shared: Chat's Edit/Write/patch cards draw with `DiffChunkView`, and changes with `DiffFileView` sections.
-  - Not ported yet: syntax colour in diff rows. happy-app colours rows after they are built, in a Prism worker (`components/diff/syntax/*`), and holds a file back (at most a second) until it is coloured; here rows draw in the plain text colour, with word-level emphasis. The renderer already colours by span kind, so the follow-up is a tokenizer that fills in the kinds.
+  - Diff rows are syntax-coloured with Prism, as `components/diff/syntax/*` does: `scripts/generate-prism-grammars.cjs` writes highlight.ts's 45 grammars from prismjs (patterns rewritten for ICU with JavaScript's meaning), and `HappyCore/Diff/Syntax` ports `Prism.tokenize`, highlightLines, tokenize.ts, plan.ts and code.ts. Over 925 real files in 40 languages the runs equal prismjs's (`PrismCorpusTests`, opt-in). A plan colours its shown hunks while it is built, off the main thread, waiting at most a second as happy-app's reveal does; plans of one pass share that second, and hunks it didn't reach are tokenized in the background for the next plan, so painted rows are never recoloured. "Show more" shows its spinner while the rest is coloured; the spinner sits within the bar's padding, where RN's row grows 3pt for that moment.
   - Not ported: selecting text in diff rows (`selectable` on iOS in DiffFilesList).
   - Changes (`Screens/SessionChangesScreen.swift`) has both viewers: a CLI session's uncommitted files from git status, and a Happy Agent session's comparison with its branch base. File icons are the Seti outlines from `scripts/generate-file-icons.py` (`HappyIcons/FileIcons.swift`, drawn by `FileIconView`). One deliberate difference: when git status changes while a legacy fetch is in flight, the results are still applied and changed files are fetched again. happy-app drops the batch, which can leave those files loading.
   - Rows are drawn only near the screen instead of being mounted in batches (`useProgressiveRows`), so a long file is full height from the first frame rather than growing over a few frames.

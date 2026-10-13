@@ -19,8 +19,8 @@ struct DiffViewOptions: Equatable, Sendable {
 }
 
 /// One file's diff, measured and ready to draw: the rows on show after the
-/// collapse, and every frame. Built off the main thread; immutable, so it
-/// crosses to the view as is.
+/// collapse, syntax-coloured, and every frame. Built off the main thread;
+/// immutable, so it crosses to the view as is.
 final class DiffFilePlan: @unchecked Sendable {
     let file: DiffFile
     let rows: [DiffRow]
@@ -29,14 +29,37 @@ final class DiffFilePlan: @unchecked Sendable {
     let metrics: DiffMetrics
     let layout: DiffFileLayout
     let expanded: Bool
+    /// "Show more" would tokenize hunks first: its bar shows a spinner
+    /// while the owner plans again (useSyntaxExpansion).
+    let expansionNeedsSyntax: Bool
+
+    /// When a plan made now should stop waiting for colour: the first
+    /// paint's second (`SYNTAX_REVEAL_MS`).
+    static func syntaxDeadline() -> ContinuousClock.Instant {
+        .now + .milliseconds(DiffSyntax.revealMilliseconds)
+    }
 
     /// `expanded` is the reader's "show more" (DiffFileView's own state).
-    init(file: DiffFile, width: CGFloat, options: DiffViewOptions = DiffViewOptions(), expanded: Bool = false) {
+    /// The shown rows take their hunks' syntax colour (usePreparedSyntax):
+    /// cached hunks at once, missing ones tokenized here until
+    /// `syntaxDeadline`, the rest left plain and tokenized in the
+    /// background for the next plan. Plans for one screen share a
+    /// deadline, as happy-app's rows reveal together; nil plans no colour,
+    /// as a measurement pass does.
+    init(
+        file: DiffFile,
+        width: CGFloat,
+        options: DiffViewOptions = DiffViewOptions(),
+        expanded: Bool = false,
+        syntaxDeadline: ContinuousClock.Instant? = DiffFilePlan.syntaxDeadline()
+    ) {
         let selection = DiffRowSelection.select(file.rows, showHunkHeaders: options.showHunkHeaders, expanded: expanded, collapseAfter: options.collapseAfter)
         let metrics = DiffStyle.metrics(fontSize: options.fontSize)
+        let syntax = DiffSyntaxService.shared
         self.file = file
-        rows = selection.rows
+        rows = syntaxDeadline.map { syntax.colour(file, displayed: selection.rows, until: $0) } ?? selection.rows
         hiddenCount = selection.hiddenCount
+        expansionNeedsSyntax = syntaxDeadline != nil && selection.hiddenCount > 0 && syntax.isMissing(file, rows: file.rows)
         self.options = options
         self.metrics = metrics
         self.expanded = expanded
@@ -118,6 +141,7 @@ final class DiffFileView: UIView, UIScrollViewDelegate {
         guard plan !== self.plan else { return }
         let keepOffset = self.plan?.file.path == plan.file.path
         self.plan = plan
+        showMore.isBusy = false
         for index in Array(codeRows.keys) { recycle(index) }
         shownRows = 0..<0
         if !keepOffset { scrollView.contentOffset = .zero }
@@ -141,10 +165,11 @@ final class DiffFileView: UIView, UIScrollViewDelegate {
         if scrollView.contentOffset.x > maxOffset { scrollView.contentOffset.x = maxOffset }
         canvas.frame = layout.canvas
         gutter.frame = layout.gutter
-        if let bar = layout.showMore {
+        if let bar = layout.showMore, let content = layout.showMoreContent(textWidth: showMore.textWidth, busy: showMore.isBusy) {
             showMore.isHidden = false
             showMore.frame = bar
-            showMore.textFrame = layout.showMoreText(width: showMore.textWidth) ?? .zero
+            showMore.textFrame = content.text
+            showMore.spinnerFrame = content.spinner ?? .zero
         } else {
             showMore.isHidden = true
         }
@@ -248,6 +273,13 @@ final class DiffFileView: UIView, UIScrollViewDelegate {
     // MARK: Taps
 
     @objc private func showMoreTapped() {
+        guard let plan, !showMore.isBusy else { return }
+        // Rows already painted stay while the expansion is coloured; the
+        // owner's next plan clears the spinner.
+        if plan.expansionNeedsSyntax {
+            showMore.isBusy = true
+            setNeedsLayout()
+        }
         onShowMore?()
     }
 
@@ -453,8 +485,25 @@ final class DiffShowMoreBar: UIControl {
         didSet { setNeedsLayout() }
     }
 
+    var spinnerFrame: CGRect = .zero {
+        didSet { setNeedsLayout() }
+    }
+
+    /// Waiting for the expansion's colour: a spinner before the text, and
+    /// taps ignored.
+    var isBusy = false {
+        didSet {
+            guard isBusy != oldValue else { return }
+            isEnabled = !isBusy
+            spinner.isHidden = !isBusy
+            if isBusy { spinner.startAnimating() } else { spinner.stopAnimating() }
+            accessibilityTraits = isBusy ? [.button, .notEnabled, .updatesFrequently] : .button
+        }
+    }
+
     private let border = UIView()
     private let label = StyledLabel(style: DiffTextStyles.showMore, color: DiffStyle.hunkText, lines: 1)
+    private let spinner = UIActivityIndicatorView(style: .medium)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -462,8 +511,12 @@ final class DiffShowMoreBar: UIControl {
         border.backgroundColor = UIColor(DiffStyle.divider)
         border.isUserInteractionEnabled = false
         label.isUserInteractionEnabled = false
+        spinner.color = UIColor(DiffStyle.hunkText)
+        spinner.isHidden = true
+        spinner.isUserInteractionEnabled = false
         addSubview(border)
         addSubview(label)
+        addSubview(spinner)
         accessibilityTraits = .button
         isAccessibilityElement = true
     }
@@ -487,6 +540,7 @@ final class DiffShowMoreBar: UIControl {
         super.layoutSubviews()
         border.setLayoutFrame(CGRect(x: 0, y: 0, width: bounds.width, height: DiffFileLayout.Metrics.showMoreBorder))
         label.setLayoutFrame(textFrame)
+        spinner.frame = spinnerFrame
     }
 }
 #endif
