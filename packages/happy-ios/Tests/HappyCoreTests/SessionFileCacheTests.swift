@@ -22,7 +22,6 @@ final class SessionFileCacheTests: XCTestCase {
     private func account(_ id: String) throws -> URL {
         let account = root.appendingPathComponent(id, isDirectory: true)
         let directory = SessionFileCache.directory(inAccount: account)
-        guard !FileManager.default.fileExists(atPath: directory.path) else { return directory }
         try FileManager.default.createDirectory(at: account, withIntermediateDirectories: true)
         try SessionFileCache.prepare(directory: directory)
         return directory
@@ -182,6 +181,20 @@ final class SessionFileCacheTests: XCTestCase {
         cache.set(sessionId: "s", path: "/repo/b.swift", snapshot("late"))
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.deletingLastPathComponent().path))
+    }
+
+    func testPreparingIsSafeEveryLaunchButNeedsTheAccount() throws {
+        let account = root.appendingPathComponent("again", isDirectory: true)
+        let directory = SessionFileCache.directory(inAccount: account)
+        XCTAssertEqual(directory.lastPathComponent, "file-cache")
+        // Without the account's directory: nothing is made.
+        XCTAssertThrowsError(try SessionFileCache.prepare(directory: directory))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: account.path))
+        try FileManager.default.createDirectory(at: account, withIntermediateDirectories: true)
+        try SessionFileCache.prepare(directory: directory)
+        // The next launch.
+        try SessionFileCache.prepare(directory: directory)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.path))
     }
 
     func testAnUnpreparedDirectoryIsNeverMade() async throws {

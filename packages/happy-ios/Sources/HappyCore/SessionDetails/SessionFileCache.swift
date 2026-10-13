@@ -62,10 +62,13 @@ public final class SessionFileCache: @unchecked Sendable {
     }
 
     /// Makes the directory, off the main thread, while the account is made
-    /// ready (`AccountSession.prepareDirectory`). The cache never makes it
+    /// ready (`AccountSession.prepareDirectory`), after the account's own
+    /// directory; nothing if it is already there. The cache never makes it
     /// itself: without it nothing is written, so a signed-out account's
     /// directory is never made again.
     public static func prepare(directory: URL) throws {
+        var isDirectory: ObjCBool = false
+        if FileManager.default.fileExists(atPath: directory.path, isDirectory: &isDirectory), isDirectory.boolValue { return }
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
     }
 
