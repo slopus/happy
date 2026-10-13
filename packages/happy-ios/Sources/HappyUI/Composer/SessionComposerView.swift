@@ -14,8 +14,9 @@ private let logger = Logger(subsystem: "engineering.happy", category: "composer"
 /// it and the week quota and context gauge under it; both rows fade while
 /// the reader is back in history.
 ///
-/// It keeps the draft (useDraft.ts), sends through `environment.sender`,
-/// stops the agent, and shows the permission, model and effort picks: the
+/// It keeps the draft (useDraft.ts), holds picked images (useImagePicker.ts),
+/// sends through `environment.sender`, stops the agent, and shows the
+/// permission, model and effort picks: the
 /// session's own (its composer state) over the agent defaults over the
 /// metadata (`ComposerModes`). A pick shows at once and goes out through
 /// `sessionSetAgentModes`.
@@ -47,6 +48,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private var stopRequested = false
     private var isSending = false
     private var knownFailedAttachments: Int
+    /// Picked images wait here until the outbox has its own copies.
+    private let staging: ComposerAttachmentStaging
+    private let images: ComposerImagePicker
 
     private var statusSize: CGSize = .zero
     private var weekSize: CGSize = .zero
@@ -66,6 +70,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         let draft = (try? sender.draft(sessionId: sessionId)) ?? ""
         autosave = DraftAutosave(loaded: draft)
         knownFailedAttachments = (try? sender.failedAttachmentCount(sessionId: sessionId)) ?? 0
+        staging = ComposerAttachmentStaging(filesDirectory: environment.account.filesDirectory)
+        images = ComposerImagePicker(staging: staging)
         modes = ComposerModes(metadata: nil, picks: ComposerPicks(), agentDefaultOverrides: [:])
         card = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: Strings.Composer.inputPlaceholder))
         super.init(frame: .zero)
@@ -78,6 +84,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         card.text = draft
         card.delegate = self
         addSubview(card)
+        images.host = { [weak self] in self?.hostViewController }
+        images.onChange = { [weak self] in self?.applyConfiguration() }
 
         weekLabel.isUserInteractionEnabled = false
         weekButton.addSubview(weekLabel)
@@ -149,6 +157,10 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         )
         if !SessionComposerRules.showsAbortButton(record) {
             stopRequested = false
+        }
+        // Nothing to attach to: a picked image would be dropped at send.
+        if !SessionComposerRules.canUseAttachments(record), !images.images.isEmpty {
+            images.clear()
         }
         if previous?.delivery != state.delivery {
             checkFailedAttachments()
@@ -283,8 +295,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private func applyConfiguration() {
         let record = state?.session.record
         let chips = ComposerChipSet(modes: modes, record: record, titles: Self.titles)
+        let canAttach = SessionComposerRules.canUseAttachments(record)
         let primary = AgentInputPrimaryAction.resolve(
-            hasComposerContent: Self.hasContent(card.text),
+            hasComposerContent: hasComposerContent,
             isSendBlocked: SessionComposerRules.isSendBlocked(record),
             isSendDisabled: false,
             showAbortButton: SessionComposerRules.showsAbortButton(record),
@@ -296,7 +309,16 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         configuration.effort = chips.effort.map(Self.chip)
         configuration.primaryAction = primary
         configuration.isPrimaryBusy = isAborting
+        configuration.showsAdd = canAttach
+        configuration.attachments = canAttach
+            ? images.images.map { AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL) }
+            : []
         card.configuration = configuration
+    }
+
+    /// Text or a picked image (`hasComposerContent`), read live.
+    private var hasComposerContent: Bool {
+        Self.hasContent(card.text) || !images.images.isEmpty
     }
 
     private static func chip(_ chip: ComposerChipSet.Chip) -> AgentInputChipConfiguration {
@@ -348,11 +370,19 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// Stop and send share the button; which one fires comes from the live
     /// text, not the configuration, which can lag a fast type-then-tap.
     func agentInputCardDidPressPrimary(_ card: AgentInputCardView) {
-        if !Self.hasContent(card.text), card.configuration.primaryAction == .stop {
+        if !hasComposerContent, card.configuration.primaryAction == .stop {
             abort()
             return
         }
         sendPressed()
+    }
+
+    func agentInputCardDidPressAdd(_ card: AgentInputCardView) {
+        images.attach()
+    }
+
+    func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) {
+        images.remove(id: id)
     }
 
     // MARK: Send
@@ -367,7 +397,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             return
         }
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        guard Self.hasContent(card.text) else { return }
+        guard hasComposerContent else { return }
         stopRequested = false
         send()
     }
@@ -376,12 +406,27 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         guard !isSending else { return }
         let text = card.text
         let sessionId = environment.sessionId
-        let message = OutgoingMessage(text: text)
+        let picked = images.images
+        let message = OutgoingMessage(text: text, attachments: picked.map(\.attachment))
+        // sync.ts: images the agent can't take are named before anything
+        // goes; with nothing else to send, nothing does.
+        if !picked.isEmpty,
+           let plan = try? environment.account.sender.attachmentPlan(message, sessionId: sessionId),
+           plan.shouldShowUnsupportedAlert {
+            alert(Strings.ImageUpload.notSupportedTitle, Strings.ImageUpload.notSupportedMessage)
+            if !plan.shouldSendText || (!Self.hasContent(text) && plan.accepted.isEmpty) {
+                return
+            }
+        }
         isSending = true
         let sender = environment.sender
+        // The outbox copies the staged files; they outlive a composer
+        // closed mid-send.
+        let staging = staging
         Task { [weak self] in
             do {
                 let localId = try await sender.send(message, sessionId: sessionId)
+                withExtendedLifetime(staging) {}
                 guard let self else { return }
                 self.isSending = false
                 // Only clear what was sent: typing may have gone on.
@@ -389,6 +434,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
                     self.clearDraft(stored: !RigCatalog.isRigV1(self.state?.session.record?.metadata))
                     self.card.text = ""
                 }
+                self.images.removeSent(picked.map(\.id))
                 self.applyConfiguration()
                 self.composerDelegate?.composer(self, didSend: localId)
             } catch {
