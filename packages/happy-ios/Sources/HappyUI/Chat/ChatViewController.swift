@@ -81,6 +81,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private var expandedTools: Set<String> = []
     /// The tool just opened or closed, held still by the next update.
     private var pendingPin: String?
+    /// Diff files the reader opened past "Show N more lines": by tool
+    /// message id, then by diff in the tool.
+    private var diffExpanded: [String: [Int: Set<Int>]] = [:]
     /// Question forms in the chat, by tool message id: the form as the
     /// latest snapshot has it, and what the reader has done to it.
     private var questionForms: [String: (tool: ToolCall, form: InlineQuestionForm)] = [:]
@@ -493,10 +496,12 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             claudeFlavor: flavor == nil || flavor == "" || flavor == "claude",
             maxContentWidth: maxContentWidth,
             root: session.metadata?["path"]?.stringValue,
-            flavor: flavor
+            flavor: flavor,
+            showLineNumbers: session.settings.bool("showLineNumbersInToolViews")
         )
         let permissionBusy = self.permissionBusy
         let expandedTools = self.expandedTools
+        let diffExpanded = self.diffExpanded
         let agentState = session.agentState
         questionForms = [:]
         return items.filter { ChatRowRenderer.isShown($0, style: style) }.map { item in
@@ -510,7 +515,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             }
             var busy: PermissionButton.Kind?
             var question: ChatQuestionState?
+            var diffs: [Int: Set<Int>] = [:]
             if case .message(.toolCall(let call)) = item {
+                diffs = diffExpanded[call.id] ?? [:]
                 expanded = expandedTools.contains(call.id)
                 busy = call.tool.permission.flatMap { permissionBusy[$0.id] }
                 if let form = Self.questionForm(call.tool, agentState: agentState) {
@@ -520,7 +527,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                     question = state
                 }
             }
-            return ChatRowInput(item: item, delivery: delivery, expanded: expanded, permissionBusy: busy, question: question, style: style)
+            return ChatRowInput(item: item, delivery: delivery, expanded: expanded, permissionBusy: busy, question: question, diffExpanded: diffs, style: style)
         }
     }
 
@@ -633,6 +640,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             scheduleMeasure()
         case .questionSubmit(let toolId):
             submitQuestion(toolId)
+        case .diffShowMore(let toolId, let chunk, let file):
+            diffExpanded[toolId, default: [:]][chunk, default: []].insert(file)
+            pendingPin = toolId
+            scheduleMeasure()
         case .option(let title):
             let sender = services.sender
             let sessionId = self.sessionId

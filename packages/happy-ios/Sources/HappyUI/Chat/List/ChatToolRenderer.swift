@@ -57,12 +57,21 @@ struct ChatStackEntry {
     }
 }
 
+/// What a tool's views need besides the tool: a question form's state,
+/// the diffs the reader opened further, and whether the body runs to the
+/// card's edges (a card) or sits inside a box (a compact row).
+struct ChatToolViews {
+    var question: ChatQuestionState?
+    var diffExpanded: [Int: Set<Int>] = [:]
+    var flush = true
+}
+
 // MARK: Tool rows (ToolView.tsx)
 
 extension ChatRowRenderer {
     /// A tool row: its header always, its body only once the reader opens
     /// it or while a decision needs it (`ChatToolPresentation`).
-    static func toolCall(_ message: ToolCallMessage, expanded: Bool, busy: PermissionButton.Kind?, question: ChatQuestionState?, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
+    static func toolCall(_ message: ToolCallMessage, expanded: Bool, busy: PermissionButton.Kind?, views: ChatToolViews, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
         let tool = message.tool
         let context = ToolContext(root: style.root, flavor: style.flavor, compactMode: style.compactTools)
         guard let presentation = ChatToolPresentation.present(
@@ -70,12 +79,14 @@ extension ChatRowRenderer {
         ) else {
             return ChatRowPlan(id: message.id, size: CGSize(width: width, height: 0), items: [])
         }
-        let body = toolBody(presentation.body, message: message, question: question, style: style)
+        var views = views
+        views.flush = presentation.form != .compact
+        let body = toolBody(presentation.body, message: message, views: views, style: style)
         // The header opens and closes the body. With nothing to open, or
         // while a decision holds it open, it opens the tool's own screen.
         let open: ChatRowAction = presentation.opensFile.map(ChatRowAction.openFile) ?? .openMessage(message.id)
         let expandable = !presentation.awaitingDecision && presentation.expandedBody != .none
-            && (body != nil || toolBody(presentation.expandedBody, message: message, question: question, style: style) != nil)
+            && (body != nil || toolBody(presentation.expandedBody, message: message, views: views, style: style) != nil)
         let tap: ChatRowAction = expandable ? .toggleTool(message.id) : open
         let footer = presentation.showsPermissionFooter ? tool.permission.map { permissionFooter($0, tool: tool, busy: busy, flavor: style.flavor) } : nil
         let elapsed = presentation.showsElapsed ? elapsedSize : nil
@@ -206,7 +217,7 @@ extension ChatRowRenderer {
     // MARK: Card bodies
 
     /// The body's pieces, or nil when they draw nothing.
-    static func toolBody(_ body: ToolPresentation.Body, message: ToolCallMessage, question: ChatQuestionState?, style: ChatRowStyle) -> ChatPiece? {
+    static func toolBody(_ body: ToolPresentation.Body, message: ToolCallMessage, views: ChatToolViews, style: ChatRowStyle) -> ChatPiece? {
         var entries: [ChatStackEntry] = []
         switch body {
         case .none:
@@ -217,17 +228,19 @@ extension ChatRowRenderer {
             if let input { entries.append(section(Strings.Tools.input, codeView(input))) }
             if let output { entries.append(section(Strings.Tools.output, codeView(output))) }
         case .view(let kind, let error):
-            if let view = toolView(kind, message: message, question: question, style: style) { entries.append(view) }
+            if let view = toolView(kind, message: message, views: views, style: style) { entries.append(view) }
             if let error { entries.append(toolError(error)) }
         }
         return entries.isEmpty ? nil : .stack(entries)
     }
 
-    /// The tool's own view. Diffs and attachments are drawn by views
-    /// still to come; until then those rows have nothing to open.
-    static func toolView(_ kind: ToolViewKind, message: ToolCallMessage, question: ChatQuestionState?, style: ChatRowStyle) -> ChatStackEntry? {
+    /// The tool's own view. Codex patches and diffs wait for the shared
+    /// unified-diff parser, and attachments for FileView; until then those
+    /// rows have nothing to open.
+    static func toolView(_ kind: ToolViewKind, message: ToolCallMessage, views: ChatToolViews, style: ChatRowStyle) -> ChatStackEntry? {
         switch kind {
-        case .askUserQuestion, .requestUserInput: question.map { questionForm($0, toolId: message.id) }
+        case .askUserQuestion, .requestUserInput: views.question.map { questionForm($0, toolId: message.id) }
+        case .edit, .write, .multiEdit, .geminiEdit: diffView(kind, message: message, views: views, style: style)
         case .todo: todoView(message.tool)
         case .exitPlan: exitPlanView(message.tool)
         case .task: taskView(message.children)
@@ -236,6 +249,35 @@ extension ChatRowRenderer {
         case .geminiExecute: geminiExecuteView(message.tool)
         default: nil
         }
+    }
+
+    // MARK: Diff views
+
+    /// EditView, WriteView, MultiEditView and GeminiEditView: DiffChunk
+    /// under a full-width ToolSectionView (flush under the card's header,
+    /// to its edges), MultiEdit's diffs 8 apart. Nil when no diff draws
+    /// anything (DiffChunk renders null).
+    static func diffView(_ kind: ToolViewKind, message: ToolCallMessage, views: ChatToolViews, style: ChatRowStyle) -> ChatStackEntry? {
+        let chunks = ToolDiffInputs.chunks(kind, input: message.tool.input)
+        // MultiEditView passes no line-number flag, so its diffs use the
+        // same setting through ToolDiffView.
+        let pieces = chunks.enumerated().compactMap { index, chunk -> ChatPiece? in
+            let source = DiffChunkSource(oldText: chunk.oldText, newText: chunk.newText, fileName: chunk.fileName)
+            guard !DiffFileItem.document(source.source).files.isEmpty else { return nil }
+            let diff = ChatDiffPiece(source: source, showLineNumbers: style.showLineNumbers, expanded: views.diffExpanded[index] ?? [])
+            return ChatPiece(measurable: Measurable { diff.plan(width: $0).size }) { frame in
+                ([.diff(diff.plan(width: frame.width), frame: frame, toolId: message.id, chunk: index)], [])
+            }
+        }
+        guard !pieces.isEmpty else { return nil }
+        let entries = pieces.map { ChatStackEntry(piece: $0) }
+        let stack = ChatPiece.stack(entries, gap: 8)
+        guard views.flush else { return section(nil, stack) }
+        typealias M = ToolCardLayout.Metrics
+        return ChatStackEntry(
+            piece: stack, marginTop: -M.contentPaddingTop, marginBottom: 12,
+            padding: LayoutInsets(top: 0, left: -M.contentPaddingH, bottom: 0, right: -M.contentPaddingH)
+        )
     }
 
     // MARK: Terminal views
@@ -472,6 +514,28 @@ extension ChatRowRenderer {
             }
             return (items, hits)
         }
+    }
+}
+
+/// One DiffChunk in a row, planned once per width it is measured at.
+/// Lives on the measuring actor with the rest of the row's pieces.
+final class ChatDiffPiece {
+    let source: DiffChunkSource
+    let showLineNumbers: Bool
+    let expanded: Set<Int>
+    private var plans: [(width: CGFloat, plan: DiffChunkPlan)] = []
+
+    init(source: DiffChunkSource, showLineNumbers: Bool, expanded: Set<Int>) {
+        self.source = source
+        self.showLineNumbers = showLineNumbers
+        self.expanded = expanded
+    }
+
+    func plan(width: CGFloat) -> DiffChunkPlan {
+        if let cached = plans.first(where: { $0.width == width }) { return cached.plan }
+        let plan = DiffChunkPlan(source: source, width: width, showLineNumbers: showLineNumbers, expanded: expanded)
+        plans.append((width, plan))
+        return plan
     }
 }
 

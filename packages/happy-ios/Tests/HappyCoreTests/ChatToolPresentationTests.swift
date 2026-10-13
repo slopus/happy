@@ -266,3 +266,122 @@ final class ChatToolCollapseTests: XCTestCase {
         XCTAssertEqual(present(tool("Edit", edit), compact: true, expanded: true).body, .view(.edit, error: nil))
     }
 }
+
+// Expected values follow [messageId].tsx, ToolHeader.tsx, ToolFullView.tsx,
+// BashViewFull.tsx, CommandView.tsx and toolResult.ts.
+final class ToolFullPresentationTests: XCTestCase {
+    private func full(_ tool: ToolCall) -> ToolFullPresentation {
+        ToolFullPresentation(tool, root: "/repo", words: words)
+    }
+
+    func testTheTitleIsTheKnownToolsUnlessTheProviderNamedTheCall() {
+        XCTAssertEqual(full(tool("Read", ["file_path": "/repo/src/a.swift"])).title, .literal("src/a.swift"))
+        var named = tool("Read", ["file_path": "/repo/src/a.swift"])
+        named.title = "Read the config"
+        XCTAssertEqual(full(named).title, .literal("Read the config"))
+        XCTAssertEqual(full(tool("Bash", ["command": "ls -la"], description: "List")).title, .literal("ls -la"), "a terminal tool is titled by what it ran")
+    }
+
+    func testATerminalToolShowsItsWholeRun() {
+        let done = full(tool("Bash", ["command": "swift test"], result: "Executed 3 tests\n"))
+        XCTAssertEqual(done.main, .terminal(ToolFullTerminal(command: "swift test", prompt: true, stdout: "Executed 3 tests\n", stderr: nil, error: nil, hideEmptyOutput: false), controlInput: nil))
+        XCTAssertNil(done.outcome, "the terminal shows the outcome itself")
+
+        let structured = full(tool("CodexBash", ["command": ["bash", "-lc", "make"]], result: ["output": "built", "stderr": "warning: x"]))
+        guard case .terminal(let run, _) = structured.main else { return XCTFail("terminal") }
+        XCTAssertEqual(run.stdout, "built")
+        XCTAssertEqual(run.stderr, "warning: x")
+
+        let failed = full(tool("Bash", ["command": "false"], state: .error, result: ["error": "exit 1"]))
+        guard case .terminal(let failure, _) = failed.main else { return XCTFail("terminal") }
+        XCTAssertEqual(failure.error, .text("exit 1"))
+        XCTAssertNil(failure.stdout)
+        guard case .terminal(let silent, _) = full(tool("Bash", ["command": "false"], state: .error)).main else { return XCTFail("terminal") }
+        XCTAssertEqual(silent.error, .unspecified)
+
+        guard case .terminal(let running, _) = full(tool("Bash", ["command": "sleep 5"], state: .running)).main else { return XCTFail("terminal") }
+        XCTAssertFalse(running.showsEmptyOutput, "no empty-output line while it runs")
+        guard case .terminal(let quiet, _) = full(tool("Bash", ["command": "true"])).main else { return XCTFail("terminal") }
+        XCTAssertTrue(quiet.showsEmptyOutput)
+        guard case .terminal(let blank, _) = full(tool("Bash", ["command": "echo"], result: "  \n")).main else { return XCTFail("terminal") }
+        XCTAssertNil(blank.visibleStdout, "whitespace isn't drawn")
+        XCTAssertFalse(blank.showsEmptyOutput, "but it isn't nothing either")
+    }
+
+    func testAShellControlShowsItsLabelAndWhatItTyped() {
+        let typed = full(tool("write_stdin", ["session_id": 7, "chars": "y\n"], result: "ok"))
+        XCTAssertEqual(typed.main, .terminal(ToolFullTerminal(command: "Sending input to shell (7)", prompt: false, stdout: "ok", stderr: nil, error: nil, hideEmptyOutput: false), controlInput: "y\n"))
+    }
+
+    func testTheFallbackSections() {
+        let generic = full(tool("deploy_preview", ["env": "staging"], description: "Deploy", result: ["url": "https://x"]))
+        guard case .generic(let sections) = generic.main else { return XCTFail("generic") }
+        XCTAssertEqual(sections.description, "Deploy")
+        XCTAssertEqual(sections.input, "{\n  \"env\": \"staging\"\n}")
+        XCTAssertEqual(sections.output, "{\n  \"url\": \"https://x\"\n}")
+        XCTAssertNil(sections.error)
+        XCTAssertFalse(sections.completedWithoutOutput)
+
+        guard case .generic(let quiet) = full(tool("deploy_preview")).main else { return XCTFail("generic") }
+        XCTAssertNil(quiet.description, "no description and no title")
+        XCTAssertEqual(quiet.input, "{}", "an empty object is still shown")
+        XCTAssertTrue(quiet.completedWithoutOutput)
+
+        guard case .generic(let failed) = full(tool("deploy_preview", state: .error, result: "denied")).main else { return XCTFail("generic") }
+        XCTAssertEqual(failed.error, "denied")
+        XCTAssertNil(failed.output)
+        XCTAssertFalse(failed.completedWithoutOutput)
+
+        var titled = tool("deploy_preview")
+        titled.title = "Deploy preview"
+        guard case .generic(let named) = full(titled).main else { return XCTFail("generic") }
+        XCTAssertEqual(named.description, "Deploy preview", "the display title stands in for a missing description")
+    }
+
+    func testATaskEndsWithHowItWent() {
+        XCTAssertEqual(full(tool("Task", ["description": "Explore"], result: "Found it")).outcome, .output("Found it"))
+        XCTAssertEqual(full(tool("Task", ["description": "Explore"], result: "")).outcome, .output(""), "an empty result is still an output")
+        XCTAssertEqual(full(tool("Agent", state: .error)).outcome, .error(.unspecified))
+        XCTAssertNil(full(tool("Task", state: .running)).outcome)
+        XCTAssertEqual(full(tool("Task")).main, .task)
+    }
+}
+
+// Expected values follow EditView, WriteView, MultiEditView and
+// GeminiEditView reading their inputs through knownTools' zod schemas.
+final class ToolDiffInputsTests: XCTestCase {
+    func testEditAndWrite() {
+        XCTAssertEqual(ToolDiffInputs.chunks(.edit, input: ["file_path": "/r/a.swift", "old_string": "a", "new_string": "b"]),
+                       [ToolDiffChunk(oldText: "a", newText: "b", fileName: "/r/a.swift")])
+        XCTAssertEqual(ToolDiffInputs.chunks(.edit, input: ["old_string": "a", "new_string": "b"]),
+                       [ToolDiffChunk(oldText: "", newText: "", fileName: nil)], "no file_path: the schema fails, so nothing to compare")
+        XCTAssertEqual(ToolDiffInputs.chunks(.edit, input: ["file_path": "/r/a", "old_string": "a", "new_string": "b", "replace_all": .null]),
+                       [ToolDiffChunk(oldText: "", newText: "", fileName: nil)], "replace_all must be a boolean when present")
+        XCTAssertEqual(ToolDiffInputs.chunks(.write, input: ["file_path": "/r/new.md", "content": "# Hi"]),
+                       [ToolDiffChunk(oldText: "", newText: "# Hi", fileName: "/r/new.md")])
+        XCTAssertEqual(ToolDiffInputs.chunks(.write, input: ["file_path": "/r/new.md"]),
+                       [ToolDiffChunk(oldText: "", newText: "<no contents>", fileName: nil)])
+    }
+
+    func testMultiEditHasOneDiffPerEdit() {
+        let input: JSONValue = ["file_path": "/r/a.swift", "edits": [
+            ["old_string": "a", "new_string": "b"],
+            ["old_string": "c", "new_string": "d", "replace_all": .bool(true)],
+        ]]
+        XCTAssertEqual(ToolDiffInputs.chunks(.multiEdit, input: input), [
+            ToolDiffChunk(oldText: "a", newText: "b", fileName: "/r/a.swift"),
+            ToolDiffChunk(oldText: "c", newText: "d", fileName: "/r/a.swift"),
+        ])
+        XCTAssertEqual(ToolDiffInputs.chunks(.multiEdit, input: ["file_path": "/r/a", "edits": [["old_string": "a"]]]), [], "one bad edit fails the schema")
+    }
+
+    func testGeminiLooksInThreePlaces() {
+        XCTAssertEqual(ToolDiffInputs.chunks(.geminiEdit, input: ["toolCall": ["content": [["oldText": "a", "newText": "b", "path": "/w/x.py"]]], "oldText": "ignored"]),
+                       [ToolDiffChunk(oldText: "a", newText: "b", fileName: "/w/x.py")])
+        XCTAssertEqual(ToolDiffInputs.chunks(.geminiEdit, input: ["input": [["newText": "b"]]]),
+                       [ToolDiffChunk(oldText: "", newText: "b", fileName: nil)])
+        XCTAssertEqual(ToolDiffInputs.chunks(.geminiEdit, input: ["old_string": "a", "newText": "b", "file_path": "/w/y.py"]),
+                       [ToolDiffChunk(oldText: "a", newText: "b", fileName: "/w/y.py")])
+        XCTAssertEqual(ToolDiffInputs.chunks(.bash, input: ["command": "ls"]), [])
+    }
+}

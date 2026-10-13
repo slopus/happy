@@ -335,38 +335,6 @@ public struct ChatStackLayout: Equatable, Sendable {
     }
 }
 
-/// A diff in a tool view: fixed-height monospaced lines with a pinned
-/// marker gutter, scrolling sideways rather than wrapping.
-public struct ToolDiffLayout: Equatable, Sendable {
-    public enum Metrics {
-        public static let lineHeight: CGFloat = 18
-        public static let gutterWidth: CGFloat = 20
-        public static let textPaddingH: CGFloat = 8
-        public static let paddingV: CGFloat = 4
-    }
-
-    public var size: CGSize
-    public var gutter: CGRect
-    /// The horizontally scrolling text area.
-    public var scroll: CGRect
-    public var contentSize: CGSize
-    public var lines: [CGRect]
-
-    /// `lineWidth` is the widest line's unwrapped width.
-    public init(width: CGFloat, lineCount: Int, lineWidth: CGFloat) {
-        typealias M = Metrics
-        let width = max(0, width)
-        let count = max(0, lineCount)
-        let height = CGFloat(count) * M.lineHeight + 2 * M.paddingV
-        gutter = CGRect(x: 0, y: 0, width: min(width, M.gutterWidth), height: height)
-        let scrollWidth = max(0, width - M.gutterWidth)
-        scroll = CGRect(x: M.gutterWidth, y: 0, width: scrollWidth, height: height)
-        contentSize = CGSize(width: max(scrollWidth, lineWidth + 2 * M.textPaddingH), height: height)
-        lines = (0..<count).map { CGRect(x: 0, y: M.paddingV + CGFloat($0) * M.lineHeight, width: max(scrollWidth, lineWidth + 2 * M.textPaddingH), height: M.lineHeight) }
-        size = CGSize(width: width, height: height)
-    }
-}
-
 /// PermissionFooter: a column of outlined buttons, 7 apart, stretched
 /// across the card on a phone.
 ///
