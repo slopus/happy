@@ -136,6 +136,7 @@ final class AccountSessionTests: XCTestCase {
         )
         await session.start()
         await eventually { (try? session.store.session(id: "s")) != nil }
+        await eventually { connector.latest != nil }
         XCTAssertEqual(connector.urls.first?.absoluteString, "wss://api.example.test/v1/updates/?EIO=4&transport=websocket")
 
         let socket = try XCTUnwrap(connector.latest)

@@ -15,8 +15,8 @@ public enum APIError: Error, Equatable, Sendable {
 public struct HappyAPI: Sendable {
     public let serverURL: URL
     public let clientID: String
-    private let transport: HTTPTransport
-    private let token: String?
+    let transport: HTTPTransport
+    let token: String?
 
     public init(serverURL: URL, clientID: String, transport: HTTPTransport, token: String? = nil) {
         self.serverURL = serverURL
@@ -222,7 +222,7 @@ public struct HappyAPI: Sendable {
         }
     }
 
-    private static func escape(_ segment: String) -> String {
+    static func escape(_ segment: String) -> String {
         var allowed = CharacterSet.urlPathAllowed
         allowed.remove(charactersIn: "/")
         return segment.addingPercentEncoding(withAllowedCharacters: allowed) ?? segment

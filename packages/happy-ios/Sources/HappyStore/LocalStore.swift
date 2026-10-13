@@ -45,6 +45,7 @@ public final class LocalStore: Sendable {
         // was in flight has since been answered.
         try writer.write { db in
             try db.execute(sql: "UPDATE session SET thinking = 0, thinkingAt = 0, archiving = 0 WHERE thinking = 1 OR archiving = 1")
+            try db.execute(sql: "UPDATE outbox SET state = 'queued' WHERE state = 'sending'")
         }
     }
 
@@ -500,7 +501,7 @@ public final class LocalStore: Sendable {
 
     public func pendingOutbox(limit: Int = 100) throws -> [OutboxRecord] {
         try writer.read { db in
-            try OutboxRecord.order(Column("createdAt")).limit(limit).fetchAll(db)
+            try OutboxRecord.fetchAll(db, sql: "SELECT * FROM outbox ORDER BY rowid LIMIT ?", arguments: [limit])
         }
     }
 
@@ -509,12 +510,91 @@ public final class LocalStore: Sendable {
             guard var record = try OutboxRecord.fetchOne(db, key: localId) else { return }
             record.attempts += 1
             record.lastError = error
+            record.state = .failed
             try record.update(db)
         }
     }
 
     public func removeFromOutbox(localId: String) throws {
         _ = try writer.write { db in try OutboxRecord.deleteOne(db, key: localId) }
+    }
+
+    /// One transaction accepts the files and text; observers never see a half send.
+    public func enqueueBatch(_ items: [OutboxRecord], attachments: [AttachmentRecord]) throws {
+        try writer.write { db in
+            for attachment in attachments { try attachment.insert(db) }
+            for item in items { try item.insert(db) }
+        }
+    }
+
+    public func outbox(localId: String) throws -> OutboxRecord? {
+        try writer.read { db in try OutboxRecord.fetchOne(db, key: localId) }
+    }
+
+    public func updateOutbox(_ item: OutboxRecord) throws {
+        try writer.write { db in
+            // An echo or discard during a network call must never resurrect it.
+            if try OutboxRecord.fetchOne(db, key: item.localId) != nil { try item.update(db) }
+        }
+    }
+
+    public func recoverSendingOutbox() throws {
+        try writer.write { db in
+            try db.execute(sql: "UPDATE outbox SET state = 'queued' WHERE state = 'sending'")
+        }
+    }
+
+    public func retryOutbox(localId: String) throws {
+        try writer.write { db in
+            guard var item = try OutboxRecord.fetchOne(db, key: localId) else { return }
+            item.state = .queued
+            item.attempts = 0
+            item.nextAttemptAt = 0
+            item.lastError = nil
+            try item.update(db)
+        }
+    }
+
+    /// Discard the selected item and its dependency chain, including its files.
+    public func discardOutbox(localId: String) throws -> [AttachmentRecord] {
+        try writer.write { db in
+            let items = try OutboxRecord.fetchAll(db)
+            var ids: Set<String> = [localId]
+            var changed = true
+            while changed {
+                changed = false
+                for item in items where !ids.contains(item.localId) {
+                    if let dependency = item.dependsOn, ids.contains(dependency) {
+                        ids.insert(item.localId); changed = true
+                    }
+                }
+            }
+            // A text owns the file chain immediately before it.
+            var predecessor = items.first { $0.localId == localId }?.dependsOn
+            while let id = predecessor, let item = items.first(where: { $0.localId == id && $0.kind == .file }) {
+                ids.insert(id); predecessor = item.dependsOn
+            }
+            let attachments = try AttachmentRecord.fetchAll(db).filter { ids.contains($0.outboxLocalId ?? "") }
+            for attachment in attachments { _ = try AttachmentRecord.deleteOne(db, key: attachment.localId) }
+            for id in ids { _ = try OutboxRecord.deleteOne(db, key: id) }
+            return attachments
+        }
+    }
+
+    public func attachment(outboxLocalId: String) throws -> AttachmentRecord? {
+        try writer.read { db in try AttachmentRecord.filter(Column("outboxLocalId") == outboxLocalId).fetchOne(db) }
+    }
+
+    public func saveAttachment(_ attachment: AttachmentRecord) throws {
+        try writer.write { db in try attachment.save(db) }
+    }
+
+    public func composerState(sessionId: String) throws -> ComposerStateRecord {
+        try writer.read { db in try ComposerStateRecord.fetchOne(db, key: sessionId) ?? ComposerStateRecord(sessionId: sessionId) }
+    }
+
+    public func saveComposerState(_ state: ComposerStateRecord) throws {
+        try writer.write { db in try state.save(db) }
     }
 
     // MARK: Drafts
@@ -551,7 +631,7 @@ public final class LocalStore: Sendable {
         try writer.write { db in
             for table in [
                 "message", "outbox", "session", "machine", "project", "accountSettings", "pendingSettings",
-                "accountProfile", "syncState", "attachment", "draft",
+                "accountProfile", "syncState", "attachment", "draft", "composerState",
             ] {
                 try db.execute(sql: "DELETE FROM \(table)")
             }

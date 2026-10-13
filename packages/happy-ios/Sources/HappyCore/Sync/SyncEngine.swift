@@ -52,6 +52,12 @@ public actor SyncEngine {
         /// Version conflicts tolerated per settings push before backing off.
         public var settingsPushAttempts = 3
         public var backoff: Backoff = .standard
+        public var sendAttempts = 5
+        public var sendRetryInitialMs: Int64 = 1_000
+        public var sendRetryMaximumMs: Int64 = 60_000
+        /// UIKit composition supplies a reference-counted background-task lease.
+        /// true acquires before an operation; false releases after it finishes.
+        public var deliveryActivity: @Sendable (Bool) async -> Void = { _ in }
 
         public init() {}
     }
@@ -67,6 +73,9 @@ public actor SyncEngine {
     private let sleep: InvalidateSync.Sleep
     private var jobs: [Job: InvalidateSync] = [:]
     private var stopped = false
+    private var backgrounded = false
+    private var filesDirectory: URL?
+    private var retryTask: Task<Void, Never>?
 
     public init(
         api: HappyAPI,
@@ -100,6 +109,8 @@ public actor SyncEngine {
 
     public func stop() async {
         stopped = true
+        retryTask?.cancel()
+        retryTask = nil
         for job in jobs.values {
             await job.stop()
         }
@@ -321,43 +332,245 @@ public actor SyncEngine {
 
     // MARK: Outbox
 
+    public func configureSending(filesDirectory: URL) { self.filesDirectory = filesDirectory }
+
+    public func setBackgrounded(_ value: Bool) async {
+        backgrounded = value
+        if value { retryTask?.cancel(); retryTask = nil }
+        else { await invalidate(.outbox) }
+    }
+
+    /// Checks the account/session at acceptance, then commits without suspension.
+    /// Unsupported permission modes throw before any file is copied or enqueued.
+    public func accept(_ message: OutgoingMessage, sessionId: String, filesDirectory: URL) async throws -> String {
+        guard !stopped, !Task.isCancelled else { throw SendingError.inactiveAccount }
+        guard let session = try store.session(id: sessionId) else { throw SendingError.unknownSession }
+        let pending = try store.pendingOutbox(limit: Int.max).contains { $0.sessionId == sessionId && $0.kind == .message && $0.state != .failed }
+        let composer = try store.composerState(sessionId: sessionId).values
+        let settings = try AccountSettings(store.settingsSnapshot()).syncPayload
+        let payload = try UserMessageEncoder.encode(message, session: session, composer: composer, settings: settings, hasPendingUserMessage: pending, sentFrom: Self.sentFrom)
+        let metadata = session.metadata ?? .object([:])
+        let rig = UserMessageEncoder.isRig(metadata)
+        let policy = metadata["capabilities"]?["attachments"]
+        let flavor = metadata["flavor"]?.stringValue
+        let supportsAttachments = rig ? policy?["enabled"]?.boolValue == true : (flavor == nil || flavor == "" || flavor == "claude" || flavor == "codex")
+        func attachmentAllowed(_ attachment: OutgoingAttachment) -> Bool {
+            guard supportsAttachments else { return false }
+            guard rig, let policy else { return true }
+            let maxBytes = policy["maxBytes"]?.numberValue ?? 0
+            let sizeAllowed = attachment.size <= 0 || Double(attachment.size) <= maxBytes
+            let mediaAllowed = (policy["mediaTypes"]?.arrayValue ?? []).contains { value in
+                guard let allowed = value.stringValue else { return false }
+                return allowed == attachment.mimeType || (allowed.hasSuffix("/*") && attachment.mimeType.hasPrefix(String(allowed.dropLast())))
+            }
+            return sizeAllowed && mediaAllowed
+        }
+        if !message.attachments.isEmpty, message.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !message.attachments.contains(where: attachmentAllowed) { throw SendingError.unsupportedAttachments }
+        self.filesDirectory = filesDirectory
+        let localId = UUID().uuidString
+        let timestamp = now()
+        var attachments: [AttachmentRecord] = []
+        var items: [OutboxRecord] = []
+        var copied: [URL] = []
+        do {
+            try FileManager.default.createDirectory(at: filesDirectory, withIntermediateDirectories: true)
+            var dependency: String?
+            for attachment in message.attachments {
+                let id = UUID().uuidString
+                let destination = filesDirectory.appendingPathComponent(id)
+                try FileManager.default.copyItem(at: attachment.fileURL, to: destination)
+                copied.append(destination)
+                let actualSize = try FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? NSNumber
+                attachments.append(AttachmentRecord(localId: id, sessionId: sessionId, outboxLocalId: id, path: id, name: attachment.name, mimeType: attachment.mimeType, size: actualSize?.intValue ?? attachment.size, width: attachment.width, height: attachment.height, thumbhash: attachment.thumbhash, createdAt: timestamp))
+                let file = Self.filePayload(id: id, time: timestamp, attachment: attachments.last!, ref: "")
+                let allowed = attachmentAllowed(attachment)
+                items.append(OutboxRecord(localId: id, kind: .file, sessionId: sessionId, payload: file, createdAt: timestamp, lastError: allowed ? nil : "Attachments are not supported by this session", state: allowed ? .queued : .failed, dependsOn: dependency))
+                dependency = id
+            }
+            items.append(OutboxRecord(localId: localId, kind: .message, sessionId: sessionId, payload: payload, createdAt: timestamp, dependsOn: dependency))
+            try store.enqueueBatch(items, attachments: attachments)
+        } catch {
+            for file in copied { try? FileManager.default.removeItem(at: file) }
+            throw error
+        }
+        await invalidate(.outbox)
+        return localId
+    }
+
+    private static var sentFrom: String {
+        #if os(macOS) || targetEnvironment(macCatalyst)
+        return "mac"
+        #elseif os(iOS)
+        if ProcessInfo.processInfo.isiOSAppOnMac { return "mac" }
+        return "ios"
+        #else
+        return "ios"
+        #endif
+    }
+
+    public func retrySend(localId: String) async throws {
+        guard !stopped else { throw SendingError.inactiveAccount }
+        try store.retryOutbox(localId: localId)
+        await invalidate(.outbox)
+    }
+
+    public func discardSend(localId: String, filesDirectory: URL) throws {
+        for attachment in try store.discardOutbox(localId: localId) {
+            try? FileManager.default.removeItem(at: filesDirectory.appendingPathComponent(attachment.path))
+        }
+    }
+
+    public func downloadAttachment(sessionId: String, ref: String) async throws -> Data {
+        guard !stopped, let session = try store.session(id: sessionId),
+              let key = keyRing.blobKey(wrappedKey: session.dataKeyCipher) else { throw SendingError.unknownSession }
+        let blob = try await api.downloadEncryptedAttachment(sessionId: sessionId, ref: ref)
+        guard !stopped, let plaintext = BlobCipher.open(blob, key: key) else { throw CryptoError.invalidInput("attachment cannot be decrypted") }
+        return plaintext
+    }
+
+    static func filePayload(id: String, time: Int64, attachment: AttachmentRecord, ref: String) -> JSONValue {
+        var event: [String: JSONValue] = ["t": .string("file"), "ref": .string(ref), "name": .string(attachment.name), "size": .number(Double(attachment.size))]
+        if let width = attachment.width, let height = attachment.height, width > 0, height > 0 {
+            var image: [String: JSONValue] = ["width": .number(Double(width)), "height": .number(Double(height))]
+            if let hash = attachment.thumbhash, !hash.isEmpty { image["thumbhash"] = .string(hash) }
+            event["image"] = .object(image)
+        }
+        return .object(["role": .string("session"), "content": .object(["type": .string("session"), "data": .object(["id": .string(id), "time": .number(Double(time)), "role": .string("user"), "ev": .object(event)])])])
+    }
+
     /// Queues a message for sending. It is stored first, so it survives a
     /// relaunch while offline, and goes out on the next flush.
     public func enqueueMessage(sessionId: String, payload: JSONValue, localId: String) async throws {
+        guard !stopped else { throw SendingError.inactiveAccount }
         try store.enqueue(OutboxRecord(localId: localId, kind: .message, sessionId: sessionId, payload: payload, createdAt: now()))
         await invalidate(.outbox)
     }
 
     func flushOutbox() async throws {
-        for item in try store.pendingOutbox() {
+        guard !stopped, !backgrounded else { return }
+        retryTask?.cancel()
+        retryTask = nil
+        var blocked = Set<String>()
+        for var item in try store.pendingOutbox(limit: Int.max) {
+            guard !stopped, !backgrounded, !Task.isCancelled else { break }
+            // A failed upload is skipped like happy-app; a failed POST retains order.
+            if item.state == .failed {
+                let uploaded = try store.attachment(outboxLocalId: item.localId)?.ref != nil
+                if item.kind == .message || uploaded { blocked.insert(item.sessionId) }
+                continue
+            }
+            guard !blocked.contains(item.sessionId) else { continue }
+            if item.nextAttemptAt > now() { blocked.insert(item.sessionId); continue }
+            if let dependency = item.dependsOn, let earlier = try store.outbox(localId: dependency) {
+                let skipped = try store.attachment(outboxLocalId: earlier.localId)?.ref == nil
+                if !(earlier.kind == .file && earlier.state == .failed && skipped) {
+                    blocked.insert(item.sessionId); continue
+                }
+            }
             guard let session = try store.session(id: item.sessionId),
+                  session.decryptable,
                   let cipher = keyRing.cipher(wrappedKey: session.dataKeyCipher)
             else {
                 try store.markOutboxFailed(localId: item.localId, error: "session cannot be encrypted to")
+                blocked.insert(item.sessionId)
                 continue
             }
-            let content = try cipher.encrypt(item.payload, random: random)
-            let response = try await api.sendMessages(
-                sessionId: item.sessionId,
-                SendMessagesRequest(messages: [.init(content: content, localId: item.localId)])
-            )
-            for sent in response.messages where sent.localId == item.localId {
-                let record = MessageRecord(
-                    id: sent.id,
+            item.state = .sending
+            item.attempts += 1
+            try store.updateOutbox(item)
+            await options.deliveryActivity(true)
+            do {
+                try checkDelivery(item, session: session)
+                if item.kind == .file {
+                    guard var attachment = try store.attachment(outboxLocalId: item.localId),
+                          let directory = filesDirectory,
+                          let blobKey = keyRing.blobKey(wrappedKey: session.dataKeyCipher) else { throw SendingError.missingAttachment }
+                    if attachment.ref == nil {
+                        let bytes = try Data(contentsOf: directory.appendingPathComponent(attachment.path))
+                        let blob = try BlobCipher.seal(bytes, key: blobKey, random: random)
+                        let upload = try await api.requestAttachmentUpload(sessionId: item.sessionId, filename: attachment.name, size: blob.count)
+                        try checkDelivery(item, session: session)
+                        try await api.uploadEncryptedBlob(blob, upload: upload)
+                        attachment.ref = upload.ref
+                        if try store.outbox(localId: item.localId) != nil { try store.saveAttachment(attachment) }
+                    }
+                    item.payload = Self.filePayload(id: item.localId, time: item.createdAt, attachment: attachment, ref: attachment.ref!)
+                    try store.updateOutbox(item)
+                }
+                try checkDelivery(item, session: session)
+                let content = try cipher.encrypt(bytes: UserMessageEncoder.wireBytes(item.payload), random: random)
+                let response = try await api.sendMessages(
                     sessionId: item.sessionId,
-                    seq: sent.seq,
-                    localId: sent.localId,
-                    createdAt: sent.createdAt,
-                    updatedAt: sent.updatedAt,
-                    contentCipher: content,
-                    content: item.payload
+                    SendMessagesRequest(messages: [.init(content: content, localId: item.localId)])
                 )
-                if try store.applyLiveMessage(record) == .gap {
-                    await invalidate(.messages(sessionId: item.sessionId))
+                guard response.messages.contains(where: { $0.localId == item.localId }) else { throw SendingError.missingAcknowledgement }
+                for sent in response.messages where sent.localId == item.localId {
+                    let record = MessageRecord(
+                        id: sent.id,
+                        sessionId: item.sessionId,
+                        seq: sent.seq,
+                        localId: sent.localId,
+                        createdAt: sent.createdAt,
+                        updatedAt: sent.updatedAt,
+                        contentCipher: content,
+                        content: item.payload
+                    )
+                    if try store.applyLiveMessage(record) == .gap {
+                        await invalidate(.messages(sessionId: item.sessionId))
+                    }
+                }
+                try store.removeFromOutbox(localId: item.localId)
+            } catch {
+                item.lastError = String(describing: error)
+                if error is CancellationError {
+                    item.state = .queued
+                    item.nextAttemptAt = 0
+                } else {
+                    item.state = item.attempts >= options.sendAttempts || Self.permanentSendError(error) ? .failed : .queued
+                    let delay = min(options.sendRetryMaximumMs, options.sendRetryInitialMs * Int64(pow(2, Double(min(item.attempts - 1, 16)))))
+                    item.nextAttemptAt = now() + delay
+                }
+                do {
+                    try store.updateOutbox(item)
+                    let noRef = try store.attachment(outboxLocalId: item.localId)?.ref == nil
+                    let skippedUpload = item.kind == .file && item.state == .failed && noRef
+                    if !skippedUpload { blocked.insert(item.sessionId) }
+                } catch {
+                    await options.deliveryActivity(false)
+                    throw error
                 }
             }
-            try store.removeFromOutbox(localId: item.localId)
+            await options.deliveryActivity(false)
         }
+        if !stopped, !backgrounded {
+            let pending = try store.pendingOutbox(limit: Int.max)
+            // Only the head eligible item in each session drives the retry timer.
+            var seen = Set<String>()
+            let times = pending.compactMap { item -> Int64? in
+                if item.state == .failed && item.kind == .file && (try? store.attachment(outboxLocalId: item.localId)?.ref) == nil { return nil }
+                guard seen.insert(item.sessionId).inserted, item.state == .queued else { return nil }
+                return max(now() + 1, item.nextAttemptAt)
+            }
+            if let time = times.min() {
+                let delay = Duration.milliseconds(max(1, time - now()))
+                let sleep = self.sleep
+                retryTask = Task { [weak self] in
+                    do { try await sleep(delay); try Task.checkCancellation(); await self?.invalidate(.outbox) } catch {}
+                }
+            }
+        }
+    }
+
+    private static func permanentSendError(_ error: Error) -> Bool {
+        if case APIError.http(let status, _) = error { return (400..<500).contains(status) && ![408, 409, 429].contains(status) }
+        return (error as? SendingError) == .missingAttachment || (error as? SendingError) == .unknownSession
+    }
+
+    private func checkDelivery(_ item: OutboxRecord, session: SessionRecord) throws {
+        guard !stopped, !Task.isCancelled, try store.outbox(localId: item.localId) != nil else { throw CancellationError() }
+        guard let current = try store.session(id: item.sessionId), current.decryptable,
+              current.dataKeyCipher == session.dataKeyCipher else { throw SendingError.unknownSession }
     }
 
     // MARK: Live updates

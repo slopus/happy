@@ -246,6 +246,10 @@ final class SyncEngineTests: XCTestCase {
         XCTAssertEqual(try store.pendingOutbox().count, 1, "stored before any network call")
         await engine.waitForIdle()
 
+        XCTAssertEqual(try store.outbox(localId: "L1")?.nextAttemptAt, clock.now + 1_000)
+        clock.now += 1_000
+        await engine.run(.outbox)
+
         let attempts = http.requests("POST /v3/sessions/s/messages")
         XCTAssertEqual(attempts.count, 2, "retried after the 503")
         let sent = try attempts[1].jsonBody(SendMessagesRequest.self).messages[0]

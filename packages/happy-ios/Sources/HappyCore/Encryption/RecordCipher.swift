@@ -20,6 +20,10 @@ public struct RecordCipher: Sendable {
     public func encrypt(_ value: JSONValue, random: RandomSource = SystemRandom()) throws -> String {
         Base64.encode(try AESGCMBundle.seal(value.encoded(), key: key, random: random))
     }
+
+    public func encrypt(bytes: Data, random: RandomSource = SystemRandom()) throws -> String {
+        Base64.encode(try AESGCMBundle.seal(bytes, key: key, random: random))
+    }
 }
 
 /// Account-level JSON (settings), sealed with secretbox under the account
@@ -52,6 +56,11 @@ public final class KeyRing: @unchecked Sendable {
 
     public init(keys: AccountKeys) {
         self.keys = keys
+    }
+
+    public func blobKey(wrappedKey: String?) -> Data? {
+        guard let wrappedKey, let dataKey = keys.unwrapDataKey(base64: wrappedKey) else { return nil }
+        return BlobCipher.sessionKey(dataKey: dataKey)
     }
 
     /// Nil when there is no key (a legacy record) or it does not open.

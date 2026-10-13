@@ -89,6 +89,17 @@ nothing here is wired to the release skill or to EAS.
 - **Writes are optimistic.** A message is stored in the outbox and shows in
   the chat at once; delivery retries with backoff, and a failed item stays
   visible until retried or discarded. Settings use the pending delta above.
+  - Sending pauses new network operations in the background and retains the
+    outbox across suspension/relaunch. Foreground and reconnect resume it.
+    In-flight operations finish under a UIKit background-task lease supplied
+    through `SyncEngine.Options.deliveryActivity`; HappyCore imports no UIKit.
+    Unlike happy-app's 30-second watchdog, suspension never fails or deletes
+    accepted writes. A cancelled operation returns to queued with its localId.
+  - A failed text/POST blocks later sends in that session; those remain queued.
+    A failed attachment upload stays visible but is skipped so its text sends.
+    Retry is idempotent by localId, including after a lost acknowledgement.
+  - Unsupported permission modes are refused before acceptance: `send` throws
+    `UnsupportedPermissionModeError`, and nothing is enqueued or copied.
 - **Tool outputs are hidden by default** in the chat.
 - **Onboarding follows happy-app step by step.** Signed in, home decides
   from the stored machines (`HomeState`, after happy-app's
