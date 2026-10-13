@@ -1,0 +1,207 @@
+#if canImport(UIKit)
+import HappyCore
+import HappyStore
+import HappyWire
+import UIKit
+
+/// The "Session" alert a long press on a home row opens, and what each item
+/// does (hooks/useSessionQuickActions.ts). happy-app's popover is web-only;
+/// on a phone it is this alert.
+@MainActor
+final class HomeSessionActions {
+    private let context: AppContext
+    private let session: AccountSession
+    private weak var host: UIViewController?
+    /// useHappyAction: one run at a time per action.
+    private var running: Set<String> = []
+
+    init(context: AppContext, session: AccountSession, host: UIViewController) {
+        self.context = context
+        self.session = session
+        self.host = host
+    }
+
+    func present(sessionId: String) {
+        guard let host, let record = try? session.store.session(id: sessionId) else { return }
+        let machine = record.metadata?["machineId"]?.stringValue.flatMap { try? session.store.machine(id: $0) }
+        let settings = (try? session.store.settingsSnapshot()).map(AccountSettings.init) ?? AccountSettings()
+        let actions = SessionQuickActions(
+            session: record,
+            machine: machine ?? nil,
+            settings: settings,
+            devModeEnabled: context.account.localSettings.devModeEnabled
+        )
+        let alert = UIAlertController(title: Strings.Session.actionsTitle, message: nil, preferredStyle: .alert)
+        for item in actions.items {
+            let style: UIAlertAction.Style = item == .archive ? .destructive : .default
+            alert.addAction(UIAlertAction(title: Self.title(item), style: style) { [weak self] _ in
+                self?.run(item, record: record, actions: actions, settings: settings)
+            })
+        }
+        alert.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
+        host.present(alert, animated: true)
+    }
+
+    static func title(_ item: SessionQuickActions.Item) -> String {
+        switch item {
+        case .details: Strings.Home.details
+        case .resume: Strings.Home.resumeSession
+        case .fork: Strings.Home.forkAction
+        case .duplicate: Strings.Home.duplicateAction
+        case .copyMetadata: Strings.Home.copyMetadata
+        case .copyMetadataAndLogs: Strings.Home.copyMetadataAndLogs
+        case .archive: Strings.Session.archiveAction
+        }
+    }
+
+    private func run(_ item: SessionQuickActions.Item, record: SessionRecord, actions: SessionQuickActions, settings: AccountSettings) {
+        switch item {
+        case .details:
+            host?.push(.sessionInfo(id: record.id), context: context)
+        case .resume:
+            perform("resume:\(record.id)") { [weak self] in
+                try await self?.resume(record, availability: actions.resume, settings: settings)
+            }
+        case .fork:
+            perform("fork:\(record.id)") { [weak self] in
+                try await self?.fork(actions)
+            }
+        case .duplicate:
+            guard actions.canFork else { return }
+            presentDuplicateSheet(sessionId: record.id)
+        case .copyMetadata:
+            copy(SessionQuickActions.metadataText(record))
+        case .copyMetadataAndLogs:
+            copy(SessionQuickActions.metadataAndLogsText(record))
+        case .archive:
+            archive(record.id)
+        }
+    }
+
+    /// useHappyAction: a `HomeActionError` shows its message; anything else
+    /// is "Unknown error".
+    private func perform(_ key: String, _ action: @escaping @MainActor () async throws -> Void) {
+        guard !running.contains(key) else { return }
+        running.insert(key)
+        Task { @MainActor [weak self] in
+            do {
+                try await action()
+            } catch let error as HomeActionError {
+                self?.alert(Strings.Home.actionError, error.message)
+            } catch {
+                self?.alert(Strings.Home.actionError, Strings.Home.actionUnknownError)
+            }
+            self?.running.remove(key)
+        }
+    }
+
+    private func resume(_ record: SessionRecord, availability: SessionQuickActions.Resume, settings: AccountSettings) async throws {
+        guard availability.canResume, let machineId = record.metadata?["machineId"]?.stringValue else {
+            throw HomeActionError(Self.message(availability.blocker ?? .missingMachine))
+        }
+        let composer = (try? session.store.composerState(sessionId: record.id).values) ?? .object([:])
+        let modes: (model: String?, permissionMode: String?)
+        do {
+            modes = try SessionQuickActions.resumeModes(session: record, composer: composer, settings: settings)
+        } catch let error as UnsupportedPermissionModeError {
+            // Refused loudly rather than swapped for a default.
+            throw HomeActionError(error.errorDescription ?? Strings.Home.actionUnknownError)
+        }
+        let result = await session.homeOps.machineResumeSession(
+            machineId: machineId,
+            sessionId: record.id,
+            model: modes.model,
+            permissionMode: modes.permissionMode
+        )
+        switch result {
+        case .success(let sessionId):
+            // The session reconnects under the same id; refresh to see it.
+            await session.sync.invalidate(.sessions)
+            if let permission = composer["permissionMode"] {
+                try? await session.actions.sessionSetAgentModes(
+                    sessionId: sessionId,
+                    patch: SessionAgentModesPatch(permissionMode: permission),
+                    transport: session.realtime
+                )
+            }
+            open(sessionId)
+        case .requestToApproveDirectoryCreation:
+            throw HomeActionError(Strings.Home.resumeSessionUnexpectedDirectoryPrompt)
+        case .error(let message):
+            throw HomeActionError(message)
+        case .pending:
+            throw HomeActionError(Strings.Home.actionUnknownError)
+        }
+    }
+
+    private func fork(_ actions: SessionQuickActions) async throws {
+        guard actions.canFork, let source = actions.forkSource else {
+            throw HomeActionError(Strings.Home.forkErrorMissingMetadata)
+        }
+        switch await session.homeOps.forkAndSpawn(source: source, options: ForkOptions()) {
+        case .success(let sessionId):
+            open(sessionId)
+        case .error(let message):
+            throw HomeActionError(message)
+        default:
+            throw HomeActionError(Strings.Home.forkErrorGeneric)
+        }
+    }
+
+    /// SECONDARY SEAM: the duplicate sheet belongs to the session info
+    /// screen (`Screens/SessionInfoDuplicateSheet.swift`). Until it lands
+    /// this does nothing; then it becomes
+    /// `host?.presentDuplicateSheet(sessionId: sessionId, context: context)`.
+    private func presentDuplicateSheet(sessionId: String) {}
+
+    private func copy(_ text: String?) {
+        guard let text else {
+            alert(Strings.Common.error, Strings.Home.failedToCopyMetadata)
+            return
+        }
+        UIPasteboard.general.string = text
+        alert(Strings.Common.success, Strings.Home.metadataCopied)
+    }
+
+    func archive(_ sessionId: String) {
+        let actions = session.actions
+        Task { @MainActor [weak self] in
+            do {
+                try await actions.archive(sessionId: sessionId)
+            } catch {
+                let message = (error as? SessionActionError) == .botNeedsMachine
+                    ? Strings.SessionInfo.botNeedsMachine
+                    : Strings.SessionInfo.failedToArchiveSession
+                self?.alert(Strings.Common.error, message)
+            }
+        }
+    }
+
+    private func open(_ sessionId: String) {
+        host?.push(.session(id: sessionId), context: context)
+    }
+
+    private func alert(_ title: String, _ message: String) {
+        guard let host else { return }
+        Alerts.show(title, message, on: host.presentedViewController ?? host)
+    }
+
+    static func message(_ blocker: SessionQuickActions.Resume.Blocker) -> String {
+        switch blocker {
+        case .missingMachine: Strings.Home.resumeSessionMissingMachine
+        case .missingBackendId: Strings.Home.resumeSessionMissingBackendId
+        case .sameMachineOnly: Strings.Home.resumeSessionSameMachineOnly
+        case .machineOffline: Strings.Home.resumeSessionMachineOffline
+        }
+    }
+}
+
+/// A HappyError: its message is what the person reads.
+struct HomeActionError: Error {
+    let message: String
+
+    init(_ message: String) {
+        self.message = message
+    }
+}
+#endif
