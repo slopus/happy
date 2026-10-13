@@ -21,6 +21,7 @@ extension ChatTextStyle {
         case .system(let weight): .systemFont(ofSize: size, weight: weight.uiWeight)
         case .systemItalic: .italicSystemFont(ofSize: size)
         case .menlo: UIFont(name: "Menlo-Regular", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .regular)
+        case .menloBold: UIFont(name: "Menlo-Bold", size: size) ?? .monospacedSystemFont(ofSize: size, weight: .semibold)
         }
     }
 

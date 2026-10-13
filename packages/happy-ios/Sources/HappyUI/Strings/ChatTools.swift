@@ -12,6 +12,10 @@ extension Strings {
         public static let output = "Output"
         /// tools.taskView.moreTools
         public static func moreTools(_ count: Int) -> String { "+\(count) more \(count == 1 ? "tool" : "tools")" }
+        /// tools.desc.readingFile
+        public static func readingFile(_ file: String) -> String { "Reading \(file)" }
+        /// tools.desc.writingFile
+        public static func writingFile(_ file: String) -> String { "Writing \(file)" }
         /// tools.taskView.initializing
         public static let initializing = "Initializing agent..."
 

@@ -69,6 +69,20 @@ final class ChatScrollAnchorTests: XCTestCase {
         XCTAssertEqual(anchor.visibleMinY(in: grown, ids: ids, current: 450, maxVisibleMinY: 1000), 510)
     }
 
+    func testAnOpenedRowGrowsTowardsTheNewestUnderTheReader() {
+        // Row 4 spans 400..<500; its top on screen is 500, 50 above the
+        // visible min y of 450 … and stays there when it grows by 120.
+        let anchor = ChatScrollAnchor.pinning("r4", layout: layout, ids: ids, visibleMinY: 450)
+        XCTAssertEqual(anchor?.kind, .rowEnd(id: "r4", distance: 50))
+        let opened = layout.replacingHeight(at: 4, with: 220)
+        XCTAssertEqual(anchor?.visibleMinY(in: opened, ids: ids, current: 450, maxVisibleMinY: 1200), 570)
+        // A reader at the newest edge stays there; the row grows upwards.
+        let newest = ChatScrollAnchor.pinning("r0", layout: layout, ids: ids, visibleMinY: 0)
+        XCTAssertEqual(newest?.kind, .newest)
+        XCTAssertEqual(newest?.visibleMinY(in: layout.replacingHeight(at: 0, with: 220), ids: ids, current: 0, maxVisibleMinY: 1200), 0)
+        XCTAssertNil(ChatScrollAnchor.pinning("gone", layout: layout, ids: ids, visibleMinY: 0))
+    }
+
     func testAMissingAnchorRowKeepsTheOffsetAndNothingOverscrolls() {
         let anchor = ChatScrollAnchor(kind: .row(id: "gone", distance: 0))
         XCTAssertEqual(anchor.visibleMinY(in: layout, ids: ids, current: 450, maxVisibleMinY: 300), 300)
@@ -329,6 +343,15 @@ final class ToolRowLayoutTests: XCTestCase {
         let layout = CompactToolRowLayout(width: 393, label: text("x", lineHeight: 20), elapsed: nil, statusIcon: nil, footer: block(height: 46))
         assertFrame(layout.footer, rect(8, 30, 377, 46))
         XCTAssertEqual(layout.size.height, 78)
+    }
+
+    func testAnOpenedCompactRowShowsItsBodyInABox() {
+        let layout = CompactToolRowLayout(width: 393, label: text("x", lineHeight: 20), elapsed: nil, statusIcon: nil, body: block(height: 60), footer: block(height: 46))
+        assertFrame(layout.header, rect(8, 2, 377, 28))
+        assertFrame(layout.bodyBox, rect(8, 32, 377, 68))
+        assertFrame(layout.body, rect(20, 40, 353, 60))
+        assertFrame(layout.footer, rect(8, 100, 377, 46))
+        XCTAssertEqual(layout.size.height, 148)
     }
 
     func testAStackOfBoxes() {

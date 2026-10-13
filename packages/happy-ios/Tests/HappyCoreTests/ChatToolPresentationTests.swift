@@ -14,8 +14,13 @@ private func tool(
     ToolCall(name: name, state: state, input: input, createdAt: 0, description: description, result: result, permission: permission)
 }
 
-private func present(_ tool: ToolCall, children: [ChatMessage] = [], root: String? = "/repo", flavor: String? = nil, compact: Bool = false) -> ToolPresentation {
-    ChatToolPresentation.present(tool, children: children, context: ToolContext(root: root, flavor: flavor, compactMode: compact), words: words)!
+private func present(
+    _ tool: ToolCall, children: [ChatMessage] = [], root: String? = "/repo", flavor: String? = nil, compact: Bool = false, expanded: Bool = false
+) -> ToolPresentation {
+    ChatToolPresentation.present(
+        tool, children: children, context: ToolContext(root: root, flavor: flavor, compactMode: compact),
+        state: ToolDisplayState(expanded: expanded), words: words
+    )!
 }
 
 final class ChatToolPresentationTests: XCTestCase {
@@ -82,7 +87,7 @@ final class ChatToolPresentationTests: XCTestCase {
         // Gemini's unlisted tools are rows; patch tools have no card header.
         XCTAssertEqual(present(tool("Edit", ["file_path": "/a"]), flavor: "gemini").form, .card)
         XCTAssertEqual(present(tool("glob_files"), flavor: "gemini").form, .compact)
-        XCTAssertFalse(present(tool("CodexPatch", ["changes": [:]])).showsHeader)
+        XCTAssertTrue(present(tool("CodexPatch", ["changes": [:]])).showsHeader)
         XCTAssertEqual(present(tool("file")).form, .inline)
         XCTAssertNil(ChatToolPresentation.present(tool("ToolSearch"), context: ToolContext(), words: words))
     }
@@ -94,15 +99,15 @@ final class ChatToolPresentationTests: XCTestCase {
         let failed = present(tool("Write", ["file_path": "/a", "content": "x"], state: .error, result: "disk full"))
         XCTAssertEqual(failed.form, .card)
         XCTAssertEqual(failed.statusGlyph, .failed)
-        XCTAssertEqual(failed.body, .view(.write, error: "disk full"))
+        XCTAssertEqual(failed.expandedBody, .view(.write, error: "disk full"))
         let denied = present(tool("Write", ["file_path": "/a"], state: .error, result: "no", permission: ToolPermission(id: "p", status: .denied)))
         XCTAssertEqual(denied.statusGlyph, .stopped)
-        XCTAssertEqual(denied.body, .view(.write, error: nil))
+        XCTAssertEqual(denied.expandedBody, .view(.write, error: nil))
         // Patch tools hide the stock error; a tool without a view shows it alone.
-        XCTAssertEqual(present(tool("CodexPatch", ["changes": [:]], state: .error, result: "bad")).body, .view(.codexPatch, error: nil))
-        XCTAssertEqual(present(tool("frobnicate", state: .error, result: "boom", permission: ToolPermission(id: "p", status: .pending))).body, .error("boom"))
+        XCTAssertEqual(present(tool("CodexPatch", ["changes": [:]], state: .error, result: "bad")).expandedBody, .view(.codexPatch, error: nil))
+        XCTAssertEqual(present(tool("frobnicate", state: .error, result: "boom", permission: ToolPermission(id: "p", status: .pending)), expanded: true).body, .error("boom"))
         let done = present(tool("frobnicate", ["a": ["b", .bool(true), .null]], result: ["ok": 1], permission: ToolPermission(id: "p", status: .pending)))
-        XCTAssertEqual(done.body, .raw(input: "{\n  \"a\": [\n    \"b\",\n    true,\n    null\n  ]\n}", output: "{\n  \"ok\": 1\n}"))
+        XCTAssertEqual(done.expandedBody, .raw(input: "{\n  \"a\": [\n    \"b\",\n    true,\n    null\n  ]\n}", output: "{\n  \"ok\": 1\n}"))
         XCTAssertEqual(ChatToolPresentation.toolUseError("x <tool_use_error>\n line one\nline two </tool_use_error>"), "line one\nline two")
         XCTAssertEqual(ChatToolPresentation.pretty(["s": "a\"b\n\u{1}"]), "{\n  \"s\": \"a\\\"b\\n\\u0001\"\n}")
         XCTAssertEqual(ChatToolPresentation.pretty(["e": [:], "f": [], "n": .number(1.5)]), "{\n  \"e\": {},\n  \"f\": [],\n  \"n\": 1.5\n}")
@@ -159,5 +164,105 @@ final class ChatPermissionButtonsTests: XCTestCase {
         XCTAssertEqual(ChatPermissionButtons.reply(.allow, toolName: "ExitPlanMode", toolInput: [:]), PermissionReply(allow: true, permissionMode: "default"))
         XCTAssertEqual(ChatPermissionButtons.reply(.allowAllEdits, toolName: "Edit", toolInput: [:]), PermissionReply(allow: true, mode: "acceptEdits", permissionMode: "acceptEdits"))
         XCTAssertEqual(ChatPermissionButtons.reply(.codexAbort, toolName: "CodexBash", toolInput: [:]), PermissionReply(allow: false, decision: .abort))
+    }
+}
+
+/// Tool output is collapsed by default (a deliberate difference from
+/// happy-app): only the header shows until the reader taps it, except for
+/// what a pending decision needs.
+final class ChatToolCollapseTests: XCTestCase {
+    private let edit: JSONValue = ["file_path": "/repo/a.swift", "old_string": "let a = 1", "new_string": "let a = 2"]
+
+    func testACompletedBashShowsOnlyItsHeader() {
+        let bash = present(tool("Bash", ["command": "swift build"], result: ["stdout": "Build complete!", "stderr": ""]))
+        XCTAssertEqual(bash.form, .compact)
+        XCTAssertEqual(bash.body, .none)
+        XCTAssertEqual(bash.expandedBody, .view(.bash, error: nil))
+        XCTAssertFalse(bash.awaitingDecision)
+    }
+
+    func testACompletedEditKeepsItsDiffClosed() {
+        let completed = present(tool("Edit", edit, result: "The file has been updated."))
+        XCTAssertEqual(completed.form, .card)
+        XCTAssertTrue(completed.showsHeader)
+        XCTAssertEqual(completed.title, .literal("a.swift"))
+        XCTAssertEqual(completed.body, .none)
+        XCTAssertEqual(completed.expandedBody, .view(.edit, error: nil))
+    }
+
+    func testAFailedEditShowsNoErrorText() {
+        let failed = present(tool("Edit", edit, state: .error, result: "String not found in file"))
+        XCTAssertEqual(failed.statusGlyph, .failed)
+        XCTAssertEqual(failed.body, .none)
+        XCTAssertEqual(failed.expandedBody, .view(.edit, error: "String not found in file"))
+    }
+
+    func testACompletedUnknownToolShowsNoOutput() {
+        let unknown = present(tool("frobnicate", ["level": 3], result: "frobnicated"))
+        XCTAssertEqual(unknown.form, .compact)
+        XCTAssertEqual(unknown.body, .none)
+        XCTAssertEqual(unknown.expandedBody, .raw(input: "{\n  \"level\": 3\n}", output: "frobnicated"))
+    }
+
+    func testTodosAndTasksStayClosed() {
+        let todos = present(tool("TodoWrite", ["todos": [["content": "Ship", "status": "in_progress"]]]))
+        XCTAssertEqual(todos.form, .card)
+        XCTAssertEqual(todos.body, .none)
+        XCTAssertEqual(todos.expandedBody, .view(.todo, error: nil))
+        let child = ChatMessage.toolCall(ToolCallMessage(id: "c", createdAt: 0, tool: tool("Read", ["file_path": "/repo/x"])))
+        let task = present(tool("Task", ["description": "Explore"], result: "Found it."), children: [child])
+        XCTAssertEqual(task.form, .card)
+        XCTAssertEqual(task.body, .none)
+        XCTAssertEqual(task.expandedBody, .view(.task, error: nil))
+        // A task whose agent ran nothing has nothing to open.
+        XCTAssertEqual(present(tool("Task", ["description": "Explore"])).expandedBody, .none)
+        XCTAssertEqual(present(tool("TodoWrite", ["todos": []])).expandedBody, .none)
+    }
+
+    func testAPendingPermissionShowsWhatToDecideThenClosesOnceAnswered() {
+        let pendingEdit = present(tool("Edit", edit, state: .running, permission: ToolPermission(id: "p", status: .pending)))
+        XCTAssertTrue(pendingEdit.awaitingDecision)
+        XCTAssertEqual(pendingEdit.body, .view(.edit, error: nil))
+        XCTAssertTrue(pendingEdit.showsPermissionFooter)
+        let pendingBash = present(tool("Bash", ["command": "rm -rf .build"], state: .running, permission: ToolPermission(id: "p", status: .pending)))
+        XCTAssertEqual(pendingBash.form, .compact)
+        XCTAssertEqual(pendingBash.body, .view(.bash, error: nil))
+        // An unknown tool shows its input, never an output.
+        let pendingUnknown = present(tool("frobnicate", ["level": 3], state: .running, result: "partial", permission: ToolPermission(id: "p", status: .pending)))
+        XCTAssertEqual(pendingUnknown.form, .card)
+        XCTAssertEqual(pendingUnknown.body, .raw(input: "{\n  \"level\": 3\n}", output: nil))
+        let plan = present(tool("ExitPlanMode", ["plan": "1. Do it"], state: .running, permission: ToolPermission(id: "p", status: .pending)))
+        XCTAssertEqual(plan.body, .view(.exitPlan, error: nil))
+        let question = present(tool("AskUserQuestion", ["questions": [["question": "Which?"]]], state: .running))
+        XCTAssertTrue(question.awaitingDecision)
+        XCTAssertEqual(question.body, .view(.askUserQuestion, error: nil))
+
+        // Answered: back to the header and the settled buttons.
+        let approved = present(tool("Edit", edit, result: "The file has been updated.", permission: ToolPermission(id: "p", status: .approved)))
+        XCTAssertFalse(approved.awaitingDecision)
+        XCTAssertEqual(approved.body, .none)
+        XCTAssertTrue(approved.showsPermissionFooter)
+        let denied = present(tool("Bash", ["command": "rm -rf .build"], state: .error, result: "denied", permission: ToolPermission(id: "p", status: .denied)))
+        XCTAssertEqual(denied.body, .none)
+        let answered = present(tool("AskUserQuestion", ["questions": [["question": "Which?"]]]))
+        XCTAssertEqual(answered.body, .none)
+        // Unless the reader had opened it.
+        let kept = present(tool("Edit", edit, result: "The file has been updated.", permission: ToolPermission(id: "p", status: .approved)), expanded: true)
+        XCTAssertEqual(kept.body, .view(.edit, error: nil))
+    }
+
+    func testAnExpandedToolShowsEverything() {
+        XCTAssertEqual(present(tool("Bash", ["command": "ls"], state: .error, result: "boom"), expanded: true).body, .view(.bash, error: nil))
+        XCTAssertEqual(present(tool("Edit", edit, state: .error, result: "nope"), expanded: true).body, .view(.edit, error: "nope"))
+        XCTAssertEqual(present(tool("frobnicate", ["level": 3], result: ["ok": 1]), expanded: true).body,
+                       .raw(input: "{\n  \"level\": 3\n}", output: "{\n  \"ok\": 1\n}"))
+        XCTAssertEqual(present(tool("frobnicate", state: .error, result: "boom"), expanded: true).body, .error("boom"))
+        // A refused call opens to what it tried, not to the refusal.
+        let refused = present(tool("Write", ["file_path": "/repo/a", "content": "x"], state: .error, result: "<tool_use_error>Read it first.</tool_use_error>"), expanded: true)
+        XCTAssertEqual(refused.form, .compact)
+        XCTAssertEqual(refused.body, .view(.write, error: nil))
+        // The setting still picks a row or a card.
+        XCTAssertEqual(present(tool("Edit", edit), compact: true, expanded: true).form, .compact)
+        XCTAssertEqual(present(tool("Edit", edit), compact: true, expanded: true).body, .view(.edit, error: nil))
     }
 }

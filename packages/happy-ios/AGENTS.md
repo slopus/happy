@@ -104,7 +104,15 @@ nothing here is wired to the release skill or to EAS.
     outbox text, but does not yet count delivered messages that the daemon
     has not accepted (happy-app's reducer `pending`). `thinking` usually
     covers that interval; otherwise `queuedWhileBusy` can be false there.
-- **Tool outputs are hidden by default** in the chat.
+- **Tool outputs are hidden by default** in the chat. This deliberately
+  differs from happy-app: tool output is collapsed by default, tap to expand,
+  and pending decisions stay open. Every tool row shows its header only
+  (title, icon, status, timer, subtitle). Tapping the header opens its body
+  in place, for the screen's lifetime, never persisted. While a permission
+  is pending, or a question or plan awaits an answer, the input needed to
+  decide stays open, but never the output. The synced `compactToolCalls`
+  setting is untouched: it still picks a compact row or a card. Decided in
+  `ChatToolPresentation` (`ToolDisplayState`).
 - **Onboarding follows happy-app step by step.** Signed in, home decides
   from the stored machines (`HomeState`, after happy-app's
   `shouldShowFirstRunInstall` and `resolveHomeEmptyState`):
