@@ -134,7 +134,7 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
                     title: Strings.SettingsAccount.github,
                     subtitle: Strings.SettingsAccount.tapToDisconnect,
                     detail: "@\(login)",
-                    icon: githubIcon(page.avatarURL)
+                    icon: githubIcon(page.avatarURL, thumbhash: page.avatarThumbhash)
                 ) { [weak self] in
                     self?.disconnectGitHub()
                 }
@@ -223,13 +223,13 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
         return row
     }
 
-    private func githubIcon(_ avatarURL: String?) -> ItemIcon {
+    private func githubIcon(_ avatarURL: String?, thumbhash: String?) -> ItemIcon {
         guard let url = avatarURL.flatMap(URL.init(string:)) else {
             return ItemIcon(.ionicons("logo-github"), tint: Palette.textSecondary)
         }
-        // Until the picture arrives the slot stays empty, as expo-image
-        // shows only the (not ported) thumbhash.
-        return ItemIcon(.image(image(for: url) ?? UIImage()), round: true)
+        // The thumbhash until the picture arrives, as expo-image shows it.
+        let placeholder = thumbhash.flatMap(ThumbHashImages.image(base64:))
+        return ItemIcon(.image(image(for: url) ?? placeholder ?? UIImage()), round: true)
     }
 
     /// A picture already fetched, or nil while it is fetched; the page is
@@ -257,7 +257,7 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
         accountEntries = [:]
         var rows: [UIView] = entries.map { entry in
             let icon: ItemIcon
-            if let url = entry.avatarURL, let picture = image(for: url) {
+            if let url = entry.avatarURL, let picture = image(for: url) ?? entry.avatarThumbhash.flatMap(ThumbHashImages.image(base64:)) {
                 icon = ItemIcon(.image(picture), round: true)
             } else {
                 let content = AvatarView.Content(avatar: SessionAvatar(seed: entry.id), style: settings.avatarStyle, monochrome: settings.avatarMonochrome)
@@ -494,7 +494,8 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
                     )
                 )
                 if isCurrent {
-                    row.onLongPress = { [weak self] in self?.copy(token.token, label: row.title) }
+                    let fingerprint = PushTokenText.fingerprint(token.token)
+                    row.onLongPress = { [weak self] in self?.copy(token.token, label: fingerprint) }
                 } else {
                     row.onTap = { [weak self] in self?.delete(token) }
                 }

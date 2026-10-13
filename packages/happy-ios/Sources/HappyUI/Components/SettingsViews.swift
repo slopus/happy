@@ -61,14 +61,16 @@ public final class SettingsProfileHeaderView: UIView {
         public var name: String
         public var bio: String?
         public var avatarURL: URL?
+        public var thumbhash: String?
         public var style: AvatarStyle
         public var monochrome: Bool
 
-        public init(id: String, name: String, bio: String?, avatarURL: URL?, style: AvatarStyle, monochrome: Bool) {
+        public init(id: String, name: String, bio: String?, avatarURL: URL?, thumbhash: String? = nil, style: AvatarStyle, monochrome: Bool) {
             self.id = id
             self.name = name
             self.bio = bio
             self.avatarURL = avatarURL
+            self.thumbhash = thumbhash
             self.style = style
             self.monochrome = monochrome
         }
@@ -135,6 +137,7 @@ public final class SettingsProfileHeaderView: UIView {
             style: content.style,
             monochrome: content.monochrome
         )
+        photo.placeholder = content.thumbhash.flatMap(ThumbHashImages.image(base64:))
         photo.url = content.avatarURL
         setNeedsLayout()
         superview?.setNeedsLayout()
@@ -146,14 +149,18 @@ public final class SettingsProfileHeaderView: UIView {
     }
 }
 
-/// A round picture fetched from a URL (expo-image with a disk cache). It
-/// stays empty until the picture arrives.
+/// A round picture fetched from a URL (expo-image with a disk cache). The
+/// placeholder (a decoded thumbhash) shows until the picture arrives.
 public final class RemoteImageView: UIImageView {
     public var url: URL? {
         didSet {
             guard url != oldValue else { return }
             load()
         }
+    }
+
+    public var placeholder: UIImage? {
+        didSet { if image == nil || image === oldValue { image = placeholder } }
     }
 
     private var task: Task<Void, Never>?
@@ -178,11 +185,14 @@ public final class RemoteImageView: UIImageView {
             image = nil
             return
         }
-        image = RemoteImages.shared.cached(url)
-        guard image == nil else { return }
+        if let cached = RemoteImages.shared.cached(url) {
+            image = cached
+            return
+        }
+        image = placeholder
         task = Task { @MainActor [weak self] in
             let image = await RemoteImages.shared.load(url)
-            guard !Task.isCancelled, let self, self.url == url else { return }
+            guard !Task.isCancelled, let self, self.url == url, let image else { return }
             self.image = image
         }
     }
@@ -213,6 +223,35 @@ final class RemoteImages {
         let image = await task.value
         inFlight[url] = nil
         if let image { cache.setObject(image, forKey: url as NSURL) }
+        return image
+    }
+}
+
+/// Thumbhash placeholders as images, decoded once per hash.
+@MainActor
+enum ThumbHashImages {
+    private static let cache = NSCache<NSString, UIImage>()
+
+    static func image(base64: String) -> UIImage? {
+        if let image = cache.object(forKey: base64 as NSString) { return image }
+        guard let decoded = ThumbHash.decode(base64: base64) else { return nil }
+        let bytesPerRow = decoded.width * 4
+        guard let provider = CGDataProvider(data: Data(decoded.rgba) as CFData),
+              let cgImage = CGImage(
+                  width: decoded.width,
+                  height: decoded.height,
+                  bitsPerComponent: 8,
+                  bitsPerPixel: 32,
+                  bytesPerRow: bytesPerRow,
+                  space: CGColorSpaceCreateDeviceRGB(),
+                  bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue),
+                  provider: provider,
+                  decode: nil,
+                  shouldInterpolate: true,
+                  intent: .defaultIntent
+              ) else { return nil }
+        let image = UIImage(cgImage: cgImage)
+        cache.setObject(image, forKey: base64 as NSString)
         return image
     }
 }
@@ -767,7 +806,9 @@ public final class ConnectCommandView: UIView {
         commandLabel.numberOfLines = 0
         let style = TextStyles.connectCommand
         let text = NSMutableAttributedString(attributedString: style.attributedString("$ ", color: UIColor(Palette.commandPrompt)))
-        text.append(style.attributedString(command, color: UIColor(Palette.commandText)))
+        // happy-app draws it white on a transparent card, which vanishes in
+        // light mode; the text colour reads in both (see FEATURES.md).
+        text.append(style.attributedString(command, color: UIColor(Palette.text)))
         commandLabel.attributedText = text
         commandLabel.accessibilityLabel = command
         addSubview(titleLabel)
