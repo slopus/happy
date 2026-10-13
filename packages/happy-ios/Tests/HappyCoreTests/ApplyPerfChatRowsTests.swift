@@ -117,6 +117,74 @@ final class ApplyPerfChatRowsTests: XCTestCase {
         XCTAssertEqual(pass.derive(messages).measured, 0)
     }
 
+    /// What each measured row saw of the syntax deadline, in order.
+    final class DeadlineLog: @unchecked Sendable {
+        private let lock = NSLock()
+        private var seen: [ContinuousClock.Instant?] = []
+        func add(_ deadline: ContinuousClock.Instant?) { lock.withLock { seen.append(deadline) } }
+        var all: [ContinuousClock.Instant?] { lock.withLock { seen } }
+    }
+
+    func derive(_ messages: [ChatMessage], planner: RowPlanner<Row, Int>, width: CGFloat = 390, deadline: ContinuousClock.Instant? = nil) -> ChatRowsDerivation.Result<Row, Int> {
+        ChatRowsDerivation.derive(
+            messages: messages, window: ChatWindowState(), requests: ChatWindowRequests(), groupToolCalls: true,
+            currentTurnComplete: true, inForeground: true, width: width,
+            planner: planner, applied: PlannedRows(),
+            makeRows: { items, _ in items.map { Row(item: $0) } },
+            id: \.id, syntaxDeadline: deadline
+        )
+    }
+
+    /// Every row a pass measures sees the pass's one deadline, however
+    /// long measuring takes; the next pass has its own.
+    func testOnePassSharesOneSyntaxDeadline() throws {
+        let log = DeadlineLog()
+        let planner = RowPlanner<Row, Int> { row, width in
+            log.add(SyntaxPass.current)
+            Thread.sleep(forTimeInterval: 0.001)
+            return Int(width)
+        }
+        let messages = Self.conversation(turns: 500)
+        let first = derive(messages, planner: planner)
+        XCTAssertEqual(log.all.count, first.measured)
+        XCTAssertEqual(Set(log.all).count, 1, "one deadline for \(first.measured) rows")
+        let deadline = try XCTUnwrap(log.all.first ?? nil)
+        XCTAssertNil(SyntaxPass.current, "nothing outside the pass")
+
+        let next = derive(messages, planner: planner, width: 744)
+        XCTAssertEqual(log.all.count, first.measured + next.measured)
+        let later = Set(log.all.dropFirst(first.measured))
+        XCTAssertEqual(later.count, 1)
+        XCTAssertGreaterThan(try XCTUnwrap(later.first ?? nil), deadline, "a new pass, a new second")
+    }
+
+    /// With each row taking 600 ms of colour work, a shared second colours
+    /// the first two rows and leaves the rest to the background; a budget
+    /// per row, as before, would colour all of them, one second each.
+    func testASecondRowDoesNotResetTheDeadline() {
+        let start = ContinuousClock.now
+        let rowCost = Duration.milliseconds(600)
+        func run(inPass: Bool) -> [Bool] {
+            let log = DeadlineLog()
+            let planner = RowPlanner<Row, Int> { row, width in
+                // A fake clock: row n starts its colour work n × 600 ms in.
+                log.add(SyntaxPass.deadline(now: start + rowCost * log.all.count))
+                return Int(width)
+            }
+            let messages = Array(Self.conversation(turns: 1).prefix(4))
+            if inPass {
+                _ = derive(messages, planner: planner, deadline: start + .milliseconds(DiffSyntax.revealMilliseconds))
+            } else {
+                _ = planner.plan(messages.reversed().map { Row(item: .message($0)) }, id: \.id, width: 390, applied: PlannedRows())
+            }
+            return log.all.enumerated().map { index, deadline in deadline.map { start + rowCost * index < $0 } ?? false }
+        }
+        let shared = run(inPass: true)
+        XCTAssertGreaterThanOrEqual(shared.count, 3)
+        XCTAssertEqual(shared, [true, true] + Array(repeating: false, count: shared.count - 2))
+        XCTAssertEqual(run(inPass: false), [true, true, true, true], "outside a pass every row starts its own second")
+    }
+
     func testOpeningAWorkGroupMeasuresItsHeaderAndInsertsItsMembers() throws {
         let messages = Self.conversation(turns: 500)
         let pass = Pass()
