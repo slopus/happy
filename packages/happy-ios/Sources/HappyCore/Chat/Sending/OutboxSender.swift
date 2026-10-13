@@ -91,6 +91,9 @@ public struct OutboxSender: ChatSending {
     public func send(_ message: OutgoingMessage, sessionId: String) async throws -> String {
         let draftStamp = try store.composerState(sessionId: sessionId).values["draftUpdatedAt"]
         let id = try await sync.accept(message, sessionId: sessionId, filesDirectory: filesDirectory)
+        // sync.ts `releaseSpawnedSession`: a session written to is no longer
+        // an abandoned start.
+        await MainActor.run { SpawnRequests.shared.release(sessionId: sessionId) }
         // Once accepted, a cache failure must not report a failed send and invite a duplicate.
         try? sync.rigComposer.clearAfterSend(sessionId: sessionId, expectedStamp: draftStamp)
         return id
