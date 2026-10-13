@@ -31,7 +31,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// Read by `AppCoordinator` to skip reopening the chat a tapped
     /// notification names when it is already on top.
     let sessionId: String
-    private let services: ChatServices
+    /// The session the screen shows: `sessionId`, or for a `pending-chat:`
+    /// screen the session it became once the machine answered. The route
+    /// keeps the stand-in's id for the screen's whole life.
+    private(set) var chatId: String
+    private var services: ChatServices
 
     private let list = ChatListView()
     private let scrim = ChatScrimView()
@@ -91,6 +95,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private var pendingChat: PendingChat?
     private let pendingTask = TaskHolder()
     private var anchorMetadata: JSONValue?
+    private var anchorRecord: SessionRecord?
+    private var gitSessionId: String?
     private var anchorObservation: ApplyObservation?
     /// Every chat being opened, for the strip's stand-ins.
     private var pendingChats: [String: PendingChat] = [:]
@@ -146,10 +152,17 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         self.context = context
         self.account = account
         self.sessionId = sessionId
-        let services = ChatServices.make(account: account, sessionId: sessionId, isCurrent: { [weak context, weak account] in account != nil && context?.account.session === account })
+        chatId = sessionId
+        let services = Self.services(account: account, context: context, sessionId: sessionId)
         self.services = services
+        // A chat still being started keeps what is typed, and what is sent,
+        // on the record standing in for it until the machine answers.
+        let pending = PendingChats.isPendingChatId(sessionId)
         composer = ChatComposerFactory.make(ChatComposerEnvironment(
-            sessionId: sessionId, account: account, sender: services.sender, controls: services.controls
+            sessionId: sessionId, account: account,
+            sender: pending ? PendingChatSender(account.pendingChats) : services.sender,
+            controls: services.controls,
+            draftStorage: pending ? PendingChatComposerStorage(account.pendingChats) : nil
         ))
         super.init(nibName: nil, bundle: nil)
         hidesBottomBarWhenPushed = true
@@ -203,6 +216,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         tabStrip.isHidden = true
         tabStrip.onSelect = { [weak self] id in self?.selectTab(id) }
         tabStrip.onLongPress = { [weak self] id in self?.sessionActions.present(sessionId: id) }
+        tabStrip.onAdd = { [weak self] in self?.newTab() }
+        tabStrip.showsAdd = true
         view.addSubview(tabStrip)
         statusBarStrip.isHidden = true
         view.addSubview(statusBarStrip)
@@ -222,9 +237,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             keyboardTracker.heightAnchor.constraint(equalToConstant: 1),
         ])
 
-        observation = services.observeSession { [weak self] state in
-            self?.sessionChanged(state)
-        }
+        observeChat()
         // Every chat being opened: this screen's own record when it is one,
         // and the strip's stand-ins.
         let pendingChats = services.pendingChats
@@ -238,36 +251,48 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 self.updateTabStrip()
             }
         }
-        if let git = services.gitStatus {
-            let sessionId = self.sessionId
-            gitTask.task = Task { [weak self] in
-                for await status in await git.observe(sessionId: sessionId) {
-                    guard let self, !Task.isCancelled else { return }
-                    self.gitStatus = status
-                    self.updateHeader()
-                }
-            }
-            Task { await git.refresh(sessionId: sessionId) }
-        }
-        let stream = services.feed.snapshots(sessionId: sessionId)
-        feedTask.task = Task { [weak self] in
-            for await snapshot in stream {
-                guard let self else { return }
-                self.receive(snapshot)
-            }
-        }
-
         NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(willEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
-        account.actions.markRead(sessionId: sessionId)
+        account.actions.markRead(sessionId: chatId)
         // sync.ts `onSessionVisible`: a session someone has opened is no
         // longer an abandoned start.
-        SpawnRequests.shared.release(sessionId: sessionId)
+        SpawnRequests.shared.release(sessionId: chatId)
         updateHeaderVisibility(animated: animated)
+    }
+
+    /// SessionView's unmount: a stand-in that has settled or failed is done
+    /// with once its screen goes. One still starting is left alone; the
+    /// person can come back to its tab.
+    override func didMove(toParent parent: UIViewController?) {
+        super.didMove(toParent: parent)
+        guard parent == nil, let chat = pendingChat, chat.sessionId != nil || chat.status == .failed else { return }
+        let chats = services.pendingChats
+        Task { await chats.dismiss(id: chat.id) }
+    }
+
+    private static func services(account: AccountSession, context: AppContext, sessionId: String) -> ChatServices {
+        ChatServices.make(account: account, sessionId: sessionId, isCurrent: { [weak context, weak account] in
+            account != nil && context?.account.session === account
+        })
+    }
+
+    /// The session's record and its messages, for `chatId`. Run again when
+    /// a pending chat becomes its session.
+    private func observeChat() {
+        observation = services.observeSession { [weak self] state in
+            self?.sessionChanged(state)
+        }
+        let stream = services.feed.snapshots(sessionId: chatId)
+        feedTask.task = Task { [weak self] in
+            for await snapshot in stream {
+                guard let self else { return }
+                self.receive(snapshot)
+            }
+        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
@@ -436,7 +461,14 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     private func updateHeader() {
         updateCheckoutObservation()
-        let model = ChatHeaderModel(session: session.record, dataReady: session.dataReady || isFixture, gitStatus: gitStatus, pending: isPendingChat)
+        updateGitObservation()
+        // A chat that doesn't exist yet can't speak for its checkout: the
+        // header reads the chat it was started beside until it can, and
+        // a stand-in's title is "New chat" for as long as it stands.
+        let pending = PendingChats.isPendingChatId(sessionId)
+        let headerRecord = session.record ?? (pending ? anchorRecord : nil)
+        var model = ChatHeaderModel(session: headerRecord, dataReady: session.dataReady || isFixture, gitStatus: gitStatus, pending: pending && headerRecord == nil)
+        if pending, model.title != .loading { model.title = .name(nil) }
         var title = switch model.title {
         case .loading: ""
         case .deleted: Strings.SessionDetail.sessionDeleted
@@ -480,13 +512,30 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// The chat the header speaks for: this one once it exists, the one a
     /// chat being opened was started beside until then.
     private var headerSessionId: String {
-        session.record != nil ? sessionId : pendingChat?.anchorSessionId ?? sessionId
+        session.record != nil ? chatId : pendingChat?.anchorSessionId ?? chatId
     }
 
     /// The chip that stands for the open chat: the stand-in while the chat
     /// is unnamed, its session from the moment it is not.
     private var selectedTabId: String {
         pendingChat?.sessionId ?? sessionId
+    }
+
+    /// The header's git status: the checkout of the chat it speaks for.
+    private func updateGitObservation() {
+        guard let git = services.gitStatus else { return }
+        let id = headerSessionId
+        guard id != gitSessionId else { return }
+        gitSessionId = id
+        gitStatus = nil
+        gitTask.task = Task { [weak self] in
+            for await status in await git.observe(sessionId: id) {
+                guard let self, !Task.isCancelled else { return }
+                self.gitStatus = status
+                self.updateHeader()
+            }
+        }
+        Task { await git.refresh(sessionId: id) }
     }
 
     private func updateCheckoutObservation() {
@@ -622,7 +671,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     @objc private func openInfo() {
         guard session.record != nil else { return }
-        push(.sessionInfo(id: sessionId), context: context)
+        push(.sessionInfo(id: chatId), context: context)
     }
 
     private var isPendingChat: Bool {
@@ -633,17 +682,57 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         guard chat != pendingChat else { return }
         if chat?.anchorSessionId != pendingChat?.anchorSessionId {
             anchorMetadata = nil
+            anchorRecord = nil
             anchorObservation = chat.map { chat in
                 services.observeOtherSession(chat.anchorSessionId) { [weak self] state in
-                    guard let self, state.metadata != self.anchorMetadata else { return }
+                    guard let self, state.record != self.anchorRecord else { return }
+                    self.anchorRecord = state.record
                     self.anchorMetadata = state.metadata
+                    self.updateHeader()
                     self.updatePlaceholder()
                 }
             }
         }
         pendingChat = chat
+        if let real = chat?.sessionId, real != chatId {
+            becomeChat(real)
+        }
         updateHeader()
         updatePlaceholder()
+        // The start isn't coming. It has said why, and the writing went back
+        // to the chat this was opened beside, which is where the screen goes.
+        if let chat, chat.status == .failed, chat.sessionId == nil {
+            switchChat(to: chat.anchorSessionId)
+        }
+    }
+
+    /// The machine answered: the screen becomes the chat in place. The
+    /// composer is the same one, retargeted, so its text, caret and keyboard
+    /// carry across (SessionView keeps it mounted through the arrival); only
+    /// what it reads and sends moves to the session. The handover has written
+    /// the session's draft before the record named it.
+    private func becomeChat(_ real: String) {
+        chatId = real
+        services = Self.services(account: account, context: context, sessionId: real)
+        composer.retarget(ChatComposerEnvironment(sessionId: real, account: account, sender: services.sender, controls: services.controls))
+        observeChat()
+        if view.window != nil {
+            account.actions.markRead(sessionId: real)
+            SpawnRequests.shared.release(sessionId: real)
+        }
+    }
+
+    /// The strip's `+`: a sibling chat, started where the open one runs and
+    /// configured like it. Its tab and screen are the person's on the press;
+    /// the start runs underneath, behind any other.
+    private func newTab() {
+        guard let checkout, let openId = session.record?.id ?? pendingChat?.anchorSessionId else { return }
+        let launcher = ChatPendingStarts.of(account).launcher!
+        let known = checkout.tabs.map(\.id)
+        Task { [weak self] in
+            let chat = await launcher.open(anchorSessionId: openId, knownSessionIds: known)
+            self?.selectTab(chat.id)
+        }
     }
 
     private var isFixture: Bool {
@@ -783,7 +872,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         Task { [weak self] in
             do {
                 let opened = try await resume(record, machine)
-                if let self, let opened, opened != self.sessionId {
+                if let self, let opened, opened != self.chatId {
                     self.push(.session(id: opened), context: self.context)
                 }
             } catch {
@@ -797,7 +886,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private func openQuestionSheet() {
         guard let pending = questionBanner.pending, case .form = pending.kind, presentedViewController == nil else { return }
         let controls = services.controls
-        let sessionId = self.sessionId
+        let sessionId = self.chatId
         let sheet = AgentQuestionSheetController(
             pending: pending,
             submit: { answers in
@@ -815,7 +904,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private func dismissUnsupportedRequest() {
         guard let pending = questionBanner.pending else { return }
         let controls = services.controls
-        let sessionId = self.sessionId
+        let sessionId = self.chatId
         Task { try? await controls.cancelQuestion(sessionId: sessionId, id: pending.id, kind: pending.rawKind) }
     }
 
@@ -1047,11 +1136,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             pendingPin = id
             scheduleMeasure()
         case .openMessage(let messageId):
-            push(.sessionMessage(id: sessionId, messageId: messageId), context: context)
+            push(.sessionMessage(id: chatId, messageId: messageId), context: context)
         case .openMessageFile(let messageId, let file):
-            push(.sessionMessage(id: sessionId, messageId: messageId, file: file), context: context)
+            push(.sessionMessage(id: chatId, messageId: messageId, file: file), context: context)
         case .openFile(let path):
-            push(.sessionFile(id: sessionId, path: path), context: context)
+            push(.sessionFile(id: chatId, path: path), context: context)
         case .permission(let tap):
             answer(tap)
         case .questionOption(let toolId, let questionId, let option):
@@ -1069,7 +1158,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             scheduleMeasure()
         case .option(let title):
             let sender = services.sender
-            let sessionId = self.sessionId
+            let sessionId = self.chatId
             Task { _ = try? await sender.send(OutgoingMessage(text: title), sessionId: sessionId) }
         case .retry(let localId):
             let sender = services.sender
@@ -1109,7 +1198,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         scheduleMeasure()
         let controls = services.controls
         let setPermissionMode = services.setPermissionMode
-        let sessionId = self.sessionId
+        let sessionId = self.chatId
         let reply = tap.reply
         Task { [weak self] in
             do {
@@ -1141,7 +1230,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         questionDrafts[toolId] = state
         scheduleMeasure()
         let controls = services.controls
-        let sessionId = self.sessionId
+        let sessionId = self.chatId
         Task { [weak self] in
             var failed = false
             do {
@@ -1186,7 +1275,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private func dismissAnsweredQuestions(_ snapshot: ChatSnapshot) {
         guard !questionsToDismiss.isEmpty else { return }
         let controls = services.controls
-        let sessionId = self.sessionId
+        let sessionId = self.chatId
         for (localId, communications) in questionsToDismiss {
             if case .failed = snapshot.delivery[localId] {
                 questionsToDismiss[localId] = nil

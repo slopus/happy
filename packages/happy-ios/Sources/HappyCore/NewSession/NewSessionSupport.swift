@@ -110,13 +110,17 @@ public actor PendingChats {
         publish()
     }
 
-    /// Ports pendingChats.submitPendingChat.
-    public func submit(id: String, message: String) {
-        guard var chat = chats[id], chat.sessionId == nil, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+    /// Ports pendingChats.submitPendingChat. False when nothing was queued:
+    /// the chat has settled (its sends go to the session now), is gone, or
+    /// the message is blank.
+    @discardableResult
+    public func submit(id: String, message: String) -> Bool {
+        guard var chat = chats[id], chat.sessionId == nil, !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return false }
         chat.queued.append(message)
         chat.draft = ""
         chats[id] = chat
         publish()
+        return true
     }
 
     /// Ports pendingChats.settlePendingChat.
