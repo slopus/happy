@@ -66,9 +66,10 @@ enum ChatDrawItem {
     /// A DiffFileHeader, planned at the frame's width, naming `path`.
     case diffHeader(DiffHeaderPlan, path: String, frame: CGRect)
     /// A strip that scrolls sideways (HorizontalScrollView: a code block, a
-    /// table), showing `content` through `frame`, its corners rounded by
-    /// `radius`. The content's items and hits are in its own coordinates.
-    case scroller(ChatRowPlan, frame: CGRect, radius: CGFloat = 0)
+    /// table), or up and down with `vertical` (a long permission list),
+    /// showing `content` through `frame`, its corners rounded by `radius`.
+    /// The content's items and hits are in its own coordinates.
+    case scroller(ChatRowPlan, frame: CGRect, radius: CGFloat = 0, vertical: Bool = false)
     /// FileView's picture, loaded once it is on screen.
     case attachment(ChatAttachment, frame: CGRect)
     /// A markdown image block's picture, loaded once it is on screen;

@@ -19,6 +19,9 @@ struct ChatRowStyle: Equatable, Sendable {
     /// `useIsTablet()`: permission buttons hug their labels at the
     /// trailing edge (`TabletBranches.permissionButtonsTrailing`).
     var tablet = false
+    /// PermissionFooter's `optionsScroll` maxHeight, min(260, 35% of the
+    /// window): a taller list of buttons scrolls.
+    var permissionListMaxHeight = PermissionFooterLayout.Metrics.maxListHeight
 }
 
 /// Everything one row is drawn from. Equal inputs at the same width give

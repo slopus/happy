@@ -456,6 +456,31 @@ final class ToolRowLayoutTests: XCTestCase {
         assertFrame(layout.buttons[1], rect(6, 45, 365, 52))
         assertFrame(layout.labels[1], rect(20.5, 53, 336, 36))
         XCTAssertEqual(layout.size.height, 105)
+        assertFrame(layout.list, rect(6, 4, 365, 93))
+        XCTAssertFalse(layout.scrolls)
+    }
+
+    func testTheListIsAtMost260OrAThirdAndABitOfTheWindow() {
+        XCTAssertEqual(PermissionFooterLayout.maxListHeight(windowHeight: 852), 260)
+        // An iPhone SE in landscape: round(375 * 0.35) = 131.
+        XCTAssertEqual(PermissionFooterLayout.maxListHeight(windowHeight: 375), 131)
+        XCTAssertEqual(PermissionFooterLayout.maxListHeight(windowHeight: 667), 233)
+    }
+
+    func testALongPermissionListScrollsInsideTheCap() {
+        // Five 34-tall buttons, 7 apart: 198 of list.
+        let labels = Array(repeating: text("Yes", lineHeight: 18), count: 5)
+        let layout = PermissionFooterLayout(width: 377, labels: labels, maxListHeight: 131)
+        XCTAssertEqual(layout.listContentHeight, 198)
+        assertFrame(layout.list, rect(6, 4, 365, 131))
+        XCTAssertTrue(layout.scrolls)
+        XCTAssertEqual(layout.size.height, 143)
+        // The buttons keep their places in the list, scrolled to its top.
+        assertFrame(layout.buttons[4], rect(6, 168, 365, 34))
+
+        let roomy = PermissionFooterLayout(width: 377, labels: labels, maxListHeight: 260)
+        XCTAssertFalse(roomy.scrolls)
+        XCTAssertEqual(roomy.size.height, 210)
     }
 }
 

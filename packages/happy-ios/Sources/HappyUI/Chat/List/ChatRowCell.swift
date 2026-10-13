@@ -176,13 +176,14 @@ final class ChatPlanView: UIView {
                 view.setLayoutFrame(frame)
                 view.apply(header, path: path)
                 order.append(view)
-            case .scroller(let content, let frame, let radius):
+            case .scroller(let content, let frame, let radius, let vertical):
                 // The same strip of the same row keeps where it was scrolled to.
                 let key = "\(plan.id)#\(scrollerIndex)"
                 let view = take(&scrollers, &scrollerIndex) { ChatScrollerView() }
                 view.setLayoutFrame(frame)
                 view.layer.cornerRadius = radius
                 view.layer.cornerCurve = .continuous
+                view.vertical = vertical
                 view.apply(content, key: key)
                 order.append(view)
             case .attachment(let attachment, let frame):
@@ -294,9 +295,19 @@ final class ChatPlanView: UIView {
 /// HorizontalScrollView inside a row: a plan of its own, wider than the
 /// strip that shows it, scrolled sideways. Like React Native's horizontal
 /// ScrollView it shows its indicator and always bounces sideways.
+/// `vertical` makes it PermissionFooter's ScrollView instead: taller than
+/// its frame, scrolled up and down, with no indicator.
 final class ChatScrollerView: UIScrollView {
     let content = ChatPlanView()
     private var key: String?
+
+    var vertical = false {
+        didSet {
+            guard vertical != oldValue else { return }
+            showsHorizontalScrollIndicator = !vertical
+            alwaysBounceHorizontal = !vertical
+        }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -327,6 +338,8 @@ final class ChatScrollerView: UIScrollView {
         content.apply(plan)
         let maxX = max(0, plan.size.width - bounds.width)
         if contentOffset.x > maxX { contentOffset.x = maxX }
+        let maxY = max(0, plan.size.height - bounds.height)
+        if contentOffset.y > maxY { contentOffset.y = maxY }
     }
 }
 

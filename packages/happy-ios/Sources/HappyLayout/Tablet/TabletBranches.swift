@@ -137,9 +137,9 @@ extension PermissionFooterLayout {
     /// PermissionFooter.tsx on a tablet (:308, `alignItems: 'flex-end'`):
     /// each button as wide as its label and padding, never wider than the
     /// card, against the trailing edge; heights as on a phone.
-    public static func tablet(width: CGFloat, labels input: [Measurable]) -> PermissionFooterLayout {
+    public static func tablet(width: CGFloat, labels input: [Measurable], maxListHeight: CGFloat = .greatestFiniteMagnitude) -> PermissionFooterLayout {
         typealias M = Metrics
-        var layout = PermissionFooterLayout(width: width, labels: input)
+        var layout = PermissionFooterLayout(width: width, labels: input, maxListHeight: maxListHeight)
         let right = max(0, width) - M.paddingH
         let inset = M.buttonPaddingH + M.buttonBorder
         for index in layout.buttons.indices {

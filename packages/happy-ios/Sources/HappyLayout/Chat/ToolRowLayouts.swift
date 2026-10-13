@@ -336,7 +336,8 @@ public struct ChatStackLayout: Equatable, Sendable {
 }
 
 /// PermissionFooter: a column of outlined buttons, 7 apart, stretched
-/// across the card on a phone.
+/// across the card on a phone, in a list no taller than `maxListHeight`
+/// (`optionsScroll`) that scrolls past it.
 ///
 ///     4
 ///     6 ┌ 1 border, 7 ─ label (14/18, centred) ─ 7 ┐ 6   min 34
@@ -359,10 +360,21 @@ public struct PermissionFooterLayout: Equatable, Sendable {
     }
 
     public var size: CGSize
+    /// Where the buttons would be with the list scrolled to its top.
     public var buttons: [CGRect]
     public var labels: [CGRect]
+    /// The list's visible part, in the footer.
+    public var list: CGRect
+    /// The whole list, taller than `list` when it scrolls.
+    public var listContentHeight: CGFloat
+    public var scrolls: Bool { listContentHeight > list.height }
 
-    public init(width: CGFloat, labels input: [Measurable]) {
+    /// `optionsScroll`'s maxHeight for a window `height` tall.
+    public static func maxListHeight(windowHeight height: CGFloat) -> CGFloat {
+        min(Metrics.maxListHeight, (max(0, height) * 0.35).rounded())
+    }
+
+    public init(width: CGFloat, labels input: [Measurable], maxListHeight: CGFloat = .greatestFiniteMagnitude) {
         typealias M = Metrics
         let width = max(0, width)
         let buttonWidth = max(0, width - 2 * M.paddingH)
@@ -380,7 +392,9 @@ public struct PermissionFooterLayout: Equatable, Sendable {
         }
         self.buttons = buttons
         self.labels = labels
-        size = CGSize(width: width, height: y + M.paddingBottom)
+        listContentHeight = y - M.paddingTop
+        list = CGRect(x: M.paddingH, y: M.paddingTop, width: buttonWidth, height: min(listContentHeight, max(0, maxListHeight)))
+        size = CGSize(width: width, height: list.maxY + M.paddingBottom)
     }
 }
 

@@ -104,6 +104,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// `traitCollection.isTabletLayout`, kept here so the row inputs can be
     /// built off the main thread.
     private var isTabletLayout = false
+    /// PermissionFooter's list cap for this window, read on the main thread
+    /// and handed to the measure with the rest of the row style.
+    private var permissionListMaxHeight = PermissionFooterLayout.Metrics.maxListHeight
     /// Permission buttons whose reply is on its way, by permission id.
     private var permissionBusy: [String: PermissionButton.Kind] = [:]
     /// Tools the reader opened, by message id: for as long as the screen
@@ -242,6 +245,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         layoutScreen()
+        updatePermissionListMaxHeight()
         if view.bounds.width != lastLayoutWidth {
             lastLayoutWidth = view.bounds.width
             scheduleMeasure()
@@ -396,6 +400,15 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     /// The window crossed the tablet width: rows plan their tablet
     /// branches again.
+    /// `Math.min(260, Math.round(windowHeight * 0.35))`, as the window is now.
+    private func updatePermissionListMaxHeight() {
+        guard let window = view.window else { return }
+        let height = PermissionFooterLayout.maxListHeight(windowHeight: window.bounds.height)
+        guard height != permissionListMaxHeight else { return }
+        permissionListMaxHeight = height
+        scheduleMeasure()
+    }
+
     private func tabletLayoutChanged() {
         let tablet = traitCollection.isTabletLayout
         guard tablet != isTabletLayout else { return }
