@@ -21,7 +21,7 @@ public struct SystemRandom: RandomSource {
     public func bytes(_ count: Int) -> Data {
         var generator = SystemRandomNumberGenerator()
         var out = Data(count: count)
-        out.withUnsafeMutableBytes { buffer in
+        out.withUnsafeMutableBytes { (buffer: UnsafeMutableRawBufferPointer) in
             var index = 0
             while index < count {
                 var word = generator.next()
