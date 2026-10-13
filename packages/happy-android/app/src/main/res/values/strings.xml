@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  English strings, copied from packages/happy-app/sources/text/translations/en.ts.
+  Names are the en.ts key paths with dots as underscores. Strings marked
+  "android only" have no en.ts counterpart.
+-->
+<resources>
+    <string name="common_cancel">Cancel</string>
+    <string name="common_ok">OK</string>
+    <string name="common_save">Save</string>
+    <string name="common_reset">Reset</string>
+    <string name="common_continue">Continue</string>
+    <string name="common_error">Error</string>
+    <string name="common_success">Success</string>
+    <string name="common_logout">Logout</string>
+    <string name="common_back">Back</string>
+    <string name="common_version">Version</string>
+    <string name="common_url_placeholder">https://example.com</string>
+    <string name="common_copied">Copied</string>
+    <string name="items_copied_to_clipboard">%1$s copied to clipboard</string>
+
+    <string name="sidebar_sessions_title">Happy</string>
+
+    <string name="settings_title">Settings</string>
+    <string name="settings_account">Account</string>
+    <string name="settings_account_subtitle">Manage your account details</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_appearance_subtitle">Customize how the app looks</string>
+    <string name="settings_features">Features</string>
+    <string name="settings_about">About</string>
+    <string name="settings_about_footer">Happy Coder is a Codex and Claude Code mobile client. It\'s fully end-to-end encrypted and your account is stored only on your device. Not affiliated with Anthropic.</string>
+    <string name="settings_github">GitHub</string>
+    <string name="settings_report_issue">Report an Issue</string>
+    <string name="settings_privacy_policy">Privacy Policy</string>
+    <string name="settings_terms_of_service">Terms of Service</string>
+
+    <string name="settings_account_account_information">Account Information</string>
+    <string name="settings_account_status">Status</string>
+    <string name="settings_account_status_active">Active</string>
+    <string name="settings_account_anonymous_id">Analytics ID</string>
+    <string name="settings_account_public_id">Public ID</string>
+    <string name="settings_account_not_available">Not available</string>
+    <string name="settings_account_link_new_device">Link New Device</string>
+    <string name="settings_account_link_new_device_subtitle">Scan QR code to link device</string>
+    <string name="settings_account_backup">Backup</string>
+    <string name="settings_account_backup_description">Your secret key is the only way to recover your account. Save it in a secure place like a password manager.</string>
+    <string name="settings_account_secret_key">Secret Key</string>
+    <string name="settings_account_tap_to_reveal">Tap to reveal</string>
+    <string name="settings_account_tap_to_hide">Tap to hide</string>
+    <string name="settings_account_secret_key_label">SECRET KEY (TAP TO COPY)</string>
+    <string name="settings_account_secret_key_copied">Secret key copied to clipboard. Store it in a safe place!</string>
+    <string name="settings_account_privacy">Privacy</string>
+    <string name="settings_account_privacy_description">Shares usage data, like which features you use and your device type, to help us improve Happy. Never your messages or code.</string>
+    <string name="settings_account_analytics">Analytics</string>
+    <string name="settings_account_analytics_disabled">No data is shared</string>
+    <string name="settings_account_analytics_enabled">Usage data is shared</string>
+    <string name="settings_account_danger_zone">Danger Zone</string>
+    <string name="settings_account_logout">Logout</string>
+    <string name="settings_account_logout_subtitle">Sign out and clear local data</string>
+    <string name="settings_account_logout_confirm">Are you sure you want to logout? Make sure you have backed up your secret key!</string>
+    <!-- android only: QR scanning is not part of this build -->
+    <string name="settings_account_link_new_device_unavailable">Linking a device needs the QR scanner, which this build of the Android app does not include yet. Use the secret key on the new device instead.</string>
+
+    <string name="settings_appearance_theme">Theme</string>
+    <string name="settings_appearance_theme_description">Choose your preferred color scheme</string>
+    <string name="settings_appearance_theme_option_adaptive">Adaptive</string>
+    <string name="settings_appearance_theme_option_light">Light</string>
+    <string name="settings_appearance_theme_option_dark">Dark</string>
+    <string name="settings_appearance_theme_description_adaptive">Match system settings</string>
+    <string name="settings_appearance_theme_description_light">Always use light theme</string>
+    <string name="settings_appearance_theme_description_dark">Always use dark theme</string>
+
+    <string name="server_title">Server</string>
+    <string name="server_server_url_label">Server URL</string>
+    <string name="server_self_host_footer">For self-hosted servers. Sign out and back in after changing it.</string>
+    <string name="server_validating_server">Validating server...</string>
+    <string name="server_validating">Validating...</string>
+    <string name="server_reset_to_default">Reset to Default</string>
+    <string name="server_reset_server_default">Reset server to default?</string>
+    <string name="server_currently_using_custom_server">Currently using custom server</string>
+    <string name="server_change_server">Change Server</string>
+    <string name="server_continue_with_server">Continue with this server?</string>
+    <string name="server_enter_server_url">Please enter a server URL</string>
+    <string name="server_server_returned_error">Server returned an error</string>
+    <string name="server_not_valid_happy_server">Not a valid Happy Server</string>
+    <string name="server_failed_to_connect_to_server">Failed to connect to server</string>
+    <!-- serverConfig.ts validateServerUrl -->
+    <string name="server_url_empty">Server URL cannot be empty</string>
+    <string name="server_url_protocol">Server URL must use HTTP or HTTPS protocol</string>
+    <string name="server_url_invalid">Invalid URL format</string>
+
+    <string name="onboarding_headline">Claude, Codex, Grok\nin your pocket</string>
+    <string name="onboarding_prop_encrypted">End-to-end encrypted</string>
+    <string name="onboarding_prop_no_password">No email, no password</string>
+    <string name="onboarding_prop_open_source">Open source, MIT license</string>
+    <string name="onboarding_create_account">Create account</string>
+    <string name="onboarding_restore_existing">Restore existing account</string>
+    <string name="onboarding_link_title">Link Your Computer</string>
+    <string name="onboarding_install_step">Install Happy on your computer</string>
+    <string name="onboarding_install_body_prefix">"Download Happy from "</string>
+    <string name="onboarding_install_body_link">happy.engineering</string>
+    <string name="onboarding_install_body_suffix">.</string>
+    <string name="onboarding_open_step">Open Happy and choose Link\u00A0Mobile\u00A0App</string>
+    <string name="onboarding_open_body">It’s the last step of setup on your computer. A QR code appears there.</string>
+    <string name="onboarding_paste_link">Can’t scan QR code? Paste link instead</string>
+    <string name="welcome_create_account">Create account</string>
+    <string name="onboarding_get_help">Get help</string>
+    <string name="onboarding_help_message">Stuck? Come ask us.</string>
+    <string name="onboarding_help_discord">Ask on Discord</string>
+    <string name="onboarding_help_issues">Browse known issues</string>
+    <string name="onboarding_restore_title">Restore Account</string>
+    <string name="onboarding_restore_scan">Scan this code with your other phone.</string>
+    <string name="onboarding_restore_scan_path">Happy › Settings › Account › Link New Device</string>
+    <string name="onboarding_restore_use_key">Use a secret key instead</string>
+    <string name="onboarding_secret_key_title">Secret Key</string>
+    <string name="onboarding_secret_key_body">Paste your secret key. It is in Happy › Settings › Account on your other device.</string>
+    <string name="onboarding_restore_button">Restore</string>
+    <!-- android only: shown where the QR code would be -->
+    <string name="onboarding_restore_qr_unavailable">Linking by QR code is coming to the Android app. For now, restore with your secret key.</string>
+
+    <string name="connect_enter_secret_key">Please enter a secret key</string>
+    <string name="connect_invalid_secret_key">Invalid secret key. Please check and try again.</string>
+    <string name="errors_authentication_failed">Authentication failed</string>
+
+    <!-- android only: the signed-in home has no session UI yet -->
+    <string name="home_empty">Your sessions will appear here.</string>
+</resources>
