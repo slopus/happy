@@ -40,7 +40,7 @@ actor SnapshotHub<Value: Equatable & Sendable> {
         let token = generation
         task = Task { [weak self] in
             do {
-                for try await value in observation.values() {
+                for try await value in observation.valuesWithAsyncCallbacks() {
                     guard !Task.isCancelled else { break }
                     await self?.receive(value, generation: token)
                 }

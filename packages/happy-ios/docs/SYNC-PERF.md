@@ -134,6 +134,17 @@ offline and a last-seen tick. Those tests and account stop/restart each passed
 50 repeated isolated runs. Account stop drains both active and retiring hub
 tasks; producer generations reject late callbacks from an older scope.
 
+Shared GRDB callbacks queue value and error delivery before resuming an
+async consumer. GRDB holds its shared client lock while invoking callbacks;
+direct continuation delivery there can deadlock with the consumer's
+synchronous cancellation handler. One serial bridge per subscription breaks
+that lock cycle without changing shared SQL fetching, cached replay or
+synchronous client cancellation. One pending latest snapshot and one
+terminal error keep each delivery mailbox bounded. Held-callback regressions
+cover Home values and errors, and the direct Settings stream. The original five-second restart
+deadline, seven-subscriber single fetch, fresh account-stop disk read and
+observation-error recovery checks remain in place.
+
 Wire deletion and full-list reconciliation prune cached presence and dirty
 ids. Store overlays discard only deleted rows; reconciliation reads retained
 ids without decoding JSON, preserving socket rows newer than a list cutoff.
