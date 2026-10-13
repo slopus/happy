@@ -38,8 +38,7 @@ public struct ComposerStoreValue: Equatable, Sendable {
 public struct ComposerStoreDelivery: Equatable, Sendable {
     public var value: ComposerStoreValue
     /// The newest draft write (`ComposerDraftWriter.save`) the store held at
-    /// the read, or that a send made moot. A failed write doesn't count. A
-    /// read older than the composer's newest write says nothing about the
+    /// the read. A failed write doesn't count. A read older than the composer's newest write says nothing about the
     /// draft: it may show text the composer has since replaced.
     public var generation: Int
 
@@ -78,11 +77,12 @@ public protocol ComposerStorage: Sendable {
 /// A write that fails stays unsaved: the generation doesn't move, so no
 /// read can pass for a remote edit over the text it carries. It is tried
 /// again on a timer (`retryDelays`, then no more until the next save), before
-/// a send, at `settle()`, and replaced by any newer write. A send goes
-/// whether or not it landed (the message is the composer's text, not the
-/// draft's); once the send is accepted the unsaved write is moot and
-/// dropped, so a later retry can't bring the sent text back. Failed writes,
-/// reads and observations go to `onFailure`. A failed observation is
+/// a send, at `settle()`, and replaced by any newer write. A send waits for
+/// it: if it still fails, the send is refused with `UnsavedDraftError` and
+/// nothing reaches the outbox, so a retry landing after an accepted send
+/// can never bring the sent text back, and the send's clear always follows
+/// the write it clears. Failed writes, reads and observations go to
+/// `onFailure`. A failed observation is
 /// started again while the writer is open, after `retryDelays` (the last
 /// one repeating); its first value catches up on anything missed.
 ///
@@ -101,6 +101,11 @@ public final class ComposerDraftWriter: @unchecked Sendable {
 
         public var operation: Operation
         public var error: any Error
+    }
+
+    /// A send refused because the draft before it couldn't be written.
+    public struct UnsavedDraftError: Error {
+        public var underlying: any Error
     }
 
     /// 250ms, 1s, 4s.
@@ -129,7 +134,7 @@ public final class ComposerDraftWriter: @unchecked Sendable {
     private var observation: Task<Void, Never>?
 
     // Touched only by the drain, which never runs twice at once.
-    /// The newest write the store holds, or that a send made moot.
+    /// The newest write the store holds.
     private var settled = 0
     /// The newest write handed over that hasn't landed.
     private var unsaved: (text: String, generation: Int)?
@@ -237,9 +242,8 @@ public final class ComposerDraftWriter: @unchecked Sendable {
     }
 
     /// Returns once everything handed over before it has run, after one
-    /// more try at a write that failed. True only if no write is left
-    /// unsaved: every write handed over is on disk, or was dropped as moot
-    /// by an accepted send. False if the newest write still isn't.
+    /// more try at a write that failed. True only if every write handed
+    /// over is on disk; false if the newest still isn't.
     @discardableResult
     public func settle() async -> Bool {
         await withCheckedContinuation { continuation in
@@ -308,17 +312,13 @@ public final class ComposerDraftWriter: @unchecked Sendable {
                 case .send(let message, let continuation):
                     await finish(run)
                     run = Run()
-                    // One more try; the send goes either way.
-                    commitUnsaved()
+                    // One more try; a send never goes ahead of its draft.
+                    if let error = commitUnsaved() {
+                        continuation.finish(throwing: UnsavedDraftError(underlying: error))
+                        continue
+                    }
                     do {
-                        let localId = try await sending.send(message, sessionId: sessionId)
-                        // Accepted: what the failed write held was sent (or
-                        // typed over by a write queued after this send).
-                        if let write = unsaved {
-                            unsaved = nil
-                            settled = write.generation
-                        }
-                        continuation.yield(localId)
+                        continuation.yield(try await sending.send(message, sessionId: sessionId))
                         continuation.finish()
                     } catch {
                         continuation.finish(throwing: error)
@@ -326,7 +326,7 @@ public final class ComposerDraftWriter: @unchecked Sendable {
                 case .barrier(let continuation):
                     await finish(run)
                     run = Run()
-                    continuation.resume(returning: commitUnsaved())
+                    continuation.resume(returning: commitUnsaved() == nil)
                 }
             }
             await finish(run)
@@ -356,22 +356,22 @@ public final class ComposerDraftWriter: @unchecked Sendable {
         }
     }
 
-    /// Writes the unsaved draft, if any. False if it failed again.
+    /// Writes the unsaved draft, if any. The error if it failed again.
     @discardableResult
-    private func commitUnsaved() -> Bool {
-        guard let write = unsaved else { return true }
+    private func commitUnsaved() -> (any Error)? {
+        guard let write = unsaved else { return nil }
         do {
             try storage.saveDraft(sessionId: sessionId, text: write.text)
         } catch {
             onFailure(Failure(operation: .save, error: error))
             scheduleRetry()
-            return false
+            return error
         }
         unsaved = nil
         retries = 0
         settled = write.generation
         held?.draft = write.text
-        return true
+        return nil
     }
 
     private func scheduleRetry() {

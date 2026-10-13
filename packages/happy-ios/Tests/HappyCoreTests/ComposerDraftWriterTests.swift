@@ -442,46 +442,60 @@ final class ComposerDraftWriterFailureTests: XCTestCase {
         XCTAssertEqual(storage.saves, ["ab"], "only the newest text")
     }
 
-    func testAnAcceptedSendDropsTheUnsavedWriteSoItCannotComeBack() async throws {
+    func testASendBehindAWriteThatKeepsFailingIsRefusedAndTheTextKept() async throws {
         let storage = ProbeStorage()
         let failures = Failures()
         let (writer, _, deliveries) = writer(storage, retryDelays: [.milliseconds(5)], failures: failures)
         await fulfillment(of: [deliveries.expect(1)], timeout: 5)
         storage.failSaves(true)
         writer.save("hello", generation: 1)
-        let sent = writer.send(OutgoingMessage(text: "hello"))
-        writer.save("next", generation: 2)
-        _ = try await sent.value
-        // The disk recovers after the send; only the later typing lands.
+        do {
+            _ = try await writer.send(OutgoingMessage(text: "hello")).value
+            XCTFail("the draft before it isn't on disk")
+        } catch {
+            XCTAssertTrue(error is ComposerDraftWriter.UnsavedDraftError)
+        }
+        XCTAssertFalse(storage.log.contains { $0.hasPrefix("send") }, "nothing reached the outbox")
+        // Typing goes on, still unsaved.
+        writer.save("hello, more", generation: 2)
+        let stuck = await writer.settle()
+        XCTAssertFalse(stuck)
+
+        // The disk recovers: the newest text lands, then the send and its
+        // clear, and no retry brings anything back.
         storage.failSaves(false)
         let saved = await writer.settle()
         XCTAssertTrue(saved)
+        _ = try await writer.send(OutgoingMessage(text: "hello, more")).value
+        writer.save("", generation: 3)
+        let cleared = await writer.settle()
+        XCTAssertTrue(cleared)
         try await Task.sleep(for: .milliseconds(50))
-        XCTAssertEqual(storage.saves, ["next"])
-        XCTAssertEqual(storage.log.filter { $0.hasPrefix("send") }, ["send hello over "])
+        XCTAssertEqual(storage.log.filter { $0 != "read" }, [
+            "save hello, more", "send hello, more over hello, more", "save ",
+        ])
+        XCTAssertEqual(storage.value.draft, "")
     }
 
-    func testAnAcceptedSendSettlesTheGenerationOfTheTextItSent() async throws {
+    func testAWriteThatRecoversBeforeTheSendGoesFirst() async throws {
         let storage = ProbeStorage()
-        let (writer, _, deliveries) = writer(storage, retryDelays: [.milliseconds(5)], failures: Failures())
+        let (writer, _, deliveries) = writer(storage, failures: Failures())
         await fulfillment(of: [deliveries.expect(1)], timeout: 5)
         storage.failSaves(true)
         writer.save("hello", generation: 1)
-        _ = try await writer.send(OutgoingMessage(text: "hello")).value
-        let settled = await writer.settle()
-        XCTAssertTrue(settled, "nothing is left unsaved")
+        _ = await writer.settle()
         storage.failSaves(false)
+        _ = try await writer.send(OutgoingMessage(text: "hello")).value
+        XCTAssertEqual(storage.log.filter { $0 != "read" }, ["save hello", "send hello over hello"])
         storage.change { $0.draft = "from the laptop" }
         await fulfillment(of: [deliveries.expect(2)], timeout: 5)
-        XCTAssertEqual(deliveries.all.last?.generation, 1, "a later remote edit is news again")
-        XCTAssertTrue(storage.saves.isEmpty)
+        XCTAssertEqual(deliveries.all.last?.generation, 1)
     }
 
-    func testARefusedSendKeepsTheUnsavedWrite() async throws {
+    func testASendTheOutboxRefusesLeavesTheDraftOnDisk() async throws {
         let storage = ProbeStorage()
         let (writer, sending, deliveries) = writer(storage, failures: Failures())
         await fulfillment(of: [deliveries.expect(1)], timeout: 5)
-        storage.failSaves(true)
         writer.save("hello", generation: 1)
         sending.refuseNext()
         do {
@@ -490,10 +504,9 @@ final class ComposerDraftWriterFailureTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? ProbeError, .offline)
         }
-        storage.failSaves(false)
-        let saved = await writer.settle()
-        XCTAssertTrue(saved)
-        XCTAssertEqual(storage.saves, ["hello"])
+        let settled = await writer.settle()
+        XCTAssertTrue(settled)
+        XCTAssertEqual(storage.value.draft, "hello")
     }
 
     func testAFailedReadIsReportedAndTheNextOneDelivers() async throws {
@@ -526,6 +539,28 @@ private final class FailingReads: ComposerStorage, @unchecked Sendable {
     }
     func saveDraft(sessionId: String, text: String) throws {}
     func composerValues(sessionId: String) -> AsyncThrowingStream<ComposerStoreValue, any Error> { AsyncThrowingStream { _ in } }
+}
+
+/// A real store whose draft writes can be made to fail.
+private final class FlakyStorage: ComposerStorage, @unchecked Sendable {
+    let base: OutboxSender
+    private let lock = NSLock()
+    private var fail = false
+    var failing: Bool {
+        get { lock.withLock { fail } }
+        set { lock.withLock { fail = newValue } }
+    }
+
+    init(_ base: OutboxSender) { self.base = base }
+
+    func composerValue(sessionId: String) throws -> ComposerStoreValue { try base.composerValue(sessionId: sessionId) }
+    func saveDraft(sessionId: String, text: String) throws {
+        if failing { throw ProbeError.diskFull }
+        try base.saveDraft(sessionId: sessionId, text: text)
+    }
+    func composerValues(sessionId: String) -> AsyncThrowingStream<ComposerStoreValue, any Error> {
+        base.composerValues(sessionId: sessionId)
+    }
 }
 
 /// Counts the writer's own reads, apart from the observation's fetches.
@@ -656,6 +691,44 @@ final class ComposerDraftStoreTests: XCTestCase {
         try store.saveComposerState(ComposerStateRecord(sessionId: "s", values: .object(["permissionMode": .string("plan")])))
         await fulfillment(of: [deliveries.expect(3)], timeout: 5)
         XCTAssertEqual(deliveries.all.last?.value.picks, ComposerPicks(permissionMode: "plan"))
+        writer.close()
+        await sync.stop()
+    }
+
+    func testAHappyAgentSendWaitsOutAFailingDiskAndItsClearSticks() async throws {
+        let (store, sync, sender, files) = try await fixture(rig: true)
+        defer { try? FileManager.default.removeItem(at: files) }
+        await sync.rigComposer.configure(transport: NeverAcknowledges())
+        let storage = FlakyStorage(sender)
+        let writer = ComposerDraftWriter(sessionId: "s", storage: storage, sending: sender, retryDelays: [.milliseconds(5)])
+        let deliveries = Deliveries()
+        writer.start { deliveries.receive($0) }
+        await fulfillment(of: [deliveries.expect(1)], timeout: 5)
+        var model = ComposerDraftModel()
+        _ = model.receive(deliveries.all[0], text: "", synced: true, composing: false)
+        type("hello", into: &model, synced: true, writer: writer)
+        await writer.settle()
+        storage.failing = true
+        type("hello there", into: &model, synced: true, writer: writer)
+        do {
+            _ = try await writer.send(OutgoingMessage(text: "hello there")).value
+            XCTFail("the draft before it isn't on disk")
+        } catch {
+            XCTAssertTrue(error is ComposerDraftWriter.UnsavedDraftError)
+        }
+        XCTAssertTrue(try store.pendingOutbox().isEmpty, "nothing was accepted")
+        XCTAssertEqual(try store.draft(sessionId: "s")?.text, "hello")
+
+        storage.failing = false
+        let saved = await writer.settle()
+        XCTAssertTrue(saved)
+        XCTAssertEqual(try store.draft(sessionId: "s")?.text, "hello there")
+        let id = try await writer.send(OutgoingMessage(text: "hello there")).value
+        XCTAssertNil(model.clear(stored: false), "the send clears a Happy Agent draft")
+        try await Task.sleep(for: .milliseconds(50))
+        await writer.settle()
+        XCTAssertNil(try store.draft(sessionId: "s"), "no retry brings the sent text back")
+        XCTAssertEqual(try store.pendingOutbox().map(\.localId), [id])
         writer.close()
         await sync.stop()
     }

@@ -512,6 +512,11 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             } catch {
                 self?.isSending = false
                 logger.error("send failed: \(String(describing: error), privacy: .public)")
+                if error is ComposerDraftWriter.UnsavedDraftError {
+                    // Nothing went; the text stays for another try.
+                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                    self?.card.shake()
+                }
             }
         }
     }
