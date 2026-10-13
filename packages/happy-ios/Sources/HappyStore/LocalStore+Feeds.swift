@@ -6,6 +6,11 @@ extension LocalStore {
     public func settingsSnapshots() -> AsyncStream<SettingsSnapshot> { Self.stream(settingsObservation) }
     public func machineSnapshots() -> AsyncStream<MachinesSnapshot> { machinesHub.snapshots() }
 
+    public func stopSnapshotProducers() async {
+        await homeHub.stop()
+        await machinesHub.stop()
+    }
+
     public func setSessionPresenceOverlay(id: String, value: PresenceOverlayValue) { presenceOverlay.setSession(id, value) }
     public func setMachinePresenceOverlay(id: String, value: PresenceOverlayValue) { presenceOverlay.setMachine(id, value) }
 
