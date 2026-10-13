@@ -81,7 +81,9 @@ happy-app has two kinds of header on iOS (`app/(app)/_layout.tsx`):
   title is an RN `<Text>` (16, semibold; the subtitle 11), so it scales,
   uncapped, in a header that keeps its height.
 
-Here the bar's own title never scales. Settings, What's New, Welcome and
+Here the bar's own title is react-native-screens' (IBMPlexSans-SemiBold
+17, a font and a colour: `AppCoordinator.nativeTitleAttributes`) and never
+scales. Settings, What's New, Welcome and
 Home put their title in a title view that follows the text size and is
 fitted again in the bar when the size changes.
 
