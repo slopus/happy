@@ -45,8 +45,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private var gitStatus: GitStatus?
     private let dock = UIView()
     private let composer: any ChatComposerView
-    /// The bars above the composer, top to bottom: the goal, a request the
-    /// chat can't show inline, what a Happy Agent session has running.
+    /// The bars above the composer, top to bottom: how to bring back a
+    /// session that has stopped, the goal, a request the chat can't show
+    /// inline, what a Happy Agent session has running.
+    private let inactiveHint = ChatInactiveHintView()
+    private var resuming = false
     private let goalBar = ChatGoalBarView()
     private var goalInFlight: SessionGoalAction?
     private let questionBanner = ChatQuestionBannerView()
@@ -132,9 +135,12 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         questionBanner.isHidden = true
         questionBanner.onOpen = { [weak self] in self?.openQuestionSheet() }
         questionBanner.onDismiss = { [weak self] in self?.dismissUnsupportedRequest() }
+        inactiveHint.isHidden = true
+        inactiveHint.onResume = { [weak self] in self?.resume() }
         goalBar.isHidden = true
         goalBar.onAction = { [weak self] action in self?.performGoalAction(action) }
         rigActivity.isHidden = true
+        dock.addSubview(inactiveHint)
         dock.addSubview(goalBar)
         dock.addSubview(questionBanner)
         dock.addSubview(rigActivity)
@@ -355,17 +361,24 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// The bars shown above the composer, in order, with their heights.
     private var dockBars: [(view: UIView, measurable: Measurable, inset: Bool)] {
         var bars: [(view: UIView, measurable: Measurable, inset: Bool)] = []
+        if !inactiveHint.isHidden { bars.append((inactiveHint, inactiveHint.barMeasurable, true)) }
         if !goalBar.isHidden { bars.append((goalBar, goalBar.barMeasurable, true)) }
         if !questionBanner.isHidden { bars.append((questionBanner, questionBanner.bannerMeasurable, true)) }
         if !rigActivity.isHidden { bars.append((rigActivity, rigActivity.barMeasurable, false)) }
         return bars
     }
 
-    /// SessionView's input stack: AgentGoalBar, AgentQuestionBanner and
-    /// RigActivityBar. A bar that comes or goes moves the composer with an
-    /// animation; while the reader is scrolled back they stay faded.
+    /// SessionView's input stack: InactiveArchivedHint, AgentGoalBar,
+    /// AgentQuestionBanner and RigActivityBar. A bar that comes or goes moves
+    /// the composer with an animation; while the reader is scrolled back they
+    /// stay faded.
     private func updateDockBars() {
         let before = dockBars.map { $0.view }
+        let hint = InactiveSessionHint(session: session.record, machine: session.machine)
+        if let hint {
+            inactiveHint.show(hint, resuming: resuming)
+        }
+        inactiveHint.isHidden = hint == nil
         let goal = session.record.flatMap(VisibleAgentGoal.init)
         if let goal {
             goalBar.show(goal, inFlight: goalInFlight)
@@ -426,6 +439,29 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             try? await goalAction(dispatch.action, dispatch.objective)
             self.goalInFlight = nil
             self.updateDockBars()
+        }
+    }
+
+    /// useSessionQuickActions' performResume: one at a time, spinning until
+    /// it is done; a failure is an alert. The session reconnects under its
+    /// own id, so the hint just goes once it is back.
+    private func resume() {
+        guard !resuming, let record = session.record else { return }
+        let resume = services.resume
+        let machine = session.machine
+        resuming = true
+        updateDockBars()
+        Task { [weak self] in
+            do {
+                let opened = try await resume(record, machine)
+                if let self, let opened, opened != self.sessionId {
+                    self.push(.session(id: opened), context: self.context)
+                }
+            } catch {
+                if let self { DetailActionAlert.show(error, on: self) }
+            }
+            self?.resuming = false
+            self?.updateDockBars()
         }
     }
 

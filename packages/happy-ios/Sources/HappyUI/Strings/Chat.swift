@@ -28,6 +28,10 @@ extension Strings {
         public static func unsupported(_ kind: String) -> String { "This message can't be shown here (\(kind))" }
         /// ChatFooter.tsx (not in en.ts)
         public static let controlledByTerminal = "Permissions shown in terminal only. Reset or send a message to control from app."
+        /// session.inactiveArchived
+        public static let inactiveArchived = "This session is inactive."
+        /// session.resumeFromTerminal
+        public static let resumeFromTerminal = "To resume it from the terminal:"
         /// EmptyMessages.tsx (not in en.ts)
         public static let noMessages = "No messages yet"
         /// EmptyMessages.tsx (not in en.ts)

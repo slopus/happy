@@ -719,3 +719,33 @@ final class CopyMenuLayoutTests: XCTestCase {
         assertFrame(tall.menu, rect(225, 796, 152, 44))
     }
 }
+
+final class InactiveHintLayoutTests: XCTestCase {
+    func testResumeSitsUnderTheNotice() {
+        let layout = InactiveHintLayout(
+            width: 361, notice: text("This session is inactive.", advance: 7, lineHeight: 18), terminalNotice: nil,
+            action: .resume(label: .fixed(width: 111, height: 20))
+        )
+        assertFrame(layout.notice, rect(8, 12, 345, 18))
+        assertFrame(layout.button, rect(8, 40, 345, 44))
+        assertFrame(layout.buttonLabel, rect(125, 52, 111, 20))
+        XCTAssertNil(layout.command)
+        assertSize(layout.size, CGSize(width: 361, height: 94))
+    }
+
+    func testTheCommandBlockRunsEdgeToEdgeWithItsCopyGlyph() {
+        let layout = InactiveHintLayout(
+            width: 361, notice: text("x", lineHeight: 18), terminalNotice: text("y", lineHeight: 18),
+            action: .command(block(height: 36))
+        )
+        assertFrame(layout.terminalNotice, rect(8, 34, 345, 18))
+        assertFrame(layout.command, rect(0, 62, 361, 60))
+        assertFrame(layout.commandText, rect(16, 74, 305, 36))
+        assertFrame(layout.commandIcon, rect(329, 75, 16, 16))
+        assertSize(layout.size, CGSize(width: 361, height: 132))
+
+        let short = InactiveHintLayout(width: 361, notice: text("x", lineHeight: 18), terminalNotice: nil, action: .command(block(height: 18)))
+        // At least 48 tall.
+        assertFrame(short.command, rect(0, 40, 361, 48))
+    }
+}

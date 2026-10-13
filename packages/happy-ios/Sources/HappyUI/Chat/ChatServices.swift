@@ -26,11 +26,14 @@ public struct ChatSessionState: Equatable, Sendable {
     /// happy-app's `isDataReady`: sessions have been fetched at least once,
     /// so a missing record means the session was deleted.
     public var dataReady: Bool
+    /// The machine a stopped session ran on, for whether it can be resumed.
+    public var machine: MachineRecord?
 
-    public init(record: SessionRecord?, settings: AccountSettings, dataReady: Bool = false) {
+    public init(record: SessionRecord?, settings: AccountSettings, dataReady: Bool = false, machine: MachineRecord? = nil) {
         self.record = record
         self.settings = settings
         self.dataReady = dataReady
+        self.machine = machine
     }
 
     public var metadata: JSONValue? { record?.metadata }
@@ -73,6 +76,9 @@ struct ChatServices {
     var setPermissionMode: @Sendable (_ mode: String) async -> Void = { _ in }
     /// sessionGoalAction: the goal bar's edit and clear.
     var goalAction: @Sendable (_ action: SessionGoalAction, _ objective: String?) async throws -> Void = { _, _ in }
+    /// useSessionQuickActions' resume, for the inactive hint: the session
+    /// to open, or nil when there is nothing to open yet.
+    var resume: @MainActor (_ session: SessionRecord, _ machine: MachineRecord?) async throws -> String? = { _, _ in nil }
 
     static func make(account: AccountSession, sessionId: String) -> ChatServices {
         let store = account.store
@@ -103,6 +109,19 @@ struct ChatServices {
             },
             goalAction: { [actions = account.actions] action, objective in
                 try await actions.sessionGoalAction(sessionId: sessionId, action: action, objective: objective)
+            },
+            resume: { session, machine in
+                let composer = (try? store.composerState(sessionId: session.id))?.values ?? .object([:])
+                let settings = (try? store.settingsSnapshot())?.synced?.settings
+                typealias S = Strings.SessionDetail
+                let messages = SessionDetailActions.ResumeMessages(
+                    missingMachine: S.resumeSessionMissingMachine,
+                    missingBackendId: S.resumeSessionMissingBackendId,
+                    sameMachineOnly: S.resumeSessionSameMachineOnly,
+                    machineOffline: S.resumeSessionMachineOffline,
+                    unexpectedDirectoryPrompt: S.resumeSessionUnexpectedDirectoryPrompt
+                )
+                return try await account.detailActions.resume(session, machine: machine, settings: settings, composer: composer, messages: messages)
             }
         )
     }
@@ -117,10 +136,15 @@ struct ChatServices {
             var last: ChatSessionState?
             return store.observeHome { snapshot in
                 let fetched = ((try? store.cursor(.sessionsChangedSince)) ?? nil) != nil
+                let session = record(snapshot)
+                // Only a stopped session needs it, and a live one shouldn't
+                // update with its machine's every heartbeat.
+                let machineId = session.flatMap { SessionState($0) == .disconnected ? $0.metadata?["machineId"]?.stringValue : nil }
                 let state = ChatSessionState(
-                    record: record(snapshot),
+                    record: session,
                     settings: AccountSettings(snapshot.settings),
-                    dataReady: fetched || !snapshot.sessions.isEmpty
+                    dataReady: fetched || !snapshot.sessions.isEmpty,
+                    machine: machineId.flatMap { id in snapshot.machines.machines.first { $0.id == id } }
                 )
                 guard state != last else { return }
                 last = state

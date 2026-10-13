@@ -90,3 +90,37 @@ public struct RigActivityIndicator: Equatable, Sendable {
         return indicators
     }
 }
+
+/// SessionView's InactiveArchivedHint, above the composer of a session
+/// that has lost its agent (archived, or its CLI stopped): "This session is
+/// inactive.", then Resume when it can be resumed from here, or else the
+/// commands that resume it from a terminal. Not for Happy Agent, nor for a
+/// chat that hasn't been created yet.
+public struct InactiveSessionHint: Equatable, Sendable {
+    public enum Action: Equatable, Sendable {
+        case resume
+        /// resumeCommand.ts's block, one command a line.
+        case command(lines: [String])
+        /// Neither: the notice alone.
+        case noticeOnly
+    }
+
+    public var action: Action
+
+    public init?(session: SessionRecord?, machine: MachineRecord?) {
+        guard let session, SessionState(session) == .disconnected, !session.isRig else { return nil }
+        if SessionDetails.resumeAvailability(session, machine: machine).canResume {
+            action = .resume
+        } else if let lines = SessionDetails.resumeCommandLines(session.metadata) {
+            action = .command(lines: lines)
+        } else {
+            action = .noticeOnly
+        }
+    }
+
+    /// What the command block copies: its lines, one a line.
+    public var copyText: String? {
+        guard case .command(let lines) = action else { return nil }
+        return lines.joined(separator: "\n")
+    }
+}

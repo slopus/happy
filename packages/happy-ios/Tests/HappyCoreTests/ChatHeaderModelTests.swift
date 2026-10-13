@@ -90,6 +90,40 @@ final class ChatEmptyStateTests: XCTestCase {
     }
 }
 
+final class InactiveSessionHintTests: XCTestCase {
+    private func session(active: Bool = false, metadata: JSONValue) -> SessionRecord {
+        SessionRecord(
+            id: "s", seq: 1, createdAt: 1, updatedAt: 1, active: active, activeAt: 1, projectId: nil,
+            metadataVersion: 1, metadataCipher: "c", metadata: metadata,
+            agentStateVersion: 1, agentStateCipher: nil, agentState: nil, dataKeyCipher: "k", decryptable: true
+        )
+    }
+
+    private func machine(active: Bool) -> MachineRecord {
+        MachineRecord(
+            id: "m1", seq: 0, createdAt: 1, updatedAt: 1, active: active, activeAt: 1,
+            metadataVersion: 1, metadataCipher: "c", metadata: ["resumeSupport": ["rpcAvailable": .bool(true)]],
+            daemonStateVersion: 0, daemonStateCipher: nil, daemonState: nil, dataKeyCipher: "k", decryptable: true
+        )
+    }
+
+    private let claude: JSONValue = ["machineId": "m1", "claudeSessionId": "c-1", "path": "/Users/a/repo"]
+
+    func testAnInactiveSessionOffersResumeWhenItsMachineCanRunIt() {
+        XCTAssertEqual(InactiveSessionHint(session: session(metadata: claude), machine: machine(active: true))?.action, .resume)
+        XCTAssertNil(InactiveSessionHint(session: session(active: true, metadata: claude), machine: machine(active: true)), "connected")
+        XCTAssertNil(InactiveSessionHint(session: nil, machine: nil), "a chat that doesn't exist yet")
+        XCTAssertNil(InactiveSessionHint(session: session(metadata: ["client": ["id": "rig"]]), machine: nil), "Happy Agent")
+    }
+
+    func testOtherwiseItShowsTheTerminalCommands() {
+        let offline = InactiveSessionHint(session: session(metadata: claude), machine: machine(active: false))
+        XCTAssertEqual(offline?.action, .command(lines: ["cd '/Users/a/repo'", "happy claude --resume c-1"]))
+        XCTAssertEqual(offline?.copyText, "cd '/Users/a/repo'\nhappy claude --resume c-1")
+        XCTAssertEqual(InactiveSessionHint(session: session(metadata: ["machineId": "m1"]), machine: nil)?.action, .noticeOnly, "nothing to resume with")
+    }
+}
+
 final class ChatDockBarsTests: XCTestCase {
     private func session(active: Bool = true, metadata: JSONValue?, goal: JSONValue?) -> SessionRecord {
         SessionRecord(

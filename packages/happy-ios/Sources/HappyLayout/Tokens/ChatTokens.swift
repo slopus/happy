@@ -293,6 +293,11 @@ public enum ChatTextStyles {
     public static let terminalEmptyOutput = ChatTextStyle(.menloItalic, size: 13, lineHeight: 18)
     public static let detailMessage = ChatTextStyle(.plex(.regular), size: 16, lineHeight: 24)
 
+    // InactiveArchivedHint (plain <Text>s: the system font)
+    public static let inactiveHint = ChatTextStyle(.system(.regular), size: 13, lineHeight: 18)
+    public static let resumeButton = ChatTextStyle(.system(.semibold), size: 15)
+    public static let resumeCommand = ChatTextStyle(.menlo, size: 13, lineHeight: 18)
+
     // LongPressCopyable's menu and the text selection screen
     public static let copyMenuLabel = ChatTextStyle(.plex(.regular), size: 15, lineHeight: 20)
     public static let textSelection = ChatTextStyle(.plex(.mono), size: 14, lineHeight: 20)
