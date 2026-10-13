@@ -64,6 +64,7 @@ public final class ItemGroupView: UIView {
             title: title == nil ? nil : headerLabel.measurable,
             footer: footer == nil ? nil : footerLabel.measurable,
             rows: rows.map(\.measurable),
+            maxWidth: ContentWidth.maxWidth, // Tablet (HappyUI/Tablet): ItemGroup.tsx layout.maxWidth
             untitledPaddingTop: untitledPaddingTop,
             paddingBottom: paddingBottom
         ))

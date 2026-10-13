@@ -11,6 +11,9 @@ public final class AppCoordinator {
     public let window: UIWindow
     public let context: AppContext
     private let navigation = UINavigationController()
+    // Tablet (HappyUI/Tablet): the window's root holds the stack, and the
+    // sidebar beside it on a tablet-wide window.
+    private lazy var shell = TabletShellViewController(context: context, detail: navigation)
     /// The session the root was built for; nil while signed out, unset
     /// before the first state arrives.
     private var shownSession: ObjectIdentifier??
@@ -29,7 +32,7 @@ public final class AppCoordinator {
     public func start() {
         Self.applyAppearance(to: navigation.navigationBar)
         ThemeController.apply(from: context, to: window)
-        window.rootViewController = navigation
+        window.rootViewController = shell // Tablet: was `navigation`.
         window.tintColor = UIColor(Palette.headerTint)
         window.makeKeyAndVisible()
         context.account.onChange = { [weak self] state in
@@ -161,6 +164,7 @@ public final class AppCoordinator {
         }
         navigation.presentedViewController?.dismiss(animated: false)
         navigation.setViewControllers([root], animated: animated)
+        shell.rootDidChange() // Tablet: the sidebar follows the account.
         openNotificationSession()
     }
 

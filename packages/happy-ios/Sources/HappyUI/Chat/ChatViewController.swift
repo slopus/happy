@@ -127,6 +127,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.surface)
         showsBackTitle()
+        dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): ChatHeaderView.tsx
         navigationItem.largeTitleDisplayMode = .never
         setUpHeader()
 
@@ -224,7 +225,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     }
 
     private var maxContentWidth: CGFloat {
-        traitCollection.horizontalSizeClass == .regular ? ChatScreenLayout.Metrics.regularMaxContentWidth : .greatestFiniteMagnitude
+        ContentWidth.maxWidth // Tablet (HappyUI/Tablet): layout.ts maxWidth, was 800 by size class.
     }
 
     private func layoutScreen() {

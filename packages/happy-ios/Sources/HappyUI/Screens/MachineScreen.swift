@@ -44,6 +44,7 @@ final class MachineViewController: UIViewController {
         // headerBackTitle: machine.back, for screens pushed from here.
         navigationItem.backButtonDisplayMode = .default
         navigationItem.backButtonTitle = Strings.MachineDetail.back
+        dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
         refresh.addTarget(self, action: #selector(pulledToRefresh), for: .valueChanged)
         list.refreshControl = refresh
         observation = session.store.observeHome { [weak self] snapshot in

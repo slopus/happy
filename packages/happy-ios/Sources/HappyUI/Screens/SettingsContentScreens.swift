@@ -75,6 +75,7 @@ public final class ChangelogViewController: UIViewController {
         navigationItem.titleView = ChangelogTitleView(title: Strings.SettingsTitles.whatsNew)
         title = Strings.SettingsTitles.whatsNew
         showsBackTitle()
+        dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
         if !changelog.latestTitle.isEmpty {
             readMarker.markViewed(changelog.latestTitle)
         }

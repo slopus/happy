@@ -213,7 +213,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     // MARK: Layout
 
     private var maxContentWidth: CGFloat {
-        traitCollection.horizontalSizeClass == .regular ? ChatScreenLayout.Metrics.regularMaxContentWidth : .greatestFiniteMagnitude
+        ContentWidth.maxWidth // Tablet (HappyUI/Tablet): layout.ts maxWidth, was 800 by size class.
     }
 
     private func layout(width: CGFloat) -> AgentInputLayout {

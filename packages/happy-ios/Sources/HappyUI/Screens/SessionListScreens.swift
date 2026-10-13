@@ -54,6 +54,22 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
     var contentInsets: HomeContentInsets? {
         didSet { if contentInsets != oldValue { applyContentInsets() } }
     }
+
+    // Tablet (HappyUI/Tablet): in the sidebar, the open chat's row stays
+    // selected (SessionsList.tsx `selectedSessionId`); flat rows only.
+    var selectedSessionId: String? {
+        didSet { if selectedSessionId != oldValue { applySelection() } }
+    }
+
+    private func applySelection() {
+        guard isViewLoaded else { return }
+        if let path = selectedSessionId.flatMap({ dataSource.indexPath(for: .session($0)) }) {
+            tableView.selectRow(at: path, animated: false, scrollPosition: .none)
+        } else if let path = tableView.indexPathForSelectedRow {
+            tableView.deselectRow(at: path, animated: false)
+        }
+    }
+
     private var didScrollToTop = false
 
     init(context: AppContext, session: AccountSession, list: SessionList, offline: [MachineChoice]?) {
@@ -185,6 +201,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         snapshot.appendItems(ids)
         snapshot.reconfigureItems(changed.filter { dataSource.snapshot().itemIdentifiers.contains($0) })
         dataSource.apply(snapshot, animatingDifferences: animated)
+        applySelection() // Tablet
         updateBanners()
     }
 
@@ -391,6 +408,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
             guard let sessionId = sessionId(item) else { return }
             push(.session(id: sessionId), context: context)
         }
+        applySelection() // Tablet
     }
 
     /// FlatSessionRow.tsx's swipe: "Archive Session" on red. Only the flat

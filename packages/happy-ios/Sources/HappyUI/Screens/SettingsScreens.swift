@@ -39,6 +39,7 @@ public final class SettingsViewController: UIViewController {
         super.viewDidLoad()
         title = Strings.Settings.title
         showsBackTitle()
+        dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
         observation = context.account.session?.store.observeSettings { [weak self] snapshot in
             self?.snapshot = snapshot
             self?.rebuild()

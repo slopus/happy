@@ -60,6 +60,8 @@ public final class HomeViewController: UIViewController {
         observation = session.store.observeHome { [weak self] snapshot in
             self?.received(snapshot)
         }
+        // Tablet (HappyUI/Tablet): the shell flips this with the window's width.
+        registerForTraitChanges([TabletLayoutTrait.self]) { (self: Self, _) in self.updateNavigation(animated: false) }
         // The stream ends when the session stops.
         let statusUpdates = session.statusUpdates
         Task { @MainActor [weak self] in
@@ -209,8 +211,12 @@ public final class HomeViewController: UIViewController {
     private func updateNavigation(animated: Bool) {
         guard let state else { return }
         let floating = state != .link
-        header.isHidden = !floating
-        dock?.isAvailable = floating
+        // Tablet (HappyUI/Tablet): beside the sidebar the index route draws
+        // nothing, nor its header and dock (MainView.tsx `isTablet`).
+        let blank = floating && traitCollection.isTabletLayout
+        content?.view.isHidden = blank
+        header.isHidden = !floating || blank
+        dock?.isAvailable = floating && !blank
         if navigationController?.topViewController === self {
             navigationController?.setNavigationBarHidden(floating, animated: animated)
         }
