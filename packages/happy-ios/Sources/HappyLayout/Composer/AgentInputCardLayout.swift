@@ -72,6 +72,10 @@ public struct AgentInputCardLayout: Equatable, Sendable {
         public var effort: Chip?
         /// The "·" between model and effort.
         public var separator: CGSize
+        /// AgentInput.tsx `zenMode`: no add button and no chips, whatever
+        /// the rest says; the middle box stays, empty, and send keeps its
+        /// place.
+        public var zenMode: Bool
 
         public init(
             width: CGFloat,
@@ -86,7 +90,8 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             model: Chip? = nil,
             modelIsMenu: Bool = true,
             effort: Chip? = nil,
-            separator: CGSize = .zero
+            separator: CGSize = .zero,
+            zenMode: Bool = false
         ) {
             self.width = width
             self.metrics = metrics
@@ -101,6 +106,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             self.modelIsMenu = modelIsMenu
             self.effort = effort
             self.separator = separator
+            self.zenMode = zenMode
         }
     }
 
@@ -190,7 +196,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
         actionRow = CGRect(x: contentX, y: y, width: contentWidth, height: metrics.actionRowHeight)
         let gap = metrics.actionRowGeometry.gap ?? 0
         var middleX = actionRow.minX
-        if input.showsAdd {
+        if input.showsAdd, !input.zenMode {
             add = CGRect(
                 x: actionRow.minX,
                 y: actionRow.minY + (metrics.actionRowHeight - metrics.actionSize) / 2,
@@ -213,7 +219,7 @@ public struct AgentInputCardLayout: Equatable, Sendable {
             width: max(0, primary.minX - metrics.primaryActionMarginLeft - gap - middleX),
             height: metrics.actionRowHeight
         )
-        middleContent = Self.middle(input, width: middle.width)
+        middleContent = input.zenMode ? MiddleContent() : Self.middle(input, width: middle.width)
         y += metrics.actionRowHeight + metrics.shellPaddingBottom + border
         size = CGSize(width: width, height: y)
     }

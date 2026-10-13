@@ -117,6 +117,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             self.applyDetails()
             self.composerDelegate?.composerDidInvalidateHeight(self)
         }
+        registerForTraitChanges([ZenModeTrait.self]) { (self: Self, _) in
+            self.applyConfiguration()
+        }
     }
 
     @available(*, unavailable)
@@ -341,6 +344,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         configuration.primaryAction = primary
         configuration.isPrimaryBusy = isAborting
         configuration.showsAdd = canAttach
+        // localSettings.zenMode, as SessionView passes it.
+        configuration.zenMode = traitCollection.isZenMode
         configuration.attachments = canAttach
             ? images.images.map { AgentInputAttachmentPreview(id: $0.id, fileURL: $0.attachment.fileURL) }
             : []
