@@ -92,6 +92,15 @@ final class ChatScrollAnchorTests: XCTestCase {
 }
 
 final class MarkdownLayoutTests: XCTestCase {
+    func testAnImageIsDecodedNoLargerThanItsBoxAt3x() {
+        // Contained in 520 x 240: a wide picture by its width, a tall one
+        // by its height.
+        assertSize(MarkdownLayout.decodedImageSize(CGSize(width: 4000, height: 1000)), CGSize(width: 1560, height: 390))
+        assertSize(MarkdownLayout.decodedImageSize(CGSize(width: 1000, height: 3000)), CGSize(width: 240, height: 720))
+        assertSize(MarkdownLayout.decodedImageSize(CGSize(width: 64, height: 64)), CGSize(width: 64, height: 64))
+        assertSize(MarkdownLayout.decodedImageSize(.zero), .zero)
+    }
+
     func testBlocksStackWithTheirOwnMargins() {
         let layout = MarkdownLayout(width: 300, blocks: [
             .text(text("hello world", lineHeight: 25)),

@@ -71,6 +71,9 @@ enum ChatDrawItem {
     case scroller(ChatRowPlan, frame: CGRect, radius: CGFloat = 0)
     /// FileView's picture, loaded once it is on screen.
     case attachment(ChatAttachment, frame: CGRect)
+    /// A markdown image block's picture, loaded once it is on screen;
+    /// `label` is what VoiceOver reads.
+    case webImage(URL, frame: CGRect, label: String)
 }
 
 /// A picture the person attached: `ref` under the session's attachments,

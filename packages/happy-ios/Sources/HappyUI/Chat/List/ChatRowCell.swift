@@ -76,6 +76,7 @@ final class ChatPlanView: UIView {
     private var diffHeaders: [DiffFileHeaderView] = []
     private var scrollers: [ChatScrollerView] = []
     private var attachments: [ChatAttachmentView] = []
+    private var webImages: [ChatWebImageView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -110,6 +111,7 @@ final class ChatPlanView: UIView {
         var diffHeaderIndex = 0
         var scrollerIndex = 0
         var attachmentIndex = 0
+        var webImageIndex = 0
         var order: [UIView] = []
         for item in plan.items {
             switch item {
@@ -188,6 +190,11 @@ final class ChatPlanView: UIView {
                 view.setLayoutFrame(frame)
                 view.apply(attachment)
                 order.append(view)
+            case .webImage(let url, let frame, let label):
+                let view = take(&webImages, &webImageIndex) { ChatWebImageView(frame: .zero) }
+                view.setLayoutFrame(frame)
+                view.apply(url, label: label)
+                order.append(view)
             }
         }
         for view in boxes[boxIndex...] { view.isHidden = true }
@@ -213,6 +220,10 @@ final class ChatPlanView: UIView {
         for view in scrollers[scrollerIndex...] { view.isHidden = true }
         for view in attachments[attachmentIndex...] {
             view.apply(nil)
+            view.isHidden = true
+        }
+        for view in webImages[webImageIndex...] {
+            view.apply(nil, label: nil)
             view.isHidden = true
         }
         for view in order {

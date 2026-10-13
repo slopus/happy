@@ -53,6 +53,51 @@ final class ChatAttachmentImages: NSObject {
         AttachmentPictures.Key(sessionId: sessionId, ref: ref)
     }
 
+    // MARK: Markdown images
+
+    /// Fetched without cookies or a disk cache, so nothing of the account's
+    /// is sent with it and nothing it fetches outlives the account's cache.
+    private nonisolated static let web: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: configuration)
+    }()
+
+    func cachedWebImage(_ url: URL) -> UIImage? {
+        pictures.cached(.web(url.absoluteString)) as? UIImage
+    }
+
+    /// RenderImageBlock's `<Image source={{ uri }}>`: an http(s) or base64
+    /// `data:` picture, decoded off the main thread at no more than it is
+    /// drawn; nil when it can't be had.
+    func webImage(_ url: URL) async -> UIImage? {
+        let picture = await pictures.picture(.web(url.absoluteString)) {
+            guard let data = await Self.fetch(url), let image = UIImage(data: data) else { return nil }
+            let decoded = image.preparingThumbnail(of: MarkdownLayout.decodedImageSize(image.size)) ?? image
+            return (picture: decoded as AttachmentPictures.Picture, cost: ChatAttachmentImages.cost(decoded))
+        }
+        return picture as? UIImage
+    }
+
+    private nonisolated static func fetch(_ url: URL) async -> Data? {
+        switch url.scheme?.lowercased() {
+        case "http", "https":
+            guard let (data, response) = try? await web.data(from: url) else { return nil }
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) { return nil }
+            return data
+        case "data":
+            // data:[<type>][;base64],<payload>
+            let string = url.absoluteString
+            guard let comma = string.firstIndex(of: ","), string[..<comma].hasSuffix(";base64") else { return nil }
+            return Data(base64Encoded: String(string[string.index(after: comma)...]), options: .ignoreUnknownCharacters)
+        default:
+            return nil
+        }
+    }
+
     /// The decoded bitmap's bytes.
     nonisolated static func cost(_ image: UIImage) -> Int {
         if let cgImage = image.cgImage { return cgImage.bytesPerRow * cgImage.height }
@@ -145,6 +190,65 @@ final class ChatAttachmentView: UIView {
             self.picture.image = image
             self.picture.alpha = 0
             UIView.animate(withDuration: FileViewLayout.Metrics.fadeIn) { self.picture.alpha = 1 }
+        }
+    }
+
+    private func source() -> ChatAttachmentImages? {
+        var responder: UIResponder? = self
+        while let current = responder {
+            if let provider = current as? ChatAttachmentProviding { return provider.chatAttachments }
+            responder = current.next
+        }
+        return nil
+    }
+}
+/// RenderImageBlock's picture: `resizeMode="contain"` in its box, which
+/// the plan draws in `surfaceHighest` behind it and rounds 12. Nothing more
+/// when it can't be loaded, as React Native's Image shows nothing. It
+/// loads once it is on screen, from the screen up its responder chain.
+final class ChatWebImageView: UIImageView {
+    private var url: URL?
+    private var task: Task<Void, Never>?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        contentMode = .scaleAspectFit
+        clipsToBounds = true
+        layer.cornerRadius = MarkdownLayout.Metrics.imageRadius
+        isUserInteractionEnabled = false
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    /// Nil lets go of the picture.
+    func apply(_ url: URL?, label: String?) {
+        accessibilityLabel = label
+        guard url != self.url else { return }
+        task?.cancel()
+        task = nil
+        self.url = url
+        image = nil
+        loadIfNeeded()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        loadIfNeeded()
+    }
+
+    private func loadIfNeeded() {
+        guard task == nil, window != nil, let url, image == nil, let images = source() else { return }
+        if let cached = images.cachedWebImage(url) {
+            image = cached
+            return
+        }
+        task = Task { @MainActor [weak self] in
+            let image = await images.webImage(url)
+            guard !Task.isCancelled, let self, self.url == url else { return }
+            self.image = image
         }
     }
 

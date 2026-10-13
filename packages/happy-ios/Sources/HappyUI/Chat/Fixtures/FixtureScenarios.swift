@@ -479,6 +479,10 @@ enum FixtureScenarios {
     | Dock details show | 16 pt | Bring it back |
 
     A one-liner: `layout.rows(from: minY, to: maxY)` returns the visible range.
+
+    ![The anchoring diagram](https://raw.githubusercontent.com/slopus/happy/main/.github/logotype-dark.png)
+
+    ![](https://example.invalid/never-loads.png)
     """
 
     static let optionsAnswer = """

@@ -1,10 +1,10 @@
 import Foundation
 
 /// useAttachmentImage's cache, for one account: the session pictures it has
-/// decoded, by session and ref, kept while they fit in `maxCount` pictures
-/// and `maxCost` bytes, the least recently used let go first. One load per
-/// picture at a time; a failed load is not kept, so the next screen tries
-/// again.
+/// decoded, by session and ref, and the markdown images it has fetched, by
+/// URL, kept while they fit in `maxCount` pictures and `maxCost` bytes, the
+/// least recently used let go first. One load per picture at a time; a
+/// failed load is not kept, so the next screen tries again.
 ///
 /// `AccountSession` owns it, so pictures are never shared between accounts
 /// and go with the account when it is switched away from or signed out.
@@ -20,6 +20,12 @@ public final class AttachmentPictures {
         public init(sessionId: String, ref: String) {
             self.sessionId = sessionId
             self.ref = ref
+        }
+
+        /// A markdown image: its URL, in no session, so never one of a
+        /// session's attachments.
+        public static func web(_ url: String) -> Key {
+            Key(sessionId: "", ref: url)
         }
     }
 
