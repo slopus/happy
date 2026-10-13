@@ -46,7 +46,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private var headerBackdropVisible = false
     private let gitTask = TaskHolder()
     private var gitStatus: GitStatus?
-    private let dock = UIView()
+    private let dock = ChatDockView()
     private let composer: any ChatComposerView
     /// The bars above the composer, top to bottom: how to bring back a
     /// session that has stopped, the goal, a request the chat can't show
