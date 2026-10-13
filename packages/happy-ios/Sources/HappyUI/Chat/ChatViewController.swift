@@ -43,8 +43,12 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private var gitStatus: GitStatus?
     private let dock = UIView()
     private let composer: any ChatComposerView
-    /// A request the chat can't show inline, above the composer.
+    /// The bars above the composer, top to bottom: the goal, a request the
+    /// chat can't show inline, what a Happy Agent session has running.
+    private let goalBar = ChatGoalBarView()
+    private var goalInFlight: SessionGoalAction?
     private let questionBanner = ChatQuestionBannerView()
+    private let rigActivity = ChatRigActivityView()
     private weak var questionSheet: AgentQuestionSheetController?
     /// Questions a sent message answers instead, by the message's local
     /// id: dismissed once it is delivered.
@@ -116,7 +120,12 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         questionBanner.isHidden = true
         questionBanner.onOpen = { [weak self] in self?.openQuestionSheet() }
         questionBanner.onDismiss = { [weak self] in self?.dismissUnsupportedRequest() }
+        goalBar.isHidden = true
+        goalBar.onAction = { [weak self] action in self?.performGoalAction(action) }
+        rigActivity.isHidden = true
+        dock.addSubview(goalBar)
         dock.addSubview(questionBanner)
+        dock.addSubview(rigActivity)
         dock.addSubview(composer)
         view.addSubview(dock)
         scrollButton.alpha = 0
@@ -189,7 +198,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             // The guide's top is the safe area's bottom while the keyboard
             // is down, and the layout never goes below that.
             keyboardTop: keyboardTracker.frame.minY,
-            accessories: questionBanner.isHidden ? [] : [questionBanner.bannerMeasurable],
+            accessories: dockBars.map { $0.inset ? .inset($0.measurable) : .fullWidth($0.measurable) },
             composerHeight: composer.composerHeight(fitting: size.width),
             composerCardOffset: composer.cardOffset,
             maxContentWidth: maxContentWidth
@@ -202,7 +211,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         placeholder.setLayoutFrame(dock.isHidden ? view.bounds : screen.placeholder)
         titleView.maxWidth = ChatHeaderTitleLayout.maxWidth(headerWidth: size.width)
         dock.setLayoutFrame(screen.dock)
-        if let frame = screen.accessories.first, !questionBanner.isHidden { questionBanner.setLayoutFrame(frame) }
+        for (bar, frame) in zip(dockBars, screen.accessories) { bar.view.setLayoutFrame(frame) }
         composer.setLayoutFrame(screen.composer)
         scrollButton.setLayoutFrame(screen.scrollButton)
         scrim.setLayoutFrame(screen.scrim)
@@ -214,7 +223,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         session = state
         updateHeader()
         updatePlaceholder()
-        updateQuestionBanner()
+        updateDockBars()
         updateComposer()
         scheduleMeasure()
     }
@@ -328,6 +337,42 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         }
     }
 
+    /// The bars shown above the composer, in order, with their heights.
+    private var dockBars: [(view: UIView, measurable: Measurable, inset: Bool)] {
+        var bars: [(view: UIView, measurable: Measurable, inset: Bool)] = []
+        if !goalBar.isHidden { bars.append((goalBar, goalBar.barMeasurable, true)) }
+        if !questionBanner.isHidden { bars.append((questionBanner, questionBanner.bannerMeasurable, true)) }
+        if !rigActivity.isHidden { bars.append((rigActivity, rigActivity.barMeasurable, false)) }
+        return bars
+    }
+
+    /// SessionView's input stack: AgentGoalBar, AgentQuestionBanner and
+    /// RigActivityBar. A bar that comes or goes moves the composer with an
+    /// animation; while the reader is scrolled back they stay faded.
+    private func updateDockBars() {
+        let before = dockBars.map { $0.view }
+        let goal = session.record.flatMap(VisibleAgentGoal.init)
+        if let goal {
+            goalBar.show(goal, inFlight: goalInFlight)
+        }
+        goalBar.isHidden = goal == nil
+        updateQuestionBanner()
+        let indicators = RigActivityIndicator.indicators(session.metadata)
+        rigActivity.show(indicators)
+        rigActivity.isHidden = indicators.isEmpty
+
+        let bars = dockBars
+        for bar in bars { bar.view.alpha = dockDetailsVisible ? 1 : 0 }
+        // Contents can change a bar's height without it coming or going.
+        guard bars.map({ $0.view }) != before || !bars.isEmpty else { return }
+        view.setNeedsLayout()
+        if isViewLoaded && view.window != nil {
+            UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+                self.view.layoutIfNeeded()
+            }
+        }
+    }
+
     /// AgentQuestionBanner: the first request the chat can't show inline.
     /// An answer from another device closes the sheet here too.
     private func updateQuestionBanner() {
@@ -336,21 +381,36 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         if let sheet = questionSheet, !pending.contains(where: { $0.id == sheet.pending.id }) {
             sheet.dismiss(animated: true)
         }
-        let wasHidden = questionBanner.isHidden
         if let fallback {
             questionBanner.show(fallback)
-            questionBanner.isHidden = false
-        } else {
-            questionBanner.isHidden = true
         }
-        if wasHidden != questionBanner.isHidden || fallback != nil {
-            questionBanner.alpha = dockDetailsVisible ? 1 : 0
-            view.setNeedsLayout()
-            if isViewLoaded && view.window != nil {
-                UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
-                    self.view.layoutIfNeeded()
-                }
+        questionBanner.isHidden = fallback == nil
+    }
+
+    /// agentGoalActionHandler.ts: Edit asks for the new goal first; the
+    /// button spins until the request is done.
+    private func performGoalAction(_ action: SessionGoalAction) {
+        guard goalInFlight == nil, let current = goalBar.goal?.text else { return }
+        let goalAction = services.goalAction
+        Task { [weak self] in
+            var edited: String?
+            if action == .edit {
+                guard let self else { return }
+                edited = await DetailAlerts.prompt(
+                    Strings.AgentGoal.editGoal, nil,
+                    defaultValue: current,
+                    placeholder: Strings.AgentGoal.currentGoal,
+                    confirmTitle: Strings.Common.save,
+                    on: self
+                )
             }
+            guard let dispatch = VisibleAgentGoal.dispatch(action, current: current, edited: edited), let self else { return }
+            self.goalInFlight = action
+            self.updateDockBars()
+            // Failures are only logged in happy-app; the bar stays as it was.
+            try? await goalAction(dispatch.action, dispatch.objective)
+            self.goalInFlight = nil
+            self.updateDockBars()
         }
     }
 
@@ -535,8 +595,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             dockDetailsVisible = details
             composer.setDetailsVisible(details, animated: true)
             // The bars above the composer fade but keep their space.
+            let bars = dockBars.map { $0.view }
             UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
-                self.questionBanner.alpha = details ? 1 : 0
+                for bar in bars { bar.alpha = details ? 1 : 0 }
             }
         }
         if distanceFromOldest < list.bounds.height && !measuring { growWindow() }

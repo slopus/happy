@@ -71,6 +71,8 @@ struct ChatServices {
     /// sessionSetAgentModes({ permissionMode }): a permission answer that
     /// changes the mode for the rest of the session.
     var setPermissionMode: @Sendable (_ mode: String) async -> Void = { _ in }
+    /// sessionGoalAction: the goal bar's edit and clear.
+    var goalAction: @Sendable (_ action: SessionGoalAction, _ objective: String?) async throws -> Void = { _, _ in }
 
     static func make(account: AccountSession, sessionId: String) -> ChatServices {
         let store = account.store
@@ -98,6 +100,9 @@ struct ChatServices {
             setPermissionMode: { [actions = account.actions, transport = account.realtime] mode in
                 // Fire and forget, as in happy-app; the answer itself has gone.
                 try? await actions.sessionSetAgentModes(sessionId: sessionId, patch: SessionAgentModesPatch(permissionMode: .string(mode)), transport: transport)
+            },
+            goalAction: { [actions = account.actions] action, objective in
+                try await actions.sessionGoalAction(sessionId: sessionId, action: action, objective: objective)
             }
         )
     }

@@ -25,6 +25,16 @@ extension Strings {
         public static let noMessages = "No messages yet"
         /// EmptyMessages.tsx (not in en.ts)
         public static func created(_ time: String) -> String { "Created \(time)" }
+        /// RigActivityBar.tsx (not in en.ts): "2 agents", "1 +3 queued tasks".
+        public static func rigActivity(_ indicator: RigActivityIndicator) -> String {
+            let label = switch indicator.kind {
+            case .subagents: "agents"
+            case .workflows: "workflows"
+            case .processes: "processes"
+            case .tasks: "tasks"
+            }
+            return "\(indicator.count)\(indicator.queued > 0 ? " +\(indicator.queued) queued" : "") \(label)"
+        }
         /// EmptyMessages.tsx `formatRelativeTime`: time.justNow,
         /// time.minutesAgo, time.hoursAgo, sessionHistory.daysAgo.
         public static func age(_ age: DuplicateSheetModel.Age) -> String {
@@ -33,6 +43,23 @@ extension Strings {
             case .minutes(let count): SessionDetail.minutesAgo(count)
             case .hours(let count): SessionDetail.hoursAgo(count)
             case .days(let count): SessionDetail.daysAgo(count)
+            }
+        }
+    }
+
+    /// en.ts `components.agentGoalBar`
+    public enum AgentGoal {
+        public static let currentGoal = "Current goal"
+        public static func accessibilityLabel(_ goal: String) -> String { "Current goal: \(goal)" }
+        public static let clearGoal = "Clear goal"
+        public static let stopGoal = "Stop goal"
+        public static let editGoal = "Edit goal"
+
+        public static func action(_ action: SessionGoalAction) -> String {
+            switch action {
+            case .edit: editGoal
+            case .stop: stopGoal
+            case .clear: clearGoal
             }
         }
     }

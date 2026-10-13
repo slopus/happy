@@ -13,9 +13,10 @@ import CoreGraphics
 ///     or the safe area's bottom while the keyboard is down. During an
 ///     interactive dismiss the keyboard top follows the finger, and so does
 ///     the dock, because this one function places both;
-///   - inside the dock, the bars above the composer (question banner, goal,
-///     rig activity…) stack top to bottom, 8 in from the sides
-///     (CenteredInputWidth), then the composer, full width;
+///   - inside the dock, the bars above the composer (goal, question banner,
+///     rig activity) stack top to bottom, 8 in from the sides
+///     (CenteredInputWidth) unless they run full width as the rig activity
+///     bar does, then the composer, full width;
 ///   - the scroll-to-bottom button floats 16 above the composer's card,
 ///     centred (SessionView's scrollButtonInset). The bars above the card fade
 ///     out but keep their space while the reader is scrolled back, so the
@@ -47,6 +48,17 @@ public struct ChatScreenLayout: Equatable, Sendable {
         public static let regularMaxContentWidth: CGFloat = 800
     }
 
+    /// A bar above the composer.
+    public struct Accessory {
+        public var content: Measurable
+        /// In the composer's column, 8 in from its sides; otherwise the
+        /// full width of the screen.
+        public var inset: Bool
+
+        public static func inset(_ content: Measurable) -> Accessory { Accessory(content: content, inset: true) }
+        public static func fullWidth(_ content: Measurable) -> Accessory { Accessory(content: content, inset: false) }
+    }
+
     public struct Input {
         public var size: CGSize
         /// Safe area, with the navigation bar in `top`.
@@ -55,14 +67,14 @@ public struct ChatScreenLayout: Equatable, Sendable {
         /// undocked.
         public var keyboardTop: CGFloat?
         /// Bars above the composer, top to bottom.
-        public var accessories: [Measurable]
+        public var accessories: [Accessory]
         public var composerHeight: CGFloat
         /// Where the composer's card starts below the composer's top (its
         /// status rows sit above the card).
         public var composerCardOffset: CGFloat
         public var maxContentWidth: CGFloat
 
-        public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat?, accessories: [Measurable] = [], composerHeight: CGFloat, composerCardOffset: CGFloat = 0, maxContentWidth: CGFloat = .greatestFiniteMagnitude) {
+        public init(size: CGSize, safeArea: LayoutInsets, keyboardTop: CGFloat?, accessories: [Accessory] = [], composerHeight: CGFloat, composerCardOffset: CGFloat = 0, maxContentWidth: CGFloat = .greatestFiniteMagnitude) {
             self.size = size
             self.safeArea = safeArea
             self.keyboardTop = keyboardTop
@@ -105,8 +117,10 @@ public struct ChatScreenLayout: Equatable, Sendable {
         var y: CGFloat = 0
         var frames: [CGRect] = []
         for accessory in input.accessories {
-            let size = accessory.height(fitting: accessoryWidth)
-            frames.append(CGRect(x: accessoryX, y: y, width: accessoryWidth, height: size))
+            let x = accessory.inset ? accessoryX : 0
+            let accessoryWidth = accessory.inset ? accessoryWidth : width
+            let size = accessory.content.height(fitting: accessoryWidth)
+            frames.append(CGRect(x: x, y: y, width: accessoryWidth, height: size))
             y += size
         }
         accessories = frames
