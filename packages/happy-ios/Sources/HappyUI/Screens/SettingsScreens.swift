@@ -164,12 +164,13 @@ public final class SettingsViewController: UIViewController {
         case .logo:
             profileHeader = nil
             return SettingsHeaderView()
-        case .profile(let id, let name, let bio, let avatarURL):
+        case .profile(let id, let name, let bio, let avatarURL, let thumbhash):
             let content = SettingsProfileHeaderView.Content(
                 id: id,
                 name: name,
                 bio: bio,
                 avatarURL: avatarURL.flatMap(URL.init(string:)),
+                thumbhash: thumbhash,
                 style: settings.avatarStyle,
                 monochrome: settings.avatarMonochrome
             )

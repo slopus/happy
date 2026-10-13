@@ -9,8 +9,8 @@ public struct SettingsIndexModel: Equatable, Sendable {
         /// The logotype, until the account has a first name.
         case logo
         /// `profile.firstName` is set: the avatar, the display name and the
-        /// GitHub bio.
-        case profile(id: String, name: String, bio: String?, avatarURL: String?)
+        /// GitHub bio. The thumbhash is the uploaded picture's placeholder.
+        case profile(id: String, name: String, bio: String?, avatarURL: String?, thumbhash: String?)
     }
 
     public var header: Header
@@ -23,7 +23,13 @@ public struct SettingsIndexModel: Equatable, Sendable {
         // SettingsView.tsx branches on firstName, not on the display name, so
         // an account named only through GitHub keeps the logo.
         if let profile, let firstName = profile.firstName, !firstName.isEmpty {
-            header = .profile(id: profile.id, name: profile.displayName ?? firstName, bio: profile.bio, avatarURL: profile.avatarURL)
+            header = .profile(
+                id: profile.id,
+                name: profile.displayName ?? firstName,
+                bio: profile.bio,
+                avatarURL: profile.avatarURL,
+                thumbhash: profile.avatar?.thumbhash
+            )
         } else {
             header = .logo
         }
@@ -101,8 +107,10 @@ public struct AccountPageModel: Equatable, Sendable {
 
     public var displayName: String?
     public var githubLogin: String?
-    /// The uploaded picture, which the GitHub row shows instead of the logo.
+    /// The uploaded picture, which the GitHub row shows instead of the logo,
+    /// and its placeholder.
     public var avatarURL: String?
+    public var avatarThumbhash: String?
     /// The Profile group shows when there is a name, a GitHub login or a
     /// picture.
     public var showsProfile: Bool
@@ -113,6 +121,7 @@ public struct AccountPageModel: Equatable, Sendable {
         displayName = profile?.displayName
         githubLogin = profile?.github?.login
         avatarURL = profile?.avatar?.url
+        avatarThumbhash = profile?.avatar?.thumbhash
         showsProfile = displayName != nil || githubLogin != nil || profile?.avatar != nil
         services = (profile?.connectedServices ?? []).compactMap(Service.init(rawValue:))
     }
@@ -198,6 +207,7 @@ public struct AccountSwitcherEntry: Equatable, Sendable {
     public var title: String
     public var subtitle: String?
     public var avatarURL: URL?
+    public var avatarThumbhash: String?
     public var isActive: Bool
 
     /// Entries in registry order. The active account's own profile fills in
@@ -215,10 +225,14 @@ public struct AccountSwitcherEntry: Equatable, Sendable {
             var name = account.name
             var username = account.username
             var avatar = account.avatarURL
+            var thumbhash = account.avatarThumbhash
             if account.isActive, let profile = activeProfile {
                 name = name ?? profile.displayName
                 username = username ?? profile.github?.login
-                avatar = avatar ?? profile.avatarURL.flatMap(URL.init(string:))
+                if avatar == nil {
+                    avatar = profile.avatarURL.flatMap(URL.init(string:))
+                    thumbhash = profile.avatar?.thumbhash
+                }
             }
             let title = name ?? username.map { "@\($0)" } ?? "\(fallbackTitle) \(account.id.prefix(8))"
             var details: [String] = []
@@ -229,6 +243,7 @@ public struct AccountSwitcherEntry: Equatable, Sendable {
                 title: title,
                 subtitle: details.isEmpty ? nil : details.joined(separator: " • "),
                 avatarURL: avatar,
+                avatarThumbhash: thumbhash,
                 isActive: account.isActive
             )
         }

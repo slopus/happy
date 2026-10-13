@@ -81,7 +81,7 @@ accident.
 - [ ] Appearance: theme, avatar style, bubble colours, session list options, compact mode (`settings/appearance.tsx`) — Settings
 - [ ] Language (`settings/language.tsx`) — Settings
 - [ ] Agents: machines and agent defaults (`settings/agents.tsx`) — Settings
-- [ ] Connect Claude (`settings/connect/claude.tsx`) — Settings
+- [ ] Connect Claude (`settings/connect/claude.tsx`) — Settings. Diverges on purpose: the command is in the text colour, because happy-app's white-on-transparent card vanishes in light mode.
 - [ ] What's new (`changelog.tsx`) — Settings
 - [ ] Push notification settings and registration (`apiPush.ts`) — Settings + Ops
 - [x] Synced settings model with pending deltas (`AccountSettings`, `SyncEngine.pushSettings`)

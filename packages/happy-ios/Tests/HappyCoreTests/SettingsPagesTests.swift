@@ -43,7 +43,7 @@ final class SettingsIndexModelTests: XCTestCase {
             github: GitHubProfile(id: 1, login: "ada", avatarURL: "https://a/ada.png", bio: "Math"),
             services: ["anthropic"]
         ))
-        XCTAssertEqual(model.header, .profile(id: "p1", name: "Ada Lovelace", bio: "Math", avatarURL: "https://a/ada.png"))
+        XCTAssertEqual(model.header, .profile(id: "p1", name: "Ada Lovelace", bio: "Math", avatarURL: "https://a/ada.png", thumbhash: nil))
         XCTAssertTrue(model.claudeConnected)
         XCTAssertEqual(model.githubLogin, "ada")
     }
@@ -105,11 +105,12 @@ final class AccountPageModelTests: XCTestCase {
     }
 
     func testAPictureAloneShowsTheProfileGroup() {
-        let avatar = ImageRef(width: 1, height: 1, thumbhash: "", path: "p", url: "https://a/p.png")
+        let avatar = ImageRef(width: 1, height: 1, thumbhash: "HwgK", path: "p", url: "https://a/p.png")
         let page = AccountPageModel(profile: profile(avatar: avatar))
         XCTAssertTrue(page.showsProfile)
         XCTAssertNil(page.displayName)
         XCTAssertEqual(page.avatarURL, "https://a/p.png")
+        XCTAssertEqual(page.avatarThumbhash, "HwgK")
     }
 }
 
@@ -288,5 +289,44 @@ final class AgentsPageTests: XCTestCase {
     func testUnknownCLIDescribesTheOlderDefaults() {
         let model = AgentsPage.fields(.claude, overrides: [:], cliVersion: nil)[1]
         XCTAssertEqual(model.detail, "Default (Opus 5)")
+    }
+}
+
+/// Vectors from thumbhash@0.1.1's own `rgbaToThumbHash` and
+/// `thumbHashToRGBA`, run under node on three generated images.
+final class ThumbHashTests: XCTestCase {
+    private func pixel(_ image: ThumbHash.Image, _ x: Int, _ y: Int) -> [UInt8] {
+        let start = (y * image.width + x) * 4
+        return Array(image.rgba[start..<start + 4])
+    }
+
+    private func check(
+        _ base64: String, size: (Int, Int), first: [UInt8], middle: [UInt8], last: [UInt8], sum: Int,
+        file: StaticString = #filePath, line: UInt = #line
+    ) throws {
+        let image = try XCTUnwrap(ThumbHash.decode(base64: base64), file: file, line: line)
+        XCTAssertEqual(image.width, size.0, file: file, line: line)
+        XCTAssertEqual(image.height, size.1, file: file, line: line)
+        XCTAssertEqual(pixel(image, 0, 0), first, file: file, line: line)
+        XCTAssertEqual(pixel(image, image.width >> 1, image.height >> 1), middle, file: file, line: line)
+        XCTAssertEqual(pixel(image, image.width - 1, image.height - 1), last, file: file, line: line)
+        XCTAssertEqual(image.rgba.reduce(0) { $0 + Int($1) }, sum, file: file, line: line)
+    }
+
+    func testSquare() throws {
+        try check("HwgKPxxwd3dweHiHiHiHd4h3Bwd4gI8I", size: (32, 32), first: [13, 0, 139, 255], middle: [130, 144, 116, 255], last: [230, 198, 73, 255], sum: 646_841)
+    }
+
+    func testLandscapeWithoutPadding() throws {
+        try check("HwgKPJxwd3dweHiHiHdwgAf3iA", size: (32, 18), first: [6, 0, 141, 255], middle: [142, 144, 120, 255], last: [227, 213, 80, 255], sum: 364_200)
+    }
+
+    func testPortraitWithAlpha() throws {
+        try check("W5eFGw43M0B3eHczQDjzi4+IiIiIiHg=", size: (19, 32), first: [14, 42, 127, 255], middle: [109, 128, 121, 113], last: [72, 158, 117, 23], sum: 270_241)
+    }
+
+    func testGarbageIsNil() {
+        XCTAssertNil(ThumbHash.decode(base64: "not base64!"))
+        XCTAssertNil(ThumbHash.decode([1, 2]))
     }
 }
