@@ -53,7 +53,14 @@ public final class TroubleshootGuideView: UIView {
             addSubview(step.body)
             if let terminal = step.terminal { addSubview(terminal) }
         }
-        underlineLink(in: steps[1].body, Strings.Troubleshoot.desktopBodyLink)
+        steps[1].body.decoration = { text in
+            let range = (text.string as NSString).range(of: Strings.Troubleshoot.desktopBodyLink)
+            guard range.location != NSNotFound else { return }
+            text.addAttributes([
+                .underlineStyle: NSUnderlineStyle.single.rawValue,
+                .foregroundColor: UIColor(Palette.text),
+            ], range: range)
+        }
         steps[1].body.isUserInteractionEnabled = true
         steps[1].body.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(openWebsite)))
     }
@@ -87,17 +94,6 @@ public final class TroubleshootGuideView: UIView {
             step.body.setLayoutFrame(frames.body)
             if let frame = frames.terminal { step.terminal?.setLayoutFrame(frame) }
         }
-    }
-
-    private func underlineLink(in label: StyledLabel, _ link: String) {
-        guard let text = label.attributedText?.mutableCopy() as? NSMutableAttributedString else { return }
-        let range = (text.string as NSString).range(of: link)
-        guard range.location != NSNotFound else { return }
-        text.addAttributes([
-            .underlineStyle: NSUnderlineStyle.single.rawValue,
-            .foregroundColor: UIColor(Palette.text),
-        ], range: range)
-        label.attributedText = text
     }
 
     @objc private func openWebsite() {
