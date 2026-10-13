@@ -152,7 +152,8 @@ Bot names and faces still notify their views immediately, and draft
 corrections retain the existing four-pass bound.
 
 Picker order follows happy-app's `useSessions`: active chats first, then
-`lastMeaningfulMessageAt` or creation time, with a stable id tie-breaker.
+`lastMeaningfulMessageAt`, this device's last accepted send, or creation
+time, with a stable id tie-breaker.
 Side chats are excluded. Updating `updatedAt` or reversing the raw SQL order
 does not rebuild pickers; meaningful activity and active-state changes do.
 
@@ -167,6 +168,15 @@ nothing. Machine deletion selects the next known session in the same value,
 and presence/account lifecycle tests cover server flags and fresh scopes.
 The Home `updatedAt` region remains until session info and troubleshooting
 screens have both switched to their scoped feeds.
+
+The local send timestamp lives in a nullable SQLite session column, added
+by migration v4. Acceptance stores the text, files and timestamp atomically,
+so it works offline and survives reopen. A refused send, file-only item,
+retry or echoed localId never advances it. Wire merges preserve it, and
+agent-published meaningful activity always wins. The Home region explicitly
+watches this column; the chat header projection clears it. Tests cover v3
+migration, reopen, wire preservation, duplicate acceptance with zero writes,
+echo replay, real offline acceptance and activity ordering.
 
 `HappyStore.ThreadRules` checks synchronous store reads/writes, migration,
 sync work and reducer entry points in debug builds. Its enforcement flag

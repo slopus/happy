@@ -162,6 +162,13 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v4") { db in
+            // This device's accepted user sends, never a wire metadata field.
+            try db.alter(table: "session") { t in
+                t.add(column: "lastMessageSentAt", .integer)
+            }
+        }
+
         return migrator
     }
 }

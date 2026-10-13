@@ -362,6 +362,7 @@ extension SessionRecord {
     /// message, not `updatedAt`, which moves on every background write.
     public var lastActivityAt: Int64 {
         if let at = metadata?["lastMeaningfulMessageAt"]?.numberValue { return Int64(at) }
+        if let at = lastMessageSentAt { return at }
         return createdAt
     }
 

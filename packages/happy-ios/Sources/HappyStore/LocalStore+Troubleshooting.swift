@@ -51,8 +51,9 @@ extension LocalStore {
             WHERE json_type(s.metadata, '$.isSideChat') IS NOT 'true'
                   AND json_type(s.metadata, '$.machineId') = 'text'
             ORDER BY s.updatedAt DESC, s.active DESC,
-                     CASE WHEN json_type(s.metadata, '$.lastMeaningfulMessageAt') IN ('integer', 'real')
-                          THEN json_extract(s.metadata, '$.lastMeaningfulMessageAt') ELSE s.createdAt END DESC, s.id
+                     coalesce(CASE WHEN json_type(s.metadata, '$.lastMeaningfulMessageAt') IN ('integer', 'real')
+                                   THEN json_extract(s.metadata, '$.lastMeaningfulMessageAt') END,
+                              s.lastMessageSentAt, s.createdAt) DESC, s.id
             LIMIT 1
             """)
         return TroubleshootingSnapshot(machines: machines, recentSession: try recent.map {
