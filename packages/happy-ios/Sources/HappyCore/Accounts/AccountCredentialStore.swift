@@ -1,6 +1,7 @@
 import Foundation
 import HappyCrypto
 
+/// The one RN-compatible shared slot, or an account's secondary item.
 public enum CredentialLocation: String, Codable, Sendable {
     case shared, own
 }
@@ -17,6 +18,8 @@ public struct StoredAccountCredentials: Codable, Sendable {
     }
 }
 
+/// Enumerates and mutates credentials without copying the shared item.
+/// A Keychain access failure throws instead of reporting an item as absent.
 public protocol AccountCredentialStore: Sendable {
     func shared() throws -> Credentials?
     func sharedIsEmpty() throws -> Bool
@@ -31,6 +34,8 @@ public protocol AccountKeychainBackend: KeychainBackend {
     func removeAccount(_ query: KeychainItemQuery) throws
 }
 
+/// RN credentials retain expo's layout; secondary credentials use the
+/// happy-ios:account service with the anonymous id as their account key.
 public struct KeychainAccountCredentialStore: AccountCredentialStore {
     public static let service = "happy-ios:account"
     private let backend: AccountKeychainBackend
@@ -49,10 +54,7 @@ public struct KeychainAccountCredentialStore: AccountCredentialStore {
     public func shared() throws -> Credentials? { try sharedStore.load() }
 
     public func sharedIsEmpty() throws -> Bool {
-        for query in SecureStoreCredentialStore.item.readOrder {
-            if try backend.copyData(query) != nil { return false }
-        }
-        return true
+        try sharedStore.isEmpty()
     }
 
     public func ownAccounts() throws -> [String: StoredAccountCredentials] {
@@ -106,18 +108,42 @@ public final class InMemoryAccountCredentialStore: AccountCredentialStore, @unch
     private let lock = NSLock()
     private var values: [String: StoredAccountCredentials] = [:]
 
-    public init(sharedStore: CredentialStore = InMemoryCredentialStore()) { self.sharedStore = sharedStore }
-    public func shared() throws -> Credentials? { try sharedStore.load() }
-    public func sharedIsEmpty() throws -> Bool { try shared() == nil }
-    public func ownAccounts() throws -> [String: StoredAccountCredentials] { lock.withLock { values } }
+    public init(sharedStore: CredentialStore = InMemoryCredentialStore()) {
+        self.sharedStore = sharedStore
+    }
+
+    public func shared() throws -> Credentials? {
+        try sharedStore.load()
+    }
+
+    public func sharedIsEmpty() throws -> Bool {
+        try sharedStore.isEmpty()
+    }
+
+    public func ownAccounts() throws -> [String: StoredAccountCredentials] {
+        lock.withLock { values }
+    }
+
     public func save(_ value: StoredAccountCredentials, id: String, location: CredentialLocation) throws {
         if location == .shared {
-            if let existing = try shared(), (try? accountID(existing)) != id { throw AccountSwitchError.sharedItemOccupied }
+            if let existing = try shared(), (try? accountID(existing)) != id {
+                throw AccountSwitchError.sharedItemOccupied
+            }
+            if try shared() == nil, try !sharedStore.isEmpty() {
+                throw AccountSwitchError.sharedItemOccupied
+            }
             try sharedStore.save(value.credentials)
-        } else { lock.withLock { values[id] = value } }
+        } else {
+            lock.withLock { values[id] = value }
+        }
     }
+
     public func remove(id: String, location: CredentialLocation) throws {
-        if location == .shared { try sharedStore.clear() }
-        else { _ = lock.withLock { values.removeValue(forKey: id) } }
+        if location == .shared {
+            guard let existing = try shared(), (try? accountID(existing)) == id else { return }
+            try sharedStore.clear()
+        } else {
+            _ = lock.withLock { values.removeValue(forKey: id) }
+        }
     }
 }

@@ -135,7 +135,7 @@ final class AccountSessionTests: XCTestCase {
             dependencies: .init(serverURL: testServer, clientID: "ios/1", transport: http, connector: connector, appState: { "background" })
         )
         await session.start()
-        await eventually { (try? session.store.session(id: "s")) != nil }
+        await eventually { (try? session.store.session(id: "s")) != nil && connector.latest != nil }
         XCTAssertEqual(connector.urls.first?.absoluteString, "wss://api.example.test/v1/updates/?EIO=4&transport=websocket")
 
         let socket = try XCTUnwrap(connector.latest)

@@ -250,7 +250,7 @@ final class SecureStoreCredentialStoreTests: XCTestCase {
     }
 
     @MainActor
-    func testRestoreFailureKeepsTheSharedItemAndSignOutRemovesIt() async throws {
+    func testRestoreFailureAndSignedOutLogoutKeepTheSharedItem() async throws {
         let keychain = FakeKeychain()
         // A secret that isn't 32 bytes can't open an account.
         keychain.seed(rnItem, Data(#"{"token":"t","secret":"c2hvcnQ"}"#.utf8))
@@ -267,6 +267,6 @@ final class SecureStoreCredentialStoreTests: XCTestCase {
         XCTAssertNotNil(keychain.stored(rnItem), "a failed restore must not sign the RN build out")
 
         await controller.signOut()
-        XCTAssertEqual(keychain.services, [])
+        XCTAssertEqual(keychain.stored(rnItem)?.data, Data(#"{"token":"t","secret":"c2hvcnQ"}"#.utf8))
     }
 }

@@ -14,6 +14,7 @@ public final class AppCoordinator {
     /// The session the root was built for; nil while signed out, unset
     /// before the first state arrives.
     private var shownSession: ObjectIdentifier??
+    private var shownServerConfirmationID: AccountSummary.ID?
 
     public init(window: UIWindow, context: AppContext) {
         self.window = window
@@ -77,11 +78,18 @@ public final class AppCoordinator {
         let session: AccountSession?
         if case .signedIn(let value) = state { session = value } else { session = nil }
         let identity = session.map(ObjectIdentifier.init)
-        if let shownSession, shownSession == identity { return }
+        let pending = context.account.pendingServerConfirmation
+        if let shownSession, shownSession == identity, shownServerConfirmationID == pending?.id { return }
         let animated = shownSession != nil
         shownSession = .some(identity)
-        let root: UIViewController = session.map { HomeViewController(context: context, session: $0) }
-            ?? WelcomeViewController(context: context)
+        shownServerConfirmationID = pending?.id
+        let root: UIViewController
+        if let pending {
+            root = AccountServerConfirmationViewController(context: context, account: pending)
+        } else {
+            root = session.map { HomeViewController(context: context, session: $0) }
+                ?? WelcomeViewController(context: context)
+        }
         navigation.presentedViewController?.dismiss(animated: false)
         navigation.setViewControllers([root], animated: animated)
     }

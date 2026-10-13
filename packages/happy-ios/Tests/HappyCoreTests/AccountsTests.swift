@@ -51,7 +51,9 @@ final class AccountsTests: XCTestCase {
                             settings: ((String) -> KeyValueStore)? = nil) -> AccountController {
         AccountController(serverConfig: config ?? ServerConfig(storage: InMemoryKeyValueStore()), clientID: "ios/test",
             credentialStore: SecureStoreCredentialStore(backend: keychain), storeDirectory: directory,
-            accountCredentialStore: KeychainAccountCredentialStore(backend: keychain), localSettingsFactory: settings,
+            accountCredentialStore: KeychainAccountCredentialStore(backend: keychain),
+            rnServerImport: { .confirmed(ServerConfig.defaultServerURL) },
+            localSettingsFactory: settings,
             transport: FakeHTTP(), connector: connector)
     }
 

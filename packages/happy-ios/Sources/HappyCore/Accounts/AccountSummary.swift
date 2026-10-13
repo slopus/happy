@@ -18,8 +18,11 @@ public struct AccountSummary: Equatable, Sendable, Identifiable {
     /// Whether this account's credentials are the RN app's Keychain item
     /// (`app:no-auth` / `auth_credentials`) rather than an item of its own.
     public var usesSharedItem: Bool
+    /// False when RN's server could not be imported safely. Such an account
+    /// cannot open a session until the user has confirmed its server.
+    public var serverConfirmed: Bool
 
-    public init(id: String, serverURL: URL, name: String? = nil, username: String? = nil, avatarURL: URL? = nil, avatarThumbhash: String? = nil, isActive: Bool, usesSharedItem: Bool) {
+    public init(id: String, serverURL: URL, name: String? = nil, username: String? = nil, avatarURL: URL? = nil, avatarThumbhash: String? = nil, isActive: Bool, usesSharedItem: Bool, serverConfirmed: Bool = true) {
         self.id = id
         self.serverURL = serverURL
         self.name = name
@@ -28,6 +31,7 @@ public struct AccountSummary: Equatable, Sendable, Identifiable {
         self.avatarThumbhash = avatarThumbhash
         self.isActive = isActive
         self.usesSharedItem = usesSharedItem
+        self.serverConfirmed = serverConfirmed
     }
 }
 
@@ -35,6 +39,7 @@ public enum AccountSwitchError: Error, Equatable, Sendable {
     case unknownAccount
     case operationInProgress
     case sharedItemOccupied
-    /// Multi-account isn't wired yet (placeholder until it lands).
+    case serverNeedsConfirmation
+    /// Retained for callers of the original account-switcher seam.
     case notAvailable
 }

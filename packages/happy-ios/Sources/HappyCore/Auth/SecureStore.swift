@@ -180,6 +180,13 @@ public struct SecureStoreCredentialStore: CredentialStore {
         return CredentialsJSON.decode(json)
     }
 
+    public func isEmpty() throws -> Bool {
+        for query in Self.item.readOrder {
+            if try backend.copyData(query) != nil { return false }
+        }
+        return true
+    }
+
     public func save(_ credentials: Credentials) throws {
         try Self.item.write(CredentialsJSON.encode(credentials), to: backend)
     }
