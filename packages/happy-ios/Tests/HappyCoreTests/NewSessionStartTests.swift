@@ -1300,7 +1300,7 @@ final class NewSessionChoicesTests: XCTestCase {
     // MARK: The composer's corrections and picks
 
     @MainActor
-    private func composer(_ draft: NewSessionDraft, machines: [MachineRecord], sessions: [SessionRecord] = [], ops: FakeOps = FakeOps()) -> NewSessionComposer {
+    private func composer(_ draft: NewSessionDraft, machines: [MachineRecord], sessions: [SessionRecord] = [], ops: FakeOps = FakeOps()) async -> NewSessionComposer {
         let drafts = NewSessionDraftStore(settings: LocalSettings(storage: InMemoryKeyValueStore()))
         drafts.selectAgent(draft.agentType, picked: false, defaults: AgentDefaults.Config(permissionMode: draft.permissionMode ?? "", modelMode: draft.modelMode ?? "", effortLevel: draft.effortLevel))
         if let picked = draft.pickedAgentType { drafts.pickAgentType(picked) }
@@ -1308,16 +1308,18 @@ final class NewSessionChoicesTests: XCTestCase {
         if let path = draft.selectedPath { drafts.setPath(path) }
         drafts.setSessionType(draft.sessionType)
         drafts.setWorktreeKey(draft.worktreeKey)
-        return NewSessionComposer(
+        let composer = NewSessionComposer(
             drafts: drafts,
             snapshot: HomeSnapshot(machines: MachinesSnapshot(synced: true, machines: machines), sessions: sessions),
             ops: ops
         )
+        await composer.waitForIdle()
+        return composer
     }
 
     @MainActor
     func testTheComposerMovesAGoneComputerToTheFirstOffered() async {
-        let composer = composer(NewSessionDraft(selectedMachineId: "gone"), machines: [machine("m1")])
+        let composer = await composer(NewSessionDraft(selectedMachineId: "gone"), machines: [machine("m1")])
         XCTAssertEqual(composer.drafts.draft.selectedMachineId, "m1")
         XCTAssertEqual(composer.choices.currentMachine?.key, "m1")
     }
@@ -1325,7 +1327,7 @@ final class NewSessionChoicesTests: XCTestCase {
     @MainActor
     func testTheComposerFollowsTheHarnessTheComputerSettlesOn() async {
         let rig = rigMachine("rig1", sibling: "m1")
-        let composer = composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, permissionMode: "auto"), machines: [machine("m1"), rig])
+        let composer = await composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, permissionMode: "auto"), machines: [machine("m1"), rig])
         let creation = RigSessionCreation(metadata: rig.metadata)
         let draft = composer.drafts.draft
         XCTAssertEqual(draft.agentType, .rig)
@@ -1338,7 +1340,7 @@ final class NewSessionChoicesTests: XCTestCase {
     @MainActor
     func testTheComposerDropsAWorktreeTheHarnessCantMake() async {
         // Happy Agent without worktrees, in a plain directory.
-        let composer = composer(
+        let composer = await composer(
             NewSessionDraft(selectedMachineId: "m1", selectedPath: "~/x", agentType: .rig, sessionType: .worktree),
             machines: [machine("m1"), rigMachine("rig1", sibling: "m1", worktrees: false)]
         )
@@ -1350,9 +1352,10 @@ final class NewSessionChoicesTests: XCTestCase {
 
     @MainActor
     func testPickingACatalogProjectMovesTheHarnessToHappyAgent() async {
-        let composer = composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, pickedAgentType: .claude), machines: [machine("m1"), rigMachine("rig1", sibling: "m1")])
+        let composer = await composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, pickedAgentType: .claude), machines: [machine("m1"), rigMachine("rig1", sibling: "m1")])
         XCTAssertEqual(composer.drafts.draft.agentType, .claude)
         composer.selectProject(SessionPlaces.projectKey("p1"))
+        await composer.waitForIdle()
         let draft = composer.drafts.draft
         XCTAssertEqual(draft.selectedProjectId, "p1")
         XCTAssertNil(draft.selectedPath)
@@ -1364,7 +1367,7 @@ final class NewSessionChoicesTests: XCTestCase {
 
     @MainActor
     func testACustomPathIsTrimmedAndABlankOneChangesNothing() async {
-        let composer = composer(NewSessionDraft(selectedMachineId: "m1", selectedPath: "~/happy"), machines: [machine("m1")])
+        let composer = await composer(NewSessionDraft(selectedMachineId: "m1", selectedPath: "~/happy"), machines: [machine("m1")])
         composer.selectProject(NewSessionChoices.customPathKey)
         XCTAssertEqual(composer.drafts.draft.selectedPath, "~/happy")
         composer.selectCustomPath("   ")
@@ -1376,7 +1379,7 @@ final class NewSessionChoicesTests: XCTestCase {
 
     @MainActor
     func testPickingAHarnessStartsItOnItsDefaults() async {
-        let composer = composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, pickedAgentType: .claude, permissionMode: "plan"), machines: [machine("m1")])
+        let composer = await composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, pickedAgentType: .claude, permissionMode: "plan"), machines: [machine("m1")])
         composer.selectAgent("codex")
         let draft = composer.drafts.draft
         let defaults = AgentDefaults.resolve([:], .codex, cliVersion: nil)
@@ -1396,11 +1399,12 @@ final class NewSessionChoicesTests: XCTestCase {
             stdout: "worktree /Users/steve/happy\nbranch refs/heads/main\n\nworktree /Users/steve/happy/.dev/worktree/calm\nbranch refs/heads/calm",
             stderr: "", exitCode: 0, error: nil
         )])
-        let composer = composer(NewSessionDraft(selectedMachineId: "m1", selectedPath: "~/happy"), machines: [machine("m1")], ops: ops)
+        let composer = await composer(NewSessionDraft(selectedMachineId: "m1", selectedPath: "~/happy"), machines: [machine("m1")], ops: ops)
         for _ in 0..<100 where composer.gitWorktrees.isEmpty {
             try await Task.sleep(for: .milliseconds(5))
         }
         XCTAssertEqual(composer.gitWorktrees.map(\.branch), ["calm"])
+        await composer.waitForIdle()
         XCTAssertEqual(composer.choices.worktreeOptions.map(\.name), ["Create New Worktree", "No worktree", "calm"])
         let commands = await ops.commands
         XCTAssertEqual(commands, ["git worktree list --porcelain"])
@@ -1408,7 +1412,7 @@ final class NewSessionChoicesTests: XCTestCase {
 
     @MainActor
     func testTheBotIsResolvedFromTheDraft() async throws {
-        let composer = composer(
+        let composer = await composer(
             NewSessionDraft(selectedMachineId: "m1"),
             machines: [machine("m1"), rigMachine("rig1", sibling: "m1", bots: true)]
         )
@@ -1454,11 +1458,12 @@ final class NewSessionChoicesTests: XCTestCase {
     }
 
     @MainActor
-    func testABotsNameRebuildsNoPicker() {
-        let composer = composer(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1"), rigMachine("rig1", sibling: "m1", bots: true)])
+    func testABotsNameRebuildsNoPicker() async {
+        let composer = await composer(NewSessionDraft(selectedMachineId: "m1"), machines: [machine("m1"), rigMachine("rig1", sibling: "m1", bots: true)])
         var changes = 0
         composer.onChange = { changes += 1 }
         composer.drafts.setCreatesBot(true)
+        await composer.waitForIdle()
         XCTAssertEqual(composer.choices.promptPlaceholder, "Name your bot")
         let choices = composer.choices
         composer.drafts.setBotName("Cap")
@@ -1594,7 +1599,7 @@ extension NewSessionChoicesTests {
 
     @MainActor
     func testTheScreensPicks() async {
-        let composer = composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, pickedAgentType: .claude, permissionMode: "plan"), machines: [machine("m1"), rigMachine("rig1", sibling: "m1")])
+        let composer = await composer(NewSessionDraft(selectedMachineId: "m1", agentType: .claude, pickedAgentType: .claude, permissionMode: "plan"), machines: [machine("m1"), rigMachine("rig1", sibling: "m1")])
         composer.pickAgent("codex")
         XCTAssertEqual(composer.drafts.draft.agentType, .codex)
         XCTAssertEqual(composer.drafts.draft.pickedAgentType, .codex)
