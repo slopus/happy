@@ -85,8 +85,13 @@ accident.
 - [ ] Permission mode, model and effort pickers (`PermissionModeSelector`, `modelModeOptions.ts`, `NativeOptionsPicker`) — Composer
 - [ ] Session info: metadata, machine, path, archive, delete, duplicate, fork (`session/[id]/info.tsx`) — Secondary + Ops
   - The duplicate sheet is `Screens/SessionInfoDuplicateSheet.swift`, entered through `UIViewController.presentDuplicateSheet(sessionId:context:)`, which works like `push(_:context:)`. Home's row alert and the chat call that entry point instead of building their own.
+  - The duplicate sheet draws its pre-iOS 26 look (blur material, sheen and hairline) on every iOS. happy-app's Liquid Glass card on iOS 26 is a follow-up, with this BlurView look kept as the fallback before 26.
 - [ ] File viewer and changes with diffs (`file.tsx`, `changes.tsx`, `diff/*`, `CodeView`) — Secondary
   - The `/files` browser is gated behind `experiments` and excluded (see Exclusions). The `/file` viewer is reachable without it, from tool rows and changes, and is in scope.
+  - The diff engine (`HappyCore/Diff`) and its layout (`HappyLayout/Diff`) are shared: Chat's Edit/Write/patch cards draw with `DiffChunkView`, and changes with `DiffFileView` sections.
+  - Not ported yet: syntax colour in diff rows. happy-app colours rows after they are built, in a Prism worker (`components/diff/syntax/*`), and holds a file back (at most a second) until it is coloured; here rows draw in the plain text colour, with word-level emphasis. The renderer already colours by span kind, so the follow-up is a tokenizer that fills in the kinds.
+  - Not ported: selecting text in diff rows (`selectable` on iOS in DiffFilesList).
+  - Rows are drawn only near the screen instead of being mounted in batches (`useProgressiveRows`), so a long file is full height from the first frame rather than growing over a few frames.
 
 ## Settings
 
