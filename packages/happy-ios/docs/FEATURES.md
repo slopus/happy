@@ -48,6 +48,7 @@ accident.
 - [ ] Pending chats placeholder (`PendingChatPlaceholder`, `pendingChats.ts`) — Home
 - [ ] Update banner (`UpdateBanner`) and offline machines banner (`OfflineMachinesBanner`) — Home
 - [ ] New session screen: machine, path, agent, model, permission mode, worktree (`new/index.tsx`, `newSessionProgress.ts`, `machineChoices.ts`) — Home + Ops
+  - Current happy-app does not use recent paths; `recentMachinePaths` remains an untouched synced settings key for compatibility.
 - [ ] Machine screen: status, sessions, resume, stop daemon, rename (`machine/[id].tsx`) — Secondary + Ops
 
 ## Chat
