@@ -844,6 +844,25 @@ describe('runClaude remote JSONL scanner', () => {
         await harness.finish();
     });
 
+    it('applies ultracode effort from the app and ignores levels Claude Code does not take', async () => {
+        const harness = await startRemoteRunClaudeHarness();
+        const userMessageHandler = harness.sessionClient.onUserMessage.mock.calls[0][0];
+
+        await userMessageHandler({
+            content: { text: 'first turn' },
+            meta: { effort: 'ultracode' },
+        });
+        expect(harness.loopOptions.messageQueue.queue[0].mode).toMatchObject({ effort: 'ultracode' });
+
+        await userMessageHandler({
+            content: { text: 'second turn' },
+            meta: { effort: 'bogus' },
+        });
+        expect(harness.loopOptions.messageQueue.queue[1].mode).toMatchObject({ effort: 'ultracode' });
+
+        await harness.finish();
+    });
+
     it('rejects Claude goal-action while Claude is still thinking', async () => {
         const harness = await startRemoteRunClaudeHarness();
         await vi.waitFor(() => {
