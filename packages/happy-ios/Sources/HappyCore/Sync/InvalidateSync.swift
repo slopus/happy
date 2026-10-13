@@ -69,11 +69,17 @@ public actor InvalidateSync {
         }
     }
 
-    public func stop() {
+    /// Cancels the run in flight and returns once it has ended, so nothing it
+    /// fetched is merged afterwards: a switch or sign-out may close or erase
+    /// the store next. Requests honour cancellation; a store write already
+    /// under way finishes first.
+    public func stop() async {
         stopped = true
-        task?.cancel()
-        task = nil
+        let running = task
+        running?.cancel()
         resumeWaiters()
+        await running?.value
+        task = nil
     }
 
     private func drain() async {

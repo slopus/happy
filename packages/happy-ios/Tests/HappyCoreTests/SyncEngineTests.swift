@@ -288,6 +288,21 @@ final class InvalidateSyncTests: XCTestCase {
         XCTAssertEqual(delays.values, [.seconds(1), .seconds(2), .seconds(3)])
     }
 
+    func testStopWaitsForTheRunInFlight() async throws {
+        let finished = PageCounter()
+        let sync = InvalidateSync {
+            // Stands in for a request: it ends when cancelled.
+            try? await Task.sleep(for: .seconds(30))
+            finished.count += 1
+        }
+        await sync.invalidate()
+        await eventually { await sync.isRunning }
+        await sync.stop()
+        XCTAssertEqual(finished.count, 1, "stop() returns only after the run has ended")
+        let running = await sync.isRunning
+        XCTAssertFalse(running)
+    }
+
     func testBackoffDelays() {
         let backoff = Backoff(initial: .seconds(1), maximum: .seconds(30))
         XCTAssertEqual((1...7).map(backoff.delay(attempt:)), [1, 2, 4, 8, 16, 30, 30].map { Duration.seconds($0) })
