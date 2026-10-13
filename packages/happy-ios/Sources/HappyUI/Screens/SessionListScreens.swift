@@ -37,6 +37,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     private var tableLoaded = false
     private var heights: [HomeListRow.ID: (row: HomeListRow, width: CGFloat, height: CGFloat)] = [:]
     private var bannerState: BannerState?
+    private var headerSized: (state: BannerState, width: CGFloat)?
     private let sizingRow = SessionRowCell(style: .default, reuseIdentifier: nil)
     private let sizingDay = SessionDayHeaderCell(style: .default, reuseIdentifier: nil)
     private let sizingToggle = ArchiveToggleCell(style: .default, reuseIdentifier: nil)
@@ -152,13 +153,9 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         model = next
         guard isViewLoaded, tableLoaded else { return 0 }
         if next.grouped != previous.grouped {
-            // Another layout altogether: nothing to keep.
+            // The two layouts share no row ids, so the changeset swaps every
+            // row; only the page colour is left to change.
             tableView.backgroundColor = UIColor(next.grouped ? Palette.groupedBackground : Palette.flatListBackground)
-            heights = [:]
-            tableView.reloadData()
-            updateBanners()
-            applySelection()
-            return next.rows.count
         }
         if changeset.isStructural {
             let rows = { (indexes: [Int]) in indexes.map { IndexPath(row: $0, section: 0) } }
@@ -187,7 +184,9 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
             let width = tableView.bounds.width
             var heightChanged = false
             for path in reconfigure where path.row < next.ids.count {
-                // Only rows already measured; the rest are measured when shown.
+                // Only rows whose height follows their text, and only those
+                // already measured; the rest are measured when shown.
+                guard Self.fixedHeight(next.rows[path.row], width: width) == nil else { continue }
                 let id = next.ids[path.row]
                 guard let cached = heights[id], cached.width == width, cached.row != next.rows[path.row] else { continue }
                 let height = measure(next.rows[path.row], width: width)
@@ -227,6 +226,17 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
 
     private func item(at indexPath: IndexPath) -> Item? {
         model.rows.indices.contains(indexPath.row) ? model.rows[indexPath.row] : nil
+    }
+
+    /// Rows that are one height whatever they say (`HomeRowHeights`).
+    private static func fixedHeight(_ item: Item, width: CGFloat) -> CGFloat? {
+        switch item {
+        case .flat(.session): HomeRowHeights.flatSession(width: width)
+        case .project(.project): HomeRowHeights.projectCard(width: width)
+        case .project(.worktree), .project(.worktreeToggle): HomeRowHeights.worktree(width: width)
+        case .project(.bot), .project(.archived): HomeRowHeights.projectChat(width: width)
+        default: nil
+        }
     }
 
     private func measure(_ item: Item, width: CGFloat) -> CGFloat {
@@ -302,16 +312,6 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         }
     }
 
-    /// The session a row opens and offers actions for.
-    private func sessionId(_ item: Item) -> String? {
-        switch item {
-        case .flat(.session(let row)), .project(.bot(let row)), .project(.archived(let row)): row.id
-        case .project(.project(let entry)): entry.sessionId
-        case .project(.worktree(let worktree, _)): worktree.sessionId
-        default: nil
-        }
-    }
-
     // MARK: Banners
 
     private struct BannerState: Equatable {
@@ -351,6 +351,9 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     private func sizeHeader() {
         guard tableView.tableHeaderView === banners else { return }
         let width = tableView.bounds.width
+        // Measured again only when what it shows or the width changed.
+        guard headerSized?.state != bannerState || headerSized?.width != width else { return }
+        headerSized = bannerState.map { ($0, width) }
         let height = banners.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
         if banners.frame.size != CGSize(width: width, height: height) {
             banners.frame = CGRect(x: 0, y: 0, width: width, height: height)
@@ -419,6 +422,10 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         guard let item = item(at: indexPath) else { return 0 }
         let id = model.ids[indexPath.row]
         let width = tableView.bounds.width
+        if let height = Self.fixedHeight(item, width: width) { return height }
+        // TODO(apply perf): day headings, toggles, machine and section
+        // headers still measure their label here, on the main thread, once
+        // per value and width. Their heights move off main next.
         if let cached = heights[id], cached.width == width, cached.row == item { return cached.height }
         let height = measure(item, width: width)
         heights[id] = (item, width, height)
@@ -431,7 +438,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         case .flat(.session), .flat(.archiveToggle), .project(.archiveToggle), .project(.worktreeToggle):
             return true
         default:
-            return sessionId(item) != nil
+            return item.sessionId != nil
         }
     }
 
@@ -444,7 +451,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         case .project(.worktreeToggle(let toggle)):
             toggleExpanded(toggle.projectId)
         default:
-            guard let sessionId = sessionId(item) else { return }
+            guard let sessionId = item.sessionId else { return }
             push(.session(id: sessionId), context: context)
         }
         applySelection() // Tablet

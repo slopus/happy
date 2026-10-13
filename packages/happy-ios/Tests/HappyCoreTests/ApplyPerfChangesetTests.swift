@@ -305,3 +305,112 @@ final class ApplyPerfMetricsTests: XCTestCase {
         #endif
     }
 }
+
+final class ApplyPerfHomeLayoutTests: XCTestCase {
+    private func grouped(_ snapshot: HomeSnapshot, _ grouping: String) -> HomeSnapshot {
+        var snapshot = snapshot
+        snapshot.settings = SettingsSnapshot(pending: ["sessionListGrouping": .string(grouping)])
+        return snapshot
+    }
+
+    func testSwitchingLayoutSwapsRowsAndNeverReconfiguresAcrossCellKinds() throws {
+        var snapshot = ApplyPerfFixtures.snapshot(5)
+        // One archived session, so both layouts have a toggle and a day.
+        snapshot.sessions[4].active = false
+        snapshot.settings = SettingsSnapshot(pending: ["hideInactiveSessions": .bool(false)])
+        let flat = try XCTUnwrap(ApplyPerfFixtures.derive(snapshot, after: nil)).state
+        var project = snapshot
+        project.settings.pending["sessionListGrouping"] = .string("project")
+        let update = try XCTUnwrap(ApplyPerfFixtures.derive(project, after: flat)).output
+        let before = try XCTUnwrap(flat.content?.list)
+        let after = try XCTUnwrap(update.content.list)
+        XCTAssertFalse(before.grouped)
+        XCTAssertTrue(after.grouped)
+        XCTAssertTrue(Set(before.ids).isDisjoint(with: after.ids), "the layouts share no row id")
+        XCTAssertEqual(update.changeset.deletes.count, before.ids.count)
+        XCTAssertEqual(update.changeset.inserts.count, after.ids.count)
+        XCTAssertEqual(update.changeset.reconfigures, [])
+        XCTAssertEqual(update.changeset.moves, [])
+        XCTAssertFalse(update.kindChanged)
+    }
+
+    func testSelectionFindsAChatInEitherLayout() throws {
+        let flat = try XCTUnwrap(ApplyPerfFixtures.derive(ApplyPerfFixtures.snapshot(3), after: nil)).state.content?.list
+        XCTAssertEqual(flat?.index(ofSession: "session-0001"), 1)
+        let project = try XCTUnwrap(ApplyPerfFixtures.derive(grouped(ApplyPerfFixtures.snapshot(3), "project"), after: nil)).state.content?.list
+        let index = try XCTUnwrap(project?.index(ofSession: "session-0000"))
+        XCTAssertEqual(project?.rows[index].sessionId, "session-0000")
+    }
+
+    func testGroupingChoiceAloneReachesTheMenu() throws {
+        let snapshot = ApplyPerfFixtures.snapshot(3)
+        let applied = try XCTUnwrap(ApplyPerfFixtures.derive(snapshot, after: nil))
+        XCTAssertEqual(applied.output.grouping, .flat)
+        XCTAssertNil(ApplyPerfFixtures.derive(snapshot, after: applied.state))
+    }
+}
+
+final class ApplyPerfChatSessionTests: XCTestCase {
+    func testUnrenderedSettingsAndInvisibleFieldsChangeNothing() {
+        var snapshot = ApplyPerfFixtures.snapshot(3)
+        let before = ChatSessionState(snapshot, sessionId: "session-0001")
+        snapshot.settings = SettingsSnapshot(pending: [
+            "reviewPromptAnswered": .bool(true), "recentMachinePaths": .array([.string("/x")]),
+            "sessionListGrouping": .string("project"), "lastUsedAgent": .string("codex"),
+        ])
+        snapshot.sessions[1] = ApplyPerfFixtures.invisiblyTouched(snapshot.sessions[1], by: 5000)
+        snapshot.sessions[2] = ApplyPerfFixtures.retitled(snapshot.sessions[2], "Another session")
+        snapshot.machines.machines[0].activeAt += 5000
+        XCTAssertEqual(ChatSessionState(snapshot, sessionId: "session-0001"), before)
+    }
+
+    func testRenderedSettingsAndFieldsDoChange() {
+        let snapshot = ApplyPerfFixtures.snapshot(3)
+        let before = ChatSessionState(snapshot, sessionId: "session-0001")
+        for key in ChatSessionState.renderedSettings {
+            var changed = snapshot
+            changed.settings = SettingsSnapshot(pending: [key: .string("changed")])
+            XCTAssertNotEqual(ChatSessionState(changed, sessionId: "session-0001"), before, key)
+        }
+        var offline = snapshot
+        offline.sessions[1].active = false
+        let stopped = ChatSessionState(offline, sessionId: "session-0001")
+        XCTAssertNotEqual(stopped, before)
+        XCTAssertEqual(stopped.machine?.id, "computer", "a stopped session keeps its machine for resuming")
+        offline.sessions[1].activeAt -= 3_600_000
+        XCTAssertNotEqual(ChatSessionState(offline, sessionId: "session-0001"), stopped, "a stopped session shows when it was last seen")
+    }
+}
+
+final class ApplyPerfPacingTests: XCTestCase {
+    @MainActor
+    func testAppliesAreAtLeastAFrameApart() async throws {
+        let recorder = ApplyPerfRecorder<Int>()
+        var times: [ContinuousClock.Instant] = []
+        let pipeline = ApplyPipeline<Int, Int, Int>(
+            input: 0,
+            state: 0,
+            derive: { input, applied in input == applied ? nil : (input, input) },
+            apply: { value in
+                times.append(.now)
+                return recorder.take(value)
+            }
+        )
+        // A burst far faster than a frame, for 20 frames' worth.
+        let start = ContinuousClock.now
+        var value = 0
+        while start.duration(to: .now) < .milliseconds(340) {
+            value += 1
+            let next = value
+            pipeline.update { $0 = next }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+        await applyPerfWait { pipeline.applied == value }
+        let gaps = zip(times.dropFirst(), times).map { $0.duration(to: $1) * -1 }
+        XCTAssertTrue(gaps.allSatisfy { $0 >= ApplyPipeline<Int, Int, Int>.frame }, "\(gaps)")
+        XCTAssertLessThanOrEqual(recorder.outputs.count, 22, "\(value) inputs in 340 ms became at most one apply per 16.7 ms")
+        XCTAssertGreaterThan(value, recorder.outputs.count)
+        print("APPLY_PERF pacing: inputs=\(value) applies=\(recorder.outputs.count) min_gap=\(gaps.min().map { String(format: "%.2f", $0.milliseconds) } ?? "-")ms (wall clock, not display frames)")
+        pipeline.cancel()
+    }
+}

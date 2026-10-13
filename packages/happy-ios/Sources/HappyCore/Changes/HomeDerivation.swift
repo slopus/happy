@@ -8,11 +8,28 @@ public enum HomeListRow: Equatable, Sendable {
 
     /// Who the row is across updates. Day headings are counted, so the
     /// third heading stays the third heading when its title changes.
+    ///
+    /// The two layouts never share an id, and every id keeps one cell
+    /// class, so switching layouts is a delete and an insert and a
+    /// reconfigured row never needs another kind of cell.
     public enum ID: Hashable, Sendable {
         case session(String)
         case archiveToggle
         case day(Int)
+        /// `ProjectHomeRow.key`, which names its kind ("bot-", "worktree-").
         case project(String)
+        case projectArchiveToggle
+        case projectDay(Int)
+    }
+
+    /// The chat a tap on the row opens, if any.
+    public var sessionId: String? {
+        switch self {
+        case .flat(.session(let row)), .project(.bot(let row)), .project(.archived(let row)): row.id
+        case .project(.project(let entry)): entry.sessionId
+        case .project(.worktree(let worktree, _)): worktree.sessionId
+        default: nil
+        }
     }
 }
 
@@ -50,9 +67,9 @@ public struct HomeListModel: Equatable, Sendable {
         if let projects = list.projects {
             for row in projects.rows(expanded: expandedProjects) {
                 switch row {
-                case .archiveToggle: ids.append(.archiveToggle)
+                case .archiveToggle: ids.append(.projectArchiveToggle)
                 case .archiveHeader:
-                    ids.append(.day(dayIndex))
+                    ids.append(.projectDay(dayIndex))
                     dayIndex += 1
                 default: ids.append(.project(row.key))
                 }
@@ -100,9 +117,9 @@ public struct HomeListModel: Equatable, Sendable {
         }
     }
 
-    /// Where each row is, for selecting one by session.
+    /// The row that opens chat `id`, for keeping it selected.
     public func index(ofSession id: String) -> Int? {
-        ids.firstIndex(of: .session(id))
+        rows.firstIndex { $0.sessionId == id }
     }
 }
 

@@ -29,9 +29,30 @@ rule 8), and what the Linux benchmarks measure.
   apply an `os_signpost` interval. In debug builds it also asserts the main
   queue, counts per site and per main-queue turn (`ApplyMetrics`), and logs
   blocks over `ApplyBudget.block`.
+- Applies are at least one 60 Hz frame (16.67 ms) apart per pipeline. This
+  is coarse wall-clock coalescing, not the display's frame clock. Whether
+  it really means one apply per displayed frame has not been checked on a
+  device.
 - The session list applies the changeset to a plain `UITableView`: exact
   row deletes, inserts, moves and reconfigures. It never takes a fresh
-  diffable snapshot. Row heights are cached by row value and width.
+  diffable snapshot and never reloads after the first load. Flat and grouped
+  rows never share an id, so switching layouts is a delete plus an insert,
+  and a reconfigured row always keeps its cell class.
+- Session, project-card, worktree and chat rows are one fixed height at any
+  width (`HomeRowHeights`, checked by `HomeRowHeightTests`), so they are
+  never measured.
+
+## Known gaps
+
+- Day headings, archive toggles, and machine and section headers still
+  measure their label on the main thread. Each is measured once per value
+  and width, when shown.
+- The banner header is also measured on the main thread, once per banner
+  content and width.
+- `HomeSnapshot.presenceNow` is not consumed yet. A stopped session's "last
+  seen" text does not tick between store changes.
+- None of the UIKit behaviour is verified: no simulator run, no device
+  timings.
 
 ## Before and after
 
@@ -49,3 +70,6 @@ measure UIKit. "Before" is a model of the b1247fce screens:
 | 500 sessions in 5 pages during one derivation | 5 derivations, 5 applies | 2 derivations (1 superseded), 1 apply of 500 inserts |
 | Real store and HomeFeed: 10 sessions × 15 heartbeats + cursor bumps, then 1 title | 150 home values | home 2 applies, chat 2 applies (first value + the title) |
 | `HomeState` for 1000 sessions | 14.7–31 ms on the main thread | 0 ms on main; 16–27 ms in the background |
+| Unrendered setting changes (`reviewPromptAnswered`, `lastUsedAgent`, …) | chat session applied | 0 chat applies |
+| Flat ⇄ grouped layout switch | `reloadData` | delete + insert, 0 reconfigures |
+| 302 inputs in 340 ms | — | 22 applies, every gap at least 16.69 ms (wall clock) |

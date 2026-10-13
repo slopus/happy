@@ -53,7 +53,11 @@ public final class ApplyObservation: Sendable {
 ///     into one, so a burst costs one more derivation and one more apply;
 ///   - a result that is about to apply while a newer input already waits
 ///     is dropped for the newer one, but never twice in a row, so a steady
-///     stream still reaches the screen.
+///     stream still reaches the screen;
+///   - applies are at least `minimumInterval` apart (a 60 Hz frame by
+///     default). The wait is spent before deriving, so whatever arrives
+///     meanwhile is merged into the next result. This is wall-clock
+///     spacing, not the display's frame clock.
 ///
 /// The input is a value the feeds and the screen both write to: a feed sets
 /// its snapshot, the screen the things it decides on the main thread (a
@@ -81,11 +85,24 @@ public final class ApplyPipeline<Input: Sendable, State: Sendable, Output: Senda
     private let derive: Derive
     private let apply: Apply
     private let priority: TaskPriority
+    private let minimumInterval: Duration
+    private var lastApply: ContinuousClock.Instant?
 
-    public init(input: Input, state: State, priority: TaskPriority = .userInitiated, derive: @escaping Derive, apply: @escaping Apply) {
+    /// One 60 Hz frame.
+    public static var frame: Duration { .nanoseconds(16_666_667) }
+
+    public init(
+        input: Input,
+        state: State,
+        priority: TaskPriority = .userInitiated,
+        minimumInterval: Duration = ApplyPipeline.frame,
+        derive: @escaping Derive,
+        apply: @escaping Apply
+    ) {
         self.input = input
         self.state = state
         self.priority = priority
+        self.minimumInterval = minimumInterval
         self.derive = derive
         self.apply = apply
     }
@@ -153,6 +170,12 @@ public final class ApplyPipeline<Input: Sendable, State: Sendable, Output: Senda
 
     private func run() async {
         while true {
+            let wait: Duration? = lock.withLock {
+                lastApply.map { $0 + minimumInterval - ContinuousClock.now }
+            }
+            if let wait, wait > .zero {
+                try? await Task.sleep(for: wait)
+            }
             let next: (Input, State)? = lock.withLock {
                 guard !cancelled, dirty else {
                     running = false
@@ -193,6 +216,7 @@ public final class ApplyPipeline<Input: Sendable, State: Sendable, Output: Senda
         }
         if let proceed { return proceed }
         let start = ContinuousClock.now
+        lock.withLock { lastApply = start }
         let took = apply(output)
         let elapsed = start.duration(to: .now).milliseconds
         lock.withLock {

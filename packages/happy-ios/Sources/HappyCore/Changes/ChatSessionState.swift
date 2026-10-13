@@ -58,7 +58,7 @@ extension ChatSessionState {
         let machineId = record.flatMap { SessionState($0) == .disconnected ? $0.metadata?["machineId"]?.stringValue : nil }
         self.init(
             record: record.map(Self.rendered),
-            settings: AccountSettings(snapshot.settings),
+            settings: Self.rendered(AccountSettings(snapshot.settings)),
             dataReady: snapshot.sessionsSynced || !snapshot.sessions.isEmpty,
             machine: machineId.flatMap { id in snapshot.machines.machines.first { $0.id == id } }.map(Self.rendered)
         )
@@ -88,6 +88,20 @@ extension ChatSessionState {
             record.metadata = .object(fields)
         }
         return record
+    }
+
+    /// The settings the chat, its header and dock, the composer and a
+    /// message's screen read. Anything else is left at its default, so a
+    /// change to it changes nothing here. A new read of a setting through
+    /// `ChatSessionState` must add its key.
+    public static let renderedSettings: Set<String> = [
+        "showHarnessIconInSessionHeader", "avatarStyle", "avatarMonochrome",
+        "userMessageBubbleColor", "showLineNumbersInToolViews", "groupToolCalls", "compactToolCalls",
+        "alwaysShowContextSize", "usageLimitShowRemaining", "agentDefaultOverrides",
+    ]
+
+    public static func rendered(_ settings: AccountSettings) -> AccountSettings {
+        AccountSettings(settings.values.filter { renderedSettings.contains($0.key) })
     }
 
     /// What resuming reads from a machine: whether it is online and what
