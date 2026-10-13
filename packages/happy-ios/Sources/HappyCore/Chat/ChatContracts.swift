@@ -22,6 +22,25 @@ public enum OutboxDelivery: Equatable, Sendable {
     case failed(String)
 }
 
+/// The latest model usage drives the composer's context meter.
+public struct ChatUsage: Equatable, Sendable {
+    public var inputTokens: Int
+    public var outputTokens: Int
+    public var cacheCreation: Int
+    public var cacheRead: Int
+    public var contextSize: Int
+    public var contextWindow: Int?
+
+    public init(inputTokens: Int, outputTokens: Int, cacheCreation: Int, cacheRead: Int, contextSize: Int, contextWindow: Int? = nil) {
+        self.inputTokens = inputTokens
+        self.outputTokens = outputTokens
+        self.cacheCreation = cacheCreation
+        self.cacheRead = cacheRead
+        self.contextSize = contextSize
+        self.contextWindow = contextWindow
+    }
+}
+
 /// A session's chat as the UI shows it, oldest first, ordered by
 /// `ChatMessage.sortKey`. Unsent messages from the outbox are included as
 /// pending user messages; `delivery` says where each one is.
@@ -30,15 +49,19 @@ public struct ChatSnapshot: Equatable, Sendable {
     public var messages: [ChatMessage]
     /// Outbox state by `localId`, for messages the server doesn't have yet.
     public var delivery: [String: OutboxDelivery]
-    /// False until the session's messages have been pulled at least once,
-    /// so an empty chat can tell "nothing yet" from "not loaded".
+    /// False until messages have been pulled or the server confirms the
+    /// session is empty (seq == 0), so chat can distinguish loading from empty.
     public var isLoaded: Bool
+    public var usage: ChatUsage?
+    public var todos: JSONValue?
 
-    public init(sessionId: String, messages: [ChatMessage] = [], delivery: [String: OutboxDelivery] = [:], isLoaded: Bool = false) {
+    public init(sessionId: String, messages: [ChatMessage] = [], delivery: [String: OutboxDelivery] = [:], isLoaded: Bool = false, usage: ChatUsage? = nil, todos: JSONValue? = nil) {
         self.sessionId = sessionId
         self.messages = messages
         self.delivery = delivery
         self.isLoaded = isLoaded
+        self.usage = usage
+        self.todos = todos
     }
 }
 

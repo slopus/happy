@@ -119,8 +119,10 @@ public struct UserTextMessage: Equatable, Sendable {
     /// Position in the chat when it differs from `createdAt`.
     public var sortAt: Int64?
     public var author: SessionAuthor?
+    public var claudeUuid: String?
+    public var codexItemId: String?
 
-    public init(id: String, localId: String? = nil, createdAt: Int64, text: String, displayText: String? = nil, meta: MessageMeta? = nil, pending: Bool = false, sendError: String? = nil, sortAt: Int64? = nil, author: SessionAuthor? = nil) {
+    public init(id: String, localId: String? = nil, createdAt: Int64, text: String, displayText: String? = nil, meta: MessageMeta? = nil, pending: Bool = false, sendError: String? = nil, sortAt: Int64? = nil, author: SessionAuthor? = nil, claudeUuid: String? = nil, codexItemId: String? = nil) {
         self.id = id
         self.localId = localId
         self.createdAt = createdAt
@@ -131,6 +133,8 @@ public struct UserTextMessage: Equatable, Sendable {
         self.sendError = sendError
         self.sortAt = sortAt
         self.author = author
+        self.claudeUuid = claudeUuid
+        self.codexItemId = codexItemId
     }
 }
 
