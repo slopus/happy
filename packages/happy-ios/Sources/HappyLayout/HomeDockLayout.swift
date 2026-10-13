@@ -335,17 +335,8 @@ public struct HomeDockFocusMotion: Equatable, Sendable {
         0.96 + 0.04 * min(1, max(0, progress))
     }
 
-    /// The text inside, over [0.22, 0.6], rising 8pt.
-    public var input: (alpha: CGFloat, offsetY: CGFloat) {
-        let reveal = Self.ramp(progress, 0.22, 0.6)
-        return (reveal, 8 * (1 - reveal))
-    }
-
-    /// The action row, over [0.46, 0.82], rising 7pt.
-    public var actions: (alpha: CGFloat, offsetY: CGFloat) {
-        let reveal = Self.ramp(progress, 0.46, 0.82)
-        return (reveal, 7 * (1 - reveal))
-    }
+    // The card's text and action row rise in their own beats:
+    // `AgentInputCardReveal`, at this same progress.
 }
 
 /// A refused press while a session starts: two beats pointing at Stop
@@ -353,9 +344,8 @@ public struct HomeDockFocusMotion: Equatable, Sendable {
 public enum HomeDockRefusal {
     /// (target, duration) from 0.
     public static let flash: [(value: CGFloat, duration: Double)] = [(1, 0.09), (0, 0.13), (1, 0.09), (0, 0.34)]
-    /// A refused picker row's shake (`SHAKE_KEYFRAMES`), 50ms a step.
-    public static let shake: [CGFloat] = [3, -3, 3, -3, 0]
-    public static let shakeStep: Double = 0.05
+    // A refused control's shake (`SHAKE_KEYFRAMES`) is
+    // `ComposerShake.refusal`.
 
     /// The flash at `time` seconds after the refusal.
     public static func flash(at time: Double) -> CGFloat {

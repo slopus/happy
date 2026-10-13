@@ -214,10 +214,9 @@ final class HomeDockFocusViewController: UIViewController {
     private let composerShell = UIView()
     private let composerClip = UIView()
     private let card: AgentInputCardView
-    // STOPGAP (card `refusesControls`): until the card refuses its own
-    // controls, these cover the text and the controls beside the button.
+    /// Over the text while a session starts (`composerPressBlocker`): a
+    /// press shakes the whole composer. The card refuses its own controls.
     private let textBlocker = UIControl()
-    private let controlsBlocker = UIControl()
     private let keyboardTracker = UIView()
 
     private var progress: CGFloat = 0
@@ -259,7 +258,8 @@ final class HomeDockFocusViewController: UIViewController {
         for (index, row) in rows.enumerated() {
             row.blocker.addAction(UIAction { [weak self, weak row] _ in
                 guard let row else { return }
-                self?.refuse(shaking: row, keyframes: HomeDockRefusal.shake, step: HomeDockRefusal.shakeStep)
+                AgentInputCardView.shake(row, .refusal)
+                self?.refuse()
             }, for: .touchUpInside)
             if Row(rawValue: index) == .harness {
                 row.trigger.addAction(UIAction { [weak self] _ in self?.openHarnessHelp() }, for: .touchUpInside)
@@ -284,11 +284,9 @@ final class HomeDockFocusViewController: UIViewController {
         // The clip takes the card's own shadow; the shell carries one
         // around however much of it is open.
         composerClip.addSubview(card)
-        for blocker in [textBlocker, controlsBlocker] {
-            blocker.isHidden = true
-            blocker.addAction(UIAction { [weak self] _ in self?.refuseComposer() }, for: .touchUpInside)
-            composerClip.addSubview(blocker)
-        }
+        textBlocker.isHidden = true
+        textBlocker.addAction(UIAction { [weak self] _ in self?.refuseComposer() }, for: .touchUpInside)
+        composerClip.addSubview(textBlocker)
 
         keyboardTracker.isHidden = true
         keyboardTracker.isUserInteractionEnabled = false
@@ -388,9 +386,8 @@ final class HomeDockFocusViewController: UIViewController {
         progressLabel.isHidden = label == nil
         progressHint.isHidden = label == nil || primary != .stop
 
-        card.configuration = cardConfiguration(choices, primary: primary)
+        card.configuration = cardConfiguration(choices, primary: primary, starting: starting)
         textBlocker.isHidden = !starting
-        controlsBlocker.isHidden = !starting
         view.setNeedsLayout()
     }
 
@@ -405,7 +402,7 @@ final class HomeDockFocusViewController: UIViewController {
 
     /// The card for the draft (`renderFocusedComposer`). The add button
     /// is left out until there is an image picker to open.
-    private func cardConfiguration(_ choices: NewSessionChoices, primary: NewSessionPrimaryAction) -> AgentInputCardConfiguration {
+    private func cardConfiguration(_ choices: NewSessionChoices, primary: NewSessionPrimaryAction, starting: Bool) -> AgentInputCardConfiguration {
         let hasHarness = choices.hasAvailableHarness
         let permission: AgentInputChipConfiguration? = hasHarness && choices.currentPermission != nil
             ? choices.permissionLabel.map { label in
@@ -454,7 +451,9 @@ final class HomeDockFocusViewController: UIViewController {
             effort: effort,
             primaryAction: action,
             isPrimaryBusy: primary == .busy,
-            primaryAccessibilityLabel: primary == .stop ? Strings.Composer.stop : Strings.Composer.send
+            primaryAccessibilityLabel: primary == .stop ? Strings.Composer.stop : Strings.Composer.send,
+            primaryStyle: .newSession,
+            refusesControls: starting
         )
     }
 
@@ -559,19 +558,7 @@ final class HomeDockFocusViewController: UIViewController {
         startDisplayLink()
     }
 
-    private func refuse(shaking view: UIView, keyframes: [CGFloat], step: Double) {
-        refuse()
-        let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
-        animation.values = [0] + keyframes
-        animation.keyTimes = (0...keyframes.count).map { NSNumber(value: Double($0) / Double(keyframes.count)) }
-        animation.duration = step * Double(keyframes.count)
-        animation.timingFunctions = Array(repeating: CAMediaTimingFunction(name: .easeInEaseOut), count: keyframes.count)
-        animation.isAdditive = true
-        view.layer.add(animation, forKey: "shake")
-    }
-
-    /// STOPGAP (card `refusesControls`): the whole composer shakes, as
-    /// Shaker does, rather than only the control pressed.
+    /// A refused edit of the text: the whole composer shakes (Shaker).
     private func refuseComposer() {
         refuse()
         AgentInputCardView.shake(composerShell)
@@ -582,8 +569,7 @@ final class HomeDockFocusViewController: UIViewController {
         let from = UIColor(Palette.textSecondary).resolvedColor(with: traitCollection)
         let to = UIColor(Palette.text).resolvedColor(with: traitCollection)
         progressHint.textColor = Self.blend(from, to, amount)
-        // STOPGAP (card `setPrimaryFlash`): Stop's own swell and wash wait
-        // for the card to offer them.
+        card.setPrimaryFlash(amount)
     }
 
     private static func blend(_ from: UIColor, _ to: UIColor, _ amount: CGFloat) -> UIColor {
@@ -690,16 +676,8 @@ final class HomeDockFocusViewController: UIViewController {
         composerClip.layer.cornerRadius = radius
         let cardFrame = CGRect(x: 0, y: shellBounds.height - cardHeight, width: shellBounds.width, height: cardHeight)
         card.setLayoutFrame(cardFrame)
-        // STOPGAP (card `setReveal`): the text and the action row rise in
-        // with the rest of the card rather than in their own beats.
-
+        card.setReveal(input: AgentInputCardReveal.input(progress: progress), actions: AgentInputCardReveal.actions(progress: progress))
         textBlocker.frame = CGRect(x: 0, y: cardFrame.minY, width: cardFrame.width, height: cardLayout.actionRow.minY)
-        controlsBlocker.frame = CGRect(
-            x: 0,
-            y: cardFrame.minY + cardLayout.actionRow.minY,
-            width: max(0, cardLayout.primary.minX - MobileComposerMetrics.mobile.primaryActionMarginLeft),
-            height: cardLayout.actionRow.height
-        )
     }
 
     private func place(_ view: UIView, _ frame: CGRect, _ transform: CGAffineTransform) {
@@ -744,6 +722,10 @@ extension HomeDockFocusViewController: AgentInputCardDelegate {
         Task { @MainActor [weak self] in
             if await controller.submit() { self?.close() }
         }
+    }
+
+    func agentInputCardDidRefuse(_ card: AgentInputCardView, control: AgentInputControl) {
+        refuse()
     }
 
     func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {
