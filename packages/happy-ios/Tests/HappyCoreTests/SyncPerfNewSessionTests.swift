@@ -15,6 +15,45 @@ private struct PickerNoOps: HomeOps {
 }
 
 final class SyncPerfNewSessionTests: XCTestCase {
+    @MainActor
+    func testEmptyUnsyncedStartupPreservesPersistedDraftUntilCatalogIsKnown() async {
+        let drafts = NewSessionDraftStore(settings: LocalSettings(storage: InMemoryKeyValueStore()))
+        drafts.setMachineId("saved-machine")
+        drafts.setPath("/saved/project")
+        drafts.pickAgentType(.rig)
+        drafts.setSessionType(.worktree)
+        drafts.setWorktreeKey("saved-worktree")
+        drafts.setCreatesBot(true)
+        let saved = drafts.draft
+        let empty = HomeSnapshot(machines: .init(synced: false, machines: []), sessions: [])
+        let composer = NewSessionComposer(drafts: drafts, snapshot: empty, ops: PickerNoOps())
+        await composer.waitForIdle()
+        XCTAssertEqual(drafts.draft, saved)
+        XCTAssertTrue(drafts.createsBot)
+        composer.update(snapshot: empty)
+        await composer.waitForIdle()
+        XCTAssertEqual(drafts.draft, saved)
+        XCTAssertTrue(drafts.createsBot)
+
+        composer.update(snapshot: HomeSnapshot(machines: .init(synced: true, machines: []), sessions: []))
+        await composer.waitForIdle()
+        XCTAssertEqual(drafts.draft.selectedMachineId, "saved-machine", "an empty listing keeps the existing machine-id fallback")
+        XCTAssertFalse(drafts.createsBot)
+        XCTAssertEqual(drafts.draft.sessionType, .simple)
+        XCTAssertNil(drafts.draft.worktreeKey)
+    }
+
+    @MainActor
+    func testStoredMachinesCanReconcileBeforeFirstSuccessfulSync() async {
+        let drafts = NewSessionDraftStore(settings: LocalSettings(storage: InMemoryKeyValueStore()))
+        drafts.setMachineId("disappeared")
+        var stored = snapshot(count: 1)
+        stored.machines.synced = false
+        let composer = NewSessionComposer(drafts: drafts, snapshot: stored, ops: PickerNoOps())
+        await composer.waitForIdle()
+        XCTAssertEqual(drafts.draft.selectedMachineId, "m", "available disk rows remain usable while offline")
+    }
+
     private func snapshot(count: Int = 1000) -> HomeSnapshot {
         let machine = MachineRecord(id: "m", seq: 0, createdAt: 1, updatedAt: 1, active: false, activeAt: 1,
             metadataVersion: 1, metadataCipher: "", metadata: .object(["host": .string("fixed"), "homeDir": .string("/home"),

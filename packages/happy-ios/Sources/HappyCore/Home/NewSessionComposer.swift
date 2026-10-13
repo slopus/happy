@@ -261,6 +261,9 @@ public final class NewSessionComposer {
 
     /// HomeDock.tsx's effects that keep the draft in step with the store.
     private func reconcile() {
+        // The screen can precede its first disk value. An unknown empty
+        // catalog cannot establish that a persisted target disappeared.
+        guard snapshot.machines.synced || !snapshot.machines.machines.isEmpty else { return }
         let draft = drafts.draft
         // A draft from before the pair was coalesced names the computer
         // under its other daemon's id; a computer that left is replaced by
