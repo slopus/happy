@@ -26,6 +26,35 @@ public enum AgentInputChip: Sendable {
     case effort
 }
 
+/// A control in the action row that can refuse a press
+/// (`refusesControls`).
+public enum AgentInputControl: Sendable {
+    case add
+    case permission
+    case model
+    case effort
+
+    init(_ chip: AgentInputChip) {
+        switch chip {
+        case .permission: self = .permission
+        case .model: self = .model
+        case .effort: self = .effort
+        }
+    }
+}
+
+/// How the round button is painted.
+public enum AgentInputPrimaryStyle: Sendable {
+    /// AgentInput.tsx's chat composer: send on `surfaceHighest`, stop black
+    /// (light) or #F5F5F5 (dark), idle grey.
+    case standard
+    /// HomeDock.tsx's focused composer: send and stop share the solid fill
+    /// (`sendButtonActive`) with `primaryActionIconColor`; idle is
+    /// `surfaceHighest` with a `textSecondary` arrow (Ionicons); busy is a
+    /// `textSecondary` spinner on the unfilled button.
+    case newSession
+}
+
 /// A native menu a chip opens (NativeSettingsMenu.ios.tsx): sections of
 /// checkable rows, drawn in the order given.
 public struct AgentInputMenu: Equatable, Sendable {
@@ -118,6 +147,11 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
     /// `minHeight` for the input container; nil keeps 44.
     public var inputMinHeight: CGFloat?
     public var autocapitalization: UITextAutocapitalizationType
+    public var primaryStyle: AgentInputPrimaryStyle
+    /// While true, add and the chips refuse presses: the pressed one shakes
+    /// and the delegate hears `agentInputCardDidRefuse`. The primary button
+    /// is unaffected (HomeDock's `RefusableControl` while a session starts).
+    public var refusesControls: Bool
 
     public init(
         placeholder: String,
@@ -131,7 +165,9 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         isPrimaryBusy: Bool = false,
         primaryAccessibilityLabel: String? = nil,
         inputMinHeight: CGFloat? = nil,
-        autocapitalization: UITextAutocapitalizationType = .sentences
+        autocapitalization: UITextAutocapitalizationType = .sentences,
+        primaryStyle: AgentInputPrimaryStyle = .standard,
+        refusesControls: Bool = false
     ) {
         self.placeholder = placeholder
         self.isEditable = isEditable
@@ -145,6 +181,8 @@ public struct AgentInputCardConfiguration: Equatable, Sendable {
         self.primaryAccessibilityLabel = primaryAccessibilityLabel
         self.inputMinHeight = inputMinHeight
         self.autocapitalization = autocapitalization
+        self.primaryStyle = primaryStyle
+        self.refusesControls = refusesControls
     }
 }
 
@@ -167,6 +205,8 @@ public protocol AgentInputCardDelegate: AnyObject {
     func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip)
     /// Return was typed. False swallows the newline (an autocomplete pick).
     func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool
+    /// A control was pressed while `refusesControls` is on; it has shaken.
+    func agentInputCardDidRefuse(_ card: AgentInputCardView, control: AgentInputControl)
 }
 
 extension AgentInputCardDelegate {
@@ -179,6 +219,7 @@ extension AgentInputCardDelegate {
     public func agentInputCard(_ card: AgentInputCardView, didRemoveAttachment id: String) {}
     public func agentInputCard(_ card: AgentInputCardView, didSelect key: String, in chip: AgentInputChip) {}
     public func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool { true }
+    public func agentInputCardDidRefuse(_ card: AgentInputCardView, control: AgentInputControl) {}
 }
 
 /// The card. Give it a frame from `height(fitting:)`; it lays itself out.
@@ -201,6 +242,11 @@ public final class AgentInputCardView: UIView {
     private let surface = UIView()
     private let material = PartialBlurView(fraction: ComposerShadow.materialFraction)
     private let frosted = UIView()
+    /// The attachment strip and the text, and the action row: each group
+    /// fills the card so its children keep card coordinates, and moves as
+    /// one for `setReveal`.
+    private let inputGroup = PassthroughView()
+    private let actionsGroup = PassthroughView()
     private let placeholderLabel = UILabel()
     private let attachmentStrip = AttachmentStripView()
     private let addButton = ComposerIconButton(icon: .ionicons("add"), size: MobileComposerMetrics.mobile.addIconSize)
@@ -209,7 +255,9 @@ public final class AgentInputCardView: UIView {
     private let modelChip = ComposerChipButton(chip: .model)
     private let separator = UILabel()
     private let effortChip = ComposerChipButton(chip: .effort)
+    private let primaryHost = PassthroughView()
     private let primaryButton = ComposerPrimaryButton()
+    private var primaryFlash: CGFloat = 0
     private var measured: (width: CGFloat, text: String, height: CGFloat)?
 
     private static let inputStyle = TextStyles.composerInput
@@ -230,11 +278,14 @@ public final class AgentInputCardView: UIView {
         frosted.isUserInteractionEnabled = false
         surface.addSubview(frosted)
 
+        surface.addSubview(inputGroup)
+        surface.addSubview(actionsGroup)
+
         attachmentStrip.onRemove = { [weak self] id in
             guard let self else { return }
             self.delegate?.agentInputCard(self, didRemoveAttachment: id)
         }
-        surface.addSubview(attachmentStrip)
+        inputGroup.addSubview(attachmentStrip)
 
         textView.backgroundColor = .clear
         textView.textContainerInset = UIEdgeInsets(top: metrics.inputPaddingTop, left: 0, bottom: metrics.inputPaddingBottom, right: 0)
@@ -249,21 +300,25 @@ public final class AgentInputCardView: UIView {
         textView.textContentType = nil
         textView.tintColor = UIColor(Palette.radioActive)
         textView.delegate = self
-        surface.addSubview(textView)
+        inputGroup.addSubview(textView)
         placeholderLabel.isAccessibilityElement = false
         placeholderLabel.isUserInteractionEnabled = false
-        surface.addSubview(placeholderLabel)
+        inputGroup.addSubview(placeholderLabel)
 
         addButton.accessibilityLabel = Strings.Composer.addPhoto
         addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
-        surface.addSubview(addButton)
+        actionsGroup.addSubview(addButton)
 
         middle.clipsToBounds = true
-        surface.addSubview(middle)
+        actionsGroup.addSubview(middle)
         for chip in [permissionChip, modelChip, effortChip] {
             chip.onSelect = { [weak self] key, which in
                 guard let self else { return }
                 self.delegate?.agentInputCard(self, didSelect: key, in: which)
+            }
+            chip.onRefuse = { [weak self] which in
+                guard let self else { return }
+                self.delegate?.agentInputCardDidRefuse(self, control: AgentInputControl(which))
             }
             middle.addSubview(chip)
         }
@@ -271,7 +326,8 @@ public final class AgentInputCardView: UIView {
         middle.addSubview(separator)
 
         primaryButton.addTarget(self, action: #selector(primaryTapped), for: .touchUpInside)
-        surface.addSubview(primaryButton)
+        primaryHost.addSubview(primaryButton)
+        actionsGroup.addSubview(primaryHost)
 
         // didSet doesn't run in the initializer.
         apply(previous: nil)
@@ -330,13 +386,40 @@ public final class AgentInputCardView: UIView {
         Self.shake(primaryButton)
     }
 
-    /// Shaker.tsx: 0, 3, -3, 3, -3, 0 over 300ms.
-    static func shake(_ view: UIView) {
+    /// Shaker.tsx (`ComposerShake.shaker`).
+    static func shake(_ view: UIView, _ shake: ComposerShake = .shaker) {
         let animation = CAKeyframeAnimation(keyPath: "transform.translation.x")
-        animation.values = [0, 3, -3, 3, -3, 0]
-        animation.duration = 0.3
-        animation.timingFunctions = Array(repeating: CAMediaTimingFunction(name: .easeInEaseOut), count: 5)
+        animation.values = shake.values.map { Double($0) }
+        animation.keyTimes = shake.keyTimes.map { NSNumber(value: $0) }
+        animation.duration = shake.duration
+        // Animated.timing's ease-in-out per step; Reanimated's quad is close.
+        animation.timingFunctions = Array(
+            repeating: CAMediaTimingFunction(name: .easeInEaseOut),
+            count: max(0, shake.values.count - 1)
+        )
+        animation.isAdditive = true
         view.layer.add(animation, forKey: "shake")
+    }
+
+    // MARK: Home's motion
+
+    /// HomeDock.tsx's refusal flash, driven by Home (0…1): the round button
+    /// swells by a tenth and, on Stop, a lighter wash rises under the glyph.
+    public func setPrimaryFlash(_ amount: CGFloat) {
+        primaryFlash = amount
+        let scale = AgentInputPrimaryFlash.scale(amount)
+        primaryHost.transform = CGAffineTransform(scaleX: scale, y: scale)
+        primaryButton.flash = AgentInputPrimaryFlash.overlayAlpha(amount)
+    }
+
+    /// HomeDock.tsx's open animation: `input` moves the attachment strip and
+    /// the text, `actions` the action row. Transform and alpha only
+    /// (`AgentInputCardReveal` has HomeDock's ranges).
+    public func setReveal(input: (alpha: CGFloat, offsetY: CGFloat), actions: (alpha: CGFloat, offsetY: CGFloat)) {
+        inputGroup.alpha = input.alpha
+        inputGroup.transform = CGAffineTransform(translationX: 0, y: input.offsetY)
+        actionsGroup.alpha = actions.alpha
+        actionsGroup.transform = CGAffineTransform(translationX: 0, y: actions.offsetY)
     }
 
     // MARK: Layout
@@ -392,6 +475,10 @@ public final class AgentInputCardView: UIView {
         surface.frame = bounds
         material.frame = surface.bounds
         frosted.frame = surface.bounds
+        for group in [inputGroup, actionsGroup] {
+            group.bounds = CGRect(origin: .zero, size: surface.bounds.size)
+            group.center = CGPoint(x: surface.bounds.midX, y: surface.bounds.midY)
+        }
         layer.shadowPath = UIBezierPath(roundedRect: bounds, cornerRadius: metrics.shellRadius).cgPath
 
         if let strip = layout.attachments {
@@ -421,7 +508,11 @@ public final class AgentInputCardView: UIView {
         if let frame = content.separator {
             separator.setLayoutFrame(frame)
         }
-        primaryButton.setLayoutFrame(layout.primary)
+        // Bounds and centre, so the flash's scale is about the middle.
+        let primary = PixelGrid.snap(layout.primary, scale: max(1, traitCollection.displayScale))
+        primaryHost.bounds = CGRect(origin: .zero, size: primary.size)
+        primaryHost.center = CGPoint(x: primary.midX, y: primary.midY)
+        primaryButton.frame = primaryHost.bounds
     }
 
     private func place(_ chip: ComposerChipButton, _ frame: AgentInputCardLayout.ChipFrame?) {
@@ -454,6 +545,9 @@ public final class AgentInputCardView: UIView {
         addButton.tint = config.attachments.isEmpty ? Palette.text : Palette.radioActive
         attachmentStrip.attachments = config.attachments
 
+        for chip in [permissionChip, modelChip, effortChip] {
+            chip.refuses = config.refusesControls
+        }
         permissionChip.configure(config.permission)
         modelChip.configure(config.model)
         effortChip.configure(config.effort)
@@ -461,6 +555,7 @@ public final class AgentInputCardView: UIView {
 
         primaryButton.configure(
             action: config.primaryAction,
+            style: config.primaryStyle,
             busy: config.isPrimaryBusy,
             accessibilityLabel: config.primaryAccessibilityLabel
         )
@@ -514,6 +609,11 @@ public final class AgentInputCardView: UIView {
     // MARK: Actions
 
     @objc private func addTapped() {
+        if configuration.refusesControls {
+            Self.shake(addButton, .refusal)
+            delegate?.agentInputCardDidRefuse(self, control: .add)
+            return
+        }
         delegate?.agentInputCardDidPressAdd(self)
     }
 
@@ -609,6 +709,14 @@ final class ComposerIconButton: ComposerPressableButton {
 final class ComposerChipButton: UIButton {
     let chip: AgentInputChip
     var onSelect: ((String, AgentInputChip) -> Void)?
+    var onRefuse: ((AgentInputChip) -> Void)?
+    /// Presses shake the chip instead of opening its menu.
+    var refuses = false {
+        didSet {
+            guard refuses != oldValue else { return }
+            applyMenu()
+        }
+    }
     private let label = UILabel()
     private let iconView = IconView(size: AgentInputCardLayout.Metrics.permissionIconSize, tint: Palette.text)
     private var chipConfiguration: AgentInputChipConfiguration?
@@ -629,6 +737,13 @@ final class ComposerChipButton: UIButton {
         // The menus list their rows top-down in our order (SwiftUI's
         // `.menuOrder(.fixed)`, which happy-app gets by pre-reversing).
         preferredMenuElementOrder = .fixed
+        addTarget(self, action: #selector(tapped), for: .touchUpInside)
+    }
+
+    @objc private func tapped() {
+        guard refuses else { return }
+        AgentInputCardView.shake(self, .refusal)
+        onRefuse?(chip)
     }
 
     @available(*, unavailable)
@@ -661,9 +776,17 @@ final class ComposerChipButton: UIButton {
             label.isHidden = true
         }
         accessibilityLabel = configuration.accessibilityLabel
-        menu = configuration.menu.map(makeMenu)
-        isEnabled = configuration.menu != nil
         alpha = configuration.menu != nil ? 1 : AgentInputCardLayout.Metrics.disabledChipOpacity
+        applyMenu()
+    }
+
+    /// A refusing chip takes the press itself (RefusableControl's blocker
+    /// covers dimmed chips too); otherwise the menu opens on tap.
+    private func applyMenu() {
+        let model = chipConfiguration?.menu
+        menu = refuses ? nil : model.map(makeMenu)
+        showsMenuAsPrimaryAction = !refuses
+        isEnabled = refuses || model != nil
     }
 
     private func makeMenu(_ model: AgentInputMenu) -> UIMenu {
@@ -704,13 +827,23 @@ final class ComposerChipButton: UIButton {
 
 /// The round send / stop button (`mobilePrimaryButton`): 42pt.
 final class ComposerPrimaryButton: ComposerPressableButton {
+    private let flashOverlay = UIView()
     private let iconView = IconView(size: AgentInputCardLayout.Metrics.primaryIconSize)
     private let spinner = UIActivityIndicatorView(style: .medium)
     private var action: AgentInputPrimaryAction = .idle
+    private var style: AgentInputPrimaryStyle = .standard
     private var busy = false
+
+    /// The refusal wash's alpha, drawn under the glyph on Stop only.
+    var flash: CGFloat = 0 {
+        didSet { applyFlash() }
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        clipsToBounds = true
+        flashOverlay.isUserInteractionEnabled = false
+        addSubview(flashOverlay)
         addSubview(iconView)
         spinner.hidesWhenStopped = true
         addSubview(spinner)
@@ -726,8 +859,9 @@ final class ComposerPrimaryButton: ComposerPressableButton {
         fatalError("init(coder:) is not supported")
     }
 
-    func configure(action: AgentInputPrimaryAction, busy: Bool, accessibilityLabel: String?) {
+    func configure(action: AgentInputPrimaryAction, style: AgentInputPrimaryStyle, busy: Bool, accessibilityLabel: String?) {
         self.action = action
+        self.style = style
         self.busy = busy
         switch action {
         case .stop:
@@ -737,7 +871,8 @@ final class ComposerPrimaryButton: ComposerPressableButton {
             iconView.icon = .ionicons("lock-closed")
             iconView.size = AgentInputCardLayout.Metrics.lockIconSize
         case .send, .idle, .voice:
-            iconView.icon = .octicons("arrow-up")
+            // HomeDock draws Ionicons' arrow; AgentInput Octicons'.
+            iconView.icon = style == .newSession ? .ionicons("arrow-up") : .octicons("arrow-up")
             iconView.size = AgentInputCardLayout.Metrics.primaryIconSize
         }
         // `disabled={!canPressSendButton}`: idle can't be pressed, nor can
@@ -755,9 +890,19 @@ final class ComposerPrimaryButton: ComposerPressableButton {
     }
 
     private func applyColors() {
+        layer.borderWidth = 0
+        flashOverlay.backgroundColor = UIColor(Palette.composerPrimaryFlash)
+        applyFlash()
+        if style == .newSession {
+            // HomeDock's 'busy' is its own action, on the unfilled button.
+            let filled = !busy && (action == .send || action == .stop)
+            backgroundColor = UIColor(filled ? Palette.composerNewSessionPrimaryFill : Palette.surfaceHighest)
+            iconView.tintColor = UIColor(filled ? Palette.composerNewSessionPrimaryIcon : Palette.textSecondary)
+            spinner.color = UIColor(Palette.textSecondary)
+            return
+        }
         // Stop first: a blank composer on a non-steerable agent is both
         // blocked and abortable, and must not look locked.
-        layer.borderWidth = 0
         switch action {
         case .stop:
             backgroundColor = UIColor(Palette.composerStopFill)
@@ -774,16 +919,31 @@ final class ComposerPrimaryButton: ComposerPressableButton {
             backgroundColor = UIColor(Palette.composerPrimaryInactive)
             iconView.tintColor = UIColor(Palette.textSecondary)
         }
-        spinner.color = action == .stop
-            ? UIColor(Palette.composerStopIcon)
+        // AgentInput.tsx: black on Stop in dark, the text colour otherwise.
+        spinner.color = action == .stop && traitCollection.userInterfaceStyle == .dark
+            ? .black
             : UIColor(Palette.text)
+    }
+
+    private func applyFlash() {
+        flashOverlay.isHidden = action != .stop || (busy && style == .newSession)
+        flashOverlay.alpha = flash
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         layer.cornerRadius = bounds.height / 2
+        flashOverlay.frame = bounds
         iconView.frame = bounds
         spinner.center = CGPoint(x: bounds.midX, y: bounds.midY)
+    }
+}
+
+/// A container that takes no touches itself, only its subviews'.
+final class PassthroughView: UIView {
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        let hit = super.hitTest(point, with: event)
+        return hit === self ? nil : hit
     }
 }
 
