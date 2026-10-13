@@ -30,7 +30,9 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
     /// The account being switched to or signed out of.
     private var busyAccount: String?
     private var accountEntries: [ObjectIdentifier: AccountSwitcherEntry] = [:]
-    private var avatarImages: [URL: UIImage] = [:]
+    /// Pictures on their way, by account and URL or thumbhash; the page is
+    /// rebuilt when one arrives.
+    private var loadingPictures: Set<String> = []
 
     private var revealsSecret = false
     private var copiedRecently = false
@@ -144,7 +146,7 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
                     title: Strings.SettingsAccount.github,
                     subtitle: Strings.SettingsAccount.tapToDisconnect,
                     detail: "@\(login)",
-                    icon: githubIcon(page.avatarURL, thumbhash: page.avatarThumbhash)
+                    icon: githubIcon(page.avatarURL, thumbhash: page.avatarThumbhash, of: session.keys.anonID)
                 ) { [weak self] in
                     self?.disconnectGitHub()
                 }
@@ -233,25 +235,49 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
         return row
     }
 
-    private func githubIcon(_ avatarURL: String?, thumbhash: String?) -> ItemIcon {
+    private func githubIcon(_ avatarURL: String?, thumbhash: String?, of owner: AccountSummary.ID) -> ItemIcon {
         guard let url = avatarURL.flatMap(URL.init(string:)) else {
             return ItemIcon(.ionicons("logo-github"), tint: Palette.textSecondary)
         }
         // The thumbhash until the picture arrives, as expo-image shows it.
-        let placeholder = thumbhash.flatMap(ThumbHashImages.image(base64:))
-        return ItemIcon(.image(image(for: url) ?? placeholder ?? UIImage()), round: true)
+        let picture = image(url, of: owner) ?? placeholder(thumbhash, of: owner)
+        return ItemIcon(.image(picture ?? UIImage()), round: true)
     }
 
-    /// A picture already fetched, or nil while it is fetched; the page is
-    /// rebuilt when it arrives.
-    private func image(for url: URL) -> UIImage? {
-        if let image = avatarImages[url] ?? RemoteImages.shared.cached(url) { return image }
-        Task { @MainActor [weak self] in
-            guard let image = await RemoteImages.shared.load(url), let self, self.avatarImages[url] == nil else { return }
-            self.avatarImages[url] = image
-            self.rebuild()
+    /// `owner`'s picture at `url` if it is decoded, else nil while it is
+    /// fetched from that account's own cache.
+    private func image(_ url: URL, of owner: AccountSummary.ID) -> UIImage? {
+        guard let pictures = context.account.pictures(for: owner) else { return nil }
+        if let image = pictures.cachedImage(url) { return image }
+        rebuildWhenLoaded("\(owner) \(url.absoluteString)") {
+            _ = await pictures.image(url)
+            return pictures.cachedImage(url) != nil
         }
         return nil
+    }
+
+    /// `owner`'s thumbhash as a picture if it is decoded, else nil while it
+    /// is decoded off the main thread.
+    private func placeholder(_ thumbhash: String?, of owner: AccountSummary.ID) -> UIImage? {
+        guard let thumbhash, let pictures = context.account.pictures(for: owner) else { return nil }
+        if let image = pictures.cachedPlaceholderImage(thumbhash) { return image }
+        rebuildWhenLoaded("\(owner) #\(thumbhash)") {
+            _ = await pictures.placeholderImage(thumbhash)
+            return pictures.cachedPlaceholderImage(thumbhash) != nil
+        }
+        return nil
+    }
+
+    /// Runs `load` once at a time per key, and rebuilds the page if it
+    /// left something to draw.
+    private func rebuildWhenLoaded(_ key: String, _ load: @escaping @MainActor () async -> Bool) {
+        guard loadingPictures.insert(key).inserted else { return }
+        Task { @MainActor [weak self] in
+            let loaded = await load()
+            guard let self else { return }
+            self.loadingPictures.remove(key)
+            if loaded { self.rebuild() }
+        }
     }
 
     // MARK: Account switcher
@@ -267,7 +293,8 @@ public final class SettingsAccountViewController: UIViewController, UIContextMen
         accountEntries = [:]
         var rows: [UIView] = entries.map { entry in
             let icon: ItemIcon
-            if let url = entry.avatarURL, let picture = image(for: url) ?? entry.avatarThumbhash.flatMap(ThumbHashImages.image(base64:)) {
+            // Each account's picture from its own cache, active or not.
+            if let url = entry.avatarURL, let picture = image(url, of: entry.id) ?? placeholder(entry.avatarThumbhash, of: entry.id) {
                 icon = ItemIcon(.image(picture), round: true)
             } else {
                 let content = AvatarView.Content(avatar: SessionAvatar(seed: entry.id), style: settings.avatarStyle, monochrome: settings.avatarMonochrome)
