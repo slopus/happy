@@ -50,6 +50,10 @@ rule 8), and what the Linux benchmarks measure.
 - Session, project-card, worktree and chat rows are one fixed height at any
   width (`HomeRowHeights`, checked by `HomeRowHeightTests`), so they are
   never measured.
+- Day headings, archive toggles, and machine and section headers are one
+  line of their style (`HomeRowMeasurer`): their heights are arithmetic,
+  with no cell and no text layout. The notices above the rows are measured
+  off the main thread and set, with their content, once the height is in.
 - The chat's rows (`ChatRows`, in an `ApplyPipeline`) are derived off the
   main thread: the rendered window, work groups, one input per row, a plan
   per row, the footer, the list's geometry and the changeset.
@@ -67,11 +71,10 @@ rule 8), and what the Linux benchmarks measure.
 
 ## Known gaps
 
-- Day headings, archive toggles, and machine and section headers still
-  measure their label on the main thread. Each is measured once per value
-  and width, when shown.
-- The banner header is also measured on the main thread, once per banner
-  content and width.
+- Heading heights are one line of their style, read from a
+  `HomeTextEnvironment` built on the main thread when the scale or text
+  size changes. `HomeRowMeasurerTests` compares them with the cells; it
+  builds for the simulator but has not been run.
 - Home's and the sidebar's stamps and day headings are written at the time
   of the derivation. Nothing re-derives them when the clock alone moves; they
   catch up with the next store change.

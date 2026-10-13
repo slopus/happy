@@ -17,8 +17,10 @@ import UIKit
 ///
 /// Its rows are worked out off the main thread (`HomeDerivation`): `apply`
 /// gets the rows and exactly which of them changed, and only inserts,
-/// deletes, moves or reconfigures those. Row heights are cached by row and
-/// width, so an unchanged row is never measured again.
+/// deletes, moves or reconfigures those. No row is measured: every height
+/// comes from the pure layouts and the screen's text environment
+/// (`HomeRowMeasurer`), and the notices above the rows are measured off the
+/// main thread.
 final class SessionListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
     private typealias Item = HomeListRow
 
@@ -35,17 +37,14 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     /// The table has asked for its rows once; from then on it only takes
     /// changesets.
     private var tableLoaded = false
-    private var heights: [HomeListRow.ID: (row: HomeListRow, width: CGFloat, height: CGFloat)] = [:]
-    private var bannerState: BannerState?
-    private var headerSized: (state: BannerState, width: CGFloat)?
-    private let sizingRow = SessionRowCell(style: .default, reuseIdentifier: nil)
-    private let sizingDay = SessionDayHeaderCell(style: .default, reuseIdentifier: nil)
-    private let sizingToggle = ArchiveToggleCell(style: .default, reuseIdentifier: nil)
-    private let sizingMachine = ProjectMachineHeaderCell(style: .default, reuseIdentifier: nil)
-    private let sizingSection = ProjectSectionCell(style: .default, reuseIdentifier: nil)
-    private let sizingCard = ProjectCardCell(style: .default, reuseIdentifier: nil)
-    private let sizingWorktree = WorktreeCell(style: .default, reuseIdentifier: nil)
-    private let sizingChat = ProjectChatCell(style: .default, reuseIdentifier: nil)
+    /// The fonts, line heights and scale the headings and notices are
+    /// drawn with; built again when the scale or text size changes.
+    private lazy var textEnvironment = HomeTextEnvironment.current(scale: traitCollection.displayScale)
+    /// The notices to show, and what the header shows now.
+    private var bannerState: HomeBanners?
+    private var headerShown: HeaderKey?
+    /// Moves with each header measure, so only the latest one lands.
+    private var headerRequest = 0
     private let banners = HomeListHeaderView()
     private lazy var actions = HomeSessionActions(context: context, session: session, host: self)
     private let changelogMarker = ChangelogReadMarker(storage: UserDefaultsStore(suiteName: ChangelogReadMarker.suiteName))
@@ -114,6 +113,9 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         nativeUpdateObservation = NativeUpdateCheck.shared.observe { [weak self] in
             self?.updateBanners()
         }
+        registerForTraitChanges([UITraitDisplayScale.self, UITraitPreferredContentSizeCategory.self]) { (self: Self, _) in
+            self.textEnvironmentChanged()
+        }
         tableView.backgroundColor = UIColor(model.grouped ? Palette.groupedBackground : Palette.flatListBackground)
         tableView.reloadData()
         tableLoaded = true
@@ -170,10 +172,6 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
                 }
             }
             if animated { update() } else { UIView.performWithoutAnimation(update) }
-            if !changeset.deletes.isEmpty {
-                let kept = Set(next.ids)
-                heights = heights.filter { kept.contains($0.key) }
-            }
         }
         var reconfigure = changeset.reconfigures.map { IndexPath(row: $0, section: 0) }
         if next.avatarStyle != previous.avatarStyle || next.avatarMonochrome != previous.avatarMonochrome {
@@ -181,19 +179,18 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
             reconfigure = tableView.indexPathsForVisibleRows ?? []
         }
         if !reconfigure.isEmpty {
-            let width = tableView.bounds.width
-            var heightChanged = false
-            for path in reconfigure where path.row < next.ids.count {
-                // Only rows whose height follows their text, and only those
-                // already measured; the rest are measured when shown.
-                guard Self.fixedHeight(next.rows[path.row], width: width) == nil else { continue }
-                let id = next.ids[path.row]
-                guard let cached = heights[id], cached.width == width, cached.row != next.rows[path.row] else { continue }
-                let height = measure(next.rows[path.row], width: width)
-                heights[id] = (next.rows[path.row], width, height)
-                if height != cached.height { heightChanged = true }
-            }
             tableView.reconfigureRows(at: reconfigure)
+            // Only a heading's height can follow its text; the table asks
+            // for heights again only when one of them moved.
+            let width = tableView.bounds.width
+            var before: [HomeListRow.ID: Int]?
+            let heightChanged = reconfigure.contains { path in
+                guard path.row < next.ids.count, Self.fixedHeight(next.rows[path.row], width: width) == nil else { return false }
+                let index = before ?? Dictionary(previous.ids.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+                before = index
+                guard let old = index[next.ids[path.row]] else { return false }
+                return height(previous.rows[old], grouped: previous.grouped, width: width) != height(next.rows[path.row], grouped: next.grouped, width: width)
+            }
             if heightChanged {
                 UIView.performWithoutAnimation { tableView.performBatchUpdates(nil) }
             }
@@ -239,10 +236,43 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         }
     }
 
-    private func measure(_ item: Item, width: CGFloat) -> CGFloat {
-        let cell = sizingCell(item)
-        configure(cell, item)
-        return cell.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
+    /// A row's height without a cell: the constant rows' own, a heading's
+    /// from one line of its style (`HomeRowMeasurer`, checked against the
+    /// cells by `HomeRowMeasurerTests`).
+    private func height(_ item: Item, grouped: Bool, width: CGFloat) -> CGFloat {
+        if let height = Self.fixedHeight(item, width: width) { return height }
+        guard let kind = Self.kind(item, grouped: grouped) else { return 0 }
+        return HomeRowMeasurer.height(kind, width: width, environment: textEnvironment)
+    }
+
+    /// What a heading's height is made of: its text as `configure` sets it,
+    /// and for a toggle whether it heads a band.
+    static func kind(_ item: HomeListRow, grouped: Bool) -> HomeRowKind? {
+        switch item {
+        case .flat(.dayHeader(let age)):
+            .dayHeader(label: dayTitle(age))
+        case .flat(.archiveToggle(let hidden)), .project(.archiveToggle(let hidden)):
+            .archiveToggle(label: hidden ? Strings.Sidebar.showArchived : Strings.Sidebar.hideArchived, banded: !grouped)
+        case .project(.machine(_, let name)):
+            .machineHeader(name: name)
+        case .project(.section(_, let label)):
+            .section(label: label == .bots ? Strings.Home.bots : Strings.Home.projects)
+        case .project(.archiveHeader(let age)):
+            .section(label: dayTitle(age))
+        case .flat(.session), .project(.project), .project(.worktree), .project(.worktreeToggle), .project(.bot), .project(.archived):
+            nil
+        }
+    }
+
+    /// A new scale or text size: every heading and the notices take their
+    /// new heights.
+    private func textEnvironmentChanged() {
+        let environment = HomeTextEnvironment.current(scale: traitCollection.displayScale)
+        guard environment != textEnvironment else { return }
+        textEnvironment = environment
+        guard tableLoaded else { return }
+        UIView.performWithoutAnimation { tableView.performBatchUpdates(nil) }
+        sizeHeader()
     }
 
     private static func reuseIdentifier(_ item: Item) -> String {
@@ -258,7 +288,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         }
     }
 
-    /// One configuration for live cells and the offscreen sizing ones.
+    /// One configuration for every live cell.
     private func configure(_ cell: UITableViewCell, _ item: Item) {
         switch item {
         case .flat(.session(let row)):
@@ -291,19 +321,6 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         }
     }
 
-    private func sizingCell(_ item: Item) -> UITableViewCell {
-        switch item {
-        case .flat(.session): sizingRow
-        case .flat(.archiveToggle), .project(.archiveToggle): sizingToggle
-        case .flat(.dayHeader): sizingDay
-        case .project(.machine): sizingMachine
-        case .project(.section), .project(.archiveHeader): sizingSection
-        case .project(.project): sizingCard
-        case .project(.worktree), .project(.worktreeToggle): sizingWorktree
-        case .project(.bot), .project(.archived): sizingChat
-        }
-    }
-
     static func dayTitle(_ age: SessionList.DayAge) -> String {
         switch age {
         case .today: Strings.SessionHistory.today
@@ -314,14 +331,14 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
 
     // MARK: Banners
 
-    private struct BannerState: Equatable {
-        var offlineTitle: String?
-        var nativeUpdate: Bool
-        var whatsNew: Bool
+    /// What the header was measured for.
+    private struct HeaderKey: Equatable {
+        var banners: HomeBanners
+        var width: CGFloat
+        var environment: HomeTextEnvironment
     }
 
-    /// HomeListHeader.tsx: the offline plaque, then the update banner. The
-    /// header is set again only when what it shows changed.
+    /// HomeListHeader.tsx: the offline plaque, then the update banner.
     private func updateBanners() {
         guard isViewLoaded else { return }
         var offlineTitle: String?
@@ -330,34 +347,45 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
                 ? Strings.Troubleshoot.bannerTitleOne(name: offline[0].name)
                 : Strings.Troubleshoot.bannerTitleMany
         }
-        let state = BannerState(
+        let state = HomeBanners(
             offlineTitle: offlineTitle,
             nativeUpdate: NativeUpdateCheck.shared.updateURL != nil,
             whatsNew: changelogMarker.hasUnread(latestTitle: ChangelogViewController.bundled.latestTitle)
         )
         guard state != bannerState else { return }
         bannerState = state
-        banners.offlineTitle = state.offlineTitle
-        banners.showsNativeUpdate = state.nativeUpdate
-        banners.showsWhatsNew = state.whatsNew
-        if banners.isEmpty {
-            tableView.tableHeaderView = nil
-        } else {
-            tableView.tableHeaderView = banners
-            sizeHeader()
-        }
+        sizeHeader()
     }
 
+    /// The header is measured off the main thread, and set, with what it
+    /// shows, once its height is in; only when the notices, the width or
+    /// the text environment changed. No notices takes it away at once.
     private func sizeHeader() {
-        guard tableView.tableHeaderView === banners else { return }
-        let width = tableView.bounds.width
-        // Measured again only when what it shows or the width changed.
-        guard headerSized?.state != bannerState || headerSized?.width != width else { return }
-        headerSized = bannerState.map { ($0, width) }
-        let height = banners.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
-        if banners.frame.size != CGSize(width: width, height: height) {
-            banners.frame = CGRect(x: 0, y: 0, width: width, height: height)
-            tableView.tableHeaderView = banners
+        guard let state = bannerState else { return }
+        guard !state.isEmpty else {
+            headerRequest += 1
+            headerShown = nil
+            if tableView.tableHeaderView != nil { tableView.tableHeaderView = nil }
+            return
+        }
+        let key = HeaderKey(banners: state, width: tableView.bounds.width, environment: textEnvironment)
+        guard key.width > 0, key != headerShown else { return }
+        headerShown = key
+        headerRequest += 1
+        let request = headerRequest
+        Task { @MainActor [weak self] in
+            let height = await Task.detached(priority: .userInitiated) {
+                HomeRowMeasurer.headerHeight(key.banners, width: key.width, environment: key.environment)
+            }.value
+            guard let self, request == self.headerRequest else { return }
+            ApplyPerf.measure(.homeList) {
+                self.banners.offlineTitle = key.banners.offlineTitle
+                self.banners.showsNativeUpdate = key.banners.nativeUpdate
+                self.banners.showsWhatsNew = key.banners.whatsNew
+                self.banners.frame = CGRect(x: 0, y: 0, width: key.width, height: height)
+                self.tableView.tableHeaderView = self.banners
+                return 1
+            }
         }
     }
 
@@ -420,16 +448,7 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
 
     func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         guard let item = item(at: indexPath) else { return 0 }
-        let id = model.ids[indexPath.row]
-        let width = tableView.bounds.width
-        if let height = Self.fixedHeight(item, width: width) { return height }
-        // TODO(apply perf): day headings, toggles, machine and section
-        // headers still measure their label here, on the main thread, once
-        // per value and width. Their heights move off main next.
-        if let cached = heights[id], cached.width == width, cached.row == item { return cached.height }
-        let height = measure(item, width: width)
-        heights[id] = (item, width, height)
-        return height
+        return height(item, grouped: grouped, width: tableView.bounds.width)
     }
 
     func tableView(_ tableView: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
