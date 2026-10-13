@@ -7,8 +7,8 @@ import UIKit
 /// The home session list (SessionsList.tsx, flat grouping) in a
 /// UITableView: live sessions by activity, the archive toggle, and the
 /// archive by day when shown. The offline plaque heads the table while
-/// every computer is offline. Rows open nothing yet: chat is not ported, so
-/// a tap only marks the session read.
+/// every computer is offline. A tap opens the chat. The table runs under the
+/// floating home header, padded by `contentInsets`.
 final class SessionListViewController: UIViewController, UITableViewDelegate {
     private enum ItemID: Hashable {
         case session(String)
@@ -16,6 +16,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         case day(Int)
     }
 
+    private let context: AppContext
     private let session: AccountSession
     private(set) var list: SessionList
     private var offline: [MachineChoice]?
@@ -27,7 +28,14 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
     private let sizingToggle = ArchiveToggleCell(style: .default, reuseIdentifier: nil)
     private var plaque: ItemGroupView?
 
-    init(session: AccountSession, list: SessionList, offline: [MachineChoice]?) {
+    /// Where rows start and stop under home's header and dock.
+    var contentInsets: HomeContentInsets? {
+        didSet { if contentInsets != oldValue { applyContentInsets() } }
+    }
+    private var didScrollToTop = false
+
+    init(context: AppContext, session: AccountSession, list: SessionList, offline: [MachineChoice]?) {
+        self.context = context
         self.session = session
         self.list = list
         self.offline = offline
@@ -47,6 +55,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         super.viewDidLoad()
         tableView.backgroundColor = UIColor(Palette.flatListBackground)
         tableView.separatorStyle = .none
+        tableView.contentInsetAdjustmentBehavior = .never
         tableView.delegate = self
         tableView.register(SessionRowCell.self, forCellReuseIdentifier: SessionRowCell.reuseIdentifier)
         tableView.register(SessionDayHeaderCell.self, forCellReuseIdentifier: SessionDayHeaderCell.reuseIdentifier)
@@ -58,6 +67,19 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
         tableView.addGestureRecognizer(longPress)
         apply(animated: false)
+        applyContentInsets()
+    }
+
+    /// MainView.tsx: rows start 12 below the header and end above the
+    /// dock; the scroll indicator starts at the header's edge.
+    private func applyContentInsets() {
+        guard isViewLoaded, let insets = contentInsets else { return }
+        tableView.contentInset = UIEdgeInsets(top: insets.contentTop, left: 0, bottom: insets.listBottom, right: 0)
+        tableView.verticalScrollIndicatorInsets = UIEdgeInsets(top: insets.chromeTop, left: 0, bottom: 0, right: 0)
+        if !didScrollToTop {
+            didScrollToTop = true
+            tableView.contentOffset = CGPoint(x: 0, y: -insets.contentTop)
+        }
     }
 
     override func viewDidLayoutSubviews() {
@@ -192,6 +214,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         switch items[id] {
         case .session(let row)?:
             session.actions.markRead(sessionId: row.id)
+            push(.session(id: row.id), context: context)
         case .archiveToggle(let hidden)?:
             session.updateSettings(["hideInactiveSessions": .bool(!hidden)])
         default:

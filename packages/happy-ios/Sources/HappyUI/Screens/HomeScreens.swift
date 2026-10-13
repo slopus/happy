@@ -13,12 +13,17 @@ import UIKit
 ///   - "No sessions yet" on a reachable computer with nothing on it;
 ///   - the session list otherwise.
 ///
+/// Link Your Computer keeps the onboarding header in the navigation bar.
+/// Every other state is MainView.tsx's phone home: the bar is hidden, and
+/// the home header floats over content that scrolls under it.
+///
 /// Screens pushed over it (settings, server, troubleshoot) stay where they
 /// are when a computer arrives, as they do in happy-app.
 public final class HomeViewController: UIViewController {
     private let context: AppContext
     private let session: AccountSession
     private let titleView = NavigationTitleView()
+    private let header = HomeHeaderView()
     private var observation: StoreObservation?
     private var state: HomeState?
     private var content: UIViewController?
@@ -39,15 +44,61 @@ public final class HomeViewController: UIViewController {
         view.backgroundColor = UIColor(Palette.groupedBackground)
         navigationItem.titleView = titleView
         showsBackTitle()
+        header.isHidden = true
+        header.settingsButton.addAction(UIAction { [weak self] _ in self?.openSettings() }, for: .primaryActionTriggered)
+        header.filterButton.menu = filterMenu()
+        header.filterButton.showsMenuAsPrimaryAction = true
+        header.filterButton.preferredMenuElementOrder = .fixed
+        view.addSubview(header)
         observation = session.observeHome { [weak self] state in
             self?.show(state)
+        }
+        // The stream ends when the session stops.
+        let statusUpdates = session.statusUpdates
+        Task { @MainActor [weak self] in
+            for await status in statusUpdates {
+                self?.header.status = status
+            }
         }
     }
 
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         // The server may have changed on a screen pushed from here.
-        updateNavigation()
+        updateNavigation(animated: animated)
+    }
+
+    public override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        // Screens pushed from here have the ordinary bar.
+        if navigationController?.topViewController !== self {
+            navigationController?.setNavigationBarHidden(false, animated: animated)
+        }
+    }
+
+    public override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let layout = HomeScreenLayout(size: view.bounds.size, safeArea: LayoutInsets(view.safeAreaInsets), dock: 0)
+        header.frame = layout.header
+        applyInsets(layout.insets)
+    }
+
+    /// The list pads itself under the header; every other state sees the
+    /// padding as safe area, as SessionsListWrapper pads them.
+    private func applyInsets(_ insets: HomeContentInsets) {
+        guard let content else { return }
+        let floating = state != .link
+        if let list = content as? SessionListViewController {
+            list.contentInsets = insets
+            setAdditionalSafeArea(.zero, on: list)
+        } else {
+            let extra = floating ? UIEdgeInsets(insets.additionalSafeArea(over: LayoutInsets(view.safeAreaInsets))) : .zero
+            setAdditionalSafeArea(extra, on: content)
+        }
+    }
+
+    private func setAdditionalSafeArea(_ insets: UIEdgeInsets, on child: UIViewController) {
+        if child.additionalSafeAreaInsets != insets { child.additionalSafeAreaInsets = insets }
     }
 
     private func show(_ state: HomeState) {
@@ -64,7 +115,7 @@ public final class HomeViewController: UIViewController {
         default:
             embed(makeContent(for: state), animated: previous != nil)
         }
-        updateNavigation()
+        updateNavigation(animated: previous != nil)
     }
 
     private func makeContent(for state: HomeState) -> UIViewController {
@@ -78,7 +129,7 @@ public final class HomeViewController: UIViewController {
         case .noSessions:
             NoSessionsViewController(session: session)
         case .list(let list, let offline):
-            SessionListViewController(session: session, list: list, offline: offline)
+            SessionListViewController(context: context, session: session, list: list, offline: offline)
         }
     }
 
@@ -91,7 +142,7 @@ public final class HomeViewController: UIViewController {
         next.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         let swap = {
             previous?.view.removeFromSuperview()
-            self.view.addSubview(next.view)
+            self.view.insertSubview(next.view, belowSubview: self.header)
         }
         if animated {
             UIView.transition(with: view, duration: 0.25, options: .transitionCrossDissolve, animations: swap)
@@ -100,31 +151,73 @@ public final class HomeViewController: UIViewController {
         }
         previous?.removeFromParent()
         next.didMove(toParent: self)
+        view.setNeedsLayout()
     }
 
     /// The link screen has happy-app's onboarding header: no title, the
     /// custom server under it, and a gear to the onboarding settings. Every
-    /// other state has the home header and the full settings.
-    private func updateNavigation() {
+    /// other state hides the bar for the floating home header.
+    private func updateNavigation(animated: Bool) {
         guard let state else { return }
-        if state == .link {
+        let floating = state != .link
+        header.isHidden = !floating
+        if navigationController?.topViewController === self {
+            navigationController?.setNavigationBarHidden(floating, animated: animated)
+        }
+        if floating {
+            titleView.title = nil
+            titleView.subtitle = nil
+            navigationItem.rightBarButtonItem = nil
+        } else {
             titleView.title = nil
             titleView.subtitle = context.customServerHost
             navigationItem.rightBarButtonItem = settingsBarButton(action: #selector(openOnboardingSettings))
-        } else {
-            titleView.title = Strings.Sidebar.sessionsTitle
-            titleView.subtitle = nil
-            navigationItem.rightBarButtonItem = settingsBarButton(action: #selector(openSettings))
         }
         titleView.sizeToFit()
+        view.setNeedsLayout()
+    }
+
+    /// MainView.tsx `HeaderRight`: the grouping choice and a way to the
+    /// appearance settings. happy-app draws it as a native SwiftUI menu with
+    /// SF Symbols, so this one uses the same symbols.
+    private func filterMenu() -> UIMenu {
+        UIMenu(children: [
+            UIDeferredMenuElement.uncached { [weak self] completion in
+                completion(self?.filterMenuElements() ?? [])
+            },
+        ])
+    }
+
+    private func filterMenuElements() -> [UIMenuElement] {
+        let settings = (try? session.store.settingsSnapshot()).map { AccountSettings($0) } ?? AccountSettings()
+        let options: [(SessionListGrouping, String)] = [
+            (.flat, Strings.SessionsFilter.flatList),
+            (.project, Strings.SessionsFilter.groupByProject),
+        ]
+        let choices = options.map { mode, title in
+            UIAction(title: title, state: settings.sessionListGrouping == mode ? .on : .off) { [weak self] _ in
+                self?.session.updateSettings(["sessionListGrouping": .string(mode.rawValue)])
+            }
+        }
+        let grouping = UIMenu(
+            title: Strings.SessionsFilter.groupingTitle,
+            image: UIImage(systemName: "rectangle.grid.1x2"),
+            options: .displayInline,
+            children: choices
+        )
+        let appearance = UIAction(title: Strings.Home.appearanceSettings, image: UIImage(systemName: "paintpalette")) { [weak self] _ in
+            guard let self else { return }
+            push(.settingsAppearance, context: context)
+        }
+        return [grouping, UIMenu(options: .displayInline, children: [appearance])]
     }
 
     @objc private func openOnboardingSettings() {
         navigationController?.pushViewController(OnboardingSettingsViewController(context: context), animated: true)
     }
 
-    @objc private func openSettings() {
-        navigationController?.pushViewController(SettingsViewController(context: context), animated: true)
+    private func openSettings() {
+        push(.settings, context: context)
     }
 }
 
