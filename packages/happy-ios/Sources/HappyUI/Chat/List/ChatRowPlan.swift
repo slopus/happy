@@ -65,7 +65,8 @@ enum ChatDrawItem {
 
 /// What a tap on part of a row does.
 enum ChatRowAction: Equatable, Sendable {
-    case copy(String)
+    /// An agent's copy button.
+    case copyMessage(id: String, text: String)
     case toggleGroup(String)
     /// Open or close a tool's body, by message id.
     case toggleTool(String)

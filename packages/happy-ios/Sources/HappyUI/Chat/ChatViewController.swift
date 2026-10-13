@@ -60,6 +60,12 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private let keyboardTracker = UIView()
     private let measurer = ChatRowMeasurer()
     private let feedTask = TaskHolder()
+    /// The next time a waiting user message's status is due to show.
+    private var graceEnd: Int64?
+    private let graceTask = TaskHolder()
+    /// The agent message whose copy button shows its tick.
+    private var copiedMessageId: String?
+    private let copiedTask = TaskHolder()
     private var observation: StoreObservation?
 
     private var snapshot: ChatSnapshot?
@@ -506,13 +512,27 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         let permissionBusy = self.permissionBusy
         let expandedTools = self.expandedTools
         let diffExpanded = self.diffExpanded
+        let copiedMessageId = self.copiedMessageId
         let agentState = session.agentState
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        var graceEnd: Int64?
         questionForms = [:]
+        defer { scheduleGraceEnd(graceEnd, now: now) }
         return items.filter { ChatRowRenderer.isShown($0, style: style) }.map { item in
             var delivery: OutboxDelivery?
-            if case .message(.userText(let message)) = item, let localId = message.localId {
-                delivery = snapshot.delivery[localId]
+            var userStatus: UserMessageStatus?
+            if case .message(.userText(let message)) = item {
+                if let localId = message.localId { delivery = snapshot.delivery[localId] }
+                userStatus = ChatRowRenderer.userStatus(message, delivery: delivery, now: now)
+                if let end = UserMessageStatus.graceEnds(
+                    pending: message.pending, undelivered: delivery != nil, queuedWhileBusy: message.meta?.queuedWhileBusy == true,
+                    createdAt: message.createdAt, now: now
+                ) {
+                    graceEnd = min(graceEnd ?? end, end)
+                }
             }
+            var copied = false
+            if case .message(.agentText(let message)) = item { copied = message.id == copiedMessageId }
             var expanded = false
             if case .workHeader(let group, _) = item {
                 expanded = groups.isExpanded(group, inForeground: inForeground)
@@ -531,7 +551,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                     question = state
                 }
             }
-            return ChatRowInput(item: item, delivery: delivery, expanded: expanded, permissionBusy: busy, question: question, diffExpanded: diffs, style: style)
+            return ChatRowInput(
+                item: item, delivery: delivery, expanded: expanded, permissionBusy: busy, question: question, diffExpanded: diffs,
+                userStatus: userStatus, copied: copied, style: style
+            )
         }
     }
 
@@ -542,6 +565,21 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         case "AskUserQuestion": InlineQuestionForm.askUserQuestion(tool)
         case "request_user_input": InlineQuestionForm.requestUserInput(tool, communication: AgentCommunications.form(agentState, toolUseId: tool.callId))
         default: nil
+        }
+    }
+
+    /// Measures again when the first waiting message's quiet spell ends,
+    /// so its status shows.
+    private func scheduleGraceEnd(_ end: Int64?, now: Int64) {
+        guard end != graceEnd else { return }
+        graceEnd = end
+        graceTask.task?.cancel()
+        guard let end else { return }
+        graceTask.task = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(end - now))
+            guard !Task.isCancelled, let self else { return }
+            self.graceEnd = nil
+            self.scheduleMeasure()
         }
     }
 
@@ -618,8 +656,18 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     func chatList(_ list: ChatListView, perform action: ChatRowAction) {
         switch action {
-        case .copy(let text):
+        case .copyMessage(let id, let text):
             UIPasteboard.general.string = text
+            // MessageCopyButton: a tick for 1.5 s.
+            copiedMessageId = id
+            copiedTask.task?.cancel()
+            copiedTask.task = Task { [weak self] in
+                try? await Task.sleep(for: .milliseconds(1500))
+                guard !Task.isCancelled, let self else { return }
+                self.copiedMessageId = nil
+                self.scheduleMeasure()
+            }
+            scheduleMeasure()
         case .toggleGroup(let id):
             for case .workGroup(let group) in display where group.id == id {
                 groups.toggle(group, inForeground: inForeground)

@@ -34,6 +34,11 @@ struct ChatRowInput: Equatable, Sendable {
     /// For a diff tool: the files the reader opened past "Show N more
     /// lines", by diff.
     var diffExpanded: [Int: Set<Int>] = [:]
+    /// For a user's message: its status line and dimming, decided at the
+    /// time the inputs were made (the pending grace runs on the clock).
+    var userStatus: UserMessageStatus?
+    /// For an agent's message: copied a moment ago, so its button shows a tick.
+    var copied = false
     var style: ChatRowStyle
 
     var id: String { item.id }
@@ -64,8 +69,10 @@ enum ChatRowRenderer {
             return workHeader(input.id, group: group, placement: placement, expanded: input.expanded, width: width, style: input.style)
         case .message(let message):
             switch message {
-            case .userText(let user): return userText(user, delivery: input.delivery, width: width, style: input.style)
-            case .agentText(let agent): return agentText(agent, width: width, style: input.style)
+            case .userText(let user):
+                let status = input.userStatus ?? userStatus(user, delivery: input.delivery, now: Int64(Date().timeIntervalSince1970 * 1000))
+                return userText(user, delivery: input.delivery, status: status, width: width, style: input.style)
+            case .agentText(let agent): return agentText(agent, copied: input.copied, width: width, style: input.style)
             case .toolCall(let call):
                 let views = ChatToolViews(question: input.question, diffExpanded: input.diffExpanded)
                 return toolCall(call, expanded: input.expanded, busy: input.permissionBusy, views: views, width: width, style: input.style)
@@ -97,7 +104,17 @@ enum ChatRowRenderer {
 
     // MARK: User messages
 
-    static func userText(_ message: UserTextMessage, delivery: OutboxDelivery?, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
+    /// The status of a user's message at `now` (ms): sent, waiting on the
+    /// agent or the outbox, or refused.
+    static func userStatus(_ message: UserTextMessage, delivery: OutboxDelivery?, now: Int64) -> UserMessageStatus {
+        let failure = message.sendError ?? { if case .failed(let reason) = delivery { return reason } else { return nil } }()
+        return UserMessageStatus(
+            pending: message.pending, undelivered: delivery != nil, queuedWhileBusy: message.meta?.queuedWhileBusy == true,
+            createdAt: message.createdAt, failure: failure, now: now
+        )
+    }
+
+    static func userText(_ message: UserTextMessage, delivery: OutboxDelivery?, status messageStatus: UserMessageStatus, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
         let palette = bubblePalette(style.bubble)
         let author = message.author.flatMap { $0.owner == true ? nil : $0 }
         let authorText = author.map { MeasuredText(ChatTextStyles.userAuthor.string($0.name, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail), maxLines: 1) }
@@ -159,28 +176,29 @@ enum ChatRowRenderer {
 
         // The status line is always there at one line's height, so a row
         // never changes height when a message settles.
-        let failure = message.sendError ?? { if case .failed(let reason) = delivery { return reason } else { return nil } }()
         let status: String
-        if let failure {
-            status = Strings.ChatMessage.sendFailed(failure)
-        } else if message.pending || delivery != nil {
-            status = message.meta?.queuedWhileBusy == true ? Strings.ChatMessage.sendsAfterThisTurn : Strings.ChatMessage.sending
-        } else {
-            status = ""
+        var failed = false
+        switch messageStatus.line {
+        case .none: status = ""
+        case .sending: status = Strings.ChatMessage.sending
+        case .sendsAfterThisTurn: status = Strings.ChatMessage.sendsAfterThisTurn
+        case .failed(let reason):
+            status = Strings.ChatMessage.sendFailed(reason)
+            failed = true
         }
         if !status.isEmpty {
-            let color = failure != nil ? Palette.statusError : Palette.textSecondary
+            let color = failed ? Palette.statusError : Palette.textSecondary
             let text = ChatTextLayout(ChatTextStyles.pendingStatus.string(status, color: color, alignment: layout.alignsLeft ? .left : .right, lineBreakMode: .byTruncatingTail), width: layout.status.width, maxLines: 1)
             items.append(.text(text, layout.status))
             if case .failed = delivery, let localId = message.localId {
                 hits.insert(ChatHit(frame: layout.status, action: .retry(localId: localId)), at: 0)
             }
         }
-        // A message the agent hasn't read yet is dimmed; a refused one is not.
-        let dimmed = message.pending && failure == nil
+        // A message the agent hasn't read yet is dimmed once its status
+        // shows; a refused one is not.
         return ChatRowPlan(
             id: message.id, size: layout.size, items: items, hits: hits,
-            alpha: dimmed ? UserMessageLayout.Metrics.pendingOpacity : 1,
+            alpha: messageStatus.dimmed ? UserMessageLayout.Metrics.pendingOpacity : 1,
             accessibilityLabel: [author?.name, copyText, status.isEmpty ? nil : status].compactMap { $0 }.joined(separator: ", ")
         )
     }
@@ -192,7 +210,9 @@ enum ChatRowRenderer {
 
     // MARK: Agent rows
 
-    static func agentText(_ message: AgentTextMessage, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
+    /// MessageView's agent text: the markdown, then the copy button, which
+    /// shows a tick for a moment after copying.
+    static func agentText(_ message: AgentTextMessage, copied: Bool, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
         let markdown = MarkdownPiece(message.text, color: Palette.text)
         let layout = AgentTextLayout(width: width, maxContentWidth: style.maxContentWidth, blocks: markdown.blocks)
         let drawn = markdown.draw(layout.markdown, origin: layout.markdownOrigin)
@@ -203,8 +223,8 @@ enum ChatRowRenderer {
         )
         return ChatRowPlan(
             id: message.id, size: layout.size,
-            items: drawn.items + [.icon(.ionicons("copy-outline"), size: AgentTextLayout.Metrics.copyIconSize, frame: layout.copyIcon, tint: Palette.text)],
-            hits: [ChatHit(frame: copyTarget, action: .copy(message.text))] + drawn.hits,
+            items: drawn.items + [.icon(.ionicons(copied ? "checkmark" : "copy-outline"), size: AgentTextLayout.Metrics.copyIconSize, frame: layout.copyIcon, tint: Palette.text)],
+            hits: [ChatHit(frame: copyTarget, action: .copyMessage(id: message.id, text: message.text))] + drawn.hits,
             accessibilityLabel: message.text
         )
     }

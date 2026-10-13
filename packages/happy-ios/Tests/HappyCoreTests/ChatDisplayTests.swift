@@ -306,3 +306,29 @@ final class LocalCommandMessageTests: XCTestCase {
         ], [true, false, false, true])
     }
 }
+
+// UserMessageFrame and usePendingStatusVisible in MessageView.tsx.
+final class UserMessageStatusTests: XCTestCase {
+    private func status(pending: Bool = true, undelivered: Bool = false, busy: Bool = false, age: Int64, failure: String? = nil) -> UserMessageStatus {
+        UserMessageStatus(pending: pending, undelivered: undelivered, queuedWhileBusy: busy, createdAt: 10_000, failure: failure, now: 10_000 + age)
+    }
+
+    func testAWaitingMessageStaysQuietForTwoSeconds() {
+        XCTAssertEqual(status(age: 1_999), UserMessageStatus(line: .none, dimmed: false))
+        XCTAssertEqual(status(age: 2_000), UserMessageStatus(line: .sending, dimmed: true))
+        XCTAssertEqual(UserMessageStatus.graceEnds(pending: true, undelivered: false, queuedWhileBusy: false, createdAt: 10_000, now: 10_500), 12_000)
+        XCTAssertNil(UserMessageStatus.graceEnds(pending: true, undelivered: false, queuedWhileBusy: false, createdAt: 10_000, now: 12_000), "already shown")
+    }
+
+    func testAMessageQueuedBehindABusyTurnSaysSoAtOnce() {
+        XCTAssertEqual(status(busy: true, age: 0), UserMessageStatus(line: .sendsAfterThisTurn, dimmed: true))
+        XCTAssertNil(UserMessageStatus.graceEnds(pending: true, undelivered: false, queuedWhileBusy: true, createdAt: 10_000, now: 10_000))
+    }
+
+    func testOnlyAMessageTheAgentHasntReadIsDimmed() {
+        XCTAssertEqual(status(pending: false, undelivered: true, age: 3_000), UserMessageStatus(line: .sending, dimmed: false), "still in the outbox")
+        XCTAssertEqual(status(age: 0, failure: "refused"), UserMessageStatus(line: .failed("refused"), dimmed: false), "a refusal shows at once")
+        XCTAssertEqual(status(pending: false, age: 5_000), UserMessageStatus(line: .none, dimmed: false))
+        XCTAssertNil(UserMessageStatus.graceEnds(pending: false, undelivered: false, queuedWhileBusy: false, createdAt: 10_000, now: 10_000))
+    }
+}
