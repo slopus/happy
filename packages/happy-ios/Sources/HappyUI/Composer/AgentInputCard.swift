@@ -300,7 +300,14 @@ public final class AgentInputCardView: UIView {
     private let primaryButton = ComposerPrimaryButton()
     private let desktopControls = AgentInputDesktopControlsView()
     private var primaryFlash: CGFloat = 0
-    private var measured: (width: CGFloat, text: String, scale: TextScale?, height: CGFloat)?
+    /// The text's height at a width, for the text as it was at `revision`.
+    private var measured: (width: CGFloat, revision: Int, scale: TextScale?, height: CGFloat)?
+    /// Moves on every change to the text, so a cached height is checked
+    /// without reading the text, however long it is.
+    private var textRevision = 0
+    /// The height the owner last laid the card out at, and at what width:
+    /// what a change to the text is measured against.
+    private var laidOut: (width: CGFloat, height: CGFloat)?
     /// The person's text size, where the card follows it; nil draws the
     /// designed sizes.
     private var textScale: TextScale?
@@ -457,7 +464,7 @@ public final class AgentInputCardView: UIView {
     /// selection kept.
     private func restyleText() {
         let selection = textView.selectedRange
-        if !(textView.text ?? "").isEmpty {
+        if textView.hasText {
             textView.attributedText = inputStyle.attributedString(text, color: UIColor(Palette.inputText))
             textView.selectedRange = selection
         }
@@ -562,22 +569,34 @@ public final class AgentInputCardView: UIView {
 
     /// The card's frames at `width`.
     public func layout(width: CGFloat) -> AgentInputCardLayout {
-        AgentInputCardLayout(layoutInput(width: width))
+        let layout = AgentInputCardLayout(layoutInput(width: width))
+        laidOut = (width, layout.size.height)
+        return layout
     }
 
     /// The flat panel's frames at `width`; nil for the compact card.
     public func desktopLayout(width: CGFloat) -> AgentInputDesktopLayout? {
-        desktopLayoutInput(width: width).map(AgentInputDesktopLayout.init)
+        guard let input = desktopLayoutInput(width: width) else { return nil }
+        let layout = AgentInputDesktopLayout(input)
+        laidOut = (width, layout.size.height)
+        return layout
     }
 
-    /// The card's height at `width`. Cached by width and text.
+    /// The card's height at `width`. The text's height is cached by width,
+    /// text size and revision.
     public func height(fitting width: CGFloat) -> CGFloat {
         desktopLayout(width: width)?.size.height ?? layout(width: width).size.height
     }
 
     /// What `AgentInputLayout` places between its rows.
     public func panelInput(width: CGFloat) -> AgentInputLayout.Panel {
-        desktopLayoutInput(width: width).map { .desktop($0) } ?? .card(layoutInput(width: width))
+        if let input = desktopLayoutInput(width: width) {
+            laidOut = (width, AgentInputDesktopLayout(input).size.height)
+            return .desktop(input)
+        }
+        let input = layoutInput(width: width)
+        laidOut = (width, AgentInputCardLayout(input).size.height)
+        return .card(input)
     }
 
     /// The text's height at `textWidth`, its padding included, at the
@@ -585,12 +604,11 @@ public final class AgentInputCardView: UIView {
     private func textHeight(width textWidth: CGFloat) -> CGFloat {
         // Measured before its first trait update: measure what it will draw.
         syncTextSize()
-        let text = self.text
-        if let measured, measured.width == textWidth, measured.text == text, measured.scale == textScale {
+        if let measured, measured.width == textWidth, measured.revision == textRevision, measured.scale == textScale {
             return measured.height
         }
         let height = ceil(textView.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude)).height)
-        measured = (textWidth, text, textScale, height)
+        measured = (textWidth, textRevision, textScale, height)
         return height
     }
 
@@ -602,14 +620,13 @@ public final class AgentInputCardView: UIView {
     func desktopLayoutInput(width: CGFloat) -> AgentInputDesktopLayout.Input? {
         let config = configuration
         guard let desktop = config.desktop else { return nil }
-        let text = self.text
         // First: it takes up the text size the rest is measured at.
         let height = textHeight(width: AgentInputDesktopLayout.textWidth(panelWidth: width))
         return AgentInputDesktopLayout.Input(
             width: width,
             attachmentCount: config.attachments.count,
             textContentHeight: height,
-            hasText: !text.isEmpty,
+            hasText: textView.hasText,
             lineHeight: inputLineHeight,
             inputMinHeight: config.inputMinHeight,
             showsSettings: desktop.settings != nil,
@@ -625,7 +642,6 @@ public final class AgentInputCardView: UIView {
         let contentWidth = max(0, width - 2 * border - 2 * metrics.shellInset)
         let insets = AgentInputInsets(shellInset: metrics.shellInset, actionSize: metrics.actionSize, addIconSize: metrics.addIconSize)
         let textWidth = max(0, contentWidth - insets.inputContainerPaddingLeft - insets.inputContainerPaddingRight)
-        let text = self.text
         // First: it takes up the text size the chips are measured at.
         let height = textHeight(width: textWidth)
         return AgentInputCardLayout.Input(
@@ -634,7 +650,7 @@ public final class AgentInputCardView: UIView {
             borderWidth: border,
             attachmentCount: config.attachments.count,
             textContentHeight: height,
-            hasText: !text.isEmpty,
+            hasText: textView.hasText,
             lineHeight: textScale == nil ? nil : inputLineHeight,
             inputMinHeight: config.inputMinHeight,
             showsAdd: config.showsAdd,
@@ -846,17 +862,19 @@ public final class AgentInputCardView: UIView {
     }
 
     private func updatePlaceholder() {
-        placeholderLabel.isHidden = !(textView.text ?? "").isEmpty
+        placeholderLabel.isHidden = textView.hasText
     }
 
     fileprivate func textChanged() {
+        textRevision += 1
         let width = bounds.width
-        let before = width > 0 ? height(fitting: width) : 0
-        measured = nil
-        let after = width > 0 ? height(fitting: width) : 0
+        // Against what the owner laid out for the text before: measuring
+        // it now would measure the new text.
+        let before = laidOut
+        let after = width > 0 ? height(fitting: width) : nil
         updatePlaceholder()
         delegate?.agentInputCardDidChangeText(self)
-        if before != after {
+        if let after, before?.width != width || before?.height != after {
             delegate?.agentInputCardDidInvalidateHeight(self)
         }
         setNeedsLayout()
