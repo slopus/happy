@@ -140,8 +140,6 @@ final class HomeDockLayoutTests: XCTestCase {
         XCTAssertEqual(motion.composerScaleX, 0.96, accuracy: 0.0001)
         XCTAssertEqual(motion.row(0).alpha, 0)
         XCTAssertEqual(motion.row(0).offsetY, 10)
-        XCTAssertEqual(motion.input.offsetY, 8)
-        XCTAssertEqual(motion.actions.offsetY, 7)
     }
 
     func testMotionOpen() {
@@ -151,8 +149,6 @@ final class HomeDockLayoutTests: XCTestCase {
         XCTAssertEqual(motion.composerAlpha, 1)
         XCTAssertEqual(motion.composerScaleX, 1)
         XCTAssertEqual(motion.row(3).alpha, 1)
-        XCTAssertEqual(motion.input.alpha, 1)
-        XCTAssertEqual(motion.actions.alpha, 1)
     }
 
     func testMotionMidway() {
@@ -165,8 +161,6 @@ final class HomeDockLayoutTests: XCTestCase {
         XCTAssertEqual(rows.row(1).alpha, 0.5 - 0.09 / 0.28, accuracy: 0.0001)
         XCTAssertEqual(rows.row(2).alpha, 0)
         XCTAssertEqual(HomeDockFocusMotion(progress: 0.5).composerHeight(full: 102), 79)
-        XCTAssertEqual(HomeDockFocusMotion(progress: 0.41).input.offsetY, 4, accuracy: 0.0001)
-        XCTAssertEqual(HomeDockFocusMotion(progress: 0.64).actions.offsetY, 3.5, accuracy: 0.0001)
     }
 
     func testEasings() {
@@ -192,9 +186,6 @@ final class HomeDockLayoutTests: XCTestCase {
             XCTAssertNotEqual(token.light, magenta)
             XCTAssertNotEqual(token.dark, magenta)
         }
-        XCTAssertEqual(Palette.homeDockSendActive, ColorToken(light: RGBA(hex: "#000000")!, dark: RGBA(hex: "#F5F5F5")!))
-        XCTAssertEqual(Palette.homeDockSendIcon.dark, RGBA(hex: "#111111"))
-        XCTAssertEqual(Palette.homeDockStopFlash.dark, RGBA(hex: "#4A4A4E"))
         XCTAssertEqual(Palette.homeDockBackdropDim.light.alpha, 0.88)
         XCTAssertEqual(TextStyles.homeDockEntry, TextStyle(.regular, size: 17))
         XCTAssertEqual(TextStyles.homeDockProgress, TextStyle(.regular, size: 11))

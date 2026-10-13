@@ -36,7 +36,7 @@ accident.
 - [x] Link Your Computer, offline checklist, troubleshoot (`troubleshoot.tsx`)
 - [x] Connect a terminal by QR or URL; `happy://terminal` deep links (`terminal/*`)
 - [ ] The machine screen that troubleshoot rows open — Secondary
-- [ ] Copy terminal commands by selecting them — Home
+- [x] Copy terminal commands by selecting them (`TerminalBlock.tsx`): every line in the offline checklist and on troubleshoot is selectable, and a selection never takes in the `$ ` prompt — Home
 
 ## Home
 
@@ -45,8 +45,8 @@ accident.
 - [x] Archive by swipe and long press
 - [x] Home header as the iPhone renders it (`MainView.tsx` phone header): logo, "Sessions" with the socket status, the filter menu and the settings gear. `HomeHeader.tsx` is not mounted on iPhone, so there is no new-session button or server entry; a signed-in iPhone reaches Server from the onboarding settings, and a new account picks its server at sign-in — Home
 - [~] Home dock: the prompt that starts a session from home (`HomeDock`, `homeDock*.ts`) — Home
-  - Done: the resting capsule and its scrim, the composer it opens (backdrop, machine/project/worktree/harness menus, "Enter custom path", git worktrees, Composer's card with the permission, model and effort chips), the opening and closing motion, the start through `SessionStarter` with its status line and Stop, refusals while starting, and the project card's `+` opening it on a new workspace.
-  - Not yet: bots (the Session | Bot switch, faces, avatar), picture attachments (the add button is hidden until there is an image picker), and three card options Composer is adding: the dock's filled send/stop button, Stop's refusal flash, and the text and action row rising in their own beats.
+  - Done: the resting capsule and its scrim, the composer it opens (backdrop, machine/project/worktree/harness menus, "Enter custom path", git worktrees, Composer's card with the permission, model and effort chips and the dock's filled send/stop button), the opening and closing motion with the text and the action row rising in their own beats, the start through `SessionStarter` with its status line and Stop, refusals while starting (the pressed control shakes, the hint and Stop flash), and the project card's `+` opening it on a new workspace.
+  - Not yet: bots (the Session | Bot switch, faces, avatar) and picture attachments (the add button is hidden until there is an image picker).
 - [x] Project grouping and expanded projects (`ProjectHomeList`, `ProjectGroup`, `projectGroups.ts`, `sessionListGrouping` setting) — Home
 - [x] Session row actions as the iPhone shows them: the "Session" alert from `useSessionQuickActions.ts` (details, resume, fork, duplicate, archive). `SessionActionsPopover` is web-only — Home + Ops
   - Rename is absent from current happy-app and is not ported.
@@ -93,6 +93,7 @@ accident.
   - The diff engine (`HappyCore/Diff`) and its layout (`HappyLayout/Diff`) are shared: Chat's Edit/Write/patch cards draw with `DiffChunkView`, and changes with `DiffFileView` sections.
   - Not ported yet: syntax colour in diff rows. happy-app colours rows after they are built, in a Prism worker (`components/diff/syntax/*`), and holds a file back (at most a second) until it is coloured; here rows draw in the plain text colour, with word-level emphasis. The renderer already colours by span kind, so the follow-up is a tokenizer that fills in the kinds.
   - Not ported: selecting text in diff rows (`selectable` on iOS in DiffFilesList).
+  - Changes (`Screens/SessionChangesScreen.swift`) has both viewers: a CLI session's uncommitted files from git status, and a Happy Agent session's comparison with its branch base. File headers leave the 16pt Seti icon slot empty until FileIcon lands. One deliberate difference: when git status changes while a legacy fetch is in flight, the results are still applied and changed files are fetched again. happy-app drops the batch, which can leave those files loading.
   - Rows are drawn only near the screen instead of being mounted in batches (`useProgressiveRows`), so a long file is full height from the first frame rather than growing over a few frames.
 
 ## Settings
@@ -119,7 +120,7 @@ accident.
 - [x] Git status (`gitStatusSync.ts`) — Ops
 - [x] Icons as vector outlines, no icon fonts — Icons
 - [x] Light and dark theme switching (`themePreference`) — Icons
-- [ ] Dynamic Type — unassigned
-- [ ] iPad layout (sidebar + detail) — unassigned
+- [ ] Dynamic Type, scaled as RN scales it: every text follows the system size, uncapped, except the onboarding titles (`maxFontSizeMultiplier` 1.2) — scheduled after the open chat, composer, Home and Secondary items
+- [ ] iPad layout: the sidebar and detail at window width ≥ 768 (`useIsTablet`, `SidebarNavigator`, `SidebarView`, `EmptySessionsTablet`, the tablet branches in other screens) — Tablet
 - [x] Push notifications (APNs registration, open from a notification) — Ops + Push. See AGENTS.md, "Push notifications".
   - Delivery, foreground presentation and taps are untested on a device or simulator; the routing, registration, installation id and signing-environment logic is tested on Linux.

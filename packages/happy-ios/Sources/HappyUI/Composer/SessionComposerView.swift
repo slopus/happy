@@ -323,13 +323,19 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     func agentInputCardDidChangeText(_ card: AgentInputCardView) {
         draftChanged(card.text)
+        applyDeferredRemoteDraft()
         applyConfiguration()
+    }
+
+    func agentInputCardDidChangeSelection(_ card: AgentInputCardView) {
+        applyDeferredRemoteDraft()
     }
 
     func agentInputCardDidChangeFocus(_ card: AgentInputCardView) {
         if !card.isTextFocused {
             flushDraft()
         }
+        applyDeferredRemoteDraft()
         composerDelegate?.composerDidChangeFocus(self)
     }
 
@@ -462,13 +468,22 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     }
 
     /// useDraft's store subscription: another device edited a Happy Agent
-    /// session's draft. It replaces the text, caret at the end.
+    /// session's draft. It replaces the text, caret at the end, but not
+    /// under an input method's composition, which it would cut off.
     private func applyRemoteDraft() {
         guard let draft = try? environment.account.sender.draft(sessionId: environment.sessionId),
-              let remote = autosave.storeChanged(draft) else { return }
+              let remote = autosave.storeChanged(draft, composing: card.hasMarkedText) else { return }
         draftSave?.cancel()
         draftSave = nil
         card.text = remote
+    }
+
+    /// The composition a remote edit waited for has ended (committed,
+    /// cancelled or blurred). The text change runs first, so a committed
+    /// edit is saved before the store is read and stays.
+    private func applyDeferredRemoteDraft() {
+        guard autosave.remoteDeferred, !card.hasMarkedText else { return }
+        applyRemoteDraft()
     }
 
     private func saveDraft(_ text: String) {

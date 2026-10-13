@@ -108,13 +108,10 @@ public enum RowHighlight {
 
 // The dock (components/HomeDock.tsx).
 extension Palette {
-    /// The dock's send and stop buttons when they can be pressed
-    /// (`sendButtonActive`): button.primary in light, #F5F5F5 in dark.
-    public static let homeDockSendActive = ColorToken("#000000", "#F5F5F5")
-    /// The glyph on them (`primaryActionIconColor`).
-    public static let homeDockSendIcon = ColorToken("#FFFFFF", "#111111")
-    /// The wash over Stop when a press is refused (`primaryActionFlash`).
-    public static let homeDockStopFlash = ColorToken("#FFFFFF", "#4A4A4E")
+    // The send button's fill and glyph (`sendButtonActive`,
+    // `primaryActionIconColor`) are Composer's
+    // `composerNewSessionPrimaryFill` and `composerNewSessionPrimaryIcon`.
+
     /// The dim over the list while the composer is open
     /// (`focusBackdropDim`): rgba(255,255,255,0.88) and rgba(0,0,0,0.88).
     public static let homeDockBackdropDim = ColorToken(
@@ -122,7 +119,7 @@ extension Palette {
         dark: RGBA(red: 0, green: 0, blue: 0, alpha: 0.88)
     )
 
-    public static let homeDock: [ColorToken] = [homeDockSendActive, homeDockSendIcon, homeDockStopFlash, homeDockBackdropDim]
+    public static let homeDock: [ColorToken] = [homeDockBackdropDim]
 }
 
 /// The open composer's blur: expo-blur `intensity` 8 on the ultra-thin

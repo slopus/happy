@@ -173,6 +173,21 @@ extension Strings {
         public static let failedToLoad = "Failed to load file"
     }
 
+    /// changes.tsx's title (sessionInfo.viewChanges) and the copy
+    /// HappyAgentDiffView.tsx and useHappyAgentGitFiles.ts hard-code.
+    public enum ChangesDetail {
+        public static let title = "View changes"
+
+        // Hard-coded in HappyAgentDiffView.tsx.
+        public static let updateHappyAgent = "Update Happy Agent on your computer to view changes in this session."
+        public static let comparisonUnavailable = "A comparison with origin/main is not available for this workspace."
+        public static let noFileDetails = "No file details are available for this comparison."
+        public static let contentsMatch = "File contents match the comparison base."
+        public static let loadFailed = "Could not load changes from Happy Agent."
+        // Hard-coded in useHappyAgentGitFiles.ts.
+        public static let fileLoadFailed = "Could not load this file. Reload changes to try again."
+    }
+
     public enum DiffDetail {
         public static func showMoreLines(_ count: Int) -> String { "Show \(count) more lines" }
         public static func tapToExpand(_ count: Int) -> String { "\(count) changed lines — tap to expand" }

@@ -94,7 +94,22 @@ final class InitialStateTests: XCTestCase {
         let terminal = TerminalBlockView(lines: [.command("happy")])
         // One 24pt line, 14 padding and a 1pt border on each side.
         XCTAssertEqual(terminal.sizeThatFits(CGSize(width: 300, height: CGFloat.greatestFiniteMagnitude)).height, 54)
-        XCTAssertEqual(terminal.labels[0].attributedText?.string, "$ happy")
+        XCTAssertEqual(terminal.lines[0].attributedText?.string, "$ happy")
+    }
+
+    func testTerminalLinesCopyTheCommandWithoutItsPrompt() {
+        let line = TerminalBlockView(lines: [.command("happy"), .comment("# done")]).lines
+        XCTAssertTrue(line[0].isSelectable)
+        XCTAssertFalse(line[0].isEditable)
+        line[0].selectedRange = NSRange(location: 0, length: 7)
+        line[0].textViewDidChangeSelection(line[0])
+        XCTAssertEqual(line[0].selectedRange, NSRange(location: 2, length: 5))
+        line[0].selectedRange = NSRange(location: 0, length: 1)
+        line[0].textViewDidChangeSelection(line[0])
+        XCTAssertEqual(line[0].selectedRange.length, 0, "a selection inside the prompt collapses")
+        line[1].selectedRange = NSRange(location: 0, length: 6)
+        line[1].textViewDidChangeSelection(line[1])
+        XCTAssertEqual(line[1].selectedRange, NSRange(location: 0, length: 6), "a comment has no prompt")
     }
 }
 #endif

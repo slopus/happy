@@ -498,6 +498,7 @@ change a file another workstream owns, ask the coordinator.
 | Reducer | `Core/Chat/` reducer and `ChatFeed`, `HappyWire` session-protocol decoding |
 | Ops | `Core/Sessions/` RPC operations (`sync/ops.ts`) |
 | Push | `Sources/HappyApp/PushNotifications.swift`, `Core/Push/` routing, installation id, APNs source and token sync, the entitlements, `AppCoordinator.openSession(fromNotification:)` |
+| Tablet | `Sources/HappyUI/Tablet/`, `Sources/HappyLayout/Tablet/`, the root container switch in `AppCoordinator`. Tablet branches inside other workstreams' screens go through their owners |
 
 Shared seams, changed only through the coordinator:
 
@@ -560,7 +561,9 @@ To keep parallel work from colliding:
   misreads it. `SecretKeyBackup.normalize` recognizes the 43-character raw
   form first.
 - Text sizes are fixed. Dynamic Type scaling, which RN applies by default,
-  is not wired yet.
+  is not wired yet. happy-app sets no `allowFontScaling={false}`; the only
+  cap is `maxFontSizeMultiplier={1.2}` on the onboarding titles
+  (`OnboardingContent.tsx`), so every other text scales uncapped.
 - Not verified anywhere yet: push delivery, presentation and taps,
   a run in the simulator or on a device,
   `HappyUIKitTests` (built, never run), and a real in-place upgrade from an
@@ -568,5 +571,3 @@ To keep parallel work from colliding:
 - Accounts import: the real-device MMKV path and decoding still need an
   in-place upgrade check. Encoding, size metadata, CRC and confirmation gates
   are verified on Linux with reproduced MMKV fixtures.
-- Not ported yet from the onboarding screens: copying terminal commands by
-  selecting them.
