@@ -48,6 +48,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
     private let banners = HomeListHeaderView()
     private lazy var actions = HomeSessionActions(context: context, session: session, host: self)
     private let changelogMarker = ChangelogReadMarker(storage: UserDefaultsStore(suiteName: ChangelogReadMarker.suiteName))
+    private var nativeUpdateObservation: AccountsObservation?
 
     /// Where rows start and stop under home's header and dock.
     var contentInsets: HomeContentInsets? {
@@ -96,7 +97,11 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
         let longPress = UILongPressGestureRecognizer(target: self, action: #selector(longPressed(_:)))
         tableView.addGestureRecognizer(longPress)
         banners.onTroubleshoot = { [weak self] in self?.openTroubleshoot() }
+        banners.onNativeUpdate = { [weak self] in self?.openStore() }
         banners.onWhatsNew = { [weak self] in self?.openWhatsNew() }
+        nativeUpdateObservation = NativeUpdateCheck.shared.observe { [weak self] in
+            self?.updateBanners()
+        }
         apply(animated: false)
         applyContentInsets()
     }
@@ -280,6 +285,7 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
                 : Strings.Troubleshoot.bannerTitleMany
         }
         banners.offlineTitle = offlineTitle
+        banners.showsNativeUpdate = NativeUpdateCheck.shared.updateURL != nil
         banners.showsWhatsNew = changelogMarker.hasUnread(latestTitle: ChangelogViewController.bundled.latestTitle)
         if banners.isEmpty {
             tableView.tableHeaderView = nil
@@ -301,6 +307,12 @@ final class SessionListViewController: UIViewController, UITableViewDelegate {
 
     private func openTroubleshoot() {
         push(.troubleshoot, context: context)
+    }
+
+    /// UpdateBanner.tsx `handleOpenStore`.
+    private func openStore() {
+        guard let link = NativeUpdateCheck.shared.updateURL, let url = URL(string: link) else { return }
+        UIApplication.shared.open(url)
     }
 
     /// UpdateBanner.tsx marks What's New read a second after opening it.

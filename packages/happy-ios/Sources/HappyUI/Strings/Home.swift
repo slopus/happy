@@ -68,6 +68,10 @@ extension Strings {
         public static let actionUnknownError = "Unknown error"
 
         // The update banner (UpdateBanner.tsx).
+        /// `updateBanner.nativeUpdateAvailable`.
+        public static let nativeUpdateAvailable = "App Update Available"
+        /// `updateBanner.tapToUpdateAppStore`.
+        public static let tapToUpdateAppStore = "Tap to update in App Store"
         /// `updateBanner.whatsNew`.
         public static let whatsNew = "What's new"
         /// `updateBanner.seeLatest`.
