@@ -17,3 +17,19 @@ func syncPerfNext<Value: Sendable>(_ stream: AsyncStream<Value>) async throws ->
         return try await group.next() ?? nil
     }
 }
+
+func syncPerfWait(_ gate: Gate) async throws {
+    let expired = PageCounter()
+    try await withThrowingTaskGroup(of: Void.self) { group in
+        group.addTask { await gate.wait() }
+        group.addTask {
+            try await Task.sleep(for: .seconds(5))
+            expired.count = 1
+            await gate.open() // Release the non-cancellable fake wait on timeout.
+            throw SyncPerfAwaitError.timedOut
+        }
+        defer { group.cancelAll() }
+        _ = try await group.next()
+        if expired.count != 0 { throw SyncPerfAwaitError.timedOut }
+    }
+}
