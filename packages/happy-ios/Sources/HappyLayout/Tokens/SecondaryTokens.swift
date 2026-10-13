@@ -127,6 +127,24 @@ public enum DiffPalette {
     ]
 }
 
+/// components/FileIcon.tsx's Seti themes: each Seti colour name, light
+/// and dark.
+public enum FileIconPalette {
+    public static let blue = ColorToken("#268bd2", "#268bd2")
+    public static let grey = ColorToken("#6b7280", "#eee")
+    public static let greyLight = ColorToken("#9ca3af", "#839496")
+    public static let green = ColorToken("#059669", "#4bae4f")
+    public static let orange = ColorToken("#d97706", "#cb4b16")
+    public static let pink = ColorToken("#db2777", "#d33682")
+    public static let purple = ColorToken("#7c3aed", "#6c71c4")
+    public static let red = ColorToken("#dc2626", "#dc322f")
+    public static let white = ColorToken("#374151", "#fdf6e3")
+    public static let yellow = ColorToken("#eab308", "#ffcb29")
+    public static let ignore = ColorToken("#9ca3af", "#586e75")
+
+    public static let all: [ColorToken] = [blue, grey, greyLight, green, orange, pink, purple, red, white, yellow, ignore]
+}
+
 /// components/diff's type, beside the rows' own (`DiffStyle` in HappyUI,
 /// which follow the font size a view is given).
 public enum DiffTextStyles {
