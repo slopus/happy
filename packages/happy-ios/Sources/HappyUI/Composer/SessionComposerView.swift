@@ -541,8 +541,11 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         )
     }
 
+    /// Something besides whitespace (`trim().length > 0`). Stops at the
+    /// first such character rather than copying the trimmed text.
     private static func hasContent(_ text: String) -> Bool {
-        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let blank = CharacterSet.whitespacesAndNewlines
+        return text.unicodeScalars.contains { !blank.contains($0) }
     }
 
     func agentInputCardDidChangeText(_ card: AgentInputCardView) {
@@ -560,9 +563,21 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// Return picks the highlighted suggestion (or the first) instead of
     /// starting a line.
     func agentInputCardShouldInsertNewline(_ card: AgentInputCardView) -> Bool {
-        guard activeQuery != nil, !suggestions.items.isEmpty else { return true }
+        !pickSuggestionOnKey()
+    }
+
+    /// So does a hardware keyboard's Tab: Fabric reports the typed "\t" as
+    /// "Tab" (TextInputEventEmitter), which AgentInput's handleKeyPress
+    /// takes as Enter. With no list, the tab is typed.
+    func agentInputCardShouldInsertTab(_ card: AgentInputCardView) -> Bool {
+        !pickSuggestionOnKey()
+    }
+
+    /// Picks the highlighted suggestion, or the first; false with no list.
+    private func pickSuggestionOnKey() -> Bool {
+        guard activeQuery != nil, !suggestions.items.isEmpty else { return false }
         selectSuggestion(max(0, suggestions.selected))
-        return false
+        return true
     }
 
     func agentInputCardDidChangeFocus(_ card: AgentInputCardView) {

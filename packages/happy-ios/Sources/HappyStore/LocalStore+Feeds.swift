@@ -27,11 +27,12 @@ extension LocalStore {
 
     private static func stream<Value: Sendable>(_ observation: SharedValueObservation<Value>) -> AsyncStream<Value> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
-            let cancellable = observation.start(onError: { error in
+            let cancellable = observation.startWithAsyncCallbacks(onError: { error in
                 print("HappyStore snapshot observation stopped: \(error)")
                 continuation.finish()
             }, onChange: { value in
-                continuation.yield(value)
+                if case .terminated = continuation.yield(value) { return false }
+                return true
             })
             continuation.onTermination = { _ in cancellable.cancel() }
         }

@@ -20,7 +20,10 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     private let scrollView = UIScrollView()
     private let canvas = MessageDetailCanvas()
     private let spinner = UIActivityIndicatorView(style: .medium)
-    private let titleLabel = UILabel()
+    /// ToolHeader's title. Its RN Text scales with the person's text size
+    /// in a header that keeps its height, so only the title follows it; the
+    /// rows below are planned at the designed size.
+    private let titleView = NavigationTitleView()
     private let measurer = MessageDetailMeasurer()
     private let holdRecognizer = UILongPressGestureRecognizer()
     private let copyCallout = ChatCopyCallout()
@@ -65,9 +68,10 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
         navigationItem.largeTitleDisplayMode = .never
         // ToolHeader: one line, cut in the middle, so both ends of a long
         // path or command stay readable.
-        titleLabel.numberOfLines = 1
-        titleLabel.accessibilityTraits = .header
-        navigationItem.titleView = titleLabel
+        titleView.titleLabel.decoration = Self.truncatingMiddle
+        titleView.titleLabel.accessibilityTraits = .header
+        titleView.traitOverrides.followsTextSize = true
+        navigationItem.titleView = titleView
 
         scrollView.alwaysBounceVertical = true
         scrollView.delegate = self
@@ -166,11 +170,24 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
             let root = session.metadata?["path"]?.stringValue
             title = Strings.Tools.text(ToolFullPresentation.title(call.tool, root: root, words: Strings.ToolGroup.words))
         }
-        titleLabel.attributedText = NSAttributedString(
-            string: title,
-            attributes: TextStyles.headerTitle.attributes(color: UIColor(Palette.headerTint), alignment: .center, lineBreakMode: .byTruncatingMiddle)
-        )
-        titleLabel.sizeToFit()
+        titleView.title = title
+        // Not `sizeToFit`, which would hold a longer title to the width of
+        // the one before it.
+        titleView.frame.size = titleView.intrinsicContentSize
+    }
+
+    /// The title's style cuts a line at its tail; ToolHeader cuts it in the
+    /// middle. Applied each time the label draws, at any text size.
+    nonisolated private static func truncatingMiddle(_ text: NSMutableAttributedString) {
+        var styles: [(NSParagraphStyle, NSRange)] = []
+        text.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: text.length)) { value, range, _ in
+            if let style = value as? NSParagraphStyle { styles.append((style, range)) }
+        }
+        for (style, range) in styles {
+            guard let middle = style.mutableCopy() as? NSMutableParagraphStyle else { continue }
+            middle.lineBreakMode = .byTruncatingMiddle
+            text.addAttribute(.paragraphStyle, value: middle, range: range)
+        }
     }
 
     /// The spinner until there is something to show.
