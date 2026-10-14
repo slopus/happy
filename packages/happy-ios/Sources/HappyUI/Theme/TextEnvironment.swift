@@ -75,6 +75,15 @@ extension UIMutableTraits {
     }
 }
 
+extension UITraitOverrides {
+    /// As above. An override never set reads as off, where reading it
+    /// would raise.
+    public var followsTextSize: Bool {
+        get { contains(FollowsTextSize.self) && self[FollowsTextSize.self] }
+        set { self[FollowsTextSize.self] = newValue }
+    }
+}
+
 extension UIViewController {
     /// Draws this screen's text at the person's text size, as React Native
     /// does. Only for a screen whose every height is measured from its text
