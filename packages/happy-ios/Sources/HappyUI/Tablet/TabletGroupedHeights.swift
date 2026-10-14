@@ -72,17 +72,25 @@ enum TabletGroupedHeights {
     nonisolated static func metrics(_ environment: TextEnvironment) -> TabletHeadingMetrics {
         let scale = environment.displayScale
         let iconSize = TabletMachineRuleLayout.Metrics.iconSize
+        // One line as a one-line label measures it: the style's line
+        // height, or the font's own unrounded, up to the screen's next
+        // pixel. Each label is ceiled alone, before a layout adds or
+        // compares them.
+        func line(_ style: TextStyle) -> CGFloat {
+            let height = style.scaled(environment.scale).lineHeight ?? style.font(in: environment).lineHeight
+            return scale > 0 ? (height * scale).rounded(.up) / scale : height
+        }
         return TabletHeadingMetrics(
-            sectionLine: TextStyles.sessionDayHeader.lineHeightValue(in: environment),
-            machineLine: TextStyles.tabletMachineName.lineHeightValue(in: environment),
+            sectionLine: line(TextStyles.sessionDayHeader),
+            machineLine: line(TextStyles.tabletMachineName),
             // IconView's fitting size: RN's box for the glyph, unscaled.
             machineIcon: Icon.ionicons("desktop-outline").layout(size: iconSize, scale: scale)?.size
                 ?? CGSize(width: iconSize, height: iconSize),
-            workspaceTitleLine: TextStyles.tabletWorkspaceTitle.lineHeightValue(in: environment),
-            workspaceBranchLine: TextStyles.tabletWorkspaceBranch.lineHeightValue(in: environment),
-            changesApproximateLine: TextStyles.gitApproximate.lineHeightValue(in: environment),
-            changesCountLine: TextStyles.gitLineCount.lineHeightValue(in: environment),
-            archiveToggleLine: TextStyles.archiveToggle.lineHeightValue(in: environment),
+            workspaceTitleLine: line(TextStyles.tabletWorkspaceTitle),
+            workspaceBranchLine: line(TextStyles.tabletWorkspaceBranch),
+            changesApproximateLine: line(TextStyles.gitApproximate),
+            changesCountLine: line(TextStyles.gitLineCount),
+            archiveToggleLine: line(TextStyles.archiveToggle),
             hairline: 1 / max(scale, 1)
         )
     }
