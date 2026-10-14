@@ -14,8 +14,6 @@ import Foundation
 ///
 /// Call `colour` and `result` off the main thread.
 public final class DiffSyntaxService: @unchecked Sendable {
-    public static let shared = DiffSyntaxService()
-
     /// Background jobs past this are dropped, uncached.
     static let maxQueued = 64
 

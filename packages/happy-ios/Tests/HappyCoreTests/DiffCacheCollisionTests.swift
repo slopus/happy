@@ -2,10 +2,7 @@ import XCTest
 @testable import HappyCore
 
 final class DiffCacheCollisionTests: XCTestCase {
-    override func setUp() {
-        super.setUp()
-        DiffEngine.clearCache()
-    }
+    private let cache = DiffDocumentCache()
 
     private func texts(_ document: DiffDocument) -> [String] {
         document.files.flatMap(\.rows).compactMap { row in
@@ -21,14 +18,14 @@ final class DiffCacheCollisionTests: XCTestCase {
         XCTAssertEqual(DiffEngine.fnv1a(firstInput), 0xf7681e34)
         XCTAssertEqual(DiffEngine.cacheKey("c", firstInput, .init()), DiffEngine.cacheKey("c", secondInput, .init()))
 
-        let first = DiffEngine.build(path: "path.txt", oldText: "", newText: firstText)
-        let second = DiffEngine.build(path: "path.txt", oldText: "", newText: secondText)
+        let first = cache.build(path: "path.txt", oldText: "", newText: firstText)
+        let second = cache.build(path: "path.txt", oldText: "", newText: secondText)
         XCTAssertEqual(texts(first), [firstText])
         XCTAssertEqual(texts(second), [secondText])
         XCTAssertFalse(first === second)
-        XCTAssertTrue(DiffEngine.build(path: "path.txt", oldText: "", newText: secondText) === second,
+        XCTAssertTrue(cache.build(path: "path.txt", oldText: "", newText: secondText) === second,
                       "exact input still reuses the cached document")
-        let rebuiltFirst = DiffEngine.build(path: "path.txt", oldText: "", newText: firstText)
+        let rebuiltFirst = cache.build(path: "path.txt", oldText: "", newText: firstText)
         XCTAssertEqual(texts(rebuiltFirst), [firstText], "alternating collisions remain correct after bucket replacement")
     }
 
@@ -36,8 +33,8 @@ final class DiffCacheCollisionTests: XCTestCase {
         let firstOld = "a\u{0}b", firstNew = "c"
         let secondOld = "a", secondNew = "b\u{0}c"
         XCTAssertEqual("file.txt\u{0}\(firstOld)\u{0}\(firstNew)", "file.txt\u{0}\(secondOld)\u{0}\(secondNew)")
-        let first = DiffEngine.build(path: "file.txt", oldText: firstOld, newText: firstNew)
-        let second = DiffEngine.build(path: "file.txt", oldText: secondOld, newText: secondNew)
+        let first = cache.build(path: "file.txt", oldText: firstOld, newText: firstNew)
+        let second = cache.build(path: "file.txt", oldText: secondOld, newText: secondNew)
         XCTAssertEqual(texts(first), [firstOld, firstNew])
         XCTAssertEqual(texts(second), [secondOld, secondNew])
         XCTAssertFalse(first === second)

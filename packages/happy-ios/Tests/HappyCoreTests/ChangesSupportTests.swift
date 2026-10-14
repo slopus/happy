@@ -123,18 +123,19 @@ final class ImageFilesTests: XCTestCase {
 }
 
 final class DiffFileItemTests: XCTestCase {
+    private let cache = DiffDocumentCache()
     let patch = "--- a/a.ts\n+++ b/a.ts\n@@ -1 +1 @@\n-old\n+new\n"
 
     func testBodyFollowsFileSectionOrder() {
         var item = DiffFileItem(path: "a.ts", kind: .modified, additions: 1, deletions: 1, source: .patch(patch), error: "boom", message: "msg")
-        XCTAssertEqual(item.body(DiffFileItem.document(item.source)), .error("boom"))
+        XCTAssertEqual(item.body(DiffFileItem.document(item.source, cache: cache)), .error("boom"))
         item.error = nil
-        XCTAssertEqual(item.body(DiffFileItem.document(item.source)), .message("msg"))
+        XCTAssertEqual(item.body(DiffFileItem.document(item.source, cache: cache)), .message("msg"))
         item.message = nil
         item.image = DiffFileItem.Image(before: nil, after: Data([1]))
         XCTAssertEqual(item.body(.empty), .image(DiffFileItem.Image(before: nil, after: Data([1]))))
         item.image = nil
-        guard case .files(let files) = item.body(DiffFileItem.document(item.source)) else { return XCTFail("expected files") }
+        guard case .files(let files) = item.body(DiffFileItem.document(item.source, cache: cache)) else { return XCTFail("expected files") }
         XCTAssertEqual(files.count, 1)
         item.source = nil
         XCTAssertEqual(item.body(.empty), .loading)
@@ -142,9 +143,9 @@ final class DiffFileItemTests: XCTestCase {
 
     func testContentsWithoutTextRowsSayNoChanges() {
         let same = DiffFileItem(path: "a.ts", kind: .modified, additions: 0, deletions: 0, source: .contents(path: "a.ts", oldText: "x\n", newText: "x\n"))
-        XCTAssertEqual(same.body(DiffFileItem.document(same.source)), .noChanges)
+        XCTAssertEqual(same.body(DiffFileItem.document(same.source, cache: cache)), .noChanges)
         let empty = DiffFileItem(path: "a.ts", kind: .modified, additions: 0, deletions: 0, source: .patch(""))
-        XCTAssertEqual(empty.body(DiffFileItem.document(empty.source)), .noChanges)
+        XCTAssertEqual(empty.body(DiffFileItem.document(empty.source, cache: cache)), .noChanges)
     }
 
     func testBudgetErrorsAreShown() {
@@ -153,7 +154,7 @@ final class DiffFileItemTests: XCTestCase {
         let item = DiffFileItem(path: "a.ts", kind: .modified, additions: 0, deletions: 0, source: .contents(
             path: "a.ts", oldText: old, newText: new, budget: DiffEngine.Budget(timeoutMs: 10_000, maxEditLength: 10)
         ))
-        XCTAssertEqual(item.body(DiffFileItem.document(item.source)), .error(DiffEngine.tooLargeError))
+        XCTAssertEqual(item.body(DiffFileItem.document(item.source, cache: cache)), .error(DiffEngine.tooLargeError))
     }
 
     func testCollapseRules() {
@@ -324,6 +325,7 @@ final class LegacyChangesTests: XCTestCase {
 }
 
 final class HappyAgentChangesTests: XCTestCase {
+    private let cache = DiffDocumentCache()
     let base = String(repeating: "a", count: 40)
 
     func gitFile(_ path: String, _ status: String = "modified", insertions: Int? = 2, deletions: Int? = nil) throws -> HappyAgentGitFile {
@@ -385,7 +387,7 @@ final class HappyAgentChangesTests: XCTestCase {
         XCTAssertEqual(items[5].message, "conflicts")
         XCTAssertEqual(items[6].message, "MATCH")
         XCTAssertEqual(items[7].message, "EMPTY")
-        XCTAssertEqual(items[6].body(DiffFileItem.document(items[6].source)), .message("MATCH"))
+        XCTAssertEqual(items[6].body(DiffFileItem.document(items[6].source, cache: cache)), .message("MATCH"))
     }
 
     func testQueueReadsOnDemandTwoAtATimeAndNeverRetries() throws {
