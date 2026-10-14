@@ -66,6 +66,8 @@ jobs:
           print(f'HAPPY_IOS_SIMULATOR_ID={device_id}')
           PY
       - name: Run UIKit tests on the simulator
+        # Hosted keyboard probe only (never merged): the unhosted bundle is not run.
+        if: ${{ false }}
         run: |
           set -euo pipefail
           xcrun simctl bootstatus "$HAPPY_IOS_SIMULATOR_ID" -b
@@ -131,6 +133,7 @@ jobs:
             -destination-timeout 120 \
             -derivedDataPath build/ci/DerivedData \
             -resultBundlePath build/ci/HappyUIKitHostedTests.xcresult \
+            -only-testing:HappyUIKitHostedTests/HostedKeyboardTests \
             -parallel-testing-enabled NO \
             -jobs 4 \
             CODE_SIGNING_ALLOWED=NO \
