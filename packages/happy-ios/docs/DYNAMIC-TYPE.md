@@ -145,12 +145,20 @@ Following now:
   thread when they lay out (the timestamp's, the workspace's, a
   heading's, the line changes'), as they did at the designed size; no
   height depends on it.
-  Not ported, so not matched: FlatSessionRow's third row also holds the
-  draft glyph (13) and Happy Agent's line counts (`RigGitLineChanges`,
-  11pt text, which scales). In RN a row with line counts and no
-  workspace grows its third row past 18 at the largest sizes; the
-  native row draws neither, so its height is the native row's, not
-  RN's, there. At the designed size the two are the same.
+  Happy Agent's line counts (`RigGitLineChanges`) end the third row as
+  RN's do: 11pt with no line height, so their line is Plex's own 1.3
+  em at the size, up to the screen's pixel. That line is in the
+  environment too and the row's kind says whether it has counts, so a
+  row with counts and no workspace grows its third row past 18 at the
+  largest sizes, as RN's does. "+12" and "-3" ask for weight 600 in the
+  default family, `IBMPlexSans-Regular`, which expo-font makes an alias
+  for that one face; RCTFontUtils.mm's closest weight has nothing else
+  to pick, so they are drawn regular, and so are they here (from RN
+  0.83.1's and expo-font 55.0.4's source; not yet seen on a device).
+  Still not ported, so the third row is not yet RN's whole: the draft
+  glyph (13, `create-outline`) before the counts. This much of the
+  row's `workspaceMeta` gap stays open. The glyph keeps its 13 at every
+  size, under the row's 18, so it would not change a height.
 
 ## Header titles
 

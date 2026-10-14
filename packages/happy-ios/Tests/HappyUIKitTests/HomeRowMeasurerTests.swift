@@ -69,9 +69,11 @@ final class HomeRowMeasurerTests: XCTestCase {
                 check(section, .section(label: "Projects"))
 
                 for workspace in [nil, "fix-login"] {
-                    let row = SessionRowCell(style: .default, reuseIdentifier: nil)
-                    row.configure(Self.session(workspace: workspace), style: .gradient, monochrome: false)
-                    check(row, .flatSession(workspace: workspace != nil))
+                    for changes in [nil, Self.changes] {
+                        let row = SessionRowCell(style: .default, reuseIdentifier: nil)
+                        row.configure(Self.session(workspace: workspace, changes: changes), style: .gradient, monochrome: false)
+                        check(row, .flatSession(workspace: workspace != nil, changes: changes != nil))
+                    }
                 }
 
                 check(ProjectCardCell(style: .default, reuseIdentifier: nil), .projectCard)
@@ -134,8 +136,12 @@ final class HomeRowMeasurerTests: XCTestCase {
         XCTAssertEqual(List.kind(.flat(.archiveToggle(hidden: true)), grouped: false), .archiveToggle(label: Strings.Sidebar.showArchived, banded: true))
         XCTAssertEqual(List.kind(.project(.archiveToggle(hidden: false)), grouped: true), .archiveToggle(label: Strings.Sidebar.hideArchived, banded: false))
         XCTAssertEqual(List.kind(.project(.archiveHeader(.daysAgo(3))), grouped: true), .section(label: Strings.SessionHistory.daysAgo(3)))
-        XCTAssertEqual(List.kind(.flat(.session(Self.session(workspace: "fix-login"))), grouped: false), .flatSession(workspace: true))
-        XCTAssertEqual(List.kind(.flat(.session(Self.session(workspace: nil))), grouped: false), .flatSession(workspace: false))
+        XCTAssertEqual(List.kind(.flat(.session(Self.session(workspace: "fix-login"))), grouped: false), .flatSession(workspace: true, changes: false))
+        XCTAssertEqual(List.kind(.flat(.session(Self.session(workspace: nil))), grouped: false), .flatSession(workspace: false, changes: false))
+        XCTAssertEqual(
+            List.kind(.flat(.session(Self.session(workspace: nil, changes: Self.changes))), grouped: false),
+            .flatSession(workspace: false, changes: true)
+        )
     }
 
     /// The banners take their words on the main thread, where the screens'
@@ -153,13 +159,16 @@ final class HomeRowMeasurerTests: XCTestCase {
         XCTAssertGreaterThan(height, 0)
     }
 
-    static func session(_ id: String = "s", workspace: String?) -> SessionRow {
+    /// "≈ +1.2k -7": every part of the counts.
+    static let changes = GitLineChanges(approximate: true, insertions: 1234, deletions: 7)
+
+    static func session(_ id: String = "s", workspace: String?, changes: GitLineChanges? = nil) -> SessionRow {
         SessionRow(
             id: id,
             title: "Fix the build",
             projectName: "happy",
             workspaceName: workspace,
-            changes: nil,
+            changes: changes,
             avatar: SessionAvatar(seed: id),
             timestamp: "12:55 PM",
             lastActivityAt: 0,

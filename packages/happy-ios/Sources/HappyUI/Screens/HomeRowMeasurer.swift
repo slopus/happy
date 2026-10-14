@@ -44,7 +44,8 @@ struct HomeTextEnvironment: Equatable, Sendable {
             sessionLines: FlatSessionRowLayout.Lines(
                 title: line(TextStyles.sessionTitle),
                 project: line(TextStyles.sessionProject),
-                workspace: line(TextStyles.sessionWorkspace)
+                workspace: line(TextStyles.sessionWorkspace),
+                changes: line(TextStyles.sessionLineChanges)
             ),
             branchIcon: icon("git-branch-outline", FlatSessionRowLayout.Metrics.branchIconSize)
         )

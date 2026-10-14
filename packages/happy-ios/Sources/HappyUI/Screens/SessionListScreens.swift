@@ -196,8 +196,8 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         if !reconfigure.isEmpty {
             tableView.reconfigureRows(at: reconfigure)
             // Only a heading's height can follow its text, and a session's
-            // its workspace line; the table asks for heights again only
-            // when one of them moved.
+            // its workspace line and line counts; the table asks for
+            // heights again only when one of them moved.
             let width = tableView.bounds.width
             var before: [HomeListRow.ID: Int]?
             let heightChanged = reconfigure.contains { path in
@@ -274,11 +274,11 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
 
     /// What a row's height is made of: a heading's text as `configure`
     /// sets it, and for a toggle whether it heads a band; whether a
-    /// session has a workspace line.
+    /// session has a workspace line and line counts.
     static func kind(_ item: HomeListRow, grouped: Bool) -> HomeRowKind? {
         switch item {
         case .flat(.session(let row)):
-            .flatSession(workspace: row.workspaceName != nil)
+            .flatSession(workspace: row.workspaceName != nil, changes: row.changes != nil)
         case .flat(.dayHeader(let age)):
             .dayHeader(label: dayTitle(age))
         case .flat(.archiveToggle(let hidden)), .project(.archiveToggle(let hidden)):

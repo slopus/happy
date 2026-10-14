@@ -7,14 +7,17 @@ import CoreGraphics
 ///
 ///     |16| avatar 60 |12| title ……………………………… |8| 12:55 PM |16|
 ///     |          (centred) | project
-///     |                    | workspace ⑂
+///     |                    | workspace ⑂ ……………………………… |8| ≈ +12 -3 |16|
 ///     ──────────── hairline from x 88 to the right edge ────────────
 ///
 /// At the designed text size the row is 10 + 22 + 20 + 1 + 18 + 10 = 81
 /// tall. RN sizes it from its text: the title's row is its line, but never
 /// less than the corner's 22; the project is its line; the workspace's row
 /// is its line, but never less than 18. Larger text makes a taller row,
-/// and a row with a workspace taller than one without. The avatar is
+/// and a row with a workspace taller than one without. Happy Agent's line
+/// counts end the workspace's row (RigGitLineChanges: 8 before them, at
+/// its right edge); the workspace yields them the width, and their line
+/// holds the row up as the workspace's does. The avatar is
 /// centred in the row, and the text column too when the avatar is the
 /// taller. The corner slot is at least 56 wide and sized by the timestamp,
 /// which stays measured while a dot covers it, so the title never jumps.
@@ -34,31 +37,43 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
         public static let workspaceMinHeight: CGFloat = 18
         public static let workspaceIconGap: CGFloat = 4
         public static let branchIconSize: CGFloat = 13
+        /// RigGitLineChanges' `paddingLeft`.
+        public static let changesPaddingLeft: CGFloat = 8
+        /// One line of GitLineChanges' 11s, which set no line height: Plex's
+        /// own, 1.3 em (ascender 1025 and descender 275 per 1000). A screen
+        /// draws it up to its next pixel (14⅓, 14.5), short of the 18 the
+        /// workspace's row keeps.
+        public static let changesLine: CGFloat = 14.3
         public static let dividerHeight: CGFloat = 0.33
 
         /// Where the text column and the hairline start.
         public static var contentX: CGFloat { paddingLeft + avatarSize + avatarGap }
     }
 
-    /// One line of each of the three texts, as a one-line label draws it
-    /// at the screen's text size. The rows are these lines, whatever the
-    /// text says, so a row's height never needs its text measured.
+    /// One line of each of the texts, as a one-line label draws it at the
+    /// screen's text size. The rows are these lines, whatever the text
+    /// says, so a row's height never needs its text measured.
     public struct Lines: Hashable, Sendable {
         public var title: CGFloat
         public var project: CGFloat
         public var workspace: CGFloat
+        /// The line counts' line.
+        public var changes: CGFloat
 
-        public init(title: CGFloat, project: CGFloat, workspace: CGFloat) {
+        public init(title: CGFloat, project: CGFloat, workspace: CGFloat, changes: CGFloat = Metrics.changesLine) {
             self.title = title
             self.project = project
             self.workspace = workspace
+            self.changes = changes
         }
 
-        /// The styles' own lines, at the designed text size: 22, 20, 18.
+        /// The styles' own lines, at the designed text size: 22, 20, 18,
+        /// and the counts' 14.3.
         public static let designed = Lines(
             title: Metrics.titleRowHeight,
             project: Metrics.projectHeight,
-            workspace: Metrics.workspaceMinHeight
+            workspace: Metrics.workspaceMinHeight,
+            changes: Metrics.changesLine
         )
     }
 
@@ -72,6 +87,9 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
         /// The 13pt branch glyph's RN box (`Icon.layout`): one line of the
         /// icon font tall, 13 x 13.33 on a 3x screen.
         public var branchIcon: CGSize
+        /// The line counts as drawn ("≈ +12 -3", which never wraps); nil
+        /// without any.
+        public var changes: CGSize?
         public var showsDivider: Bool
         public var lines: Lines
 
@@ -82,6 +100,7 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
             project: Measurable,
             workspace: Measurable?,
             branchIcon: CGSize = CGSize(width: Metrics.branchIconSize, height: Metrics.branchIconSize),
+            changes: CGSize? = nil,
             showsDivider: Bool,
             lines: Lines = .designed
         ) {
@@ -91,28 +110,31 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
             self.project = project
             self.workspace = workspace
             self.branchIcon = branchIcon
+            self.changes = changes
             self.showsDivider = showsDivider
             self.lines = lines
         }
     }
 
     /// The row's height for these lines, with or without a workspace line
-    /// under a glyph `branchIcon` tall: what `init` makes `size.height`.
-    public static func height(lines: Lines, workspace: Bool, branchIcon: CGFloat = Metrics.branchIconSize) -> CGFloat {
+    /// under a glyph `branchIcon` tall and line counts: what `init` makes
+    /// `size.height`.
+    public static func height(lines: Lines, workspace: Bool, changes: Bool = false, branchIcon: CGFloat = Metrics.branchIconSize) -> CGFloat {
         typealias M = Metrics
-        return M.paddingVertical * 2 + max(M.avatarSize, contentHeight(lines: lines, workspace: workspace, branchIcon: branchIcon))
+        return M.paddingVertical * 2 + max(M.avatarSize, contentHeight(lines: lines, workspace: workspace, changes: changes, branchIcon: branchIcon))
     }
 
     /// The text column: the title's row, the project, 1, the workspace's
     /// row.
-    private static func contentHeight(lines: Lines, workspace: Bool, branchIcon: CGFloat) -> CGFloat {
+    private static func contentHeight(lines: Lines, workspace: Bool, changes: Bool, branchIcon: CGFloat) -> CGFloat {
         typealias M = Metrics
         return max(M.titleRowHeight, lines.title) + lines.project + M.workspaceMarginTop
-            + workspaceRowHeight(lines: lines, workspace: workspace, branchIcon: branchIcon)
+            + workspaceRowHeight(lines: lines, workspace: workspace, changes: changes, branchIcon: branchIcon)
     }
 
-    private static func workspaceRowHeight(lines: Lines, workspace: Bool, branchIcon: CGFloat) -> CGFloat {
-        max(Metrics.workspaceMinHeight, workspace ? max(lines.workspace, branchIcon) : 0)
+    /// At least 18, the workspace and its glyph, and the counts.
+    private static func workspaceRowHeight(lines: Lines, workspace: Bool, changes: Bool, branchIcon: CGFloat) -> CGFloat {
+        max(Metrics.workspaceMinHeight, workspace ? max(lines.workspace, branchIcon) : 0, changes ? lines.changes : 0)
     }
 
     public var size: CGSize
@@ -124,6 +146,7 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
     public var project: CGRect
     public var workspace: CGRect?
     public var branchIcon: CGRect?
+    public var changes: CGRect?
     public var divider: CGRect?
 
     public init(_ input: Input) {
@@ -134,8 +157,9 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
         let contentWidth = right - x
         let lines = input.lines
         let hasWorkspace = input.workspace != nil
-        let height = Self.height(lines: lines, workspace: hasWorkspace, branchIcon: input.branchIcon.height)
-        let content = Self.contentHeight(lines: lines, workspace: hasWorkspace, branchIcon: input.branchIcon.height)
+        let hasChanges = input.changes != nil
+        let height = Self.height(lines: lines, workspace: hasWorkspace, changes: hasChanges, branchIcon: input.branchIcon.height)
+        let content = Self.contentHeight(lines: lines, workspace: hasWorkspace, changes: hasChanges, branchIcon: input.branchIcon.height)
         let titleRowHeight = max(M.titleRowHeight, lines.title)
 
         let stamp = input.timestamp.size(fitting: max(0, contentWidth - M.cornerMarginLeft))
@@ -160,10 +184,25 @@ public struct FlatSessionRowLayout: Equatable, Sendable {
         project = CGRect(x: x, y: projectY + (lines.project - projectHeight) / 2, width: contentWidth, height: projectHeight)
 
         let workspaceY = projectY + lines.project + M.workspaceMarginTop
-        let workspaceRowHeight = Self.workspaceRowHeight(lines: lines, workspace: hasWorkspace, branchIcon: input.branchIcon.height)
+        let workspaceRowHeight = Self.workspaceRowHeight(lines: lines, workspace: hasWorkspace, changes: hasChanges, branchIcon: input.branchIcon.height)
+        // The counts keep their width at the row's right edge (`marginLeft:
+        // 'auto'`, no shrinking); the workspace has what is left. Too wide
+        // for the row, they start where the column does and run past it,
+        // as Yoga places them.
+        let metaWidth = input.changes.map { M.changesPaddingLeft + $0.width } ?? 0
+        let metaX = max(x, right - metaWidth)
+        changes = input.changes.map { size in
+            CGRect(
+                x: metaX + M.changesPaddingLeft,
+                y: workspaceY + (workspaceRowHeight - size.height) / 2,
+                width: size.width,
+                height: size.height
+            )
+        }
+        let locationWidth = max(0, contentWidth - metaWidth)
         if let workspace = input.workspace {
             let icon = input.branchIcon
-            let textSize = workspace.size(fitting: max(0, contentWidth - M.workspaceIconGap - icon.width))
+            let textSize = workspace.size(fitting: max(0, locationWidth - M.workspaceIconGap - icon.width))
             self.workspace = CGRect(
                 x: x,
                 y: workspaceY + (workspaceRowHeight - textSize.height) / 2,

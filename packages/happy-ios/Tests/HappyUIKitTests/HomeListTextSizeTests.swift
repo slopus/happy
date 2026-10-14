@@ -42,6 +42,9 @@ final class HomeListTextSizeTests: XCTestCase {
     /// workspace.
     static let largestWithWorkspace: CGFloat = largest(workspaceRow: 193.0 / 3)
     static let largestWithoutWorkspace: CGFloat = largest(workspaceRow: 18)
+    /// No workspace, but line counts: their 11 × 3.571 at Plex's 1.3 em,
+    /// 51.07, is 154 pixels.
+    static let largestWithOnlyChanges: CGFloat = largest(workspaceRow: 154.0 / 3)
 
     private static func largest(workspaceRow: CGFloat) -> CGFloat {
         let padding: CGFloat = 10 * 2
@@ -92,20 +95,30 @@ final class HomeListTextSizeTests: XCTestCase {
                     }
 
                     for workspace in [nil, "fix-login"] {
-                        let cell = SessionRowCell(style: .default, reuseIdentifier: nil)
-                        // As the list configures it.
-                        cell.lines = environment.rows.sessionLines
-                        cell.configure(HomeRowMeasurerTests.session(workspace: workspace), style: .gradient, monochrome: false)
-                        check(cell, .flatSession(workspace: workspace != nil))
-                        // The lines worked out off main are the lines the
-                        // labels draw.
-                        let lines = environment.rows.sessionLines
-                        XCTAssertEqual(oneLine(cell.titleLabel), lines.title, "title, \(at)")
-                        XCTAssertEqual(oneLine(cell.projectLabel), lines.project, "project, \(at)")
-                        if workspace != nil {
-                            XCTAssertEqual(oneLine(cell.workspaceLabel), lines.workspace, "workspace, \(at)")
+                        for changes in [nil, HomeRowMeasurerTests.changes] {
+                            let cell = SessionRowCell(style: .default, reuseIdentifier: nil)
+                            // As the list configures it.
+                            cell.lines = environment.rows.sessionLines
+                            cell.configure(HomeRowMeasurerTests.session(workspace: workspace, changes: changes), style: .gradient, monochrome: false)
+                            check(cell, .flatSession(workspace: workspace != nil, changes: changes != nil))
+                            // The lines worked out off main are the lines
+                            // the labels draw.
+                            let lines = environment.rows.sessionLines
+                            XCTAssertEqual(oneLine(cell.titleLabel), lines.title, "title, \(at)")
+                            XCTAssertEqual(oneLine(cell.projectLabel), lines.project, "project, \(at)")
+                            if workspace != nil {
+                                XCTAssertEqual(oneLine(cell.workspaceLabel), lines.workspace, "workspace, \(at)")
+                            }
+                            if changes != nil {
+                                for part in [cell.changes.approximate, cell.changes.added, cell.changes.removed] {
+                                    XCTAssertFalse(part.isHidden, at)
+                                    XCTAssertEqual(oneLine(part), lines.changes, "\(part.string), \(at)")
+                                    XCTAssertEqual(part.renderedStyle.size, 11 * TextScale(TextSizeCategory(category)).multiplier, at)
+                                }
+                            }
+                            XCTAssertEqual(cell.changes.isHidden, changes == nil, at)
+                            XCTAssertEqual(cell.projectLabel.renderedStyle.size, 15 * TextScale(TextSizeCategory(category)).multiplier, at)
                         }
-                        XCTAssertEqual(cell.projectLabel.renderedStyle.size, 15 * TextScale(TextSizeCategory(category)).multiplier, at)
                     }
 
                     let day = SessionDayHeaderCell(style: .default, reuseIdentifier: nil)
@@ -181,12 +194,20 @@ final class HomeListTextSizeTests: XCTestCase {
         XCTAssertEqual(environment.rows.sessionLines.title, 236.0 / 3)
         XCTAssertEqual(environment.rows.sessionLines.project, 215.0 / 3)
         XCTAssertEqual(environment.rows.sessionLines.workspace, 193.0 / 3)
-        XCTAssertEqual(HomeRowMeasurer.height(.flatSession(workspace: true), width: 393, environment: environment), Self.largestWithWorkspace)
+        XCTAssertEqual(environment.rows.sessionLines.changes, 154.0 / 3)
+        XCTAssertEqual(HomeRowMeasurer.height(.flatSession(workspace: true, changes: false), width: 393, environment: environment), Self.largestWithWorkspace)
+        XCTAssertEqual(HomeRowMeasurer.height(.flatSession(workspace: true, changes: true), width: 393, environment: environment), Self.largestWithWorkspace)
+        XCTAssertEqual(HomeRowMeasurer.height(.flatSession(workspace: false, changes: true), width: 393, environment: environment), Self.largestWithOnlyChanges)
         // The glyphs and the hairline keep their size.
         XCTAssertEqual(environment.rows.branchIcon, large.rows.branchIcon)
         XCTAssertEqual(environment.rows.machineIcon, large.rows.machineIcon)
         XCTAssertEqual(environment.chevron, large.chevron)
-        XCTAssertEqual(large.rows.sessionLines, .designed)
+        // The designed lines, but the counts' 14.3, which no style fixes,
+        // up to a third.
+        let designed = FlatSessionRowLayout.Lines.designed
+        XCTAssertEqual(large.rows.sessionLines, .init(title: designed.title, project: designed.project, workspace: designed.workspace, changes: 43.0 / 3))
+        let largeTwoX = await HomeTextEnvironment.make(text(.large, 2))
+        XCTAssertEqual(largeTwoX.rows.sessionLines.changes, 14.5)
     }
 
     // MARK: The list

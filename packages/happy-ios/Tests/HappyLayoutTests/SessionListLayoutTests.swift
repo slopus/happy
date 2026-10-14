@@ -163,6 +163,96 @@ final class FlatSessionRowLayoutTests: XCTestCase {
         XCTAssertEqual(FlatSessionRowLayout.height(lines: .designed, workspace: true, branchIcon: 19), 82)
         XCTAssertEqual(FlatSessionRowLayout.height(lines: .designed, workspace: false, branchIcon: 19), 81)
     }
+
+    // MARK: Line changes (FlatSessionRow.tsx's `workspaceMeta`, at the
+    // workspace row's end with `marginLeft: 'auto'` and never shrinking,
+    // holds RigGitLineChanges: 8 of `paddingLeft`, then GitLineChanges'
+    // 11s, which set no line height. The workspace's side has the rest.)
+
+    private func counted(
+        width: CGFloat = 393,
+        workspace: Measurable? = fixed(72, 18),
+        changes: CGSize?,
+        lines: FlatSessionRowLayout.Lines = .designed
+    ) -> FlatSessionRowLayout {
+        FlatSessionRowLayout(.init(
+            width: width,
+            title: fixed(200, lines.title),
+            timestamp: fixed(40, 22),
+            project: fixed(100, lines.project),
+            workspace: workspace,
+            changes: changes,
+            showsDivider: true,
+            lines: lines
+        ))
+    }
+
+    func testTheCountsEndTheWorkspacesRow() {
+        let line: CGFloat = 43.0 / 3
+        let layout = counted(changes: CGSize(width: 40, height: line))
+        XCTAssertEqual(layout.size.height, 81)
+        // At the right edge, centred on the 18 row at 53.
+        XCTAssertEqual(layout.changes, rect(337, 53 + (18 - line) / 2, 40, line))
+        XCTAssertEqual(layout.workspace, rect(88, 53, 72, 18))
+        XCTAssertEqual(layout.branchIcon, rect(164, 55.5, 13, 13))
+        XCTAssertNil(counted(changes: nil).changes)
+    }
+
+    func testTheWorkspaceYieldsTheCountsTheirWidth() {
+        let long = text("a-workspace-name-far-too-long-for-the-row", lineHeight: 18, maxLines: 1)
+        // Alone: the column's 289 less the 4 and the 13 glyph.
+        let alone = counted(workspace: long, changes: nil)
+        XCTAssertEqual(alone.workspace?.width, 272)
+        XCTAssertEqual(alone.branchIcon?.maxX, 377)
+        // Beside 40 of counts: 8 + 40 less again, and the glyph ends
+        // where their 8 begins.
+        let yielding = counted(workspace: long, changes: CGSize(width: 40, height: 14.5))
+        XCTAssertEqual(yielding.workspace?.width, 224)
+        XCTAssertEqual(yielding.branchIcon?.maxX, 329)
+        XCTAssertEqual(yielding.changes?.minX, 337)
+        // A short one keeps its own width.
+        XCTAssertEqual(counted(changes: CGSize(width: 40, height: 14.5)).workspace?.width, 72)
+    }
+
+    func testCountsWiderThanTheRowStartWhereTheColumnDoes() {
+        // The column runs from 88 to 104; the counts keep their 40 from
+        // 88 + 8, and the workspace has nothing.
+        let layout = counted(width: 120, workspace: text("fix-login", lineHeight: 18, maxLines: 1), changes: CGSize(width: 40, height: 14.5))
+        XCTAssertEqual(layout.changes?.minX, 96)
+        XCTAssertEqual(layout.changes?.width, 40)
+        XCTAssertEqual(layout.workspace?.width, 0)
+    }
+
+    /// At the designed size the counts' 14.3, or a screen's 14⅓ or 14.5,
+    /// never reaches the row's 18.
+    func testTheCountsNeverMoveADesignedRow() {
+        XCTAssertEqual(FlatSessionRowLayout.Lines.designed.changes, 14.3)
+        XCTAssertEqual(TextStyles.sessionLineChanges, TextStyle(.regular, size: 11))
+        for workspace in [false, true] {
+            for changes in [false, true] {
+                XCTAssertEqual(FlatSessionRowLayout.height(lines: .designed, workspace: workspace, changes: changes), 81)
+                let pixel = FlatSessionRowLayout.Lines(title: 22, project: 20, workspace: 18, changes: 14.5)
+                XCTAssertEqual(FlatSessionRowLayout.height(lines: pixel, workspace: workspace, changes: changes), 81)
+            }
+        }
+    }
+
+    /// The largest text size on a 2x screen: the counts' 11 × 3.571 at
+    /// 1.3 em is 51.07, 51.5 at a pixel. Under a workspace they sit in its
+    /// taller row; without one their line is the row's.
+    func testTheCountsLineHoldsTheRowWithoutAWorkspace() {
+        let lines = FlatSessionRowLayout.Lines(title: 79, project: 71.5, workspace: 64.5, changes: 51.5)
+        let size = CGSize(width: 120, height: 51.5)
+        let underWorkspace = counted(changes: size, lines: lines)
+        XCTAssertEqual(underWorkspace.size.height, 236)
+        XCTAssertEqual(underWorkspace.changes, rect(257, 168, 120, 51.5))
+        let alone = counted(workspace: nil, changes: size, lines: lines)
+        // 10 + 79 + 71.5 + 1 + 51.5 + 10.
+        XCTAssertEqual(alone.size.height, 223)
+        XCTAssertEqual(alone.changes, rect(257, 161.5, 120, 51.5))
+        XCTAssertEqual(alone.avatar, rect(16, 81.5, 60, 60))
+        XCTAssertEqual(counted(workspace: nil, changes: nil, lines: lines).size.height, 189.5)
+    }
 }
 
 final class SessionListChromeLayoutTests: XCTestCase {

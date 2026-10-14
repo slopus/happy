@@ -42,16 +42,20 @@ class ProjectListCell: UITableViewCell {
 
 /// "≈ +12 -3" on a checkout.
 final class GitChangesView: UIView {
-    let approximate = StyledLabel(style: TextStyles.gitApproximate, color: Palette.textSecondary, lines: 1)
-    let added = StyledLabel(style: TextStyles.gitLineCount, color: Palette.gitAddedText, lines: 1)
-    let removed = StyledLabel(style: TextStyles.gitLineCount, color: Palette.gitRemovedText, lines: 1)
+    let approximate: StyledLabel
+    let added: StyledLabel
+    let removed: StyledLabel
 
     var changes: GitLineChanges? {
         didSet { if changes != oldValue { apply() } }
     }
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
+    /// The project list's styles unless told otherwise.
+    init(approximateStyle: TextStyle = TextStyles.gitApproximate, countStyle: TextStyle = TextStyles.gitLineCount) {
+        approximate = StyledLabel(style: approximateStyle, color: Palette.textSecondary, lines: 1)
+        added = StyledLabel(style: countStyle, color: Palette.gitAddedText, lines: 1)
+        removed = StyledLabel(style: countStyle, color: Palette.gitRemovedText, lines: 1)
+        super.init(frame: .zero)
         approximate.string = "≈"
         for label in [approximate, added, removed] { addSubview(label) }
         isUserInteractionEnabled = false
@@ -83,6 +87,11 @@ final class GitChangesView: UIView {
 
     override func sizeThatFits(_ size: CGSize) -> CGSize {
         layout.size
+    }
+
+    /// The parts shown, as VoiceOver reads them.
+    var spoken: String {
+        [approximate, added, removed].filter { !$0.isHidden }.map(\.string).joined(separator: " ")
     }
 
     override func layoutSubviews() {
