@@ -26,8 +26,8 @@ final class HomeDockKindTextTests: XCTestCase {
         let card = makeCard()
         card.setText("my bot", selection: NSRange(location: 6, length: 0), animatesHeight: false)
         let prompt = "plan\nask\nbuild\nship"
-        let kindText = HomeDockKindText()
-        kindText.prepare(createsBot: false, text: prompt, width: width, card: card)
+        let kindText = HomeDockKindText(card: card)
+        kindText.prepare(createsBot: false, text: prompt, width: width)
         await kindText.measuredLatest()
         let measured = kindText.measured(createsBot: false, text: prompt, width: width)
         XCTAssertNotNil(measured)
@@ -46,9 +46,9 @@ final class HomeDockKindTextTests: XCTestCase {
 
     func testOnlyTheLatestTextIsKept() async {
         let card = makeCard()
-        let kindText = HomeDockKindText()
-        kindText.prepare(createsBot: false, text: "first\nprompt", width: width, card: card)
-        kindText.prepare(createsBot: false, text: "second\nprompt", width: width, card: card)
+        let kindText = HomeDockKindText(card: card)
+        kindText.prepare(createsBot: false, text: "first\nprompt", width: width)
+        kindText.prepare(createsBot: false, text: "second\nprompt", width: width)
         await kindText.measuredLatest()
         XCTAssertNil(kindText.measured(createsBot: false, text: "first\nprompt", width: width))
         XCTAssertNotNil(kindText.measured(createsBot: false, text: "second\nprompt", width: width))
@@ -56,8 +56,8 @@ final class HomeDockKindTextTests: XCTestCase {
 
     func testAnotherKindOrWidthIsNotTheSame() async {
         let card = makeCard()
-        let kindText = HomeDockKindText()
-        kindText.prepare(createsBot: true, text: "my bot", width: width, card: card)
+        let kindText = HomeDockKindText(card: card)
+        kindText.prepare(createsBot: true, text: "my bot", width: width)
         await kindText.measuredLatest()
         XCTAssertNotNil(kindText.measured(createsBot: true, text: "my bot", width: width))
         XCTAssertNil(kindText.measured(createsBot: false, text: "my bot", width: width))
@@ -67,8 +67,8 @@ final class HomeDockKindTextTests: XCTestCase {
 
     func testNotYetMeasuredIsNil() {
         let card = makeCard()
-        let kindText = HomeDockKindText()
-        kindText.prepare(createsBot: false, text: "plan\nask", width: width, card: card)
+        let kindText = HomeDockKindText(card: card)
+        kindText.prepare(createsBot: false, text: "plan\nask", width: width)
         // The measurement lands on a later turn: a switch now sets the text
         // plainly and it is measured as any text is.
         XCTAssertNil(kindText.measured(createsBot: false, text: "plan\nask", width: width))
@@ -76,17 +76,51 @@ final class HomeDockKindTextTests: XCTestCase {
 
     func testTheSameTextAgainKeepsItsMeasurement() async {
         let card = makeCard()
-        let kindText = HomeDockKindText()
-        kindText.prepare(createsBot: false, text: "plan\nask", width: width, card: card)
+        let kindText = HomeDockKindText(card: card)
+        kindText.prepare(createsBot: false, text: "plan\nask", width: width)
         await kindText.measuredLatest()
-        kindText.prepare(createsBot: false, text: "plan\nask", width: width, card: card)
+        kindText.prepare(createsBot: false, text: "plan\nask", width: width)
         XCTAssertNotNil(kindText.measured(createsBot: false, text: "plan\nask", width: width))
+    }
+
+    func testATextSizeChangeIsMeasuredAgain() async throws {
+        let card = makeCard()
+        let kindText = HomeDockKindText(card: card)
+        let prompt = "plan\nask\nbuild"
+        let caret = NSRange(location: 14, length: 0)
+        kindText.prepare(createsBot: false, text: prompt, width: width)
+        await kindText.measuredLatest()
+        let before = try XCTUnwrap(kindText.measured(createsBot: false, text: prompt, width: width))
+        card.setText(before, selection: caret, animatesHeight: false)
+        XCTAssertTrue(card.isTextMeasured(fitting: width))
+        let designed = card.height(fitting: width)
+
+        // The card now follows the person's largest text size.
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        let host = UIView(frame: window.bounds)
+        host.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
+        host.traitOverrides.followsTextSize = true
+        window.addSubview(host)
+        host.addSubview(card)
+        card.updateTraitsIfNeeded()
+        XCTAssertNotEqual(card.textKey(fitting: width), before.key)
+        XCTAssertNil(kindText.measured(createsBot: false, text: prompt, width: width), "measured at the old size")
+
+        // Asked again, it is measured at the new size: taller, and final.
+        kindText.prepare(createsBot: false, text: prompt, width: width)
+        await kindText.measuredLatest()
+        let after = try XCTUnwrap(kindText.measured(createsBot: false, text: prompt, width: width))
+        XCTAssertEqual(after.key, card.textKey(fitting: width))
+        card.setText(after, selection: caret, animatesHeight: false)
+        XCTAssertTrue(card.isTextMeasured(fitting: width))
+        XCTAssertGreaterThan(card.height(fitting: width), designed)
+        withExtendedLifetime(window) {}
     }
 
     func testNoWidthMeasuresNothing() async {
         let card = makeCard()
-        let kindText = HomeDockKindText()
-        kindText.prepare(createsBot: false, text: "plan\nask", width: 0, card: card)
+        let kindText = HomeDockKindText(card: card)
+        kindText.prepare(createsBot: false, text: "plan\nask", width: 0)
         await kindText.measuredLatest()
         XCTAssertNil(kindText.measured(createsBot: false, text: "plan\nask", width: 0))
     }

@@ -326,7 +326,7 @@ final class HomeDockFocusViewController: UIViewController {
     /// Which text the card holds: the prompt, or the bot's name.
     private var cardHoldsBotName: Bool?
     /// The other one, measured for a switch.
-    private let kindText = HomeDockKindText()
+    private let kindText: HomeDockKindText
     private let progressDot = StatusDotView()
     private let progressLabel = StyledLabel(style: TextStyles.homeDockProgress, color: Palette.textSecondary, lines: 1)
     private let progressHint = StyledLabel(style: TextStyles.homeDockProgress, color: Palette.textSecondary, lines: 1)
@@ -360,6 +360,7 @@ final class HomeDockFocusViewController: UIViewController {
     init(dock controller: HomeDockController) {
         self.controller = controller
         card = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: ""))
+        kindText = HomeDockKindText(card: card)
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .overFullScreen
     }
@@ -508,8 +509,7 @@ final class HomeDockFocusViewController: UIViewController {
         kindText.prepare(
             createsBot: !holdsBotName,
             text: holdsBotName ? controller.prompt : controller.composer.drafts.botName,
-            width: composerWidth,
-            card: card
+            width: composerWidth
         )
     }
 
@@ -990,6 +990,9 @@ extension HomeDockFocusViewController: AgentInputCardDelegate {
 
     func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) {
         layoutContent()
+        // The card says so when its text size moved too: what was measured
+        // for the switch is for the size before.
+        prepareKindSwitch()
     }
 
     func agentInputCardDidPressPrimary(_ card: AgentInputCardView) {
