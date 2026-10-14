@@ -14,6 +14,9 @@ public final class SettingsAgentsViewController: UIViewController {
     private var pipeline: ApplyPipeline<AgentsPage.Input, AgentsPage.Content?, AgentsPage.Update>?
     private var observation: ApplyObservation?
     private var groupViews: [AgentsPage.Group: ItemGroupView] = [:]
+    /// The computers' rows on screen, by id, so a change rebuilds only its
+    /// own row.
+    private var machineRowViews: [String: ItemRowView] = [:]
     /// The language the screen was built in; its derivations speak it.
     private let language = AppLocalization.language
 
@@ -62,11 +65,16 @@ public final class SettingsAgentsViewController: UIViewController {
         observation = pipeline.observation
     }
 
-    /// Builds the groups `update` names and puts them in their place, the
-    /// others untouched. Returns the rows built.
+    /// Builds the groups `update` names and puts them in their place, and
+    /// patches the computers' rows it names; the rest is untouched. Returns
+    /// the rows built or changed.
     private func apply(_ update: AgentsPage.Update) -> Int {
         let content = update.content
         var rows = 0
+        if let changes = update.machineRows, let group = groupViews[.machines] {
+            patch(group, changes)
+            rows += changes.count
+        }
         for group in update.rebuilt {
             let view: ItemGroupView
             switch group {
@@ -86,6 +94,7 @@ public final class SettingsAgentsViewController: UIViewController {
     }
 
     private func machinesGroup(_ machines: [AgentsPage.MachineRow]) -> ItemGroupView {
+        machineRowViews = [:]
         guard !machines.isEmpty else {
             let row = ItemRowView(
                 title: Strings.Agents.noMachines,
@@ -95,21 +104,49 @@ public final class SettingsAgentsViewController: UIViewController {
             row.alpha = 0.5
             return ItemGroupView(title: Strings.Agents.machines, rows: [row])
         }
-        return ItemGroupView(title: Strings.Agents.machines, rows: machines.map { machine in
-            let row = ItemRowView(
-                title: machine.name,
-                subtitle: machine.subtitle,
-                icon: ItemIcon(.ionicons("desktop-outline"), tint: machine.online ? Palette.statusConnected : Palette.statusDisconnected)
-            )
-            if let id = machine.targetMachineId {
-                row.onTap = { [weak self] in
-                    guard let self else { return }
-                    self.push(.machine(id: id), context: self.context)
-                }
+        return ItemGroupView(title: Strings.Agents.machines, rows: machines.map(machineRow))
+    }
+
+    private func machineRow(_ machine: AgentsPage.MachineRow) -> ItemRowView {
+        let row = ItemRowView(title: machine.name)
+        configure(row, machine)
+        machineRowViews[machine.id] = row
+        return row
+    }
+
+    private func configure(_ row: ItemRowView, _ machine: AgentsPage.MachineRow) {
+        row.title = machine.name
+        row.subtitle = machine.subtitle
+        row.icon = ItemIcon(.ionicons("desktop-outline"), tint: machine.online ? Palette.statusConnected : Palette.statusDisconnected)
+        row.onTap = machine.targetMachineId.map { id in
+            { [weak self] in
+                guard let self else { return }
+                self.push(.machine(id: id), context: self.context)
             }
-            row.alpha = machine.online ? 1 : 0.5
-            return row
-        })
+        }
+        row.alpha = machine.online ? 1 : 0.5
+    }
+
+    /// The computers' group with only the rows `changes` names built or
+    /// changed; the group takes its rows again only when their order did.
+    private func patch(_ group: ItemGroupView, _ changes: AgentsPage.MachineRowChanges) {
+        for id in changes.removed { machineRowViews.removeValue(forKey: id) }
+        var resized = false
+        for machine in changes.updated {
+            guard let row = machineRowViews[machine.id] else { continue }
+            configure(row, machine)
+            // A row only re-lays out itself; the group measures again only
+            // when one of the changed rows is now another height.
+            let height = row.sizeThatFits(CGSize(width: row.bounds.width, height: .greatestFiniteMagnitude)).height
+            if height != row.bounds.height { resized = true }
+        }
+        for machine in changes.inserted { _ = machineRow(machine) }
+        if let order = changes.order {
+            group.rows = order.compactMap { machineRowViews[$0] }
+        } else if resized {
+            group.setNeedsLayout()
+            list.setNeedsLayout()
+        }
     }
 
     private func defaultsGroup(hasOverrides: Bool) -> ItemGroupView {

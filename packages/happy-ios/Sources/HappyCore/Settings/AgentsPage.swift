@@ -190,10 +190,53 @@ extension AgentsPage {
         }
     }
 
+    /// The computers' rows that differ from the ones on screen, by id, for
+    /// a group that keeps its other rows.
+    public struct MachineRowChanges: Equatable, Sendable {
+        /// Computers new to the list, to build.
+        public var inserted: [MachineRow] = []
+        /// Computers on screen whose row now shows something else.
+        public var updated: [MachineRow] = []
+        /// Computers gone from the list.
+        public var removed: [String] = []
+        /// Every computer's id in order, when the order or the membership
+        /// changed; nil when every row keeps its place.
+        public var order: [String]?
+
+        /// The rows built or changed.
+        public var count: Int { inserted.count + updated.count }
+
+        /// The changes from `old` to `new`, or nil when the group has to be
+        /// built again: it goes between "no machines" and a list, or an id
+        /// shows twice (which `MachineChoice.collect` never makes).
+        static func between(_ old: [MachineRow], _ new: [MachineRow]) -> MachineRowChanges? {
+            guard old.isEmpty == new.isEmpty else { return nil }
+            let oldById = Dictionary(old.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+            let newIds = Set(new.map(\.id))
+            guard oldById.count == old.count, newIds.count == new.count else { return nil }
+            var changes = MachineRowChanges()
+            for row in new {
+                if let shown = oldById[row.id] {
+                    if shown != row { changes.updated.append(row) }
+                } else {
+                    changes.inserted.append(row)
+                }
+            }
+            changes.removed = old.map(\.id).filter { !newIds.contains($0) }
+            if !old.map(\.id).elementsEqual(new.map(\.id)) {
+                changes.order = new.map(\.id)
+            }
+            return changes
+        }
+    }
+
     public struct Update: Sendable {
         public var content: Content
         /// The groups to build (again); the rest stay as they are on screen.
         public var rebuilt: Set<Group>
+        /// The computers' rows to patch in place, when the computers group
+        /// changed but isn't in `rebuilt`.
+        public var machineRows: MachineRowChanges?
     }
 
     /// The page for `input` and the groups that differ from `applied`, the
@@ -212,17 +255,23 @@ extension AgentsPage {
             offline: words("status.offline")
         )
         guard content != applied else { return nil }
-        return (Update(content: content, rebuilt: rebuilt(from: applied, to: content)), content)
+        return (update(from: applied, to: content), content)
     }
 
-    static func rebuilt(from old: Content?, to new: Content) -> Set<Group> {
-        guard let old else { return Set(new.groups) }
-        var groups: Set<Group> = []
-        if old.machines != new.machines { groups.insert(.machines) }
-        if old.hasOverrides != new.hasOverrides { groups.insert(.defaults) }
-        for group in new.agents where !old.agents.contains(group) {
-            groups.insert(.agent(group.agent))
+    static func update(from old: Content?, to new: Content) -> Update {
+        guard let old else { return Update(content: new, rebuilt: Set(new.groups)) }
+        var update = Update(content: new, rebuilt: [])
+        if old.machines != new.machines {
+            if let rows = MachineRowChanges.between(old.machines, new.machines) {
+                update.machineRows = rows
+            } else {
+                update.rebuilt.insert(.machines)
+            }
         }
-        return groups
+        if old.hasOverrides != new.hasOverrides { update.rebuilt.insert(.defaults) }
+        for group in new.agents where !old.agents.contains(group) {
+            update.rebuilt.insert(.agent(group.agent))
+        }
+        return update
     }
 }

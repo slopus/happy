@@ -93,11 +93,19 @@ public final class ItemGroupView: UIView {
         invalidate()
     }
 
+    /// Rows in both lists stay in the card, and a divider is set only where
+    /// it changes, so a screen that patches a long group touches only the
+    /// rows that came, went or moved to or from the end.
     private func installRows(replacing old: [UIView]) {
-        for row in old where row.superview === card { row.removeFromSuperview() }
+        let kept = Set(rows.map(ObjectIdentifier.init))
+        for row in old where row.superview === card && !kept.contains(ObjectIdentifier(row)) {
+            row.removeFromSuperview()
+        }
         for (index, row) in rows.enumerated() {
-            card.addSubview(row)
-            (row as? ItemRowView)?.showsDivider = index < rows.count - 1
+            if row.superview !== card { card.addSubview(row) }
+            if let item = row as? ItemRowView, item.showsDivider != (index < rows.count - 1) {
+                item.showsDivider = index < rows.count - 1
+            }
         }
         invalidate()
     }
