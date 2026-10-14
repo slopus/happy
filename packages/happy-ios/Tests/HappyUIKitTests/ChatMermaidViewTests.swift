@@ -190,7 +190,8 @@ final class ChatMermaidViewTests: XCTestCase {
 
     func testTheRowGrowsToWhatItsPageReportsAndKeepsThePageWhenPlannedAgain() async throws {
         let text = "Here:\n\n```mermaid\n\(fourBoxes)\n```\n"
-        var input = ChatRowInput(item: .message(.agentText(AgentTextMessage(id: "m1", createdAt: 0, text: text))), style: ChatRowStyle())
+        let style = ChatRowStyle(render: .isolated())
+        var input = ChatRowInput(item: .message(.agentText(AgentTextMessage(id: "m1", createdAt: 0, text: text))), style: style)
         func mermaid(_ plan: ChatRowPlan) -> (diagram: ChatMermaid, frame: CGRect)? {
             for case .mermaid(let diagram, let frame) in plan.items { return (diagram, frame) }
             return nil
@@ -238,7 +239,7 @@ final class ChatMermaidViewTests: XCTestCase {
 
         // Taken by another row, the same page draws that row's diagram and
         // reports for that row.
-        let other = ChatRowInput(item: .message(.agentText(AgentTextMessage(id: "m2", createdAt: 0, text: text))), style: ChatRowStyle())
+        let other = ChatRowInput(item: .message(.agentText(AgentTextMessage(id: "m2", createdAt: 0, text: text))), style: style)
         row.apply(ChatRowRenderer.plan(other, width: 393))
         try await until { actions.contains { $0.row == "m2" } }
         XCTAssertTrue(view.webView === page)
