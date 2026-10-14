@@ -95,8 +95,11 @@ rule 8), and what the Linux benchmarks measure.
 - Every plan that draws a diff, a command's output or a code block takes
   the account's services explicitly (`RenderServices`: `diffDocuments`,
   `diffSyntax`, `codeSyntax`), never a global. They are closed when the
-  account stops; a plan made after that draws plain or nothing, never "No
-  changes", and its apply is refused by the account guard anyway.
+  account stops, before the open account changes, so the account guard
+  alone still passes for a moment. A plan made then draws plain or
+  nothing, never "No changes", and is stale: chat rows, message detail,
+  the changes list and the file viewer drop any plan that lands while
+  `RenderServices.isClosed`, keeping what is on screen.
 - The troubleshoot screen follows `AccountSession.troubleshootingFeed`
   (computers and the AI prompt, projected off the main thread) through
   `VisibleFeed`: subscribed in `viewWillAppear`, cancelled in
