@@ -4,11 +4,12 @@ import CoreGraphics
 #endif
 
 /// A home list row, as much as its height needs: the one line of text the
-/// headings carry, whether a session has a workspace line, or nothing for
-/// the rows whose height never depends on content.
+/// headings carry, whether a session has a workspace line or line counts,
+/// or nothing for the rows whose height never depends on content.
 public enum HomeRowKind: Hashable, Sendable {
-    /// A session in the flat list; with a workspace it has the third line.
-    case flatSession(workspace: Bool)
+    /// A session in the flat list; with a workspace it has the third line,
+    /// and with line counts their line ends it.
+    case flatSession(workspace: Bool, changes: Bool)
     /// A day over the flat archive ("Today", "3 days ago").
     case dayHeader(label: String)
     /// "── Show archived ──": banded in the flat list, dividing the page in
@@ -43,7 +44,7 @@ public struct HomeRowMetrics: Hashable, Sendable {
     public var machineIcon: CGSize
     /// One device pixel.
     public var hairline: CGFloat
-    /// A flat session's title, project and workspace lines.
+    /// A flat session's title, project, workspace and line counts' lines.
     public var sessionLines: FlatSessionRowLayout.Lines
     /// The branch glyph's box beside a workspace.
     public var branchIcon: CGSize
@@ -72,15 +73,20 @@ public struct HomeRowMetrics: Hashable, Sendable {
 extension HomeRowHeights {
     /// A row's height from its own layout, without a cell. Each heading is
     /// one line, so its label is that line's height, or nothing when the
-    /// text is empty, as a label measures it. A flat session is its three
-    /// lines, whatever they say.
+    /// text is empty, as a label measures it. A flat session is its lines,
+    /// whatever they say.
     public static func height(_ kind: HomeRowKind, width: CGFloat, metrics: HomeRowMetrics) -> CGFloat {
         func line(_ text: String, _ height: CGFloat) -> Measurable {
             .fixed(width: 0, height: text.isEmpty ? 0 : height)
         }
         switch kind {
-        case .flatSession(let workspace):
-            return FlatSessionRowLayout.height(lines: metrics.sessionLines, workspace: workspace, branchIcon: metrics.branchIcon.height)
+        case .flatSession(let workspace, let changes):
+            return FlatSessionRowLayout.height(
+                lines: metrics.sessionLines,
+                workspace: workspace,
+                changes: changes,
+                branchIcon: metrics.branchIcon.height
+            )
         case .dayHeader(let label):
             return SessionDayHeaderLayout(width: width, label: line(label, metrics.dayHeaderLine)).size.height
         case .archiveToggle(let label, let banded):

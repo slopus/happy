@@ -55,16 +55,22 @@ final class HomeRowKindHeightTests: XCTestCase {
     func testAFlatSessionIsItsLines() {
         for width in widths {
             for workspace in [false, true] {
-                XCTAssertEqual(height(.flatSession(workspace: workspace), width: width), HomeRowHeights.flatSession(width: width))
+                for changes in [false, true] {
+                    XCTAssertEqual(height(.flatSession(workspace: workspace, changes: changes), width: width), HomeRowHeights.flatSession(width: width))
+                }
             }
         }
-        XCTAssertEqual(height(.flatSession(workspace: true)), 81)
+        XCTAssertEqual(height(.flatSession(workspace: true, changes: false)), 81)
         var larger = metrics
-        larger.sessionLines = .init(title: 79, project: 71.5, workspace: 64.5)
-        XCTAssertEqual(height(.flatSession(workspace: true), metrics: larger), 236)
-        XCTAssertEqual(height(.flatSession(workspace: false), metrics: larger), 189.5)
+        larger.sessionLines = .init(title: 79, project: 71.5, workspace: 64.5, changes: 51.5)
+        XCTAssertEqual(height(.flatSession(workspace: true, changes: false), metrics: larger), 236)
+        XCTAssertEqual(height(.flatSession(workspace: false, changes: false), metrics: larger), 189.5)
+        // The counts' line under a taller workspace changes nothing; alone
+        // it is the row's third line.
+        XCTAssertEqual(height(.flatSession(workspace: true, changes: true), metrics: larger), 236)
+        XCTAssertEqual(height(.flatSession(workspace: false, changes: true), metrics: larger), 223)
         larger.branchIcon = CGSize(width: 13, height: 70)
-        XCTAssertEqual(height(.flatSession(workspace: true), metrics: larger), 241.5)
+        XCTAssertEqual(height(.flatSession(workspace: true, changes: false), metrics: larger), 241.5)
     }
 
     /// The kind's height is the row's own, with any words in it, at any
@@ -72,27 +78,36 @@ final class HomeRowKindHeightTests: XCTestCase {
     func testAFlatSessionsHeightIsItsLayouts() {
         let lineSets: [FlatSessionRowLayout.Lines] = [
             .designed,
-            .init(title: 18.5, project: 16.5, workspace: 15),
-            .init(title: 22, project: 19, workspace: 18),
-            .init(title: 29.5, project: 27, workspace: 24.5),
-            .init(title: 79, project: 71.5, workspace: 64.5),
+            .init(title: 18.5, project: 16.5, workspace: 15, changes: 12),
+            .init(title: 22, project: 19, workspace: 18, changes: 14.5),
+            .init(title: 29.5, project: 27, workspace: 24.5, changes: 19),
+            .init(title: 79, project: 71.5, workspace: 64.5, changes: 51.5),
+            // Counts whose line passes the workspace's.
+            .init(title: 22, project: 20, workspace: 18, changes: 30),
         ]
         for lines in lineSets {
             var scaled = metrics
             scaled.sessionLines = lines
             for width in widths {
                 for workspace in [false, true] {
-                    let layout = FlatSessionRowLayout(.init(
-                        width: width,
-                        title: text("A long title that never wraps on its one line", lineHeight: lines.title, maxLines: 1),
-                        timestamp: text("12:55 PM", lineHeight: lines.title, maxLines: 1),
-                        project: text("happy", lineHeight: lines.project, maxLines: 1),
-                        workspace: workspace ? text("fix-login", lineHeight: lines.workspace, maxLines: 1) : nil,
-                        branchIcon: scaled.branchIcon,
-                        showsDivider: true,
-                        lines: lines
-                    ))
-                    XCTAssertEqual(height(.flatSession(workspace: workspace), width: width, metrics: scaled), layout.size.height, "\(lines) at \(width)")
+                    for changes in [false, true] {
+                        let layout = FlatSessionRowLayout(.init(
+                            width: width,
+                            title: text("A long title that never wraps on its one line", lineHeight: lines.title, maxLines: 1),
+                            timestamp: text("12:55 PM", lineHeight: lines.title, maxLines: 1),
+                            project: text("happy", lineHeight: lines.project, maxLines: 1),
+                            workspace: workspace ? text("fix-login", lineHeight: lines.workspace, maxLines: 1) : nil,
+                            branchIcon: scaled.branchIcon,
+                            changes: changes ? CGSize(width: 64, height: lines.changes) : nil,
+                            showsDivider: true,
+                            lines: lines
+                        ))
+                        XCTAssertEqual(
+                            height(.flatSession(workspace: workspace, changes: changes), width: width, metrics: scaled),
+                            layout.size.height,
+                            "\(lines) at \(width)"
+                        )
+                    }
                 }
             }
         }

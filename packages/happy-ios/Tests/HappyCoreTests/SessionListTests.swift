@@ -228,6 +228,51 @@ final class SessionListTests: XCTestCase {
         XCTAssertEqual(formatter.dayAge(today.addingTimeInterval(-3 * 86_400)), .daysAgo(3))
     }
 
+    // MARK: Line changes
+
+    private func git(_ insertions: Double, _ deletions: Double, exact: Bool = true) -> JSONValue {
+        .object([
+            "changedFiles": .number(2), "countsExact": .bool(exact),
+            "insertions": .number(insertions), "deletions": .number(deletions),
+        ])
+    }
+
+    private let rig: JSONValue = .object(["id": .string("rig")])
+
+    /// FlatSessionRow.tsx draws RigGitLineChanges from rig.ts
+    /// `getRigGitSummary` and `visibleRigGitLineChanges`: Happy Agent's own
+    /// counts, nothing for a clean comparison, nothing from any other
+    /// agent's metadata.
+    func testARowCarriesHappyAgentsLineChanges() {
+        let rows = rows(list([
+            record("approximate", at: ago(hours: 1), ["client": rig, "git": git(1234, 7, exact: false)]),
+            record("removed", at: ago(hours: 2), ["client": rig, "git": git(0, 3)]),
+            record("clean", at: ago(hours: 3), ["client": rig, "git": git(0, 0)]),
+            record("unknown", at: ago(hours: 4), ["client": rig]),
+            record("happy", at: ago(hours: 5), ["git": git(5, 5)]),
+        ]))
+        XCTAssertEqual(rows.map(\.id), ["approximate", "removed", "clean", "unknown", "happy"])
+        XCTAssertEqual(rows.map(\.changes), [
+            GitLineChanges(approximate: true, insertions: 1234, deletions: 7),
+            GitLineChanges(approximate: false, insertions: 0, deletions: 3),
+            nil,
+            nil,
+            nil,
+        ])
+    }
+
+    /// The flat list draws every row with FlatSessionRow, so a bot's and an
+    /// archived session's counts show as a live one's do.
+    func testBotsAndTheArchiveKeepTheirLineChanges() {
+        let byId = Dictionary(uniqueKeysWithValues: rows(list([
+            record("bot", ["client": rig, "bot": .object(["username": .string("ops")]), "git": git(4, 0)]),
+            record("retired", ["client": rig, "lifecycleState": .string("archived"), "git": git(0, 9)]),
+        ], settings: ["hideInactiveSessions": .bool(false)])).map { ($0.id, $0) })
+        XCTAssertEqual(byId["bot"]?.changes, GitLineChanges(approximate: false, insertions: 4, deletions: 0))
+        XCTAssertEqual(byId["retired"]?.archived, true)
+        XCTAssertEqual(byId["retired"]?.changes, GitLineChanges(approximate: false, insertions: 0, deletions: 9))
+    }
+
     // MARK: Avatar
 
     func testAvatarSeedIsMachineAndPathOrTheBot() {

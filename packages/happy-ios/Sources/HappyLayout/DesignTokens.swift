@@ -288,6 +288,14 @@ public enum TextStyles {
     public static let sessionTimestamp = TextStyle(.regular, size: 13, lineHeight: 22)
     public static let sessionProject = TextStyle(.regular, size: 15, lineHeight: 20)
     public static let sessionWorkspace = TextStyle(.regular, size: 13, lineHeight: 18)
+    /// Happy Agent's line counts at the end of the workspace's row
+    /// (GitLineChanges.tsx): 11, no line height, "≈" in the default face.
+    /// "+12" and "-3" ask for weight 600 with the default family,
+    /// 'IBMPlexSans-Regular'. That family is expo-font's alias for the one
+    /// face of that name, so RN's closest weight (RCTFontUtils.mm
+    /// `RCTFontWithFontProperties`) has only Plex Regular to choose: iOS
+    /// draws all three in the regular face.
+    public static let sessionLineChanges = TextStyle(.regular, size: 11)
     public static let sessionDayHeader = TextStyle(.semiBold, size: 14, lineHeight: 18, letterSpacing: 0.1)
     public static let archiveToggle = TextStyle(.regular, size: 14, lineHeight: 18)
     public static let swipeAction = TextStyle(.semiBold, size: 12, lineHeight: 15)

@@ -4,7 +4,9 @@ import HappyLayout
 import UIKit
 
 /// One session in the flat home list (components/FlatSessionRow.tsx). It
-/// measures its labels and applies `FlatSessionRowLayout`.
+/// measures its labels and applies `FlatSessionRowLayout`, its rows as
+/// tall as `lines`: the designed ones, or those a list that follows the
+/// text size worked out off the main thread for the size its labels draw.
 final class SessionRowCell: UITableViewCell {
     static let reuseIdentifier = "session"
 
@@ -15,8 +17,13 @@ final class SessionRowCell: UITableViewCell {
     let projectLabel = StyledLabel(style: TextStyles.sessionProject, color: Palette.textSecondary, lines: 1)
     let workspaceLabel = StyledLabel(style: TextStyles.sessionWorkspace, color: Palette.textSecondary, lines: 1)
     let branchIcon = IconView(.ionicons("git-branch-outline"), size: FlatSessionRowLayout.Metrics.branchIconSize)
+    /// RigGitLineChanges: GitLineChanges.tsx's 11s, not the project list's.
+    let changes = GitChangesView(approximateStyle: TextStyles.sessionLineChanges, countStyle: TextStyles.sessionLineChanges)
     let divider = UIView()
     private(set) var row: SessionRow?
+    var lines: FlatSessionRowLayout.Lines = .designed {
+        didSet { if lines != oldValue { setNeedsLayout() } }
+    }
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -27,7 +34,7 @@ final class SessionRowCell: UITableViewCell {
         branchIcon.tintColor = UIColor(Palette.textSecondary)
         branchIcon.contentMode = .center
         divider.backgroundColor = UIColor(Palette.divider)
-        for view in [avatar, titleLabel, timestampLabel, dot, projectLabel, workspaceLabel, branchIcon, divider] {
+        for view in [avatar, titleLabel, timestampLabel, dot, projectLabel, workspaceLabel, branchIcon, changes, divider] {
             contentView.addSubview(view)
         }
         isAccessibilityElement = true
@@ -42,7 +49,7 @@ final class SessionRowCell: UITableViewCell {
         self.row = row
         avatar.content = .init(avatar: row.avatar, style: style, monochrome: monochrome || row.faded)
         avatar.alpha = row.faded ? 0.5 : 1
-        for view in [titleLabel, timestampLabel, dot, projectLabel, workspaceLabel, branchIcon] as [UIView] {
+        for view in [titleLabel, timestampLabel, dot, projectLabel, workspaceLabel, branchIcon, changes] as [UIView] {
             view.alpha = row.faded ? 0.6 : 1
         }
         titleLabel.string = row.title ?? Strings.Session.newChat
@@ -57,8 +64,13 @@ final class SessionRowCell: UITableViewCell {
         workspaceLabel.string = row.workspaceName ?? ""
         workspaceLabel.isHidden = row.workspaceName == nil
         branchIcon.isHidden = row.workspaceName == nil
+        changes.changes = row.changes
+        changes.isHidden = row.changes == nil
         divider.isHidden = !row.showsDivider
-        accessibilityLabel = [row.title ?? Strings.Session.newChat, cornerAccessibility(row), row.projectName, row.workspaceName, row.timestamp]
+        accessibilityLabel = [
+            row.title ?? Strings.Session.newChat, cornerAccessibility(row), row.projectName, row.workspaceName,
+            row.changes == nil ? nil : changes.spoken, row.timestamp,
+        ]
             .compactMap { $0 }
             .joined(separator: ", ")
         setNeedsLayout()
@@ -81,7 +93,9 @@ final class SessionRowCell: UITableViewCell {
             project: projectLabel.measurable,
             workspace: row?.workspaceName == nil ? nil : workspaceLabel.measurable,
             branchIcon: branchIcon.sizeThatFits(.zero),
-            showsDivider: row?.showsDivider ?? false
+            changes: row?.changes == nil ? nil : changes.sizeThatFits(.zero),
+            showsDivider: row?.showsDivider ?? false,
+            lines: lines
         ))
     }
 
@@ -100,6 +114,7 @@ final class SessionRowCell: UITableViewCell {
         projectLabel.setLayoutFrame(layout.project)
         if let frame = layout.workspace { workspaceLabel.setLayoutFrame(frame) }
         if let frame = layout.branchIcon { branchIcon.setLayoutFrame(frame) }
+        if let frame = layout.changes { changes.setLayoutFrame(frame) }
         if let frame = layout.divider { divider.setLayoutFrame(frame) }
     }
 
