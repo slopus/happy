@@ -78,7 +78,48 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.uikit-tests
+  HappyUIKitTestHost:
+    type: application
+    platform: iOS
+    sources:
+      - path: TestHost
+        excludes:
+          - Info.plist
+    settings:
+      base:
+        PRODUCT_NAME: HappyUIKitTestHost
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.uikit-testhost
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: TestHost/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_DEBUG_DYLIB: NO
+  HappyUIKitHostedTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/HappyUIKitHostedTests
+    dependencies:
+      - target: HappyUIKitTestHost
+      - package: HappyIOS
+        product: HappyKit
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.hosted-uikit-tests
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/HappyUIKitTestHost.app/HappyUIKitTestHost"
+        BUNDLE_LOADER: "$(TEST_HOST)"
 schemes:
+  HappyUIKitHosted:
+    build:
+      targets:
+        HappyUIKitTestHost: [test]
+        HappyUIKitHostedTests: [test]
+    test:
+      config: Debug
+      targets:
+        - HappyUIKitHostedTests
   Happy:
     build:
       targets:
