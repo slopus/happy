@@ -81,6 +81,20 @@ jobs:
             -jobs 4 \
             CODE_SIGNING_ALLOWED=NO \
             | tee build/ci/xcodebuild.log
+      - name: Export readable test results and diagnostics
+        if: always()
+        run: |
+          set -euo pipefail
+          if [[ ! -d build/ci/HappyUIKitTests.xcresult ]]; then
+            exit 0
+          fi
+          xcrun xcresulttool get test-results summary \
+            --path build/ci/HappyUIKitTests.xcresult > build/ci/test-summary.json
+          xcrun xcresulttool get test-results tests \
+            --path build/ci/HappyUIKitTests.xcresult > build/ci/test-results.json
+          xcrun xcresulttool export diagnostics \
+            --path build/ci/HappyUIKitTests.xcresult \
+            --output-path build/ci/diagnostics
       - name: Upload test results and build log
         if: always()
         uses: actions/upload-artifact@v4
@@ -90,5 +104,8 @@ jobs:
             packages/happy-ios/build/ci/HappyUIKitTests.xcresult
             packages/happy-ios/build/ci/xcodebuild.log
             packages/happy-ios/build/ci/simulators.json
+            packages/happy-ios/build/ci/test-summary.json
+            packages/happy-ios/build/ci/test-results.json
+            packages/happy-ios/build/ci/diagnostics
           if-no-files-found: warn
           retention-days: 7
