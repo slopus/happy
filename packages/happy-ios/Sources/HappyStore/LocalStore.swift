@@ -51,10 +51,11 @@ public final class LocalStore: Sendable {
         ThreadRules.assertOffMain()
         self.writer = writer
         let delivery = DispatchQueue(label: "HappyStore.observations", qos: .userInitiated)
-        // Ciphertexts, versions and message cursors do not render on home.
+        // Ciphertexts, versions, message cursors and updatedAt do not render
+        // on home. Ordinary incoming messages only change those fields.
         // Scope invalidation to the columns its consumers actually use.
         let homeSessionRegion = SQLRequest<Row>(sql: """
-            SELECT id, createdAt, updatedAt, lastMessageSentAt, active, activeAt, projectId,
+            SELECT id, createdAt, lastMessageSentAt, active, activeAt, projectId,
                    metadata, agentState, decryptable, thinking, unread, archiving
             FROM session
             """)
@@ -810,21 +811,6 @@ public final class LocalStore: Sendable {
                 try db.execute(sql: "DELETE FROM \(table)")
             }
         }
-    }
-
-    // MARK: Observation
-
-    /// Calls `onChange` on the main actor with a fresh value now and after
-    /// every commit that touches the tables `fetch` reads.
-    @MainActor
-    public func observe<Value: Sendable>(
-        _ fetch: @escaping @Sendable (Database) throws -> Value,
-        onError: @escaping @MainActor (Error) -> Void = { _ in },
-        onChange: @escaping @MainActor (Value) -> Void
-    ) -> AnyDatabaseCancellable {
-        ValueObservation
-            .tracking(fetch)
-            .start(in: writer, scheduling: .mainActor, onError: onError, onChange: onChange)
     }
 
     // MARK: Merge rules

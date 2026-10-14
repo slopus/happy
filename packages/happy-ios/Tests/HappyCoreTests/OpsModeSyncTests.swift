@@ -98,14 +98,19 @@ final class OpsModeSyncTests: XCTestCase {
         let (fixture, store, _, sync) = try fixture()
         let changed = expectation(description: "joint update")
         var snapshots: [String] = []
-        let observation = store.observe({ db -> String in
+        let values = ValueObservation.tracking { db -> String in
+            XCTAssertFalse(Thread.isMainThread)
             let session = try SessionRecord.fetchOne(db, key: "s")
             let composer = try ComposerStateRecord.fetchOne(db, key: "s")
             return "\(session?.metadataVersion ?? 0):\(composer?.values["modelMode"]?.stringValue ?? "nil")"
-        }, onChange: { value in
-            snapshots.append(value)
-            if value == "2:remote" { changed.fulfill() }
-        })
+        }.values(in: store.writer, scheduling: .async(onQueue: DispatchQueue(label: "OpsModeSyncTests.observation")))
+        let observation = Task {
+            for try await value in values {
+                snapshots.append(value)
+                if value == "2:remote" { changed.fulfill() }
+            }
+        }
+        defer { observation.cancel() }
         await sync.handle(update(.object(["modelMode": .string("remote")]), version: 2, fixture: fixture))
         await fulfillment(of: [changed], timeout: 2)
         observation.cancel()
