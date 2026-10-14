@@ -4,11 +4,13 @@ import CoreGraphics
 #endif
 
 /// Home list rows whose height never depends on their text: a flat session
-/// row, a project card, a worktree row and a bot or archived chat row are
-/// one fixed height at any width. The list takes these numbers instead of
-/// measuring a cell, so a changed row costs no text measurement on the main
-/// thread. Each comes from its own layout, fed empty content;
-/// `HomeRowHeightTests` checks that real content gives the same height.
+/// row at the designed text size, a project card, a worktree row and a bot
+/// or archived chat row are one fixed height at any width. The list takes
+/// these numbers instead of measuring a cell, so a changed row costs no
+/// text measurement on the main thread. Each comes from its own layout,
+/// fed empty content; `HomeRowHeightTests` checks that real content gives
+/// the same height. A flat session at another text size is its lines'
+/// height (`HomeRowKind.flatSession`).
 public enum HomeRowHeights {
     private static var empty: Measurable { .fixed(.zero) }
 

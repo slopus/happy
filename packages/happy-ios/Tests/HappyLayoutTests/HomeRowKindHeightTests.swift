@@ -52,6 +52,52 @@ final class HomeRowKindHeightTests: XCTestCase {
         XCTAssertEqual(height(.section(label: "")), 24)
     }
 
+    func testAFlatSessionIsItsLines() {
+        for width in widths {
+            for workspace in [false, true] {
+                XCTAssertEqual(height(.flatSession(workspace: workspace), width: width), HomeRowHeights.flatSession(width: width))
+            }
+        }
+        XCTAssertEqual(height(.flatSession(workspace: true)), 81)
+        var larger = metrics
+        larger.sessionLines = .init(title: 79, project: 71.5, workspace: 64.5)
+        XCTAssertEqual(height(.flatSession(workspace: true), metrics: larger), 236)
+        XCTAssertEqual(height(.flatSession(workspace: false), metrics: larger), 189.5)
+        larger.branchIcon = CGSize(width: 13, height: 70)
+        XCTAssertEqual(height(.flatSession(workspace: true), metrics: larger), 241.5)
+    }
+
+    /// The kind's height is the row's own, with any words in it, at any
+    /// lines and width.
+    func testAFlatSessionsHeightIsItsLayouts() {
+        let lineSets: [FlatSessionRowLayout.Lines] = [
+            .designed,
+            .init(title: 18.5, project: 16.5, workspace: 15),
+            .init(title: 22, project: 19, workspace: 18),
+            .init(title: 29.5, project: 27, workspace: 24.5),
+            .init(title: 79, project: 71.5, workspace: 64.5),
+        ]
+        for lines in lineSets {
+            var scaled = metrics
+            scaled.sessionLines = lines
+            for width in widths {
+                for workspace in [false, true] {
+                    let layout = FlatSessionRowLayout(.init(
+                        width: width,
+                        title: text("A long title that never wraps on its one line", lineHeight: lines.title, maxLines: 1),
+                        timestamp: text("12:55 PM", lineHeight: lines.title, maxLines: 1),
+                        project: text("happy", lineHeight: lines.project, maxLines: 1),
+                        workspace: workspace ? text("fix-login", lineHeight: lines.workspace, maxLines: 1) : nil,
+                        branchIcon: scaled.branchIcon,
+                        showsDivider: true,
+                        lines: lines
+                    ))
+                    XCTAssertEqual(height(.flatSession(workspace: workspace), width: width, metrics: scaled), layout.size.height, "\(lines) at \(width)")
+                }
+            }
+        }
+    }
+
     func testTheContentRowsAreApplysOwnHeights() {
         for width in widths {
             XCTAssertEqual(height(.projectCard, width: width), HomeRowHeights.projectCard(width: width))
