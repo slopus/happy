@@ -9,7 +9,10 @@ import UIKit
 /// the stack, the sidebar and anything presented over them, belongs to the
 /// root being left, and is replaced before the window takes touches again,
 /// whatever the decision. A newer root replaces a pending one without
-/// letting go in between.
+/// letting go in between. When ending editing for the hold cancels the
+/// request (or the decision is otherwise applied inside the hold), the
+/// root is installed within that same call, before the window's touches
+/// were ever taken, so nothing reaches the screens being left in between.
 @MainActor
 final class ScreensLanguage {
     /// Only the gate that took the hold lets it go, so it lives as long as
