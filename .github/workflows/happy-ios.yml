@@ -88,13 +88,27 @@ jobs:
           if [[ ! -d build/ci/HappyUIKitTests.xcresult ]]; then
             exit 0
           fi
-          xcrun xcresulttool get test-results summary \
-            --path build/ci/HappyUIKitTests.xcresult > build/ci/test-summary.json
-          xcrun xcresulttool get test-results tests \
-            --path build/ci/HappyUIKitTests.xcresult > build/ci/test-results.json
-          xcrun xcresulttool export diagnostics \
-            --path build/ci/HappyUIKitTests.xcresult \
-            --output-path build/ci/diagnostics
+          export_json() {
+            local kind="$1" output="$2"
+            if xcrun xcresulttool get test-results "$kind" --help >> build/ci/diagnostics-export.log 2>&1 \
+              && xcrun xcresulttool get test-results "$kind" \
+                --path build/ci/HappyUIKitTests.xcresult > "$output.tmp" 2>> build/ci/diagnostics-export.log \
+              && mv "$output.tmp" "$output"; then
+              :
+            else
+              echo "::warning::Could not export native test $kind; see diagnostics-export.log"
+            fi
+          }
+          export_json summary build/ci/test-summary.json
+          export_json tests build/ci/test-results.json
+          if xcrun xcresulttool export diagnostics --help >> build/ci/diagnostics-export.log 2>&1 \
+            && xcrun xcresulttool export diagnostics \
+              --path build/ci/HappyUIKitTests.xcresult \
+              --output-path build/ci/diagnostics >> build/ci/diagnostics-export.log 2>&1; then
+            :
+          else
+            echo "::warning::Could not export native test diagnostics; see diagnostics-export.log"
+          fi
       - name: Upload test results and build log
         if: always()
         uses: actions/upload-artifact@v4
@@ -107,5 +121,6 @@ jobs:
             packages/happy-ios/build/ci/test-summary.json
             packages/happy-ios/build/ci/test-results.json
             packages/happy-ios/build/ci/diagnostics
+            packages/happy-ios/build/ci/diagnostics-export.log
           if-no-files-found: warn
           retention-days: 7
