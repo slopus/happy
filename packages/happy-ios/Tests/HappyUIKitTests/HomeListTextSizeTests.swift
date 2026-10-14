@@ -330,6 +330,17 @@ final class HomeListTextSizeTests: XCTestCase {
         }
     }
 
+    /// The table's content is the header and every row's own height, on
+    /// screen or not: no row is the table's estimate.
+    private func assertContentIsEveryRow(_ shown: Shown, _ message: String, line: UInt = #line) {
+        let table = shown.table
+        var height = table.tableHeaderView?.frame.height ?? 0
+        for row in 0..<table.numberOfRows(inSection: 0) {
+            height += shown.list.tableView(table, heightForRowAt: IndexPath(row: row, section: 0))
+        }
+        assertSamePixel(table.contentSize.height, height, scale: shown.scale, "the content, \(message): \(shown.geometry())", line: line)
+    }
+
     /// The first show waits one hop for its environment, with no rows,
     /// then shows every row at the person's text size, as tall as its cell
     /// draws it.
@@ -362,6 +373,7 @@ final class HomeListTextSizeTests: XCTestCase {
         let shown = try show(model, category: .large, account: account)
         defer { shown.window.isHidden = true }
         await landed(shown)
+        assertContentIsEveryRow(shown, "large")
         let table = shown.table
         let inset = table.adjustedContentInset.top
         XCTAssertGreaterThan(inset, 0)
@@ -384,6 +396,7 @@ final class HomeListTextSizeTests: XCTestCase {
         XCTAssertEqual(table.numberOfRows(inSection: 0), model.rows.count)
         XCTAssertGreaterThan(table.rectForRow(at: anchor).height, before)
         XCTAssertNotEqual(table.contentOffset.y, 1500, "the rows above grew")
+        assertContentIsEveryRow(shown, "after the change")
         assertSamePixel(
             table.rectForRow(at: anchor).minY - (table.contentOffset.y + inset),
             onScreen,
@@ -426,6 +439,7 @@ final class HomeListTextSizeTests: XCTestCase {
         XCTAssertEqual(sessions.count, 62)
         let last = try XCTUnwrap(sessions.last).row
         XCTAssertEqual(shown.list.textEnvironmentReconfigured, sessions, "every session row, on screen or not")
+        assertContentIsEveryRow(shown, "after the change")
 
         let page = table.bounds.height - inset.top - inset.bottom
         XCTAssertGreaterThan(page, 0)

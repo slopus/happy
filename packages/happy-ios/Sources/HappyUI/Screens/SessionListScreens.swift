@@ -109,6 +109,14 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
         super.viewDidLoad()
         tableView.separatorStyle = .none
         tableView.contentInsetAdjustmentBehavior = .never
+        // Every row's height is arithmetic on lines already worked out
+        // (nothing is measured for it), so the table asks for all of them
+        // instead of estimating the rows it hasn't shown. With estimates,
+        // the content's end and the rows off screen were guesses, and the
+        // row at the top moved when a new text size landed.
+        tableView.estimatedRowHeight = 0
+        tableView.estimatedSectionHeaderHeight = 0
+        tableView.estimatedSectionFooterHeight = 0
         tableView.delegate = self
         tableView.dataSource = self
         for (type, identifier) in [
