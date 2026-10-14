@@ -82,6 +82,8 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             | tee build/ci/xcodebuild.log
       - name: Build hosted UIKit tests and verify host isolation
+        id: hosted_build
+        if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           xcodebuild build-for-testing \
@@ -118,6 +120,7 @@ jobs:
               raise SystemExit('Hosted UIKit app isolation check failed')
           PY
       - name: Run hosted UIKit tests on the simulator
+        if: ${{ !cancelled() && steps.hosted_build.outcome == 'success' }}
         run: |
           set -euo pipefail
           xcodebuild test \
