@@ -227,6 +227,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         scrollButton.addTarget(self, action: #selector(scrollToNewest), for: .touchUpInside)
         view.addSubview(scrollButton)
         tabStrip.isHidden = true
+        tabStrip.names = Self.tabNames(account)
         tabStrip.onSelect = { [weak self] id in self?.selectTab(id) }
         tabStrip.onLongPress = { [weak self] id in self?.sessionActions.present(sessionId: id) }
         tabStrip.onAdd = { [weak self] in self?.newTab() }
@@ -696,6 +697,16 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     private static func stripOffsets(_ account: AccountSession) -> [String: CGFloat] {
         stripOffsetTable.object(forKey: account)?.offsets ?? [:]
+    }
+
+    /// The strip's measured names, per account.
+    private static let tabNameTable = NSMapTable<AccountSession, WorktreeTabNames>.weakToStrongObjects()
+
+    private static func tabNames(_ account: AccountSession) -> WorktreeTabNames {
+        if let names = tabNameTable.object(forKey: account) { return names }
+        let names = WorktreeTabNames()
+        tabNameTable.setObject(names, forKey: account)
+        return names
     }
 
     private func keepStripOffset() {

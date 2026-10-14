@@ -11,6 +11,12 @@ import UIKit
 /// The screen owns what the tabs mean: a tap asks it to switch in place, a
 /// long press to show the chat's actions. `WorktreeTabStripLayout` places
 /// everything.
+///
+/// The names follow the person's text size on their own, as the composer
+/// does: the strip's heights are fixed and only its widths come from the
+/// names. They are measured off the main thread and kept by name, face and
+/// text size (`WorktreeTabNames`); new tabs are placed once theirs are in,
+/// so the main thread only places frames.
 final class ChatWorktreeTabStrip: UIView {
     struct Item: Equatable {
         var id: String
@@ -50,8 +56,22 @@ final class ChatWorktreeTabStrip: UIView {
     /// switch to pick up from.
     var offset: CGFloat { scroller.contentOffset.x }
 
+    /// The account's measured names; the screen hands in its account's.
+    var names = WorktreeTabNames()
+
+    /// The tabs placed, with their names' sizes.
     private(set) var items: [Item] = []
     private var selectedId: String?
+    private var sizes: [CGSize] = []
+    /// What was asked for last, placed once its names are measured.
+    private var wanted: Wanted?
+    private var measuring = 0
+    /// Nothing is shown until the first tabs are placed: no empty capsule.
+    private var named = false {
+        didSet { if named != oldValue { applyMaterial() } }
+    }
+    /// The last placement, for tests.
+    private(set) var layout: WorktreeTabStripLayout?
     private let glassView = HeaderGlassView()
     private let solidView = UIView()
     private let clip = UIView()
@@ -92,6 +112,10 @@ final class ChatWorktreeTabStrip: UIView {
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
             self.applyMaterial()
         }
+        traitOverrides.followsTextSize = true
+        registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
+            self.measureNames()
+        }
     }
 
     @available(*, unavailable)
@@ -111,10 +135,44 @@ final class ChatWorktreeTabStrip: UIView {
     }
 
     func update(items: [Item], selectedId: String) {
-        let selectionMoved = selectedId != self.selectedId
-        guard items != self.items || selectionMoved else { return }
-        self.items = items
-        self.selectedId = selectedId
+        let wanted = Wanted(items: items, selectedId: selectedId)
+        guard wanted != self.wanted else { return }
+        self.wanted = wanted
+        measureNames()
+    }
+
+    private struct Wanted: Equatable {
+        var items: [Item]
+        var selectedId: String
+    }
+
+    /// Places what was asked for: at once when every name is kept,
+    /// otherwise once the missing ones are measured off the main thread. A
+    /// newer ask, or a new text size, drops what an older one measured.
+    private func measureNames() {
+        guard let wanted else { return }
+        let environment = TextEnvironment(traitCollection)
+        let names = wanted.items.map { WorktreeTabName(title: $0.title, selected: $0.id == wanted.selectedId, environment: environment) }
+        measuring += 1
+        if let sizes = self.names.sizes(names) {
+            place(wanted, sizes: sizes)
+            return
+        }
+        let generation = measuring
+        let store = self.names
+        Task { @MainActor [weak self] in
+            let sizes = await Task.detached(priority: .userInitiated) { store.measure(names) }.value
+            guard let self, self.measuring == generation else { return }
+            self.place(wanted, sizes: sizes)
+        }
+    }
+
+    private func place(_ wanted: Wanted, sizes: [CGSize]) {
+        let selectionMoved = wanted.selectedId != selectedId
+        guard wanted.items != items || selectionMoved || sizes != self.sizes || !named else { return }
+        items = wanted.items
+        selectedId = wanted.selectedId
+        self.sizes = sizes
         var kept: [String: TabControl] = [:]
         for item in items {
             let tab = tabs[item.id] ?? makeTab()
@@ -126,6 +184,7 @@ final class ChatWorktreeTabStrip: UIView {
         // Keep the open tab in view, including one that didn't exist a
         // moment ago.
         if selectionMoved || revealId != nil { revealId = selectedId }
+        named = true
         setNeedsLayout()
     }
 
@@ -145,11 +204,12 @@ final class ChatWorktreeTabStrip: UIView {
             maxWidth: maxWidth,
             border: glass ? WorktreeTabStripLayout.Metrics.glassBorder : 1 / scale,
             hairline: 1 / scale,
-            tabs: items.map { item in
-                WorktreeTabStripLayout.Tab(label: tabs[item.id]?.labelMeasurable ?? .fixed(width: 0, height: 0), dot: TabControl.hasDot(item, selected: item.id == selectedId))
+            tabs: zip(items, sizes).map { item, size in
+                WorktreeTabStripLayout.Tab(label: .fixed(width: size.width, height: size.height), dot: TabControl.hasDot(item, selected: item.id == selectedId))
             },
             showsAdd: showsAdd
         )
+        self.layout = layout
         glassView.setLayoutFrame(layout.pill)
         solidView.setLayoutFrame(layout.pill)
         solidView.layer.cornerRadius = layout.pill.height / 2
@@ -164,6 +224,8 @@ final class ChatWorktreeTabStrip: UIView {
         if let frame = layout.divider { divider.setLayoutFrame(frame) }
         if let frame = layout.add { addButton.setLayoutFrame(frame) }
 
+        // Scrolled once there are tabs to scroll.
+        guard named else { return }
         let maxOffset = max(0, layout.contentWidth - layout.scroller.width)
         if let restored = restoredOffset, layout.scroller.width > 0 {
             restoredOffset = nil
@@ -182,8 +244,9 @@ final class ChatWorktreeTabStrip: UIView {
     }
 
     private func applyMaterial() {
-        glassView.isHidden = !glass
-        solidView.isHidden = glass
+        glassView.isHidden = !glass || !named
+        solidView.isHidden = glass || !named
+        clip.isHidden = !named
         solidView.backgroundColor = UIColor(Palette.surfaceHigh)
         solidView.layer.borderWidth = 1 / layoutScale
         solidView.layer.borderColor = UIColor(Palette.divider).resolvedColor(with: traitCollection).cgColor
@@ -242,8 +305,6 @@ final class ChatWorktreeTabStrip: UIView {
         static func hasDot(_ item: Item, selected: Bool) -> Bool {
             item.blocked || item.unread && !selected
         }
-
-        var labelMeasurable: Measurable { label.measurable }
 
         func configure(_ item: Item, selected: Bool) {
             if selected != isOpen || self.item == nil {
@@ -313,6 +374,78 @@ final class ChatWorktreeTabStrip: UIView {
         override var isHighlighted: Bool {
             didSet { alpha = isHighlighted ? WorktreeTabStripLayout.Metrics.pressedOpacity : 1 }
         }
+    }
+}
+
+/// A tab's name as its label draws it: the text, the face (the open tab's
+/// is semibold) and the text size.
+struct WorktreeTabName: Hashable, Sendable {
+    var title: String
+    var selected: Bool
+    var environment: TextEnvironment
+}
+
+/// The strip's names, measured off the main thread and kept by everything
+/// their size depends on; a tab's width is then the layout's to cap. One
+/// per account, since the names are its chats': the screen that takes over
+/// on a tab switch places its tabs without measuring them again.
+final class WorktreeTabNames: @unchecked Sendable {
+    /// Past this many, the kept sizes start over.
+    static let limit = 512
+
+    private let lock = NSLock()
+    private var kept: [WorktreeTabName: CGSize] = [:]
+    private let measurer: @Sendable (WorktreeTabName) -> CGSize
+
+    init(measure: @escaping @Sendable (WorktreeTabName) -> CGSize = { WorktreeTabNames.size($0) }) {
+        measurer = measure
+    }
+
+    /// Every name's size if every one is kept; nil when one needs measuring.
+    func sizes(_ names: [WorktreeTabName]) -> [CGSize]? {
+        lock.withLock {
+            var sizes: [CGSize] = []
+            sizes.reserveCapacity(names.count)
+            for name in names {
+                guard let size = kept[name] else { return nil }
+                sizes.append(size)
+            }
+            return sizes
+        }
+    }
+
+    /// Every name's size, measuring the ones not kept. Off the main thread.
+    func measure(_ names: [WorktreeTabName]) -> [CGSize] {
+        names.map { name in
+            if let size = lock.withLock({ kept[name] }) { return size }
+            let size = measurer(name)
+            lock.withLock {
+                if kept.count >= Self.limit { kept.removeAll(keepingCapacity: true) }
+                kept[name] = size
+            }
+            return size
+        }
+    }
+
+    /// One line in the tab's face at the text size, laid out as its
+    /// StyledLabel draws it, the box rounded up to the screen's pixels.
+    /// Every TextKit object lives for one call, so it is safe off main.
+    static func size(_ name: WorktreeTabName) -> CGSize {
+        guard !name.title.isEmpty else { return .zero }
+        // Before the first font, so no name is measured in the fallback.
+        Fonts.registerBundledFonts()
+        let style = (name.selected ? TextStyles.worktreeTabSelected : TextStyles.worktreeTab).scaled(name.environment.scale)
+        let storage = NSTextStorage(attributedString: style.attributedString(name.title, color: .black, lineBreakMode: .byTruncatingTail))
+        let manager = NSLayoutManager()
+        let container = NSTextContainer(size: CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude))
+        container.lineFragmentPadding = 0
+        container.maximumNumberOfLines = 1
+        manager.addTextContainer(container)
+        storage.addLayoutManager(manager)
+        manager.ensureLayout(for: container)
+        let used = manager.usedRect(for: container)
+        let scale = max(name.environment.displayScale, 1)
+        return CGSize(width: (used.width * scale).rounded(.up) / scale, height: (used.height * scale).rounded(.up) / scale)
     }
 }
 #endif
