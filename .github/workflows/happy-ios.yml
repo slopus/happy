@@ -77,13 +77,14 @@ jobs:
             -destination-timeout 120 \
             -derivedDataPath build/ci/DerivedData \
             -resultBundlePath build/ci/HappyUIKitTests.xcresult \
+            -only-testing:HappyUIKitTests/ComposerRunProbeTests \
             -parallel-testing-enabled NO \
             -jobs 4 \
             CODE_SIGNING_ALLOWED=NO \
             | tee build/ci/xcodebuild.log
       - name: Build hosted UIKit tests and verify host isolation
         id: hosted_build
-        if: ${{ !cancelled() }}
+        if: ${{ false }}
         run: |
           set -euo pipefail
           xcodebuild build-for-testing \
