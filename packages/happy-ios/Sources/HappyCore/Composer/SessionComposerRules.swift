@@ -342,9 +342,8 @@ public struct DraftAutosave: Equatable, Sendable {
     public mutating func textChanged(_ value: String, synced: Bool = false) -> Action {
         pending = nil
         guard value != lastSaved else { return .none }
-        let wasEmpty = lastSaved.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        let isEmpty = value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if synced || wasEmpty != isEmpty {
+        let isEmpty = Self.isBlank(value)
+        if synced || Self.isBlank(lastSaved) != isEmpty {
             lastSaved = value
             stored = value
             return .saveNow(value)
@@ -355,6 +354,15 @@ public struct DraftAutosave: Equatable, Sendable {
         }
         return .none
     }
+
+    /// Nothing but whitespace (`trim().length === 0`). Stops at the first
+    /// other character instead of copying the trimmed text, so a long
+    /// draft costs nothing extra on each keystroke.
+    public static func isBlank(_ text: String) -> Bool {
+        !text.unicodeScalars.contains { !blank.contains($0) }
+    }
+
+    private static let blank = CharacterSet.whitespacesAndNewlines
 
     /// The scheduled save fired.
     public mutating func saved(_ value: String) {

@@ -88,6 +88,22 @@ public protocol ChatComposerView: UIView {
     /// every screen layout, so keep it cheap (cache by width and content).
     func composerHeight(fitting width: CGFloat) -> CGFloat
 
+    /// The opening draft is read and `composerHeight(fitting:)` at the
+    /// width last asked for is its measured height (measured off the main
+    /// thread), or the wait for that ran out (`ChatComposerRestore.timeout`
+    /// after the composer was made), or the person reached the composer
+    /// first (a focus or a send). Until then the height is a guess: keep
+    /// the dock hidden and lay it out anyway, so the first frame shown is
+    /// the restored one. It turns true once and stays true, `retarget`
+    /// included. It may turn true inside `composerHeight(fitting:)`: read
+    /// it after; the delegate hears `composerDidRestore` too, then on the
+    /// next turn of the main queue.
+    var isRestored: Bool { get }
+
+    /// Moves when a `retarget` finds the composer not yet restored: a
+    /// `composerDidRestore` carrying an older one is stale.
+    var restoreGeneration: Int { get }
+
     /// From the composer's top to its card's top: the status rows sit
     /// above the card. The scroll-to-newest button floats 16 above the card.
     var cardOffset: CGFloat { get }
@@ -123,10 +139,30 @@ public protocol ChatComposerDelegate: AnyObject {
     /// The text view gained or lost focus.
     func composerDidChangeFocus(_ composer: any ChatComposerView)
 
+    /// `isRestored` turned true. The dock's height is already laid out
+    /// (`composerDidInvalidateHeight` came first if it moved): show it, at
+    /// once and unanimated. `generation` is the `restoreGeneration` it was
+    /// reached in.
+    func composerDidRestore(_ composer: any ChatComposerView, generation: Int)
+
     /// The sender accepted a message (its local id). The screen scrolls to
     /// the newest message and, as happy-app does, dismisses any question
     /// the agent was waiting on, since the message answers it.
     func composer(_ composer: any ChatComposerView, didSend localId: String)
+}
+
+extension ChatComposerDelegate {
+    public func composerDidRestore(_ composer: any ChatComposerView, generation: Int) {}
+}
+
+/// How long the chat waits for its composer's opening draft.
+public enum ChatComposerRestore {
+    /// From the composer's making to its showing at the latest, at the
+    /// height known then; nothing is measured on the main thread when it
+    /// runs out. Not happy-app's (its draft is in memory as the chat
+    /// opens): the read and the measurement take a few milliseconds, so
+    /// this only bounds a stalled read. Not tuned on a device.
+    public static let timeout: Duration = .milliseconds(300)
 }
 
 /// Makes the composer the chat docks.

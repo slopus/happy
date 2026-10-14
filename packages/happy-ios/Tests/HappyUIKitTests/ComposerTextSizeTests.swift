@@ -34,17 +34,22 @@ final class ComposerTextSizeTests: XCTestCase {
         return card
     }
 
-    func testAFollowingCardDrawsAndMeasuresAtTheTextSize() throws {
+    func testAFollowingCardDrawsAndMeasuresAtTheTextSize() async throws {
         let (window, host) = host(follows: true)
         let card = card()
         host.addSubview(card)
         card.updateTraitsIfNeeded()
         let font = try XCTUnwrap(card.textView.font)
         XCTAssertEqual(font.pointSize, 16 * largest.multiplier, accuracy: 0.001)
+        _ = card.layoutInput(width: 377)
+        await card.textMeasured()
         let input = card.layoutInput(width: 377)
         XCTAssertEqual(input.lineHeight ?? 0, 22 * largest.multiplier, accuracy: 0.001)
-        // The text is measured at the size it is drawn at.
-        XCTAssertGreaterThan(input.textContentHeight, 22 * largest.multiplier)
+        // The text is measured at the size it is drawn at: one line and
+        // the 4 + 4, as the text view sizes itself.
+        XCTAssertEqual(input.textContentHeight, ceil(22 * largest.multiplier + 8))
+        let textWidth = card.layout(width: 377).text.width
+        XCTAssertEqual(input.textContentHeight, ceil(card.textView.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude)).height))
         XCTAssertEqual(card.height(fitting: 377), AgentInputCardLayout(input).size.height)
         withExtendedLifetime(window) {}
     }
