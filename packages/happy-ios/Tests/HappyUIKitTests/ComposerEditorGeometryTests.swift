@@ -150,5 +150,44 @@ final class ComposerEditorGeometryTests: XCTestCase {
     func testTheFlatPanelAtEveryTextSize() async throws {
         try await checkEveryTextSize(desktop: true)
     }
+
+    /// New Session's prompt, at its own width and its one text size.
+    func testTheNewSessionPrompt() async throws {
+        typealias M = NewSessionComposerLayout.Metrics
+        let width: CGFloat = 369
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        func prompt(_ text: String) async -> NewSessionComposerView {
+            let composer = NewSessionComposerView(frame: CGRect(x: 0, y: 0, width: width, height: 98))
+            window.addSubview(composer)
+            composer.setText(text)
+            _ = composer.layout(width: width)
+            await composer.textMeasured()
+            composer.frame.size.height = composer.layout(width: width).size.height
+            composer.layoutIfNeeded()
+            return composer
+        }
+        let probe = await prompt("hello")
+        let wraps = Self.onLine(
+            attributes: probe.textView.typingAttributes,
+            insets: probe.textView.textContainerInset,
+            width: probe.textView.bounds.width
+        )
+        probe.removeFromSuperview()
+        for (name, text) in Self.texts + wraps {
+            let composer = await prompt(text)
+            let layout = composer.layout(width: width)
+            ComposerEditorGeometry.assertFits(
+                composer.textView,
+                measured: nil,
+                frame: layout.input.height,
+                minimum: M.lineHeight,
+                cap: M.inputMaxHeight,
+                scrolls: layout.textScrolls,
+                host: window,
+                "new session \(name)"
+            )
+            composer.removeFromSuperview()
+        }
+    }
 }
 #endif

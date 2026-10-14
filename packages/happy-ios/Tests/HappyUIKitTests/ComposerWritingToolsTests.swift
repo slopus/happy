@@ -48,6 +48,14 @@ final class ComposerWritingToolsTests: XCTestCase {
         XCTAssertNotNil(card.textView.textLayoutManager)
     }
 
+    func testTheNewSessionPromptGetsInlineWritingTools() throws {
+        guard #available(iOS 18.2, *) else { throw XCTSkip("Writing Tools' coordinator is iOS 18.2+") }
+        let composer = NewSessionComposerView(frame: .zero)
+        XCTAssertEqual(composer.textView.writingToolsBehavior, .default)
+        XCTAssertEqual(resolved(composer.textView), .complete)
+        XCTAssertNotNil(composer.textView.textLayoutManager)
+    }
+
     /// The control: what a TextKit 1 view, as the card's was, resolves to.
     func testATextKit1ViewGetsThePanel() throws {
         guard #available(iOS 18.2, *) else { throw XCTSkip("Writing Tools' coordinator is iOS 18.2+") }

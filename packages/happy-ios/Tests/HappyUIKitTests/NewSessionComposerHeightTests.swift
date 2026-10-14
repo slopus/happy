@@ -8,7 +8,9 @@ import XCTest
 /// The new session composer's prompt is measured off the main thread, as
 /// the session composer's is: a guess until the height lands, never a
 /// measurement on the main thread, and a draft that comes back unchanged
-/// to a composer of the same memo opens at its height.
+/// to a composer of the same memo opens at its height. The height is the
+/// TextKit 1 one Fabric gives a TextInput; the prompt, TextKit 2 as RN's
+/// is, fits inside it.
 @MainActor
 final class NewSessionComposerHeightTests: XCTestCase {
     private let width: CGFloat = 369
@@ -24,14 +26,41 @@ final class NewSessionComposerHeightTests: XCTestCase {
         return (1...count).map { "\(tag) line \($0)" }.joined(separator: "\n")
     }
 
-    /// What UITextView itself gives the text at the input's width.
-    private func viewHeight(_ composer: NewSessionComposerView, _ text: String) -> CGFloat {
-        let reference = UITextView()
-        reference.textContainerInset = .zero
-        reference.textContainer.lineFragmentPadding = 0
-        reference.isScrollEnabled = false
-        reference.attributedText = TextStyles.composerInput.attributedString(text, color: UIColor(Palette.inputText))
-        return ceil(reference.sizeThatFits(CGSize(width: composer.layout(width: width).input.width, height: .greatestFiniteMagnitude)).height)
+    /// The height Fabric gives the prompt's text at the input's width: what a
+    /// TextKit 1 twin of its text view (its text, attributes and insets)
+    /// sizes it to (`RCTTextLayoutManager`), as `ComposerTextMeasure`
+    /// measures it.
+    private func textKit1Height(_ composer: NewSessionComposerView) -> CGFloat {
+        let twin = ComposerEditorGeometry.textKit1Twin(of: composer.textView)
+        return ComposerEditorGeometry.ownHeight(twin, width: composer.layout(width: width).input.width)
+    }
+
+    /// The prompt as the screen shows it, in a window at the width with its
+    /// text measured: a TextKit 2 view in that frame, its own text inside it
+    /// in TextKit 1's lines, every line's caret inside
+    /// (`ComposerEditorGeometry`).
+    private func assertThePromptFits(_ composer: NewSessionComposerView, file: StaticString = #filePath, line: UInt = #line) async {
+        typealias M = NewSessionComposerLayout.Metrics
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        window.addSubview(composer)
+        composer.frame = CGRect(x: 0, y: 0, width: width, height: composer.layout(width: width).size.height)
+        await composer.textMeasured()
+        composer.frame.size.height = composer.layout(width: width).size.height
+        composer.layoutIfNeeded()
+        let layout = composer.layout(width: width)
+        ComposerEditorGeometry.assertFits(
+            composer.textView,
+            measured: nil,
+            frame: layout.input.height,
+            minimum: M.lineHeight,
+            cap: M.inputMaxHeight,
+            scrolls: layout.textScrolls,
+            host: window,
+            "the prompt",
+            file: file,
+            line: line
+        )
+        composer.removeFromSuperview()
     }
 
     func testADraftIsMeasuredOffTheMainThreadAndLandsOnce() async {
@@ -43,8 +72,9 @@ final class NewSessionComposerHeightTests: XCTestCase {
         // Nothing was measured here: one line stands in.
         XCTAssertEqual(composer.layout(width: width).input.height, NewSessionComposerLayout.Metrics.lineHeight)
         await composer.textMeasured()
-        XCTAssertEqual(composer.layout(width: width).input.height, viewHeight(composer, text))
+        XCTAssertEqual(composer.layout(width: width).input.height, textKit1Height(composer))
         XCTAssertEqual(changes, 1, "the screen lays out again once, when the height lands")
+        await assertThePromptFits(composer)
     }
 
     func testADraftThatComesBackOpensAtItsHeight() async {
@@ -85,7 +115,8 @@ final class NewSessionComposerHeightTests: XCTestCase {
         next.setText(edited)
         _ = next.layout(width: width)
         await next.textMeasured()
-        XCTAssertEqual(next.layout(width: width).input.height, viewHeight(next, edited))
+        XCTAssertEqual(next.layout(width: width).input.height, textKit1Height(next))
+        await assertThePromptFits(next)
     }
 
     func testAReplacedDraftNeverShowsTheOldHeight() async {
