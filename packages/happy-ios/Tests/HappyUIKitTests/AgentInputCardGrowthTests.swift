@@ -78,18 +78,26 @@ final class AgentInputCardGrowthTests: XCTestCase {
         XCTAssertEqual(owner.invalidations, 0)
     }
 
-    func testTheMeasureAgreesWithTheTextView() async {
+    /// Measured as Fabric measures a TextInput, TextKit 1 (a TextKit 1
+    /// twin of the text view gives it exactly), and the TextKit 2 view's own
+    /// text fits it, in the same lines.
+    func testTheMeasureIsTextKit1sAndTheEditorFitsIt() async {
         let owner = Owner()
         let card = await laidOutCard(owner)
         for text in ["one", "one\ntwo", "one\n", String(repeating: "wrap me ", count: 12), "😀 e\u{301} 漢字"] {
             card.setText(text, selection: NSRange(location: 0, length: 0))
             _ = card.layoutInput(width: 377)
             await card.textMeasured()
+            card.layoutIfNeeded()
             let width = card.layout(width: 377).text.width
-            let native = ceil(card.textView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)
+            let twin = ComposerEditorGeometry.layOut(ComposerEditorGeometry.textKit1Twin(of: card.textView), width: width)
+            let native = ComposerEditorGeometry.ownHeight(twin, width: width)
             // All under the cap, so measured whole, as `sizeThatFits` does.
             XCTAssertLessThan(native, 120)
             XCTAssertEqual(card.layoutInput(width: 377).textContentHeight, native, text.debugDescription)
+            XCTAssertLessThanOrEqual(ComposerEditorGeometry.ownHeight(card.textView, width: width), native, text.debugDescription)
+            XCTAssertEqual(ComposerEditorGeometry.lines(card.textView), ComposerEditorGeometry.lines(twin), text.debugDescription)
+            XCTAssertNotNil(card.textView.textLayoutManager, text.debugDescription)
         }
         withExtendedLifetime(owner) {}
     }

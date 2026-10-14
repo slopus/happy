@@ -279,11 +279,14 @@ public final class AgentInputCardView: UIView {
     /// The text view, for owners that need it (input accessories, first
     /// responder chains). Don't set its delegate.
     ///
-    /// TextKit 1, the TextKit its height is measured with off the main
-    /// thread (`ComposerTextMeasure`), so it lays its lines out as they
-    /// were measured. A TextKit 2 view lays out a fractional line height
-    /// (a scaled 22pt line) a point shorter than the measure.
-    public let textView = UITextView(usingTextLayoutManager: false)
+    /// TextKit 2, as RN's `RCTUITextView` is, in the frame Fabric would give
+    /// it: the TextKit 1 height `ComposerTextMeasure` measures off the main
+    /// thread. TextKit 2 lays a fractional line height (a scaled 22pt line)
+    /// out a little shorter, more so each line, so the text sits inside its
+    /// frame as it does in RN. UIKit gives a TextKit 2 view Writing Tools'
+    /// inline experience and a TextKit 1 view only its panel. Never ask it
+    /// for its `layoutManager`: that turns it into TextKit 1 for good.
+    public let textView = UITextView(usingTextLayoutManager: true)
 
     private let surface = UIView()
     private let material = PartialBlurView(fraction: ComposerShadow.materialFraction)
