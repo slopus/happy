@@ -147,6 +147,35 @@ final class MarkdownLayoutTests: XCTestCase {
         assertSize(layout.size, CGSize(width: 300, height: 674))
     }
 
+    func testAMermaidDiagramIs200TallUntilItsPageSaysMoreAndScrollsPast600() {
+        let layout = MarkdownLayout(width: 300, blocks: [
+            .mermaid(reported: nil),
+            .mermaid(reported: 120),
+            .mermaid(reported: 345.5),
+            .mermaid(reported: 1800),
+        ])
+        assertFrame(layout.blocks[0].frame, rect(0, 8, 300, 200))
+        assertFrame(layout.blocks[1].frame, rect(0, 224, 300, 200))
+        assertFrame(layout.blocks[2].frame, rect(0, 440, 300, 345.5))
+        assertFrame(layout.blocks[3].frame, rect(0, 801.5, 300, 600))
+        assertSize(layout.size, CGSize(width: 300, height: 1409.5))
+    }
+
+    func testOnlyAMermaidHeightThatGrowsTheBoxIsKept() {
+        XCTAssertNil(MarkdownLayout.mermaidHeightToKeep(reported: 180, kept: nil, scale: 3), "200 is shown anyway")
+        XCTAssertNil(MarkdownLayout.mermaidHeightToKeep(reported: 200, kept: nil, scale: 3))
+        XCTAssertEqual(MarkdownLayout.mermaidHeightToKeep(reported: 345.1, kept: nil, scale: 3)!, 1036.0 / 3, accuracy: 0.0001)
+        XCTAssertNil(MarkdownLayout.mermaidHeightToKeep(reported: 345.1, kept: 1036.0 / 3, scale: 3), "the same pixel again")
+        XCTAssertNil(MarkdownLayout.mermaidHeightToKeep(reported: 300, kept: 345, scale: 3), "never shrinks")
+        XCTAssertEqual(MarkdownLayout.mermaidHeightToKeep(reported: 5000, kept: 345, scale: 2), 600)
+        XCTAssertNil(MarkdownLayout.mermaidHeightToKeep(reported: 5100, kept: 600, scale: 2), "past the cap the page scrolls")
+        XCTAssertNil(MarkdownLayout.mermaidHeightToKeep(reported: .nan, kept: nil, scale: 2))
+    }
+
+    func testAMermaidDiagramTakesTheWholeWidth() {
+        XCTAssertEqual(MarkdownLayout.naturalWidth(of: [.text(text("hi", lineHeight: 25)), .mermaid(reported: nil)], available: 280), 280)
+    }
+
     func testShortCodeKeepsTheBlockFullWidth() {
         let layout = MarkdownLayout(width: 300, blocks: [.code(language: nil, code: CGSize(width: 50, height: 20))])
         guard case .code(let code) = layout.blocks[0] else { return XCTFail() }
@@ -574,6 +603,44 @@ final class ChatScreenLayoutTests: XCTestCase {
         assertFrame(typing.list, rect(0, 24, 700, 206))
     }
 
+    func testTheTabStripHangsUnderTheHeader() {
+        let layout = ChatScreenLayout(.init(
+            size: phone, safeArea: phoneUnderBar, keyboardTop: nil, accessories: [.inset(block(height: 60))], composerHeight: 70,
+            headerAccessory: WorktreeTabStripLayout.Metrics.height
+        ))
+        assertFrame(layout.headerAccessory, rect(0, 103, 393, 56))
+        XCTAssertEqual(layout.headerBottom, 159)
+        // chatListTopContentInset's headerAccessoryHeight: the oldest end
+        // clears the strip too.
+        XCTAssertEqual(layout.oldestEdgeInset, 171)
+        assertFrame(layout.list, rect(0, 0, 393, 852))
+        assertFrame(layout.placeholder, rect(0, 159, 393, 529))
+        // The scrim stays the header's own.
+        assertFrame(layout.headerScrim, rect(0, 0, 393, 111))
+    }
+
+    func testOnATabletTheListStartsUnderTheStrip() {
+        let layout = ChatScreenLayout(.init(
+            size: CGSize(width: 664, height: 768), safeArea: LayoutInsets(top: 74, left: 0, bottom: 20, right: 0), keyboardTop: nil,
+            composerHeight: 70, docked: true, accessoryPaddingH: 12, headerAccessory: 56
+        ))
+        assertFrame(layout.headerAccessory, rect(0, 74, 664, 56))
+        assertFrame(layout.list, rect(0, 130, 664, 548))
+        // OlderEnd's fallback spacer doesn't count the strip.
+        XCTAssertEqual(layout.oldestEdgeInset, 106)
+    }
+
+    func testWithoutTheHeaderNothingHangsUnderIt() {
+        let layout = ChatScreenLayout(.init(
+            size: CGSize(width: 667, height: 375), safeArea: LayoutInsets(), keyboardTop: nil,
+            composerHeight: 70, hidesHeader: true, headerAccessory: 56
+        ))
+        XCTAssertNil(layout.headerAccessory)
+        XCTAssertEqual(layout.headerBottom, 0)
+        assertFrame(layout.list, rect(0, 0, 667, 305))
+        XCTAssertEqual(layout.oldestEdgeInset, 12)
+    }
+
     func testTheDockRidesTheKeyboard() {
         let layout = screen(keyboardTop: 500)
         assertFrame(layout.dock, rect(0, 370, 393, 130))
@@ -988,5 +1055,60 @@ final class ChatPlainHeaderLayoutTests: XCTestCase {
         )
         assertFrame(layout.column, rect(16, 4, 632, 36))
         assertFrame(layout.subtitle, rect(0, 20, 60, 16))
+    }
+}
+
+final class WorktreeTabStripLayoutTests: XCTestCase {
+    func testTabsSitInACapsuleThatEndsInPlus() {
+        let layout = WorktreeTabStripLayout(
+            width: 393, maxWidth: .greatestFiniteMagnitude, border: 1, hairline: 0.5,
+            tabs: [
+                .init(label: text("Main", lineHeight: 18, maxLines: 1), dot: false),
+                .init(label: text("Fix strip", lineHeight: 18, maxLines: 1), dot: true),
+            ],
+            showsAdd: true
+        )
+        XCTAssertEqual(layout.size, CGSize(width: 393, height: 56))
+        assertFrame(layout.pill, rect(16, 10, 361, 40))
+        assertFrame(layout.inner, rect(1, 1, 359, 38))
+        assertFrame(layout.scroller, rect(0, 0, 318.5, 38))
+        assertFrame(layout.divider, rect(318.5, 9, 0.5, 20))
+        assertFrame(layout.add, rect(319, 0, 40, 38))
+        // 32 tall, 10 in, 2 apart, 4 from the capsule's ends.
+        assertFrame(layout.tabs[0].frame, rect(4, 3, 52, 32))
+        assertFrame(layout.tabs[0].label, rect(10, 7, 32, 18))
+        XCTAssertNil(layout.tabs[0].dot)
+        assertFrame(layout.tabs[1].frame, rect(58, 3, 105, 32))
+        assertFrame(layout.tabs[1].dot, rect(88, 12.5, 7, 7))
+        XCTAssertEqual(layout.contentWidth, 167)
+    }
+
+    func testATabGrowsToTwoHundred() {
+        let layout = WorktreeTabStripLayout(
+            width: 393, maxWidth: .greatestFiniteMagnitude, border: 1, hairline: 0.5,
+            tabs: [.init(label: text(String(repeating: "a", count: 30), lineHeight: 18, maxLines: 1), dot: false)],
+            showsAdd: false
+        )
+        assertFrame(layout.tabs[0].frame, rect(4, 3, 200, 32))
+        assertFrame(layout.tabs[0].label, rect(10, 7, 180, 18))
+        // No `+`: the tabs have the whole capsule.
+        assertFrame(layout.scroller, rect(0, 0, 359, 38))
+        XCTAssertNil(layout.add)
+    }
+
+    func testTheCapsuleKeepsToTheHeadersWidth() {
+        let layout = WorktreeTabStripLayout(width: 1000, maxWidth: 800, border: 0.5, hairline: 0.5, tabs: [], showsAdd: true)
+        assertFrame(layout.pill, rect(116, 10, 768, 40))
+        assertFrame(layout.inner, rect(0.5, 0.5, 767, 39))
+    }
+
+    func testOnlyATabOutOfViewIsScrolledTo() {
+        typealias L = WorktreeTabStripLayout
+        XCTAssertNil(L.revealOffset(tab: rect(100, 3, 80, 32), offset: 0, viewport: 300, contentWidth: 600))
+        // The smallest scroll that shows it, 8 to spare.
+        XCTAssertEqual(L.revealOffset(tab: rect(300, 3, 100, 32), offset: 0, viewport: 300, contentWidth: 600), 108)
+        XCTAssertEqual(L.revealOffset(tab: rect(10, 3, 100, 32), offset: 50, viewport: 300, contentWidth: 600), 2)
+        // Never past the content's end.
+        XCTAssertEqual(L.revealOffset(tab: rect(480, 3, 100, 32), offset: 0, viewport: 300, contentWidth: 584), 284)
     }
 }

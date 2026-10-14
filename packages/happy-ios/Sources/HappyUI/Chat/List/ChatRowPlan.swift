@@ -75,6 +75,24 @@ enum ChatDrawItem {
     /// A markdown image block's picture, loaded once it is on screen;
     /// `label` is what VoiceOver reads.
     case webImage(URL, frame: CGRect, label: String)
+    /// A mermaid diagram, drawn by its own page; the page reports how tall
+    /// it is with `mermaidHeight`.
+    case mermaid(ChatMermaid, frame: CGRect)
+}
+
+/// A diagram in a row: `index` is its place among the row's diagrams, so
+/// it keeps its height while the message streams (MermaidRenderer's state,
+/// kept by MarkdownView's `key={index}`).
+struct ChatMermaid: Equatable, Sendable {
+    var row: String
+    var index: Int
+    var content: String
+}
+
+/// The row a markdown text is in, and the heights its diagrams reported.
+struct ChatMermaidHeights: Equatable, Sendable {
+    var row = ""
+    var heights: [Int: CGFloat] = [:]
 }
 
 /// A picture the person attached: `ref` under the session's attachments,
@@ -103,6 +121,8 @@ enum ChatRowAction: Equatable, Sendable {
     case questionSubmit(toolId: String)
     /// "Show N more lines" on file `file` of a tool's diff `chunk`.
     case diffShowMore(toolId: String, chunk: Int, file: Int)
+    /// A diagram's page says how tall it is, in points.
+    case mermaidHeight(row: String, index: Int, height: CGFloat)
 
     // Long presses
 

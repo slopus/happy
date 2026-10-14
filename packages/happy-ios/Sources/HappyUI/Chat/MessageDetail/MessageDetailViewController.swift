@@ -17,6 +17,8 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     /// Of a patch's files, the one the reader tapped in the chat.
     private let focusFile: String?
     private let services: ChatServices
+    /// The account's diff documents and syntax colour, for the plan.
+    private let render: RenderServices
     private let scrollView = UIScrollView()
     private let canvas = MessageDetailCanvas()
     private let spinner = UIActivityIndicatorView(style: .medium)
@@ -49,6 +51,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
         focusFile = file
         spawnRequests = account.spawnRequests
         services = ChatServices.make(account: account, sessionId: sessionId, isCurrent: { [weak context, weak account] in account != nil && context?.account.session === account })
+        render = RenderServices(account)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -233,7 +236,8 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
             devMode: devMode,
             diffExpanded: diffExpanded,
             maxContentWidth: maxContentWidth,
-            focusFile: focusFile
+            focusFile: focusFile,
+            render: render
         )
         let width = view.bounds.width
         let measurer = self.measurer
@@ -246,8 +250,9 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
                 self.scheduleMeasure()
             }
             // A newer input is on its way; this one may still be the right
-            // message at the right width, so show it meanwhile.
-            guard plan.id == self.message?.id, width == self.view.bounds.width else { return }
+            // message at the right width, so show it meanwhile. One planned
+            // while the account stopped is plain or empty: never shown.
+            guard plan.id == self.message?.id, width == self.view.bounds.width, !input.render.isClosed else { return }
             self.show(plan)
         }
     }

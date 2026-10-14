@@ -179,6 +179,13 @@ extension Palette {
         dark: RGBA(red: 28 / 255, green: 23 / 255, blue: 28 / 255, alpha: 0.9)
     )
     public static let landscapeBackGlyph = ColorToken("#000000")
+    /// WorktreeTabStrip's open tab: a translucent chip, so it doesn't punch
+    /// a hole in the glass, rgba(0,0,0,0.07) in light and
+    /// rgba(255,255,255,0.14) in dark.
+    public static let worktreeTabSelected = ColorToken(
+        light: RGBA(red: 0, green: 0, blue: 0, alpha: 0.07),
+        dark: RGBA(red: 1, green: 1, blue: 1, alpha: 0.14)
+    )
 
     public static let chat: [ColorToken] = [
         userMessageText, agentEventText, surfacePressed, warning, boxWarningBackground, boxErrorBackground,
@@ -190,6 +197,7 @@ extension Palette {
         boxWarningText, todoCompleted, todoInProgress, todoPending, todoOther, onAccent, requiredDot,
         headerGlassSubtitle, fullViewPurple, fullViewGreen, fullViewRed, fullViewOrange, multiEditSeparator,
         cliWarningFill, cliWarningText, cliWarningIcon, landscapeBackFill, landscapeBackGlyph,
+        worktreeTabSelected,
     ]
 }
 
@@ -349,4 +357,7 @@ public enum ChatTextStyles {
 extension TextStyles {
     /// PendingChatPlaceholder's shimmering "Starting a new chat…".
     public static let pendingChatTitle = TextStyle(.semiBold, size: 18)
+    /// WorktreeTabStrip's tab name, semibold on the open tab.
+    public static let worktreeTab = TextStyle(.regular, size: 14, lineHeight: 18)
+    public static let worktreeTabSelected = TextStyle(.semiBold, size: 14, lineHeight: 18)
 }

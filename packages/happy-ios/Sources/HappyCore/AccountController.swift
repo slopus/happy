@@ -28,7 +28,11 @@ public final class AccountController {
 
     private let accountCredentialStore: AccountCredentialStore
     private let rnServerImport: @Sendable () -> ImportedAccountServer
-    private let storeDirectory: URL?
+    private let configuredStoreDirectory: URL?
+    /// Frozen after the one background bootstrap. A failed setup keeps this
+    /// controller in memory, matching the composition root's former nil URL.
+    private var storageDirectory: URL?
+    private var storagePreparation: Task<URL?, Never>?
     private let transport: HTTPTransport
     private let connector: WebSocketConnector
     private let appState: @Sendable () async -> String
@@ -43,6 +47,7 @@ public final class AccountController {
     private var cancelProfileObservation: (() -> Void)?
     // Internal injection seams exercise the actual suspension and I/O paths.
     var registryWriter = AccountRegistryWriter()
+    var prepareAccountStorage: @Sendable (URL?) throws -> Void = AccountStorageDirectory.prepare
     var readRegistryDisplays: @Sendable ([AccountRegistryEntry], [String: LocalStore], URL?) throws -> [String: AccountDisplay?] = AccountController.readDisplays
     var prepareSessionDirectory: @Sendable (URL, String) throws -> Void = AccountSession.prepareDirectory
     /// How every account's pictures are fetched.
@@ -75,7 +80,7 @@ public final class AccountController {
         self.clientID = clientID
         self.accountCredentialStore = accountCredentialStore ?? InMemoryAccountCredentialStore(sharedStore: credentialStore)
         self.rnServerImport = rnServerImport
-        self.storeDirectory = storeDirectory
+        self.configuredStoreDirectory = storeDirectory
         self.localSettings = LocalSettings(storage: localSettings)
         self.settingsFactory = localSettingsFactory
         self.transport = transport
@@ -113,7 +118,8 @@ public final class AccountController {
     public func pictures(for id: AccountSummary.ID) -> AccountPictures? {
         guard registry.entries.contains(where: { $0.id == id }) else { return nil }
         if let pictures = pictureCaches[id] { return pictures }
-        let directory = storeDirectory.map {
+        // Registry entries are published only after bootstrap has resolved.
+        let directory = storageDirectory.map {
             AccountSession.accountDirectory(directory: $0, id: id).appendingPathComponent("pictures", isDirectory: true)
         }
         let pictures = AccountPictures(owner: id, directory: directory, fetch: pictureFetch)
@@ -154,7 +160,7 @@ public final class AccountController {
             .filter { $0.serverConfirmed && $0.id != activeID }
             .sorted { $0.addedOrder < $1.addedOrder }
         let memoryStores = self.memoryStores
-        let directory = storeDirectory
+        let directory = storageDirectory
         return try await Task.detached {
             var lookupError: (any Error)?
             if let activeStore {
@@ -365,7 +371,7 @@ public final class AccountController {
         var cleanupError: Error?
         do {
             let removedStore = oldSession?.store ?? memoryStores[id]
-            let directory = storeDirectory
+            let directory = storageDirectory
             try await Task.detached {
                 if let removedStore {
                     try removedStore.eraseAll()
@@ -419,8 +425,9 @@ public final class AccountController {
     /// Reconciles only after every credential read succeeds. A missing item
     /// is different from a temporary Keychain access error.
     private func reconcile() async throws -> [String: StoredAccountCredentials] {
+        let directory = await prepareStorageDirectory()
         let generation = profileGeneration
-        var updated = registryLoaded ? registry : try await registryWriter.load(directory: storeDirectory)
+        var updated = registryLoaded ? registry : try await registryWriter.load(directory: directory)
         let shared = try accountCredentialStore.shared()
         let own = try accountCredentialStore.ownAccounts()
         let sharedID = shared.flatMap { try? accountID($0) }
@@ -467,7 +474,6 @@ public final class AccountController {
         }
         let entries = updated.entries
         let memoryStores = self.memoryStores
-        let directory = storeDirectory
         let readDisplays = readRegistryDisplays
         let displays = try await Task.detached { try readDisplays(entries, memoryStores, directory) }.value
         for index in updated.entries.indices {
@@ -520,12 +526,13 @@ public final class AccountController {
     /// critical request cannot be rejected by a newer request; the rejection
     /// branch is defensive, while generation changes are the normal retry case.
     private func persistRegistry(_ value: AccountRegistry, preservingProfilesSince generation: UInt64) async throws -> AccountRegistry {
+        let directory = await prepareStorageDirectory()
         while true {
             let updated = mergingProfiles(into: value, since: generation)
             let currentGeneration = profileGeneration
             registryRevision += 1
             let revision = registryRevision
-            let written = try await registryWriter.save(updated, directory: storeDirectory, revision: revision)
+            let written = try await registryWriter.save(updated, directory: directory, revision: revision)
             guard written, currentGeneration == profileGeneration else { continue }
             profileDirty = false
             return updated
@@ -547,7 +554,7 @@ public final class AccountController {
         registryRevision += 1
         let revision = registryRevision
         let writer = registryWriter
-        let directory = storeDirectory
+        let directory = storageDirectory
         profilePersistenceTask = Task { [weak self] in
             let written = (try? await writer.save(value, directory: directory, revision: revision)) == true
             guard let self else { return }
@@ -572,10 +579,35 @@ public final class AccountController {
         return value
     }
 
+    /// All async storage entry points await this same immutable decision. Only
+    /// initial setup failure falls back; subsequent registry I/O still throws.
+    /// Internal so tests can hold the real bootstrap across concurrent callers.
+    func prepareStorageDirectory() async -> URL? {
+        let task: Task<URL?, Never>
+        if let existing = storagePreparation {
+            task = existing
+        } else {
+            let directory = configuredStoreDirectory
+            let prepare = prepareAccountStorage
+            task = Task.detached {
+                do {
+                    try prepare(directory)
+                    return directory
+                } catch {
+                    return nil
+                }
+            }
+            storagePreparation = task
+        }
+        let directory = await task.value
+        storageDirectory = directory
+        return directory
+    }
+
     private func makeSession(_ credentials: Credentials, entry: AccountRegistryEntry) async throws -> AccountSession {
         guard entry.serverConfirmed else { throw AccountSwitchError.serverNeedsConfirmation }
+        let directory = await prepareStorageDirectory()
         let existing = memoryStores[entry.id]
-        let directory = storeDirectory
         let prepareDirectory = prepareSessionDirectory
         let dependencies = AccountSession.Dependencies(
             serverURL: entry.serverURL, clientID: clientID, transport: transport,
@@ -583,14 +615,17 @@ public final class AccountController {
         let next = try await Task.detached {
             let store: LocalStore
             var files: URL?
+            var cacheDirectory: URL?
             if let directory {
                 try prepareDirectory(directory, entry.id)
                 store = try LocalStore.open(at: AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("store.sqlite"))
                 files = AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("files", isDirectory: true)
+                cacheDirectory = SessionFileCache.directory(inAccount: AccountSession.accountDirectory(directory: directory, id: entry.id))
             } else {
                 store = try existing ?? LocalStore.inMemory()
             }
-            return try AccountSession(credentials: credentials, store: store, dependencies: dependencies, filesDirectory: files)
+            return try AccountSession(credentials: credentials, store: store, dependencies: dependencies,
+                                      filesDirectory: files, fileCacheDirectory: cacheDirectory)
         }.value
         if directory == nil { memoryStores[entry.id] = next.store }
         return next

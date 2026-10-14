@@ -12,8 +12,10 @@ import HappyWire
 /// In memory only: a key restored days later means nothing to the machine.
 @MainActor
 public final class SpawnRequests {
-    @available(*, deprecated, message: "Use AccountSession.spawnRequests for account isolation")
-    public static let shared = SpawnRequests()
+    /// The queued starts from chat are independent of the shared Home draft.
+    public enum Role: Hashable, Sendable {
+        case pendingChats
+    }
 
     /// What the person asked for, as `buildSpawnRequestSignature` spells it.
     public struct Signature: Equatable, Sendable {
@@ -70,11 +72,31 @@ public final class SpawnRequests {
 
     private var pending: Pending?
     private let makeId: @MainActor @Sendable () -> String
+    private let role: Role?
+    private var children: [Role: SpawnRequests] = [:]
     private var attempts: [UUID: () -> Void] = [:]
     public private(set) var isClosed = false
 
     public nonisolated init(makeId: @escaping @MainActor @Sendable () -> String = { UUID().uuidString.lowercased() }) {
         self.makeId = makeId
+        role = nil
+    }
+
+    private nonisolated init(role: Role, makeId: @escaping @MainActor @Sendable () -> String) {
+        self.role = role
+        self.makeId = makeId
+    }
+
+    /// One persistent slot per role, owned by this account's root. A child
+    /// closed independently remains closed; looking it up cannot resurrect it.
+    /// UI teardown cancels its starter; only the account root closes this slot.
+    public func child(_ role: Role) -> SpawnRequests {
+        if self.role == role { return self }
+        if let existing = children[role] { return existing }
+        let child = SpawnRequests(role: role, makeId: makeId)
+        guard !isClosed else { child.close(); return child }
+        children[role] = child
+        return child
     }
 
     /// Cancels starts before they have a session to remember. The starter
@@ -99,6 +121,9 @@ public final class SpawnRequests {
         pending = nil
         let cancellations = Array(attempts.values)
         attempts.removeAll()
+        let descendants = Array(children.values)
+        children.removeAll()
+        for child in descendants { child.close() }
         for cancel in cancellations { cancel() }
         previous?.abandon?()
     }
@@ -145,8 +170,11 @@ public final class SpawnRequests {
     /// `releaseSpawnedSession`: a session opened or written to elsewhere is
     /// no longer an abandoned attempt.
     public func release(sessionId: String) {
-        guard let pending, pending.sessionId == sessionId else { return }
-        pending.release?()
-        self.pending = nil
+        let descendants = Array(children.values)
+        if let pending, pending.sessionId == sessionId {
+            pending.release?()
+            self.pending = nil
+        }
+        for child in descendants { child.release(sessionId: sessionId) }
     }
 }

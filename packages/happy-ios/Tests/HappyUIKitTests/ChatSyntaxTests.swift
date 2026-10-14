@@ -27,7 +27,7 @@ final class ChatSyntaxTests: XCTestCase {
 
     func testTheCodeBlockColoursEveryTokenAsTheFileViewerDoes() {
         let code = "@cached\ndef f(a, b):\n    return [a == (b or 1)]"
-        let string = ChatSyntax.string(code, language: "python")
+        let string = ChatSyntax.string(code, language: "python", service: CodeSyntaxService())
         XCTAssertEqual(string.string, code)
         let light = UITraitCollection(userInterfaceStyle: .light)
         var offset = 0
@@ -42,6 +42,22 @@ final class ChatSyntaxTests: XCTestCase {
                 "\(token.text) \(token.kind)"
             )
         }
+    }
+
+    /// A block not coloured yet (or never: a closed account's service) is
+    /// the same text, plain, at the size it takes coloured, so the row
+    /// keeps its height when the colour comes in.
+    func testAPlainBlockTakesTheColouredBlocksSize() {
+        let code = "@cached\ndef f(a, b):\n    return [a == (b or 1)]\nclass Widget: pass"
+        let coloured = ChatSyntax.string(code, language: "python", service: CodeSyntaxService())
+        let closed = CodeSyntaxService()
+        closed.close()
+        let plain = ChatSyntax.string(code, language: "python", service: closed)
+        XCTAssertEqual(plain.string, code)
+        let light = UITraitCollection(userInterfaceStyle: .light)
+        let color = plain.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor
+        XCTAssertEqual(color?.resolvedColor(with: light), UIColor(FileSyntax.color(SyntaxToken("", .plain))).resolvedColor(with: light))
+        XCTAssertEqual(ChatTextLayout(unwrapped: plain).size, ChatTextLayout(unwrapped: coloured).size)
     }
 
     /// CommandView's panel stays dark: tokens take the dark theme's diff

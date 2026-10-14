@@ -50,6 +50,10 @@ final class SessionFileViewController: UIViewController {
     private var planned: (source: FileLinesPlan.Source, width: CGFloat, maxWidth: CGFloat)?
     /// The last diff and file plans, so the toggle flips between them at once.
     private var plans: [FileLinesPlan] = []
+    /// Signals from the account's code colour: a file planned plain while
+    /// it was being coloured is planned again after one.
+    private var colourSignals = 0
+    private var colourTask: Task<Void, Never>?
 
     init(context: AppContext, session: AccountSession, sessionId: String, path: String, line: Int? = nil, column: Int? = nil) {
         self.context = context
@@ -68,6 +72,7 @@ final class SessionFileViewController: UIViewController {
         isLoading = cached == nil
         super.init(nibName: nil, bundle: nil)
         title = Strings.FileViewerDetail.title
+        followColour()
     }
 
     @available(*, unavailable)
@@ -78,6 +83,7 @@ final class SessionFileViewController: UIViewController {
     deinit {
         loadTask?.cancel()
         planTask?.cancel()
+        colourTask?.cancel()
     }
 
     override func loadView() {
@@ -335,18 +341,43 @@ final class SessionFileViewController: UIViewController {
         if let planned, planned.source == source, planned.width == width, planned.maxWidth == maxWidth { return }
         planTask?.cancel()
         planned = (source, width, maxWidth)
+        let syntax = session.codeSyntax
+        let heard = colourSignals
         planTask = Task { [weak self] in
             let plan = await Task.detached(priority: .userInitiated) {
-                FileLinesPlan(source: source, width: width, maxWidth: maxWidth)
+                FileLinesPlan(source: source, width: width, maxWidth: maxWidth, syntax: syntax)
             }.value
-            guard let self, !Task.isCancelled else { return }
+            // Planned while the account stopped: plain where it would be
+            // coloured, so never shown.
+            guard let self, !Task.isCancelled, !syntax.isClosed else { return }
             self.planned = nil
             // One plan of each kind, at the newest size.
             self.plans = [plan] + self.plans.filter { kept in
                 kept.width == width && kept.maxWidth == maxWidth && Self.isDiff(kept.source) != Self.isDiff(source)
             }
             self.show(plan)
+            // Colour that came in while this was planned: draw it now.
+            if plan.syntaxPending, self.colourSignals > heard { self.replanPending() }
         }
+    }
+
+    /// Follows the account's code colour from before the first plan, so no
+    /// signal falls between a plain answer and the subscription.
+    private func followColour() {
+        let signals = session.codeSyntax.completions()
+        colourTask = Task { [weak self] in
+            for await _ in signals {
+                guard let self else { return }
+                self.colourSignals += 1
+                self.replanPending()
+            }
+        }
+    }
+
+    private func replanPending() {
+        guard plans.contains(where: \.syntaxPending) else { return }
+        plans.removeAll(where: \.syntaxPending)
+        updateBody()
     }
 
     private static func isDiff(_ source: FileLinesPlan.Source) -> Bool {
