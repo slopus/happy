@@ -4,10 +4,11 @@ import UIKit
 
 /// The language a new root's screens speak (text/index.ts at launch),
 /// decided off the main thread before they are built. The window takes no
-/// touches meanwhile: what is on it, the stack, the sidebar and anything
-/// presented over them, belongs to the root being left, and is replaced
-/// before the window takes them again, whatever the decision. A newer root
-/// replaces a pending one without letting go in between.
+/// touches and nothing on it keeps the keyboard meanwhile: what is on it,
+/// the stack, the sidebar and anything presented over them, belongs to the
+/// root being left, and is replaced before the window takes touches again,
+/// whatever the decision. A newer root replaces a pending one without
+/// letting go in between.
 @MainActor
 final class ScreensLanguage {
     /// Only the gate that took the hold lets it go, so it lives as long as
@@ -56,6 +57,11 @@ final class ScreensLanguage {
             guard allowed == nil else { return }
             allowed = view.isUserInteractionEnabled
             view.isUserInteractionEnabled = false
+            // Typing comes from the keyboard's own window, whatever this one
+            // takes: nothing on the screens being replaced keeps it. Last,
+            // with nothing written after: ending editing can call back into
+            // a request, or let go.
+            view.endEditing(true)
         } else if let allowed {
             self.allowed = nil
             view.isUserInteractionEnabled = allowed

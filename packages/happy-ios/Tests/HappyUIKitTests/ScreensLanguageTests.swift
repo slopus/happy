@@ -23,6 +23,25 @@ private actor Latch {
 
 private enum Unanswered: Error { case settings }
 
+/// A window that notes each time it is asked to end editing, and whether
+/// it took touches then, and can call back from there as a text field's
+/// delegate can.
+private final class EditingWindow: UIWindow {
+    var ends: [String] = []
+    var whileEnding: (@MainActor () -> Void)?
+
+    override func endEditing(_ force: Bool) -> Bool {
+        ends.append("\(force ? "forced" : "asked"), \(isUserInteractionEnabled ? "touchable" : "held")")
+        whileEnding?()
+        return super.endEditing(force)
+    }
+}
+
+/// Something on the screens being left that has the keyboard.
+private final class Focusable: UIView {
+    override var canBecomeFirstResponder: Bool { true }
+}
+
 /// A new root's language is decided off the main thread while the window
 /// takes no touches, and the root replacing the screens on it is in before
 /// it takes them again.
@@ -133,6 +152,83 @@ final class ScreensLanguageTests: XCTestCase {
         await language.gate.waitForIdle()
         XCTAssertEqual(installedIn, "ja")
         XCTAssertEqual(heldWhileInstalling, true)
+        XCTAssertTrue(window.isUserInteractionEnabled)
+    }
+
+    /// Once the window takes no touches, whatever has the keyboard on it
+    /// loses it, so typing can't reach the screens being left; a newer root
+    /// keeps the hold and has nothing more to end.
+    func testTheHoldEndsEditingOnceTheWindowTakesNoTouches() async {
+        let window = EditingWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let language = ScreensLanguage(holding: window)
+        let decided = Latch()
+        language.request(resolve: {
+            await decided.wait()
+            return "en"
+        }, install: {})
+        XCTAssertEqual(window.ends, ["forced, held"])
+        language.request(resolve: { "en" }, install: {})
+        XCTAssertEqual(window.ends, ["forced, held"])
+        await language.gate.waitForIdle()
+        await decided.open()
+        XCTAssertTrue(window.isUserInteractionEnabled)
+        XCTAssertEqual(window.ends, ["forced, held"])
+    }
+
+    func testTheFocusedViewOnTheScreensBeingLeftLosesTheKeyboard() async throws {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        window.isHidden = false
+        defer { window.isHidden = true }
+        let focused = Focusable(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        window.addSubview(focused)
+        try XCTSkipUnless(focused.becomeFirstResponder(), "no first responder in this window without an application")
+        let language = ScreensLanguage(holding: window)
+        language.request(resolve: { "en" }, install: {})
+        XCTAssertFalse(focused.isFirstResponder)
+        await language.gate.waitForIdle()
+        XCTAssertTrue(window.isUserInteractionEnabled)
+    }
+
+    /// Ending editing can call back. Cancelled there, the root is installed
+    /// at once in the language in use, still held, and the window takes
+    /// touches again as it did before: nothing written after ending editing
+    /// holds it again.
+    func testCancelledWhileEndingEditingTheRootIsInBeforeLettingGo() async {
+        let window = EditingWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let language = ScreensLanguage(holding: window)
+        var installed: [String] = []
+        window.whileEnding = { language.gate.cancel() }
+        language.request(resolve: { "ja" }, install: {
+            installed.append("\(window.isUserInteractionEnabled ? "touchable" : "held") in \(AppLocalization.language)")
+        })
+        window.whileEnding = nil
+        XCTAssertEqual(installed, ["held in en"])
+        XCTAssertFalse(language.isDeciding)
+        XCTAssertFalse(language.gate.isPending)
+        XCTAssertTrue(window.isUserInteractionEnabled)
+        await language.gate.waitForIdle()
+        XCTAssertEqual(installed, ["held in en"])
+        XCTAssertTrue(window.isUserInteractionEnabled)
+    }
+
+    /// Asked for while ending editing, a newer root replaces the one that
+    /// took the hold, which is kept until the newer one is in.
+    func testANewerRootAskedForWhileEndingEditingKeepsTheHold() async {
+        let window = EditingWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let language = ScreensLanguage(holding: window)
+        var installed: [String] = []
+        window.whileEnding = {
+            window.whileEnding = nil
+            language.request(resolve: { "en" }, install: {
+                installed.append("newer, \(window.isUserInteractionEnabled ? "touchable" : "held")")
+            })
+        }
+        language.request(resolve: { "en" }, install: { installed.append("first") })
+        XCTAssertTrue(language.isDeciding)
+        XCTAssertFalse(window.isUserInteractionEnabled)
+        await language.gate.waitForIdle()
+        XCTAssertEqual(installed, ["newer, held"])
+        XCTAssertEqual(window.ends, ["forced, held"])
         XCTAssertTrue(window.isUserInteractionEnabled)
     }
 
