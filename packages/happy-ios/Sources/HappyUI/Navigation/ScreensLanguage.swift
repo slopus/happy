@@ -2,7 +2,8 @@
 import HappyCore
 import UIKit
 
-/// The language a new root's screens speak (text/index.ts at launch),
+/// The language a new root's screens speak (text/index.ts at launch), or
+/// the Language page's choice for them (language.tsx reloads the app),
 /// decided off the main thread before they are built. The window takes no
 /// touches and nothing on it keeps the keyboard meanwhile: what is on it,
 /// the stack, the sidebar and anything presented over them, belongs to the
@@ -17,6 +18,12 @@ final class ScreensLanguage {
     private weak var view: UIView?
     /// What the view allowed before the hold; nil while nothing is held.
     private var allowed: Bool?
+    /// The account the newest root is for; nil while signed out. A choice
+    /// made in any other account's screens changes nothing.
+    private weak var account: AnyObject?
+    /// The newest root's install until it is in. A choice made meanwhile
+    /// decides its language; the root is installed all the same.
+    private var owed: (@MainActor () -> Void)?
 
     /// Holds `view`'s touches while a root is being decided: the window.
     init(holding view: UIView) {
@@ -35,8 +42,29 @@ final class ScreensLanguage {
     /// the language in use now. `install` runs before the window takes
     /// touches again, unless a newer request replaced this one.
     func request(
+        for account: AnyObject?,
         resolve: @escaping @Sendable () async throws -> String,
         install: @escaping @MainActor () -> Void
+    ) {
+        self.account = account
+        owed = install
+        decide(resolve)
+    }
+
+    /// The Language page's choice of `code` (`AppLanguage.resolve`d), made
+    /// in `account`'s screens: decoded off the main thread, then
+    /// `rebuild(true)` builds them again in it; `rebuild(false)` when they
+    /// speak it already. Nothing at all when the screens are another
+    /// account's by now, its root pending or in; a root asked for before
+    /// this is applied replaces it.
+    func choose(_ code: String, in account: AnyObject, rebuild: @escaping @MainActor (_ changed: Bool) -> Void) {
+        guard account === self.account else { return }
+        decide({ code }, then: rebuild)
+    }
+
+    private func decide(
+        _ resolve: @escaping @Sendable () async throws -> String,
+        then rebuild: (@MainActor (Bool) -> Void)? = nil
     ) {
         isDeciding = true
         gate.update(
@@ -44,9 +72,16 @@ final class ScreensLanguage {
             resolve: resolve,
             load: { await TranslationCatalog.load($0) },
             apply: { [weak self] result in
-                self?.isDeciding = false
-                if case .success(.replace(let catalog)) = result { AppLocalization.use(catalog) }
-                install()
+                guard let self else { return }
+                self.isDeciding = false
+                var changed = false
+                if case .success(.replace(let catalog)) = result { changed = AppLocalization.use(catalog) }
+                if let owed = self.owed {
+                    self.owed = nil
+                    owed()
+                } else {
+                    rebuild?(changed)
+                }
             }
         )
     }
@@ -67,5 +102,12 @@ final class ScreensLanguage {
             view.isUserInteractionEnabled = allowed
         }
     }
+}
+
+/// The Language page's choice, as `screensLanguageChosen`'s object: the
+/// code its screens speak from now on, and the account they belong to.
+struct ScreensLanguageChoice: Sendable {
+    let code: String
+    let account: AccountSession
 }
 #endif

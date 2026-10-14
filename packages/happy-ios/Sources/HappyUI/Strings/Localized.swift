@@ -25,8 +25,8 @@ func localized(_ key: String, _ values: [String: TranslationValue], _ english: @
 }
 
 extension Notification.Name {
-    /// The screens speak another language from now on
-    /// (`AppLocalization.use`), so the window builds them again from the
-    /// root, where happy-app reloads.
-    static let screensLanguageChanged = Notification.Name("HappyScreensLanguageChanged")
+    /// The Language page's choice (a `ScreensLanguageChoice`): the window
+    /// builds the screens again from the root in it, where happy-app
+    /// reloads, unless they are another account's by now.
+    static let screensLanguageChosen = Notification.Name("HappyScreensLanguageChosen")
 }

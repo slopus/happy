@@ -47,8 +47,9 @@ public final class AppCoordinator {
         // language.tsx reloads the app after a new language; here the
         // screens are built again in it, from the root, as a reload leaves
         // them.
-        languageObserver = NotificationCenter.default.addObserver(forName: .screensLanguageChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.rebuildScreens() }
+        languageObserver = NotificationCenter.default.addObserver(forName: .screensLanguageChosen, object: nil, queue: .main) { [weak self] note in
+            guard let choice = note.object as? ScreensLanguageChoice else { return }
+            MainActor.assumeIsolated { self?.chooseLanguage(choice) }
         }
         // A stored account flips to signed in before restore() starts
         // syncing, so home appears without a flash of Welcome; without one,
@@ -202,25 +203,25 @@ public final class AppCoordinator {
         // Read here, on main; the account's settings are read off it.
         let deviceLanguages = Locale.preferredLanguages
         language.request(
+            for: session,
             resolve: { await Self.resolvedLanguage(for: session, deviceLanguages: deviceLanguages) },
             install: { [weak self] in self?.install(session: session, pending: pending, animated: animated) }
         )
     }
 
-    /// The window's screens again, from the root, in the language now
-    /// chosen; nothing else changes.
-    private func rebuildScreens() {
-        guard let shownSession else { return }
-        let session = context.account.session
-        guard session.map(ObjectIdentifier.init) == shownSession else { return }
-        let pending = context.account.pendingServerConfirmation
-        // A root still being decided was decided against the language just
-        // left: it is decided again against this one.
-        if language.isDeciding {
-            requestRoot(session: session, pending: pending, animated: !navigation.viewControllers.isEmpty)
-            return
+    /// The window's screens again, from the root, in the language the
+    /// Language page chose; nothing else changes. Only for the account the
+    /// screens are now: a choice made in another's changes nothing.
+    private func chooseLanguage(_ choice: ScreensLanguageChoice) {
+        language.choose(choice.code, in: choice.account) { [weak self] changed in
+            guard let self else { return }
+            if changed {
+                self.install(session: self.context.account.session, pending: self.context.account.pendingServerConfirmation, animated: false)
+            } else {
+                // A notification's chat waited for this.
+                self.openNotificationSession()
+            }
         }
-        install(session: session, pending: pending, animated: false)
     }
 
     /// The account's `preferredLanguage` and the device's languages, as

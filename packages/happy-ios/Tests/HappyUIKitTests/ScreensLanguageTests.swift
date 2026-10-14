@@ -44,7 +44,8 @@ private final class Focusable: UIView {
 
 /// A new root's language is decided off the main thread while the window
 /// takes no touches, and the root replacing the screens on it is in before
-/// it takes them again.
+/// it takes them again. The Language page's choice reaches only the screens
+/// of the account it was made in.
 @MainActor
 final class ScreensLanguageTests: XCTestCase {
     private let middle = CGPoint(x: 160, y: 100)
@@ -81,7 +82,7 @@ final class ScreensLanguageTests: XCTestCase {
         let decided = Latch()
         var heldWhileInstalling: Bool?
         var new: UIButton?
-        language.request(resolve: {
+        language.request(for: nil, resolve: {
             await decided.wait()
             return "en"
         }, install: {
@@ -108,7 +109,7 @@ final class ScreensLanguageTests: XCTestCase {
         let language = ScreensLanguage(holding: window)
         var installed: [String] = []
         for code in ["ja", "en", "ja"] {
-            language.request(resolve: { code }, install: {
+            language.request(for: nil, resolve: { code }, install: {
                 installed.append("\(code) as \(AppLocalization.language)")
             })
             XCTAssertFalse(window.isUserInteractionEnabled)
@@ -118,7 +119,7 @@ final class ScreensLanguageTests: XCTestCase {
         XCTAssertTrue(window.isUserInteractionEnabled)
 
         // Back to English: the screens' own words, nothing to decode.
-        language.request(resolve: { "en" }, install: { installed.append("en as \(AppLocalization.language)") })
+        language.request(for: nil, resolve: { "en" }, install: { installed.append("en as \(AppLocalization.language)") })
         await language.gate.waitForIdle()
         XCTAssertEqual(installed, ["ja as ja", "en as en"])
         XCTAssertNil(AppLocalization.screens)
@@ -131,7 +132,7 @@ final class ScreensLanguageTests: XCTestCase {
         AppLocalization.use(await TranslationCatalog.load("ja"))
         let before = AppLocalization.screens
         var installs = 0
-        language.request(resolve: { "ja" }, install: { installs += 1 })
+        language.request(for: nil, resolve: { "ja" }, install: { installs += 1 })
         await language.gate.waitForIdle()
         XCTAssertEqual(installs, 1)
         XCTAssertTrue(AppLocalization.screens === before)
@@ -145,7 +146,7 @@ final class ScreensLanguageTests: XCTestCase {
         AppLocalization.use(await TranslationCatalog.load("ja"))
         var installedIn: String?
         var heldWhileInstalling: Bool?
-        language.request(resolve: { throw Unanswered.settings }, install: {
+        language.request(for: nil, resolve: { throw Unanswered.settings }, install: {
             installedIn = AppLocalization.language
             heldWhileInstalling = !window.isUserInteractionEnabled
         })
@@ -162,12 +163,12 @@ final class ScreensLanguageTests: XCTestCase {
         let window = EditingWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let language = ScreensLanguage(holding: window)
         let decided = Latch()
-        language.request(resolve: {
+        language.request(for: nil, resolve: {
             await decided.wait()
             return "en"
         }, install: {})
         XCTAssertEqual(window.ends, ["forced, held"])
-        language.request(resolve: { "en" }, install: {})
+        language.request(for: nil, resolve: { "en" }, install: {})
         XCTAssertEqual(window.ends, ["forced, held"])
         await language.gate.waitForIdle()
         await decided.open()
@@ -183,7 +184,7 @@ final class ScreensLanguageTests: XCTestCase {
         window.addSubview(focused)
         try XCTSkipUnless(focused.becomeFirstResponder(), "no first responder in this window without an application")
         let language = ScreensLanguage(holding: window)
-        language.request(resolve: { "en" }, install: {})
+        language.request(for: nil, resolve: { "en" }, install: {})
         XCTAssertFalse(focused.isFirstResponder)
         await language.gate.waitForIdle()
         XCTAssertTrue(window.isUserInteractionEnabled)
@@ -198,7 +199,7 @@ final class ScreensLanguageTests: XCTestCase {
         let language = ScreensLanguage(holding: window)
         var installed: [String] = []
         window.whileEnding = { language.gate.cancel() }
-        language.request(resolve: { "ja" }, install: {
+        language.request(for: nil, resolve: { "ja" }, install: {
             installed.append("\(window.isUserInteractionEnabled ? "touchable" : "held") in \(AppLocalization.language)")
         })
         window.whileEnding = nil
@@ -219,11 +220,11 @@ final class ScreensLanguageTests: XCTestCase {
         var installed: [String] = []
         window.whileEnding = {
             window.whileEnding = nil
-            language.request(resolve: { "en" }, install: {
+            language.request(for: nil, resolve: { "en" }, install: {
                 installed.append("newer, \(window.isUserInteractionEnabled ? "touchable" : "held")")
             })
         }
-        language.request(resolve: { "en" }, install: { installed.append("first") })
+        language.request(for: nil, resolve: { "en" }, install: { installed.append("first") })
         XCTAssertTrue(language.isDeciding)
         XCTAssertFalse(window.isUserInteractionEnabled)
         await language.gate.waitForIdle()
@@ -232,13 +233,108 @@ final class ScreensLanguageTests: XCTestCase {
         XCTAssertTrue(window.isUserInteractionEnabled)
     }
 
+    /// The Language page's choice in the screens' own account: decoded off
+    /// the main thread while held, then they are built again in it. Chosen
+    /// again, nothing is decoded or built.
+    func testAChoiceInTheScreensAccountRebuildsThemInIt() async {
+        let (window, _, _) = window()
+        let language = ScreensLanguage(holding: window)
+        let a = NSObject()
+        language.request(for: a, resolve: { "en" }, install: {})
+        await language.gate.waitForIdle()
+        var rebuilt: [String] = []
+        language.choose("ja", in: a) { changed in
+            rebuilt.append("\(changed) in \(AppLocalization.language), \(window.isUserInteractionEnabled ? "touchable" : "held")")
+        }
+        XCTAssertTrue(language.isDeciding)
+        XCTAssertFalse(window.isUserInteractionEnabled)
+        await language.gate.waitForIdle()
+        XCTAssertEqual(rebuilt, ["true in ja, held"])
+        let japanese = AppLocalization.screens
+        language.choose("ja", in: a) { changed in rebuilt.append("\(changed)") }
+        await language.gate.waitForIdle()
+        XCTAssertEqual(rebuilt, ["true in ja, held", "false"])
+        XCTAssertTrue(AppLocalization.screens === japanese)
+        XCTAssertTrue(window.isUserInteractionEnabled)
+    }
+
+    /// A choice made in A's screens that arrives once B's root is pending,
+    /// or once it is in, changes nothing: not B's root or its language,
+    /// and nothing is held for it.
+    func testAChoiceFromAnAccountSwitchedAwayFromChangesNothing() async {
+        let (window, _, _) = window()
+        let language = ScreensLanguage(holding: window)
+        let a = NSObject(), b = NSObject()
+        language.request(for: a, resolve: { "en" }, install: {})
+        await language.gate.waitForIdle()
+        var events: [String] = []
+        let decided = Latch()
+        language.request(for: b, resolve: {
+            await decided.wait()
+            return "en"
+        }, install: { events.append("B in \(AppLocalization.language)") })
+        language.choose("ja", in: a) { _ in events.append("A rebuilt") }
+        await decided.open()
+        await language.gate.waitForIdle()
+        XCTAssertEqual(events, ["B in en"])
+        XCTAssertTrue(window.isUserInteractionEnabled)
+
+        language.choose("ja", in: a) { _ in events.append("A rebuilt") }
+        XCTAssertFalse(language.isDeciding)
+        XCTAssertFalse(language.gate.isPending)
+        XCTAssertTrue(window.isUserInteractionEnabled)
+        await language.gate.waitForIdle()
+        XCTAssertEqual(events, ["B in en"])
+        XCTAssertNil(AppLocalization.screens)
+    }
+
+    /// A's choice not yet applied when B's root is asked for: B's root
+    /// replaces it, held throughout, and A's language never reaches it.
+    func testARootAskedForReplacesAChoiceNotYetApplied() async {
+        let (window, _, _) = window()
+        let language = ScreensLanguage(holding: window)
+        let a = NSObject(), b = NSObject()
+        language.request(for: a, resolve: { "en" }, install: {})
+        await language.gate.waitForIdle()
+        var events: [String] = []
+        language.choose("ja", in: a) { _ in events.append("A rebuilt") }
+        XCTAssertTrue(language.isDeciding)
+        language.request(for: b, resolve: { "en" }, install: {
+            events.append("B in \(AppLocalization.language), \(window.isUserInteractionEnabled ? "touchable" : "held")")
+        })
+        XCTAssertFalse(window.isUserInteractionEnabled)
+        await language.gate.waitForIdle()
+        XCTAssertEqual(events, ["B in en, held"])
+        XCTAssertNil(AppLocalization.screens)
+        XCTAssertTrue(window.isUserInteractionEnabled)
+    }
+
+    /// A choice in the account whose own root is still pending decides the
+    /// language that root is installed in, not whether it is.
+    func testAChoiceWhileTheAccountsRootIsPendingStillInstallsIt() async {
+        let (window, _, _) = window()
+        let language = ScreensLanguage(holding: window)
+        let a = NSObject()
+        let decided = Latch()
+        var events: [String] = []
+        language.request(for: a, resolve: {
+            await decided.wait()
+            return "en"
+        }, install: { events.append("A in \(AppLocalization.language)") })
+        language.choose("ja", in: a) { _ in events.append("rebuilt") }
+        await language.gate.waitForIdle()
+        XCTAssertEqual(events, ["A in ja"])
+        XCTAssertTrue(window.isUserInteractionEnabled)
+        await decided.open()
+    }
+
     /// Letting go gives back what the window allowed before, not more.
     func testTheHoldGivesBackWhatTheWindowAllowed() async {
         let (window, _, _) = window()
         window.isUserInteractionEnabled = false
         let language = ScreensLanguage(holding: window)
         var installs = 0
-        language.request(resolve: { "en" }, install: { installs += 1 })
+        language.request(for: nil, resolve: { "en" }, install: { installs += 1 })
         await language.gate.waitForIdle()
         XCTAssertEqual(installs, 1)
         XCTAssertFalse(window.isUserInteractionEnabled)
