@@ -51,10 +51,12 @@
             "@prisma/engines",
             "@shopify/react-native-skia",
             "@tailwindcss/oxide",
-            "better-sqlite3",
             "esbuild",
             "prisma",
             "sharp"
+        ],
+        "ignoredBuiltDependencies": [
+            "better-sqlite3"
         ]
     },
     "devDependencies": {
