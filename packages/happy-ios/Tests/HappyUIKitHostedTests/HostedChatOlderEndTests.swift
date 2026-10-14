@@ -11,23 +11,9 @@ import XCTest
 /// (ChatOlderEndViewTests).
 @MainActor
 final class HostedChatOlderEndTests: XCTestCase {
-    private var window: UIWindow?
-    private var hostWindow: UIWindow?
-
     override func setUp() {
         super.setUp()
         Fonts.registerBundledFonts()
-    }
-
-    override func tearDown() {
-        // XCTest tears down on the main thread.
-        MainActor.assumeIsolated {
-            window?.isHidden = true
-            hostWindow?.makeKey()
-            window = nil
-            hostWindow = nil
-        }
-        super.tearDown()
     }
 
     /// Retry, after an older page failed, in a window of the host's scene:
@@ -35,9 +21,15 @@ final class HostedChatOlderEndTests: XCTestCase {
     /// outside or only goes down doesn't.
     func testRetryReachesTheScreenOnce() async throws {
         let scene = try await hostedActiveScene()
-        hostWindow = scene.keyWindow
+        let hostWindow = scene.keyWindow
         let window = hostedKeyWindow(in: scene)
-        self.window = window
+        // Undone on the main actor once the test returns, with only the
+        // windows: `tearDown` is nonisolated and must not take the test
+        // case onto the main actor.
+        addTeardownBlock { @MainActor in
+            window.isHidden = true
+            hostWindow?.makeKey()
+        }
         let view = ChatOlderEndView(frame: CGRect(x: 0, y: 100, width: window.bounds.width, height: ChatOlderEndLayout.height))
         view.status = .error
         window.rootViewController?.view.addSubview(view)

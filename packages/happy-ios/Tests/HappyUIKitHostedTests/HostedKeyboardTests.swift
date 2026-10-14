@@ -10,6 +10,12 @@ private final class KeyboardNotes: @unchecked Sendable {
     var hidden = 0
 }
 
+/// The keyboard observers a test added, removed when it ends.
+@MainActor
+private final class KeyboardObservers {
+    var tokens: [any NSObjectProtocol] = []
+}
+
 /// A field's delegate that does something the moment it stops editing.
 @MainActor
 private final class EndsEditing: NSObject, UITextFieldDelegate {
@@ -27,28 +33,12 @@ private final class EndsEditing: NSObject, UITextFieldDelegate {
 /// rather than skip without a scene.
 @MainActor
 final class HostedKeyboardTests: XCTestCase {
-    private var window: UIWindow?
-    private var hostWindow: UIWindow?
-    private var field: UITextField?
-    private var observers: [NSObjectProtocol] = []
-
     override func setUp() {
         super.setUp()
         Fonts.registerBundledFonts()
     }
 
     override func tearDown() {
-        // XCTest tears down on the main thread.
-        MainActor.assumeIsolated {
-            field?.resignFirstResponder()
-            window?.isHidden = true
-            hostWindow?.makeKey()
-            for observer in observers { NotificationCenter.default.removeObserver(observer) }
-            observers = []
-            field = nil
-            window = nil
-            hostWindow = nil
-        }
         AppLocalization.use(nil)
         super.tearDown()
     }
@@ -56,12 +46,18 @@ final class HostedKeyboardTests: XCTestCase {
     /// A window of the scene, made key over the host's, with a field that
     /// has the keyboard.
     private func editingWindow(in scene: UIWindowScene) -> (UIWindow, UITextField) {
-        hostWindow = scene.keyWindow
+        let hostWindow = scene.keyWindow
         let window = hostedKeyWindow(in: scene)
         let field = UITextField(frame: CGRect(x: 20, y: 120, width: 280, height: 44))
         window.rootViewController?.view.addSubview(field)
-        self.window = window
-        self.field = field
+        // Undone on the main actor once the test returns, with only what it
+        // made: `tearDown` is nonisolated and must not take the test case
+        // onto the main actor.
+        addTeardownBlock { @MainActor in
+            field.resignFirstResponder()
+            window.isHidden = true
+            hostWindow?.makeKey()
+        }
         XCTAssertTrue(window.isKeyWindow)
         XCTAssertTrue(field.becomeFirstResponder())
         XCTAssertTrue(field.isFirstResponder)
@@ -71,12 +67,16 @@ final class HostedKeyboardTests: XCTestCase {
     private func observeKeyboard() -> KeyboardNotes {
         let notes = KeyboardNotes()
         let center = NotificationCenter.default
-        observers.append(center.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: nil) { _ in
+        let observers = KeyboardObservers()
+        observers.tokens.append(center.addObserver(forName: UIResponder.keyboardWillShowNotification, object: nil, queue: nil) { _ in
             notes.shown += 1
         })
-        observers.append(center.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: nil) { _ in
+        observers.tokens.append(center.addObserver(forName: UIResponder.keyboardWillHideNotification, object: nil, queue: nil) { _ in
             notes.hidden += 1
         })
+        addTeardownBlock { @MainActor in
+            for token in observers.tokens { NotificationCenter.default.removeObserver(token) }
+        }
         return notes
     }
 
