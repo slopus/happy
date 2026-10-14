@@ -12,7 +12,7 @@ public enum Strings {
         public static var error: String { localized("common.error", "Error") }
         public static var success: String { localized("common.success", "Success") }
         public static var save: String { localized("common.save", "Save") }
-        public static let continueAction = "Continue"
+        public static var continueAction: String { localized("common.continue", "Continue") }
         public static var reset: String { localized("common.reset", "Reset") }
         public static var logout: String { localized("common.logout", "Logout") }
         public static var version: String { localized("common.version", "Version") }
@@ -208,12 +208,12 @@ public enum Strings {
     public enum SettingsAppearance {
         public static var theme: String { localized("settingsAppearance.theme", "Theme") }
         public static var themeDescription: String { localized("settingsAppearance.themeDescription", "Choose your preferred color scheme") }
-        public static let themeAdaptive = "Adaptive"
-        public static let themeLight = "Light"
-        public static let themeDark = "Dark"
-        public static let themeAdaptiveDescription = "Match system settings"
-        public static let themeLightDescription = "Always use light theme"
-        public static let themeDarkDescription = "Always use dark theme"
+        public static var themeAdaptive: String { localized("settingsAppearance.themeOptions.adaptive", "Adaptive") }
+        public static var themeLight: String { localized("settingsAppearance.themeOptions.light", "Light") }
+        public static var themeDark: String { localized("settingsAppearance.themeOptions.dark", "Dark") }
+        public static var themeAdaptiveDescription: String { localized("settingsAppearance.themeDescriptions.adaptive", "Match system settings") }
+        public static var themeLightDescription: String { localized("settingsAppearance.themeDescriptions.light", "Always use light theme") }
+        public static var themeDarkDescription: String { localized("settingsAppearance.themeDescriptions.dark", "Always use dark theme") }
         public static var chat: String { localized("settingsAppearance.chat", "Chat") }
         public static var chatDescription: String { localized("settingsAppearance.chatDescription", "Customize chat message appearance") }
         public static var usageLimitShowRemaining: String { localized("settingsAppearance.usageLimitShowRemaining", "Show Quota Remaining") }
@@ -423,7 +423,7 @@ public enum Strings {
         public static var serverReturnedError: String { localized("server.serverReturnedError", "Server returned an error") }
         public static var failedToConnectToServer: String { localized("server.failedToConnectToServer", "Failed to connect to server") }
         public static var currentlyUsingCustomServer: String { localized("server.currentlyUsingCustomServer", "Currently using custom server") }
-        public static let invalidFormat = "Invalid format"
+        public static var invalidFormat: String { localized("errors.invalidFormat", "Invalid format") }
         public static let defaultServer = "Default"
     }
 

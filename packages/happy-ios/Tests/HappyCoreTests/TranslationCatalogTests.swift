@@ -168,7 +168,7 @@ final class TranslationCatalogTests: XCTestCase {
                 functions += 1
             }
         }
-        XCTAssertEqual(strings, 232)
+        XCTAssertEqual(strings, 265)
         XCTAssertEqual(functions, 11)
     }
 

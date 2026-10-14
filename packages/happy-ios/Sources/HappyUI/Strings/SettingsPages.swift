@@ -4,7 +4,7 @@ extension Strings {
     /// Screen titles of the settings pages.
     public enum SettingsTitles {
         /// en.ts `navigation.whatsNew`.
-        public static let whatsNew = "What's New"
+        public static var whatsNew: String { localized("navigation.whatsNew", "What's New") }
         // app/(app)/_layout.tsx, not in en.ts.
         public static let connectClaude = "Connect to Claude"
     }
