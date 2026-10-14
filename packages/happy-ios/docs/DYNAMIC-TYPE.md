@@ -109,6 +109,46 @@ Following now:
   closes review item TK-L3 (a TextKit 1 composer gets only the panel,
   where RN's gets the inline experience): R1 made the card TextKit 2
   again, and New session's prompt stays TextKit 2.
+  The measure lays the text out with font leading off
+  (`usesFontLeading = false`), as Fabric's does (the table's input
+  measure). Until the port's composer tests first ran on the Mac (38518414723) it left it on, and a
+  line in a fallback font that has leading was measured taller than the
+  text view lays it out: Japanese falls back to Hiragino Sans, whose
+  leading is half its size, and Arabic to Geeza Pro, so at the default
+  size the card's input was 95 tall for the Japanese test text where the
+  text needs 74, and 57 for the Arabic where it needs 52. IBM Plex Sans,
+  PingFang SC and Apple Color Emoji have no leading, so Latin and emoji
+  measure as before. It goes by line, not by text: each of the 95 lines
+  whose height changed holds at least one font with leading, and no line
+  without one changed; the Japanese and Arabic texts mix fonts without
+  leading (PingFang SC, IBM Plex Sans) into the same lines. The diagnostic
+  probe's run (38523578708) measured every row both ways, 255 rows over
+  the card, the flat panel, New session's prompt and the growth texts:
+  with leading off the measure is the TextKit 1 twin's height exactly on
+  all 181 rows under the cap, the 39 rows that differed agree, none that
+  agreed differs, and none of the 179 Latin rows moves. The other 37 rows
+  still differ only past the cap, where the measure stops a line past it
+  by design and every one scrolls at 120 either way. Three texts that
+  scrolled no longer do, as their text fits: the card's Japanese at XXXL
+  (120 to 98) and the flat panel's Japanese and Arabic at AX-L (120 to
+  111). In all 34 rows whose frame moves, the TextKit 2 text fits its new
+  frame, in TextKit 1's lines. Disclosed, and not explained or not
+  verified:
+  - A TextKit 1 text view's layout manager reports `usesFontLeading` on,
+    yet lays the text out line for line as a bare layout manager with it
+    off does, on all 181 rows (FA-L1). The change rests on RN's source
+    and on those rows, not on knowing why.
+  - With leading off, TextKit 2's rendering surface (how far it may draw,
+    not where its lines end) reaches past the frame's bottom on 8 Arabic
+    rows, by 1 to 3pt: the card at S 48 in 47, M 51 in 50, L 54 in 52,
+    XL 60 in 58, XXL 65 in 63 and XXXL 71 in 68, the flat panel at AX-M
+    96 in 95 and AX-L 114 in 111; under the old frames, none. Its lines
+    end inside the bottom padding (at L, 47.4 in 52). RN's composer is
+    the same TextKit 2 view in the same frame, so it reaches as far past
+    (read from its source, not measured in RN). Whether any text is
+    actually cut is not proven; nothing is padded for it (FA-L2).
+  - On the Japanese text's first lines, which start in PingFang SC,
+    leading on added 0.56 of Hiragino's leading, not all of it (FA-L3).
 - The chat's worktree tab strip, on its own (`ChatWorktreeTabStrip` sets
   the trait on itself). Its heights are fixed (the 40 capsule, the 32
   tabs); only the tabs' widths come from their names, up to 200. The names
@@ -214,7 +254,11 @@ past; in the 42 row it is cut by the middle box, as RN's
 - On the Mac simulator: the port's own tests of the TextKit 2 composer
   (its fit and carets at every size in `ComposerEditorGeometryTests` and
   the card's and New session's tests, and `ComposerWritingToolsTests`)
-  are built but have not run yet; the figures above are the probe's.
+  ran once, before the measure turned leading off (38518414723): the
+  card's and Writing Tools' passed; the geometry matrix and two of New
+  session's height tests failed, on the Japanese and Arabic measure and
+  on their own checks of carets past the cap and of New session's
+  carets. They have not run since.
 - Measured text boxes ceil to pixels as RN's do.
 - Fonts made outside `TextStyle` (session info's duplicate sheet, code
   blocks).
