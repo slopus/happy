@@ -708,11 +708,29 @@ public final class ChangelogTitleView: UIView {
         isAccessibilityElement = true
         accessibilityLabel = title
         accessibilityTraits = .header
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.fitTextSize()
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    /// The text size the view was last fitted to; nil at the designed size.
+    private var textScale: TextScale?
+
+    /// The title grows with the text size; the picture keeps its 40pt.
+    /// Fitted again in the bar, which keeps its height.
+    private func fitTextSize() {
+        let scale = traitCollection.textEnvironment?.scale
+        guard scale != textScale else { return }
+        textScale = scale
+        label.updateTraitsIfNeeded()
+        invalidateIntrinsicContentSize()
+        if frame.size != .zero { frame.size = intrinsicContentSize }
+        superview?.setNeedsLayout()
     }
 
     public override func sizeThatFits(_ size: CGSize) -> CGSize {

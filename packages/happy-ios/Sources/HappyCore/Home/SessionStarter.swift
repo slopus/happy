@@ -125,7 +125,7 @@ public final class SessionStarter {
             refreshSessions: @escaping @Sendable () async -> Void,
             paintBotFace: @escaping @Sendable (String) async throws -> Data,
             attachmentPlan: @escaping @Sendable (OutgoingMessage, String) async throws -> AttachmentSendPlan,
-            spawnRequests: SpawnRequests = .shared,
+            spawnRequests: SpawnRequests = SpawnRequests(),
             sleep: @escaping @Sendable (Int) async -> Void = { ms in try? await Task.sleep(for: .milliseconds(ms)) }
         ) {
             self.ops = ops
@@ -217,8 +217,10 @@ public final class SessionStarter {
     public func start(_ launch: NewSessionLaunch, isCurrentTarget: @escaping () -> Bool) async -> String? {
         guard activeRun == nil else { return nil }
         let requests = environment.spawnRequests
-        let clientRequestId = requests.requestId(for: launch.signature)
         let run = Run()
+        guard let attempt = requests.registerAttempt({ run.cancel() }) else { return nil }
+        defer { requests.removeAttempt(attempt) }
+        let clientRequestId = requests.requestId(for: launch.signature)
         activeRun = run
         phase = launch.worktreeSelection == NewSessionDraft.newWorktreeKey ? .worktree : .spawning
         defer {
@@ -401,6 +403,7 @@ public final class SessionStarter {
     /// Asks the machine for the session, polling a `pending` answer and
     /// asking before it creates a missing directory.
     private func spawn(_ launch: NewSessionLaunch, directory: String, clientRequestId: String, run: Run, approved: Bool = false) async -> String? {
+        guard !run.canceled, !environment.spawnRequests.isClosed else { return nil }
         let options: SpawnSessionOptions
         if let metadata = launch.rigMetadata {
             do {

@@ -164,6 +164,35 @@ final class ApplyPerfPipelineTests: XCTestCase {
         pipeline.cancel()
     }
 
+    /// The screen's next main-thread turn after an apply already sees it
+    /// as applied: the state moves with the count, not later on the
+    /// derivation's own thread.
+    @MainActor
+    func testTheAppliedStateMovesWithTheApplyItself() async {
+        let box = ApplyPerfPipelineBox<ApplyPipeline<Int, Int, Int>>()
+        let seen = ApplyPerfRecorder<[Int]>()
+        let pipeline = ApplyPipeline<Int, Int, Int>(
+            input: 0,
+            state: 0,
+            minimumInterval: .zero,
+            derive: { input, applied in input == applied ? nil : (input, input) },
+            apply: { _ in
+                Task { @MainActor in
+                    guard let pipeline = box.pipeline else { return }
+                    _ = seen.take([pipeline.counts.applies, pipeline.applied])
+                }
+                return true
+            }
+        )
+        box.pipeline = pipeline
+        for value in 1...40 {
+            pipeline.update { $0 = value }
+            await applyPerfWait { seen.outputs.count == value }
+        }
+        XCTAssertEqual(seen.outputs, (1...40).map { [$0, $0] }, "after apply n, n applies and state n")
+        pipeline.cancel()
+    }
+
     @MainActor
     func testRefusedApplyKeepsDiffingAgainstWhatIsOnScreen() async throws {
         let recorder = ApplyPerfRecorder<HomeUpdate>()
@@ -481,6 +510,54 @@ extension ApplyPerfDockTests {
         var message = onDisk
         message.sessions[2] = ApplyPerfFixtures.active(message.sessions[2], at: ApplyPerfFixtures.now + 5)
         XCTAssertNotNil(NewSessionSnapshot.derive(message, applied: first.state))
+    }
+}
+
+extension ApplyPerfDockTests {
+    /// Two sessions in one directory under different projects: the newer
+    /// one names the directory's project in the pickers. A send this device
+    /// accepted makes a session the newer one before the server stamps it,
+    /// on home's dock and on the new-session screen alike.
+    func testAnAcceptedSendReordersThePickersSamePathProject() async throws {
+        let store = try LocalStore.inMemory()
+        func session(_ id: String, createdAt: Int64, project: String) -> SessionRecord {
+            var record = ChatRecords.storeSession(id, metadata: .object([
+                "machineId": .string("m"), "path": .string("/work"),
+                "project": .object(["id": .string(project), "name": .string(project)]),
+            ]))
+            record.createdAt = createdAt
+            return record
+        }
+        try store.upsertSessions([session("x", createdAt: 1, project: "px"), session("y", createdAt: 2, project: "py")])
+        try store.upsertMachine(.init(id: "m", seq: 0, createdAt: 1, updatedAt: 1, active: false, activeAt: 1,
+            metadataVersion: 1, metadataCipher: "", metadata: .object(["host": .string("host")]), daemonStateVersion: 0,
+            daemonStateCipher: nil, daemonState: nil, dataKeyCipher: nil, decryptable: true))
+        let draft = NewSessionDraft(selectedMachineId: "m")
+        func project(_ snapshot: HomeSnapshot, revision: UInt64) async -> String? {
+            let choices = await NewSessionChoiceDeriver().choices(snapshot: snapshot, revision: revision, generation: revision,
+                                                                  draft: draft, createsBot: false, worktrees: [])
+            return choices?.value.sessionPlaces.first { $0.path == "/work" }?.projectId
+        }
+
+        let before = try store.homeSnapshot()
+        let screen = try XCTUnwrap(NewSessionSnapshot.derive(before, applied: nil))
+        let home = try XCTUnwrap(ApplyPerfFixtures.derive(before, after: nil)).state
+        let shownBefore = await project(screen.output, revision: 0)
+        XCTAssertEqual(shownBefore, "py")
+
+        try store.enqueueAcceptedSend([.init(localId: "sent", kind: .message, sessionId: "x", payload: .object([
+            "role": .string("user"), "content": .object(["type": .string("text"), "text": .string("hello")]),
+        ]), createdAt: 100)], attachments: [])
+        let after = try store.homeSnapshot()
+        XCTAssertEqual(after.sessions.first { $0.id == "x" }?.lastMessageSentAt, 100)
+
+        let screenAfter = try XCTUnwrap(NewSessionSnapshot.derive(after, applied: screen.state), "the new-session screen hears the send")
+        let shownAfter = await project(screenAfter.output, revision: 1)
+        XCTAssertEqual(shownAfter, "px")
+        let dock = try XCTUnwrap(ApplyPerfFixtures.derive(after, after: home)?.output.dock, "home's dock hears the send")
+        let dockShown = await project(dock, revision: 2)
+        XCTAssertEqual(dockShown, "px")
+        XCTAssertEqual(ChatSessionState(after, sessionId: "x"), ChatSessionState(before, sessionId: "x"), "the chat does not")
     }
 }
 

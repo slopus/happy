@@ -26,15 +26,26 @@ public struct OfflineTroubleshooting: Equatable, Sendable {
             break
         }
 
+        self.init(choice: choice, projectName: session?.metadata?["project"]?["name"]?.stringValue,
+                  path: session?.metadata?["path"]?.stringValue, happyHomeDir: session?.metadata?["happyHomeDir"]?.stringValue)
+    }
+
+    public init(choices: [MachineChoice], recentSession: TroubleshootingSession?) {
+        let choice = recentSession.flatMap { recent in choices.first { $0.machineIds.contains(recent.machineId) } }
+            ?? choices.max { $0.activeAt < $1.activeAt }
+        self.init(choice: choice, projectName: recentSession?.projectName, path: recentSession?.path, happyHomeDir: recentSession?.happyHomeDir)
+    }
+
+    private init(choice: MachineChoice?, projectName: String?, path: String?, happyHomeDir: String?) {
         machineName = Self.trimmed(choice?.name) ?? "this machine"
-        projectName = Self.trimmed(session?.metadata?["project"]?["name"]?.stringValue)
-            ?? Self.projectName(fromPath: session?.metadata?["path"]?.stringValue)
+        self.projectName = Self.trimmed(projectName)
+            ?? Self.projectName(fromPath: path)
             ?? "Happy"
-        happyHomeDir = Self.trimmed(choice?.happyMachine?.metadata?["happyHomeDir"]?.stringValue)
+        self.happyHomeDir = Self.trimmed(choice?.happyMachine?.metadata?["happyHomeDir"]?.stringValue)
             ?? Self.trimmed(choice?.rigMachine?.metadata?["happyHomeDir"]?.stringValue)
-            ?? Self.trimmed(session?.metadata?["happyHomeDir"]?.stringValue)
+            ?? Self.trimmed(happyHomeDir)
             ?? "~/.happy"
-        aiPrompt = "In \(happyHomeDir), diagnose why Happy cannot reach \"\(machineName)\" for project \"\(projectName)\"."
+        aiPrompt = "In \(self.happyHomeDir), diagnose why Happy cannot reach \"\(machineName)\" for project \"\(self.projectName)\"."
     }
 
     /// The last path component, ignoring trailing separators.

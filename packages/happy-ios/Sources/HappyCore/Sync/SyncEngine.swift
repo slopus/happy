@@ -564,7 +564,7 @@ public actor SyncEngine {
                 localId: localId, kind: .message, sessionId: sessionId, payload: payload,
                 createdAt: timestamp, dependsOn: dependency
             ))
-            try store.enqueueBatch(items, attachments: attachments)
+            try store.enqueueAcceptedSend(items, attachments: attachments)
         } catch {
             for file in copied {
                 try? FileManager.default.removeItem(at: file)

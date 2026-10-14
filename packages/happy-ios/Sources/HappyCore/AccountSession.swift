@@ -14,6 +14,8 @@ public final class AccountSession: Sendable {
     /// without a store directory (in-memory, tests) get a temporary one.
     public let filesDirectory: URL
     public let sync: SyncEngine
+    /// Retry keys and abandoned starts belong to this account session alone.
+    public let spawnRequests = SpawnRequests()
     /// Sends chat messages through the outbox.
     public let sender: OutboxSender
     /// The chat of any session, from this account's store.
@@ -21,6 +23,7 @@ public final class AccountSession: Sendable {
     public let homeFeed: HomeFeed
     public let settingsFeed: SettingsFeed
     public let machinesFeed: MachinesFeed
+    public let troubleshootingFeed: TroubleshootingFeed
     public let realtime: SocketIOClient
     public let pairing: PairingService
     /// Archive, delete and mark read, for the session list.
@@ -90,12 +93,13 @@ public final class AccountSession: Sendable {
         var syncOptions = SyncEngine.Options()
         syncOptions.deliveryActivity = dependencies.deliveryActivity
         self.sync = SyncEngine(api: api, store: store, keys: keys, options: syncOptions)
-        self.sender = OutboxSender(store: store, sync: sync, filesDirectory: self.filesDirectory)
+        self.sender = OutboxSender(store: store, sync: sync, filesDirectory: self.filesDirectory, spawnRequests: spawnRequests)
         self.chatFeed = LocalChatFeed(store: store)
         self.homeFeed = HomeFeed(store: store)
         self.settingsFeed = SettingsFeed(store: store)
         self.machinesFeed = MachinesFeed(store: store)
         self.sessionDetails = SessionDetailFeed(store: store)
+        self.troubleshootingFeed = TroubleshootingFeed(store: store)
         self.pairing = PairingService(api: api, keys: keys)
 
         guard let socketURL = SocketIOURL.make(serverURL: dependencies.serverURL) else {
@@ -188,10 +192,12 @@ public final class AccountSession: Sendable {
     }
 
     public func stop() async {
+        await spawnRequests.close()
         homeFeed.stop()
         settingsFeed.stop()
         machinesFeed.stop()
         sessionDetails.stop()
+        await troubleshootingFeed.stop()
         let task = pump.cancel()
         await gitStatus.stop()
         await rigComposer.setConnected(false)

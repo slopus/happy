@@ -18,7 +18,8 @@ extension SessionStarter {
             paintBotFace: { try await BotFacePainter.png(seed: $0) },
             attachmentPlan: { [sender = session.sender] message, sessionId in
                 try await sender.attachmentPlan(for: message, sessionId: sessionId)
-            }
+            },
+            spawnRequests: session.spawnRequests
         ))
     }
 }
@@ -81,6 +82,8 @@ final class NewSessionViewController: UIViewController {
     private var pathField: NewSessionFieldRow?
     private var pendingPicker: Picker?
     private var pendingTask: Task<Void, Never>?
+    /// Send was tapped and the start is being resolved, before it runs.
+    private var launching = false
     private var keyboardVisible = false
     private var lastConfigHeight: CGFloat = 0
 
@@ -91,7 +94,9 @@ final class NewSessionViewController: UIViewController {
         if let machineId { drafts.setMachineId(machineId) }
         if let path { drafts.setPath(path) }
         if let prompt { drafts.setInput(prompt) }
-        let snapshot = (try? session.store.homeSnapshot()) ?? HomeSnapshot(machines: MachinesSnapshot(synced: false, machines: []), sessions: [])
+        // Nothing read on the main thread: the computers arrive from the
+        // home feed (`viewDidLoad`), and until then the draft stays as saved.
+        let snapshot = HomeSnapshot(machines: MachinesSnapshot(synced: false, machines: []), sessions: [])
         composer = NewSessionComposer(drafts: drafts, snapshot: snapshot, ops: session.homeOps)
         starter = SessionStarter.make(for: session)
         model = NewSessionScreenModel(
@@ -232,7 +237,7 @@ final class NewSessionViewController: UIViewController {
             draft: drafts.draft,
             snapshot: composer.snapshot,
             gitWorktrees: composer.gitWorktrees,
-            isStarting: starter.isStarting,
+            isStarting: starter.isStarting || launching,
             now: Self.now
         )
 
@@ -255,7 +260,7 @@ final class NewSessionViewController: UIViewController {
         composerView.agentButton.update(key: model.agentKey, label: model.agentLabel)
         composerView.showsSettings = !model.settings.isEmpty
         composerView.sendButton.canSend = model.canSend
-        composerView.sendButton.isBusy = starter.isStarting
+        composerView.sendButton.isBusy = starter.isStarting || launching
         composerView.setText(drafts.draft.input)
         updateActiveControls()
 
@@ -719,24 +724,37 @@ final class NewSessionViewController: UIViewController {
 
     /// `handleSend`: the draft resolved now, started, and the session
     /// opened in this screen's place. The prompt is optional.
+    /// Resolves the start off the main thread, then runs it. One at a
+    /// time: Send is busy while it resolves; if the target moved meanwhile
+    /// (another computer, path or harness), nothing starts.
     private func send() {
-        guard model.canSend else { return }
+        guard model.canSend, !launching else { return }
         closePicker()
         let drafts = composer.drafts
         let started = drafts.draft
         let bot = drafts.bot
         let prompt = started.input.trimmingCharacters(in: .whitespacesAndNewlines)
-        let launch: NewSessionLaunch
-        switch composer.launch(prompt: prompt, attachments: []) {
-        case .success(let resolved):
-            launch = resolved
-        case .failure(let refusal):
-            showStartError(refusal.errorDescription ?? SessionStarter.Message.startFailed)
-            return
-        }
         let composer = composer
+        launching = true
+        render()
         Task { @MainActor [weak self] in
+            let resolved = await composer.launchPrepared(prompt: prompt, attachments: [])
             guard let self else { return }
+            self.launching = false
+            guard composer.isCurrentTarget(started, bot: bot) else {
+                self.render()
+                return
+            }
+            let launch: NewSessionLaunch
+            switch resolved {
+            case .success(let value):
+                launch = value
+            case .failure(let refusal):
+                self.render()
+                self.showStartError(refusal.errorDescription ?? SessionStarter.Message.startFailed)
+                return
+            }
+            self.render()
             guard let sessionId = await self.starter.start(launch, isCurrentTarget: { composer.isCurrentTarget(started, bot: bot) }) else {
                 self.render()
                 return

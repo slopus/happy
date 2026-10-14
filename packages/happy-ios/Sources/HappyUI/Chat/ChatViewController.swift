@@ -262,8 +262,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         let sessionId = self.sessionId
         Task.detached(priority: .userInitiated) { actions.markRead(sessionId: sessionId) }
         // sync.ts `onSessionVisible`: a session someone has opened is no
-        // longer an abandoned start.
-        SpawnRequests.shared.release(sessionId: sessionId)
+        // longer an abandoned start, in this account.
+        account.spawnRequests.release(sessionId: sessionId)
         updateHeaderVisibility(animated: animated)
     }
 

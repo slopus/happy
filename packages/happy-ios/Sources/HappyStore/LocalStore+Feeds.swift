@@ -9,6 +9,7 @@ extension LocalStore {
     public func stopSnapshotProducers() async {
         await homeHub.stop()
         await machinesHub.stop()
+        await troubleshootingHub.stop()
     }
 
     public func setSessionPresenceOverlay(id: String, value: PresenceOverlayValue) { presenceOverlay.setSession(id, value) }
@@ -21,15 +22,17 @@ extension LocalStore {
     public func refreshPresenceDisplay() async {
         await homeHub.refresh()
         await machinesHub.refresh()
+        await troubleshootingHub.refresh()
     }
 
     private static func stream<Value: Sendable>(_ observation: SharedValueObservation<Value>) -> AsyncStream<Value> {
         AsyncStream(bufferingPolicy: .bufferingNewest(1)) { continuation in
-            let cancellable = observation.start(onError: { error in
+            let cancellable = observation.startWithAsyncCallbacks(onError: { error in
                 print("HappyStore snapshot observation stopped: \(error)")
                 continuation.finish()
             }, onChange: { value in
-                continuation.yield(value)
+                if case .terminated = continuation.yield(value) { return false }
+                return true
             })
             continuation.onTermination = { _ in cancellable.cancel() }
         }

@@ -82,6 +82,7 @@ extension ChatSessionState {
         var record = record
         record.seq = 0
         record.updatedAt = 0
+        record.lastMessageSentAt = nil
         if record.active { record.activeAt = 0 }
         record.metadataVersion = 0
         record.metadataCipher = ""

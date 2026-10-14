@@ -42,6 +42,28 @@ public enum AppLanguage {
         return preferred
     }
 
+    /// The catalog the app speaks (text/index.ts at launch): the preferred
+    /// language when it is one of `supported`, else the first device
+    /// language that is, Chinese by its script (Traditional for `Hant`,
+    /// Simplified otherwise), else English. Device languages are BCP 47 tags
+    /// such as `Locale.preferredLanguages` gives (`zh-Hant-TW`, `pt-BR`).
+    public static func resolve(preferred: String?, deviceLanguages: [String]) -> String {
+        if let preferred, nativeName(preferred) != nil { return preferred }
+        for tag in deviceLanguages {
+            let parts = tag.split(whereSeparator: { $0 == "-" || $0 == "_" })
+            guard let first = parts.first, !first.isEmpty else { continue }
+            let language = first.lowercased()
+            if language == "zh" {
+                // expo-localization's `languageScriptCode`: the tag's
+                // four-letter subtag.
+                let script = parts.dropFirst().first { $0.count == 4 }?.capitalized
+                return script == "Hant" ? "zh-Hant" : "zh-Hans"
+            }
+            if nativeName(language) != nil { return language }
+        }
+        return "en"
+    }
+
     /// appearance.tsx `getLanguageDisplayText`.
     public static func displayText(preferred: String?, deviceLanguages: [String], automatic: String) -> String {
         guard let preferred else {

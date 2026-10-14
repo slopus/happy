@@ -134,6 +134,17 @@ offline and a last-seen tick. Those tests and account stop/restart each passed
 50 repeated isolated runs. Account stop drains both active and retiring hub
 tasks; producer generations reject late callbacks from an older scope.
 
+Shared GRDB callbacks queue value and error delivery before resuming an
+async consumer. GRDB holds its shared client lock while invoking callbacks;
+direct continuation delivery there can deadlock with the consumer's
+synchronous cancellation handler. One serial bridge per subscription breaks
+that lock cycle without changing shared SQL fetching, cached replay or
+synchronous client cancellation. One pending latest snapshot and one
+terminal error keep each delivery mailbox bounded. Held-callback regressions
+cover Home values and errors, and the direct Settings stream. The original five-second restart
+deadline, seven-subscriber single fetch, fresh account-stop disk read and
+observation-error recovery checks remain in place.
+
 Wire deletion and full-list reconciliation prune cached presence and dirty
 ids. Store overlays discard only deleted rows; reconciliation reads retained
 ids without decoding JSON, preserving socket rows newer than a list cutoff.
@@ -152,9 +163,31 @@ Bot names and faces still notify their views immediately, and draft
 corrections retain the existing four-pass bound.
 
 Picker order follows happy-app's `useSessions`: active chats first, then
-`lastMeaningfulMessageAt` or creation time, with a stable id tie-breaker.
+`lastMeaningfulMessageAt`, this device's last accepted send, or creation
+time, with a stable id tie-breaker.
 Side chats are excluded. Updating `updatedAt` or reversing the raw SQL order
 does not rebuild pickers; meaningful activity and active-state changes do.
+
+Troubleshooting has its own atomic SQL snapshot: only computer-grouping
+metadata and the newest known-computer session's project/path/log-directory
+fields are decoded. One account-owned projection shares the computer list
+and prompt, caching computer grouping until those inputs change. A fixture
+with 1000 sessions and seven subscribers asserts one SQL fetch and one
+computer derivation. A real live message changes the recent project without
+regrouping computers; equal prompts and unrendered machine fields publish
+nothing. Machine deletion selects the next known session in the same value,
+and presence/account lifecycle tests cover server flags and fresh scopes.
+The Home `updatedAt` region remains until session info and troubleshooting
+screens have both switched to their scoped feeds.
+
+The local send timestamp lives in a nullable SQLite session column, added
+by migration v4. Acceptance stores the text, files and timestamp atomically,
+so it works offline and survives reopen. A refused send, file-only item,
+retry or echoed localId never advances it. Wire merges preserve it, and
+agent-published meaningful activity always wins. The Home region explicitly
+watches this column; the chat header projection clears it. Tests cover v3
+migration, reopen, wire preservation, duplicate acceptance with zero writes,
+echo replay, real offline acceptance and activity ordering.
 
 `HappyStore.ThreadRules` checks synchronous store reads/writes, migration,
 sync work and reducer entry points in debug builds. Its enforcement flag

@@ -292,6 +292,234 @@ final class AgentsPageTests: XCTestCase {
     }
 }
 
+/// Settings › Agents worked out off the main thread: the groups a change
+/// rebuilds, and the ones it leaves on screen.
+final class AgentsPageDerivationTests: XCTestCase {
+    private let allGroups: Set<AgentsPage.Group> = [.machines, .defaults, .agent(.claude), .agent(.codex), .agent(.agy)]
+
+    override func setUp() async throws {
+        // Catalogs are decoded off the main thread; these tests derive on it.
+        for language in ["en", "ja"] { _ = await TranslationCatalog.load(language) }
+    }
+
+    private func input(_ machines: [MachineRecord], settings: SettingsSnapshot = SettingsSnapshot()) -> AgentsPage.Input {
+        var input = AgentsPage.Input(language: "en")
+        input.settings = settings
+        input.machines = MachinesSnapshot(synced: true, machines: machines)
+        return input
+    }
+
+    /// Three online, then the rest, ten apart so a heartbeat of a few
+    /// seconds keeps the order.
+    private func thousandComputers() -> [MachineRecord] {
+        (0..<1000).map { machine("m\($0)", active: $0 < 3, activeAt: Int64(100_000 - $0 * 10), ["host": .string("host \($0)")]) }
+    }
+
+    private func settings(_ overrides: [String: JSONValue]) -> SettingsSnapshot {
+        SettingsSnapshot(synced: AccountSettingsRecord(version: 1, cipher: nil, settings: .object(["agentDefaultOverrides": .object(overrides)])))
+    }
+
+    /// A first derivation, as the screen applies it.
+    private func shown(_ input: AgentsPage.Input) throws -> AgentsPage.Content {
+        try XCTUnwrap(AgentsPage.derive(input, applied: nil)).state
+    }
+
+    func testNothingUntilBothFeedsHaveSpoken() {
+        var input = AgentsPage.Input(language: "en")
+        XCTAssertNil(AgentsPage.derive(input, applied: nil))
+        input.settings = SettingsSnapshot()
+        XCTAssertNil(AgentsPage.derive(input, applied: nil), "no machines yet is not no machines")
+        input.machines = MachinesSnapshot(synced: false, machines: [])
+        let first = AgentsPage.derive(input, applied: nil)
+        XCTAssertEqual(first?.output.rebuilt, allGroups)
+        XCTAssertEqual(first?.state.machines, [])
+        XCTAssertEqual(first?.state.groups, [.machines, .defaults, .agent(.claude), .agent(.codex), .agent(.agy)])
+    }
+
+    func testTheContentIsThePageFunctions() throws {
+        let overrides: [String: JSONValue] = ["claude": .object(["permissionMode": .string("plan")])]
+        let machines = [
+            machine("m1", active: true, activeAt: 5, ["host": .string("box"), "happyCliVersion": .string("1.3.0")]),
+            machine("m2", activeAt: 9, ["host": .string("mini")]),
+        ]
+        var page = input(machines, settings: settings(overrides))
+        page.open = AgentsPage.OpenField(.codex, .modelMode)
+        let content = try shown(page)
+        XCTAssertEqual(content.machines, AgentsPage.machineRows(machines, online: "online", offline: "offline"))
+        XCTAssertTrue(content.hasOverrides)
+        XCTAssertEqual(content.agents.map(\.agent), AgentDefaults.Agent.configurable)
+        XCTAssertEqual(content.agents[0].fields, AgentsPage.fields(.claude, overrides: overrides, cliVersion: "1.3.0"))
+        XCTAssertEqual(content.agents.map(\.open), [nil, .modelMode, nil])
+    }
+
+    /// A heartbeat moves `activeAt` and nothing the page draws: the main
+    /// thread hears nothing, for a thousand computers as for one.
+    func testAHeartbeatThatKeepsTheOrderDerivesNothing() throws {
+        let machines = thousandComputers()
+        let before = try shown(input(machines))
+        XCTAssertEqual(before.machines.count, 1000)
+        var beat = machines
+        beat[0].activeAt += 5
+        beat[500].activeAt += 3
+        XCTAssertNil(AgentsPage.derive(input(beat), applied: before))
+        var unsynced = input(beat)
+        unsynced.machines?.synced = false
+        XCTAssertNil(AgentsPage.derive(unsynced, applied: before))
+    }
+
+    func testAComputerGoingOfflineRebuildsOnlyTheComputers() throws {
+        let machines = [machine("m1", active: true, activeAt: 5, ["host": .string("box")]), machine("m2", activeAt: 3, ["host": .string("mini")])]
+        let before = try shown(input(machines))
+        var after = machines
+        after[0].active = false
+        let update = try XCTUnwrap(AgentsPage.derive(input(after), applied: before))
+        XCTAssertEqual(update.output.rebuilt, [.machines])
+        XCTAssertEqual(update.state.machines.map(\.subtitle), ["offline", "offline"])
+    }
+
+    /// The code defaults follow the first computer's CLI; the computers'
+    /// own rows don't show it.
+    func testANewCLIRebuildsTheAgentsItChangesAndNotTheComputers() throws {
+        let old = [machine("m1", active: true, activeAt: 5, ["host": .string("box")])]
+        let before = try shown(input(old))
+        let new = [machine("m1", active: true, activeAt: 5, ["host": .string("box"), "happyCliVersion": .string("1.3.0")])]
+        let update = try XCTUnwrap(AgentsPage.derive(input(new), applied: before))
+        XCTAssertFalse(update.output.rebuilt.contains(.machines))
+        XCTAssertFalse(update.output.rebuilt.contains(.defaults))
+        XCTAssertTrue(update.output.rebuilt.contains(.agent(.claude)))
+        XCTAssertEqual(update.state.agents[0].fields[1].detail, "Default (Opus 5.5)")
+    }
+
+    func testOpeningAFieldRebuildsItsAgentAndTheOneItClosed() throws {
+        var page = input([])
+        let before = try shown(page)
+        page.open = AgentsPage.OpenField(.claude, .modelMode)
+        let opened = try XCTUnwrap(AgentsPage.derive(page, applied: before))
+        XCTAssertEqual(opened.output.rebuilt, [.agent(.claude)])
+        page.open = AgentsPage.OpenField(.codex, .effortLevel)
+        let moved = try XCTUnwrap(AgentsPage.derive(page, applied: opened.state))
+        XCTAssertEqual(moved.output.rebuilt, [.agent(.claude), .agent(.codex)])
+        page.open = AgentsPage.OpenField(.codex, .permissionMode)
+        XCTAssertEqual(AgentsPage.derive(page, applied: moved.state)?.output.rebuilt, [.agent(.codex)])
+    }
+
+    /// A choice shows at once, and the settings feed echoing it back
+    /// derives nothing more.
+    func testAChoiceShowsBeforeTheFeedEchoesIt() throws {
+        var page = input([])
+        let before = try shown(page)
+        let chosen: [String: JSONValue] = ["codex": .object(["permissionMode": .string("yolo")])]
+        page.chosen = chosen
+        XCTAssertEqual(page.overrides, chosen)
+        let update = try XCTUnwrap(AgentsPage.derive(page, applied: before))
+        XCTAssertEqual(update.output.rebuilt, [.defaults, .agent(.codex)])
+        XCTAssertTrue(update.state.hasOverrides)
+        // What the screen's follow does with the echo.
+        page.settings = SettingsSnapshot(synced: nil, pending: ["agentDefaultOverrides": .object(chosen)])
+        page.chosen = nil
+        XCTAssertEqual(page.overrides, chosen)
+        XCTAssertNil(AgentsPage.derive(page, applied: update.state))
+    }
+
+    func testClearingRebuildsTheDefaultsAndEveryAgentItTouched() throws {
+        let overrides: [String: JSONValue] = ["claude": .object(["effortLevel": .string("high")])]
+        var page = input([], settings: settings(overrides))
+        let before = try shown(page)
+        page.chosen = [:]
+        let update = try XCTUnwrap(AgentsPage.derive(page, applied: before))
+        XCTAssertEqual(update.output.rebuilt, [.defaults, .agent(.claude)])
+        XCTAssertFalse(update.state.hasOverrides)
+    }
+
+    /// The language is part of what the page says: the same computers in
+    /// another language are another page.
+    func testTheLanguageInTheInputSaysTheWords() throws {
+        let machines = [machine("m1", active: true, activeAt: 5, ["host": .string("box")])]
+        let english = try shown(input(machines))
+        XCTAssertEqual(english.machines.map(\.subtitle), ["online"])
+        var japanese = input(machines)
+        japanese.language = "ja"
+        let update = try XCTUnwrap(AgentsPage.derive(japanese, applied: english))
+        XCTAssertEqual(update.state.machines.map(\.subtitle), ["オンライン"])
+        XCTAssertEqual(update.output.rebuilt, [.machines])
+    }
+
+    /// Two accounts' screens, built in two languages, derive at the same
+    /// time while the screens' language keeps changing underneath them:
+    /// each says only its own words, because each read its language from
+    /// its input and never from `AppLocalization`.
+    @MainActor
+    func testTwoAccountsInTwoLanguagesKeepTheirOwnWords() async {
+        let japaneseCatalog = await TranslationCatalog.load("ja")
+        defer { AppLocalization.use(nil) }
+        func pipeline(_ language: String, _ recorder: ApplyPerfRecorder<AgentsPage.Update>) -> ApplyPipeline<AgentsPage.Input, AgentsPage.Content?, AgentsPage.Update> {
+            ApplyPipeline(
+                input: AgentsPage.Input(language: language),
+                state: nil,
+                minimumInterval: .zero,
+                derive: { AgentsPage.derive($0, applied: $1) },
+                apply: { recorder.take($0) }
+            )
+        }
+        let englishOutputs = ApplyPerfRecorder<AgentsPage.Update>()
+        let japaneseOutputs = ApplyPerfRecorder<AgentsPage.Update>()
+        let english = pipeline("en", englishOutputs)
+        let japanese = pipeline("ja", japaneseOutputs)
+        let flips = Task.detached {
+            for index in 0..<2000 { AppLocalization.use(index.isMultiple(of: 2) ? japaneseCatalog : nil) }
+        }
+        var machines = [machine("m1", active: true, activeAt: 5, ["host": .string("box")]), machine("m2", activeAt: 3, ["host": .string("mini")])]
+        for both in [english, japanese] { both.update { $0.settings = SettingsSnapshot() } }
+        for beat in 0..<20 {
+            machines[0].active = beat.isMultiple(of: 2)
+            for both in [english, japanese] { both.update { [machines] in $0.machines = MachinesSnapshot(synced: true, machines: machines) } }
+            await Task.yield()
+        }
+        await flips.value
+        await applyPerfWait(timeout: 30) {
+            english.applied?.machines.first?.subtitle == "offline" && japanese.applied?.machines.first?.subtitle == "オフライン"
+        }
+        let englishWords = Set(englishOutputs.outputs.flatMap { $0.content.machines.map(\.subtitle) })
+        let japaneseWords = Set(japaneseOutputs.outputs.flatMap { $0.content.machines.map(\.subtitle) })
+        XCTAssertFalse(englishOutputs.outputs.isEmpty)
+        XCTAssertFalse(japaneseOutputs.outputs.isEmpty)
+        XCTAssertTrue(englishWords.isSubset(of: ["online", "offline"]), "\(englishWords)")
+        XCTAssertTrue(japaneseWords.isSubset(of: ["オンライン", "オフライン"]), "\(japaneseWords)")
+        english.cancel()
+        japanese.cancel()
+    }
+
+    /// Through the real pipeline: one apply for the page, none for a burst
+    /// of heartbeats over a thousand computers, and every derivation off
+    /// the main thread (ApplyPipeline checks that in Debug).
+    @MainActor
+    func testHeartbeatsThroughThePipelineNeverReachTheMainThread() async {
+        let recorder = ApplyPerfRecorder<AgentsPage.Update>()
+        let pipeline = ApplyPipeline<AgentsPage.Input, AgentsPage.Content?, AgentsPage.Update>(
+            input: AgentsPage.Input(language: "en"),
+            state: nil,
+            minimumInterval: .zero,
+            derive: { AgentsPage.derive($0, applied: $1) },
+            apply: { recorder.take($0) }
+        )
+        var machines = thousandComputers()
+        pipeline.update { $0.settings = SettingsSnapshot() }
+        pipeline.update { [machines] in $0.machines = MachinesSnapshot(synced: true, machines: machines) }
+        await applyPerfWait(timeout: 30) { pipeline.counts.applies == 1 }
+        let quiet = pipeline.counts.unchanged
+        for beat in 1...5 {
+            machines[0].activeAt += 1
+            pipeline.update { [machines] in $0.machines = MachinesSnapshot(synced: true, machines: machines) }
+            await applyPerfWait(timeout: 30) { pipeline.counts.unchanged == quiet + beat }
+        }
+        XCTAssertEqual(pipeline.counts.applies, 1)
+        XCTAssertEqual(recorder.outputs.count, 1)
+        XCTAssertEqual(recorder.outputs.first?.rebuilt.count, 5)
+        XCTAssertEqual(pipeline.applied?.machines.count, 1000)
+        pipeline.cancel()
+    }
+}
+
 /// Vectors from thumbhash@0.1.1's own `rgbaToThumbHash` and
 /// `thumbHashToRGBA`, run under node on three generated images.
 final class ThumbHashTests: XCTestCase {

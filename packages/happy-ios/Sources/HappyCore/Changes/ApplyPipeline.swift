@@ -195,16 +195,16 @@ public final class ApplyPipeline<Input: Sendable, State: Sendable, Output: Senda
                 if result == nil { counters.unchanged += 1 }
             }
             guard let result else { continue }
-            let output = result.output
-            let outcome = await MainActor.run { self.deliver(output) }
-            if case .applied = outcome {
-                lock.withLock { self.state = result.state }
-            }
+            let (output, derived) = result
+            _ = await MainActor.run { self.deliver(output, state: derived) }
         }
     }
 
+    /// Applies `output` unless cancelled or superseded. An apply the screen
+    /// takes moves the applied state to `state` in the same step that counts
+    /// it, so `applied` and `counts` never disagree.
     @MainActor
-    private func deliver(_ output: Output) -> Outcome {
+    private func deliver(_ output: Output, state next: State) -> Outcome {
         let proceed: Outcome? = lock.withLock {
             if cancelled { return .cancelled }
             if dirty && !lastSuperseded {
@@ -224,7 +224,12 @@ public final class ApplyPipeline<Input: Sendable, State: Sendable, Output: Senda
             // Paced from the end, so a slow apply still leaves the main
             // thread a whole interval before the next one.
             lastApply = end
-            if took { counters.applies += 1 } else { counters.rejected += 1 }
+            if took {
+                state = next
+                counters.applies += 1
+            } else {
+                counters.rejected += 1
+            }
             counters.mainMilliseconds += elapsed
             counters.longestApplyMilliseconds = max(counters.longestApplyMilliseconds, elapsed)
         }

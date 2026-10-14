@@ -19,7 +19,11 @@ public enum AgentsPage {
 
     /// Computers online first, then the most recently active.
     public static func machineRows(_ machines: [MachineRecord], online: String, offline: String) -> [MachineRow] {
-        sortedChoices(machines).map { choice in
+        machineRows(sorted: sortedChoices(machines), online: online, offline: offline)
+    }
+
+    private static func machineRows(sorted: [MachineChoice], online: String, offline: String) -> [MachineRow] {
+        sorted.map { choice in
             let machine = choice.happyMachine ?? choice.rigMachine
             let platform = machine?.metadata?["platform"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
             let status = choice.online ? online : offline
@@ -32,7 +36,11 @@ public enum AgentsPage {
     /// The CLI the code defaults are described for: the first listed
     /// computer's Happy CLI, which is where a new session most likely starts.
     public static func defaultsCLIVersion(_ machines: [MachineRecord]) -> String? {
-        sortedChoices(machines).first(where: { $0.happyMachine != nil })?
+        defaultsCLIVersion(sorted: sortedChoices(machines))
+    }
+
+    private static func defaultsCLIVersion(sorted: [MachineChoice]) -> String? {
+        sorted.first(where: { $0.happyMachine != nil })?
             .happyMachine?.metadata?["happyCliVersion"]?.stringValue
     }
 
@@ -100,5 +108,121 @@ public enum AgentsPage {
                 offersCustomModel: offersCustom
             )
         }
+    }
+}
+
+// MARK: Off the main thread
+
+extension AgentsPage {
+    /// The field showing its choices; one at a time across the page.
+    public struct OpenField: Equatable, Sendable {
+        public var agent: AgentDefaults.Agent
+        public var field: AgentDefaults.Field
+
+        public init(_ agent: AgentDefaults.Agent, _ field: AgentDefaults.Field) {
+            self.agent = agent
+            self.field = field
+        }
+    }
+
+    /// What the page is worked out from: the account's settings and
+    /// machines feeds, and what the reader did on the page.
+    public struct Input: Sendable {
+        public var settings: SettingsSnapshot?
+        public var machines: MachinesSnapshot?
+        /// Overrides chosen here, shown until the settings feed speaks again
+        /// (agents.tsx writes them to its local settings at once).
+        public var chosen: [String: JSONValue]?
+        public var open: OpenField?
+        /// The screen's language, fixed when it is built: the computers'
+        /// subtitles say `status.online` and `status.offline` in it.
+        public var language: String
+
+        public init(language: String) {
+            self.language = language
+        }
+
+        /// The overrides the page shows, and a choice edits.
+        public var overrides: [String: JSONValue] {
+            chosen ?? settings.map { AccountSettings($0).agentDefaultOverrides } ?? [:]
+        }
+    }
+
+    /// One agent's group: its fields and, when it is this agent's, the one
+    /// showing its choices.
+    public struct AgentGroup: Equatable, Sendable {
+        public var agent: AgentDefaults.Agent
+        public var fields: [FieldRow]
+        public var open: AgentDefaults.Field?
+    }
+
+    /// A group of the page.
+    public enum Group: Hashable, Sendable {
+        case machines
+        case defaults
+        case agent(AgentDefaults.Agent)
+    }
+
+    /// agents.tsx reduced to what it draws.
+    public struct Content: Equatable, Sendable {
+        public var machines: [MachineRow]
+        /// "Clear all overrides" is enabled.
+        public var hasOverrides: Bool
+        public var agents: [AgentGroup]
+
+        public init(overrides: [String: JSONValue], machines: [MachineRecord], open: OpenField?, online: String, offline: String) {
+            let sorted = AgentsPage.sortedChoices(machines)
+            let cliVersion = AgentsPage.defaultsCLIVersion(sorted: sorted)
+            self.machines = AgentsPage.machineRows(sorted: sorted, online: online, offline: offline)
+            self.hasOverrides = !overrides.isEmpty
+            self.agents = AgentDefaults.Agent.configurable.map { agent in
+                AgentGroup(
+                    agent: agent,
+                    fields: AgentsPage.fields(agent, overrides: overrides, cliVersion: cliVersion),
+                    open: open?.agent == agent ? open?.field : nil
+                )
+            }
+        }
+
+        /// The groups in the order they show.
+        public var groups: [Group] {
+            [.machines, .defaults] + agents.map { .agent($0.agent) }
+        }
+    }
+
+    public struct Update: Sendable {
+        public var content: Content
+        /// The groups to build (again); the rest stay as they are on screen.
+        public var rebuilt: Set<Group>
+    }
+
+    /// The page for `input` and the groups that differ from `applied`, the
+    /// page on screen. Nothing until both feeds have spoken, so the page
+    /// never shows "no machines" for machines it hasn't read yet, and nothing
+    /// when what it draws is unchanged: a heartbeat that leaves the
+    /// computers' order and status alone derives nothing.
+    public static func derive(_ input: Input, applied: Content?) -> (output: Update, state: Content)? {
+        guard input.settings != nil, let machines = input.machines else { return nil }
+        let words = TranslationCatalog.catalog(for: input.language)
+        let content = Content(
+            overrides: input.overrides,
+            machines: machines.machines,
+            open: input.open,
+            online: words("status.online"),
+            offline: words("status.offline")
+        )
+        guard content != applied else { return nil }
+        return (Update(content: content, rebuilt: rebuilt(from: applied, to: content)), content)
+    }
+
+    static func rebuilt(from old: Content?, to new: Content) -> Set<Group> {
+        guard let old else { return Set(new.groups) }
+        var groups: Set<Group> = []
+        if old.machines != new.machines { groups.insert(.machines) }
+        if old.hasOverrides != new.hasOverrides { groups.insert(.defaults) }
+        for group in new.agents where !old.agents.contains(group) {
+            groups.insert(.agent(group.agent))
+        }
+        return groups
     }
 }

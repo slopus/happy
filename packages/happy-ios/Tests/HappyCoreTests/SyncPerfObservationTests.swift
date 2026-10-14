@@ -18,6 +18,14 @@ private final class HomeSQLCounter: @unchecked Sendable {
     }
 }
 
+private final class HeldHomeCallback: @unchecked Sendable {
+    private let lock = NSLock()
+    private var shouldHold = false
+    let release = DispatchSemaphore(value: 0)
+    func arm() { lock.withLock { shouldHold = true } }
+    func takeHold() -> Bool { lock.withLock { defer { shouldHold = false }; return shouldHold } }
+}
+
 final class SyncPerfObservationTests: XCTestCase {
     func testSevenHomeSubscribersShareOneFetchAndReceiveOffMain() async throws {
         let counter = HomeSQLCounter()
@@ -163,6 +171,105 @@ final class SyncPerfObservationTests: XCTestCase {
         let changed = try await syncPerfNext(restartedStream)
         XCTAssertEqual(changed?.settings.pending["theme"], .string("light"))
         XCTAssertEqual(reads.value, 3, "late cancellation of the old scope cannot stop the new producer")
+    }
+
+    @MainActor
+    func testCancellationWhileSharedCallbackIsHeldAllowsRestart() async throws {
+        let store = try LocalStore.inMemory()
+        let held = HeldHomeCallback()
+        let initial = expectation(description: "compatibility value")
+        let callbackHeld = expectation(description: "shared callback holds its notification lock")
+        let observer = store.homeObservation.start(onError: { XCTFail("\($0)") }, onChange: { _ in
+            guard held.takeHold() else { return }
+            callbackHeld.fulfill()
+            _ = held.release.wait(timeout: .now() + 2)
+        })
+        var first = true
+        let token = store.observeHome { _ in
+            if first { first = false; initial.fulfill() }
+        }
+        await fulfillment(of: [initial], timeout: 5)
+        held.arm()
+        try store.addPendingSettings(["theme": .string("dark")])
+        await fulfillment(of: [callbackHeld], timeout: 5)
+        token.cancel()
+        // Release from GCD so the callback can finish even when cancellation
+        // has occupied the cooperative executor. The restart must survive a
+        // callback that was already running when the old consumer cancelled.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.25) { held.release.signal() }
+        await store.stopSnapshotProducers()
+        let restarted = try await syncPerfNext(HomeFeed(store: store).snapshots())
+        XCTAssertEqual(restarted?.settings.pending["theme"], .string("dark"))
+        observer.cancel()
+        await store.stopSnapshotProducers()
+    }
+
+    @MainActor
+    func testSettingsCancellationWhileSharedCallbackIsHeldAllowsRestart() async throws {
+        let store = try LocalStore.inMemory()
+        let held = HeldHomeCallback()
+        let initial = expectation(description: "settings value")
+        let callbackHeld = expectation(description: "shared settings callback holds its notification lock")
+        let extra = expectation(description: "cancelled settings consumer receives nothing")
+        extra.isInverted = true
+        let observer = store.settingsObservation.start(onError: { XCTFail("\($0)") }, onChange: { _ in
+            guard held.takeHold() else { return }
+            callbackHeld.fulfill()
+            _ = held.release.wait(timeout: .now() + 2)
+        })
+        let feed = SettingsFeed(store: store)
+        let stream = feed.snapshots()
+        var first = true
+        let consumer = Task {
+            for await _ in stream {
+                if first { first = false; initial.fulfill() }
+                else { extra.fulfill() }
+            }
+        }
+        await fulfillment(of: [initial], timeout: 5)
+        held.arm()
+        try store.addPendingSettings(["theme": .string("dark")])
+        await fulfillment(of: [callbackHeld], timeout: 5)
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.25) { held.release.signal() }
+        consumer.cancel()
+        let restarted = try await syncPerfNext(SettingsFeed(store: store).snapshots())
+        XCTAssertEqual(restarted?.pending["theme"], .string("dark"))
+        await fulfillment(of: [extra], timeout: 0.05)
+        observer.cancel()
+        feed.stop()
+    }
+
+    @MainActor
+    func testCancellationWhileSharedErrorCallbackIsHeldAllowsRestart() async throws {
+        let store = try LocalStore.inMemory()
+        let schema = try await store.writer.read { db in
+            try String.fetchOne(db, sql: "SELECT sql FROM sqlite_master WHERE name = 'accountSettings'")!
+        }
+        let held = HeldHomeCallback()
+        let initial = expectation(description: "initial before observation error")
+        let errorHeld = expectation(description: "shared error callback holds its notification lock")
+        let observer = store.homeObservation.start(onError: { _ in
+            guard held.takeHold() else { return }
+            errorHeld.fulfill()
+            _ = held.release.wait(timeout: .now() + 2)
+        }, onChange: { _ in })
+        var first = true
+        let token = store.observeHome { _ in
+            if first { first = false; initial.fulfill() }
+        }
+        await fulfillment(of: [initial], timeout: 5)
+        held.arm()
+        try await store.writer.write { db in try db.execute(sql: "DROP TABLE accountSettings") }
+        try store.addPendingSettings(["trigger": .bool(true)])
+        await fulfillment(of: [errorHeld], timeout: 5)
+        try await store.writer.write { db in try db.execute(sql: schema) }
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.25) { held.release.signal() }
+        token.cancel()
+        await store.stopSnapshotProducers()
+        let restarted = try await syncPerfNext(HomeFeed(store: store).snapshots())
+        XCTAssertEqual(restarted?.settings.pending["trigger"], .bool(true))
+        observer.cancel()
+        await store.stopSnapshotProducers()
     }
 
     func testObservationErrorFinishesStreamAndResubscriptionRecovers() async throws {

@@ -7,8 +7,9 @@ import UIKit
 
 /// Settings › Appearance › Language (app/(app)/settings/language.tsx):
 /// Automatic and every language happy-app ships. The choice is synced, so
-/// happy-app on the account's other devices follows it. This app's own copy
-/// is English only for now, so there is nothing to reload here.
+/// happy-app on the account's other devices follows it. After the same
+/// alert, where happy-app reloads, the screens are built again from the
+/// root in the new language.
 public final class SettingsLanguageViewController: UIViewController {
     private let session: AccountSession
     private let list = GroupedListView()
@@ -79,6 +80,13 @@ public final class SettingsLanguageViewController: UIViewController {
             preferred = code
             session.updateSettings(["preferredLanguage": code.map(JSONValue.string) ?? .null])
             rebuild()
+            // language.tsx reloads 100 ms after saving; the catalog is
+            // decoded off the main thread meanwhile.
+            let language = AppLanguage.resolve(preferred: code, deviceLanguages: Locale.preferredLanguages)
+            let catalog = language == "en" ? nil : await TranslationCatalog.load(language)
+            if AppLocalization.use(catalog) {
+                NotificationCenter.default.post(name: .screensLanguageChanged, object: nil)
+            }
         }
     }
 }

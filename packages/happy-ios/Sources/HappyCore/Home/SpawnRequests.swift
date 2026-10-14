@@ -12,6 +12,7 @@ import HappyWire
 /// In memory only: a key restored days later means nothing to the machine.
 @MainActor
 public final class SpawnRequests {
+    @available(*, deprecated, message: "Use AccountSession.spawnRequests for account isolation")
     public static let shared = SpawnRequests()
 
     /// What the person asked for, as `buildSpawnRequestSignature` spells it.
@@ -68,21 +69,53 @@ public final class SpawnRequests {
     }
 
     private var pending: Pending?
-    private let makeId: () -> String
+    private let makeId: @MainActor @Sendable () -> String
+    private var attempts: [UUID: () -> Void] = [:]
+    public private(set) var isClosed = false
 
-    public init(makeId: @escaping () -> String = { UUID().uuidString.lowercased() }) {
+    public nonisolated init(makeId: @escaping @MainActor @Sendable () -> String = { UUID().uuidString.lowercased() }) {
         self.makeId = makeId
+    }
+
+    /// Cancels starts before they have a session to remember. The starter
+    /// removes its registration when the attempt unwinds.
+    func registerAttempt(_ cancel: @escaping () -> Void) -> UUID? {
+        guard !isClosed else { return nil }
+        let id = UUID()
+        attempts[id] = cancel
+        return id
+    }
+
+    func removeAttempt(_ id: UUID) {
+        attempts.removeValue(forKey: id)
+    }
+
+    /// An account session never reopens this scope. Late spawn replies can
+    /// clean up through their original account, but cannot restore its state.
+    public func close() {
+        guard !isClosed else { return }
+        isClosed = true
+        let previous = pending
+        pending = nil
+        let cancellations = Array(attempts.values)
+        attempts.removeAll()
+        for cancel in cancellations { cancel() }
+        previous?.abandon?()
     }
 
     /// `resolveSpawnRequestId`: the same request keeps its key; a changed
     /// one gets a new key and lets the old attempt's session go.
     public func requestId(for signature: Signature) -> String {
+        // Preserve the API for late callers without retaining private state.
+        // SessionStarter refuses closed scopes before requesting a key.
+        guard !isClosed else { return makeId() }
         let key = signature.key
         if let pending, pending.signature == key { return pending.clientRequestId }
         let previous = pending
-        pending = Pending(signature: key, clientRequestId: makeId())
+        let id = makeId()
+        pending = Pending(signature: key, clientRequestId: id)
         previous?.abandon?()
-        return pending!.clientRequestId
+        return id
     }
 
     /// The session an earlier press of this request already made, so a
@@ -94,7 +127,7 @@ public final class SpawnRequests {
     /// `rememberSpawnedSession`; `abandon` runs if the request is replaced
     /// before it completes.
     public func remember(_ clientRequestId: String, sessionId: String, abandon: @escaping () -> Void, release: (() -> Void)? = nil) {
-        guard pending?.clientRequestId == clientRequestId else {
+        guard !isClosed, pending?.clientRequestId == clientRequestId else {
             abandon()
             return
         }
