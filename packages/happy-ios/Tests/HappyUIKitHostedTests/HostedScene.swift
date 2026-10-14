@@ -18,12 +18,12 @@ func hostedActiveScene(file: StaticString = #filePath, line: UInt = #line) async
     return try XCTUnwrap(found, "the host has no foreground active window scene", file: file, line: line)
 }
 
-/// A window of `scene`, key and visible over the host's, with an empty
-/// screen to put views on.
+/// A window of `scene`, key and visible over the host's, with `root`, by
+/// default an empty screen to put views on.
 @MainActor
-func hostedKeyWindow(in scene: UIWindowScene) -> UIWindow {
+func hostedKeyWindow(in scene: UIWindowScene, root: UIViewController = UIViewController()) -> UIWindow {
     let window = UIWindow(windowScene: scene)
-    window.rootViewController = UIViewController()
+    window.rootViewController = root
     window.makeKeyAndVisible()
     return window
 }

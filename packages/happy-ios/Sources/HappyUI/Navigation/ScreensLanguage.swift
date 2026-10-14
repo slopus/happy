@@ -112,13 +112,25 @@ final class ScreensLanguage {
         if pending {
             guard allowed == nil else { return }
             allowed = view.isUserInteractionEnabled
-            view.isUserInteractionEnabled = false
             // Typing comes from the keyboard's own window, whatever this one
-            // takes: nothing on the screens being replaced keeps it. Last,
-            // with nothing written after: ending editing can call back into
-            // a request, or let go.
+            // takes: nothing on the screens being replaced keeps it. Ended
+            // before the window stops taking touches: UIKit makes a
+            // responder it resigned for that first responder again when the
+            // window takes touches again. Ending editing can call back into
+            // a request, which keeps this hold, or let go, after which
+            // nothing here holds the window again.
             view.endEditing(true)
-        } else if let allowed {
+            guard allowed != nil else { return }
+            view.isUserInteractionEnabled = false
+        } else if allowed != nil {
+            // A root installed without animating replaces the screens being
+            // left only when the window is next laid out: laid out here, as
+            // this turn of the run loop would anyway (no text is measured
+            // for it), so they are off the window before it takes touches
+            // again. Laying out can call back into a request, which keeps
+            // the hold until its root is in.
+            view.layoutIfNeeded()
+            guard !gate.isPending, let allowed else { return }
             self.allowed = nil
             view.isUserInteractionEnabled = allowed
         }

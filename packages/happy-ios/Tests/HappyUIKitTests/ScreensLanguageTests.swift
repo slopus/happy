@@ -64,6 +64,19 @@ private final class EditingWindow: UIWindow {
     }
 }
 
+/// A window's stand-in that calls back the next time it is laid out, as a
+/// screen coming in or going out can when the window is.
+private final class LayingOutView: UIView {
+    var whileLayingOut: (@MainActor () -> Void)?
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let call = whileLayingOut
+        whileLayingOut = nil
+        call?()
+    }
+}
+
 /// Something on the screens being left that has the keyboard.
 private final class Focusable: UIView {
     override var canBecomeFirstResponder: Bool { true }
@@ -183,10 +196,12 @@ final class ScreensLanguageTests: XCTestCase {
         XCTAssertTrue(window.isUserInteractionEnabled)
     }
 
-    /// Once the window takes no touches, whatever has the keyboard on it
-    /// loses it, so typing can't reach the screens being left; a newer root
+    /// Whatever has the keyboard on the window loses it, so typing can't
+    /// reach the screens being left, and then the window takes no touches:
+    /// ended first, so UIKit has no responder of its own to resign for the
+    /// hold and make first responder again as it lets go. A newer root
     /// keeps the hold and has nothing more to end.
-    func testTheHoldEndsEditingOnceTheWindowTakesNoTouches() async {
+    func testTheHoldEndsEditingBeforeTheWindowTakesNoTouches() async {
         let window = EditingWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let language = ScreensLanguage(holding: window)
         let decided = Latch()
@@ -194,13 +209,15 @@ final class ScreensLanguageTests: XCTestCase {
             await decided.wait()
             return "en"
         }, install: {})
-        XCTAssertEqual(window.ends, ["forced, held"])
+        XCTAssertEqual(window.ends, ["forced, touchable"])
+        XCTAssertFalse(window.isUserInteractionEnabled)
         language.request(for: nil, resolve: { "en" }, install: {})
-        XCTAssertEqual(window.ends, ["forced, held"])
+        XCTAssertEqual(window.ends, ["forced, touchable"])
+        XCTAssertFalse(window.isUserInteractionEnabled)
         await language.gate.waitForIdle()
         await decided.open()
         XCTAssertTrue(window.isUserInteractionEnabled)
-        XCTAssertEqual(window.ends, ["forced, held"])
+        XCTAssertEqual(window.ends, ["forced, touchable"])
     }
 
     func testTheFocusedViewOnTheScreensBeingLeftLosesTheKeyboard() async throws {
@@ -218,9 +235,10 @@ final class ScreensLanguageTests: XCTestCase {
     }
 
     /// Ending editing can call back. Cancelled there, the root is installed
-    /// at once in the language in use, still held, and the window takes
-    /// touches again as it did before: nothing written after ending editing
-    /// holds it again.
+    /// at once in the language in use, before the request returns and
+    /// before the hold has taken the window's touches (editing is ended
+    /// first), and the window takes touches as it did before: nothing
+    /// written after ending editing holds it again.
     func testCancelledWhileEndingEditingTheRootIsInBeforeLettingGo() async {
         let window = EditingWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
         let language = ScreensLanguage(holding: window)
@@ -230,12 +248,13 @@ final class ScreensLanguageTests: XCTestCase {
             installed.append("\(window.isUserInteractionEnabled ? "touchable" : "held") in \(AppLocalization.language)")
         })
         window.whileEnding = nil
-        XCTAssertEqual(installed, ["held in en"])
+        XCTAssertEqual(installed, ["touchable in en"])
+        XCTAssertEqual(window.ends, ["forced, touchable"])
         XCTAssertFalse(language.isDeciding)
         XCTAssertFalse(language.gate.isPending)
         XCTAssertTrue(window.isUserInteractionEnabled)
         await language.gate.waitForIdle()
-        XCTAssertEqual(installed, ["held in en"])
+        XCTAssertEqual(installed, ["touchable in en"])
         XCTAssertTrue(window.isUserInteractionEnabled)
     }
 
@@ -256,7 +275,43 @@ final class ScreensLanguageTests: XCTestCase {
         XCTAssertFalse(window.isUserInteractionEnabled)
         await language.gate.waitForIdle()
         XCTAssertEqual(installed, ["newer, held"])
-        XCTAssertEqual(window.ends, ["forced, held"])
+        XCTAssertEqual(window.ends, ["forced, touchable"])
+        XCTAssertTrue(window.isUserInteractionEnabled)
+    }
+
+    /// Letting go lays the window out first, so a root installed without
+    /// animating has replaced the screens being left before the window
+    /// takes touches again. A newer root asked for from there (a screen
+    /// coming in or going out) keeps the hold until it is in.
+    func testANewerRootAskedForWhileLettingGoKeepsTheHold() async {
+        let window = LayingOutView(frame: CGRect(x: 0, y: 0, width: 320, height: 480))
+        let language = ScreensLanguage(holding: window)
+        let firstIn = Latch()
+        let decided = Latch()
+        var installed: [String] = []
+        language.request(for: nil, resolve: { "en" }, install: {
+            installed.append("first, \(window.isUserInteractionEnabled ? "touchable" : "held")")
+            window.whileLayingOut = {
+                language.request(for: nil, resolve: {
+                    await decided.wait()
+                    return "en"
+                }, install: {
+                    installed.append("newer, \(window.isUserInteractionEnabled ? "touchable" : "held")")
+                })
+            }
+            window.setNeedsLayout()
+            Task { await firstIn.open() }
+        })
+        await firstIn.wait()
+        XCTAssertEqual(installed, ["first, held"])
+        XCTAssertNil(window.whileLayingOut, "laid out as the first let go")
+        XCTAssertTrue(language.isDeciding)
+        XCTAssertTrue(language.gate.isPending)
+        XCTAssertFalse(window.isUserInteractionEnabled, "let go with the newer root pending")
+        await decided.open()
+        await language.gate.waitForIdle()
+        XCTAssertEqual(installed, ["first, held", "newer, held"])
+        XCTAssertFalse(language.gate.isPending)
         XCTAssertTrue(window.isUserInteractionEnabled)
     }
 
