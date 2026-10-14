@@ -73,7 +73,13 @@ final class ChatOlderEndViewTests: XCTestCase {
         defer { window.isHidden = true }
         var pressed = 0
         view.onAction = { pressed += 1 }
-        try XCTUnwrap(button(view)).sendActions(for: .touchUpInside)
+        let button = try XCTUnwrap(button(view))
+        // A touch-up-inside runs the button's own tap: its target-action,
+        // which UIKit dispatches through the application, and a test bundle
+        // without a host app has none, so `sendActions` would reach nothing.
+        XCTAssertTrue(button.allTargets.contains(button))
+        XCTAssertFalse(button.actions(forTarget: button, forControlEvent: .touchUpInside)?.isEmpty ?? true)
+        button.onTap?()
         XCTAssertEqual(pressed, 1)
     }
 }

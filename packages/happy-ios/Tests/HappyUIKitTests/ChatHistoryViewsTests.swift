@@ -17,8 +17,15 @@ final class ChatHistoryViewsTests: XCTestCase {
         Fonts.registerBundledFonts()
     }
 
+    /// Turns of a prompt and its answer. A window ends on the prompt that
+    /// opened its oldest turn (`ChatDisplay.windowEnd`), so answers alone
+    /// would be one turn the first window holds whole.
     private func messages(_ count: Int) -> [ChatMessage] {
-        (0..<count).map { .agentText(AgentTextMessage(id: "m\($0)", createdAt: Int64($0), text: "message \($0)")) }
+        (0..<count).map { index in
+            index.isMultiple(of: 2)
+                ? .userText(UserTextMessage(id: "m\(index)", createdAt: Int64(index), text: "message \(index)"))
+                : .agentText(AgentTextMessage(id: "m\(index)", createdAt: Int64(index), text: "message \(index)"))
+        }
     }
 
     private func input(_ messages: [ChatMessage], epoch: Int, grows: Int) -> ChatRowsInput {
