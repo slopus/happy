@@ -49,6 +49,120 @@ final class FlatSessionRowLayoutTests: XCTestCase {
         XCTAssertNil(layout.divider)
         XCTAssertEqual(layout.size.height, 81, "every row is the same height, so the list never jumps")
     }
+
+    // MARK: Text size (FlatSessionRow.tsx: the row is `paddingVertical: 10`
+    // around `alignItems: 'center'` of the 60 avatar and the text column;
+    // the title row is its 22 line beside the 22 corner box, the project
+    // its 20 line, the workspace row its 18 line with `minHeight: 18`.
+    // RN scales the lines, not the 22 box, the 18 minimum, the avatar or
+    // the paddings.)
+
+    /// A row whose labels each measure one line of `lines`, as a one-line
+    /// label does at that size.
+    private func row(lines: FlatSessionRowLayout.Lines, workspace: Bool = true, stamp: CGFloat = 22) -> FlatSessionRowLayout {
+        FlatSessionRowLayout(.init(
+            width: 393,
+            title: fixed(200, lines.title),
+            timestamp: fixed(40, stamp),
+            project: fixed(100, lines.project),
+            workspace: workspace ? fixed(72, lines.workspace) : nil,
+            showsDivider: true,
+            lines: lines
+        ))
+    }
+
+    func testTheDesignedLinesAreTheStyles() {
+        XCTAssertEqual(FlatSessionRowLayout.Lines.designed, .init(title: 22, project: 20, workspace: 18))
+        XCTAssertEqual(TextStyles.sessionTitle.lineHeight, 22)
+        XCTAssertEqual(TextStyles.sessionProject.lineHeight, 20)
+        XCTAssertEqual(TextStyles.sessionWorkspace.lineHeight, 18)
+        for workspace in [false, true] {
+            XCTAssertEqual(FlatSessionRowLayout.height(lines: .designed, workspace: workspace), 81)
+            XCTAssertEqual(row(lines: .designed, workspace: workspace), FlatSessionRowLayout(.init(
+                width: 393,
+                title: fixed(200, 22),
+                timestamp: fixed(40, 22),
+                project: fixed(100, 20),
+                workspace: workspace ? fixed(72, 18) : nil,
+                showsDivider: true
+            )), "the designed lines are the default")
+        }
+    }
+
+    /// The largest text size on a 2x screen: 22, 20 and 18 × 3.571, each
+    /// up to the next pixel, are 79, 71.5 and 64.5.
+    func testTheLargestTextGrowsTheRowByItsLines() {
+        let lines = FlatSessionRowLayout.Lines(title: 79, project: 71.5, workspace: 64.5)
+        let layout = row(lines: lines)
+        // 10 + 79 + 71.5 + 1 + 64.5 + 10.
+        XCTAssertEqual(layout.size.height, 236)
+        XCTAssertEqual(layout.title, rect(88, 10, 225, 79))
+        // The 22 corner box is centred on the title's row; so is the dot.
+        XCTAssertEqual(layout.timestamp, rect(337, 38.5, 40, 22))
+        XCTAssertEqual(layout.dot, rect(357, 39.5, 20, 20))
+        XCTAssertEqual(layout.project, rect(88, 89, 289, 71.5))
+        XCTAssertEqual(layout.workspace, rect(88, 161.5, 72, 64.5))
+        // The 13 glyph keeps its size, centred on the workspace's row.
+        XCTAssertEqual(layout.branchIcon, rect(164, 187.25, 13, 13))
+        XCTAssertEqual(layout.avatar, rect(16, 88, 60, 60))
+        XCTAssertEqual(layout.divider?.minY, 236 - 0.33)
+
+        // No workspace: its row keeps only its 18 minimum.
+        let primary = row(lines: lines, workspace: false)
+        XCTAssertEqual(primary.size.height, 189.5)
+        XCTAssertEqual(primary.title, rect(88, 10, 225, 79))
+        XCTAssertEqual(primary.avatar, rect(16, 64.75, 60, 60))
+    }
+
+    /// The smallest text size on a 2x screen: 18.5, 16.5 and 15. The text
+    /// column is shorter than the avatar, so the avatar holds the row and
+    /// the column is centred in it.
+    func testTheAvatarHoldsTheRowAtSmallText() {
+        let lines = FlatSessionRowLayout.Lines(title: 18.5, project: 16.5, workspace: 15)
+        let layout = row(lines: lines, stamp: 18)
+        XCTAssertEqual(layout.size.height, 80)
+        // The column is 22 + 16.5 + 1 + 18 = 57.5, centred: 1.25 under the
+        // padding.
+        XCTAssertEqual(layout.title, rect(88, 13, 225, 18.5))
+        XCTAssertEqual(layout.timestamp, rect(337, 13.25, 40, 18))
+        XCTAssertEqual(layout.project, rect(88, 33.25, 289, 16.5))
+        XCTAssertEqual(layout.workspace, rect(88, 52.25, 72, 15))
+        XCTAssertEqual(layout.avatar, rect(16, 10, 60, 60))
+        XCTAssertEqual(row(lines: lines, workspace: false).size.height, 80)
+    }
+
+    /// 20 + max(60, column): the avatar's 60 holds the row until the
+    /// column passes it, and a pixel past grows it by that pixel.
+    func testTheRowGrowsExactlyPastTheAvatar() {
+        let atAvatar = FlatSessionRowLayout.Lines(title: 22, project: 19, workspace: 18)
+        XCTAssertEqual(FlatSessionRowLayout.height(lines: atAvatar, workspace: true), 80)
+        XCTAssertEqual(row(lines: atAvatar).size.height, 80)
+        XCTAssertEqual(row(lines: atAvatar).title.minY, 10)
+        XCTAssertEqual(row(lines: atAvatar).avatar.minY, 10)
+        let past = FlatSessionRowLayout.Lines(title: 22, project: 19.5, workspace: 18)
+        XCTAssertEqual(FlatSessionRowLayout.height(lines: past, workspace: true), 80.5)
+        XCTAssertEqual(row(lines: past).size.height, 80.5)
+        XCTAssertEqual(row(lines: past).title.minY, 10)
+        XCTAssertEqual(row(lines: past).avatar.minY, 10.25)
+    }
+
+    /// The title's row and the workspace's keep their 22 and 18 until their
+    /// line passes them.
+    func testTheMinimumsHoldUntilTheLinePassesThem() {
+        func height(_ title: CGFloat, _ workspace: CGFloat, hasWorkspace: Bool = true) -> CGFloat {
+            FlatSessionRowLayout.height(lines: .init(title: title, project: 20, workspace: workspace), workspace: hasWorkspace)
+        }
+        XCTAssertEqual(height(21.5, 18), 81)
+        XCTAssertEqual(height(22, 18), 81)
+        XCTAssertEqual(height(22.5, 18), 81.5)
+        XCTAssertEqual(height(22, 17.5), 81)
+        XCTAssertEqual(height(22, 18.5), 81.5)
+        // Without a workspace, its line never shows.
+        XCTAssertEqual(height(22, 40, hasWorkspace: false), 81)
+        // A glyph taller than the line holds the workspace's row.
+        XCTAssertEqual(FlatSessionRowLayout.height(lines: .designed, workspace: true, branchIcon: 19), 82)
+        XCTAssertEqual(FlatSessionRowLayout.height(lines: .designed, workspace: false, branchIcon: 19), 81)
+    }
 }
 
 final class SessionListChromeLayoutTests: XCTestCase {
