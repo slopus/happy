@@ -31,6 +31,25 @@ private actor Latch {
 
 private enum Unanswered: Error { case settings }
 
+private final class Observer: @unchecked Sendable {
+    var token: NSObjectProtocol?
+}
+
+/// Returns once what was posted for the main queue before it is delivered:
+/// the main queue delivers in order.
+@MainActor
+private func deliveredSoFar() async {
+    let name = Notification.Name("ScreensLanguageTestsDelivered")
+    let observer = Observer()
+    await withCheckedContinuation { (delivered: CheckedContinuation<Void, Never>) in
+        observer.token = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { _ in
+            delivered.resume()
+        }
+        NotificationCenter.default.post(name: name, object: nil)
+    }
+    if let token = observer.token { NotificationCenter.default.removeObserver(token) }
+}
+
 /// A window that notes each time it is asked to end editing, and whether
 /// it took touches then, and can call back from there as a text field's
 /// delegate can.
@@ -356,18 +375,19 @@ final class ScreensLanguageTests: XCTestCase {
         language.request(for: a, resolve: { "en" }, install: {})
         await language.gate.waitForIdle()
 
+        // Delivered, B's choice would have started deciding by the time
+        // what was posted after it is delivered, and been applied by the
+        // time the gate is idle.
         NotificationCenter.default.post(name: .screensLanguageChosen, object: ScreensLanguageChoice(code: "ja", account: b))
-        try await Task.sleep(for: .milliseconds(100))
+        await deliveredSoFar()
+        XCTAssertFalse(language.isDeciding)
         await language.gate.waitForIdle()
         XCTAssertEqual(rebuilt, [])
         XCTAssertNil(AppLocalization.screens)
 
         NotificationCenter.default.post(name: .screensLanguageChosen, object: ScreensLanguageChoice(code: "ja", account: a))
-        let deadline = ContinuousClock.now + .seconds(5)
-        while rebuilt.isEmpty, ContinuousClock.now < deadline {
-            try await Task.sleep(for: .milliseconds(20))
-            await language.gate.waitForIdle()
-        }
+        await deliveredSoFar()
+        await language.gate.waitForIdle()
         XCTAssertEqual(rebuilt, ["true in ja"])
         XCTAssertTrue(window.isUserInteractionEnabled)
     }
