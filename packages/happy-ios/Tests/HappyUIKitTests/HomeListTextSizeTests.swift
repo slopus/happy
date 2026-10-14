@@ -35,6 +35,21 @@ final class HomeListTextSizeTests: XCTestCase {
         Fonts.registerBundledFonts()
     }
 
+    /// A flat session at the largest text size on a 3x screen, summed in
+    /// `FlatSessionRowLayout.height`'s own order so the two are the same
+    /// number: 10 × 2 + the title's 236, the project's 215 and the
+    /// workspace's 193 pixels, and the 1 between, or the 18 row without a
+    /// workspace.
+    static let largestWithWorkspace: CGFloat = largest(workspaceRow: 193.0 / 3)
+    static let largestWithoutWorkspace: CGFloat = largest(workspaceRow: 18)
+
+    private static func largest(workspaceRow: CGFloat) -> CGFloat {
+        let padding: CGFloat = 10 * 2
+        let title: CGFloat = 236.0 / 3
+        let project: CGFloat = 215.0 / 3
+        return padding + (title + project + 1 + workspaceRow)
+    }
+
     private func text(_ category: UIContentSizeCategory, _ scale: CGFloat) -> TextEnvironment {
         TextEnvironment(scale: TextScale(TextSizeCategory(category)), displayScale: scale)
     }
@@ -71,7 +86,6 @@ final class HomeListTextSizeTests: XCTestCase {
                         XCTAssertEqual(
                             HomeRowMeasurer.height(kind, width: width, environment: environment),
                             height(cell, width: width, scale: scale, category: category),
-                            accuracy: 0.001,
                             "\(kind) at \(at)",
                             line: line
                         )
@@ -86,10 +100,10 @@ final class HomeListTextSizeTests: XCTestCase {
                         // The lines worked out off main are the lines the
                         // labels draw.
                         let lines = environment.rows.sessionLines
-                        XCTAssertEqual(oneLine(cell.titleLabel), lines.title, accuracy: 0.001, "title, \(at)")
-                        XCTAssertEqual(oneLine(cell.projectLabel), lines.project, accuracy: 0.001, "project, \(at)")
+                        XCTAssertEqual(oneLine(cell.titleLabel), lines.title, "title, \(at)")
+                        XCTAssertEqual(oneLine(cell.projectLabel), lines.project, "project, \(at)")
                         if workspace != nil {
-                            XCTAssertEqual(oneLine(cell.workspaceLabel), lines.workspace, accuracy: 0.001, "workspace, \(at)")
+                            XCTAssertEqual(oneLine(cell.workspaceLabel), lines.workspace, "workspace, \(at)")
                         }
                         XCTAssertEqual(cell.projectLabel.renderedStyle.size, 15 * TextScale(TextSizeCategory(category)).multiplier, at)
                     }
@@ -142,7 +156,6 @@ final class HomeListTextSizeTests: XCTestCase {
                         XCTAssertEqual(
                             HomeRowMeasurer.headerHeight(banners, width: width, maxWidth: ContentWidth.maxWidth, environment: environment),
                             height(view, width: width, scale: scale, category: category),
-                            accuracy: 0.001,
                             "\(banners) at \(width) @\(scale)x, \(category.rawValue)"
                         )
                     }
@@ -165,10 +178,10 @@ final class HomeListTextSizeTests: XCTestCase {
         XCTAssertNotEqual(environment, large)
         XCTAssertEqual(environment.text, largest)
         // 22, 20 and 18 × 3.571, up to a third: 236, 215 and 193 pixels.
-        XCTAssertEqual(environment.rows.sessionLines.title, 236.0 / 3, accuracy: 0.0001)
-        XCTAssertEqual(environment.rows.sessionLines.project, 215.0 / 3, accuracy: 0.0001)
-        XCTAssertEqual(environment.rows.sessionLines.workspace, 193.0 / 3, accuracy: 0.0001)
-        XCTAssertEqual(HomeRowMeasurer.height(.flatSession(workspace: true), width: 393, environment: environment), 10 + (236.0 + 215 + 193) / 3 + 1 + 10, accuracy: 0.0001)
+        XCTAssertEqual(environment.rows.sessionLines.title, 236.0 / 3)
+        XCTAssertEqual(environment.rows.sessionLines.project, 215.0 / 3)
+        XCTAssertEqual(environment.rows.sessionLines.workspace, 193.0 / 3)
+        XCTAssertEqual(HomeRowMeasurer.height(.flatSession(workspace: true), width: 393, environment: environment), Self.largestWithWorkspace)
         // The glyphs and the hairline keep their size.
         XCTAssertEqual(environment.rows.branchIcon, large.rows.branchIcon)
         XCTAssertEqual(environment.rows.machineIcon, large.rows.machineIcon)
@@ -268,7 +281,6 @@ final class HomeListTextSizeTests: XCTestCase {
             XCTAssertEqual(
                 shown.table.rectForRow(at: path).height,
                 cell.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height,
-                accuracy: 0.001,
                 "row \(path.row), \(message)",
                 line: line
             )
@@ -293,8 +305,8 @@ final class HomeListTextSizeTests: XCTestCase {
         let first = try XCTUnwrap(shown.table.cellForRow(at: IndexPath(row: 0, section: 0)) as? SessionRowCell)
         XCTAssertEqual(first.projectLabel.renderedStyle.size, 15 * TextScale(.accessibilityExtraExtraExtraLarge).multiplier)
         XCTAssertEqual(first.lines, shown.list.textEnvironment?.rows.sessionLines)
-        XCTAssertEqual(shown.table.rectForRow(at: IndexPath(row: 0, section: 0)).height, 10 + (236.0 + 215 + 193) / 3 + 1 + 10, accuracy: 0.001)
-        XCTAssertEqual(shown.table.rectForRow(at: IndexPath(row: 1, section: 0)).height, 10 + (236.0 + 215) / 3 + 1 + 18 + 10, accuracy: 0.001)
+        XCTAssertEqual(shown.table.rectForRow(at: IndexPath(row: 0, section: 0)).height, Self.largestWithWorkspace)
+        XCTAssertEqual(shown.table.rectForRow(at: IndexPath(row: 1, section: 0)).height, Self.largestWithoutWorkspace)
         await shown.account.signOut()
     }
 
@@ -329,7 +341,7 @@ final class HomeListTextSizeTests: XCTestCase {
         XCTAssertEqual(table.numberOfRows(inSection: 0), model.rows.count)
         XCTAssertGreaterThan(table.rectForRow(at: anchor).height, before)
         XCTAssertNotEqual(table.contentOffset.y, 1500, "the rows above grew")
-        XCTAssertEqual(table.rectForRow(at: anchor).minY - (table.contentOffset.y + inset), onScreen, accuracy: 0.001)
+        XCTAssertEqual(table.rectForRow(at: anchor).minY - (table.contentOffset.y + inset), onScreen)
         assertRowsAreTheirCells(shown, "after the change")
         await shown.account.signOut()
     }
@@ -343,7 +355,7 @@ final class HomeListTextSizeTests: XCTestCase {
         defer { shown.window.isHidden = true }
         await landed(shown)
         let path = IndexPath(row: 1, section: 0)
-        XCTAssertEqual(shown.table.rectForRow(at: path).height, 10 + (236.0 + 215) / 3 + 1 + 18 + 10, accuracy: 0.001)
+        XCTAssertEqual(shown.table.rectForRow(at: path).height, Self.largestWithoutWorkspace)
 
         var after = before
         guard case .flat(.session(var row)) = after.rows[1] else { return XCTFail("row 1 is a session") }
@@ -351,8 +363,8 @@ final class HomeListTextSizeTests: XCTestCase {
         after.rows[1] = .flat(.session(row))
         shown.list.apply(after, changeset: RowChangeset(reconfigures: [1]), animated: false)
         shown.table.layoutIfNeeded()
-        XCTAssertEqual(shown.table.rectForRow(at: path).height, 10 + (236.0 + 215 + 193) / 3 + 1 + 10, accuracy: 0.001)
-        XCTAssertEqual(shown.table.rectForRow(at: IndexPath(row: 2, section: 0)).minY, shown.table.rectForRow(at: path).maxY, accuracy: 0.001)
+        XCTAssertEqual(shown.table.rectForRow(at: path).height, Self.largestWithWorkspace)
+        XCTAssertEqual(shown.table.rectForRow(at: IndexPath(row: 2, section: 0)).minY, shown.table.rectForRow(at: path).maxY)
         assertRowsAreTheirCells(shown, "after the reconfigure")
         await shown.account.signOut()
     }
@@ -409,7 +421,7 @@ final class HomeListTextSizeTests: XCTestCase {
         XCTAssertEqual(key.environment, shown.list.textEnvironment)
         XCTAssertEqual(key.width, 393)
         let height = header.frame.height
-        XCTAssertEqual(height, header.sizeThatFits(CGSize(width: 393, height: CGFloat.greatestFiniteMagnitude)).height, accuracy: 0.001)
+        XCTAssertEqual(height, header.sizeThatFits(CGSize(width: 393, height: CGFloat.greatestFiniteMagnitude)).height)
 
         var stale = [key, key, key, key]
         stale[0].width += 1
@@ -431,7 +443,7 @@ final class HomeListTextSizeTests: XCTestCase {
         let larger = try XCTUnwrap(shown.table.tableHeaderView)
         XCTAssertEqual(shown.list.headerRequested?.environment.text, text(.accessibilityExtraExtraExtraLarge, 3))
         XCTAssertGreaterThan(larger.frame.height, height)
-        XCTAssertEqual(larger.frame.height, larger.sizeThatFits(CGSize(width: 393, height: CGFloat.greatestFiniteMagnitude)).height, accuracy: 0.001)
+        XCTAssertEqual(larger.frame.height, larger.sizeThatFits(CGSize(width: 393, height: CGFloat.greatestFiniteMagnitude)).height)
         await shown.account.signOut()
     }
 }
