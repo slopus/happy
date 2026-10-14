@@ -22,6 +22,8 @@ struct ChatRowStyle: Equatable, Sendable {
     /// PermissionFooter's `optionsScroll` maxHeight, min(260, 35% of the
     /// window): a taller list of buttons scrolls.
     var permissionListMaxHeight = PermissionFooterLayout.Metrics.maxListHeight
+    /// The account's diff documents and syntax colour.
+    var render: RenderServices
 }
 
 /// Everything one row is drawn from. Equal inputs at the same width give
@@ -139,19 +141,19 @@ enum ChatRowRenderer {
         let copyText: String
         switch parsed {
         case .goalRun(let goal):
-            let piece = MarkdownPiece(goal, color: Palette.userMessageText, selectable: false, diagrams: diagrams)
+            let piece = MarkdownPiece(goal, color: Palette.userMessageText, selectable: false, diagrams: diagrams, syntax: style.render.codeSyntax)
             sentText = MeasuredText(ChatTextStyles.goalSent.string(Strings.ChatMessage.sentAsGoal, color: Palette.textSecondary))
             content = .goal(piece.blocks, sentLabel: sentText!.measurable)
             markdown = piece
             copyText = goal
         case .commandRun(let name, let arguments):
             chipText = MeasuredText(ChatTextStyles.commandChip.string("/\(name)", color: Palette.userMessageText), maxLines: 1)
-            let piece = arguments.map { MarkdownPiece($0, color: Palette.userMessageText, selectable: false, diagrams: diagrams) }
+            let piece = arguments.map { MarkdownPiece($0, color: Palette.userMessageText, selectable: false, diagrams: diagrams, syntax: style.render.codeSyntax) }
             content = .command(chip: chipText!.measurable, arguments: piece?.blocks)
             markdown = piece
             copyText = arguments.map { "/\(name) \($0)" } ?? "/\(name)"
         case .text(let text):
-            let piece = MarkdownPiece(text, color: Palette.userMessageText, selectable: false, diagrams: diagrams)
+            let piece = MarkdownPiece(text, color: Palette.userMessageText, selectable: false, diagrams: diagrams, syntax: style.render.codeSyntax)
             content = .text(piece.blocks)
             markdown = piece
             copyText = text
@@ -225,7 +227,7 @@ enum ChatRowRenderer {
     /// MessageView's agent text: the markdown, then the copy button, which
     /// shows a tick for a moment after copying.
     static func agentText(_ message: AgentTextMessage, copied: Bool, diagrams: ChatMermaidHeights, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
-        let markdown = MarkdownPiece(message.text, color: Palette.text, diagrams: diagrams)
+        let markdown = MarkdownPiece(message.text, color: Palette.text, diagrams: diagrams, syntax: style.render.codeSyntax)
         let layout = AgentTextLayout(width: width, maxContentWidth: style.maxContentWidth, blocks: markdown.blocks)
         let drawn = markdown.draw(layout.markdown, origin: layout.markdownOrigin)
         let slop = AgentTextLayout.Metrics.copyHitSlop
@@ -299,8 +301,8 @@ struct MarkdownPiece {
     /// answers a long press (MarkdownView's `selectable` Text). Off where
     /// the message copies as a whole instead (`externalCopyHandler`).
     /// `diagrams`: the row the markdown is in, and the heights its
-    /// diagrams' pages reported.
-    init(_ markdown: String, color: ColorToken, selectable: Bool = true, diagrams: ChatMermaidHeights) {
+    /// diagrams' pages reported. `syntax` colours its code blocks.
+    init(_ markdown: String, color: ColorToken, selectable: Bool = true, diagrams: ChatMermaidHeights, syntax: CodeSyntaxService) {
         var blocks: [MarkdownLayout.Block] = []
         var drawers: [(MarkdownLayout.Placed, CGPoint) -> ([ChatDrawItem], [ChatHit])] = []
 
@@ -351,7 +353,7 @@ struct MarkdownPiece {
                 drawers.append(Self.listDrawer(rows.map { ($0.0, $0.1) }, hold: hold))
 
             case .codeBlock(let language, let content):
-                Self.code(language: language, content: content, blocks: &blocks, drawers: &drawers, hold: hold)
+                Self.code(language: language, content: content, syntax: syntax, blocks: &blocks, drawers: &drawers, hold: hold)
 
             case .mermaid(let content):
                 // MermaidRenderer: the diagram drawn by mermaid in a web page,
@@ -469,11 +471,11 @@ struct MarkdownPiece {
     /// A code block, unwrapped like happy-app's: the language on top, the
     /// code scrolling sideways under it.
     private static func code(
-        language: String?, content: String, blocks: inout [MarkdownLayout.Block],
+        language: String?, content: String, syntax: CodeSyntaxService, blocks: inout [MarkdownLayout.Block],
         drawers: inout [(MarkdownLayout.Placed, CGPoint) -> ([ChatDrawItem], [ChatHit])], hold: @escaping (CGRect, String) -> [ChatHit]
     ) {
         let label = language.map { MeasuredText(ChatTextStyles.codeLanguage.string($0, color: Palette.textSecondary), maxLines: 1) }
-        let code = ChatTextLayout(unwrapped: ChatSyntax.string(content, language: language))
+        let code = ChatTextLayout(unwrapped: ChatSyntax.string(content, language: language, service: syntax))
         blocks.append(.code(language: label?.measurable, code: code.size))
         drawers.append { placed, origin in
             guard case .code(let placedCode) = placed else { return ([], []) }
@@ -492,12 +494,22 @@ struct MarkdownPiece {
 /// SimpleSyntaxHighlighter over the shared tokenizer, in the file viewer's
 /// colours (`FileSyntax`, its `getColors`), so the two cannot drift apart.
 enum ChatSyntax {
-    static func string(_ code: String, language: String?) -> NSAttributedString {
+    /// The block coloured from the account's `service`, or plain when it
+    /// has no language, is past the limits, or isn't coloured yet (the row
+    /// is drawn again once it is). Every weight of the mono face has the
+    /// same advance, so plain and coloured take the same size.
+    static func string(_ code: String, language: String?, service: CodeSyntaxService) -> NSAttributedString {
         let style = ChatTextStyles.codeBlock
         let result = NSMutableAttributedString()
         let regular = style.font
         let bold = style.with(.plex(.monoSemiBold)).font
-        for token in SyntaxHighlighter.tokenize(code, language: language) {
+        let tokens: [SyntaxToken]
+        if case .highlighted(let coloured) = service.tokens(code, language: language) {
+            tokens = coloured
+        } else {
+            tokens = [SyntaxToken(code, .plain)]
+        }
+        for token in tokens {
             let attributes = style.attributes(color: UIColor(FileSyntax.color(token)), font: token.isBold ? bold : regular)
             result.append(NSAttributedString(string: token.text, attributes: attributes))
         }

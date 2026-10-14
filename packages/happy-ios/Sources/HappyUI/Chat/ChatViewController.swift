@@ -315,8 +315,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             self.sessionChanged(state)
         }
         let planner = self.planner
+        let render = RenderServices(account)
         let rows = ApplyPipeline<ChatRowsInput, ChatRowsApplied, ChatRowsUpdate>(
-            input: ChatRowsInput(session: session),
+            input: ChatRowsInput(session: session, render: render),
             state: ChatRowsApplied(),
             derive: { input, applied in ChatRows.derive(input, applied: applied, planner: planner) },
             apply: { [weak self] update in
@@ -327,6 +328,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 return self.applyRows(update)
             }
         )
+        // Code blocks still being coloured are drawn again when colour comes
+        // in. Subscribed before the first rows are planned, so no signal
+        // falls between a block's plain answer and the subscription.
+        rows.follow(render.codeSyntax.completions()) { input, _ in input.recolour += 1 }
         rows.follow(services.feed.snapshots(sessionId: chatId)) { $0.snapshot = $1 }
         self.rows = rows
         rowsObservation = rows.observation

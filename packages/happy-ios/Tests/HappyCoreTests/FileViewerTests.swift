@@ -98,17 +98,20 @@ final class FileViewerTests: XCTestCase {
 
     func testCodeLines() {
         // Without a language the file is one plain token, split by line.
-        XCTAssertEqual(FileViewer.codeLines("a\n\nb\n", language: nil), [
+        func codeLines(_ content: String, language: String?) -> [[SyntaxToken]] {
+            FileViewer.codeLines(SyntaxHighlighter.tokenize(content, language: language))
+        }
+        XCTAssertEqual(codeLines("a\n\nb\n", language: nil), [
             [SyntaxToken("a", .plain)], [], [SyntaxToken("b", .plain)], [],
         ])
-        let lines = FileViewer.codeLines("const x = f(1)\r\n// done", language: "typescript")
+        let lines = codeLines("const x = f(1)\r\n// done", language: "typescript")
         XCTAssertEqual(lines.count, 2)
         XCTAssertEqual(lines[0].map(\.text).joined(), "const x = f(1)")
         XCTAssertEqual(lines[0].first, SyntaxToken("const", .keyword))
         XCTAssertEqual(lines[0].first { $0.kind == .bracket }, SyntaxToken("(", .bracket, nestLevel: 1))
         XCTAssertEqual(lines[1], [SyntaxToken("// done", .comment)])
         // A line that is only a carriage return draws empty.
-        XCTAssertEqual(FileViewer.codeLines("a\r\n\r\nb", language: nil).map { $0.map(\.text) }, [["a"], [], ["b"]])
+        XCTAssertEqual(codeLines("a\r\n\r\nb", language: nil).map { $0.map(\.text) }, [["a"], [], ["b"]])
     }
 
     final class Calls: @unchecked Sendable {

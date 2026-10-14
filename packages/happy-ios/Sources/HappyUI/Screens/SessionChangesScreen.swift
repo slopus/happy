@@ -13,7 +13,7 @@ final class SessionChangesViewController: UIViewController {
     private let context: AppContext
     private let session: AccountSession
     private let sessionId: String
-    private let list = DiffFilesListView()
+    private let list: DiffFilesListView
     private var stateView: UIView?
     private var observation: ApplyObservation?
     private var metadata: JSONValue?
@@ -45,6 +45,7 @@ final class SessionChangesViewController: UIViewController {
         self.context = context
         self.session = session
         self.sessionId = sessionId
+        list = DiffFilesListView(render: RenderServices(session))
         super.init(nibName: nil, bundle: nil)
         setPlainHeaderTitle(Strings.ChangesDetail.title)
     }

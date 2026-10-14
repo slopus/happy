@@ -256,14 +256,15 @@ public enum FileViewer {
         }
     }
 
-    /// SimpleSyntaxHighlighter's tokens, split into the file's lines
-    /// (`split('\n')`) so each can be measured and drawn on its own. The
-    /// one Text block wraps each line in turn, so this draws the same. A
-    /// CRLF line's carriage return, which ends the paragraph with the
-    /// newline there, is left off.
-    public static func codeLines(_ content: String, language: String?) -> [[SyntaxToken]] {
+    /// SimpleSyntaxHighlighter's tokens for the whole file (the account's
+    /// `CodeSyntaxService`'s, or the file as one plain token), split into
+    /// its lines (`split('\n')`) so each can be measured and drawn on its
+    /// own. The one Text block wraps each line in turn, so this draws the
+    /// same. A CRLF line's carriage return, which ends the paragraph with
+    /// the newline there, is left off.
+    public static func codeLines(_ tokens: [SyntaxToken]) -> [[SyntaxToken]] {
         var lines: [[SyntaxToken]] = [[]]
-        for token in SyntaxHighlighter.tokenize(content, language: language) {
+        for token in tokens {
             for (index, part) in token.text.jsSplit("\n").enumerated() {
                 if index > 0 { lines.append([]) }
                 if !part.isEmpty {

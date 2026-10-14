@@ -53,16 +53,17 @@ final class DiffFilePlan: @unchecked Sendable {
     /// before each hunk, so a plan can run past it by one hunk's tokenize.
     /// Plans for one screen share a deadline, as happy-app's rows reveal
     /// together; nil plans no colour, as a measurement pass does.
+    /// `syntax` is the account's: its cache, its background queue.
     init(
         file: DiffFile,
         width: CGFloat,
+        syntax: DiffSyntaxService,
         options: DiffViewOptions = DiffViewOptions(),
         expanded: Bool = false,
         syntaxDeadline: ContinuousClock.Instant? = DiffFilePlan.syntaxDeadline()
     ) {
         let selection = DiffRowSelection.select(file.rows, showHunkHeaders: options.showHunkHeaders, expanded: expanded, collapseAfter: options.collapseAfter)
         let metrics = DiffStyle.metrics(fontSize: options.fontSize)
-        let syntax = DiffSyntaxService.shared
         self.file = file
         rows = syntaxDeadline.map { syntax.colour(file, displayed: selection.rows, until: $0) } ?? selection.rows
         hiddenCount = selection.hiddenCount

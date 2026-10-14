@@ -39,7 +39,10 @@ final class DiffSectionPlan: @unchecked Sendable {
 
     var id: String { input.item.id }
 
-    init(_ input: DiffSectionInput, width: CGFloat, scale: CGFloat, syntaxDeadline: ContinuousClock.Instant? = DiffFilePlan.syntaxDeadline()) {
+    /// The file's diff is built through the account's documents and
+    /// coloured by its syntax (`render`). Once they are closed (the account
+    /// stopped) an open file shows nothing rather than "No changes".
+    init(_ input: DiffSectionInput, width: CGFloat, scale: CGFloat, render: RenderServices, syntaxDeadline: ContinuousClock.Instant? = DiffFilePlan.syntaxDeadline()) {
         self.input = input
         self.width = width
         let item = input.item
@@ -59,12 +62,16 @@ final class DiffSectionPlan: @unchecked Sendable {
                 sized = .none
             }
         } else {
-            let document = item.error == nil && item.message == nil && item.image == nil ? DiffFileItem.document(item.source) : .empty
+            let builds = item.error == nil && item.message == nil && item.image == nil
+            let document = builds ? DiffFileItem.document(item.source, cache: render.diffDocuments) : .empty
             func message(_ string: String) -> (Body, DiffSectionLayout.Body) {
                 let attributed = text(string)
                 return (.message(attributed), .message(DiffStyle.size(attributed, width: width)))
             }
-            switch item.body(document) {
+            switch builds && render.diffDocuments.isClosed ? nil : item.body(document) {
+            case nil:
+                body = .none
+                sized = .none
             case .error(let string), .message(let string):
                 (body, sized) = message(string)
             case .noChanges:
@@ -87,7 +94,7 @@ final class DiffSectionPlan: @unchecked Sendable {
                 // DiffFilesList: `selectable={Platform.OS !== 'android'}`.
                 let options = DiffViewOptions(collapseAfter: Self.collapseAfter, canExpandContext: input.canExpandContext, selectable: true)
                 let plans = files.enumerated().map { index, file in
-                    DiffFilePlan(file: file, width: width, options: options, expanded: input.expandedFiles.contains(index), syntaxDeadline: syntaxDeadline)
+                    DiffFilePlan(file: file, width: width, syntax: render.diffSyntax, options: options, expanded: input.expandedFiles.contains(index), syntaxDeadline: syntaxDeadline)
                 }
                 body = .files(plans)
                 sized = .files(plans.map(\.height))
@@ -100,7 +107,12 @@ final class DiffSectionPlan: @unchecked Sendable {
 /// Builds section plans away from the main thread and keeps the last ones,
 /// so a list update rebuilds only the sections that changed.
 actor DiffSectionMeasurer {
+    private let render: RenderServices
     private var cache: [String: DiffSectionPlan] = [:]
+
+    init(render: RenderServices) {
+        self.render = render
+    }
 
     func plans(_ inputs: [DiffSectionInput], width: CGFloat, scale: CGFloat) -> [DiffSectionPlan] {
         // The sections of one pass wait for colour together.
@@ -111,7 +123,7 @@ actor DiffSectionMeasurer {
                 next[input.item.id] = cached
                 return cached
             }
-            let plan = DiffSectionPlan(input, width: width, scale: scale, syntaxDeadline: deadline)
+            let plan = DiffSectionPlan(input, width: width, scale: scale, render: render, syntaxDeadline: deadline)
             next[input.item.id] = plan
             return plan
         }
@@ -353,7 +365,7 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
 
     private let layout = DiffFilesCollectionLayout()
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
-    private let measurer = DiffSectionMeasurer()
+    private let measurer: DiffSectionMeasurer
 
     private var items: [DiffFileItem] = []
     private var notices: [String] = []
@@ -374,8 +386,10 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
     private var measuredWidth: CGFloat = -1
     private var generation = 0
 
-    override init(frame: CGRect) {
-        super.init(frame: frame)
+    /// `render`: the account's diff documents and syntax colour.
+    init(render: RenderServices) {
+        measurer = DiffSectionMeasurer(render: render)
+        super.init(frame: .zero)
         backgroundColor = UIColor(DiffStyle.surface)
         collectionView.backgroundColor = .clear
         collectionView.dataSource = self
