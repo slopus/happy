@@ -99,6 +99,8 @@ struct ChatRowsUpdate: Sendable {
     /// Pages of history the rendered window has taken in.
     var grows: Int
     var reachesOldest: Bool
+    /// `ChatOlderPaging.boundary` of the rendered rows.
+    var oldestBoundary: String?
     /// Rows measured for this update.
     var measured: Int
 }
@@ -129,6 +131,15 @@ enum ChatRows {
 
         let facts = ChatSnapshotFacts(snapshot)
         if facts != applied.facts {
+            if let before = applied.facts, before.windowEpoch != facts.windowEpoch {
+                // The covered window dropped rows it showed: it starts again
+                // from the newest page, and growth asked for before is
+                // dropped (History W3).
+                state.window.oldestRenderedId = nil
+                state.window.windowCount = 0
+                state.window.grows = view.requests.grows
+                update.grows = state.window.grows
+            }
             update.facts = facts
             state.facts = facts
             changed = true
@@ -152,7 +163,7 @@ enum ChatRows {
         var forms: [String: ChatQuestionForm] = [:]
         let result = ChatRowsDerivation.derive(
             messages: snapshot.messages,
-            window: applied.window,
+            window: state.window,
             requests: view.requests,
             groupToolCalls: session.groupToolCalls,
             currentTurnComplete: !session.thinking && !session.hasPendingPermission,
@@ -169,10 +180,11 @@ enum ChatRows {
         update.measured = result.measured
         update.grows = result.window.state.grows
         update.reachesOldest = result.window.reachesOldest
+        update.oldestBoundary = ChatOlderPaging.boundary(result.window.items)
         if result.window.state != applied.window {
-            state.window = result.window.state
             changed = true
         }
+        state.window = result.window.state
         if forms != applied.questionForms {
             update.questionForms = forms
             state.questionForms = forms

@@ -38,6 +38,9 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     /// ChatFooter, just past the newest message: it scrolls with the rows,
     /// as the inverted list's header does in happy-app.
     private let footer = ChatPlanView()
+    /// OlderEnd, past the oldest message, in the slot the layout keeps for
+    /// it (`ChatListLayout.olderEndFrame`): the inverted list's footer.
+    let olderEnd = ChatOlderEndView()
 
     override init(frame: CGRect) {
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
@@ -62,6 +65,8 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         footer.transform = ChatCollectionLayout.flip
         footer.isUserInteractionEnabled = false
         collectionView.addSubview(footer)
+        olderEnd.transform = ChatCollectionLayout.flip
+        collectionView.addSubview(olderEnd)
         addSubview(collectionView)
 
         let tap = UITapGestureRecognizer(target: self, action: #selector(tapped(_:)))
@@ -213,6 +218,9 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         let frame = update.model.newerEndFrame
         footer.bounds = CGRect(origin: .zero, size: frame.size)
         footer.center = CGPoint(x: frame.midX, y: frame.midY)
+        let older = update.model.olderEndFrame
+        olderEnd.bounds = CGRect(origin: .zero, size: older.size)
+        olderEnd.center = CGPoint(x: older.midX, y: older.midY)
     }
 
     // MARK: UICollectionViewDataSource

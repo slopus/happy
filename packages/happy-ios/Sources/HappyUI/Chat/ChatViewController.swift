@@ -134,6 +134,13 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// holds every message: one page is asked for at a time.
     private var appliedGrows = 0
     private var reachesOldest = false
+    /// The chat's history paging (`ChatHistoryPager`): a real chat's, not
+    /// a stand-in's or a fixture's.
+    private var historyPager: ChatHistoryPager?
+    /// How far the oldest rendered row is past the visible area, and what
+    /// it is (`ChatOlderPaging.boundary`).
+    private var oldestDistance: CGFloat = .greatestFiniteMagnitude
+    private var oldestBoundary: String?
     private var inForeground = true
     private var dockDetailsVisible = true
     /// `traitCollection.isTabletLayout`, kept here so the row inputs can be
@@ -200,8 +207,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         setUpHeader()
 
         list.delegate = self
+        list.olderEnd.onAction = { [weak self] in self?.historyPager?.olderAction() }
         view.addSubview(list)
         placeholder.isHidden = true
+        placeholder.onAction = { [weak self] in self?.placeholderAction() }
         view.addSubview(placeholder)
         headerScrim.overlayOpacity = ChatHeaderScrim.restingOpacity
         view.addSubview(headerScrim)
@@ -284,6 +293,13 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         // longer an abandoned start, in this account.
         account.spawnRequests.release(sessionId: chatId)
         updateHeaderVisibility(animated: animated)
+        historyPager?.isActive = true
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        // ChatList's `active`: a chat not shown asks for no older page.
+        historyPager?.isActive = false
     }
 
     /// SessionView's unmount: a stand-in that has settled or failed is done
@@ -342,6 +358,56 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         rows.follow(services.feed.snapshots(sessionId: chatId)) { $0.snapshot = $1 }
         self.rows = rows
         rowsObservation = rows.observation
+        pageHistory()
+    }
+
+    /// Opens the chat's history: its newest page once, older pages as the
+    /// reader nears the oldest row, EmptyMessages' own paging, and Retry
+    /// and Load more. A stand-in has no history until it is its session.
+    private func pageHistory() {
+        guard !PendingChats.isPendingChatId(chatId), !isFixture else { return }
+        let generation = chatGeneration
+        let pager = ChatHistoryPager(sessionId: chatId, history: account.chatHistory)
+        pager.list = { [weak self] in self?.historyList }
+        pager.onGrowWindow = { [weak self] in
+            guard let self, self.chatGeneration == generation else { return }
+            self.growWindow()
+        }
+        pager.onChange = { [weak self] in
+            guard let self, self.chatGeneration == generation, self.context.account.session === self.account else { return }
+            self.updatePlaceholder()
+            self.updateOlderEnd()
+        }
+        pager.isActive = view.window != nil
+        historyPager = pager
+        pager.start()
+    }
+
+    /// The list as the history's paging reads it.
+    private var historyList: ChatHistoryPager.List {
+        ChatHistoryPager.List(
+            laidOut: list.bounds.height > 0 && list.measuredWidth > 0,
+            nearOldest: oldestDistance < list.bounds.height,
+            windowCanGrow: !reachesOldest,
+            // Until the grown window has rendered, not just been asked for.
+            growthPending: windowRequests.grows != appliedGrows,
+            oldestBoundary: oldestBoundary
+        )
+    }
+
+    private func updateOlderEnd() {
+        list.olderEnd.status = historyPager?.olderStatus(windowReachesOldest: reachesOldest) ?? .idle
+    }
+
+    /// EmptyMessages' Retry and Load more are older fetches; the loading
+    /// placeholder's Retry asks for the newest page again.
+    private func placeholderAction() {
+        guard let historyPager else { return }
+        if placeholder.content == .loadFailed {
+            historyPager.retryFirstLoad()
+        } else {
+            historyPager.olderAction()
+        }
     }
 
     /// Stops everything that reads the chat the screen is leaving, on the
@@ -351,6 +417,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// status follows `headerSessionId` by itself.
     private func endChat() {
         chatGeneration += 1
+        historyPager?.stop()
+        historyPager = nil
+        oldestDistance = .greatestFiniteMagnitude
+        oldestBoundary = nil
+        list.olderEnd.status = .idle
         observation?.cancel()
         observation = nil
         rowsObservation?.cancel()
@@ -861,9 +932,12 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             if let facts, !facts.isEmpty {
                 content = nil
             } else if facts?.isLoaded == true {
-                content = .empty(ChatEmptyState(metadata: record.metadata, createdAt: record.createdAt, now: Int64(Date().timeIntervalSince1970 * 1000)))
+                content = .empty(
+                    ChatEmptyState(metadata: record.metadata, createdAt: record.createdAt, now: Int64(Date().timeIntervalSince1970 * 1000)),
+                    historyPager?.emptyStatus ?? .noMessages
+                )
             } else {
-                content = .loading
+                content = historyPager?.firstLoadFailed == true ? .loadFailed : .loading
             }
         } else if isPendingChat {
             // The composer stays: it is the one thing on this screen that
@@ -1034,7 +1108,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         }
         ApplyPerf.measure(.chatList) {
             var touched = 0
+            var windowReset = false
             if let facts = update.facts {
+                // Before the placeholder reads its status.
+                windowReset = historyPager?.receive(.init(facts)) ?? false
                 self.facts = facts
                 dismissAnsweredQuestions(facts)
                 updatePlaceholder()
@@ -1047,8 +1124,17 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             appliedGrows = update.grows
             reachesOldest = update.reachesOldest
             if let rows = update.list {
+                oldestBoundary = update.oldestBoundary
                 touched += list.apply(rows, animated: true)
             }
+            if windowReset {
+                // History W3: the window dropped rows it showed; it is back
+                // at the newest, and so is the reader.
+                list.scrollToNewest(animated: false)
+            }
+            updateOlderEnd()
+            // Each settlement checks again, once its rows are in.
+            if facts?.isLoaded == true { historyPager?.check() }
             return touched
         }
         return true
@@ -1123,7 +1209,12 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         }
         let details = !floatingDock || ChatScreenLayout.dockDetailsVisible(distanceFromNewest: distanceFromNewest, currentlyVisible: dockDetailsVisible)
         if details != dockDetailsVisible { setDockDetailsVisible(details) }
-        if distanceFromOldest < list.bounds.height { growWindow() }
+        oldestDistance = distanceFromOldest
+        if let historyPager, facts?.isLoaded == true {
+            historyPager.check()
+        } else if distanceFromOldest < list.bounds.height {
+            growWindow()
+        }
     }
 
     /// The composer's status rows and the bars above it fade, but keep
