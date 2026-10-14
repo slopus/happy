@@ -280,7 +280,9 @@ public final class HomeViewController: UIViewController {
             titleView.subtitle = context.customServerHost
             navigationItem.rightBarButtonItem = settingsBarButton(action: #selector(openOnboardingSettings))
         }
-        titleView.sizeToFit()
+        // Not `sizeToFit`, which would hold a longer server to the width of
+        // the one before it.
+        titleView.frame.size = titleView.intrinsicContentSize
         view.setNeedsLayout()
     }
 

@@ -48,7 +48,9 @@ public final class WelcomeViewController: UIViewController {
     public override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         titleView.subtitle = context.customServerHost
-        titleView.sizeToFit()
+        // Not `sizeToFit`, which would hold a server chosen meanwhile to the
+        // width of the one before it.
+        titleView.frame.size = titleView.intrinsicContentSize
     }
 
     private func createAccount() async {

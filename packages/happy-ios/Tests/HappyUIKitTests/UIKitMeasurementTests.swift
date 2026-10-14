@@ -151,6 +151,21 @@ final class UIKitMeasurementTests: XCTestCase {
         XCTAssertLessThanOrEqual(size.width, NavigationTitleView.defaultMaxWidth)
     }
 
+    /// Home and Welcome refit the title when the server under it changes:
+    /// `sizeToFit` measures within the old frame, so a longer server would
+    /// be cut to the shorter one's width; the intrinsic size is not.
+    func testALongerSubtitleIsNotHeldToTheOldWidth() {
+        let title = NavigationTitleView(subtitle: "a.io")
+        title.frame.size = title.intrinsicContentSize
+        let short = title.frame.width
+        title.subtitle = "self-hosted.example.com:3005"
+        title.sizeToFit()
+        XCTAssertEqual(title.frame.width, short, "the trap the screens avoid")
+        title.frame.size = title.intrinsicContentSize
+        XCTAssertGreaterThan(title.frame.width, short)
+        XCTAssertEqual(title.frame.size, title.layout(maxWidth: NavigationTitleView.defaultMaxWidth).size)
+    }
+
     func testGroupedListPlacesSectionsUnderTheSafeArea() {
         let list = GroupedListView(sections: [SettingsHeaderView()])
         list.frame = CGRect(x: 0, y: 0, width: 393, height: 852)
