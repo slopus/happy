@@ -196,12 +196,15 @@ extension Strings {
 
     public enum DiffDetail {
         public static func showMoreLines(_ count: Int) -> String { "Show \(count) more lines" }
-        public static func tapToExpand(_ count: Int) -> String { "\(count) changed lines — tap to expand" }
-        public static let imageBefore = "Before"
-        public static let imageAfter = "After"
-        public static func unchangedLines(_ count: Int) -> String { "\(count) unchanged" }
-        public static let noChanges = "No changes"
-        public static let binaryFile = "Binary file not shown"
+        // Read on the main thread only: the changes list's section plans,
+        // made off it, take theirs in their input (`DiffSectionWords`,
+        // `sizeHint`); a diff's rows read theirs when they are configured.
+        public static func tapToExpand(_ count: Int) -> String { localized("diff.tapToExpand", ["count": .number(count)], "\(count) changed lines — tap to expand") }
+        public static var imageBefore: String { localized("diff.imageBefore", "Before") }
+        public static var imageAfter: String { localized("diff.imageAfter", "After") }
+        public static func unchangedLines(_ count: Int) -> String { localized("diff.unchangedLines", ["count": .number(count)], "\(count) unchanged") }
+        public static var noChanges: String { localized("diff.noChanges", "No changes") }
+        public static var binaryFile: String { localized("diff.binaryFile", "Binary file not shown") }
 
         // Hard-coded in DiffFileHeader.tsx (drawn uppercase).
         public static let badgeNew = "new"
