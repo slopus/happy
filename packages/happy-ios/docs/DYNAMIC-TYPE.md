@@ -170,12 +170,19 @@ Following now:
   archived" are one line in any language, so the derivation never reads
   the screens' language, which is the main thread's. A new text size or screen scale goes through the sidebar's
   pipeline: every heading is measured again there, and only rows whose
-  height moved make the table ask again. The chats (56) and the archived
-  cards (88) are fixed heights in RN, so they stay that tall and draw
-  their text scaled inside; a chat's card clips what outgrows it. The
-  glyphs, the faces and the `+` keep their size. Each cell sets the trait
-  on itself; the list does not, because its bots (home's flat rows) and
-  its notices are planned there at the designed size.
+  height moved make the table ask again. The chats (56,
+  ActiveSessionsGroupCompact.tsx `sessionRow`) and the archived cards
+  (88, SessionsList.tsx `sessionItem`) are fixed heights in RN, so they
+  stay that tall at every size and draw their text scaled inside,
+  centred. What outgrows them is cut where RN cuts it: a chat's at its
+  own 56 row (it sits in react-native-gesture-handler 2.30's Swipeable,
+  whose container is `overflow: 'hidden'`, Swipeable.tsx 585), not at
+  the card, so it never spills over the rows next to it; an archived
+  card's at the card's edge, borders and rounded corners included
+  (`sessionItemContainer`'s `overflow: 'hidden'`). The glyphs, the
+  faces and the `+` keep their size. Each cell sets the trait on itself;
+  the list does not, because its bots (home's flat rows) and its notices
+  are planned there at the designed size.
 - Home's "No sessions yet" (EmptyMainScreen.tsx with a computer linked):
   the title, the line under it, "Start New Session" and "Show archived".
   Their sizes are measured off the main thread (`NoSessionsMeasure`, the
