@@ -103,13 +103,15 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// The text size the status and usage rows were last drawn at.
     private var detailsScale: TextScale?
 
-    private static let titles = ComposerChipSet.Titles(
+    /// Read each time, in the screens' language (a `let` would keep the
+    /// first one across a language change).
+    private static var titles: ComposerChipSet.Titles { ComposerChipSet.Titles(
         permission: Strings.Composer.permissionModeTitle,
         codexPermission: Strings.Composer.codexPermissionModeTitle,
         geminiPermission: Strings.Composer.geminiPermissionModeTitle,
         model: Strings.Composer.modelTitle,
         effort: Strings.Composer.effortTitle
-    )
+    ) }
 
     init(environment: ChatComposerEnvironment) {
         self.environment = environment
