@@ -45,12 +45,12 @@ final class ApplyPipelineFeedTests: XCTestCase {
         let recorder = ApplyPerfRecorder<Int>()
         let pipeline = ApplyPipeline<Int, Int, Int>(input: 0, state: 42,
             derive: { value, _ in (value, value) }, apply: { recorder.take($0) })
-        pipeline.follow(channel.stream, ifChanged: { input, value in
+        pipeline.follow(ifChanged: channel.stream) { input, value in
             seen.take()
             guard input != value else { return false }
             input = value
             return true
-        })
+        }
         channel.continuation.yield(0)
         channel.continuation.yield(0)
         await applyPerfWait { seen.count == 2 }
@@ -75,17 +75,17 @@ final class ApplyPipelineFeedTests: XCTestCase {
         ended.continuation.finish()
         let pipeline = ApplyPipeline<Int, Int, Int>(input: 0, state: 0,
             derive: { value, _ in (value, value) }, apply: { _ in XCTFail("unexpected apply"); return true })
-        pipeline.follow(ended.stream, ifChanged: { input, value in
+        pipeline.follow(ifChanged: ended.stream) { input, value in
             guard input != value else { return false }; input = value; return true
-        })
+        }
         XCTAssertEqual(pipeline.counts.wakeups, 0)
         XCTAssertEqual(pipeline.counts.derivations, 0)
         let cancelled = AsyncStream<Int>.makeStream()
         let finished = expectation(description: "cancelled stream finished")
         cancelled.continuation.onTermination = { _ in finished.fulfill() }
-        pipeline.follow(cancelled.stream, ifChanged: { input, value in
+        pipeline.follow(ifChanged: cancelled.stream) { input, value in
             guard input != value else { return false }; input = value; return true
-        })
+        }
         pipeline.cancel()
         await fulfillment(of: [finished], timeout: 5)
         if case .terminated = cancelled.continuation.yield(1) {} else { XCTFail("stream still open") }
@@ -160,12 +160,12 @@ final class ApplyPipelineFeedTests: XCTestCase {
         pipeline: ApplyPipeline<HomeDerivation.Input, HomeDerivation.Applied, HeldHomeUpdate>,
         seen: ConditionalFeedProbe
     ) {
-        pipeline.follow(channel, ifChanged: { input, value in
+        pipeline.follow(ifChanged: channel) { input, value in
             seen.take()
             guard input.draftSessionIds != value else { return false }
             input.draftSessionIds = value
             return true
-        })
+        }
     }
 
     func testHeldInitialEmptySetBeforeAndAfterHomeCreatesNoExtraDerivation() async {

@@ -175,11 +175,11 @@ final class DraftPresenceTests: XCTestCase {
             }
             continuation.onTermination = { _ in task.cancel() }
         }
-        pipeline.follow(observed, ifChanged: { input, ids in
+        pipeline.follow(ifChanged: observed) { input, ids in
             guard input.draftSessionIds != ids else { return false }
             input.draftSessionIds = ids
             return true
-        })
+        }
         return seen
     }
 

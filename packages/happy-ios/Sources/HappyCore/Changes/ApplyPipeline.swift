@@ -138,14 +138,14 @@ public final class ApplyPipeline<Input: Sendable, State: Sendable, Output: Senda
     /// Writes each value of `stream` into the input, off the main thread,
     /// until the pipeline is cancelled.
     public func follow<Value: Sendable>(_ stream: AsyncStream<Value>, _ assign: @escaping @Sendable (inout Input, Value) -> Void) {
-        follow(stream, ifChanged: { input, value in assign(&input, value); return true })
+        follow(ifChanged: stream) { input, value in assign(&input, value); return true }
     }
 
     /// Compares and assigns a feed value under the input lock. The closure
     /// must be cheap and pure: no I/O or re-entry. Return false without
     /// changing the input when its value is already current; that leaves
     /// the worker, dirty flag and applied state untouched.
-    public func follow<Value: Sendable>(_ stream: AsyncStream<Value>, ifChanged assign: @escaping @Sendable (inout Input, Value) -> Bool) {
+    public func follow<Value: Sendable>(ifChanged stream: AsyncStream<Value>, _ assign: @escaping @Sendable (inout Input, Value) -> Bool) {
         let task = Task.detached(priority: priority) { [weak self] in
             for await value in stream {
                 guard let self, !Task.isCancelled else { return }
