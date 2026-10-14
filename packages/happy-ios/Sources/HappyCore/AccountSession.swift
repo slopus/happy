@@ -14,6 +14,8 @@ public final class AccountSession: Sendable {
     /// without a store directory (in-memory, tests) get a temporary one.
     public let filesDirectory: URL
     public let sync: SyncEngine
+    /// The New Session draft's last height, for reopening it in this account.
+    public let newSessionDraftHeight = MeasuredDraftMemo()
     /// Private render payload belongs to this account, including work that
     /// screens finish after a switch. Screens cancel work; stop closes owners.
     public let diffDocuments = DiffDocumentCache()
@@ -205,6 +207,7 @@ public final class AccountSession: Sendable {
     }
 
     public func stop() async {
+        newSessionDraftHeight.close()
         diffDocuments.close()
         diffSyntax.close()
         codeSyntax.close()
