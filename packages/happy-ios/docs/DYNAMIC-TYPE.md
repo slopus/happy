@@ -84,7 +84,8 @@ Following now:
   "Bots" and day headings, the computers' rules, the checkouts' headings
   (project, branch, line changes) and the archive toggle draw scaled, and
   their heights are measured at that size off the main thread
-  (`TabletGroupedHeights`, from one line of each style through the
+  (`TabletGroupedHeights`, from one line of each style, ceiled to the
+  screen's pixels as its label measures it, through the
   HappyLayout layouts), keyed by the heading, the list's width and the
   text size and screen scale, and measured again only for what changed.
   A heading's key holds the person's words (a computer's name, a
