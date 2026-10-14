@@ -35,24 +35,14 @@ enum CompositionRoot {
         return AppContext(account: account, variant: variant, version: version)
     }
 
-    /// Application Support/Happy, excluded from backups: everything in it
-    /// can be pulled again from the server, and the keys to read it are
-    /// device-only anyway.
+    /// Application Support/Happy, as a path only: nothing touches the disk
+    /// on the main thread at launch. The accounts code creates it, and marks
+    /// it excluded from backups, off the main thread when it first reads or
+    /// writes there (everything in it can be pulled again from the server,
+    /// and the keys to read it are device-only anyway).
     private static func storeDirectory() -> URL? {
-        let fileManager = FileManager.default
-        guard let base = try? fileManager.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true) else {
-            return nil
-        }
-        var directory = base.appendingPathComponent("Happy", isDirectory: true)
-        do {
-            try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
-            var values = URLResourceValues()
-            values.isExcludedFromBackup = true
-            try directory.setResourceValues(values)
-        } catch {
-            return nil
-        }
-        return directory
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Happy", isDirectory: true)
     }
 }
 /// One background task for however many sends are in flight, so a send
