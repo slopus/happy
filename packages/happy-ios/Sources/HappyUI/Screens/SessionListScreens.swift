@@ -379,9 +379,8 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
             }.value
             guard let self, request == self.headerRequest else { return }
             ApplyPerf.measure(.homeList) {
-                self.banners.offlineTitle = key.banners.offlineTitle
-                self.banners.showsNativeUpdate = key.banners.nativeUpdate
-                self.banners.showsWhatsNew = key.banners.whatsNew
+                // The words the height was measured with.
+                self.banners.content = key.banners
                 self.banners.frame = CGRect(x: 0, y: 0, width: key.width, height: height)
                 self.tableView.tableHeaderView = self.banners
                 return 1

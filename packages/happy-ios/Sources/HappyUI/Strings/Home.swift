@@ -5,7 +5,7 @@ import HappyCore
 extension Strings {
     public enum Home {
         /// `tabs.sessions`: the phone header's title.
-        public static let sessionsTitle = "Sessions"
+        public static var sessionsTitle: String { localized("tabs.sessions", "Sessions") }
 
         /// `status.*`, the socket states HomeHeaderTitle.tsx names.
         public static func connectionStatus(_ status: RealtimeStatus) -> String {
@@ -18,19 +18,19 @@ extension Strings {
         }
 
         /// `sessionsFilter.title`: the filter menu's accessibility label.
-        public static let filterTitle = "Filter"
+        public static var filterTitle: String { localized("sessionsFilter.title", "Filter") }
         /// `sessionsFilter.appearanceSettings`.
-        public static let appearanceSettings = "Appearance Settings"
+        public static var appearanceSettings: String { localized("sessionsFilter.appearanceSettings", "Appearance Settings") }
 
         // The project list (ProjectHomeList.tsx).
         /// `sidebar.bots`.
-        public static let bots = "Bots"
+        public static var bots: String { localized("sidebar.bots", "Bots") }
         /// `sidebar.projects`.
-        public static let projects = "Projects"
+        public static var projects: String { localized("sidebar.projects", "Projects") }
         /// `sidebar.showAllWorkspaces`.
-        public static func showAllWorkspaces(_ count: Int) -> String { "Show all \(count) workspaces" }
+        public static func showAllWorkspaces(_ count: Int) -> String { localized("sidebar.showAllWorkspaces", ["count": .number(count)], "Show all \(count) workspaces") }
         /// `sidebar.showFewerWorkspaces`.
-        public static let showFewerWorkspaces = "Show fewer"
+        public static var showFewerWorkspaces: String { localized("sidebar.showFewerWorkspaces", "Show fewer") }
         /// `status.unknown`, in `<unknown>` for a chat with no computer.
         public static let unknownMachine = "<unknown>"
         // Hard-coded in ProjectHomeList.tsx, not in en.ts.
@@ -39,43 +39,44 @@ extension Strings {
 
         // The "Session" alert (useSessionQuickActions.ts).
         /// `profile.details`.
-        public static let details = "Details"
+        public static var details: String { localized("profile.details", "Details") }
         /// `sessionInfo.resumeSession`.
-        public static let resumeSession = "Resume Session"
+        public static var resumeSession: String { localized("sessionInfo.resumeSession", "Resume Session") }
         /// `session.forkAction`.
-        public static let forkAction = "Fork session"
+        public static var forkAction: String { localized("session.forkAction", "Fork session") }
         /// `session.duplicateAction`.
-        public static let duplicateAction = "Duplicate from message…"
+        public static var duplicateAction: String { localized("session.duplicateAction", "Duplicate from message…") }
         /// `sessionInfo.copyMetadata`.
-        public static let copyMetadata = "Copy session metadata"
+        public static var copyMetadata: String { localized("sessionInfo.copyMetadata", "Copy session metadata") }
         /// `sessionInfo.copyMetadata` + ' & Client Logs'.
-        public static let copyMetadataAndLogs = "Copy session metadata & Client Logs"
+        /// useSessionQuickActions.ts: `t('sessionInfo.copyMetadata') + ' & Client Logs'`.
+        public static var copyMetadataAndLogs: String { "\(copyMetadata) & Client Logs" }
         /// `sessionInfo.metadataCopied`.
-        public static let metadataCopied = "Session metadata copied to clipboard"
+        public static var metadataCopied: String { localized("sessionInfo.metadataCopied", "Session metadata copied to clipboard") }
         /// `sessionInfo.failedToCopyMetadata`.
-        public static let failedToCopyMetadata = "Failed to copy session metadata"
-        public static let resumeSessionSameMachineOnly = "This session can only be resumed on the same machine it started on."
-        public static let resumeSessionMachineOffline = "This machine is offline. Resume is only available while it is online."
-        public static let resumeSessionMissingMachine = "This session is missing its machine metadata, so it cannot be resumed."
-        public static let resumeSessionMissingBackendId = "This session does not have a resumable Claude or Codex identifier."
-        public static let resumeSessionUnexpectedDirectoryPrompt = "Resume cannot create directories. Start the session manually from its original path."
+        public static var failedToCopyMetadata: String { localized("sessionInfo.failedToCopyMetadata", "Failed to copy session metadata") }
+        public static var resumeSessionSameMachineOnly: String { localized("sessionInfo.resumeSessionSameMachineOnly", "This session can only be resumed on the same machine it started on.") }
+        public static var resumeSessionMachineOffline: String { localized("sessionInfo.resumeSessionMachineOffline", "This machine is offline. Resume is only available while it is online.") }
+        public static var resumeSessionMissingMachine: String { localized("sessionInfo.resumeSessionMissingMachine", "This session is missing its machine metadata, so it cannot be resumed.") }
+        public static var resumeSessionMissingBackendId: String { localized("sessionInfo.resumeSessionMissingBackendId", "This session does not have a resumable Claude or Codex identifier.") }
+        public static var resumeSessionUnexpectedDirectoryPrompt: String { localized("sessionInfo.resumeSessionUnexpectedDirectoryPrompt", "Resume cannot create directories. Start the session manually from its original path.") }
         /// `session.forkErrorMissingMetadata`.
-        public static let forkErrorMissingMetadata = "Missing session metadata required to fork."
+        public static var forkErrorMissingMetadata: String { localized("session.forkErrorMissingMetadata", "Missing session metadata required to fork.") }
         /// `session.forkErrorGeneric`.
-        public static let forkErrorGeneric = "Failed to fork the session."
+        public static var forkErrorGeneric: String { localized("session.forkErrorGeneric", "Failed to fork the session.") }
         // useHappyAction.ts's alert, hard-coded there.
         public static let actionError = "Error"
         public static let actionUnknownError = "Unknown error"
 
         // The update banner (UpdateBanner.tsx).
         /// `updateBanner.nativeUpdateAvailable`.
-        public static let nativeUpdateAvailable = "App Update Available"
+        public static var nativeUpdateAvailable: String { localized("updateBanner.nativeUpdateAvailable", "App Update Available") }
         /// `updateBanner.tapToUpdateAppStore`.
-        public static let tapToUpdateAppStore = "Tap to update in App Store"
+        public static var tapToUpdateAppStore: String { localized("updateBanner.tapToUpdateAppStore", "Tap to update in App Store") }
         /// `updateBanner.whatsNew`.
-        public static let whatsNew = "What's new"
+        public static var whatsNew: String { localized("updateBanner.whatsNew", "What's new") }
         /// `updateBanner.seeLatest`.
-        public static let seeLatest = "See the latest updates and improvements"
+        public static var seeLatest: String { localized("updateBanner.seeLatest", "See the latest updates and improvements") }
     
         // The dock (HomeDock.tsx), whose copy is written there in English.
         public static let dockPlaceholder = "Plan, ask, build…"
@@ -86,6 +87,8 @@ extension Strings {
         public static let harnessHelp = "Help"
         public static let harnessHelpLabel = "Harness setup help"
         public static let harnessHelpURL = URL(string: "https://happy.engineering/docs/quick-start/")!
+        // HomeDock.tsx's pickers spell these out in English (its sheet's
+        // "Machine" and "Projects"), so they stay English here too.
         public static let machineTitle = "Machine"
         public static let projectTitle = "Project"
         public static let projectsSection = "Projects"
@@ -93,7 +96,7 @@ extension Strings {
         public static let workspaceTitle = "Workspace"
         public static let harnessTitle = "Harness"
         /// `machineLauncher.enterCustomPath`.
-        public static let enterCustomPath = "Enter custom path"
+        public static var enterCustomPath: String { localized("machineLauncher.enterCustomPath", "Enter custom path") }
         public static let customPathPlaceholder = "~/path/to/project"
         public static let interruptHint = "To interrupt press stop"
         public static let addImage = "Add image"
@@ -103,9 +106,9 @@ extension Strings {
             "The directory '\(directory)' does not exist. Would you like to create it?"
         }
         /// `common.create`.
-        public static let create = "Create"
+        public static var create: String { localized("common.create", "Create") }
 
-        // Making a bot (HomeDock.tsx, BotFacePicker.tsx).
+        // Making a bot (HomeDock.tsx, BotFacePicker.tsx), in English there.
         public static let composerSession = "Session"
         public static let composerBot = "Bot"
         public static let composerKindLabel = "What to create"
@@ -125,16 +128,16 @@ extension Strings {
     /// is written there in English; the rest is `t()`.
     public enum NewSession {
         /// `newSession.title`.
-        public static let title = "Start New Session"
+        public static var title: String { localized("newSession.title", "Start New Session") }
         /// EmptyMainScreen.tsx's button, written there in English.
         public static let startNewSession = "Start New Session"
         /// `newSession.machineOffline`.
-        public static let machineOffline = "Machine is offline"
+        public static var machineOffline: String { localized("newSession.machineOffline", "Machine is offline") }
         /// `machine.offlineHelp`.
-        public static let offlineHelp = "• Run `happy daemon start` on your computer\n• Make sure your computer is online\n• Run `happy daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `npm install -g happy@latest`"
+        public static var offlineHelp: String { localized("machine.offlineHelp", "• Run `happy daemon start` on your computer\n• Make sure your computer is online\n• Run `happy daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `npm install -g happy@latest`") }
         public static let happyAgentOffline = "Happy Agent is offline on this computer"
         /// `newSession.switchMachinesHint`.
-        public static let switchMachinesHint = "• Switch machines by clicking on the machine above"
+        public static var switchMachinesHint: String { localized("newSession.switchMachinesHint", "• Switch machines by clicking on the machine above") }
         public static let searchMachines = "search machines..."
         public static let searchWorktrees = "search worktrees..."
         public static let searchWorkspaces = "search workspaces..."
@@ -146,7 +149,7 @@ extension Strings {
         public static let recent = "Recent"
         public static let noRecentProjects = "no recent projects yet"
         /// `settings.title`.
-        public static let settings = "Settings"
+        public static var settings: String { localized("settings.title", "Settings") }
         public static let voiceInput = "Voice input"
         public static func agent(_ label: String) -> String { "Agent: \(label)" }
     }

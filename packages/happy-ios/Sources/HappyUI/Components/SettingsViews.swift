@@ -169,6 +169,9 @@ public final class RemoteImageView: UIImageView {
         clipsToBounds = true
         layer.cornerRadius = size / 2
         isUserInteractionEnabled = false
+        // No URL yet: hidden, as `show` leaves it for none. A first
+        // `show(nil, …)` changes nothing and returns before setting it.
+        isHidden = true
     }
 
     @available(*, unavailable)

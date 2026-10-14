@@ -26,8 +26,12 @@ final class PlainHeaderTitleTests: XCTestCase {
         XCTAssertEqual(view.title, "Primary")
         XCTAssertTrue(view.traitOverrides.followsTextSize)
         XCTAssertEqual(view.frame.size, view.layout(maxWidth: NavigationTitleView.defaultMaxWidth).size)
-        // The screen itself doesn't follow.
-        XCTAssertFalse(controller.view.traitOverrides.followsTextSize)
+        // The screen itself doesn't follow: neither it nor its view sets the
+        // trait (reading an override that was never set raises), and its
+        // view's traits say no.
+        XCTAssertFalse(controller.traitOverrides.contains(FollowsTextSize.self))
+        XCTAssertFalse(controller.view.traitOverrides.contains(FollowsTextSize.self))
+        XCTAssertFalse(controller.view.traitCollection[FollowsTextSize.self])
     }
 
     func testARenameIsFittedToTheWholeSlot() throws {

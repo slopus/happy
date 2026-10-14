@@ -14,6 +14,8 @@ public final class SettingsAgentsViewController: UIViewController {
     private var pipeline: ApplyPipeline<AgentsPage.Input, AgentsPage.Content?, AgentsPage.Update>?
     private var observation: ApplyObservation?
     private var groupViews: [AgentsPage.Group: ItemGroupView] = [:]
+    /// The language the screen was built in; its derivations speak it.
+    private let language = AppLocalization.language
 
     public init(context: AppContext, session: AccountSession) {
         self.context = context
@@ -38,12 +40,15 @@ public final class SettingsAgentsViewController: UIViewController {
         // The computers and every agent's fields are worked out off the
         // main thread; the screen rebuilds only the groups that changed.
         let pipeline = ApplyPipeline<AgentsPage.Input, AgentsPage.Content?, AgentsPage.Update>(
-            input: AgentsPage.Input(online: Strings.Status.online, offline: Strings.Status.offline),
+            input: AgentsPage.Input(language: language),
             state: nil,
             derive: { AgentsPage.derive($0, applied: $1) },
             apply: { [weak self] update in
-                // Worked out for an account that is no longer the active one.
-                guard let self, self.context.account.session === self.session else { return false }
+                // Worked out for an account that is no longer the active
+                // one, or in a language the screens no longer speak: they
+                // are being built again.
+                guard let self, self.context.account.session === self.session,
+                      self.language == AppLocalization.language else { return false }
                 ApplyPerf.measure(.screen) { self.apply(update) }
                 return true
             }

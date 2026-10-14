@@ -24,6 +24,11 @@ public final class AppCoordinator {
     private var accountRestored = false
     private var switchingForNotification = false
     private var lookingUpNotification = false
+    /// Deciding the language of the screens about to be built; a newer
+    /// root replaces it.
+    private var languageWork: Task<Void, Never>?
+    private var rootGeneration = 0
+    private var languageObserver: NSObjectProtocol?
 
     public init(window: UIWindow, context: AppContext) {
         self.window = window
@@ -38,6 +43,12 @@ public final class AppCoordinator {
         window.makeKeyAndVisible()
         context.account.onChange = { [weak self] state in
             self?.show(state)
+        }
+        // language.tsx reloads the app after a new language; here the
+        // screens are built again in it, from the root, as a reload leaves
+        // them.
+        languageObserver = NotificationCenter.default.addObserver(forName: .screensLanguageChanged, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.rebuildScreens() }
         }
         // A stored account flips to signed in before restore() starts
         // syncing, so home appears without a flash of Welcome; without one,
@@ -171,6 +182,57 @@ public final class AppCoordinator {
         let animated = shownSession != nil
         shownSession = .some(identity)
         shownServerConfirmationID = pending?.id
+        // The screens speak the account's language (text/index.ts at
+        // launch), decided and decoded off the main thread before they are
+        // built. A root asked for meanwhile replaces this one.
+        rootGeneration += 1
+        let generation = rootGeneration
+        languageWork?.cancel()
+        languageWork = Task { [weak self] in
+            let catalog = await Self.catalog(for: session)
+            guard let self, !Task.isCancelled, generation == self.rootGeneration else { return }
+            AppLocalization.use(catalog)
+            self.install(session: session, pending: pending, animated: animated)
+        }
+    }
+
+    /// The window's screens again, from the root, in the language now
+    /// chosen; nothing else changes.
+    private func rebuildScreens() {
+        guard let shownSession else { return }
+        let session = context.account.session
+        guard session.map(ObjectIdentifier.init) == shownSession else { return }
+        rootGeneration += 1
+        languageWork?.cancel()
+        install(session: session, pending: context.account.pendingServerConfirmation, animated: false)
+    }
+
+    /// The account's `preferredLanguage` and the device's languages, as
+    /// text/index.ts resolves them; the device's alone while signed out, or
+    /// when the account's settings don't answer within a second. Nil for
+    /// English, which the screens hold themselves.
+    private nonisolated static func catalog(for session: AccountSession?) async -> TranslationCatalog? {
+        var preferred: String?
+        if let settings = session?.settingsFeed {
+            preferred = await withTaskGroup(of: String??.self) { group in
+                group.addTask {
+                    for await snapshot in settings.snapshots() { return .some(AccountSettings(snapshot).preferredLanguage) }
+                    return nil
+                }
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(1))
+                    return nil
+                }
+                let first = await group.next() ?? nil
+                group.cancelAll()
+                return first ?? nil
+            }
+        }
+        let language = AppLanguage.resolve(preferred: preferred, deviceLanguages: Locale.preferredLanguages)
+        return language == "en" ? nil : await TranslationCatalog.load(language)
+    }
+
+    private func install(session: AccountSession?, pending: AccountSummary?, animated: Bool) {
         let root: UIViewController
         if let pending {
             root = AccountServerConfirmationViewController(context: context, account: pending)

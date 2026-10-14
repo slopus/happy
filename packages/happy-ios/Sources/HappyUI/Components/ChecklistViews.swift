@@ -57,6 +57,9 @@ final class TerminalLineView: UITextView, UITextViewDelegate {
     private let promptLength: Int
     /// The person's text size, where this line follows it.
     private var textScale: TextScale?
+    /// The TextKit 1 stack the line is laid out in (the text view keeps
+    /// only its container).
+    private let storage = NSTextStorage()
 
     init(line: TerminalBlockView.Line) {
         self.line = line
@@ -65,7 +68,16 @@ final class TerminalLineView: UITextView, UITextViewDelegate {
         } else {
             promptLength = 0
         }
-        super.init(frame: .zero, textContainer: nil)
+        // TextKit 1, as the labels and the chat's measurer lay this style
+        // out, where a 24pt line is 24pt. Under TextKit 2, a text view's
+        // default, the iOS 26 simulator measured it 23: 24 less the style's
+        // baseline offset (1.45 for Plex Mono 14), rounded up.
+        let manager = NSLayoutManager()
+        storage.addLayoutManager(manager)
+        let container = NSTextContainer(size: CGSize(width: 0, height: CGFloat.greatestFiniteMagnitude))
+        container.widthTracksTextView = true
+        manager.addTextContainer(container)
+        super.init(frame: .zero, textContainer: container)
         render()
         isEditable = false
         isSelectable = true

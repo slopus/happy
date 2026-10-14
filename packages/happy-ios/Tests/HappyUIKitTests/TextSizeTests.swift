@@ -243,7 +243,15 @@ final class TextSizeTests: XCTestCase {
         let command = try XCTUnwrap(block.lines.first?.attributedText)
         let font = try XCTUnwrap(command.attribute(.font, at: 0, effectiveRange: nil) as? UIFont)
         XCTAssertEqual(font.pointSize, 14 * TextScale(.extraExtraExtraLarge).multiplier, accuracy: 0.0001)
-        XCTAssertEqual(command.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor, UIColor(Palette.terminalPrompt), "the prompt keeps its colour")
+        // Each UIColor(token) is a new dynamic colour, equal only to itself:
+        // compare what it draws in each appearance.
+        let prompt = try XCTUnwrap(command.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor)
+        for style in [UIUserInterfaceStyle.light, .dark] {
+            let traits = UITraitCollection(userInterfaceStyle: style)
+            XCTAssertEqual(prompt.resolvedColor(with: traits), UIColor(Palette.terminalPrompt).resolvedColor(with: traits), "the prompt keeps its colour")
+        }
+        let commandColour = try XCTUnwrap(command.attribute(.foregroundColor, at: 2, effectiveRange: nil) as? UIColor)
+        XCTAssertEqual(commandColour.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark)), UIColor(Palette.terminalText.dark))
         XCTAssertEqual(command.string, "$ happy daemon start")
         withExtendedLifetime(window) {}
     }
