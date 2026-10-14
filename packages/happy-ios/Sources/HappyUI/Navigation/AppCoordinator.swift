@@ -24,15 +24,14 @@ public final class AppCoordinator {
     private var accountRestored = false
     private var switchingForNotification = false
     private var lookingUpNotification = false
-    /// Deciding the language of the screens about to be built; a newer
-    /// root replaces it.
-    private var languageWork: Task<Void, Never>?
-    private var rootGeneration = 0
-    private var languageObserver: NSObjectProtocol?
+    /// Decides the language of the screens about to be built, holding the
+    /// window's touches meanwhile; a newer root replaces a pending one.
+    private let language: ScreensLanguage
 
     public init(window: UIWindow, context: AppContext) {
         self.window = window
         self.context = context
+        language = ScreensLanguage(holding: window)
     }
 
     public func start() {
@@ -47,9 +46,7 @@ public final class AppCoordinator {
         // language.tsx reloads the app after a new language; here the
         // screens are built again in it, from the root, as a reload leaves
         // them.
-        languageObserver = NotificationCenter.default.addObserver(forName: .screensLanguageChanged, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.rebuildScreens() }
-        }
+        language.takeChoices { [weak self] changed in self?.languageChosen(changed: changed) }
         // A stored account flips to signed in before restore() starts
         // syncing, so home appears without a flash of Welcome; without one,
         // Welcome appears as soon as restore() finds nothing.
@@ -75,6 +72,8 @@ public final class AppCoordinator {
     private func openNotificationSession() {
         guard let sessionId = notificationSessionID else { return }
         let account = context.account
+        // A root being decided opens it once it is in.
+        guard !language.isDeciding else { return }
         guard let active = account.session, navigation.viewControllers.first is HomeViewController else {
             // Signed out once restored: there is nothing to open it in.
             if accountRestored, account.session == nil { notificationSessionID = nil }
@@ -90,6 +89,7 @@ public final class AppCoordinator {
             self.lookingUpNotification = false
             guard self.notificationSessionID == sessionId,
                   account.session === active,
+                  !self.language.isDeciding,
                   self.navigation.viewControllers.first is HomeViewController else {
                 self.openNotificationSession()
                 return
@@ -121,7 +121,13 @@ public final class AppCoordinator {
     /// Home, then the chat. Nothing changes when that chat is already on top.
     private func showNotificationSession(_ sessionId: String) {
         let open = { [weak self] in
-            guard let self, let session = self.context.account.session,
+            guard let self else { return }
+            // Another root began meanwhile: it opens the chat once it is in.
+            guard !self.language.isDeciding else {
+                if self.notificationSessionID == nil { self.notificationSessionID = sessionId }
+                return
+            }
+            guard let session = self.context.account.session,
                   let home = self.navigation.viewControllers.first as? HomeViewController else { return }
             if let chat = self.navigation.topViewController as? ChatViewController, chat.sessionId == sessionId { return }
             self.navigation.presentedViewController?.dismiss(animated: false)
@@ -182,36 +188,40 @@ public final class AppCoordinator {
         let animated = shownSession != nil
         shownSession = .some(identity)
         shownServerConfirmationID = pending?.id
-        // The screens speak the account's language (text/index.ts at
-        // launch), decided and decoded off the main thread before they are
-        // built. A root asked for meanwhile replaces this one.
-        rootGeneration += 1
-        let generation = rootGeneration
-        languageWork?.cancel()
-        languageWork = Task { [weak self] in
-            let catalog = await Self.catalog(for: session)
-            guard let self, !Task.isCancelled, generation == self.rootGeneration else { return }
-            AppLocalization.use(catalog)
-            self.install(session: session, pending: pending, animated: animated)
-        }
+        requestRoot(session: session, pending: pending, animated: animated)
     }
 
-    /// The window's screens again, from the root, in the language now
-    /// chosen; nothing else changes.
-    private func rebuildScreens() {
-        guard let shownSession else { return }
-        let session = context.account.session
-        guard session.map(ObjectIdentifier.init) == shownSession else { return }
-        rootGeneration += 1
-        languageWork?.cancel()
-        install(session: session, pending: context.account.pendingServerConfirmation, animated: false)
+    /// The account's root in the account's language (text/index.ts at
+    /// launch), decided and decoded off the main thread before it is built.
+    /// The account's root is installed whatever the decision; in the
+    /// language in use when the account's can't be decided.
+    private func requestRoot(session: AccountSession?, pending: AccountSummary?, animated: Bool) {
+        // Read here, on main; the account's settings are read off it.
+        let deviceLanguages = Locale.preferredLanguages
+        language.request(
+            for: session,
+            resolve: { await Self.resolvedLanguage(for: session, deviceLanguages: deviceLanguages) },
+            install: { [weak self] in self?.install(session: session, pending: pending, animated: animated) }
+        )
+    }
+
+    /// The window's screens again, from the root, in the language the
+    /// Language page chose; nothing else changes. Only ever for the account
+    /// the screens are now: a choice made in another's never gets here
+    /// (`ScreensLanguage.choose`).
+    private func languageChosen(changed: Bool) {
+        guard changed else {
+            // A notification's chat waited for this.
+            openNotificationSession()
+            return
+        }
+        install(session: context.account.session, pending: context.account.pendingServerConfirmation, animated: false)
     }
 
     /// The account's `preferredLanguage` and the device's languages, as
     /// text/index.ts resolves them; the device's alone while signed out, or
-    /// when the account's settings don't answer within a second. Nil for
-    /// English, which the screens hold themselves.
-    private nonisolated static func catalog(for session: AccountSession?) async -> TranslationCatalog? {
+    /// when the account's settings don't answer within a second.
+    private nonisolated static func resolvedLanguage(for session: AccountSession?, deviceLanguages: [String]) async -> String {
         var preferred: String?
         if let settings = session?.settingsFeed {
             preferred = await withTaskGroup(of: String??.self) { group in
@@ -228,8 +238,7 @@ public final class AppCoordinator {
                 return first ?? nil
             }
         }
-        let language = AppLanguage.resolve(preferred: preferred, deviceLanguages: Locale.preferredLanguages)
-        return language == "en" ? nil : await TranslationCatalog.load(language)
+        return AppLanguage.resolve(preferred: preferred, deviceLanguages: deviceLanguages)
     }
 
     private func install(session: AccountSession?, pending: AccountSummary?, animated: Bool) {

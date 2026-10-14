@@ -18,6 +18,21 @@ final class TextEnvironmentTests: XCTestCase {
         TextEnvironment(scale: TextScale(category), displayScale: 3)
     }
 
+    /// Reading an override never set raises; the trait reads as off.
+    func testAnOverrideNeverSetReadsAsNotFollowing() {
+        let view = UIView()
+        XCTAssertFalse(view.traitOverrides.followsTextSize)
+        view.traitOverrides.followsTextSize = true
+        XCTAssertTrue(view.traitOverrides.followsTextSize)
+        view.traitOverrides.followsTextSize = false
+        XCTAssertTrue(view.traitOverrides.contains(FollowsTextSize.self))
+        XCTAssertFalse(view.traitOverrides.followsTextSize)
+        let controller = UIViewController()
+        XCTAssertFalse(controller.traitOverrides.followsTextSize)
+        controller.followsTextSize()
+        XCTAssertTrue(controller.traitOverrides.followsTextSize)
+    }
+
     func testUIKitsCategoriesMapOneToOne() {
         let uikit: [UIContentSizeCategory] = [
             .extraSmall, .small, .medium, .large, .extraLarge, .extraExtraLarge, .extraExtraExtraLarge,

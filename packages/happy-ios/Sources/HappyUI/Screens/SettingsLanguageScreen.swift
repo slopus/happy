@@ -80,13 +80,14 @@ public final class SettingsLanguageViewController: UIViewController {
             preferred = code
             session.updateSettings(["preferredLanguage": code.map(JSONValue.string) ?? .null])
             rebuild()
-            // language.tsx reloads 100 ms after saving; the catalog is
-            // decoded off the main thread meanwhile.
+            // language.tsx reloads 100 ms after saving; the window decodes
+            // the catalog off the main thread meanwhile, for this account's
+            // screens only.
             let language = AppLanguage.resolve(preferred: code, deviceLanguages: Locale.preferredLanguages)
-            let catalog = language == "en" ? nil : await TranslationCatalog.load(language)
-            if AppLocalization.use(catalog) {
-                NotificationCenter.default.post(name: .screensLanguageChanged, object: nil)
-            }
+            NotificationCenter.default.post(
+                name: .screensLanguageChosen,
+                object: ScreensLanguageChoice(code: language, account: session)
+            )
         }
     }
 }
