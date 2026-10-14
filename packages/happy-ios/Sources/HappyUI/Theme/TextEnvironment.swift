@@ -150,6 +150,15 @@ extension TextStyle {
     public func lineHeightValue(in environment: TextEnvironment) -> CGFloat {
         scaled(environment.scale).lineHeight ?? font(in: environment).lineHeight.rounded(.up)
     }
+
+    /// One line of this style as a one-line `StyledLabel` measures it in
+    /// the environment: the line height, or the font's own, unrounded, up
+    /// to the screen's next pixel. Safe off main.
+    public func oneLine(in environment: TextEnvironment) -> CGFloat {
+        let height = scaled(environment.scale).lineHeight ?? font(in: environment).lineHeight
+        let pixels = environment.displayScale
+        return pixels > 0 ? (height * pixels).rounded(.up) / pixels : height
+    }
 }
 
 extension ChatTextStyle {

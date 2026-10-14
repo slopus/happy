@@ -104,14 +104,53 @@ Following now:
   cards (88) are fixed heights in RN, so they stay that tall and draw
   their text scaled inside; a chat's card clips what outgrows it. The
   glyphs, the faces and the `+` keep their size. Each cell sets the trait
-  on itself; the list does not, because its bots are home's flat rows
-  and its notices home's header, which still plan at the designed size.
+  on itself; the list does not, because its bots (home's flat rows) and
+  its notices are planned there at the designed size.
 - The iPad sidebar's own controls: New session, Settings and the empty
   state (EmptySessionsTablet). Each sets the trait on itself and is
   measured from its text as drawn when the sidebar lays out
   (`TabletSidebarLayout`), so the button and the row grow with it and
   the list takes what is left; the glyphs, the 40 archive button and
   the paddings keep their size.
+- Home's session list (`SessionListViewController`), flat and grouped by
+  project, with the notices over it, and the iPad sidebar's flat list,
+  which is the same list. Its heights come from one environment worked
+  out off the main thread (`HomeTextEnvironment`): one line of each
+  style the rows draw, as a one-line label measures it (the style's
+  line × RN's multiplier, up to the screen's next pixel,
+  `TextStyle.oneLine(in:)`), the glyph boxes and the hairline. It is
+  made from the text size and the screen scale alone, which is all it
+  depends on, and only one made for the size and scale last asked for
+  lands; any other is refused and the rows keep the heights they have.
+  A flat session (FlatSessionRow.tsx) is as tall as its lines: 10 +
+  max(60, the title's line or the corner's 22, the project's line, 1,
+  the workspace's line or its row's 18) + 10, so 81 as designed, 80 at
+  the smallest size, where the avatar holds the row, and 235⅔ with a
+  workspace (189⅓ without) at the largest on a 3x screen
+  (`FlatSessionRowLayout.Lines`). The headings are their line and
+  their padding, as before. The project card (52 + 8), the worktree
+  rows (48) and the bots' and archived chats' rows (48) are fixed
+  `height`s in RN (ProjectHomeList.tsx), so they stay that tall and
+  their text, scaled, is centred in them and spills past when taller.
+  The notices are measured off the main thread at the size, keyed by
+  their words, the list's width, how wide a group may grow and the
+  environment; a height for anything else is refused. The first show
+  has no rows until the first environment is in, one hop; a new size
+  keeps every row on screen while it is worked out, then moves the
+  heights in one batch with the row at the top of the list kept where
+  it was. Between the new size and its heights the labels are already
+  drawn at it, in the old heights. The glyphs, the avatars, the `+`
+  and the paddings keep their size.
+  Not yet: the cells still measure their labels' widths on the main
+  thread when they lay out (the timestamp's, the workspace's, a
+  heading's, the line changes'), as they did at the designed size; no
+  height depends on it.
+  Not ported, so not matched: FlatSessionRow's third row also holds the
+  draft glyph (13) and Happy Agent's line counts (`RigGitLineChanges`,
+  11pt text, which scales). In RN a row with line counts and no
+  workspace grows its third row past 18 at the largest sizes; the
+  native row draws neither, so its height is the native row's, not
+  RN's, there. At the designed size the two are the same.
 
 ## Header titles
 
@@ -146,14 +185,12 @@ past; in the 42 row it is cut by the middle box, as RN's
 
 ## Not yet wired
 
-- Home, the session list, the rest of the sidebar (its bots, the
-  notices over them, the flat list), the chat,
-  message detail, diffs and the file viewer: their heights are planned
-  off main at the designed size.
+- The rest of the sidebar (the grouped list's bots and the notices over
+  them), the chat, message detail, diffs and the file viewer: their
+  heights are planned off main at the designed size.
   Their measurers take a `TextEnvironment` as an input and cache key, a
   text size change invalidates every height as a width change does, and
-  then their screens opt in. `HomeRowHeights.flatSession` comes from the
-  scaled lines instead of 81.
+  then their screens opt in.
 - Home's dock (the same card, under a screen that doesn't follow, so it
   stays at the designed size) and the new-session screen.
 - The `createPlainHeader` title of message detail (Chat's).

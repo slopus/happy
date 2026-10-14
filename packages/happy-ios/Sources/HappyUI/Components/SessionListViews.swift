@@ -4,7 +4,9 @@ import HappyLayout
 import UIKit
 
 /// One session in the flat home list (components/FlatSessionRow.tsx). It
-/// measures its labels and applies `FlatSessionRowLayout`.
+/// measures its labels and applies `FlatSessionRowLayout`, its rows as
+/// tall as `lines`: the designed ones, or those a list that follows the
+/// text size worked out off the main thread for the size its labels draw.
 final class SessionRowCell: UITableViewCell {
     static let reuseIdentifier = "session"
 
@@ -17,6 +19,9 @@ final class SessionRowCell: UITableViewCell {
     let branchIcon = IconView(.ionicons("git-branch-outline"), size: FlatSessionRowLayout.Metrics.branchIconSize)
     let divider = UIView()
     private(set) var row: SessionRow?
+    var lines: FlatSessionRowLayout.Lines = .designed {
+        didSet { if lines != oldValue { setNeedsLayout() } }
+    }
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
@@ -81,7 +86,8 @@ final class SessionRowCell: UITableViewCell {
             project: projectLabel.measurable,
             workspace: row?.workspaceName == nil ? nil : workspaceLabel.measurable,
             branchIcon: branchIcon.sizeThatFits(.zero),
-            showsDivider: row?.showsDivider ?? false
+            showsDivider: row?.showsDivider ?? false,
+            lines: lines
         ))
     }
 
