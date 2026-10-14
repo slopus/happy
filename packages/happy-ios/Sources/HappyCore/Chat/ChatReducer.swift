@@ -94,8 +94,10 @@ public struct ChatReducer: Sendable {
                 case .message("Turn started"): break
                 default:
                     if event == .message("Context was reset") {
-                        todos = .array([])
-                        todosTime = record.createdAt
+                        if record.createdAt > todosTime {
+                            todos = .array([])
+                            todosTime = record.createdAt
+                        }
                         resetUsage(at: record.createdAt)
                     } else if event == .message("Compaction completed") {
                         resetUsage(at: record.createdAt)
@@ -530,6 +532,9 @@ public struct ChatReducer: Sendable {
     }
 
     private mutating func resetUsage(at time: Int64) {
+        // Equal timestamps retain the already accepted state, matching
+        // updateUsage/updateTodos when older pages arrive incrementally.
+        guard time > usageTime else { return }
         usageTime = time
         usage = ChatUsage(inputTokens: 0, outputTokens: 0, cacheCreation: 0, cacheRead: 0, contextSize: 0)
     }

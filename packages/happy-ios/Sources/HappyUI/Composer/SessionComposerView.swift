@@ -86,21 +86,39 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private var suggestionTask: Task<Void, Never>?
     private var isSuggestionListShown = false
 
+    /// See `ChatComposerView.isRestored`.
+    private(set) var isRestored = false
+    private(set) var restoreGeneration = 0
+    /// The width the screen last asked the height at.
+    private var askedWidth: CGFloat?
+    /// The card width the restore waits on the text's height at.
+    private var restoreWaitWidth: CGFloat?
+    private var restoreDeadline: Task<Void, Never>?
+    /// `ChatComposerRestore.timeout`; a test that checks the draft is
+    /// measured before it shows sets it beyond reach.
+    private let restoreTimeout: Duration
+    /// Inside `composerHeight(fitting:)`: a restore reached there is
+    /// announced after it.
+    private var answeringHeight = false
+
     private var statusSize: CGSize = .zero
     private var weekSize: CGSize = .zero
     /// The text size the status and usage rows were last drawn at.
     private var detailsScale: TextScale?
 
-    private static let titles = ComposerChipSet.Titles(
+    /// Read each time, in the screens' language (a `let` would keep the
+    /// first one across a language change).
+    private static var titles: ComposerChipSet.Titles { ComposerChipSet.Titles(
         permission: Strings.Composer.permissionModeTitle,
         codexPermission: Strings.Composer.codexPermissionModeTitle,
         geminiPermission: Strings.Composer.geminiPermissionModeTitle,
         model: Strings.Composer.modelTitle,
         effort: Strings.Composer.effortTitle
-    )
+    ) }
 
-    init(environment: ChatComposerEnvironment) {
+    init(environment: ChatComposerEnvironment, restoreTimeout: Duration = ChatComposerRestore.timeout) {
         self.environment = environment
+        self.restoreTimeout = restoreTimeout
         draftWriter = Self.makeWriter(environment, generation: 0, after: nil)
         staging = ComposerAttachmentStaging(filesDirectory: environment.account.filesDirectory)
         images = ComposerImagePicker(staging: staging)
@@ -134,9 +152,17 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
         applyConfiguration()
         applyDetails()
-        // The draft comes in once read; the text stays empty until then.
+        // The draft comes in once read; the text stays empty until then,
+        // and the screen keeps the composer hidden (`isRestored`), at most
+        // this long.
         draftWriter.start { [weak self] delivery in
             self?.receive(delivery)
+        }
+        let timeout = restoreTimeout
+        restoreDeadline = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled else { return }
+            self?.restored()
         }
 
         let center = NotificationCenter.default
@@ -163,6 +189,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     deinit {
         draftWriter.close()
+        restoreDeadline?.cancel()
     }
 
     private static func makeWriter(_ environment: ChatComposerEnvironment, generation: Int, after predecessor: ComposerDraftWriter?) -> ComposerDraftWriter {
@@ -183,7 +210,53 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     func composerHeight(fitting width: CGFloat) -> CGFloat {
         // The screen lays out with this answer.
         followWindow()
-        return layout(width: width).size.height
+        answeringHeight = true
+        defer { answeringHeight = false }
+        let layout = layout(width: width)
+        askedWidth = width
+        awaitRestore(cardWidth: layout.card.width)
+        return layout.size.height
+    }
+
+    // MARK: Restore
+
+    /// Once the opening draft is in and the screen has asked for a height:
+    /// waits for the card's text height at that width, measured off the
+    /// main thread. The card follows the text if it moves meanwhile.
+    private func awaitRestore(cardWidth: CGFloat? = nil) {
+        guard !isRestored, draft.isLoaded, let askedWidth else { return }
+        let width = cardWidth ?? layout(width: askedWidth).card.width
+        guard width > 0, width != restoreWaitWidth else { return }
+        restoreWaitWidth = width
+        let generation = restoreGeneration
+        // Started after the deadline was, so the deadline runs out first.
+        card.whenTextMeasured(fitting: width, timeout: restoreTimeout) { [weak self] readiness in
+            // A wait that ran out or was replaced: the deadline (or a newer
+            // wait) decides.
+            guard let self, readiness == .measured, generation == self.restoreGeneration else { return }
+            self.restored()
+        }
+    }
+
+    /// The composer may be shown: its draft is measured, the wait ran out,
+    /// or the person reached it first. Nothing is measured here.
+    private func restored() {
+        guard !isRestored else { return }
+        isRestored = true
+        restoreDeadline?.cancel()
+        restoreDeadline = nil
+        restoreWaitWidth = nil
+        card.cancelTextReadiness()
+        let generation = restoreGeneration
+        guard answeringHeight else {
+            composerDelegate?.composerDidRestore(self, generation: generation)
+            return
+        }
+        // The screen is laying out with this composer: it hears after.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, generation == self.restoreGeneration else { return }
+            self.composerDelegate?.composerDidRestore(self, generation: generation)
+        }
     }
 
     var cardOffset: CGFloat {
@@ -252,6 +325,14 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         self.environment = environment
         draft.retarget()
         draftRefreshPending = false
+        if !isRestored {
+            // What was being waited for is the old store's draft: the new
+            // store's first read is waited for instead, within the same
+            // deadline.
+            restoreGeneration += 1
+            restoreWaitWidth = nil
+            card.cancelTextReadiness()
+        }
         draftWriter = Self.makeWriter(environment, generation: draft.generation, after: previous)
         draftWriter.start { [weak self] delivery in
             self?.receive(delivery)
@@ -276,6 +357,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     var isTextFocused: Bool { card.isTextFocused }
 
     func focus() {
+        // Reached before it was shown: it shows now, at the height known.
+        restored()
         card.focus()
     }
 
@@ -495,7 +578,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             isStopBusy: isAborting,
             // SessionView passes no `isSending`: a send never spins here.
             send: AgentInputDesktopSend(
-                hasText: Self.hasContent(card.text),
+                hasText: card.hasContent,
                 hasComposerContent: hasComposerContent,
                 isSendBlocked: SessionComposerRules.isSendBlocked(record)
             )
@@ -520,7 +603,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     /// Text or a picked image (`hasComposerContent`), read live.
     private var hasComposerContent: Bool {
-        Self.hasContent(card.text) || !images.images.isEmpty
+        card.hasContent || !images.images.isEmpty
     }
 
     private static func chip(_ chip: ComposerChipSet.Chip) -> AgentInputChipConfiguration {
@@ -541,11 +624,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         )
     }
 
-    /// Something besides whitespace (`trim().length > 0`). Stops at the
-    /// first such character rather than copying the trimmed text.
+    /// Something besides whitespace (`trim().length > 0`).
     private static func hasContent(_ text: String) -> Bool {
-        let blank = CharacterSet.whitespacesAndNewlines
-        return text.unicodeScalars.contains { !blank.contains($0) }
+        !DraftAutosave.isBlank(text)
     }
 
     func agentInputCardDidChangeText(_ card: AgentInputCardView) {
@@ -581,7 +662,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     }
 
     func agentInputCardDidChangeFocus(_ card: AgentInputCardView) {
-        if !card.isTextFocused {
+        if card.isTextFocused {
+            restored()
+        } else {
             flushDraft()
         }
         applyDeferredRemoteDraft()
@@ -590,6 +673,13 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) {
         guard !followingWindow else { return }
+        guard card.animatesHeightChange else {
+            // The opening draft, measured a moment after it was set.
+            UIView.performWithoutAnimation {
+                self.composerDelegate?.composerDidInvalidateHeight(self)
+            }
+            return
+        }
         UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
             self.composerDelegate?.composerDidInvalidateHeight(self)
         }
@@ -625,10 +715,11 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     // MARK: Send
 
     private func sendPressed() {
+        restored()
         let record = state?.session.record
         if SessionComposerRules.isSendBlocked(record) {
             // The agent refuses steering while it works.
-            guard Self.hasContent(card.text), !isSending else { return }
+            guard card.hasContent, !isSending else { return }
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             card.shake()
             return
@@ -795,12 +886,18 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             draftSave?.cancel()
             draftSave = nil
             if opening {
-                // The draft the chat opens with: no animated growth.
-                UIView.performWithoutAnimation { card.text = text }
+                // The draft the chat opens with: no animated growth, now
+                // or when its height lands.
+                UIView.performWithoutAnimation {
+                    card.setText(text, selection: NSRange(location: (text as NSString).length, length: 0), animatesHeight: false)
+                }
             } else {
                 card.text = text
             }
         }
+        // The opening draft is in (or there is none): its height is
+        // waited for before the composer shows.
+        awaitRestore()
         if change.newlyFailedAttachments > 0 {
             alert(Strings.ImageUpload.uploadFailedTitle, Strings.ImageUpload.uploadFailedMessage(change.newlyFailedAttachments))
         }
@@ -842,8 +939,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// caret is the query; its suggestions replace the list when they
     /// arrive (a newer query drops older answers).
     private func updateActiveWord() {
+        // Read in place: each keystroke and caret move asks.
         let query = ComposerAutocomplete.findActiveWord(
-            card.text, selection: card.selectedRange, prefixes: ComposerAutocomplete.chatPrefixes
+            units: card.textUnits, selection: card.selectedRange, prefixes: ComposerAutocomplete.chatPrefixes
         )?.activeWord
         guard query != activeQuery else { return }
         activeQuery = query

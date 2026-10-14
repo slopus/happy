@@ -40,23 +40,41 @@ public enum ComposerAutocomplete {
         selection: NSRange,
         prefixes: [Character] = defaultPrefixes
     ) -> ActiveWord? {
+        findActiveWord(UnitArray(units: Array(content.utf16)), selection: selection, prefixes: prefixes)
+    }
+
+    /// The same, read straight from a text view's storage
+    /// (`NSTextStorage.mutableString`): only the units the search visits
+    /// are read, and only the word is copied out, so a long text isn't
+    /// copied on every keystroke. Read it on the thread that owns it.
+    public static func findActiveWord(
+        units content: NSString,
+        selection: NSRange,
+        prefixes: [Character] = defaultPrefixes
+    ) -> ActiveWord? {
+        findActiveWord(UnitString(string: content), selection: selection, prefixes: prefixes)
+    }
+
+    private static func findActiveWord(
+        _ text: some UTF16Units,
+        selection: NSRange,
+        prefixes: [Character]
+    ) -> ActiveWord? {
         // Only at a caret, and not at the very start.
         guard selection.length == 0, selection.location > 0 else { return nil }
-        let text = Array(content.utf16)
         let prefixSet = units(prefixes)
         let cursor = min(selection.location, text.count)
         let start = min(wordStart(text, cursor: selection.location, prefixes: prefixSet), cursor)
-        let active = text[start..<cursor]
-        guard let first = active.first, active.last != space, prefixSet.contains(first) else { return nil }
+        guard start < cursor, text[cursor - 1] != space, prefixSet.contains(text[start]) else { return nil }
         // From the caret as given: substring clamps, the offset doesn't.
         let end = wordEnd(text, cursor: selection.location, wordStart: start)
-        let word = text[start..<min(end, text.count)]
+        let wordEnd = min(end, text.count)
         return ActiveWord(
-            word: string(word),
-            activeWord: string(active),
+            word: text.string(start..<wordEnd),
+            activeWord: text.string(start..<cursor),
             offset: start,
-            length: word.count,
-            activeLength: active.count,
+            length: wordEnd - start,
+            activeLength: cursor - start,
             endOffset: end
         )
     }
@@ -64,7 +82,7 @@ public enum ComposerAutocomplete {
     /// `findActiveWordStart`. A prefix only counts at the start of the text
     /// or after a space or newline; one space may come between it and the
     /// caret, two may not.
-    private static func wordStart(_ text: [UInt16], cursor: Int, prefixes: Set<UInt16>) -> Int {
+    private static func wordStart(_ text: some UTF16Units, cursor: Int, prefixes: Set<UInt16>) -> Int {
         var index = cursor - 1
         var spaceIndex = -1
         while index >= 0 {
@@ -90,7 +108,7 @@ public enum ComposerAutocomplete {
 
     /// `findActiveWordEnd`: on to a space or stop character; a file path
     /// (`@…`) runs through slashes and dots.
-    private static func wordEnd(_ text: [UInt16], cursor: Int, wordStart: Int) -> Int {
+    private static func wordEnd(_ text: some UTF16Units, cursor: Int, wordStart: Int) -> Int {
         let isFilePath = wordStart >= 0 && wordStart < text.count && text[wordStart] == at
         var end = cursor
         while end < text.count {
@@ -143,6 +161,34 @@ public enum ComposerAutocomplete {
         if previous >= count { return count - 1 }
         if previous < 0 { return 0 }
         return previous
+    }
+}
+
+/// Text as UTF-16 units, read by offset.
+private protocol UTF16Units {
+    var count: Int { get }
+    subscript(_ index: Int) -> UInt16 { get }
+    func string(_ range: Range<Int>) -> String
+}
+
+private struct UnitArray: UTF16Units {
+    let units: [UInt16]
+    var count: Int { units.count }
+    subscript(_ index: Int) -> UInt16 { units[index] }
+    func string(_ range: Range<Int>) -> String {
+        String(decoding: units[range], as: UTF16.self)
+    }
+}
+
+private struct UnitString: UTF16Units {
+    let string: NSString
+    var count: Int { string.length }
+    subscript(_ index: Int) -> UInt16 { string.character(at: index) }
+    /// Decoded as the array's are, so half a surrogate pair reads the same.
+    func string(_ range: Range<Int>) -> String {
+        var units = [UInt16](repeating: 0, count: range.count)
+        string.getCharacters(&units, range: NSRange(location: range.lowerBound, length: range.count))
+        return String(decoding: units, as: UTF16.self)
     }
 }
 

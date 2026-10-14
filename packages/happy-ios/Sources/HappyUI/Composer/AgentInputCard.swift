@@ -300,11 +300,28 @@ public final class AgentInputCardView: UIView {
     private let primaryButton = ComposerPrimaryButton()
     private let desktopControls = AgentInputDesktopControlsView()
     private var primaryFlash: CGFloat = 0
-    /// The text's height at a width, for the text as it was at `revision`.
-    private var measured: (width: CGFloat, revision: Int, scale: TextScale?, height: CGFloat)?
-    /// Moves on every change to the text, so a cached height is checked
+    /// The text's heights, measured off the main thread.
+    private var textHeights = ComposerTextHeights()
+    private var measuring: Task<Void, Never>?
+    /// Moves on every change to the text, so a measured height is checked
     /// without reading the text, however long it is.
     private var textRevision = 0
+    /// Moves when the text is replaced (`setText`) rather than typed.
+    private var textGeneration = 0
+    /// A text set not to animate its height, until its own measurement
+    /// lands or the person edits it.
+    private var quietGrowth: ComposerTextHeights.QuietGrowth?
+    /// The height a `premeasure`d text brought, for `textChanged` to file
+    /// under its revision.
+    private var premeasured: PremeasuredText?
+    /// Someone waiting for the text's measured height (`whenTextMeasured`).
+    private var textWait: TextWait?
+    private var textWaits = 0
+
+    /// Whether the height change the delegate is hearing about should
+    /// animate: false for a text set with `animatesHeight: false`, whose
+    /// height may land a moment after it was set.
+    public private(set) var animatesHeightChange = true
     /// The height the owner last laid the card out at, and at what width:
     /// what a change to the text is measured against.
     private var laidOut: (width: CGFloat, height: CGFloat)?
@@ -457,7 +474,6 @@ public final class AgentInputCardView: UIView {
         )
         textView.font = inputStyle.font
         restyleText()
-        measured = nil
     }
 
     /// The typed text drawn again in the input style and colour, the
@@ -484,17 +500,69 @@ public final class AgentInputCardView: UIView {
         set { setText(newValue, selection: NSRange(location: (newValue as NSString).length, length: 0)) }
     }
 
+    /// The live text's UTF-16 as the text view stores it, not copied out
+    /// as `text` is. Read it now: it changes with the text.
+    public var textUnits: NSString { textView.textStorage.mutableString }
+
+    /// Something besides whitespace (`trim().length > 0`), looked for in
+    /// the text view's storage rather than in a copy of the text.
+    public var hasContent: Bool {
+        textUnits.rangeOfCharacter(from: Self.nonBlank).location != NSNotFound
+    }
+
+    private static let nonBlank = CharacterSet.whitespacesAndNewlines.inverted
+
     public var selectedRange: NSRange { textView.selectedRange }
 
     /// Replaces the text and moves the caret (`setTextAndSelection`).
     /// Reports the change to the delegate, as a keystroke would.
-    public func setText(_ text: String, selection: NSRange) {
+    /// `animatesHeight: false` reports the new height, then and when it is
+    /// measured, with `animatesHeightChange` off.
+    public func setText(_ text: String, selection: NSRange, animatesHeight: Bool = true) {
+        textGeneration += 1
+        // `textChanged` moves the revision to this text's.
+        quietGrowth = animatesHeight ? nil : .init(generation: textGeneration, revision: textRevision + 1)
         textView.attributedText = inputStyle.attributedString(text, color: UIColor(Palette.inputText))
         textView.typingAttributes = inputStyle.attributes(color: UIColor(Palette.inputText))
         let length = (text as NSString).length
         let location = min(max(0, selection.location), length)
         textView.selectedRange = NSRange(location: location, length: min(selection.length, length - location))
         textChanged()
+    }
+
+    /// A text measured off the main thread before it is set, for a card
+    /// as wide and drawn as it was then (`premeasure`).
+    public struct PremeasuredText: Sendable {
+        public let text: String
+        fileprivate let key: ComposerTextHeights.Key
+        fileprivate let height: CGFloat
+    }
+
+    /// Measures `text` off the main thread for this card `width` wide, at
+    /// the text size and in the panel it has now, without setting it. Set
+    /// it with `setText(_:selection:animatesHeight:)` taking it, and its
+    /// first frame has its height: for a text that replaces another in a
+    /// card already on screen.
+    public func premeasure(_ text: String, fitting width: CGFloat) async -> PremeasuredText {
+        let key = textStamp(cardWidth: width, desktop: configuration.desktop != nil).key
+        guard !text.isEmpty, key.width > 0 else {
+            return PremeasuredText(text: text, key: key, height: key.oneLine)
+        }
+        let job = ComposerTextMeasure(
+            stamp: .init(key: key, revision: 0, generation: 0),
+            text: text,
+            attributes: key.style.attributes(color: UIColor(Palette.inputText))
+        )
+        let height = await Task.detached(priority: .userInitiated) { job.run() }.value
+        return PremeasuredText(text: text, key: key, height: height)
+    }
+
+    /// Sets a premeasured text. Its height stands if the card is still as
+    /// wide and drawn as it was measured for; otherwise it is measured
+    /// again, as any text is.
+    public func setText(_ text: PremeasuredText, selection: NSRange, animatesHeight: Bool = true) {
+        premeasured = text
+        setText(text.text, selection: selection, animatesHeight: animatesHeight)
     }
 
     public var isTextFocused: Bool { textView.isFirstResponder }
@@ -582,8 +650,8 @@ public final class AgentInputCardView: UIView {
         return layout
     }
 
-    /// The card's height at `width`. The text's height is cached by width,
-    /// text size and revision.
+    /// The card's height at `width`, with the text's height as last
+    /// measured off the main thread; the delegate hears when it moves.
     public func height(fitting width: CGFloat) -> CGFloat {
         desktopLayout(width: width)?.size.height ?? layout(width: width).size.height
     }
@@ -599,17 +667,168 @@ public final class AgentInputCardView: UIView {
         return .card(input)
     }
 
-    /// The text's height at `textWidth`, its padding included, at the
-    /// text size it is drawn at.
-    private func textHeight(width textWidth: CGFloat) -> CGFloat {
+    /// The live text's stamp for a card (or flat panel) `width` wide: the
+    /// width it wraps at, its padding and cap, at the text size it is
+    /// drawn at.
+    private func textStamp(cardWidth width: CGFloat, desktop: Bool) -> ComposerTextHeights.Stamp {
         // Measured before its first trait update: measure what it will draw.
         syncTextSize()
-        if let measured, measured.width == textWidth, measured.revision == textRevision, measured.scale == textScale {
-            return measured.height
+        let key: ComposerTextHeights.Key
+        if desktop {
+            typealias M = AgentInputDesktopLayout.Metrics
+            key = ComposerTextHeights.Key(
+                width: AgentInputDesktopLayout.textWidth(panelWidth: width),
+                style: inputStyle,
+                lineHeight: inputLineHeight,
+                paddingTop: M.textPaddingTop,
+                paddingBottom: M.textPaddingBottom,
+                maxHeight: M.inputMaxHeight
+            )
+        } else {
+            let contentWidth = max(0, width - 2 * hairline - 2 * metrics.shellInset)
+            let insets = AgentInputInsets(shellInset: metrics.shellInset, actionSize: metrics.actionSize, addIconSize: metrics.addIconSize)
+            key = ComposerTextHeights.Key(
+                width: max(0, contentWidth - insets.inputContainerPaddingLeft - insets.inputContainerPaddingRight),
+                style: inputStyle,
+                lineHeight: inputLineHeight,
+                paddingTop: metrics.inputPaddingTop,
+                paddingBottom: metrics.inputPaddingBottom,
+                maxHeight: metrics.inputMaxHeight
+            )
         }
-        let height = ceil(textView.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude)).height)
-        measured = (textWidth, textRevision, textScale, height)
-        return height
+        return ComposerTextHeights.Stamp(key: key, revision: textRevision, generation: textGeneration)
+    }
+
+    /// The text's height for a card `width` wide, its padding included:
+    /// as measured off the main thread, or a guess until it is, which
+    /// starts the measurement (`ComposerTextHeights`).
+    private func textHeight(cardWidth width: CGFloat, desktop: Bool) -> CGFloat {
+        let lookup = textHeights.lookup(textStamp(cardWidth: width, desktop: desktop), isEmpty: !textView.hasText)
+        if let measure = lookup.measure {
+            startMeasuring(measure)
+        }
+        return lookup.height
+    }
+
+    /// Whether `height(fitting: width)` is the text's measured height
+    /// rather than a guess. Measures nothing.
+    public func isTextMeasured(fitting width: CGFloat) -> Bool {
+        textHeights.isMeasured(textStamp(cardWidth: width, desktop: configuration.desktop != nil), isEmpty: !textView.hasText)
+    }
+
+    /// Measures the text as it is now off the main thread. Copying it out
+    /// is the one pass over it made here.
+    private func startMeasuring(_ stamp: ComposerTextHeights.Stamp) {
+        let job = ComposerTextMeasure(
+            stamp: stamp,
+            text: text,
+            attributes: stamp.key.style.attributes(color: UIColor(Palette.inputText))
+        )
+        measuring = Task { [weak self] in
+            let height = await Task.detached(priority: .userInitiated) { job.run() }.value
+            self?.measured(stamp, height: height)
+        }
+    }
+
+    private func measured(_ stamp: ComposerTextHeights.Stamp, height: CGFloat) {
+        measuring = nil
+        let live = ComposerTextHeights.Live(revision: textRevision, generation: textGeneration, isEmpty: !textView.hasText)
+        let finish = textHeights.finish(stamp, height: height, live: live)
+        let animated = quietGrowth?.animates(generation: stamp.generation) ?? true
+        // Only the quiet text's own measurement ends it: an earlier text's,
+        // landing after it was set, doesn't.
+        if quietGrowth?.isEnded(by: stamp) == true {
+            quietGrowth = nil
+        }
+        if let next = finish.measure {
+            startMeasuring(next)
+        }
+        if finish.changed {
+            reportHeightChange(animated: animated)
+            setNeedsLayout()
+        }
+        checkTextWait()
+    }
+
+    private func reportHeightChange(animated: Bool) {
+        animatesHeightChange = animated
+        delegate?.agentInputCardDidInvalidateHeight(self)
+        animatesHeightChange = true
+    }
+
+    // MARK: Waiting for the height
+
+    /// What ended a wait for the text's height (`whenTextMeasured`).
+    public enum TextReadiness: Equatable, Sendable {
+        /// `height(fitting:)` at the width is the text's measured height.
+        case measured
+        /// The wait ran out first. The height is the one known then, and
+        /// moves (the delegate hears of it) when the measurement lands.
+        case timedOut
+        /// A newer wait replaced it, or it was cancelled.
+        case superseded
+    }
+
+    private struct TextWait {
+        let id: Int
+        let width: CGFloat
+        let ready: @MainActor (TextReadiness) -> Void
+        let deadline: Task<Void, Never>
+    }
+
+    /// Calls `ready` once, on the main thread, when `height(fitting:
+    /// width)` gives the text's height as measured off the main thread
+    /// (before returning, if it already does), or after `timeout` with the
+    /// height known then; nothing is measured on the main thread either
+    /// way. It follows the text: an edit or `setText` meanwhile is waited
+    /// for too. For an owner that keeps the card hidden until its height
+    /// is real (a restored draft), so its first frame is its last.
+    public func whenTextMeasured(fitting width: CGFloat, timeout: Duration, _ ready: @escaping @MainActor (TextReadiness) -> Void) {
+        endTextWait(.superseded)
+        if isTextMeasured(fitting: width) {
+            ready(.measured)
+            return
+        }
+        textWaits += 1
+        let id = textWaits
+        let deadline = Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            guard !Task.isCancelled, let self, self.textWait?.id == id else { return }
+            self.endTextWait(.timedOut)
+        }
+        textWait = TextWait(id: id, width: width, ready: ready, deadline: deadline)
+        // Starts (or joins) the measurement.
+        _ = textHeight(cardWidth: width, desktop: configuration.desktop != nil)
+    }
+
+    /// Ends a wait `whenTextMeasured` started, `.superseded`.
+    public func cancelTextReadiness() {
+        endTextWait(.superseded)
+    }
+
+    private func endTextWait(_ readiness: TextReadiness) {
+        guard let wait = textWait else { return }
+        textWait = nil
+        wait.deadline.cancel()
+        wait.ready(readiness)
+    }
+
+    /// The wait's text is measured: it ends. Otherwise its text, which may
+    /// have moved since, is measured.
+    private func checkTextWait() {
+        guard let wait = textWait else { return }
+        if isTextMeasured(fitting: wait.width) {
+            endTextWait(.measured)
+        } else {
+            _ = textHeight(cardWidth: wait.width, desktop: configuration.desktop != nil)
+        }
+    }
+
+    /// Returns once the text's height is measured (tests).
+    func textMeasured() async {
+        while let measuring {
+            await measuring.value
+        }
     }
 
     /// One line of the input as drawn.
@@ -621,7 +840,7 @@ public final class AgentInputCardView: UIView {
         let config = configuration
         guard let desktop = config.desktop else { return nil }
         // First: it takes up the text size the rest is measured at.
-        let height = textHeight(width: AgentInputDesktopLayout.textWidth(panelWidth: width))
+        let height = textHeight(cardWidth: width, desktop: true)
         return AgentInputDesktopLayout.Input(
             width: width,
             attachmentCount: config.attachments.count,
@@ -638,16 +857,12 @@ public final class AgentInputCardView: UIView {
 
     func layoutInput(width: CGFloat) -> AgentInputCardLayout.Input {
         let config = configuration
-        let border = hairline
-        let contentWidth = max(0, width - 2 * border - 2 * metrics.shellInset)
-        let insets = AgentInputInsets(shellInset: metrics.shellInset, actionSize: metrics.actionSize, addIconSize: metrics.addIconSize)
-        let textWidth = max(0, contentWidth - insets.inputContainerPaddingLeft - insets.inputContainerPaddingRight)
         // First: it takes up the text size the chips are measured at.
-        let height = textHeight(width: textWidth)
+        let height = textHeight(cardWidth: width, desktop: false)
         return AgentInputCardLayout.Input(
             width: width,
             metrics: metrics,
-            borderWidth: border,
+            borderWidth: hairline,
             attachmentCount: config.attachments.count,
             textContentHeight: height,
             hasText: textView.hasText,
@@ -841,8 +1056,6 @@ public final class AgentInputCardView: UIView {
             ? (top: AgentInputDesktopLayout.Metrics.textPaddingTop, bottom: AgentInputDesktopLayout.Metrics.textPaddingBottom)
             : (top: metrics.inputPaddingTop, bottom: metrics.inputPaddingBottom)
         textView.textContainerInset = UIEdgeInsets(top: padding.top, left: 0, bottom: padding.bottom, right: 0)
-        // Measured with the other padding.
-        measured = nil
         applyAppearance()
     }
 
@@ -867,6 +1080,10 @@ public final class AgentInputCardView: UIView {
 
     fileprivate func textChanged() {
         textRevision += 1
+        if let premeasured {
+            self.premeasured = nil
+            textHeights.seed(.init(key: premeasured.key, revision: textRevision, generation: textGeneration), height: premeasured.height)
+        }
         let width = bounds.width
         // Against what the owner laid out for the text before: measuring
         // it now would measure the new text.
@@ -875,9 +1092,10 @@ public final class AgentInputCardView: UIView {
         updatePlaceholder()
         delegate?.agentInputCardDidChangeText(self)
         if let after, before?.width != width || before?.height != after {
-            delegate?.agentInputCardDidInvalidateHeight(self)
+            reportHeightChange(animated: quietGrowth?.animates(generation: textGeneration) ?? true)
         }
         setNeedsLayout()
+        checkTextWait()
     }
 
     // MARK: Actions
@@ -898,6 +1116,8 @@ public final class AgentInputCardView: UIView {
 
 extension AgentInputCardView: UITextViewDelegate {
     public func textViewDidChange(_ textView: UITextView) {
+        // The person's edit grows as they type it.
+        quietGrowth = nil
         textChanged()
     }
 

@@ -442,6 +442,73 @@ final class ChatReducerTests: XCTestCase {
         }
     }
 
+    func testOlderResetAndCompactionCannotDiscardNewerUsageOrTodos() throws {
+        for event in ["Context was reset", "Compaction completed"] {
+            var state = ChatReducer()
+            var usage = ChatRecords.text("usage", at: 400)
+            usage.usage = try JSONDecoder().decode(SessionUsage.self, from: Data(
+                #"{"input_tokens":12,"output_tokens":4,"context_window":200000}"#.utf8))
+            var result = ChatRecords.result("todos")
+            result.createdAt = 500
+            let todos = ChatRecords.json(#"[{"content":"Current task","status":"pending"}]"#)
+            result.body = .agent([.result(id: "call", value: .object(["newTodos": todos]), error: false)])
+            _ = state.reduce([usage, ChatRecords.call("todo", name: "TodoWrite"), result])
+            let newestUsage = state.usage
+            XCTAssertNotNil(newestUsage)
+            XCTAssertEqual(state.todos, todos)
+            var older = ChatRecords.agentEvent("old", event: .object([
+                "type": .string("message"), "message": .string(event),
+            ]))
+            older.createdAt = 100
+            _ = state.reduce([older])
+            XCTAssertEqual(state.usage, newestUsage, event)
+            XCTAssertEqual(state.todos, todos, event)
+            XCTAssertTrue(state.messages.contains { $0.id == "old" }, "older reset remains a visible event")
+        }
+    }
+
+    func testResetUsesIndependentUsageAndTodosTimestamps() throws {
+        var state = ChatReducer()
+        var usage = ChatRecords.text("usage", at: 400)
+        usage.usage = try JSONDecoder().decode(SessionUsage.self, from: Data(#"{"input_tokens":12,"output_tokens":4}"#.utf8))
+        var result = ChatRecords.result("todos")
+        result.createdAt = 600
+        let todos = ChatRecords.json(#"[{"content":"New task","status":"pending"}]"#)
+        result.body = .agent([.result(id: "call", value: .object(["newTodos": todos]), error: false)])
+        _ = state.reduce([usage, ChatRecords.call("todo", name: "TodoWrite"), result])
+        var reset = ChatRecords.agentEvent("reset", event: .object([
+            "type": .string("message"), "message": .string("Context was reset"),
+        ]))
+        reset.createdAt = 500
+        _ = state.reduce([reset])
+        XCTAssertEqual(state.usage?.contextSize, 0)
+        XCTAssertEqual(state.todos, todos, "a reset newer than usage is still older than the latest todos")
+        reset.id = "new-reset"
+        reset.createdAt = 600
+        _ = state.reduce([reset])
+        XCTAssertEqual(state.todos, todos, "equal timestamps preserve the already accepted todos")
+        reset.id = "latest-reset"
+        reset.createdAt = 601
+        _ = state.reduce([reset])
+        XCTAssertEqual(state.todos, .array([]))
+    }
+
+    func testEqualTimestampOlderResetRetainsAcceptedUsage() throws {
+        for event in ["Context was reset", "Compaction completed"] {
+            var state = ChatReducer()
+            var usage = ChatRecords.text("usage", at: 400)
+            usage.usage = try JSONDecoder().decode(SessionUsage.self,
+                from: Data(#"{"input_tokens":12,"output_tokens":4}"#.utf8))
+            _ = state.reduce([usage])
+            let accepted = state.usage
+            let reset = ChatRecords.agentEvent("reset", at: 400, event: .object([
+                "type": .string("message"), "message": .string(event),
+            ]))
+            _ = state.reduce([reset])
+            XCTAssertEqual(state.usage, accepted, event)
+        }
+    }
+
     func testMessageToEventConversionSkipsToolRowsAndResults() {
         for record in [
             ChatRecords.call(

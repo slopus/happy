@@ -75,6 +75,15 @@ public struct HappyAPI: Sendable {
         ])
     }
 
+    /// Backward paging is mutually exclusive with after_seq. The server
+    /// returns newest first; callers reverse each page before reducing it.
+    public func messagesBefore(sessionId: String, beforeSeq: Int, limit: Int = 100) async throws -> MessagesPage {
+        try await send("GET", "/v3/sessions/\(Self.escape(sessionId))/messages", query: [
+            URLQueryItem(name: "before_seq", value: String(beforeSeq)),
+            URLQueryItem(name: "limit", value: String(limit)),
+        ])
+    }
+
     public func sendMessages(sessionId: String, _ body: SendMessagesRequest) async throws -> SendMessagesResponse {
         try await send("POST", "/v3/sessions/\(Self.escape(sessionId))/messages", body: body)
     }

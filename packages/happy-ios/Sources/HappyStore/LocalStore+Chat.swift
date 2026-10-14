@@ -13,6 +13,12 @@ public struct ChatStoreChange: Equatable, Sendable {
     public var lastRowId: Int64
     /// Unsent items belonging to this session, oldest first.
     public var outbox: [OutboxRecord]
+    /// Excludes disconnected older cache islands, while keeping live newer rows.
+    /// Local rows (seq <= 0) and the outbox always pass this boundary.
+    public var lowerSeqExclusive: Int? = nil
+    public var hasMoreOlder = false
+    /// Oldest included raw server sequence, including invisible events.
+    public var olderBoundary: Int? = nil
 }
 
 /// The session projection chat actually reads. Activity, unread and archive
@@ -21,11 +27,23 @@ public struct ChatStoreSession: Equatable, Sendable {
     /// The server's message sequence and the last locally synchronized one.
     public var seq: Int
     public var syncedMessageSeq: Int
+    /// A newest page, including an empty one, was downloaded successfully.
+    public var newestHistoryLoaded = false
     /// Versioned permission requests and completed requests.
     public var agentStateVersion: Int
     public var agentState: JSONValue?
     /// Only client.id, rigMetadataVersion and capabilities.messageReceipts.
     public var metadata: JSONValue
+
+    public var isLoaded: Bool {
+        Self.messagesAreLoaded(seq: seq, syncedMessageSeq: syncedMessageSeq,
+                               newestHistoryLoaded: newestHistoryLoaded)
+    }
+
+    public static func messagesAreLoaded(seq: Int, syncedMessageSeq: Int,
+                                         newestHistoryLoaded: Bool) -> Bool {
+        newestHistoryLoaded || syncedMessageSeq > 0 || seq == 0
+    }
 }
 
 /// A transactional picture of the projected session and its new records.
@@ -41,13 +59,14 @@ extension LocalStore {
     /// A rowid cursor catches lower-sequence records that arrive late.
     public func chatPage(sessionId: String, afterRowId: Int64 = 0) throws -> ChatStorePage {
         try performRead { db in
-            ChatStorePage(
-                change: try Self.fetchChatChange(db, sessionId: sessionId),
+            let change = try Self.fetchChatChange(db, sessionId: sessionId)
+            return ChatStorePage(
+                change: change,
                 // Rowid follows insertion, unlike seq: a socket record with
                 // seq 500 may arrive before the missing delta at seq 499.
                 records: try MessageRecord.fetchAll(
-                    db, sql: "SELECT * FROM message WHERE sessionId = ? AND rowid > ? ORDER BY seq, id",
-                    arguments: [sessionId, afterRowId])
+                    db, sql: "SELECT * FROM message WHERE sessionId = ? AND rowid > ? AND (? IS NULL OR seq <= 0 OR seq > ?) ORDER BY seq, id",
+                    arguments: [sessionId, afterRowId, change.lowerSeqExclusive, change.lowerSeqExclusive])
             )
         }
     }
@@ -71,12 +90,9 @@ extension LocalStore {
         }
     }
 
-    private static func fetchChatChange(_ db: Database, sessionId: String) throws -> ChatStoreChange {
-        let counts = try Row.fetchOne(
-            db,
-            sql:
-                "SELECT COUNT(*) AS count, COALESCE(MAX(rowid), 0) AS lastId FROM message WHERE sessionId = ?",
-            arguments: [sessionId])!
+    static func fetchChatChange(_ db: Database, sessionId: String) throws -> ChatStoreChange {
+        ThreadRules.assertOffMain()
+        let marker = try ChatHistoryMarker.fetchOne(db, key: sessionId)
         let session = try Row.fetchOne(
             db,
             sql:
@@ -93,16 +109,37 @@ extension LocalStore {
             ])
             return ChatStoreSession(
                 seq: row["seq"], syncedMessageSeq: row["syncedMessageSeq"],
+                newestHistoryLoaded: marker?.newestLoaded ?? false,
                 agentStateVersion: row["agentStateVersion"], agentState: row["agentState"],
                 metadata: receiptMetadata
             )
         }
+        let coverage = session.map {
+            ChatHistoryCoverage(sessionId: sessionId, seq: $0.seq,
+                                syncedMessageSeq: $0.syncedMessageSeq, marker: marker)
+        }
+        var lower: Int?
+        if let marker, marker.newestLoaded, let session {
+            if let oldest = marker.oldestRawSeq {
+                if session.syncedMessageSeq < oldest - 1 { lower = oldest - 1 }
+            } else if session.syncedMessageSeq < session.seq {
+                // An empty newest page excludes older retained islands but
+                // still admits a later socket message immediately.
+                lower = marker.checkedThroughSeq
+            }
+        }
+        let counts = try Row.fetchOne(
+            db,
+            sql: "SELECT COUNT(*) AS count, COALESCE(MAX(rowid), 0) AS lastId, MIN(CASE WHEN seq > 0 THEN seq END) AS oldest FROM message WHERE sessionId = ? AND (? IS NULL OR seq <= 0 OR seq > ?)",
+            arguments: [sessionId, lower, lower])!
         return ChatStoreChange(
             session: session,
             messageCount: counts["count"], lastRowId: counts["lastId"],
             outbox: try OutboxRecord.filter(Column("sessionId") == sessionId).order(
                 Column("createdAt"), Column("localId")
-            ).fetchAll(db)
+            ).fetchAll(db),
+            lowerSeqExclusive: lower, hasMoreOlder: coverage?.hasMore ?? false,
+            olderBoundary: counts["oldest"]
         )
     }
 }

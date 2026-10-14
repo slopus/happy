@@ -54,14 +54,22 @@ public struct ChatSnapshot: Equatable, Sendable {
     public var isLoaded: Bool
     public var usage: ChatUsage?
     public var todos: JSONValue?
+    /// Durable paging facts read in the same transaction as the message rows.
+    public var hasMoreOlder: Bool
+    public var olderBoundary: Int?
+    /// Changes only when a covered window discards previously included rows.
+    public var windowEpoch: Int
 
-    public init(sessionId: String, messages: [ChatMessage] = [], delivery: [String: OutboxDelivery] = [:], isLoaded: Bool = false, usage: ChatUsage? = nil, todos: JSONValue? = nil) {
+    public init(sessionId: String, messages: [ChatMessage] = [], delivery: [String: OutboxDelivery] = [:], isLoaded: Bool = false, usage: ChatUsage? = nil, todos: JSONValue? = nil, hasMoreOlder: Bool = false, olderBoundary: Int? = nil, windowEpoch: Int = 0) {
         self.sessionId = sessionId
         self.messages = messages
         self.delivery = delivery
         self.isLoaded = isLoaded
         self.usage = usage
         self.todos = todos
+        self.hasMoreOlder = hasMoreOlder
+        self.olderBoundary = olderBoundary
+        self.windowEpoch = windowEpoch
     }
 }
 

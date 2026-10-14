@@ -169,6 +169,18 @@ enum Schema {
             }
         }
 
+        migrator.registerMigration("v5") { db in
+            // A backward-downloaded tail is not the synchronized prefix.
+            try db.create(table: "chatHistory") { t in
+                t.primaryKey("sessionId", .text).references("session", onDelete: .cascade)
+                t.column("newestLoaded", .boolean).notNull()
+                t.column("oldestRawSeq", .integer)
+                t.column("newestRawSeq", .integer)
+                t.column("serverHasMore", .boolean).notNull()
+                t.column("checkedThroughSeq", .integer).notNull()
+            }
+        }
+
         return migrator
     }
 }

@@ -81,13 +81,15 @@ final class HitSlopControl: UIControl {
 }
 
 /// SidebarView.tsx's New session button: a hairline-framed surface that
-/// darkens while pressed.
+/// darkens while pressed. Its label follows the person's text size, and
+/// the button grows with it (`TabletSidebarLayout` measures it as drawn).
 final class SidebarNewSessionButton: UIControl {
     let icon = IconView(.ionicons("create-outline"), size: TabletSidebarLayout.Metrics.newSessionIconSize)
     let label = StyledLabel(style: TextStyles.sidebarNewSession, color: Palette.text, lines: 1)
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        traitOverrides.followsTextSize = true
         label.string = Strings.Tablet.newSession
         label.isUserInteractionEnabled = false
         icon.tintColor = UIColor(Palette.text)
@@ -166,7 +168,8 @@ final class SidebarArchiveButton: UIControl {
 }
 
 /// SidebarView.tsx's Settings row at the foot of the sidebar. It has no
-/// pressed look in happy-app either.
+/// pressed look in happy-app either. Its label follows the person's text
+/// size, and the row grows with it.
 final class SidebarSettingsRow: UIControl {
     let divider = UIView()
     let icon = IconView(.ionicons("settings-outline"), size: TabletSidebarLayout.Metrics.settingsIconSize)
@@ -174,6 +177,7 @@ final class SidebarSettingsRow: UIControl {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        traitOverrides.followsTextSize = true
         divider.backgroundColor = UIColor(Palette.divider)
         divider.isUserInteractionEnabled = false
         label.string = Strings.Settings.title
@@ -192,7 +196,8 @@ final class SidebarSettingsRow: UIControl {
 }
 
 /// EmptySessionsTablet.tsx: a glyph, a title, a line of help and, with a
-/// computer linked, one filled button.
+/// computer linked, one filled button. Its text follows the person's text
+/// size; the column is measured from it as drawn.
 final class TabletEmptySessionsView: UIView {
     let icon = IconView(.ionicons("terminal-outline"), size: TabletEmptySessionsLayout.Metrics.iconSize)
     let titleLabel = StyledLabel(style: TextStyles.tabletEmptyTitle, color: Palette.textSecondary, alignment: .center)
@@ -207,6 +212,7 @@ final class TabletEmptySessionsView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        traitOverrides.followsTextSize = true
         backgroundColor = UIColor(Palette.groupedBackground)
         icon.tintColor = UIColor(Palette.textSecondary)
         titleLabel.accessibilityTraits = .header
