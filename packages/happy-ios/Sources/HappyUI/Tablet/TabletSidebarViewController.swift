@@ -27,14 +27,18 @@ final class TabletSidebarViewController: UIViewController {
     private var list: SessionListViewController?
     private var grouped: TabletGroupedListViewController?
     /// Worked out off the main thread from the account's home feed
-    /// (`TabletSidebarDerivation`); only what changed is applied here.
+    /// (`TabletSidebarDerivation`), with the grouped list's heading heights
+    /// at the person's text size (`TabletGroupedHeights`); only what changed
+    /// is applied here.
     private var observation: ApplyObservation?
     /// The checkouts whose headings show; a new message in one refreshes
     /// its status. Withdrawn when the sidebar goes.
     private let gitInterest: GitCheckoutInterest
     /// The next instant a stamp or a day heading can read differently.
     private let clockWake = ClockWake()
-    private var pipeline: ApplyPipeline<TabletSidebarInput, TabletSidebarDerivation.Applied, TabletSidebarUpdate>?
+    private var pipeline: ApplyPipeline<TabletSidebarViewInput, TabletSidebarViewState, TabletSidebarViewUpdate>?
+    /// The grouped list's width as last handed to the pipeline.
+    private var listWidth: CGFloat = 0
 
     private(set) var state: TabletSidebarFrame?
     var onStateChange: ((TabletSidebarFrame) -> Void)?
@@ -86,31 +90,37 @@ final class TabletSidebarViewController: UIViewController {
         registerForTraitChanges([UITraitUserInterfaceStyle.self, UITraitDisplayScale.self]) { (self: Self, _) in
             self.applyBorder()
         }
-        let pipeline = ApplyPipeline<TabletSidebarInput, TabletSidebarDerivation.Applied, TabletSidebarUpdate>(
-            input: TabletSidebarInput(),
-            state: TabletSidebarDerivation.Applied(),
-            derive: { [clockWake] in TabletSidebarDerivation.derive($0, applied: $1, wake: clockWake) },
+        let pipeline = ApplyPipeline<TabletSidebarViewInput, TabletSidebarViewState, TabletSidebarViewUpdate>(
+            input: TabletSidebarViewInput(text: TextEnvironment(traitCollection)),
+            state: TabletSidebarViewState(),
+            derive: { [clockWake] in TabletGroupedHeights.derive($0, applied: $1, wake: clockWake) },
             apply: { [weak self] update in
                 // A result worked out for an account that is no longer the
                 // active one (a switch while this sidebar is still on
                 // screen) is refused; the shell builds a new sidebar.
                 guard let self, self.context.account.session === self.session else { return false }
-                if let checkouts = update.checkouts { self.gitInterest.set(checkouts) }
+                if let checkouts = update.rows?.checkouts { self.gitInterest.set(checkouts) }
                 ApplyPerf.measure(.sidebar) { self.received(update) }
                 return true
             }
         )
         clockWake.onWake { [weak pipeline] in pipeline?.update { _ in } }
-        pipeline.follow(session.homeFeed.snapshots()) { $0.snapshot = $1 }
+        pipeline.follow(session.homeFeed.snapshots()) { $0.feeds.snapshot = $1 }
         // Only what has been fetched already, and only when what a heading
         // shows changed.
         let git = session.gitStatus
         Task { [weak pipeline] in
             let statuses = await git.headingStatuses()
-            pipeline?.follow(statuses) { $0.git = $1 }
+            pipeline?.follow(statuses) { $0.feeds.git = $1 }
         }
         self.pipeline = pipeline
         observation = pipeline.observation
+        // A new text size or screen: the headings are measured again off
+        // the main thread, and their rows take the new heights.
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self, UITraitDisplayScale.self]) { (self: Self, _) in
+            let text = TextEnvironment(self.traitCollection)
+            self.pipeline?.update { $0.text = text }
+        }
         // A wake that fell due while the app was suspended; midnight, a new
         // time zone, a clock set by hand. Derived again off the main thread.
         NotificationCenter.default.addObserver(self, selector: #selector(clockChanged), name: UIApplication.didBecomeActiveNotification, object: nil)
@@ -164,6 +174,11 @@ final class TabletSidebarViewController: UIViewController {
         empty.setLayoutFrame(layout.content)
         list?.view.setLayoutFrame(layout.content)
         grouped?.view.setLayoutFrame(layout.content)
+        if layout.content.width != listWidth {
+            let width = layout.content.width
+            listWidth = width
+            pipeline?.update { $0.width = width }
+        }
         grouped?.bottomInset = layout.listBottomInset
         spinner.setLayoutFrame(layout.spinner)
         // Home's list pads itself under its floating header; here nothing
@@ -178,7 +193,15 @@ final class TabletSidebarViewController: UIViewController {
     // MARK: State
 
     /// Returns how many rows it touched.
-    private func received(_ update: TabletSidebarUpdate) -> Int {
+    private func received(_ update: TabletSidebarViewUpdate) -> Int {
+        guard let rows = update.rows else {
+            // Only the headings' heights: a new text size or width.
+            return grouped?.applyHeadings(update.headings, moved: update.moved) ?? 0
+        }
+        return received(rows, headings: update.headings, moved: update.moved)
+    }
+
+    private func received(_ update: TabletSidebarUpdate, headings: TabletHeadingHeights<TabletGroupedRow.ID>, moved: Set<TabletGroupedRow.ID>) -> Int {
         let state = update.frame
         let previous = self.state
         self.state = state
@@ -191,22 +214,25 @@ final class TabletSidebarViewController: UIViewController {
             empty.isHidden = true
             list?.view.isHidden = true
             grouped?.view.isHidden = true
+            grouped?.applyHeadings(headings, moved: moved)
         case .empty(let variant):
             spinner.stopAnimating()
             empty.state = variant
             empty.isHidden = false
             list?.view.isHidden = true
             grouped?.view.isHidden = true
+            grouped?.applyHeadings(headings, moved: moved)
         case .list(let model):
             spinner.stopAnimating()
             empty.isHidden = true
             grouped?.view.isHidden = true
+            grouped?.applyHeadings(headings, moved: moved)
             rows = showList(model, changeset: update.changeset ?? RowChangeset())
         case .grouped(let model):
             spinner.stopAnimating()
             empty.isHidden = true
             list?.view.isHidden = true
-            rows = showGrouped(model, changeset: update.changeset ?? RowChangeset())
+            rows = showGrouped(model, changeset: update.changeset ?? RowChangeset(), headings: headings, moved: moved)
         }
         // Only a change of what fills the sidebar moves anything.
         if previous?.content.kind != state.content.kind || previous?.hasArchived != state.hasArchived {
@@ -233,14 +259,19 @@ final class TabletSidebarViewController: UIViewController {
         return model.rows.count
     }
 
-    private func showGrouped(_ model: TabletGroupedList, changeset: RowChangeset) -> Int {
+    private func showGrouped(
+        _ model: TabletGroupedList,
+        changeset: RowChangeset,
+        headings: TabletHeadingHeights<TabletGroupedRow.ID>,
+        moved: Set<TabletGroupedRow.ID>
+    ) -> Int {
         if let grouped {
-            let rows = grouped.apply(model, changeset: changeset, animated: view.window != nil)
+            let rows = grouped.apply(model, changeset: changeset, headings: headings, moved: moved, animated: view.window != nil)
             grouped.view.isHidden = false
             return rows
         }
         let controller = TabletGroupedListViewController(context: context, session: session)
-        controller.apply(model, changeset: changeset, animated: false)
+        controller.apply(model, changeset: changeset, headings: headings, moved: moved, animated: false)
         controller.selectedSessionId = selectedSessionId
         addChild(controller)
         view.insertSubview(controller.view, belowSubview: settingsRow)

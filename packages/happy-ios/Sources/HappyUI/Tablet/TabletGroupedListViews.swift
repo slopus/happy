@@ -6,7 +6,10 @@ import UIKit
 // The cells of the sidebar's list grouped by project (TabletGroupedList):
 // SessionsList.tsx's headings, MachineHeader, ProjectGroup.tsx's checkout
 // headings, CompactSessionRow and SessionItem. Each measures its content
-// and applies its HappyLayout frames.
+// and applies its HappyLayout frames. Each draws its text at the person's
+// text size (`FollowsTextSize`): the headings' heights are measured at it
+// off the main thread (`TabletGroupedHeights`); the chats' 56 and the
+// archived cards' 88 are fixed, as RN's are.
 
 /// "Bots", or a day over the archive (SessionsList.tsx `headerSection`).
 final class TabletSectionHeaderCell: UITableViewCell {
@@ -16,6 +19,7 @@ final class TabletSectionHeaderCell: UITableViewCell {
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
+        traitOverrides.followsTextSize = true
         backgroundColor = UIColor(Palette.groupedBackground)
         selectionStyle = .none
         label.accessibilityTraits = .header
@@ -54,6 +58,7 @@ final class TabletMachineRuleCell: UITableViewCell {
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
+        traitOverrides.followsTextSize = true
         backgroundColor = UIColor(Palette.groupedBackground)
         selectionStyle = .none
         for line in [leading, trailing] {
@@ -111,6 +116,7 @@ final class TabletWorkspaceHeaderCell: UITableViewCell {
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
+        traitOverrides.followsTextSize = true
         backgroundColor = UIColor(Palette.groupedBackground)
         selectionStyle = .none
         addButton.hitSlop = TabletWorkspaceHeaderLayout.Metrics.addHitSlop
@@ -222,6 +228,7 @@ final class TabletChatCell: UITableViewCell {
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
+        traitOverrides.followsTextSize = true
         backgroundColor = UIColor(Palette.groupedBackground)
         selectionStyle = .none
         clipsToBounds = true
@@ -307,6 +314,7 @@ final class TabletArchivedCell: UITableViewCell {
 
     override init(style: UITableViewCell.CellStyle, reuseIdentifier: String?) {
         super.init(style: style, reuseIdentifier: reuseIdentifier)
+        traitOverrides.followsTextSize = true
         backgroundColor = UIColor(Palette.groupedBackground)
         selectionStyle = .none
         card.layer.cornerRadius = TabletArchivedRowLayout.Metrics.radius

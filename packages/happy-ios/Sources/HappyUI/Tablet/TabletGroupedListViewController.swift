@@ -13,6 +13,13 @@ import UIKit
 /// `apply` gets the rows and exactly which of them changed, and only
 /// inserts, deletes, moves or reconfigures those. The open chat's row stays
 /// selected across every update.
+///
+/// Its own rows follow the person's text size, as RN's do: the headings'
+/// heights come measured at that size with the rows
+/// (`TabletGroupedHeights`), and the chats' and archived cards' are
+/// fixed, as in RN, with their text drawn scaled inside. The bots are
+/// home's rows and the notices home's header, still at the designed size
+/// (docs/DYNAMIC-TYPE.md).
 final class TabletGroupedListViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
     private typealias Row = TabletGroupedRow
 
@@ -23,11 +30,9 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
     /// The table has asked for its rows once; from then on it only takes
     /// changesets.
     private var tableLoaded = false
-    private var heights: [Row.ID: (row: Row, width: CGFloat, height: CGFloat)] = [:]
-    private let sizingSection = TabletSectionHeaderCell(style: .default, reuseIdentifier: nil)
-    private let sizingMachine = TabletMachineRuleCell(style: .default, reuseIdentifier: nil)
-    private let sizingWorkspace = TabletWorkspaceHeaderCell(style: .default, reuseIdentifier: nil)
-    private let sizingToggle = ArchiveToggleCell(style: .default, reuseIdentifier: nil)
+    /// The headings' heights for `model`'s rows, measured off the main
+    /// thread at this screen's text size and the list's width.
+    private var headings = TabletHeadingHeights<Row.ID>()
     private let banners = HomeListHeaderView()
     private var bannerState: BannerState?
     private var headerSized: (state: BannerState, width: CGFloat)?
@@ -111,12 +116,21 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
         sizeHeader()
     }
 
-    /// Shows `next`; `changeset` takes the rows on screen (`model`) to it.
-    /// Returns how many rows it touched.
+    /// Shows `next`; `changeset` takes the rows on screen (`model`) to it,
+    /// and `headings` are its headings' heights, `moved` the rows on screen
+    /// whose height they changed. Returns how many rows it touched.
     @discardableResult
-    func apply(_ next: TabletGroupedList, changeset: RowChangeset, animated: Bool) -> Int {
+    func apply(
+        _ next: TabletGroupedList,
+        changeset: RowChangeset,
+        headings: TabletHeadingHeights<TabletGroupedRow.ID>,
+        moved: Set<TabletGroupedRow.ID>,
+        animated: Bool
+    ) -> Int {
         let previous = model
         model = next
+        // Before any insert asks for a height.
+        self.headings = headings
         guard isViewLoaded, tableLoaded else { return 0 }
         if changeset.isStructural {
             let rows = { (indexes: [Int]) in indexes.map { IndexPath(row: $0, section: 0) } }
@@ -131,10 +145,6 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
                 }
             }
             if animated { update() } else { UIView.performWithoutAnimation(update) }
-            if !changeset.deletes.isEmpty {
-                let kept = Set(next.ids)
-                heights = heights.filter { kept.contains($0.key) }
-            }
         }
         var reconfigure = changeset.reconfigures.map { IndexPath(row: $0, section: 0) }
         if next.avatarStyle != previous.avatarStyle || next.avatarMonochrome != previous.avatarMonochrome {
@@ -142,26 +152,25 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
             reconfigure = tableView.indexPathsForVisibleRows ?? []
         }
         if !reconfigure.isEmpty {
-            let width = tableView.bounds.width
-            var heightChanged = false
-            for path in reconfigure where path.row < next.ids.count {
-                // Only rows whose height follows their text, and only those
-                // already measured; the rest are measured when shown.
-                guard fixedHeight(next.rows[path.row], width: width) == nil else { continue }
-                let id = next.ids[path.row]
-                guard let cached = heights[id], cached.width == width, cached.row != next.rows[path.row] else { continue }
-                let height = measure(next.rows[path.row], width: width)
-                heights[id] = (next.rows[path.row], width, height)
-                if height != cached.height { heightChanged = true }
-            }
             tableView.reconfigureRows(at: reconfigure)
-            if heightChanged {
-                UIView.performWithoutAnimation { tableView.performBatchUpdates(nil) }
-            }
+        }
+        // A heading whose height moved: the table asks for heights again.
+        if !moved.isEmpty {
+            UIView.performWithoutAnimation { tableView.performBatchUpdates(nil) }
         }
         if next.offline != previous.offline { updateBanners() }
         applySelection()
         return changeset.touchedRows
+    }
+
+    /// New heights for the rows as they are: a new text size or width.
+    /// Returns how many rows moved.
+    @discardableResult
+    func applyHeadings(_ headings: TabletHeadingHeights<TabletGroupedRow.ID>, moved: Set<TabletGroupedRow.ID>) -> Int {
+        self.headings = headings
+        guard isViewLoaded, tableLoaded, !moved.isEmpty else { return 0 }
+        UIView.performWithoutAnimation { tableView.performBatchUpdates(nil) }
+        return moved.count
     }
 
     /// Selects the open chat's row, wherever it moved; nothing else stays
@@ -211,7 +220,7 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
         }
     }
 
-    /// One configuration for live cells and the offscreen sizing ones.
+    /// One configuration for every live cell.
     private func configure(_ cell: UITableViewCell, _ row: Row) {
         switch row {
         case .botsHeader:
@@ -230,6 +239,8 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
             (cell as? TabletChatCell)?.configure(chat)
         case .archiveToggle(let hidden):
             guard let cell = cell as? ArchiveToggleCell else { return }
+            // Home's cell, drawn here at the person's text size.
+            cell.traitOverrides.followsTextSize = true
             cell.banded = false
             cell.backgroundColor = UIColor(Palette.groupedBackground)
             cell.configure(hidden: hidden)
@@ -251,21 +262,6 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
         }
     }
 
-    private func sizingCell(_ row: Row) -> UITableViewCell? {
-        switch row {
-        case .botsHeader, .archiveHeader: sizingSection
-        case .machine: sizingMachine
-        case .workspace: sizingWorkspace
-        case .archiveToggle: sizingToggle
-        case .bot, .chat, .archived: nil
-        }
-    }
-
-    private func measure(_ row: Row, width: CGFloat) -> CGFloat {
-        guard let cell = sizingCell(row) else { return 0 }
-        configure(cell, row)
-        return cell.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height
-    }
 
     // MARK: Banners
 
@@ -358,13 +354,13 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
         guard let row = row(at: indexPath) else { return 0 }
         let width = tableView.bounds.width
         if let height = fixedHeight(row, width: width) { return height }
-        // Headings, rules and the toggle measure their label once per value
-        // and width, as home's list does.
-        let id = model.ids[indexPath.row]
-        if let cached = heights[id], cached.width == width, cached.row == row { return cached.height }
-        let height = measure(row, width: width)
-        heights[id] = (row, width, height)
-        return height
+        // Headings, rules and the toggle: measured with the rows, off the
+        // main thread.
+        if let height = headings.height(model.ids[indexPath.row]) { return height }
+        // Not expected: the heights come with the rows. Sized from the same
+        // metrics, which is arithmetic, not text measurement.
+        guard let metrics = headings.metrics, let heading = TabletGroupedHeights.heading(row) else { return 0 }
+        return TabletGroupedRowHeights.heading(heading, width: width, metrics: metrics)
     }
 
     func tableView(_ tableView: UITableView, shouldHighlightRowAt indexPath: IndexPath) -> Bool {
