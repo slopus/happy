@@ -178,6 +178,10 @@ final class TranslationCatalogTests: XCTestCase {
         let plain = try NSRegularExpression(pattern: #"localized\("([A-Za-z0-9_.]+)", "((?:[^"\\]|\\.)*)"\)"#)
         // A key that isn't a literal can't be checked.
         let unnamed = try NSRegularExpression(pattern: #"localized\((?!")"#)
+        // A string's English is a literal on the call's line, or it can't
+        // be checked; a function's values come second, as a dictionary.
+        let english = try NSRegularExpression(pattern: #"localized\("[A-Za-z0-9_.]+",\s*""#)
+        let valued = try NSRegularExpression(pattern: #"localized\("[A-Za-z0-9_.]+",\s*\["#)
         var counts: [String: (strings: Int, functions: Int)] = [:]
         for file in files where file.pathExtension == "swift" && file.lastPathComponent != "Localized.swift" {
             let source = try String(contentsOf: file, encoding: .utf8)
@@ -196,7 +200,10 @@ final class TranslationCatalogTests: XCTestCase {
                 XCTAssertTrue(TranslationCatalog.english.contains(key), key)
                 calls += 1
             }
-            counts[file.lastPathComponent] = (strings, calls - strings)
+            let name = file.lastPathComponent
+            XCTAssertEqual(english.numberOfMatches(in: source, range: range), strings, "\(name): an English literal that isn't checked")
+            XCTAssertEqual(valued.numberOfMatches(in: source, range: range), calls - strings, "\(name): a call that is neither a string nor a function")
+            counts[name] = (strings, calls - strings)
         }
         // Home's: Strings.swift, Strings/Home.swift, Strings/SettingsPages.swift.
         XCTAssertEqual(counts["Strings.swift"]?.strings, 237)
