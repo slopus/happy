@@ -142,34 +142,46 @@ final class TranslationCatalogTests: XCTestCase {
 
     /// The screens' strings that read the catalog name a key whose English
     /// is the string they keep beside it, so English stays exactly what it
-    /// was. Read from HappyUI's sources, which don't build here.
+    /// was. Read from HappyUI's sources, which don't build here. Every
+    /// Strings file is checked; the counts pin the files Home converted,
+    /// and another area's file gets a line here when it wants one.
     func testEveryLocalizedStringKeepsItsKeysEnglish() throws {
         let ui = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/HappyUI")
         let files = [ui.appendingPathComponent("Strings.swift")]
             + (try FileManager.default.contentsOfDirectory(at: ui.appendingPathComponent("Strings"), includingPropertiesForKeys: nil))
+        let call = try NSRegularExpression(pattern: #"localized\("([A-Za-z0-9_.]+)""#)
         let plain = try NSRegularExpression(pattern: #"localized\("([A-Za-z0-9_.]+)", "((?:[^"\\]|\\.)*)"\)"#)
-        let function = try NSRegularExpression(pattern: #"localized\("([A-Za-z0-9_.]+)", \["#)
-        var strings = 0
-        var functions = 0
-        for file in files where file.pathExtension == "swift" {
+        // A key that isn't a literal can't be checked.
+        let unnamed = try NSRegularExpression(pattern: #"localized\((?!")"#)
+        var counts: [String: (strings: Int, functions: Int)] = [:]
+        for file in files where file.pathExtension == "swift" && file.lastPathComponent != "Localized.swift" {
             let source = try String(contentsOf: file, encoding: .utf8)
             let range = NSRange(source.startIndex..., in: source)
+            XCTAssertEqual(unnamed.numberOfMatches(in: source, range: range), 0, file.lastPathComponent)
+            var strings = 0
             for match in plain.matches(in: source, range: range) {
                 let key = String(source[Range(match.range(at: 1), in: source)!])
                 let literal = String(source[Range(match.range(at: 2), in: source)!])
                 XCTAssertEqual(TranslationCatalog.english(key), Self.unescaped(literal), key)
                 strings += 1
             }
-            for match in function.matches(in: source, range: range) {
+            var calls = 0
+            for match in call.matches(in: source, range: range) {
                 let key = String(source[Range(match.range(at: 1), in: source)!])
                 XCTAssertTrue(TranslationCatalog.english.contains(key), key)
-                functions += 1
+                calls += 1
             }
+            counts[file.lastPathComponent] = (strings, calls - strings)
         }
-        XCTAssertEqual(strings, 265)
-        XCTAssertEqual(functions, 11)
+        // Home's: Strings.swift, Strings/Home.swift, Strings/SettingsPages.swift.
+        XCTAssertEqual(counts["Strings.swift"]?.strings, 237)
+        XCTAssertEqual(counts["Strings.swift"]?.functions, 10)
+        XCTAssertEqual(counts["Home.swift"]?.strings, 27)
+        XCTAssertEqual(counts["Home.swift"]?.functions, 1)
+        XCTAssertEqual(counts["SettingsPages.swift"]?.strings, 1)
+        XCTAssertEqual(counts["SettingsPages.swift"]?.functions, 0)
     }
 
     /// A Swift string literal's text.
