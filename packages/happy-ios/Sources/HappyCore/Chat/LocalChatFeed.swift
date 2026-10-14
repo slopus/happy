@@ -29,14 +29,18 @@ public final class LocalChatFeed: ChatFeed {
                         guard change != state.lastChange else {
                             continue
                         }
-                        let reset =
-                            change.messageCount < state.recordCount || change.lastRowId < state.lastRowId
-                        if reset {
-                            state = FeedState(sessionId: sessionId)
-                        }
                         var page = try store.chatPage(sessionId: sessionId, afterRowId: state.lastRowId)
+                        // The transactional page can be newer than the
+                        // observation hint. Reset from its actual boundary.
+                        let discarded = state.discardsRecords(for: page.change)
+                        let reset = discarded ||
+                            page.change.messageCount < state.recordCount || page.change.lastRowId < state.lastRowId
+                        if reset {
+                            state.reset(windowDiscarded: discarded)
+                            page = try store.chatPage(sessionId: sessionId)
+                        }
                         if page.change.messageCount != state.recordCount + page.records.count {
-                            state = FeedState(sessionId: sessionId)
+                            state.reset(windowDiscarded: false)
                             page = try store.chatPage(sessionId: sessionId)
                         }
                         let snapshot = state.apply(page)
@@ -66,9 +70,22 @@ struct FeedState: Sendable {
     var recordCount = 0
     var lastChange: ChatStoreChange?
     private var serverLocalIds: Set<String> = []
+    private var minimumServerSeq: Int?
+    private(set) var windowEpoch = 0
     private(set) var normalizedRecordCount = 0
 
     init(sessionId: String) { self.sessionId = sessionId }
+
+    func discardsRecords(for change: ChatStoreChange) -> Bool {
+        guard let lower = change.lowerSeqExclusive, let minimumServerSeq else { return false }
+        return minimumServerSeq <= lower
+    }
+
+    mutating func reset(windowDiscarded: Bool) {
+        let epoch = windowEpoch + (windowDiscarded ? 1 : 0)
+        self = FeedState(sessionId: sessionId)
+        windowEpoch = epoch
+    }
 
     mutating func apply(_ page: ChatStorePage) -> ChatSnapshot {
         ThreadRules.assertOffMain()
@@ -76,6 +93,7 @@ struct FeedState: Sendable {
         let records = page.records.compactMap(ChatNormalizer.normalize)
         normalizedRecordCount += page.records.count
         for record in page.records {
+            if record.seq > 0 { minimumServerSeq = min(minimumServerSeq ?? record.seq, record.seq) }
             if let local = record.localId {
                 serverLocalIds.insert(local)
             }
@@ -136,9 +154,10 @@ struct FeedState: Sendable {
         lastRowId = change.lastRowId
         recordCount = change.messageCount
         lastChange = change
-        let loaded = change.session.map { $0.syncedMessageSeq > 0 || $0.seq == 0 } ?? false
+        let loaded = change.session?.isLoaded ?? false
         return ChatSnapshot(
             sessionId: sessionId, messages: messages, delivery: delivery, isLoaded: loaded,
-            usage: reducer.usage, todos: reducer.todos)
+            usage: reducer.usage, todos: reducer.todos, hasMoreOlder: change.hasMoreOlder,
+            olderBoundary: change.olderBoundary, windowEpoch: windowEpoch)
     }
 }

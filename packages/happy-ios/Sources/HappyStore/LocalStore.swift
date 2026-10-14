@@ -805,7 +805,7 @@ public final class LocalStore: Sendable {
     public func eraseAll() throws {
         try performWrite { db in
             for table in [
-                "message", "outbox", "session", "machine", "project", "accountSettings", "pendingSettings",
+                "message", "outbox", "chatHistory", "session", "machine", "project", "accountSettings", "pendingSettings",
                 "accountProfile", "syncState", "attachment", "draft", "composerState",
             ] {
                 try db.execute(sql: "DELETE FROM \(table)")
@@ -815,7 +815,7 @@ public final class LocalStore: Sendable {
 
     // MARK: Merge rules
 
-    private static func insertMessage(_ message: MessageRecord, _ db: Database) throws {
+    static func insertMessage(_ message: MessageRecord, _ db: Database) throws {
         try message.insert(db, onConflict: .ignore)
         if let localId = message.localId {
             // The server has it now: the pending send is done.

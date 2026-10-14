@@ -20,6 +20,7 @@ public final class AccountSession: Sendable {
     public let sender: OutboxSender
     /// The chat of any session, from this account's store.
     public let chatFeed: LocalChatFeed
+    public let chatHistory: ChatHistory
     public let homeFeed: HomeFeed
     public let settingsFeed: SettingsFeed
     public let machinesFeed: MachinesFeed
@@ -96,6 +97,7 @@ public final class AccountSession: Sendable {
         self.sync = SyncEngine(api: api, store: store, keys: keys, options: syncOptions)
         self.sender = OutboxSender(store: store, sync: sync, filesDirectory: self.filesDirectory, spawnRequests: spawnRequests)
         self.chatFeed = LocalChatFeed(store: store)
+        self.chatHistory = ChatHistory(api: api, store: store, keys: keys)
         self.homeFeed = HomeFeed(store: store)
         self.settingsFeed = SettingsFeed(store: store)
         self.machinesFeed = MachinesFeed(store: store)
@@ -195,6 +197,7 @@ public final class AccountSession: Sendable {
 
     public func stop() async {
         await spawnRequests.close()
+        await chatHistory.stop()
         homeFeed.stop()
         settingsFeed.stop()
         machinesFeed.stop()
