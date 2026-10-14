@@ -47,8 +47,8 @@ final class HostedKeyboardTests: XCTestCase {
     /// has the keyboard.
     private func editingWindow(in scene: UIWindowScene) -> (UIWindow, UITextField) {
         let hostWindow = scene.keyWindow
-        let window = hostedKeyWindow(in: scene)
-        let field = UITextField(frame: CGRect(x: 20, y: 120, width: 280, height: 44))
+        let window = recordingKeyWindow(in: scene)
+        let field = RecordingField(frame: CGRect(x: 20, y: 120, width: 280, height: 44))
         window.rootViewController?.view.addSubview(field)
         // Undone on the main actor once the test returns, with only what it
         // made: `tearDown` is nonisolated and must not take the test case
@@ -109,6 +109,7 @@ final class HostedKeyboardTests: XCTestCase {
         XCTAssertFalse(language.isDeciding)
         XCTAssertTrue(window.isUserInteractionEnabled)
         XCTAssertFalse(field.isFirstResponder)
+        if field.isFirstResponder { print(ProbeTimeline.current.report(":111 failed, the field is first responder after the release")) }
 
         if notes.shown > 0 {
             let hidden = ContinuousClock.now + .seconds(2)
@@ -150,6 +151,65 @@ final class HostedKeyboardTests: XCTestCase {
         XCTAssertEqual(events, ["ended editing", "installed held in en"])
         XCTAssertTrue(window.isUserInteractionEnabled)
         withExtendedLifetime(delegate) {}
+    }
+
+    /// INVESTIGATION ONLY (HostedKeyboardProbe): the install replaces the
+    /// screen the field is on, as AppCoordinator.install does, with the
+    /// navigation's `setViewControllers([root], animated: false)`. Once
+    /// the hold has let go and the run loop has turned, the field is off
+    /// the window, nothing has it editing, and the keyboard did not come
+    /// back.
+    func testProbeAnInstallThatReplacesTheFieldsScreenKeepsTheKeyboardAway() async throws {
+        let scene = try await hostedActiveScene()
+        let notes = observeKeyboard()
+        let hostWindow = scene.keyWindow
+        let screen = UIViewController()
+        let navigation = UINavigationController(rootViewController: screen)
+        let window = recordingKeyWindow(in: scene, root: navigation)
+        window.layoutIfNeeded()
+        let field = RecordingField(frame: CGRect(x: 20, y: 120, width: 280, height: 44))
+        screen.view.addSubview(field)
+        addTeardownBlock { @MainActor in
+            field.resignFirstResponder()
+            window.isHidden = true
+            hostWindow?.makeKey()
+        }
+        XCTAssertTrue(window.isKeyWindow)
+        XCTAssertTrue(field.becomeFirstResponder())
+        XCTAssertTrue(field.isFirstResponder)
+        let shown = ContinuousClock.now + .seconds(1)
+        while notes.shown == 0, ContinuousClock.now < shown {
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let language = ScreensLanguage(holding: window)
+        let root = UIViewController()
+        let shownBefore = notes.shown
+        let hiddenBefore = notes.hidden
+        var installed: [String] = []
+        language.request(for: nil, resolve: { "en" }, install: {
+            navigation.setViewControllers([root], animated: false)
+            installed.append("\(window.isUserInteractionEnabled ? "touchable" : "held"), \(field.isFirstResponder ? "editing" : "not editing")")
+        })
+        XCTAssertFalse(field.isFirstResponder)
+        XCTAssertFalse(window.isUserInteractionEnabled)
+        await language.gate.waitForIdle()
+        XCTAssertEqual(installed, ["held, not editing"])
+        XCTAssertTrue(window.isUserInteractionEnabled)
+        XCTAssertEqual(navigation.viewControllers, [root])
+
+        // Whatever UIKit does after the replacement, the run loop let go.
+        try await Task.sleep(for: .milliseconds(500))
+        if shownBefore > 0 {
+            let hidden = ContinuousClock.now + .seconds(2)
+            while notes.hidden == hiddenBefore, ContinuousClock.now < hidden {
+                try await Task.sleep(for: .milliseconds(50))
+            }
+            XCTAssertGreaterThan(notes.hidden, hiddenBefore, "the software keyboard was shown and never hidden")
+        }
+        XCTAssertNil(field.window, "the install took the field's screen off the window")
+        XCTAssertFalse(field.isFirstResponder, "the field has the keyboard again")
+        XCTAssertEqual(notes.shown, shownBefore, "the keyboard came back after the hold")
+        print(ProbeTimeline.current.report("replaced screen, software keyboard shown before the hold: \(shownBefore > 0)"))
     }
 }
 #endif
