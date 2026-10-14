@@ -196,6 +196,11 @@ public struct ArchiveToggleLayout: Equatable, Sendable {
 /// A computer is reachable but nothing has run on it yet
 /// (components/EmptyMainScreen.tsx, the "No sessions yet" branch): an icon,
 /// a title and a line of text, centred, with an optional text action.
+///
+/// RN's is a plain centred View. Taller than the safe area, at the larger
+/// text sizes, RN would push the title under the header and the button
+/// under the dock; here the content starts at the top of the safe area
+/// instead and scrolls (`contentHeight`), so everything can be reached.
 public struct NoSessionsLayout: Equatable, Sendable {
     public enum Metrics {
         public static let iconSize: CGFloat = 56
@@ -246,6 +251,9 @@ public struct NoSessionsLayout: Equatable, Sendable {
     public var description: CGRect
     public var button: CGRect?
     public var action: CGRect?
+    /// How tall the scrolling content is: the screen's height while the
+    /// content fits, more when it doesn't.
+    public var contentHeight: CGFloat
 
     public init(_ input: Input) {
         typealias M = Metrics
@@ -263,7 +271,8 @@ public struct NoSessionsLayout: Equatable, Sendable {
         if let actionSize { height += M.actionMarginTop + actionSize.height }
 
         let available = max(0, input.size.height - insets.vertical - M.marginBottom)
-        var y = insets.top + (available - height) / 2
+        // Centred while it fits; from the top of the safe area when not.
+        var y = insets.top + max(0, available - height) / 2
         func centred(_ size: CGSize, _ y: CGFloat) -> CGRect {
             CGRect(x: insets.left + (width - size.width) / 2, y: y, width: size.width, height: size.height)
         }
@@ -276,6 +285,8 @@ public struct NoSessionsLayout: Equatable, Sendable {
         button = input.buttonHeight.map { CGRect(x: insets.left, y: y, width: width, height: $0) }
         y = button?.maxY ?? y
         action = actionSize.map { centred($0, y + M.actionMarginTop) }
+        y = action?.maxY ?? y
+        contentHeight = max(input.size.height, y + M.marginBottom + insets.bottom)
     }
 }
 
