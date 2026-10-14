@@ -16,6 +16,10 @@ final class HomeSessionActions {
     private var running: Set<String> = []
     /// The session whose alert is being read from the store.
     private var opening: String?
+    /// useSessionQuickActions' `onBeforeArchive`: on the press, before the
+    /// machine is asked anything, so a screen showing the chat can leave it
+    /// while it is still whole (the worktree tab strip).
+    var onBeforeArchive: ((String) -> Void)?
 
     init(context: AppContext, session: AccountSession, host: UIViewController) {
         self.context = context
@@ -96,6 +100,7 @@ final class HomeSessionActions {
         case .copyMetadataAndLogs:
             copy(SessionQuickActions.metadataAndLogsText(record))
         case .archive:
+            onBeforeArchive?(record.id)
             archive(record.id)
         }
     }

@@ -63,6 +63,7 @@ struct ChatStackEntry {
 struct ChatToolViews {
     var question: ChatQuestionState?
     var diffExpanded: [Int: Set<Int>] = [:]
+    var diagrams = ChatMermaidHeights()
     var flush = true
 }
 
@@ -245,7 +246,7 @@ extension ChatRowRenderer {
         case .codexPatch: codexPatchView(message, views: views, style: style)
         case .codexDiff: codexDiffView(message, views: views, style: style)
         case .todo: todoView(message.tool)
-        case .exitPlan: exitPlanView(message.tool)
+        case .exitPlan: exitPlanView(message.tool, diagrams: views.diagrams, syntax: style.render.codeSyntax)
         case .task: taskView(message.children)
         case .bash: bashView(message.tool)
         case .codexBash: codexBashView(message.tool, root: style.root)
@@ -265,7 +266,7 @@ extension ChatRowRenderer {
         // MultiEditView passes no line-number flag, so its diffs use the
         // same setting through ToolDiffView.
         let pieces = chunks.enumerated().compactMap { index, chunk in
-            diffPiece(chunk, index: index, toolId: message.id, showLineNumbers: style.showLineNumbers, expanded: views.diffExpanded[index] ?? [])
+            diffPiece(chunk, index: index, toolId: message.id, showLineNumbers: style.showLineNumbers, expanded: views.diffExpanded[index] ?? [], render: style.render)
         }
         guard !pieces.isEmpty else { return nil }
         let entries = pieces.map { ChatStackEntry(piece: $0) }
@@ -307,7 +308,7 @@ extension ChatRowRenderer {
             case .pair(let old, let new)?: DiffChunkSource(oldText: old, newText: new, fileName: file.fileName)
             case nil: nil
             }
-            if let source, let diff = diffPiece(source, index: index, toolId: message.id, showLineNumbers: style.showLineNumbers, expanded: views.diffExpanded[index] ?? []) {
+            if let source, let diff = diffPiece(source, index: index, toolId: message.id, showLineNumbers: style.showLineNumbers, expanded: views.diffExpanded[index] ?? [], render: style.render) {
                 parts.append(ChatStackEntry(piece: diff))
             }
             let container = ChatStackEntry(piece: .stack(parts), background: ChatBox(frame: .zero, fill: Palette.surface))
@@ -325,7 +326,7 @@ extension ChatRowRenderer {
             parts.append(ChatStackEntry(piece: patchHeader(path: name, kind: .modified, stats: DiffStats.countPatch(diff.patch), movePath: nil, opens: nil)))
         }
         let source = DiffChunkSource(patch: diff.patch, fileName: diff.fileName)
-        if let piece = diffPiece(source, index: 0, toolId: message.id, showLineNumbers: style.showLineNumbers, expanded: views.diffExpanded[0] ?? []) {
+        if let piece = diffPiece(source, index: 0, toolId: message.id, showLineNumbers: style.showLineNumbers, expanded: views.diffExpanded[0] ?? [], render: style.render) {
             parts.append(ChatStackEntry(piece: piece))
         }
         guard !parts.isEmpty else { return nil }
@@ -384,20 +385,22 @@ extension ChatRowRenderer {
 
     /// One DiffChunk: diff `index` of tool `toolId`, or nil when it draws
     /// nothing (DiffChunk renders null).
-    static func diffPiece(_ chunk: ToolDiffChunk, index: Int, toolId: String, showLineNumbers: Bool, expanded: Set<Int>) -> ChatPiece? {
+    static func diffPiece(_ chunk: ToolDiffChunk, index: Int, toolId: String, showLineNumbers: Bool, expanded: Set<Int>, render: RenderServices) -> ChatPiece? {
         diffPiece(
             DiffChunkSource(oldText: chunk.oldText, newText: chunk.newText, fileName: chunk.fileName),
-            index: index, toolId: toolId, showLineNumbers: showLineNumbers, expanded: expanded
+            index: index, toolId: toolId, showLineNumbers: showLineNumbers, expanded: expanded, render: render
         )
     }
 
-    /// `radius` and `corners` clip the diff where it ends a card.
+    /// `radius` and `corners` clip the diff where it ends a card. The diff
+    /// is built through the account's documents (`render`); once they are
+    /// closed it draws nothing.
     static func diffPiece(
         _ source: DiffChunkSource, index: Int, toolId: String, showLineNumbers: Bool, expanded: Set<Int>,
-        radius: CGFloat = 0, corners: CACornerMask = .all
+        render: RenderServices, radius: CGFloat = 0, corners: CACornerMask = .all
     ) -> ChatPiece? {
-        guard !DiffFileItem.document(source.source).files.isEmpty else { return nil }
-        let diff = ChatDiffPiece(source: source, showLineNumbers: showLineNumbers, expanded: expanded)
+        guard !DiffFileItem.document(source.source, cache: render.diffDocuments).files.isEmpty else { return nil }
+        let diff = ChatDiffPiece(source: source, showLineNumbers: showLineNumbers, expanded: expanded, render: render)
         return ChatPiece(measurable: Measurable { diff.plan(width: $0).size }) { frame in
             ([.diff(diff.plan(width: frame.width), frame: frame, toolId: toolId, chunk: index, radius: radius, corners: corners)], [])
         }
@@ -594,9 +597,9 @@ extension ChatRowRenderer {
     }
 
     /// ExitPlanToolView: the plan as markdown, 8 in, pulled 10 up.
-    static func exitPlanView(_ tool: ToolCall) -> ChatStackEntry {
+    static func exitPlanView(_ tool: ToolCall, diagrams: ChatMermaidHeights, syntax: CodeSyntaxService) -> ChatStackEntry {
         let plan = tool.input["plan"]?.stringValue ?? "<empty>"
-        let markdown = ChatPiece.markdown(MarkdownPiece(plan, color: Palette.text))
+        let markdown = ChatPiece.markdown(MarkdownPiece(plan, color: Palette.text, diagrams: diagrams, syntax: syntax))
         let inset = ChatStackEntry(piece: markdown, marginTop: -10, padding: LayoutInsets(top: 0, left: 8, bottom: 0, right: 8))
         return section(nil, .stack([inset]))
     }
@@ -693,17 +696,19 @@ final class ChatDiffPiece {
     let source: DiffChunkSource
     let showLineNumbers: Bool
     let expanded: Set<Int>
+    let render: RenderServices
     private var plans: [(width: CGFloat, plan: DiffChunkPlan)] = []
 
-    init(source: DiffChunkSource, showLineNumbers: Bool, expanded: Set<Int>) {
+    init(source: DiffChunkSource, showLineNumbers: Bool, expanded: Set<Int>, render: RenderServices) {
         self.source = source
         self.showLineNumbers = showLineNumbers
         self.expanded = expanded
+        self.render = render
     }
 
     func plan(width: CGFloat) -> DiffChunkPlan {
         if let cached = plans.first(where: { $0.width == width }) { return cached.plan }
-        let plan = DiffChunkPlan(source: source, width: width, showLineNumbers: showLineNumbers, expanded: expanded)
+        let plan = DiffChunkPlan(source: source, width: width, render: render, showLineNumbers: showLineNumbers, expanded: expanded)
         plans.append((width, plan))
         return plan
     }

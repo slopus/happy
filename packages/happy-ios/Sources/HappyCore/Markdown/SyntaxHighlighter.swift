@@ -5,6 +5,11 @@ import Foundation
 // pattern, matches are sorted by start, overlaps are dropped first-come, and
 // brackets get their nesting depth across the whole block. Offsets are
 // UTF-16, as in JavaScript.
+//
+// No pattern reaches past its line, so a line's tokens depend only on its
+// text, its grammar and the brackets open when it starts: `tokenizeLine`
+// takes those and returns the brackets still open after it, and a block is
+// its lines chained (`CodeSyntaxService` caches them by exactly that).
 
 public struct SyntaxToken: Equatable, Sendable {
     public enum Kind: String, Equatable, Sendable {
@@ -34,62 +39,117 @@ public struct SyntaxToken: Equatable, Sendable {
 }
 
 public enum SyntaxHighlighter {
+    /// The pattern sets a fence's language picks. happy-app adds words for
+    /// Python, TypeScript and Java and gives every other language the base
+    /// sets, so these four are all the grammars there are, and a fence's
+    /// own text is never kept to name one.
+    public enum Grammar: String, Hashable, Sendable, CaseIterable {
+        case base, python, typescript, java
+
+        public init(language: String) {
+            switch language.lowercased() {
+            case "python", "py": self = .python
+            case "typescript", "ts": self = .typescript
+            case "java": self = .java
+            default: self = .base
+            }
+        }
+
+        /// Compiled once per grammar, for every block and every thread.
+        var patterns: [Pattern] {
+            switch self {
+            case .base: Compiled.base
+            case .python: Compiled.python
+            case .typescript: Compiled.typescript
+            case .java: Compiled.java
+            }
+        }
+    }
+
+    /// The brackets open where a line starts, innermost last, as UTF-16
+    /// units: `(`, `[`, `{` and also `<`, which the nesting counts though it
+    /// is never coloured as a bracket.
+    public struct BracketStack: Hashable, Sendable {
+        public var openers: [UInt16]
+
+        public init(_ openers: [UInt16] = []) {
+            self.openers = openers
+        }
+    }
+
+    /// One line's tokens, and the brackets still open after it.
+    public struct Line: Equatable, Sendable {
+        public var tokens: [SyntaxToken]
+        public var stack: BracketStack
+
+        public init(tokens: [SyntaxToken], stack: BracketStack) {
+            self.tokens = tokens
+            self.stack = stack
+        }
+    }
+
     public static func tokenize(_ code: String, language: String?) -> [SyntaxToken] {
         guard let language else { return [SyntaxToken(code, .plain)] }
-        let patterns = Self.patterns(for: language.lowercased())
-        let nesting = bracketNesting(code)
+        let grammar = Grammar(language: language)
         var tokens: [SyntaxToken] = []
-        var globalOffset = 0
-
-        for (lineIndex, line) in code.jsSplit("\n").enumerated() {
+        var stack = BracketStack()
+        for (lineIndex, text) in code.jsSplit("\n").enumerated() {
             if lineIndex > 0 {
                 tokens.append(SyntaxToken("\n", .plain))
-                globalOffset += 1
             }
-            let source = line as NSString
-            var found: [(start: Int, end: Int, kind: SyntaxToken.Kind, order: Int)] = []
-            for pattern in patterns {
-                for match in pattern.regex.matches(in: line) {
-                    let start: Int
-                    let length: Int
-                    if let group = pattern.captureGroup {
-                        let text = match.group(group, in: line) ?? ""
-                        // The capture's first occurrence in the whole match,
-                        // as `match[0].indexOf(tokenText)` finds it.
-                        let whole = source.substring(with: match.range) as NSString
-                        let offset = whole.range(of: text).location
-                        start = match.range.location + (offset == NSNotFound ? 0 : offset)
-                        length = (text as NSString).length
-                    } else {
-                        start = match.range.location
-                        length = match.range.length
-                    }
-                    found.append((start, start + length, pattern.kind, found.count))
-                }
-            }
-            found.sort { $0.start != $1.start ? $0.start < $1.start : $0.order < $1.order }
-
-            var current = 0
-            var lastEnd = 0
-            for token in found where token.start >= lastEnd {
-                lastEnd = token.end
-                if token.start > current {
-                    tokens.append(SyntaxToken(source.substring(with: NSRange(location: current, length: token.start - current)), .plain))
-                }
-                let text = source.substring(with: NSRange(location: token.start, length: token.end - token.start))
-                if token.kind == .bracket {
-                    tokens.append(SyntaxToken(text, .bracket, nestLevel: nesting[globalOffset + token.start] ?? 1))
-                } else {
-                    tokens.append(SyntaxToken(text, token.kind))
-                }
-                current = token.end
-            }
-            if current < source.length {
-                tokens.append(SyntaxToken(source.substring(from: current), .plain))
-            }
-            globalOffset += source.length
+            let line = tokenizeLine(text, grammar: grammar, stack: stack)
+            tokens += line.tokens
+            stack = line.stack
         }
         return tokens
+    }
+
+    /// One line of a block whose earlier lines left `stack` open.
+    public static func tokenizeLine(_ line: String, grammar: Grammar, stack: BracketStack) -> Line {
+        let (nesting, after) = bracketNesting(line, from: stack)
+        let source = line as NSString
+        var tokens: [SyntaxToken] = []
+        var found: [(start: Int, end: Int, kind: SyntaxToken.Kind, order: Int)] = []
+        for pattern in grammar.patterns {
+            for match in pattern.regex.matches(in: line) {
+                let start: Int
+                let length: Int
+                if let group = pattern.captureGroup {
+                    let text = match.group(group, in: line) ?? ""
+                    // The capture's first occurrence in the whole match,
+                    // as `match[0].indexOf(tokenText)` finds it.
+                    let whole = source.substring(with: match.range) as NSString
+                    let offset = whole.range(of: text).location
+                    start = match.range.location + (offset == NSNotFound ? 0 : offset)
+                    length = (text as NSString).length
+                } else {
+                    start = match.range.location
+                    length = match.range.length
+                }
+                found.append((start, start + length, pattern.kind, found.count))
+            }
+        }
+        found.sort { $0.start != $1.start ? $0.start < $1.start : $0.order < $1.order }
+
+        var current = 0
+        var lastEnd = 0
+        for token in found where token.start >= lastEnd {
+            lastEnd = token.end
+            if token.start > current {
+                tokens.append(SyntaxToken(source.substring(with: NSRange(location: current, length: token.start - current)), .plain))
+            }
+            let text = source.substring(with: NSRange(location: token.start, length: token.end - token.start))
+            if token.kind == .bracket {
+                tokens.append(SyntaxToken(text, .bracket, nestLevel: nesting[token.start] ?? 1))
+            } else {
+                tokens.append(SyntaxToken(text, token.kind))
+            }
+            current = token.end
+        }
+        if current < source.length {
+            tokens.append(SyntaxToken(source.substring(from: current), .plain))
+        }
+        return Line(tokens: tokens, stack: after)
     }
 
     struct Pattern {
@@ -98,7 +158,15 @@ public enum SyntaxHighlighter {
         var captureGroup: Int?
     }
 
-    static func patterns(for lang: String) -> [Pattern] {
+    /// The four grammars' patterns, built once.
+    enum Compiled {
+        nonisolated(unsafe) static let base = patterns(for: .base)
+        nonisolated(unsafe) static let python = patterns(for: .python)
+        nonisolated(unsafe) static let typescript = patterns(for: .typescript)
+        nonisolated(unsafe) static let java = patterns(for: .java)
+    }
+
+    static func patterns(for grammar: Grammar) -> [Pattern] {
         let controlFlow = ["if", "else", "elif", "for", "while", "do", "switch", "case", "break", "continue", "return", "yield", "try", "catch", "finally", "throw", "with"]
         var keywords = ["function", "const", "let", "var", "def", "class", "interface", "enum", "struct", "union", "namespace", "module"]
         var types = ["int", "string", "bool", "float", "double", "char", "void", "any", "unknown", "never", "object", "array", "number", "boolean"]
@@ -106,15 +174,18 @@ public enum SyntaxHighlighter {
         let boolean = ["true", "false", "null", "undefined", "None", "True", "False", "nil"]
         let imports = ["import", "from", "export", "require", "include", "using", "package"]
 
-        if lang == "python" || lang == "py" {
+        switch grammar {
+        case .python:
             keywords += ["def", "lambda", "pass", "global", "nonlocal", "as", "in", "is", "not", "and", "or"]
             types += ["str", "list", "dict", "tuple", "set"]
-        } else if lang == "typescript" || lang == "ts" {
+        case .typescript:
             types += ["Record", "Partial", "Required", "Readonly", "Pick", "Omit"]
             keywords += ["type", "interface", "extends", "implements", "keyof", "typeof"]
-        } else if lang == "java" {
+        case .java:
             keywords += ["package", "extends", "implements", "super", "this"]
             modifiers += ["synchronized", "transient", "volatile", "native", "strictfp"]
+        case .base:
+            break
         }
 
         func words(_ list: [String]) -> NSRegularExpression {
@@ -172,14 +243,15 @@ public enum SyntaxHighlighter {
         nonisolated(unsafe) static let punctuation = Patterns.regex(#"([.,;])"#)
     }
 
-    /// Depth of each matched bracket, by UTF-16 offset in the whole block.
-    /// `<` and `>` count as brackets here but are never tokenized as one.
-    static func bracketNesting(_ code: String) -> [Int: Int] {
+    /// Depth of each matched bracket in `line`, by UTF-16 offset, given the
+    /// brackets open before it, and the ones open after. A closer pops
+    /// whatever is innermost, and has a depth only if it matches.
+    static func bracketNesting(_ line: String, from start: BracketStack) -> (levels: [Int: Int], stack: BracketStack) {
         let pairs: [UInt16: UInt16] = [40: 41, 91: 93, 123: 125, 60: 62]
         let closers = Set(pairs.values)
         var map: [Int: Int] = [:]
-        var stack: [UInt16] = []
-        for (index, unit) in code.utf16.enumerated() {
+        var stack = start.openers
+        for (index, unit) in line.utf16.enumerated() {
             if pairs[unit] != nil {
                 stack.append(unit)
                 map[index] = stack.count
@@ -189,6 +261,6 @@ public enum SyntaxHighlighter {
                 }
             }
         }
-        return map
+        return (map, BracketStack(stack))
     }
 }

@@ -31,9 +31,10 @@ struct DiffChunkSource: Equatable, Sendable {
 
 /// The chat-sized diff, built and measured: each file's plan, stacked.
 /// Build it off the main thread (the diff itself is built here, through the
-/// engine's cache); it is immutable.
+/// account's documents); it is immutable.
 final class DiffChunkPlan: @unchecked Sendable {
     let source: DiffChunkSource
+    let render: RenderServices
     let files: [DiffFilePlan]
     let layout: DiffChunkLayout
     /// Files the reader opened with "show more", by index.
@@ -47,6 +48,7 @@ final class DiffChunkPlan: @unchecked Sendable {
     init(
         source: DiffChunkSource,
         width: CGFloat,
+        render: RenderServices,
         showLineNumbers: Bool = true,
         collapseAfter: Int = DiffChunkLayout.collapseAfter,
         fontSize: CGFloat = DiffMetrics.defaultFontSize,
@@ -54,16 +56,17 @@ final class DiffChunkPlan: @unchecked Sendable {
         syntaxDeadline: ContinuousClock.Instant? = DiffFilePlan.syntaxDeadline()
     ) {
         self.source = source
+        self.render = render
         self.expanded = expanded
         self.syntaxDeadline = syntaxDeadline
-        let document = DiffFileItem.document(source.source)
+        let document = DiffFileItem.document(source.source, cache: render.diffDocuments)
         files = document.files.enumerated().map { index, file in
             let hunks = file.rows.reduce(0) { count, row in
                 if case .hunk = row { return count + 1 }
                 return count
             }
             let options = DiffViewOptions(fontSize: fontSize, showLineNumbers: showLineNumbers, showHunkHeaders: hunks > 1, collapseAfter: collapseAfter)
-            return DiffFilePlan(file: file, width: width, options: options, expanded: expanded.contains(index), syntaxDeadline: syntaxDeadline)
+            return DiffFilePlan(file: file, width: width, syntax: render.diffSyntax, options: options, expanded: expanded.contains(index), syntaxDeadline: syntaxDeadline)
         }
         layout = DiffChunkLayout(files.map(\.layout.input))
     }
@@ -79,6 +82,7 @@ final class DiffChunkPlan: @unchecked Sendable {
         return DiffChunkPlan(
             source: source,
             width: width,
+            render: render,
             showLineNumbers: first?.showLineNumbers ?? true,
             collapseAfter: first?.collapseAfter ?? DiffChunkLayout.collapseAfter,
             fontSize: first?.fontSize ?? DiffMetrics.defaultFontSize,

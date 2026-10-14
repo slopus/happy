@@ -31,6 +31,9 @@ struct ChatServices {
     /// The same for another session: the one a pending chat was started
     /// beside.
     var observeOtherSession: (_ id: String, _ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation
+    /// Grouped by project, the checkout a session is a tab of, kept
+    /// current; nil under the flat list and for a chat in no checkout.
+    var observeCheckout: (_ id: String, _ onChange: @escaping @MainActor (WorktreeCheckout?) -> Void) -> ApplyObservation
     /// The chats still on their way to a machine; a `pending-chat:` id is one.
     var pendingChats: PendingChats
     /// The checkout's git status for the header; nil for the fixtures.
@@ -61,6 +64,7 @@ struct ChatServices {
                 controls: FixtureChatControls(world: world),
                 observeSession: observe(feed: feed, sessionId: sessionId, record: record, isCurrent: isCurrent),
                 observeOtherSession: observeOther(feed: feed, isCurrent: isCurrent),
+                observeCheckout: observeCheckout(feed: feed, isCurrent: isCurrent),
                 pendingChats: account.pendingChats,
                 gitStatus: nil,
                 attachment: FixtureAttachments.data
@@ -73,6 +77,7 @@ struct ChatServices {
             controls: account.actions,
             observeSession: observe(feed: feed, sessionId: sessionId, isCurrent: isCurrent),
             observeOtherSession: observeOther(feed: feed, isCurrent: isCurrent),
+            observeCheckout: observeCheckout(feed: feed, isCurrent: isCurrent),
             pendingChats: account.pendingChats,
             gitStatus: account.gitStatus,
             setPermissionMode: { [actions = account.actions, transport = account.realtime] mode in
@@ -111,6 +116,37 @@ struct ChatServices {
     ) -> (_ id: String, _ onChange: @escaping @MainActor (ChatSessionState) -> Void) -> ApplyObservation {
         { id, onChange in
             observe(feed: feed, sessionId: id, isCurrent: isCurrent)(onChange)
+        }
+    }
+
+    /// `useProjectWorktreeSummary` and `findProjectWorktree`, through the
+    /// account's shared home feed: the checkout is found and compared off
+    /// the main thread, only while the list is grouped by project, and the
+    /// screen hears only when it changed.
+    private static func observeCheckout(
+        feed: HomeFeed,
+        isCurrent: @escaping @MainActor () -> Bool
+    ) -> (_ id: String, _ onChange: @escaping @MainActor (WorktreeCheckout?) -> Void) -> ApplyObservation {
+        { id, onChange in
+            // The state is what was applied: nil before the first apply.
+            let pipeline = ApplyPipeline<HomeSnapshot?, WorktreeCheckout??, WorktreeCheckout?>(
+                input: nil,
+                state: nil,
+                derive: { snapshot, applied in
+                    guard let snapshot else { return nil }
+                    let checkout = AccountSettings(snapshot.settings).sessionListGrouping == .project
+                        ? WorktreeCheckout.locate(id, in: snapshot)
+                        : nil
+                    return applied == .some(checkout) ? nil : (checkout, .some(checkout))
+                },
+                apply: { checkout in
+                    guard isCurrent() else { return false }
+                    onChange(checkout)
+                    return true
+                }
+            )
+            pipeline.follow(feed.snapshots()) { $0 = $1 }
+            return pipeline.observation
         }
     }
 

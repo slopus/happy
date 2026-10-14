@@ -2,9 +2,9 @@ import Foundation
 
 /// CommandView with `syntaxHighlighting`, which only BashViewFull turns on:
 /// SyntaxText over the command as bash and over stdout and stderr as a
-/// shell session, through the diff view's tokenizer and cache. Call it off
-/// the main thread: tokenizing can take up to
-/// `DiffSyntax.revealMilliseconds`.
+/// shell session, through the diff view's tokenizer and the account's
+/// cache (`service`). Call it off the main thread: tokenizing can take up
+/// to `DiffSyntax.revealMilliseconds`.
 public enum TerminalSyntax {
     /// `commandLanguage={command ? 'bash' : null}`: the activity label shown
     /// in place of a command stays plain.
@@ -23,7 +23,7 @@ public enum TerminalSyntax {
         _ code: String,
         language: String?,
         until deadline: ContinuousClock.Instant,
-        service: DiffSyntaxService = .shared
+        service: DiffSyntaxService
     ) -> [(text: String, kind: DiffSpanKind)]? {
         guard let plan = DiffSyntaxPlan.planCode(code, language: language) else { return nil }
         if let cached = service.peek(plan.key) {

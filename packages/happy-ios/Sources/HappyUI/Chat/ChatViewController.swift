@@ -32,7 +32,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// Read by `AppCoordinator` to skip reopening the chat a tapped
     /// notification names when it is already on top.
     let sessionId: String
-    private let services: ChatServices
+    /// The session the screen shows: `sessionId`, or for a `pending-chat:`
+    /// screen the session it became once the machine answered. The route
+    /// keeps the stand-in's id for the screen's whole life.
+    private(set) var chatId: String
+    private var services: ChatServices
 
     private let list = ChatListView()
     private let scrim = ChatScrimView()
@@ -68,10 +72,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private let rigActivity = ChatRigActivityView()
     /// The session's pictures, for the attachments in the list, kept with
     /// this account's.
-    private(set) lazy var chatAttachments: ChatAttachmentImages? = ChatAttachmentImages(
-        pictures: account.attachmentPictures, placeholders: context.account.pictures(for: account.keys.anonID),
-        sessionId: sessionId, load: services.attachment
-    )
+    private(set) lazy var chatAttachments: ChatAttachmentImages? = makeChatAttachments()
     private weak var questionSheet: AgentQuestionSheetController?
     /// Questions a sent message answers instead, by the message's local
     /// id: dismissed once it is delivered.
@@ -93,12 +94,32 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private var copiedMessageId: String?
     private let copiedTask = TaskHolder()
     private var observation: ApplyObservation?
+    /// Moves each time the screen leaves a chat, so nothing worked out for
+    /// that chat is applied after.
+    private var chatGeneration = 0
     /// A `pending-chat:` screen's record, and the session it was started
     /// beside.
     private var pendingChat: PendingChat?
     private let pendingTask = TaskHolder()
     private var anchorMetadata: JSONValue?
+    private var anchorRecord: SessionRecord?
+    private var gitSessionId: String?
     private var anchorObservation: ApplyObservation?
+    /// Every chat being opened, for the strip's stand-ins.
+    private var pendingChats: [String: PendingChat] = [:]
+    /// Grouped by project, the checkout the header speaks for and its chats
+    /// as tabs under it (`useProjectWorktreeSummary`, WorktreeTabStrip).
+    private var checkout: WorktreeCheckout?
+    private var checkoutObservation: ApplyObservation?
+    private var checkoutSessionId: String?
+    private let tabStrip = ChatWorktreeTabStrip()
+    /// The strip's scroll on the screen this one replaced, to start from.
+    private var inheritedStripOffset: CGFloat?
+    private lazy var sessionActions: HomeSessionActions = {
+        let actions = HomeSessionActions(context: context, session: account, host: self)
+        actions.onBeforeArchive = { [weak self] id in self?.tabArchiving(id) }
+        return actions
+    }()
 
     /// What the screen reads from the latest snapshot besides its rows.
     private var facts: ChatSnapshotFacts?
@@ -136,15 +157,25 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// latest snapshot has it, and what the reader has done to it.
     private var questionForms: [String: ChatQuestionForm] = [:]
     private var questionDrafts: [String: ChatQuestionState] = [:]
+    /// How tall each diagram's page said it is: by row id, then by its
+    /// place in the row. For as long as the screen lives.
+    private var mermaidHeights: [String: [Int: CGFloat]] = [:]
 
     init(context: AppContext, session account: AccountSession, sessionId: String) {
         self.context = context
         self.account = account
         self.sessionId = sessionId
-        let services = ChatServices.make(account: account, sessionId: sessionId, isCurrent: { [weak context, weak account] in account != nil && context?.account.session === account })
+        chatId = sessionId
+        let services = Self.services(account: account, context: context, sessionId: sessionId)
         self.services = services
+        // A chat still being started keeps what is typed, and what is sent,
+        // on the record standing in for it until the machine answers.
+        let pending = PendingChats.isPendingChatId(sessionId)
         composer = ChatComposerFactory.make(ChatComposerEnvironment(
-            sessionId: sessionId, account: account, sender: services.sender, controls: services.controls
+            sessionId: sessionId, account: account,
+            sender: pending ? PendingChatSender(account.pendingChats) : services.sender,
+            controls: services.controls,
+            draftStorage: pending ? PendingChatComposerStorage(account.pendingChats) : nil
         ))
         super.init(nibName: nil, bundle: nil)
         hidesBottomBarWhenPushed = true
@@ -195,6 +226,12 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         scrollButton.alpha = 0
         scrollButton.addTarget(self, action: #selector(scrollToNewest), for: .touchUpInside)
         view.addSubview(scrollButton)
+        tabStrip.isHidden = true
+        tabStrip.onSelect = { [weak self] id in self?.selectTab(id) }
+        tabStrip.onLongPress = { [weak self] id in self?.sessionActions.present(sessionId: id) }
+        tabStrip.onAdd = { [weak self] in self?.newTab() }
+        tabStrip.showsAdd = true
+        view.addSubview(tabStrip)
         statusBarStrip.isHidden = true
         view.addSubview(statusBarStrip)
         landscapeBack.isHidden = true
@@ -213,44 +250,20 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             keyboardTracker.heightAnchor.constraint(equalToConstant: 1),
         ])
 
-        observation = services.observeSession { [weak self] state in
-            self?.sessionChanged(state)
-        }
-        if PendingChats.isPendingChatId(sessionId) {
-            let pendingChats = services.pendingChats
-            let sessionId = self.sessionId
-            pendingTask.task = Task { [weak self] in
-                for await chats in await pendingChats.observe() {
-                    guard let self, !Task.isCancelled else { return }
-                    self.pendingChatChanged(chats[sessionId])
+        observeChat()
+        // Every chat being opened: this screen's own record when it is one,
+        // and the strip's stand-ins.
+        let pendingChats = services.pendingChats
+        pendingTask.task = Task { [weak self] in
+            for await chats in await pendingChats.observe() {
+                guard let self, !Task.isCancelled else { return }
+                self.pendingChats = chats
+                if PendingChats.isPendingChatId(self.sessionId) {
+                    self.pendingChatChanged(chats[self.sessionId])
                 }
+                self.updateTabStrip()
             }
         }
-        if let git = services.gitStatus {
-            let sessionId = self.sessionId
-            gitTask.task = Task { [weak self] in
-                for await status in await git.observe(sessionId: sessionId) {
-                    guard let self, !Task.isCancelled else { return }
-                    self.gitStatus = status
-                    self.updateHeader()
-                }
-            }
-            Task { await git.refresh(sessionId: sessionId) }
-        }
-        let planner = self.planner
-        let rows = ApplyPipeline<ChatRowsInput, ChatRowsApplied, ChatRowsUpdate>(
-            input: ChatRowsInput(session: session),
-            state: ChatRowsApplied(),
-            derive: { input, applied in ChatRows.derive(input, applied: applied, planner: planner) },
-            apply: { [weak self] update in
-                guard let self, self.context.account.session === self.account else { return false }
-                return self.applyRows(update)
-            }
-        )
-        rows.follow(services.feed.snapshots(sessionId: sessionId)) { $0.snapshot = $1 }
-        self.rows = rows
-        rowsObservation = rows.observation
-
         NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(willEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
     }
@@ -259,16 +272,110 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         super.viewWillAppear(animated)
         // A store write: never on the main thread.
         let actions = account.actions
-        let sessionId = self.sessionId
-        Task.detached(priority: .userInitiated) { actions.markRead(sessionId: sessionId) }
+        let chatId = self.chatId
+        Task.detached(priority: .userInitiated) { actions.markRead(sessionId: chatId) }
         // sync.ts `onSessionVisible`: a session someone has opened is no
         // longer an abandoned start, in this account.
-        account.spawnRequests.release(sessionId: sessionId)
+        account.spawnRequests.release(sessionId: chatId)
         updateHeaderVisibility(animated: animated)
+    }
+
+    /// SessionView's unmount: a stand-in that has settled or failed is done
+    /// with once its screen goes. One still starting is left alone; the
+    /// person can come back to its tab.
+    override func didMove(toParent parent: UIViewController?) {
+        super.didMove(toParent: parent)
+        guard parent == nil, let chat = pendingChat, chat.sessionId != nil || chat.status == .failed else { return }
+        let chats = services.pendingChats
+        Task { await chats.dismiss(id: chat.id) }
+    }
+
+    private static func services(account: AccountSession, context: AppContext, sessionId: String) -> ChatServices {
+        ChatServices.make(account: account, sessionId: sessionId, isCurrent: { [weak context, weak account] in
+            account != nil && context?.account.session === account
+        })
+    }
+
+    private func makeChatAttachments() -> ChatAttachmentImages {
+        ChatAttachmentImages(
+            pictures: account.attachmentPictures, placeholders: context.account.pictures(for: account.keys.anonID),
+            sessionId: chatId, load: services.attachment
+        )
+    }
+
+    /// The session's record, and its rows worked out off the main thread,
+    /// for `chatId`: a pipeline of its own for each chat the screen shows,
+    /// starting from an empty list and the newest page. Run again when a
+    /// pending chat becomes its session, after `endChat`.
+    private func observeChat() {
+        let generation = chatGeneration
+        let chatId = self.chatId
+        observation = services.observeSession { [weak self] state in
+            guard let self, self.chatGeneration == generation else { return }
+            self.sessionChanged(state)
+        }
+        let planner = self.planner
+        let render = RenderServices(account)
+        let rows = ApplyPipeline<ChatRowsInput, ChatRowsApplied, ChatRowsUpdate>(
+            input: ChatRowsInput(session: session, render: render),
+            state: ChatRowsApplied(),
+            derive: { input, applied in ChatRows.derive(input, applied: applied, planner: planner) },
+            apply: { [weak self] update in
+                // Rows worked out for a chat the screen has left, or under an
+                // account that is no longer the open one, never land.
+                guard let self, self.chatGeneration == generation, self.chatId == chatId,
+                      self.context.account.session === self.account else { return false }
+                return self.applyRows(update)
+            }
+        )
+        // Code blocks still being coloured are drawn again when colour comes
+        // in. Subscribed before the first rows are planned, so no signal
+        // falls between a block's plain answer and the subscription.
+        rows.follow(render.codeSyntax.completions()) { input, _ in input.recolour += 1 }
+        rows.follow(services.feed.snapshots(sessionId: chatId)) { $0.snapshot = $1 }
+        self.rows = rows
+        rowsObservation = rows.observation
+    }
+
+    /// Stops everything that reads the chat the screen is leaving, on the
+    /// main thread and before `chatId` moves, and forgets what the reader
+    /// did in it: the next chat's pipeline starts from nothing. The checkout
+    /// is kept on screen until the new observation answers; the header's git
+    /// status follows `headerSessionId` by itself.
+    private func endChat() {
+        chatGeneration += 1
+        observation?.cancel()
+        observation = nil
+        rowsObservation?.cancel()
+        rowsObservation = nil
+        rows = nil
+        checkoutObservation?.cancel()
+        checkoutObservation = nil
+        checkoutSessionId = nil
+        graceTask.task?.cancel()
+        graceEnd = nil
+        copiedTask.task?.cancel()
+        copiedMessageId = nil
+        facts = nil
+        sentRowsView = ChatRowsView()
+        windowRequests = ChatWindowRequests()
+        appliedGrows = 0
+        reachesOldest = false
+        permissionBusy = [:]
+        expandedTools = []
+        diffExpanded = [:]
+        pin = nil
+        pins = 0
+        graceTick = 0
+        questionForms = [:]
+        questionDrafts = [:]
+        questionsToDismiss = [:]
+        mermaidHeights = [:]
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        keepStripOffset()
         // Screens pushed from here, and the one under it, have their bar.
         if hidesHeader, navigationController?.topViewController !== self {
             navigationController?.setNavigationBarHidden(false, animated: animated)
@@ -306,13 +413,18 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             // TabletBranches: chatFloatingDock and chatInputPaddingH.
             docked: isTabletLayout,
             accessoryPaddingH: isTabletLayout ? TabletBranches.Metrics.tabletInputPaddingH : TabletBranches.Metrics.phoneInputPaddingH,
-            hidesHeader: hidesHeader
+            hidesHeader: hidesHeader,
+            headerAccessory: tabStrip.isHidden ? 0 : WorktreeTabStripLayout.Metrics.height
         ))
         list.setLayoutFrame(screen.list)
         list.setEdgeInsets(newest: screen.newestEdgeInset, oldest: screen.oldestEdgeInset)
         headerScrim.setLayoutFrame(screen.headerScrim)
+        if let frame = screen.headerAccessory, !tabStrip.isHidden {
+            tabStrip.maxWidth = ContentWidth.headerMaxWidth
+            tabStrip.setLayoutFrame(frame)
+        }
         if !cliWarning.isHidden {
-            cliWarning.place(CliWarningPillLayout(width: size.width, top: view.safeAreaInsets.top, label: cliWarning.labelMeasurable))
+            cliWarning.place(CliWarningPillLayout(width: size.width, top: screen.headerBottom, label: cliWarning.labelMeasurable))
         }
         // Loading the session and the deleted state take the whole screen;
         // an empty chat sits between the bar and the dock.
@@ -347,6 +459,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         hidesHeader = hides
         landscapeBack.isHidden = !hides
         statusBarStrip.isHidden = !hides
+        updateTabStrip()
         floatingDockChanged()
         updateCliWarning()
         view.setNeedsLayout()
@@ -420,21 +533,37 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         items.append(fixturesMenu())
         #endif
         navigationItem.rightBarButtonItems = items
+        tabStrip.glass = !tablet // TabletBranches.worktreeStripGlass
         floatingDockChanged()
     }
 
     private func updateHeader() {
-        let model = ChatHeaderModel(session: session.record, dataReady: session.dataReady || isFixture, gitStatus: gitStatus, pending: isPendingChat)
-        let title = switch model.title {
+        updateCheckoutObservation()
+        updateGitObservation()
+        // A chat that doesn't exist yet can't speak for its checkout: the
+        // header reads the chat it was started beside until it can, and
+        // a stand-in's title is "New chat" for as long as it stands.
+        let pending = PendingChats.isPendingChatId(sessionId)
+        let headerRecord = session.record ?? (pending ? anchorRecord : nil)
+        var model = ChatHeaderModel(session: headerRecord, dataReady: session.dataReady || isFixture, gitStatus: gitStatus, pending: pending && headerRecord == nil)
+        if pending, model.title != .loading { model.title = .name(nil) }
+        var title = switch model.title {
         case .loading: ""
         case .deleted: Strings.SessionDetail.sessionDeleted
         case .name(let name): name ?? Strings.Session.newChat
         }
+        var subtitle = model.subtitle
+        // Grouped by project the header names the checkout, and says how
+        // many tabs the strip under it holds.
+        if let checkout {
+            title = checkout.workspaceName ?? model.subtitle ?? checkout.projectName
+            subtitle = Strings.Chat.worktreeTabs(stripTabs(checkout).count)
+        }
         navigationItem.title = title
-        titleView.update(title: title, subtitle: model.subtitle, changes: model.changes)
+        titleView.update(title: title, subtitle: subtitle, changes: model.changes)
         titleView.isEnabled = session.record != nil
         titleView.sizeToFit()
-        plainTitleView.update(title: title, subtitle: model.subtitle, changes: model.changes)
+        plainTitleView.update(title: title, subtitle: subtitle, changes: model.changes)
         plainTitleView.isEnabled = session.record != nil
 
         let settings = session.settings
@@ -454,6 +583,131 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 monochrome: !model.connected || settings.avatarMonochrome
             )
         }
+    }
+
+    // MARK: Worktree tabs
+
+    /// The chat the header speaks for: this one once it exists, the one a
+    /// chat being opened was started beside until then.
+    private var headerSessionId: String {
+        session.record != nil ? chatId : pendingChat?.anchorSessionId ?? chatId
+    }
+
+    /// The chip that stands for the open chat: the stand-in while the chat
+    /// is unnamed, its session from the moment it is not.
+    private var selectedTabId: String {
+        pendingChat?.sessionId ?? sessionId
+    }
+
+    /// The header's git status: the checkout of the chat it speaks for.
+    private func updateGitObservation() {
+        guard let git = services.gitStatus else { return }
+        let id = headerSessionId
+        guard id != gitSessionId else { return }
+        gitSessionId = id
+        gitStatus = nil
+        gitTask.task = Task { [weak self] in
+            for await status in await git.observe(sessionId: id) {
+                guard let self, !Task.isCancelled else { return }
+                self.gitStatus = status
+                self.updateHeader()
+            }
+        }
+        Task { await git.refresh(sessionId: id) }
+    }
+
+    private func updateCheckoutObservation() {
+        let id = headerSessionId
+        guard id != checkoutSessionId else { return }
+        checkoutSessionId = id
+        checkoutObservation = services.observeCheckout(id) { [weak self] checkout in
+            guard let self else { return }
+            self.checkout = checkout
+            self.updateHeader()
+            self.updateTabStrip()
+        }
+    }
+
+    /// `resolveWorktreeTabs`: the checkout's chats, then the ones still
+    /// being opened beside them, each chat once.
+    private func stripTabs(_ checkout: WorktreeCheckout) -> [ChatWorktreeTabStrip.Item] {
+        let pending = WorktreeTabs.pendingBeside(pendingChats, tabIds: checkout.tabs.map(\.id))
+        let resolved = WorktreeTabs.resolve(tabs: checkout.tabs, pending: pending)
+        return resolved.tabs.map { tab in
+            ChatWorktreeTabStrip.Item(
+                id: tab.id, title: tab.title ?? Strings.Session.newChat, shimmers: tab.working,
+                blocked: tab.blocked, unread: tab.unread, pending: false
+            )
+        } + resolved.pending.map { chat in
+            ChatWorktreeTabStrip.Item(id: chat.id, title: Strings.Session.newChat, shimmers: true, blocked: false, unread: false, pending: true)
+        }
+    }
+
+    /// SessionView's `showTabStrip`, inside the header, so not on a phone
+    /// held sideways.
+    private func updateTabStrip() {
+        let shown = checkout != nil && !hidesHeader
+        if let checkout {
+            if tabStrip.isHidden, shown {
+                tabStrip.restore(offset: inheritedStripOffset ?? Self.stripOffsets(account)[checkout.id] ?? 0)
+                inheritedStripOffset = nil
+            }
+            tabStrip.update(items: stripTabs(checkout), selectedId: selectedTabId)
+        }
+        guard shown == tabStrip.isHidden else { return }
+        tabStrip.isHidden = !shown
+        view.setNeedsLayout()
+    }
+
+    /// Switching swaps the chat in place rather than pushing a screen, so
+    /// back still returns to the list.
+    private func selectTab(_ id: String) {
+        guard id != sessionId, id != selectedTabId else { return }
+        switchChat(to: id)
+    }
+
+    private func switchChat(to id: String) {
+        guard let navigation = navigationController, let index = navigation.viewControllers.firstIndex(of: self) else { return }
+        keepStripOffset()
+        let next = ChatViewController(context: context, session: account, sessionId: id)
+        next.inheritedStripOffset = tabStrip.isHidden ? nil : tabStrip.offset
+        TabletRoutes.record(.session(id: id), for: next)
+        var stack = navigation.viewControllers
+        stack[index] = next
+        navigation.setViewControllers(stack, animated: false)
+    }
+
+    /// Archiving the open tab moves the screen to its neighbour first, the
+    /// tab to its left, so the chat is never seen coming apart; with no tab
+    /// left the screen goes back.
+    private func tabArchiving(_ archivedId: String) {
+        guard let checkout, archivedId == selectedTabId else { return }
+        let pending = WorktreeTabs.pendingBeside(pendingChats, tabIds: checkout.tabs.map(\.id))
+        let tabs = WorktreeTabs.resolve(tabs: checkout.tabs, pending: pending).tabs
+        if let neighbour = WorktreeTabs.neighbour(of: archivedId, in: tabs) {
+            switchChat(to: neighbour)
+        } else {
+            navigationController?.popViewController(animated: true)
+        }
+    }
+
+    /// Where each checkout's strip was last scrolled to, per account, so a
+    /// screen on the same checkout comes back where the finger left it.
+    private final class StripOffsets {
+        var offsets: [String: CGFloat] = [:]
+    }
+
+    private static let stripOffsetTable = NSMapTable<AccountSession, StripOffsets>.weakToStrongObjects()
+
+    private static func stripOffsets(_ account: AccountSession) -> [String: CGFloat] {
+        stripOffsetTable.object(forKey: account)?.offsets ?? [:]
+    }
+
+    private func keepStripOffset() {
+        guard let checkout, !tabStrip.isHidden else { return }
+        let table = Self.stripOffsetTable.object(forKey: account) ?? StripOffsets()
+        table.offsets[checkout.id] = tabStrip.offset
+        Self.stripOffsetTable.setObject(table, forKey: account)
     }
 
     /// Not on a phone held sideways (TabletBranches' `chatShowsCliWarning`).
@@ -495,7 +749,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     @objc private func openInfo() {
         guard session.record != nil else { return }
-        push(.sessionInfo(id: sessionId), context: context)
+        push(.sessionInfo(id: chatId), context: context)
     }
 
     private var isPendingChat: Bool {
@@ -506,16 +760,65 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         guard chat != pendingChat else { return }
         if chat?.anchorSessionId != pendingChat?.anchorSessionId {
             anchorMetadata = nil
+            anchorRecord = nil
             anchorObservation = chat.map { chat in
                 services.observeOtherSession(chat.anchorSessionId) { [weak self] state in
-                    guard let self, state.metadata != self.anchorMetadata else { return }
+                    guard let self, state.record != self.anchorRecord else { return }
+                    self.anchorRecord = state.record
                     self.anchorMetadata = state.metadata
+                    self.updateHeader()
                     self.updatePlaceholder()
                 }
             }
         }
         pendingChat = chat
+        if let real = chat?.sessionId, real != chatId {
+            becomeChat(real)
+        }
+        updateHeader()
         updatePlaceholder()
+        // The start isn't coming. It has said why, and the writing went back
+        // to the chat this was opened beside, which is where the screen goes.
+        if let chat, chat.status == .failed, chat.sessionId == nil {
+            switchChat(to: chat.anchorSessionId)
+        }
+    }
+
+    /// The machine answered: the screen becomes the chat in place. The
+    /// composer is the same one, retargeted, so its text, caret and keyboard
+    /// carry across (SessionView keeps it mounted through the arrival); only
+    /// what it reads and sends moves to the session. The handover has written
+    /// the session's draft before the record named it.
+    ///
+    /// The stand-in's list is empty (nothing is stored under its id), so the
+    /// new chat's first rows install whole, as on a screen just opened.
+    private func becomeChat(_ real: String) {
+        endChat()
+        chatId = real
+        services = Self.services(account: account, context: context, sessionId: real)
+        chatAttachments = makeChatAttachments()
+        composer.retarget(ChatComposerEnvironment(sessionId: real, account: account, sender: services.sender, controls: services.controls))
+        observeChat()
+        scheduleMeasure()
+        if view.window != nil {
+            // A store write: never on the main thread.
+            let actions = account.actions
+            Task.detached(priority: .userInitiated) { actions.markRead(sessionId: real) }
+            account.spawnRequests.release(sessionId: real)
+        }
+    }
+
+    /// The strip's `+`: a sibling chat, started where the open one runs and
+    /// configured like it. Its tab and screen are the person's on the press;
+    /// the start runs underneath, behind any other.
+    private func newTab() {
+        guard let checkout, let openId = session.record?.id ?? pendingChat?.anchorSessionId,
+              let launcher = ChatPendingStarts.of(account, context: context)?.launcher else { return }
+        let known = checkout.tabs.map(\.id)
+        Task { [weak self] in
+            let chat = await launcher.open(anchorSessionId: openId, knownSessionIds: known)
+            self?.selectTab(chat.id)
+        }
     }
 
     private var isFixture: Bool {
@@ -655,7 +958,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         Task { [weak self] in
             do {
                 let opened = try await resume(record, machine)
-                if let self, let opened, opened != self.sessionId {
+                if let self, let opened, opened != self.chatId {
                     self.push(.session(id: opened), context: self.context)
                 }
             } catch {
@@ -669,7 +972,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private func openQuestionSheet() {
         guard let pending = questionBanner.pending, case .form = pending.kind, presentedViewController == nil else { return }
         let controls = services.controls
-        let sessionId = self.sessionId
+        let sessionId = self.chatId
         let sheet = AgentQuestionSheetController(
             pending: pending,
             submit: { answers in
@@ -687,7 +990,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private func dismissUnsupportedRequest() {
         guard let pending = questionBanner.pending else { return }
         let controls = services.controls
-        let sessionId = self.sessionId
+        let sessionId = self.chatId
         Task { try? await controls.cancelQuestion(sessionId: sessionId, id: pending.id, kind: pending.rawKind) }
     }
 
@@ -764,7 +1067,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             requests: windowRequests,
             pin: pin,
             pins: pins,
-            tick: graceTick
+            tick: graceTick,
+            mermaidHeights: mermaidHeights
         )
         guard view != sentRowsView else { return }
         sentRowsView = view
@@ -835,11 +1139,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             pins += 1
             scheduleMeasure()
         case .openMessage(let messageId):
-            push(.sessionMessage(id: sessionId, messageId: messageId), context: context)
+            push(.sessionMessage(id: chatId, messageId: messageId), context: context)
         case .openMessageFile(let messageId, let file):
-            push(.sessionMessage(id: sessionId, messageId: messageId, file: file), context: context)
+            push(.sessionMessage(id: chatId, messageId: messageId, file: file), context: context)
         case .openFile(let path):
-            push(.sessionFile(id: sessionId, path: path), context: context)
+            push(.sessionFile(id: chatId, path: path), context: context)
         case .permission(let tap):
             answer(tap)
         case .questionOption(let toolId, let questionId, let option):
@@ -851,6 +1155,13 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             scheduleMeasure()
         case .questionSubmit(let toolId):
             submitQuestion(toolId)
+        case .mermaidHeight(let row, let index, let height):
+            // Planned again off the main thread, only if the box grows.
+            guard let kept = MarkdownLayout.mermaidHeightToKeep(
+                reported: height, kept: mermaidHeights[row]?[index], scale: traitCollection.displayScale
+            ) else { return }
+            mermaidHeights[row, default: [:]][index] = kept
+            scheduleMeasure()
         case .diffShowMore(let toolId, let chunk, let file):
             diffExpanded[toolId, default: [:]][chunk, default: []].insert(file)
             pin = toolId
@@ -858,7 +1169,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             scheduleMeasure()
         case .option(let title):
             let sender = services.sender
-            let sessionId = self.sessionId
+            let sessionId = self.chatId
             Task { _ = try? await sender.send(OutgoingMessage(text: title), sessionId: sessionId) }
         case .retry(let localId):
             let sender = services.sender
@@ -898,7 +1209,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         scheduleMeasure()
         let controls = services.controls
         let setPermissionMode = services.setPermissionMode
-        let sessionId = self.sessionId
+        let sessionId = self.chatId
         let reply = tap.reply
         Task { [weak self] in
             do {
@@ -931,7 +1242,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         questionDrafts[toolId] = state
         scheduleMeasure()
         let controls = services.controls
-        let sessionId = self.sessionId
+        let sessionId = self.chatId
         Task { [weak self] in
             var failed = false
             do {
@@ -976,7 +1287,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private func dismissAnsweredQuestions(_ facts: ChatSnapshotFacts) {
         guard !questionsToDismiss.isEmpty else { return }
         let controls = services.controls
-        let sessionId = self.sessionId
+        let sessionId = self.chatId
         for (localId, communications) in questionsToDismiss {
             if case .failed = facts.delivery[localId] {
                 questionsToDismiss[localId] = nil

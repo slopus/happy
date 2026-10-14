@@ -417,6 +417,7 @@ private actor FakeOps: HomeOps {
     func hold() { holdSpawn = true }
 
     func answer() {
+        holdSpawn = false
         held?.resume()
         held = nil
     }
@@ -467,8 +468,17 @@ private actor FakeSessionOps: HomeSessionOps {
     var avatarFailures = 0
     private var avatarGate: CheckedContinuation<Void, Never>?
     private var holdsAvatar = false
+    private var readySession: String?
+    private var readyGate: CheckedContinuation<Void, Never>?
 
     func failReady(times: Int) { readyFailures = times }
+    func holdReady(sessionId: String) { readySession = sessionId }
+    var isHoldingReady: Bool { readyGate != nil }
+    func releaseReady() {
+        readySession = nil
+        readyGate?.resume()
+        readyGate = nil
+    }
     func failUpload(times: Int) { uploadFailures = times }
     func failAvatar(times: Int) { avatarFailures = times }
     func holdAvatar() { holdsAvatar = true }
@@ -503,6 +513,10 @@ private actor FakeSessionOps: HomeSessionOps {
     }
 
     func ensureSessionReady(sessionId: String) async throws {
+        if readySession == sessionId {
+            readySession = nil
+            await withCheckedContinuation { readyGate = $0 }
+        }
         if readyFailures > 0 {
             readyFailures -= 1
             throw StartTestError.notSynced
@@ -644,10 +658,10 @@ final class SessionStarterTests: XCTestCase {
     private var phases: [NewSessionStartPhase?] = []
     private lazy var requests = SpawnRequests()
 
-    private func makeStarter() -> SessionStarter {
+    private func makeStarter(spawnRequests: SpawnRequests? = nil, ops: FakeOps? = nil) -> SessionStarter {
         let recorder = self.recorder
         let starter = SessionStarter(environment: .init(
-            ops: ops,
+            ops: ops ?? self.ops,
             sessionOps: sessionOps,
             sender: sender,
             metadataTransport: FakeTransport(),
@@ -657,7 +671,7 @@ final class SessionStarterTests: XCTestCase {
                 await planGate.pass()
                 return pictures.plan(message)
             },
-            spawnRequests: requests,
+            spawnRequests: spawnRequests ?? requests,
             sleep: { await recorder.slept($0) }
         ))
         starter.presenter = presenter
@@ -915,6 +929,96 @@ final class SessionStarterTests: XCTestCase {
         XCTAssertEqual(second, "s4")
         let spawned = await ops.spawned
         XCTAssertEqual(spawned.count, 1, "the same request is not spawned twice")
+    }
+
+    func testStripAndHomeStartersDoNotCancelEachOtherAfterSpawn() async {
+        let root = SpawnRequests()
+        let stripOps = FakeOps()
+        await stripOps.script([.success(sessionId: "strip")])
+        await sessionOps.holdReady(sessionId: "strip")
+        let strip = makeStarter(spawnRequests: root.child(.pendingChats), ops: stripOps)
+        let stripTask = Task { await strip.start(launch(prompt: ""), isCurrentTarget: { true }) }
+        for _ in 0..<10_000 {
+            if await sessionOps.isHoldingReady { break }
+            await Task.yield()
+        }
+        guard await sessionOps.isHoldingReady else {
+            XCTFail("strip did not reach the ready gate")
+            strip.cancel()
+            root.close()
+            await sessionOps.releaseReady()
+            _ = await stripTask.value
+            return
+        }
+        await ops.script([.success(sessionId: "home")])
+        let home = makeStarter(spawnRequests: root)
+        let homeResult = await home.start(launch(permission: "read_only"), isCurrentTarget: { true })
+        XCTAssertEqual(homeResult, "home")
+        XCTAssertTrue(strip.isStarting, "a different Home signature must not abandon the strip's created session")
+        let prematureStops = await stripOps.stops
+        XCTAssertTrue(prematureStops.isEmpty)
+        await sessionOps.releaseReady()
+        let stripResult = await stripTask.value
+        XCTAssertEqual(stripResult, "strip")
+        let stops = await stripOps.stops
+        XCTAssertTrue(stops.isEmpty)
+        root.close()
+    }
+
+    func testAccountStopClosesStripWithRPCHeldAndLateReplyCannotAffectNextAccount() async throws {
+        let accounts = try await Task.detached {
+            let first = try AccountSession(credentials: TokenStorageFixtures.typical, store: LocalStore.inMemory(),
+                dependencies: .init(serverURL: ServerConfig.defaultServerURL, clientID: "test", transport: FakeHTTP(), connector: FakeConnector()))
+            let second = try AccountSession(credentials: Credentials(token: "next", secret: Data(repeating: 7, count: 32)), store: LocalStore.inMemory(),
+                dependencies: .init(serverURL: ServerConfig.defaultServerURL, clientID: "test", transport: FakeHTTP(), connector: FakeConnector()))
+            return (first, second)
+        }.value
+        let root = accounts.0.spawnRequests
+        let child = root.child(.pendingChats)
+        let stripOps = FakeOps()
+        await stripOps.script([.success(sessionId: "same-server-id")])
+        await stripOps.hold()
+        let strip = makeStarter(spawnRequests: child, ops: stripOps)
+        let stripTask = Task { await strip.start(launch(prompt: ""), isCurrentTarget: { true }) }
+        for _ in 0..<10_000 {
+            if await stripOps.isHolding { break }
+            await Task.yield()
+        }
+        guard await stripOps.isHolding else {
+            XCTFail("strip RPC did not reach its gate")
+            strip.cancel()
+            await stripOps.answer()
+            await accounts.0.stop()
+            await accounts.1.stop()
+            _ = await stripTask.value
+            return
+        }
+        let stripID = child.requestId(for: launch(prompt: "").signature)
+        await ops.script([.success(sessionId: "home")])
+        let homeResult = await makeStarter(spawnRequests: root).start(launch(permission: "read_only"), isCurrentTarget: { true })
+        XCTAssertEqual(homeResult, "home")
+        XCTAssertEqual(child.requestId(for: launch(prompt: "").signature), stripID)
+        let current = accounts.1.spawnRequests.child(.pendingChats)
+        let currentID = current.requestId(for: launch(prompt: "").signature)
+        current.remember(currentID, sessionId: "same-server-id", abandon: { XCTFail("late old-account cleanup affected the next account") })
+        await accounts.0.stop()
+        let canceled = await stripTask.value
+        XCTAssertNil(canceled)
+        XCTAssertTrue(root.isClosed)
+        XCTAssertTrue(child.isClosed)
+        await stripOps.answer()
+        for _ in 0..<10_000 {
+            if !(await stripOps.stops).isEmpty { break }
+            await Task.yield()
+        }
+        let oldStops = await stripOps.stops
+        XCTAssertEqual(oldStops, ["same-server-id"])
+        XCTAssertNil(child.spawnedSessionId(stripID))
+        XCTAssertEqual(current.requestId(for: launch(prompt: "").signature), currentID)
+        XCTAssertEqual(current.spawnedSessionId(currentID), "same-server-id")
+        XCTAssertFalse(current.isClosed)
+        current.complete()
+        await accounts.1.stop()
     }
 
     func testAChangedComposerPutsTheNewSessionDown() async {

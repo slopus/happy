@@ -18,11 +18,13 @@ final class SessionFileCacheTests: XCTestCase {
         try? FileManager.default.removeItem(at: root)
     }
 
-    /// An account's directory, as `AccountSession.accountDirectory` has it.
+    /// An account's cache directory, made ready as the account starts.
     private func account(_ id: String) throws -> URL {
-        let directory = root.appendingPathComponent(id, isDirectory: true)
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appendingPathComponent("file-cache", isDirectory: true)
+        let account = root.appendingPathComponent(id, isDirectory: true)
+        let directory = SessionFileCache.directory(inAccount: account)
+        try FileManager.default.createDirectory(at: account, withIntermediateDirectories: true)
+        try SessionFileCache.prepare(directory: directory)
+        return directory
     }
 
     private func snapshot(_ text: String, diff: String? = nil) -> FileViewer.Snapshot {
@@ -179,6 +181,31 @@ final class SessionFileCacheTests: XCTestCase {
         cache.set(sessionId: "s", path: "/repo/b.swift", snapshot("late"))
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.deletingLastPathComponent().path))
+    }
+
+    func testPreparingIsSafeEveryLaunchButNeedsTheAccount() throws {
+        let account = root.appendingPathComponent("again", isDirectory: true)
+        let directory = SessionFileCache.directory(inAccount: account)
+        XCTAssertEqual(directory.lastPathComponent, "file-cache")
+        // Without the account's directory: nothing is made.
+        XCTAssertThrowsError(try SessionFileCache.prepare(directory: directory))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: account.path))
+        try FileManager.default.createDirectory(at: account, withIntermediateDirectories: true)
+        try SessionFileCache.prepare(directory: directory)
+        // The next launch.
+        try SessionFileCache.prepare(directory: directory)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: directory.path))
+    }
+
+    func testAnUnpreparedDirectoryIsNeverMade() async throws {
+        let account = root.appendingPathComponent("fresh", isDirectory: true)
+        try FileManager.default.createDirectory(at: account, withIntermediateDirectories: true)
+        let directory = SessionFileCache.directory(inAccount: account)
+        let cache = SessionFileCache(directory: directory)
+        cache.set(sessionId: "s", path: path, snapshot("x"))
+        await cache.disk?.drain()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        XCTAssertEqual(cache.get(sessionId: "s", path: path), snapshot("x"))
     }
 
     func testAGoneAccountDirectoryStaysGone() async throws {

@@ -90,7 +90,7 @@ final class MachineViewController: UIViewController {
     private func rebuild() {
         guard let content else { return }
         guard let model = content.model else {
-            title = ""
+            setPlainHeaderTitle("")
             navigationItem.rightBarButtonItem = nil
             list.isHidden = true
             if notFound == nil {
@@ -106,7 +106,7 @@ final class MachineViewController: UIViewController {
         notFound?.removeFromSuperview()
         notFound = nil
         list.isHidden = false
-        title = model.name
+        setPlainHeaderTitle(model.name)
         navigationItem.rightBarButtonItem = renameButton()
 
         var sections: [UIView] = [daemonGroup(model)]

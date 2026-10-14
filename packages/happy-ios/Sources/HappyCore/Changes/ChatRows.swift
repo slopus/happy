@@ -103,12 +103,18 @@ public struct PlannedRows<Input: Equatable & Sendable, Plan: Sendable>: Sendable
     public var inputs: [Input]
     public var plans: [Plan]
     public var width: CGFloat
+    /// Rows drawn without colour that was still being made.
+    public var pending: Set<String>
+    /// The colour signals these rows were planned after.
+    public var recolour: Int
 
-    public init(ids: [String] = [], inputs: [Input] = [], plans: [Plan] = [], width: CGFloat = 0) {
+    public init(ids: [String] = [], inputs: [Input] = [], plans: [Plan] = [], width: CGFloat = 0, pending: Set<String> = [], recolour: Int = 0) {
         self.ids = ids
         self.inputs = inputs
         self.plans = plans
         self.width = width
+        self.pending = pending
+        self.recolour = recolour
     }
 }
 
@@ -116,11 +122,19 @@ public struct PlannedRows<Input: Equatable & Sendable, Plan: Sendable>: Sendable
 /// (id, input, width). It remembers the rows of the latest pass and also
 /// reuses the rows a list applied, so a pass that never reached the screen
 /// costs nothing later. Used by one derivation at a time.
+///
+/// A row whose colour was still being made when it was measured
+/// (`SyntaxPass.notePending`) is drawn plain and measured again, input
+/// unchanged, in the first pass after the next colour signal (`recolour`
+/// moves). It changes on screen only once its colour is in: plain to
+/// coloured, once.
 public final class RowPlanner<Input: Equatable & Sendable, Plan: Sendable>: @unchecked Sendable {
     private struct Entry {
         var input: Input
         var width: CGFloat
         var plan: Plan
+        var pending: Bool
+        var recolour: Int
     }
 
     private let lock = NSLock()
@@ -136,12 +150,14 @@ public final class RowPlanner<Input: Equatable & Sendable, Plan: Sendable>: @unc
     public var measured: Int { lock.withLock { measuredTotal } }
 
     /// `inputs` planned at `width`, and what changed against `applied`.
-    /// `measured` counts the rows measured for this pass.
+    /// `measured` counts the rows measured for this pass. `recolour` counts
+    /// the colour signals heard so far.
     public func plan(
         _ inputs: [Input],
         id: (Input) -> String,
         width: CGFloat,
-        applied: PlannedRows<Input, Plan>
+        applied: PlannedRows<Input, Plan>,
+        recolour: Int = 0
     ) -> (rows: PlannedRows<Input, Plan>, changeset: RowChangeset, measured: Int) {
         lock.lock()
         defer { lock.unlock() }
@@ -158,32 +174,44 @@ public final class RowPlanner<Input: Equatable & Sendable, Plan: Sendable>: @unc
         ids.reserveCapacity(inputs.count)
         var plans: [Plan] = []
         plans.reserveCapacity(inputs.count)
+        var pending = Set<String>()
         var measured = 0
         for input in inputs {
             let key = id(input)
             ids.append(key)
+            var entry: Entry
             if let cached = cache[key] ?? next[key], cached.width == width, cached.input == input {
-                next[key] = cached
-                plans.append(cached.plan)
+                entry = cached
             } else if let index = appliedIndex[key], applied.inputs[index] == input {
-                let entry = Entry(input: input, width: width, plan: applied.plans[index])
-                next[key] = entry
-                plans.append(entry.plan)
+                entry = Entry(input: input, width: width, plan: applied.plans[index],
+                              pending: applied.pending.contains(key), recolour: applied.recolour)
             } else {
-                let plan = measure(input, width)
+                entry = measure(input, width: width, recolour: recolour)
                 measured += 1
-                next[key] = Entry(input: input, width: width, plan: plan)
-                plans.append(plan)
             }
+            if entry.pending && entry.recolour < recolour {
+                entry = measure(input, width: width, recolour: recolour)
+                measured += 1
+            }
+            next[key] = entry
+            plans.append(entry.plan)
+            if entry.pending { pending.insert(key) }
         }
         cache = next
         measuredTotal += measured
-        let rows = PlannedRows(ids: ids, inputs: inputs, plans: plans, width: width)
+        let rows = PlannedRows(ids: ids, inputs: inputs, plans: plans, width: width, pending: pending, recolour: recolour)
         let sameWidth = applied.width == width
+        // A row whose colour came in changes; one still waiting does not.
         let changeset = RowChangeset(oldIds: applied.ids, newIds: ids) { old, new in
             !sameWidth || applied.inputs[old] != inputs[new]
+                || (applied.pending.contains(applied.ids[old]) && !pending.contains(ids[new]))
         }
         return (rows, changeset, measured)
+    }
+
+    private func measure(_ input: Input, width: CGFloat, recolour: Int) -> Entry {
+        let (plan, pending) = SyntaxPass.measuring { measure(input, width) }
+        return Entry(input: input, width: width, plan: plan, pending: pending, recolour: recolour)
     }
 }
 
@@ -256,7 +284,8 @@ public enum ChatRowsDerivation {
         applied: PlannedRows<Row, Plan>,
         makeRows: (_ items: [ChatListItem], _ groups: ChatWorkGroupState) -> [Row],
         id: (Row) -> String,
-        syntaxDeadline: ContinuousClock.Instant? = nil
+        syntaxDeadline: ContinuousClock.Instant? = nil,
+        recolour: Int = 0
     ) -> Result<Row, Plan> {
         let syntaxDeadline = syntaxDeadline ?? SyntaxPass.deadline()
         let items = ChatWindowing.items(
@@ -265,7 +294,7 @@ public enum ChatRowsDerivation {
         )
         let rows = makeRows(items.items, items.state.groups)
         let planned = SyntaxPass.run(until: syntaxDeadline) {
-            planner.plan(rows, id: id, width: width, applied: applied)
+            planner.plan(rows, id: id, width: width, applied: applied, recolour: recolour)
         }
         return Result(window: items, rows: planned.rows, changeset: planned.changeset, measured: planned.measured)
     }

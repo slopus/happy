@@ -24,4 +24,28 @@ public enum SyntaxPass {
     public static func run<T>(until deadline: ContinuousClock.Instant, _ body: () throws -> T) rethrows -> T {
         try $current.withValue(deadline, operation: body)
     }
+
+    /// Set while one row is measured: whether any of its colour was not
+    /// ready and is being made in the background (`notePending`).
+    final class PendingFlag: @unchecked Sendable {
+        private let lock = NSLock()
+        private var raised = false
+        var value: Bool { lock.withLock { raised } }
+        func raise() { lock.withLock { raised = true } }
+    }
+
+    @TaskLocal static var pending: PendingFlag?
+
+    /// Called by a colour service that answered plain for now: the row
+    /// being measured is drawn again once the service signals.
+    public static func notePending() {
+        pending?.raise()
+    }
+
+    /// Runs `body` and says whether anything in it noted pending colour.
+    public static func measuring<T>(_ body: () throws -> T) rethrows -> (value: T, pending: Bool) {
+        let flag = PendingFlag()
+        let value = try $pending.withValue(flag, operation: body)
+        return (value, flag.value)
+    }
 }

@@ -80,8 +80,23 @@ rule 8), and what the Linux benchmarks measure.
   - The rows one pass measures share one syntax deadline (`SyntaxPass`): a
     window full of diffs starts at most one second of tokenizing, not one
     per diff. The deadline is not part of a row's input, so it never makes
-    a row measure again. Markdown code blocks in the chat are tokenized
-    with no deadline at all.
+    a row measure again.
+  - Markdown code blocks are coloured by the account's `CodeSyntaxService`
+    inside that same deadline. It keeps lines, keyed by grammar, text and
+    the brackets open before them, so a streaming block tokenizes the line
+    that grew, not the block. A block not ready by the deadline is drawn
+    plain (the mono face has one advance at every weight, so the height
+    does not move) and finished in the background. The row is marked
+    pending (`SyntaxPass.notePending`); the service's next signal moves
+    `ChatRowsInput.recolour`, and `RowPlanner` measures only the pending
+    rows again, reconfiguring a row only once its colour is in: plain to
+    coloured, once. Blocks past the size limits stay plain and are never
+    queued.
+- Every plan that draws a diff, a command's output or a code block takes
+  the account's services explicitly (`RenderServices`: `diffDocuments`,
+  `diffSyntax`, `codeSyntax`), never a global. They are closed when the
+  account stops; a plan made after that draws plain or nothing, never "No
+  changes", and its apply is refused by the account guard anyway.
 - The troubleshoot screen follows `AccountSession.troubleshootingFeed`
   (computers and the AI prompt, projected off the main thread) through
   `VisibleFeed`: subscribed in `viewWillAppear`, cancelled in
