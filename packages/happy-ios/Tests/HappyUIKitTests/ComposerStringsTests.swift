@@ -13,9 +13,11 @@ final class ComposerStringsTests: XCTestCase {
         super.tearDown()
     }
 
-    func testTheEnglishIsEnTsForEveryBranch() {
+    func testTheEnglishIsEnTsForEveryBranch() async {
         _ = AppLocalization.use(nil)
-        let english = TranslationCatalog.english
+        // Decoded off the main thread, as the app decodes every catalog:
+        // decoding on it stops Debug builds.
+        let english = await TranslationCatalog.load("en")
         for count in [0, 1, 2, 21] {
             XCTAssertEqual(Strings.Composer.minutesAgo(count), english("time.minutesAgo", ["count": .number(count)]))
             XCTAssertEqual(Strings.Composer.hoursAgo(count), english("time.hoursAgo", ["count": .number(count)]))
