@@ -28,7 +28,7 @@ extension Strings {
         /// `sidebar.projects`.
         public static let projects = "Projects"
         /// `sidebar.showAllWorkspaces`.
-        public static func showAllWorkspaces(_ count: Int) -> String { "Show all \(count) workspaces" }
+        public static func showAllWorkspaces(_ count: Int) -> String { localized("sidebar.showAllWorkspaces", ["count": .number(count)], "Show all \(count) workspaces") }
         /// `sidebar.showFewerWorkspaces`.
         public static let showFewerWorkspaces = "Show fewer"
         /// `status.unknown`, in `<unknown>` for a chat with no computer.
@@ -125,16 +125,16 @@ extension Strings {
     /// is written there in English; the rest is `t()`.
     public enum NewSession {
         /// `newSession.title`.
-        public static let title = "Start New Session"
+        public static var title: String { localized("newSession.title", "Start New Session") }
         /// EmptyMainScreen.tsx's button, written there in English.
         public static let startNewSession = "Start New Session"
         /// `newSession.machineOffline`.
-        public static let machineOffline = "Machine is offline"
+        public static var machineOffline: String { localized("newSession.machineOffline", "Machine is offline") }
         /// `machine.offlineHelp`.
         public static let offlineHelp = "• Run `happy daemon start` on your computer\n• Make sure your computer is online\n• Run `happy daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `npm install -g happy@latest`"
         public static let happyAgentOffline = "Happy Agent is offline on this computer"
         /// `newSession.switchMachinesHint`.
-        public static let switchMachinesHint = "• Switch machines by clicking on the machine above"
+        public static var switchMachinesHint: String { localized("newSession.switchMachinesHint", "• Switch machines by clicking on the machine above") }
         public static let searchMachines = "search machines..."
         public static let searchWorktrees = "search worktrees..."
         public static let searchWorkspaces = "search workspaces..."

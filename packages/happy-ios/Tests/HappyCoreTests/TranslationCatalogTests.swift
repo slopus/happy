@@ -33,6 +33,12 @@ final class TranslationCatalogTests: XCTestCase {
         }
     }
 
+    override func setUp() async throws {
+        // Decoding is off-main work; Debug builds stop if it happens on the
+        // main thread, where these tests run.
+        for language in AppLanguage.supported.map(\.code) { _ = await TranslationCatalog.load(language) }
+    }
+
     private func vectors() throws -> [String: [Vector]] {
         let url = try XCTUnwrap(Bundle.module.url(forResource: "translation-vectors", withExtension: "json", subdirectory: "Fixtures"))
         return try JSONDecoder().decode([String: [Vector]].self, from: Data(contentsOf: url))
@@ -119,16 +125,74 @@ final class TranslationCatalogTests: XCTestCase {
         XCTAssertEqual(AppLanguage.resolve(preferred: "zh-Hant", deviceLanguages: ["en"]), "zh-Hant")
     }
 
-    func testTheCurrentLanguageChangesOnlyWhenItDiffers() {
-        defer { AppLocalization.use("en") }
-        AppLocalization.use("en")
-        XCTAssertEqual(AppLocalization.text("common.cancel"), "Cancel")
-        XCTAssertTrue(AppLocalization.use("pl"))
-        XCTAssertFalse(AppLocalization.use("pl"))
-        XCTAssertEqual(AppLocalization.current.language, "pl")
-        XCTAssertEqual(AppLocalization.text("time.minutesAgo", ["count": 22]), TranslationCatalog.catalog(for: "pl")("time.minutesAgo", ["count": 22]))
-        XCTAssertTrue(AppLocalization.use("xx"), "an unknown language is English")
-        XCTAssertEqual(AppLocalization.current.language, "en")
+    func testTheScreensLanguageChangesOnlyWhenItDiffers() async {
+        defer { AppLocalization.use(nil) }
+        AppLocalization.use(nil)
+        XCTAssertNil(AppLocalization.screens, "English is the screens' own words")
+        XCTAssertEqual(AppLocalization.language, "en")
+        let polish = await TranslationCatalog.load("pl")
+        XCTAssertTrue(AppLocalization.use(polish))
+        XCTAssertFalse(AppLocalization.use(polish))
+        XCTAssertEqual(AppLocalization.language, "pl")
+        let english = await TranslationCatalog.load("en")
+        XCTAssertTrue(AppLocalization.use(english), "English catalog: back to the screens' own words")
+        XCTAssertNil(AppLocalization.screens)
+        XCTAssertFalse(AppLocalization.use(nil))
+    }
+
+    /// The screens' strings that read the catalog name a key whose English
+    /// is the string they keep beside it, so English stays exactly what it
+    /// was. Read from HappyUI's sources, which don't build here.
+    func testEveryLocalizedStringKeepsItsKeysEnglish() throws {
+        let ui = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/HappyUI")
+        let files = [ui.appendingPathComponent("Strings.swift")]
+            + (try FileManager.default.contentsOfDirectory(at: ui.appendingPathComponent("Strings"), includingPropertiesForKeys: nil))
+        let plain = try NSRegularExpression(pattern: #"localized\("([A-Za-z0-9_.]+)", "((?:[^"\\]|\\.)*)"\)"#)
+        let function = try NSRegularExpression(pattern: #"localized\("([A-Za-z0-9_.]+)", \["#)
+        var strings = 0
+        var functions = 0
+        for file in files where file.pathExtension == "swift" {
+            let source = try String(contentsOf: file, encoding: .utf8)
+            let range = NSRange(source.startIndex..., in: source)
+            for match in plain.matches(in: source, range: range) {
+                let key = String(source[Range(match.range(at: 1), in: source)!])
+                let literal = String(source[Range(match.range(at: 2), in: source)!])
+                XCTAssertEqual(TranslationCatalog.english(key), Self.unescaped(literal), key)
+                strings += 1
+            }
+            for match in function.matches(in: source, range: range) {
+                let key = String(source[Range(match.range(at: 1), in: source)!])
+                XCTAssertTrue(TranslationCatalog.english.contains(key), key)
+                functions += 1
+            }
+        }
+        XCTAssertEqual(strings, 232)
+        XCTAssertEqual(functions, 11)
+    }
+
+    /// A Swift string literal's text.
+    private static func unescaped(_ literal: String) -> String {
+        var text = ""
+        var characters = literal[...]
+        while let character = characters.popFirst() {
+            guard character == "\\", let next = characters.popFirst() else {
+                text.append(character)
+                continue
+            }
+            switch next {
+            case "n": text.append("\n")
+            case "t": text.append("\t")
+            case "u":
+                guard characters.first == "{", let close = characters.firstIndex(of: "}"),
+                      let scalar = UInt32(characters[characters.index(after: characters.startIndex)..<close], radix: 16).flatMap(Unicode.Scalar.init) else { continue }
+                text.unicodeScalars.append(scalar)
+                characters = characters[characters.index(after: close)...]
+            default: text.append(next)
+            }
+        }
+        return text
     }
 
     func testCatalogsAreReadFromAnyThread() async {

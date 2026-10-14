@@ -127,9 +127,16 @@ public final class TranslationCatalog: Sendable {
     }
 
     /// The catalog for a language code from `AppLanguage.supported`;
-    /// English for any other.
+    /// English for any other. Off the main thread, unless `load` has
+    /// already decoded it: decoding a catalog is not main-thread work
+    /// (AGENTS.md rule 8), and Debug builds stop if it happens there.
     public static func catalog(for language: String) -> TranslationCatalog {
         cache.catalog(language)
+    }
+
+    /// The catalog for `language`, decoded off the main thread.
+    public static func load(_ language: String) async -> TranslationCatalog {
+        await Task.detached(priority: .userInitiated) { catalog(for: language) }.value
     }
 
     public static var english: TranslationCatalog { catalog(for: "en") }
@@ -181,6 +188,9 @@ public final class TranslationCatalog: Sendable {
             let code = TranslationCatalog.sources.contains { $0.code == language } ? language : "en"
             if let cached = lock.withLock({ catalogs[code] }) { return cached }
             let english = code == "en" ? nil : catalog("en")
+            #if DEBUG
+            dispatchPrecondition(condition: .notOnQueue(.main))
+            #endif
             let json = TranslationCatalog.sources.first { $0.code == code }?.json ?? "{}"
             // Decoded outside the lock; a race decodes twice and keeps one.
             let made = TranslationCatalog(language: code, json: json, fallback: english)

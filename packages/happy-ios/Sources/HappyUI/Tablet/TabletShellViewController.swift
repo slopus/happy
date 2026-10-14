@@ -37,6 +37,8 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
     private var sidebar: TabletSidebarViewController?
     /// The signed-in account whose home is the stack's root.
     private var session: AccountSession?
+    /// The language the sidebar was built in.
+    private var language = AppLocalization.language
     private var isTablet = false
     private var showsShell = false
     private var zenMode = false
@@ -75,8 +77,10 @@ public final class TabletShellViewController: UIViewController, UINavigationCont
     /// in, sign out, an account switch, the server confirmation.
     func rootDidChange() {
         let session = detail.viewControllers.first is HomeViewController ? context.account.session : nil
-        if session !== self.session {
+        // A new language builds the sidebar again too, as the root was.
+        if session !== self.session || language != AppLocalization.language {
             self.session = session
+            language = AppLocalization.language
             removeSidebar()
             // Each account keeps its own local settings.
             zenMode = session != nil && context.account.localSettings.zenMode
