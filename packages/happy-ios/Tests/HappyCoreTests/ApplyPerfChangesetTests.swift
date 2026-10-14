@@ -85,6 +85,43 @@ final class ApplyPerfHomeTests: XCTestCase {
         XCTAssertFalse(update.kindChanged)
     }
 
+    /// `record` as Happy Agent publishes it, with these line counts for
+    /// its checkout (rig.ts `getRigGitSummary`).
+    static func withLineChanges(_ record: SessionRecord, insertions: Double, deletions: Double = 1, files: Double = 1) -> SessionRecord {
+        var record = record
+        var metadata = record.metadata?.objectValue ?? [:]
+        metadata["client"] = .object(["id": .string("rig")])
+        metadata["git"] = .object([
+            "changedFiles": .number(files), "countsExact": .bool(true),
+            "insertions": .number(insertions), "deletions": .number(deletions),
+        ])
+        record.metadata = .object(metadata)
+        return record
+    }
+
+    /// Home's list alone, without the new-session pickers' snapshot (which
+    /// keeps the metadata whole).
+    static func listOnly(_ snapshot: HomeSnapshot, after applied: HomeDerivation.Applied?) -> (output: HomeUpdate, state: HomeDerivation.Applied)? {
+        HomeDerivation.derive(HomeDerivation.Input(snapshot: snapshot, clock: ApplyPerfFixtures.clock), applied: applied ?? .init())
+    }
+
+    func testOneSessionsLineChangesReconfigureExactlyOneRow() throws {
+        var snapshot = ApplyPerfFixtures.snapshot(50)
+        snapshot.sessions[20] = Self.withLineChanges(snapshot.sessions[20], insertions: 3)
+        let applied = try XCTUnwrap(Self.listOnly(snapshot, after: nil)).state
+        snapshot.sessions[20] = Self.withLineChanges(snapshot.sessions[20], insertions: 4)
+        let update = try XCTUnwrap(Self.listOnly(snapshot, after: applied))
+        XCTAssertEqual(update.output.changeset, RowChangeset(reconfigures: [20]))
+        XCTAssertFalse(update.output.kindChanged)
+
+        // The row draws no file count.
+        snapshot.sessions[20] = Self.withLineChanges(snapshot.sessions[20], insertions: 4, files: 7)
+        XCTAssertNil(Self.listOnly(snapshot, after: update.state))
+        // A clean comparison takes the counts away.
+        snapshot.sessions[20] = Self.withLineChanges(snapshot.sessions[20], insertions: 0, deletions: 0)
+        XCTAssertEqual(try XCTUnwrap(Self.listOnly(snapshot, after: update.state)).output.changeset, RowChangeset(reconfigures: [20]))
+    }
+
     func testNewActivityInTheSameMinuteOnlyMoves() throws {
         let (before, after) = ApplyPerfFixtures.overtaking()
         let applied = try XCTUnwrap(ApplyPerfFixtures.derive(before, after: nil)).state
@@ -369,6 +406,37 @@ final class ApplyPerfHomeLayoutTests: XCTestCase {
         let project = try XCTUnwrap(ApplyPerfFixtures.derive(grouped(ApplyPerfFixtures.snapshot(3), "project"), after: nil)).state.content?.list
         let index = try XCTUnwrap(project?.index(ofSession: "session-0000"))
         XCTAssertEqual(project?.rows[index].sessionId, "session-0000")
+    }
+
+    /// ProjectHomeList.tsx's `ChatRow` (a bot, an archived chat) draws no
+    /// line counts, so theirs never reach the main thread.
+    func testABotsAndAnArchivedChatsLineChangesRedrawNothingInTheProjectList() throws {
+        var snapshot = grouped(ApplyPerfFixtures.snapshot(3), "project")
+        snapshot.settings.pending["hideInactiveSessions"] = .bool(false)
+        func bot(_ record: SessionRecord) -> SessionRecord {
+            var record = record
+            var metadata = record.metadata?.objectValue ?? [:]
+            metadata["bot"] = .object(["username": .string("ops")])
+            record.metadata = .object(metadata)
+            return record
+        }
+        func archived(_ record: SessionRecord) -> SessionRecord {
+            var record = record
+            var metadata = record.metadata?.objectValue ?? [:]
+            metadata["lifecycleState"] = .string("archived")
+            record.metadata = .object(metadata)
+            return record
+        }
+        snapshot.sessions[1] = bot(ApplyPerfHomeTests.withLineChanges(snapshot.sessions[1], insertions: 3))
+        snapshot.sessions[2] = archived(ApplyPerfHomeTests.withLineChanges(snapshot.sessions[2], insertions: 3))
+        let applied = try XCTUnwrap(ApplyPerfHomeTests.listOnly(snapshot, after: nil)).state
+        let rows = try XCTUnwrap(applied.content?.list?.rows)
+        XCTAssertTrue(rows.contains { if case .project(.bot(let row)) = $0 { row.id == "session-0001" && row.changes == nil } else { false } })
+        XCTAssertTrue(rows.contains { if case .project(.archived(let row)) = $0 { row.id == "session-0002" && row.changes == nil } else { false } })
+
+        snapshot.sessions[1] = ApplyPerfHomeTests.withLineChanges(snapshot.sessions[1], insertions: 30)
+        snapshot.sessions[2] = ApplyPerfHomeTests.withLineChanges(snapshot.sessions[2], insertions: 30)
+        XCTAssertNil(ApplyPerfHomeTests.listOnly(snapshot, after: applied))
     }
 
     func testGroupingChoiceAloneReachesTheMenu() throws {

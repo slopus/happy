@@ -75,6 +75,10 @@ public struct SessionRow: Equatable, Sendable {
     public var projectName: String
     /// Null in a project's primary checkout.
     public var workspaceName: String?
+    /// The line counts Happy Agent publishes for the session's checkout,
+    /// drawn at the end of the workspace's row (RigGitLineChanges); nil
+    /// for a clean comparison and for every other agent.
+    public var changes: GitLineChanges?
     public var avatar: SessionAvatar
     public var timestamp: String
     public var lastActivityAt: Int64
@@ -252,6 +256,7 @@ public struct SessionList: Equatable, Sendable {
             title: session.title,
             projectName: place.projectName,
             workspaceName: place.workspaceName,
+            changes: session.isRig ? GitLineChanges(rigSummary: metadata?["git"]) : nil,
             avatar: SessionAvatar(
                 seed: session.avatarSeed,
                 isBot: session.isBot,

@@ -124,8 +124,9 @@ public struct TabletGroupedList: Equatable, Sendable {
         func member(_ session: SessionRecord) -> ProjectHomeData.Member {
             let metadata = session.metadata
             let machineId = metadata?["machineId"]?.stringValue
+            let shown = row(session, archived: false, divider: false)
             return ProjectHomeData.Member(
-                row: row(session, archived: false, divider: false),
+                row: shown,
                 createdAt: session.createdAt,
                 active: session.active,
                 machineOffline: machineId.flatMap { machines[$0] }.map { !$0.active } ?? false,
@@ -133,7 +134,7 @@ public struct TabletGroupedList: Equatable, Sendable {
                 machineId: machineId,
                 path: metadata?["path"]?.stringValue,
                 projectId: session.projectReference,
-                git: session.isRig ? GitLineChanges(rigSummary: metadata?["git"]) : nil
+                git: shown.changes
             )
         }
         let allProjects = ProjectHomeData.catalogProjects(rigProjectSessions, member: member)

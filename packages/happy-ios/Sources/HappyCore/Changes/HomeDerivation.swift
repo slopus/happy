@@ -104,13 +104,17 @@ public struct HomeListModel: Equatable, Sendable {
         )
     }
 
+    /// A bot's or an archived chat's row (ProjectHomeList.tsx `ChatRow`)
+    /// draws no line changes either.
     private static func rendered(_ row: ProjectHomeRow) -> ProjectHomeRow {
         switch row {
         case .bot(var session):
             session.lastActivityAt = 0
+            session.changes = nil
             return .bot(session)
         case .archived(var session):
             session.lastActivityAt = 0
+            session.changes = nil
             return .archived(session)
         default:
             return row

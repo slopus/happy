@@ -100,7 +100,7 @@ public struct ProjectHomeData: Equatable, Sendable {
                 machineId: machineId,
                 path: metadata?["path"]?.stringValue,
                 projectId: session.projectReference,
-                git: session.isRig ? GitLineChanges(rigSummary: metadata?["git"]) : nil
+                git: row.changes
             )
         }
 

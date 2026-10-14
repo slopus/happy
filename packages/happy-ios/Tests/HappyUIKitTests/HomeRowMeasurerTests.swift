@@ -159,6 +159,7 @@ final class HomeRowMeasurerTests: XCTestCase {
             title: "Fix the build",
             projectName: "happy",
             workspaceName: workspace,
+            changes: nil,
             avatar: SessionAvatar(seed: id),
             timestamp: "12:55 PM",
             lastActivityAt: 0,
