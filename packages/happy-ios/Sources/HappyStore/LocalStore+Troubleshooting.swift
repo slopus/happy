@@ -57,8 +57,10 @@ extension LocalStore {
             LIMIT 1
             """)
         return TroubleshootingSnapshot(machines: machines, recentSession: try recent.map {
-            let details: String = $0["details"]
-            guard case .array(let values) = try JSONValue.decode(Data(details.utf8)) else { preconditionFailure("json_extract with multiple paths returns an array") }
+            guard let details: String = $0["details"],
+                  case .array(let values) = try JSONValue.decode(Data(details.utf8)), values.count == 4 else {
+                throw DatabaseError(message: "Invalid troubleshooting session projection")
+            }
             return TroubleshootingSession(machineId: values[0].stringValue ?? "", projectName: values[1].stringValue,
                                           path: values[2].stringValue, happyHomeDir: values[3].stringValue)
         })
