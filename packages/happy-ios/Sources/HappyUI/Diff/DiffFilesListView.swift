@@ -365,6 +365,7 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
 
     private let layout = DiffFilesCollectionLayout()
     private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+    private let render: RenderServices
     private let measurer: DiffSectionMeasurer
 
     private var items: [DiffFileItem] = []
@@ -388,6 +389,7 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
 
     /// `render`: the account's diff documents and syntax colour.
     init(render: RenderServices) {
+        self.render = render
         measurer = DiffSectionMeasurer(render: render)
         super.init(frame: .zero)
         backgroundColor = UIColor(DiffStyle.surface)
@@ -487,7 +489,9 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
         let emptySize = DiffStyle.size(empty, width: max(0, width - DiffFilesListLayout.Metrics.emptyPadding * 2))
         Task { [weak self] in
             let plans = await measurer.plans(inputs, width: width, scale: scale)
-            guard let self, current == self.generation else { return }
+            // Plans made while the account stopped have empty or plain
+            // bodies; the ones on screen stay until the screen goes.
+            guard let self, current == self.generation, !self.render.isClosed else { return }
             self.apply(plans, width: width, noticeLayout: noticeLayout, emptySize: emptySize)
         }
     }

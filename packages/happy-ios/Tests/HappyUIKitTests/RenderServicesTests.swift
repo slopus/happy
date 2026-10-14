@@ -32,6 +32,22 @@ final class RenderServicesTests: XCTestCase {
         ))
     }
 
+    /// Screens drop a landing plan by this, while the stopping account is
+    /// still the open one; any one owner closed makes the plan stale.
+    func testServicesAreClosedOnceAnyOwnerIs() {
+        for close in [\RenderServices.diffDocuments, \.diffSyntax, \.codeSyntax] as [PartialKeyPath<RenderServices>] {
+            let render = RenderServices.isolated()
+            XCTAssertFalse(render.isClosed)
+            switch render[keyPath: close] {
+            case let owner as DiffDocumentCache: owner.close()
+            case let owner as DiffSyntaxService: owner.close()
+            case let owner as CodeSyntaxService: owner.close()
+            default: XCTFail("an owner")
+            }
+            XCTAssertTrue(render.isClosed)
+        }
+    }
+
     func testServicesAreEqualOnlyWhenTheyAreTheSameAccounts() {
         let one = RenderServices.isolated()
         XCTAssertEqual(one, one)
