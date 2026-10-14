@@ -49,7 +49,8 @@ public struct TabletGroupedList: Equatable, Sendable {
         _ snapshot: HomeSnapshot,
         offline: [MachineChoice]?,
         clock: SessionList.Clock = SessionList.Clock(),
-        git: [GitCheckoutKey: GitHeadingStatus] = [:]
+        git: [GitCheckoutKey: GitHeadingStatus] = [:],
+        draftSessionIds: Set<String> = []
     ) {
         let settings = AccountSettings(snapshot.settings)
         let machines = Dictionary(snapshot.machines.machines.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -71,6 +72,7 @@ public struct TabletGroupedList: Equatable, Sendable {
             )
             // It orders the list; the row draws `timestamp`.
             row.lastActivityAt = 0
+            row.hasDraft = draftSessionIds.contains(row.id)
             return row
         }
 
@@ -406,6 +408,8 @@ public struct TabletChatRow: Equatable, Sendable {
     public var last: Bool
     /// The project's last card: ProjectGroup.tsx's 4 below it.
     public var projectEnd: Bool
+    /// The compact row draws a draft indicator only while waiting and read.
+    public var hasDraft: Bool = false
 
     public init(id: String, title: String?, connected: Bool, indicator: Indicator, showsBorder: Bool, first: Bool, last: Bool, projectEnd: Bool) {
         self.id = id
@@ -442,6 +446,7 @@ public struct TabletChatRow: Equatable, Sendable {
             last: last,
             projectEnd: projectEnd
         )
+        hasDraft = member.row.hasDraft && state == .waiting && !member.unread
     }
 }
 
@@ -502,6 +507,8 @@ public struct TabletArchivedRow: Equatable, Sendable {
     public var first: Bool
     /// The bottom corners and the 12 under it, before a heading or the end.
     public var last: Bool
+    /// The archive card's avatar overlay.
+    public var hasDraft: Bool = false
 
     init(_ session: SessionRecord, row: SessionRow, now: Int64, first: Bool) {
         let state = row.state
@@ -550,6 +557,7 @@ public struct TabletArchivedRow: Equatable, Sendable {
         }
 
         self.id = session.id
+        self.hasDraft = row.hasDraft
         self.title = row.title
         self.avatar = row.avatar
         self.connected = state != .disconnected

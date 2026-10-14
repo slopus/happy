@@ -4,6 +4,8 @@ import Foundation
 /// What an `ApplyPipeline` has done, for the exact-count tests and the
 /// debug apply log.
 public struct ApplyCounters: Equatable, Sendable {
+    /// Updates that started the background worker.
+    public var wakeups = 0
     /// Inputs taken and derived.
     public var derivations = 0
     /// Derivations that changed nothing on screen.
@@ -115,12 +117,17 @@ public final class ApplyPipeline<Input: Sendable, State: Sendable, Output: Senda
 
     /// Changes the input and makes sure a derivation follows.
     public func update(_ change: (inout Input) -> Void) {
+        update(ifChanged: { input in change(&input); return true })
+    }
+
+    private func update(ifChanged change: (inout Input) -> Bool) {
         let start: Bool = lock.withLock {
             guard !cancelled else { return false }
-            change(&input)
+            guard change(&input) else { return false }
             dirty = true
             guard !running else { return false }
             running = true
+            counters.wakeups += 1
             return true
         }
         if start {
@@ -131,10 +138,18 @@ public final class ApplyPipeline<Input: Sendable, State: Sendable, Output: Senda
     /// Writes each value of `stream` into the input, off the main thread,
     /// until the pipeline is cancelled.
     public func follow<Value: Sendable>(_ stream: AsyncStream<Value>, _ assign: @escaping @Sendable (inout Input, Value) -> Void) {
+        follow(ifChanged: stream) { input, value in assign(&input, value); return true }
+    }
+
+    /// Compares and assigns a feed value under the input lock. The closure
+    /// must be cheap and pure: no I/O or re-entry. Return false without
+    /// changing the input when its value is already current; that leaves
+    /// the worker, dirty flag and applied state untouched.
+    public func follow<Value: Sendable>(ifChanged stream: AsyncStream<Value>, _ assign: @escaping @Sendable (inout Input, Value) -> Bool) {
         let task = Task.detached(priority: priority) { [weak self] in
             for await value in stream {
                 guard let self, !Task.isCancelled else { return }
-                self.update { assign(&$0, value) }
+                self.update(ifChanged: { assign(&$0, value) })
             }
         }
         let keep: Bool = lock.withLock {

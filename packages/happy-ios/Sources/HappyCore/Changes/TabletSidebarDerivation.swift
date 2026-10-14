@@ -33,15 +33,16 @@ public struct TabletSidebarFrame: Equatable, Sendable {
         _ state: TabletSidebarState,
         snapshot: HomeSnapshot,
         clock: SessionList.Clock = SessionList.Clock(),
-        git: [GitCheckoutKey: GitHeadingStatus] = [:]
+        git: [GitCheckoutKey: GitHeadingStatus] = [:],
+        draftSessionIds: Set<String> = []
     ) {
         switch state.content {
         case .loading: content = .loading
         case .empty(let variant): content = .empty(variant)
         case .list(let list, let offline) where list.grouping == .project:
-            content = .grouped(TabletGroupedList(snapshot, offline: offline, clock: clock, git: git))
+            content = .grouped(TabletGroupedList(snapshot, offline: offline, clock: clock, git: git, draftSessionIds: draftSessionIds))
         case .list(let list, let offline):
-            content = .list(HomeListModel(list, offline: offline, expandedProjects: []))
+            content = .list(HomeListModel(list, offline: offline, expandedProjects: [], draftSessionIds: draftSessionIds))
         }
         hasArchived = state.hasArchived
         hidesArchived = state.hidesArchived
@@ -64,10 +65,12 @@ public struct TabletSidebarFrame: Equatable, Sendable {
 public struct TabletSidebarInput: Sendable {
     public var snapshot: HomeSnapshot?
     public var git: [GitCheckoutKey: GitHeadingStatus]
+    public var draftSessionIds: Set<String>
 
-    public init(snapshot: HomeSnapshot? = nil, git: [GitCheckoutKey: GitHeadingStatus] = [:]) {
+    public init(snapshot: HomeSnapshot? = nil, git: [GitCheckoutKey: GitHeadingStatus] = [:], draftSessionIds: Set<String> = []) {
         self.snapshot = snapshot
         self.git = git
+        self.draftSessionIds = draftSessionIds
     }
 }
 
@@ -108,7 +111,7 @@ public enum TabletSidebarDerivation {
     }
 
     public static func derive(_ input: TabletSidebarInput, applied: Applied, clock: SessionList.Clock? = nil) -> (output: TabletSidebarUpdate, state: Applied)? {
-        derive(input.snapshot, git: input.git, applied: applied, clock: clock)
+        derive(input.snapshot, git: input.git, applied: applied, clock: clock, draftSessionIds: input.draftSessionIds)
     }
 
     /// `derive` at one instant (`clock`, or now), with `wake` set for the
@@ -132,11 +135,12 @@ public enum TabletSidebarDerivation {
         _ snapshot: HomeSnapshot?,
         git: [GitCheckoutKey: GitHeadingStatus] = [:],
         applied: Applied,
-        clock: SessionList.Clock? = nil
+        clock: SessionList.Clock? = nil,
+        draftSessionIds: Set<String> = []
     ) -> (output: TabletSidebarUpdate, state: Applied)? {
         guard let snapshot else { return nil }
         let clock = clock ?? SessionList.Clock()
-        let frame = TabletSidebarFrame(TabletSidebarState(snapshot, clock: clock), snapshot: snapshot, clock: clock, git: git)
+        let frame = TabletSidebarFrame(TabletSidebarState(snapshot, clock: clock), snapshot: snapshot, clock: clock, git: git, draftSessionIds: draftSessionIds)
         guard frame != applied.frame else { return nil }
         var state = applied
         state.frame = frame
