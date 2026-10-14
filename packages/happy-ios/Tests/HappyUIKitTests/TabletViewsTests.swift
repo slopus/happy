@@ -18,7 +18,9 @@ final class TabletViewsTests: XCTestCase {
     func testTheHeaderStartsWithBackDimmedAndZenOff() {
         let header = TabletPersistentHeaderView()
         XCTAssertFalse(header.backButton.isEnabled)
-        XCTAssertEqual(header.backButton.alpha, TabletShellLayout.Metrics.disabledOpacity)
+        // A view's alpha is kept as its layer's Float opacity, so it reads
+        // back as 0.3 in Float, exactly.
+        XCTAssertEqual(header.backButton.layer.opacity, Float(TabletShellLayout.Metrics.disabledOpacity))
         header.canGoBack = true
         XCTAssertTrue(header.backButton.isEnabled)
         XCTAssertEqual(header.backButton.alpha, 1)
