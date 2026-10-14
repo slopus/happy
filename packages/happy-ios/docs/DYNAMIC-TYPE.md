@@ -180,7 +180,10 @@ Following now:
   the title, the line under it, "Start New Session" and "Show archived".
   Their sizes are measured off the main thread (`NoSessionsMeasure`, the
   labels' own styles and line limits through TextKit 1, ceiled to the
-  screen's pixels, and through the HappyLayout layouts), keyed by the
+  screen's pixels, and through the HappyLayout layouts; a line that runs
+  past the width, cut short or wrapped with its space past the edge, as
+  "Show archived" and the title are at the largest size, takes the whole
+  width, as a label measuring itself does), keyed by the
   words, the content's width, the text size, the screen scale and whether
   the archive is offered; a result for anything else is refused. The view
   lays out only what was measured, and gives the two buttons their
