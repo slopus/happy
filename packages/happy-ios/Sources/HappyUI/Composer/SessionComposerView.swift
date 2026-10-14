@@ -94,6 +94,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// The card width the restore waits on the text's height at.
     private var restoreWaitWidth: CGFloat?
     private var restoreDeadline: Task<Void, Never>?
+    /// `ChatComposerRestore.timeout`; a test that checks the draft is
+    /// measured before it shows sets it beyond reach.
+    private let restoreTimeout: Duration
     /// Inside `composerHeight(fitting:)`: a restore reached there is
     /// announced after it.
     private var answeringHeight = false
@@ -113,8 +116,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         effort: Strings.Composer.effortTitle
     ) }
 
-    init(environment: ChatComposerEnvironment) {
+    init(environment: ChatComposerEnvironment, restoreTimeout: Duration = ChatComposerRestore.timeout) {
         self.environment = environment
+        self.restoreTimeout = restoreTimeout
         draftWriter = Self.makeWriter(environment, generation: 0, after: nil)
         staging = ComposerAttachmentStaging(filesDirectory: environment.account.filesDirectory)
         images = ComposerImagePicker(staging: staging)
@@ -154,8 +158,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         draftWriter.start { [weak self] delivery in
             self?.receive(delivery)
         }
+        let timeout = restoreTimeout
         restoreDeadline = Task { [weak self] in
-            try? await Task.sleep(for: ChatComposerRestore.timeout)
+            try? await Task.sleep(for: timeout)
             guard !Task.isCancelled else { return }
             self?.restored()
         }
@@ -224,7 +229,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         guard width > 0, width != restoreWaitWidth else { return }
         restoreWaitWidth = width
         let generation = restoreGeneration
-        card.whenTextMeasured(fitting: width, timeout: ChatComposerRestore.timeout) { [weak self] readiness in
+        // Started after the deadline was, so the deadline runs out first.
+        card.whenTextMeasured(fitting: width, timeout: restoreTimeout) { [weak self] readiness in
             // A wait that ran out or was replaced: the deadline (or a newer
             // wait) decides.
             guard let self, readiness == .measured, generation == self.restoreGeneration else { return }

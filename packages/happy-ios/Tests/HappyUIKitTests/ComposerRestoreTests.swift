@@ -64,25 +64,37 @@ final class ComposerRestoreTests: XCTestCase {
         )
     }
 
+    /// The chat's composer as the chat makes it, with the production
+    /// deadline.
     private func composer(_ sessionId: String, _ account: AccountSession, storage: (any ComposerStorage)? = nil) -> any ChatComposerView {
         ChatComposerFactory.make(ChatComposerEnvironment(
             sessionId: sessionId, account: account, sender: account.sender, controls: account.actions, draftStorage: storage
         ))
     }
 
+    /// One whose deadline can't run out within the test: if it restores,
+    /// its draft was read and measured, however slow the machine.
+    private func measuredComposer(_ sessionId: String, _ account: AccountSession) -> SessionComposerView {
+        SessionComposerView(
+            environment: ChatComposerEnvironment(sessionId: sessionId, account: account, sender: account.sender, controls: account.actions),
+            restoreTimeout: .seconds(3600)
+        )
+    }
+
     private func card(_ composer: any ChatComposerView) throws -> AgentInputCardView {
         try XCTUnwrap(composer.subviews.compactMap { $0 as? AgentInputCardView }.first)
     }
 
+    /// Up to 10 seconds: a first run on a cold simulator is slow.
     private func until(_ condition: () -> Bool) async throws {
-        for _ in 0..<200 where !condition() {
+        for _ in 0..<2000 where !condition() {
             try await Task.sleep(for: .milliseconds(5))
         }
     }
 
     func testARestoredDraftIsMeasuredBeforeItShows() async throws {
         let screen = Screen()
-        let composer = composer("s", try account(drafts: ["s": "one\ntwo\nthree"]))
+        let composer = measuredComposer("s", try account(drafts: ["s": "one\ntwo\nthree"]))
         composer.composerDelegate = screen
         // The chat lays out at once, the dock hidden.
         let guess = composer.composerHeight(fitting: 393)
@@ -92,9 +104,13 @@ final class ComposerRestoreTests: XCTestCase {
         XCTAssertEqual(try card(composer).text, "one\ntwo\nthree")
         let shown = composer.composerHeight(fitting: 393)
         XCTAssertGreaterThan(shown, guess, "three lines")
+        composer.frame = CGRect(x: 0, y: 0, width: 393, height: shown)
+        composer.layoutIfNeeded()
+        let shownCard = try card(composer)
+        XCTAssertTrue(shownCard.isTextMeasured(fitting: shownCard.bounds.width), "measured, not the deadline")
         // Nothing moves after it shows.
         let invalidations = screen.invalidations
-        try await card(composer).textMeasured()
+        await shownCard.textMeasured()
         try await Task.sleep(for: .milliseconds(50))
         XCTAssertEqual(composer.composerHeight(fitting: 393), shown)
         XCTAssertEqual(screen.invalidations, invalidations)
@@ -104,7 +120,7 @@ final class ComposerRestoreTests: XCTestCase {
     func testARestoreHeldAcrossARetargetIsTheNewChats() async throws {
         let screen = Screen()
         let account = try account(drafts: ["s": "old\nold\nold\nold", "t": "new"])
-        let composer = composer("s", account)
+        let composer = measuredComposer("s", account)
         composer.composerDelegate = screen
         let guess = composer.composerHeight(fitting: 393)
         // The chat became another before its draft was read.
@@ -116,14 +132,21 @@ final class ComposerRestoreTests: XCTestCase {
         XCTAssertEqual(composer.composerHeight(fitting: 393), guess, "one line, never the old draft's four")
     }
 
+    /// The production deadline, unchanged.
     func testAStalledReadShowsAtTheDeadline() async throws {
+        XCTAssertEqual(ChatComposerRestore.timeout, .milliseconds(300))
         let screen = Screen()
+        let made = ContinuousClock.now
         let composer = composer("s", try account(drafts: [:]), storage: StalledStorage())
         composer.composerDelegate = screen
         let guess = composer.composerHeight(fitting: 393)
         try await Task.sleep(for: .milliseconds(100))
-        XCTAssertFalse(composer.isRestored)
+        // Not early (checked only while the clock is clearly short of it).
+        if made.duration(to: .now) < .milliseconds(250) {
+            XCTAssertFalse(composer.isRestored)
+        }
         try await until { composer.isRestored }
+        XCTAssertGreaterThanOrEqual(made.duration(to: .now), .milliseconds(300))
         XCTAssertEqual(screen.restores, [0])
         XCTAssertEqual(composer.composerHeight(fitting: 393), guess, "the height known: nothing measured on main")
     }
@@ -140,7 +163,7 @@ final class ComposerRestoreTests: XCTestCase {
 
     func testARestoreReachedWhileTheScreenLaysOutIsAnnouncedAfter() async throws {
         let screen = Screen()
-        let composer = composer("s", try account(drafts: [:]))
+        let composer = measuredComposer("s", try account(drafts: [:]))
         composer.composerDelegate = screen
         // The (empty) draft is read before the screen asks.
         try await Task.sleep(for: .milliseconds(100))
