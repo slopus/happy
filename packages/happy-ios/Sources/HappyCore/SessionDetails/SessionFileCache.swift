@@ -62,6 +62,9 @@ public final class SessionFileCache: @unchecked Sendable {
     private var overtaken: Set<Key> = []
     private var closed = false
     private let maxPendingReads: Int
+    /// Callers that have waited on a disk read so far, joined or started;
+    /// for tests that hold the disk.
+    private var diskWaits = 0
     let disk: FileCacheDisk?
 
     /// Memory only, as happy-app's.
@@ -149,8 +152,12 @@ public final class SessionFileCache: @unchecked Sendable {
         let pending: Task<FileViewer.Snapshot?, Never>? = lock.withLock {
             guard !closed else { return nil }
             if memory.contains(key) { return nil }
-            if let read = reads[key] { return read }
+            if let read = reads[key] {
+                diskWaits += 1
+                return read
+            }
             guard let disk, reads.count < maxPendingReads else { return nil }
+            diskWaits += 1
             let read = Task.detached(priority: .userInitiated) { [self] in
                 finishRead(key, await disk.read(key))
             }
@@ -218,6 +225,7 @@ public final class SessionFileCache: @unchecked Sendable {
     var keptCount: Int { lock.withLock { memory.count } }
     var rootCount: Int { lock.withLock { roots.count } }
     var pendingReadCount: Int { lock.withLock { reads.count } }
+    var diskWaitCount: Int { lock.withLock { diskWaits } }
 }
 
 /// Sessions' roots, least recently used let go first.
@@ -508,6 +516,11 @@ final class FileCacheDisk: @unchecked Sendable {
 
     var writes: Int {
         get async { await onQueue { self.writeCount } }
+    }
+
+    /// Whether it still takes writes; false once `close` has begun.
+    var isAccepting: Bool {
+        lock.withLock { accepting }
     }
 
     /// What waits for the queue now: files and sessions, and the text held.
