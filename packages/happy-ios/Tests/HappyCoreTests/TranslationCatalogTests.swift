@@ -147,6 +147,7 @@ final class TranslationCatalogTests: XCTestCase {
         XCTAssertEqual(AppLanguage.resolve(preferred: "zh-Hant", deviceLanguages: ["en"]), "zh-Hant")
     }
 
+    @MainActor
     func testTheScreensLanguageChangesOnlyWhenItDiffers() async {
         defer { AppLocalization.use(nil) }
         AppLocalization.use(nil)

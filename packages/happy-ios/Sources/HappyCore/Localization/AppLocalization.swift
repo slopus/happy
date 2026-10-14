@@ -15,12 +15,16 @@ public enum AppLocalization {
     nonisolated(unsafe) private static var catalog: TranslationCatalog?
 
     /// The screens' catalog, or nil while they speak English, whose words
-    /// the screens hold themselves.
+    /// the screens hold themselves. Main thread only: Debug builds stop
+    /// when it is read anywhere else.
     public static var screens: TranslationCatalog? {
-        lock.withLock { catalog }
+        #if DEBUG
+        dispatchPrecondition(condition: .onQueue(.main))
+        #endif
+        return lock.withLock { catalog }
     }
 
-    /// The screens' language code.
+    /// The screens' language code; main thread only, as `screens`.
     public static var language: String {
         screens?.language ?? "en"
     }
