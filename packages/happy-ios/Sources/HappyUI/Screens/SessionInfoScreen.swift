@@ -119,7 +119,7 @@ final class SessionInfoViewController: UIViewController {
                     stateView = nil
                     list.isHidden = false
                 }
-                if changes.title { title = model.title ?? Strings.Session.newChat }
+                if changes.title { setPlainHeaderTitle(model.title ?? Strings.Session.newChat) }
                 for section in changes.rebuilt {
                     sectionViews[section] = build(section, model: model, frame: next)
                 }
@@ -152,7 +152,7 @@ final class SessionInfoViewController: UIViewController {
     }
 
     private func showState(_ view: UIView, title: String) {
-        self.title = title
+        setPlainHeaderTitle(title)
         list.isHidden = true
         list.sections = []
         sectionViews = [:]

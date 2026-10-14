@@ -263,12 +263,12 @@ final class AccountsTests: XCTestCase {
         await account.restore()
         XCTAssertEqual(try account.session?.store.cursor(.sessionsChangedSince), 42)
         XCTAssertFalse(FileManager.default.fileExists(atPath: old.path))
-        try AccountSession.prepareDirectory(directory: directory, id: id)
+        try await Task.detached { try AccountSession.prepareDirectory(directory: directory, id: id) }.value
         XCTAssertEqual(try account.session?.store.cursor(.sessionsChangedSince), 42)
         await account.session?.stop()
     }
 
-    func testMigrationResumesAfterSidecarMovedBeforeDatabase() throws {
+    func testMigrationResumesAfterSidecarMovedBeforeDatabase() async throws {
         let directory = try directory()
         let id = try accountID(shared)
         let old = directory.appendingPathComponent("happy-\(id).sqlite")
@@ -278,7 +278,7 @@ final class AccountsTests: XCTestCase {
         // A previous launch was interrupted after moving WAL but before SHM/database.
         try Data("wal".utf8).write(to: URL(fileURLWithPath: new.path + "-wal"))
         try Data("shm".utf8).write(to: URL(fileURLWithPath: old.path + "-shm"))
-        try AccountSession.prepareDirectory(directory: directory, id: id)
+        try await Task.detached { try AccountSession.prepareDirectory(directory: directory, id: id) }.value
         XCTAssertEqual(try Data(contentsOf: new), Data("database".utf8))
         XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: new.path + "-wal")), Data("wal".utf8))
         XCTAssertEqual(try Data(contentsOf: URL(fileURLWithPath: new.path + "-shm")), Data("shm".utf8))

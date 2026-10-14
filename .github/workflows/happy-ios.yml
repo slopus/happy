@@ -1,0 +1,94 @@
+name: happy-ios
+
+on:
+  pull_request:
+    paths: ['packages/happy-ios/**', '.github/workflows/happy-ios.yml']
+  push:
+    branches: [main]
+    paths: ['packages/happy-ios/**', '.github/workflows/happy-ios.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: happy-ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  uikit:
+    runs-on: macos-15
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.2.app/Contents/Developer
+    defaults:
+      run:
+        working-directory: packages/happy-ios
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Prepare Xcode and generate the project
+        run: |
+          set -euo pipefail
+          test -d "$DEVELOPER_DIR"
+          xcodebuild -version
+          brew install xcodegen
+          xcodegen generate --spec project.yml
+          mkdir -p build/ci
+      - name: Select and boot an available iPhone simulator
+        run: |
+          set -euo pipefail
+          xcrun simctl list devices available --json > build/ci/simulators.json
+          python3 - <<'PY' >> "$GITHUB_ENV"
+          import json
+          import re
+          from pathlib import Path
+
+          devices = json.loads(Path('build/ci/simulators.json').read_text())['devices']
+          candidates = []
+          for runtime, entries in devices.items():
+              version = re.fullmatch(r'com\.apple\.CoreSimulator\.SimRuntime\.iOS-(\d+)-(\d+)(?:-(\d+))?', runtime)
+              if not version:
+                  continue
+              numbers = tuple(int(part or 0) for part in version.groups())
+              if numbers < (17, 0, 0):
+                  continue
+              for entry in entries:
+                  if entry.get('isAvailable') and entry['name'].startswith('iPhone'):
+                      candidates.append((numbers, entry['name'], entry['udid']))
+          if not candidates:
+              raise SystemExit('No available iPhone simulator with iOS 17 or later')
+          _, _, device_id = max(candidates)
+          if not re.fullmatch(r'[0-9A-Fa-f-]{36}', device_id):
+              raise SystemExit('Invalid simulator UUID')
+          print(f'HAPPY_IOS_SIMULATOR_ID={device_id}')
+          PY
+      - name: Run UIKit tests on the simulator
+        run: |
+          set -euo pipefail
+          xcrun simctl bootstatus "$HAPPY_IOS_SIMULATOR_ID" -b
+          xcodebuild test \
+            -project Happy.xcodeproj \
+            -scheme Happy \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=$HAPPY_IOS_SIMULATOR_ID" \
+            -destination-timeout 120 \
+            -derivedDataPath build/ci/DerivedData \
+            -resultBundlePath build/ci/HappyUIKitTests.xcresult \
+            -parallel-testing-enabled NO \
+            -jobs 4 \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee build/ci/xcodebuild.log
+      - name: Upload test results and build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: happy-ios-uikit-${{ github.sha }}
+          path: |
+            packages/happy-ios/build/ci/HappyUIKitTests.xcresult
+            packages/happy-ios/build/ci/xcodebuild.log
+            packages/happy-ios/build/ci/simulators.json
+          if-no-files-found: warn
+          retention-days: 7
