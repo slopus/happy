@@ -67,16 +67,27 @@ final class IconAndThemeTests: XCTestCase {
 
         ThemeController.apply(.dark, to: window)
         XCTAssertEqual(window.overrideUserInterfaceStyle, .dark)
+        // UIKit hands a window's new style down to its views lazily, before
+        // their next layout (and so before they draw); the label's traits
+        // read straight after are the old ones. Ask for that update now.
+        settleTraits(window, label)
         XCTAssertEqual(label.traitCollection.userInterfaceStyle, .dark)
         XCTAssertEqual(resolved(Palette.text, in: label), UIColor(Palette.text.dark))
         XCTAssertEqual(resolved(Palette.groupedBackground, in: window), UIColor(Palette.groupedBackground.dark))
 
         ThemeController.apply(.light, to: window)
+        settleTraits(window, label)
         XCTAssertEqual(label.traitCollection.userInterfaceStyle, .light)
         XCTAssertEqual(resolved(Palette.text, in: label), UIColor(Palette.text.light))
 
         ThemeController.apply(.adaptive, to: window)
         XCTAssertEqual(window.overrideUserInterfaceStyle, .unspecified)
+    }
+
+    /// The trait update UIKit makes before the next layout, made now, from
+    /// the window down.
+    private func settleTraits(_ views: UIView...) {
+        for view in views { view.updateTraitsIfNeeded() }
     }
 
     private func resolved(_ token: ColorToken, in view: UIView) -> UIColor {
