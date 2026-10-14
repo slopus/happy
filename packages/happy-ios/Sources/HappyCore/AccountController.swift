@@ -615,14 +615,17 @@ public final class AccountController {
         let next = try await Task.detached {
             let store: LocalStore
             var files: URL?
+            var cacheDirectory: URL?
             if let directory {
                 try prepareDirectory(directory, entry.id)
                 store = try LocalStore.open(at: AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("store.sqlite"))
                 files = AccountSession.accountDirectory(directory: directory, id: entry.id).appendingPathComponent("files", isDirectory: true)
+                cacheDirectory = SessionFileCache.directory(inAccount: AccountSession.accountDirectory(directory: directory, id: entry.id))
             } else {
                 store = try existing ?? LocalStore.inMemory()
             }
-            return try AccountSession(credentials: credentials, store: store, dependencies: dependencies, filesDirectory: files)
+            return try AccountSession(credentials: credentials, store: store, dependencies: dependencies,
+                                      filesDirectory: files, fileCacheDirectory: cacheDirectory)
         }.value
         if directory == nil { memoryStores[entry.id] = next.store }
         return next
