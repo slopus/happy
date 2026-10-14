@@ -44,6 +44,16 @@ public struct ChatOlderPaging: Equatable, Sendable {
 
     /// What the screen sees at a check.
     public struct Reading: Equatable, Sendable {
+        /// The list has a measured viewport and content; before its first
+        /// layout nothing is near anything.
+        public var laidOut: Bool
+        /// The store holds a message; with none the screen is
+        /// EmptyMessages, which pages on its own (`checkEmpty`).
+        public var storeHasMessages: Bool
+        /// A window growth was asked for and has not reached the screen
+        /// (`requestedWindowEndRef`): scrolls inside the zone meanwhile
+        /// neither grow it again nor fetch.
+        public var growthPending: Bool
         /// The oldest rendered row is within a screen of the visible area.
         public var nearOldest: Bool
         /// The store holds messages older than the window renders.
@@ -57,7 +67,13 @@ public struct ChatOlderPaging: Equatable, Sendable {
         /// The screen is the one shown.
         public var active: Bool
 
-        public init(nearOldest: Bool, windowCanGrow: Bool, oldestBoundary: String?, hasMore: Bool, loading: Bool, active: Bool) {
+        public init(
+            laidOut: Bool, storeHasMessages: Bool, growthPending: Bool,
+            nearOldest: Bool, windowCanGrow: Bool, oldestBoundary: String?, hasMore: Bool, loading: Bool, active: Bool
+        ) {
+            self.laidOut = laidOut
+            self.storeHasMessages = storeHasMessages
+            self.growthPending = growthPending
             self.nearOldest = nearOldest
             self.windowCanGrow = windowCanGrow
             self.oldestBoundary = oldestBoundary
@@ -91,7 +107,7 @@ public struct ChatOlderPaging: Equatable, Sendable {
 
     /// `fillOlder`.
     public mutating func check(_ reading: Reading) -> Step {
-        guard reading.nearOldest else { return .none }
+        guard reading.laidOut, reading.storeHasMessages, !reading.growthPending, reading.nearOldest else { return .none }
         if reading.windowCanGrow { return .growWindow }
         // A settled page is judged once its rows could have joined.
         if let judged = baseline, pending == nil {
@@ -131,6 +147,17 @@ public struct ChatOlderPaging: Equatable, Sendable {
         guard pending == request else { return }
         baseline = nil
         blocked = .error
+    }
+
+    /// Starts over for another chat, or for the list taking over from
+    /// EmptyMessages, each of which has its own paging in happy-app. The
+    /// request numbers keep counting, so an answer to a fetch from before
+    /// never settles one started after.
+    public mutating func reset() {
+        pending = nil
+        baseline = nil
+        invisiblePages = 0
+        blocked = nil
     }
 
     /// `retryOlder`.

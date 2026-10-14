@@ -4,10 +4,14 @@ import XCTest
 /// ChatList.tsx's and EmptyMessages.tsx's history paging, step by step.
 final class ChatOlderPagingTests: XCTestCase {
     private func reading(
+        laidOut: Bool = true, messages: Bool = true, growing: Bool = false,
         near: Bool = true, canGrow: Bool = false, boundary: String? = "m1",
         hasMore: Bool = true, loading: Bool = false, active: Bool = true
     ) -> ChatOlderPaging.Reading {
-        .init(nearOldest: near, windowCanGrow: canGrow, oldestBoundary: boundary, hasMore: hasMore, loading: loading, active: active)
+        .init(
+            laidOut: laidOut, storeHasMessages: messages, growthPending: growing,
+            nearOldest: near, windowCanGrow: canGrow, oldestBoundary: boundary, hasMore: hasMore, loading: loading, active: active
+        )
     }
 
     func testTheStoreIsRenderedBeforeTheServerIsAsked() {
@@ -160,5 +164,78 @@ final class ChatOlderPagingTests: XCTestCase {
         XCTAssertEqual(paging.checkEmpty(hasMore: true, loading: false), .none)
         paging.retry()
         XCTAssertEqual(paging.checkEmpty(hasMore: true, loading: false), .fetchOlder(request: 8))
+    }
+
+    func testNothingHappensBeforeTheFirstLayoutWithoutMessagesOrWhileAGrowthIsOnItsWay() {
+        var paging = ChatOlderPaging()
+        XCTAssertEqual(paging.check(reading(laidOut: false)), .none)
+        XCTAssertEqual(paging.check(reading(laidOut: false, canGrow: true)), .none)
+        XCTAssertEqual(paging.check(reading(messages: false)), .none, "EmptyMessages pages")
+        // Scrolls inside the zone while a growth renders ask for nothing:
+        // not another growth, not a fetch.
+        XCTAssertEqual(paging.check(reading(growing: true, canGrow: true)), .none)
+        XCTAssertEqual(paging.check(reading(growing: true)), .none)
+        XCTAssertNil(paging.pending)
+        XCTAssertEqual(paging.check(reading()), .fetchOlder(request: 1))
+    }
+
+    func testAPageIsJudgedOnlyOnceItsRowsCouldHaveJoinedTheWindow() {
+        var paging = ChatOlderPaging()
+        XCTAssertEqual(paging.check(reading(boundary: "m1")), .fetchOlder(request: 1))
+        XCTAssertTrue(paging.settled(request: 1, advanced: true))
+        // The page's rows are in the store; the window takes them over two
+        // growths, the far end not yet moved.
+        XCTAssertEqual(paging.check(reading(canGrow: true, boundary: "m1")), .growWindow)
+        XCTAssertEqual(paging.check(reading(growing: true, boundary: "m1")), .none)
+        XCTAssertEqual(paging.check(reading(canGrow: true, boundary: "m1")), .growWindow)
+        XCTAssertEqual(paging.invisiblePages, 0)
+        XCTAssertEqual(paging.baseline, .some("m1"), "still awaiting judgement")
+        XCTAssertEqual(paging.check(reading(boundary: "m-120")), .fetchOlder(request: 2))
+        XCTAssertEqual(paging.invisiblePages, 0, "it showed something")
+    }
+
+    func testResetStartsOverAndAnAnswerFromBeforeSettlesNothing() {
+        var paging = ChatOlderPaging()
+        for request in 1...5 {
+            XCTAssertEqual(paging.check(reading(boundary: "m1")), .fetchOlder(request: request))
+            paging.settled(request: request, advanced: true)
+        }
+        XCTAssertEqual(paging.check(reading(boundary: "m1")), .none)
+        XCTAssertEqual(paging.blocked, .limit)
+        XCTAssertEqual(paging.check(reading(boundary: "m1")), .none)
+        // A sixth was never asked; the reader opens another chat with one
+        // of this one's in flight.
+        paging.loadMore()
+        XCTAssertEqual(paging.check(reading(boundary: "m1")), .fetchOlder(request: 6))
+
+        paging.reset()
+        XCTAssertNil(paging.pending)
+        XCTAssertNil(paging.baseline)
+        XCTAssertNil(paging.blocked)
+        XCTAssertEqual(paging.invisiblePages, 0)
+        XCTAssertEqual(paging.status(hasMore: true, loading: false, windowReachesOldest: true), .idle)
+        XCTAssertEqual(paging.check(reading(boundary: "n1")), .fetchOlder(request: 7))
+        // The old chat's answer, success or failure, belongs to request 6.
+        XCTAssertFalse(paging.settled(request: 6, advanced: true))
+        paging.failed(request: 6)
+        XCTAssertNil(paging.blocked)
+        XCTAssertEqual(paging.pending, 7)
+    }
+
+    func testTheListTakingOverFromEmptyMessagesStartsItsOwnCount() {
+        var paging = ChatOlderPaging()
+        for request in 1...3 {
+            XCTAssertEqual(paging.checkEmpty(hasMore: true, loading: false), .fetchOlder(request: request))
+            XCTAssertTrue(paging.settledEmpty(request: request, advanced: true))
+        }
+        XCTAssertEqual(paging.invisiblePages, 3)
+        XCTAssertEqual(paging.checkEmpty(hasMore: true, loading: false), .fetchOlder(request: 4))
+        // That page brought the first visible message: the list replaces
+        // the placeholder, with the placeholder's page still out.
+        paging.reset()
+        XCTAssertEqual(paging.check(reading(boundary: "m1")), .fetchOlder(request: 5))
+        XCTAssertFalse(paging.settledEmpty(request: 4, advanced: true))
+        XCTAssertEqual(paging.invisiblePages, 0)
+        XCTAssertTrue(paging.settled(request: 5, advanced: true))
     }
 }
