@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyCore
 import HappyLayout
 @testable import HappyUI
 import UIKit
@@ -7,7 +8,7 @@ import XCTest
 /// The new session composer's prompt is measured off the main thread, as
 /// the session composer's is: a guess until the height lands, never a
 /// measurement on the main thread, and a draft that comes back unchanged
-/// opens at its height.
+/// to a composer of the same memo opens at its height.
 @MainActor
 final class NewSessionComposerHeightTests: XCTestCase {
     private let width: CGFloat = 369
@@ -48,7 +49,9 @@ final class NewSessionComposerHeightTests: XCTestCase {
 
     func testADraftThatComesBackOpensAtItsHeight() async {
         let text = lines(3)
+        let memo = MeasuredDraftMemo()
         let first = NewSessionComposerView(frame: .zero)
+        first.heights = memo
         first.setText(text)
         _ = first.layout(width: width)
         await first.textMeasured()
@@ -57,6 +60,7 @@ final class NewSessionComposerHeightTests: XCTestCase {
 
         // The next screen, set before its first layout, as the screen does.
         let next = NewSessionComposerView(frame: .zero)
+        next.heights = memo
         next.setText(text)
         var changes = 0
         next.onHeightChange = { changes += 1 }
@@ -68,13 +72,16 @@ final class NewSessionComposerHeightTests: XCTestCase {
 
     func testAnEditedDraftIsMeasuredAgain() async {
         let text = lines(3)
+        let memo = MeasuredDraftMemo()
         let first = NewSessionComposerView(frame: .zero)
+        first.heights = memo
         first.setText(text)
         _ = first.layout(width: width)
         await first.textMeasured()
 
         let edited = text + "\n" + lines(1)
         let next = NewSessionComposerView(frame: .zero)
+        next.heights = memo
         next.setText(edited)
         _ = next.layout(width: width)
         await next.textMeasured()

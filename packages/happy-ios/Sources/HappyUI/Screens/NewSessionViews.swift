@@ -447,12 +447,15 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
     private var textGeneration = 0
     /// The input's width and the text's height `layout(width:)` last gave.
     private var laidOut: (width: CGFloat, height: CGFloat)?
-    /// A height known for the text `setText` brought, for `textChanged` to
-    /// file under its revision.
-    private var seed: (key: ComposerTextHeights.Key, height: CGFloat)?
-    /// The draft's text as last measured here, by any screen: a draft that
-    /// comes back unchanged opens at its height.
-    private static var lastMeasured: (key: ComposerTextHeights.Key, text: String, height: CGFloat)?
+    /// The height the memo held for the text `setText` brought, for that
+    /// text's revision: filed at the first layout whose key is the one it
+    /// was measured for, and at no other.
+    private var seed: (revision: Int, key: ComposerTextHeights.Key, height: CGFloat)?
+    /// The draft as last measured, kept for the account
+    /// (`AccountSession.newSessionDraftHeight`, closed when it stops): a
+    /// draft that comes back unchanged opens at its height. Its own until
+    /// the screen hands it its account's.
+    var heights = MeasuredDraftMemo()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -496,8 +499,9 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
         textGeneration += 1
         textView.attributedText = TextStyles.composerInput.attributedString(text, color: UIColor(Palette.inputText))
         textView.typingAttributes = TextStyles.composerInput.attributes(color: UIColor(Palette.inputText))
-        if let last = Self.lastMeasured, last.text == text {
-            seed = (last.key, last.height)
+        // `textChanged` moves the revision to this text's.
+        seed = heights.entry(for: text).flatMap { entry in
+            (entry.key as? ComposerTextHeights.Key).map { (textRevision + 1, $0, CGFloat(entry.height)) }
         }
         textChanged(report: false)
     }
@@ -525,7 +529,16 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
     /// thread, or a guess until it is, which starts the measurement: the
     /// last height measured at the width, else one line.
     private func textHeight(inputWidth: CGFloat) -> CGFloat {
-        let lookup = textHeights.lookup(textStamp(inputWidth: inputWidth), isEmpty: !textView.hasText)
+        let stamp = textStamp(inputWidth: inputWidth)
+        if let seed {
+            if seed.revision != textRevision {
+                self.seed = nil
+            } else if seed.key == stamp.key {
+                self.seed = nil
+                textHeights.seed(stamp, height: seed.height)
+            }
+        }
+        let lookup = textHeights.lookup(stamp, isEmpty: !textView.hasText)
         if let measure = lookup.measure {
             startMeasuring(measure)
         }
@@ -564,7 +577,7 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
         let live = ComposerTextHeights.Live(revision: textRevision, generation: textGeneration, isEmpty: !textView.hasText)
         let finish = textHeights.finish(stamp, height: height, live: live)
         if stamp.revision == textRevision {
-            Self.lastMeasured = (stamp.key, text, height)
+            heights.keep(text, key: stamp.key, height: Double(height))
         }
         if let next = finish.measure {
             startMeasuring(next)
@@ -613,10 +626,6 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
 
     private func textChanged(report: Bool) {
         textRevision += 1
-        if let seed {
-            self.seed = nil
-            textHeights.seed(.init(key: seed.key, revision: textRevision, generation: textGeneration), height: seed.height)
-        }
         // Against what the screen laid out before: the new text's height
         // is its measured one, or the guess that stands until it lands.
         let before = laidOut
