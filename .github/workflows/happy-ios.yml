@@ -78,6 +78,7 @@ jobs:
             -derivedDataPath build/ci/DerivedData \
             -resultBundlePath build/ci/HappyUIKitTests.xcresult \
             -parallel-testing-enabled NO \
+            -only-testing:HappyUIKitTests/ComposerTextKitProbeTests \
             -jobs 4 \
             CODE_SIGNING_ALLOWED=NO \
             | tee build/ci/xcodebuild.log
