@@ -79,6 +79,13 @@ Following now:
   redraws and asks the chat to lay out again. Tap targets are the measured
   frames, so they grow with the text; the slop around them is fixed, as
   RN's `hitSlop` is.
+- The chat's worktree tab strip, on its own (`ChatWorktreeTabStrip` sets
+  the trait on itself). Its heights are fixed (the 40 capsule, the 32
+  tabs); only the tabs' widths come from their names, up to 200. The names
+  are measured off the main thread (`WorktreeTabNames`, one per account),
+  kept by text, face and `TextEnvironment`, and a strip places its tabs
+  once theirs are in; a size change measures them again. A name taller
+  than its tab is centred on it and cut by the capsule.
 
 - The iPad sidebar's list grouped by project, its own rows only: the
   "Bots" and day headings, the computers' rules, the checkouts' headings

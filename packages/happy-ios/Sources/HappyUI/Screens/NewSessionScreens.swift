@@ -127,6 +127,9 @@ final class NewSessionViewController: UIViewController {
         view.backgroundColor = UIColor(Palette.groupedBackground)
         setUpHeader()
 
+        // Before the draft is set (`render`): its height, if this account
+        // measured it last.
+        composerView.heights = session.newSessionDraftHeight
         composerView.onTextChange = { [weak self] text in
             self?.composer.drafts.setInput(text)
         }

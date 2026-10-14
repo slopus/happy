@@ -1096,6 +1096,28 @@ final class WorktreeTabStripLayoutTests: XCTestCase {
         XCTAssertNil(layout.add)
     }
 
+    func testANameAtALargeTextSizeIsCentredOnATabThatKeepsItsHeight() {
+        // 14/18 at the largest accessibility size: the names grow, the
+        // strip's heights don't, as RN scales text and nothing else.
+        let layout = WorktreeTabStripLayout(
+            width: 393, maxWidth: .greatestFiniteMagnitude, border: 1, hairline: 0.5,
+            tabs: [
+                .init(label: .fixed(width: 150, height: 64.5), dot: false),
+                .init(label: .fixed(width: 400, height: 64.5), dot: true),
+            ],
+            showsAdd: true
+        )
+        XCTAssertEqual(layout.size, CGSize(width: 393, height: 56))
+        assertFrame(layout.pill, rect(16, 10, 361, 40))
+        assertFrame(layout.tabs[0].frame, rect(4, 3, 170, 32))
+        assertFrame(layout.tabs[0].label, rect(10, -16.25, 150, 64.5))
+        // Capped at 200, the dot after what is left of the name.
+        assertFrame(layout.tabs[1].frame, rect(176, 3, 200, 32))
+        assertFrame(layout.tabs[1].label, rect(10, -16.25, 167, 64.5))
+        assertFrame(layout.tabs[1].dot, rect(183, 12.5, 7, 7))
+        XCTAssertEqual(layout.contentWidth, 380)
+    }
+
     func testTheCapsuleKeepsToTheHeadersWidth() {
         let layout = WorktreeTabStripLayout(width: 1000, maxWidth: 800, border: 0.5, hairline: 0.5, tabs: [], showsAdd: true)
         assertFrame(layout.pill, rect(116, 10, 768, 40))

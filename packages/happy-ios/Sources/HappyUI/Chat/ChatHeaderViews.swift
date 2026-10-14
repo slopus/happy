@@ -358,13 +358,29 @@ final class ChatStatusBarStrip: UIView {
 final class ChatPlaceholderView: UIView {
     enum Content: Equatable {
         case loading
-        case empty(ChatEmptyState)
+        /// The chat's first page failed: Retry in the spinner's place.
+        case loadFailed
+        /// EmptyMessages, with what shows under the path: "No messages
+        /// yet", the spinner while it pages back, Retry or Load more.
+        case empty(ChatEmptyState, ChatOlderPaging.EmptyStatus)
         case pendingChat(PendingChatPlaceholderModel)
         case deleted
     }
 
+    /// Retry or Load more was pressed; which one is `content`.
+    var onAction: (() -> Void)?
+
     private(set) var content: Content?
     private let spinner = UIActivityIndicatorView(style: .medium)
+    /// EmptyMessages' and the first load's Retry and Load more
+    /// (RoundButton, small and inverted).
+    let button = RoundButton(title: Strings.Chat.retry, size: .small, display: .inverted)
+    /// EmptyMessages' spinner while it pages back, in the column.
+    let pagingSpinner = UIActivityIndicatorView(style: .medium)
+    /// Where the button or the paging spinner sits among `labels`, and
+    /// the space above it: the title's.
+    private var statusIndex: Int?
+    private var statusSpacing: CGFloat = 0
     private let icon = IconView(size: 72, tint: Palette.textSecondary)
     /// PendingChatPlaceholder's "Starting a new chat…".
     private let shimmer = ShimmerLabel(style: TextStyles.pendingChatTitle)
@@ -378,6 +394,12 @@ final class ChatPlaceholderView: UIView {
         shimmer.string = Strings.Chat.startingChat
         shimmer.isHidden = true
         addSubview(shimmer)
+        button.isHidden = true
+        button.onTap = { [weak self] in self?.onAction?() }
+        addSubview(button)
+        pagingSpinner.color = UIColor(Palette.textSecondary)
+        pagingSpinner.hidesWhenStopped = true
+        addSubview(pagingSpinner)
     }
 
     @available(*, unavailable)
@@ -390,14 +412,21 @@ final class ChatPlaceholderView: UIView {
         self.content = content
         for entry in labels { entry.label.view.removeFromSuperview() }
         labels = []
+        statusIndex = nil
+        button.isHidden = true
+        pagingSpinner.stopAnimating()
         spinner.isHidden = content != .loading
-        icon.isHidden = content == .loading
+        icon.isHidden = content == .loading || content == .loadFailed
         shimmer.isHidden = !isPendingChat
         shimmer.isShimmering = isPendingChat
         switch content {
         case .loading:
             spinner.startAnimating()
-        case .empty(let state):
+        case .loadFailed:
+            spinner.stopAnimating()
+            button.title = Strings.Chat.retry
+            button.isHidden = false
+        case .empty(let state, let status):
             spinner.stopAnimating()
             icon.icon = .ionicons(state.osIcon)
             icon.size = 72
@@ -412,8 +441,24 @@ final class ChatPlaceholderView: UIView {
                 add(ChatTextStyles.emptyPath, path, color: Palette.textSecondary, spacing: spacing, padding: 48)
                 spacing = 40
             }
-            add(ChatTextStyles.emptyTitle, Strings.Chat.noMessages, color: Palette.textSecondary, spacing: spacing, padding: 48)
-            add(ChatTextStyles.emptyCreated, Strings.Chat.created(Strings.Chat.age(state.created)), color: Palette.textSecondary, spacing: 8, padding: 48)
+            // The title and the spinner keep 8 under them; RoundButton
+            // has no margin.
+            var createdSpacing: CGFloat = 8
+            switch status {
+            case .noMessages:
+                add(ChatTextStyles.emptyTitle, Strings.Chat.noMessages, color: Palette.textSecondary, spacing: spacing, padding: 48)
+            case .loading:
+                statusIndex = labels.count
+                statusSpacing = spacing
+                pagingSpinner.startAnimating()
+            case .error, .loadMore:
+                statusIndex = labels.count
+                statusSpacing = spacing
+                button.title = status == .error ? Strings.Chat.retry : Strings.Chat.loadMore
+                button.isHidden = false
+                createdSpacing = 0
+            }
+            add(ChatTextStyles.emptyCreated, Strings.Chat.created(Strings.Chat.age(state.created)), color: Palette.textSecondary, spacing: createdSpacing, padding: 48)
         case .pendingChat(let model):
             spinner.stopAnimating()
             icon.icon = .ionicons("chatbubbles-outline")
@@ -460,6 +505,11 @@ final class ChatPlaceholderView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         spinner.center = CGPoint(x: bounds.midX, y: bounds.midY)
+        if content == .loadFailed {
+            let size = button.sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude))
+            button.setLayoutFrame(CGRect(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2, width: size.width, height: size.height))
+            return
+        }
         guard content != .loading, content != nil else { return }
         var items = [CenteredStackLayout.Item(.fixed(icon.sizeThatFits(.zero)))]
         if isPendingChat {
@@ -469,11 +519,26 @@ final class ChatPlaceholderView: UIView {
             }
             items.append(CenteredStackLayout.Item(title, spacingBefore: 16, horizontalPadding: 48))
         }
-        items += labels.map { CenteredStackLayout.Item($0.label.measurable, spacingBefore: $0.spacing, horizontalPadding: $0.padding) }
+        var labelItems = labels.map { CenteredStackLayout.Item($0.label.measurable, spacingBefore: $0.spacing, horizontalPadding: $0.padding) }
+        // EmptyMessages' status in the title's place: the path's 40 above
+        // it; the spinner's own marginBottom of 8 above the date, as the
+        // title's.
+        let control: UIView? = statusIndex == nil ? nil : (button.isHidden ? pagingSpinner : button)
+        if let index = statusIndex, let control {
+            let measurable = Measurable { [weak control] width in
+                control?.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)) ?? .zero
+            }
+            labelItems.insert(CenteredStackLayout.Item(measurable, spacingBefore: statusSpacing, horizontalPadding: 48), at: index)
+        }
+        items += labelItems
         var frames = CenteredStackLayout(.init(size: bounds.size, items: items)).items[...]
         icon.setLayoutFrame(frames.removeFirst())
         if isPendingChat { shimmer.setLayoutFrame(frames.removeFirst()) }
-        for (entry, frame) in zip(labels, frames) {
+        var placed = Array(frames)
+        if let index = statusIndex, let control, index < placed.count {
+            control.setLayoutFrame(placed.remove(at: index))
+        }
+        for (entry, frame) in zip(labels, placed) {
             entry.label.place(frame)
         }
     }

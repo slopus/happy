@@ -379,6 +379,16 @@ public struct HomeDockFocusMotion: Equatable, Sendable {
     public static let openDuration: Double = 0.34
     /// Closing runs 180ms ease-in from wherever it got to.
     public static let closeDuration: Double = 0.18
+    /// How long the open waits for the card's text height, measured off
+    /// the main thread, before it runs on the height it has: the shell
+    /// grows to the text's height rather than retargeting on the way.
+    public static let heightWait: Double = 0.032
+
+    /// The frame's wait before the open runs, less the time spent waiting
+    /// for the height: that wait let the modal land already.
+    public static func openDelay(afterWaiting waited: Double) -> Double {
+        max(0, openDelay - max(0, waited))
+    }
     /// The capsule the shell grows from.
     public static let collapsedHeight: CGFloat = 56
 

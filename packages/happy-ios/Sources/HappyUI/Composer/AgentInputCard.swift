@@ -539,8 +539,16 @@ public final class AgentInputCardView: UIView {
     /// as wide and drawn as it was then (`premeasure`).
     public struct PremeasuredText: Sendable {
         public let text: String
-        fileprivate let key: ComposerTextHeights.Key
+        /// What it was measured for (`textKey(fitting:)`).
+        public let key: ComposerTextHeights.Key
         fileprivate let height: CGFloat
+    }
+
+    /// What the text's height at a card `width` wide depends on besides
+    /// the text: the width it wraps at, the text size and the panel. A
+    /// text premeasured for another key is measured again when set.
+    public func textKey(fitting width: CGFloat) -> ComposerTextHeights.Key {
+        textStamp(cardWidth: width, desktop: configuration.desktop != nil).key
     }
 
     /// Measures `text` off the main thread for this card `width` wide, at

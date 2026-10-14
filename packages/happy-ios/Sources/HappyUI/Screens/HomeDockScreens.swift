@@ -325,6 +325,8 @@ final class HomeDockFocusViewController: UIViewController {
     private let facePicker = BotFacePickerView()
     /// Which text the card holds: the prompt, or the bot's name.
     private var cardHoldsBotName: Bool?
+    /// The other one, measured for a switch.
+    private let kindText: HomeDockKindText
     private let progressDot = StatusDotView()
     private let progressLabel = StyledLabel(style: TextStyles.homeDockProgress, color: Palette.textSecondary, lines: 1)
     private let progressHint = StyledLabel(style: TextStyles.homeDockProgress, color: Palette.textSecondary, lines: 1)
@@ -341,6 +343,8 @@ final class HomeDockFocusViewController: UIViewController {
     private var flashStart: CFTimeInterval?
     private var displayLink: CADisplayLink?
     private var closing = false
+    /// The open was asked for: it runs once the card's height is in.
+    private var opening = false
     private var revertingText = false
 
     /// One run of the presentation value.
@@ -356,6 +360,7 @@ final class HomeDockFocusViewController: UIViewController {
     init(dock controller: HomeDockController) {
         self.controller = controller
         card = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: ""))
+        kindText = HomeDockKindText(card: card)
         super.init(nibName: nil, bundle: nil)
         modalPresentationStyle = .overFullScreen
     }
@@ -457,9 +462,19 @@ final class HomeDockFocusViewController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        guard motion == nil, progress == 0, !closing else { return }
-        // A frame for the modal to land, then 340ms ease-out.
-        animate(to: 1, delay: HomeDockFocusMotion.openDelay, duration: HomeDockFocusMotion.openDuration, easing: HomeDockFocusMotion.easeOut)
+        guard !opening, motion == nil, progress == 0, !closing else { return }
+        opening = true
+        // The shell grows from the capsule to the card's height: a draft's
+        // height, measured off the main thread, is waited for, for two
+        // frames at most, so the open doesn't retarget on the way. Then
+        // what is left of a frame for the modal to land, and 340ms
+        // ease-out. The card shows throughout, as the capsule.
+        let asked = CACurrentMediaTime()
+        card.whenTextMeasured(fitting: composerWidth, timeout: .seconds(HomeDockFocusMotion.heightWait)) { [weak self] _ in
+            guard let self, self.motion == nil, self.progress == 0, !self.closing else { return }
+            let delay = HomeDockFocusMotion.openDelay(afterWaiting: CACurrentMediaTime() - asked)
+            self.animate(to: 1, delay: delay, duration: HomeDockFocusMotion.openDuration, easing: HomeDockFocusMotion.easeOut)
+        }
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(50))
             guard let self, !self.closing else { return }
@@ -486,6 +501,18 @@ final class HomeDockFocusViewController: UIViewController {
         controller?.starter.isStarting ?? false
     }
 
+    /// Measures, off the main thread, what Session | Bot would put in the
+    /// card while it holds the other: the prompt kept while a bot is
+    /// named, or the bot's name.
+    private func prepareKindSwitch() {
+        guard let controller, controller.composer.choices.supportsBots, let holdsBotName = cardHoldsBotName else { return }
+        kindText.prepare(
+            createsBot: !holdsBotName,
+            text: holdsBotName ? controller.prompt : controller.composer.drafts.botName,
+            width: composerWidth
+        )
+    }
+
     /// Everything that follows the draft, the store and the start.
     func render() {
         guard isViewLoaded, let controller else { return }
@@ -507,10 +534,20 @@ final class HomeDockFocusViewController: UIViewController {
         let text = createsBot ? drafts.botName : controller.prompt
         if cardHoldsBotName != createsBot || (createsBot && card.text != text) {
             cardHoldsBotName = createsBot
+            let selection = NSRange(location: (text as NSString).length, length: 0)
+            // A text from elsewhere settles at its height rather than
+            // growing into it. The other kind's comes measured for a card
+            // as wide as this one; otherwise it is measured now and the
+            // card moves once, unanimated, when it lands.
             revertingText = true
-            card.setText(text, selection: NSRange(location: (text as NSString).length, length: 0))
+            if let measured = kindText.measured(createsBot: createsBot, text: text, width: composerWidth) {
+                card.setText(measured, selection: selection, animatesHeight: false)
+            } else {
+                card.setText(text, selection: selection, animatesHeight: false)
+            }
             revertingText = false
         }
+        prepareKindSwitch()
 
         let values: [Row: String] = [
             .machine: choices.currentMachine?.name ?? Strings.Home.selectMachine,
@@ -828,6 +865,13 @@ final class HomeDockFocusViewController: UIViewController {
         let shift = HomeDockFocusLayout.keyboardShift(keyboardTop: keyboardTracker.frame.minY, size: size, safeBottom: view.safeAreaInsets.bottom)
         dock.frame = CGRect(x: 0, y: shift, width: size.width, height: size.height)
         layoutContent()
+        // The width is known, or has moved.
+        prepareKindSwitch()
+    }
+
+    /// The card's width.
+    private var composerWidth: CGFloat {
+        max(0, view.bounds.width - 2 * HomeDockFocusLayout.Metrics.composerPaddingHorizontal)
     }
 
     /// The dock's contents at the present progress.
@@ -837,7 +881,6 @@ final class HomeDockFocusViewController: UIViewController {
         let motion = HomeDockFocusMotion(progress: progress)
         backdrop.alpha = motion.backdropAlpha
 
-        let composerWidth = max(0, size.width - 2 * HomeDockFocusLayout.Metrics.composerPaddingHorizontal)
         let cardLayout = card.layout(width: composerWidth)
         let cardHeight = cardLayout.size.height
         let showsProgress = !progressLabel.isHidden
@@ -947,6 +990,9 @@ extension HomeDockFocusViewController: AgentInputCardDelegate {
 
     func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) {
         layoutContent()
+        // The card says so when its text size moved too: what was measured
+        // for the switch is for the size before.
+        prepareKindSwitch()
     }
 
     func agentInputCardDidPressPrimary(_ card: AgentInputCardView) {

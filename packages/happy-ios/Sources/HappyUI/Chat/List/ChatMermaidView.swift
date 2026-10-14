@@ -19,7 +19,8 @@ final class ChatMermaidView: UIView {
     /// The page's height for `diagram`, in points, as it reported it.
     var onHeight: ((_ diagram: ChatMermaid, _ height: CGFloat) -> Void)?
     private(set) var diagram: ChatMermaid?
-    private var webView: WKWebView?
+    /// The page, once there is a diagram; tests read what it drew.
+    private(set) var webView: WKWebView?
     private var loaded = false
     /// Each render's number: a report from one a newer render replaced is
     /// dropped.
