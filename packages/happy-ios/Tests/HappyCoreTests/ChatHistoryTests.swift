@@ -727,9 +727,30 @@ final class ChatHistoryTests: XCTestCase {
                                          store: fixture.store, dependencies: .init(serverURL: testServer, clientID: "test",
                                                                                  transport: fixture.http, connector: FakeConnector()))
         let stream = account.chatHistory.snapshots(sessionId: "s")
-        _ = try await syncPerfNext(stream)
+        let initial = try await syncPerfNext(stream)
+        let initialState = try XCTUnwrap(initial)
+        // Queue a legitimate update before stopping. AsyncStream.finish()
+        // retains buffered values, so termination must be checked after drain.
+        try fixture.store.applyMessagePage(sessionId: "s", messages: [], syncedThrough: 10)
+        await account.chatHistory.ensureNewest(sessionId: "s")
+        let covered = await account.chatHistory.current(sessionId: "s")
+        XCTAssertTrue(covered.initialLoaded)
+        XCTAssertFalse(covered.hasMore)
         await account.stop()
-        let ended = try await syncPerfNext(stream)
-        XCTAssertNil(ended)
+        let closed = Gate()
+        let draining = Task {
+            var buffered: [ChatHistoryState] = []
+            for await state in stream { buffered.append(state) }
+            await closed.open()
+            return buffered
+        }
+        defer { draining.cancel() }
+        try await syncPerfWait(closed)
+        let buffered = await draining.value
+        XCTAssertGreaterThanOrEqual(buffered.count, 1)
+        for state in buffered { XCTAssertTrue(state == initialState || state == covered) }
+        let retired = try await syncPerfNext(account.chatHistory.snapshots(sessionId: "s"))
+        XCTAssertNil(retired)
+        XCTAssertEqual(fixture.http.requests.count, 0)
     }
 }
