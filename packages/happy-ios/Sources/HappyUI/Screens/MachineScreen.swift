@@ -252,8 +252,8 @@ final class MachineViewController: UIViewController {
     private func confirmStopDaemon() {
         typealias S = Strings.MachineDetail
         let alert = UIAlertController(title: S.stopDaemonTitle, message: S.stopDaemonMessage, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: Strings.Common.cancel, style: .cancel))
-        alert.addAction(UIAlertAction(title: S.stopDaemon, style: .destructive) { [weak self] _ in self?.stopDaemon() })
+        alert.addAction(UIAlertAction(title: S.stopDaemonCancel, style: .cancel))
+        alert.addAction(UIAlertAction(title: S.stopDaemonConfirm, style: .destructive) { [weak self] _ in self?.stopDaemon() })
         present(alert, animated: true)
     }
 
@@ -292,7 +292,7 @@ final class MachineViewController: UIViewController {
                 try await actions.renameMachine(machine, displayName: name)
                 Alerts.show(Strings.Common.success, S.renamed, on: self)
             } catch {
-                Alerts.show(Strings.Common.error, (error as? LocalizedError)?.errorDescription ?? S.renameFailed, on: self)
+                Alerts.show(S.renameErrorTitle, (error as? LocalizedError)?.errorDescription ?? S.renameFailed, on: self)
             }
             renaming = false
             rebuild()

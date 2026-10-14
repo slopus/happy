@@ -1,15 +1,18 @@
 import Foundation
 
 // Copied verbatim from packages/happy-app/sources/text/translations/en.ts,
-// and from EmptySessionsTablet.tsx, which writes its English inline.
+// and from EmptySessionsTablet.tsx, which writes its English inline. A
+// `localized` string is keyed by the t() call happy-app makes for it, at
+// the cited line; the rest are English in happy-app too.
 extension Strings {
     public enum Tablet {
-        /// `sidebar.newSession`.
-        public static let newSession = "New session"
-        /// `zen.toggle`: the zen control's accessibility label.
-        public static let zenToggle = "Zen mode"
+        /// `sidebar.newSession` (SidebarView.tsx 119, ProjectGroup.tsx 131).
+        public static var newSession: String { localized("sidebar.newSession", "New session") }
+        /// `zen.toggle` (SidebarNavigator.tsx 194): the zen control's
+        /// accessibility label.
+        public static var zenToggle: String { localized("zen.toggle", "Zen mode") }
 
-        // EmptySessionsTablet.tsx.
+        // EmptySessionsTablet.tsx 84-126, in English there.
         public static let noSessionsTitle = "No sessions yet"
         public static func machineUnreachable(name: String) -> String { "\(name) is unreachable" }
         public static let noMachinesReachable = "No machines are reachable"
@@ -20,10 +23,10 @@ extension Strings {
         public static let noMachinesDescription = "Install and run Happy on your computer to connect it."
 
         // The list grouped by project (SessionsList.tsx).
-        /// "Bots", hard-coded in SessionsList.tsx as in ProjectHomeList.tsx.
+        /// "Bots", in English in SessionsList.tsx 451 as in ProjectHomeList.tsx.
         public static let bots = "Bots"
-        /// `status.unknown`: an archived chat with no metadata to name a
-        /// place (`getSessionSubtitle`).
-        public static let unknown = "unknown"
+        /// `status.unknown` (SessionsList.tsx 403): an archived chat with no
+        /// metadata to name a place (`getSessionSubtitle`).
+        public static var unknown: String { localized("status.unknown", "unknown") }
     }
 }
