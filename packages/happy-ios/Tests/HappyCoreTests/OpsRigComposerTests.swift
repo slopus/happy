@@ -243,15 +243,20 @@ final class OpsRigComposerTests: XCTestCase {
         let (_, store, writer, _) = try fixture()
         let changed = expectation(description: "session and composer committed")
         var snapshots: [String] = []
-        let observation = store.observe({ db -> String in
+        let values = ValueObservation.tracking { db -> String in
+            XCTAssertFalse(Thread.isMainThread)
             let session = try SessionRecord.fetchOne(db, key: "s")
             let composer = try ComposerStateRecord.fetchOne(db, key: "s")
             let draft = try DraftRecord.fetchOne(db, key: "s")
             return "\(session?.metadataVersion ?? 0):\(draft?.text ?? "nil"):\(composer?.values["modelMode"]?.stringValue ?? "nil")"
-        }, onChange: { value in
-            snapshots.append(value)
-            if value == "2:new:p:new" { changed.fulfill() }
-        })
+        }.values(in: store.writer, scheduling: .async(onQueue: DispatchQueue(label: "OpsRigComposerTests.observation")))
+        let observation = Task {
+            for try await value in values {
+                snapshots.append(value)
+                if value == "2:new:p:new" { changed.fulfill() }
+            }
+        }
+        defer { observation.cancel() }
         var session = try XCTUnwrap(store.session(id: "s"))
         session.metadataVersion = 2
         session.metadata = metadata(stamp: 20, text: "new", model: "new")

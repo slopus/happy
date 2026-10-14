@@ -14,9 +14,8 @@ final class MachineViewController: UIViewController {
     private let machineId: String
     private let list = GroupedListView()
     private let refresh = UIRefreshControl()
-    private var observation: ApplyObservation?
-    /// What the screen shows, worked out off the main thread; nil until the
-    /// first snapshot.
+    /// What the screen shows, worked out off the main thread by the
+    /// account's machine feed; nil until the first one.
     private var content: MachineScreenContent?
     private var stoppingDaemon = false
     private var renaming = false
@@ -49,30 +48,31 @@ final class MachineViewController: UIViewController {
         dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
         refresh.addTarget(self, action: #selector(pulledToRefresh), for: .valueChanged)
         list.refreshControl = refresh
-        let machineId = self.machineId
-        let pipeline = ApplyPipeline<HomeSnapshot?, MachineScreenContent?, MachineScreenContent>(
-            input: nil,
-            state: nil,
-            derive: { snapshot, applied in
-                guard let snapshot else { return nil }
-                let content = MachineScreenContent(snapshot, machineId: machineId)
-                return content == applied ? nil : (content, content)
-            },
-            apply: { [weak self] content in
-                guard let self, self.context.account.session === self.session else { return false }
-                ApplyPerf.measure(.screen) {
-                    // A new metadata version alone only updates what a
-                    // rename sends; the rows rebuild when what they show did.
-                    let rebuilds = content.model != self.content?.model || self.content == nil
-                    self.content = content
-                    if rebuilds { self.rebuild() }
-                    return rebuilds ? 1 : 0
-                }
-                return true
-            }
-        )
-        pipeline.follow(session.homeFeed.snapshots()) { $0 = $1 }
-        observation = pipeline.observation
+    }
+
+    /// The machine and its recent sessions, read only while this screen is
+    /// on screen.
+    private lazy var feed = VisibleFeed<MachineScreenContent> { [weak self] content in
+        guard let self, self.context.account.session === self.session else { return false }
+        ApplyPerf.measure(.screen) {
+            // A new metadata version alone only updates what a rename
+            // sends; the rows rebuild when what they show did.
+            let rebuilds = content.model != self.content?.model || self.content == nil
+            self.content = content
+            if rebuilds { self.rebuild() }
+            return rebuilds ? 1 : 0
+        }
+        return true
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        feed.start { session.machineDetails.snapshots(machineId: machineId) }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        feed.stop()
     }
 
     override func viewDidLayoutSubviews() {

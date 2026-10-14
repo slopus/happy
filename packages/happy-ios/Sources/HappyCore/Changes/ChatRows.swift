@@ -221,6 +221,9 @@ public final class RowPlanner<Input: Equatable & Sendable, Plan: Sendable>: @unc
 public struct ChatSnapshotFacts: Equatable, Sendable {
     public var isLoaded: Bool
     public var isEmpty: Bool
+    public var hasMoreOlder: Bool
+    public var olderBoundary: Int?
+    public var windowEpoch: Int
     public var usage: ChatUsage?
     public var delivery: [String: OutboxDelivery]
     /// The agent waits on a question the person can answer by typing.
@@ -231,6 +234,9 @@ public struct ChatSnapshotFacts: Equatable, Sendable {
     public init(_ snapshot: ChatSnapshot) {
         isLoaded = snapshot.isLoaded
         isEmpty = snapshot.messages.isEmpty
+        hasMoreOlder = snapshot.hasMoreOlder
+        olderBoundary = snapshot.olderBoundary
+        windowEpoch = snapshot.windowEpoch
         usage = snapshot.usage
         delivery = snapshot.delivery
         var pendingQuestion = false

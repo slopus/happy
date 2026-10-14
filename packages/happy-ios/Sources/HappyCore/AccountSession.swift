@@ -25,6 +25,7 @@ public final class AccountSession: Sendable {
     public let sender: OutboxSender
     /// The chat of any session, from this account's store.
     public let chatFeed: LocalChatFeed
+    public let chatHistory: ChatHistory
     public let homeFeed: HomeFeed
     public let settingsFeed: SettingsFeed
     public let machinesFeed: MachinesFeed
@@ -53,6 +54,7 @@ public final class AccountSession: Sendable {
     /// One session's record, computer, settings and composer, for the
     /// session's own screens.
     public let sessionDetails: SessionDetailFeed
+    public let machineDetails: MachineDetailFeed
     /// Socket status for the UI (connection dot in settings).
     public let statusUpdates: AsyncStream<RealtimeStatus>
 
@@ -103,10 +105,12 @@ public final class AccountSession: Sendable {
         self.sync = SyncEngine(api: api, store: store, keys: keys, options: syncOptions)
         self.sender = OutboxSender(store: store, sync: sync, filesDirectory: self.filesDirectory, spawnRequests: spawnRequests)
         self.chatFeed = LocalChatFeed(store: store)
+        self.chatHistory = ChatHistory(api: api, store: store, keys: keys)
         self.homeFeed = HomeFeed(store: store)
         self.settingsFeed = SettingsFeed(store: store)
         self.machinesFeed = MachinesFeed(store: store)
         self.sessionDetails = SessionDetailFeed(store: store)
+        self.machineDetails = MachineDetailFeed(store: store)
         self.troubleshootingFeed = TroubleshootingFeed(store: store)
         self.pairing = PairingService(api: api, keys: keys)
 
@@ -209,10 +213,12 @@ public final class AccountSession: Sendable {
         diffSyntax.close()
         codeSyntax.close()
         await spawnRequests.close()
+        await chatHistory.stop()
         homeFeed.stop()
         settingsFeed.stop()
         machinesFeed.stop()
         sessionDetails.stop()
+        machineDetails.stop()
         await fileCache.close()
         await troubleshootingFeed.stop()
         let task = pump.cancel()

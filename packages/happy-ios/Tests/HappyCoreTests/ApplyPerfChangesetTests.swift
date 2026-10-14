@@ -565,20 +565,19 @@ final class ApplyPerfMachineScreenTests: XCTestCase {
     /// The machine screen rebuilds for what it shows: a session's
     /// heartbeat or cursor is nothing to it, a title on this machine is.
     func testTheMachineScreenIgnoresSessionHeartbeats() {
-        let snapshot = ApplyPerfFixtures.snapshot(8)
-        let shown = MachineScreenContent(snapshot, machineId: "computer")
+        let snapshot = MachineDetailSnapshot(machine: ApplyPerfFixtures.machine, sessions: (0..<8).map(ApplyPerfFixtures.session))
+        let shown = MachineScreenContent(snapshot)
         XCTAssertEqual(shown.model?.recentSessions.count, MachineDetailsModel.recentSessionLimit)
 
         var heartbeat = snapshot
         heartbeat.sessions = heartbeat.sessions.map { ApplyPerfFixtures.invisiblyTouched($0, by: 2000) }
-        heartbeat.presenceNow = ApplyPerfFixtures.now + 60_000
-        XCTAssertEqual(MachineScreenContent(heartbeat, machineId: "computer"), shown)
+        XCTAssertEqual(MachineScreenContent(heartbeat), shown)
 
         var retitled = snapshot
         retitled.sessions[0] = ApplyPerfFixtures.retitled(retitled.sessions[0], "Renamed")
-        XCTAssertNotEqual(MachineScreenContent(retitled, machineId: "computer"), shown)
+        XCTAssertNotEqual(MachineScreenContent(retitled), shown)
 
-        XCTAssertNil(MachineScreenContent(snapshot, machineId: "elsewhere").model, "not found")
+        XCTAssertNil(MachineScreenContent(MachineDetailSnapshot(machine: nil, sessions: [])).model, "not found")
     }
 }
 

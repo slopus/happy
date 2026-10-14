@@ -83,6 +83,7 @@ not a UIKit apply; simulator apply times remain unverified.
 | 10 machines × 15 heartbeats (150 total over 30s) | 0 | 0 home, 0 machines |
 | Machine heartbeat checkpoint at 61s | 1 | 0 home, 0 machines |
 | 500 messages across 10 sessions and 20 HTTP pages | 1 | 0 home, 1 chat for the watched session |
+| 1000 encrypted socket messages with 1000 stored sessions | 1000 | 0 home SQL fetches, publications and derivations; scoped Info and Troubleshooting update |
 | 500 session rows across 5 HTTP pages, including first-list readiness | 1 | 1 home |
 | Seven home subscribers | One shared fetch per invalidation | Each receives the shared value |
 
@@ -177,13 +178,20 @@ computer derivation. A real live message changes the recent project without
 regrouping computers; equal prompts and unrendered machine fields publish
 nothing. Machine deletion selects the next known session in the same value,
 and presence/account lifecycle tests cover server flags and fresh scopes.
-The Home `updatedAt` region remains until session info and troubleshooting
-screens have both switched to their scoped feeds.
+Session info and troubleshooting now use their scoped feeds, so Home no
+longer watches `updatedAt`. The encrypted socket fixture runs the production
+decode/store path and actual Home derivation, checks Info's sequence and
+last-updated row changes and Troubleshooting's recent project, and verifies
+all 1000 chat messages decrypt and advance the contiguous cursor. A subsequent
+settings change adds exactly one Home fetch, publication and derivation.
+The unused generic main-actor SQL observation API has been removed; its two
+atomic composer tests now fetch with GRDB's background scheduling.
 
 The local send timestamp lives in a nullable SQLite session column, added
 by migration v4. Acceptance stores the text, files and timestamp atomically,
-so it works offline and survives reopen. A refused send, file-only item,
-retry or echoed localId never advances it. Wire merges preserve it, and
+so it works offline and survives reopen. A refused send, standalone store
+file item, retry or echoed localId never advances it. A picture-only send
+accepted through the production send path does advance it. Wire merges preserve it, and
 agent-published meaningful activity always wins. The Home region explicitly
 watches this column; the chat header projection clears it. Tests cover v3
 migration, reopen, wire preservation, duplicate acceptance with zero writes,
