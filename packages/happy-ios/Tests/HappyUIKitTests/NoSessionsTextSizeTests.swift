@@ -194,6 +194,75 @@ final class NoSessionsTextSizeTests: XCTestCase {
         XCTAssertGreaterThan(view.applied?.title.height ?? 0, large.title.height)
     }
 
+    #if DEBUG
+    /// Nothing on the screen measures text on main: not while it waits for
+    /// its first sizes with nothing shown, not laying out again, not while
+    /// sizes for an earlier width or without the archive are refused.
+    func testNothingOnItMeasuresTextOnTheMainThread() async {
+        let host = host(width: 393, category: .accessibilityExtraExtraExtraLarge, scale: 3)
+        let view = NoSessionsView(frame: host.bounds)
+        host.addSubview(view)
+        host.updateTraitsIfNeeded()
+        view.updateTraitsIfNeeded()
+        let labels = [view.titleLabel, view.descriptionLabel, view.startNewSession.label, view.showArchived.label]
+        func layOutEverything(_ step: String) {
+            for control in [view.startNewSession, view.showArchived] as [UIView] {
+                control.setNeedsLayout()
+                _ = control.sizeThatFits(CGSize(width: view.bounds.width, height: .greatestFiniteMagnitude))
+            }
+            view.setNeedsLayout()
+            view.layoutIfNeeded()
+            XCTAssertEqual(labels.map(\.measurements), [0, 0, 0, 0], step)
+        }
+
+        layOutEverything("waiting for the first sizes")
+        XCTAssertTrue(view.scrollView.isHidden)
+        await view.measured()
+        layOutEverything("measured")
+        layOutEverything("again, nothing new")
+
+        view.frame.size.width = 320
+        layOutEverything("a new width, its sizes not yet in")
+        await view.measured()
+        layOutEverything("the new width measured")
+
+        view.showsArchivedAction = true
+        layOutEverything("the archive offered, not yet measured")
+        await view.measured()
+        layOutEverything("the archive measured")
+        XCTAssertFalse(view.showArchived.isHidden)
+        XCTAssertGreaterThan(view.showArchived.frame.width, 0)
+    }
+    #endif
+
+    /// A view not yet given a size measures nothing.
+    func testAViewWithNoWidthYetMeasuresNothing() {
+        let view = NoSessionsView(frame: .zero)
+        view.layoutIfNeeded()
+        XCTAssertNil(view.requested)
+        XCTAssertEqual(view.measuring.counts.derivations, 0)
+    }
+
+    /// Content that shrinks while scrolled past its new end comes back to
+    /// that end.
+    func testShrinkingContentIsNotLeftScrolledPastItsEnd() async {
+        let host = host(width: 393, category: .accessibilityExtraExtraExtraLarge, scale: 3)
+        let view = await shown(in: host)
+        let before = view.scrollView.contentSize.height
+        XCTAssertGreaterThan(before, view.bounds.height)
+        view.scrollView.contentOffset.y = before - view.bounds.height
+        host.traitOverrides.preferredContentSizeCategory = .accessibilityLarge
+        host.updateTraitsIfNeeded()
+        view.updateTraitsIfNeeded()
+        view.setNeedsLayout()
+        view.layoutIfNeeded()
+        await view.measured()
+        view.layoutIfNeeded()
+        let after = view.scrollView.contentSize.height
+        XCTAssertLessThan(after, before)
+        XCTAssertEqual(view.scrollView.contentOffset.y, max(0, after - view.bounds.height))
+    }
+
     /// A screen that doesn't follow the text size measures at the designed
     /// size: the title is one 30 point line.
     func testWithoutTheTraitItIsTheDesignedSize() async {
@@ -229,7 +298,7 @@ final class NoSessionsTextSizeTests: XCTestCase {
         let safe = view.safeAreaInsets
         XCTAssertEqual(safe.top, 103)
         XCTAssertGreaterThan(view.scrollView.contentSize.height, view.bounds.height)
-        XCTAssertEqual(view.icon.frame.minY, safe.top, accuracy: 0.5, "from the top of the safe area")
+        XCTAssertEqual(view.icon.frame.minY, safe.top, "from the top of the safe area")
 
         view.scrollView.contentOffset = CGPoint(x: 0, y: view.scrollView.contentSize.height - view.bounds.height)
         view.layoutIfNeeded()

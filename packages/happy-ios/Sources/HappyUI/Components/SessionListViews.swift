@@ -409,6 +409,10 @@ public final class NoSessionsView: UIView {
             scrollView.addSubview(view)
         }
         showArchived.isHidden = true
+        // The buttons never measure their labels here: until the sizes are
+        // in they lay out an empty label, hidden.
+        startNewSession.measuredLabelSize = .zero
+        showArchived.measuredLabelSize = .zero
         registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self], action: #selector(traitsChanged))
     }
 
@@ -441,7 +445,8 @@ public final class NoSessionsView: UIView {
         super.layoutSubviews()
         scrollView.frame = bounds
         let input = measureInput
-        if input != requested {
+        // Not yet given a size: nothing worth measuring.
+        if input != requested, bounds.width > 0 {
             requested = input
             measuring.update { $0 = input }
         }
@@ -461,7 +466,9 @@ public final class NoSessionsView: UIView {
         scrollView.isHidden = false
         scrollView.contentSize = CGSize(width: bounds.width, height: layout.contentHeight)
         scrollView.verticalScrollIndicatorInsets = UIEdgeInsets(top: insets.top, left: 0, bottom: insets.bottom, right: 0)
-        if layout.contentHeight <= bounds.height { scrollView.contentOffset = .zero }
+        // Shorter content can't stay scrolled past its end.
+        let end = max(0, layout.contentHeight - bounds.height)
+        if scrollView.contentOffset.y > end { scrollView.contentOffset.y = end }
         icon.setLayoutFrame(layout.icon)
         titleLabel.setLayoutFrame(layout.title)
         descriptionLabel.setLayoutFrame(layout.description)
@@ -477,7 +484,7 @@ public final class NoSessionsView: UIView {
         guard sizes.input == requested else { return false }
         applied = sizes
         startNewSession.measuredLabelSize = sizes.buttonLabel
-        showArchived.measuredLabelSize = sizes.actionLabel
+        showArchived.measuredLabelSize = sizes.actionLabel ?? .zero
         setNeedsLayout()
         let waiting = waiters
         waiters = []

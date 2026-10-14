@@ -28,7 +28,9 @@ public final class RoundButton: UIControl {
 
     /// The label's size, measured off the main thread for the width the
     /// button is laid out at (`labelText`), so laying it out measures
-    /// nothing. Nil: the label is measured here, as it is drawn.
+    /// nothing. Nil: the label is measured here, as it is drawn. It is the
+    /// title's size, so it is only for a button whose title stays and that
+    /// never shows `loadingTitle`.
     var measuredLabelSize: CGSize? {
         didSet { if measuredLabelSize != oldValue { setNeedsLayout() } }
     }
