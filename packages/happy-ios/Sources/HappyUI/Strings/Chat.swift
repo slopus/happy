@@ -1,44 +1,52 @@
 import Foundation
 import HappyCore
 
-// The chat's copy, verbatim from happy-app's en.ts (the key each comes from
-// is noted where the name differs).
+// The chat's copy. What happy-app reads with `t('key')` is read from the
+// screens' catalog under that key (`localized`, main thread only), its
+// English copied from _default.ts; what it writes as a literal stays
+// English, with the file it comes from. The rows' words (`ChatMessage`,
+// `ToolGroup`, `Markdown`) are planned off the main thread and stay
+// English until their language is part of the rows' input.
 
 extension Strings {
-    /// textSelection
+    /// textSelection (app/(app)/_layout.tsx's title, text-selection.tsx)
     public enum TextSelection {
-        public static let title = "Select Text"
-        public static let noTextProvided = "No text provided"
-        public static let textCopied = "Text copied to clipboard"
+        public static var title: String { localized("textSelection.title", "Select Text") }
+        public static var noTextProvided: String { localized("textSelection.noTextProvided", "No text provided") }
+        public static var textCopied: String { localized("textSelection.textCopied", "Text copied to clipboard") }
     }
 
     public enum Chat {
-        /// common.retry
-        public static let retry = "Retry"
-        /// common.loadMore
-        public static let loadMore = "Load more"
+        /// common.retry (ChatList.tsx OlderEnd, EmptyMessages.tsx)
+        public static var retry: String { localized("common.retry", "Retry") }
+        /// common.loadMore (ChatList.tsx OlderEnd, EmptyMessages.tsx)
+        public static var loadMore: String { localized("common.loadMore", "Load more") }
         /// pendingChatHandover.ts' fallback when the first message's error
         /// has no words of its own (not in en.ts).
         public static let firstMessageFailed = "Failed to send the first message"
-        /// sessionsFilter.worktreeTabs: the header's subtitle over the strip.
-        public static func worktreeTabs(_ count: Int) -> String { count == 1 ? "1 tab" : "\(count) tabs" }
-        /// common.copy
-        public static let copy = "Copy"
-        /// common.copied
-        public static let copied = "Copied"
-        /// session.inputPlaceholder
-        public static let inputPlaceholder = "Type a message ..."
+        /// sessionsFilter.worktreeTabs: the header's subtitle over the strip
+        /// (SessionView.tsx).
+        public static func worktreeTabs(_ count: Int) -> String {
+            localized("sessionsFilter.worktreeTabs", ["count": .number(count)], count == 1 ? "1 tab" : "\(count) tabs")
+        }
+        /// common.copy (LongPressCopyable.tsx; the selection screen's icon
+        /// button, which has no label in happy-app, is read as it)
+        public static var copy: String { localized("common.copy", "Copy") }
+        /// common.copied (MessageView.tsx, not drawn yet: the rows show the tick)
+        public static var copied: String { localized("common.copied", "Copied") }
+        /// session.inputPlaceholder (SessionView.tsx)
+        public static var inputPlaceholder: String { localized("session.inputPlaceholder", "Type a message ...") }
         /// The placeholder for a record this build can't show (not in
         /// happy-app, which drops such records).
         public static func unsupported(_ kind: String) -> String { "This message can't be shown here (\(kind))" }
         /// ChatFooter.tsx (not in en.ts)
         public static let controlledByTerminal = "Permissions shown in terminal only. Reset or send a message to control from app."
-        /// session.inactiveArchived
-        public static let inactiveArchived = "This session is inactive."
-        /// session.resumeFromTerminal
-        public static let resumeFromTerminal = "To resume it from the terminal:"
-        /// session.startingChat
-        public static let startingChat = "Starting a new chat…"
+        /// session.inactiveArchived (SessionView.tsx)
+        public static var inactiveArchived: String { localized("session.inactiveArchived", "This session is inactive.") }
+        /// session.resumeFromTerminal (SessionView.tsx)
+        public static var resumeFromTerminal: String { localized("session.resumeFromTerminal", "To resume it from the terminal:") }
+        /// session.startingChat (PendingChatPlaceholder.tsx)
+        public static var startingChat: String { localized("session.startingChat", "Starting a new chat…") }
         /// EmptyMessages.tsx (not in en.ts)
         public static let noMessages = "No messages yet"
         /// EmptyMessages.tsx (not in en.ts)
@@ -65,13 +73,15 @@ extension Strings {
         }
     }
 
-    /// en.ts `components.agentGoalBar`
+    /// `components.agentGoalBar` (AgentGoalBar.tsx, SessionView.tsx)
     public enum AgentGoal {
-        public static let currentGoal = "Current goal"
-        public static func accessibilityLabel(_ goal: String) -> String { "Current goal: \(goal)" }
-        public static let clearGoal = "Clear goal"
-        public static let stopGoal = "Stop goal"
-        public static let editGoal = "Edit goal"
+        public static var currentGoal: String { localized("components.agentGoalBar.currentGoal", "Current goal") }
+        public static func accessibilityLabel(_ goal: String) -> String {
+            localized("components.agentGoalBar.accessibilityLabel", ["goal": .text(goal)], "Current goal: \(goal)")
+        }
+        public static var clearGoal: String { localized("components.agentGoalBar.clearGoal", "Clear goal") }
+        public static var stopGoal: String { localized("components.agentGoalBar.stopGoal", "Stop goal") }
+        public static var editGoal: String { localized("components.agentGoalBar.editGoal", "Edit goal") }
 
         public static func action(_ action: SessionGoalAction) -> String {
             switch action {
