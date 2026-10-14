@@ -25,12 +25,27 @@ struct ChatRowsView: Equatable, Sendable {
     var pins = 0
     /// Moves when a waiting message's quiet spell ends, so its status shows.
     var tick = 0
+    /// The heights diagrams' pages reported, by row id, then by the
+    /// diagram's place in the row.
+    var mermaidHeights: [String: [Int: CGFloat]] = [:]
 }
 
 struct ChatRowsInput: Sendable {
     var snapshot: ChatSnapshot?
     var session: ChatSessionState
     var view = ChatRowsView()
+    /// The account's diff documents and syntax colour.
+    var render: RenderServices
+    /// Colour signals heard: rows drawn while their code blocks were still
+    /// being coloured are planned again after one.
+    var recolour = 0
+
+    init(snapshot: ChatSnapshot? = nil, session: ChatSessionState, view: ChatRowsView = ChatRowsView(), render: RenderServices) {
+        self.snapshot = snapshot
+        self.session = session
+        self.view = view
+        self.render = render
+    }
 }
 
 /// A question form in the chat, as the latest rows have it.
@@ -130,7 +145,8 @@ enum ChatRows {
             flavor: flavor,
             showLineNumbers: session.settings.bool("showLineNumbersInToolViews"),
             tablet: view.tablet,
-            permissionListMaxHeight: view.permissionListMaxHeight
+            permissionListMaxHeight: view.permissionListMaxHeight,
+            render: input.render
         )
         var graceEnd: Int64?
         var forms: [String: ChatQuestionForm] = [:]
@@ -147,7 +163,8 @@ enum ChatRows {
             makeRows: { items, groups in
                 rows(items, groups: groups, delivery: snapshot.delivery, agentState: session.agentState, view: view, style: style, now: now, graceEnd: &graceEnd, forms: &forms)
             },
-            id: \.id
+            id: \.id,
+            recolour: input.recolour
         )
         update.measured = result.measured
         update.grows = result.window.state.grows
@@ -244,7 +261,7 @@ enum ChatRows {
             }
             return ChatRowInput(
                 item: item, delivery: delivery, expanded: expanded, permissionBusy: busy, question: question, diffExpanded: diffs,
-                userStatus: userStatus, copied: copied, style: style
+                userStatus: userStatus, copied: copied, mermaid: view.mermaidHeights[item.id] ?? [:], style: style
             )
         }
     }

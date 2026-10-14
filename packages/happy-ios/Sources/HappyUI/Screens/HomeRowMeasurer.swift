@@ -60,33 +60,40 @@ struct HomeTextEnvironment: Equatable, @unchecked Sendable {
     }
 }
 
-/// The notices over the home list (HomeListHeaderView's inputs).
+/// The notices over the home list (HomeListHeaderView's inputs), with the
+/// words each one shows. The words are read where the banners are decided,
+/// on the main thread, in the screens' language; measuring the header off
+/// the main thread reads no strings, and a change of words is a new value.
 struct HomeBanners: Hashable, Sendable {
-    /// OfflineMachinesBanner's title; nil hides the plaque.
-    var offlineTitle: String?
-    var nativeUpdate: Bool
-    var whatsNew: Bool
+    struct Notice: Hashable, Sendable {
+        var title: String
+        var subtitle: String
+    }
 
+    /// OfflineMachinesBanner's title; nil hides the plaque.
+    let offlineTitle: String?
+    let nativeUpdate: Bool
+    let whatsNew: Bool
+    /// Each notice's title and subtitle, in HomeListHeaderView's order: the
+    /// plaque, then the store update or else What's new.
+    let notices: [Notice]
+
+    @MainActor
     init(offlineTitle: String? = nil, nativeUpdate: Bool = false, whatsNew: Bool = false) {
         self.offlineTitle = offlineTitle
         self.nativeUpdate = nativeUpdate
         self.whatsNew = whatsNew
-    }
-
-    var isEmpty: Bool { offlineTitle == nil && !nativeUpdate && !whatsNew }
-
-    /// Each notice's title and subtitle, in HomeListHeaderView's order: the
-    /// plaque, then the store update or else What's new.
-    var notices: [(title: String, subtitle: String)] {
-        var notices: [(title: String, subtitle: String)] = []
-        if let offlineTitle { notices.append((offlineTitle, Strings.Troubleshoot.bannerSubtitle)) }
+        var notices: [Notice] = []
+        if let offlineTitle { notices.append(Notice(title: offlineTitle, subtitle: Strings.Troubleshoot.bannerSubtitle)) }
         if nativeUpdate {
-            notices.append((Strings.Home.nativeUpdateAvailable, Strings.Home.tapToUpdateAppStore))
+            notices.append(Notice(title: Strings.Home.nativeUpdateAvailable, subtitle: Strings.Home.tapToUpdateAppStore))
         } else if whatsNew {
-            notices.append((Strings.Home.whatsNew, Strings.Home.seeLatest))
+            notices.append(Notice(title: Strings.Home.whatsNew, subtitle: Strings.Home.seeLatest))
         }
-        return notices
+        self.notices = notices
     }
+
+    var isEmpty: Bool { notices.isEmpty }
 }
 
 /// Home list heights without views, for the background derivation: the

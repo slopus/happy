@@ -25,8 +25,13 @@ final class FileLinesPlan: @unchecked Sendable {
     let maxWidth: CGFloat
     let rows: [Row]
     let layout: FileLinesLayout
+    /// The code is drawn plain while the account's syntax colours it; plan
+    /// again after its next signal.
+    let syntaxPending: Bool
 
-    init(source: Source, width: CGFloat, maxWidth: CGFloat) {
+    /// `syntax`: the account's code colour. A file past its limits stays
+    /// plain.
+    init(source: Source, width: CGFloat, maxWidth: CGFloat, syntax: CodeSyntaxService) {
         self.source = source
         self.width = width
         self.maxWidth = maxWidth
@@ -35,9 +40,18 @@ final class FileLinesPlan: @unchecked Sendable {
         case .diff(let diff):
             insets = .diff
             rows = FileViewer.diffLines(diff).map { Self.diffRow($0.text, $0.kind) }
+            syntaxPending = false
         case .code(let content, let language):
             insets = .code
-            rows = FileViewer.codeLines(content, language: language).map { Row(text: Self.codeText($0)) }
+            let outcome = syntax.tokens(content, language: language)
+            let tokens: [SyntaxToken]
+            if case .highlighted(let coloured) = outcome {
+                tokens = coloured
+            } else {
+                tokens = [SyntaxToken(content, .plain)]
+            }
+            rows = FileViewer.codeLines(tokens).map { Row(text: Self.codeText($0)) }
+            syntaxPending = outcome == .pending
         }
         let plain = FileLinesLayout.textWidth(width: width, maxWidth: maxWidth, insets: insets, bar: false)
         let barred = FileLinesLayout.textWidth(width: width, maxWidth: maxWidth, insets: insets, bar: true)

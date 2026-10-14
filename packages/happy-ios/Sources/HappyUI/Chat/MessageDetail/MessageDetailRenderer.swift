@@ -19,6 +19,8 @@ struct MessageDetailInput: Equatable, Sendable {
     var maxContentWidth: CGFloat
     /// Of a patch's files, the one the reader tapped in the chat.
     var focusFile: String?
+    /// The account's diff documents and syntax colour.
+    var render: RenderServices
 }
 
 /// Measures a message's screen off the main thread, once per input and
@@ -72,7 +74,7 @@ enum MessageDetailRenderer {
         case .terminal(let terminal, let controlInput):
             // BashViewFull: the command and all it printed, then what a
             // shell control typed, 16 apart.
-            var parts = [ChatStackEntry(piece: command(terminal))]
+            var parts = [ChatStackEntry(piece: command(terminal, syntax: input.render.diffSyntax))]
             if let controlInput {
                 parts.append(ChatRowRenderer.section(Strings.Tools.input, code(controlInput)))
             }
@@ -120,16 +122,18 @@ enum MessageDetailRenderer {
     /// selectable there and coloured (`syntaxHighlighting`), the command as
     /// bash and the output as a shell session, all tokenized by `deadline`
     /// or left plain; the error is neither.
-    static func command(_ terminal: ToolFullTerminal, syntaxDeadline deadline: ContinuousClock.Instant = DiffFilePlan.syntaxDeadline()) -> ChatPiece {
+    static func command(
+        _ terminal: ToolFullTerminal, syntax: DiffSyntaxService, syntaxDeadline deadline: ContinuousClock.Instant = DiffFilePlan.syntaxDeadline()
+    ) -> ChatPiece {
         let style = ChatTextStyles.terminalCommand
-        let commandText = TerminalSyntax.spans(terminal.command, language: TerminalSyntax.commandLanguage(prompt: terminal.prompt), until: deadline)
+        let commandText = TerminalSyntax.spans(terminal.command, language: TerminalSyntax.commandLanguage(prompt: terminal.prompt), until: deadline, service: syntax)
             .map { terminalString($0, style: style, color: Palette.terminalCommand, lineBreakMode: .byCharWrapping) }
             ?? style.string(terminal.command, color: Palette.terminalCommand, lineBreakMode: .byCharWrapping)
         let line = ChatRowRenderer.commandLine(commandText, prompt: terminal.prompt)
         var entries = [ChatStackEntry(piece: selectable(line, terminal.command))]
         /// `terminalText` is CommandView's: selectable and coloured.
         func output(_ text: String, _ style: ChatTextStyle, _ color: ColorToken, terminalText: Bool) {
-            let spans = terminalText ? TerminalSyntax.spans(text, language: TerminalSyntax.outputLanguage, until: deadline) : nil
+            let spans = terminalText ? TerminalSyntax.spans(text, language: TerminalSyntax.outputLanguage, until: deadline, service: syntax) : nil
             let piece = longText(text, style: style, color: color, lineBreakMode: .byCharWrapping, syntax: spans)
             entries.append(ChatStackEntry(piece: terminalText ? selectable(piece, text) : piece, marginTop: 8))
         }
@@ -174,7 +178,7 @@ enum MessageDetailRenderer {
     /// in ToolSectionView's full-width section, pulled 8 up, 12 below.
     static func diffs(_ kind: ToolViewKind, chunks: [ToolDiffChunk], replaceAll: [Bool], toolId: String, input: MessageDetailInput) -> ChatStackEntry? {
         func diff(_ index: Int, showLineNumbers: Bool) -> ChatPiece? {
-            ChatRowRenderer.diffPiece(chunks[index], index: index, toolId: toolId, showLineNumbers: showLineNumbers, expanded: input.diffExpanded[index] ?? [])
+            ChatRowRenderer.diffPiece(chunks[index], index: index, toolId: toolId, showLineNumbers: showLineNumbers, expanded: input.diffExpanded[index] ?? [], render: input.render)
         }
         switch kind {
         case .multiEdit:
@@ -245,7 +249,7 @@ enum MessageDetailRenderer {
         }
         if let source, let diff = ChatRowRenderer.diffPiece(
             source, index: index, toolId: toolId, showLineNumbers: input.showLineNumbers, expanded: input.diffExpanded[index] ?? [],
-            radius: radius - border, corners: header == nil ? .all : .bottom
+            render: input.render, radius: radius - border, corners: header == nil ? .all : .bottom
         ) {
             parts.append(ChatStackEntry(piece: diff))
         }

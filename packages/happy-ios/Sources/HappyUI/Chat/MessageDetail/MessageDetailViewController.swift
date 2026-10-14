@@ -17,6 +17,8 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     /// Of a patch's files, the one the reader tapped in the chat.
     private let focusFile: String?
     private let services: ChatServices
+    /// The account's diff documents and syntax colour, for the plan.
+    private let render: RenderServices
     private let scrollView = UIScrollView()
     private let canvas = MessageDetailCanvas()
     private let spinner = UIActivityIndicatorView(style: .medium)
@@ -49,6 +51,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
         focusFile = file
         spawnRequests = account.spawnRequests
         services = ChatServices.make(account: account, sessionId: sessionId, isCurrent: { [weak context, weak account] in account != nil && context?.account.session === account })
+        render = RenderServices(account)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -233,7 +236,8 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
             devMode: devMode,
             diffExpanded: diffExpanded,
             maxContentWidth: maxContentWidth,
-            focusFile: focusFile
+            focusFile: focusFile,
+            render: render
         )
         let width = view.bounds.width
         let measurer = self.measurer

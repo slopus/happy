@@ -9,7 +9,8 @@ import HappyStore
 ///
 /// A plan asks with its pass's deadline (`SyntaxPass`). Lines it lacks are
 /// tokenized right there until the deadline; then the block is `pending`,
-/// drawn plain, and tokenized whole in the background. Every background job
+/// drawn plain, and tokenized whole in the background, and the row being
+/// measured is noted as pending (`SyntaxPass.notePending`). Every background job
 /// ends with a `completions()` signal, and a pending answer is only ever
 /// given while some job is queued or running, so a plan holding a pending
 /// block always hears when to ask again.
@@ -90,6 +91,7 @@ public final class CodeSyntaxService: @unchecked Sendable {
                 remember(key, line, generation: generation)
             } else {
                 enqueue(Job(key: JobKey(grammar: grammar, code: code, generation: generation), lines: lines, bytes: bytes))
+                SyntaxPass.notePending()
                 return .pending
             }
             if index > 0 { tokens.append(SyntaxToken("\n", .plain)) }
