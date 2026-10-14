@@ -119,6 +119,24 @@ final class ChatComposerRevealTests: XCTestCase {
         XCTAssertFalse(dock.hitTest(CGPoint(x: width / 2, y: 100), with: nil) === reveal.catcher)
     }
 
+    func testTheListBehindTakesItsTouchesWhileTheComposerIsHidden() throws {
+        let composer = stalledComposer(try account(LocalStore(writer: DatabaseQueue())))
+        let reveal = ChatComposerReveal(composer: composer)
+        // The chat: the list under the dock, as the screen stacks them.
+        let screen = UIView(frame: CGRect(x: 0, y: 0, width: width, height: 852))
+        let list = UIScrollView(frame: screen.bounds)
+        list.contentSize = CGSize(width: width, height: 2000)
+        screen.addSubview(list)
+        let dock = dock(composer, reveal)
+        dock.frame.origin.y = 852 - dock.bounds.height
+        screen.addSubview(dock)
+        XCTAssertEqual(composer.alpha, 0)
+        XCTAssertTrue(screen.hitTest(CGPoint(x: width / 2, y: 200), with: nil) === list)
+        XCTAssertTrue(list.isScrollEnabled && list.isUserInteractionEnabled && list.alpha == 1)
+        let overComposer = dock.convert(CGPoint(x: width / 2, y: composer.frame.midY), to: screen)
+        XCTAssertTrue(screen.hitTest(overComposer, with: nil) === reveal.catcher)
+    }
+
     func testATapOnTheHiddenComposerFocusesItAndSendsNothing() async throws {
         let store = try LocalStore(writer: DatabaseQueue())
         let screen = Screen()

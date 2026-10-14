@@ -61,6 +61,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     private var gitStatus: GitStatus?
     private let dock = ChatDockView()
     private let composer: any ChatComposerView
+    /// The composer stays hidden until its draft is restored, its taps
+    /// caught meanwhile (`ChatComposerReveal`).
+    private let composerReveal: ChatComposerReveal
     /// The bars above the composer, top to bottom: how to bring back a
     /// session that has stopped, the goal, a request the chat can't show
     /// inline, what a Happy Agent session has running.
@@ -177,6 +180,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             controls: services.controls,
             draftStorage: pending ? PendingChatComposerStorage(account.pendingChats) : nil
         ))
+        composerReveal = ChatComposerReveal(composer: composer)
         super.init(nibName: nil, bundle: nil)
         hidesBottomBarWhenPushed = true
     }
@@ -222,6 +226,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         dock.addSubview(questionBanner)
         dock.addSubview(rigActivity)
         dock.addSubview(composer)
+        dock.addSubview(composerReveal.catcher)
         view.addSubview(dock)
         scrollButton.alpha = 0
         scrollButton.addTarget(self, action: #selector(scrollToNewest), for: .touchUpInside)
@@ -402,6 +407,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
     private func layoutScreen() {
         let size = view.bounds.size
+        let composerHeight = composer.composerHeight(fitting: size.width)
+        // Restored while answering: it shows in this frame.
+        composerReveal.heightRead()
         let screen = ChatScreenLayout(.init(
             size: size,
             safeArea: LayoutInsets(view.safeAreaInsets),
@@ -409,7 +417,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             // is down, and the layout never goes below that.
             keyboardTop: keyboardTracker.frame.minY,
             accessories: dockBars.map { $0.inset ? .inset($0.measurable) : .fullWidth($0.measurable) },
-            composerHeight: composer.composerHeight(fitting: size.width),
+            composerHeight: composerHeight,
             composerCardOffset: composer.cardOffset,
             maxContentWidth: maxContentWidth,
             // TabletBranches: chatFloatingDock and chatInputPaddingH.
@@ -436,6 +444,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         dock.setLayoutFrame(screen.dock)
         for (bar, frame) in zip(dockBars, screen.accessories) { bar.view.setLayoutFrame(frame) }
         composer.setLayoutFrame(screen.composer)
+        composerReveal.layout(composerFrame: screen.composer)
         scrollButton.setLayoutFrame(screen.scrollButton)
         scrim.setLayoutFrame(screen.scrim)
         if let back = screen.backButton { landscapeBack.setLayoutFrame(back) }
@@ -1284,6 +1293,15 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     }
 
     func composerDidChangeFocus(_ composer: any ChatComposerView) {}
+
+    /// The draft is restored: the composer shows at the height laid out
+    /// for it, now. A report for the chat before a retarget isn't this
+    /// one's.
+    func composerDidRestore(_ composer: any ChatComposerView, generation: Int) {
+        guard generation == composer.restoreGeneration else { return }
+        view.layoutIfNeeded()
+        composerReveal.restored(generation: generation)
+    }
 
     func composer(_ composer: any ChatComposerView, didSend localId: String) {
         list.scrollToNewest(animated: true)
