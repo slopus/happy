@@ -28,10 +28,11 @@ public struct MachineChoice: Equatable, Sendable {
     /// they may be different accounts or containers.
     public static func collect(_ machines: [MachineRecord]) -> [MachineChoice] {
         let byId = Dictionary(machines.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let pointers = siblingPointers(machines)
         var grouped = Set<String>()
         var choices: [MachineChoice] = []
         for machine in machines where !grouped.contains(machine.id) {
-            let ids = connectedMachineIds(from: machine, machines: machines, byId: byId)
+            let ids = connectedMachineIds(from: machine, byId: byId, pointers: pointers)
             grouped.formUnion(ids)
             let group = ids.compactMap { byId[$0] }
             // A computer can collect several Happy Agent registrations; the
@@ -93,15 +94,28 @@ public struct MachineChoice: Equatable, Sendable {
         return best
     }
 
+    /// Every sibling pointer and the machines that write it, in list order:
+    /// the backward half of happy-app's `pairedMachineIds`, read once for
+    /// the whole list rather than once per machine.
+    static func siblingPointers(_ machines: [MachineRecord]) -> [String: [String]] {
+        var pointers: [String: [String]] = [:]
+        for machine in machines {
+            guard let sibling = machine.metadata?["siblingMachineId"]?.stringValue else { continue }
+            pointers[sibling, default: []].append(machine.id)
+        }
+        return pointers
+    }
+
     /// The machine itself, its sibling pointer, and every machine pointing
     /// at it. Happy Agent writes the pointer, so it is read both ways.
-    static func pairedMachineIds(_ machine: MachineRecord, machines: [MachineRecord]) -> [String] {
+    static func pairedMachineIds(_ machine: MachineRecord, pointers: [String: [String]]) -> [String] {
         var ids = [machine.id]
-        if let sibling = nonEmpty(machine.metadata?["siblingMachineId"]?.stringValue), !ids.contains(sibling) {
+        var seen: Set<String> = [machine.id]
+        if let sibling = nonEmpty(machine.metadata?["siblingMachineId"]?.stringValue), seen.insert(sibling).inserted {
             ids.append(sibling)
         }
-        for candidate in machines where candidate.metadata?["siblingMachineId"]?.stringValue == machine.id {
-            if !ids.contains(candidate.id) { ids.append(candidate.id) }
+        for candidate in pointers[machine.id] ?? [] where seen.insert(candidate).inserted {
+            ids.append(candidate)
         }
         return ids
     }
@@ -109,12 +123,12 @@ public struct MachineChoice: Equatable, Sendable {
     /// Pairing is followed all the way out: two Happy Agent registrations
     /// naming the same Happy CLI machine are one computer, though neither
     /// names the other.
-    static func connectedMachineIds(from start: MachineRecord, machines: [MachineRecord], byId: [String: MachineRecord]) -> [String] {
+    static func connectedMachineIds(from start: MachineRecord, byId: [String: MachineRecord], pointers: [String: [String]]) -> [String] {
         var found = [start.id]
         var seen: Set<String> = [start.id]
         var pending = [start]
         while let machine = pending.popLast() {
-            for id in pairedMachineIds(machine, machines: machines) {
+            for id in pairedMachineIds(machine, pointers: pointers) {
                 guard let paired = byId[id], !seen.contains(id) else { continue }
                 seen.insert(id)
                 found.append(id)

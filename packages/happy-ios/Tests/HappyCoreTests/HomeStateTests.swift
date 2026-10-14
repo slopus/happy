@@ -96,6 +96,102 @@ final class MachineChoiceTests: XCTestCase {
     }
 }
 
+/// `MachineChoice.collect` reads the sibling pointers once for the list; the
+/// groups, their order and every member's order stay those of happy-app's
+/// per-machine scan, kept here as the reference.
+final class MachineChoicePairingIndexTests: XCTestCase {
+    /// sync/agentSessionPlaces.ts `pairedMachineIds` and
+    /// machineChoices.ts `connectedMachineIds`, as they read.
+    private func referenceIds(_ start: MachineRecord, _ machines: [MachineRecord], _ byId: [String: MachineRecord]) -> [String] {
+        func paired(_ machine: MachineRecord) -> [String] {
+            var ids = [machine.id]
+            if let sibling = machine.metadata?["siblingMachineId"]?.stringValue, !sibling.isEmpty, !ids.contains(sibling) {
+                ids.append(sibling)
+            }
+            for candidate in machines where candidate.metadata?["siblingMachineId"]?.stringValue == machine.id {
+                if !ids.contains(candidate.id) { ids.append(candidate.id) }
+            }
+            return ids
+        }
+        var found = [start.id]
+        var seen: Set<String> = [start.id]
+        var pending = [start]
+        while let machine = pending.popLast() {
+            for id in paired(machine) {
+                guard let next = byId[id], !seen.contains(id) else { continue }
+                seen.insert(id)
+                found.append(id)
+                pending.append(next)
+            }
+        }
+        return found
+    }
+
+    private func reference(_ machines: [MachineRecord]) -> [[String]] {
+        let byId = Dictionary(machines.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var grouped = Set<String>()
+        var groups: [[String]] = []
+        for machine in machines where !grouped.contains(machine.id) {
+            let ids = referenceIds(machine, machines, byId)
+            grouped.formUnion(ids)
+            groups.append(ids)
+        }
+        return groups
+    }
+
+    private func rig(_ id: String, to sibling: String, activeAt: Int64 = 1) -> MachineRecord {
+        machine(id, activeAt: activeAt, ["machineKind": .string("rig"), "siblingMachineId": .string(sibling)])
+    }
+
+    func testOddPointersGroupAsBefore() {
+        let lists: [[MachineRecord]] = [
+            // Agents first, pointing at a CLI further down; one points at another agent.
+            [rig("r1", to: "cli"), rig("r2", to: "cli"), rig("r3", to: "r1"), machine("cli"), machine("x")],
+            // A chain, a cycle, a self pointer, an empty and a dangling one.
+            [rig("a", to: "b"), rig("b", to: "c"), rig("c", to: "a"), rig("self", to: "self"), rig("empty", to: ""), rig("gone", to: "nowhere")],
+            // A duplicate id: the first record is the machine.
+            [machine("d", ["host": .string("first")]), rig("r", to: "d"), machine("d", ["host": .string("second")])],
+            // Two CLIs claimed by one agent through a third.
+            [machine("cli1"), rig("r1", to: "cli1"), rig("r2", to: "r1"), rig("r3", to: "cli2"), machine("cli2"), rig("r4", to: "r2")],
+        ]
+        for machines in lists {
+            XCTAssertEqual(MachineChoice.collect(machines).map(\.machineIds), reference(machines))
+        }
+    }
+
+    func testAThousandMachinesWithSiblingsGroupAsBefore() {
+        var machines: [MachineRecord] = []
+        for index in 0..<1000 {
+            switch index % 4 {
+            case 0: machines.append(rig("m\(index)", to: "m\(index + 3)", activeAt: Int64(index)))
+            case 1: machines.append(rig("m\(index)", to: "m\(index + 2)", activeAt: Int64(index)))
+            case 2: machines.append(machine("m\(index)", ["host": .string("h\(index)")]))
+            default: machines.append(machine("m\(index)", activeAt: Int64(index)))
+            }
+        }
+        let choices = MachineChoice.collect(machines)
+        XCTAssertEqual(choices.map(\.machineIds), reference(machines))
+        XCTAssertEqual(choices.count, 500)
+    }
+
+    /// Linear in the machines: ten times the list costs nowhere near a
+    /// hundred times the time, as the per-machine scan did.
+    func testCollectingScalesWithTheList() {
+        func list(_ count: Int) -> [MachineRecord] {
+            (0..<count).map { index in
+                index.isMultiple(of: 2)
+                    ? rig("m\(index)", to: "m\(index + 1)", activeAt: Int64(index))
+                    : machine("m\(index)", activeAt: Int64(index), ["host": .string("h\(index)")])
+            }
+        }
+        let small = list(400)
+        let large = list(4000)
+        let smallTime = applyPerfMedian(5) { _ = MachineChoice.collect(small) }
+        let largeTime = applyPerfMedian(5) { _ = MachineChoice.collect(large) }
+        XCTAssertLessThan(largeTime, max(smallTime, 0.05) * 40, "\(smallTime)ms for 400, \(largeTime)ms for 4000")
+    }
+}
+
 final class HomeStateTests: XCTestCase {
     private func home(_ machines: [MachineRecord], synced: Bool = true, _ sessions: [SessionRecord] = []) -> HomeState {
         HomeState(HomeSnapshot(machines: MachinesSnapshot(synced: synced, machines: machines), sessions: sessions))
