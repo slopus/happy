@@ -140,6 +140,13 @@ public struct ComposerTextHeights: Sendable {
 
     public init() {}
 
+    /// Whether `lookup` would answer `stamp` with its text's measured
+    /// height rather than a guess. Starts nothing.
+    public func isMeasured(_ stamp: Stamp, isEmpty: Bool) -> Bool {
+        guard stamp.key.width > 0 else { return false }
+        return isEmpty || entries[stamp.key]?.revision == stamp.revision
+    }
+
     /// The height for `stamp`'s text, and whether to start measuring it.
     public mutating func lookup(_ stamp: Stamp, isEmpty: Bool) -> Lookup {
         let key = stamp.key
@@ -167,6 +174,15 @@ public struct ComposerTextHeights: Sendable {
         wanted[key] = nil
         inFlight = stamp
         return serve(key, stamp)
+    }
+
+    /// `stamp`'s text was measured before it was set (`premeasure`): its
+    /// height is known at once, and nothing is measured for it.
+    public mutating func seed(_ stamp: Stamp, height: CGFloat) {
+        guard stamp.key.width > 0 else { return }
+        touch(stamp.key)
+        record(stamp.key, Entry(revision: stamp.revision, height: height))
+        wanted[stamp.key] = nil
     }
 
     /// A measurement landed with `height`; `live` is the text now.
@@ -201,6 +217,31 @@ public struct ComposerTextHeights: Sendable {
             return stamp
         }
         return nil
+    }
+
+    /// A text set not to animate its height (a restored draft), until its
+    /// own measurement lands: which replacement (`generation`) and which
+    /// edit of it (`revision`). A measurement of an earlier text landing
+    /// meanwhile neither animates it nor ends it.
+    public struct QuietGrowth: Equatable, Sendable {
+        public var generation: Int
+        public var revision: Int
+
+        public init(generation: Int, revision: Int) {
+            self.generation = generation
+            self.revision = revision
+        }
+
+        /// Whether a height change for text of `generation` animates.
+        public func animates(generation: Int) -> Bool {
+            generation != self.generation
+        }
+
+        /// Whether `stamp` is this text's measurement (or a later edit's):
+        /// once it lands the quiet growth is over.
+        public func isEnded(by stamp: Stamp) -> Bool {
+            stamp.generation == generation && stamp.revision >= revision
+        }
     }
 
     private func answer(_ key: Key) -> CGFloat {

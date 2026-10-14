@@ -121,6 +121,86 @@ final class AgentInputCardGrowthTests: XCTestCase {
         XCTAssertEqual(owner.animated, [false, true])
     }
 
+    /// CM2: a measurement of the text before a restored draft, landing
+    /// after the draft was set and before anything asked for its height,
+    /// leaves the draft's growth unanimated.
+    func testAnEarlierMeasurementLandingFirstLeavesTheDraftQuiet() async {
+        let owner = Owner()
+        let card = AgentInputCardView(configuration: AgentInputCardConfiguration(placeholder: "Type a message ..."))
+        card.delegate = owner
+        card.setText("typed", selection: NSRange(location: 5, length: 0))
+        // Measuring "typed" while the card has no width yet.
+        _ = card.layoutInput(width: 377)
+        card.setText("one\ntwo\nthree", selection: NSRange(location: 13, length: 0), animatesHeight: false)
+        await card.textMeasured()
+        XCTAssertEqual(owner.animated, [], "the stale result moves nothing")
+        // Laid out: the draft is measured and lands without animating.
+        card.frame = CGRect(x: 0, y: 0, width: 377, height: card.height(fitting: 377))
+        await card.textMeasured()
+        XCTAssertEqual(owner.animated, [false])
+        withExtendedLifetime(owner) {}
+    }
+
+    func testAPremeasuredTextHasItsHeightInItsFirstFrame() async {
+        let owner = Owner()
+        let card = await laidOutCard(owner)
+        let oneLine = card.bounds.height
+        owner.invalidations = 0
+        let text = await card.premeasure("one\ntwo\nthree", fitting: 377)
+        card.setText(text, selection: NSRange(location: 13, length: 0), animatesHeight: false)
+        // Known at once: nothing to wait for, one height change, final.
+        XCTAssertTrue(card.isTextMeasured(fitting: 377))
+        XCTAssertEqual(owner.invalidations, 1)
+        let first = card.bounds.height
+        XCTAssertGreaterThan(first, oneLine)
+        await card.textMeasured()
+        XCTAssertEqual(owner.invalidations, 1)
+        XCTAssertEqual(card.height(fitting: 377), first)
+
+        // Measured the ordinary way, it is as tall.
+        let otherOwner = Owner()
+        let other = await laidOutCard(otherOwner)
+        other.setText("one\ntwo\nthree", selection: NSRange(location: 13, length: 0))
+        _ = other.layoutInput(width: 377)
+        await other.textMeasured()
+        XCTAssertEqual(other.height(fitting: 377), first)
+        withExtendedLifetime(owner) {}
+        withExtendedLifetime(otherOwner) {}
+    }
+
+    func testATextPremeasuredForAnotherWidthIsMeasuredAgain() async {
+        let owner = Owner()
+        let card = await laidOutCard(owner)
+        let text = await card.premeasure("one\ntwo", fitting: 300)
+        card.setText(text, selection: NSRange(location: 7, length: 0))
+        XCTAssertFalse(card.isTextMeasured(fitting: 377))
+        await card.textMeasured()
+        XCTAssertTrue(card.isTextMeasured(fitting: 377))
+        withExtendedLifetime(owner) {}
+    }
+
+    func testWaitingForTheHeight() async {
+        let owner = Owner()
+        let card = await laidOutCard(owner)
+        // Already measured: answered before returning.
+        var answers: [AgentInputCardView.TextReadiness] = []
+        card.whenTextMeasured(fitting: 377, timeout: .seconds(5)) { answers.append($0) }
+        XCTAssertEqual(answers, [.measured])
+
+        card.setText("one\ntwo\nthree", selection: NSRange(location: 13, length: 0), animatesHeight: false)
+        answers = []
+        card.whenTextMeasured(fitting: 377, timeout: .seconds(5)) { answers.append($0) }
+        XCTAssertEqual(answers, [])
+        // A newer wait replaces it.
+        var newer: [AgentInputCardView.TextReadiness] = []
+        card.whenTextMeasured(fitting: 377, timeout: .seconds(5)) { newer.append($0) }
+        XCTAssertEqual(answers, [.superseded])
+        await card.textMeasured()
+        XCTAssertEqual(newer, [.measured])
+        XCTAssertTrue(card.isTextMeasured(fitting: 377))
+        withExtendedLifetime(owner) {}
+    }
+
     func testContentIsAnythingButWhitespace() async {
         let owner = Owner()
         let card = await laidOutCard(owner)
