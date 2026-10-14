@@ -87,6 +87,8 @@ public struct SessionRow: Equatable, Sendable {
     public var archived: Bool
     public var isBot: Bool
     public var showsDivider: Bool
+    /// Unsent text exists in this account's draft store.
+    public var hasDraft: Bool = false
 }
 
 /// The home session list in happy-app's default flat layout

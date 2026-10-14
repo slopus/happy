@@ -11,6 +11,8 @@ public final class HomeFeed: Sendable {
     /// The current disk snapshot first, then each distinct snapshot. The
     /// producer runs off main; callers must also derive UI models off main.
     public func snapshots() -> AsyncStream<HomeSnapshot> { scope.snapshots { [store] in store.homeSnapshots() } }
+    /// Nonempty drafts, independently observed from home's session rows.
+    public func draftSessions() -> AsyncStream<Set<String>> { scope.snapshots { [store] in store.draftSessionIdsSnapshots() } }
     func stop() { scope.stop() }
 }
 

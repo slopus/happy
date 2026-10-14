@@ -60,7 +60,7 @@ public struct HomeListModel: Equatable, Sendable {
 
     /// `expandedProjects` are the projects whose worktrees are all shown
     /// (a device setting, read on the main thread and passed in).
-    public init(_ list: SessionList, offline: [MachineChoice]?, expandedProjects: Set<String>) {
+    public init(_ list: SessionList, offline: [MachineChoice]?, expandedProjects: Set<String>, draftSessionIds: Set<String> = []) {
         var ids: [HomeListRow.ID] = []
         var rows: [HomeListRow] = []
         var dayIndex = 0
@@ -83,6 +83,7 @@ public struct HomeListModel: Equatable, Sendable {
                 case .session(var row):
                     ids.append(.session(row.id))
                     row.lastActivityAt = 0
+                    row.hasDraft = draftSessionIds.contains(row.id)
                     rows.append(.flat(.session(row)))
                 case .archiveToggle:
                     ids.append(.archiveToggle)
@@ -108,9 +109,11 @@ public struct HomeListModel: Equatable, Sendable {
         switch row {
         case .bot(var session):
             session.lastActivityAt = 0
+            session.hasDraft = false
             return .bot(session)
         case .archived(var session):
             session.lastActivityAt = 0
+            session.hasDraft = false
             return .archived(session)
         default:
             return row
@@ -131,13 +134,13 @@ public enum HomeContent: Equatable, Sendable {
     case noSessions
     case list(HomeListModel)
 
-    public init(_ state: HomeState, expandedProjects: Set<String>) {
+    public init(_ state: HomeState, expandedProjects: Set<String>, draftSessionIds: Set<String> = []) {
         switch state {
         case .loading: self = .loading
         case .link: self = .link
         case .offline(let choices, let hasArchived): self = .offline(choices, hasArchived: hasArchived)
         case .noSessions: self = .noSessions
-        case .list(let list, let offline): self = .list(HomeListModel(list, offline: offline, expandedProjects: expandedProjects))
+        case .list(let list, let offline): self = .list(HomeListModel(list, offline: offline, expandedProjects: expandedProjects, draftSessionIds: draftSessionIds))
         }
     }
 
@@ -187,6 +190,7 @@ public enum HomeDerivation {
     public struct Input: Sendable {
         public var snapshot: HomeSnapshot?
         public var expandedProjects: Set<String>
+        public var draftSessionIds: Set<String>
         /// Home's dock also wants the new-session pickers' snapshot.
         public var includesDock: Bool
         /// Nil uses the time of the derivation; tests fix it. Never the
@@ -194,9 +198,10 @@ public enum HomeDerivation {
         /// disconnected, and headings and stamps would go stale with it.
         public var clock: SessionList.Clock?
 
-        public init(snapshot: HomeSnapshot? = nil, expandedProjects: Set<String> = [], includesDock: Bool = false, clock: SessionList.Clock? = nil) {
+        public init(snapshot: HomeSnapshot? = nil, expandedProjects: Set<String> = [], includesDock: Bool = false, clock: SessionList.Clock? = nil, draftSessionIds: Set<String> = []) {
             self.snapshot = snapshot
             self.expandedProjects = expandedProjects
+            self.draftSessionIds = draftSessionIds
             self.includesDock = includesDock
             self.clock = clock
         }
@@ -219,7 +224,7 @@ public enum HomeDerivation {
     public static func derive(_ input: Input, applied: Applied) -> (output: HomeUpdate, state: Applied)? {
         guard let snapshot = input.snapshot else { return nil }
         let state = HomeState(snapshot, clock: input.clock ?? SessionList.Clock())
-        let content = HomeContent(state, expandedProjects: input.expandedProjects)
+        let content = HomeContent(state, expandedProjects: input.expandedProjects, draftSessionIds: input.draftSessionIds)
         let dock = input.includesDock ? NewSessionSnapshot.rendered(snapshot) : nil
         let dockChanged = dock != nil && dock != applied.dock
         let grouping = AccountSettings(snapshot.settings).sessionListGrouping

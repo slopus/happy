@@ -22,9 +22,11 @@ public final class LocalStore: Sendable {
     let homeObservation: SharedValueObservation<HomeSnapshot>
     let settingsObservation: SharedValueObservation<SettingsSnapshot>
     let machinesObservation: SharedValueObservation<MachinesSnapshot>
+    let draftSessionsObservation: SharedValueObservation<Set<String>>
     let homeHub: SnapshotHub<HomeSnapshot>
     let machinesHub: SnapshotHub<MachinesSnapshot>
     let troubleshootingHub: SnapshotHub<TroubleshootingSnapshot>
+    let draftSessionsHub: SnapshotHub<Set<String>>
     let presenceOverlay: PresenceOverlay
 
     /// Opens (creating if needed) the store at `url`, in WAL mode so the UI
@@ -75,6 +77,13 @@ public final class LocalStore: Sendable {
         machinesObservation = ValueObservation.trackingConstantRegion { db in
             try Self.fetchMachinesSnapshot(db)
         }.removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))
+        // Existing draft saves update only text and updatedAt. Tracking the
+        // primary key observes membership changes without reading on each edit.
+        let draftRegion = SQLRequest<Row>(sql: "SELECT sessionId FROM draft")
+        draftSessionsObservation = ValueObservation.tracking(region: draftRegion,
+            fetch: { db in try Self.fetchDraftSessionIds(db) }
+        ).removeDuplicates().shared(in: writer, scheduling: .async(onQueue: delivery))
+        draftSessionsHub = SnapshotHub(observation: draftSessionsObservation, project: { $0 })
         let overlay = PresenceOverlay()
         presenceOverlay = overlay
         homeHub = SnapshotHub(observation: homeObservation, project: { overlay.home($0) })

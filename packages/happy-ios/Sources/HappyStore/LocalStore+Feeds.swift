@@ -10,6 +10,7 @@ extension LocalStore {
         await homeHub.stop()
         await machinesHub.stop()
         await troubleshootingHub.stop()
+        await draftSessionsHub.stop()
     }
 
     public func setSessionPresenceOverlay(id: String, value: PresenceOverlayValue) { presenceOverlay.setSession(id, value) }
