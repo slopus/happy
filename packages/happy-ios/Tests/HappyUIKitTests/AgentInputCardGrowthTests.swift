@@ -78,20 +78,42 @@ final class AgentInputCardGrowthTests: XCTestCase {
         XCTAssertEqual(owner.invalidations, 0)
     }
 
-    func testTheMeasureAgreesWithTheTextView() async {
+    /// Measured as Fabric measures a TextInput, TextKit 1 (a TextKit 1
+    /// twin of the text view gives it exactly), and the TextKit 2 view's own
+    /// text fits it, in the same lines, every caret inside it.
+    func testTheMeasureIsTextKit1sAndTheEditorFitsIt() async {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
         let owner = Owner()
         let card = await laidOutCard(owner)
+        window.addSubview(card)
         for text in ["one", "one\ntwo", "one\n", String(repeating: "wrap me ", count: 12), "😀 e\u{301} 漢字"] {
             card.setText(text, selection: NSRange(location: 0, length: 0))
             _ = card.layoutInput(width: 377)
             await card.textMeasured()
-            let width = card.layout(width: 377).text.width
-            let native = ceil(card.textView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height)
+            card.layoutIfNeeded()
+            let input = card.layoutInput(width: 377)
+            let layout = card.layout(width: 377)
+            let metrics = card.metrics
+            let width = layout.text.width
+            let twin = ComposerEditorGeometry.layOut(ComposerEditorGeometry.textKit1Twin(of: card.textView), width: width)
+            let native = ComposerEditorGeometry.ownHeight(twin, width: width)
             // All under the cap, so measured whole, as `sizeThatFits` does.
             XCTAssertLessThan(native, 120)
-            XCTAssertEqual(card.layoutInput(width: 377).textContentHeight, native, text.debugDescription)
+            XCTAssertEqual(input.textContentHeight, native, text.debugDescription)
+            XCTAssertLessThanOrEqual(ComposerEditorGeometry.ownHeight(card.textView, width: width), native, text.debugDescription)
+            ComposerEditorGeometry.assertFits(
+                card.textView,
+                measured: input.textContentHeight,
+                frame: layout.text.height,
+                minimum: (input.lineHeight ?? metrics.inputLineHeight) + metrics.inputPaddingTop + metrics.inputPaddingBottom,
+                cap: metrics.inputMaxHeight,
+                scrolls: layout.textScrolls,
+                host: window,
+                text.debugDescription
+            )
         }
         withExtendedLifetime(owner) {}
+        withExtendedLifetime(window) {}
     }
 
     func testALongPasteIsMeasuredOnlyToTheCap() async {

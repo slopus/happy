@@ -421,7 +421,11 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
         border: Palette.glassBorder,
         shadow: .init(offsetY: NewSessionMaterial.composerShadowOffsetY, radius: NewSessionMaterial.composerShadowRadius)
     )
-    let textView = UITextView()
+    /// TextKit 2, as RN's `RCTUITextView` is, in the TextKit 1 height
+    /// measured off the main thread (`ComposerTextMeasure`): its text sits
+    /// inside, and Writing Tools gets its inline experience. Never ask it
+    /// for its `layoutManager`, which turns it into TextKit 1.
+    let textView = UITextView(usingTextLayoutManager: true)
     private let placeholder = StyledLabel(style: TextStyles.composerInput, color: Palette.inputPlaceholder, lines: 1)
     let agentButton = NewSessionAgentButton()
     let settingsButton = NewSessionComposerButton(icon: .ionicons("settings-outline"), size: NewSessionComposerLayout.Metrics.settingsIconSize)

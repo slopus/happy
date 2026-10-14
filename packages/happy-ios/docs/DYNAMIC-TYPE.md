@@ -21,6 +21,8 @@ says yes. The Paper path below is never taken.
 | Kern | `RCTAttributedTextUtils.mm` 186-188 | `letterSpacing` as given, not scaled |
 | Inputs | `React/Fabric/Mounting/ComponentViews/TextInput/RCTTextInputComponentView.mm` 143, 291 | same attributes at `RCTFontSizeMultiplier()` |
 | Text box | `.../RCTTextLayoutManager.mm` 391-392 | measured size ceiled to the screen's pixels |
+| Input measure | `ReactCommon/react/renderer/components/textinput/BaseTextInputShadowNode.h` 61-71, then `.../RCTTextLayoutManager.mm` 223-236 | a TextInput's height is its text laid out by TextKit 1 (an `NSLayoutManager`, `usesFontLeading = NO`, no line fragment padding), ceiled as above |
+| Input view | `Libraries/Text/TextInput/Multiline/RCTUITextView.mm` 37-62, `RCTTextInputComponentView.mm` 89, 819 | a multiline input is `[RCTUITextView new]`, UIKit's default TextKit 2 text view; nothing asks it for its `layoutManager`, so it stays TextKit 2 and draws its text inside the TextKit 1 frame |
 
 Not scaled: Yoga sizes, paddings, fixed `height`s and icons.
 
@@ -79,6 +81,34 @@ Following now:
   redraws and asks the chat to lay out again. Tap targets are the measured
   frames, so they grow with the text; the slop around them is fixed, as
   RN's `hitSlop` is.
+  That measure is TextKit 1 (`ComposerTextMeasure`), as Fabric's is (the
+  table's input measure), and the input's frame is exactly its height; the
+  text view inside it is TextKit 2, as RN's `RCTUITextView` is (so is New
+  session's prompt, at its designed size). TextKit 2 lays a scaled line
+  (22 × m, fractional) out a little short, and more so each line: the
+  TextKit probe's Mac run (38512168032) found 1.5, 2.5, 3.5 and 5.5pt to
+  spare for 1, 2, 3 and 5 lines at the largest size. RN's composer is the
+  same TextKit 2 view (`RCTUITextView.mm` 37-62, made by
+  `RCTTextInputComponentView.mm` 89, 819) in the same TextKit 1 frame
+  (`RCTTextLayoutManager.mm` 223-236), so its text has the same space to
+  spare; that is read from RN's source, not measured in RN. So the text
+  sits inside its frame, never past it: in all 59 of the probe's rows
+  under the cap TextKit 2's own height was within the frame, the two
+  TextKits broke all 84 rows into the same lines, and at every one of the
+  twelve sizes they wrapped a test sentence at the same character. As the
+  shortfall grows with the lines, no single adjustment makes TextKit 2 lay
+  out the measured height, and the measure stays TextKit 1. At the default
+  size (Large) a one-line caret reaches half a point into the 4pt bottom
+  padding, in both TextKits alike; it stays inside the view. UIKit
+  resolves a TextKit 2 view's Writing Tools to the complete, inline
+  experience, as RN's composer has it, where a TextKit 1 view gets the
+  panel; on the Mac simulator that is the resolved property, read without
+  Writing Tools being available, not rewriting at work. None of the
+  composer's text views is TextKit 1: the card, the flat panel and New
+  session's prompt are all TextKit 2, so all three resolve it alike. That
+  closes review item TK-L3 (a TextKit 1 composer gets only the panel,
+  where RN's gets the inline experience): R1 made the card TextKit 2
+  again, and New session's prompt stays TextKit 2.
 - The chat's worktree tab strip, on its own (`ChatWorktreeTabStrip` sets
   the trait on itself). Its heights are fixed (the 40 capsule, the 32
   tabs); only the tabs' widths come from their names, up to 200. The names
@@ -162,6 +192,13 @@ past; in the 42 row it is cut by the middle box, as RN's
   their scaled labels, and a size change while typing (the typed text is
   restyled in place, which may end an IME composition in progress) have
   not been looked at; only the geometry is tested.
+- On a device with Apple Intelligence: Writing Tools rewriting the
+  composer's text inline. Only the behaviour UIKit resolves (complete) is
+  tested, and the TextKit 2 editor's spare space is from the simulator.
+- On the Mac simulator: the port's own tests of the TextKit 2 composer
+  (its fit and carets at every size in `ComposerEditorGeometryTests` and
+  the card's and New session's tests, and `ComposerWritingToolsTests`)
+  are built but have not run yet; the figures above are the probe's.
 - Measured text boxes ceil to pixels as RN's do.
 - Fonts made outside `TextStyle` (session info's duplicate sheet, code
   blocks).
