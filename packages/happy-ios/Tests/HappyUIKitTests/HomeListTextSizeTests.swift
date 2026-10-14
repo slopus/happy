@@ -251,11 +251,28 @@ final class HomeListTextSizeTests: XCTestCase {
         return HomeListModel(ids: ids, rows: rows, avatarStyle: .gradient, avatarMonochrome: false, grouped: false, offline: machines)
     }
 
+    @MainActor
     private struct Shown {
         let window: UIWindow
         let list: SessionListViewController
         let table: UITableView
         let account: AccountController
+
+        /// The screen's pixels per point, which the table's geometry is
+        /// compared on (`assertSamePixel`).
+        var scale: CGFloat { window.traitCollection.displayScale }
+
+        /// Where the table is, for a failure's message.
+        func geometry(_ anchor: IndexPath? = nil) -> String {
+            var parts = [
+                "offset \(table.contentOffset.y)",
+                "content \(table.contentSize.height)",
+                "header \(table.tableHeaderView?.frame.height ?? 0)",
+                "insets \(table.adjustedContentInset.top)/\(table.adjustedContentInset.bottom)",
+            ]
+            if let anchor { parts.append("anchor \(anchor.row) \(table.rectForRow(at: anchor))") }
+            return parts.joined(separator: ", ")
+        }
     }
 
     /// The list as home shows it, in a window at `category`, under home's
@@ -278,8 +295,12 @@ final class HomeListTextSizeTests: XCTestCase {
         return Shown(window: window, list: list, table: table, account: account)
     }
 
+    /// Once the environment asked for last is in, and the notices measured
+    /// with it: landing asks for the header again, and it lands after.
+    /// (On a fresh simulator What's new is unread, so there is a header.)
     private func landed(_ shown: Shown) async {
         await shown.list.textEnvironmentTask?.value
+        await shown.list.headerTask?.value
         shown.table.layoutIfNeeded()
     }
 
@@ -299,9 +320,10 @@ final class HomeListTextSizeTests: XCTestCase {
                 XCTFail("no cell at \(path.row), \(message)", line: line)
                 continue
             }
-            XCTAssertEqual(
+            assertSamePixel(
                 shown.table.rectForRow(at: path).height,
                 cell.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)).height,
+                scale: shown.scale,
                 "row \(path.row), \(message)",
                 line: line
             )
@@ -326,8 +348,8 @@ final class HomeListTextSizeTests: XCTestCase {
         let first = try XCTUnwrap(shown.table.cellForRow(at: IndexPath(row: 0, section: 0)) as? SessionRowCell)
         XCTAssertEqual(first.projectLabel.renderedStyle.size, 15 * TextScale(.accessibilityExtraExtraExtraLarge).multiplier)
         XCTAssertEqual(first.lines, shown.list.textEnvironment?.rows.sessionLines)
-        XCTAssertEqual(shown.table.rectForRow(at: IndexPath(row: 0, section: 0)).height, Self.largestWithWorkspace)
-        XCTAssertEqual(shown.table.rectForRow(at: IndexPath(row: 1, section: 0)).height, Self.largestWithoutWorkspace)
+        assertSamePixel(shown.table.rectForRow(at: IndexPath(row: 0, section: 0)).height, Self.largestWithWorkspace, scale: shown.scale)
+        assertSamePixel(shown.table.rectForRow(at: IndexPath(row: 1, section: 0)).height, Self.largestWithoutWorkspace, scale: shown.scale)
         await shown.account.signOut()
     }
 
@@ -362,7 +384,12 @@ final class HomeListTextSizeTests: XCTestCase {
         XCTAssertEqual(table.numberOfRows(inSection: 0), model.rows.count)
         XCTAssertGreaterThan(table.rectForRow(at: anchor).height, before)
         XCTAssertNotEqual(table.contentOffset.y, 1500, "the rows above grew")
-        XCTAssertEqual(table.rectForRow(at: anchor).minY - (table.contentOffset.y + inset), onScreen)
+        assertSamePixel(
+            table.rectForRow(at: anchor).minY - (table.contentOffset.y + inset),
+            onScreen,
+            scale: shown.scale,
+            "the row at the top stays where it was: \(shown.geometry(anchor))"
+        )
         assertRowsAreTheirCells(shown, "after the change")
         await shown.account.signOut()
     }
@@ -402,24 +429,27 @@ final class HomeListTextSizeTests: XCTestCase {
 
         let page = table.bounds.height - inset.top - inset.bottom
         XCTAssertGreaterThan(page, 0)
-        let bottom = table.contentSize.height + inset.bottom - table.bounds.height
-        var y = table.contentOffset.y
         var seen = Set<Int>()
-        // A screen a step; 62 rows at the largest size are well under 100.
+        // A screen a step, until the last session row has been shown or the
+        // list moves no further; the end is read again at every step, from
+        // the table as it is then. 62 rows at the largest size are well
+        // under 100 screens.
         for _ in 0..<100 {
+            let y = table.contentOffset.y
             for path in table.indexPathsForVisibleRows ?? [] {
                 guard let cell = table.cellForRow(at: path) as? SessionRowCell else { continue }
                 seen.insert(path.row)
-                XCTAssertEqual(cell.lines, environment.rows.sessionLines, "row \(path.row) at \(y)")
+                XCTAssertEqual(cell.lines, environment.rows.sessionLines, "row \(path.row), \(shown.geometry())")
             }
-            assertRowsAreTheirCells(shown, "at \(y)")
-            guard y < bottom else { break }
-            y = min(y + page, bottom)
-            table.contentOffset.y = y
+            assertRowsAreTheirCells(shown, shown.geometry())
+            if seen.contains(last) { break }
+            let bottom = table.contentSize.height + inset.bottom - table.bounds.height
+            table.contentOffset.y = min(y + page, bottom)
             table.layoutIfNeeded()
             try await Task.sleep(for: .milliseconds(50))
+            if table.contentOffset.y == y { break }
         }
-        XCTAssertTrue(seen.contains(last), "scrolled to the last row")
+        XCTAssertTrue(seen.contains(last), "scrolled to the last row: \(shown.geometry(IndexPath(row: last, section: 0)))")
         await shown.account.signOut()
     }
 
@@ -432,7 +462,7 @@ final class HomeListTextSizeTests: XCTestCase {
         defer { shown.window.isHidden = true }
         await landed(shown)
         let path = IndexPath(row: 1, section: 0)
-        XCTAssertEqual(shown.table.rectForRow(at: path).height, Self.largestWithoutWorkspace)
+        assertSamePixel(shown.table.rectForRow(at: path).height, Self.largestWithoutWorkspace, scale: shown.scale)
 
         var after = before
         guard case .flat(.session(var row)) = after.rows[1] else { return XCTFail("row 1 is a session") }
@@ -440,8 +470,8 @@ final class HomeListTextSizeTests: XCTestCase {
         after.rows[1] = .flat(.session(row))
         shown.list.apply(after, changeset: RowChangeset(reconfigures: [1]), animated: false)
         shown.table.layoutIfNeeded()
-        XCTAssertEqual(shown.table.rectForRow(at: path).height, Self.largestWithWorkspace)
-        XCTAssertEqual(shown.table.rectForRow(at: IndexPath(row: 2, section: 0)).minY, shown.table.rectForRow(at: path).maxY)
+        assertSamePixel(shown.table.rectForRow(at: path).height, Self.largestWithWorkspace, scale: shown.scale)
+        assertSamePixel(shown.table.rectForRow(at: IndexPath(row: 2, section: 0)).minY, shown.table.rectForRow(at: path).maxY, scale: shown.scale)
         assertRowsAreTheirCells(shown, "after the reconfigure")
         await shown.account.signOut()
     }

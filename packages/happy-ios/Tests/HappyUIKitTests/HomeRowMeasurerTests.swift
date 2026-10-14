@@ -125,7 +125,9 @@ final class HomeRowMeasurerTests: XCTestCase {
         XCTAssertEqual(environment.rows.dayHeaderLine, 18)
         XCTAssertEqual(environment.bannerTitleLine, 22)
         XCTAssertEqual(environment.rows.hairline, 1.0 / 3, accuracy: 0.0001)
-        XCTAssertEqual(environment.rows.sessionLines, .designed)
+        // The designed lines, but the counts' 14.3, which no style fixes,
+        // up to a third (as HomeListTextSizeTests has it).
+        XCTAssertEqual(environment.rows.sessionLines, .init(title: 22, project: 20, workspace: 18, changes: 43.0 / 3))
     }
 
     /// The session list measures each heading as the text its cell is

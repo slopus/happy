@@ -38,6 +38,35 @@ final class NoSessionsTextSizeTests: XCTestCase {
         return view
     }
 
+    /// A part measured by itself at the host's text size and scale. Put in
+    /// the host, a view made outside it does not reliably take the host's
+    /// overrides (the Mac run left them at the simulator's own Large and
+    /// 2x), so the part gets them itself, as HomeListTextSizeTests' cells
+    /// do.
+    private func follow(_ part: UIView, category: UIContentSizeCategory, scale: CGFloat) {
+        part.traitOverrides.preferredContentSizeCategory = category
+        part.traitOverrides.displayScale = scale
+        part.traitOverrides.followsTextSize = true
+        part.updateTraitsIfNeeded()
+    }
+
+    /// `view` is drawn at `category` and `scale`, and its label draws its
+    /// style at that size.
+    private func assertDrawnAt(
+        _ view: UIView,
+        _ label: StyledLabel,
+        category: UIContentSizeCategory,
+        scale: CGFloat,
+        _ message: String,
+        line: UInt = #line
+    ) {
+        XCTAssertEqual(view.traitCollection.preferredContentSizeCategory, category, message, line: line)
+        XCTAssertEqual(view.traitCollection.displayScale, scale, message, line: line)
+        XCTAssertTrue(view.traitCollection[FollowsTextSize.self], message, line: line)
+        XCTAssertNil(label.style.maxScale, message, line: line)
+        XCTAssertEqual(label.renderedStyle.size, label.style.size * TextScale(TextSizeCategory(category)).multiplier, message, line: line)
+    }
+
     private func assertRect(_ actual: CGRect?, _ expected: CGRect?, _ message: String, line: UInt = #line) {
         guard let actual, let expected else {
             XCTAssertEqual(actual == nil, expected == nil, message, line: line)
@@ -74,9 +103,15 @@ final class NoSessionsTextSizeTests: XCTestCase {
                         let action = TextActionButton(title: Strings.Sidebar.showArchived)
                         for part in [icon, title, description, button, action] as [UIView] {
                             host.addSubview(part)
-                            part.updateTraitsIfNeeded()
+                            follow(part, category: category, scale: scale)
                         }
                         let message = "\(width) @\(scale)x, \(category.rawValue), archived: \(archived)"
+                        // The view's own labels are drawn at the row's text
+                        // size and scale (they are never measured on main).
+                        assertDrawnAt(view.titleLabel, view.titleLabel, category: category, scale: scale, "view's title, \(message)")
+                        assertDrawnAt(view.descriptionLabel, view.descriptionLabel, category: category, scale: scale, "view's description, \(message)")
+                        assertDrawnAt(view.startNewSession, view.startNewSession.label, category: category, scale: scale, "view's button, \(message)")
+                        assertDrawnAt(view.showArchived, view.showArchived.label, category: category, scale: scale, "view's action, \(message)")
 
                         let expected = NoSessionsLayout(.init(
                             size: view.bounds.size,
@@ -87,6 +122,14 @@ final class NoSessionsTextSizeTests: XCTestCase {
                             buttonHeight: button.layout(width: view.bounds.width).size.height,
                             action: archived ? action.measurable : nil
                         ))
+                        // And the parts were measured at it, as drawn.
+                        XCTAssertEqual(icon.traitCollection.displayScale, scale, "icon, \(message)")
+                        assertDrawnAt(title, title, category: category, scale: scale, "title, \(message)")
+                        assertDrawnAt(description, description, category: category, scale: scale, "description, \(message)")
+                        assertDrawnAt(button, button.label, category: category, scale: scale, "button, \(message)")
+                        if archived {
+                            assertDrawnAt(action, action.label, category: category, scale: scale, "action, \(message)")
+                        }
                         guard let sizes = view.applied else {
                             XCTFail("nothing measured, \(message)")
                             continue
@@ -125,9 +168,10 @@ final class NoSessionsTextSizeTests: XCTestCase {
                             XCTAssertNil(sizes.actionLabel, message)
                         }
 
-                        // What the view placed is that layout.
-                        XCTAssertEqual(view.titleLabel.frame, PixelGrid.snap(derived.title, scale: scale), message)
-                        XCTAssertEqual(view.startNewSession.frame, PixelGrid.snap(derived.button ?? .zero, scale: scale), message)
+                        // What the view placed is that layout, read back
+                        // from UIKit on the screen's pixels.
+                        assertSamePixels(view.titleLabel.frame, PixelGrid.snap(derived.title, scale: scale), scale: scale, "placed title, \(message)")
+                        assertSamePixels(view.startNewSession.frame, PixelGrid.snap(derived.button ?? .zero, scale: scale), scale: scale, "placed button, \(message)")
                         XCTAssertEqual(view.showArchived.isHidden, !archived, message)
                         XCTAssertFalse(view.scrollView.isHidden, message)
                     }
