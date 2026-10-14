@@ -220,6 +220,12 @@ final class DraftAutosaveTests: XCTestCase {
         XCTAssertEqual(autosave.textChanged("  "), .none, "both empty")
     }
 
+    func testBlankIsWhatTrimmingEmpties() {
+        for text in ["", " ", "\n\t \r\n", "\u{00A0}\u{3000}\u{2028}", "a", "  a", "\n.", "😀", "e\u{301}", String(repeating: " ", count: 10_000) + "x"] {
+            XCTAssertEqual(DraftAutosave.isBlank(text), text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, text.debugDescription)
+        }
+    }
+
     func testTheLoadedDraftIsNotWrittenBack() {
         var autosave = DraftAutosave(loaded: "draft")
         XCTAssertEqual(autosave.textChanged("draft"), .none)

@@ -541,11 +541,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         )
     }
 
-    /// Something besides whitespace (`trim().length > 0`). Stops at the
-    /// first such character rather than copying the trimmed text.
+    /// Something besides whitespace (`trim().length > 0`).
     private static func hasContent(_ text: String) -> Bool {
-        let blank = CharacterSet.whitespacesAndNewlines
-        return text.unicodeScalars.contains { !blank.contains($0) }
+        !DraftAutosave.isBlank(text)
     }
 
     func agentInputCardDidChangeText(_ card: AgentInputCardView) {
