@@ -138,9 +138,13 @@ Following now:
   has no rows until the first environment is in, one hop; a new size
   keeps every row on screen while it is worked out, then moves the
   heights in one batch with the row at the top of the list kept where
-  it was. Between the new size and its heights the labels are already
-  drawn at it, in the old heights. The glyphs, the avatars, the `+`
-  and the paddings keep their size.
+  it was. That batch reconfigures every session row, so a cell the
+  table has already made for a row below the screen takes the new
+  lines too. Between the new size and its heights the labels are
+  already drawn at it, in the old heights; RN commits the new fonts and
+  the new layout together, so for that moment the native list differs
+  from RN's. The glyphs, the avatars, the `+` and the paddings keep
+  their size.
   Not yet: the cells still measure their labels' widths on the main
   thread when they lay out (the timestamp's, the workspace's, a
   heading's, the line changes'), as they did at the designed size; no

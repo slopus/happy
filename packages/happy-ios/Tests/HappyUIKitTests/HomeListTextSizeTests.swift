@@ -367,6 +367,62 @@ final class HomeListTextSizeTests: XCTestCase {
         await shown.account.signOut()
     }
 
+    /// Every session row takes a new size's lines, not only the cells on
+    /// screen: a cell the table made ahead for a row below (cell
+    /// prefetching) is reconfigured with them. Scrolled down a screen at a
+    /// time from where the size landed to the end, every session cell
+    /// shown has the new lines and every row is as tall as its cell.
+    func testANewTextSizeReachesEveryCellTheListHas() async throws {
+        let model = self.model(sessions: 60)
+        let account = try await signedIn()
+        let shown = try show(model, category: .large, account: account)
+        defer { shown.window.isHidden = true }
+        await landed(shown)
+        let table = shown.table
+        let inset = table.adjustedContentInset
+        // Scrolled down a little, in steps, with the run loop let go
+        // between them, so the table can make cells ahead of the scroll.
+        for step in 1...4 {
+            table.contentOffset.y = -inset.top + CGFloat(step) * 40
+            table.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(50))
+        }
+
+        change(shown, to: .accessibilityExtraExtraExtraLarge)
+        await landed(shown)
+        let environment = try XCTUnwrap(shown.list.textEnvironment)
+        XCTAssertEqual(environment.text, text(.accessibilityExtraExtraExtraLarge, 3))
+        let sessions = model.rows.indices.compactMap { index -> IndexPath? in
+            if case .flat(.session) = model.rows[index] { return IndexPath(row: index, section: 0) }
+            return nil
+        }
+        XCTAssertEqual(sessions.count, 62)
+        let last = try XCTUnwrap(sessions.last).row
+        XCTAssertEqual(shown.list.textEnvironmentReconfigured, sessions, "every session row, on screen or not")
+
+        let page = table.bounds.height - inset.top - inset.bottom
+        XCTAssertGreaterThan(page, 0)
+        let bottom = table.contentSize.height + inset.bottom - table.bounds.height
+        var y = table.contentOffset.y
+        var seen = Set<Int>()
+        // A screen a step; 62 rows at the largest size are well under 100.
+        for _ in 0..<100 {
+            for path in table.indexPathsForVisibleRows ?? [] {
+                guard let cell = table.cellForRow(at: path) as? SessionRowCell else { continue }
+                seen.insert(path.row)
+                XCTAssertEqual(cell.lines, environment.rows.sessionLines, "row \(path.row) at \(y)")
+            }
+            assertRowsAreTheirCells(shown, "at \(y)")
+            guard y < bottom else { break }
+            y = min(y + page, bottom)
+            table.contentOffset.y = y
+            table.layoutIfNeeded()
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        XCTAssertTrue(seen.contains(last), "scrolled to the last row")
+        await shown.account.signOut()
+    }
+
     /// A session reconfigured in place that gains its workspace line takes
     /// the taller row, without the rows around it moving index.
     func testASessionGainingItsWorkspaceLineGrowsInPlace() async throws {

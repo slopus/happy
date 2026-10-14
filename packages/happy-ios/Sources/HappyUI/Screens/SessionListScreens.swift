@@ -56,6 +56,9 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     /// How many text environments have moved the rows' heights (tests): a
     /// size asked for and asked away again moves nothing.
     private(set) var textEnvironmentApplies = 0
+    /// The rows the last of them reconfigured (tests): every session's,
+    /// on screen or not.
+    private(set) var textEnvironmentReconfigured: [IndexPath] = []
     #endif
     /// The latest header measure (tests wait on it).
     private(set) var headerTask: Task<Void, Never>?
@@ -314,7 +317,10 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
     /// size and scale last asked for lands; any other is refused, and what
     /// is shown stays. The first brings the rows in; a later one gives
     /// every row and the notices their new heights, with the row at the
-    /// top of the list kept where it is.
+    /// top of the list kept where it is. Every session row is reconfigured
+    /// in that batch, so a cell the table has already made for a row off
+    /// screen (cell prefetching) takes the new lines too; the table
+    /// reconfigures only the cells it has.
     func land(_ environment: HomeTextEnvironment) {
         guard isViewLoaded, environment.text == textRequested, environment != textEnvironment else { return }
         let first = textEnvironment == nil
@@ -328,12 +334,17 @@ final class SessionListViewController: UIViewController, UITableViewDataSource, 
             #if DEBUG
             textEnvironmentApplies += 1
             #endif
-            let lines = environment.rows.sessionLines
-            for case let cell as SessionRowCell in tableView.visibleCells {
-                cell.lines = lines
+            let sessions = model.rows.indices.compactMap { index -> IndexPath? in
+                if case .flat(.session) = model.rows[index] { return IndexPath(row: index, section: 0) }
+                return nil
             }
+            #if DEBUG
+            textEnvironmentReconfigured = sessions
+            #endif
             keepingTopRow {
-                UIView.performWithoutAnimation { tableView.performBatchUpdates(nil) }
+                UIView.performWithoutAnimation {
+                    tableView.performBatchUpdates { tableView.reconfigureRows(at: sessions) }
+                }
             }
             return tableView.indexPathsForVisibleRows?.count ?? 0
         }
