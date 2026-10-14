@@ -47,6 +47,7 @@ public final class AccountSession: Sendable {
     /// One session's record, computer, settings and composer, for the
     /// session's own screens.
     public let sessionDetails: SessionDetailFeed
+    public let machineDetails: MachineDetailFeed
     /// Socket status for the UI (connection dot in settings).
     public let statusUpdates: AsyncStream<RealtimeStatus>
 
@@ -99,6 +100,7 @@ public final class AccountSession: Sendable {
         self.settingsFeed = SettingsFeed(store: store)
         self.machinesFeed = MachinesFeed(store: store)
         self.sessionDetails = SessionDetailFeed(store: store)
+        self.machineDetails = MachineDetailFeed(store: store)
         self.troubleshootingFeed = TroubleshootingFeed(store: store)
         self.pairing = PairingService(api: api, keys: keys)
 
@@ -197,6 +199,7 @@ public final class AccountSession: Sendable {
         settingsFeed.stop()
         machinesFeed.stop()
         sessionDetails.stop()
+        machineDetails.stop()
         await troubleshootingFeed.stop()
         let task = pump.cancel()
         await gitStatus.stop()

@@ -2,7 +2,7 @@ import Foundation
 import HappyStore
 
 /// The machine screen's rows and the record a rename starts from, from one
-/// home snapshot. Equal when the screen would show the same thing.
+/// scoped machine snapshot. Equal when the screen would show the same thing.
 public struct MachineScreenContent: Equatable, Sendable {
     /// Nil when the machine isn't there.
     public var model: MachineDetailsModel?
@@ -10,8 +10,8 @@ public struct MachineScreenContent: Equatable, Sendable {
     /// version.
     public var machine: MachineRecord?
 
-    public init(_ snapshot: HomeSnapshot, machineId: String) {
-        guard let record = snapshot.machines.machines.first(where: { $0.id == machineId }) else {
+    public init(_ snapshot: MachineDetailSnapshot) {
+        guard let record = snapshot.machine else {
             model = nil
             machine = nil
             return
