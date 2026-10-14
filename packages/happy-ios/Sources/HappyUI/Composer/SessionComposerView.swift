@@ -495,7 +495,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             isStopBusy: isAborting,
             // SessionView passes no `isSending`: a send never spins here.
             send: AgentInputDesktopSend(
-                hasText: Self.hasContent(card.text),
+                hasText: card.hasContent,
                 hasComposerContent: hasComposerContent,
                 isSendBlocked: SessionComposerRules.isSendBlocked(record)
             )
@@ -520,7 +520,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     /// Text or a picked image (`hasComposerContent`), read live.
     private var hasComposerContent: Bool {
-        Self.hasContent(card.text) || !images.images.isEmpty
+        card.hasContent || !images.images.isEmpty
     }
 
     private static func chip(_ chip: ComposerChipSet.Chip) -> AgentInputChipConfiguration {
@@ -590,6 +590,13 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
 
     func agentInputCardDidInvalidateHeight(_ card: AgentInputCardView) {
         guard !followingWindow else { return }
+        guard card.animatesHeightChange else {
+            // The opening draft, measured a moment after it was set.
+            UIView.performWithoutAnimation {
+                self.composerDelegate?.composerDidInvalidateHeight(self)
+            }
+            return
+        }
         UIView.animate(withDuration: 0.2, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
             self.composerDelegate?.composerDidInvalidateHeight(self)
         }
@@ -628,7 +635,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         let record = state?.session.record
         if SessionComposerRules.isSendBlocked(record) {
             // The agent refuses steering while it works.
-            guard Self.hasContent(card.text), !isSending else { return }
+            guard card.hasContent, !isSending else { return }
             UINotificationFeedbackGenerator().notificationOccurred(.error)
             card.shake()
             return
@@ -795,8 +802,11 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             draftSave?.cancel()
             draftSave = nil
             if opening {
-                // The draft the chat opens with: no animated growth.
-                UIView.performWithoutAnimation { card.text = text }
+                // The draft the chat opens with: no animated growth, now
+                // or when its height lands.
+                UIView.performWithoutAnimation {
+                    card.setText(text, selection: NSRange(location: (text as NSString).length, length: 0), animatesHeight: false)
+                }
             } else {
                 card.text = text
             }

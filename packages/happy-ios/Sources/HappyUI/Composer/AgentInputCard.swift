@@ -308,6 +308,13 @@ public final class AgentInputCardView: UIView {
     private var textRevision = 0
     /// Moves when the text is replaced (`setText`) rather than typed.
     private var textGeneration = 0
+    /// A text set not to animate its height, until its measurement lands.
+    private var unanimatedGeneration: Int?
+
+    /// Whether the height change the delegate is hearing about should
+    /// animate: false for a text set with `animatesHeight: false`, whose
+    /// height may land a moment after it was set.
+    public private(set) var animatesHeightChange = true
     /// The height the owner last laid the card out at, and at what width:
     /// what a change to the text is measured against.
     private var laidOut: (width: CGFloat, height: CGFloat)?
@@ -490,12 +497,23 @@ public final class AgentInputCardView: UIView {
     /// as `text` is. Read it now: it changes with the text.
     public var textUnits: NSString { textView.textStorage.mutableString }
 
+    /// Something besides whitespace (`trim().length > 0`), looked for in
+    /// the text view's storage rather than in a copy of the text.
+    public var hasContent: Bool {
+        textUnits.rangeOfCharacter(from: Self.nonBlank).location != NSNotFound
+    }
+
+    private static let nonBlank = CharacterSet.whitespacesAndNewlines.inverted
+
     public var selectedRange: NSRange { textView.selectedRange }
 
     /// Replaces the text and moves the caret (`setTextAndSelection`).
     /// Reports the change to the delegate, as a keystroke would.
-    public func setText(_ text: String, selection: NSRange) {
+    /// `animatesHeight: false` reports the new height, then and when it is
+    /// measured, with `animatesHeightChange` off.
+    public func setText(_ text: String, selection: NSRange, animatesHeight: Bool = true) {
         textGeneration += 1
+        unanimatedGeneration = animatesHeight ? nil : textGeneration
         textView.attributedText = inputStyle.attributedString(text, color: UIColor(Palette.inputText))
         textView.typingAttributes = inputStyle.attributes(color: UIColor(Palette.inputText))
         let length = (text as NSString).length
@@ -647,13 +665,22 @@ public final class AgentInputCardView: UIView {
         measuring = nil
         let live = ComposerTextHeights.Live(revision: textRevision, generation: textGeneration, isEmpty: !textView.hasText)
         let finish = textHeights.finish(stamp, height: height, live: live)
+        let animated = unanimatedGeneration != stamp.generation
         if let next = finish.measure {
             startMeasuring(next)
+        } else {
+            unanimatedGeneration = nil
         }
         if finish.changed {
-            delegate?.agentInputCardDidInvalidateHeight(self)
+            reportHeightChange(animated: animated)
             setNeedsLayout()
         }
+    }
+
+    private func reportHeightChange(animated: Bool) {
+        animatesHeightChange = animated
+        delegate?.agentInputCardDidInvalidateHeight(self)
+        animatesHeightChange = true
     }
 
     /// Returns once the text's height is measured (tests).
@@ -935,7 +962,7 @@ public final class AgentInputCardView: UIView {
         updatePlaceholder()
         delegate?.agentInputCardDidChangeText(self)
         if let after, before?.width != width || before?.height != after {
-            delegate?.agentInputCardDidInvalidateHeight(self)
+            reportHeightChange(animated: unanimatedGeneration != textGeneration)
         }
         setNeedsLayout()
     }
