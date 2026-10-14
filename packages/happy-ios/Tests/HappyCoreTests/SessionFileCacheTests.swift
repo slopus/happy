@@ -43,6 +43,19 @@ final class SessionFileCacheTests: XCTestCase {
     private let path = SessionFileCacheTests.path
     private static let path = "/repo/src/a.swift"
 
+    /// Waits until `condition` holds: a state the code under test reaches
+    /// on another task, polled rather than slept for.
+    private func until(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
+        let deadline = ContinuousClock.now + .seconds(10)
+        while !condition() {
+            guard ContinuousClock.now < deadline else {
+                XCTFail("never happened", file: file, line: line)
+                return
+            }
+            try await Task.sleep(for: .milliseconds(1))
+        }
+    }
+
     func testASeenFileShowsAfterARelaunch() async throws {
         let directory = try await account("one")
         let before = SessionFileCache(directory: directory)
@@ -137,7 +150,9 @@ final class SessionFileCacheTests: XCTestCase {
         let path = Self.path
         async let first = cache.snapshot(sessionId: "s", path: path)
         async let second = cache.snapshot(sessionId: "s", path: path)
-        try await Task.sleep(for: .milliseconds(50))
+        // Both wait on the held disk before it goes on.
+        try await until { cache.diskWaitCount == 2 }
+        XCTAssertEqual(cache.pendingReadCount, 1)
         release()
         let (a, b) = await (first, second)
         XCTAssertEqual(a, snapshot("x"))
@@ -159,7 +174,7 @@ final class SessionFileCacheTests: XCTestCase {
         let release = try XCTUnwrap(cache.disk).hold()
         let path = Self.path
         let reading = Task { await cache.snapshot(sessionId: "s", path: path) }
-        try await Task.sleep(for: .milliseconds(50))
+        try await until { cache.pendingReadCount == 1 }
         cache.set(sessionId: "s", path: path, snapshot("new"))
         release()
         let seen = await reading.value
@@ -184,7 +199,8 @@ final class SessionFileCacheTests: XCTestCase {
         // The account directory is removed; nothing writes it back.
         try FileManager.default.removeItem(at: directory.deletingLastPathComponent())
         cache.set(sessionId: "s", path: "/repo/b.swift", snapshot("late"))
-        try await Task.sleep(for: .milliseconds(50))
+        // Whatever the queue was asked for has been done.
+        await cache.disk?.drain()
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.deletingLastPathComponent().path))
     }
 
@@ -230,10 +246,12 @@ final class SessionFileCacheTests: XCTestCase {
     func testBoundedInMemoryAndOnDisk() async throws {
         let directory = try await account("one")
         let cache = SessionFileCache(directory: directory, maxCount: 2, maxCost: 1_000, maxFiles: 2, maxDiskBytes: 100_000, maxEntryBytes: 600)
-        for name in ["a", "b", "c"] {
+        for (index, name) in ["a", "b", "c"].enumerated() {
             cache.set(sessionId: "s", path: "/repo/\(name)", snapshot(name))
             await cache.disk?.drain()
-            try await Task.sleep(for: .milliseconds(20))
+            // Used in this order, whatever the clock's resolution.
+            let file = directory.appendingPathComponent(FileCacheDisk.name(.init(sessionId: "s", path: "/repo/\(name)")))
+            try? FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: Double(index + 1))], ofItemAtPath: file.path)
         }
         XCTAssertEqual(cache.keptCount, 2)
         XCTAssertNil(cache.get(sessionId: "s", path: "/repo/a"))
@@ -411,7 +429,7 @@ final class SessionFileCacheTests: XCTestCase {
         let release = disk.hold()
         cache.set(sessionId: "s", path: "/repo/a", snapshot("a"))
         let closing = Task { await cache.close() }
-        try await Task.sleep(for: .milliseconds(50))
+        try await until { !disk.isAccepting }
         // Asked for after closing began.
         cache.set(sessionId: "s", path: "/repo/b", snapshot("b"))
         disk.write(SessionFileCache.Key(sessionId: "s", path: "/repo/c"), snapshot("c"))
@@ -471,11 +489,11 @@ final class SessionFileCacheTests: XCTestCase {
         let release = disk.hold()
         let first = Task { await cache.snapshot(sessionId: "s", path: "/repo/a") }
         let second = Task { await cache.snapshot(sessionId: "s", path: "/repo/b") }
-        try await Task.sleep(for: .milliseconds(50))
+        try await until { cache.diskWaitCount == 2 }
         XCTAssertEqual(cache.pendingReadCount, 2)
         // The same file again joins its read.
         let again = Task { await cache.snapshot(sessionId: "s", path: "/repo/a") }
-        try await Task.sleep(for: .milliseconds(50))
+        try await until { cache.diskWaitCount == 3 }
         XCTAssertEqual(cache.pendingReadCount, 2)
         // A third file is a miss at once, with the disk still held.
         let third = await cache.snapshot(sessionId: "s", path: "/repo/c")
