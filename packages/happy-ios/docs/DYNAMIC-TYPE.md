@@ -78,6 +78,22 @@ Following now:
   frames, so they grow with the text; the slop around them is fixed, as
   RN's `hitSlop` is.
 
+- The iPad sidebar's list grouped by project, its own rows only: the
+  "Bots" and day headings, the computers' rules, the checkouts' headings
+  (project, branch, line changes) and the archive toggle draw scaled, and
+  their heights are measured at that size off the main thread
+  (`TabletGroupedHeights`, from one line of each style through the
+  HappyLayout layouts), keyed by the heading's text, the list's width and
+  the text size and screen scale, and measured again only for what
+  changed. A new text size or screen scale goes through the sidebar's
+  pipeline: every heading is measured again there, and only rows whose
+  height moved make the table ask again. The chats (56) and the archived
+  cards (88) are fixed heights in RN, so they stay that tall and draw
+  their text scaled inside; a chat's card clips what outgrows it. The
+  glyphs, the faces and the `+` keep their size. Each cell sets the trait
+  on itself; the list does not, because its bots are home's flat rows
+  and its notices home's header, which still plan at the designed size.
+
 ## Header titles
 
 happy-app has two kinds of header on iOS (`app/(app)/_layout.tsx`):
@@ -111,8 +127,10 @@ past; in the 42 row it is cut by the middle box, as RN's
 
 ## Not yet wired
 
-- Home, the session list, the sidebar, the chat, message detail, diffs and
-  the file viewer: their heights are planned off main at the designed size.
+- Home, the session list, the rest of the sidebar (its bots, the
+  notices over them, the flat list, New session, Settings), the chat,
+  message detail, diffs and the file viewer: their heights are planned
+  off main at the designed size.
   Their measurers take a `TextEnvironment` as an input and cache key, a
   text size change invalidates every height as a width change does, and
   then their screens opt in. `HomeRowHeights.flatSession` comes from the

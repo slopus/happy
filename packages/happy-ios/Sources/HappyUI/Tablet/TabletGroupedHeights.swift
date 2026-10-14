@@ -1,0 +1,129 @@
+#if canImport(UIKit)
+import HappyCore
+import HappyIcons
+import HappyLayout
+import UIKit
+
+/// What the sidebar works out off the main thread: the account's feeds,
+/// and the grouped list's width and text environment, which the screen
+/// sets.
+struct TabletSidebarViewInput: Sendable {
+    var feeds = TabletSidebarInput()
+    /// The grouped list's width.
+    var width: CGFloat = 0
+    /// The person's text size and the screen's scale; nil until the screen
+    /// has read its traits.
+    var text: TextEnvironment?
+}
+
+/// What the sidebar shows now: the rows, and the grouped list's headings'
+/// heights with what they were measured at.
+struct TabletSidebarViewState: Sendable {
+    var feeds = TabletSidebarDerivation.Applied()
+    var text: TextEnvironment?
+    var headings = TabletHeadingHeights<TabletGroupedRow.ID>()
+}
+
+/// One step for the main thread: new rows, new heading heights, or both.
+struct TabletSidebarViewUpdate: Sendable {
+    /// Nil when the rows are as they were (a new text size or width).
+    var rows: TabletSidebarUpdate?
+    /// The grouped list's heading heights, for its rows as of this update.
+    var headings: TabletHeadingHeights<TabletGroupedRow.ID>
+    /// Rows the list held already whose height moved.
+    var moved: Set<TabletGroupedRow.ID>
+}
+
+/// The grouped list's headings measured without cells, off the main
+/// thread: SessionsList.tsx's and ProjectGroup.tsx's one-line headings at
+/// the person's text size, as RN draws them (docs/DYNAMIC-TYPE.md). The
+/// bots, chats and archived cards are fixed heights and are not here.
+enum TabletGroupedHeights {
+    /// The sidebar's rows (`TabletSidebarDerivation`), then the grouped
+    /// list's heading heights for them: measured again only for a heading
+    /// that changed, or every one for a new width or text environment.
+    /// Nil when neither changed.
+    nonisolated static func derive(
+        _ input: TabletSidebarViewInput,
+        applied: TabletSidebarViewState,
+        wake: ClockWake
+    ) -> (output: TabletSidebarViewUpdate, state: TabletSidebarViewState)? {
+        let rows = TabletSidebarDerivation.derive(input.feeds, applied: applied.feeds, wake: wake)
+        var state = applied
+        if let rows { state.feeds = rows.state }
+        var moved: Set<TabletGroupedRow.ID> = []
+        if let text = input.text {
+            let metrics = (text == applied.text ? applied.headings.metrics : nil) ?? metrics(text)
+            state.text = text
+            let list = state.feeds.grouped ?? .empty
+            moved = state.headings.update(
+                zip(list.ids, list.rows).map { ($0, heading($1)) },
+                width: input.width,
+                metrics: metrics
+            )
+        }
+        guard rows != nil || state.headings != applied.headings || state.text != applied.text else { return nil }
+        return (TabletSidebarViewUpdate(rows: rows?.output, headings: state.headings, moved: moved), state)
+    }
+
+    /// The headings' metrics at `environment`'s text size and scale. Safe
+    /// off main: fonts come from `ScaledFonts`, the glyph box from the
+    /// generated tables.
+    nonisolated static func metrics(_ environment: TextEnvironment) -> TabletHeadingMetrics {
+        let scale = environment.displayScale
+        let iconSize = TabletMachineRuleLayout.Metrics.iconSize
+        return TabletHeadingMetrics(
+            sectionLine: TextStyles.sessionDayHeader.lineHeightValue(in: environment),
+            machineLine: TextStyles.tabletMachineName.lineHeightValue(in: environment),
+            // IconView's fitting size: RN's box for the glyph, unscaled.
+            machineIcon: Icon.ionicons("desktop-outline").layout(size: iconSize, scale: scale)?.size
+                ?? CGSize(width: iconSize, height: iconSize),
+            workspaceTitleLine: TextStyles.tabletWorkspaceTitle.lineHeightValue(in: environment),
+            workspaceBranchLine: TextStyles.tabletWorkspaceBranch.lineHeightValue(in: environment),
+            changesApproximateLine: TextStyles.gitApproximate.lineHeightValue(in: environment),
+            changesCountLine: TextStyles.gitLineCount.lineHeightValue(in: environment),
+            archiveToggleLine: TextStyles.archiveToggle.lineHeightValue(in: environment),
+            hairline: 1 / max(scale, 1)
+        )
+    }
+
+    /// What a row's height is made of when it is a heading: its text as
+    /// `TabletGroupedListViewController.configure` sets it.
+    nonisolated static func heading(_ row: TabletGroupedRow) -> TabletHeading? {
+        switch row {
+        case .botsHeader:
+            .section(label: Strings.Tablet.bots)
+        case .archiveHeader(let age):
+            .section(label: dayTitle(age))
+        case .machine(_, let name):
+            .machine(name: name)
+        case .workspace(let header):
+            .workspace(title: header.projectName, branch: header.branch, changes: changes(header.changes))
+        case .archiveToggle(let hidden):
+            // ArchiveToggleCell's label.
+            .archiveToggle(label: hidden ? Strings.Sidebar.showArchived : Strings.Sidebar.hideArchived)
+        case .bot, .chat, .archived:
+            nil
+        }
+    }
+
+    /// A day over the archive, as its heading reads.
+    nonisolated static func dayTitle(_ age: SessionList.DayAge) -> String {
+        switch age {
+        case .today: Strings.SessionHistory.today
+        case .yesterday: Strings.SessionHistory.yesterday
+        case .daysAgo(let count): Strings.SessionHistory.daysAgo(count)
+        }
+    }
+
+    /// Which of GitChangesView's parts show.
+    nonisolated static func changes(_ changes: GitLineChanges?) -> TabletHeadingChanges {
+        guard let changes else { return .none }
+        return TabletHeadingChanges(
+            approximate: changes.approximate,
+            added: changes.insertions > 0,
+            removed: changes.deletions > 0
+        )
+    }
+}
+#endif
