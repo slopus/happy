@@ -62,9 +62,11 @@ public final class SessionFileCache: @unchecked Sendable {
     private var overtaken: Set<Key> = []
     private var closed = false
     private let maxPendingReads: Int
+    #if DEBUG
     /// Callers that have waited on a disk read so far, joined or started;
-    /// for tests that hold the disk.
+    /// for tests that hold the disk. Counted under `lock`.
     private var diskWaits = 0
+    #endif
     let disk: FileCacheDisk?
 
     /// Memory only, as happy-app's.
@@ -153,11 +155,15 @@ public final class SessionFileCache: @unchecked Sendable {
             guard !closed else { return nil }
             if memory.contains(key) { return nil }
             if let read = reads[key] {
+                #if DEBUG
                 diskWaits += 1
+                #endif
                 return read
             }
             guard let disk, reads.count < maxPendingReads else { return nil }
+            #if DEBUG
             diskWaits += 1
+            #endif
             let read = Task.detached(priority: .userInitiated) { [self] in
                 finishRead(key, await disk.read(key))
             }
@@ -225,7 +231,9 @@ public final class SessionFileCache: @unchecked Sendable {
     var keptCount: Int { lock.withLock { memory.count } }
     var rootCount: Int { lock.withLock { roots.count } }
     var pendingReadCount: Int { lock.withLock { reads.count } }
+    #if DEBUG
     var diskWaitCount: Int { lock.withLock { diskWaits } }
+    #endif
 }
 
 /// Sessions' roots, least recently used let go first.
@@ -426,8 +434,11 @@ final class FileCacheDisk: @unchecked Sendable {
     private var accepting = true
     /// Confined to `queue`.
     private var closed = false
+    #if DEBUG
+    /// Reads and writes done, for tests; confined to `queue`.
     private var readCount = 0
     private var writeCount = 0
+    #endif
 
     init(directory: URL, maxFiles: Int, maxBytes: Int, maxEntryBytes: Int, maxPendingBytes: Int, maxPendingChanges: Int) {
         self.directory = directory
@@ -510,6 +521,7 @@ final class FileCacheDisk: @unchecked Sendable {
         return { gate.signal() }
     }
 
+    #if DEBUG
     var reads: Int {
         get async { await onQueue { self.readCount } }
     }
@@ -517,6 +529,7 @@ final class FileCacheDisk: @unchecked Sendable {
     var writes: Int {
         get async { await onQueue { self.writeCount } }
     }
+    #endif
 
     /// Whether it still takes writes; false once `close` has begun.
     var isAccepting: Bool {
@@ -558,7 +571,9 @@ final class FileCacheDisk: @unchecked Sendable {
 
     private func readNow(_ key: SessionFileCache.Key) -> FileViewer.Snapshot? {
         guard !closed else { return nil }
+        #if DEBUG
         readCount += 1
+        #endif
         let file = directory.appendingPathComponent(Self.name(key))
         guard let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return nil }
         guard size <= maxEntryBytes else {
@@ -594,7 +609,9 @@ final class FileCacheDisk: @unchecked Sendable {
         // out) stays gone, and nothing is written.
         guard manager.fileExists(atPath: directory.path) else { return false }
         do { try data.write(to: file, options: .atomic) } catch { return false }
+        #if DEBUG
         writeCount += 1
+        #endif
         return true
     }
 
