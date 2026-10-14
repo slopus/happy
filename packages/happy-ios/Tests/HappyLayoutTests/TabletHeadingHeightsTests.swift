@@ -39,8 +39,7 @@ final class TabletHeadingHeightsTests: XCTestCase {
     func testEachHeadingAtTheDesignedSize() {
         let metrics = metrics()
         // 20 above, 18, 8 below.
-        XCTAssertEqual(Heights.heading(.section(label: "Bots"), width: 300, metrics: metrics), 46)
-        XCTAssertEqual(Heights.heading(.section(label: ""), width: 300, metrics: metrics), 28)
+        XCTAssertEqual(Heights.heading(.section, width: 300, metrics: metrics), 46)
         // 8 above the taller of the glyph, the name and the hairline.
         XCTAssertEqual(Heights.heading(.machine(name: "Studio"), width: 300, metrics: metrics), 23)
         XCTAssertEqual(Heights.heading(.machine(name: ""), width: 300, metrics: metrics), 19.5)
@@ -51,13 +50,13 @@ final class TabletHeadingHeightsTests: XCTestCase {
         // No title: the 30 face and `+` hold the row.
         XCTAssertEqual(Heights.heading(.workspace(title: "", branch: "main", changes: .none), width: 300, metrics: metrics), 48)
         // Unbanded: 20 above, 12 below.
-        XCTAssertEqual(Heights.heading(.archiveToggle(label: "Show archived"), width: 300, metrics: metrics), 50)
+        XCTAssertEqual(Heights.heading(.archiveToggle, width: 300, metrics: metrics), 50)
     }
 
     func testEachHeadingAtTheLargestTextSize() {
         let m = largest.multiplier
         let metrics = metrics(largest, machineLine: 53.5)
-        XCTAssertEqual(Heights.heading(.section(label: "Bots"), width: 300, metrics: metrics), 28 + 18 * m, accuracy: 1e-9)
+        XCTAssertEqual(Heights.heading(.section, width: 300, metrics: metrics), 28 + 18 * m, accuracy: 1e-9)
         // The name outgrows the glyph, which never scales.
         XCTAssertEqual(Heights.heading(.machine(name: "Studio"), width: 300, metrics: metrics), 8 + 53.5, accuracy: 1e-9)
         XCTAssertEqual(Heights.heading(.machine(name: ""), width: 300, metrics: metrics), 19.5, accuracy: 1e-9)
@@ -71,16 +70,16 @@ final class TabletHeadingHeightsTests: XCTestCase {
             Heights.heading(.workspace(title: "happy", branch: "main", changes: added), width: 300, metrics: metrics),
             18 + 36 * m, accuracy: 1e-9
         )
-        XCTAssertEqual(Heights.heading(.archiveToggle(label: "Show archived"), width: 300, metrics: metrics), 32 + 18 * m, accuracy: 1e-9)
+        XCTAssertEqual(Heights.heading(.archiveToggle, width: 300, metrics: metrics), 32 + 18 * m, accuracy: 1e-9)
     }
 
     func testOneLineHeadingsAreOneHeightAtAnyWidth() {
         for metrics in [metrics(), metrics(largest, machineLine: 53.5)] {
             for heading: TabletHeading in [
-                .section(label: "Yesterday"),
+                .section,
                 .machine(name: String(repeating: "Mac ", count: 40)),
                 .workspace(title: String(repeating: "project ", count: 30), branch: "feature/long", changes: added),
-                .archiveToggle(label: "Hide archived"),
+                .archiveToggle,
             ] {
                 let narrow = Heights.heading(heading, width: 180, metrics: metrics)
                 XCTAssertEqual(Heights.heading(heading, width: 320, metrics: metrics), narrow, "\(heading)")
@@ -93,12 +92,12 @@ final class TabletHeadingHeightsTests: XCTestCase {
 
     private func rows(workspace: TabletHeading = .workspace(title: "happy", branch: "main", changes: .none)) -> [(id: String, heading: TabletHeading?)] {
         [
-            ("bots", .section(label: "Bots")),
+            ("bots", .section),
             ("bot", nil),
             ("machine", .machine(name: "Studio")),
             ("workspace", workspace),
             ("chat", nil),
-            ("toggle", .archiveToggle(label: "Show archived")),
+            ("toggle", .archiveToggle),
         ]
     }
 

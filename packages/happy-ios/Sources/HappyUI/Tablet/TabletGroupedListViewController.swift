@@ -226,7 +226,7 @@ final class TabletGroupedListViewController: UIViewController, UITableViewDataSo
         case .botsHeader:
             (cell as? TabletSectionHeaderCell)?.configure(Strings.Tablet.bots)
         case .archiveHeader(let age):
-            (cell as? TabletSectionHeaderCell)?.configure(TabletGroupedHeights.dayTitle(age))
+            (cell as? TabletSectionHeaderCell)?.configure(SessionListViewController.dayTitle(age))
         case .bot(let session):
             (cell as? SessionRowCell)?.configure(session, style: model.avatarStyle, monochrome: model.avatarMonochrome)
         case .machine(let id, let name):

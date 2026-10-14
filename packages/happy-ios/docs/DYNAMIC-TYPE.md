@@ -83,9 +83,12 @@ Following now:
   (project, branch, line changes) and the archive toggle draw scaled, and
   their heights are measured at that size off the main thread
   (`TabletGroupedHeights`, from one line of each style through the
-  HappyLayout layouts), keyed by the heading's text, the list's width and
-  the text size and screen scale, and measured again only for what
-  changed. A new text size or screen scale goes through the sidebar's
+  HappyLayout layouts), keyed by the heading, the list's width and the
+  text size and screen scale, and measured again only for what changed.
+  A heading's key holds the person's words (a computer's name, a
+  project, a branch) but none of the app's: "Bots", the days and "Show
+  archived" are one line in any language, so the derivation never reads
+  the screens' language, which is the main thread's. A new text size or screen scale goes through the sidebar's
   pipeline: every heading is measured again there, and only rows whose
   height moved make the table ask again. The chats (56) and the archived
   cards (88) are fixed heights in RN, so they stay that tall and draw

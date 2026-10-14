@@ -87,32 +87,22 @@ enum TabletGroupedHeights {
         )
     }
 
-    /// What a row's height is made of when it is a heading: its text as
-    /// `TabletGroupedListViewController.configure` sets it.
+    /// What a row's height is made of when it is a heading. The app's own
+    /// words are one line whatever they say, so none is read here: `Strings`
+    /// speak the screens' language and are for the main thread, where
+    /// `TabletGroupedListViewController.configure` sets them.
     nonisolated static func heading(_ row: TabletGroupedRow) -> TabletHeading? {
         switch row {
-        case .botsHeader:
-            .section(label: Strings.Tablet.bots)
-        case .archiveHeader(let age):
-            .section(label: dayTitle(age))
+        case .botsHeader, .archiveHeader:
+            .section
         case .machine(_, let name):
             .machine(name: name)
         case .workspace(let header):
             .workspace(title: header.projectName, branch: header.branch, changes: changes(header.changes))
-        case .archiveToggle(let hidden):
-            // ArchiveToggleCell's label.
-            .archiveToggle(label: hidden ? Strings.Sidebar.showArchived : Strings.Sidebar.hideArchived)
+        case .archiveToggle:
+            .archiveToggle
         case .bot, .chat, .archived:
             nil
-        }
-    }
-
-    /// A day over the archive, as its heading reads.
-    nonisolated static func dayTitle(_ age: SessionList.DayAge) -> String {
-        switch age {
-        case .today: Strings.SessionHistory.today
-        case .yesterday: Strings.SessionHistory.yesterday
-        case .daysAgo(let count): Strings.SessionHistory.daysAgo(count)
         }
     }
 

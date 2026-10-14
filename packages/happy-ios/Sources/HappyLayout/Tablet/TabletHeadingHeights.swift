@@ -3,18 +3,23 @@ import Foundation
 import CoreGraphics
 #endif
 
-/// A heading in the sidebar's grouped list, as much as its height needs:
-/// its text, each one line (`numberOfLines={1}` in SessionsList.tsx and
-/// ProjectGroup.tsx), and which of a checkout's line changes show.
+/// A heading in the sidebar's grouped list, as much as its height needs.
+/// Every label is one line (`numberOfLines={1}` in SessionsList.tsx and
+/// ProjectGroup.tsx) in a style with a fixed line height or the font's, so
+/// its height is that line, or nothing when it is empty. The app's own
+/// words ("Bots", the days, "Show archived") are never empty in any
+/// language, so those headings carry no text at all, and whatever derives
+/// them never reads the screens' language. Names and branches are the
+/// person's, and empty ones show nothing.
 public enum TabletHeading: Hashable, Sendable {
     /// "Bots", or a day over the archive.
-    case section(label: String)
+    case section
     /// ── 🖥 name ──.
     case machine(name: String)
     /// A checkout's heading: the project over its branch and line changes.
     case workspace(title: String, branch: String, changes: TabletHeadingChanges)
-    /// "── Show archived ──", dividing the page.
-    case archiveToggle(label: String)
+    /// "── Show archived ──" or "Hide archived", dividing the page.
+    case archiveToggle
 }
 
 /// Which parts of GitLineChanges show: "≈", "+12", "-3".
@@ -87,9 +92,12 @@ extension TabletGroupedRowHeights {
         func line(_ text: String, _ height: CGFloat) -> Measurable {
             .fixed(width: 0, height: text.isEmpty ? 0 : height)
         }
+        func line(_ height: CGFloat) -> Measurable {
+            .fixed(width: 0, height: height)
+        }
         switch heading {
-        case .section(let label):
-            return TabletSectionHeaderLayout(width: width, label: line(label, metrics.sectionLine)).size.height
+        case .section:
+            return TabletSectionHeaderLayout(width: width, label: line(metrics.sectionLine)).size.height
         case .machine(let name):
             return TabletMachineRuleLayout(
                 width: width,
@@ -110,10 +118,10 @@ extension TabletGroupedRowHeights {
                 branch: line(branch, metrics.workspaceBranchLine),
                 changes: parts.max().map { CGSize(width: 0, height: $0) }
             )).size.height
-        case .archiveToggle(let label):
+        case .archiveToggle:
             return ArchiveToggleLayout(
                 width: width,
-                label: line(label, metrics.archiveToggleLine),
+                label: line(metrics.archiveToggleLine),
                 paddingTop: ArchiveToggleLayout.unbanded.top,
                 paddingBottom: ArchiveToggleLayout.unbanded.bottom
             ).size.height
