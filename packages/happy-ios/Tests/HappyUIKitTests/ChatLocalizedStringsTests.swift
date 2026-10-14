@@ -14,8 +14,11 @@ final class ChatLocalizedStringsTests: XCTestCase {
         super.tearDown()
     }
 
-    func testEnglishIsHappyAppsOwn() {
+    func testEnglishIsHappyAppsOwn() async {
         AppLocalization.use(nil)
+        // Decoded off the main thread, as the app decodes every catalog:
+        // decoding on it stops Debug builds.
+        let english = await TranslationCatalog.load("en")
         XCTAssertEqual(Strings.Chat.retry, "Retry")
         XCTAssertEqual(Strings.Chat.worktreeTabs(1), "1 tab")
         XCTAssertEqual(Strings.Chat.worktreeTabs(4), "4 tabs")
@@ -25,14 +28,14 @@ final class ChatLocalizedStringsTests: XCTestCase {
         XCTAssertEqual(Strings.AgentQuestion.moreQuestions(2), "2 more questions")
         // _default.ts's straight quotes, which the English catalog has too.
         XCTAssertEqual(Strings.AgentQuestion.unsupportedDescription("form"), "This version of Happy cannot show a \"form\" request. Update the app to respond.")
-        XCTAssertEqual(Strings.AgentQuestion.unsupportedDescription("form"), TranslationCatalog.english("agentQuestion.unsupportedDescription", ["kind": "form"]))
+        XCTAssertEqual(Strings.AgentQuestion.unsupportedDescription("form"), english("agentQuestion.unsupportedDescription", ["kind": "form"]))
         // A function's English is not a literal the strings check can read:
         // each is compared with the English catalog here.
         for count in [0, 1, 2, 11] {
-            XCTAssertEqual(Strings.Chat.worktreeTabs(count), TranslationCatalog.english("sessionsFilter.worktreeTabs", ["count": .number(count)]))
-            XCTAssertEqual(Strings.AgentQuestion.moreQuestions(count), TranslationCatalog.english("agentQuestion.moreQuestions", ["count": .number(count)]))
+            XCTAssertEqual(Strings.Chat.worktreeTabs(count), english("sessionsFilter.worktreeTabs", ["count": .number(count)]))
+            XCTAssertEqual(Strings.AgentQuestion.moreQuestions(count), english("agentQuestion.moreQuestions", ["count": .number(count)]))
         }
-        XCTAssertEqual(Strings.AgentGoal.accessibilityLabel("ship"), TranslationCatalog.english("components.agentGoalBar.accessibilityLabel", ["goal": "ship"]))
+        XCTAssertEqual(Strings.AgentGoal.accessibilityLabel("ship"), english("components.agentGoalBar.accessibilityLabel", ["goal": "ship"]))
     }
 
     func testAnotherLanguageReadsItsCatalog() async {
