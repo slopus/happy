@@ -122,12 +122,17 @@ final class HomeRowMeasurerTests: XCTestCase {
         XCTAssertEqual(List.kind(.project(.archiveHeader(.daysAgo(3))), grouped: true), .section(label: Strings.SessionHistory.daysAgo(3)))
     }
 
+    /// The banners take their words on the main thread, where the screens'
+    /// strings live; measuring them off it reads no strings and gives what
+    /// it gives on the main thread.
     func testTheMeasurerRunsOffTheMainThread() async {
         let environment = HomeTextEnvironment.current(scale: 3)
+        let banners = HomeBanners(offlineTitle: "MacBook Pro is offline", whatsNew: true)
         let height = await Task.detached {
-            HomeRowMeasurer.headerHeight(HomeBanners(whatsNew: true), width: 393, environment: environment)
+            XCTAssertFalse(Thread.isMainThread)
+            return HomeRowMeasurer.headerHeight(banners, width: 393, environment: environment)
         }.value
-        XCTAssertEqual(height, HomeRowMeasurer.headerHeight(HomeBanners(whatsNew: true), width: 393, environment: environment))
+        XCTAssertEqual(height, HomeRowMeasurer.headerHeight(banners, width: 393, environment: environment))
         XCTAssertGreaterThan(height, 0)
     }
 }
