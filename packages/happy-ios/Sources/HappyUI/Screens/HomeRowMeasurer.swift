@@ -60,12 +60,23 @@ struct HomeTextEnvironment: Equatable, @unchecked Sendable {
     }
 }
 
-/// The notices over the home list (HomeListHeaderView's inputs), with the
+/// The notices over the home list (HomeListHeaderView's input), with the
 /// words each one shows. The words are read where the banners are decided,
 /// on the main thread, in the screens' language; measuring the header off
-/// the main thread reads no strings, and a change of words is a new value.
+/// the main thread reads no strings, the header draws these same words,
+/// and a change of words is a new value.
 struct HomeBanners: Hashable, Sendable {
     struct Notice: Hashable, Sendable {
+        enum Kind: Hashable, Sendable {
+            /// OfflineMachinesBanner: opens Troubleshoot.
+            case offline
+            /// UpdateBanner's store link.
+            case nativeUpdate
+            /// UpdateBanner's What's new.
+            case whatsNew
+        }
+
+        var kind: Kind
         var title: String
         var subtitle: String
     }
@@ -84,11 +95,11 @@ struct HomeBanners: Hashable, Sendable {
         self.nativeUpdate = nativeUpdate
         self.whatsNew = whatsNew
         var notices: [Notice] = []
-        if let offlineTitle { notices.append(Notice(title: offlineTitle, subtitle: Strings.Troubleshoot.bannerSubtitle)) }
+        if let offlineTitle { notices.append(Notice(kind: .offline, title: offlineTitle, subtitle: Strings.Troubleshoot.bannerSubtitle)) }
         if nativeUpdate {
-            notices.append(Notice(title: Strings.Home.nativeUpdateAvailable, subtitle: Strings.Home.tapToUpdateAppStore))
+            notices.append(Notice(kind: .nativeUpdate, title: Strings.Home.nativeUpdateAvailable, subtitle: Strings.Home.tapToUpdateAppStore))
         } else if whatsNew {
-            notices.append(Notice(title: Strings.Home.whatsNew, subtitle: Strings.Home.seeLatest))
+            notices.append(Notice(kind: .whatsNew, title: Strings.Home.whatsNew, subtitle: Strings.Home.seeLatest))
         }
         self.notices = notices
     }

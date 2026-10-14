@@ -81,9 +81,7 @@ final class HomeRowMeasurerTests: XCTestCase {
             for width in widths {
                 for banners in cases {
                     let view = HomeListHeaderView()
-                    view.offlineTitle = banners.offlineTitle
-                    view.showsNativeUpdate = banners.nativeUpdate
-                    view.showsWhatsNew = banners.whatsNew
+                    view.content = banners
                     XCTAssertEqual(
                         HomeRowMeasurer.headerHeight(banners, width: width, environment: environment),
                         height(view, width: width, scale: scale),

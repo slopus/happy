@@ -70,13 +70,13 @@ extension Strings {
 
         // The update banner (UpdateBanner.tsx).
         /// `updateBanner.nativeUpdateAvailable`.
-        public static let nativeUpdateAvailable = "App Update Available"
+        public static var nativeUpdateAvailable: String { localized("updateBanner.nativeUpdateAvailable", "App Update Available") }
         /// `updateBanner.tapToUpdateAppStore`.
-        public static let tapToUpdateAppStore = "Tap to update in App Store"
+        public static var tapToUpdateAppStore: String { localized("updateBanner.tapToUpdateAppStore", "Tap to update in App Store") }
         /// `updateBanner.whatsNew`.
-        public static let whatsNew = "What's new"
+        public static var whatsNew: String { localized("updateBanner.whatsNew", "What's new") }
         /// `updateBanner.seeLatest`.
-        public static let seeLatest = "See the latest updates and improvements"
+        public static var seeLatest: String { localized("updateBanner.seeLatest", "See the latest updates and improvements") }
     
         // The dock (HomeDock.tsx), whose copy is written there in English.
         public static let dockPlaceholder = "Plan, ask, build…"

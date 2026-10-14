@@ -1,4 +1,5 @@
 #if canImport(UIKit)
+import HappyCore
 import HappyLayout
 @testable import HappyUI
 import UIKit
@@ -26,6 +27,19 @@ final class HomeBannerTests: XCTestCase {
         XCTAssertEqual(titles(header), ["App Update Available"], "UpdateBanner shows one notice")
         header.offlineTitle = "MacBook is offline"
         XCTAssertEqual(titles(header), ["MacBook is offline", "App Update Available"])
+    }
+
+    /// The header draws the words its height was measured with, taken when
+    /// the notices were decided, not read again when it draws.
+    func testTheHeaderDrawsTheWordsItWasMeasuredWith() async {
+        defer { AppLocalization.use(nil) }
+        let english = HomeBanners(offlineTitle: "MacBook is offline", nativeUpdate: true)
+        AppLocalization.use(await TranslationCatalog.load("ru"))
+        let header = HomeListHeaderView()
+        header.content = english
+        XCTAssertEqual(titles(header), ["MacBook is offline", "App Update Available"])
+        header.content = HomeBanners(whatsNew: true)
+        XCTAssertEqual(titles(header), ["Что нового"])
     }
 }
 #endif

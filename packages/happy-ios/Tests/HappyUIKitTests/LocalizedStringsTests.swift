@@ -29,9 +29,9 @@ final class LocalizedStringsTests: XCTestCase {
         AppLocalization.use(russian)
         XCTAssertEqual(Strings.SessionHistory.daysAgo(3), russian("sessionHistory.daysAgo", ["count": 3]))
         XCTAssertEqual(Strings.Items.copiedToClipboard(label: "ID"), russian("items.copiedToClipboard", ["label": "ID"]))
-        // Measured off the main thread, so English until its screen's
-        // language travels with it.
-        XCTAssertEqual(Strings.Troubleshoot.bannerSubtitle, "Troubleshoot")
+        // Home's notices take their words here, on the main thread.
+        XCTAssertEqual(Strings.Home.whatsNew, "Что нового")
+        XCTAssertEqual(HomeBanners(whatsNew: true).notices.map(\.subtitle), [russian("updateBanner.seeLatest")])
     }
 }
 #endif

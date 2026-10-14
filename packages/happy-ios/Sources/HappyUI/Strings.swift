@@ -117,10 +117,7 @@ public enum Strings {
         public static var machineOffline: String { localized("troubleshoot.machineOffline", "Offline") }
         public static func bannerTitleOne(name: String) -> String { localized("troubleshoot.bannerTitleOne", ["name": .text(name)], "\(name) is offline") }
         public static var bannerTitleMany: String { localized("troubleshoot.bannerTitleMany", "All machines offline") }
-        /// English in every language until home's notices are measured in the
-        /// language their screen was built in: `HomeBanners.notices` reads it
-        /// off the main thread, where the screens' language must not be read.
-        public static let bannerSubtitle = "Troubleshoot"
+        public static var bannerSubtitle: String { localized("troubleshoot.bannerSubtitle", "Troubleshoot") }
         public static var copyAiPrompt: String { localized("troubleshoot.copyAiPrompt", "Copy AI prompt") }
         public static var copyAiPromptHint: String { localized("troubleshoot.copyAiPromptHint", "Paste it into Claude Code or Codex on your computer to diagnose from the logs.") }
         public static var copied: String { localized("troubleshoot.copied", "Copied") }

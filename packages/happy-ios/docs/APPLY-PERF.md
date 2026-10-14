@@ -61,8 +61,9 @@ rule 8), and what the Linux benchmarks measure.
   nothing runs, and a pass that changes no label reaches no one.
 - Day headings, archive toggles, and machine and section headers are one
   line of their style (`HomeRowMeasurer`): their heights are arithmetic,
-  with no cell and no text layout. The notices above the rows are measured
-  off the main thread and set, with their content, once the height is in.
+  with no cell and no text layout. The notices above the rows take their
+  words on the main thread (`HomeBanners`), are measured off it, and are
+  set, drawing those same words, once the height is in.
 - The chat's rows (`ChatRows`, in an `ApplyPipeline`) are derived off the
   main thread: the rendered window, work groups, one input per row, a plan
   per row, the footer, the list's geometry and the changeset.

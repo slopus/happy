@@ -12,21 +12,33 @@ final class HomeListHeaderView: UIView {
     var onNativeUpdate: (() -> Void)?
     var onWhatsNew: (() -> Void)?
 
+    /// The notices and their words, drawn as they were measured: the list
+    /// sets the value whose height it worked out off the main thread.
+    var content = HomeBanners() {
+        didSet { if content != oldValue { rebuild() } }
+    }
+
+    // One input at a time, for a list that sizes the header here: each
+    // sets the notices again with the screens' current words.
+
     /// OfflineMachinesBanner.tsx's title; nil hides the plaque.
     var offlineTitle: String? {
-        didSet { if offlineTitle != oldValue { rebuild() } }
+        get { content.offlineTitle }
+        set { content = HomeBanners(offlineTitle: newValue, nativeUpdate: content.nativeUpdate, whatsNew: content.whatsNew) }
     }
 
     /// `useNativeUpdate`: the store link while this build is too old.
-    var showsNativeUpdate = false {
-        didSet { if showsNativeUpdate != oldValue { rebuild() } }
+    var showsNativeUpdate: Bool {
+        get { content.nativeUpdate }
+        set { content = HomeBanners(offlineTitle: content.offlineTitle, nativeUpdate: newValue, whatsNew: content.whatsNew) }
     }
 
-    var showsWhatsNew = false {
-        didSet { if showsWhatsNew != oldValue { rebuild() } }
+    var showsWhatsNew: Bool {
+        get { content.whatsNew }
+        set { content = HomeBanners(offlineTitle: content.offlineTitle, nativeUpdate: content.nativeUpdate, whatsNew: newValue) }
     }
 
-    var isEmpty: Bool { offlineTitle == nil && !showsNativeUpdate && !showsWhatsNew }
+    var isEmpty: Bool { content.isEmpty }
 
     private var groups: [ItemGroupView] = []
 
@@ -39,32 +51,20 @@ final class HomeListHeaderView: UIView {
 
     private func rebuild() {
         groups.forEach { $0.removeFromSuperview() }
-        groups = []
-        if let offlineTitle {
-            groups.append(group(ItemRowView(
-                title: offlineTitle,
-                subtitle: Strings.Troubleshoot.bannerSubtitle,
-                icon: ItemIcon(.ionicons("warning-outline"), tint: Palette.warningText, size: 28)
-            ) { [weak self] in
-                self?.onTroubleshoot?()
-            }))
-        }
-        if showsNativeUpdate {
-            groups.append(group(ItemRowView(
-                title: Strings.Home.nativeUpdateAvailable,
-                subtitle: Strings.Home.tapToUpdateAppStore,
-                icon: ItemIcon(.ionicons("download-outline"), tint: Palette.success, size: 28)
-            ) { [weak self] in
-                self?.onNativeUpdate?()
-            }))
-        } else if showsWhatsNew {
-            groups.append(group(ItemRowView(
-                title: Strings.Home.whatsNew,
-                subtitle: Strings.Home.seeLatest,
-                icon: ItemIcon(.ionicons("sparkles-outline"), tint: Palette.text, size: 28)
-            ) { [weak self] in
-                self?.onWhatsNew?()
-            }))
+        groups = content.notices.map { notice in
+            let icon = switch notice.kind {
+            case .offline: ItemIcon(.ionicons("warning-outline"), tint: Palette.warningText, size: 28)
+            case .nativeUpdate: ItemIcon(.ionicons("download-outline"), tint: Palette.success, size: 28)
+            case .whatsNew: ItemIcon(.ionicons("sparkles-outline"), tint: Palette.text, size: 28)
+            }
+            let kind = notice.kind
+            return group(ItemRowView(title: notice.title, subtitle: notice.subtitle, icon: icon) { [weak self] in
+                switch kind {
+                case .offline: self?.onTroubleshoot?()
+                case .nativeUpdate: self?.onNativeUpdate?()
+                case .whatsNew: self?.onWhatsNew?()
+                }
+            })
         }
         groups.forEach(addSubview)
         setNeedsLayout()
