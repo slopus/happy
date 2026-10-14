@@ -11,7 +11,7 @@ import XCTest
 final class RenderServicesTests: XCTestCase {
     private func section(_ old: String, _ new: String, render: RenderServices) -> DiffSectionPlan {
         let item = DiffFileItem(path: "a.swift", kind: .modified, additions: 1, deletions: 1, source: .contents(path: "a.swift", oldText: old, newText: new))
-        let input = DiffSectionInput(item: item, collapsed: false, showSizeHint: false, canExpandContext: false, expandedFiles: [])
+        let input = DiffSectionInput(item: item, collapsed: false, sizeHint: nil, canExpandContext: false, expandedFiles: [], words: DiffSectionWords())
         return DiffSectionPlan(input, width: 393, scale: 3, render: render)
     }
 

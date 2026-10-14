@@ -167,7 +167,10 @@ enum DiffStyle {
     }
 
     /// A hunk row's text: the header (or "⤢ N unchanged" / "⋯ N unchanged"
-    /// when lines were skipped), then the section three spaces on.
+    /// when lines were skipped), then the section three spaces on. Drawn by
+    /// the row when it is configured, on the main thread, where its words
+    /// are read; plans don't draw it.
+    @MainActor
     static func hunkText(_ hunk: DiffHunk, canExpand: Bool, metrics: DiffMetrics) -> NSAttributedString {
         let style = small(metrics)
         let head = hunk.hidden.map { "\(canExpand ? "⤢" : "⋯") \(Strings.DiffDetail.unchangedLines($0))" } ?? hunk.text
@@ -178,6 +181,8 @@ enum DiffStyle {
         return result
     }
 
+    /// A file with no lines' message, drawn as `hunkText` is.
+    @MainActor
     static func messageText(_ code: DiffMessageCode, metrics: DiffMetrics) -> NSAttributedString {
         let text = code == .binary ? Strings.DiffDetail.binaryFile : Strings.DiffDetail.noChanges
         return message(metrics).attributedString(text, color: UIColor(textSecondary), lineBreakMode: .byTruncatingTail)

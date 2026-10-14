@@ -4,14 +4,42 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// What one FileSection shows, as its owner decided it.
+/// What one FileSection shows, as its owner decided it, with its words
+/// read on the main thread: the plan is made off it, where the screens'
+/// strings are not read, and other words are another input.
 struct DiffSectionInput: Equatable, Sendable {
     var item: DiffFileItem
     var collapsed: Bool
-    var showSizeHint: Bool
+    /// A collapsed big file's "N changed lines — tap to expand"; nil for none.
+    var sizeHint: String?
     var canExpandContext: Bool
     /// Built files the reader opened with "show more", by index.
     var expandedFiles: Set<Int>
+    var words: DiffSectionWords
+}
+
+/// What a section's body says in place of a diff (DiffFilesList.tsx,
+/// DiffImageView.tsx), in the screens' language when it was taken.
+struct DiffSectionWords: Equatable, Sendable {
+    var noChanges: String
+    var binaryFile: String
+    var imageBefore: String
+    var imageAfter: String
+
+    @MainActor
+    init() {
+        noChanges = Strings.DiffDetail.noChanges
+        binaryFile = Strings.DiffDetail.binaryFile
+        imageBefore = Strings.DiffDetail.imageBefore
+        imageAfter = Strings.DiffDetail.imageAfter
+    }
+
+    init(noChanges: String, binaryFile: String, imageBefore: String, imageAfter: String) {
+        self.noChanges = noChanges
+        self.binaryFile = binaryFile
+        self.imageBefore = imageBefore
+        self.imageAfter = imageAfter
+    }
 }
 
 /// DiffFilesList.tsx's FileSection, built and measured off the main thread:
@@ -53,8 +81,8 @@ final class DiffSectionPlan: @unchecked Sendable {
         }
         var sized: DiffSectionLayout.Body
         if input.collapsed {
-            if input.showSizeHint {
-                let hint = text(Strings.DiffDetail.tapToExpand(item.additions + item.deletions))
+            if let sizeHint = input.sizeHint {
+                let hint = text(sizeHint)
                 body = .hint(hint)
                 sized = .hint(DiffStyle.size(hint, width: width))
             } else {
@@ -75,16 +103,16 @@ final class DiffSectionPlan: @unchecked Sendable {
             case .error(let string), .message(let string):
                 (body, sized) = message(string)
             case .noChanges:
-                (body, sized) = message(Strings.DiffDetail.noChanges)
+                (body, sized) = message(input.words.noChanges)
             case .loading:
                 body = .spinner
                 sized = .spinner(Self.spinnerSize)
             case .image(let image):
                 var sides: [(String, ColorToken, UIImage?)] = []
-                if let before = image.before { sides.append((Strings.DiffDetail.imageBefore, DiffPalette.markerRemoved, UIImage(data: before))) }
-                if let after = image.after { sides.append((Strings.DiffDetail.imageAfter, DiffPalette.markerAdded, UIImage(data: after))) }
+                if let before = image.before { sides.append((input.words.imageBefore, DiffPalette.markerRemoved, UIImage(data: before))) }
+                if let after = image.after { sides.append((input.words.imageAfter, DiffPalette.markerAdded, UIImage(data: after))) }
                 if sides.isEmpty {
-                    (body, sized) = message(Strings.DiffDetail.binaryFile)
+                    (body, sized) = message(input.words.binaryFile)
                 } else {
                     let layout = DiffImageLayout(width: width, count: sides.count, labelHeight: DiffStyle.lineHeight(DiffTextStyles.imageLabel))
                     body = .image(sides, layout)
@@ -466,14 +494,17 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
         measuredWidth = width
         generation += 1
         let current = generation
+        let words = DiffSectionWords()
         let inputs = items.map { item in
             let collapsed = collapsed(item)
+            let showsSizeHint = DiffFilesCollapse.showsSizeHint(item, collapsed: collapsed, autoCollapseAbove: autoCollapseAbove)
             return DiffSectionInput(
                 item: item,
                 collapsed: collapsed,
-                showSizeHint: DiffFilesCollapse.showsSizeHint(item, collapsed: collapsed, autoCollapseAbove: autoCollapseAbove),
+                sizeHint: showsSizeHint ? Strings.DiffDetail.tapToExpand(item.additions + item.deletions) : nil,
                 canExpandContext: onExpandContext != nil,
-                expandedFiles: expandedFiles[item.id] ?? []
+                expandedFiles: expandedFiles[item.id] ?? [],
+                words: words
             )
         }
         let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 3
