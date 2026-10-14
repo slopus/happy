@@ -248,6 +248,9 @@ public final class ItemRowView: UIControl {
         titleLabel.numberOfLines = subtitle == nil ? 2 : 1
         titleLabel.color = isDestructive ? Palette.textDestructive : Palette.text
         detailLabel.string = detail ?? ""
+        // As `layout(width:)` decides: no detail, or a trailing view in its
+        // place. Set here too, so a row shows it before its first layout.
+        detailLabel.isHidden = detail == nil || trailingView != nil
         var isGlyph = false
         if let icon {
             switch icon.source {
