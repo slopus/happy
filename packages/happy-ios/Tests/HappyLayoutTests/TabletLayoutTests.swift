@@ -170,7 +170,9 @@ final class TabletShellLayoutTests: XCTestCase {
 
 /// SidebarView.tsx and EmptySessionsTablet.tsx.
 final class TabletSidebarLayoutTests: XCTestCase {
-    private func sidebar(archive: Bool) -> TabletSidebarLayout {
+    /// `line` is one line of the labels as drawn: 18 at the designed
+    /// size, taller at a larger text size.
+    private func sidebar(archive: Bool, line: CGFloat = 18) -> TabletSidebarLayout {
         TabletSidebarLayout(.init(
             size: CGSize(width: 360, height: 1024),
             safeTop: 24,
@@ -178,12 +180,30 @@ final class TabletSidebarLayoutTests: XCTestCase {
             headerHeight: 50,
             hairline: 0.5,
             newSessionIcon: CGSize(width: 16, height: 16.5),
-            newSessionTitle: text("New session", lineHeight: 18),
+            newSessionTitle: text("New session", lineHeight: line),
             archiveIcon: archive ? CGSize(width: 18, height: 18.5) : nil,
             settingsIcon: CGSize(width: 18, height: 18.5),
-            settingsTitle: text("Settings", lineHeight: 18),
+            settingsTitle: text("Settings", lineHeight: line),
             spinner: CGSize(width: 20, height: 20)
         ))
+    }
+
+    func testTheControlsAndSettingsGrowWithTheirText() {
+        // A larger text size: a 50pt line. The glyphs and paddings keep
+        // their size, as RN's do.
+        let layout = sidebar(archive: true, line: 50)
+        // 0.5 + 10 + 50 + 10 + 0.5 is past the 40pt archive button, which
+        // centres in the row now.
+        assertFrame(layout.newSessionButton, rect(16.5, 82.5, 279, 71))
+        assertFrame(layout.newSessionIcon, rect(31, 109.75, 16, 16.5))
+        assertFrame(layout.newSessionTitle, rect(55, 93, 88, 50))
+        assertFrame(layout.archiveButton, rect(303.5, 98, 40, 40))
+        // Hairline + 14 + 50 + 14.
+        assertFrame(layout.settingsRow, rect(0.5, 945, 359, 78.5))
+        assertFrame(layout.settingsIcon, rect(16.5, 975.25, 18, 18.5))
+        assertFrame(layout.settingsTitle, rect(44.5, 959.5, 64, 50))
+        // The list takes what is left between them.
+        assertFrame(layout.content, rect(0.5, 157.5, 359, 787.5))
     }
 
     func testControlsRowWithTheArchiveButton() {

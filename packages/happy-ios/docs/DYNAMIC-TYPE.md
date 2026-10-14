@@ -96,6 +96,12 @@ Following now:
   glyphs, the faces and the `+` keep their size. Each cell sets the trait
   on itself; the list does not, because its bots are home's flat rows
   and its notices home's header, which still plan at the designed size.
+- The iPad sidebar's own controls: New session, Settings and the empty
+  state (EmptySessionsTablet). Each sets the trait on itself and is
+  measured from its text as drawn when the sidebar lays out
+  (`TabletSidebarLayout`), so the button and the row grow with it and
+  the list takes what is left; the glyphs, the 40 archive button and
+  the paddings keep their size.
 
 ## Header titles
 
@@ -131,7 +137,7 @@ past; in the 42 row it is cut by the middle box, as RN's
 ## Not yet wired
 
 - Home, the session list, the rest of the sidebar (its bots, the
-  notices over them, the flat list, New session, Settings), the chat,
+  notices over them, the flat list), the chat,
   message detail, diffs and the file viewer: their heights are planned
   off main at the designed size.
   Their measurers take a `TextEnvironment` as an input and cache key, a
