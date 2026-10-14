@@ -24,6 +24,13 @@ final class ScreensLanguage {
     /// The newest root's install until it is in. A choice made meanwhile
     /// decides its language; the root is installed all the same.
     private var owed: (@MainActor () -> Void)?
+    /// What builds the screens again for the Language page's choices.
+    private var rebuildChosen: (@MainActor (_ changed: Bool) -> Void)?
+    nonisolated(unsafe) private var choices: NSObjectProtocol?
+
+    deinit {
+        if let choices { NotificationCenter.default.removeObserver(choices) }
+    }
 
     /// Holds `view`'s touches while a root is being decided: the window.
     init(holding view: UIView) {
@@ -60,6 +67,20 @@ final class ScreensLanguage {
     func choose(_ code: String, in account: AnyObject, rebuild: @escaping @MainActor (_ changed: Bool) -> Void) {
         guard account === self.account else { return }
         decide({ code }, then: rebuild)
+    }
+
+    /// Takes the Language page's choices (`screensLanguageChosen`) from
+    /// now on, each as `choose` takes it, rebuilding with `rebuild`.
+    func takeChoices(rebuild: @escaping @MainActor (_ changed: Bool) -> Void) {
+        rebuildChosen = rebuild
+        guard choices == nil else { return }
+        choices = NotificationCenter.default.addObserver(forName: .screensLanguageChosen, object: nil, queue: .main) { [weak self] note in
+            guard let choice = note.object as? ScreensLanguageChoice else { return }
+            MainActor.assumeIsolated {
+                guard let self, let rebuild = self.rebuildChosen else { return }
+                self.choose(choice.code, in: choice.account, rebuild: rebuild)
+            }
+        }
     }
 
     private func decide(

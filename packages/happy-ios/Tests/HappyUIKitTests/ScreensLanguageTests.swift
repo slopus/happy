@@ -1,8 +1,16 @@
 #if canImport(UIKit)
+import GRDB
 @testable import HappyCore
+import HappyStore
 @testable import HappyUI
 import UIKit
 import XCTest
+
+private struct OfflineTransport: HTTPTransport {
+    func send(_ request: HTTPRequest) async throws -> HTTPResponse {
+        throw URLError(.notConnectedToInternet)
+    }
+}
 
 /// Opens once; whoever waits before then waits for it.
 private actor Latch {
@@ -326,6 +334,42 @@ final class ScreensLanguageTests: XCTestCase {
         XCTAssertEqual(events, ["A in ja"])
         XCTAssertTrue(window.isUserInteractionEnabled)
         await decided.open()
+    }
+
+    private func account() throws -> AccountSession {
+        try AccountSession(
+            credentials: Credentials(token: "t", secret: Data(repeating: 1, count: 32)),
+            store: LocalStore(writer: DatabaseQueue()),
+            dependencies: .init(serverURL: URL(string: "https://api.example.test")!, clientID: "ios/test", transport: OfflineTransport())
+        )
+    }
+
+    /// The Language page's notification, as it posts it, reaches the
+    /// window's screens: another account's choice does nothing, the
+    /// screens' own account's builds them again in it.
+    func testThePagesNotificationReachesOnlyItsOwnAccountsScreens() async throws {
+        let (window, _, _) = window()
+        let language = ScreensLanguage(holding: window)
+        let a = try account(), b = try account()
+        var rebuilt: [String] = []
+        language.takeChoices { changed in rebuilt.append("\(changed) in \(AppLocalization.language)") }
+        language.request(for: a, resolve: { "en" }, install: {})
+        await language.gate.waitForIdle()
+
+        NotificationCenter.default.post(name: .screensLanguageChosen, object: ScreensLanguageChoice(code: "ja", account: b))
+        try await Task.sleep(for: .milliseconds(100))
+        await language.gate.waitForIdle()
+        XCTAssertEqual(rebuilt, [])
+        XCTAssertNil(AppLocalization.screens)
+
+        NotificationCenter.default.post(name: .screensLanguageChosen, object: ScreensLanguageChoice(code: "ja", account: a))
+        let deadline = ContinuousClock.now + .seconds(5)
+        while rebuilt.isEmpty, ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(20))
+            await language.gate.waitForIdle()
+        }
+        XCTAssertEqual(rebuilt, ["true in ja"])
+        XCTAssertTrue(window.isUserInteractionEnabled)
     }
 
     /// Letting go gives back what the window allowed before, not more.

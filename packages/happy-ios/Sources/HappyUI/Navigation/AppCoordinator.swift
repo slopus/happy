@@ -27,7 +27,6 @@ public final class AppCoordinator {
     /// Decides the language of the screens about to be built, holding the
     /// window's touches meanwhile; a newer root replaces a pending one.
     private let language: ScreensLanguage
-    private var languageObserver: NSObjectProtocol?
 
     public init(window: UIWindow, context: AppContext) {
         self.window = window
@@ -47,10 +46,7 @@ public final class AppCoordinator {
         // language.tsx reloads the app after a new language; here the
         // screens are built again in it, from the root, as a reload leaves
         // them.
-        languageObserver = NotificationCenter.default.addObserver(forName: .screensLanguageChosen, object: nil, queue: .main) { [weak self] note in
-            guard let choice = note.object as? ScreensLanguageChoice else { return }
-            MainActor.assumeIsolated { self?.chooseLanguage(choice) }
-        }
+        language.takeChoices { [weak self] changed in self?.languageChosen(changed: changed) }
         // A stored account flips to signed in before restore() starts
         // syncing, so home appears without a flash of Welcome; without one,
         // Welcome appears as soon as restore() finds nothing.
@@ -210,18 +206,16 @@ public final class AppCoordinator {
     }
 
     /// The window's screens again, from the root, in the language the
-    /// Language page chose; nothing else changes. Only for the account the
-    /// screens are now: a choice made in another's changes nothing.
-    private func chooseLanguage(_ choice: ScreensLanguageChoice) {
-        language.choose(choice.code, in: choice.account) { [weak self] changed in
-            guard let self else { return }
-            if changed {
-                self.install(session: self.context.account.session, pending: self.context.account.pendingServerConfirmation, animated: false)
-            } else {
-                // A notification's chat waited for this.
-                self.openNotificationSession()
-            }
+    /// Language page chose; nothing else changes. Only ever for the account
+    /// the screens are now: a choice made in another's never gets here
+    /// (`ScreensLanguage.choose`).
+    private func languageChosen(changed: Bool) {
+        guard changed else {
+            // A notification's chat waited for this.
+            openNotificationSession()
+            return
         }
+        install(session: context.account.session, pending: context.account.pendingServerConfirmation, animated: false)
     }
 
     /// The account's `preferredLanguage` and the device's languages, as
