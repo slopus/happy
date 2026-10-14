@@ -22,8 +22,9 @@ private final class EndsEditing: NSObject, UITextFieldDelegate {
 
 /// The screens' language hold on a real window in the host's scene, over a
 /// field that has the keyboard: what the unhosted bundle can't give a view
-/// (ScreensLanguageTests' own first-responder case skips there). Hosted in
-/// HappyUIKitTestHost, so these fail rather than skip without a scene.
+/// (ScreensLanguageTests' own first-responder case uses a stub responder in
+/// a window with no scene). Hosted in HappyUIKitTestHost, so these fail
+/// rather than skip without a scene.
 @MainActor
 final class HostedKeyboardTests: XCTestCase {
     private var window: UIWindow?
@@ -94,6 +95,9 @@ final class HostedKeyboardTests: XCTestCase {
         }
         let language = ScreensLanguage(holding: window)
         var installed: [String] = []
+        // Counted from here: a hide still on its way from an earlier test's
+        // field is not this hold's.
+        let hiddenBefore = notes.hidden
         language.request(for: nil, resolve: { "en" }, install: {
             installed.append("\(window.isUserInteractionEnabled ? "touchable" : "held"), \(field.isFirstResponder ? "editing" : "not editing")")
         })
@@ -108,10 +112,10 @@ final class HostedKeyboardTests: XCTestCase {
 
         if notes.shown > 0 {
             let hidden = ContinuousClock.now + .seconds(2)
-            while notes.hidden == 0, ContinuousClock.now < hidden {
+            while notes.hidden == hiddenBefore, ContinuousClock.now < hidden {
                 try await Task.sleep(for: .milliseconds(50))
             }
-            XCTAssertGreaterThan(notes.hidden, 0, "the software keyboard was shown and never hidden")
+            XCTAssertGreaterThan(notes.hidden, hiddenBefore, "the software keyboard was shown and never hidden")
             print("HostedKeyboardTests: software keyboard shown, then hidden by the hold")
         } else {
             print("HostedKeyboardTests: no software keyboard shown (hardware keyboard); first responder checked only")
