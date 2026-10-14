@@ -67,23 +67,6 @@ public struct DiffFileItem: Equatable, Sendable {
         }
     }
 
-    /// useDiffDocument: the built document for a source (cached by the
-    /// engine), or the empty document.
-    public static func document(_ source: Source?) -> DiffDocument {
-        switch source {
-        case nil:
-            return .empty
-        case .patch(let patch):
-            return DiffEngine.build(patch: patch)
-        case .contents(let path, let oldText, let newText, let contextLines, let ignoreWhitespace, let budget):
-            var options = DiffEngine.Options()
-            if let contextLines { options.contextLines = contextLines }
-            if let ignoreWhitespace { options.ignoreWhitespace = ignoreWhitespace }
-            options.budget = budget
-            return DiffEngine.build(path: path, oldText: oldText, newText: newText, options: options)
-        }
-    }
-
     /// What an open FileSection shows, in DiffFilesList.tsx's order.
     public enum Body: Equatable, Sendable {
         case error(String)

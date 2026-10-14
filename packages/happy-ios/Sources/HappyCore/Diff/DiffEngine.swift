@@ -1,9 +1,9 @@
 import Foundation
 
 /// engine/buildDiff.ts: raw patches and blob pairs into render-ready
-/// `DiffDocument`s. Parsing, tab expansion, word diffing and span merging
-/// happen once per input and are cached (48 documents), so theme switches,
-/// re-layouts and revisits cost nothing. Safe to call from any thread.
+/// `DiffDocument`s. These builders retain no documents. Account renderers
+/// reuse parsing, tab expansion and word diffing through DiffDocumentCache.
+/// Safe to call from any thread.
 public enum DiffEngine {
     public struct Options: Equatable, Sendable {
         /// Context lines when diffing two blobs; patches keep their own.
@@ -54,15 +54,10 @@ public enum DiffEngine {
     // MARK: Building
 
     public static func build(patch: String, options: Options = Options()) -> DiffDocument {
-        let source = CacheSource.patch(patch)
-        let key = cacheKey("p", patch, options)
-        if let hit = cache.get(key), hit.source == source, hit.options == options { return hit.document }
-        let document = buildUncached(patch: patch, options: options)
-        cache.set(key, CacheEntry(source: source, options: options, document: document))
-        return document
+        buildUncached(patch: patch, options: options)
     }
 
-    /// Explicit owners use these builders without touching the legacy cache.
+    /// Explicit owners call these builders without retaining any global state.
     static func buildUncached(patch: String, options: Options) -> DiffDocument {
         let started = ContinuousClock.now
         let files = DiffPatchParser.parse(patch).map { buildFile($0, options) }
@@ -70,14 +65,7 @@ public enum DiffEngine {
     }
 
     public static func build(path: String, oldText: String, newText: String, options: Options = Options()) -> DiffDocument {
-        let source = CacheSource.contents(path: path, oldText: oldText, newText: newText)
-        let key = cacheKey("c", "\(path)\u{0}\(oldText)\u{0}\(newText)", options)
-        if let hit = cache.get(key), hit.source == source, hit.options == options { return hit.document }
-        let document = buildUncached(path: path, oldText: oldText, newText: newText, options: options)
-        if document.error == nil {
-            cache.set(key, CacheEntry(source: source, options: options, document: document))
-        }
-        return document
+        buildUncached(path: path, oldText: oldText, newText: newText, options: options)
     }
 
     static func buildUncached(path: String, oldText: String, newText: String, options: Options) -> DiffDocument {
@@ -100,11 +88,6 @@ public enum DiffEngine {
             : .modified
         let raw = DiffPatchParser.RawFile(path: path, kind: kind, hunks: hunks)
         return finish([buildFile(raw, options, emphasisDeadline: emphasisDeadline)], started: started)
-    }
-
-    /// Drops every cached document.
-    public static func clearCache() {
-        cache.clear()
     }
 
     private static func finish(_ files: [DiffFile], started: ContinuousClock.Instant) -> DiffDocument {
@@ -264,22 +247,8 @@ public enum DiffEngine {
 
     // MARK: Cache
 
-    // The compact FNV key selects a bucket, never establishes identity. Keep
-    // source fields separate: NUL-delimited blob pairs can also have identical
-    // serialized inputs despite differing old/new boundaries.
-    private enum CacheSource: Equatable, Sendable {
-        case patch(String)
-        case contents(path: String, oldText: String, newText: String)
-    }
-
-    private struct CacheEntry: Sendable {
-        var source: CacheSource
-        var options: Options
-        var document: DiffDocument
-    }
-
-    private static let cache = DiffLRUCache<CacheEntry>(limit: 48)
-
+    // DiffDocumentCache uses this compact fingerprint only to select a bucket;
+    // it verifies the full typed source and options before reusing a document.
     static func cacheKey(_ prefix: String, _ input: String, _ options: Options) -> String {
         let flags = "\(options.contextLines):\(options.ignoreWhitespace ? 1 : 0):0:\(options.intraline ? 1 : 0):\(options.tabWidth):\(options.maxHighlightLines)"
         let budget = options.budget.map { ":budget:\($0.timeoutMs):\($0.maxEditLength)" } ?? ""

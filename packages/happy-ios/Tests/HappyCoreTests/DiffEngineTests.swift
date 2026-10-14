@@ -342,10 +342,6 @@ final class DiffMergeSpansTests: XCTestCase {
 }
 
 final class DiffBuildTests: XCTestCase {
-    override func setUp() {
-        DiffEngine.clearCache()
-    }
-
     func testRowsRebuildTheSourceLines() throws {
         let patch = ["--- a/src/app.ts", "+++ b/src/app.ts", "@@ -1,4 +1,4 @@", " import { a } from \"./a\";", "-const value = 1;", "+const value = 2;", " export default value;"].joined(separator: "\n")
         let file = try XCTUnwrap(DiffEngine.build(patch: patch).files.first)
@@ -383,12 +379,13 @@ final class DiffBuildTests: XCTestCase {
     }
 
     func testRepeatBuildsComeFromTheCache() {
+        let cache = DiffDocumentCache()
         let patch = ["--- a/a.ts", "+++ b/a.ts", "@@ -1 +1 @@", "-1", "+2"].joined(separator: "\n")
-        let first = DiffEngine.build(patch: patch)
-        XCTAssertTrue(DiffEngine.build(patch: patch) === first)
-        XCTAssertFalse(DiffEngine.build(patch: patch, options: .init(intraline: false)) === first)
-        DiffEngine.clearCache()
-        XCTAssertFalse(DiffEngine.build(patch: patch) === first)
+        let first = cache.build(patch: patch)
+        XCTAssertTrue(cache.build(patch: patch) === first)
+        XCTAssertFalse(cache.build(patch: patch, options: .init(intraline: false)) === first)
+        cache.clearCache()
+        XCTAssertFalse(cache.build(patch: patch) === first)
     }
 
     func testLargeFilesSkipTheWordDiff() {
@@ -432,24 +429,26 @@ final class DiffBuildTests: XCTestCase {
     }
 
     func testContentsCacheEntriesFollowTheOptions() {
+        let cache = DiffDocumentCache()
         let oldText = (0..<12).map { "line \($0)" }.joined(separator: "\n")
         let newText = oldText.replacingOccurrences(of: "line 6", with: "line six")
-        let narrow = DiffEngine.build(path: "sample.txt", oldText: oldText, newText: newText, options: .init(contextLines: 1))
-        let wide = DiffEngine.build(path: "sample.txt", oldText: oldText, newText: newText, options: .init(contextLines: 5))
+        let narrow = cache.build(path: "sample.txt", oldText: oldText, newText: newText, options: .init(contextLines: 1))
+        let wide = cache.build(path: "sample.txt", oldText: oldText, newText: newText, options: .init(contextLines: 5))
         XCTAssertFalse(wide === narrow)
         XCTAssertGreaterThan(lineRows(wide.files[0].rows).count, lineRows(narrow.files[0].rows).count)
-        XCTAssertTrue(DiffEngine.build(path: "sample.txt", oldText: oldText, newText: newText, options: .init(contextLines: 5)) === wide)
+        XCTAssertTrue(cache.build(path: "sample.txt", oldText: oldText, newText: newText, options: .init(contextLines: 5)) === wide)
 
-        let normal = DiffEngine.build(path: "w.txt", oldText: "before\nchanged\nafter\n", newText: "before\n  changed  \nafter\n")
-        let ignored = DiffEngine.build(path: "w.txt", oldText: "before\nchanged\nafter\n", newText: "before\n  changed  \nafter\n", options: .init(ignoreWhitespace: true))
+        let normal = cache.build(path: "w.txt", oldText: "before\nchanged\nafter\n", newText: "before\n  changed  \nafter\n")
+        let ignored = cache.build(path: "w.txt", oldText: "before\nchanged\nafter\n", newText: "before\n  changed  \nafter\n", options: .init(ignoreWhitespace: true))
         XCTAssertFalse(ignored === normal)
         XCTAssertTrue(lineRows(ignored.files[0].rows).isEmpty)
     }
 
     func testAnExhaustedBudgetIsAnUncachedError() {
+        let cache = DiffDocumentCache()
         let budget = DiffEngine.Budget(timeoutMs: 50, maxEditLength: 0)
-        let first = DiffEngine.build(path: "budget.txt", oldText: "old\n", newText: "new\n", options: .init(budget: budget))
-        let second = DiffEngine.build(path: "budget.txt", oldText: "old\n", newText: "new\n", options: .init(budget: budget))
+        let first = cache.build(path: "budget.txt", oldText: "old\n", newText: "new\n", options: .init(budget: budget))
+        let second = cache.build(path: "budget.txt", oldText: "old\n", newText: "new\n", options: .init(budget: budget))
         XCTAssertEqual(first.error, DiffEngine.tooLargeError)
         XCTAssertTrue(first.files.isEmpty)
         XCTAssertEqual(second.error, first.error)
@@ -463,12 +462,13 @@ final class DiffBuildTests: XCTestCase {
     }
 
     func testBudgetedAndUnbudgetedDocumentsAreCachedApart() {
-        let unbudgeted = DiffEngine.build(path: "c.txt", oldText: "before\nold\nafter\n", newText: "before\nnew\nafter\n")
+        let cache = DiffDocumentCache()
+        let unbudgeted = cache.build(path: "c.txt", oldText: "before\nold\nafter\n", newText: "before\nnew\nafter\n")
         let options = DiffEngine.Options(budget: .init(timeoutMs: 50, maxEditLength: 2000))
-        let budgeted = DiffEngine.build(path: "c.txt", oldText: "before\nold\nafter\n", newText: "before\nnew\nafter\n", options: options)
+        let budgeted = cache.build(path: "c.txt", oldText: "before\nold\nafter\n", newText: "before\nnew\nafter\n", options: options)
         XCTAssertNil(budgeted.error)
         XCTAssertFalse(budgeted === unbudgeted)
-        XCTAssertTrue(DiffEngine.build(path: "c.txt", oldText: "before\nold\nafter\n", newText: "before\nnew\nafter\n", options: options) === budgeted)
+        XCTAssertTrue(cache.build(path: "c.txt", oldText: "before\nold\nafter\n", newText: "before\nnew\nafter\n", options: options) === budgeted)
     }
 
     func testALargeOneSidedFileSkipsTheBudget() {
