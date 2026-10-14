@@ -92,6 +92,7 @@ final class InitialStateTests: XCTestCase {
 
     func testOfflineChecklistMeasuresItsTerminalBlock() {
         let terminal = TerminalBlockView(lines: [.command("happy")])
+        XCTAssertNil(terminal.lines[0].textLayoutManager, "TextKit 1, laid out as the labels are")
         // One 24pt line, 14 padding and a 1pt border on each side.
         XCTAssertEqual(terminal.sizeThatFits(CGSize(width: 300, height: CGFloat.greatestFiniteMagnitude)).height, 54)
         XCTAssertEqual(terminal.lines[0].attributedText?.string, "$ happy")
