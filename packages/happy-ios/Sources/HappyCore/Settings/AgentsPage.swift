@@ -134,13 +134,12 @@ extension AgentsPage {
         /// (agents.tsx writes them to its local settings at once).
         public var chosen: [String: JSONValue]?
         public var open: OpenField?
-        /// `status.online` and `status.offline`, for the computers' subtitles.
-        public var online: String
-        public var offline: String
+        /// The screen's language, fixed when it is built: the computers'
+        /// subtitles say `status.online` and `status.offline` in it.
+        public var language: String
 
-        public init(online: String, offline: String) {
-            self.online = online
-            self.offline = offline
+        public init(language: String) {
+            self.language = language
         }
 
         /// The overrides the page shows, and a choice edits.
@@ -204,12 +203,13 @@ extension AgentsPage {
     /// computers' order and status alone derives nothing.
     public static func derive(_ input: Input, applied: Content?) -> (output: Update, state: Content)? {
         guard input.settings != nil, let machines = input.machines else { return nil }
+        let words = TranslationCatalog.catalog(for: input.language)
         let content = Content(
             overrides: input.overrides,
             machines: machines.machines,
             open: input.open,
-            online: input.online,
-            offline: input.offline
+            online: words("status.online"),
+            offline: words("status.offline")
         )
         guard content != applied else { return nil }
         return (Update(content: content, rebuilt: rebuilt(from: applied, to: content)), content)

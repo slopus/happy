@@ -297,8 +297,13 @@ final class AgentsPageTests: XCTestCase {
 final class AgentsPageDerivationTests: XCTestCase {
     private let allGroups: Set<AgentsPage.Group> = [.machines, .defaults, .agent(.claude), .agent(.codex), .agent(.agy)]
 
+    override func setUp() async throws {
+        // Catalogs are decoded off the main thread; these tests derive on it.
+        for language in ["en", "ja"] { _ = await TranslationCatalog.load(language) }
+    }
+
     private func input(_ machines: [MachineRecord], settings: SettingsSnapshot = SettingsSnapshot()) -> AgentsPage.Input {
-        var input = AgentsPage.Input(online: "online", offline: "offline")
+        var input = AgentsPage.Input(language: "en")
         input.settings = settings
         input.machines = MachinesSnapshot(synced: true, machines: machines)
         return input
@@ -320,7 +325,7 @@ final class AgentsPageDerivationTests: XCTestCase {
     }
 
     func testNothingUntilBothFeedsHaveSpoken() {
-        var input = AgentsPage.Input(online: "online", offline: "offline")
+        var input = AgentsPage.Input(language: "en")
         XCTAssertNil(AgentsPage.derive(input, applied: nil))
         input.settings = SettingsSnapshot()
         XCTAssertNil(AgentsPage.derive(input, applied: nil), "no machines yet is not no machines")
@@ -426,6 +431,64 @@ final class AgentsPageDerivationTests: XCTestCase {
         XCTAssertFalse(update.state.hasOverrides)
     }
 
+    /// The language is part of what the page says: the same computers in
+    /// another language are another page.
+    func testTheLanguageInTheInputSaysTheWords() throws {
+        let machines = [machine("m1", active: true, activeAt: 5, ["host": .string("box")])]
+        let english = try shown(input(machines))
+        XCTAssertEqual(english.machines.map(\.subtitle), ["online"])
+        var japanese = input(machines)
+        japanese.language = "ja"
+        let update = try XCTUnwrap(AgentsPage.derive(japanese, applied: english))
+        XCTAssertEqual(update.state.machines.map(\.subtitle), ["オンライン"])
+        XCTAssertEqual(update.output.rebuilt, [.machines])
+    }
+
+    /// Two accounts' screens, built in two languages, derive at the same
+    /// time while the screens' language keeps changing underneath them:
+    /// each says only its own words, because each read its language from
+    /// its input and never from `AppLocalization`.
+    @MainActor
+    func testTwoAccountsInTwoLanguagesKeepTheirOwnWords() async {
+        let japaneseCatalog = await TranslationCatalog.load("ja")
+        defer { AppLocalization.use(nil) }
+        func pipeline(_ language: String, _ recorder: ApplyPerfRecorder<AgentsPage.Update>) -> ApplyPipeline<AgentsPage.Input, AgentsPage.Content?, AgentsPage.Update> {
+            ApplyPipeline(
+                input: AgentsPage.Input(language: language),
+                state: nil,
+                minimumInterval: .zero,
+                derive: { AgentsPage.derive($0, applied: $1) },
+                apply: { recorder.take($0) }
+            )
+        }
+        let englishOutputs = ApplyPerfRecorder<AgentsPage.Update>()
+        let japaneseOutputs = ApplyPerfRecorder<AgentsPage.Update>()
+        let english = pipeline("en", englishOutputs)
+        let japanese = pipeline("ja", japaneseOutputs)
+        let flips = Task.detached {
+            for index in 0..<2000 { AppLocalization.use(index.isMultiple(of: 2) ? japaneseCatalog : nil) }
+        }
+        var machines = [machine("m1", active: true, activeAt: 5, ["host": .string("box")]), machine("m2", activeAt: 3, ["host": .string("mini")])]
+        for both in [english, japanese] { both.update { $0.settings = SettingsSnapshot() } }
+        for beat in 0..<20 {
+            machines[0].active = beat.isMultiple(of: 2)
+            for both in [english, japanese] { both.update { [machines] in $0.machines = MachinesSnapshot(synced: true, machines: machines) } }
+            await Task.yield()
+        }
+        await flips.value
+        await applyPerfWait(timeout: 30) {
+            english.applied?.machines.first?.subtitle == "offline" && japanese.applied?.machines.first?.subtitle == "オフライン"
+        }
+        let englishWords = Set(englishOutputs.outputs.flatMap { $0.content.machines.map(\.subtitle) })
+        let japaneseWords = Set(japaneseOutputs.outputs.flatMap { $0.content.machines.map(\.subtitle) })
+        XCTAssertFalse(englishOutputs.outputs.isEmpty)
+        XCTAssertFalse(japaneseOutputs.outputs.isEmpty)
+        XCTAssertTrue(englishWords.isSubset(of: ["online", "offline"]), "\(englishWords)")
+        XCTAssertTrue(japaneseWords.isSubset(of: ["オンライン", "オフライン"]), "\(japaneseWords)")
+        english.cancel()
+        japanese.cancel()
+    }
+
     /// Through the real pipeline: one apply for the page, none for a burst
     /// of heartbeats over a thousand computers, and every derivation off
     /// the main thread (ApplyPipeline checks that in Debug).
@@ -433,7 +496,7 @@ final class AgentsPageDerivationTests: XCTestCase {
     func testHeartbeatsThroughThePipelineNeverReachTheMainThread() async {
         let recorder = ApplyPerfRecorder<AgentsPage.Update>()
         let pipeline = ApplyPipeline<AgentsPage.Input, AgentsPage.Content?, AgentsPage.Update>(
-            input: AgentsPage.Input(online: "online", offline: "offline"),
+            input: AgentsPage.Input(language: "en"),
             state: nil,
             minimumInterval: .zero,
             derive: { AgentsPage.derive($0, applied: $1) },
