@@ -842,8 +842,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     /// caret is the query; its suggestions replace the list when they
     /// arrive (a newer query drops older answers).
     private func updateActiveWord() {
+        // Read in place: each keystroke and caret move asks.
         let query = ComposerAutocomplete.findActiveWord(
-            card.text, selection: card.selectedRange, prefixes: ComposerAutocomplete.chatPrefixes
+            units: card.textUnits, selection: card.selectedRange, prefixes: ComposerAutocomplete.chatPrefixes
         )?.activeWord
         guard query != activeQuery else { return }
         activeQuery = query

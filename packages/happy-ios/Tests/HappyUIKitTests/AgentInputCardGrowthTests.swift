@@ -65,5 +65,15 @@ final class AgentInputCardGrowthTests: XCTestCase {
         card.setText("", selection: NSRange(location: 0, length: 0))
         XCTAssertFalse(card.layoutInput(width: 377).hasText)
     }
+
+    func testTheStoredUnitsAreTheText() {
+        let card = laidOutCard(Owner())
+        card.setText("😀 see @src", selection: NSRange(location: 11, length: 0))
+        XCTAssertEqual(card.textUnits as String, card.text)
+        XCTAssertEqual(
+            ComposerAutocomplete.findActiveWord(units: card.textUnits, selection: card.selectedRange, prefixes: ComposerAutocomplete.chatPrefixes),
+            ComposerAutocomplete.findActiveWord(card.text, selection: card.selectedRange, prefixes: ComposerAutocomplete.chatPrefixes)
+        )
+    }
 }
 #endif

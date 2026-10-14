@@ -484,6 +484,10 @@ public final class AgentInputCardView: UIView {
         set { setText(newValue, selection: NSRange(location: (newValue as NSString).length, length: 0)) }
     }
 
+    /// The live text's UTF-16 as the text view stores it, not copied out
+    /// as `text` is. Read it now: it changes with the text.
+    public var textUnits: NSString { textView.textStorage.mutableString }
+
     public var selectedRange: NSRange { textView.selectedRange }
 
     /// Replaces the text and moves the caret (`setTextAndSelection`).
