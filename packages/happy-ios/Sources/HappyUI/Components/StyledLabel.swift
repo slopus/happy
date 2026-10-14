@@ -59,7 +59,16 @@ public final class StyledLabel: UILabel {
         renderedStyle.lineHeightValue
     }
 
+    #if DEBUG
+    /// How many times this label has measured itself (tests): a screen
+    /// that measures off the main thread checks it never does.
+    private(set) var measurements = 0
+    #endif
+
     public override func sizeThatFits(_ size: CGSize) -> CGSize {
+        #if DEBUG
+        measurements += 1
+        #endif
         // Measured before its first trait update: measure what it will draw.
         syncTextSize()
         return super.sizeThatFits(size)

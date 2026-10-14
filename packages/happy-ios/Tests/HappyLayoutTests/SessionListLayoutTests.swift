@@ -110,6 +110,66 @@ final class SessionListChromeLayoutTests: XCTestCase {
         assertFrame(layout.action, rect(130.5, 531.5, 132, 40))
     }
 
+    func testNoSessionsThatFitsFillsTheScreenAndDoesNotScroll() {
+        let layout = NoSessionsLayout(.init(
+            size: phone,
+            safeArea: phoneUnderBar,
+            title: text("No sessions yet", lineHeight: 30),
+            description: text("Start one on a connected machine.", lineHeight: 22),
+            buttonHeight: 50,
+            action: fixed(132, 40)
+        ))
+        XCTAssertEqual(layout.contentHeight, 852)
+    }
+
+    func testNoSessionsTallerThanTheSafeAreaStartsAtItsTopAndScrolls() {
+        // 56 + 20 + 400 + 8 + 200 + 24 + 50 + 4 + 40 = 802, over the 683
+        // between the bar and the home indicator less the 32 margin.
+        let layout = NoSessionsLayout(.init(
+            size: phone,
+            safeArea: phoneUnderBar,
+            title: fixed(345, 400),
+            description: fixed(312, 200),
+            buttonHeight: 50,
+            action: fixed(132, 40)
+        ))
+        assertFrame(layout.icon, rect(168.5, 103, 56, 56))
+        assertFrame(layout.title, rect(24, 179, 345, 400))
+        assertFrame(layout.description, rect(40.5, 587, 312, 200))
+        assertFrame(layout.button, rect(0, 811, 393, 50))
+        assertFrame(layout.action, rect(130.5, 865, 132, 40))
+        // The action, then the margin and the home indicator.
+        XCTAssertEqual(layout.contentHeight, 905 + 32 + 34)
+    }
+
+    func testNoSessionsThatJustFitsIsBothCentredAndAtTheTop() {
+        // 56 + 20 + 300 + 8 + 225 + 24 + 50 = 683: exactly the space.
+        let exact = NoSessionsLayout(.init(
+            size: phone,
+            safeArea: phoneUnderBar,
+            title: fixed(120, 300),
+            description: fixed(264, 225),
+            buttonHeight: 50,
+            action: nil
+        ))
+        assertFrame(exact.icon, rect(168.5, 103, 56, 56))
+        assertFrame(exact.button, rect(0, 736, 393, 50))
+        XCTAssertEqual(exact.contentHeight, 852)
+
+        // A point more starts at the same place and scrolls by that point.
+        let over = NoSessionsLayout(.init(
+            size: phone,
+            safeArea: phoneUnderBar,
+            title: fixed(120, 301),
+            description: fixed(264, 225),
+            buttonHeight: 50,
+            action: nil
+        ))
+        assertFrame(over.icon, rect(168.5, 103, 56, 56))
+        assertFrame(over.button, rect(0, 737, 393, 50))
+        XCTAssertEqual(over.contentHeight, 853)
+    }
+
     func testTextAction() {
         let layout = TextActionLayout(width: 393, label: text("Show archived", lineHeight: 20))
         assertSize(layout.size, CGSize(width: 132, height: 40))

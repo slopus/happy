@@ -136,6 +136,22 @@ Following now:
   glyphs, the faces and the `+` keep their size. Each cell sets the trait
   on itself; the list does not, because its bots are home's flat rows
   and its notices home's header, which still plan at the designed size.
+- Home's "No sessions yet" (EmptyMainScreen.tsx with a computer linked):
+  the title, the line under it, "Start New Session" and "Show archived".
+  Their sizes are measured off the main thread (`NoSessionsMeasure`, the
+  labels' own styles and line limits through TextKit 1, ceiled to the
+  screen's pixels, and through the HappyLayout layouts), keyed by the
+  words, the content's width, the text size, the screen scale and whether
+  the archive is offered; a result for anything else is refused. The view
+  lays out only what was measured, and gives the two buttons their
+  labels' sizes, so nothing on it measures text on main. The 56 glyph and
+  the button's 50 minimum keep their size. Taller than the space between
+  the header and the dock, RN's plain View would push the title under the
+  header and the button under the dock; here the content starts at the
+  top of the safe area and scrolls instead (`NoSessionsLayout`), so every
+  control can be reached. The title's and the line's 30 and 22 point
+  lines are this app's tokens; RN gives them the font's own line (31.2,
+  20.8), at every size, so the two don't match to the pixel.
 - The iPad sidebar's own controls: New session, Settings and the empty
   state (EmptySessionsTablet). Each sets the trait on itself and is
   measured from its text as drawn when the sidebar lays out

@@ -12,8 +12,11 @@ final class NewSessionViewsTests: XCTestCase {
         Fonts.registerBundledFonts()
     }
 
-    func testNoSessionsOffersStartNewSessionAcrossTheScreen() {
+    func testNoSessionsOffersStartNewSessionAcrossTheScreen() async {
         let view = NoSessionsView(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        view.layoutIfNeeded()
+        // Measured off the main thread, then laid out.
+        await view.measured()
         view.layoutIfNeeded()
         XCTAssertEqual(view.startNewSession.title, "Start New Session")
         XCTAssertEqual(view.startNewSession.frame.width, 393, "alignSelf: 'stretch'")

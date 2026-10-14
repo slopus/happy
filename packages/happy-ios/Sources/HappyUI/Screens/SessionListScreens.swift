@@ -521,6 +521,8 @@ final class NoSessionsViewController: UIViewController {
         self.context = context
         self.session = session
         super.init(nibName: nil, bundle: nil)
+        // Every size on it is measured off main at the size it is drawn.
+        followsTextSize()
     }
 
     @available(*, unavailable)

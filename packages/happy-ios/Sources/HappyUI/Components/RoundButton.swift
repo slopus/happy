@@ -26,6 +26,22 @@ public final class RoundButton: UIControl {
         didSet { updateLabel(); updateSpinner() }
     }
 
+    /// The label's size, measured off the main thread for the width the
+    /// button is laid out at (`labelText`), so laying it out measures
+    /// nothing. Nil: the label is measured here, as it is drawn. It is the
+    /// title's size, so it is only for a button whose title stays and that
+    /// never shows `loadingTitle`.
+    var measuredLabelSize: CGSize? {
+        didSet { if measuredLabelSize != oldValue { setNeedsLayout() } }
+    }
+
+    /// The label's style, lines and alignment for a button of `size` and
+    /// `display`, for whoever measures it elsewhere.
+    nonisolated static func labelText(_ size: RoundButtonSize, display: RoundButtonDisplay) -> (style: TextStyle, lines: Int, alignment: NSTextAlignment) {
+        // Filled pills keep one line; text actions may wrap.
+        (TextStyles.roundButton(size, display: display), display == .filled ? 1 : 0, .center)
+    }
+
     let background = UIView()
     let label: StyledLabel
     let spinner = UIActivityIndicatorView(style: .medium)
@@ -34,12 +50,12 @@ public final class RoundButton: UIControl {
         self.title = title
         self.size = size
         self.display = display
+        let text = Self.labelText(size, display: display)
         label = StyledLabel(
-            style: TextStyles.roundButton(size, display: display),
+            style: text.style,
             color: display == .filled ? Palette.roundButtonText : Palette.textSecondary,
-            // Filled pills keep one line; text actions may wrap.
-            lines: display == .filled ? 1 : 0,
-            alignment: .center
+            lines: text.lines,
+            alignment: text.alignment
         )
         super.init(frame: .zero)
         background.isUserInteractionEnabled = false
@@ -70,7 +86,8 @@ public final class RoundButton: UIControl {
         let loading: RoundButtonLayout.Loading = !isLoading ? .none
             : inline ? .inline(spinner: spinnerSize)
             : .overlay(spinner: spinnerSize)
-        return RoundButtonLayout(.init(width: width, size: size, display: display, label: label.measurable, loading: loading))
+        let label = measuredLabelSize.map(Measurable.fixed) ?? label.measurable
+        return RoundButtonLayout(.init(width: width, size: size, display: display, label: label, loading: loading))
     }
 
     public override func sizeThatFits(_ size: CGSize) -> CGSize {
