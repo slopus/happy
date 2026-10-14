@@ -258,7 +258,30 @@ past; in the 42 row it is cut by the middle box, as RN's
   card's and Writing Tools' passed; the geometry matrix and two of New
   session's height tests failed, on the Japanese and Arabic measure and
   on their own checks of carets past the cap and of New session's
-  carets. They have not run since.
+  carets. They have not run since. Those two checks have changed, from
+  the probe's run (38523578708):
+  - Past the cap, `scrollRangeToVisible` never moved the text in the test
+    bundle, in either TextKit, in a window with a scene whether shown or
+    not, so a caret is no longer checked inside the view once scrolled
+    to. Each is checked within reach instead: inside the text's content
+    and no taller than the view. In the probe that held at all 784 carets
+    on the 77 rows past the cap, in both phases. That is the test
+    bundle's arithmetic, not a device: the text following the caret
+    while typing past the cap is UIKit's own behaviour, the same view as
+    RN's, and has not been looked at (FB-L1).
+  - New session's prompt has no insets, and its first caret starts a
+    point above the view and its last ends half a point below, in
+    TextKit 1 and 2 alike; its carets are now held to a TextKit 1 twin's,
+    and its text's layout fragments and lines to the view, which they
+    stay inside on all 10 of the probe's rows. TextKit 2's rendering
+    surface reaches 1 to 3pt above it, and below it for Japanese and
+    emoji (67 in 66) and Arabic (50 in 44, with the measure's leading
+    off; 50 in 49 before); RN's prompt is the same view with no insets
+    either, and whether any text is cut is not proven (FC-L1).
+  - A text that scrolls from exactly the cap (the flat panel's five lines
+    at M: 120 in 120) is checked as scrolling with its content as tall as
+    the view, as RN scrolls from the cap (`MultiTextInputLayout`).
+  - Thai, Devanagari and Korean join the texts, under the same checks.
 - Measured text boxes ceil to pixels as RN's do.
 - Fonts made outside `TextStyle` (session info's duplicate sheet, code
   blocks).

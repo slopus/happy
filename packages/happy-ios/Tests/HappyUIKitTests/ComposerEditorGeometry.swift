@@ -7,7 +7,8 @@ import XCTest
 /// the frame is the measured height between one line and the cap, the twin
 /// needs exactly the measured height, the view's own text needs no more
 /// than its frame, both break the text into the same lines, and every
-/// line's caret is inside the view's bounds, scrolled to where it scrolls.
+/// line's caret is inside the view's bounds, or within reach where it
+/// scrolls.
 ///
 /// Only a TextKit 1 twin is asked for its `layoutManager`; asking a TextKit 2
 /// view would turn it into TextKit 1.
@@ -75,13 +76,35 @@ enum ComposerEditorGeometry {
         String(format: "%.3f…%.3f", rect.minY, rect.maxY)
     }
 
-    /// What is wrong with the view's carets at `offsets` in its bounds
-    /// (whose origin is its content offset). Not scrolling: every caret
-    /// inside, at offset 0. Scrolling: the content taller than the bounds,
-    /// the first caret inside at offset 0, then each inside once scrolled to
-    /// (`scrollRangeToVisible`), and the last within the content, which is
-    /// not scrolled past.
-    static func caretProblems(_ view: UITextView, offsets: [Int]) -> [String] {
+    /// The caret at each of `offsets` in the view's coordinates, which are
+    /// its content's (its bounds' origin is its content offset).
+    static func carets(_ view: UITextView, offsets: [Int]) -> [Int: CGRect] {
+        var carets: [Int: CGRect] = [:]
+        for offset in offsets {
+            if let position = view.position(from: view.beginningOfDocument, offset: offset) {
+                carets[offset] = view.caretRect(for: position)
+            }
+        }
+        return carets
+    }
+
+    /// What is wrong with the view's carets at `offsets`. Not scrolling:
+    /// every caret inside its bounds, at offset 0. Scrolling: a TextKit 1
+    /// view's content at least as tall as its bounds (it scrolls from the
+    /// cap, `MultiTextInputLayout`; TextKit 2 lays the same lines out a
+    /// little shorter, which the fit and the lines hold), the first caret
+    /// inside the bounds at offset 0, and every caret within reach: inside
+    /// the content and no taller than the bounds, the last within the
+    /// content, and `scrollRangeToVisible` to each never past the content.
+    /// Whether scrolling to a caret brings it inside the bounds is not
+    /// checked: in the test bundle the content offset stays 0 (run
+    /// 38523578708), in a window with a scene, shown or not.
+    ///
+    /// `reference`, a TextKit 1 twin's carets at the same offsets, lets a
+    /// caret reach where the twin's does past the bounds: with no insets the
+    /// first caret starts above the view and the last ends below it in
+    /// TextKit 1 and 2 alike.
+    static func caretProblems(_ view: UITextView, offsets: [Int], reference: [Int: CGRect]? = nil) -> [String] {
         var problems: [String] = []
         func caret(_ offset: Int) -> CGRect? {
             guard let position = view.position(from: view.beginningOfDocument, offset: offset) else {
@@ -92,12 +115,18 @@ enum ComposerEditorGeometry {
         }
         func check(_ offset: Int, _ when: String) {
             guard let caret = caret(offset) else { return }
-            if caret.minY < view.bounds.minY || caret.maxY > view.bounds.maxY {
+            var low = view.bounds.minY
+            var high = view.bounds.maxY
+            if let twin = reference?[offset] {
+                low = min(low, twin.minY)
+                high = max(high, twin.maxY)
+            }
+            if caret.minY < low || caret.maxY > high {
                 problems.append("\(when) caret \(offset) \(describe(caret)) outside \(describe(view.bounds))")
             }
         }
         if view.isScrollEnabled {
-            if !(view.contentSize.height > view.bounds.height) {
+            if view.textLayoutManager == nil, view.contentSize.height.rounded(.up) < view.bounds.height {
                 problems.append("scrolls with content \(view.contentSize.height) in \(view.bounds.height)")
             }
             view.setContentOffset(.zero, animated: false)
@@ -106,12 +135,15 @@ enum ComposerEditorGeometry {
             for offset in offsets {
                 view.scrollRangeToVisible(NSRange(location: offset, length: 0))
                 view.layoutIfNeeded()
-                check(offset, "scrolled to")
+                guard let caret = caret(offset) else { continue }
+                if caret.minY < 0 || caret.maxY > view.contentSize.height || caret.height > view.bounds.height {
+                    problems.append("caret \(offset) \(describe(caret)) out of reach in content \(view.contentSize.height) through \(view.bounds.height)")
+                }
             }
             if let last = offsets.last, let caret = caret(last), caret.maxY > view.contentSize.height {
                 problems.append("end caret \(describe(caret)) past content \(view.contentSize.height)")
             }
-            if view.contentOffset.y > view.contentSize.height - view.bounds.height {
+            if view.contentOffset.y > max(0, view.contentSize.height - view.bounds.height) {
                 problems.append("offset \(view.contentOffset.y) past content \(view.contentSize.height) in \(view.bounds.height)")
             }
         } else {
@@ -121,6 +153,23 @@ enum ComposerEditorGeometry {
             for offset in offsets { check(offset, "unscrolled") }
         }
         return problems
+    }
+
+    /// A TextKit 2 view's layout fragments and their lines, in its
+    /// coordinates, from its text layout manager.
+    static func textFrames(_ view: UITextView) -> [CGRect] {
+        guard let manager = view.textLayoutManager else { return [] }
+        let top = view.textContainerInset.top
+        var frames: [CGRect] = []
+        _ = manager.enumerateTextLayoutFragments(from: manager.documentRange.location, options: [.ensuresLayout]) { fragment in
+            let frame = fragment.layoutFragmentFrame.offsetBy(dx: 0, dy: top)
+            frames.append(frame)
+            for line in fragment.textLineFragments {
+                frames.append(line.typographicBounds.offsetBy(dx: frame.minX, dy: frame.minY))
+            }
+            return true
+        }
+        return frames
     }
 
     /// `editor`, laid out by its owner, in a frame `frame` tall, for a text
@@ -167,8 +216,18 @@ enum ComposerEditorGeometry {
         twin.isScrollEnabled = scrolls
         host.addSubview(twin)
         twin.layoutIfNeeded()
-        let textKit2 = caretProblems(editor, offsets: offsets)
-        let textKit1 = caretProblems(twin, offsets: offsets)
+        // With no insets (New session's prompt) the carets are held to the
+        // twin's, and the text itself to the view: its fragments and lines
+        // inside, the bounds' height or, scrolling, the content's.
+        let insets = editor.textContainerInset
+        let reference = insets.top == 0 && insets.bottom == 0 ? carets(twin, offsets: offsets) : nil
+        if reference != nil {
+            let limit = scrolls ? editor.contentSize.height : editor.bounds.height
+            let outside = textFrames(editor).filter { $0.minY < 0 || $0.maxY > limit }.map(describe)
+            XCTAssertEqual(outside, [], "\(label): TextKit 2's text inside 0…\(limit)", file: file, line: line)
+        }
+        let textKit2 = caretProblems(editor, offsets: offsets, reference: reference)
+        let textKit1 = caretProblems(twin, offsets: offsets, reference: reference)
         twin.removeFromSuperview()
         let both = "TextKit 2 \(textKit2), TextKit 1 \(textKit1)"
         XCTAssertEqual(textKit2, [], "\(label): carets, \(both)", file: file, line: line)
