@@ -96,9 +96,11 @@ happy-app has two kinds of header on iOS (`app/(app)/_layout.tsx`):
 
 Here the bar's own title is react-native-screens' (IBMPlexSans-SemiBold
 17, a font and a colour: `AppCoordinator.nativeTitleAttributes`) and never
-scales. Settings, What's New, Welcome and
-Home put their title in a title view that follows the text size and is
-fitted again in the bar when the size changes.
+scales. Settings, What's New, Welcome, Home, session info, machine and
+changes put their title in a title view that follows the text size and is
+fitted again in the bar when the size changes (session info, machine and
+changes through `setPlainHeaderTitle`, which keeps `title` for the back
+button). On those three only the title follows; their rows don't yet.
 
 Fixed RN sizes stay fixed: icons, the wordmark, the checklist boxes,
 paddings, and minimum heights (rows 44, buttons 50/44/32, Get help 36),
@@ -119,8 +121,8 @@ past; in the 42 row it is cut by the middle box, as RN's
   scaled lines instead of 81.
 - Home's dock (the same card, under a screen that doesn't follow, so it
   stays at the designed size) and the new-session screen.
-- The `createPlainHeader` titles of message detail, session info, machine
-  and changes.
+- The `createPlainHeader` title of message detail (Chat's).
+- The rows of session info, machine and changes.
 - On a device: the composer at each size, the chips' native menus over
   their scaled labels, and a size change while typing (the typed text is
   restyled in place, which may end an IME composition in progress) have
