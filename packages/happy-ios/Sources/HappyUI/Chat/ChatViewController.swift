@@ -322,9 +322,10 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             derive: { input, applied in ChatRows.derive(input, applied: applied, planner: planner) },
             apply: { [weak self] update in
                 // Rows worked out for a chat the screen has left, or under an
-                // account that is no longer the open one, never land.
+                // account that is no longer the open one or is stopping (its
+                // code drawn plain, its diffs empty), never land.
                 guard let self, self.chatGeneration == generation, self.chatId == chatId,
-                      self.context.account.session === self.account else { return false }
+                      self.context.account.session === self.account, !render.isClosed else { return false }
                 return self.applyRows(update)
             }
         )

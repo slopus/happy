@@ -347,7 +347,9 @@ final class SessionFileViewController: UIViewController {
             let plan = await Task.detached(priority: .userInitiated) {
                 FileLinesPlan(source: source, width: width, maxWidth: maxWidth, syntax: syntax)
             }.value
-            guard let self, !Task.isCancelled else { return }
+            // Planned while the account stopped: plain where it would be
+            // coloured, so never shown.
+            guard let self, !Task.isCancelled, !syntax.isClosed else { return }
             self.planned = nil
             // One plan of each kind, at the newest size.
             self.plans = [plan] + self.plans.filter { kept in
