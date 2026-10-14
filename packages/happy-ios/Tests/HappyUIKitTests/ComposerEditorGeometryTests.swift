@@ -7,10 +7,11 @@ import XCTest
 
 /// The composers' TextKit 2 text views in their frames, at every text size
 /// they are drawn at, for hard lines, wrapped text at the point it wraps
-/// and one character past, Japanese, emoji and Arabic: the frame is the
-/// measured TextKit 1 height between one line and the cap, the view's own
-/// text fits it in TextKit 1's lines, and every line's caret is inside it,
-/// scrolled to past the cap (`ComposerEditorGeometry`).
+/// and one character past, Japanese, emoji, Arabic, Thai, Devanagari and
+/// Korean: the frame is the measured TextKit 1 height between one line and
+/// the cap, the view's own text fits it in TextKit 1's lines, and every
+/// line's caret is inside it, or within reach past the cap
+/// (`ComposerEditorGeometry`).
 @MainActor
 final class ComposerEditorGeometryTests: XCTestCase {
     override func setUp() {
@@ -33,6 +34,9 @@ final class ComposerEditorGeometryTests: XCTestCase {
         ("Japanese", "日本語の文章は単語の間に空白がなくても行の終わりで折り返され、次の行へと続いていきます。"),
         ("emoji", "Shipped 🚀 the fix 👩‍💻 with tests ✅ and docs 📚, waved 👋🏽 at the team 🇯🇵🇫🇷 and went home 🏠"),
         ("Arabic", "مرحبا، هذه رسالة طويلة بما يكفي لتلتف إلى سطر ثان على عرض الهاتف في المحادثة."),
+        ("Thai", "ภาษาไทยไม่เว้นวรรคระหว่างคำ ข้อความนี้จึงยาวพอที่จะขึ้นบรรทัดใหม่เมื่อแสดงบนหน้าจอโทรศัพท์ในการสนทนา"),
+        ("Devanagari", "यह संदेश इतना लंबा है कि फ़ोन की चौड़ाई पर बातचीत में दूसरी पंक्ति तक पहुँच जाए और आगे भी चलता रहे।"),
+        ("Korean", "이 메시지는 휴대폰 화면의 너비에서 다음 줄로 넘어갈 만큼 충분히 긴 문장으로 작성되었습니다."),
     ]
 
     /// Long enough to wrap at every width and text size.
