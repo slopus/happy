@@ -278,7 +278,12 @@ public final class AgentInputCardView: UIView {
 
     /// The text view, for owners that need it (input accessories, first
     /// responder chains). Don't set its delegate.
-    public let textView = UITextView()
+    ///
+    /// TextKit 1, the TextKit its height is measured with off the main
+    /// thread (`ComposerTextMeasure`), so it lays its lines out as they
+    /// were measured. A TextKit 2 view lays out a fractional line height
+    /// (a scaled 22pt line) a point shorter than the measure.
+    public let textView = UITextView(usingTextLayoutManager: false)
 
     private let surface = UIView()
     private let material = PartialBlurView(fraction: ComposerShadow.materialFraction)
