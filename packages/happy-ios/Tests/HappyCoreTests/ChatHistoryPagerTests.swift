@@ -296,7 +296,12 @@ final class ChatHistoryPagerTests: XCTestCase {
         for page in 1...ChatOlderPaging.maxInvisiblePages {
             await until { history.waiting == 1 }
             XCTAssertEqual(olderCalls(history), page)
-            history.answer(OlderPageResult(advanced: true, hasMore: true, oldestSeq: 1000 - page * 100))
+            let oldest = 1000 - page * 100
+            history.answer(OlderPageResult(advanced: true, hasMore: true, oldestSeq: oldest))
+            await settle()
+            // Its rows (all hidden) reach the snapshot, and the screen checks.
+            pager.receive(facts(empty: true, boundary: oldest))
+            pager.check()
             await until { history.waiting == 1 || pager.emptyStatus == .loadMore }
         }
         XCTAssertEqual(pager.emptyStatus, .loadMore)
@@ -305,6 +310,79 @@ final class ChatHistoryPagerTests: XCTestCase {
         await until { history.waiting == 1 }
         XCTAssertEqual(olderCalls(history), ChatOlderPaging.maxInvisiblePages + 1)
         XCTAssertFalse(history.calls.contains { $0.hasPrefix("retry") })
+    }
+
+    func testAnEmptyChatsPageWaitsForItsRowsBeforeTheNext() async {
+        let history = HeldHistory()
+        let (pager, _) = makePager(history)
+        pager.receive(facts(empty: true, boundary: 70))
+        pager.check()
+        await until { history.waiting == 1 }
+        history.answer(OlderPageResult(advanced: true, hasMore: true, oldestSeq: 50))
+        await settle()
+        // In the store, not yet in the snapshot: no second page, whatever
+        // pulses meanwhile.
+        XCTAssertNotNil(pager.paging.pending)
+        history.publish(state(loadingOlder: true))
+        history.publish(state())
+        pager.receive(facts(empty: true, boundary: 70))
+        pager.check()
+        await settle()
+        XCTAssertEqual(olderCalls(history), 1)
+        XCTAssertEqual(pager.paging.invisiblePages, 0)
+
+        // The snapshot holds it: counted, and the next page.
+        pager.receive(facts(empty: true, boundary: 49))
+        XCTAssertEqual(pager.paging.invisiblePages, 1)
+        pager.check()
+        await until { history.waiting == 1 }
+        XCTAssertEqual(olderCalls(history), 2)
+    }
+
+    func testMessagesArrivingWhileAnEmptyPageJoinsAreTheListsToPage() async {
+        let history = HeldHistory()
+        let (pager, box) = makePager(history, list: .init(laidOut: true, nearOldest: true, windowCanGrow: true, growthPending: false, oldestBoundary: "m50"))
+        pager.receive(facts(empty: true, boundary: 70))
+        pager.check()
+        await until { history.waiting == 1 }
+        history.answer(OlderPageResult(advanced: true, hasMore: true, oldestSeq: 50))
+        await settle()
+        // The page brought messages: the list takes over from nothing.
+        pager.receive(facts(empty: false, boundary: 50))
+        XCTAssertNil(pager.paging.pending)
+        XCTAssertEqual(pager.paging.invisiblePages, 0)
+        pager.check()
+        await settle()
+        XCTAssertEqual(box.grows, 1, "the list renders the store first")
+        XCTAssertEqual(olderCalls(history), 1)
+    }
+
+    func testAHiddenEmptyChatAsksForNothingOlderUntilShown() async {
+        let history = HeldHistory()
+        let (pager, _) = makePager(history)
+        pager.isActive = false
+        pager.receive(facts(empty: true, boundary: nil))
+        pager.check()
+        history.publish(state(loadingOlder: true))
+        history.publish(state())
+        await settle()
+        XCTAssertEqual(olderCalls(history), 0)
+        XCTAssertEqual(history.calls, ["ensureNewest"], "opening still asks for the newest, once")
+        pager.isActive = true
+        await until { history.waiting == 1 }
+        XCTAssertEqual(olderCalls(history), 1)
+    }
+
+    func testAnEmptyChatsPageThatMovedNothingRestsAtOnce() async {
+        let history = HeldHistory()
+        let (pager, _) = makePager(history)
+        pager.receive(facts(empty: true, boundary: nil))
+        pager.check()
+        await until { history.waiting == 1 }
+        history.answer(OlderPageResult(advanced: false, hasMore: true))
+        await settle()
+        XCTAssertNil(pager.paging.pending)
+        XCTAssertEqual(olderCalls(history), 1)
     }
 
     func testAnEmptyChatsRetryIsOlderAfterANewestFailure() async {

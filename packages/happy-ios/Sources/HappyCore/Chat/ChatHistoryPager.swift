@@ -27,7 +27,9 @@ extension ChatHistory: ChatHistoryClient {}
 ///   (`ChatSnapshotFacts.hasMoreOlder`); whether a page is on its way, from
 ///   the history's status (`loadingOlder`). A page that moved the cursor is
 ///   still joining until the snapshot reaches the oldest sequence that
-///   fetch returned; only then is it judged against the far end.
+///   fetch returned; only then is it judged against the far end, or, in
+///   EmptyMessages, counted and followed by the next.
+/// - A screen not shown asks for no older page, EmptyMessages' included.
 /// - When the covered window drops rows it showed (`windowEpoch` moves),
 ///   paging starts over (request numbers keep counting) and an answer to a
 ///   fetch from before is dropped; the screen goes back to the newest.
@@ -101,8 +103,9 @@ public final class ChatHistoryPager {
 
     /// EmptyMessages pages on its own; the list after it starts over.
     private var showsEmpty = false
-    /// A page that moved the cursor, until the snapshot holds it.
-    private var joining: (request: Int, oldestSeq: Int)?
+    /// A page that moved the cursor, until the snapshot holds it, and
+    /// whether EmptyMessages asked for it.
+    private var joining: (request: Int, oldestSeq: Int, empty: Bool)?
     /// Moves when paging starts over or stops: answers from before drop.
     private var generation = 0
     private var started = false
@@ -172,9 +175,15 @@ public final class ChatHistoryPager {
             if !reset { startOver() }
             showsEmpty = empty
         }
+        // A change between EmptyMessages and the list started over above,
+        // so a page still joining is the shown one's.
         if let page = joining, let boundary = next.olderBoundary, boundary <= page.oldestSeq {
             joining = nil
-            paging.settled(request: page.request, advanced: true)
+            if page.empty {
+                paging.settledEmpty(request: page.request, advanced: true)
+            } else {
+                paging.settled(request: page.request, advanced: true)
+            }
         }
         if previous != next { onChange?() }
         return reset
@@ -192,6 +201,7 @@ public final class ChatHistoryPager {
         let loading = status?.loadingOlder ?? false
         let step: ChatOlderPaging.Step
         if showsEmpty {
+            guard isActive else { return }
             step = paging.checkEmpty(hasMore: facts.hasMoreOlder, loading: loading)
         } else {
             guard let list = list?() else { return }
@@ -231,19 +241,26 @@ public final class ChatHistoryPager {
             paging.failed(request: request)
             return
         }
-        if empty {
-            if paging.settledEmpty(request: request, advanced: result.advanced) { check() }
-            return
-        }
         guard result.advanced, let oldestSeq = result.oldestSeq else {
-            paging.settled(request: request, advanced: false)
+            if empty {
+                paging.settledEmpty(request: request, advanced: result.advanced)
+            } else {
+                paging.settled(request: request, advanced: false)
+            }
             return
         }
+        // Counted, and followed by the next page, once the snapshot holds
+        // its rows: a page in the store but not yet on screen isn't asked
+        // for again.
         if let boundary = facts?.olderBoundary, boundary <= oldestSeq {
-            paging.settled(request: request, advanced: true)
-            check()
+            if empty {
+                if paging.settledEmpty(request: request, advanced: true) { check() }
+            } else {
+                paging.settled(request: request, advanced: true)
+                check()
+            }
         } else {
-            joining = (request, oldestSeq)
+            joining = (request, oldestSeq, empty)
         }
     }
 
