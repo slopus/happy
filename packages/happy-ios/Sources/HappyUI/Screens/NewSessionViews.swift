@@ -436,7 +436,23 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
         didSet { if showsSettings != oldValue { setNeedsLayout() } }
     }
 
-    private var measured: (width: CGFloat, text: String, height: CGFloat)?
+    /// The text's heights, measured off the main thread
+    /// (`ComposerTextHeights`).
+    private var textHeights = ComposerTextHeights()
+    private var measuring: Task<Void, Never>?
+    /// Moves on every change to the text, so a measured height is checked
+    /// without reading the text.
+    private var textRevision = 0
+    /// Moves when the draft replaces the text rather than an edit.
+    private var textGeneration = 0
+    /// The input's width and the text's height `layout(width:)` last gave.
+    private var laidOut: (width: CGFloat, height: CGFloat)?
+    /// A height known for the text `setText` brought, for `textChanged` to
+    /// file under its revision.
+    private var seed: (key: ComposerTextHeights.Key, height: CGFloat)?
+    /// The draft's text as last measured here, by any screen: a draft that
+    /// comes back unchanged opens at its height.
+    private static var lastMeasured: (key: ComposerTextHeights.Key, text: String, height: CGFloat)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -477,25 +493,20 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
     /// The draft's text, when it changed somewhere else.
     func setText(_ text: String) {
         guard text != self.text, textView.markedTextRange == nil else { return }
+        textGeneration += 1
         textView.attributedText = TextStyles.composerInput.attributedString(text, color: UIColor(Palette.inputText))
         textView.typingAttributes = TextStyles.composerInput.attributes(color: UIColor(Palette.inputText))
+        if let last = Self.lastMeasured, last.text == text {
+            seed = (last.key, last.height)
+        }
         textChanged(report: false)
     }
 
     func layout(width: CGFloat) -> NewSessionComposerLayout {
         let hairline = self.hairline
-        let inputWidth = max(0, width - 2 * hairline
-            - NewSessionComposerLayout.Metrics.paddingLeft - NewSessionComposerLayout.Metrics.paddingRight
-            - NewSessionComposerLayout.Metrics.fieldPaddingLeft - NewSessionComposerLayout.Metrics.fieldPaddingRight)
-        let height: CGFloat
-        if let measured, measured.width == inputWidth, measured.text == text {
-            height = measured.height
-        } else {
-            height = text.isEmpty
-                ? NewSessionComposerLayout.Metrics.lineHeight
-                : ceil(textView.sizeThatFits(CGSize(width: inputWidth, height: .greatestFiniteMagnitude)).height)
-            measured = (inputWidth, text, height)
-        }
+        let inputWidth = inputWidth(for: width)
+        let height = textHeight(inputWidth: inputWidth)
+        laidOut = (inputWidth, height)
         return NewSessionComposerLayout(.init(
             width: width,
             hairline: hairline,
@@ -503,6 +514,73 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
             agentLabel: agentButton.label.measurable,
             showsSettings: showsSettings
         ))
+    }
+
+    private func inputWidth(for width: CGFloat) -> CGFloat {
+        typealias M = NewSessionComposerLayout.Metrics
+        return max(0, width - 2 * hairline - M.paddingLeft - M.paddingRight - M.fieldPaddingLeft - M.fieldPaddingRight)
+    }
+
+    /// The text's height at the input's width, as measured off the main
+    /// thread, or a guess until it is, which starts the measurement: the
+    /// last height measured at the width, else one line.
+    private func textHeight(inputWidth: CGFloat) -> CGFloat {
+        let lookup = textHeights.lookup(textStamp(inputWidth: inputWidth), isEmpty: !textView.hasText)
+        if let measure = lookup.measure {
+            startMeasuring(measure)
+        }
+        return lookup.height
+    }
+
+    private func textStamp(inputWidth: CGFloat) -> ComposerTextHeights.Stamp {
+        typealias M = NewSessionComposerLayout.Metrics
+        let key = ComposerTextHeights.Key(
+            width: inputWidth,
+            style: TextStyles.composerInput,
+            lineHeight: M.lineHeight,
+            paddingTop: 0,
+            paddingBottom: 0,
+            maxHeight: M.inputMaxHeight
+        )
+        return ComposerTextHeights.Stamp(key: key, revision: textRevision, generation: textGeneration)
+    }
+
+    /// Measures the text as it is now off the main thread. Copying it out
+    /// is the one pass over it made here.
+    private func startMeasuring(_ stamp: ComposerTextHeights.Stamp) {
+        let job = ComposerTextMeasure(
+            stamp: stamp,
+            text: text,
+            attributes: stamp.key.style.attributes(color: UIColor(Palette.inputText))
+        )
+        measuring = Task { [weak self] in
+            let height = await Task.detached(priority: .userInitiated) { job.run() }.value
+            self?.measured(stamp, text: job.text, height: height)
+        }
+    }
+
+    private func measured(_ stamp: ComposerTextHeights.Stamp, text: String, height: CGFloat) {
+        measuring = nil
+        let live = ComposerTextHeights.Live(revision: textRevision, generation: textGeneration, isEmpty: !textView.hasText)
+        let finish = textHeights.finish(stamp, height: height, live: live)
+        if stamp.revision == textRevision {
+            Self.lastMeasured = (stamp.key, text, height)
+        }
+        if let next = finish.measure {
+            startMeasuring(next)
+        }
+        // The screen lays out again; nothing animates.
+        if finish.changed {
+            onHeightChange?()
+            setNeedsLayout()
+        }
+    }
+
+    /// Returns once the text's height is measured (tests).
+    func textMeasured() async {
+        while let measuring {
+            await measuring.value
+        }
     }
 
     override func sizeThatFits(_ size: CGSize) -> CGSize {
@@ -520,7 +598,7 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
         }
         let line = NewSessionComposerLayout.Metrics.lineHeight
         placeholder.setLayoutFrame(CGRect(x: layout.input.minX, y: layout.input.minY, width: layout.input.width, height: line))
-        placeholder.isHidden = !text.isEmpty
+        placeholder.isHidden = textView.hasText
         agentButton.setLayoutFrame(layout.agent)
         agentButton.apply(layout)
         settingsButton.isHidden = layout.settings == nil
@@ -534,13 +612,19 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
     }
 
     private func textChanged(report: Bool) {
-        // The cache still holds the old text's height.
-        let before = measured?.height
-        measured = nil
-        if bounds.width > 0 { _ = layout(width: bounds.width) }
-        placeholder.isHidden = !text.isEmpty
+        textRevision += 1
+        if let seed {
+            self.seed = nil
+            textHeights.seed(.init(key: seed.key, revision: textRevision, generation: textGeneration), height: seed.height)
+        }
+        // Against what the screen laid out before: the new text's height
+        // is its measured one, or the guess that stands until it lands.
+        let before = laidOut
+        let inputWidth = inputWidth(for: bounds.width)
+        let after = bounds.width > 0 ? textHeight(inputWidth: inputWidth) : nil
+        placeholder.isHidden = textView.hasText
         if report { onTextChange?(text) }
-        if measured?.height != before { onHeightChange?() }
+        if let after, before?.width != inputWidth || before?.height != after { onHeightChange?() }
         setNeedsLayout()
     }
 }
