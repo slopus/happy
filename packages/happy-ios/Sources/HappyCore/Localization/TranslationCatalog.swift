@@ -34,8 +34,10 @@ public final class TranslationCatalog: Sendable {
         /// Polish: one (exactly 1), few (…2-4 but not …12-14), many.
         case polish
 
+        /// ru.ts's and pl.ts's `Math.abs(count)` is taken as a magnitude:
+        /// `abs` would trap on `Int.min`.
         func category(_ value: Int) -> String {
-            let n = abs(value), n10 = n % 10, n100 = n % 100
+            let n = value.magnitude, n10 = n % 10, n100 = n % 100
             switch self {
             case .oneOther:
                 return value == 1 ? "one" : "other"
@@ -95,11 +97,9 @@ public final class TranslationCatalog: Sendable {
 
     public let language: String
     private let entries: [String: Entry]
-    private let fallback: TranslationCatalog?
 
-    init(language: String, json: String, fallback: TranslationCatalog?) {
+    init(language: String, json: String) {
         self.language = language
-        self.fallback = fallback
         let object = (try? JSONSerialization.jsonObject(with: Data(json.utf8))) as? [String: Any] ?? [:]
         var entries: [String: Entry] = [:]
         entries.reserveCapacity(object.count)
@@ -141,13 +141,16 @@ public final class TranslationCatalog: Sendable {
 
     public static var english: TranslationCatalog { catalog(for: "en") }
 
-    /// `t(key)` and `t(key, params)`: the language's words, English's when a
-    /// key is missing, and the key itself when English lacks it too, as
-    /// text/index.ts answers.
+    /// `t(key)` and `t(key, params)` (text/index.ts): the language's words,
+    /// and the key itself when the language lacks it; index.ts doesn't fall
+    /// back to English, and neither does this. Every catalog has the same
+    /// keys today (`TranslationCatalogTests`), so none is missing. A
+    /// parameter missing from `values` reads "undefined" in a template, as
+    /// JavaScript interpolates it; one that should choose the words and is
+    /// missing, or of another kind, answers the key, where happy-app's types
+    /// don't let the call be made.
     public func callAsFunction(_ key: String, _ values: [String: TranslationValue] = [:]) -> String {
-        guard let entry = entries[key] else {
-            return fallback?(key, values) ?? key
-        }
+        guard let entry = entries[key] else { return key }
         switch entry {
         case .text(let text):
             return text
@@ -187,13 +190,12 @@ public final class TranslationCatalog: Sendable {
         func catalog(_ language: String) -> TranslationCatalog {
             let code = TranslationCatalog.sources.contains { $0.code == language } ? language : "en"
             if let cached = lock.withLock({ catalogs[code] }) { return cached }
-            let english = code == "en" ? nil : catalog("en")
             #if DEBUG
             dispatchPrecondition(condition: .notOnQueue(.main))
             #endif
             let json = TranslationCatalog.sources.first { $0.code == code }?.json ?? "{}"
             // Decoded outside the lock; a race decodes twice and keeps one.
-            let made = TranslationCatalog(language: code, json: json, fallback: english)
+            let made = TranslationCatalog(language: code, json: json)
             return lock.withLock {
                 if let cached = catalogs[code] { return cached }
                 catalogs[code] = made

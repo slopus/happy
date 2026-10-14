@@ -102,12 +102,34 @@ final class TranslationCatalogTests: XCTestCase {
         XCTAssertEqual(polish, ["many", "one", "few", "many", "many", "many", "many", "few", "many", "many", "few"])
     }
 
+    /// `Math.abs(count)` first, as ru.ts and pl.ts do, down to `Int.min`,
+    /// whose `abs` would trap; JavaScript's 2^63 ends in 8 as well.
+    func testPluralRulesTakeTheMagnitude() {
+        let values = [-1, -2, -21, -112, Int.min, Int.max]
+        XCTAssertEqual(values.map(TranslationCatalog.PluralRule.russian.category), ["one", "few", "one", "many", "many", "many"])
+        XCTAssertEqual(values.map(TranslationCatalog.PluralRule.polish.category), ["one", "few", "many", "many", "many", "many"])
+        XCTAssertEqual(values.map(TranslationCatalog.PluralRule.oneOther.category), ["other", "other", "other", "other", "other", "other"])
+        let days = TranslationCatalog.catalog(for: "ru")("sessionHistory.daysAgo", ["count": .number(.min)])
+        XCTAssertTrue(days.contains(String(Int.min)), days)
+    }
+
     func testChoicesByFlagAndName() {
         let en = TranslationCatalog.english
         XCTAssertEqual(en("settings.featureToggled", ["feature": "Voice", "enabled": false]), "Voice disabled")
         XCTAssertEqual(en("settings.machineStatus", ["name": "mini", "status": "online"]), "mini is online")
         XCTAssertEqual(en("errors.validationError", ["field": "Port", "min": 1, "max": 65535]), "Port must be between 1 and 65535")
         XCTAssertEqual(en("status.lastSeen", [:]), "last seen undefined", "as JavaScript interpolates a missing parameter")
+    }
+
+    /// text/index.ts answers a key its language lacks with the key, not
+    /// with English's words.
+    func testAMissingKeyIsTheKey() {
+        let partial = TranslationCatalog(language: "ja", json: #"{"common.ok":"OK"}"#)
+        XCTAssertEqual(partial("common.ok"), "OK")
+        XCTAssertEqual(partial("common.cancel"), "common.cancel")
+        XCTAssertEqual(TranslationCatalog.english("no.such.key"), "no.such.key")
+        XCTAssertEqual(TranslationCatalog.catalog(for: "ja")("no.such.key"), "no.such.key")
+        XCTAssertEqual(TranslationCatalog.english("sessionHistory.daysAgo"), "sessionHistory.daysAgo", "a choosing parameter missing")
     }
 
     /// text/index.ts: the preferred language, then the device's, Chinese by
