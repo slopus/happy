@@ -300,11 +300,14 @@ public final class AgentInputCardView: UIView {
     private let primaryButton = ComposerPrimaryButton()
     private let desktopControls = AgentInputDesktopControlsView()
     private var primaryFlash: CGFloat = 0
-    /// The text's height at a width, for the text as it was at `revision`.
-    private var measured: (width: CGFloat, revision: Int, scale: TextScale?, height: CGFloat)?
-    /// Moves on every change to the text, so a cached height is checked
+    /// The text's heights, measured off the main thread.
+    private var textHeights = ComposerTextHeights()
+    private var measuring: Task<Void, Never>?
+    /// Moves on every change to the text, so a measured height is checked
     /// without reading the text, however long it is.
     private var textRevision = 0
+    /// Moves when the text is replaced (`setText`) rather than typed.
+    private var textGeneration = 0
     /// The height the owner last laid the card out at, and at what width:
     /// what a change to the text is measured against.
     private var laidOut: (width: CGFloat, height: CGFloat)?
@@ -457,7 +460,6 @@ public final class AgentInputCardView: UIView {
         )
         textView.font = inputStyle.font
         restyleText()
-        measured = nil
     }
 
     /// The typed text drawn again in the input style and colour, the
@@ -493,6 +495,7 @@ public final class AgentInputCardView: UIView {
     /// Replaces the text and moves the caret (`setTextAndSelection`).
     /// Reports the change to the delegate, as a keystroke would.
     public func setText(_ text: String, selection: NSRange) {
+        textGeneration += 1
         textView.attributedText = inputStyle.attributedString(text, color: UIColor(Palette.inputText))
         textView.typingAttributes = inputStyle.attributes(color: UIColor(Palette.inputText))
         let length = (text as NSString).length
@@ -586,8 +589,8 @@ public final class AgentInputCardView: UIView {
         return layout
     }
 
-    /// The card's height at `width`. The text's height is cached by width,
-    /// text size and revision.
+    /// The card's height at `width`, with the text's height as last
+    /// measured off the main thread; the delegate hears when it moves.
     public func height(fitting width: CGFloat) -> CGFloat {
         desktopLayout(width: width)?.size.height ?? layout(width: width).size.height
     }
@@ -604,16 +607,60 @@ public final class AgentInputCardView: UIView {
     }
 
     /// The text's height at `textWidth`, its padding included, at the
-    /// text size it is drawn at.
-    private func textHeight(width textWidth: CGFloat) -> CGFloat {
+    /// text size it is drawn at: as measured off the main thread, or a
+    /// guess until it is, which starts the measurement
+    /// (`ComposerTextHeights`).
+    private func textHeight(width textWidth: CGFloat, paddingTop: CGFloat, paddingBottom: CGFloat, maxHeight: CGFloat) -> CGFloat {
         // Measured before its first trait update: measure what it will draw.
         syncTextSize()
-        if let measured, measured.width == textWidth, measured.revision == textRevision, measured.scale == textScale {
-            return measured.height
+        let key = ComposerTextHeights.Key(
+            width: textWidth,
+            style: inputStyle,
+            lineHeight: inputLineHeight,
+            paddingTop: paddingTop,
+            paddingBottom: paddingBottom,
+            maxHeight: maxHeight
+        )
+        let stamp = ComposerTextHeights.Stamp(key: key, revision: textRevision, generation: textGeneration)
+        let lookup = textHeights.lookup(stamp, isEmpty: !textView.hasText)
+        if let measure = lookup.measure {
+            startMeasuring(measure)
         }
-        let height = ceil(textView.sizeThatFits(CGSize(width: textWidth, height: .greatestFiniteMagnitude)).height)
-        measured = (textWidth, textRevision, textScale, height)
-        return height
+        return lookup.height
+    }
+
+    /// Measures the text as it is now off the main thread. Copying it out
+    /// is the one pass over it made here.
+    private func startMeasuring(_ stamp: ComposerTextHeights.Stamp) {
+        let job = ComposerTextMeasure(
+            stamp: stamp,
+            text: text,
+            attributes: stamp.key.style.attributes(color: UIColor(Palette.inputText))
+        )
+        measuring = Task { [weak self] in
+            let height = await Task.detached(priority: .userInitiated) { job.run() }.value
+            self?.measured(stamp, height: height)
+        }
+    }
+
+    private func measured(_ stamp: ComposerTextHeights.Stamp, height: CGFloat) {
+        measuring = nil
+        let live = ComposerTextHeights.Live(revision: textRevision, generation: textGeneration, isEmpty: !textView.hasText)
+        let finish = textHeights.finish(stamp, height: height, live: live)
+        if let next = finish.measure {
+            startMeasuring(next)
+        }
+        if finish.changed {
+            delegate?.agentInputCardDidInvalidateHeight(self)
+            setNeedsLayout()
+        }
+    }
+
+    /// Returns once the text's height is measured (tests).
+    func textMeasured() async {
+        while let measuring {
+            await measuring.value
+        }
     }
 
     /// One line of the input as drawn.
@@ -625,7 +672,13 @@ public final class AgentInputCardView: UIView {
         let config = configuration
         guard let desktop = config.desktop else { return nil }
         // First: it takes up the text size the rest is measured at.
-        let height = textHeight(width: AgentInputDesktopLayout.textWidth(panelWidth: width))
+        typealias M = AgentInputDesktopLayout.Metrics
+        let height = textHeight(
+            width: AgentInputDesktopLayout.textWidth(panelWidth: width),
+            paddingTop: M.textPaddingTop,
+            paddingBottom: M.textPaddingBottom,
+            maxHeight: M.inputMaxHeight
+        )
         return AgentInputDesktopLayout.Input(
             width: width,
             attachmentCount: config.attachments.count,
@@ -647,7 +700,12 @@ public final class AgentInputCardView: UIView {
         let insets = AgentInputInsets(shellInset: metrics.shellInset, actionSize: metrics.actionSize, addIconSize: metrics.addIconSize)
         let textWidth = max(0, contentWidth - insets.inputContainerPaddingLeft - insets.inputContainerPaddingRight)
         // First: it takes up the text size the chips are measured at.
-        let height = textHeight(width: textWidth)
+        let height = textHeight(
+            width: textWidth,
+            paddingTop: metrics.inputPaddingTop,
+            paddingBottom: metrics.inputPaddingBottom,
+            maxHeight: metrics.inputMaxHeight
+        )
         return AgentInputCardLayout.Input(
             width: width,
             metrics: metrics,
@@ -845,8 +903,6 @@ public final class AgentInputCardView: UIView {
             ? (top: AgentInputDesktopLayout.Metrics.textPaddingTop, bottom: AgentInputDesktopLayout.Metrics.textPaddingBottom)
             : (top: metrics.inputPaddingTop, bottom: metrics.inputPaddingBottom)
         textView.textContainerInset = UIEdgeInsets(top: padding.top, left: 0, bottom: padding.bottom, right: 0)
-        // Measured with the other padding.
-        measured = nil
         applyAppearance()
     }
 

@@ -64,14 +64,16 @@ Following now:
 - Their inputs (the server field, the secret key) and the text not drawn by
   `StyledLabel` (What's New's paragraphs, the Claude command).
 - The chat's composer, on its own: `SessionComposerView` sets the trait on
-  itself, because its height is measured on main from its text as drawn
-  every time the chat lays out, and nothing plans it off main. The card
-  (`AgentInputCardView`) draws its input, placeholder and line, chip labels
-  and "·" scaled; the status, week and context text and the suggestion rows
-  are scaled too. Each re-reads the traits before it measures, so a height
-  asked for before the trait update is measured at the size it then draws,
-  and a size change redraws, drops the cached text height (keyed on the
-  scale) and asks the chat to lay out again. Tap targets are the measured
+  itself, because its height is worked out from its text as drawn every
+  time the chat lays out, and nothing in the chat's plan assumes it. The
+  card (`AgentInputCardView`) draws its input, placeholder and line, chip
+  labels and "·" scaled; the status, week and context text and the
+  suggestion rows are scaled too. Each re-reads the traits before it
+  measures, so a height asked for before the trait update is measured at
+  the size it then draws. The input's text is measured off main
+  (`ComposerTextHeights`), keyed on the scaled style, so a size change
+  measures it again; the labels are measured on main. A size change
+  redraws and asks the chat to lay out again. Tap targets are the measured
   frames, so they grow with the text; the slop around them is fixed, as
   RN's `hitSlop` is.
 
