@@ -101,7 +101,10 @@ final class PictureDownloaderTests: XCTestCase {
         PictureStub.answer("/large", .init(chunks: Array(repeating: chunk, count: 64), gap: 0.005))
         let data = await downloader().data(url("/large"), limit: 4 * chunk.count)
         XCTAssertNil(data)
-        XCTAssertTrue(PictureStub.wasStopped("/large"))
+        // URLSession reports the cancelled task before it stops the
+        // protocol: on Darwin `stopLoading` comes a few milliseconds after
+        // the answer, on its CustomProtocols thread.
+        await eventually { PictureStub.wasStopped("/large") }
         XCTAssertLessThan(PictureStub.chunksSent("/large"), 64)
     }
 
@@ -128,6 +131,7 @@ final class PictureDownloaderTests: XCTestCase {
         download.cancel()
         let data = await download.value
         XCTAssertNil(data)
-        XCTAssertTrue(PictureStub.wasStopped("/slow"))
+        await eventually { PictureStub.wasStopped("/slow") }
+        XCTAssertLessThan(PictureStub.chunksSent("/slow"), 200)
     }
 }
