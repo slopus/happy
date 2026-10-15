@@ -35,24 +35,33 @@ Web 与 Native 是两条渲染链，不能因为最终都显示 SVG 就假设配
 
 ### PC Web
 
-- 鼠标或触控板按住画布后，默认缩放比例也必须能够拖动画布。
+- 桌面（Web窗口宽≥768px）以自然比例预览 SVG，默认节点文字为16px、接近正文，不随消息栏拉宽而放大，也不为塞进横图而缩小。图框靠左并按自然图宽收紧、最大不超过消息宽；高度最多为480px或窗口高度60%中的较小值，超宽/长内容裁切，点击预览打开完整大图。
+- 窄屏 Web 保留按消息宽度等比排版、从顶部开始展示的行为，高度最多为窗口的70%；不按高度缩成完整缩略图，短图按实际图片高度收缩。
+- 内联不初始化 Panzoom、不提供缩放工具栏，鼠标与触屏滚动归聊天页。
+- 放大徽标占用独立顶部留白（内容顶部46px、左右/底部16px），不能覆盖自然高度横图的末尾节点。
+- 全屏中鼠标或触控板按住画布后，默认缩放比例也必须能够拖动画布。
 - 普通鼠标滚轮、触控板双指滚动属于页面，不能缩放图表，也不能被图表阻止。
 - `Ctrl/Command + wheel` 才交给 Panzoom 缩放；工具栏的放大、缩小、重置始终可用。
-- 打开全屏会创建独立画布实例；关闭后内联画布仍可继续使用。
-- 全屏内容必须落在可视区域内，表面不能保留内联卡片的圆角或边框。
+- 打开全屏会创建独立画布实例；关闭后返回同一张静态预览，支持 Escape 和关闭按钮。
+- 大图以深色遮罩上的独立圆角画布承载，右上角下载/关闭，底部居中为减号、实际缩放百分比、加号；点击百分比重新适配整图。
+- 初始比例以 SVG 原始 viewBox 尺寸适配画布，百分比是相对原图的实际比例，不把适配后的比例伪装成100%。
+- 下载导出完整 SVG，保留原始宽高、中文与换行，不导出当前拖拽后的裁切画面。
 
 ### Native/WebView
 
-- WebView 必须允许内部滚动并参与父级嵌套滚动：`scrollEnabled` 与 `nestedScrollEnabled` 保持开启。
+- 内联 WebView 按宽度展示顶部静态 SVG，高度上限同样为屏高的 70%；SVG/scene 使用自然高度、不按视口高度缩图。ResizeObserver 仅在图片自然高度变化时通过消息桥接调整短图容器，无轮询。`pointerEvents="none"`、`scrollEnabled=false`，由外层 Pressable 打开全屏，让父聊天页处理触摸滚动。
+- 仅全屏 WebView 开启 `scrollEnabled` 与 `nestedScrollEnabled`，并加载 Panzoom。
 - 全屏 HTML 不保留内联模式的 16px body padding。
-- Modal 同时处理状态栏、导航栏和安全区；全屏表面无圆角、无边框。
+- Modal 同时处理状态栏、导航栏和安全区；外层为操作区和底部缩放条预留空间，圆角画布不遮住控制按钮。
 - 缩放、拖拽和重置由 WebView 内的 Panzoom 完成，React Native 工具栏只发送命令。
 
 ## 3. 推荐实现结构
 
 ### 3.1 分开 viewport、scene 和 SVG
 
-Web DOM 层级保持为：
+内联 SVG 先按 HTML 解析、移除 HTML 解析器产生的 xmlns 属性，再用 XMLSerializer 序列化为 SVG 图片 URI。Mermaid 的 foreignObject 中可能包含未自闭合的 `<br>`，直接把原始输出塞入图片会造成 XML 解析失败；不能只用无文字的 mock 验收。
+
+全屏 Web DOM 层级保持为：
 
 ```text
 viewport（裁剪、手势边界、wheel 监听）
@@ -71,11 +80,14 @@ viewport（裁剪、手势边界、wheel 监听）
 ```ts
 Panzoom(scene, {
     canvas: true,
-    minScale: 0.5,
+    startScale: fitScale,
+    minScale: Math.min(0.1, fitScale / 2),
     maxScale: 5,
     step: 0.25,
 });
 ```
+
+HTML scene保留原始viewBox宽高，Web和Native都将Panzoom绑定到HTML scene，使用库默认中心原点；不能给SVG target强制改中心origin，否则会破坏焦点缩放。fitScale取可用画布与原图宽高比例中的较小值（上限1）。监听panzoomchange更新百分比；ResizeObserver在画布尺寸变化时重新适配，不查询或轮询状态。
 
 不要恢复 `contain: 'outside'`。当图表在默认比例已经完全落入 viewport 时，该约束会把位移夹回原点，用户看起来就像“长按无法拖动”。这不是 pointer 事件没触发，而是变换被 containment 规则抵消。
 
@@ -112,14 +124,14 @@ Mermaid render 是异步的，Panzoom 必须等 SVG 已插入 DOM 后再初始�
 
 否则常见结果是旧控制器继续消费事件、工具栏命令打到已销毁实例，或者主题切换后存在两层 transform。
 
-### 3.4 内联与全屏使用独立实例
+### 3.4 静态预览与全屏分离
 
-内联画布和 Modal 中的全屏画布各自拥有 ref。不要把同一 DOM/WebView 节点搬入 Modal，也不要让两个工具栏共享一个 Panzoom ref。
+内联预览不拥有 Panzoom。Modal 中创建独立全屏画布，不把同一 DOM/WebView 节点搬入 Modal；关闭销毁全屏控制器，保留预览与聊天位置。
 
 全屏状态需要同时传入：
 
-- React Native surface：`flex: 1`、`borderRadius: 0`、`borderWidth: 0`
-- Web DOM：viewport/scene 高度为 `100%`，SVG 高度受全屏容器约束
+- React Native surface：独立圆角画布；外层按 safe area 给顶部按钮与底部缩放条预留空间
+- Web DOM：viewport填满画布，scene与SVG为原图尺寸，由Panzoom按fitScale适配
 - Native HTML：body padding 从 16px 切为 0
 - Modal：状态栏和导航栏 translucent，外层使用 Unistyles safe-area insets
 
@@ -140,7 +152,7 @@ Native HTML 不能直接插入用户 Mermaid 源码或主题 JSON。必须通过
 | 触控板双指滚动时页面滚动且图表也缩放 | 全局手势冲突 | 无条件调用 `zoomWithWheel` | 普通 wheel 归页面，仅修饰键 wheel 交给 Panzoom |
 | 默认比例按住无法拖动，放大后偶尔可以 | pointer/mouse handler 没绑定 | `contain: 'outside'` 在内容已适配时夹住位移 | 移除该 containment，并以默认比例拖拽作为回归用例 |
 | 图表抢走整个聊天页滚动 | `touch-action` 单独导致 | wheel handler 调用 Panzoom 后阻止默认滚动 | 分离 touch/pointer 与 wheel 的所有权，不调用普通 wheel 分支 |
-| 全屏仍有圆角、边框或四周留白 | Modal 尺寸不够 | 复用了内联 surface 和 Native body padding | 为全屏传递独立样式和 HTML 参数，并处理 safe area |
+| 控制按钮与图形重叠或离开视口 | 单纯放大Modal | 未给独立顶部操作区、底部缩放条和safe area预留空间 | 画布、顶部操作和底部缩放条分别布局 |
 | 全屏按钮控制了错误的画布 | ref 更新慢 | 内联和全屏共享控制器 | 两个 canvas ref、两个生命周期、各自的 toolbar target |
 | 多张图偶发覆盖或 render 冲突 | React key 问题 | Web 文档内复用了 Mermaid render id | 使用时间戳 + 单调计数器生成唯一 id |
 | Native 图表一直空白且不进入错误态 | Mermaid 语法错误 | 外部脚本在 bootstrap 之前阻塞或加载失败，`try/catch` 尚未开始 | CDN 加载策略必须有超时/回退，并在加载阶段就建立错误上报；当前主线仍需继续强化这一点 |
@@ -163,11 +175,11 @@ Native HTML 不能直接插入用户 Mermaid 源码或主题 JSON。必须通过
 | 层级 | 必测项 |
 | --- | --- |
 | Web unit | 无 `contain: 'outside'`；普通 wheel 不调用 zoom；Ctrl/Command wheel 调用 zoom；销毁时移除 listener 并 destroy |
-| Native unit | `scrollEnabled`、`nestedScrollEnabled`；全屏 body padding=0；Modal translucent；safe-area padding；全屏无边框圆角 |
+| Native unit | 内联禁止命中和滚动、全屏开启 `scrollEnabled`/`nestedScrollEnabled`；全屏 body padding=0；Modal translucent；safe-area padding；比例与下载消息桥接 |
 | Model unit | 主题 token 映射；`reset/zoomIn/zoomOut` 命令；inline-script 转义 |
-| PC E2E | 默认比例拖拽；reset；按钮缩放；普通 wheel 页面可滚且 transform 不变；修饰键 wheel transform 改变；缩放后拖拽；全屏几何和关闭恢复 |
-| 手工触控板 | 双指滚动只滚页面；按下拖动图表；浏览器缩放手势不与页面滚动双触发 |
-| Native 真机 | 内联嵌套滚动；单指拖动；双指缩放；全屏安全区；返回键关闭；弱网/断网错误态 |
+| PC E2E | 长图/横图图片解码、自然比例和顶部对齐；实际节点字号≈正文16px，图框按内容收紧、480px/60vh限高裁切；宽图不缩字而裁切、徽标不遮内容；窄屏仍按宽度适配和70vh限高；内联普通 wheel 页面可滚；点击/键盘进入全屏；全屏拖拽/reset/按钮及修饰键缩放；全屏几何与关闭恢复 |
+| 手工触控板 | 内联双指滚动只滚页面；全屏按下拖动图表；浏览器缩放手势不与页面滚动双触发 |
+| Native 真机 | 内联滚动归聊天、点击打开；全屏单指拖动/双指缩放/安全区/返回键关闭；弱网/断网错误态 |
 
 推荐命令：
 
@@ -189,11 +201,11 @@ pnpm --filter happy-app exec playwright test e2e/mermaid-diagram-interactions.sp
 - [ ] 没有把普通 wheel 重新交给 Panzoom。
 - [ ] 默认比例拖拽仍有效，没有恢复会夹住位移的 containment。
 - [ ] listener、Panzoom 实例和异步 render 都有对称清理。
-- [ ] 内联与全屏没有共享画布 ref。
+- [ ] 桌面内联保持正文大小、紧凑图框，窄屏保留宽度适配；顶部对齐、超出裁切，只有全屏初始化控制器。
 - [ ] Web 和 Native 的尺寸、主题、命令与错误态都同步评估。
 - [ ] Native inline script 仍通过安全序列化。
 - [ ] 依赖版本变更同时核对 npm lock 与 WebView 固定版本。
-- [ ] PC 可见交互变更按 PR 规则提供逐 Case 前后证据。
+- [ ] PC 可见交互变更按根 CLAUDE.md 记录截图需求，仅在用户要求时提供前后证据。
 - [ ] 合并后分别核对 Web production workflow 和 OTA compatibility/publish 结果；依赖或 lockfile 变化可能让 OTA 安全分类器跳过发布，即使 Web 已成功上线。
 
 ## 9. 设计原则

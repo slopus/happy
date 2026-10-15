@@ -17,6 +17,7 @@ export type MermaidThemeConfig = {
     themeVariables: {
         background: string;
         darkMode: boolean;
+        fontSize: string;
         primaryBorderColor: string;
         primaryColor: string;
         primaryTextColor: string;
@@ -34,6 +35,12 @@ export type MermaidThemeConfig = {
 
 export type DiagramCommand = 'reset' | 'zoomIn' | 'zoomOut';
 
+/** Fit the natural SVG dimensions into a viewport without enlarging a small diagram. */
+export function getDiagramFitScale(width: number, height: number, viewportWidth: number, viewportHeight: number): number {
+    if (![width, height, viewportWidth, viewportHeight].every(value => Number.isFinite(value) && value > 0)) return 1;
+    return Math.min(1, viewportWidth / width, viewportHeight / height);
+}
+
 export type DiagramCommandTarget = Record<DiagramCommand, (options?: { animate?: boolean }) => unknown>;
 
 export function executeDiagramCommand(target: DiagramCommandTarget, command: DiagramCommand): void {
@@ -48,6 +55,8 @@ export function createMermaidThemeConfig(theme: MermaidThemeSource): MermaidThem
         themeVariables: {
             background: colors.surfaceHighest,
             darkMode: theme.dark,
+            // Match the 16px Markdown body; desktop previews keep the SVG's natural scale.
+            fontSize: '16px',
             primaryBorderColor: colors.divider,
             primaryColor: colors.surfaceHigh,
             primaryTextColor: colors.text,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
     createMermaidThemeConfig,
     executeDiagramCommand,
+    getDiagramFitScale,
     serializeForInlineScript,
 } from './mermaidRendererModel';
 
@@ -31,6 +32,18 @@ const darkTheme = {
     },
 };
 
+describe('getDiagramFitScale', () => {
+    it.each([
+        [400, 2000, 1200, 800, 0.4],
+        [2000, 400, 1000, 800, 0.5],
+        [200, 100, 1000, 800, 1],
+        [400, 2000, 1200, 400, 0.2],
+        [0, 2000, 1200, 800, 1],
+    ])('fits %sx%s into %sx%s at natural scale %s', (width, height, viewportWidth, viewportHeight, expected) => {
+        expect(getDiagramFitScale(width, height, viewportWidth, viewportHeight)).toBe(expected);
+    });
+});
+
 describe('createMermaidThemeConfig', () => {
     it('maps a light app theme into Mermaid semantic colors', () => {
         expect(createMermaidThemeConfig(lightTheme)).toEqual({
@@ -39,6 +52,7 @@ describe('createMermaidThemeConfig', () => {
             themeVariables: {
                 background: '#eef1f4',
                 darkMode: false,
+                fontSize: '16px',
                 primaryBorderColor: '#d7dce3',
                 primaryColor: '#f4f6f8',
                 primaryTextColor: '#17202a',
