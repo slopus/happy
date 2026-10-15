@@ -363,7 +363,8 @@ public final class AccountController {
             }
         }
         // Publish the new root before erasing/removing the old cache. Even
-        // readers retaining its pool then see empty data, not a live account.
+        // readers retaining its pool then see empty data, then a closed
+        // store, never a live account.
         notifyAccounts()
         // No picture is written once this returns, so none lands in the
         // directory being removed.
@@ -373,13 +374,18 @@ public final class AccountController {
             let removedStore = oldSession?.store ?? memoryStores[id]
             let directory = storageDirectory
             try await Task.detached {
+                // Erased, then closed before its files go: a reader still
+                // holding the store reads `LocalStoreError.closed`, never a
+                // file unlinked under it.
                 if let removedStore {
                     try removedStore.eraseAll()
+                    try removedStore.close()
                 } else if let directory {
                     let file = AccountSession.accountDirectory(directory: directory, id: id).appendingPathComponent("store.sqlite")
                     if FileManager.default.fileExists(atPath: file.path) {
                         let store = try LocalStore.open(at: file)
                         try store.eraseAll()
+                        try store.close()
                     }
                 }
                 if let directory {
@@ -390,8 +396,9 @@ public final class AccountController {
                 }
             }.value
         } catch {
-            // Never unlink a database whose erase failed. The account is
-            // already signed out, and the next account must still start.
+            // Never unlink a database whose erase or close failed. The
+            // account is already signed out, and the next account must
+            // still start.
             cleanupError = error
         }
         settings(for: id).clear()

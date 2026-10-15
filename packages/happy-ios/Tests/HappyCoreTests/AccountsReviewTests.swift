@@ -107,12 +107,21 @@ final class AccountsReviewTests: XCTestCase {
             if case .signedOut = state {
                 rootChanged = true
                 XCTAssertTrue(FileManager.default.fileExists(atPath: files.path), "root changes before files are deleted")
+                XCTAssertFalse(oldSession.store.isClosed, "root changes before the store closes")
             }
         }
         try await account.signOut(accountID: accountID(shared))
         XCTAssertTrue(rootChanged)
-        XCTAssertNil(try oldSession.store.profile(), "a UI retaining the old store reads erased data")
-        XCTAssertNil(try oldSession.store.cursor(.sessionsChangedSince))
+        // Erased, closed, then removed: a UI retaining the old store reads
+        // a closed store, not the account's data and not an unlinked file
+        // (Darwin's SQLITE_IOERR_VNODE).
+        XCTAssertTrue(oldSession.store.isClosed)
+        XCTAssertThrowsError(try oldSession.store.profile(), "a UI retaining the old store") {
+            XCTAssertEqual($0 as? LocalStoreError, .closed)
+        }
+        XCTAssertThrowsError(try oldSession.store.cursor(.sessionsChangedSince)) {
+            XCTAssertEqual($0 as? LocalStoreError, .closed)
+        }
         XCTAssertFalse(FileManager.default.fileExists(atPath: files.path))
     }
 

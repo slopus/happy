@@ -19,6 +19,7 @@ import HappyWire
 ///   - messages are keyed by server id and `(sessionId, seq)`.
 public final class LocalStore: Sendable {
     public let writer: any DatabaseWriter
+    let lifecycle = StoreLifecycle()
     let homeObservation: SharedValueObservation<HomeSnapshot>
     let settingsObservation: SharedValueObservation<SettingsSnapshot>
     let machinesObservation: SharedValueObservation<MachinesSnapshot>
@@ -109,11 +110,13 @@ public final class LocalStore: Sendable {
 
     func performWrite<Value>(_ body: (Database) throws -> Value) throws -> Value {
         ThreadRules.assertOffMain()
+        try lifecycle.checkOpen()
         return try writer.write(body)
     }
 
     func performRead<Value>(_ body: (Database) throws -> Value) throws -> Value {
         ThreadRules.assertOffMain()
+        try lifecycle.checkOpen()
         return try writer.read(body)
     }
 
