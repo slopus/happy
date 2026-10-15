@@ -141,6 +141,11 @@ public enum Prism {
         private var next: [Int] = [1, -1]
         private var previous: [Int] = [-1, 0]
         private var count = 0
+        private struct NodeKey: Hashable {
+            let location: Int
+            let length: Int
+        }
+        private var nodeTexts: [NodeKey: String] = [:]
         private let head = 0
         private let tail = 1
 
@@ -202,11 +207,27 @@ public enum Prism {
         /// matchPattern: the first match from `range`, less its lookbehind
         /// group. Greedy patterns search the rest of the whole text and
         /// may look behind their start, as `exec` from `lastIndex` does;
-        /// the others search one text node alone.
+        /// the others search one text node alone, as `exec` on its `value`
+        /// does. That search runs on the node's own text, not on a range of
+        /// the whole: the generated `^`, `$` and `\b` are lookarounds, and
+        /// Darwin's NSRegularExpression lets a lookbehind see before the
+        /// range even without transparent bounds (Linux's doesn't), so `^`
+        /// never matched at a node that doesn't start the text.
         private func match(_ regex: NSRegularExpression, in range: NSRange, transparent: Bool, lookbehind: Bool) -> NSRange? {
-            let options: NSRegularExpression.MatchingOptions = transparent ? [.withTransparentBounds, .withoutAnchoringBounds] : []
-            guard let result = regex.firstMatch(in: string, options: options, range: range) else { return nil }
+            let result: NSTextCheckingResult
+            let offset: Int
+            if transparent {
+                guard let found = regex.firstMatch(in: string, options: [.withTransparentBounds, .withoutAnchoringBounds], range: range) else { return nil }
+                result = found
+                offset = 0
+            } else {
+                let node = nodeText(range)
+                guard let found = regex.firstMatch(in: node, options: [], range: NSRange(location: 0, length: range.length)) else { return nil }
+                result = found
+                offset = range.location
+            }
             var matched = result.range
+            matched.location += offset
             if lookbehind, result.numberOfRanges > 1 {
                 let group = result.range(at: 1)
                 if group.location != NSNotFound, group.length > 0 {
@@ -215,6 +236,16 @@ public enum Prism {
                 }
             }
             return matched
+        }
+
+        /// A text node's own text, made once for all the patterns tried on it.
+        private func nodeText(_ range: NSRange) -> String {
+            if range.location == 0, range.length == length { return string }
+            let key = NodeKey(location: range.location, length: range.length)
+            if let cached = nodeTexts[key] { return cached }
+            let node = text.substring(with: range)
+            nodeTexts[key] = node
+            return node
         }
 
         private func matchGrammar(_ grammarIndex: Int, startNode: Int, startPosition: Int, rematch: Rematch?) throws {
