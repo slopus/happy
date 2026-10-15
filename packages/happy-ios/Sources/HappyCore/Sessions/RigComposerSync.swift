@@ -21,7 +21,7 @@ public final class RigComposerSync: Sendable {
     }
 
     public init(store: LocalStore, keyRing: KeyRing, now: @escaping @Sendable () -> Int64,
-                sleep: @escaping InvalidateSync.Sleep = { try await Task.sleep(for: $0) }) {
+                sleep: @escaping InvalidateSync.Sleep = InvalidateSync.taskSleep) {
         self.store = store
         self.now = now
         let writer = Writer(store: store, keyRing: keyRing, sleep: sleep)

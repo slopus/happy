@@ -51,7 +51,7 @@ public actor SocketIOClient {
         url: URL,
         connector: WebSocketConnector = URLSessionWebSocketConnector(),
         backoff: Backoff = Backoff(initial: .seconds(1), maximum: .seconds(5)),
-        sleep: @escaping InvalidateSync.Sleep = { try await Task.sleep(for: $0) },
+        sleep: @escaping InvalidateSync.Sleep = InvalidateSync.taskSleep,
         auth: @escaping @Sendable () async -> JSONValue
     ) {
         self.url = url

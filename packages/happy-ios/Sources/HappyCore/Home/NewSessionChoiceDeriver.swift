@@ -45,7 +45,11 @@ actor NewSessionChoiceDeriver {
     private(set) var catalogProjectionCount = 0
     private(set) var canonicalPoolBuildCount = 0
 
-    init(beforeDerivation: @escaping @Sendable (HomeSnapshot, NewSessionDraft) async -> Void = { _, _ in }) {
+    /// The default `beforeDerivation`, compiled once, here, as
+    /// `InvalidateSync.taskSleep` explains.
+    static let noHook: @Sendable (HomeSnapshot, NewSessionDraft) async -> Void = { _, _ in }
+
+    init(beforeDerivation: @escaping @Sendable (HomeSnapshot, NewSessionDraft) async -> Void = NewSessionChoiceDeriver.noHook) {
         self.beforeDerivation = beforeDerivation
     }
 

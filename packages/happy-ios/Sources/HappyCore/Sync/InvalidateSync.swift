@@ -31,6 +31,16 @@ public struct Backoff: Sendable {
 public actor InvalidateSync {
     public typealias Sleep = @Sendable (Duration) async throws -> Void
 
+    /// `Task.sleep`, the default `Sleep`. Default arguments name this rather
+    /// than spelling the closure out: a public default argument is compiled
+    /// again into every module that leaves it out, and with Swift 6.3.3 such
+    /// an async closure came out with a 144-byte async context here and a
+    /// 128-byte one in the calling module. The linker kept one module's
+    /// function and the other's size, the callee wrote past its context,
+    /// and the task allocator aborted ("freed pointer was not the last
+    /// allocation"). A stored closure is compiled once, in this module.
+    public static let taskSleep: Sleep = { try await Task.sleep(for: $0) }
+
     private let operation: @Sendable () async throws -> Void
     private let backoff: Backoff
     private let sleep: Sleep
@@ -41,7 +51,7 @@ public actor InvalidateSync {
 
     public init(
         backoff: Backoff = .standard,
-        sleep: @escaping Sleep = { try await Task.sleep(for: $0) },
+        sleep: @escaping Sleep = InvalidateSync.taskSleep,
         operation: @escaping @Sendable () async throws -> Void
     ) {
         self.backoff = backoff

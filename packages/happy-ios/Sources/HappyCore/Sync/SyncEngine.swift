@@ -58,7 +58,7 @@ public actor SyncEngine {
         public var writeBatchMaximumBytes = 4 * 1024 * 1024
         public var writeBatchMaximumDelay: Duration = .milliseconds(400)
         /// Injectable deadline sleeper for deterministic operation-count tests.
-        public var writeBatchSleep: InvalidateSync.Sleep = { try await Task.sleep(for: $0) }
+        public var writeBatchSleep: InvalidateSync.Sleep = InvalidateSync.taskSleep
         /// Version conflicts tolerated per settings push before backing off.
         public var settingsPushAttempts = 3
         public var backoff: Backoff = .standard
@@ -99,7 +99,7 @@ public actor SyncEngine {
         options: Options = Options(),
         random: RandomSource = SystemRandom(),
         now: @escaping @Sendable () -> Int64 = { Int64(Date().timeIntervalSince1970 * 1000) },
-        sleep: @escaping InvalidateSync.Sleep = { try await Task.sleep(for: $0) }
+        sleep: @escaping InvalidateSync.Sleep = InvalidateSync.taskSleep
     ) {
         self.api = api
         self.store = store

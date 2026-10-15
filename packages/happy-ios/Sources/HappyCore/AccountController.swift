@@ -73,8 +73,8 @@ public final class AccountController {
         localSettingsFactory: ((String) -> KeyValueStore)? = nil,
         transport: HTTPTransport = URLSessionTransport(),
         connector: WebSocketConnector = URLSessionWebSocketConnector(),
-        appState: @escaping @Sendable () async -> String = { "active" },
-        deliveryActivity: @escaping @Sendable (Bool) async -> Void = { _ in }
+        appState: @escaping @Sendable () async -> String = AccountSession.Dependencies.alwaysActive,
+        deliveryActivity: @escaping @Sendable (Bool) async -> Void = AccountSession.Dependencies.noDeliveryActivity
     ) {
         self.serverConfig = serverConfig
         self.clientID = clientID

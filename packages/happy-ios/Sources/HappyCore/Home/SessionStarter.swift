@@ -116,6 +116,10 @@ public final class SessionStarter {
         public var spawnRequests: SpawnRequests
         public var sleep: @Sendable (Int) async -> Void
 
+        /// `Task.sleep` for a number of milliseconds, the default `sleep`:
+        /// compiled once, here, as `InvalidateSync.taskSleep` explains.
+        public static let taskSleep: @Sendable (Int) async -> Void = { ms in try? await Task.sleep(for: .milliseconds(ms)) }
+
         @MainActor
         public init(
             ops: any HomeOps,
@@ -126,7 +130,7 @@ public final class SessionStarter {
             paintBotFace: @escaping @Sendable (String) async throws -> Data,
             attachmentPlan: @escaping @Sendable (OutgoingMessage, String) async throws -> AttachmentSendPlan,
             spawnRequests: SpawnRequests,
-            sleep: @escaping @Sendable (Int) async -> Void = { ms in try? await Task.sleep(for: .milliseconds(ms)) }
+            sleep: @escaping @Sendable (Int) async -> Void = Environment.taskSleep
         ) {
             self.ops = ops
             self.sessionOps = sessionOps

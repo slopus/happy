@@ -74,13 +74,18 @@ public final class AccountSession: Sendable {
         /// `SyncEngine.Options.deliveryActivity`).
         public var deliveryActivity: @Sendable (Bool) async -> Void
 
+        /// The defaults for `appState` and `deliveryActivity`, compiled once,
+        /// here, as `InvalidateSync.taskSleep` explains.
+        public static let alwaysActive: @Sendable () async -> String = { "active" }
+        public static let noDeliveryActivity: @Sendable (Bool) async -> Void = { _ in }
+
         public init(
             serverURL: URL,
             clientID: String,
             transport: HTTPTransport,
             connector: WebSocketConnector = URLSessionWebSocketConnector(),
-            appState: @escaping @Sendable () async -> String = { "active" },
-            deliveryActivity: @escaping @Sendable (Bool) async -> Void = { _ in }
+            appState: @escaping @Sendable () async -> String = Dependencies.alwaysActive,
+            deliveryActivity: @escaping @Sendable (Bool) async -> Void = Dependencies.noDeliveryActivity
         ) {
             self.serverURL = serverURL
             self.clientID = clientID
