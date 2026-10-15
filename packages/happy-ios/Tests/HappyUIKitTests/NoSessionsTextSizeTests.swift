@@ -339,8 +339,13 @@ final class NoSessionsTextSizeTests: XCTestCase {
         await view.measured()
         view.layoutIfNeeded()
 
+        // The header and dock come on top of the window's own insets: none
+        // on an iPhone SE simulator, the status bar and home indicator on an
+        // iPhone Air's (68 at the top).
+        let device = window.safeAreaInsets
         let safe = view.safeAreaInsets
-        XCTAssertEqual(safe.top, 103)
+        XCTAssertEqual(safe.top, device.top + 103)
+        XCTAssertEqual(safe.bottom, device.bottom + 150)
         XCTAssertGreaterThan(view.scrollView.contentSize.height, view.bounds.height)
         XCTAssertEqual(view.icon.frame.minY, safe.top, "from the top of the safe area")
 

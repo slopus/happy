@@ -78,19 +78,21 @@ public enum PixelGrid {
     /// Rounds a frame's edges to the nearest device pixel, so text and
     /// hairlines land crisply. Edges are rounded rather than origin and size,
     /// so adjacent frames that share an edge still share it after snapping.
+    /// The size is a whole number of pixels divided once by the scale, so a
+    /// 52-point box at a third of a point is 52, not 51.99999999999999.
     public static func snap(_ rect: CGRect, scale: CGFloat) -> CGRect {
         guard scale > 0, !rect.isNull, !rect.isInfinite else { return rect }
-        func round(_ value: CGFloat) -> CGFloat {
-            (value * scale).rounded() / scale
+        func pixel(_ value: CGFloat) -> CGFloat {
+            (value * scale).rounded()
         }
-        let minX = round(rect.minX)
-        let minY = round(rect.minY)
-        let maxX = round(rect.maxX)
-        let maxY = round(rect.maxY)
+        let minX = pixel(rect.minX)
+        let minY = pixel(rect.minY)
+        let maxX = pixel(rect.maxX)
+        let maxY = pixel(rect.maxY)
         // A hairline still gets one pixel instead of rounding away.
-        let width = rect.width > 0 ? max(maxX - minX, 1 / scale) : 0
-        let height = rect.height > 0 ? max(maxY - minY, 1 / scale) : 0
-        return CGRect(x: minX, y: minY, width: width, height: height)
+        let width = rect.width > 0 ? max(maxX - minX, 1) / scale : 0
+        let height = rect.height > 0 ? max(maxY - minY, 1) / scale : 0
+        return CGRect(x: minX / scale, y: minY / scale, width: width, height: height)
     }
 }
 

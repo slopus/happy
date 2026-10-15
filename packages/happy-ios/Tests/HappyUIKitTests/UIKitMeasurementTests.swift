@@ -64,11 +64,11 @@ final class UIKitMeasurementTests: XCTestCase {
         row.layoutIfNeeded()
         let layout = row.layout(width: 343)
         let scale = row.traitCollection.displayScale
-        XCTAssertEqual(row.titleLabel.frame, PixelGrid.snap(layout.title, scale: scale))
-        XCTAssertEqual(row.detailLabel.frame, PixelGrid.snap(layout.detail!, scale: scale))
+        assertSameFrame(row.titleLabel.frame, PixelGrid.snap(layout.title, scale: scale), "title")
+        assertSameFrame(row.detailLabel.frame, PixelGrid.snap(layout.detail!, scale: scale), "detail")
         // The chevron is a text box: Yoga floors its position.
-        XCTAssertEqual(row.chevronView.frame, IconLayout.textFrame(layout.accessory!, scale: scale))
-        XCTAssertEqual(row.glyphView.frame, PixelGrid.snap(layout.icon!, scale: scale))
+        assertSameFrame(row.chevronView.frame, IconLayout.textFrame(layout.accessory!, scale: scale), "chevron")
+        assertSameFrame(row.glyphView.frame, PixelGrid.snap(layout.icon!, scale: scale), "icon")
         XCTAssertFalse(row.chevronView.isHidden)
         // Item.tsx's chevron: Ionicons at 17, one em wide.
         XCTAssertEqual(layout.accessory!.width, 17)

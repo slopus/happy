@@ -50,7 +50,7 @@ final class IconAndThemeTests: XCTestCase {
         let scale = view.layoutScale
         let layout = try XCTUnwrap(Icon.ionicons("checkmark-circle").layout(size: 26, scale: scale))
         let imageView = try XCTUnwrap(view.subviews.first as? UIImageView)
-        XCTAssertEqual(imageView.frame, layout.frame(centeredIn: view.bounds, scale: scale))
+        assertSameFrame(imageView.frame, layout.frame(centeredIn: view.bounds, scale: scale))
         XCTAssertEqual(view.sizeThatFits(.zero), layout.size)
     }
 
