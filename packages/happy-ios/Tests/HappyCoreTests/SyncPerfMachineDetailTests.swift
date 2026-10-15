@@ -41,17 +41,20 @@ final class SyncPerfMachineDetailTests: XCTestCase {
         let cipher = RecordCipher(key: key)
         let wrapped = Base64.encode(try keys.wrapDataKey(key, random: MachineDetailRandom()))
         let decoder = RecordDecoder(keyRing: KeyRing(keys: keys))
-        let rows = try (0..<1000).map { index in
-            decoder.session(APISession(
+        let rows = try (0..<1000).map { (index: Int) -> SessionRecord in
+            let summary: [String: JSONValue] = ["text": .string("Session \(index)")]
+            let metadata: [String: JSONValue] = [
+                "machineId": .string(index < 7 ? "computer" : "other"),
+                "path": .string("/home/test/project\(index)"), "homeDir": .string("/home/test"),
+                "summary": .object(summary),
+                "unrendered": .string(String(repeating: "x", count: 1024)),
+            ]
+            let updatedAt: Int64 = index == 5 ? 1006 : 1000 + Int64(index)
+            return decoder.session(APISession(
                 id: "s\(index)", seq: 0, createdAt: 1,
-                updatedAt: index == 5 ? 1006 : 1000 + Int64(index),
+                updatedAt: updatedAt,
                 active: true, activeAt: ApplyPerfFixtures.now,
-                metadata: try cipher.encrypt(.object([
-                    "machineId": .string(index < 7 ? "computer" : "other"),
-                    "path": .string("/home/test/project\(index)"), "homeDir": .string("/home/test"),
-                    "summary": .object(["text": .string("Session \(index)")]),
-                    "unrendered": .string(String(repeating: "x", count: 1024)),
-                ]), random: MachineDetailRandom()), metadataVersion: 1, agentState: nil,
+                metadata: try cipher.encrypt(.object(metadata), random: MachineDetailRandom()), metadataVersion: 1, agentState: nil,
                 agentStateVersion: 0, dataEncryptionKey: wrapped, projectId: nil
             ))
         }
