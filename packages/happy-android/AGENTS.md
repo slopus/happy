@@ -62,6 +62,8 @@ app/
   net/      HappyHttp: OkHttp + kotlinx.serialization, X-Happy-Client header
   ui/       theme, components (Item, ItemGroup, RoundButton, Header, ...), screens
   AppGraph  hand-wired object graph; owns the signed-in sync loop
+  model/    typed views of the stored JSON: Settings (sync/settings.ts);
+            settings/ has agentDefaults.ts, local settings, SettingsRepository
   text/     Resources.plural / pluralResource, PluralExactNumbers (generated)
 tools/testvectors/   generates crypto test vectors by running happy-app's TypeScript
 tools/translations/  generates the string resources from happy-app's catalogs
@@ -155,6 +157,19 @@ full listing on first sync and once a day catches deletions. Messages:
 ahead of the local watermark. Each write commits with its watermark. Records
 are stored decrypted (the sandbox and file-based encryption protect them at
 rest, as MMKV does for happy-app); their data keys are stored wrapped.
+
+## Settings
+
+`AppGraph.settings` (`SettingsRepository`) is the account's settings as
+happy-app's `storage.settings` holds them: the stored server copy with
+pending changes on top, parsed by `Settings.parse` (settingsParse: every
+field of `SettingsSchema` with its default, unknown keys kept in `unknown`;
+one field of the wrong type resets all known fields, as zod's `safeParse`
+does). Read `settings.settings` (a `StateFlow<Settings>`); change with
+`settings.change { it.copy(field = value) }`, which records the changed
+top-level keys as pending and asks for a sync. Device-only preferences
+(localSettings.ts) are `AppGraph.localSettings.values`, stored as one JSON
+document in SharedPreferences.
 
 ## Build and test
 
