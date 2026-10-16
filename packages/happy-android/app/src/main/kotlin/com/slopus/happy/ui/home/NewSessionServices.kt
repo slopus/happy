@@ -155,6 +155,12 @@ class NewSessionServices(
         }
     }
 
+    /** Logout (clearPersistence): the draft, its bot fields included, starts over. */
+    fun resetDraft() {
+        drafts.reset()
+        botState.value = BotDraft(seeds = rollBotFaceSeeds())
+    }
+
     /** The dock's text becomes the draft's at Send (MainView handleHomePromptSubmit). */
     fun setInput(text: String) = drafts.change { it.copy(input = text) }
 

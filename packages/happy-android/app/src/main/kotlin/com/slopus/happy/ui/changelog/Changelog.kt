@@ -83,6 +83,12 @@ class ChangelogReadMarker(private val prefs: SharedPreferences) {
         state.value = title
     }
 
+    /** Logout: as on a first install, the next start marks the newest entry seen. */
+    fun clear() {
+        prefs.edit().remove(LAST_VIEWED_KEY).commit()
+        state.value = ""
+    }
+
     /** hasUnreadChangelog. */
     fun hasUnread(latestTitle: String): Boolean = latestTitle.isNotEmpty() && latestTitle != state.value
 
