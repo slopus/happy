@@ -104,6 +104,7 @@ enum class Ionicon(val codepoint: Int) {
     PowerOutline(0xf4e8), // power-outline
     PulseOutline(0xf4f7), // pulse-outline
     QrCodeOutline(0xf4fd), // qr-code-outline
+    Refresh(0xf514), // refresh
     RefreshOutline(0xf518), // refresh-outline
     ReloadOutline(0xf51e), // reload-outline
     RemoveCircleOutline(0xf522), // remove-circle-outline
