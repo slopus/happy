@@ -243,7 +243,8 @@ fun ChatScreen(
             .background(colors.surface),
     ) {
         Header(
-            scrolled = session != null && listState.canScrollForward,
+            // SessionView `contentRunsUnderHeader`: only a portrait phone's header tints over the transcript.
+            scrolled = session != null && !LocalWindowLayout.current.isLandscape && listState.canScrollForward,
             left = { HeaderBackButton(actions.onBack) },
             titleContent = {
                 ChatHeaderTitle(slots.headerTitle ?: title, session, gitStatus, onClick = if (session != null) actions.onInfo else null, subtitleOverride = slots.headerSubtitle)
