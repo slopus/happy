@@ -172,7 +172,8 @@ class SessionInfoActions(
     val onArchived: (successor: String?) -> Unit,
     /** Deleted: leave this screen and the chat behind it. */
     val onDeleted: () -> Unit,
-    val copyToClipboard: (String) -> Unit,
+    /** Clipboard.setStringAsync; false when the system refused it. */
+    val copyToClipboard: (String) -> Boolean,
     /** useWorktreeTabSuccessor, read when archive is pressed, before the chat leaves its checkout. */
     val tabSuccessor: (sessionId: String) -> String? = { null },
     /** log.getLogs() for "Copy session metadata & Client Logs". */
@@ -296,9 +297,8 @@ private fun SessionInfoContent(
     fun show(title: String, message: String?) {
         alert = Alert(title, message, listOf(AlertButton(ok)))
     }
-    fun copy(text: String, confirmation: String) {
-        actions.copyToClipboard(text)
-        show(successTitle, confirmation)
+    fun copy(text: String, confirmation: String, failure: String) {
+        if (actions.copyToClipboard(text)) show(successTitle, confirmation) else show(errorTitle, failure)
     }
     val cleanupTitle = stringResource(R.string.session_info_worktree_cleanup_title)
     val cleanupMessage = stringResource(R.string.session_info_worktree_cleanup_message)
@@ -484,7 +484,8 @@ private fun SessionInfoContent(
                     subtitle = stringResource(R.string.session_info_update_cli_instructions),
                     icon = { Icon(Ionicon.WarningOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.orange) },
                     showChevron = false,
-                    onClick = { copy(SessionInfoSpec.UPDATE_COMMAND, SessionInfoSpec.UPDATE_COMMAND) },
+                    // handleCopyUpdateCommand: a refused copy says Error / Error.
+                    onClick = { copy(SessionInfoSpec.UPDATE_COMMAND, SessionInfoSpec.UPDATE_COMMAND, errorTitle) },
                     modifier = Modifier.testTag(SessionInfoTags.OUTDATED),
                 )
             }
@@ -492,29 +493,32 @@ private fun SessionInfoContent(
 
         ItemGroup {
             val sessionIdCopied = stringResource(R.string.session_info_happy_session_id_copied)
+            val sessionIdFailed = stringResource(R.string.session_info_failed_to_copy_session_id)
             Item(
                 title = stringResource(R.string.session_info_happy_session_id),
                 subtitle = shortId(session.id),
                 icon = { Icon(Ionicon.FingerPrintOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
-                onClick = { copy(session.id, sessionIdCopied) },
+                onClick = { copy(session.id, sessionIdCopied, sessionIdFailed) },
                 modifier = Modifier.testTag(SessionInfoTags.SESSION_ID),
             )
             metadata?.claudeSessionId?.ifEmpty { null }?.let { id ->
                 val copied = stringResource(R.string.session_info_claude_code_session_id_copied)
+                val failed = stringResource(R.string.session_info_failed_to_copy_claude_code_session_id)
                 Item(
                     title = stringResource(R.string.session_info_claude_code_session_id),
                     subtitle = shortId(id),
                     icon = { Icon(Ionicon.CodeOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.magenta) },
-                    onClick = { copy(id, copied) },
+                    onClick = { copy(id, copied, failed) },
                 )
             }
             metadata?.codexThreadId?.ifEmpty { null }?.let { id ->
                 val copied = stringResource(R.string.session_info_codex_thread_id_copied)
+                val failed = stringResource(R.string.session_info_failed_to_copy_codex_thread_id)
                 Item(
                     title = stringResource(R.string.session_info_codex_thread_id),
                     subtitle = shortId(id),
                     icon = { Icon(Ionicon.TerminalOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.codex) },
-                    onClick = { copy(id, copied) },
+                    onClick = { copy(id, copied, failed) },
                 )
             }
             if (!session.isOnline) {
@@ -586,10 +590,11 @@ private fun SessionInfoContent(
                     InfoRow(stringResource(R.string.session_info_happy_home), formatPathRelativeToHome(it, metadata.homeDir), Ionicon.HomeOutline)
                 }
                 val metadataCopied = stringResource(R.string.session_info_metadata_copied)
+                val metadataFailed = stringResource(R.string.session_info_failed_to_copy_metadata)
                 Item(
                     title = stringResource(R.string.session_info_copy_metadata),
                     icon = { Icon(Ionicon.CopyOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
-                    onClick = { copy(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), metadataCopied) },
+                    onClick = { copy(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), metadataCopied, metadataFailed) },
                     modifier = Modifier.testTag(SessionInfoTags.COPY_METADATA),
                 )
                 Item(
@@ -598,7 +603,7 @@ private fun SessionInfoContent(
                     onClick = {
                         scope.launch {
                             val logs = actions.clientLogs()
-                            copy(ClientLogs.metadataAndLogs(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), logs), metadataCopied)
+                            copy(ClientLogs.metadataAndLogs(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), logs), metadataCopied, metadataFailed)
                         }
                     },
                     modifier = Modifier.testTag(SessionInfoTags.COPY_METADATA_AND_LOGS),
@@ -720,7 +725,7 @@ private fun DetailRow(title: String, detail: String, icon: Ionicon) {
 
 /** info.tsx `CopyableItem`: the resume command, copied with a checkmark for two seconds. */
 @Composable
-private fun CopyableItem(command: String, copyToClipboard: (String) -> Unit) {
+private fun CopyableItem(command: String, copyToClipboard: (String) -> Boolean) {
     var copied by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     Item(
@@ -736,7 +741,7 @@ private fun CopyableItem(command: String, copyToClipboard: (String) -> Unit) {
             )
         },
         onClick = {
-            copyToClipboard(command)
+            if (!copyToClipboard(command)) return@Item
             copied = true
             scope.launch {
                 kotlinx.coroutines.delay(2_000)

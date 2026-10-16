@@ -1,47 +1,31 @@
 package com.slopus.happy.model
 
 import androidx.compose.runtime.Immutable
+import com.slopus.happy.chat.AgentState
+import com.slopus.happy.chat.selectPendingCommunications
 import com.slopus.happy.data.MachineRecord
 import com.slopus.happy.data.SessionRecord
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonNull
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 
 /** sessionState.ts `SessionState`. */
 enum class SessionState { Disconnected, Thinking, Waiting, PermissionRequired, InputRequired }
 
 /**
  * The two things the session list reads out of a session's agent state:
- * whether a permission request is open, and whether the agent has asked a
- * question it is waiting on (agentCommunications.ts `selectPendingCommunications`).
- * The chat owns the typed AgentState; this reads only what [resolveSessionState] needs.
+ * how many permission requests are open, and how many communications the
+ * agent is waiting on. Both come from the chat's typed [AgentState] and
+ * agentCommunications.ts `selectPendingCommunications`, so the list and the
+ * chat agree on "Input required".
  */
 @Immutable
 data class AgentAttention(val permissionRequests: Int, val pendingCommunications: Int) {
     companion object {
         val None = AgentAttention(0, 0)
 
-        fun parse(agentStateJson: String?): AgentAttention {
-            val state = parseJsonObject(agentStateJson) ?: return None
-            val requests = (state["requests"] as? JsonObject)?.size ?: 0
-            val communications = state["communications"] as? JsonObject ?: return AgentAttention(requests, 0)
-            val completed = state["completedCommunications"] as? JsonObject
-            val pending = communications.count { (id, value) ->
-                val communication = value as? JsonObject ?: return@count false
-                if (completed?.get(id) != null && completed[id] !is JsonNull) return@count false
-                val kind = (communication["kind"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@count false
-                // An unknown kind still waits on the user; a form needs a question to ask.
-                kind != "form" || hasQuestions(communication)
-            }
-            return AgentAttention(requests, pending)
-        }
+        fun parse(agentStateJson: String?): AgentAttention = of(AgentState.parse(agentStateJson))
 
-        private fun hasQuestions(communication: JsonObject): Boolean {
-            val form = communication["form"] as? JsonObject ?: return false
-            val questions = form["questions"] as? JsonArray ?: return false
-            return questions.any { (it as? JsonObject)?.get("question") is JsonPrimitive }
-        }
+        fun of(state: AgentState?): AgentAttention =
+            if (state == null) None
+            else AgentAttention(state.requests.size, selectPendingCommunications(state).size)
     }
 }
 
