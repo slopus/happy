@@ -57,8 +57,20 @@ import java.util.concurrent.atomic.AtomicLong
  * `rpc-call` routed to [rpc] handlers, `update-metadata` with version
  * checks, and the `new-message` echo of every POSTed message.
  */
-class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() }) {
-    val encryption: AccountEncryption = AccountEncryption.create(secret)
+class FakeHappyServer(secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() }) {
+    var secret: ByteArray = secret
+        private set
+    var encryption: AccountEncryption = AccountEncryption.create(secret)
+        private set
+
+    /**
+     * The account the app created itself (Create account draws a random
+     * secret): records from here on are sealed for it. Call before adding any.
+     */
+    fun adoptAccount(secret: ByteArray) = synchronized(this) {
+        this.secret = secret
+        encryption = AccountEncryption.create(secret)
+    }
     val server = MockWebServer()
     val requests = CopyOnWriteArrayList<RecordedRequest>()
 
@@ -109,6 +121,7 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
         metadata: JsonObject = buildJsonObject { put("path", "/repo/$id") },
         seq: Long = 0,
         legacy: Boolean = false,
+        active: Boolean = true,
     ) = synchronized(this) {
         sessions.removeAll { it.id == id }
         sessions += ApiSession(
@@ -116,7 +129,7 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
             seq = seq,
             createdAt = 1,
             updatedAt = updatedAt,
-            active = true,
+            active = active,
             activeAt = updatedAt,
             metadata = if (legacy) encodeBase64(ByteArray(40)) else seal(id, metadata),
             metadataVersion = 1,
@@ -142,10 +155,11 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
 
     fun machine(id: String): ApiMachine? = synchronized(this) { machines.firstOrNull { it.id == id } }
 
-    fun addMachine(id: String) = synchronized(this) {
+    fun addMachine(id: String, metadata: JsonObject = buildJsonObject { put("host", id) }, updatedAt: Long = 1) = synchronized(this) {
+        machines.removeAll { it.id == id }
         machines += ApiMachine(
-            id = id, seq = 1, createdAt = 1, updatedAt = 1, active = true, activeAt = 1,
-            metadata = seal(id, buildJsonObject { put("host", id) }), metadataVersion = 1,
+            id = id, seq = 1, createdAt = 1, updatedAt = updatedAt, active = true, activeAt = updatedAt,
+            metadata = seal(id, metadata), metadataVersion = 1,
             daemonState = null, daemonStateVersion = 0, dataEncryptionKey = wrap(id),
         )
     }
@@ -221,7 +235,8 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
                 val id = path.removePrefix("/v1/sessions/").removeSuffix("/archive")
                 val index = sessions.indexOfFirst { it.id == id }
                 if (index < 0) return json(404, """{"error":"Session not found"}""")
-                sessions[index] = sessions[index].copy(active = false)
+                // Prisma's @updatedAt: the change reaches the next delta sync.
+                sessions[index] = sessions[index].copy(active = false, updatedAt = ++clock)
                 json(200, """{"success":true}""")
             }
             path.startsWith("/v1/sessions/") && request.method == "DELETE" -> {
@@ -235,6 +250,7 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
                 if (!machines.removeAll { it.id == id }) return json(404, """{"error":"Machine not found"}""")
                 json(200, """{"success":true}""")
             }
+            path.startsWith("/v1/push-tokens/") && request.method == "DELETE" -> json(200, """{"success":true}""")
             path == "/v1/machines" -> json(200, HappyJson.encodeToString(ListSerializer(ApiMachine.serializer()), machines))
             path == "/v1/account/profile" -> if (failProfile) json(500, """{"error":"boom"}""") else json(200, profile.toString())
             path == "/v1/account/settings" && request.method == "GET" ->
