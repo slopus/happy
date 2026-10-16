@@ -7,8 +7,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -31,10 +36,12 @@ import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.model.SessionState
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
+import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.components.HeaderTags
+import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import kotlinx.serialization.json.Json
@@ -281,6 +288,33 @@ class ChatLayoutTest {
         val composer = rule.node(ComposerTags.COMPOSER).bounds
         val footer = rule.node(ChatListTags.FOOTER).bounds
         assertDp("8 under the footer", 8, composer.top - footer.bottom)
+    }
+
+    /**
+     * TalkBack over a chat: the header's back and avatar are named buttons
+     * (the avatar, unnamed in happy-app, after the Details it opens); the
+     * agent's copy action is "Copy", the primary button "Send" (AgentInput's
+     * labels); the input reads its draft. Nothing actionable goes unnamed.
+     */
+    @Test
+    fun chatReadsForTalkBack() {
+        val rows = listOf(
+            ChatReduction.buildRow(ChatMessage.AgentText("a", 2, "Reply"), true)!!,
+            userRow("Question"),
+        )
+        rule.setHappyContent {
+            ChatScreen(
+                state = ChatState(ChatSnapshot(rows, loaded = true), session(), sessionLoaded = true, online = true),
+                draft = "Draft",
+                bubbleColor = "gray",
+                actions = ChatScreenActions(),
+            )
+        }
+        rule.onNode(hasContentDescription("Back") and hasRole(Role.Button)).assertExists()
+        rule.node(ChatScreenTags.AVATAR).assert(hasContentDescription("Details") and hasRole(Role.Button))
+        rule.onNode(hasContentDescription("Send") and hasRole(Role.Button)).assertExists()
+        rule.onNode(hasSetTextAction()).assert(hasText("Draft"))
+        rule.assertActionsLabelled()
     }
 
     @Test

@@ -333,7 +333,7 @@ private fun CompactHeader(p: ToolPresentation, createdAt: Long, state: ToolState
             .alpha(pressedAlpha(interaction))
             .defaultMinSize(minHeight = ToolSpec.compactMinHeight)
             .clip(RoundedCornerShape(ToolSpec.compactRadius))
-            .clickable(interactionSource = interaction, indication = null, onClick = onPress)
+            .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onPress)
             .padding(horizontal = ToolSpec.compactPaddingHorizontal, vertical = ToolSpec.compactPaddingVertical),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(ToolSpec.compactGap),
@@ -362,7 +362,7 @@ private fun CardHeader(p: ToolPresentation, createdAt: Long, state: ToolState, o
             .testTag(ToolTags.HEADER)
             .alpha(pressedAlpha(interaction))
             .background(colors.surfaceHighest)
-            .clickable(interactionSource = interaction, indication = null, onClick = onPress)
+            .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onPress)
             .padding(ToolSpec.headerPadding),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(ToolSpec.headerGap),

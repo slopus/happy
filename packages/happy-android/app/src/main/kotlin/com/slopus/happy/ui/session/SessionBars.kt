@@ -32,6 +32,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -118,7 +119,8 @@ fun AgentGoalBar(
     val description = stringResource(R.string.components_agent_goal_bar_accessibility_label, goal.text)
     Row(
         modifier = modifier
-            .testTag(SessionBarTags.GOAL)
+            // One stop even without a press, as RN's Pressable is; the action buttons stay their own.
+            .semantics(mergeDescendants = onPressDetails == null) { testTag = SessionBarTags.GOAL }
             .padding(bottom = SessionBarSpec.goalMarginBottom)
             .fillMaxWidth()
             .alpha(if (pressed && onPressDetails != null) SessionBarSpec.PRESSED_OPACITY else 1f)

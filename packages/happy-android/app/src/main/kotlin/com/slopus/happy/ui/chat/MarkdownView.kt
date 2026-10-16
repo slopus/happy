@@ -29,6 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.TextLinkStyles
@@ -269,7 +270,7 @@ private fun CodeBlock(content: String, language: String?) {
                 .clip(RoundedCornerShape(4.dp))
                 .background(if (copied) colors.success else colors.surfaceHighest)
                 .border(1.dp, if (copied) colors.success else colors.divider, RoundedCornerShape(4.dp))
-                .clickable {
+                .clickable(role = Role.Button) {
                     copy(content)
                     copied = true
                 }
@@ -319,7 +320,7 @@ private fun OptionsBlock(items: List<String>, onOptionPress: ((String) -> Unit)?
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(MarkdownSpec.optionRadius))
                     .background(colors.surfaceHighest)
-                    .then(if (onOptionPress != null) Modifier.clickable { onOptionPress(item) } else Modifier)
+                    .then(if (onOptionPress != null) Modifier.clickable(role = Role.Button) { onOptionPress(item) } else Modifier)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 Text(text = item, style = MarkdownSpec.optionText, color = colors.text)

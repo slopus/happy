@@ -46,6 +46,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
@@ -296,6 +299,7 @@ fun ChatList(
             }
         }
         if (showScrollButton) {
+            val scrollLabel = stringResource(R.string.chat_scroll_to_bottom)
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -306,7 +310,8 @@ fun ChatList(
                     .alpha(ChatListSpec.SCROLL_BUTTON_OPACITY)
                     .background(colors.surface)
                     .border(1.dp, colors.divider, CircleShape)
-                    .clickable { scope.launch { state.animateScrollToItem(0) } },
+                    .clickable(role = Role.Button) { scope.launch { state.animateScrollToItem(0) } }
+                    .semantics { contentDescription = scrollLabel },
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(Octicon.ArrowDown, ChatListSpec.scrollIcon, colors.text)

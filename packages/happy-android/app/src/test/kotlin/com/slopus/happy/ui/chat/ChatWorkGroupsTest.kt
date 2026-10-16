@@ -3,9 +3,13 @@ package com.slopus.happy.ui.chat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -19,6 +23,8 @@ import com.slopus.happy.chat.ToolCall
 import com.slopus.happy.chat.ToolState
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.assertActionsLabelled
+import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.setHappyContent
 import kotlinx.serialization.json.Json
 import org.junit.Rule
@@ -85,10 +91,14 @@ class ChatWorkGroupsTest {
         tools(0)
         rule.onNodeWithText("Worked 1m2s", useUnmergedTree = true).assertExists()
         rule.onNodeWithText("All done", useUnmergedTree = true).assertExists()
+        // TalkBack: a button that reads its label and offers to expand.
+        rule.onNode(hasText("Worked 1m2s") and hasRole(Role.Button) and SemanticsMatcher.keyIsDefined(SemanticsActions.Expand)).assertExists()
+        rule.assertActionsLabelled()
         rule.onNodeWithText("Worked 1m2s", useUnmergedTree = true).performClick()
         rule.waitForIdle()
         tools(1)
         headers(2)
+        rule.onNode(hasText("Hide") and hasRole(Role.Button) and SemanticsMatcher.keyIsDefined(SemanticsActions.Collapse)).assertExists()
         rule.onNodeWithText("Hide", useUnmergedTree = true).performClick()
         rule.waitForIdle()
         tools(0)

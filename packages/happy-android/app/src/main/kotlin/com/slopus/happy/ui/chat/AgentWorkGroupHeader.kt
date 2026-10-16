@@ -20,6 +20,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.collapse
+import androidx.compose.ui.semantics.expand
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
@@ -87,6 +90,8 @@ fun AgentWorkGroupHeader(
             .alpha(if (pressed) AgentWorkGroupHeaderSpec.PRESSED_OPACITY else 1f)
             .clip(RoundedCornerShape(AgentWorkGroupHeaderSpec.radius))
             .clickable(interaction, indication = null, role = Role.Button, onClick = onToggle)
+            // TalkBack says whether the turn is folded, and offers the other way.
+            .semantics { if (trailing || expanded) collapse { onToggle(); true } else expand { onToggle(); true } }
             .padding(vertical = AgentWorkGroupHeaderSpec.paddingVertical),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AgentWorkGroupHeaderSpec.gap),
