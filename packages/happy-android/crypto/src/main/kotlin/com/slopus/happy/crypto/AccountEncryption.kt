@@ -26,6 +26,9 @@ class AccountEncryption private constructor(
 
     private val settingsCipher: SecretBoxCipher
 
+    /** Secretbox key for blobs of records without a data key (legacy projects' avatars). */
+    val masterBlobKey: ByteArray
+
     init {
         require(masterSecret.size == 32) { "Invalid master secret length" }
         val contentDataKey = deriveKey(masterSecret, "Happy EnCoder", listOf("content"))
@@ -36,6 +39,7 @@ class AccountEncryption private constructor(
             .lowercase()
         providerAccountKey = deriveKey(masterSecret, "Happy Coder", listOf("analytics", "provider-account"))
         settingsCipher = SecretBoxCipher(masterSecret, random)
+        masterBlobKey = deriveKey(masterSecret, "Happy Blobs", listOf("master"))
     }
 
     /**

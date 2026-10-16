@@ -4,6 +4,10 @@ import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.LiveMessageResult
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.net.HappyJson
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
@@ -36,6 +40,11 @@ class LiveUpdates(
     private val requestSync: () -> Unit,
     private val onSessionDeleted: (String) -> Unit = {},
 ) {
+    private val projectEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /** A project was created, changed or deleted; the catalog endpoint says how (sync.ts projectsSync). */
+    val projectChanges: SharedFlow<Unit> = projectEvents.asSharedFlow()
+
     fun handle(name: String, payload: JsonElement?) {
         val body = payload as? JsonObject ?: return
         when (name) {
@@ -58,9 +67,13 @@ class LiveUpdates(
                 presence.removeMachine(it.machineId)
             }
             "update-account" -> decode(ApiAccountUpdate.serializer(), body)?.let { updateAccount(it, body, update) }
+            "new-project", "update-project" -> projectEvents.tryEmit(Unit)
             // Deleting a project also unlinks its sessions on the server.
-            "delete-project" -> requestSync()
-            // Projects, artifacts, friends, feed and KV are not part of this app yet.
+            "delete-project" -> {
+                projectEvents.tryEmit(Unit)
+                requestSync()
+            }
+            // Artifacts, friends, feed and KV are not part of this app yet.
             else -> Unit
         }
     }

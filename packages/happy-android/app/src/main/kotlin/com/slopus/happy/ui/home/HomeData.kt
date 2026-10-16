@@ -43,6 +43,7 @@ fun homeSnapshots(
     sessionPresence: Flow<Map<String, SessionPresence>>,
     machinePresence: Flow<Map<String, MachinePresence>>,
     synced: Flow<Boolean> = flowOf(true),
+    projects: Flow<Map<String, Project>> = flowOf(emptyMap()),
     io: CoroutineDispatcher = Dispatchers.IO,
 ): Flow<HomeSnapshot> {
     val records = flow {
@@ -52,10 +53,11 @@ fun homeSnapshots(
             .distinctUntilChanged()
             .collect { emit(reader.read(store)) }
     }.flowOn(io)
-    return combine(records, sessionPresence, machinePresence, synced.distinctUntilChanged()) { (sessions, machines), sessionLive, machineLive, wasSynced ->
+    return combine(records, sessionPresence, machinePresence, synced.distinctUntilChanged(), projects) { (sessions, machines), sessionLive, machineLive, wasSynced, catalog ->
         HomeSnapshot(
             sessions = sessions.map { session -> sessionLive[session.id]?.let(session::withPresence) ?: session },
             machines = machines.map { machine -> machineLive[machine.id]?.let(machine::withPresence) ?: machine },
+            projects = catalog,
             ready = wasSynced || machines.isNotEmpty(),
         )
     }

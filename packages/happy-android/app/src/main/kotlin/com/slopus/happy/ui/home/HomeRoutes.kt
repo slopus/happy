@@ -41,6 +41,7 @@ import com.slopus.happy.ui.session.SessionInfoScreen
 import androidx.compose.runtime.produceState
 import kotlinx.coroutines.withContext
 import com.slopus.happy.net.HappyHttp
+import com.slopus.happy.projects.ProjectServices
 import com.slopus.happy.net.HappyJson
 import com.slopus.happy.sync.MachineOps
 import com.slopus.happy.sync.MachinePresence
@@ -132,6 +133,7 @@ class HomeServices private constructor(graph: AppGraph) {
                 synced = (account?.isSyncing ?: flowOf(false))
                     .map { graph.store.cursor(SyncEngine.CURSOR_SESSIONS_LISTED_AT) != null }
                     .flowOn(Dispatchers.IO),
+                projects = ProjectServices.of(graph).projects,
             )
         }
         .stateIn(scope, SharingStarted.Eagerly, null)
