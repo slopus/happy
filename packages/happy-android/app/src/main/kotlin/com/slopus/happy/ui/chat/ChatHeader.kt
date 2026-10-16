@@ -112,6 +112,7 @@ internal fun HeaderAvatar(session: ChatSessionInfo, online: Boolean, onClick: ()
             clientId = metadata?.client?.id,
             badgeLocation = AvatarBadgeLocation.SessionHeader,
             imageUri = session.session.avatar?.uri,
+            thumbhash = session.session.avatar?.thumbhash,
         )
     }
 }

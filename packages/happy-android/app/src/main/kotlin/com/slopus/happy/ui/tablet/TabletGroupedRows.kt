@@ -30,7 +30,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -307,7 +307,7 @@ private fun CheckoutSection(
             horizontalArrangement = Arrangement.spacedBy(TabletGroupedSpec.headingGap),
         ) {
             if (first != null) {
-                Avatar(id = first.avatarId, size = TabletGroupedSpec.headingAvatar, imageUri = first.projectAvatarUri)
+                Avatar(id = first.avatarId, size = TabletGroupedSpec.headingAvatar, imageUri = first.projectAvatarUri, thumbhash = first.projectAvatarThumbhash)
             }
             Column(Modifier.weight(1f)) {
                 Text(
@@ -481,7 +481,7 @@ private fun ArchivedSessionCard(
     callbacks: HomeListCallbacks,
 ) {
     val colors = HappyTheme.colors
-    val resources = LocalContext.current.resources
+    val resources = LocalResources.current
     val status = rowStatus(session)
     val radius = TabletGroupedSpec.itemRadius
     val shape = RoundedCornerShape(
@@ -531,6 +531,7 @@ private fun ArchivedSessionCard(
                 clientId = session.clientId,
                 badgeLocation = AvatarBadgeLocation.SessionList,
                 imageUri = session.avatarUri,
+                thumbhash = session.avatarThumbhash,
             )
             if (session.hasDraft) {
                 Box(

@@ -1,5 +1,6 @@
 package com.slopus.happy.push
 
+import android.annotation.SuppressLint
 import android.app.ActivityManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -40,7 +41,7 @@ fun sessionIdFromNotificationData(data: JsonElement?): String? {
     (obj["url"] as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { url ->
         SESSION_IN_URL.find(url.trim())?.groupValues?.get(1)?.let { encoded ->
             val id = try {
-                URLDecoder.decode(encoded.replace("+", "%2B"), Charsets.UTF_8)
+                URLDecoder.decode(encoded.replace("+", "%2B"), "UTF-8")
             } catch (_: IllegalArgumentException) {
                 encoded
             }.trim()
@@ -63,6 +64,9 @@ object NotificationChannels {
     private val VIBRATION = longArrayOf(0, 250, 250, 250)
     private const val LIGHT = 0xFF231F7C.toInt()
 
+    // _layout.tsx asks for AndroidImportance.MAX, which expo-notifications passes on as IMPORTANCE_MAX:
+    // outside the constructor's annotated range, but the system accepts it.
+    @SuppressLint("WrongConstant")
     fun create(context: Context) {
         val manager = context.getSystemService(NotificationManager::class.java)
         listOf(
