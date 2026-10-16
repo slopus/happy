@@ -354,7 +354,9 @@ final class ChatStatusBarStrip: UIView {
 /// What fills the chat when there is no conversation to show: a spinner
 /// while it loads, EmptyMessages for a chat with nothing in it yet,
 /// PendingChatPlaceholder for one that hasn't started yet, or the deleted
-/// state (SessionView.tsx). Centred in the frame it is given.
+/// state (SessionView.tsx). Centred in the frame it is given. Its text is
+/// at its traits' text size, measured on the main thread when it lays out,
+/// and made again when the size changes; the glyphs keep their size.
 final class ChatPlaceholderView: UIView {
     enum Content: Equatable {
         case loading
@@ -400,6 +402,11 @@ final class ChatPlaceholderView: UIView {
         pagingSpinner.color = UIColor(Palette.textSecondary)
         pagingSpinner.hidesWhenStopped = true
         addSubview(pagingSpinner)
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            guard let content = self.content else { return }
+            self.content = nil
+            self.show(content)
+        }
     }
 
     @available(*, unavailable)
@@ -466,14 +473,14 @@ final class ChatPlaceholderView: UIView {
             switch model.detail {
             case .queued(let text)?:
                 let label = ChatLabel(MeasuredText(
-                    ChatTextStyles.pendingQueued.string(text, color: Palette.text, alignment: .center, lineBreakMode: .byTruncatingTail),
+                    ChatTextStyles.pendingQueued.string(text, color: Palette.text, alignment: .center, lineBreakMode: .byTruncatingTail, in: environment),
                     maxLines: 6
                 ))
                 addSubview(label.view)
                 labels.append((label, 10, 48))
             case .path(let path)?:
                 let label = ChatLabel(MeasuredText(
-                    ChatTextStyles.emptyPath.string(path, color: Palette.textSecondary, alignment: .center, lineBreakMode: .byTruncatingTail),
+                    ChatTextStyles.emptyPath.string(path, color: Palette.textSecondary, alignment: .center, lineBreakMode: .byTruncatingTail, in: environment),
                     maxLines: 1
                 ))
                 addSubview(label.view)
@@ -491,8 +498,10 @@ final class ChatPlaceholderView: UIView {
         setNeedsLayout()
     }
 
+    private var environment: TextEnvironment? { traitCollection.textEnvironment }
+
     private func add(_ style: ChatTextStyle, _ text: String, color: ColorToken, spacing: CGFloat, padding: CGFloat) {
-        let label = ChatLabel(MeasuredText(style.string(text, color: color, alignment: .center)))
+        let label = ChatLabel(MeasuredText(style.string(text, color: color, alignment: .center, in: environment)))
         addSubview(label.view)
         labels.append((label, spacing, padding))
     }

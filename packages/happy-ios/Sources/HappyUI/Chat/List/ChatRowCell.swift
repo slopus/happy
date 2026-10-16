@@ -142,9 +142,10 @@ final class ChatPlanView: UIView {
                 view.color = UIColor(tint)
                 view.startAnimating()
                 order.append(view)
-            case .elapsed(let since, let frame):
+            case .elapsed(let since, let frame, let text):
                 let view = take(&timers, &timerIndex) { ChatElapsedLabel() }
                 view.setLayoutFrame(frame)
+                view.environment = text
                 view.since = since
                 order.append(view)
             case .pulse(let box):
@@ -361,7 +362,13 @@ final class ChatScrollerView: UIScrollView {
 
 /// ToolView's ElapsedView: whole seconds since the tool started, ticking
 /// once a second while on screen ("12.0s", useElapsedTime + toFixed(1)).
+/// Drawn at the text size its row was planned at, in the room the plan
+/// measured for it, not at its traits'.
 final class ChatElapsedLabel: UILabel {
+    var environment: TextEnvironment? {
+        didSet { if environment != oldValue { font = ChatTextStyles.toolElapsed.font(in: environment) } }
+    }
+
     var since: Int64? {
         didSet {
             guard since != oldValue else { return }

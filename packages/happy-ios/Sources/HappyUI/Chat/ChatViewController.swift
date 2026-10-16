@@ -90,6 +90,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// What the rows were last asked for, so an unchanged layout pass asks
     /// for nothing.
     private var sentRowsView = ChatRowsView()
+    /// The rows' words, in the language the screens spoke when this one was
+    /// built; the screens are built again in another.
+    private let words = ChatWords(catalog: AppLocalization.screens)
     /// The next time a waiting user message's status is due to show.
     private var graceEnd: Int64?
     private let graceTask = TaskHolder()
@@ -208,7 +211,15 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
         list.delegate = self
         list.olderEnd.onAction = { [weak self] in self?.historyPager?.olderAction() }
+        // The rows are planned at the list's text size (`ChatRowText`), and
+        // the placeholder measures its text as drawn; the rest of the
+        // screen keeps its own (docs/DYNAMIC-TYPE.md).
+        list.traitOverrides.followsTextSize = true
+        list.registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { [weak self] (_: ChatListView, _) in
+            self?.scheduleMeasure()
+        }
         view.addSubview(list)
+        placeholder.traitOverrides.followsTextSize = true
         placeholder.isHidden = true
         placeholder.onAction = { [weak self] in self?.placeholderAction() }
         view.addSubview(placeholder)
@@ -347,7 +358,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 // account that is no longer the open one or is stopping (its
                 // code drawn plain, its diffs empty), never land.
                 guard let self, self.chatGeneration == generation, self.chatId == chatId,
-                      self.context.account.session === self.account, !render.isClosed else { return false }
+                      self.context.account.session === self.account, !render.isClosed,
+                      self.words.language == AppLocalization.language else { return false }
                 return self.applyRows(update)
             }
         )
@@ -467,7 +479,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         updateHeaderVisibility(animated: false)
         layoutScreen()
         updatePermissionListMaxHeight()
-        if list.bounds.width != sentRowsView.width {
+        if list.bounds.width != sentRowsView.width || list.traitCollection.textEnvironment != sentRowsView.text.environment {
             scheduleMeasure()
         }
     }
@@ -1100,10 +1112,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     }
 
     /// Applies what the rows' derivation worked out. Refused when the list
-    /// was planned for another width or layout: the next pass has the new
-    /// one.
+    /// was planned for another width, layout or text size: the next pass
+    /// has the new one.
     private func applyRows(_ update: ChatRowsUpdate) -> Bool {
-        if update.list != nil, update.width != list.bounds.width || update.tablet != isTabletLayout {
+        if update.list != nil,
+           update.width != list.bounds.width || update.tablet != isTabletLayout || update.text != list.traitCollection.textEnvironment {
             return false
         }
         ApplyPerf.measure(.chatList) {
@@ -1164,6 +1177,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             width: list.bounds.width,
             maxContentWidth: maxContentWidth,
             tablet: isTabletLayout,
+            text: ChatRowText(environment: list.traitCollection.textEnvironment, words: words),
             permissionListMaxHeight: permissionListMaxHeight,
             inForeground: inForeground,
             permissionBusy: permissionBusy,

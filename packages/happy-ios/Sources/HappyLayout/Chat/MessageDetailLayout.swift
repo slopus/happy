@@ -53,6 +53,44 @@ public struct MessageDetailLayout: Equatable, Sendable {
     }
 }
 
+/// Where the reader is on a message's screen, by the piece of text at the
+/// top of the screen: so a new text size, which moves every piece, keeps
+/// that one, and as far down it, at the top. The space above a piece is
+/// padding, which keeps its size.
+public struct MessageDetailReadingPlace: Equatable, Sendable {
+    /// The piece's index among the text pieces, in order.
+    public var piece: Int
+    /// How far down the piece the top of the screen is, 0 to 1.
+    public var fraction: CGFloat
+    /// How far above the piece the top of the screen is, in the gap before it.
+    public var above: CGFloat
+
+    public init(piece: Int, fraction: CGFloat, above: CGFloat) {
+        self.piece = piece
+        self.fraction = fraction
+        self.above = above
+    }
+
+    /// The place at content y `top` among `pieces`, the text's frames in
+    /// content order: the first piece that reaches below the top. Nil at
+    /// or above the start, which stays the start, or past the last piece.
+    public init?(top: CGFloat, pieces: [CGRect]) {
+        guard top > 0, let index = pieces.firstIndex(where: { $0.maxY > top }) else { return nil }
+        let frame = pieces[index]
+        piece = index
+        above = max(0, frame.minY - top)
+        fraction = frame.height > 0 ? min(1, max(0, top - frame.minY) / frame.height) : 0
+    }
+
+    /// The content y of this place among `pieces` laid out again, or nil
+    /// when there is no such piece.
+    public func top(in pieces: [CGRect]) -> CGFloat? {
+        guard pieces.indices.contains(piece) else { return nil }
+        let frame = pieces[piece]
+        return frame.minY - above + fraction * frame.height
+    }
+}
+
 /// MultiEditViewFull's edit header: "Edit N of M" in purple, then a
 /// "Replace All" badge 8 to its right when the edit replaces every
 /// occurrence, the two centred on one row.

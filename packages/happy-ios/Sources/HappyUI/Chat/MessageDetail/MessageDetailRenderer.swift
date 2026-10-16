@@ -19,12 +19,14 @@ struct MessageDetailInput: Equatable, Sendable {
     var maxContentWidth: CGFloat
     /// Of a patch's files, the one the reader tapped in the chat.
     var focusFile: String?
+    /// The screen's text size and words.
+    var text: ChatRowText
     /// The account's diff documents and syntax colour.
     var render: RenderServices
 }
 
-/// Measures a message's screen off the main thread, once per input and
-/// width.
+/// Measures a message's screen off the main thread, once per input (its
+/// text size included) and width.
 actor MessageDetailMeasurer {
     private var cache: (input: MessageDetailInput, width: CGFloat, plan: ChatRowPlan)?
 
@@ -46,14 +48,14 @@ enum MessageDetailRenderer {
         let kind: MessageDetailLayout.Kind
         switch input.message {
         case .toolCall(let call):
-            let presentation = ToolFullPresentation(call.tool, root: input.root, words: Strings.ToolGroup.words)
+            let presentation = ToolFullPresentation(call.tool, root: input.root, words: input.text.words.toolActions)
             content = tool(call, presentation, input: input)
             kind = presentation.wide ? .wideTool : .tool
         case .userText(let message):
-            content = longText(message.text, style: ChatTextStyles.detailMessage, color: Palette.text)
+            content = longText(message.text, style: ChatTextStyles.detailMessage, color: Palette.text, in: input.text.environment)
             kind = .text
         case .agentText(let message):
-            content = longText(message.text, style: ChatTextStyles.detailMessage, color: Palette.text)
+            content = longText(message.text, style: ChatTextStyles.detailMessage, color: Palette.text, in: input.text.environment)
             kind = .text
         case .agentEvent, .unsupported:
             return ChatRowPlan(id: input.message.id, size: CGSize(width: width, height: 0), items: [])
@@ -69,18 +71,19 @@ enum MessageDetailRenderer {
     /// a specialized view that shows the inputs) how the run ended, then in
     /// dev mode the raw JSON.
     static func tool(_ call: ToolCallMessage, _ presentation: ToolFullPresentation, input: MessageDetailInput) -> ChatPiece {
+        let text = input.text
         var entries: [ChatStackEntry] = []
         switch presentation.main {
         case .terminal(let terminal, let controlInput):
             // BashViewFull: the command and all it printed, then what a
             // shell control typed, 16 apart.
-            var parts = [ChatStackEntry(piece: command(terminal, syntax: input.render.diffSyntax))]
+            var parts = [ChatStackEntry(piece: command(terminal, syntax: input.render.diffSyntax, text: text))]
             if let controlInput {
-                parts.append(ChatRowRenderer.section(Strings.Tools.input, code(controlInput)))
+                parts.append(ChatRowRenderer.section(text.words.input, code(controlInput, text: text), text: text))
             }
             entries.append(ChatStackEntry(piece: .stack(parts, gap: 16)))
         case .task:
-            if let view = ChatRowRenderer.taskView(call.children) { entries.append(view) }
+            if let view = ChatRowRenderer.taskView(call.children, text: text) { entries.append(view) }
         case .diff(let kind, let chunks, let replaceAll):
             if let view = diffs(kind, chunks: chunks, replaceAll: replaceAll, toolId: call.id, input: input) { entries.append(view) }
         case .patch(let files):
@@ -93,27 +96,27 @@ enum MessageDetailRenderer {
                 entries.append(ChatStackEntry(piece: card, marginBottom: 28, padding: LayoutInsets(top: 0, left: 12, bottom: 0, right: 12)))
             }
         case .generic(let generic):
-            entries += sections(generic)
+            entries += sections(generic, text: text)
         }
         switch presentation.outcome {
         case .error(let error)?:
-            entries.append(ChatRowRenderer.toolError(text(error)))
+            entries.append(ChatRowRenderer.toolError(message(error, words: text.words), text: text))
         case .output(let output)?:
-            entries.append(ChatRowRenderer.section(Strings.Tools.FullView.output, code(output)))
+            entries.append(ChatRowRenderer.section(text.words.fullOutput, code(output, text: text), text: text))
         case nil:
             break
         }
         if input.devMode {
             let json = ChatToolPresentation.pretty(ToolFullPresentation.rawJSON(call))
-            entries.append(section(.ionicons("code-slash"), tint: Palette.fullViewOrange, title: Strings.Tools.FullView.rawJsonDevMode, code(json)))
+            entries.append(section(.ionicons("code-slash"), tint: Palette.fullViewOrange, title: text.words.fullRawJson, code(json, text: text), text: text))
         }
         return .stack(entries)
     }
 
-    static func text(_ error: ToolFullError) -> String {
+    static func message(_ error: ToolFullError, words: ChatWords) -> String {
         switch error {
         case .text(let text): text
-        case .unspecified: Strings.Tools.FullView.error
+        case .unspecified: words.fullError
         }
     }
 
@@ -123,23 +126,25 @@ enum MessageDetailRenderer {
     /// bash and the output as a shell session, all tokenized by `deadline`
     /// or left plain; the error is neither.
     static func command(
-        _ terminal: ToolFullTerminal, syntax: DiffSyntaxService, syntaxDeadline deadline: ContinuousClock.Instant = DiffFilePlan.syntaxDeadline()
+        _ terminal: ToolFullTerminal, syntax: DiffSyntaxService, text rowText: ChatRowText,
+        syntaxDeadline deadline: ContinuousClock.Instant = DiffFilePlan.syntaxDeadline()
     ) -> ChatPiece {
         let style = ChatTextStyles.terminalCommand
+        let environment = rowText.environment
         let commandText = TerminalSyntax.spans(terminal.command, language: TerminalSyntax.commandLanguage(prompt: terminal.prompt), until: deadline, service: syntax)
-            .map { terminalString($0, style: style, color: Palette.terminalCommand, lineBreakMode: .byCharWrapping) }
-            ?? style.string(terminal.command, color: Palette.terminalCommand, lineBreakMode: .byCharWrapping)
-        let line = ChatRowRenderer.commandLine(commandText, prompt: terminal.prompt)
+            .map { terminalString($0, style: style, color: Palette.terminalCommand, lineBreakMode: .byCharWrapping, in: environment) }
+            ?? style.string(terminal.command, color: Palette.terminalCommand, lineBreakMode: .byCharWrapping, in: environment)
+        let line = ChatRowRenderer.commandLine(commandText, prompt: terminal.prompt, text: rowText)
         var entries = [ChatStackEntry(piece: selectable(line, terminal.command))]
         /// `terminalText` is CommandView's: selectable and coloured.
         func output(_ text: String, _ style: ChatTextStyle, _ color: ColorToken, terminalText: Bool) {
             let spans = terminalText ? TerminalSyntax.spans(text, language: TerminalSyntax.outputLanguage, until: deadline, service: syntax) : nil
-            let piece = longText(text, style: style, color: color, lineBreakMode: .byCharWrapping, syntax: spans)
+            let piece = longText(text, style: style, color: color, lineBreakMode: .byCharWrapping, syntax: spans, in: environment)
             entries.append(ChatStackEntry(piece: terminalText ? selectable(piece, text) : piece, marginTop: 8))
         }
         if let stdout = terminal.visibleStdout { output(stdout, ChatTextStyles.terminal, Palette.terminalStdout, terminalText: true) }
         if let stderr = terminal.visibleStderr { output(stderr, ChatTextStyles.terminal, Palette.terminalStderr, terminalText: true) }
-        if let error = terminal.error { output(text(error), ChatTextStyles.terminal, Palette.terminalError, terminalText: false) }
+        if let error = terminal.error { output(message(error, words: rowText.words), ChatTextStyles.terminal, Palette.terminalError, terminalText: false) }
         if terminal.showsEmptyOutput {
             output(Strings.Tools.commandNoOutput, ChatTextStyles.terminalEmptyOutput, Palette.terminalEmptyOutput, terminalText: false)
         }
@@ -149,13 +154,15 @@ enum MessageDetailRenderer {
     /// SyntaxText's runs on CommandView's panel, which stays dark: tokens
     /// in the dark theme's diff colours whatever the appearance, plain runs
     /// in the text's own colour.
-    static func terminalString(_ spans: [(text: String, kind: DiffSpanKind)], style: ChatTextStyle, color: ColorToken, lineBreakMode: NSLineBreakMode) -> NSAttributedString {
+    static func terminalString(
+        _ spans: [(text: String, kind: DiffSpanKind)], style: ChatTextStyle, color: ColorToken, lineBreakMode: NSLineBreakMode, in environment: TextEnvironment?
+    ) -> NSAttributedString {
         let result = NSMutableAttributedString()
         var attributes: [DiffSpanKind: [NSAttributedString.Key: Any]] = [:]
         for span in spans {
             let runAttributes = attributes[span.kind] ?? {
                 let runColor = span.kind == .plain ? UIColor(color) : UIColor(DiffStyle.syntax(span.kind).dark)
-                let made = style.attributes(color: runColor, lineBreakMode: lineBreakMode)
+                let made = style.attributes(color: runColor, lineBreakMode: lineBreakMode, in: environment)
                 attributes[span.kind] = made
                 return made
             }()
@@ -178,14 +185,17 @@ enum MessageDetailRenderer {
     /// in ToolSectionView's full-width section, pulled 8 up, 12 below.
     static func diffs(_ kind: ToolViewKind, chunks: [ToolDiffChunk], replaceAll: [Bool], toolId: String, input: MessageDetailInput) -> ChatStackEntry? {
         func diff(_ index: Int, showLineNumbers: Bool) -> ChatPiece? {
-            ChatRowRenderer.diffPiece(chunks[index], index: index, toolId: toolId, showLineNumbers: showLineNumbers, expanded: input.diffExpanded[index] ?? [], render: input.render)
+            ChatRowRenderer.diffPiece(
+                chunks[index], index: index, toolId: toolId, showLineNumbers: showLineNumbers, expanded: input.diffExpanded[index] ?? [],
+                render: input.render, text: input.text
+            )
         }
         switch kind {
         case .multiEdit:
             var entries: [ChatStackEntry] = []
             for index in chunks.indices {
                 let all = replaceAll.indices.contains(index) && replaceAll[index]
-                entries.append(ChatStackEntry(piece: multiEditHeader(index, of: chunks.count, replaceAll: all), marginBottom: 8))
+                entries.append(ChatStackEntry(piece: multiEditHeader(index, of: chunks.count, replaceAll: all, text: input.text), marginBottom: 8))
                 if let piece = diff(index, showLineNumbers: true) { entries.append(ChatStackEntry(piece: piece)) }
                 if index < chunks.count - 1 {
                     let rule = ChatPiece(measurable: Measurable { CGSize(width: $0, height: 1) }) { frame in
@@ -214,7 +224,8 @@ enum MessageDetailRenderer {
     static func patch(_ files: [ToolPatchFile]?, tool: ToolCall, toolId: String, input: MessageDetailInput) -> ChatStackEntry {
         guard let files else {
             let raw = ChatPatch.fallbackText(tool.input).flatMap { $0.isEmpty ? nil : $0 }
-            return ChatRowRenderer.section(Strings.Tools.name(.applyChanges), .stack(raw.map { [ChatStackEntry(piece: ChatRowRenderer.codeView($0))] } ?? []))
+            let text = input.text
+            return ChatRowRenderer.section(text.words.name(.applyChanges), .stack(raw.map { [ChatStackEntry(piece: ChatRowRenderer.codeView($0, text: text))] } ?? []), text: text)
         }
         let focused = files.indices.filter { files[$0].file == input.focusFile }
         let shown = focused.isEmpty ? Array(files.indices) : focused
@@ -244,12 +255,12 @@ enum MessageDetailRenderer {
         var parts: [ChatStackEntry] = []
         if let header {
             parts.append(ChatStackEntry(piece: ChatRowRenderer.patchHeader(
-                path: header.path, kind: header.kind, stats: header.stats, movePath: header.movePath, opens: nil, topRadius: radius - border
+                path: header.path, kind: header.kind, stats: header.stats, movePath: header.movePath, opens: nil, topRadius: radius - border, text: input.text
             )))
         }
         if let source, let diff = ChatRowRenderer.diffPiece(
             source, index: index, toolId: toolId, showLineNumbers: input.showLineNumbers, expanded: input.diffExpanded[index] ?? [],
-            render: input.render, radius: radius - border, corners: header == nil ? .all : .bottom
+            render: input.render, radius: radius - border, corners: header == nil ? .all : .bottom, text: input.text
         ) {
             parts.append(ChatStackEntry(piece: diff))
         }
@@ -262,9 +273,10 @@ enum MessageDetailRenderer {
     }
 
     /// "Edit N of M", with the "Replace All" badge beside it.
-    static func multiEditHeader(_ index: Int, of total: Int, replaceAll: Bool) -> ChatPiece {
-        let number = MeasuredText(ChatTextStyles.multiEditNumber.string(Strings.Tools.editNumber(index + 1, of: total), color: Palette.fullViewPurple), maxLines: 1)
-        let badge = replaceAll ? MeasuredText(ChatTextStyles.multiEditBadge.string(Strings.Tools.replaceAll, color: Palette.onAccent), maxLines: 1) : nil
+    static func multiEditHeader(_ index: Int, of total: Int, replaceAll: Bool, text: ChatRowText) -> ChatPiece {
+        let environment = text.environment
+        let number = MeasuredText(ChatTextStyles.multiEditNumber.string(text.words.editNumber(index + 1, of: total), color: Palette.fullViewPurple, in: environment), maxLines: 1)
+        let badge = replaceAll ? MeasuredText(ChatTextStyles.multiEditBadge.string(text.words.replaceAll, color: Palette.onAccent, in: environment), maxLines: 1) : nil
         return ChatPiece(measurable: Measurable { MultiEditHeaderLayout(width: $0, number: number.measurable, badge: badge?.measurable).size }) { frame in
             let layout = MultiEditHeaderLayout(width: frame.width, number: number.measurable, badge: badge?.measurable)
             func place(_ rect: CGRect) -> CGRect { rect.offsetBy(dx: frame.minX, dy: frame.minY) }
@@ -279,34 +291,35 @@ enum MessageDetailRenderer {
 
     /// ToolFullView's fallback: what the call was for, its input, and its
     /// output or error, or a tick when it finished without saying anything.
-    static func sections(_ generic: ToolFullGeneric) -> [ChatStackEntry] {
-        typealias FullView = Strings.Tools.FullView
+    static func sections(_ generic: ToolFullGeneric, text: ChatRowText) -> [ChatStackEntry] {
+        let words = text.words
+        let environment = text.environment
         var entries: [ChatStackEntry] = []
         if let description = generic.description {
-            let text = longText(description, style: ChatTextStyles.fullDescription, color: Palette.textSecondary)
-            entries.append(section(.ionicons("information-circle"), tint: Palette.fullViewPurple, title: FullView.description, text))
+            let piece = longText(description, style: ChatTextStyles.fullDescription, color: Palette.textSecondary, in: environment)
+            entries.append(section(.ionicons("information-circle"), tint: Palette.fullViewPurple, title: words.fullDescription, piece, text: text))
         }
         if let input = generic.input {
-            entries.append(section(.ionicons("log-in"), tint: Palette.fullViewPurple, title: FullView.inputParams, code(input)))
+            entries.append(section(.ionicons("log-in"), tint: Palette.fullViewPurple, title: words.fullInputParams, code(input, text: text), text: text))
         }
         if let output = generic.output {
-            entries.append(section(.ionicons("log-out"), tint: Palette.fullViewGreen, title: FullView.output, code(output)))
+            entries.append(section(.ionicons("log-out"), tint: Palette.fullViewGreen, title: words.fullOutput, code(output, text: text), text: text))
         }
         if let error = generic.error {
             let box = ChatStackEntry(
-                piece: longText(error, style: ChatTextStyles.fullError, color: Palette.boxErrorText),
+                piece: longText(error, style: ChatTextStyles.fullError, color: Palette.boxErrorText, in: environment),
                 padding: LayoutInsets(top: 16, left: 16, bottom: 16, right: 16),
                 background: ChatBox(frame: .zero, fill: Palette.boxErrorBackground, border: Palette.boxErrorBorder, borderWidth: 1, radius: 8)
             )
-            entries.append(section(.ionicons("close-circle"), tint: Palette.fullViewRed, title: FullView.error, .stack([box])))
+            entries.append(section(.ionicons("close-circle"), tint: Palette.fullViewRed, title: words.fullError, .stack([box]), text: text))
         }
         if generic.completedWithoutOutput {
             let glyph = CGSize(width: 48, height: 48)
             let icon = ChatPiece(measurable: .fixed(glyph)) { frame in
                 ([.icon(.ionicons("checkmark-circle-outline"), size: 48, frame: frame, tint: Palette.fullViewGreen)], [])
             }
-            let title = MeasuredText(ChatTextStyles.fullEmptyTitle.string(FullView.completed, color: Palette.text, alignment: .center))
-            let subtitle = MeasuredText(ChatTextStyles.fullEmptySubtitle.string(FullView.noOutput, color: Palette.textSecondary, alignment: .center))
+            let title = MeasuredText(ChatTextStyles.fullEmptyTitle.string(words.fullCompleted, color: Palette.text, alignment: .center, in: environment))
+            let subtitle = MeasuredText(ChatTextStyles.fullEmptySubtitle.string(words.fullNoOutput, color: Palette.textSecondary, alignment: .center, in: environment))
             let column = ChatPiece.stack([
                 ChatStackEntry(piece: icon, placement: .center),
                 ChatStackEntry(piece: .text(title), placement: .center),
@@ -319,8 +332,8 @@ enum MessageDetailRenderer {
 
     /// One of ToolFullView's sections: a 20-point glyph and its title 8
     /// apart, 12 above the content; 28 below the section.
-    static func section(_ icon: Icon, tint: ColorToken, title: String, _ content: ChatPiece) -> ChatStackEntry {
-        let text = MeasuredText(ChatTextStyles.fullSectionTitle.string(title, color: Palette.text))
+    static func section(_ icon: Icon, tint: ColorToken, title: String, _ content: ChatPiece, text rowText: ChatRowText) -> ChatStackEntry {
+        let text = MeasuredText(ChatTextStyles.fullSectionTitle.string(title, color: Palette.text, in: rowText.environment))
         let glyph = CGSize(width: 20, height: 20)
         let header = ChatPiece(measurable: Measurable { ChatAccessoryRowLayout(width: $0, leading: glyph, text: text.measurable).size }) { frame in
             let layout = ChatAccessoryRowLayout(width: frame.width, leading: glyph, text: text.measurable)
@@ -334,9 +347,9 @@ enum MessageDetailRenderer {
     }
 
     /// CodeView: Menlo 12 / 18 on surfaceHigh, in pieces when long.
-    static func code(_ code: String) -> ChatPiece {
+    static func code(_ code: String, text: ChatRowText) -> ChatPiece {
         .stack([ChatStackEntry(
-            piece: longText(code, style: ChatTextStyles.codeView, color: Palette.text, lineBreakMode: .byCharWrapping),
+            piece: longText(code, style: ChatTextStyles.codeView, color: Palette.text, lineBreakMode: .byCharWrapping, in: text.environment),
             padding: LayoutInsets(top: 12, left: 12, bottom: 12, right: 12),
             background: ChatBox(frame: .zero, fill: Palette.surfaceHigh, radius: 6)
         )])
@@ -348,22 +361,22 @@ enum MessageDetailRenderer {
     /// (`terminalString`), each piece cut from the whole.
     static func longText(
         _ text: String, style: ChatTextStyle, color: ColorToken, lineBreakMode: NSLineBreakMode = .byWordWrapping,
-        syntax: [(text: String, kind: DiffSpanKind)]? = nil
+        syntax: [(text: String, kind: DiffSpanKind)]? = nil, in environment: TextEnvironment?
     ) -> ChatPiece {
         let whole = syntax
-            .map { terminalString($0, style: style, color: color, lineBreakMode: lineBreakMode) }
+            .map { terminalString($0, style: style, color: color, lineBreakMode: lineBreakMode, in: environment) }
             .flatMap { $0.length == text.utf16.count ? $0 : nil }
         let chunks = TextChunks.split(text)
-        guard chunks.count > 1 else { return .text(MeasuredText(whole ?? style.string(text, color: color, lineBreakMode: lineBreakMode))) }
+        guard chunks.count > 1 else { return .text(MeasuredText(whole ?? style.string(text, color: color, lineBreakMode: lineBreakMode, in: environment))) }
         guard let whole else {
             return .stack(chunks.enumerated().map { index, chunk in
                 let drawn = index == chunks.count - 1 ? chunk : TextChunks.drawn(chunk)
-                return ChatStackEntry(piece: .text(MeasuredText(style.string(drawn, color: color, lineBreakMode: lineBreakMode))))
+                return ChatStackEntry(piece: .text(MeasuredText(style.string(drawn, color: color, lineBreakMode: lineBreakMode, in: environment))))
             })
         }
         return .stack(TextChunks.cuts(chunks).map { cut in
             let piece = NSMutableAttributedString(attributedString: whole.attributedSubstring(from: NSRange(location: cut.location, length: cut.length)))
-            if cut.space { piece.append(style.string(" ", color: color, lineBreakMode: lineBreakMode)) }
+            if cut.space { piece.append(style.string(" ", color: color, lineBreakMode: lineBreakMode, in: environment)) }
             return ChatStackEntry(piece: .text(MeasuredText(piece)))
         })
     }

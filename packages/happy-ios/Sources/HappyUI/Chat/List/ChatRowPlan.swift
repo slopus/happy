@@ -54,8 +54,9 @@ enum ChatDrawItem {
     case icon(Icon, size: CGFloat, frame: CGRect, tint: ColorToken)
     /// ActivityIndicator size="small", scaled.
     case spinner(CGRect, tint: ColorToken, scale: CGFloat)
-    /// A running tool's timer: whole seconds since `since` (ms), as "12.0s".
-    case elapsed(since: Int64, frame: CGRect)
+    /// A running tool's timer: whole seconds since `since` (ms), as "12.0s",
+    /// at the row's text size (nil: the designed size).
+    case elapsed(since: Int64, frame: CGRect, text: TextEnvironment?)
     /// A ring whose opacity breathes while a reply is on its way
     /// (PermissionFooter's loading ring).
     case pulse(ChatBox)

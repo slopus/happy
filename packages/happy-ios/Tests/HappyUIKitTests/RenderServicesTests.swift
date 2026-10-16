@@ -28,7 +28,7 @@ final class RenderServicesTests: XCTestCase {
         guard case .none = section("let a = 1", "let a = 2", render: stopped).body else { return XCTFail("nothing, not \"No changes\"") }
         XCTAssertNil(ChatRowRenderer.diffPiece(
             ToolDiffChunk(oldText: "let a = 1", newText: "let a = 2", fileName: "a.swift"),
-            index: 0, toolId: "t", showLineNumbers: false, expanded: [], render: stopped
+            index: 0, toolId: "t", showLineNumbers: false, expanded: [], render: stopped, text: .designed
         ))
     }
 
