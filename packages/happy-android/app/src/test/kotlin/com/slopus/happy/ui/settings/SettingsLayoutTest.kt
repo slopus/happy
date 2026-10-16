@@ -122,4 +122,24 @@ class SettingsLayoutTest {
         assertEquals("Commit not-a-date", buildSubtitle(null, "not-a-date"))
         assertNull(buildSubtitle(null, ""))
     }
+
+    @Test
+    fun tenTapsOnVersionToggleDeveloperMode() {
+        var taps = 0
+        rule.setHappyContent { SettingsScreen(versionName = versionDetail("1.8.0", 412), onBack = {}, onAccount = {}, onAppearance = {}, onOpenUrl = {}, onVersion = { taps++ }) }
+        rule.onNodeWithText("1.8.0 (412)").performScrollTo().assertIsDisplayed()
+        rule.node(SettingsTags.VERSION).performClick()
+        assertEquals(1, taps)
+
+        // useMultiClick: ten within 2 s of each other; a pause starts over.
+        var now = 0L
+        val clicks = MultiClick(required = 10) { now }
+        repeat(9) { assertEquals(false, clicks.click()); now += 1_999 }
+        assertEquals(true, clicks.click())
+        repeat(5) { clicks.click(); now += 100 }
+        now += 2_001
+        repeat(9) { assertEquals(false, clicks.click()) }
+        assertEquals(true, clicks.click())
+    }
 }
+
