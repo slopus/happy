@@ -36,6 +36,7 @@ import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.connect.EnterTerminalUrlPrompt
+import com.slopus.happy.ui.connect.rememberAccountLink
 import com.slopus.happy.ui.connect.rememberTerminalConnect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -188,6 +189,7 @@ private fun Account(graph: AppGraph, nav: NavHostController) {
     }
     var push by remember { mutableStateOf(PushState(deviceLabel = deviceLabel, appLabel = appLabel)) }
     var disconnectingService by remember { mutableStateOf<String?>(null) }
+    val link = rememberAccountLink(graph)
 
     suspend fun loadPush(showErrors: Boolean = false) {
         push = push.copy(loading = true)
@@ -298,6 +300,8 @@ private fun Account(graph: AppGraph, nav: NavHostController) {
                 }
             }
         },
+        linkingDevice = link.isLoading,
+        onLinkNewDevice = link::scan,
     )
     alerts.Host()
 }

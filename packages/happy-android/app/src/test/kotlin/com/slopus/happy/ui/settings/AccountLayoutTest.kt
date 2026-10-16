@@ -1,5 +1,8 @@
 package com.slopus.happy.ui.settings
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -133,5 +136,26 @@ class AccountLayoutTest {
         rule.onNodeWithText("Remove abcdef…klmnop from your account?").assertIsDisplayed()
         rule.onNodeWithText("Delete").performClick()
         assertEquals(listOf("pt1"), deleted)
+    }
+
+    @Test
+    fun linkNewDeviceScansAndReadsScanningWhileLinking() {
+        var scans = 0
+        var linking by mutableStateOf(false)
+        rule.setHappyContent {
+            AccountScreen(
+                anonId = null, publicId = null, formattedSecretKey = "",
+                analyticsOptOut = false, onAnalyticsOptOutChange = {}, onLogout = {}, onBack = {},
+                linkingDevice = linking,
+                onLinkNewDevice = { scans++ },
+            )
+        }
+        rule.onNodeWithText("Scan QR code to link device").performClick()
+        assertEquals(1, scans)
+
+        linking = true
+        rule.onAllNodesWithText("Scan QR code to link device").assertCountEquals(0)
+        rule.onNodeWithText("Scanning...").performClick()
+        assertEquals("a link in progress takes no taps", 1, scans)
     }
 }

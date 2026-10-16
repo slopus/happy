@@ -106,8 +106,8 @@ private val knownServices = listOf(
  * Registered tokens list every token with an unlimited subtitle; another
  * device's token deletes on tap after a confirm.
  *
- * "Link New Device" scans the new device's QR code in happy-app; without
- * [onLinkNewDevice] it explains that the scanner is missing.
+ * "Link New Device" scans the new device's QR code ([onLinkNewDevice]); while
+ * [linkingDevice] it reads "Scanning..." and takes no taps.
  */
 @Composable
 fun AccountScreen(
@@ -127,7 +127,8 @@ fun AccountScreen(
     onRequestPush: () -> Unit = {},
     onRefreshPush: () -> Unit = {},
     onDeletePushToken: (PushToken) -> Unit = {},
-    onLinkNewDevice: (() -> Unit)? = null,
+    linkingDevice: Boolean = false,
+    onLinkNewDevice: () -> Unit = {},
 ) {
     val colors = HappyTheme.colors
     val clipboard = LocalClipboard.current
@@ -172,13 +173,14 @@ fun AccountScreen(
                 CopyableItem(stringResource(R.string.settings_account_public_id), publicId, notAvailable) { title, value ->
                     copy(value) { alert = Alert(copiedTitle, copiedMessage(title), listOf(AlertButton(ok))) }
                 }
-                val linkTitle = stringResource(R.string.settings_account_link_new_device)
-                val linkUnavailable = stringResource(R.string.settings_account_link_new_device_unavailable)
                 Item(
-                    title = linkTitle,
-                    subtitle = stringResource(R.string.settings_account_link_new_device_subtitle),
+                    title = stringResource(R.string.settings_account_link_new_device),
+                    subtitle = stringResource(
+                        if (linkingDevice) R.string.common_scanning else R.string.settings_account_link_new_device_subtitle,
+                    ),
                     icon = { ItemIcon(Ionicon.QrCodeOutline, SettingsSpec.blue) },
-                    onClick = onLinkNewDevice ?: { alert = Alert(linkTitle, linkUnavailable, listOf(AlertButton(ok))) },
+                    onClick = onLinkNewDevice,
+                    enabled = !linkingDevice,
                     showChevron = false,
                 )
             }
