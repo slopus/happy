@@ -13,6 +13,14 @@ import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import com.slopus.happy.ui.theme.ThemePreference
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.unit.dp
+import com.slopus.happy.model.SessionListGrouping
+import com.slopus.happy.model.Settings
+import com.slopus.happy.ui.assertBox
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,9 +39,54 @@ class AppearanceLayoutTest {
         var theme = ThemePreference.Adaptive
         rule.setHappyContent { AppearanceScreen(theme = theme, onThemeChange = { theme = it }, onBack = {}) }
         rule.onNodeWithText("Adaptive").assertIsDisplayed()
-        val row = rule.node(ItemTags.ROW).bounds
-        assertDp("theme row: icon, title and subtitle", 76, row.bottom - row.top)
-        rule.node(ItemTags.ROW).performClick()
+        val row = rule.onAllNodesWithTag(ItemTags.ROW, useUnmergedTree = true)[0]
+        assertDp("theme row: icon, title and subtitle", 76, row.bounds.let { it.bottom - it.top })
+        row.performClick()
         assertEquals(ThemePreference.Light, theme)
+    }
+
+    @Test
+    fun appearanceBubbleColorDropdown() {
+        var settings = Settings.Defaults
+        rule.setHappyContent {
+            AppearanceScreen(theme = ThemePreference.Light, onThemeChange = {}, onBack = {}, settings = settings, onSettingsChange = { settings = it(settings) })
+        }
+        val value = rule.node(AppearanceTags.BUBBLE_DROPDOWN).bounds
+        assertTrue("dropdown value at most 184 wide", value.right - value.left <= 184.dp)
+        val preview = rule.onAllNodesWithTag(AppearanceTags.BUBBLE_PREVIEW, useUnmergedTree = true)[0].bounds
+        assertBox("bubble preview", preview, value.left, preview.top, 46.dp, 28.dp)
+        rule.onNodeWithText("Gray").assertIsDisplayed()
+        rule.node(AppearanceTags.BUBBLE_DROPDOWN).performClick()
+        val options = rule.onAllNodesWithTag(AppearanceTags.OPTION, useUnmergedTree = true)
+        options.assertCountEquals(6)
+        assertTrue("options at least 48 high", options[0].bounds.let { it.bottom - it.top } >= 48.dp)
+        rule.onNodeWithText("Purple").performClick()
+        assertEquals("purple", settings.userMessageBubbleColor)
+        rule.onAllNodesWithTag(AppearanceTags.OPTION, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun appearanceAvatarStyleAndSwitches() {
+        var settings = Settings.Defaults
+        rule.setHappyContent {
+            AppearanceScreen(theme = ThemePreference.Light, onThemeChange = {}, onBack = {}, settings = settings, onSettingsChange = { settings = it(settings) })
+        }
+        rule.node(AppearanceTags.AVATAR_DROPDOWN).performScrollTo().performClick()
+        rule.onAllNodesWithTag(AppearanceTags.OPTION, useUnmergedTree = true).assertCountEquals(3)
+        rule.onNodeWithText("Gradient").performScrollTo().performClick()
+        assertEquals("gradient", settings.avatarStyle)
+        rule.onNodeWithText("Flat List").performScrollTo().performClick()
+        assertEquals(SessionListGrouping.Project, settings.sessionListGrouping)
+        rule.onNodeWithText("File Diffs Sidebar").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun languageRowShowsTheDetail() {
+        var opened = false
+        rule.setHappyContent {
+            AppearanceScreen(theme = ThemePreference.Light, onThemeChange = {}, onBack = {}, languageDetail = "Automatic (English)", onLanguage = { opened = true })
+        }
+        rule.onNodeWithText("Automatic (English)").performClick()
+        assertTrue(opened)
     }
 }
