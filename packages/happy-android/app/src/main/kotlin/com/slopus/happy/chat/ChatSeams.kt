@@ -86,11 +86,18 @@ data class PermissionAnswer(
 interface ChatActions {
     /**
      * Queues a user message; [meta] is laid over the meta the sender resolves
-     * (typesMessageMeta.ts). Returns once it is in the outbox, or with
-     * [awaitDelivery] once the server has it. Throws [SendException] with a
-     * message for the user when nothing was queued.
+     * (typesMessageMeta.ts); [attachments] are file records queued ahead of
+     * the text. Returns once it is in the outbox, or with [awaitDelivery]
+     * once the server has it. Throws [SendException] with a message for the
+     * user when nothing was queued.
      */
-    suspend fun send(sessionId: String, text: String, meta: JsonObject? = null, awaitDelivery: Boolean = false)
+    suspend fun send(
+        sessionId: String,
+        text: String,
+        meta: JsonObject? = null,
+        attachments: List<JsonObject> = emptyList(),
+        awaitDelivery: Boolean = false,
+    )
 
     /** A failed send goes back in the queue. */
     suspend fun retry(sessionId: String, localId: String) = Unit
@@ -159,7 +166,8 @@ object NoLivePresence : ChatPresenceSource {
 /** Actions that only fail, for builds without Sync's sender. */
 object UnavailableChatActions : ChatActions {
     private fun unavailable(): Nothing = throw UnsupportedOperationException("Not signed in")
-    override suspend fun send(sessionId: String, text: String, meta: JsonObject?, awaitDelivery: Boolean) = unavailable()
+    override suspend fun send(sessionId: String, text: String, meta: JsonObject?, attachments: List<JsonObject>, awaitDelivery: Boolean) =
+        unavailable()
     override suspend fun abort(sessionId: String) = unavailable()
     override suspend fun answerPermission(sessionId: String, answer: PermissionAnswer) = unavailable()
     override suspend fun answerQuestion(sessionId: String, communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) =
@@ -177,8 +185,9 @@ class SyncChatActions(private val account: () -> AccountSync?) : ChatActions {
     private fun account(): AccountSync = account.invoke() ?: throw SendException("Not signed in")
     private fun ops(): SessionOps = account().sessionOps
 
-    override suspend fun send(sessionId: String, text: String, meta: JsonObject?, awaitDelivery: Boolean) {
-        val result = account().sender.send(sessionId, text, SendOptions(extraMeta = meta, awaitDelivery = awaitDelivery))
+    override suspend fun send(sessionId: String, text: String, meta: JsonObject?, attachments: List<JsonObject>, awaitDelivery: Boolean) {
+        val options = SendOptions(extraMeta = meta, attachments = attachments, awaitDelivery = awaitDelivery)
+        val result = account().sender.send(sessionId, text, options)
         if (result is SendResult.NotSent) throw SendException(result.message ?: "The message was not sent.")
     }
 
