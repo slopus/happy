@@ -143,8 +143,8 @@ class SessionInfoActions(
     val onBack: () -> Unit,
     val onOpenSession: (String) -> Unit,
     val onOpenMachine: (String) -> Unit,
-    /** The session's changes screen; null while the app has none. */
-    val onChanges: ((String) -> Unit)?,
+    /** The session's changes screen. */
+    val onChanges: (String) -> Unit,
     /**
      * Archived: leave this screen, and the chat behind it for [successor],
      * the checkout's neighbouring tab, when there is one ([tabSuccessor]).
@@ -322,13 +322,13 @@ private fun SessionInfoContent(
                                 Text("$prefix+${changes.insertions}", style = happyTextStyle(fontSize = 12), color = gitAddedColor(colors))
                                 Text("$prefix-${changes.deletions}", style = happyTextStyle(fontSize = 12), color = gitRemovedColor(colors))
                             }
-                            if (actions.onChanges != null) Icon(Ionicon.ChevronForward, size = 17.dp, color = colors.grouped.chevron)
+                            Icon(Ionicon.ChevronForward, size = 17.dp, color = colors.grouped.chevron)
                         }
                     }
                 } else {
                     null
                 },
-                onClick = actions.onChanges?.let { open -> { open(session.id) } },
+                onClick = { actions.onChanges(session.id) },
                 modifier = Modifier.testTag(SessionInfoTags.CHANGES),
             )
             metadata?.machineId?.ifEmpty { null }?.let { machineId ->
@@ -774,4 +774,5 @@ private fun sessionJson(session: Session, agentState: JsonObject?): JsonObject =
     put("thinkingAt", session.thinkingAt)
 }
 
-private val prettyJson = Json { prettyPrint = true }
+/** JSON.stringify(value, null, 2). */
+private val prettyJson = Json { prettyPrint = true; prettyPrintIndent = "  " }

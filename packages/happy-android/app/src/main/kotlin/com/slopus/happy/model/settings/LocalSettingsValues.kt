@@ -9,8 +9,10 @@ import kotlinx.serialization.json.JsonPrimitive
 /**
  * Device-only preferences: happy-app sync/localSettings.ts
  * `LocalSettingsSchema`, every field with its default. Unknown keys are kept
- * in [unknown]. Web- and developer-only fields are carried so the document
- * matches happy-app's; the Android UI doesn't use them.
+ * in [unknown]. Web- and developer-only fields (the command palette, the
+ * sidebar panels, logging) are carried so the document matches happy-app's;
+ * of the developer fields the app reads [devModeEnabled] (toggled by ten
+ * taps on Settings › Version).
  */
 data class LocalSettingsValues(
     val debugMode: Boolean = false,

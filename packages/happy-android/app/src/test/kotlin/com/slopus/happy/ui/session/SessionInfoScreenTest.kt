@@ -105,7 +105,7 @@ class SessionInfoScreenTest {
         onBack = {},
         onOpenSession = { opened += it },
         onOpenMachine = { opened += "machine:$it" },
-        onChanges = null,
+        onChanges = { opened += "changes:$it" },
         onArchived = { archivedTo = it; left++ },
         onDeleted = { left++ },
         copyToClipboard = { copied += it },
