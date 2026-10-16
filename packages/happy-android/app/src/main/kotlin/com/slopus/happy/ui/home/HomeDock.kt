@@ -69,6 +69,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
@@ -115,6 +116,7 @@ object HomeDockTags {
     const val FOCUS = "homeDock.focus"
     const val BACKDROP = "homeDock.backdrop"
     const val ROWS = "homeDock.rows"
+    const val OFFLINE_HELP = "homeDock.offlineHelp"
     fun row(page: NewSessionPage) = "homeDock.row.${page.name}"
     const val COMPOSER = "homeDock.composer"
     const val INPUT = "homeDock.input"
@@ -192,6 +194,16 @@ object HomeDockSpec {
     val sheetMinHeight = 168.dp
     /** The composer and what sits around it, which the panel must leave room for. */
     val sheetReservedHeight = 320.dp
+
+    // new/index.tsx's offline help, under the machine row of the standalone screen.
+    val offlinePaddingHorizontal = 12.dp
+    val offlinePaddingVertical = 10.dp
+    val offlineGap = 8.dp
+    val offlineIcon = 14.dp
+    val offlineTitle = happyTextStyle(fontSize = 13, weight = FontWeight.SemiBold)
+    val offlineTitleGap = 4.dp
+    val offlineText = happyTextStyle(fontSize = 12, lineHeight = 18)
+    const val OFFLINE_ROWS_ALPHA = 0.4f
 }
 
 /** What the dock shows. [prompt] is the dock's own text; the draft takes it at Send. */
@@ -477,7 +489,15 @@ fun HomeDockFocus(state: HomeDockState, actions: HomeDockActions, modifier: Modi
                     if (starting) Box(Modifier.matchParentSize().clickable(interactionSource = null, indication = null, onClick = refuse))
                 } else if (options != null) {
                     Column {
-                        EnvironmentRows(options, progress.value, botOnly = state.creatingBot, onOpen = open, onHelp = { if (starting) refuse() else actions.onHarnessHelp() })
+                        EnvironmentRows(
+                            options,
+                            progress.value,
+                            botOnly = state.creatingBot,
+                            // Only the standalone screen says so; the dock refuses at Send, as HomeDock.tsx does.
+                            offline = standalone && options.agentMachineOffline,
+                            onOpen = open,
+                            onHelp = { if (starting) refuse() else actions.onHarnessHelp() },
+                        )
                         // A bot lives on a computer and nowhere else: the faces take the place of the other rows.
                         val bot = state.bot
                         if (bot != null && bot.creating) {
@@ -512,8 +532,20 @@ fun HomeDockFocus(state: HomeDockState, actions: HomeDockActions, modifier: Modi
     }
 }
 
+/**
+ * The machine, place, checkout and harness rows. When [offline], the help
+ * new/index.tsx shows follows the machine row and the rows under it fade to
+ * 0.4 and take no presses: only another machine helps.
+ */
 @Composable
-private fun EnvironmentRows(options: NewSessionOptions, progress: Float, botOnly: Boolean, onOpen: (NewSessionPage) -> Unit, onHelp: () -> Unit) {
+private fun EnvironmentRows(
+    options: NewSessionOptions,
+    progress: Float,
+    botOnly: Boolean,
+    offline: Boolean,
+    onOpen: (NewSessionPage) -> Unit,
+    onHelp: () -> Unit,
+) {
     val rows = buildList {
         add(Triple(NewSessionPage.Machine, Ionicon.DesktopOutline, options.machine?.name ?: stringResource(R.string.home_dock_select_machine)))
         if (botOnly) return@buildList
@@ -542,17 +574,18 @@ private fun EnvironmentRows(options: NewSessionOptions, progress: Float, botOnly
             val shown = reveal(progress, start, start + 0.28f)
             val help = page == NewSessionPage.Agent && !options.hasHarness
             val description = if (help) helpLabel else "${labels.getValue(page)}: $value"
+            val blocked = offline && index > 0
             Row(
                 modifier = Modifier
                     .testTag(HomeDockTags.row(page))
                     .fillMaxWidth()
                     .graphicsLayer {
-                        alpha = shown
+                        alpha = shown * (if (blocked) HomeDockSpec.OFFLINE_ROWS_ALPHA else 1f)
                         translationY = 10.dp.toPx() * (1 - shown)
                     }
                     .defaultMinSize(minHeight = HomeDockSpec.rowMinHeight)
                     .clip(RoundedCornerShape(HomeDockSpec.rowRadius))
-                    .clickable(role = Role.Button) { if (help) onHelp() else onOpen(page) }
+                    .clickable(enabled = !blocked, role = Role.Button) { if (help) onHelp() else onOpen(page) }
                     .semantics { contentDescription = description }
                     .padding(horizontal = HomeDockSpec.rowPaddingHorizontal),
                 verticalAlignment = Alignment.CenterVertically,
@@ -563,6 +596,34 @@ private fun EnvironmentRows(options: NewSessionOptions, progress: Float, botOnly
                 }
                 Text(value, style = HomeDockSpec.text, color = colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             }
+            if (offline && index == 0) OfflineHelp(rig = options.resolvedAgent == AgentType.Rig, alpha = shown)
+        }
+    }
+}
+
+/** new/index.tsx's offline help: what to try on the computer, then "switch machines". */
+@Composable
+private fun OfflineHelp(rig: Boolean, alpha: Float) {
+    val colors = HappyTheme.colors
+    val help = stringResource(if (rig) R.string.home_dock_happy_agent_offline else R.string.machine_offline_help)
+    Row(
+        modifier = Modifier
+            .testTag(HomeDockTags.OFFLINE_HELP)
+            .fillMaxWidth()
+            .graphicsLayer { this.alpha = alpha }
+            .semantics(mergeDescendants = true) {}
+            .padding(horizontal = HomeDockSpec.offlinePaddingHorizontal, vertical = HomeDockSpec.offlinePaddingVertical),
+        horizontalArrangement = Arrangement.spacedBy(HomeDockSpec.offlineGap),
+    ) {
+        Icon(Ionicon.CloudOfflineOutline, HomeDockSpec.offlineIcon, colors.status.disconnected)
+        Column(Modifier.weight(1f)) {
+            Text(
+                stringResource(R.string.new_session_machine_offline),
+                style = HomeDockSpec.offlineTitle,
+                color = colors.status.disconnected,
+                modifier = Modifier.padding(bottom = HomeDockSpec.offlineTitleGap),
+            )
+            Text(help + "\n" + stringResource(R.string.new_session_switch_machines_hint), style = HomeDockSpec.offlineText, color = colors.textSecondary)
         }
     }
 }

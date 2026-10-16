@@ -113,6 +113,19 @@ cd tools/translations && npm run generate
 have goes in `res/values/strings_android.xml` (English only); add it to
 happy-app's catalogs instead where you can.
 
+Where happy-app calls `t()`, use the catalog key; never re-type its English.
+Where happy-app writes English inline instead (most of HomeDock, the machine
+screen, info.tsx's activity rows, the agents and push-diagnostics settings,
+useStartSessionFromDraft's errors), the port stays English too: on screens, in
+`strings_<area>.xml` (`strings_home.xml`, `strings_tablet.xml`,
+`strings_push.xml`, `strings_android.xml`) or inline with a note naming the
+happy-app file. Text built outside composition stays a Kotlin literal, word for
+word as happy-app has it: tool titles (`chat/tools`), slash-command
+descriptions (`autocomplete`), reducer events, spawn, worktree and changes
+errors, and the push diagnostics in `model/settings/Push.kt`. So do brand and
+product names ("Claude Code", "OpenAI Codex", "Happy Engineering"). When
+happy-app moves one of these into its catalogs, switch to the key.
+
 How a catalog entry becomes a resource:
 
 - **Name**: the key path, camelCase to snake_case, dots to `_`
