@@ -66,6 +66,13 @@ jobs:
         pnpm --filter happy --fail-if-no-match pack --pack-destination packages/happy-cli
         pnpm --filter happy-server-self-host --fail-if-no-match pack --pack-destination packages/happy-server-self-host
 
+    # Node 20 ships npm 10, whose peer-dependency resolver crashes on this
+    # install ("Cannot read properties of null (reading 'edgesOut')",
+    # npm/cli#9787, fixed in npm 11.6.0). The Node 24 leg already has npm 11.
+    - name: Update npm on Node 20
+      if: matrix.node-version == 20
+      run: npm install -g npm@^11.6.0
+
     - name: Install packed packages globally
       run: |
         WIRE_PACKAGE_FILE=$(ls packages/happy-wire/*.tgz)
