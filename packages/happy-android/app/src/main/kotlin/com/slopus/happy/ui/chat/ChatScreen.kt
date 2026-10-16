@@ -68,6 +68,7 @@ import com.slopus.happy.ui.layout.CenteredInputWidth
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
+import com.slopus.happy.ui.usage.ComposerUsageRow
 import kotlinx.coroutines.launch
 
 object ChatScreenTags {
@@ -290,6 +291,7 @@ private fun ChatComposerFor(
         top = { ComposerAttachmentStrip() },
         overlay = { ComposerSuggestions(autocomplete) },
         cursor = autocomplete.cursor,
+        bottom = { ComposerUsageRow(state.snapshot.usage, session.agentState?.usageLimits) },
     )
 }
 

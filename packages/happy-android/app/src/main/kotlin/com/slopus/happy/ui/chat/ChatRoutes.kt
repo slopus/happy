@@ -45,6 +45,8 @@ import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.files.toolPressRoute
+import com.slopus.happy.ui.usage.LocalUsageDisplay
+import com.slopus.happy.ui.usage.UsageDisplay
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
@@ -196,6 +198,7 @@ private fun ChatRoute(
         LocalSessionAttachments provides rememberSessionAttachments(graph, sessionId),
         LocalComposerImages provides images,
         LocalSuggestionSource provides rememberSessionSuggestions(graph, sessionId, state.session?.metadata),
+        LocalUsageDisplay provides UsageDisplay(settings.alwaysShowContextSize, settings.usageLimitShowRemaining),
     ) {
         ChatScreen(
             state = state,

@@ -159,6 +159,8 @@ fun ChatComposer(
     overlay: @Composable () -> Unit = {},
     /** Shares the cursor with [overlay]: reported as it moves, placed after an insert. */
     cursor: ComposerCursor? = null,
+    /** Under the card, inside the composer (the usage row: week quota and context gauge). */
+    bottom: @Composable () -> Unit = {},
 ) {
     val colors = HappyTheme.colors
     var field by remember { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
@@ -257,6 +259,7 @@ fun ChatComposer(
                 PrimaryButton(primary, aborting, onPrimary)
             }
         }
+        bottom()
     }
 }
 
