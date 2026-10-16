@@ -8,7 +8,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalResources
 import com.slopus.happy.model.settings.PushText
 import com.slopus.happy.model.settings.PushTokensApi
-import com.slopus.happy.model.settings.UnavailablePushRegistration
+import com.slopus.happy.push.rememberPushRegistration
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
@@ -28,11 +28,17 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
+import com.slopus.happy.model.Machine
+import com.slopus.happy.model.MachineChoice
 import com.slopus.happy.model.Profile
+import com.slopus.happy.model.collectMachineChoices
+import kotlinx.coroutines.flow.MutableStateFlow
 import com.slopus.happy.model.settings.ConnectApi
 import com.slopus.happy.model.settings.HttpConnectApi
 import com.slopus.happy.model.settings.Languages
 import com.slopus.happy.ui.SettingsRoute
+import com.slopus.happy.ui.changelog.Changelog
+import com.slopus.happy.ui.changelog.ChangelogScreen
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -46,12 +52,22 @@ import kotlinx.serialization.Serializable
 @Serializable data object AccountRoute
 @Serializable data object AppearanceRoute
 @Serializable data object LanguageRoute
+@Serializable data object AgentsRoute
+@Serializable data object ConnectClaudeRoute
+@Serializable data object ChangelogRoute
 
 /** Settings and its screens. [SettingsRoute] is the entry point. */
 fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
     composable<SettingsRoute> { SettingsIndex(graph, nav) }
     composable<AccountRoute> { Account(graph, nav) }
     composable<AppearanceRoute> { Appearance(graph, nav) }
+    composable<AgentsRoute> { Agents(graph, nav) }
+    composable<ConnectClaudeRoute> { ConnectClaudeScreen(onBack = { nav.popBackStack() }) }
+    composable<ChangelogRoute> {
+        val resources = LocalResources.current
+        val changelog = remember(resources) { Changelog.bundled(resources) }
+        ChangelogScreen(changelog, onViewed = graph.changelog::markViewed, onBack = { nav.popBackStack() })
+    }
     composable<LanguageRoute> {
         val settings by graph.settings.settings.collectAsStateWithLifecycle()
         LanguageScreen(
@@ -86,6 +102,44 @@ private fun Appearance(graph: AppGraph, nav: NavHostController) {
         languageDetail = languageDetail,
         onLanguage = { nav.navigate(LanguageRoute) },
     )
+}
+
+@Composable
+private fun Agents(graph: AppGraph, nav: NavHostController) {
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val machines by rememberMachineChoices(graph)
+    val alerts = remember { Alerts() }
+    val ok = stringResource(R.string.common_ok)
+    val machineUnavailable = stringResource(R.string.settings_agents_machine_unavailable)
+    AgentsScreen(
+        machines = machines,
+        overrides = settings.agentDefaultOverrides,
+        onOverridesChange = { overrides -> graph.settings.change { it.copy(agentDefaultOverrides = overrides) } },
+        // STUB: there is no machine screen yet.
+        onMachine = { alerts.show(Alert(machineUnavailable, null, listOf(AlertButton(ok)))) },
+        onBack = { nav.popBackStack() },
+    )
+    alerts.Host()
+}
+
+/**
+ * The account's computers in Settings › Agents order, re-read whenever the
+ * store changes, with live presence over the stored online state.
+ */
+@Composable
+private fun rememberMachineChoices(graph: AppGraph): State<List<MachineChoice>> {
+    val changes by graph.store.changes.collectAsStateWithLifecycle()
+    val account by graph.account.collectAsStateWithLifecycle()
+    val presenceFlow = remember(account) { account?.presence?.machines ?: MutableStateFlow(emptyMap()) }
+    val presence by presenceFlow.collectAsStateWithLifecycle()
+    return produceState(emptyList(), changes, presence) {
+        val machines = withContext(Dispatchers.IO) { graph.store.machines().map(Machine::from) }
+        value = sortAgentMachines(
+            collectMachineChoices(
+                machines.map { machine -> presence[machine.id]?.let { machine.copy(active = it.active, activeAt = it.activeAt) } ?: machine },
+            ),
+        )
+    }
 }
 
 /** The stored profile, re-read whenever the store changes. */
@@ -133,13 +187,11 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
     val onError = errorAlert(alerts)
 
     val cancel = stringResource(R.string.common_cancel)
-    val ok = stringResource(R.string.common_ok)
     val disconnect = stringResource(R.string.modals_disconnect)
     val disconnectClaudeTitle = stringResource(R.string.modals_disconnect_service, "Claude")
     val disconnectClaudeMessage = stringResource(R.string.modals_disconnect_service_confirm, "Claude")
     val disconnectGitHubTitle = stringResource(R.string.modals_disconnect_github)
     val disconnectGitHubMessage = stringResource(R.string.modals_disconnect_github_confirm)
-    val terminalUnavailable = stringResource(R.string.settings_connect_terminal_unavailable)
 
     val connectGitHub = rememberHappyAction(onError) { uriHandler.openUri(api.gitHubOAuthUrl()) }
     val disconnectGitHub = rememberHappyAction(onError) {
@@ -154,8 +206,6 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
     fun confirm(title: String, message: String, action: HappyAction) = alerts.show(
         Alert(title, message, listOf(AlertButton(cancel), AlertButton(disconnect, destructive = true, onClick = action::run))),
     )
-    // STUB: the screens these rows open are not built yet.
-    val terminalStub = { alerts.show(Alert(terminalUnavailable, null, listOf(AlertButton(ok)))) }
     val connect = rememberTerminalConnect(graph)
     var enteringUrl by remember { mutableStateOf(false) }
 
@@ -174,15 +224,15 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
             gitHubBusy = connectGitHub.loading || disconnectGitHub.loading,
         ),
         onClaude = {
-            if ("anthropic" in profile.connectedServices) confirm(disconnectClaudeTitle, disconnectClaudeMessage, disconnectClaude) else terminalStub()
+            if ("anthropic" in profile.connectedServices) confirm(disconnectClaudeTitle, disconnectClaudeMessage, disconnectClaude) else nav.navigate(ConnectClaudeRoute)
         },
         onGitHub = {
             if (profile.github != null) confirm(disconnectGitHubTitle, disconnectGitHubMessage, disconnectGitHub) else connectGitHub.run()
         },
         onAccount = { nav.navigate(AccountRoute) },
         onAppearance = { nav.navigate(AppearanceRoute) },
-        onAgents = terminalStub,
-        onWhatsNew = terminalStub,
+        onAgents = { nav.navigate(AgentsRoute) },
+        onWhatsNew = { nav.navigate(ChangelogRoute) },
         onOpenUrl = uriHandler::openUri,
     )
     if (enteringUrl) EnterTerminalUrlPrompt(connect, onDismiss = { enteringUrl = false })
@@ -197,7 +247,7 @@ private fun Account(graph: AppGraph, nav: NavHostController) {
     val profile by rememberProfile(graph)
     val api = rememberConnectApi(graph)
     val tokensApi = remember(graph) { PushTokensApi(graph.http) { (graph.auth.state.value as? AuthState.SignedIn)?.credentials?.token } }
-    val pushRegistration = remember(tokensApi) { UnavailablePushRegistration(tokensApi) }
+    val pushRegistration = rememberPushRegistration(graph)
     val scope = rememberCoroutineScope()
     val alerts = remember { Alerts() }
     val onError = errorAlert(alerts)

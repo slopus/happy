@@ -1,6 +1,8 @@
 package com.slopus.happy.ui.connect
 
 import android.content.Intent
+import com.slopus.happy.push.ACTION_OPEN_PUSH
+import com.slopus.happy.push.EXTRA_PUSH_SESSION_ID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -70,7 +72,8 @@ const val APP_LINK_HOST = "app.happy.engineering"
 
 /**
  * Links handed to the app from outside, waiting for the UI to take them.
- * MainActivity offers every launching and new intent; HappyApp consumes
+ * MainActivity offers every launching and new intent (links, and taps on
+ * push notifications, see [com.slopus.happy.push.pushTapIntent]); HappyApp consumes
  * them through [DeepLinkEffect] once the signed-in screens are up.
  */
 object DeepLinks {
@@ -78,8 +81,13 @@ object DeepLinks {
 
     val pending: StateFlow<DeepLink?> = inbox.asStateFlow()
 
-    /** Takes a VIEW intent's link. True if it was one the app handles. */
+    /** Takes a VIEW intent's link or a notification tap's session. True if it was one the app handles. */
     fun offer(intent: Intent?): Boolean {
+        if (intent?.action == ACTION_OPEN_PUSH) {
+            val sessionId = intent.getStringExtra(EXTRA_PUSH_SESSION_ID) ?: return false
+            offer(DeepLink.Session(sessionId))
+            return true
+        }
         if (intent?.action != Intent.ACTION_VIEW) return false
         val link = intent.dataString?.let(::parseDeepLink) ?: return false
         offer(link)
