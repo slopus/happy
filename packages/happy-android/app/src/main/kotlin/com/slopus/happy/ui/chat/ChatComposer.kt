@@ -40,6 +40,8 @@ import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.components.StatusDot
+import com.slopus.happy.ui.layout.LocalWindowLayout
+import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
@@ -146,11 +148,14 @@ fun ChatComposer(
     val colors = HappyTheme.colors
     val hairline = with(LocalDensity.current) { 1f.toDp() }
     val shell = RoundedCornerShape(ComposerSpec.shellRadius)
+    val layout = LocalWindowLayout.current
     Column(
         modifier = modifier
             .testTag(ComposerTags.COMPOSER)
             .fillMaxWidth()
-            .padding(horizontal = ComposerSpec.containerPaddingHorizontal, vertical = ComposerSpec.containerPaddingVertical),
+            .padding(horizontal = ComposerSpec.containerPaddingHorizontal, vertical = ComposerSpec.containerPaddingVertical)
+            // `innerContainer`: held to layout.maxWidth, centred.
+            .contentMaxWidth(layout),
     ) {
         if (status != null) {
             Row(

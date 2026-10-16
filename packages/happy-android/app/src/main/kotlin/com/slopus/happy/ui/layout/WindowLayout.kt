@@ -1,11 +1,17 @@
 package com.slopus.happy.ui.layout
 
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -129,3 +135,22 @@ fun ProvideWindowLayout(modifier: Modifier = Modifier, content: @Composable () -
  * persistent header carries back, so screen headers drop their own.
  */
 val LocalTabletShell = staticCompositionLocalOf { false }
+
+/**
+ * Holds a column to the content max width, centred (layout.ts `maxWidth`
+ * under `alignItems: 'center'`): a no-op on a phone, 800 on a tablet.
+ */
+fun Modifier.contentMaxWidth(layout: WindowLayout): Modifier =
+    fillMaxWidth().wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = layout.contentMaxWidth).fillMaxWidth()
+
+/**
+ * SessionView.tsx `CenteredInputWidth`: [horizontalPadding] on each side,
+ * then the content held to the content max width, centred.
+ */
+@Composable
+fun CenteredInputWidth(horizontalPadding: Dp, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
+    val layout = LocalWindowLayout.current
+    Box(modifier.fillMaxWidth().padding(horizontal = horizontalPadding)) {
+        Box(Modifier.contentMaxWidth(layout)) { content() }
+    }
+}

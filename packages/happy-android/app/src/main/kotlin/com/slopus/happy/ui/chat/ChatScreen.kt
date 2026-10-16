@@ -56,6 +56,8 @@ import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonDisplay
 import com.slopus.happy.ui.components.RoundButtonSize
+import com.slopus.happy.ui.layout.CenteredInputWidth
+import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.launch
@@ -81,6 +83,9 @@ object ChatScreenTags {
 /** SessionView.tsx, ChatHeaderView.tsx and EmptyMessages.tsx on an Android phone. */
 object ChatScreenSpec {
     val avatar = 28.dp
+    /** SessionView.tsx `sessionInputHorizontalPadding`: around the bars over the composer. */
+    val inputPaddingHorizontal = 8.dp
+    val tabletInputPaddingHorizontal = 12.dp
     val gitText = happyTextStyle(fontSize = 11, weight = FontWeight.SemiBold)
     val gitGap = 4.dp
     val deletedIcon = 48.dp
@@ -173,6 +178,9 @@ fun ChatScreen(
         else -> session.title ?: stringResource(R.string.session_new_chat)
     }
 
+    // SessionView.tsx: a tablet reaches session info through the title, so the avatar goes;
+    // the bars over the composer sit 12 in rather than 8 (`sessionInputHorizontalPadding`).
+    val tablet = LocalWindowLayout.current.isTablet
     Column(
         modifier = modifier
             .testTag(ChatScreenTags.SCREEN)
@@ -183,7 +191,7 @@ fun ChatScreen(
             scrolled = session != null && listState.canScrollForward,
             left = { HeaderBackButton(actions.onBack) },
             titleContent = { ChatHeaderTitle(title, session, onClick = if (session != null) actions.onInfo else null) },
-            right = if (session != null) {
+            right = if (session != null && !tablet) {
                 { HeaderAvatar(session, state.online, actions.onInfo) }
             } else {
                 null
@@ -216,7 +224,9 @@ fun ChatScreen(
             }
         }
         if (session != null) {
-            AgentQuestionBanner(state.pendingCommunications, actions.onAnswerQuestion, actions.onCancelQuestion)
+            CenteredInputWidth(horizontalPadding = if (tablet) ChatScreenSpec.tabletInputPaddingHorizontal else ChatScreenSpec.inputPaddingHorizontal) {
+                AgentQuestionBanner(state.pendingCommunications, actions.onAnswerQuestion, actions.onCancelQuestion)
+            }
             ChatComposerFor(state, session, draft, actions, aborting, now)
         }
     }

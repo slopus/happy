@@ -80,7 +80,11 @@ fun Header(
     titleContent: (@Composable () -> Unit)? = null,
 ) {
     val colors = HappyTheme.colors
-    val maxWidth = LocalWindowLayout.current.headerMaxWidth
+    val window = LocalWindowLayout.current
+    val maxWidth = window.headerMaxWidth
+    // `isAndroidHeader` is a phone's: a tablet's controls sit bare, without the 48 slot,
+    // and its bar keeps the header colour when content scrolls under it.
+    val phone = !window.isTablet
     val titleBlock: @Composable () -> Unit = titleContent ?: {
         // The bar stays 64 at any font scale, as in RN; large text overflows it, centred, rather than clipping.
         Column(
@@ -114,13 +118,13 @@ fun Header(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .background(if (scrolled) colors.surfaceHigh else colors.header.background)
+            .background(if (scrolled && phone) colors.surfaceHigh else colors.header.background)
             .windowInsetsPadding(WindowInsets.statusBars),
     ) {
         // navigation/Header.tsx `content`: held to layout.headerMaxWidth and centred.
         Layout(
             contents = listOf(
-                { if (left != null) ControlSlot(Modifier.testTag(HeaderTags.LEFT), left) },
+                { if (left != null) ControlSlot(Modifier.testTag(HeaderTags.LEFT), phone, left) },
                 {
                     Box(
                         modifier = Modifier.then(if (alignment == TitleAlignment.Start) Modifier.testTag(HeaderTags.TITLE_BOX) else Modifier),
@@ -129,7 +133,7 @@ fun Header(
                         if (alignment == TitleAlignment.Start) titleBlock()
                     }
                 },
-                { if (right != null) ControlSlot(Modifier.testTag(HeaderTags.RIGHT), right) },
+                { if (right != null) ControlSlot(Modifier.testTag(HeaderTags.RIGHT), phone, right) },
             ),
             modifier = Modifier
                 .align(Alignment.TopCenter)
@@ -170,15 +174,19 @@ fun Header(
     }
 }
 
-/** A 48x48 slot (wider if the control is), centring its control; nothing at all when the control renders nothing. */
+/**
+ * A 48x48 slot (wider if the control is) centring its control; on a tablet
+ * just the control. Nothing at all when the control renders nothing.
+ */
 @Composable
-private fun ControlSlot(modifier: Modifier, content: @Composable () -> Unit) {
+private fun ControlSlot(modifier: Modifier, slotted: Boolean, content: @Composable () -> Unit) {
     Layout(content, modifier) { measurables, constraints ->
         if (measurables.isEmpty()) return@Layout layout(0, 0) {}
         val slot = HeaderSpec.controlSlot.roundToPx()
-        val controls = measurables.map { it.measure(Constraints(maxWidth = constraints.maxWidth, maxHeight = slot)) }
-        val width = maxOf(slot, controls.maxOf { it.width }).coerceAtMost(constraints.maxWidth)
-        layout(width, slot) { controls.forEach { it.place((width - it.width) / 2, (slot - it.height) / 2) } }
+        val controls = measurables.map { it.measure(Constraints(maxWidth = constraints.maxWidth, maxHeight = if (slotted) slot else constraints.maxHeight)) }
+        val width = (if (slotted) maxOf(slot, controls.maxOf { it.width }) else controls.maxOf { it.width }).coerceAtMost(constraints.maxWidth)
+        val height = if (slotted) slot else controls.maxOf { it.height }
+        layout(width, height) { controls.forEach { it.place((width - it.width) / 2, (height - it.height) / 2) } }
     }
 }
 
