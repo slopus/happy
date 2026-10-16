@@ -306,7 +306,7 @@ private fun CheckoutSection(
             horizontalArrangement = Arrangement.spacedBy(TabletGroupedSpec.headingGap),
         ) {
             if (first != null) {
-                Avatar(id = first.avatarId, size = TabletGroupedSpec.headingAvatar, imageUri = first.projectAvatarUri)
+                Avatar(id = first.avatarId, size = TabletGroupedSpec.headingAvatar, imageUri = first.projectAvatarUri, thumbhash = first.projectAvatarThumbhash)
             }
             Column(Modifier.weight(1f)) {
                 Text(
@@ -528,6 +528,7 @@ private fun ArchivedSessionCard(
                 clientId = session.clientId,
                 badgeLocation = AvatarBadgeLocation.SessionList,
                 imageUri = session.avatarUri,
+                thumbhash = session.avatarThumbhash,
             )
             if (session.hasDraft) {
                 Box(

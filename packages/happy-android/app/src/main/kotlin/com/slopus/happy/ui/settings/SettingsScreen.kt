@@ -92,7 +92,7 @@ fun ItemIcon(icon: Ionicon, color: Color) {
 /** The profile avatar: the uploaded or GitHub picture when there is one, else generated from the account id. */
 @Composable
 fun ProfileAvatar(profile: Profile, size: Dp) {
-    Avatar(id = profile.id, size = size, imageUri = profile.avatarUrl)
+    Avatar(id = profile.id, size = size, imageUri = profile.avatarUrl, thumbhash = profile.avatar?.thumbhash)
 }
 
 /**

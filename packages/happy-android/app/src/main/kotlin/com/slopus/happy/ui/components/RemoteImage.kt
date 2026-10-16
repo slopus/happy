@@ -1,9 +1,13 @@
 package com.slopus.happy.ui.components
 
 import android.content.Context
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -12,12 +16,15 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import coil3.ImageLoader
 import coil3.compose.AsyncImage
 import coil3.compose.AsyncImagePainter
+import coil3.decode.DataSource
 import coil3.disk.DiskCache
 import coil3.disk.directory
 import coil3.memory.MemoryCache
@@ -87,6 +94,7 @@ enum class RemoteImageState { Loading, Success, Error }
 
 object RemoteImageTags {
     const val IMAGE = "remote-image"
+    const val PLACEHOLDER = "remote-image.placeholder"
 }
 
 /** http(s) URLs load through [RemoteImage]; `data:` URIs and files have their own paths. */
@@ -96,6 +104,10 @@ fun isRemoteImageUrl(url: String?): Boolean = url != null && (url.startsWith("ht
  * A picture loaded by the shared loader: [model] is a URL, or decrypted
  * bytes with a [cacheKey] (an attachment ref) so they are decoded once.
  * [background] shows until the picture lands and stays if it never does.
+ * [placeholder] (a thumbhash) is drawn over it the same way, at
+ * [contentScale] as expo-image draws a thumbhash, and fades out with the
+ * picture's 150 ms fade in; a picture from the memory cache replaces it at
+ * once, as Coil skips the fade then.
  */
 @Composable
 fun RemoteImage(
@@ -106,6 +118,7 @@ fun RemoteImage(
     alignment: Alignment = Alignment.Center,
     background: Color = Color.Transparent,
     cacheKey: String? = null,
+    placeholder: ImageBitmap? = null,
     onState: (RemoteImageState) -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -117,7 +130,21 @@ fun RemoteImage(
             .build()
     }
     var state by remember(request) { mutableStateOf(RemoteImageState.Loading) }
+    val placeholderAlpha = remember(request) { Animatable(1f) }
+    var fromMemory by remember(request) { mutableStateOf(false) }
     Box(modifier.background(if (state == RemoteImageState.Success) Color.Transparent else background)) {
+        if (placeholder != null && placeholderAlpha.value > 0f) {
+            Image(
+                bitmap = placeholder,
+                contentDescription = null,
+                contentScale = contentScale,
+                alignment = alignment,
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer { alpha = placeholderAlpha.value }
+                    .testTag(RemoteImageTags.PLACEHOLDER),
+            )
+        }
         AsyncImage(
             model = request,
             contentDescription = contentDescription,
@@ -135,7 +162,17 @@ fun RemoteImage(
                     state = next
                     onState(next)
                 }
+                if (painterState is AsyncImagePainter.State.Success) {
+                    fromMemory = painterState.result.dataSource == DataSource.MEMORY_CACHE
+                }
             },
         )
+    }
+    LaunchedEffect(state) {
+        if (state == RemoteImageState.Success) {
+            if (fromMemory) placeholderAlpha.snapTo(0f) else placeholderAlpha.animateTo(0f, tween(HappyImageLoader.FADE_MS))
+        } else {
+            placeholderAlpha.snapTo(1f)
+        }
     }
 }

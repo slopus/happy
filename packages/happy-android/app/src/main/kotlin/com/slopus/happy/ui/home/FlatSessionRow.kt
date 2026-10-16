@@ -224,6 +224,7 @@ fun FlatSessionRow(
                     clientId = session.clientId,
                     badgeLocation = AvatarBadgeLocation.SessionList,
                     imageUri = session.avatarUri,
+                    thumbhash = session.avatarThumbhash,
                 )
             }
             Column(
