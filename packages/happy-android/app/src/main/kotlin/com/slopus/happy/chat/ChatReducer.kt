@@ -120,7 +120,14 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
     internal val permissions = HashMap<String, StoredPermission>()
     internal val localIds = HashMap<String, String>()
     internal val messageIds = HashMap<String, String>()
-    internal val messages = LinkedHashMap<String, ReducerMessage>()
+    /** Internal ids by [ReducerMessage.realID], so a sidechain finds its owner without a scan. */
+    private val byRealId = HashMap<String, MutableSet<String>>()
+    internal val messages = object : LinkedHashMap<String, ReducerMessage>() {
+        override fun put(key: String, value: ReducerMessage): ReducerMessage? {
+            value.realID?.let { indexRealId(it, key) }
+            return super.put(key, value)
+        }
+    }
     /** Receipts whose message has not arrived under its server id yet. */
     private val pendingReceipts = HashMap<String, Receipt>()
     /** Send acks (local id to server id) that beat their optimistic row. */
@@ -447,6 +454,7 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
                     val message = messages[existingId] ?: continue
                     var tool = message.tool ?: continue
                     message.realID = msg.id
+                    indexRealId(msg.id, existingId)
                     // A permission placeholder has no turn; the call has one.
                     if (msg.turn != null) message.turn = msg.turn
                     tool = tool.copy(
@@ -599,8 +607,8 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
             }
 
             // The Task message that owns this sidechain re-renders with it.
-            messages.entries.firstOrNull { it.value.realID == sidechainId && it.value.tool != null }
-                ?.let { changed.add(it.key) }
+            // By id first: a scan of every message per sidechain is quadratic over a long session.
+            sidechainOwner(sidechainId)?.let { changed.add(it.id) }
         }
 
         //
@@ -664,7 +672,14 @@ class ReducerState(private val now: () -> Long = System::currentTimeMillis) {
 
     private fun sidechainOwner(sidechainId: String): ReducerMessage? {
         messageIds[sidechainId]?.let(messages::get)?.takeIf { it.tool != null }?.let { return it }
-        return messages.values.firstOrNull { it.realID == sidechainId && it.tool != null }
+        // The first such message, in insertion order (ids are allocated in order).
+        return byRealId[sidechainId].orEmpty().mapNotNull(messages::get)
+            .filter { it.realID == sidechainId && it.tool != null }
+            .minByOrNull { it.id.removePrefix("m").toLongOrNull() ?: Long.MAX_VALUE }
+    }
+
+    private fun indexRealId(realId: String, internalId: String) {
+        byRealId.getOrPut(realId) { HashSet(2) }.add(internalId)
     }
 
     private fun updateLatestTodos(value: JsonElement?, timestamp: Long) {
