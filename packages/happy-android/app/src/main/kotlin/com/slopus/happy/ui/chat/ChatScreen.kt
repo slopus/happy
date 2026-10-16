@@ -51,6 +51,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -570,7 +573,7 @@ private fun ChatHeaderTitle(
             .fillMaxHeight()
             .then(
                 if (onClick != null) {
-                    Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick)
+                    Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button, onClick = onClick)
                 } else {
                     Modifier
                 },
@@ -615,10 +618,13 @@ private fun ChatHeaderTitle(
 @Composable
 private fun HeaderAvatar(session: ChatSessionInfo, online: Boolean, onClick: () -> Unit) {
     val metadata = session.metadata
+    // Unnamed in happy-app; it opens what the home menu calls Details.
+    val details = stringResource(R.string.profile_details)
     Box(
         modifier = Modifier
             .testTag(ChatScreenTags.AVATAR)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onClick),
+            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = details },
     ) {
         Avatar(
             id = session.session.avatarId(),

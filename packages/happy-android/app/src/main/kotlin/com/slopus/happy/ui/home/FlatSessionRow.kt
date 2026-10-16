@@ -42,6 +42,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -334,6 +335,8 @@ private fun TopRight(timestamp: String, topRight: FlatRowTopRight, state: Sessio
             modifier = Modifier
                 .wrapContentHeight(unbounded = true)
                 .alpha(if (dot != null) 0f else 1f)
+                // Under a dot the stamp only holds the width: TalkBack reads the dot's label instead.
+                .then(if (dot != null) Modifier.semantics { hideFromAccessibility() } else Modifier)
                 .testTag(FlatRowTags.TIMESTAMP),
         )
         if (dot != null) {

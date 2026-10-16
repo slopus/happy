@@ -1,5 +1,8 @@
 package com.slopus.happy.ui.server
 
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -7,6 +10,8 @@ import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.auth.AuthApi.ServerProbe
 import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.assertActionsLabelled
+import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
@@ -30,6 +35,21 @@ class ServerConfirmTest {
 
     /** Back, as the system sends it to the alert's window. */
     private fun pressBack() = rule.runOnUiThread { ShadowDialog.getLatestDialog().onBackPressed() }
+
+    /** TalkBack: the title is a header, the confirm's answers are named buttons, nothing actionable unnamed. */
+    @Test
+    fun serverScreenAndConfirmReadForTalkBack() {
+        rule.setHappyContent {
+            ServerScreen(customUrl = null, probe = { ServerProbe.HappyServer }, onSave = {}, onReset = {}, onBack = {})
+        }
+        rule.onNode(isHeading(), useUnmergedTree = true).assertExists()
+        rule.assertActionsLabelled()
+        rule.node(ServerTags.INPUT).performTextReplacement("https://happy.example.com")
+        rule.node(ServerTags.SAVE).performClick()
+        rule.onNode(hasText("Continue") and hasRole(Role.Button)).assertExists()
+        rule.onNode(hasText("Cancel") and hasRole(Role.Button)).assertExists()
+        rule.assertActionsLabelled()
+    }
 
     @Test
     fun changeServerOutlastsBack() {

@@ -35,6 +35,10 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -66,6 +70,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -81,6 +86,8 @@ import com.slopus.happy.model.NewSessionPage
 import com.slopus.happy.model.StartButton
 import com.slopus.happy.model.StartPhase
 import com.slopus.happy.model.StartProgress
+import com.slopus.happy.model.isValidBotName
+import com.slopus.happy.model.sanitizeBotName
 import com.slopus.happy.model.resolveStartButton
 import com.slopus.happy.model.resolveStartProgress
 import com.slopus.happy.ui.attachments.AttachmentStrip
@@ -202,7 +209,11 @@ class HomeDockState(
     val images: List<AttachmentPreview> = emptyList(),
     /** False while making a bot: a bot takes no first message, so no images either. */
     val canAttachImages: Boolean = true,
-)
+    /** Session | Bot, while the computer's Happy Agent makes bots; null otherwise. */
+    val bot: HomeDockBot? = null,
+) {
+    val creatingBot: Boolean get() = bot?.creating == true
+}
 
 @Immutable
 class HomeDockActions(
@@ -219,11 +230,19 @@ class HomeDockActions(
     /** The add-image chooser (paste or pick). */
     val onAddImage: () -> Unit = {},
     val onRemoveImage: (id: String) -> Unit = {},
+    /** Session | Bot: true makes a bot. */
+    val onBotKindChange: (Boolean) -> Unit = {},
+    val onBotNameChange: (String) -> Unit = {},
+    val onBotFacePick: (Int) -> Unit = {},
+    val onBotFacesRoll: () -> Unit = {},
+    val onOpenUrl: (String) -> Unit = {},
 )
 
-private val HomeDockState.attachedImages get() = if (canAttachImages) images else emptyList()
+private val HomeDockState.attachedImages get() = if (canAttachImages && !creatingBot) images else emptyList()
 
-private fun HomeDockState.canSubmit() = phase == null && (prompt.isNotBlank() || attachedImages.isNotEmpty())
+/** A bot needs a name the daemon accepts; a session, text or a picture. */
+private fun HomeDockState.canSubmit() = phase == null &&
+    if (creatingBot) isValidBotName(bot!!.name) else prompt.isNotBlank() || attachedImages.isNotEmpty()
 
 private fun sendBackground(colors: HappyColors) = if (colors.dark) Color(0xFFF5F5F5) else colors.button.primaryBackground
 
@@ -409,14 +428,35 @@ fun HomeDockFocus(state: HomeDockState, actions: HomeDockActions, modifier: Modi
                         Modifier.background(if (colors.dark) Color.Black.copy(alpha = 0.88f) else Color.White.copy(alpha = 0.88f))
                     },
                 )
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = backdropPress),
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = backdropPress)
+                // Nothing to read: TalkBack closes focus mode with Back.
+                .semantics { hideFromAccessibility() },
         )
+        // Session | Bot at the top of the screen, revealed first (HomeDock.tsx focusHeader).
+        if (state.bot != null && !standalone) {
+            BotKindHeader(
+                state.creatingBot,
+                onChange = { bot -> if (starting) refuse() else actions.onBotKindChange(bot) },
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .windowInsetsPadding(WindowInsets.statusBars)
+                    .padding(top = 8.dp, start = HomeDockSpec.configPaddingHorizontal, end = HomeDockSpec.configPaddingHorizontal)
+                    .graphicsLayer { alpha = reveal(progress.value, 0.18f, 0.46f) },
+            )
+        }
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.ime.union(WindowInsets.navigationBars)),
         ) {
+            if (state.bot != null && standalone) {
+                BotKindHeader(
+                    state.creatingBot,
+                    onChange = { bot -> if (starting) refuse() else actions.onBotKindChange(bot) },
+                    modifier = Modifier.padding(horizontal = HomeDockSpec.configPaddingHorizontal).padding(bottom = HomeDockSpec.configPaddingBottom),
+                )
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -436,7 +476,20 @@ fun HomeDockFocus(state: HomeDockState, actions: HomeDockActions, modifier: Modi
                     // The sheet is one surface, so its refusal is the whole sheet.
                     if (starting) Box(Modifier.matchParentSize().clickable(interactionSource = null, indication = null, onClick = refuse))
                 } else if (options != null) {
-                    EnvironmentRows(options, progress.value, onOpen = open, onHelp = { if (starting) refuse() else actions.onHarnessHelp() })
+                    Column {
+                        EnvironmentRows(options, progress.value, botOnly = state.creatingBot, onOpen = open, onHelp = { if (starting) refuse() else actions.onHarnessHelp() })
+                        // A bot lives on a computer and nowhere else: the faces take the place of the other rows.
+                        val bot = state.bot
+                        if (bot != null && bot.creating) {
+                            BotFacePicker(
+                                bot,
+                                onPick = { if (starting) refuse() else actions.onBotFacePick(it) },
+                                onRoll = { if (starting) refuse() else actions.onBotFacesRoll() },
+                                onOpenUrl = actions.onOpenUrl,
+                                modifier = Modifier.graphicsLayer { alpha = reveal(progress.value, 0.18f + 0.09f, 0.18f + 0.09f + 0.28f) },
+                            )
+                        }
+                    }
                 }
             }
             Box(
@@ -451,7 +504,7 @@ fun HomeDockFocus(state: HomeDockState, actions: HomeDockActions, modifier: Modi
                     close()
                 })
                 val agentName = options?.agent?.name ?: AgentType.Claude.displayName
-                resolveStartProgress(state.phase, agentName, options?.picksWorkspaces == true)?.let { step ->
+                resolveStartProgress(state.phase, agentName, options?.picksWorkspaces == true, state.creatingBot)?.let { step ->
                     ProgressLine(step, showHint = button == StartButton.Stop, refusal.value, Modifier.offset(y = -HomeDockSpec.progressRowHeight))
                 }
             }
@@ -460,9 +513,10 @@ fun HomeDockFocus(state: HomeDockState, actions: HomeDockActions, modifier: Modi
 }
 
 @Composable
-private fun EnvironmentRows(options: NewSessionOptions, progress: Float, onOpen: (NewSessionPage) -> Unit, onHelp: () -> Unit) {
+private fun EnvironmentRows(options: NewSessionOptions, progress: Float, botOnly: Boolean, onOpen: (NewSessionPage) -> Unit, onHelp: () -> Unit) {
     val rows = buildList {
         add(Triple(NewSessionPage.Machine, Ionicon.DesktopOutline, options.machine?.name ?: stringResource(R.string.home_dock_select_machine)))
+        if (botOnly) return@buildList
         add(Triple(NewSessionPage.Project, Ionicon.FolderOutline, options.project?.name ?: "~"))
         val worktreeFallback = stringResource(if (options.picksWorkspaces) R.string.home_dock_main else R.string.home_dock_no_worktree)
         add(Triple(NewSessionPage.Worktree, Ionicon.GitBranchOutline, options.worktree?.name ?: worktreeFallback))
@@ -625,11 +679,28 @@ private fun FocusedComposer(
                 .padding(horizontal = HomeDockSpec.inputPaddingHorizontal, vertical = HomeDockSpec.inputPaddingVertical),
             contentAlignment = Alignment.CenterStart,
         ) {
-            val placeholder = stringResource(R.string.home_dock_ask, options?.agent?.name ?: AgentType.Claude.displayName)
+            // The one input is the prompt for a session and the name for a bot, so switching keeps the keyboard.
+            val bot = state.bot?.takeIf { it.creating }
+            val text = bot?.name ?: state.prompt
+            val placeholder = if (bot != null) {
+                stringResource(R.string.home_dock_bot_name_placeholder)
+            } else {
+                stringResource(R.string.home_dock_ask, options?.agent?.name ?: AgentType.Claude.displayName)
+            }
             BasicTextField(
-                value = state.prompt,
+                value = text,
                 // Locked while starting without taking the keyboard down: the change is refused.
-                onValueChange = { if (state.phase != null) refuse() else actions.onPromptChange(it) },
+                onValueChange = {
+                    when {
+                        state.phase != null -> refuse()
+                        // A pasted line break becomes a space and the daemon's ceiling is kept.
+                        bot != null -> actions.onBotNameChange(sanitizeBotName(it))
+                        else -> actions.onPromptChange(it)
+                    }
+                },
+                singleLine = bot != null,
+                keyboardOptions = if (bot != null) KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done) else KeyboardOptions.Default,
+                keyboardActions = KeyboardActions(onDone = { if (state.canSubmit()) actions.onSubmit() }),
                 textStyle = HomeDockSpec.input.copy(color = colors.input.text),
                 cursorBrush = SolidColor(colors.text),
                 modifier = Modifier
@@ -639,7 +710,7 @@ private fun FocusedComposer(
                     .focusRequester(focus),
                 decorationBox = { field ->
                     Box {
-                        if (state.prompt.isEmpty()) {
+                        if (text.isEmpty()) {
                             Text(placeholder, style = HomeDockSpec.input, color = colors.textSecondary, maxLines = 1)
                         }
                         field()
@@ -661,7 +732,7 @@ private fun FocusedComposer(
             horizontalArrangement = Arrangement.spacedBy(HomeDockSpec.actionRowGap),
         ) {
             // A bot is made from a name and a face: images belong to a first message.
-            if (state.canAttachImages) {
+            if (state.canAttachImages && !state.creatingBot) {
                 AddImageButton(onClick = { if (state.phase != null) refuse() else actions.onAddImage() })
             }
             // Every chip lives in this one box; send is its sibling, so nothing inside reaches it.
@@ -671,7 +742,8 @@ private fun FocusedComposer(
                 horizontalArrangement = Arrangement.spacedBy(HomeDockSpec.actionRowGap),
             ) {
                 val chip = { page: NewSessionPage -> { if (state.phase != null) refuse() else open(page) } }
-                val permission = options?.permissionLabel
+                // A bot is configured once made: no permission, model or effort here.
+                val permission = options?.permissionLabel?.takeUnless { state.creatingBot }
                 if (permission != null) {
                     Chip(permission, HomeDockTags.PERMISSION, pageTitle(NewSessionPage.Permission, false), chip(NewSessionPage.Permission), start = 4.dp, end = 8.dp)
                 }
@@ -681,7 +753,7 @@ private fun FocusedComposer(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(HomeDockSpec.actionRowGap, Alignment.End),
                 ) {
-                    if (options != null) {
+                    if (options != null && !state.creatingBot) {
                         Chip(
                             options.modelChip,
                             HomeDockTags.MODEL,
@@ -693,7 +765,7 @@ private fun FocusedComposer(
                             alignment = Alignment.CenterEnd,
                         )
                     }
-                    val effort = options?.effort
+                    val effort = options?.effort?.takeUnless { state.creatingBot }
                     if (effort != null) {
                         Text("·", style = HomeDockSpec.chip, color = colors.textSecondary)
                         Chip(
@@ -709,7 +781,7 @@ private fun FocusedComposer(
                     }
                 }
             }
-            PrimaryButton(button, refusal, onClick = if (button == StartButton.Stop) onStop else actions.onSubmit)
+            PrimaryButton(button, refusal, creatingBot = state.creatingBot, onClick = if (button == StartButton.Stop) onStop else actions.onSubmit)
         }
     }
 }
@@ -761,10 +833,16 @@ private fun AddImageButton(onClick: () -> Unit) {
 }
 
 @Composable
-private fun PrimaryButton(button: StartButton, refusal: Float, onClick: () -> Unit) {
+private fun PrimaryButton(button: StartButton, refusal: Float, creatingBot: Boolean, onClick: () -> Unit) {
     val colors = HappyTheme.colors
     val filled = button == StartButton.Send || button == StartButton.Stop
-    val label = stringResource(if (button == StartButton.Stop) R.string.home_dock_stop else R.string.home_dock_send)
+    val label = stringResource(
+        when {
+            button == StartButton.Stop -> R.string.home_dock_stop
+            creatingBot -> R.string.home_dock_create_bot
+            else -> R.string.home_dock_send
+        },
+    )
     Box(
         modifier = Modifier
             .padding(start = HomeDockSpec.primaryMarginStart)
@@ -803,7 +881,9 @@ private fun ProgressLine(step: StartProgress, showHint: Boolean, refusal: Float,
     val text = when (step) {
         is StartProgress.CreatingWorkspace -> stringResource(if (step.workspace) R.string.home_dock_creating_workspace else R.string.home_dock_creating_worktree)
         is StartProgress.Starting -> stringResource(R.string.home_dock_starting, step.agentName)
-        StartProgress.Opening -> stringResource(R.string.home_dock_opening)
+        StartProgress.CreatingBot -> stringResource(R.string.home_dock_creating_bot)
+        StartProgress.Avatar -> stringResource(R.string.home_dock_bot_avatar_progress)
+        is StartProgress.Opening -> stringResource(if (step.bot) R.string.home_dock_opening_bot else R.string.home_dock_opening)
     }
     Row(
         modifier = modifier

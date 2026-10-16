@@ -12,6 +12,7 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -24,6 +25,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
+import com.slopus.happy.model.BotDraft
+import com.slopus.happy.model.BotRequest
+import com.slopus.happy.model.isValidBotName
 import com.slopus.happy.model.CUSTOM_PROJECT_PATH_KEY
 import com.slopus.happy.model.NewSessionLabels
 import com.slopus.happy.model.NewSessionPage
@@ -69,6 +73,9 @@ fun newSessionLabels(resources: Resources, now: () -> Long = System::currentTime
     lastSeen = { resources.getString(R.string.status_last_seen, formatLastSeen(resources, it, now())) },
 )
 
+/** A bot that was made without its face, and how to open it once the person has answered. */
+private data class FaceRetry(val sessionId: String, val bot: BotDraft, val failure: BotFaceFailure, val open: () -> Unit)
+
 /** A composer bound to the draft and the starter, with the dialogs its start may raise. */
 @Immutable
 class NewSessionDock(val state: HomeDockState, val actions: HomeDockActions, val dialogs: @Composable () -> Unit)
@@ -97,6 +104,16 @@ fun rememberNewSessionDock(
     val newSession = remember(services, context) { services.newSession(context.applicationContext) }
     val options by newSession.options.collectAsStateWithLifecycle()
     val phase by newSession.starter.phase.collectAsStateWithLifecycle()
+    val botDraft by newSession.bot.collectAsStateWithLifecycle()
+    val botFaces = remember(services, context) { services.botFaces(context) }
+    // A bot is Happy Agent's to make, and only a daemon new enough to say so offers it.
+    val supportsBots = options?.supportsBots == true
+    val creatingBot = botDraft.creating && supportsBots
+    val facePictures by produceState(List<BotFacePicture?>(botDraft.seeds.size) { null }, botFaces, botDraft.seeds) {
+        value = botDraft.seeds.map { seed -> runCatching { botFaces.picture(seed) }.getOrNull() }
+    }
+    // offerBotFaceRetry: the bot is made, its face is not on yet; the bot opens once this is settled.
+    var faceRetry by remember { mutableStateOf<FaceRetry?>(null) }
     val labels = remember(resources) { newSessionLabels(resources) }
     var prompt by rememberSaveable { mutableStateOf(initialPrompt()) }
     var alert by remember { mutableStateOf<Alert?>(null) }
@@ -122,23 +139,35 @@ fun rememberNewSessionDock(
             onPromptChange = { prompt = it },
             onFocusChange = onFocusChange,
             onSubmit = submit@{
+                if (newSession.starter.phase.value != null) return@submit
+                val bot = newSession.bot.value.takeIf { it.creating && newSession.options.value?.supportsBots == true }
                 val text = prompt.trim()
-                val images = picker.images.toList()
-                if ((text.isEmpty() && images.isEmpty()) || newSession.starter.phase.value != null) return@submit
-                newSession.setInput(text)
+                val images = if (bot != null) emptyList() else picker.images.toList()
+                // A bot is made from its name; the prompt typed for a session is left as it was.
+                if (bot == null && text.isEmpty() && images.isEmpty()) return@submit
+                if (bot != null && !isValidBotName(bot.name)) return@submit
+                if (bot == null) newSession.setInput(text)
                 scope.launch {
-                    val result = newSession.starter.start(attachments = images) { directory ->
+                    val request = bot?.let { BotRequest(it.name.trim(), it.faceSeed) }
+                    val result = newSession.starter.start(attachments = images, bot = request) { directory ->
                         CompletableDeferred<Boolean>().also { confirming = directory to it }.await()
                     }
                     when (result) {
                         is StartResult.Started -> {
-                            prompt = ""
-                            images.forEach { picker.remove(it.id) }
+                            if (bot != null) {
+                                newSession.botCreated(bot)
+                            } else {
+                                prompt = ""
+                                images.forEach { picker.remove(it.id) }
+                            }
                             val open = {
                                 onFocusChange(false)
                                 onStarted(result.sessionId)
                             }
-                            if (result.notices.isEmpty()) {
+                            val failure = result.faceFailure
+                            if (bot != null && failure != null) {
+                                faceRetry = FaceRetry(result.sessionId, bot, failure, open)
+                            } else if (result.notices.isEmpty()) {
                                 open()
                             } else {
                                 notices = result.notices.map { attachmentNoticeAlert(it, resources) }
@@ -170,9 +199,25 @@ fun rememberNewSessionDock(
             onHarnessHelp = { uriHandler.openUri(HARNESS_SETUP_HELP_URL) },
             onAddImage = picker::attach,
             onRemoveImage = picker::remove,
+            onBotKindChange = newSession::setCreatesBot,
+            onBotNameChange = newSession::setBotName,
+            onBotFacePick = newSession::pickBotFace,
+            onBotFacesRoll = newSession::rollBotFaces,
+            onOpenUrl = { runCatching { uriHandler.openUri(it) } },
         )
     }
-    val state = HomeDockState(prompt, options, labels, phase, focused, showScrim, images = picker.images.toList())
+    val style = botFaces.loadedStyle
+    val bot = if (supportsBots) {
+        HomeDockBot(creatingBot, botDraft.name, facePictures, botDraft.slot, style?.artist, style?.artistUrl)
+    } else {
+        null
+    }
+    val state = HomeDockState(
+        prompt, options, labels, phase, focused, showScrim,
+        images = picker.images.toList(),
+        canAttachImages = !creatingBot,
+        bot = bot,
+    )
     return NewSessionDock(state, actions) {
         alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
         notices.firstOrNull()?.let { notice ->
@@ -182,6 +227,28 @@ fun rememberNewSessionDock(
             })
         }
         prompting?.let { PromptModal(it, onDismiss = { prompting = null }) }
+        faceRetry?.let { retry ->
+            HappyAlert(
+                Alert(
+                    stringResource(R.string.home_dock_bot_face_failed_title),
+                    stringResource(
+                        if (retry.failure.leg == BotFaceLeg.Uploading) R.string.home_dock_bot_face_upload_failed else R.string.home_dock_bot_face_failed,
+                        retry.bot.name.trim(),
+                    ),
+                    listOf(
+                        AlertButton(stringResource(R.string.home_dock_bot_not_now)) { retry.open() },
+                        AlertButton(stringResource(R.string.home_dock_bot_try_again)) {
+                            // Only the face, on the bot already made; another failure offers it again.
+                            scope.launch {
+                                val again = services.retryBotFace(context, retry.sessionId, retry.bot.faceSeed)
+                                if (again == null) retry.open() else faceRetry = retry.copy(failure = again)
+                            }
+                        },
+                    ),
+                ),
+                onDismiss = { faceRetry = null },
+            )
+        }
         confirming?.let { (directory, answer) ->
             // A dismissal that pressed no button is a no.
             DisposableEffect(answer) { onDispose { answer.complete(false) } }

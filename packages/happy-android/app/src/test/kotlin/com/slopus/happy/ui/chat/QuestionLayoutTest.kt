@@ -4,8 +4,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -27,9 +33,11 @@ import com.slopus.happy.chat.ToolPermission
 import com.slopus.happy.chat.ToolState
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
+import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import kotlinx.serialization.json.Json
@@ -81,7 +89,12 @@ class QuestionLayoutTest {
         assertTrue(second.bottom - second.top >= 44.dp)
         val content = rule.node(ToolTags.CONTENT).bounds
         assertDp("options 12 in", 12, first.left - content.left)
+        // TalkBack: one answer, so the options are radio buttons; picking one selects it.
+        rule.onNode(hasText("Red") and hasRole(Role.RadioButton)).assertIsNotSelected()
         rule.onNodeWithText("Red").performClick()
+        rule.onNode(hasText("Red") and hasRole(Role.RadioButton)).assertIsSelected()
+        rule.onNode(hasTestTag(QuestionTags.SUBMIT) and hasRole(Role.Button)).assertExists()
+        rule.assertActionsLabelled()
         rule.node(QuestionTags.SUBMIT).performClick()
         rule.waitForIdle()
         val answer = answers.single()
@@ -146,6 +159,9 @@ class QuestionLayoutTest {
         val sent = mutableListOf<Map<String, AgentQuestionAnswer>>()
         var closed = false
         rule.setHappyContent { AgentQuestionForm(textOnly, onSubmit = { sent += it }, onDismiss = {}, onClose = { closed = true }) }
+        rule.onNode(hasText("Send answer") and hasRole(Role.Button)).assertIsNotEnabled()
+        rule.onNode(hasText("Cancel") and hasRole(Role.Button)).assertExists()
+        rule.assertActionsLabelled()
         rule.onNodeWithText("Send answer").performClick()
         rule.waitForIdle()
         assertTrue(sent.isEmpty())

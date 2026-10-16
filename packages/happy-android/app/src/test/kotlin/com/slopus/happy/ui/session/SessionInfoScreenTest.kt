@@ -1,5 +1,7 @@
 package com.slopus.happy.ui.session
 
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
@@ -7,8 +9,10 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
@@ -37,9 +41,11 @@ import com.slopus.happy.sync.RewindPointsResult
 import com.slopus.happy.sync.SpawnSessionResult
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
+import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.components.HeaderTags
+import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.home.ArchiveResult
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
@@ -361,6 +367,21 @@ class SessionInfoScreenTest {
         rule.onNodeWithText("+1.2k", useUnmergedTree = true).assertExists()
         rule.onAllNodesWithText("-0", useUnmergedTree = true).assertCountEquals(0)
         rule.onAllNodesWithText("≈", useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    /**
+     * TalkBack over session info: the session's name is a header, the quick
+     * actions are buttons, and a read-only row is one stop that reads its
+     * title with its value. Nothing actionable goes unnamed.
+     */
+    @Test
+    fun sessionInfoReadsForTalkBack() {
+        show(claudeSession(), live = SessionInfoLive(composer = ComposerMirror(permissionMode = "bypassPermissions")))
+        rule.onNode(isHeading(), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("Changes") and hasRole(Role.Button)).assertExists()
+        rule.onNodeWithTag(SessionInfoTags.SKIP_PERMISSIONS).performScrollTo()
+            .assert(hasText("Dangerously Skip Permissions") and hasText("Enabled"))
+        rule.assertActionsLabelled()
     }
 
     @Test

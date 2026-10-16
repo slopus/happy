@@ -7,9 +7,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
@@ -32,10 +41,12 @@ import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.sync.SessionPresence
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
+import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.components.HeaderTags
+import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -121,8 +132,9 @@ class HomeLayoutTest {
         grouping: SessionListGrouping = SessionListGrouping.Flat,
         hidden: Boolean = true,
         machines: List<com.slopus.happy.model.Machine> = listOf(studio),
+        unread: Set<String> = emptySet(),
     ) = deriveHomeList(
-        HomeListInputs(HomeSnapshot(sessions, machines), grouping, hidden, emptySet(), emptySet(), emptySet()),
+        HomeListInputs(HomeSnapshot(sessions, machines), grouping, hidden, emptySet(), unread, emptySet()),
         ZoneOffset.UTC,
         LocalDate.of(2026, 10, 16),
     )
@@ -281,6 +293,40 @@ class HomeLayoutTest {
         val link = rule.node(HomeTags.LINK).bounds
         assertDp("link page from the top", 0, link.top)
         assertDp("link page full width", PHONE_WIDTH, link.right - link.left)
+    }
+
+    /**
+     * TalkBack over Home, as MainView, FlatSessionRow and SessionsList label
+     * it: "Happy" is a header; Filter and Settings are named buttons; an
+     * unread row's top-right reads "new results" and not the stamp hidden
+     * under the dot; the archive toggle is a button, selected while the
+     * archive shows. Grouped by project, every row is a button.
+     */
+    @Test
+    fun homeReadsForTalkBack() {
+        show(state(listOf(cli("a"), cli("gone", noon, active = false)), hidden = false, unread = setOf("a")))
+        rule.onNode(hasText("Happy") and isHeading(), useUnmergedTree = true).assertExists()
+        rule.onNode(hasContentDescription("Filter") and hasRole(Role.Button)).assertExists()
+        rule.onNode(hasContentDescription("Settings") and hasRole(Role.Button)).assertExists()
+        rule.onAllNodesWithTag(FlatRowTags.TOP_RIGHT, useUnmergedTree = true)[0].assert(hasContentDescription("new results"))
+        rule.onAllNodesWithTag(FlatRowTags.TIMESTAMP, useUnmergedTree = true)[0].assert(SemanticsMatcher.keyIsDefined(SemanticsProperties.HideFromAccessibility))
+        rule.onAllNodesWithTag(FlatRowTags.TIMESTAMP, useUnmergedTree = true)[1].assert(SemanticsMatcher.keyNotDefined(SemanticsProperties.HideFromAccessibility))
+        rule.node(HomeTags.ARCHIVE_TOGGLE).assert(hasRole(Role.Button)).assertIsSelected()
+        rule.assertActionsLabelled()
+    }
+
+    @Test
+    fun projectRowsReadAsButtons() {
+        val rig = machine("machine-1", machineMetadata { put("displayName", "Studio"); put("machineKind", "rig") })
+        val sessions = listOf(
+            session("own", metadata = rigMetadata(projectId = "p1", projectName = "happy"), lastMessageSentAt = noon),
+            session("wt", metadata = rigMetadata(projectId = "p1", projectName = "happy", workspaceId = "w1", workspaceName = "Gdansk"), lastMessageSentAt = noon),
+        )
+        show(state(sessions, grouping = SessionListGrouping.Project, machines = listOf(rig)))
+        rule.node(ProjectListTags.PROJECT).assert(hasRole(Role.Button))
+        rule.onNodeWithTag(ProjectListTags.WORKTREE).assert(hasRole(Role.Button) and hasText("Gdansk"))
+        rule.onNode(hasContentDescription("Create workspace in happy", substring = true) and hasRole(Role.Button)).assertExists()
+        rule.assertActionsLabelled()
     }
 
     @Test

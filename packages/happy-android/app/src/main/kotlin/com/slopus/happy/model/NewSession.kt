@@ -187,19 +187,24 @@ fun resolveHappyAgentSpawnTarget(projectId: String?, workspaceSelection: String,
 }
 
 /** newSessionProgress.ts: no canceling phase; Stop hands the composer back at once. */
-enum class StartPhase { Worktree, Spawning, Opening }
+enum class StartPhase { Worktree, Spawning, Avatar, Opening }
 
 sealed interface StartProgress {
     data class CreatingWorkspace(val workspace: Boolean) : StartProgress
     data class Starting(val agentName: String) : StartProgress
-    data object Opening : StartProgress
+    data object CreatingBot : StartProgress
+    /** "Putting on a face…": the bot's picture is painted, uploaded and worn. */
+    data object Avatar : StartProgress
+    data class Opening(val bot: Boolean = false) : StartProgress
 }
 
-fun resolveStartProgress(phase: StartPhase?, agentName: String, picksWorkspaces: Boolean): StartProgress? = when (phase) {
+/** resolveNewSessionProgressLabel: the step, named for a bot while one is being made. */
+fun resolveStartProgress(phase: StartPhase?, agentName: String, picksWorkspaces: Boolean, createsBot: Boolean = false): StartProgress? = when (phase) {
     null -> null
     StartPhase.Worktree -> StartProgress.CreatingWorkspace(picksWorkspaces)
-    StartPhase.Spawning -> StartProgress.Starting(agentName)
-    StartPhase.Opening -> StartProgress.Opening
+    StartPhase.Spawning -> if (createsBot) StartProgress.CreatingBot else StartProgress.Starting(agentName)
+    StartPhase.Avatar -> StartProgress.Avatar
+    StartPhase.Opening -> StartProgress.Opening(createsBot)
 }
 
 /** newSessionProgress.ts `NewSessionPrimaryAction`: the one button at the end of the composer. */

@@ -10,15 +10,22 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.onNodeWithText
@@ -30,8 +37,10 @@ import com.slopus.happy.config.LocalSettings
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.assertBox
+import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
@@ -240,5 +249,41 @@ class LinkComputerLayoutTest {
         // Logout clears the local settings, and the checklist with them.
         settings.clear()
         assertEquals(emptySet<LinkChecklistStep>(), linkChecklistTicked(LocalSettings(prefs).values.value.linkComputerChecklist))
+    }
+
+    /**
+     * TalkBack over the first-run screens, as happy-app labels them: the
+     * titles are headers (OnboardingContent, LinkComputer), the wordmark an
+     * image named "Happy Engineering", the gear a button named after where it
+     * goes, the checklist rows checkboxes, Get help a named button, and the
+     * error line a polite live region. Nothing actionable goes unnamed.
+     */
+    @Test
+    fun firstRunScreensReadForTalkBack() {
+        var error by mutableStateOf<String?>(null)
+        rule.setHappyContent {
+            Column(Modifier.wrapContentHeight(unbounded = true)) {
+                Box(Modifier.fillMaxWidth().height(PHONE_HEIGHT.dp)) {
+                    WelcomeScreen(customServerLabel = null, creatingAccount = false, onCreateAccount = {}, onRestore = {}, onServer = {})
+                }
+                Box(Modifier.fillMaxWidth().height(PHONE_HEIGHT.dp)) {
+                    OnboardingLinkComputerScreen(
+                        customServerLabel = null, ticked = emptySet(), onToggle = {}, busy = false, error = error,
+                        onScan = {}, onPasteLink = {}, onSettings = {}, onOpenDesktopSite = {},
+                    )
+                }
+            }
+        }
+        rule.onNode(hasContentDescription("Happy Engineering")).assertExists()
+        rule.onNode(hasText("Claude, Codex, Grok\nin your pocket") and isHeading()).assertExists()
+        rule.onNode(hasText("Link Your Computer") and isHeading()).assertExists()
+        rule.onNode(hasContentDescription("Server") and hasRole(Role.Button)).assertExists()
+        rule.onNode(hasContentDescription("Settings") and hasRole(Role.Button)).assertExists()
+        rule.onNode(hasText("Install Happy on your computer") and hasRole(Role.Checkbox)).assertIsOff()
+        rule.onAllNodes(hasContentDescription("Get help") and hasRole(Role.Button)).assertCountEquals(2)
+        error = "Couldn’t link. Scan the code again."
+        rule.onNode(hasText("Couldn’t link. Scan the code again.") and SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite), useUnmergedTree = true)
+            .assertExists()
+        rule.assertActionsLabelled()
     }
 }

@@ -36,6 +36,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -186,7 +187,7 @@ private fun PermissionButton(
                 .clip(shape)
                 .background(if (state == PermissionOptionState.Selected) colors.surfaceHighest else colors.surface)
                 .border(1.dp, colors.divider, shape)
-                .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+                .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
                 .padding(horizontal = PermissionSpec.buttonPaddingHorizontal, vertical = PermissionSpec.buttonPaddingVertical),
             contentAlignment = Alignment.Center,
         ) {

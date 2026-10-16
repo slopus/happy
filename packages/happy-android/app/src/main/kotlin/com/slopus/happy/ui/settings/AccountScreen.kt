@@ -36,6 +36,7 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
@@ -289,7 +290,7 @@ fun AccountScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable {
+                            .clickable(role = Role.Button) {
                                 copy(formattedSecretKey, failed = { alert = Alert(errorTitle, secretCopyFailed, listOf(AlertButton(ok))) }) {
                                     copiedRecently = true
                                     alert = Alert(successTitle, secretCopied, listOf(AlertButton(ok)))
@@ -328,8 +329,9 @@ fun AccountScreen(
                 title = stringResource(R.string.settings_account_privacy),
                 footer = stringResource(R.string.settings_account_privacy_description),
             ) {
+                val analytics = stringResource(R.string.settings_account_analytics)
                 Item(
-                    title = stringResource(R.string.settings_account_analytics),
+                    title = analytics,
                     subtitle = stringResource(
                         if (analyticsOptOut) R.string.settings_account_analytics_disabled else R.string.settings_account_analytics_enabled,
                     ),
@@ -338,6 +340,7 @@ fun AccountScreen(
                             checked = !analyticsOptOut,
                             onCheckedChange = { enabled -> onAnalyticsOptOutChange(!enabled) },
                             modifier = Modifier.testTag(AccountTags.ANALYTICS_SWITCH),
+                            label = analytics,
                         )
                     },
                     showChevron = false,

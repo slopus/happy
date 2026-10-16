@@ -34,6 +34,8 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -134,6 +136,7 @@ data class InactiveHint(val canResume: Boolean, val resuming: Boolean, val resum
 @Composable
 fun InactiveArchivedHint(hint: InactiveHint, onResume: () -> Unit, modifier: Modifier = Modifier) {
     val colors = HappyTheme.colors
+    val resumeLabel = stringResource(R.string.session_info_resume_session)
     val chat = ChatTheme.colors
     val hairline = with(LocalDensity.current) { 1f.toDp() }
     val shape = RoundedCornerShape(SessionNoticeSpec.buttonRadius)
@@ -171,13 +174,15 @@ fun InactiveArchivedHint(hint: InactiveHint, onResume: () -> Unit, modifier: Mod
                     .clip(shape)
                     .background(if (pressed) colors.surfacePressed else colors.surfaceHigh)
                     .border(hairline, colors.divider, shape)
-                    .clickable(interactionSource = interaction, indication = null, enabled = !hint.resuming, role = Role.Button, onClick = onResume),
+                    .clickable(interactionSource = interaction, indication = null, enabled = !hint.resuming, role = Role.Button, onClick = onResume)
+                    // The spinner replaces the label; TalkBack still names the button.
+                    .then(if (hint.resuming) Modifier.semantics { contentDescription = resumeLabel } else Modifier),
                 contentAlignment = Alignment.Center,
             ) {
                 if (hint.resuming) {
                     CircularProgressIndicator(Modifier.size(20.dp), color = colors.text, strokeWidth = 2.dp)
                 } else {
-                    Text(stringResource(R.string.session_info_resume_session), style = SessionNoticeSpec.buttonLabel, color = colors.text)
+                    Text(resumeLabel, style = SessionNoticeSpec.buttonLabel, color = colors.text)
                 }
             }
         } else if (hint.resumeCommand != null) {

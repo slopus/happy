@@ -10,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.semantics.clearAndSetSemantics
 
 /** AnimatedOverlay.tsx `AnimatedFade`: 180 ms in (out-cubic), 140 ms out (in-cubic). */
 object FadeSpec {
@@ -23,7 +24,9 @@ object FadeSpec {
  * AnimatedOverlay.tsx `AnimatedFade`: opacity only, keeping its room so
  * nothing around it moves. Once faded out it takes no touches, which then
  * reach whatever is under it (`pointerEvents="none"`): it is placed out of
- * reach until it shows again.
+ * reach until it shows again. From the moment it starts to fade out it is
+ * also out of the accessibility tree, so TalkBack can't land on a row
+ * nobody can see (RN leaves an opacity-0 view readable; that isn't kept).
  */
 @Composable
 fun AnimatedFade(visible: Boolean, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
@@ -43,7 +46,8 @@ fun AnimatedFade(visible: Boolean, modifier: Modifier = Modifier, content: @Comp
                     if (alpha.value > 0f || visible) placeable.place(0, 0) else placeable.place(OUT_OF_REACH, 0)
                 }
             }
-            .graphicsLayer { this.alpha = alpha.value },
+            .graphicsLayer { this.alpha = alpha.value }
+            .then(if (visible) Modifier else Modifier.clearAndSetSemantics {}),
     ) {
         content()
     }
