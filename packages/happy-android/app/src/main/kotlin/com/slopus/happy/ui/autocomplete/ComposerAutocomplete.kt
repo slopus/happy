@@ -49,6 +49,7 @@ import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isFinite
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.autocomplete.AutocompleteServices
@@ -66,6 +67,7 @@ import com.slopus.happy.ui.chat.ChatTheme
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.files.FileIcon
+import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 
@@ -84,6 +86,10 @@ object AutocompleteSpec {
     val shadow = 14.dp
     val marginBottom = 8.dp
     val paddingHorizontal = 8.dp
+
+    /** AgentInput: no side inset when the screen is wider than 700. */
+    val widePaddingHorizontal = 0.dp
+    val wideScreen = 700.dp
     val rowPaddingHorizontal = 16.dp
     val rowPaddingVertical = 12.dp
     val command = happyTextStyle(fontSize = 14, weight = FontWeight.SemiBold)
@@ -182,7 +188,9 @@ private val exitEasing = CubicBezierEasing(0.32f, 0f, 0.67f, 0f)
 
 /**
  * AgentInputAutocomplete.tsx on Android: over the chat, 8 above the
- * composer and 8 in from its edges, a radius 24 card on
+ * composer and 8 in from its edges (flush on screens wider than 700),
+ * within the composer's width (held to the content max width on
+ * tablets), a radius 24 card on
  * glass.backgroundStrong with a hairline glass border and elevation 14,
  * at most 320 high and scrolling. Rows are 48 high, the selected one on
  * surfaceSelected, a pressed one on surfacePressed. It fades in over 190 ms
@@ -211,9 +219,11 @@ private fun SuggestionCard(suggestions: List<Suggestion>, selected: Int, onSelec
     val colors = HappyTheme.colors
     val shape = RoundedCornerShape(AutocompleteSpec.radius)
     val hairline = with(LocalDensity.current) { 1f.toDp() }
+    val width = LocalWindowLayout.current.width
+    val wide = width.isFinite && width > AutocompleteSpec.wideScreen
     LazyColumn(
         modifier = Modifier
-            .padding(horizontal = AutocompleteSpec.paddingHorizontal)
+            .padding(horizontal = if (wide) AutocompleteSpec.widePaddingHorizontal else AutocompleteSpec.paddingHorizontal)
             .padding(bottom = AutocompleteSpec.marginBottom)
             .testTag(AutocompleteTags.LIST)
             .fillMaxWidth()

@@ -29,6 +29,7 @@ import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.chat.ChatComposer
 import com.slopus.happy.ui.chat.ComposerTags
 import com.slopus.happy.ui.chat.PrimaryAction
+import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
@@ -75,8 +76,10 @@ class AutocompleteLayoutTest {
 
     private fun setComposer(suggestions: SuggestionSource? = source, initial: String = "") {
         rule.setHappyContent {
-            CompositionLocalProvider(LocalSuggestionSource provides suggestions) {
-                Host(initial)
+            ProvideWindowLayout {
+                CompositionLocalProvider(LocalSuggestionSource provides suggestions) {
+                    Host(initial)
+                }
             }
         }
     }
@@ -118,6 +121,20 @@ class AutocompleteLayoutTest {
         rule.onNode(hasText("Compact the conversation history"), useUnmergedTree = true).assertExists()
         // The composer keeps its height; the list takes no room.
         assertDp("composer bottom", rule.node(ComposerTags.COMPOSER).bounds.bottom, composer.bottom)
+    }
+
+    // On a 1280 tablet the composer's inner container is held to 800 and centred; the list is flush with it (wider than 700).
+    @Test
+    @Config(qualifiers = "w1280dp-h800dp-xhdpi")
+    fun onTabletsTheListKeepsToTheComposersWidth() {
+        setComposer()
+        rule.node(ComposerTags.INPUT).performTextInput("/co")
+        rule.waitUntil(5_000) { rows().fetchSemanticsNodes().size == 2 }
+        val panel = rule.node(ComposerTags.PANEL).bounds
+        val list = rule.node(AutocompleteTags.LIST).bounds
+        assertDp("list left", panel.left, list.left)
+        assertDp("list right", panel.right, list.right)
+        assertDp("held to 800", 800.dp, list.right - list.left)
     }
 
     @Test
