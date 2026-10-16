@@ -12,12 +12,14 @@ import com.slopus.happy.config.LocalSettings
 import com.slopus.happy.config.ServerConfig
 import com.slopus.happy.data.HappyDatabase
 import com.slopus.happy.data.HappyStore
+import com.slopus.happy.data.LocalCaches
 import com.slopus.happy.model.settings.LanguageController
 import com.slopus.happy.model.settings.SettingsRepository
 import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
+import com.slopus.happy.ui.home.NewSessionDraftStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -53,6 +55,8 @@ class AppGraph(
     secureStoreKeys: SecureStoreKeys = AndroidKeyStoreKeys(),
     databaseName: String? = HappyDatabase.NAME,
 ) {
+    private val appContext: Context = context.applicationContext ?: context
+
     val serverConfig = ServerConfig(
         context.getSharedPreferences(ServerConfig.PREFS_NAME, Context.MODE_PRIVATE),
         defaultServerUrl,
@@ -140,10 +144,27 @@ class AppGraph(
         accountLock.withLock {
             (auth.state.value as? AuthState.SignedIn)?.let { signedIn -> logoutHooks.forEach { it(signedIn.credentials.token) } }
             stopAccount()
-            withContext(Dispatchers.IO) { store.clearAll() }
-            localSettings.clear()
+            withContext(Dispatchers.IO) {
+                store.clearAll()
+                // persistence.ts clearPersistence: everything in the default MMKV goes, the server choice stays.
+                localSettings.clear()
+                changelog.clear()
+                for (name in WIPED_PREFS) appContext.getSharedPreferences(name, Context.MODE_PRIVATE).edit().clear().commit()
+                LocalCaches.wipe(appContext)
+            }
+            wipeHooks.forEach { it() }
             auth.logout()
         }
+    }
+
+    private val wipeHooks = CopyOnWriteArrayList<() -> Unit>()
+
+    /**
+     * [hook] runs on logout once the stored data is gone, for in-memory
+     * state that mirrors it (the new-session draft). It must not throw.
+     */
+    fun afterLogoutWipe(hook: () -> Unit) {
+        wipeHooks += hook
     }
 
     private suspend fun switchAccount(state: AuthState) {
@@ -170,3 +191,11 @@ class AppGraph(
         account.stop()
     }
 }
+
+/**
+ * Preferences that hold this account's data or choices and go with it on
+ * logout (happy-app keeps them in the default MMKV, which clearPersistence
+ * empties). The server choice, the secure store (cleared by [AuthRepository])
+ * and the push token store (cleared by its own logout hook) are not here.
+ */
+private val WIPED_PREFS = listOf(NewSessionDraftStore.PREFS_NAME)
