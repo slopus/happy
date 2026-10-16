@@ -40,6 +40,18 @@ architectures comparable (local store, delta sync, crypto layer).
    values are whole pixels and comparisons are exact to a third of a dp.
    Put test tags on the outermost modifier of the measured box (before
    padding), and look nodes up with `useUnmergedTree = true` (`rule.node`).
+   **Font scale:** text scales with the system font size, uncapped, as RN's
+   does: sizes and line heights in sp (`happyTextStyle`), never dp. Icons,
+   paddings and avatars stay in dp (`Icon` converts its size with `toSp()`,
+   which undoes the non-linear curve). A box that holds text takes its RN
+   height as `heightIn(min = …)`, so it is exact at 1.0 and grows instead of
+   clipping; where RN keeps a fixed height and lets text overflow visibly
+   (the header bar, Home's timestamp slot), keep the height and give the text
+   `wrapContentHeight(unbounded = true)`. The only cap is the onboarding
+   titles' 1.2. `ui/layout/FontScaleLayoutTest` checks screens at 2.0. Under
+   Android 14's non-linear scaling Compose keeps each line height's ratio to
+   its font, where RN converts the line height separately, so at large
+   scales our lines run a few dp taller.
 4. **The local store is SQLite through the framework API**
    (`SQLiteOpenHelper`, WAL, hand-written SQL in `data/`). Why not a library:
    the schema is a handful of tables whose rows are mostly JSON documents

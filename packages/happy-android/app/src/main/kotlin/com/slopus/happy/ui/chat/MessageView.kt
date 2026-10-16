@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,6 +46,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.chat.AgentEvent
+import com.slopus.happy.chat.AgentQuestionAnswer
 import com.slopus.happy.chat.ChatMessage
 import com.slopus.happy.chat.ChatRow
 import com.slopus.happy.chat.PermissionStatus
@@ -128,6 +130,9 @@ class MessageCallbacks(
     /** A failed send, by its localId. */
     val onRetry: (String) -> Unit = {},
     val onDiscard: (String) -> Unit = {},
+    /** Answers / dismisses an agent communication; throws on failure. */
+    val onAnswerQuestion: suspend (communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) -> Unit = { _, _, _ -> },
+    val onCancelQuestion: suspend (communicationId: String, kind: String) -> Unit = { _, _ -> },
 )
 
 /** One chat row, dispatched by kind (MessageView.tsx `RenderBlock`). */
@@ -292,7 +297,7 @@ private fun StatusLine(text: String, color: Color, modifier: Modifier = Modifier
         modifier = modifier
             .padding(top = MessageSpec.statusMarginTop, bottom = MessageSpec.statusMarginBottom)
             .testTag(MessageTags.USER_STATUS)
-            .height(MessageSpec.statusHeight),
+            .heightIn(min = MessageSpec.statusHeight),
     )
 }
 
@@ -307,7 +312,7 @@ private fun FailedAction(label: String, tag: String, onClick: () -> Unit) {
         modifier = Modifier
             .padding(top = MessageSpec.statusMarginTop, bottom = MessageSpec.statusMarginBottom)
             .testTag(tag)
-            .height(MessageSpec.statusHeight)
+            .heightIn(min = MessageSpec.statusHeight)
             .clickable(onClick = onClick),
     )
 }

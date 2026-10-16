@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
@@ -319,13 +320,17 @@ private fun TopRight(timestamp: String, topRight: FlatRowTopRight, state: Sessio
         contentAlignment = Alignment.CenterEnd,
     ) {
         // The stamp keeps its width under the dot, so clearing unread can't move the title.
+        // Large text overflows the 22 slot, centred, as RN's visible overflow does, rather than clipping.
         Text(
             text = timestamp,
             style = FlatRowSpec.timestamp,
             color = colors.textSecondary,
             textAlign = TextAlign.End,
             maxLines = 1,
-            modifier = Modifier.alpha(if (dot != null) 0f else 1f).testTag(FlatRowTags.TIMESTAMP),
+            modifier = Modifier
+                .wrapContentHeight(unbounded = true)
+                .alpha(if (dot != null) 0f else 1f)
+                .testTag(FlatRowTags.TIMESTAMP),
         )
         if (dot != null) {
             StatusDot(

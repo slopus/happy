@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -239,7 +240,7 @@ fun ChatList(
 @Composable
 private fun OlderEnd(status: OlderStatus, onRetry: () -> Unit, onLoadMore: () -> Unit) {
     Box(
-        modifier = Modifier.testTag(ChatListTags.OLDER_END).fillMaxWidth().height(ChatListSpec.olderStatusHeight),
+        modifier = Modifier.testTag(ChatListTags.OLDER_END).fillMaxWidth().heightIn(min = ChatListSpec.olderStatusHeight),
         contentAlignment = Alignment.Center,
     ) {
         when (status) {
