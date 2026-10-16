@@ -1,8 +1,13 @@
 package com.slopus.happy.ui.settings
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.Clipboard
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.NativeClipboard
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
@@ -14,10 +19,11 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.assertIsDisplayed
 import com.slopus.happy.model.GitHubProfile
+import androidx.compose.ui.unit.dp
+import com.slopus.happy.model.ImageRef
 import com.slopus.happy.model.Profile
 import com.slopus.happy.model.settings.PushPermission
 import com.slopus.happy.model.settings.PushToken
-import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertDp
@@ -158,4 +164,36 @@ class AccountLayoutTest {
         rule.onNodeWithText("Scanning...").performClick()
         assertEquals("a link in progress takes no taps", 1, scans)
     }
+
+    @Test
+    fun aRefusedSecretKeyCopySaysSo() {
+        // account.tsx handleCopySecret: a failed copy alerts instead of crashing.
+        val refusing = object : Clipboard {
+            override val nativeClipboard: NativeClipboard get() = error("unused")
+            override suspend fun getClipEntry(): ClipEntry? = null
+            override suspend fun setClipEntry(clipEntry: ClipEntry?) = throw SecurityException("denied")
+        }
+        rule.setHappyContent {
+            CompositionLocalProvider(LocalClipboard provides refusing) {
+                AccountScreen(anonId = null, publicId = null, formattedSecretKey = "AAAAA", analyticsOptOut = false, onAnalyticsOptOutChange = {}, onLogout = {}, onBack = {})
+            }
+        }
+        rule.onNodeWithText("Secret Key").performClick()
+        rule.node(AccountTags.SECRET_KEY).performClick()
+        rule.waitForIdle()
+        rule.onNodeWithText("Failed to copy secret key").assertIsDisplayed()
+    }
+
+    @Test
+    fun gitHubRowShowsTheUploadedAvatar() {
+        val withAvatar = profile.copy(avatar = ImageRef(64.0, 64.0, "", "a.png", "https://example.com/a.png"))
+        rule.setHappyContent {
+            AccountScreen(anonId = null, publicId = null, formattedSecretKey = "", analyticsOptOut = false, onAnalyticsOptOutChange = {}, onLogout = {}, onBack = {}, profile = withAvatar)
+        }
+        rule.onNodeWithText("@ada").performScrollTo()
+        val avatar = rule.node(AccountTags.GITHUB_AVATAR).bounds
+        assertDp("29 wide", 29, avatar.right - avatar.left)
+        assertDp("29 high", 29, avatar.bottom - avatar.top)
+    }
 }
+
