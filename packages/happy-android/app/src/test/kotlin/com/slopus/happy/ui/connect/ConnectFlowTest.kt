@@ -1,11 +1,17 @@
 package com.slopus.happy.ui.connect
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.components.PromptTags
 import com.slopus.happy.ui.setHappyContent
 import kotlinx.coroutines.CompletableDeferred
 import org.junit.Assert.assertEquals
@@ -173,6 +179,23 @@ class ConnectFlowTest {
         rule.runOnIdle { flow.connectWithUrl(accountUrl) }
         rule.onNodeWithText("Failed to link device").assertExists()
         rule.runOnIdle { assertEquals(1, errors) }
+    }
+
+    @Test
+    fun enterUrlManuallyConnectsWhatWasPasted() {
+        var showing by mutableStateOf(true)
+        rule.setHappyContent {
+            CompositionLocalProvider(LocalQrScanner provides scanner) {
+                flow = rememberTerminalConnect(approve = { url -> approved += url })
+                if (showing) EnterTerminalUrlPrompt(flow, onDismiss = { showing = false })
+            }
+        }
+        rule.onNodeWithText("Paste the authentication URL from your terminal").assertExists()
+        rule.onNodeWithTag(PromptTags.INPUT).performTextInput("  $terminalUrl ")
+        rule.onNodeWithText("Authenticate").performClick()
+        rule.waitUntil { approved.isNotEmpty() }
+        assertEquals(listOf(terminalUrl), approved)
+        assertFalse(showing)
     }
 
     @Test

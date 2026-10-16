@@ -1,12 +1,10 @@
 package com.slopus.happy.ui.connect
 
 import androidx.compose.ui.test.assertIsNotEnabled
-import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.PHONE
@@ -24,7 +22,7 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 
-/** The connect screens against terminal/index.tsx, terminal/connect.tsx and WebPromptModal.tsx. */
+/** The connect screens against terminal/index.tsx and terminal/connect.tsx. */
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -85,35 +83,5 @@ class ConnectLayoutTest {
         val card = rule.node(ItemGroupTags.CARD).bounds
         val icon = rule.node(TerminalScreenTags.HERO_ICON).bounds
         assertBox("laptop icon", icon, ((PHONE_WIDTH - 64) / 2f).dp, card.top + hairline + 32.dp, 64.dp, 64.dp)
-    }
-
-    @Test
-    fun urlPromptSpecAndResult() {
-        val results = mutableListOf<String?>()
-        rule.setHappyContent {
-            UrlPromptDialog(
-                title = "Paste link",
-                message = "On your computer, choose Copy auth link, then paste it here.",
-                placeholder = "happy://terminal?...",
-                confirmText = "Link",
-                onResult = { results += it },
-            )
-        }
-        rule.onNode(isDialog()).assertExists()
-        val card = rule.node(UrlPromptTags.CARD).bounds
-        assertDp("card width", 270, card.right - card.left)
-        val input = rule.node(UrlPromptTags.INPUT).bounds
-        assertBox("input", input, card.left + 16.dp, input.top, (270 - 32).dp, 36.dp)
-        val cancel = rule.node(UrlPromptTags.CANCEL).bounds
-        val confirm = rule.node(UrlPromptTags.CONFIRM).bounds
-        // Content padding 16 under the field, then the 1 divider.
-        assertDp("buttons under the divider", input.bottom + 16.dp + 1.dp, cancel.top)
-        assertDp("cancel and confirm share the width", cancel.right - cancel.left, confirm.right - confirm.left)
-        assertDp("split by a 1 divider", cancel.right + 1.dp, confirm.left)
-
-        rule.node(UrlPromptTags.INPUT).performTextInput("happy://terminal?xyz")
-        rule.onNodeWithText("Link").performClick()
-        rule.onNodeWithText("Cancel").performClick()
-        assertEquals(listOf("happy://terminal?xyz", null), results)
     }
 }

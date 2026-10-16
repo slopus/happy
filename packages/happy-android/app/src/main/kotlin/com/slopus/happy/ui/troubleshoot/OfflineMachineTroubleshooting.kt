@@ -1,8 +1,8 @@
 package com.slopus.happy.ui.troubleshoot
 
 /**
- * One computer as troubleshoot lists it: happy-app's MachineChoice, cut to
- * what the screen reads. [happyHomeDir] is the Happy CLI machine's, else
+ * One computer as troubleshoot lists it: Home's
+ * [com.slopus.happy.model.MachineChoice], cut to what the screen reads. [happyHomeDir] is the Happy CLI machine's, else
  * the Happy Agent machine's (`metadata.happyHomeDir`).
  */
 data class TroubleshootComputer(

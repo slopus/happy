@@ -34,11 +34,12 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.config.LocalSettings
 import com.slopus.happy.net.HappyJson
+import com.slopus.happy.ui.components.Prompt
+import com.slopus.happy.ui.components.PromptModal
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonDisplay
 import com.slopus.happy.ui.components.RoundButtonSize
 import com.slopus.happy.ui.connect.ConnectFlow
-import com.slopus.happy.ui.connect.UrlPromptDialog
 import com.slopus.happy.ui.connect.rememberTerminalConnect
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -196,15 +197,16 @@ fun OnboardingLinkComputer(graph: AppGraph, onSettings: () -> Unit) {
 /** pasteLink: "Paste link", then connect with whatever was pasted. */
 @Composable
 private fun PasteLinkPrompt(connect: ConnectFlow, onDone: () -> Unit) {
-    UrlPromptDialog(
-        title = stringResource(R.string.onboarding_paste_link_title),
-        message = stringResource(R.string.onboarding_paste_link_message),
-        placeholder = "happy://terminal?...",
-        confirmText = stringResource(R.string.onboarding_paste_link_confirm),
-        onResult = { url ->
-            onDone()
-            url?.trim()?.takeIf { it.isNotEmpty() }?.let(connect::connectWithUrl)
-        },
+    PromptModal(
+        prompt = Prompt(
+            title = stringResource(R.string.onboarding_paste_link_title),
+            message = stringResource(R.string.onboarding_paste_link_message),
+            placeholder = "happy://terminal?...",
+            cancelText = stringResource(R.string.common_cancel),
+            confirmText = stringResource(R.string.onboarding_paste_link_confirm),
+            onResult = { url -> url?.trim()?.takeIf { it.isNotEmpty() }?.let(connect::connectWithUrl) },
+        ),
+        onDismiss = onDone,
     )
 }
 

@@ -22,6 +22,8 @@ import com.slopus.happy.crypto.AccountLink
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.components.Prompt
+import com.slopus.happy.ui.components.PromptModal
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -199,3 +201,22 @@ private fun rememberConnectFlow(
     return flow
 }
 
+
+/**
+ * Settings' "Enter URL manually" (SettingsView.tsx): the prompt for a
+ * terminal's auth link, then [flow]'s `connectWithUrl`. Show it while the
+ * row's state says so; [onDismiss] runs when it closes either way.
+ */
+@Composable
+fun EnterTerminalUrlPrompt(flow: ConnectFlow, onDismiss: () -> Unit) {
+    PromptModal(
+        prompt = Prompt(
+            title = stringResource(R.string.modals_authenticate_terminal),
+            message = stringResource(R.string.modals_paste_url_from_terminal),
+            placeholder = "happy://terminal?...",
+            confirmText = stringResource(R.string.common_authenticate),
+            onResult = { url -> url?.trim()?.takeIf { it.isNotEmpty() }?.let(flow::connectWithUrl) },
+        ),
+        onDismiss = onDismiss,
+    )
+}

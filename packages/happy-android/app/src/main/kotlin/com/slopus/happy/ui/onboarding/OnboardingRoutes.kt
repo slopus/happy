@@ -17,7 +17,9 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.auth.AccountLinkRequest
 import com.slopus.happy.data.HappyStore
-import com.slopus.happy.net.HappyJson
+import com.slopus.happy.model.Machine
+import com.slopus.happy.model.Session
+import com.slopus.happy.model.collectMachineChoices
 import com.slopus.happy.ui.RestoreManualRoute
 import com.slopus.happy.ui.RestoreRoute
 import com.slopus.happy.ui.ServerRoute
@@ -32,9 +34,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.jsonObject
 
 /** onboarding/settings.tsx, the gear on Link Your Computer. */
 @Serializable data object OnboardingSettingsRoute
@@ -118,37 +117,25 @@ private fun Restore(graph: AppGraph, nav: NavHostController) {
 
 private data class TroubleshootInput(val computers: List<TroubleshootComputer>, val sessions: List<TroubleshootSession>)
 
-/**
- * Every machine as its own computer, named by `displayName` or `host`.
- * Happy Agent pairing (machineChoices.ts) arrives with Home's machine model,
- * which should feed [TroubleshootScreen] instead.
- */
+/** The computers as Home groups them (machineChoices.ts) and every session, read off the main thread. */
 private fun troubleshootInput(store: HappyStore): TroubleshootInput {
-    fun parse(json: String?): JsonObject? = try {
-        json?.let { HappyJson.parseToJsonElement(it).jsonObject }
-    } catch (_: IllegalArgumentException) {
-        null
-    }
-    fun JsonObject.text(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
-
-    val computers = store.machines().map { machine ->
-        val metadata = parse(machine.metadataJson)
+    val computers = collectMachineChoices(store.machines().map(Machine::from)).map { choice ->
         TroubleshootComputer(
-            id = machine.id,
-            name = metadata?.text("displayName")?.ifEmpty { null } ?: metadata?.text("host") ?: "Unknown machine",
-            online = machine.active,
-            activeAt = machine.activeAt,
-            happyHomeDir = metadata?.text("happyHomeDir"),
+            id = choice.id,
+            name = choice.name,
+            machineIds = choice.machineIds,
+            online = choice.online,
+            activeAt = choice.activeAt,
+            happyHomeDir = choice.happyMachine?.metadata?.happyHomeDir ?: choice.rigMachine?.metadata?.happyHomeDir,
         )
     }
-    val sessions = store.sessions().map { session ->
-        val metadata = parse(session.metadataJson)
+    val sessions = store.sessions().map(Session::from).map { session ->
         TroubleshootSession(
             updatedAt = session.updatedAt,
-            machineId = metadata?.text("machineId"),
-            projectName = (metadata?.get("project") as? JsonObject)?.text("name"),
-            path = metadata?.text("path"),
-            happyHomeDir = metadata?.text("happyHomeDir"),
+            machineId = session.metadata?.machineId,
+            projectName = session.metadata?.project?.name,
+            path = session.metadata?.path,
+            happyHomeDir = session.metadata?.happyHomeDir,
         )
     }
     return TroubleshootInput(computers, sessions)
