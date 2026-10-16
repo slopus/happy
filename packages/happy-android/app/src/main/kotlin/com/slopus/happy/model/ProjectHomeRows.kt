@@ -319,3 +319,13 @@ fun visibleGitChanges(row: SessionRowData): VisibleGitChanges? {
     if (insertions == 0L && deletions == 0L) return null
     return VisibleGitChanges(!row.gitCountsExact, insertions, deletions)
 }
+
+/**
+ * ProjectHomeList useGitChanges: Happy Agent's whole-checkout comparison
+ * when it published one, else the daemon's working-tree count.
+ */
+fun projectGitChanges(row: SessionRowData): VisibleGitChanges? {
+    if (row.gitChangedFiles != null) return visibleGitChanges(row)
+    if (row.gitStatusLinesAdded <= 0 && row.gitStatusLinesRemoved <= 0) return null
+    return VisibleGitChanges(false, row.gitStatusLinesAdded, row.gitStatusLinesRemoved)
+}

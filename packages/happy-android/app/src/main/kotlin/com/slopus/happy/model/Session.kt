@@ -97,6 +97,8 @@ data class Session(
     /** This device's record of when it last sent a message here. */
     val lastMessageSentAt: Long? = null,
     val avatar: ProjectAvatar? = null,
+    /** The session's own avatar as the server describes it; [avatar] once it is downloaded. */
+    val avatarDescriptor: SessionAvatarDescriptor? = null,
 ) {
     /** "online" when active, else the last-seen time (storage.ts resolveSessionOnlineState). */
     val isOnline: Boolean get() = active
@@ -117,6 +119,7 @@ data class Session(
             attention = AgentAttention.parse(record.agentStateJson),
             agentStateVersion = record.agentStateVersion,
             lastMessageSentAt = record.lastMessageSentAt,
+            avatarDescriptor = SessionAvatarDescriptor.parse(record.avatarJson),
         )
     }
 }
