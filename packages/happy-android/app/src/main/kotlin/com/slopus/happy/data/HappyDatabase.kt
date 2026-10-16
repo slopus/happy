@@ -18,6 +18,14 @@ import android.database.sqlite.SQLiteOpenHelper
  * `sync_state` watermarks, `sessions.messages_seq`, and
  * `account.version` for settings, so a write and its cursor commit in one
  * transaction.
+ *
+ * A session's stored messages are always one contiguous run of seqs,
+ * `messages_oldest_seq..messages_seq`: a chat opens on its newest page and
+ * grows backwards on demand, forwards with every new message. A null
+ * `messages_oldest_seq` means no page has been loaded yet.
+ *
+ * The outbox is the only data here the server does not have, so schema
+ * upgrades from version 2 on migrate instead of starting over.
  */
 class HappyDatabase(context: Context, name: String? = NAME) :
     SQLiteOpenHelper(context, name, null, VERSION) {
@@ -35,18 +43,47 @@ class HappyDatabase(context: Context, name: String? = NAME) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        // Everything here can be fetched again. Until there is local-only
-        // data worth migrating, an upgrade starts over and resyncs.
+        if (oldVersion == 1) {
+            // Version 1 synced every message from seq 0, so what it stored is
+            // complete history: the oldest stored seq is the floor.
+            MIGRATE_1_TO_2.forEach(db::execSQL)
+            return
+        }
+        startOver(db)
+    }
+
+    // Nothing newer can be read safely; everything but the outbox can be fetched again.
+    override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = startOver(db)
+
+    private fun startOver(db: SQLiteDatabase) {
         DROP.forEach(db::execSQL)
         onCreate(db)
     }
 
-    override fun onDowngrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) =
-        onUpgrade(db, oldVersion, newVersion)
-
     companion object {
         const val NAME = "happy.db"
-        const val VERSION = 1
+        const val VERSION = 2
+
+        // Messages accepted on this device and not yet echoed back by the
+        // server. `content` is the ciphertext exactly as it is POSTed (so a
+        // retry sends the same bytes), `record` the plaintext for display.
+        private const val OUTBOX = """
+            CREATE TABLE outbox (
+                local_id TEXT PRIMARY KEY NOT NULL,
+                session_id TEXT NOT NULL REFERENCES sessions (id) ON DELETE CASCADE,
+                position INTEGER NOT NULL,
+                kind TEXT NOT NULL,
+                record TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                state TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 0,
+                error TEXT,
+                server_id TEXT,
+                server_seq INTEGER
+            )
+        """
+        private const val OUTBOX_INDEX = "CREATE INDEX outbox_by_session ON outbox (session_id, position)"
 
         private val SCHEMA = listOf(
             // Watermarks: where the next delta sync of each stream starts.
@@ -70,7 +107,10 @@ class HappyDatabase(context: Context, name: String? = NAME) :
                 agent_state_version INTEGER NOT NULL,
                 data_key TEXT NOT NULL,
                 project_id TEXT,
-                messages_seq INTEGER NOT NULL DEFAULT 0
+                messages_seq INTEGER NOT NULL DEFAULT 0,
+                messages_oldest_seq INTEGER,
+                messages_has_older INTEGER NOT NULL DEFAULT 0,
+                last_message_sent_at INTEGER
             )
             """,
             "CREATE INDEX sessions_by_updated ON sessions (updated_at DESC)",
@@ -101,6 +141,8 @@ class HappyDatabase(context: Context, name: String? = NAME) :
                 data_key TEXT NOT NULL
             )
             """,
+            OUTBOX,
+            OUTBOX_INDEX,
             // Account-level JSON documents: settings (with the server version),
             // settings changes not yet accepted by the server, and the profile.
             """
@@ -112,7 +154,19 @@ class HappyDatabase(context: Context, name: String? = NAME) :
             """,
         ).map(String::trimIndent)
 
+        private val MIGRATE_1_TO_2
+            get() = listOf(
+                "ALTER TABLE sessions ADD COLUMN messages_oldest_seq INTEGER",
+                "ALTER TABLE sessions ADD COLUMN messages_has_older INTEGER NOT NULL DEFAULT 0",
+                "ALTER TABLE sessions ADD COLUMN last_message_sent_at INTEGER",
+                "UPDATE sessions SET messages_oldest_seq = (SELECT MIN(seq) FROM messages WHERE session_id = sessions.id) " +
+                    "WHERE messages_seq > 0",
+                OUTBOX,
+                OUTBOX_INDEX,
+            ).map(String::trimIndent)
+
         private val DROP = listOf(
+            "DROP TABLE IF EXISTS outbox",
             "DROP TABLE IF EXISTS messages",
             "DROP TABLE IF EXISTS sessions",
             "DROP TABLE IF EXISTS machines",

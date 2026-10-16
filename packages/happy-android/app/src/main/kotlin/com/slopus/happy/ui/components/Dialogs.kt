@@ -1,7 +1,9 @@
 package com.slopus.happy.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,6 +30,7 @@ data class Alert(
  * happy-app's Modal on Android is the platform alert. This is its Compose
  * equivalent: buttons right-aligned in the given order (Android's neutral,
  * negative, positive), each closing the dialog before running its action.
+ * An alert with more than three buttons stacks them, one per line.
  */
 @Composable
 fun HappyAlert(alert: Alert, onDismiss: () -> Unit) {
@@ -40,7 +43,7 @@ fun HappyAlert(alert: Alert, onDismiss: () -> Unit) {
             { Text(message, style = happyTextStyle(fontSize = 16, lineHeight = 22), color = colors.textSecondary) }
         },
         confirmButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            val buttons: @Composable () -> Unit = {
                 alert.buttons.forEach { button ->
                     TextButton(onClick = {
                         onDismiss()
@@ -53,6 +56,12 @@ fun HappyAlert(alert: Alert, onDismiss: () -> Unit) {
                         )
                     }
                 }
+            }
+            // More than Android's three dialog slots: one action per line, in order.
+            if (alert.buttons.size > 3) {
+                Column(horizontalAlignment = Alignment.End) { buttons() }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) { buttons() }
             }
         },
     )

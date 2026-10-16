@@ -4,6 +4,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.data.HappyDatabase
 import com.slopus.happy.data.HappyStore
+import com.slopus.happy.model.Settings
 import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.testing.FakeHappyServer
 import kotlinx.coroutines.Dispatchers
@@ -138,7 +139,10 @@ class SyncEngineTest {
 
         engine().syncSettings()
 
-        assertEquals(buildJsonObject { put("viewInline", true); put("analyticsOptOut", true) }, server.settingsJson())
+        // Uploaded as happy-app does: every known key, defaults for the unset ones.
+        assertEquals(JsonPrimitive(true), server.settingsJson()!!["viewInline"])
+        assertEquals(JsonPrimitive(true), server.settingsJson()!!["analyticsOptOut"])
+        assertEquals(Settings.Defaults.toJson().keys - "agentDefaultOverrides" + "viewInline", server.settingsJson()!!.keys)
         assertEquals(2L, server.settingsVersion)
         assertEquals(JsonObject(emptyMap()), store.pendingSettings())
         assertEquals(2L, store.settings()!!.version)
@@ -157,9 +161,39 @@ class SyncEngineTest {
 
         val posts = server.requestsTo("/v1/account/settings").filter { it.method == "POST" }
         assertEquals(2, posts.size)
-        assertEquals(buildJsonObject { put("a", 2); put("b", 3); put("analyticsOptOut", true) }, server.settingsJson())
+        val uploaded = server.settingsJson()!!
+        assertEquals(JsonPrimitive(2), uploaded["a"])
+        assertEquals(JsonPrimitive(3), uploaded["b"])
+        assertEquals(JsonPrimitive(true), uploaded["analyticsOptOut"])
         assertEquals(JsonObject(emptyMap()), store.pendingSettings())
         assertEquals(server.settingsJson(), store.effectiveSettings())
+    }
+
+    @Test
+    fun theUploadIsSettingsToSyncPayloadOfTheMergedSettings() = runTest {
+        server.setSettings(buildJsonObject {
+            put("agentDefaultOverrides", buildJsonObject {
+                put("claude", buildJsonObject { put("permissionMode", "plan") })
+                put("codex", buildJsonObject { })
+            })
+        }, version = 1)
+        engine().syncSettings()
+        store.changeSettings(buildJsonObject { put("analyticsOptOut", true) })
+
+        engine().syncSettings()
+
+        val uploaded = server.settingsJson()!!
+        assertEquals(
+            "empty agent overrides are dropped",
+            buildJsonObject { put("claude", buildJsonObject { put("permissionMode", "plan") }) },
+            uploaded["agentDefaultOverrides"],
+        )
+        assertEquals(Settings.syncPayload(Settings.apply(buildJsonObject { }, buildJsonObject { put("analyticsOptOut", true) })).keys, uploaded.keys - "agentDefaultOverrides")
+
+        // With no overrides left at all, the key goes.
+        store.changeSettings(buildJsonObject { put("agentDefaultOverrides", buildJsonObject { put("codex", buildJsonObject { }) }) })
+        engine().syncSettings()
+        assertNull(server.settingsJson()!!["agentDefaultOverrides"])
     }
 
     @Test

@@ -20,24 +20,53 @@ import com.slopus.happy.ui.theme.RnLineHeightStyle
 
 /**
  * The Ionicons glyphs happy-app uses, from the same icon font
- * (@expo/vector-icons 15.0.2, glyphmaps/Ionicons.json). Add entries as screens need them.
+ * (@expo/vector-icons 15.0.x, glyphmaps/Ionicons.json; MIT). Add entries as screens need them.
  */
 enum class Ionicon(val codepoint: Int) {
+    Add(0xf103), // add
     AddOutline(0xf107), // add-outline
+    AnalyticsOutline(0xf11c), // analytics-outline
+    ArchiveOutline(0xf125), // archive-outline
     ArrowBack(0xf127), // arrow-back
+    ArrowUp(0xf145), // arrow-up
     BugOutline(0xf1bb), // bug-outline
+    BulbOutline(0xf1c1), // bulb-outline
+    CalendarOutline(0xf1d6), // calendar-outline
+    ChatbubblesOutline(0xf218), // chatbubbles-outline
+    CheckboxOutline(0xf21b), // checkbox-outline
     Checkmark(0xf21d), // checkmark
     CheckmarkCircle(0xf21e), // checkmark-circle
+    ChevronBack(0xf229), // chevron-back
+    ChevronDown(0xf232), // chevron-down
     ChevronForward(0xf23b), // chevron-forward
+    ChevronUp(0xf241), // chevron-up
+    Close(0xf24a), // close
+    CloudOfflineOutline(0xf25b), // cloud-offline-outline
+    CodeOutline(0xf26c), // code-outline
+    CodeWorkingOutline(0xf272), // code-working-outline
     ColorPaletteOutline(0xf27e), // color-palette-outline
     ContrastOutline(0xf28d), // contrast-outline
     CopyOutline(0xf290), // copy-outline
+    CreateOutline(0xf293), // create-outline
+    CubeOutline(0xf299), // cube-outline
     DesktopOutline(0xf29f), // desktop-outline
+    DiceOutline(0xf2a5), // dice-outline
     DocumentTextOutline(0xf2b4), // document-text-outline
+    DownloadOutline(0xf2ba), // download-outline
     EllipseOutline(0xf2cc), // ellipse-outline
     EyeOffOutline(0xf2e8), // eye-off-outline
     EyeOutline(0xf2ea), // eye-outline
+    Filter(0xf301), // filter
+    FingerPrintOutline(0xf308), // finger-print-outline
+    FlashOutline(0xf31a), // flash-outline
+    FolderOutline(0xf329), // folder-outline
+    GitBranchOutline(0xf33b), // git-branch-outline
+    GitCommitOutline(0xf33e), // git-commit-outline
+    GitNetworkOutline(0xf347), // git-network-outline
+    HardwareChipOutline(0xf365), // hardware-chip-outline
     HelpCircleOutline(0xf37e), // help-circle-outline
+    HomeOutline(0xf383), // home-outline
+    HourglassOutline(0xf386), // hourglass-outline
     InformationCircleOutline(0xf399), // information-circle-outline
     KeyOutline(0xf3a4), // key-outline
     LaptopOutline(0xf3ad), // laptop-outline
@@ -45,13 +74,33 @@ enum class Ionicon(val codepoint: Int) {
     LockClosedOutline(0xf3c8), // lock-closed-outline
     LogOutOutline(0xf3d1), // log-out-outline
     LogoGithub(0xf3f3), // logo-github
+    MicOutline(0xf45e), // mic-outline
     MoonOutline(0xf461), // moon-outline
+    Pencil(0xf49c), // pencil
+    PeopleOutline(0xf4a3), // people-outline
+    PersonAddOutline(0xf4a7), // person-add-outline
     PersonCircleOutline(0xf4aa), // person-circle-outline
+    PersonOutline(0xf4ac), // person-outline
+    PlayCircleOutline(0xf4ce), // play-circle-outline
+    PowerOutline(0xf4e8), // power-outline
+    PulseOutline(0xf4f7), // pulse-outline
     QrCodeOutline(0xf4fd), // qr-code-outline
+    RefreshOutline(0xf518), // refresh-outline
+    ReloadOutline(0xf51e), // reload-outline
+    ReturnUpBackOutline(0xf53f), // return-up-back-outline
+    Search(0xf55f), // search
     ServerOutline(0xf569), // server-outline
     SettingsOutline(0xf56c), // settings-outline
     ShieldCheckmarkOutline(0xf579), // shield-checkmark-outline
+    ShieldOutline(0xf57e), // shield-outline
+    SparklesOutline(0xf58d), // sparkles-outline
+    SpeedometerOutline(0xf590), // speedometer-outline
+    Stop(0xf59e), // stop
+    StopCircle(0xf59f), // stop-circle
     TerminalOutline(0xf5c9), // terminal-outline
+    TimeOutline(0xf5de), // time-outline
+    TimerOutline(0xf5e1), // timer-outline
+    TrashOutline(0xf5f6), // trash-outline
     WarningOutline(0xf629), // warning-outline
 }
 
@@ -69,6 +118,17 @@ fun Icon(
     color: Color,
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
+) = GlyphIcon(icon.codepoint, IoniconsFamily, size, color, modifier, contentDescription)
+
+/** A glyph from an icon font, drawn the way [Icon] draws Ionicons. */
+@Composable
+fun GlyphIcon(
+    codepoint: Int,
+    family: FontFamily,
+    size: Dp,
+    color: Color,
+    modifier: Modifier = Modifier,
+    contentDescription: String? = null,
 ) {
     val fontSize = with(LocalDensity.current) { (size.value / fontScale).sp }
     Box(
@@ -78,9 +138,9 @@ fun Icon(
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = String(Character.toChars(icon.codepoint)),
+            text = String(Character.toChars(codepoint)),
             style = TextStyle(
-                fontFamily = IoniconsFamily,
+                fontFamily = family,
                 fontSize = fontSize,
                 lineHeight = fontSize,
                 lineHeightStyle = RnLineHeightStyle,

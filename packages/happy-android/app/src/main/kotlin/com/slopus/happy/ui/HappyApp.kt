@@ -5,7 +5,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -36,14 +35,8 @@ import com.slopus.happy.ui.settings.AppearanceScreen
 import com.slopus.happy.ui.settings.SettingsScreen
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.jsonPrimitive
 
 @Serializable data object WelcomeRoute
 @Serializable data object ServerRoute
@@ -187,27 +180,14 @@ private fun RestoreManual(graph: AppGraph, nav: NavHostController) {
 
 @Composable
 private fun Account(graph: AppGraph, account: AuthState.SignedIn, nav: NavHostController) {
-    val scope = rememberCoroutineScope()
-    val changes by graph.store.changes.collectAsStateWithLifecycle()
-    val analyticsOptOut by produceState(initialValue = false, changes) {
-        value = withContext(Dispatchers.IO) {
-            graph.store.effectiveSettings()["analyticsOptOut"]?.jsonPrimitive?.booleanOrNull ?: false
-        }
-    }
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
 
     AccountScreen(
         anonId = account.encryption.anonId,
         publicId = account.publicId,
         formattedSecretKey = account.formattedSecretKey,
-        analyticsOptOut = analyticsOptOut,
-        onAnalyticsOptOutChange = { optOut ->
-            scope.launch {
-                withContext(Dispatchers.IO) {
-                    graph.store.changeSettings(JsonObject(mapOf("analyticsOptOut" to JsonPrimitive(optOut))))
-                }
-                graph.requestSync()
-            }
-        },
+        analyticsOptOut = settings.analyticsOptOut,
+        onAnalyticsOptOutChange = { optOut -> graph.settings.change { it.copy(analyticsOptOut = optOut) } },
         onLogout = { graph.logout() },
         onBack = { nav.popBackStack() },
     )
