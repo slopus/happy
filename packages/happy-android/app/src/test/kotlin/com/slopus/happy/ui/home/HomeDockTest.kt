@@ -284,6 +284,8 @@ class HomeDockTest {
         rule.node(HomeDockTags.PRIMARY).assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf("Stop")))
         rule.node(HomeDockTags.PRIMARY).performClick()
         assertEquals(1, cancels)
+        // After closeFocusMode's 180 ms.
+        rule.waitForIdle()
         assertEquals(listOf(false), focusChanges)
     }
 
@@ -291,6 +293,7 @@ class HomeDockTest {
     fun theBackdropClosesTheComposer() {
         show(dock(focused = true))
         rule.node(HomeDockTags.BACKDROP).performClick()
+        rule.waitForIdle()
         assertEquals(listOf(false), focusChanges)
     }
 

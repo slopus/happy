@@ -235,7 +235,7 @@ private fun ProjectCardRow(project: ProjectHomeEntry, callbacks: HomeListCallbac
     ) {
         AvatarLane {
             project.avatarSession?.let {
-                Avatar(id = it.avatarId, size = ProjectListSpec.avatar, imageUri = it.projectAvatarUri)
+                Avatar(id = it.avatarId, size = ProjectListSpec.avatar, imageUri = it.projectAvatarUri, thumbhash = it.projectAvatarThumbhash)
             }
             if (project.worktreeCount > 0) {
                 Box(
@@ -376,7 +376,7 @@ private fun ChatRow(session: SessionRowData, bot: Boolean, archived: Boolean, ca
             .padding(horizontal = ProjectListSpec.rowPaddingX),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AvatarLane { Avatar(id = session.avatarId, size = ProjectListSpec.avatar, bot = bot, imageUri = session.avatarUri) }
+        AvatarLane { Avatar(id = session.avatarId, size = ProjectListSpec.avatar, bot = bot, imageUri = session.avatarUri, thumbhash = session.avatarThumbhash) }
         RowName(session.name ?: stringResource(R.string.session_new_chat), presentation.shimmerTitle, ProjectListSpec.projectName)
         Box(modifier = Modifier.padding(start = ProjectListSpec.trailingGap)) {
             if (dot != null) {

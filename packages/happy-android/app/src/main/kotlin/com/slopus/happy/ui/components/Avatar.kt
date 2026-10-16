@@ -75,6 +75,7 @@ enum class AvatarBadgeLocation { SessionHeader, SessionList, None }
 object AvatarTags {
     const val AVATAR = "avatar"
     const val BADGE = "avatar.badge"
+    const val PLACEHOLDER = "avatar.placeholder"
 }
 
 /** Avatar.tsx `harnessBadgeSizes`: one badge geometry for every place an avatar carries a harness icon. */
@@ -93,8 +94,11 @@ internal fun harnessBadgeSizes(size: Int, harness: AvatarHarness): Pair<Int, Int
  * Avatar.tsx. A bot without a picture is a chip on a surface circle; a
  * picture (a data URI materialized by sync) wins over a generated avatar;
  * otherwise the style setting picks brutalist, pixelated or gradient art,
- * chosen deterministically from [id]. The monochrome setting forces
- * black-and-white; a caller's [monochrome] (offline rows) also does.
+ * chosen deterministically from [id]. While a picture loads (a URL
+ * downloading, a data URI decoding) its [thumbhash] stands in for it,
+ * cover-fit as expo-image draws one (Avatar.tsx `placeholder`). The
+ * monochrome setting forces black-and-white; a caller's [monochrome]
+ * (offline rows) also does.
  *
  * With [badgeLocation] opted in by the matching setting, a harness badge
  * sits bottom-right, 2 outside the avatar: a surface circle of
@@ -113,6 +117,7 @@ fun Avatar(
     clientId: String? = null,
     badgeLocation: AvatarBadgeLocation = AvatarBadgeLocation.None,
     imageUri: String? = null,
+    thumbhash: String? = null,
 ) {
     val settings = LocalAvatarSettings.current
     val colors = HappyTheme.colors
@@ -127,8 +132,9 @@ fun Avatar(
 
     Box(modifier = modifier.size(size).testTag(AvatarTags.AVATAR)) {
         val image = imageUri?.takeUnless(::isRemoteImageUrl)?.let { rememberDataUriImage(it) }
+        val placeholder = if (imageUri != null && image == null) rememberThumbHash(thumbhash) else null
         when {
-            isRemoteImageUrl(imageUri) -> RemoteImage(imageUri, null, Modifier.size(size).clip(shape), background = colors.surfaceHigh)
+            isRemoteImageUrl(imageUri) -> RemoteImage(imageUri, null, Modifier.size(size).clip(shape), background = colors.surfaceHigh, placeholder = placeholder)
             imageUri != null && image != null -> Image(
                 bitmap = image,
                 contentDescription = null,
@@ -141,6 +147,12 @@ fun Avatar(
             ) {
                 Icon(Ionicon.HardwareChipOutline, (size.value * 0.55f).roundToInt().dp, if (mono) colors.textSecondary else colors.text)
             }
+            imageUri != null && placeholder != null -> Image(
+                bitmap = placeholder,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(size).clip(shape).testTag(AvatarTags.PLACEHOLDER),
+            )
             imageUri != null -> Box(Modifier.size(size).clip(shape).background(colors.surfaceHigh))
             settings.style == AvatarStyle.Pixelated -> AvatarPixelated(id, size, square, mono)
             settings.style == AvatarStyle.Gradient -> AvatarGradient(id, size, square, mono)
