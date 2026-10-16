@@ -132,7 +132,7 @@ final class DiffTextSizeTests: XCTestCase {
             let rows = canvas.subviews.filter { Self.named($0, "DiffCodeRowView") }.sorted { $0.frame.minY < $1.frame.minY }
             XCTAssertFalse(rows.isEmpty, category.rawValue)
             for (index, row) in rows.enumerated() {
-                XCTAssertEqual(row.frame, file.layout.row(index), "row \(index), \(category.rawValue)")
+                assertSameFrame(row.frame, file.layout.row(index), "row \(index), \(category.rawValue)")
             }
             XCTAssertEqual(fileView.frame.height, file.height, accuracy: 0.001, category.rawValue)
             let bar = try XCTUnwrap(fileView.subviews.compactMap { $0 as? DiffShowMoreBar }.first)
@@ -336,7 +336,7 @@ final class DiffTextSizeTests: XCTestCase {
                 let drawn = view.subviews.filter { !$0.isHidden && Self.named($0, "FileLineRowView") }.sorted { $0.frame.minY < $1.frame.minY }
                 XCTAssertFalse(drawn.isEmpty, category.rawValue)
                 for (index, row) in drawn.prefix(plan.layout.count).enumerated() {
-                    XCTAssertEqual(row.frame, plan.layout.row(index), "\(source) drawn row \(index), \(category.rawValue)")
+                    assertSameFrame(row.frame, plan.layout.row(index), "\(source) drawn row \(index), \(category.rawValue)")
                 }
                 window.isHidden = true
             }
