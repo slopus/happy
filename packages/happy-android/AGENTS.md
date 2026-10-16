@@ -452,6 +452,14 @@ What happy-app does with expo-notifications, without Expo:
   from notificationRouting.ts's rules (a `/session/<id>` url, else
   `sessionId`); `DeepLinks.offer` turns it into `DeepLink.Session`, which
   `DeepLinkEffect` hands to `onOpenSession` (the chat's).
+- **Background sends** (sync.ts's watchdog notifications,
+  `push/BackgroundSendNotifications.kt`): MessageSender's watchdog fails
+  rows unsent 30 s into the background; this observer of the store's
+  outbox and `AppGraph.isForeground` schedules "Message not sent" with an
+  inexact AlarmManager alarm (`BackgroundSendReceiver`) when the app leaves
+  with unsent rows, cancels it on return or once they are sent, and posts
+  "Message failed" when rows fail with `MessageSender.BACKGROUND_FAILURE`.
+  Both go on the `default` channel and open the app.
 - **Settings › Account's push rows** use `rememberPushRegistration(graph)`,
   Settings' `PushRegistration` over the same registrar and permission
   (pushRegistration.ts's getPushPermissionInfo,

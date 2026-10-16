@@ -39,6 +39,10 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+        <!-- sync.ts's scheduled "Message not sent" (push/BackgroundSendNotifications.kt). -->
+        <receiver
+            android:name=".push.BackgroundSendReceiver"
+            android:exported="false" />
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_icon"
             android:resource="@drawable/notification_icon" />
