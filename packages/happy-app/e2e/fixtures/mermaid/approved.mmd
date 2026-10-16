@@ -1,0 +1,34 @@
+flowchart TB
+    User["用户页面"]
+    Theta["Theta API"]
+    Native["模型原生服务"]
+
+    subgraph Runtime["Marmot Runtime"]
+        HTTP["① HTTP 入口<br/>接收问题、历史消息和用户身份"]
+        Load["② SkillRunner<br/>装入规则、技能说明和工具描述"]
+        Request["③ AI SDK<br/>转换上游协议，构造模型请求"]
+        Parse["④ AI SDK<br/>解析响应流为事件"]
+        Route{"⑤ SkillRunner<br/>事件类型？"}
+        Text["正文输出"]
+        Reasoning["独立处理推理信息<br/>不进入用户正文"]
+        Tool["校验权限和预算<br/>执行工具"]
+
+        HTTP --> Load
+        Load --> Request
+        Parse --> Route
+        Route -->|text-delta| Text
+        Route -->|reasoning-*| Reasoning
+        Route -->|tool-call| Tool
+        Tool -->|携带工具结果| Request
+    end
+
+    User --> HTTP
+    Request -->|模型请求| Theta
+    Theta -->|响应流| Parse
+    Text -->|SSE 流式正文| User
+
+    Theta -.->|内部调用：尚未核验| Native
+    Native -.->|结果返回：尚未核验| Theta
+
+    style Native stroke-dasharray: 5 5
+    style Text fill:#e8f5e9

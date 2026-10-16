@@ -7,7 +7,7 @@ export async function verifyMermaidPreview(runtime, config) {
     const { taskSpace, cdp, pageInfo, currentTab, listTaskSpaces, useOrCreateTaskSpace } = runtime;
     const task = await taskSpace(config.taskSpaceId);
     const page = task.page('p1');
-    let expected = `http://127.0.0.1:49828/?theme=${config.theme === 'light' ? 'light' : 'dark'}`;
+    let expected = `http://127.0.0.1:49828/?theme=${config.theme === 'light' ? 'light' : 'dark'}&shape=tall`;
     const verifyTarget = async () => {
         assert.equal(task.ownership, 'agent');
         assert.equal((await task.tabs()).find(tab => tab.label === 'p1')?.targetId, config.targetId);
@@ -67,7 +67,7 @@ export async function verifyMermaidPreview(runtime, config) {
         probe.innerHTML = decodeURIComponent(img.src.slice(img.src.indexOf(',') + 1));
         document.body.append(probe);
         const svg = probe.querySelector('svg');
-        const label = svg.querySelector('.nodeLabel');
+        const label = svg.querySelector('.nodeLabel, .node text');
         const nodeFont = parseFloat(getComputedStyle(label).fontSize);
         const naturalWidth = svg.viewBox.baseVal.width;
         probe.remove();
@@ -205,7 +205,7 @@ export async function verifyMermaidPreview(runtime, config) {
     assert.ok(widePreview.badgeBottom <= widePreview.imageContentTop);
     await frame('横图仍保持正文阅读尺寸，超宽内容点击查看');
     await page.cdp('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 1, mobile: true });
-    expected = 'http://127.0.0.1:49828/?theme=light';
+    expected = 'http://127.0.0.1:49828/?theme=light&shape=tall';
     await page.goto(expected);
     await imageReady();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false);

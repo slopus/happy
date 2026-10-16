@@ -19,6 +19,7 @@ import {
 } from './mermaidRendererModel';
 import { getMarkdownTypography, type MarkdownTypographyMode } from './markdownTypography';
 import { createMermaidImageUri } from './mermaidSvgImage';
+import { createMermaidRuntime, MERMAID_VERSION, MERMAID_ELK_VERSION } from './mermaidRuntime';
 
 type DiagramCanvasHandle = {
     execute: (command: DiagramCommand) => void;
@@ -122,11 +123,10 @@ const WebDiagramCanvas = React.forwardRef<DiagramCanvasHandle, DiagramCanvasProp
 
         void (async () => {
             try {
-                const mermaidModule: any = await import('mermaid');
-                const mermaid = mermaidModule.default || mermaidModule;
-                mermaid.initialize(props.config);
+                const { getWebMermaidRuntime } = await import('./mermaidWebRuntime');
+                const runtime = await getWebMermaidRuntime();
                 const id = `mermaid-${Date.now()}-${nextDiagramId++}`;
-                const { svg } = await mermaid.render(id, props.content);
+                const svg = await runtime.render(id, props.content, props.config);
                 if (!cancelled) setSvgContent(svg);
             } catch (error) {
                 if (!cancelled) {
@@ -272,7 +272,7 @@ function buildNativeDocument(content: string, config: MermaidThemeConfig, fullsc
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <script src="https://cdn.jsdelivr.net/npm/mermaid@11.12.2/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@${MERMAID_VERSION}/dist/mermaid.min.js"></script>
     ${fullscreen ? '<script src="https://cdn.jsdelivr.net/npm/@panzoom/panzoom@4.6.2/dist/panzoom.min.js"></script>' : ''}
     <style>
         html, body { height: 100%; margin: 0; overflow: hidden; background: ${background}; }
@@ -295,9 +295,14 @@ function buildNativeDocument(content: string, config: MermaidThemeConfig, fullsc
                 if (window.ReactNativeWebView) window.ReactNativeWebView.postMessage(JSON.stringify(payload));
             };
             try {
-                mermaid.initialize(config);
-                const result = await mermaid.render('mermaid-diagram', content);
-                scene.innerHTML = result.svg;
+                const runtime = (${createMermaidRuntime.toString()})(mermaid, function() {
+                    return new Promise(function(resolve, reject) {
+                        const timeout = setTimeout(function() { reject(new Error('ELK layout load timed out')); }, 20000);
+                        import('https://cdn.jsdelivr.net/npm/@mermaid-js/layout-elk@${MERMAID_ELK_VERSION}/dist/mermaid-layout-elk.esm.min.mjs')
+                            .then(function(module) { clearTimeout(timeout); resolve(module.default); }, function(error) { clearTimeout(timeout); reject(error); });
+                    });
+                });
+                scene.innerHTML = await runtime.render('mermaid-diagram', content, config);
                 const svg = scene.querySelector('svg');
                 svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
                 if (!${fullscreen}) {

@@ -45,10 +45,19 @@ describe('getDiagramFitScale', () => {
 });
 
 describe('createMermaidThemeConfig', () => {
+    it('uses strict rendering and SVG text while keeping diagram labels at body size', () => {
+        const config = createMermaidThemeConfig(darkTheme);
+        expect(config).toMatchObject({ securityLevel: 'strict', htmlLabels: false, suppressErrorRendering: true });
+        expect(config.themeVariables.fontSize).toBe('16px');
+    });
+
     it('maps a light app theme into Mermaid semantic colors', () => {
         expect(createMermaidThemeConfig(lightTheme)).toEqual({
             startOnLoad: false,
             theme: 'base',
+            securityLevel: 'strict',
+            suppressErrorRendering: true,
+            htmlLabels: false,
             themeVariables: {
                 background: '#eef1f4',
                 darkMode: false,

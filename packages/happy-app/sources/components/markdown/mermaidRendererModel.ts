@@ -14,6 +14,9 @@ export type MermaidThemeSource = {
 export type MermaidThemeConfig = {
     startOnLoad: false;
     theme: 'base';
+    securityLevel: 'strict';
+    suppressErrorRendering: true;
+    htmlLabels: false;
     themeVariables: {
         background: string;
         darkMode: boolean;
@@ -52,6 +55,9 @@ export function createMermaidThemeConfig(theme: MermaidThemeSource): MermaidThem
     return {
         startOnLoad: false,
         theme: 'base',
+        securityLevel: 'strict',
+        suppressErrorRendering: true,
+        htmlLabels: false,
         themeVariables: {
             background: colors.surfaceHighest,
             darkMode: theme.dark,

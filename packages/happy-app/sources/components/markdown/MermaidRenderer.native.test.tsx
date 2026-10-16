@@ -71,6 +71,28 @@ describe('MermaidRenderer native interaction contract', () => {
         renderer = undefined;
     });
 
+    it('adapts explicit light node fills in the actual WebView bootstrap without changing source text', async () => {
+        const content = 'flowchart TB\nA[正文输出]\nstyle A fill:#e8f5e9';
+        await act(async () => { renderer = TestRenderer.create(<MermaidRenderer content={content} />); });
+        const dom = new JSDOM(renderer!.root.findByType('WebView').props.source.html, { runScripts: 'outside-only' });
+        const browser = dom.window;
+        let renderedSource = '';
+        browser.CSS = { supports: () => true };
+        browser.mermaid = { initialize() {}, registerLayoutLoaders() {}, async render(_id: string, source: string) {
+            renderedSource = source;
+            return { svg: '<svg viewBox="0 0 100 60"><g class="node"><rect class="label-container" style="fill:#e8f5e9"/><text>正文输出</text></g></svg>' };
+        } };
+        try {
+            browser.eval(browser.document.querySelector('script:not([src])').textContent);
+            await vi.waitFor(() => expect(browser.document.querySelector('#scene rect')).not.toBeNull());
+            const fill = browser.document.querySelector('#scene rect').style.fill;
+            expect(fill).toContain('color-mix');
+            expect(fill).toContain('#12171c');
+            expect(browser.document.querySelector('#scene text').style.fill).toBe('#f4f7fa');
+            expect(renderedSource).toBe(content);
+        } finally { browser.close(); }
+    });
+
     it('leaves inline gestures to the chat and enables interaction only in fullscreen', async () => {
         await act(async () => {
             renderer = TestRenderer.create(<MermaidRenderer content="flowchart LR\nA --> B" />);
@@ -102,7 +124,7 @@ describe('MermaidRenderer native interaction contract', () => {
         const browser = dom.window;
         const messages: Array<{ type: string; height?: number }> = [];
         browser.ReactNativeWebView = { postMessage: (value: string) => messages.push(JSON.parse(value)) };
-        browser.mermaid = { initialize() {}, async render() {
+        browser.mermaid = { initialize() {}, registerLayoutLoaders() {}, async render() {
             return { svg: '<svg viewBox="0 0 400 2000" style="max-width:400px"><g /></svg>' };
         } };
         browser.SVGElement.prototype.getBoundingClientRect = () => ({ height: 1600 });
@@ -184,7 +206,7 @@ describe('MermaidRenderer native interaction contract', () => {
         const messages: Array<{ type: string; uri?: string }> = [];
         browser.TextEncoder = TextEncoder;
         browser.ReactNativeWebView = { postMessage: (value: string) => messages.push(JSON.parse(value)) };
-        browser.mermaid = { initialize() {}, async render() {
+        browser.mermaid = { initialize() {}, registerLayoutLoaders() {}, async render() {
             return { svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 2000"><foreignObject><div xmlns="http://www.w3.org/1999/xhtml"><p>澄清目标<br>交付成果</p></div></foreignObject></svg>' };
         } };
         browser.Panzoom = (target: HTMLElement, options: { origin?: string }) => {

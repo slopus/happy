@@ -56,6 +56,7 @@ vi.mock('./mermaidSvgImage', () => ({
 vi.mock('mermaid', () => ({
     default: {
         initialize: vi.fn(),
+        registerLayoutLoaders: vi.fn(),
         render: vi.fn().mockResolvedValue({ svg: '<svg viewBox="0 0 200 100"><g /></svg>' }),
     },
 }));

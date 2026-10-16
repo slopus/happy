@@ -25,11 +25,40 @@ Markdown 渲染链识别 `mermaid` fenced code block 后调用该组件。缩放
 | 能力 | Web | Android/iOS |
 | --- | --- | --- |
 | Mermaid | npm 包，动态 `import('mermaid')` | WebView HTML 中的固定版本脚本 |
+| Flowchart layout | 按需加载官方 `@mermaid-js/layout-elk` | 按需加载同版本官方 CDN ESM |
 | Panzoom | npm 包，动态 `import('@panzoom/panzoom')` | WebView HTML 中的固定版本脚本 |
 | 宿主 | React Native Web 中的 DOM viewport + scene | `react-native-webview` |
 | 命令 | ref 直接调用 Panzoom | `injectJavaScript` 调用 `window.__pawsMermaid` |
 
 Web 与 Native 是两条渲染链，不能因为最终都显示 SVG 就假设配置、尺寸和事件行为天然一致。
+
+### Flowchart 外观适配
+
+固定 Mermaid **11.16.0** 与官方 `@mermaid-js/layout-elk` **0.2.2**，后者使用 elkjs 0.9.3。由于适配器接触布局扩展的内部图形数据，升级时不能只放宽版本范围；必须重跑标准连线语义、节点形状和 Native 序列化回归。
+
+`mermaidRuntime.ts` 是 Web 与 Native 共用的自包含工厂；`mermaidWebRuntime.ts` 缓存 Web 实例并串行执行 `initialize + render`，防止同页多图串主题。不要将加载器命名成 `mermaidRuntime.web.ts`，否则 Web-first 解析会遮蔽共享模块。
+
+- 原始 Mermaid 字符串不修改；`flowchart` / `graph`（含 frontmatter、注释和 init 指令）采用 `paws-flowchart` ELK 适配。其他图表不注入自定义布局或 flowchart CSS。
+- 普通方框归一为圆角节点，判断节点显示为虚线圆角框，连线标签使用胶囊背景，普通箭头使用细线开放箭头。判断节点的虚框是视觉约定，不代表其内容“未核验”。
+- 保留 `-.->`、`==>`、`<-->`、圆点与交叉端点的语义；ELK 可能给粗线同时附加 normal/thick 两个 class，默认 1px 规则必须明确排除 thick。
+- 保留 16px 节点文字与现有裁切/滚动契约；所有宿主颜色来自当前语义主题，不复制独立 POC 的固定配色。
+- 使用 strict 安全模式与 SVG text 标签，锁定源码不能覆盖的安全/宿主配置。深色 flowchart 的显式节点填充色与主题表面进行 OKLab 混合，并恢复可读正文色；不支持 color-mix 时回退到主题表面，透明填充保持透明。浅色输出保留显式颜色。该处理不是任意作者配色的自动对比度保证。
+- Native 把工厂函数源码嵌入 WebView，不能引用模块闭包或编译器外部辅助函数。测试包含跨 realm 的 minified 工厂执行；发布构建还需核对 Metro 产物，不以源码字符串包含某字段代替执行。
+
+复跑入口：`sources/components/markdown/mermaidRuntime.test.ts` 与既有组件/model/SVG 测试；实际组件验收入口 `e2e/fixtures/mermaid/serve.mjs` 提供默认／`shape=steps`（用户确认的步骤折返）、`shape=tall`（含特殊形状、不折返的合成长图裁切回归）、`shape=approved`（Marmot 原始源码）、`shape=arrows`（标准连线）、`shape=compat`（并发流程/时序/类/状态图）和 `/native?theme=dark&shape=steps`（原生 HTML＋真实 CDN，非真机）。原始带环输入独立保存在 `approved.mmd`，摘要为 `0e8f8290d42246b2b54c9609f87f3f6641714f6c5004130b1ea32dd94e42c193`。
+
+### 长单链分行折返
+
+2026-10-17 用户确认的方向是**保持既有样式，只把超高步骤弯成多行**，不是全局紧凑化。Marmot 已认可布局保持不变；前一轮针对 Marmot 压缩间距的独立稿已撤回。
+
+- 只处理 `TB/TD`、至少七节点的完整单链：无分组、无分支、无回路、无断开的节点，且节点均为已支持的普通矩形／判断适配。特殊形状与端点文字不进入折返路径。
+- 官方 ELK 完成测量与初始布局后，节点包围盒总高至少960px、且高宽比至少2.5才触发。短图、横图及其他图形仍使用原 ELK 几何，不重写作者源码。
+- 使用三列蛇形排布，逐行“右 → 下 → 左 → 下 → 右”；保持每个节点实测宽高、16px文字、全部节点、连线、边标签、样式与 marker。基础横／纵间距88px，长边标签需要更大空间时只扩展间距。
+- 只修改节点位置、连线路径与边标签外层位置；文字内部居中 transform 不变。不全局调整 ELK model-order、padding 或主题，不改变内联／全屏的手势所有权。
+- 这是受支持长单链的自动折返，不是所有复杂 Mermaid 图的通用折叠，也不保证任意多步骤都能在单屏完整展示。手机仍按现有宽度适配，本文不承诺手机文字保持屏幕16px。
+- 适配位于共享工厂内部，Web 与 Native 使用同一函数；不得依赖测试 ELK alias、固定节点 ID 或外部模块闭包。Mermaid helper 会把 `rect` 原地归一成 `squareRect`，标签 helper 返回的是内部内容组；判断形状须接受已支持别名，位置须更新最近的 `.edgeLabel`，不能覆盖内部文字居中或累加旧坐标。
+
+用户确认输入、验收结果与交付范围见 [步骤折返接入记录](mermaid-step-folding.md)。
 
 ## 2. 不可破坏的交互契约
 
