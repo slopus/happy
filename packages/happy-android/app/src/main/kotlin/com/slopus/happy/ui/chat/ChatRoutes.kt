@@ -53,6 +53,8 @@ import com.slopus.happy.ui.attachments.rememberSessionAttachments
 import com.slopus.happy.ui.autocomplete.LocalSuggestionSource
 import com.slopus.happy.ui.autocomplete.rememberSessionSuggestions
 import com.slopus.happy.ui.components.Alert
+import com.slopus.happy.ui.session.rememberPendingChatRoute
+import com.slopus.happy.ui.session.rememberSessionScreenSlots
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.files.toolPressRoute
@@ -87,7 +89,7 @@ fun NavGraphBuilder.chatRoutes(
             onBack = { nav.popBackStack() },
             onInfo = { onInfo(route.id) },
             onToolPress = { message -> nav.navigate(toolPressRoute(route.id, message)) },
-            // A resume that comes back as another session replaces this chat, as navigateToSession does.
+            // A resume that comes back as another session, or another tab of the checkout, replaces this chat in place.
             onOpenSession = { id -> if (id != route.id) nav.navigate(SessionRoute(id)) { popUpTo<SessionRoute> { inclusive = true } } },
         )
     }
@@ -96,13 +98,16 @@ fun NavGraphBuilder.chatRoutes(
 @Composable
 private fun ChatRoute(
     graph: AppGraph,
-    sessionId: String,
+    routeId: String,
     actions: ChatActions,
     onBack: () -> Unit,
     onInfo: () -> Unit,
     onToolPress: (ChatMessage.ToolCallMessage) -> Unit,
     onOpenSession: (String) -> Unit,
 ) {
+    // A chat opened from a tab strip's `+` stands on its stand-in's id until the machine names it (Home's pending chats).
+    val route = rememberPendingChatRoute(graph, routeId)
+    val sessionId = route.sessionId
     val account by graph.account.collectAsStateWithLifecycle()
     val feed = remember(account) {
         val sync = account
@@ -117,7 +122,8 @@ private fun ChatRoute(
     // One flow per account and chat: a new one would start a new draft.
     val mirrorFlow = remember(account, sessionId) { account?.composer?.mirror(sessionId) }
     val mirror by remember(mirrorFlow) { mirrorFlow ?: flowOf(ComposerMirror()) }.collectAsStateWithLifecycle(ComposerMirror())
-    val draft = rememberComposerDraft(mirrorFlow, onWrite = { text -> actions.setDraft(sessionId, text) })
+    val draft = rememberComposerDraft(mirrorFlow, onWrite = { text -> if (!route.writeDraft(text)) actions.setDraft(sessionId, text) })
+    route.SeedDraft(draft)
     val resources = LocalResources.current
     val metadata = state.session?.metadata
     val modes = remember(metadata, mirror, settings.agentDefaultOverrides) {
@@ -153,13 +159,14 @@ private fun ChatRoute(
         failure = e.message?.takeIf { it.isNotBlank() } ?: notSent
     }
 
-    val screenActions = remember(sessionId, actions, feed, draft, resources) {
+    val screenActions = remember(sessionId, actions, feed, draft, resources, route) {
         ChatScreenActions(
             onBack = onBack,
             onInfo = onInfo,
             onToolPress = onToolPress,
             onDraftChange = draft::set,
             onSend = onSend@{ text ->
+                if (route.submit(text)) return@onSend draft.set("")
                 val picked = latestImages?.images?.toList().orEmpty()
                 if ((text.isBlank() && picked.isEmpty()) || sending) return@onSend
                 // Questions the agent is blocked on are dismissed once the
@@ -280,6 +287,7 @@ private fun ChatRoute(
             modes = modes,
             gitStatus = gitStatus,
             showCliWarning = showCliWarning,
+            slots = rememberSessionScreenSlots(graph, routeId, route.pending, state, onSwitch = onOpenSession, onBack = onBack),
             inactiveHint = state.session?.let { session ->
                 // happy-app: a disconnected Happy CLI session; a Happy Agent session has its own lifecycle.
                 if (state.sessionState != SessionState.Disconnected || session.isRig) return@let null

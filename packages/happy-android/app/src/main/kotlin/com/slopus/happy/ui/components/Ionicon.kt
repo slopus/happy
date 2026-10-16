@@ -101,6 +101,7 @@ enum class Ionicon(val codepoint: Int) {
     MoonOutline(0xf461), // moon-outline
     NotificationsOutline(0xf47f), // notifications-outline
     OptionsOutline(0xf48b), // options-outline
+    PauseOutline(0xf497), // pause-outline
     Pencil(0xf49c), // pencil
     PeopleOutline(0xf4a3), // people-outline
     PersonAddOutline(0xf4a7), // person-add-outline
