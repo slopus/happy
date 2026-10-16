@@ -19,6 +19,8 @@ final class SessionRowCell: UITableViewCell {
     let branchIcon = IconView(.ionicons("git-branch-outline"), size: FlatSessionRowLayout.Metrics.branchIconSize)
     /// RigGitLineChanges: GitLineChanges.tsx's 11s, not the project list's.
     let changes = GitChangesView(approximateStyle: TextStyles.sessionLineChanges, countStyle: TextStyles.sessionLineChanges)
+    /// `workspaceMeta`'s draft glyph, ahead of the counts.
+    let draftIcon = IconView(.ionicons("create-outline"), size: FlatSessionRowLayout.Metrics.draftIconSize, tint: Palette.textSecondary)
     let divider = UIView()
     private(set) var row: SessionRow?
     var lines: FlatSessionRowLayout.Lines = .designed {
@@ -34,7 +36,7 @@ final class SessionRowCell: UITableViewCell {
         branchIcon.tintColor = UIColor(Palette.textSecondary)
         branchIcon.contentMode = .center
         divider.backgroundColor = UIColor(Palette.divider)
-        for view in [avatar, titleLabel, timestampLabel, dot, projectLabel, workspaceLabel, branchIcon, changes, divider] {
+        for view in [avatar, titleLabel, timestampLabel, dot, projectLabel, workspaceLabel, branchIcon, draftIcon, changes, divider] {
             contentView.addSubview(view)
         }
         isAccessibilityElement = true
@@ -49,7 +51,7 @@ final class SessionRowCell: UITableViewCell {
         self.row = row
         avatar.content = .init(avatar: row.avatar, style: style, monochrome: monochrome || row.faded)
         avatar.alpha = row.faded ? 0.5 : 1
-        for view in [titleLabel, timestampLabel, dot, projectLabel, workspaceLabel, branchIcon, changes] as [UIView] {
+        for view in [titleLabel, timestampLabel, dot, projectLabel, workspaceLabel, branchIcon, draftIcon, changes] as [UIView] {
             view.alpha = row.faded ? 0.6 : 1
         }
         titleLabel.string = row.title ?? Strings.Session.newChat
@@ -66,6 +68,7 @@ final class SessionRowCell: UITableViewCell {
         branchIcon.isHidden = row.workspaceName == nil
         changes.changes = row.changes
         changes.isHidden = row.changes == nil
+        draftIcon.isHidden = !row.hasDraft
         divider.isHidden = !row.showsDivider
         accessibilityLabel = [
             row.title ?? Strings.Session.newChat, cornerAccessibility(row), row.projectName, row.workspaceName,
@@ -94,6 +97,7 @@ final class SessionRowCell: UITableViewCell {
             workspace: row?.workspaceName == nil ? nil : workspaceLabel.measurable,
             branchIcon: branchIcon.sizeThatFits(.zero),
             changes: row?.changes == nil ? nil : changes.sizeThatFits(.zero),
+            draftIcon: row?.hasDraft == true ? draftIcon.sizeThatFits(.zero) : nil,
             showsDivider: row?.showsDivider ?? false,
             lines: lines
         ))
@@ -115,6 +119,7 @@ final class SessionRowCell: UITableViewCell {
         if let frame = layout.workspace { workspaceLabel.setLayoutFrame(frame) }
         if let frame = layout.branchIcon { branchIcon.setLayoutFrame(frame) }
         if let frame = layout.changes { changes.setLayoutFrame(frame) }
+        if let frame = layout.draftIcon { draftIcon.setLayoutFrame(frame) }
         if let frame = layout.divider { divider.setLayoutFrame(frame) }
     }
 

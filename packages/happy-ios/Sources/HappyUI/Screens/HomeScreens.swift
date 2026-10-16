@@ -80,6 +80,9 @@ public final class HomeViewController: UIViewController {
         )
         clockWake.onWake { [weak pipeline] in pipeline?.update { _ in } }
         pipeline.follow(session.homeFeed.snapshots()) { $0.snapshot = $1 }
+        // FlatSessionRow's draft glyph: one draft appearing or going
+        // reconfigures that row alone.
+        pipeline.followDrafts(session.homeFeed, into: \.draftSessionIds)
         self.pipeline = pipeline
         observation = pipeline.observation
         // Tablet (HappyUI/Tablet): the shell flips this with the window's width.

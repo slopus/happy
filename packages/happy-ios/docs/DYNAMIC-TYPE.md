@@ -255,10 +255,11 @@ Following now:
   for that one face; RCTFontUtils.mm's closest weight has nothing else
   to pick, so they are drawn regular, and so are they here (from RN
   0.83.1's and expo-font 55.0.4's source; not yet seen on a device).
-  Still not ported, so the third row is not yet RN's whole: the draft
-  glyph (13, `create-outline`) before the counts. This much of the
-  row's `workspaceMeta` gap stays open. The glyph keeps its 13 at every
-  size, under the row's 18, so it would not change a height.
+  The draft glyph (13, `create-outline`) leads the counts in the row's
+  `workspaceMeta`, as RN's does. It keeps its 13 at every size, its box
+  13⅓ tall at most, under the row's 18, so it changes no height; the
+  sidebar's 14 in a chat's slot and 12 over an archived card's avatar
+  sit in fixed boxes too.
 
 ## Header titles
 

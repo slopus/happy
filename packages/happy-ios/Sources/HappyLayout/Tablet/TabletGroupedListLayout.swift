@@ -206,6 +206,9 @@ public struct TabletChatRowLayout: Equatable, Sendable {
     /// The pressable row inside the card's border: the selected fill.
     public var row: CGRect
     public var title: CGRect
+    /// `trailingIndicatorSlot`, 18 square: what centres the dot, or the
+    /// draft's 14 glyph (an `IconView` given this frame centres it as
+    /// Yoga does).
     public var indicator: CGRect
     public var dot: CGRect
     public var divider: CGRect?
@@ -271,6 +274,10 @@ public struct TabletArchivedRowLayout: Equatable, Sendable {
         public static let dotSlotMarginRight: CGFloat = 4
         /// StatusDot's default size.
         public static let dotSize: CGFloat = 6
+        /// `draftIconContainer`: 18 square, 2 past the avatar's bottom
+        /// right corner, the 12 glyph centred in it.
+        public static let draftOverlaySize: CGFloat = 18
+        public static let draftOverlayOutset: CGFloat = 2
     }
 
     public struct Input {
@@ -303,6 +310,9 @@ public struct TabletArchivedRowLayout: Equatable, Sendable {
     /// The pressable inside the border: the selected fill.
     public var row: CGRect
     public var avatar: CGRect
+    /// The draft glyph's container over the avatar's corner; an `IconView`
+    /// given this frame centres the glyph in it.
+    public var draftOverlay: CGRect
     public var title: CGRect
     public var subtitle: CGRect
     public var subtitleIcon: CGRect?
@@ -325,6 +335,12 @@ public struct TabletArchivedRowLayout: Equatable, Sendable {
             y: row.midY - M.avatarSize / 2,
             width: M.avatarSize,
             height: M.avatarSize
+        )
+        draftOverlay = CGRect(
+            x: avatar.maxX + M.draftOverlayOutset - M.draftOverlaySize,
+            y: avatar.maxY + M.draftOverlayOutset - M.draftOverlaySize,
+            width: M.draftOverlaySize,
+            height: M.draftOverlaySize
         )
         let x = avatar.maxX + M.contentMarginLeft
         let contentWidth = max(0, row.maxX - M.paddingHorizontal - x)
