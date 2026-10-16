@@ -367,7 +367,7 @@ fun GitChanges(session: SessionRowData, modifier: Modifier = Modifier) {
  * there; it never overshoots. Releasing past half way leaves it open.
  */
 @Composable
-private fun SwipeToArchive(
+internal fun SwipeToArchive(
     enabled: Boolean,
     onArchive: () -> Unit,
     modifier: Modifier = Modifier,
