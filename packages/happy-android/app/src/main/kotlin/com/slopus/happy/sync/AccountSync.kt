@@ -75,7 +75,10 @@ class AccountSync(
         auth = ::handshake,
     )
 
-    val live = LiveUpdates(store, decoder, presence, messages, requestSync = deltaSync::invalidate)
+    /** The file viewer's and changes screen's last reads, shown while they fetch again. */
+    val fileCache = SessionFileCache()
+
+    val live = LiveUpdates(store, decoder, presence, messages, requestSync = deltaSync::invalidate, onSessionDeleted = fileCache::forgetSession)
 
     private val rpc = RpcClient(socket, store, decoder, io)
 

@@ -4,12 +4,17 @@ import com.slopus.happy.diff.DiffBudget
 import com.slopus.happy.diff.DiffSource
 import com.slopus.happy.diff.DiffStats
 import com.slopus.happy.diff.FileChangeKind
+import com.slopus.happy.model.GitFileStatus
+import com.slopus.happy.model.GitFileStatusKind
+import com.slopus.happy.model.GitStatusFiles
+import com.slopus.happy.model.GitStatusParser
 import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.sync.BashResult
 import com.slopus.happy.sync.GitFile
 import com.slopus.happy.sync.GitFileContent
 import com.slopus.happy.sync.GitState
 import com.slopus.happy.sync.ReadFileResult
+import com.slopus.happy.sync.SessionFileCache
 import com.slopus.happy.ui.diff.DiffFileItem
 import com.slopus.happy.ui.diff.DiffImages
 import kotlinx.coroutines.CancellationException
@@ -71,13 +76,17 @@ internal fun decodeBase64Text(content: String): String? = try {
  * from `git status`, every one's diff fetched over the shell (`git diff
  * HEAD`; untracked files read whole; images as both sides). A file whose
  * status, staging, counts, context or whitespace setting changed is fetched
- * again; others keep their diff so the list never jumps.
+ * again; others keep their diff so the list never jumps. The checkout's
+ * last file list, from [cache] under [pathKey], shows at once
+ * (useGitStatusFiles' stale-while-revalidate) and every answer replaces it.
  */
 class LegacyChanges(
     private val scope: CoroutineScope,
     private val ops: SessionFileOps,
     private val sessionId: String,
     private val sessionPath: String?,
+    private val cache: SessionFileCache? = null,
+    private val pathKey: String? = null,
 ) {
     data class Result(val file: GitFileStatus, val content: Content?, val error: String?)
 
@@ -127,7 +136,7 @@ class LegacyChanges(
         }
     }
 
-    private val mutable = MutableStateFlow(State())
+    private val mutable = MutableStateFlow(State(files = pathKey?.let { cache?.statusFiles(it) }?.let { flatten(it.files) }))
     val state: StateFlow<State> = mutable.asStateFlow()
 
     private val fetched = HashMap<String, String>()
@@ -138,9 +147,12 @@ class LegacyChanges(
     fun refresh() {
         if (statusJob?.isActive == true) return
         val path = sessionPath ?: return
+        // A cached list fetches its diffs while git status runs.
+        reconcile()
         statusJob = scope.launch {
             val status = runCatching { ops.gitStatusFiles(sessionId, path) }.getOrElse { if (it is CancellationException) throw it else null }
-            val files = status?.let { flatten(it) } ?: emptyList()
+            if (pathKey != null) cache?.putStatusFiles(pathKey, status)
+            val files = flatten(status)
             mutable.update { it.copy(files = files) }
             reconcile()
         }
@@ -160,7 +172,8 @@ class LegacyChanges(
     }
 
     /** Staged and unstaged together, once per path, sorted. */
-    private fun flatten(status: GitStatusFiles): List<GitFileStatus> {
+    private fun flatten(status: GitStatusFiles?): List<GitFileStatus> {
+        if (status == null) return emptyList()
         val seen = LinkedHashMap<String, GitFileStatus>()
         for (file in status.stagedFiles + status.unstagedFiles) seen.putIfAbsent(file.fullPath, file)
         return seen.values.sortedWith { a, b -> java.text.Collator.getInstance().compare(a.fullPath, b.fullPath) }

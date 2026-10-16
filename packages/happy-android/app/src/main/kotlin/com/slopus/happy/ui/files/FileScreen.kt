@@ -42,6 +42,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.sync.SessionFileCache
 import com.slopus.happy.ui.chat.ChatTheme
 import com.slopus.happy.ui.chat.highlight
 import com.slopus.happy.ui.components.Alert
@@ -55,6 +56,8 @@ import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.PlexMono
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlin.math.max
 
 object FileTags {
@@ -145,6 +148,28 @@ suspend fun SessionFileOps.loadFile(sessionId: String, filePath: String, session
         throw e
     } catch (_: Exception) {
         FileLoad.Failed("Failed to load file")
+    }
+}
+
+/**
+ * file.tsx over storage.ts `sessionFileCache`: the cached copy at once, with
+ * no spinner, then the fetch, which replaces it and is cached in turn. A
+ * fetch that finds no diff leaves the cached one up (file.tsx only sets its
+ * diff when one comes back); a failure replaces the copy and caches nothing.
+ */
+fun SessionFileOps.fileLoads(cache: SessionFileCache?, sessionId: String, filePath: String, sessionPath: String?, gitDiffPath: String?): Flow<FileLoad> = flow {
+    val cached = cache?.file(sessionId, filePath)
+    if (cached != null) emit(if (cached.isBinary) FileLoad.Binary else FileLoad.Loaded(cached.content.orEmpty(), cached.diff))
+    when (val fresh = loadFile(sessionId, filePath, sessionPath, gitDiffPath)) {
+        FileLoad.Binary -> {
+            cache?.putFile(sessionId, filePath, "", null, true)
+            emit(fresh)
+        }
+        is FileLoad.Loaded -> {
+            cache?.putFile(sessionId, filePath, fresh.content, fresh.diff, false)
+            emit(fresh.copy(diff = fresh.diff ?: cached?.diff))
+        }
+        else -> emit(fresh)
     }
 }
 
