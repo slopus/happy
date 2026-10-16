@@ -224,6 +224,63 @@ final class DiffReadingPlaceTests: XCTestCase {
         XCTAssertNil(gone.y(list: large.layout, sections: large.sections))
         XCTAssertNil(DiffReadingPlace(section: 2, part: .section(0)).y(list: large.layout, sections: large.sections))
     }
+
+    /// One size after another, the offset each lands on is the first
+    /// place's nearest pixel. Found again from each size's pixel instead,
+    /// the half pixels add up, scaled by the rows they land in.
+    func testThePlaceHoldsThroughOneSizeAfterAnother() throws {
+        let sizes: [(TextSizeCategory, notices: CGFloat, header: CGFloat, hint: CGFloat)] = [
+            (.accessibilityLarge, 90, 60, 36), (.extraSmall, 41, 29, 14), (.accessibilityExtraExtraExtraLarge, 150, 100, 61), (.large, 50, 35, 17),
+        ]
+        let large = list(.large, notices: 50, header: 35, hint: 17)
+        // 5 of the second file's second row's 18 down it.
+        let start: CGFloat = 50 + 35 + 180 + 18 + 5
+        let first = try XCTUnwrap(DiffReadingPlace(y: start, list: large.layout, sections: large.sections))
+        // As in a longer list, with more below: nothing is held at the end.
+        func land(_ y: CGFloat, _ list: List) -> CGFloat {
+            ScrollPlace.offset(top: y, insetTop: 0, insetBottom: 0, viewport: 852, contentHeight: list.layout.contentHeight + 10_000, scale: 3)
+        }
+        var kept = KeptPlace<DiffReadingPlace>()
+        var keptOffset = start
+        var foundOffset = start
+        var foundIn = large
+        var drift: CGFloat = 0
+        for (category, notices, header, hint) in sizes {
+            let next = list(category, notices: notices, header: header, hint: hint)
+            let place = try XCTUnwrap(kept.place(at: keptOffset) { DiffReadingPlace(y: $0, list: large.layout, sections: large.sections) })
+            XCTAssertEqual(place, first, "\(category)")
+            keptOffset = land(try XCTUnwrap(place.y(list: next.layout, sections: next.sections)), next)
+            kept.put(place, at: keptOffset)
+            let y = try XCTUnwrap(first.y(list: next.layout, sections: next.sections))
+            XCTAssertEqual(keptOffset, y, accuracy: 0.5 / 3 + 1e-9, "\(category)")
+            XCTAssertEqual(keptOffset * 3, (keptOffset * 3).rounded(), accuracy: 1e-9, "\(category)")
+
+            let found = try XCTUnwrap(DiffReadingPlace(y: foundOffset, list: foundIn.layout, sections: foundIn.sections))
+            foundOffset = land(try XCTUnwrap(found.y(list: next.layout, sections: next.sections)), next)
+            foundIn = next
+            drift = max(drift, abs(foundOffset - y))
+        }
+        // Back at Large, exactly where it started.
+        XCTAssertEqual(keptOffset, start, accuracy: 1e-9)
+        // Found again each time, it drifts more than a pixel.
+        XCTAssertGreaterThan(drift, 1.0 / 3)
+        // The reader scrolled: the place is found where they are.
+        let scrolled = kept.place(at: keptOffset + 1) { DiffReadingPlace(y: $0, list: large.layout, sections: large.sections) }
+        XCTAssertEqual(scrolled, DiffReadingPlace(y: start + 1, list: large.layout, sections: large.sections))
+        kept.forget()
+        XCTAssertNil(kept.place(at: keptOffset) { _ in nil })
+    }
+
+    func testTheOffsetIsOnAPixelInsideTheRange() {
+        // Nearest pixel at 3x and 2x, past the top inset.
+        XCTAssertEqual(ScrollPlace.offset(top: 100.2, insetTop: 0, insetBottom: 0, viewport: 800, contentHeight: 2000, scale: 3), 100.0 + 1.0 / 3, accuracy: 1e-9)
+        XCTAssertEqual(ScrollPlace.offset(top: 100.2, insetTop: 10, insetBottom: 0, viewport: 800, contentHeight: 2000, scale: 2), 90, accuracy: 1e-9)
+        XCTAssertEqual(ScrollPlace.offset(top: 100.2, insetTop: 0, insetBottom: 0, viewport: 800, contentHeight: 2000, scale: 0), 100.2, accuracy: 1e-9)
+        // No higher than the top inset, no lower than the end.
+        XCTAssertEqual(ScrollPlace.offset(top: -10, insetTop: 20, insetBottom: 0, viewport: 800, contentHeight: 2000, scale: 3), -20)
+        XCTAssertEqual(ScrollPlace.offset(top: 1900, insetTop: 0, insetBottom: 34, viewport: 800, contentHeight: 2000, scale: 3), 1234)
+        XCTAssertEqual(ScrollPlace.offset(top: 300, insetTop: 0, insetBottom: 0, viewport: 800, contentHeight: 500, scale: 3), 0)
+    }
 }
 
 final class FileLinesTextSizeTests: XCTestCase {

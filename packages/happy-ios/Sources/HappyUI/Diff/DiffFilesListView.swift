@@ -479,6 +479,8 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
     /// were measured at.
     private var measuredText: TextEnvironment?
     private var appliedText: TextEnvironment?
+    /// The place last kept through a text size, while the reader is still there.
+    private var keptPlace = KeptPlace<DiffReadingPlace>()
     private var generation = 0
 
     /// `render`: the account's diff documents and syntax colour.
@@ -598,9 +600,12 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
             && (chrome.notices != nil) == hasHeader && width == layout.width
         // A new text size moves every height: keep the line at the top.
         let top = collectionView.contentOffset.y + collectionView.adjustedContentInset.top
+        let model = layout.model
+        let sections = self.plans.map(\.readingSection)
         let place = inPlace && text != appliedText
-            ? DiffReadingPlace(y: top, list: layout.model, sections: self.plans.map(\.readingSection))
+            ? keptPlace.place(at: top) { DiffReadingPlace(y: $0, list: model, sections: sections) }
             : nil
+        keptPlace.forget()
         self.plans = plans
         appliedText = text
         noticeFrames = chrome.notices?.frames ?? []
@@ -612,7 +617,12 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
         layout.invalidateLayout()
         if inPlace {
             if let place, let y = place.y(list: layout.model, sections: plans.map(\.readingSection)) {
-                collectionView.contentOffset.y = Self.offset(top: y, in: collectionView, contentHeight: layout.model.contentHeight)
+                let inset = collectionView.adjustedContentInset
+                collectionView.contentOffset.y = ScrollPlace.offset(
+                    top: y, insetTop: inset.top, insetBottom: inset.bottom, viewport: collectionView.bounds.height,
+                    contentHeight: layout.model.contentHeight, scale: traitCollection.displayScale
+                )
+                keptPlace.put(place, at: collectionView.contentOffset.y + inset.top)
             }
             for indexPath in collectionView.indexPathsForVisibleItems {
                 guard let cell = collectionView.cellForItem(at: indexPath) else { continue }
@@ -621,15 +631,6 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
         } else {
             collectionView.reloadData()
         }
-    }
-
-    /// The content offset that puts `top` at the top of the scroll view's
-    /// visible area, inside its scrolling range.
-    private static func offset(top: CGFloat, in scrollView: UIScrollView, contentHeight: CGFloat) -> CGFloat {
-        let inset = scrollView.adjustedContentInset
-        let lowest = -inset.top
-        let highest = max(lowest, contentHeight + inset.bottom - scrollView.bounds.height)
-        return min(highest, max(lowest, top - inset.top))
     }
 
     // MARK: Data source

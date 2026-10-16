@@ -132,7 +132,7 @@ final class DiffTextSizeTests: XCTestCase {
             let rows = canvas.subviews.filter { Self.named($0, "DiffCodeRowView") }.sorted { $0.frame.minY < $1.frame.minY }
             XCTAssertFalse(rows.isEmpty, category.rawValue)
             for (index, row) in rows.enumerated() {
-                XCTAssertEqual(row.frame, file.layout.row(index), "row \(index), \(category.rawValue)")
+                assertSameFrame(row.frame, file.layout.row(index), "row \(index), \(category.rawValue)")
             }
             XCTAssertEqual(fileView.frame.height, file.height, accuracy: 0.001, category.rawValue)
             let bar = try XCTUnwrap(fileView.subviews.compactMap { $0 as? DiffShowMoreBar }.first)
@@ -243,7 +243,7 @@ final class DiffTextSizeTests: XCTestCase {
 
     /// The Changes screen's list at a new text size: measured again, every
     /// section at the size, and the line at the top of the screen stays
-    /// there.
+    /// there through one size after another, and back.
     func testTheListKeepsTheReadersPlace() async throws {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
         window.traitOverrides.preferredContentSizeCategory = .large
@@ -275,16 +275,24 @@ final class DiffTextSizeTests: XCTestCase {
         let target = model().sections[1].minY + 300
         collection.contentOffset.y = target - collection.adjustedContentInset.top
         collection.layoutIfNeeded()
-        let place = try XCTUnwrap(DiffReadingPlace(y: target, list: model(), sections: sections()))
+        let start = collection.contentOffset.y
+        let place = try XCTUnwrap(DiffReadingPlace(y: start + collection.adjustedContentInset.top, list: model(), sections: sections()))
 
-        for category in [UIContentSizeCategory.accessibilityLarge, .extraSmall, .accessibilityExtraExtraExtraLarge] {
+        for category in [UIContentSizeCategory.accessibilityLarge, .extraSmall, .accessibilityExtraExtraExtraLarge, .large] {
             window.traitOverrides.preferredContentSizeCategory = category
             window.updateTraitsIfNeeded()
             list.layoutIfNeeded()
             await waitForPlans(list)
             XCTAssertEqual(list.plans.first?.text, environment(category), category.rawValue)
             let y = try XCTUnwrap(place.y(list: model(), sections: sections()))
-            XCTAssertEqual(collection.contentOffset.y + collection.adjustedContentInset.top, y, accuracy: 0.001, category.rawValue)
+            // The scroll view holds its offset on the screen's pixels, so
+            // the place sits on the nearest one: at most half a pixel (a
+            // sixth of a point at 3x) off, which no one can see. It is the
+            // first place every time, not one found again from the last
+            // size's pixel, so the error doesn't grow from size to size.
+            let top = collection.contentOffset.y + collection.adjustedContentInset.top
+            XCTAssertEqual(top, y, accuracy: 0.5 / 3 + 1e-6, category.rawValue)
+            XCTAssertEqual((collection.contentOffset.y * 3).rounded(), collection.contentOffset.y * 3, accuracy: 1e-6, "on a pixel, \(category.rawValue)")
             XCTAssertEqual(collection.collectionViewLayout.collectionViewContentSize.height, model().contentHeight, accuracy: 0.001, category.rawValue)
             // Each section on screen is as tall as its plan.
             for cell in collection.visibleCells {
@@ -292,6 +300,8 @@ final class DiffTextSizeTests: XCTestCase {
                 XCTAssertEqual(cell.frame.height, plan.layout.height, accuracy: 0.001, category.rawValue)
             }
         }
+        // Back at the size it started at, the list is where it started.
+        XCTAssertEqual(collection.contentOffset.y, start, accuracy: 1e-6)
         window.isHidden = true
     }
 
@@ -336,7 +346,7 @@ final class DiffTextSizeTests: XCTestCase {
                 let drawn = view.subviews.filter { !$0.isHidden && Self.named($0, "FileLineRowView") }.sorted { $0.frame.minY < $1.frame.minY }
                 XCTAssertFalse(drawn.isEmpty, category.rawValue)
                 for (index, row) in drawn.prefix(plan.layout.count).enumerated() {
-                    XCTAssertEqual(row.frame, plan.layout.row(index), "\(source) drawn row \(index), \(category.rawValue)")
+                    assertSameFrame(row.frame, plan.layout.row(index), "\(source) drawn row \(index), \(category.rawValue)")
                 }
                 window.isHidden = true
             }
