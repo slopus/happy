@@ -72,25 +72,36 @@ enum DiffStyle {
 
     // MARK: Type
 
-    /// A code row: mono at the font size on the row's line.
+    /// The text size a plan draws at: its environment's, or the designed
+    /// size where the view doesn't follow the person's (nil).
+    static func textScale(_ text: TextEnvironment?) -> TextScale {
+        text?.scale ?? .standard
+    }
+
+    /// A code row: mono at the font size on the row's line, both scaled.
     static func code(_ metrics: DiffMetrics) -> TextStyle {
-        TextStyle(.mono, size: metrics.fontSize, lineHeight: metrics.lineHeight)
+        TextStyle(.mono, size: metrics.fontSize, lineHeight: designedLine(metrics)).scaled(metrics.scale)
     }
 
     /// Line numbers and hunk rows: a point smaller on the same line.
     static func small(_ metrics: DiffMetrics) -> TextStyle {
-        TextStyle(.mono, size: metrics.fontSize - 1, lineHeight: metrics.lineHeight)
+        TextStyle(.mono, size: metrics.fontSize - 1, lineHeight: designedLine(metrics)).scaled(metrics.scale)
     }
 
     /// The gutter's hunk dots: a point smaller, the font's own line,
     /// centred in the row.
     static func dots(_ metrics: DiffMetrics) -> TextStyle {
-        TextStyle(.mono, size: metrics.fontSize - 1)
+        TextStyle(.mono, size: metrics.fontSize - 1).scaled(metrics.scale)
     }
 
     /// "Binary file not shown" / "No changes" rows: Typography.default().
     static func message(_ metrics: DiffMetrics) -> TextStyle {
-        TextStyle(.regular, size: metrics.fontSize, lineHeight: metrics.lineHeight)
+        TextStyle(.regular, size: metrics.fontSize, lineHeight: designedLine(metrics)).scaled(metrics.scale)
+    }
+
+    /// `Math.round(fontSize * 1.5)`, which the styles scale.
+    private static func designedLine(_ metrics: DiffMetrics) -> CGFloat {
+        (metrics.fontSize * 1.5).rounded()
     }
 
     // MARK: Metrics
@@ -98,25 +109,29 @@ enum DiffStyle {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var advances: [CGFloat: CGFloat] = [:]
 
-    /// DiffMetrics.tsx's MonoProbe: the mono font's real advance, measured
-    /// once per size over 50 "M"s and kept.
-    static func metrics(fontSize: CGFloat = DiffMetrics.defaultFontSize) -> DiffMetrics {
+    /// DiffMetrics.tsx's MonoProbe: the mono font's real advance at the
+    /// size drawn, measured once per drawn size over 50 "M"s and kept, so
+    /// a new text size measures again. `text` nil is the designed size.
+    static func metrics(fontSize: CGFloat = DiffMetrics.defaultFontSize, text: TextEnvironment? = nil) -> DiffMetrics {
+        let scale = textScale(text)
+        let displayScale = text?.displayScale ?? 0
+        let drawn = DiffMetrics(fontSize: fontSize, scale: scale).drawnFontSize
         lock.lock()
-        if let advance = advances[fontSize] {
+        if let advance = advances[drawn] {
             lock.unlock()
-            return DiffMetrics(fontSize: fontSize, charWidth: advance)
+            return DiffMetrics(fontSize: fontSize, scale: scale, displayScale: displayScale, charWidth: advance)
         }
         lock.unlock()
         let sample = String(repeating: "M", count: 50)
-        let width = (sample as NSString).size(withAttributes: [.font: Fonts.font(.mono, size: fontSize)]).width / 50
+        let width = (sample as NSString).size(withAttributes: [.font: Fonts.font(.mono, size: drawn)]).width / 50
         // A broken measurement (font not loaded) keeps the 0.6 em estimate.
-        let advance: CGFloat? = width >= fontSize * 0.35 && width <= fontSize * 1.2 ? width : nil
+        let advance: CGFloat? = DiffMetrics.acceptsAdvance(width, drawnFontSize: drawn) ? width : nil
         if let advance {
             lock.lock()
-            advances[fontSize] = advance
+            advances[drawn] = advance
             lock.unlock()
         }
-        return DiffMetrics(fontSize: fontSize, charWidth: advance)
+        return DiffMetrics(fontSize: fontSize, scale: scale, displayScale: displayScale, charWidth: advance)
     }
 
     /// One line of `style` as RN measures it: the font's line rounded up,

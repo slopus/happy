@@ -13,6 +13,10 @@ import UIKit
 /// shown, which is where its cached copy is. A copy kept on disk (after a
 /// relaunch) is read off the main thread too, before the computer is
 /// asked; offline, it stays on screen under the error alert.
+///
+/// Follows the person's text size: the lines are measured at it off the
+/// main thread, and a new size measures them again with the line at the
+/// top of the screen kept there.
 final class SessionFileViewController: UIViewController {
     private let context: AppContext
     private let session: AccountSession
@@ -47,9 +51,12 @@ final class SessionFileViewController: UIViewController {
 
     private var planTask: Task<Void, Never>?
     /// What the pending plan is being made from.
-    private var planned: (source: FileLinesPlan.Source, width: CGFloat, maxWidth: CGFloat)?
+    private var planned: (source: FileLinesPlan.Source, width: CGFloat, maxWidth: CGFloat, text: TextEnvironment?)?
     /// The last diff and file plans, so the toggle flips between them at once.
     private var plans: [FileLinesPlan] = []
+    /// The line last kept at the top through a new measure, while the
+    /// reader is still there.
+    private var keptPlace = KeptPlace<(row: Int, fraction: CGFloat)>()
     /// Signals from the account's code colour: a file planned plain while
     /// it was being coloured is planned again after one.
     private var colourSignals = 0
@@ -72,6 +79,7 @@ final class SessionFileViewController: UIViewController {
         isLoading = cached == nil
         super.init(nibName: nil, bundle: nil)
         title = Strings.FileViewerDetail.title
+        followsTextSize()
         followColour()
     }
 
@@ -107,7 +115,7 @@ final class SessionFileViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        registerForTraitChanges([UITraitHorizontalSizeClass.self]) { (self: Self, _) in
+        registerForTraitChanges([UITraitHorizontalSizeClass.self] + UIView.textSizeTraits) { (self: Self, _) in
             self.view.setNeedsLayout()
         }
         updateMode()
@@ -311,6 +319,7 @@ final class SessionFileViewController: UIViewController {
         let width = lines.bounds.width
         guard width > 0 else { return }
         let maxWidth = maxWidth
+        let text = lines.traitCollection.textEnvironment
         let source: FileLinesPlan.Source
         switch FileViewer.Body(mode: mode, diff: diff, content: content) {
         case .diff:
@@ -333,27 +342,27 @@ final class SessionFileViewController: UIViewController {
             lines.clear()
             return
         }
-        if let plan = plans.first(where: { $0.source == source && $0.width == width && $0.maxWidth == maxWidth }) {
+        if let plan = plans.first(where: { $0.source == source && $0.width == width && $0.maxWidth == maxWidth && $0.text == text }) {
             cancelPlan()
             show(plan)
             return
         }
-        if let planned, planned.source == source, planned.width == width, planned.maxWidth == maxWidth { return }
+        if let planned, planned.source == source, planned.width == width, planned.maxWidth == maxWidth, planned.text == text { return }
         planTask?.cancel()
-        planned = (source, width, maxWidth)
+        planned = (source, width, maxWidth, text)
         let syntax = session.codeSyntax
         let heard = colourSignals
         planTask = Task { [weak self] in
             let plan = await Task.detached(priority: .userInitiated) {
-                FileLinesPlan(source: source, width: width, maxWidth: maxWidth, syntax: syntax)
+                FileLinesPlan(source: source, width: width, maxWidth: maxWidth, syntax: syntax, text: text)
             }.value
             // Planned while the account stopped: plain where it would be
             // coloured, so never shown.
             guard let self, !Task.isCancelled, !syntax.isClosed else { return }
             self.planned = nil
-            // One plan of each kind, at the newest size.
+            // One plan of each kind, at the newest size and text size.
             self.plans = [plan] + self.plans.filter { kept in
-                kept.width == width && kept.maxWidth == maxWidth && Self.isDiff(kept.source) != Self.isDiff(source)
+                kept.width == width && kept.maxWidth == maxWidth && kept.text == text && Self.isDiff(kept.source) != Self.isDiff(source)
             }
             self.show(plan)
             // Colour that came in while this was planned: draw it now.
@@ -397,13 +406,23 @@ final class SessionFileViewController: UIViewController {
         } else {
             lines.copyText = nil
         }
-        let isNew = plan !== lines.plan
+        let previous = lines.plan
+        let isNew = plan !== previous
+        // The same text measured again (another text size, width or its
+        // colour) keeps the line at the top of the screen there.
+        let place = previous.flatMap { previous in
+            previous.source == plan.source ? keptPlace.place(at: lines.contentOffset.y) { previous.layout.place(at: $0) } : nil
+        }
         lines.show(plan)
         guard isNew else { return }
+        keptPlace.forget()
         // The scroll view keeps its offset across content, inside the new end.
         lines.layoutIfNeeded()
         let maxOffset = max(0, lines.contentSize.height - lines.bounds.height)
+        let restored = place.flatMap { place in plan.layout.y(of: place).map { (place, $0) } }
+        if let restored { lines.contentOffset.y = restored.1 }
         if lines.contentOffset.y > maxOffset { lines.contentOffset.y = maxOffset }
+        if let restored { keptPlace.put(restored.0, at: lines.contentOffset.y) }
         guard case .code = plan.source else { return }
         // file.tsx scrolls two lines above a requested line, at 20 a line.
         if scrollsToLine, let requestedLine, requestedLine > 0 {

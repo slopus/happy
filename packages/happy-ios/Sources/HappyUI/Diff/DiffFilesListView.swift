@@ -61,6 +61,8 @@ final class DiffSectionPlan: @unchecked Sendable {
 
     let input: DiffSectionInput
     let width: CGFloat
+    /// The text size it was measured at; nil is the designed size.
+    let text: TextEnvironment?
     let header: DiffHeaderPlan
     let body: Body
     let layout: DiffSectionLayout
@@ -70,19 +72,23 @@ final class DiffSectionPlan: @unchecked Sendable {
     /// The file's diff is built through the account's documents and
     /// coloured by its syntax (`render`). Once they are closed (the account
     /// stopped) an open file shows nothing rather than "No changes".
-    init(_ input: DiffSectionInput, width: CGFloat, scale: CGFloat, render: RenderServices, syntaxDeadline: ContinuousClock.Instant? = DiffFilePlan.syntaxDeadline()) {
+    /// `text` is the text size the list draws at (nil, the designed size):
+    /// every text in the section is measured at it.
+    init(_ input: DiffSectionInput, width: CGFloat, scale: CGFloat, render: RenderServices, syntaxDeadline: ContinuousClock.Instant? = DiffFilePlan.syntaxDeadline(), text: TextEnvironment? = nil) {
         self.input = input
         self.width = width
+        self.text = text
         let item = input.item
-        header = DiffHeaderPlan(path: item.path, kind: item.kind, additions: item.additions, deletions: item.deletions, collapsed: input.collapsed, width: width, scale: scale)
-        let style = DiffTextStyles.sectionMessage
-        func text(_ string: String) -> NSAttributedString {
+        let textScale = DiffStyle.textScale(text)
+        header = DiffHeaderPlan(path: item.path, kind: item.kind, additions: item.additions, deletions: item.deletions, collapsed: input.collapsed, width: width, scale: scale, text: text)
+        let style = DiffTextStyles.sectionMessage.scaled(textScale)
+        func secondary(_ string: String) -> NSAttributedString {
             style.attributedString(string, color: UIColor(DiffStyle.textSecondary))
         }
         var sized: DiffSectionLayout.Body
         if input.collapsed {
             if let sizeHint = input.sizeHint {
-                let hint = text(sizeHint)
+                let hint = secondary(sizeHint)
                 body = .hint(hint)
                 sized = .hint(DiffStyle.size(hint, width: width))
             } else {
@@ -93,7 +99,7 @@ final class DiffSectionPlan: @unchecked Sendable {
             let builds = item.error == nil && item.message == nil && item.image == nil
             let document = builds ? DiffFileItem.document(item.source, cache: render.diffDocuments) : .empty
             func message(_ string: String) -> (Body, DiffSectionLayout.Body) {
-                let attributed = text(string)
+                let attributed = secondary(string)
                 return (.message(attributed), .message(DiffStyle.size(attributed, width: width)))
             }
             switch builds && render.diffDocuments.isClosed ? nil : item.body(document) {
@@ -114,7 +120,7 @@ final class DiffSectionPlan: @unchecked Sendable {
                 if sides.isEmpty {
                     (body, sized) = message(input.words.binaryFile)
                 } else {
-                    let layout = DiffImageLayout(width: width, count: sides.count, labelHeight: DiffStyle.lineHeight(DiffTextStyles.imageLabel))
+                    let layout = DiffImageLayout(width: width, count: sides.count, labelHeight: DiffStyle.lineHeight(DiffTextStyles.imageLabel.scaled(textScale)))
                     body = .image(sides, layout)
                     sized = .image(height: layout.size.height)
                 }
@@ -122,7 +128,7 @@ final class DiffSectionPlan: @unchecked Sendable {
                 // DiffFilesList: `selectable={Platform.OS !== 'android'}`.
                 let options = DiffViewOptions(collapseAfter: Self.collapseAfter, canExpandContext: input.canExpandContext, selectable: true)
                 let plans = files.enumerated().map { index, file in
-                    DiffFilePlan(file: file, width: width, syntax: render.diffSyntax, options: options, expanded: input.expandedFiles.contains(index), syntaxDeadline: syntaxDeadline)
+                    DiffFilePlan(file: file, width: width, syntax: render.diffSyntax, options: options, expanded: input.expandedFiles.contains(index), syntaxDeadline: syntaxDeadline, text: text)
                 }
                 body = .files(plans)
                 sized = .files(plans.map(\.height))
@@ -132,31 +138,75 @@ final class DiffSectionPlan: @unchecked Sendable {
     }
 }
 
+extension DiffSectionPlan {
+    /// Its frames, to find the reader's place in it.
+    var readingSection: DiffReadingPlace.Section {
+        if case .files(let files) = body {
+            return DiffReadingPlace.Section(layout: layout, files: files.map(\.layout))
+        }
+        return DiffReadingPlace.Section(layout: layout)
+    }
+}
+
+/// What the list draws around its sections, measured with them: the
+/// notices' frames and height, and the empty text's size.
+struct DiffListChrome: @unchecked Sendable {
+    var notices: (frames: [CGRect], height: CGFloat)?
+    var emptySize: CGSize
+
+    /// `notices` and `empty` are words, read on the main thread.
+    init(notices: [String], empty: String, width: CGFloat, text: TextEnvironment?) {
+        let style = DiffTextStyles.body.scaled(DiffStyle.textScale(text))
+        func attributed(_ string: String) -> NSAttributedString {
+            style.attributedString(string, color: UIColor(DiffStyle.textSecondary))
+        }
+        self.notices = notices.isEmpty ? nil : DiffFilesListLayout.notices(width: width, texts: notices.map { notice in
+            let text = attributed(notice)
+            return Measurable { DiffStyle.size(text, width: $0) }
+        })
+        emptySize = DiffStyle.size(attributed(empty), width: max(0, width - DiffFilesListLayout.Metrics.emptyPadding * 2))
+    }
+}
+
 /// Builds section plans away from the main thread and keeps the last ones,
-/// so a list update rebuilds only the sections that changed.
+/// so a list update rebuilds only the sections that changed. A plan is
+/// kept for one width and one text size: either changing measures every
+/// section again.
 actor DiffSectionMeasurer {
     private let render: RenderServices
     private var cache: [String: DiffSectionPlan] = [:]
+    #if DEBUG
+    /// Sections planned, not taken from the cache (tests).
+    private(set) var planned = 0
+    #endif
 
     init(render: RenderServices) {
         self.render = render
     }
 
-    func plans(_ inputs: [DiffSectionInput], width: CGFloat, scale: CGFloat) -> [DiffSectionPlan] {
+    func plans(_ inputs: [DiffSectionInput], width: CGFloat, scale: CGFloat, text: TextEnvironment? = nil) -> [DiffSectionPlan] {
         // The sections of one pass wait for colour together.
         let deadline = DiffFilePlan.syntaxDeadline()
         var next: [String: DiffSectionPlan] = [:]
         let plans = inputs.map { input in
-            if let cached = cache[input.item.id], cached.width == width, cached.input == input {
+            if let cached = cache[input.item.id], cached.width == width, cached.text == text, cached.input == input {
                 next[input.item.id] = cached
                 return cached
             }
-            let plan = DiffSectionPlan(input, width: width, scale: scale, render: render, syntaxDeadline: deadline)
+            #if DEBUG
+            planned += 1
+            #endif
+            let plan = DiffSectionPlan(input, width: width, scale: scale, render: render, syntaxDeadline: deadline, text: text)
             next[input.item.id] = plan
             return plan
         }
         cache = next
         return plans
+    }
+
+    /// The sections and what is around them, all measured here.
+    func measure(_ inputs: [DiffSectionInput], notices: [String], empty: String, width: CGFloat, scale: CGFloat, text: TextEnvironment?) -> ([DiffSectionPlan], DiffListChrome) {
+        (plans(inputs, width: width, scale: scale, text: text), DiffListChrome(notices: notices, empty: empty, width: width, text: text))
     }
 }
 
@@ -225,7 +275,7 @@ final class DiffSectionView: UIView {
             spinner.startAnimating()
         case .image(let sides, let layout):
             images.isHidden = false
-            images.apply(sides: sides, layout: layout)
+            images.apply(sides: sides, layout: layout, textScale: DiffStyle.textScale(plan.text))
         case .files(let plans):
             files = plans
         }
@@ -292,14 +342,18 @@ private final class DiffNoticesCell: UICollectionViewCell {
         didSet { setNeedsLayout() }
     }
 
-    func apply(_ notices: [String], frames: [CGRect]) {
+    /// `textScale` is the size the frames were measured at, which the
+    /// labels draw at rather than their traits'.
+    func apply(_ notices: [String], frames: [CGRect], textScale: TextScale) {
         while labels.count < notices.count {
             let label = StyledLabel(style: DiffTextStyles.body, color: DiffStyle.textSecondary)
+            label.traitOverrides.followsTextSize = false
             contentView.addSubview(label)
             labels.append(label)
         }
         for (index, label) in labels.enumerated() {
             label.isHidden = index >= notices.count
+            label.style = DiffTextStyles.body.scaled(textScale)
             if index < notices.count { label.string = notices[index] }
         }
         self.frames = frames
@@ -312,6 +366,7 @@ private final class DiffNoticesCell: UICollectionViewCell {
 }
 
 private final class DiffEmptyCell: UICollectionViewCell {
+    /// Drawn at the size it was measured at (`style`), not its traits'.
     let label = StyledLabel(style: DiffTextStyles.body, color: DiffStyle.textSecondary)
     var textFrame: CGRect = .zero {
         didSet { setNeedsLayout() }
@@ -319,6 +374,7 @@ private final class DiffEmptyCell: UICollectionViewCell {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        label.traitOverrides.followsTextSize = false
         contentView.addSubview(label)
     }
 
@@ -383,8 +439,11 @@ private final class DiffFilesCollectionLayout: UICollectionViewLayout {
 }
 
 /// components/diff/DiffFilesList.tsx: every changed file, one after
-/// another, each a FileSection. Sections are measured off the main thread
-/// (`DiffSectionMeasurer`); a file's diff is built only once it is open.
+/// another, each a FileSection. Sections, the notices and the empty text
+/// are measured off the main thread (`DiffSectionMeasurer`), at the text
+/// size the list draws at; a file's diff is built only once it is open. A
+/// new text size measures everything again there, and the line at the top
+/// of the screen stays there (`DiffReadingPlace`).
 final class DiffFilesListView: UIView, UICollectionViewDataSource {
     /// Asks for the body of an opened file that has none yet.
     var onRequestContent: ((String) -> Void)?
@@ -392,7 +451,7 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
     var onExpandContext: ((String) -> Void)?
 
     private let layout = DiffFilesCollectionLayout()
-    private lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
+    private(set) lazy var collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
     private let render: RenderServices
     private let measurer: DiffSectionMeasurer
 
@@ -409,10 +468,19 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
     /// Paths whose body was asked for during this opening.
     private var requested: Set<String> = []
 
-    private var plans: [DiffSectionPlan] = []
+    private(set) var plans: [DiffSectionPlan] = []
+    /// The last measurement asked for; it applies when it lands (tests
+    /// wait for it).
+    private(set) var measureTask: Task<Void, Never>?
     private var noticeFrames: [CGRect] = []
     private var emptyFrame: CGRect = .zero
     private var measuredWidth: CGFloat = -1
+    /// The text size last measured for, and the one the plans on screen
+    /// were measured at.
+    private var measuredText: TextEnvironment?
+    private var appliedText: TextEnvironment?
+    /// The place last kept through a text size, while the reader is still there.
+    private var keptPlace = KeptPlace<DiffReadingPlace>()
     private var generation = 0
 
     /// `render`: the account's diff documents and syntax colour.
@@ -430,6 +498,9 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
         collectionView.register(DiffNoticesCell.self, forCellWithReuseIdentifier: "notices")
         collectionView.register(DiffEmptyCell.self, forCellWithReuseIdentifier: "empty")
         addSubview(collectionView)
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.setNeedsLayout()
+        }
     }
 
     @available(*, unavailable)
@@ -466,7 +537,7 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
     override func layoutSubviews() {
         super.layoutSubviews()
         collectionView.frame = bounds
-        if bounds.width != measuredWidth { remeasure() }
+        if bounds.width != measuredWidth || traitCollection.textEnvironment != measuredText { remeasure() }
     }
 
     private func collapsed(_ item: DiffFileItem) -> Bool {
@@ -491,7 +562,9 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
     private func remeasure() {
         let width = bounds.width
         guard width > 0 else { return }
+        let text = traitCollection.textEnvironment
         measuredWidth = width
+        measuredText = text
         generation += 1
         let current = generation
         let words = DiffSectionWords()
@@ -509,38 +582,48 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
         }
         let scale = traitCollection.displayScale > 0 ? traitCollection.displayScale : 3
         let measurer = measurer
-        // The header and empty text are a few lines: measured here.
-        let noticeTexts = notices.map { notice in
-            DiffTextStyles.body.attributedString(notice, color: UIColor(DiffStyle.textSecondary))
-        }
-        let noticeLayout = notices.isEmpty ? nil : DiffFilesListLayout.notices(width: width, texts: noticeTexts.map { text in
-            Measurable { DiffStyle.size(text, width: $0) }
-        })
-        let empty = DiffTextStyles.body.attributedString(emptyText, color: UIColor(DiffStyle.textSecondary))
-        let emptySize = DiffStyle.size(empty, width: max(0, width - DiffFilesListLayout.Metrics.emptyPadding * 2))
-        Task { [weak self] in
-            let plans = await measurer.plans(inputs, width: width, scale: scale)
+        let notices = notices
+        let empty = emptyText
+        measureTask = Task { [weak self] in
+            let (plans, chrome) = await measurer.measure(inputs, notices: notices, empty: empty, width: width, scale: scale, text: text)
             // Plans made while the account stopped have empty or plain
             // bodies; the ones on screen stay until the screen goes.
             guard let self, current == self.generation, !self.render.isClosed else { return }
-            self.apply(plans, width: width, noticeLayout: noticeLayout, emptySize: emptySize)
+            self.apply(plans, width: width, text: text, chrome: chrome)
         }
     }
 
-    private func apply(_ plans: [DiffSectionPlan], width: CGFloat, noticeLayout: (frames: [CGRect], height: CGFloat)?, emptySize: CGSize) {
+    private func apply(_ plans: [DiffSectionPlan], width: CGFloat, text: TextEnvironment?, chrome: DiffListChrome) {
         // The same files in the same order update in place, so open
         // sections keep their cells (and their sideways scroll).
         let inPlace = plans.map(\.id) == self.plans.map(\.id) && !plans.isEmpty
-            && (noticeLayout != nil) == hasHeader && width == layout.width
+            && (chrome.notices != nil) == hasHeader && width == layout.width
+        // A new text size moves every height: keep the line at the top.
+        let top = collectionView.contentOffset.y + collectionView.adjustedContentInset.top
+        let model = layout.model
+        let sections = self.plans.map(\.readingSection)
+        let place = inPlace && text != appliedText
+            ? keptPlace.place(at: top) { DiffReadingPlace(y: $0, list: model, sections: sections) }
+            : nil
+        keptPlace.forget()
         self.plans = plans
-        noticeFrames = noticeLayout?.frames ?? []
+        appliedText = text
+        noticeFrames = chrome.notices?.frames ?? []
         layout.width = width
-        layout.model = DiffFilesListLayout(width: width, headerHeight: noticeLayout?.height, sections: plans.map(\.layout.height), empty: emptySize)
+        layout.model = DiffFilesListLayout(width: width, headerHeight: chrome.notices?.height, sections: plans.map(\.layout.height), empty: chrome.emptySize)
         if let empty = layout.model.empty {
             emptyFrame = empty.offsetBy(dx: 0, dy: -(empty.minY - DiffFilesListLayout.Metrics.emptyPadding))
         }
         layout.invalidateLayout()
         if inPlace {
+            if let place, let y = place.y(list: layout.model, sections: plans.map(\.readingSection)) {
+                let inset = collectionView.adjustedContentInset
+                collectionView.contentOffset.y = ScrollPlace.offset(
+                    top: y, insetTop: inset.top, insetBottom: inset.bottom, viewport: collectionView.bounds.height,
+                    contentHeight: layout.model.contentHeight, scale: traitCollection.displayScale
+                )
+                keptPlace.put(place, at: collectionView.contentOffset.y + inset.top)
+            }
             for indexPath in collectionView.indexPathsForVisibleItems {
                 guard let cell = collectionView.cellForItem(at: indexPath) else { continue }
                 configure(cell, at: indexPath)
@@ -572,8 +655,9 @@ final class DiffFilesListView: UIView, UICollectionViewDataSource {
     private func configure(_ cell: UICollectionViewCell, at indexPath: IndexPath) {
         switch cell {
         case let cell as DiffNoticesCell:
-            cell.apply(notices, frames: noticeFrames)
+            cell.apply(notices, frames: noticeFrames, textScale: DiffStyle.textScale(appliedText))
         case let cell as DiffEmptyCell:
+            cell.label.style = DiffTextStyles.body.scaled(DiffStyle.textScale(appliedText))
             cell.label.string = emptyText
             cell.textFrame = emptyFrame
         case let cell as DiffSectionCell:

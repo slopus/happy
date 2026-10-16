@@ -25,6 +25,13 @@ const cases = [
     { name: 'rig-question', metadata: { client: { id: 'rig' }, rigMetadataVersion: 1, capabilities: { messageReceipts: true }, model: { providerId: 'q', id: 'missing' } }, composer: { serviceTier: null }, thinking: true, agentState: { communications: { question: { kind: 'unknown' } } }, text: 'answer' },
     { name: 'rig-pending', metadata: { client: { id: 'rig' }, rigMetadataVersion: 1, capabilities: { messageReceipts: true } }, composer: { modelMode: 'provider:model:variant' }, pending: true, text: 'next' },
     { name: 'rig-startup', metadata: { client: { id: 'rig' }, rigMetadataVersion: 1, capabilities: { messageReceipts: true } }, composer: {}, pending: true, thinking: true, source: 'new_session', text: 'start' },
+    // messageMeta.test.ts's resolveMessageDeliveryMeta cases. The idle pair
+    // also pins what acceptance derives from the store (SendingDeliveryMetaTests).
+    { name: 'rig-idle', metadata: { client: { id: 'rig' }, rigMetadataVersion: 1, capabilities: { messageReceipts: true } }, composer: {}, text: 'idle' },
+    { name: 'rig-idle-pending', metadata: { client: { id: 'rig' }, rigMetadataVersion: 1, capabilities: { messageReceipts: true } }, composer: {}, pending: true, text: 'idle' },
+    { name: 'rig-permission', metadata: { client: { id: 'rig' }, rigMetadataVersion: 1, capabilities: { messageReceipts: true } }, composer: {}, agentState: { requests: { permission: { tool: 'Bash', arguments: {} } } }, text: 'blocked' },
+    { name: 'rig-question-pending', metadata: { client: { id: 'rig' }, rigMetadataVersion: 1, capabilities: { messageReceipts: true } }, composer: {}, thinking: true, pending: true, agentState: { requests: {}, communications: { question: { kind: 'form', form: { questions: [{ id: 'choice', header: 'Choice', question: 'Pick one', options: [{ label: 'One' }] }] } } } }, text: 'answer' },
+    { name: 'rig-no-receipts', metadata: { client: { id: 'rig' }, rigMetadataVersion: 1 }, composer: {}, thinking: true, pending: true, text: 'plain' },
     { name: 'refuse-auto', metadata: { flavor: 'claude', version: '1.2.1-beta.1' }, composer: { permissionMode: 'auto' }, text: 'refuse' },
     { name: 'build-version', metadata: { flavor: 'codex', version: '1.2.1-beta.2+abc' }, composer: {}, text: 'build' },
 ];

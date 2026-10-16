@@ -31,36 +31,54 @@ extension ChatTextStyle {
         lineHeight ?? font.lineHeight.rounded(.up)
     }
 
+    /// `font` where text is drawn in `environment`: at its text size, or
+    /// as designed where there is none. Safe off main.
+    func font(in environment: TextEnvironment?) -> UIFont {
+        environment.map { font(in: $0) } ?? font
+    }
+
     /// Like `TextStyle.attributes`: a fixed line height centres the glyphs in
-    /// the line the way React Native does.
-    func attributes(color: UIColor, font: UIFont? = nil, alignment: NSTextAlignment = .natural, lineBreakMode: NSLineBreakMode = .byWordWrapping) -> [NSAttributedString.Key: Any] {
-        let font = font ?? self.font
+    /// the line the way React Native does. In an `environment`, the size and
+    /// the line height grow by RN's multiplier and the kern stays as given
+    /// (`scaled(_:)`); `font` is then the caller's font at that size, and the
+    /// text carries its screen's pixels (`chatDisplayScale`).
+    func attributes(
+        color: UIColor, font: UIFont? = nil, alignment: NSTextAlignment = .natural, lineBreakMode: NSLineBreakMode = .byWordWrapping,
+        in environment: TextEnvironment? = nil
+    ) -> [NSAttributedString.Key: Any] {
+        let style = environment.map { scaled($0.scale) } ?? self
+        let font = font ?? self.font(in: environment)
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = alignment
         paragraph.lineBreakMode = lineBreakMode
         var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color, .paragraphStyle: paragraph]
-        if let lineHeight {
+        if let lineHeight = style.lineHeight {
             paragraph.minimumLineHeight = lineHeight
             paragraph.maximumLineHeight = lineHeight
             attributes[.baselineOffset] = (lineHeight - font.lineHeight) / 4
         }
-        if letterSpacing != 0 { attributes[.kern] = letterSpacing }
+        if style.letterSpacing != 0 { attributes[.kern] = style.letterSpacing }
+        if let environment { attributes[.chatDisplayScale] = environment.displayScale }
         return attributes
     }
 
-    func string(_ text: String, color: ColorToken, alignment: NSTextAlignment = .natural, lineBreakMode: NSLineBreakMode = .byWordWrapping) -> NSAttributedString {
+    func string(
+        _ text: String, color: ColorToken, alignment: NSTextAlignment = .natural, lineBreakMode: NSLineBreakMode = .byWordWrapping,
+        in environment: TextEnvironment? = nil
+    ) -> NSAttributedString {
         NSAttributedString(
             string: uppercase ? text.uppercased() : text,
-            attributes: attributes(color: UIColor(color), alignment: alignment, lineBreakMode: lineBreakMode)
+            attributes: attributes(color: UIColor(color), alignment: alignment, lineBreakMode: lineBreakMode, in: environment)
         )
     }
 }
 
 /// Markdown spans as one attributed paragraph in a block's style: bold and
 /// italic swap the face, inline code takes the mono style, links are
-/// underlined and carry their URL (`RenderSpans`).
+/// underlined and carry their URL (`RenderSpans`). In an `environment`,
+/// every face is at its text size.
 enum ChatSpans {
-    static func string(_ spans: [MarkdownSpan], style: ChatTextStyle, color: ColorToken) -> NSAttributedString {
+    static func string(_ spans: [MarkdownSpan], style: ChatTextStyle, color: ColorToken, in environment: TextEnvironment?) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let uiColor = UIColor(color)
         for span in spans {
@@ -73,7 +91,7 @@ enum ChatSpans {
             } else if span.styles.contains(.italic) {
                 spanStyle = style.with(.plex(.italic))
             }
-            var attributes = style.attributes(color: uiColor, font: spanStyle.font)
+            var attributes = style.attributes(color: uiColor, font: spanStyle.font(in: environment), in: environment)
             if let url = span.url, Markdown.isHTTPLink(url) {
                 attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
                 attributes[.chatLink] = url
@@ -88,6 +106,10 @@ extension NSAttributedString.Key {
     /// A tappable http(s) link's URL. Not `.link`: that one makes TextKit
     /// recolour the run.
     static let chatLink = NSAttributedString.Key("HappyChatLink")
+    /// The pixels per point of the screen text made at a text size is drawn
+    /// on (`TextEnvironment.displayScale`), so `ChatTextLayout` rounds its
+    /// box up to that screen's pixels. TextKit ignores it.
+    static let chatDisplayScale = NSAttributedString.Key("HappyChatDisplayScale")
 }
 
 /// Text laid out once at one width and then only drawn.
@@ -99,8 +121,13 @@ final class ChatTextLayout: @unchecked Sendable {
     /// The width the text was wrapped at.
     let width: CGFloat
     let maxLines: Int
-    /// The used size, rounded up to whole points.
+    /// The used size, rounded up to the screen's pixels as React Native
+    /// rounds a Text's box, or to whole points for text made at the
+    /// designed size, which says no screen (`chatDisplayScale`).
     let size: CGSize
+    /// How far in from the wrapping width's left edge the text starts: 0
+    /// unless it is centred or set from the right in a width wider than it.
+    let leading: CGFloat
     let string: NSAttributedString
     private let manager: NSLayoutManager
     private let container: NSTextContainer
@@ -120,10 +147,13 @@ final class ChatTextLayout: @unchecked Sendable {
         storage.addLayoutManager(manager)
         if string.length == 0 {
             size = .zero
+            leading = 0
         } else {
             manager.ensureLayout(for: container)
             let used = manager.usedRect(for: container)
-            size = CGSize(width: min(ceil(used.width), max(0, width)), height: ceil(used.height))
+            let scale = string.attribute(.chatDisplayScale, at: 0, effectiveRange: nil) as? CGFloat ?? 0
+            size = CGSize(width: min(PixelGrid.ceil(used.width, scale: scale), max(0, width)), height: PixelGrid.ceil(used.height, scale: scale))
+            leading = max(0, used.minX)
         }
     }
 
@@ -182,10 +212,14 @@ final class MeasuredText {
 
     /// The layout measured for a placed frame: one wrapped at the frame's
     /// width, or a wider offer that came out at the same size (a bubble
-    /// hugging its text).
+    /// hugging its text) and starts at its left. Centred text measured
+    /// wider sits in the middle of that width, so a frame hugging it is
+    /// laid out again at its own width.
     func layout(for frame: CGRect) -> ChatTextLayout {
         if let exact = layouts.first(where: { $0.width == frame.width }) { return exact }
-        if let fitting = layouts.first(where: { $0.size.height == frame.height && $0.size.width <= frame.width + 0.5 }) { return fitting }
+        if let fitting = layouts.first(where: { $0.size.height == frame.height && $0.size.width <= frame.width + 0.5 && $0.leading < 0.5 }) {
+            return fitting
+        }
         return layout(width: frame.width)
     }
 }

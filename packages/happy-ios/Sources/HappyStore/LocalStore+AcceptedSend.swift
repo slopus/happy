@@ -18,3 +18,28 @@ extension LocalStore {
         }
     }
 }
+extension LocalStore {
+    /// The records in the chat's window (the ones its reducer folds) that
+    /// can leave a user message waiting for the daemon: user text asking
+    /// for acceptance, a local copy, and the receipts that settle them.
+    /// A text prefilter over the stored JSON; the reducer decides.
+    public func acceptanceRecords(sessionId: String) throws -> [MessageRecord] {
+        ThreadRules.assertOffMain()
+        return try performRead { db in
+            guard let session = try Row.fetchOne(
+                db, sql: "SELECT seq, syncedMessageSeq FROM session WHERE id = ?", arguments: [sessionId]
+            ) else { return [] }
+            let lower = Self.chatWindowLowerBound(
+                marker: try ChatHistoryMarker.fetchOne(db, key: sessionId),
+                seq: session["seq"], syncedMessageSeq: session["syncedMessageSeq"])
+            return try MessageRecord.fetchAll(
+                db,
+                sql: """
+                    SELECT * FROM message WHERE sessionId = ? AND (? IS NULL OR seq <= 0 OR seq > ?)
+                    AND (id = localId OR instr(content, 'expectsAcceptance') > 0 OR instr(content, 'user-message-') > 0)
+                    ORDER BY seq, id
+                    """,
+                arguments: [sessionId, lower, lower])
+        }
+    }
+}

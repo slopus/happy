@@ -630,7 +630,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     }
 
     func agentInputCardDidChangeText(_ card: AgentInputCardView) {
-        draftChanged(card.text)
+        draftChanged()
         applyDeferredRemoteDraft()
         applyConfiguration()
         updateActiveWord()
@@ -748,6 +748,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             }
         }
         isSending = true
+        let sentEdits = card.editCount
         // What the send does with the draft is its target's: a pending
         // chat's submit empties its record even if the session arrives
         // before it returns, and the handover carries the record over.
@@ -765,8 +766,9 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
                 self.isSending = false
                 // Only clear what was sent: typing may have gone on.
                 // A Happy Agent's send cleared its draft, a pending chat's
-                // submit its record's.
-                if self.card.text == text {
+                // submit its record's. The text is compared only if it
+                // was edited meanwhile.
+                if self.card.editCount == sentEdits || self.card.text == text {
                     self.clearDraft(stored: clearsStored)
                     self.card.text = ""
                 }
@@ -830,12 +832,19 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
         PendingChats.isPendingChatId(environment.sessionId)
     }
 
-    private func draftChanged(_ text: String) {
+    /// An edit, a keystroke at the end of a long text included: the
+    /// draft hears only whether it is blank, which stops at the first
+    /// character that isn't, and a write carries the field's snapshot, read
+    /// off the main thread. Nothing here grows with the text.
+    private func draftChanged() {
         draftSave?.cancel()
         draftSave = nil
-        let (write, debounce) = draft.textChanged(text, synced: isDraftSynced || isPending)
+        let card = card
+        let (write, debounce) = draft.textChanged(
+            isBlank: !card.hasContent, synced: isDraftSynced || isPending, text: ComposerDraftText(card.textSnapshot)
+        )
         if let write {
-            draftWriter.save(write.text, generation: write.generation)
+            draftWriter.save(write)
         }
         if debounce {
             draftSave = Task { [weak self] in
@@ -849,8 +858,8 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private func flushDraft() {
         draftSave?.cancel()
         draftSave = nil
-        if let write = draft.flush() {
-            draftWriter.save(write.text, generation: write.generation)
+        if let write = draft.flush(text: ComposerDraftText(card.textSnapshot)) {
+            draftWriter.save(write)
         }
     }
 
@@ -859,9 +868,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private func clearDraft(stored: Bool) {
         draftSave?.cancel()
         draftSave = nil
-        if let write = draft.clear(stored: stored) {
-            draftWriter.save(write.text, generation: write.generation)
-        }
+        draftWriter.save(draft.clear(stored: stored))
     }
 
     /// A read from the writer: the opening draft, useDraft's store
@@ -872,7 +879,11 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
     private func receive(_ delivery: ComposerStoreDelivery) {
         draftRefreshPending = false
         let opening = !draft.isLoaded
-        let change = draft.receive(delivery, text: card.text, synced: isDraftSynced, composing: card.hasMarkedText, sending: isSending)
+        let card = card
+        let change = draft.receive(
+            delivery, field: ComposerDraftText(card.textSnapshot), fieldIsEmpty: card.isEmpty,
+            fieldIsBlank: !card.hasContent, synced: isDraftSynced, composing: card.hasMarkedText, sending: isSending
+        )
         // sessionSetAgentModes and the metadata reconciler write the picks.
         if let picks = change.picks, picks != self.picks {
             self.picks = picks
@@ -880,7 +891,7 @@ final class SessionComposerView: UIView, ChatComposerView, AgentInputCardDelegat
             applyConfiguration()
         }
         if let write = change.write {
-            draftWriter.save(write.text, generation: write.generation)
+            draftWriter.save(write)
         }
         if let text = change.text {
             draftSave?.cancel()

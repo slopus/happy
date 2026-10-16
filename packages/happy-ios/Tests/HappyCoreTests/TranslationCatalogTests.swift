@@ -206,9 +206,9 @@ final class TranslationCatalogTests: XCTestCase {
             counts[name] = (strings, calls - strings)
         }
         // Home's: Strings.swift, Strings/Home.swift, Strings/SettingsPages.swift.
-        XCTAssertEqual(counts["Strings.swift"]?.strings, 238)
+        XCTAssertEqual(counts["Strings.swift"]?.strings, 231)
         XCTAssertEqual(counts["Strings.swift"]?.functions, 10)
-        XCTAssertEqual(counts["Home.swift"]?.strings, 31)
+        XCTAssertEqual(counts["Home.swift"]?.strings, 36)
         XCTAssertEqual(counts["Home.swift"]?.functions, 1)
         XCTAssertEqual(counts["SettingsPages.swift"]?.strings, 1)
         XCTAssertEqual(counts["SettingsPages.swift"]?.functions, 0)
@@ -217,6 +217,65 @@ final class TranslationCatalogTests: XCTestCase {
         XCTAssertEqual(counts["SecondaryStrings.swift"]?.functions, 8)
         XCTAssertEqual(counts["Tablet.swift"]?.strings, 3)
         XCTAssertEqual(counts["Tablet.swift"]?.functions, 0)
+    }
+
+    /// A string happy-app spells out in a component (no `t()` key) keeps its
+    /// English here and names the component and line that spell it out:
+    /// `// account.tsx:49, spelled out`. The component is found in happy-app's
+    /// sources and still holds the string, so one happy-app has since moved to
+    /// the catalog or dropped is noticed. The line is not compared, as
+    /// happy-app's own edits move it. Home's three files, as above, and the pages
+    /// HappyCore writes English for.
+    func testEverySpelledOutStringIsStillSpelledOutByHappyApp() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let sources = root.deletingLastPathComponent().appendingPathComponent("happy-app/sources")
+        guard let walk = FileManager.default.enumerator(at: sources, includingPropertiesForKeys: nil) else {
+            throw XCTSkip("happy-app's sources are not beside this package")
+        }
+        let components = (walk.allObjects as! [URL]).filter { ["ts", "tsx"].contains($0.pathExtension) }
+        var contents: [String: String] = [:]
+        let marker = try NSRegularExpression(pattern: #"//\s*([A-Za-z0-9_()/.\-]+\.tsx?):(\d+)(?: "([^"]*)")?, spelled out"#)
+        let literal = try NSRegularExpression(pattern: #"(?:=|\{|return)\s*"((?:[^"\\]|\\.)*)""#)
+        var counts: [String: Int] = [:]
+        // Home's three files, and the settings pages HappyCore writes English for.
+        let files = ["HappyUI/Strings.swift", "HappyUI/Strings/Home.swift", "HappyUI/Strings/SettingsPages.swift",
+                     "HappyCore/Settings/SettingsPages.swift", "HappyCore/Settings/AgentsPage.swift"]
+        for name in files {
+            let source = try String(contentsOf: root.appendingPathComponent("Sources").appendingPathComponent(name), encoding: .utf8)
+            for (offset, line) in source.components(separatedBy: "\n").enumerated() {
+                let range = NSRange(line.startIndex..., in: line)
+                guard let found = marker.firstMatch(in: line, range: range) else { continue }
+                let cited = String(line[Range(found.range(at: 1), in: line)!])
+                let at = "\(name):\(offset + 1) cites \(cited)"
+                let matches = components.filter { $0.path.hasSuffix("/" + cited) }
+                XCTAssertEqual(matches.count, 1, "\(at): one component of happy-app's")
+                guard let component = matches.first else { continue }
+                counts[name, default: 0] += 1
+                // The component may assemble the string (`Connect {props.name}`):
+                // the comment then quotes the part to look for. A multi-line
+                // function has its English on the lines below, unchecked.
+                let english: String
+                if found.range(at: 3).location != NSNotFound {
+                    english = String(line[Range(found.range(at: 3), in: line)!])
+                } else if let text = literal.firstMatch(in: line, range: range).flatMap({ Range($0.range(at: 1), in: line) }) {
+                    var raw = String(line[text])
+                    if let interpolation = raw.range(of: "\\(") { raw = String(raw[..<interpolation.lowerBound]) }
+                    // A long string may be split across lines in the component.
+                    english = String(Self.unescaped(raw).prefix(30))
+                } else {
+                    continue
+                }
+                let body = try contents[component.path] ?? String(contentsOf: component, encoding: .utf8)
+                contents[component.path] = body
+                XCTAssertTrue(body.contains(english), "\(at): \(english.debugDescription) is not in it any more")
+            }
+        }
+        XCTAssertEqual(counts["HappyUI/Strings.swift"], 40)
+        XCTAssertEqual(counts["HappyUI/Strings/Home.swift"], 43)
+        XCTAssertEqual(counts["HappyUI/Strings/SettingsPages.swift"], 7)
+        XCTAssertEqual(counts["HappyCore/Settings/SettingsPages.swift"], 15)
+        XCTAssertEqual(counts["HappyCore/Settings/AgentsPage.swift"], 4)
     }
 
     /// A Swift string literal's text.

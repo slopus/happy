@@ -17,7 +17,7 @@ struct TabletSidebarViewInput: Sendable {
 }
 
 /// What the sidebar shows now: the rows, and the grouped list's headings'
-/// heights with what they were measured at.
+/// and bots' heights with what they were measured at.
 struct TabletSidebarViewState: Sendable {
     var feeds = TabletSidebarDerivation.Applied()
     var text: TextEnvironment?
@@ -28,21 +28,23 @@ struct TabletSidebarViewState: Sendable {
 struct TabletSidebarViewUpdate: Sendable {
     /// Nil when the rows are as they were (a new text size or width).
     var rows: TabletSidebarUpdate?
-    /// The grouped list's heading heights, for its rows as of this update.
+    /// The grouped list's heading and bot heights, for its rows as of this
+    /// update.
     var headings: TabletHeadingHeights<TabletGroupedRow.ID>
     /// Rows the list held already whose height moved.
     var moved: Set<TabletGroupedRow.ID>
 }
 
-/// The grouped list's headings measured without cells, off the main
-/// thread: SessionsList.tsx's and ProjectGroup.tsx's one-line headings at
-/// the person's text size, as RN draws them (docs/DYNAMIC-TYPE.md). The
-/// bots, chats and archived cards are fixed heights and are not here.
+/// The grouped list's headings and bots measured without cells, off the
+/// main thread: SessionsList.tsx's and ProjectGroup.tsx's one-line headings
+/// and the bots' FlatSessionRow at the person's text size, as RN draws them
+/// (docs/DYNAMIC-TYPE.md). The chats and archived cards are fixed heights
+/// and are not here.
 enum TabletGroupedHeights {
     /// The sidebar's rows (`TabletSidebarDerivation`), then the grouped
-    /// list's heading heights for them: measured again only for a heading
-    /// that changed, or every one for a new width or text environment.
-    /// Nil when neither changed.
+    /// list's heading and bot heights for them: measured again only for a
+    /// row whose heading changed, or every one for a new width or text
+    /// environment. Nil when neither changed.
     nonisolated static func derive(
         _ input: TabletSidebarViewInput,
         applied: TabletSidebarViewState,
@@ -66,12 +68,13 @@ enum TabletGroupedHeights {
         return (TabletSidebarViewUpdate(rows: rows?.output, headings: state.headings, moved: moved), state)
     }
 
-    /// The headings' metrics at `environment`'s text size and scale. Safe
-    /// off main: fonts come from `ScaledFonts`, the glyph box from the
-    /// generated tables.
+    /// The headings' and bots' metrics at `environment`'s text size and
+    /// scale. Safe off main: fonts come from `ScaledFonts`, the glyph boxes
+    /// from the generated tables.
     nonisolated static func metrics(_ environment: TextEnvironment) -> TabletHeadingMetrics {
         let scale = environment.displayScale
         let iconSize = TabletMachineRuleLayout.Metrics.iconSize
+        let branchIconSize = FlatSessionRowLayout.Metrics.branchIconSize
         // One line as a one-line label measures it: the style's line
         // height, or the font's own unrounded, up to the screen's next
         // pixel. Each label is ceiled alone, before a layout adds or
@@ -91,14 +94,23 @@ enum TabletGroupedHeights {
             changesApproximateLine: line(TextStyles.gitApproximate),
             changesCountLine: line(TextStyles.gitLineCount),
             archiveToggleLine: line(TextStyles.archiveToggle),
+            // The lines home's flat rows take (`HomeTextEnvironment`).
+            sessionLines: FlatSessionRowLayout.Lines(
+                title: TextStyles.sessionTitle.oneLine(in: environment),
+                project: TextStyles.sessionProject.oneLine(in: environment),
+                workspace: TextStyles.sessionWorkspace.oneLine(in: environment),
+                changes: TextStyles.sessionLineChanges.oneLine(in: environment)
+            ),
+            branchIcon: Icon.ionicons("git-branch-outline").layout(size: branchIconSize, scale: scale)?.size.height
+                ?? branchIconSize,
             hairline: 1 / max(scale, 1)
         )
     }
 
-    /// What a row's height is made of when it is a heading. The app's own
-    /// words are one line whatever they say, so none is read here: `Strings`
-    /// speak the screens' language and are for the main thread, where
-    /// `TabletGroupedListViewController.configure` sets them.
+    /// What a row's height is made of when it is a heading or a bot. The
+    /// app's own words are one line whatever they say, so none is read here:
+    /// `Strings` speak the screens' language and are for the main thread,
+    /// where `TabletGroupedListViewController.configure` sets them.
     nonisolated static func heading(_ row: TabletGroupedRow) -> TabletHeading? {
         switch row {
         case .botsHeader, .archiveHeader:
@@ -109,7 +121,9 @@ enum TabletGroupedHeights {
             .workspace(title: header.projectName, branch: header.branch, changes: changes(header.changes))
         case .archiveToggle:
             .archiveToggle
-        case .bot, .chat, .archived:
+        case .bot(let session):
+            .bot(workspace: session.workspaceName != nil, changes: session.changes != nil)
+        case .chat, .archived:
             nil
         }
     }

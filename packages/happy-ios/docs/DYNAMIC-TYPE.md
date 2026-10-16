@@ -157,14 +157,21 @@ Following now:
   once theirs are in; a size change measures them again. A name taller
   than its tab is centred on it and cut by the capsule.
 
-- The iPad sidebar's list grouped by project, its own rows only: the
-  "Bots" and day headings, the computers' rules, the checkouts' headings
-  (project, branch, line changes) and the archive toggle draw scaled, and
-  their heights are measured at that size off the main thread
+- The iPad sidebar's list grouped by project: the "Bots" and day
+  headings, the computers' rules, the checkouts' headings (project,
+  branch, line changes), the archive toggle and the bots draw scaled,
+  and their heights are measured at that size off the main thread
   (`TabletGroupedHeights`, from one line of each style, ceiled to the
   screen's pixels as its label measures it, through the
   HappyLayout layouts), keyed by the heading, the list's width and the
   text size and screen scale, and measured again only for what changed.
+  A bot is home's flat row (FlatSessionRow.tsx) and is as tall as it is
+  on home: its lines are the ones `HomeTextEnvironment` works out (the
+  same `TextStyle.oneLine(in:)`), and its key is only whether it has the
+  workspace's line and line counts, so 81 at the designed size whatever
+  it shows, and 235⅔ with a workspace at the largest on a 3x screen; a
+  new size reconfigures every bot in the batch that moves the heights,
+  so a cell made ahead for a row off screen takes the new lines too.
   A heading's key holds the person's words (a computer's name, a
   project, a branch) but none of the app's: "Bots", the days and "Show
   archived" are one line in any language, so the derivation never reads
@@ -180,9 +187,27 @@ Following now:
   the card, so it never spills over the rows next to it; an archived
   card's at the card's edge, borders and rounded corners included
   (`sessionItemContainer`'s `overflow: 'hidden'`). The glyphs, the
-  faces and the `+` keep their size. Each cell sets the trait on itself;
-  the list does not, because its bots (home's flat rows) and its notices
-  are planned there at the designed size.
+  faces and the `+` keep their size. Each cell sets the trait on itself,
+  and the notices over the list (home's header) too. They are measured
+  off the main thread as home's are (`HomeRowMeasurer.headerHeight`),
+  keyed by their words, the list's width, how wide a group may grow and
+  the text size and screen scale; only a height measured for what was
+  last asked for lands, and the header shows the words it was measured
+  with.
+- Session info and the machine screen (Header.tsx's title and every row:
+  the Item rows, the line counts and the changed files beside "Changes",
+  the trailing values, which are the system font at 14 × the multiplier,
+  and the raw JSON blocks, Menlo 12 on an 18 line, both × the
+  multiplier). Their rows are measured from their labels as drawn when
+  the list lays out, as Settings' are; a size change lays the list out
+  again. The glyphs, the 29 icon squares and the 44 row minimum keep
+  their size. Session info's duplicate sheet (DuplicateSheet.tsx) sets
+  bare font sizes, so its text is the system font at its size × the
+  multiplier and the row preview's 19 line likewise; the card, its list
+  and its buttons are laid out from the labels as drawn, so they grow
+  with the text, and the list shrinks first and scrolls, so the card stays
+  inside 85% of the window (`DuplicateSheetLayout`; upright on a phone
+  the list's 420 cap holds it even at the largest size).
 - Home's "No sessions yet" (EmptyMainScreen.tsx with a computer linked):
   the title, the line under it, "Start New Session" and "Show archived".
   Their sizes are measured off the main thread (`NoSessionsMeasure`, the
@@ -255,10 +280,243 @@ Following now:
   for that one face; RCTFontUtils.mm's closest weight has nothing else
   to pick, so they are drawn regular, and so are they here (from RN
   0.83.1's and expo-font 55.0.4's source; not yet seen on a device).
-  Still not ported, so the third row is not yet RN's whole: the draft
-  glyph (13, `create-outline`) before the counts. This much of the
-  row's `workspaceMeta` gap stays open. The glyph keeps its 13 at every
-  size, under the row's 18, so it would not change a height.
+  The draft glyph (13, `create-outline`) leads the counts in the row's
+  `workspaceMeta`, as RN's does. It keeps its 13 at every size, its box
+  13⅓ tall at most, under the row's 18, so it changes no height; the
+  sidebar's 14 in a chat's slot and 12 over an archived card's avatar
+  sit in fixed boxes too.
+
+- Home's dock, resting and open (HomeDock.tsx). The capsule keeps its
+  56 and its prompt, scaled, is centred in it and cut at its edge, as
+  `composerSurface`'s `overflow: 'hidden'` cuts it. The open composer's
+  screen follows (`followsTextSize()`), so Composer's card draws scaled
+  there as in the chat, its text measured off the main thread with the
+  text size in its key (`textKey(fitting:)`), which the open's two-frame
+  wait and the Session | Bot premeasure already use. A picker row is
+  RN's 42, or one line of `focusConfigTriggerValue` (17, Plex's 1.3 em)
+  when that is taller; the menu's value, the system's body font, which
+  scales on its own, is centred in it and moves no height. The lede, the
+  status line and the faces' "Avatar" and credit draw scaled. Their
+  heights come from `HomeDockText`, made off the main thread for the
+  text size, the screen and the lede's lane, and asked for by home as it
+  lays out, so the open finds them made; the open waits for them inside
+  the same two frames as the card's text. The 24 icon box, the 42
+  minimum, the 32 segmented control, the faces and the die keep their
+  size.
+- The new-session screen (new/index.tsx). The prompt draws at `16 × m`
+  on a `22 × m` line, measured off the main thread with the scaled style
+  and line in its key, so a new size measures it again; the typed text
+  is restyled in place, its selection kept. Empty, it is one line up to
+  the screen's next pixel, as Fabric ceils an input's box, and it is
+  centred in the 44 field to the pixel above, so its snapped frame keeps
+  the height measured: centred exactly, a height an odd number of pixels
+  off the 44 starts on half a pixel, and the frame was a pixel taller or
+  shorter than the text (37⅓ for 37 at XS; and an empty line of 18.11
+  was snapped to 18). The 44 field, the 120 cap,
+  the 40 action row, the 36 harness capsule and the 38 controls keep
+  their size. Every label's size (the place rows, the offline help, the
+  harness's name, the pickers' options, sections, notes and empty
+  lines, a settings page's title) comes from `MeasuredLabelSizes`: the
+  label's words, style, lines, alignment, text size, screen and width,
+  measured off the main thread as a label measures itself. A size not
+  yet measured stands as one line of its style at the width asked, and
+  the screen lays out again once when the pass lands, so a label that
+  wraps, or one whose width places what follows it (the harness's
+  chevron), is a frame late the first time it is seen. The search and
+  path fields are one line of their style. The header's pill grows with
+  its title in a 44 capsule.
+
+- The chat's rows, its header and the bars over its composer, and message
+  detail. The list (`ChatListView`) carries the trait itself, and so do
+  the placeholder over it, the header's title views, the CLI warning and
+  each bar over the composer; the screen's own view doesn't (the composer
+  and the worktree tab strip set it on their own). Message detail calls
+  `followsTextSize()`. happy-app sets no cap in the chat
+  (`maxFontSizeMultiplier` appears only in `OnboardingContent.tsx`), so
+  nothing is capped.
+  - Planned off main at the size: the list's `TextEnvironment` and the
+    rows' words go into every row's input (`ChatRowText` in
+    `ChatRowStyle`; `MessageDetailInput.text`), so `RowPlanner`, which
+    keys on the input and the width, measures every row again once on a
+    new size: one off-main pass and one apply, all reconfigures, nothing
+    inserted or moved. A streamed token after it still measures only its
+    own bubble. A result planned for another size is refused; the next
+    pass has the new one.
+  - What grows: every chat style's size and line by the multiplier, the
+    kern as given (`ChatTextStyle.attributes(in:)`), the spans' faces and
+    inline code (`ChatSpans`), code blocks and their syntax runs
+    (`ChatSyntax.string(in:)`), the running tool's timer (it draws at its
+    row's size, not its traits', in the room the row measured for "000.0s"),
+    and the diffs inside tool cards (`DiffChunkPlan(text:)`,
+    `DiffHeaderPlan(text:)`). What stays: the glyphs (the tool header's 24
+    and 20, the status 16, the goal's 16, the chevrons), the paddings and
+    margins, the 32 older end, the markdown table's 8.5 a character column
+    estimate, and the minimums (the 44 work header, the 34 permission
+    buttons, the 44 options), which taller text grows past. The user
+    bubble's status line keeps `pendingStatusText`'s fixed 14, and its
+    text is cut there from a little past the default size; RN's `height:
+    14` also stops it growing (read from MessageView.tsx, not seen in RN).
+  - A new size keeps the reader's row where it was (`ChatScrollAnchor`)
+    and message detail the text at the top of the screen
+    (`MessageDetailReadingPlace`). Until the new plans land the old ones
+    stay drawn whole: the text is in the plan, so a row never mixes sizes.
+  - The placeholder (EmptyMessages, the pending chat's and the deleted
+    state) is measured off main (`ChatPlaceholderMeasure`, through
+    `OffMainPlan`): its words are read on main when it is shown, then a
+    background task measures them at its width, text size and screen
+    scale, and only a plan for what was asked last is drawn, whole. Its
+    height only centres the column (`ChatPlaceholderLayout`), so the
+    keyboard moving the dock measures nothing. Until the first plan is in
+    it shows nothing, the loading spinner included; after a change the
+    last plan stays until the next. Its glyphs (72, 64, 48), margins and
+    paddings, the paging spinner and RoundButton's 32 stay.
+  - The header (ChatHeaderView) and the CLI warning under it, measured
+    off main (`ChatHeaderMeasure`, through `OffMainPlan`): what they say
+    is read on main, a background task lays their text out at the width
+    they have, the text size and the screen, and the view draws the plan
+    for what it asked last. On a phone the capsule asks the bar for the
+    size its plan made at its widest says, and is planned again at what
+    the bar hands over when that is less; it keeps
+    `MOBILE_GLASS_CONTROL_SIZE`'s 44 at every size, the title and its row
+    centred on its middle, and cuts what runs past it, as
+    `mobileTitlePillGlass`'s `overflow: 'hidden'` does (from XXXL, or
+    XXL with line changes, the two lines are taller than 44). The line changes are drawn
+    from the plan too (`ChatGitChangesPlan`), in the project list's
+    styles. On a tablet the column is measured to the row the bar leaves
+    it and spills past the bar's height, as RN's unclipped header content
+    does. The pill grows with its label; its 14 glyphs stay. Until its
+    first plan is in, a title shows nothing and the pill isn't placed.
+    UINavigationBar holds the text size its title view inherits to XXL
+    (its content view's `maximumContentSizeCategory`, on the iOS 26.5
+    simulator: 19.76 for a 16 title); Header.tsx's RN Text has no such
+    cap, so the screen hands the title views its own size
+    (`ChatHeaderTitleView.text`) and they plan at that.
+  - The bars over the composer (InactiveArchivedHint, AgentGoalBar,
+    AgentQuestionBanner, RigActivityBar), measured off main
+    (`ChatDockBarMeasure`): each reads its words on main when it is shown
+    and is laid out by its HappyLayout layout at the width the dock asks
+    for. The dock takes a bar's height from its plan, so a bar that comes
+    has no height until its plan is in; then it tells the screen, which
+    lays the dock out again, animated as a bar coming or going is. A new
+    text size marks the screen for layout, which asks each bar for its
+    height at the new size. A bar that goes forgets its plan, so it comes
+    back with nothing old in it. What stays: the glyphs (the
+    banner's 20 and its 18 chevron, the goal's 18 and its 30 pt buttons,
+    the rig's 12, the copy glyph's 16), the paddings and margins, Resume's
+    44, which its label (SF 15, a line of about 17.9) spills out of from
+    AX-XL as RN's fixed `height` lets it, and the commands' 48 minimum, which they grow past. The
+    dock's height feeds the list's newest-edge inset and the scroll
+    button's place (`ChatScreenLayout`), which follow it.
+  - A text box ends on the screen's next pixel, as RN's does
+    (`ChatTextLayout`, `PixelGrid.ceil`): the screen's scale comes with
+    the text size (`TextEnvironment.displayScale`) on every string made at
+    it. Text made at the designed size names no screen and still ends on
+    the next whole point (the answer sheet, the copy menu).
+  - Centred text drawn in a frame hugging it is laid out at that frame's
+    width (`MeasuredText.layout(for:)`, `ChatTextLayout.leading`):
+    measured wider, TextKit puts it in the middle of the wider width, and
+    a frame hugging it would draw it off to the right and cut it. It was
+    so before for the event lines, the placeholder and the capsule's
+    title.
+  - Tested on Linux: the layouts at XS, the default, XXXL, AX-M and
+    AX-XXXL (`ChatTextSizeLayoutTests`, `ChatPlaceholderLayoutTests`,
+    `ChatChromeTextSizeLayoutTests`), the changesets
+    (`ApplyPerfChatTextSizeTests`) and the reading place. UIKit tests
+    (`ChatRowsTextSizeTests`, `MessageDetailTextSizeTests`,
+    `ChatRowWordsTests`, `ChatHistoryViewsTests`, `ChatChromeTextSizeTests`:
+    the plans' text at the multiplier and fitting its frames, the designed
+    size unchanged, the cells drawing their plans, the placeholder
+    measured again at a new size or width but not a new height, the bars
+    with no height until their plans are in and growing at each size, the
+    capsule keeping 44 and cutting what spills, centred text laid out at
+    its frame's width, and the fixture chat, its dock and the message
+    screen planned again at a new size) pass on the iOS 26.5 simulator
+    (an iPhone at scale 3), all 26. Their first run there found the bar's
+    XXL cap on the title views (the header, message detail's title),
+    since fixed, and frames that differed from the plan's only by
+    floating-point readback (now compared to within 1e-6,
+    `assertSameFrame`). Nobody has looked at the screens on a simulator
+    or a device.
+
+- Diffs, on the Changes screen (`SessionChangesViewController`) and in the
+  file viewer (`SessionFileViewController`), which opt in, and in the
+  chat's and message detail's tool cards, which hand their environment to
+  `DiffChunkPlan(text:)` and `DiffHeaderPlan(text:)` (nil is the designed
+  size, so a caller that passes nothing is unchanged). happy-app sets no
+  cap anywhere in `components/diff/*`, `DiffMetrics.tsx`, `CodeView`,
+  `file.tsx` or `SimpleSyntaxHighlighter`.
+  - What grows: DiffFileView's mono `fontSize` (12, its numbers and hunk
+    rows 11) and its line, `Math.round(fontSize × 1.5)`, both times the
+    multiplier as RN scales a `fontSize` and a `lineHeight`
+    (`DiffMetrics(scale:)`); MonoProbe's advance, measured over 50 "M"s
+    at the size drawn (`DiffStyle.metrics(text:)`, kept per drawn size),
+    and with it the gutter's columns, the marker's two columns and the
+    code's width; the header's path, badge and counts, the hint and
+    messages, "Show N more lines", the image labels, the notices and the
+    empty text. What stays: the gutter's 12 (or 4) of padding, the code's
+    6 inset, the hunk dots' 6, the bar's 1 + 10 + 10 and its spinner, the
+    header's paddings, its 16 file icon and 14 chevron, the 160 image
+    boxes, the 20 section spinner.
+  - Two deliberate differences. DiffFileView.tsx gives each scroll-mode
+    row `height: metrics.lineHeight` as well as `lineHeight`; the height is
+    a Yoga size, which RN never scales, so above the default size RN's
+    rows stay 18 tall and cut a taller line, and its gutter rows overlap.
+    Here a row is its scaled line, up to the screen's next pixel, as RN
+    measures a one-line Text (at the largest size on 3x, 64⅓). And
+    MonoProbe refuses a measurement outside 0.35 to 1.2 em of its
+    designed `fontSize`, while measuring a scaled Text, so from the
+    multiplier 2 up (AX-L and larger) it keeps 0.6 em of 12 and RN's
+    gutter and code width are too narrow for their text; it also keeps
+    the first advance per designed size for good, through a size change.
+    Here the window is of the size drawn and a new size measures again
+    (`DiffMetrics.acceptsAdvance`).
+  - Off the main thread: every plan is measured for its width and text
+    size (`DiffFilePlan`, `DiffChunkPlan`, `DiffSectionPlan`,
+    `FileLinesPlan`), and the caches compare the environment as they
+    compare the width (`DiffSectionMeasurer`, the file viewer's plans). The
+    Changes list's notices and empty text are measured there too, with
+    the sections. The parsed diff documents hold no measurement and are
+    not keyed on it.
+  - A new text size: the list measures every section again and, when the
+    same files come back, puts the code line that was at the top of the
+    screen back there, by section, file, row and how far into the row, or
+    by how far into a header or the rest of a section
+    (`DiffReadingPlace`). The file viewer does the same by line
+    (`FileLinesLayout.place`), also across a new width or its colour
+    landing. The offset is put on the nearest of the screen's pixels
+    (`ScrollPlace.offset`), so the place is at most half a pixel off;
+    while the offset is still the one it was put at, the next size
+    starts from the place kept, not one found again from that offset
+    (`KeptPlace`), so a run of sizes doesn't add up their half pixels,
+    and back at the first size the line is where it was. Once the reader
+    scrolls, the place is found afresh. Until the new plans land the old
+    ones stay drawn: the rows, the header, the bar and the list's notices
+    draw at their plan's size, not their traits' (the bar's and notices'
+    labels opt out of the trait), so a diff never mixes sizes. The Changes and file screens'
+    own labels (the retry and loading states, the file viewer's path and
+    Diff/File buttons) follow the trait and are measured on main when
+    they lay out, as Settings' are.
+  - The file viewer's lines (mono 14 on 20, scaled) are measured
+    wrapped at their row's width and ceiled to the screen's pixels as RN
+    ceils a Text's box (`FileLinesLayout.textHeight`); the 16 padding,
+    DiffDisplay's 8 and 1 and its 3 bar stay. Jumping to a line keeps
+    file.tsx's `(line − 1) × 20 − 40`, unscaled, as RN does, so at a
+    larger size it lands short of the line, as RN's does.
+  - Still on main, as at the designed size: a shown code row's text
+    width (to window a long line), the bar's label width and the file
+    viewer's header. No height depends on them.
+  - Tested: the arithmetic on Linux at five sizes (the metrics, the rows,
+    gutters and markers with the estimate and with a fixed advance, the
+    bar, a chunk, the reading place, the file viewer's boxes and its
+    place). UIKit tests (`DiffTextSizeTests`: the advance against UIKit's
+    at six sizes from XS to AX-XXXL, every row's text, number and marker
+    fitting its frame, the drawn rows equal to the plan's, the bar at its
+    plan's size, the header, the section cache keyed on the size, the
+    list keeping the reader's place through three sizes to within half
+    a pixel and back at Large exactly, the file viewer's lines against a
+    label) pass on the iOS 26.5 simulator; drawn frames are compared to
+    the plan's within 1e-6, as UIKit reads a frame back an ulp off. Not
+    seen on a device.
 
 ## Header titles
 
@@ -276,11 +534,39 @@ happy-app has two kinds of header on iOS (`app/(app)/_layout.tsx`):
 
 Here the bar's own title is react-native-screens' (IBMPlexSans-SemiBold
 17, a font and a colour: `AppCoordinator.nativeTitleAttributes`) and never
-scales. Settings, What's New, Welcome, Home, session info, machine and
-changes put their title in a title view that follows the text size and is
-fitted again in the bar when the size changes (session info, machine and
-changes through `setPlainHeaderTitle`, which keeps `title` for the back
-button). On those three only the title follows; their rows don't yet.
+scales. Settings, What's New, Welcome, Home, session info, machine,
+changes and message detail put their title in a title view that follows
+the text size and is fitted again in the bar when the size changes
+(session info, machine and changes through `setPlainHeaderTitle`, which
+keeps `title` for the back button). Session info and machine follow the
+text size in their rows too, and so do changes' (above).
+
+The bar holds the text size a title view inherits to XXL: its content view
+has `maximumContentSizeCategory` XXL (iOS 26.5 simulator), where RN's Text
+in Header.tsx goes on scaling. A title view's own trait override is past
+the cap. Message detail sets its title view's to the screen's
+(`MessageDetailViewController.updateTitleTextSize`), and the chat hands its
+header the screen's size (above). The other screens' title views still
+stop at XXL (19.76 for a 16 title).
+
+UINavigationBar holds the text size a title view inherits to XXL: its
+content view has `maximumContentSizeCategory` XXL (found by the chat's run
+on the iOS 26.5 simulator: 19.76 for a 16 title), where the RN Text in
+Header.tsx and OnboardingHeader goes on scaling. A title view's own trait
+override is past the cap, so those seven screens put theirs in the bar
+through `setScaledTitleView`, which sets the view's size category to the
+screen's, read from the controller's own traits, and again on each change
+of the screen's (in the controller's trait change its view's are still the
+old ones). A screen not yet on a window leaves the view what it inherits
+until it is. The title views at five sizes up to the largest in a real
+navigation bar, a size change both ways, a title set before its screen is
+shown, and What's New's are UIKit tests (`NavigationTitleTextSizeTests`),
+which pass on the iOS 26.5 simulator. The view is fitted to its label's
+box ceiled to the screen's pixels; the bar centres it in its 44 and
+rounds that frame out to whole pixels, so a title an odd number of pixels
+off the 44 gets one pixel more height than it measured (25 in 25⅓ at
+XXL, 71⅔ in 72 at AX-XXXL), never less, and the label keeps its box in
+it. Message detail and the chat do the same in their own code (Chat's).
 
 Fixed RN sizes stay fixed: icons, the wordmark, the checklist boxes,
 paddings, and minimum heights (rows 44, buttons 50/44/32, Get help 36),
@@ -293,16 +579,8 @@ past; in the 42 row it is cut by the middle box, as RN's
 
 ## Not yet wired
 
-- The rest of the sidebar (the grouped list's bots and the notices over
-  them), the chat, message detail, diffs and the file viewer: their
-  heights are planned off main at the designed size.
-  Their measurers take a `TextEnvironment` as an input and cache key, a
-  text size change invalidates every height as a width change does, and
-  then their screens opt in.
-- Home's dock (the same card, under a screen that doesn't follow, so it
-  stays at the designed size) and the new-session screen.
-- The `createPlainHeader` title of message detail (Chat's).
-- The rows of session info, machine and changes.
+- The rest of the chat screen: the answer sheet (AgentQuestionModal,
+  whose RN `<Text>`s scale) and the copy menu, which is UIKit's.
 - On a device: the composer at each size, the chips' native menus over
   their scaled labels, and a size change while typing (the typed text is
   restyled in place, which may end an IME composition in progress) have
@@ -341,6 +619,5 @@ past; in the 42 row it is cut by the middle box, as RN's
     at M: 120 in 120) is checked as scrolling with its content as tall as
     the view, as RN scrolls from the cap (`MultiTextInputLayout`).
   - Thai, Devanagari and Korean join the texts, under the same checks.
-- Measured text boxes ceil to pixels as RN's do.
-- Fonts made outside `TextStyle` (session info's duplicate sheet, code
-  blocks).
+- Measured text boxes ceil to pixels as RN's do (the chat's text at the
+  designed size still ceils to whole points).

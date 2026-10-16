@@ -128,6 +128,10 @@ final class BotFacePickerView: UIView {
         addSubview(creditLink)
 
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in self.applyCredit() }
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.applyCredit()
+            self.setNeedsLayoutUpTheTree()
+        }
     }
 
     @available(*, unavailable)
@@ -135,9 +139,9 @@ final class BotFacePickerView: UIView {
         fatalError("init(coder:) is not supported")
     }
 
-    /// "Art by " and the artist's name, underlined.
+    /// "Art by " and the artist's name, underlined, at the text size here.
     private func applyCredit() {
-        let style = TextStyles.botFaceCredit
+        let style = traitCollection.textEnvironment.map { TextStyles.botFaceCredit.scaled($0.scale) } ?? TextStyles.botFaceCredit
         let color = UIColor(Palette.textSecondary)
         let text = NSMutableAttributedString(attributedString: style.attributedString(
             Strings.Home.botFaceCreditLead,
@@ -153,6 +157,16 @@ final class BotFacePickerView: UIView {
     /// The words the layout measures.
     var text: BotFacePickerLayout.Text {
         BotFacePickerLayout.Text(heading: heading.measurable, credit: credit.measurable, creditLead: creditLead.measurable)
+    }
+
+    /// The words at heights made off the main thread (`HomeDockText`):
+    /// "Avatar" and the credit are one line each.
+    func text(headingLine: CGFloat, creditLine: CGFloat) -> BotFacePickerLayout.Text {
+        BotFacePickerLayout.Text(
+            heading: HomeDockText.line(heading, headingLine),
+            credit: HomeDockText.line(credit, creditLine),
+            creditLead: creditLead.measurable
+        )
     }
 
     /// The picker's frames, in its own space.

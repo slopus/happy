@@ -82,9 +82,9 @@ public enum AgentsPage {
         let code = AgentDefaults.codeDefaults(agent, cliVersion: cliVersion)
         let effective = AgentDefaults.resolve(overrides, agent, cliVersion: cliVersion)
         let configs: [(AgentDefaults.Field, String, String, [AgentDefaults.Option])] = [
-            (.permissionMode, "Permission", "shield-checkmark-outline", AgentDefaults.permissionModes(agent)),
-            (.modelMode, "Model", "hardware-chip-outline", AgentDefaults.modelModes(agent, configured: effective.modelMode)),
-            (.effortLevel, "Effort", "speedometer-outline", AgentDefaults.effortLevels(agent, model: effective.modelMode)),
+            (.permissionMode, "Permission", "shield-checkmark-outline", AgentDefaults.permissionModes(agent)),  // agents.tsx:253 "Permission", spelled out
+            (.modelMode, "Model", "hardware-chip-outline", AgentDefaults.modelModes(agent, configured: effective.modelMode)),  // agents.tsx:260 "Model", spelled out
+            (.effortLevel, "Effort", "speedometer-outline", AgentDefaults.effortLevels(agent, model: effective.modelMode)),  // agents.tsx:267 "Effort", spelled out
         ]
         return configs.compactMap { field, title, icon, options in
             if field != .permissionMode && options.isEmpty { return nil }
@@ -92,7 +92,7 @@ public enum AgentsPage {
             let hasOverride = overrideValue != nil
             let detail = hasOverride
                 ? AgentDefaults.optionName(options, overrideValue)
-                : "Default (\(AgentDefaults.optionName(options, effective[field])))"
+                : "Default (\(AgentDefaults.optionName(options, effective[field])))"  // agents.tsx:133 "Default (", spelled out
             let offersCustom = agent == .codex && field == .modelMode
             let isCustom = offersCustom && overrideValue?.isEmpty == false && !options.contains { $0.key == overrideValue }
             return FieldRow(

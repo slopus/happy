@@ -44,6 +44,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -351,7 +352,8 @@ fun HomeDockFocus(state: HomeDockState, actions: HomeDockActions, modifier: Modi
     val colors = HappyTheme.colors
     val options = state.options
     val starting = state.phase != null
-    var page by remember { mutableStateOf<NewSessionPage?>(null) }
+    // An open picker comes back with a recreated activity, as the composer's do.
+    var page by rememberSaveable { mutableStateOf<NewSessionPage?>(null) }
     val progress = remember { Animatable(0f) }
     LaunchedEffect(Unit) { progress.animateTo(1f, tween(340, easing = EaseOutCubic)) }
     val refusal = remember { Animatable(0f) }

@@ -31,6 +31,9 @@ final class HomeDockController: NSObject {
     private weak var host: UIViewController?
     private let context: AppContext
     private weak var focus: HomeDockFocusViewController?
+    /// The dock's own text heights at the text size, made off the main
+    /// thread (`HomeDockText`).
+    let text = HomeDockTextStore()
     /// "Picture not set" offers waiting for the composer to go.
     private var faceOffers: [(message: String, answer: CheckedContinuation<Bool, Never>)] = []
 
@@ -56,7 +59,25 @@ final class HomeDockController: NSObject {
         restingView.sendButton.addAction(UIAction { [weak self] _ in
             Task { await self?.submit() }
         }, for: .touchUpInside)
+        text.onChange = { [weak self] in
+            guard let self else { return }
+            self.restingView.text = self.text.current
+            self.focus?.view.setNeedsLayout()
+        }
         render()
+    }
+
+    /// What the dock's text heights are for on a screen `width` wide drawn
+    /// at `text`.
+    static func textKey(width: CGFloat, text: TextEnvironment) -> HomeDockText.Key {
+        HomeDockText.Key(text: text, ledeWidth: HomeDockHeaderLayout.ledeWidth(width: width), lede: Strings.Home.botLede)
+    }
+
+    /// Makes the dock's text heights for home's width and text size, ahead
+    /// of the composer opening.
+    func prepareText(width: CGFloat, text environment: TextEnvironment) {
+        guard width > 0 else { return }
+        text.prepare(Self.textKey(width: width, text: environment))
     }
 
     func update(_ snapshot: HomeSnapshot) {
@@ -372,6 +393,10 @@ final class HomeDockFocusViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // The pickers, the lede, the faces' words, the status line and the
+        // card follow the person's text size; every height is measured at
+        // it off the main thread (`HomeDockText`, the card's own).
+        followsTextSize()
         view.backgroundColor = .clear
         backdrop.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(backdropTapped)))
         view.addSubview(backdrop)
@@ -469,11 +494,22 @@ final class HomeDockFocusViewController: UIViewController {
         // frames at most, so the open doesn't retarget on the way. Then
         // what is left of a frame for the modal to land, and 340ms
         // ease-out. The card shows throughout, as the capsule.
+        // The dock's own text heights at the text size are waited for
+        // alongside, within the same two frames; home makes them ahead, so
+        // they are usually in already.
         let asked = CACurrentMediaTime()
-        card.whenTextMeasured(fitting: composerWidth, timeout: .seconds(HomeDockFocusMotion.heightWait)) { [weak self] _ in
-            guard let self, self.motion == nil, self.progress == 0, !self.closing else { return }
+        let pending = HomeDockOpenWait(count: 2)
+        let arrived: @MainActor () -> Void = { [weak self] in
+            guard pending.arrive(), let self, self.motion == nil, self.progress == 0, !self.closing else { return }
+            self.layoutContent()
             let delay = HomeDockFocusMotion.openDelay(afterWaiting: CACurrentMediaTime() - asked)
             self.animate(to: 1, delay: delay, duration: HomeDockFocusMotion.openDuration, easing: HomeDockFocusMotion.easeOut)
+        }
+        card.whenTextMeasured(fitting: composerWidth, timeout: .seconds(HomeDockFocusMotion.heightWait)) { _ in arrived() }
+        if let controller {
+            controller.text.whenReady(textKey, timeout: .seconds(HomeDockFocusMotion.heightWait)) { _ in arrived() }
+        } else {
+            arrived()
         }
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(50))
@@ -869,6 +905,11 @@ final class HomeDockFocusViewController: UIViewController {
         prepareKindSwitch()
     }
 
+    /// What this screen's text heights are for now.
+    private var textKey: HomeDockText.Key {
+        HomeDockController.textKey(width: view.bounds.width, text: TextEnvironment(traitCollection))
+    }
+
     /// The card's width.
     private var composerWidth: CGFloat {
         max(0, view.bounds.width - 2 * HomeDockFocusLayout.Metrics.composerPaddingHorizontal)
@@ -885,14 +926,23 @@ final class HomeDockFocusViewController: UIViewController {
         let cardHeight = cardLayout.size.height
         let showsProgress = !progressLabel.isHidden
         let shownRows = rows.filter { !$0.isHidden }
+        // The heights made off the main thread for this width and text
+        // size; until they land (the first open after a new text size, for
+        // a frame at most past the open's wait) the lines are the styles'
+        // own and the lede and faces measure their labels.
+        let key = textKey
+        let text = controller?.text.text(for: key)
+        if text == nil { controller?.text.prepare(key) }
+        let environment = key.text
         let layout = HomeDockFocusLayout(.init(
             size: size,
             safeBottom: view.safeAreaInsets.bottom,
             composerHeight: motion.composerHeight(full: cardHeight),
             rows: shownRows.map(\.valueLabel.measurable),
-            progress: showsProgress ? progressLabel.measurable : nil,
-            hint: showsProgress && !progressHint.isHidden ? progressHint.measurable : nil,
-            faces: facesLine.isHidden ? nil : facePicker.text
+            triggerLine: text?.triggerLine ?? TextStyles.homeDockRowValue.oneLine(in: environment),
+            progress: showsProgress ? text.map { HomeDockText.line(progressLabel, $0.progressLine) } ?? progressLabel.measurable : nil,
+            hint: showsProgress && !progressHint.isHidden ? text.map { HomeDockText.line(progressHint, $0.progressLine) } ?? progressHint.measurable : nil,
+            faces: facesLine.isHidden ? nil : text.map { facePicker.text(headingLine: $0.faceHeadingLine, creditLine: $0.creditLine) } ?? facePicker.text
         ))
 
         // Each line reveals in turn from the top.
@@ -917,7 +967,9 @@ final class HomeDockFocusViewController: UIViewController {
             let headerLayout = HomeDockHeaderLayout(.init(
                 width: size.width,
                 safeTop: view.safeAreaInsets.top,
-                lede: lede.isHidden ? nil : lede.measurable
+                lede: lede.isHidden ? nil : text.map { measured in
+                    Measurable { [lede] width in width == measured.key.ledeWidth ? measured.lede : lede.measurable.size(fitting: width) }
+                } ?? lede.measurable
             ))
             let content = headerLayout.content
             let reveal = motion.row(0)
@@ -1037,6 +1089,17 @@ extension HomeDockFocusViewController: AgentInputCardDelegate {
         case .model: controller.composer.selectModel(key)
         case .effort: controller.composer.selectEffort(key)
         }
+    }
+}
+/// The open's waits: it runs when the last one answers.
+@MainActor
+private final class HomeDockOpenWait {
+    private var count: Int
+    init(count: Int) { self.count = count }
+    /// True for the last answer.
+    func arrive() -> Bool {
+        count -= 1
+        return count == 0
     }
 }
 #endif

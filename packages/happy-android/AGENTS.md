@@ -289,6 +289,23 @@ debounced 250 ms, picks and clears at once, one write in flight, adopt a
 remote draft stamped the same or later, restore from disk and flush on
 reconnect. `setText`, `clearDraft`, `mirrors` / `mirror(id)`.
 
+### Recreation and process death
+
+The manifest handles orientation, screen size and uiMode, so rotation,
+folding and a dark/light switch don't recreate the activity. A font scale
+or locale change does, and so does the system after process death.
+`StateRestorationTest` covers both: the same graph for a recreation, a new
+graph over the same database and keys for process death.
+
+- Kept through both: the open screen (the nav back stack is saved), the
+  chat's composer draft (the session composer's mirror is in the
+  database), the chat list's scroll position, the home dock's text and
+  focus (`rememberSaveable`), and an open composer or dock picker.
+- Kept through a recreation only: Restore's QR request (a ViewModel).
+- Lost, as in happy-app: pending chats (memory only), open alerts and
+  confirmations, an in-flight Resume or Stop spinner, Restore's QR request
+  after process death.
+
 ## Settings
 
 `AppGraph.settings` (`SettingsRepository`) is the account's settings as

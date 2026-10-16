@@ -91,6 +91,8 @@ final class DuplicateSheetViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        // Every height on the sheet is measured from its labels as drawn.
+        followsTextSize()
         // The spinner shows until the session is read and its points listed.
         render()
         load()
@@ -321,27 +323,42 @@ extension DuplicateSheetViewController: UIGestureRecognizerDelegate {
 // MARK: - Views
 
 /// DuplicateSheet.tsx sets bare font sizes, so its text is in the system
-/// font, not Plex.
-private enum SheetText {
-    struct Style {
-        var font: UIFont
+/// font, not Plex. RN scales it as any Text: the size and a fixed line by
+/// the text size's multiplier, unrounded (docs/DYNAMIC-TYPE.md).
+enum SheetText {
+    struct Style: Equatable {
+        var size: CGFloat
+        var weight: UIFont.Weight = .regular
         var lineHeight: CGFloat?
+
+        /// The system font at `scale` (nil: as designed).
+        func font(_ scale: TextScale?) -> UIFont {
+            .systemFont(ofSize: size * (scale?.multiplier ?? 1), weight: weight)
+        }
+
+        func line(_ scale: TextScale?) -> CGFloat? {
+            lineHeight.map { $0 * (scale?.multiplier ?? 1) }
+        }
     }
 
-    static let title = Style(font: .systemFont(ofSize: 17, weight: .semibold))
-    static let subtitle = Style(font: .systemFont(ofSize: 13))
-    static let empty = Style(font: .systemFont(ofSize: 14))
-    static let row = Style(font: .systemFont(ofSize: 14), lineHeight: 19)
-    static let meta = Style(font: .systemFont(ofSize: 12))
-    static let primaryButton = Style(font: .systemFont(ofSize: 15, weight: .semibold))
-    static let secondaryButton = Style(font: .systemFont(ofSize: 15, weight: .medium))
+    static let title = Style(size: 17, weight: .semibold)
+    static let subtitle = Style(size: 13)
+    static let empty = Style(size: 14)
+    static let row = Style(size: 14, lineHeight: 19)
+    static let meta = Style(size: 12)
+    static let primaryButton = Style(size: 15, weight: .semibold)
+    static let secondaryButton = Style(size: 15, weight: .medium)
 }
 
-private final class SheetLabel: UILabel {
+/// A line of the sheet's text, at the person's text size where the sheet
+/// follows it, drawn again when the size changes.
+final class SheetLabel: UILabel {
     private let style: SheetText.Style
     private let color: ColorToken
     private let alignment: NSTextAlignment
     private var string = ""
+    /// The text size it draws at; nil as designed.
+    private(set) var textScale: TextScale?
 
     init(_ style: SheetText.Style, color: ColorToken, lines: Int = 0, alignment: NSTextAlignment = .natural) {
         self.style = style
@@ -349,6 +366,33 @@ private final class SheetLabel: UILabel {
         self.alignment = alignment
         super.init(frame: .zero)
         numberOfLines = lines
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.syncTextSize()
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        syncTextSize()
+    }
+
+    private func syncTextSize() {
+        let scale = traitCollection.textEnvironment?.scale
+        guard scale != textScale else { return }
+        textScale = scale
+        render()
+        setNeedsLayoutUpTheTree()
+    }
+
+    /// Measured before its first trait update: measure what it will draw.
+    /// Its traits are brought up to date first; until then
+    /// `traitCollection` still holds the ones before its overrides
+    /// changed (Mac run: Large and no `FollowsTextSize` past an override
+    /// to AX-XXXL).
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        updateTraitsIfNeeded()
+        syncTextSize()
+        return super.sizeThatFits(size)
     }
 
     @available(*, unavailable)
@@ -359,19 +403,24 @@ private final class SheetLabel: UILabel {
     func text(_ string: String) {
         guard string != self.string || attributedText == nil else { return }
         self.string = string
+        render()
+    }
+
+    private func render() {
+        let font = style.font(textScale)
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = alignment
         paragraph.lineBreakMode = numberOfLines == 0 ? .byWordWrapping : .byTruncatingTail
         var attributes: [NSAttributedString.Key: Any] = [
-            .font: style.font,
+            .font: font,
             .foregroundColor: UIColor(color),
             .paragraphStyle: paragraph,
         ]
-        if let lineHeight = style.lineHeight {
+        if let lineHeight = style.line(textScale) {
             paragraph.minimumLineHeight = lineHeight
             paragraph.maximumLineHeight = lineHeight
             // As TextStyle does: the slack centred the way React Native does.
-            attributes[.baselineOffset] = (lineHeight - style.font.lineHeight) / 4
+            attributes[.baselineOffset] = (lineHeight - font.lineHeight) / 4
         }
         attributedText = NSAttributedString(string: string, attributes: attributes)
         accessibilityLabel = string

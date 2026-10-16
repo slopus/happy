@@ -16,7 +16,7 @@ final class MessageDetailCardTests: XCTestCase {
         let message = ChatMessage.toolCall(ToolCallMessage(id: "m1", createdAt: 0, tool: tool))
         let detail = MessageDetailInput(
             message: message, root: nil, showLineNumbers: false, devMode: false,
-            diffExpanded: [:], maxContentWidth: .greatestFiniteMagnitude, focusFile: nil, render: .isolated()
+            diffExpanded: [:], maxContentWidth: .greatestFiniteMagnitude, focusFile: nil, text: .designed, render: .isolated()
         )
         return MessageDetailRenderer.plan(detail, width: 393)
     }
@@ -40,7 +40,7 @@ final class MessageDetailCardTests: XCTestCase {
     func testTheChatListsDiffsAreNotClipped() {
         let piece = ChatRowRenderer.diffPiece(
             ToolDiffChunk(oldText: "let a = 1", newText: "let a = 2", fileName: "a.swift"),
-            index: 0, toolId: "t", showLineNumbers: false, expanded: [], render: .isolated()
+            index: 0, toolId: "t", showLineNumbers: false, expanded: [], render: .isolated(), text: .designed
         )
         let drawn = piece?.draw(CGRect(x: 0, y: 0, width: 393, height: 100)).items ?? []
         let clips = drawn.compactMap { item -> CGFloat? in

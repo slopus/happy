@@ -91,7 +91,12 @@ final class TabletSidebarViewController: UIViewController {
             self.applyBorder()
         }
         let pipeline = ApplyPipeline<TabletSidebarViewInput, TabletSidebarViewState, TabletSidebarViewUpdate>(
-            input: TabletSidebarViewInput(text: TextEnvironment(traitCollection)),
+            input: TabletSidebarViewInput(
+                // In the screens' language; a new one builds the sidebar
+                // again.
+                feeds: TabletSidebarInput(unknownMachine: Strings.Home.unknownMachine),
+                text: TextEnvironment(traitCollection)
+            ),
             state: TabletSidebarViewState(),
             derive: { [clockWake] in TabletGroupedHeights.derive($0, applied: $1, wake: clockWake) },
             apply: { [weak self] update in
@@ -106,6 +111,8 @@ final class TabletSidebarViewController: UIViewController {
         )
         clockWake.onWake { [weak pipeline] in pipeline?.update { _ in } }
         pipeline.follow(session.homeFeed.snapshots()) { $0.feeds.snapshot = $1 }
+        // The drafts the flat rows, the chats and the archived cards draw.
+        pipeline.followDrafts(session.homeFeed, into: \.feeds.draftSessionIds)
         // Only what has been fetched already, and only when what a heading
         // shows changed.
         let git = session.gitStatus
