@@ -250,7 +250,10 @@ final class MessageDetailTextSizeTests: XCTestCase {
         XCTAssertGreaterThan(canvas.frame.height, height)
         let scroll = try XCTUnwrap(find(UIScrollView.self, in: screen.view))
         XCTAssertEqual(scroll.contentSize, canvas.frame.size)
-        XCTAssertEqual(title.titleLabel.renderedStyle.size, TextStyles.headerTitle.scaled(TextScale(TextSizeCategory(category))).size, accuracy: 0.0001)
+        // The bar holds its title view's own size to XXL; the screen hands
+        // it its own.
+        XCTAssertEqual(title.titleLabel.renderedStyle.size, TextStyles.headerTitle.scaled(TextScale(TextSizeCategory(category))).size, accuracy: 0.0001,
+                       "the title at \(title.traitCollection.preferredContentSizeCategory.rawValue), the screen at \(screen.traitCollection.preferredContentSizeCategory.rawValue)")
         await account.signOut()
     }
     #endif

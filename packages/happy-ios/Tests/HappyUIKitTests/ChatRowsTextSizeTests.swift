@@ -278,7 +278,12 @@ final class ChatRowsTextSizeTests: XCTestCase {
                 for (name, before) in zip(now.headerNames, was.headerNames) {
                     XCTAssertEqual(fonts(name).first?.pointSize ?? 0, (fonts(before).first?.pointSize ?? 0) * scale, accuracy: 0.0001, at)
                 }
+                // Taller text grows a row past its minimum: not at every size
+                // (the todos row holds its 64 at XXXL), but by the largest.
                 if category > .large, !now.texts.isEmpty {
+                    XCTAssertGreaterThanOrEqual(plan.size.height, designed[index].1.height, "\(at) grows")
+                }
+                if category == .accessibilityExtraExtraExtraLarge, !now.texts.isEmpty {
                     XCTAssertGreaterThan(plan.size.height, designed[index].1.height, "\(at) grows")
                 }
             }
@@ -333,7 +338,7 @@ final class ChatRowsTextSizeTests: XCTestCase {
                 XCTAssertEqual(texts.count, planned.count, at)
                 for (view, (layout, frame)) in zip(texts, planned) {
                     XCTAssertTrue(view.layout === layout, at)
-                    XCTAssertEqual(view.frame, PixelGrid.snap(frame, scale: 3), at)
+                    assertSameFrame(view.frame, PixelGrid.snap(frame, scale: 3), at)
                 }
                 for label in shown.compactMap({ $0 as? ChatElapsedLabel }) {
                     XCTAssertEqual(label.environment, environment, at)

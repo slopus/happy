@@ -11,10 +11,10 @@ import UIKit
 /// The navigation bar's title view: the session's name over its workspace
 /// or branch and the line changes, hugged by a glass capsule as tall as
 /// the controls beside it (`ChatHeaderTitleLayout`). Tapping it opens the
-/// session's info. Its text follows the text size, laid out off the main
-/// thread (`ChatHeaderMeasure.title`), and the capsule asks the bar for the
-/// size its plan says; until the first is in it asks for none. The capsule
-/// keeps RN's 44 and cuts text taller than that, as
+/// session's info. Its text follows the screen's text size (`text`), laid
+/// out off the main thread (`ChatHeaderMeasure.title`), and the capsule
+/// asks the bar for the size its plan says; until the first is in it asks
+/// for none. The capsule keeps RN's 44 and cuts text taller than that, as
 /// `mobileTitlePillGlass`'s `overflow: 'hidden'` does.
 final class ChatHeaderTitleView: UIControl {
     private let glass = HeaderGlassView()
@@ -27,6 +27,18 @@ final class ChatHeaderTitleView: UIControl {
     let measure = OffMainPlan<ChatHeaderTitleInput, ChatHeaderTitlePlan> { ChatHeaderMeasure.title($0) }
     /// The last plan made at `maxWidth`: the size the capsule asks for.
     private var wanted: (input: ChatHeaderTitleInput, size: CGSize)?
+
+    /// The screen's text size and pixels, handed over by the screen: the
+    /// navigation bar holds its title view's own text size to XXL, and
+    /// RN's header, a plain view, has no such limit. Until it is set, its
+    /// own traits'.
+    var text: TextEnvironment? {
+        didSet {
+            guard text != oldValue else { return }
+            requestPlan()
+            setNeedsLayout()
+        }
+    }
 
     /// How wide the capsule may grow; set from the screen's width.
     var maxWidth: CGFloat = ChatHeaderTitleLayout.maxWidth(headerWidth: 393) {
@@ -78,7 +90,7 @@ final class ChatHeaderTitleView: UIControl {
 
     /// What it is planned from at `width`. Reads, no measuring.
     private func input(width: CGFloat) -> ChatHeaderTitleInput? {
-        model.map { ChatHeaderTitleInput(model: $0, width: width, text: traitCollection.measuredTextEnvironment) }
+        model.map { ChatHeaderTitleInput(model: $0, width: width, text: text ?? traitCollection.measuredTextEnvironment) }
     }
 
     /// Asks for the capsule at `maxWidth`, or at what the bar handed over
@@ -188,10 +200,10 @@ final class ChatGitChangesView: UIView {
 /// (`ChatPlainHeaderLayout`), the subtitle in `textSecondary`. The view
 /// stretches across the navigation bar and places the column from the bar's
 /// own edges, wherever the bar put it. Tapping it opens the session's info.
-/// Its text follows the text size, measured off the main thread at the
-/// column's width (`ChatHeaderMeasure.plain`); until the first plan is in
-/// it shows nothing. Taller text spills past the bar's height, as RN's
-/// header content, which doesn't clip, lets it.
+/// Its text follows the screen's text size (`text`), measured off the main
+/// thread at the column's width (`ChatHeaderMeasure.plain`); until the
+/// first plan is in it shows nothing. Taller text spills past the bar's
+/// height, as RN's header content, which doesn't clip, lets it.
 final class ChatPlainHeaderTitleView: UIControl {
     private let column = UIView()
     private let title = ChatTextView()
@@ -199,6 +211,11 @@ final class ChatPlainHeaderTitleView: UIControl {
     private let changes = ChatGitChangesView()
     private var model: ChatHeaderTitleModel?
     let measure = OffMainPlan<ChatPlainHeaderInput, ChatPlainHeaderPlan> { ChatHeaderMeasure.plain($0) }
+
+    /// The screen's text size and pixels, as `ChatHeaderTitleView.text`.
+    var text: TextEnvironment? {
+        didSet { if text != oldValue { setNeedsLayout() } }
+    }
 
     /// `layout.headerMaxWidth`.
     var maxWidth: CGFloat = .greatestFiniteMagnitude {
@@ -255,7 +272,7 @@ final class ChatPlainHeaderTitleView: UIControl {
         let barFrame = bar.map { $0.convert($0.bounds, to: self) } ?? bounds
         if let model {
             let width = ChatPlainHeaderLayout.textWidth(bar: barFrame, size: bounds.size, maxWidth: maxWidth)
-            measure.request(ChatPlainHeaderInput(model: model, width: width, text: traitCollection.measuredTextEnvironment))
+            measure.request(ChatPlainHeaderInput(model: model, width: width, text: text ?? traitCollection.measuredTextEnvironment))
         }
         column.isHidden = measure.plan == nil
         guard let plan = measure.plan else { return }

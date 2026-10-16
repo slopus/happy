@@ -238,8 +238,10 @@ final class ChatChromeTextSizeTests: XCTestCase {
         bar.layoutIfNeeded()
         let texts = bar.subviews.compactMap { $0 as? ChatTextView }.filter { !$0.isHidden }
         XCTAssertEqual(texts.count, 2)
-        XCTAssertTrue(texts.contains { $0.layout === plan.label && $0.frame == PixelGrid.snap(plan.layout.label, scale: 3) })
-        XCTAssertTrue(texts.contains { $0.layout === plan.text && $0.frame == PixelGrid.snap(plan.layout.text, scale: 3) })
+        let label = try XCTUnwrap(texts.first { $0.layout === plan.label })
+        let text = try XCTUnwrap(texts.first { $0.layout === plan.text })
+        assertSameFrame(label.frame, PixelGrid.snap(plan.layout.label, scale: 3))
+        assertSameFrame(text.frame, PixelGrid.snap(plan.layout.text, scale: 3))
 
         bar.isHidden = true
         XCTAssertNil(bar.measure.plan)
@@ -355,23 +357,35 @@ final class ChatChromeTextSizeTests: XCTestCase {
         let title = try XCTUnwrap(chat.navigationItem.titleView as? ChatHeaderTitleView)
         XCTAssertNil(chat.view.traitCollection.textEnvironment)
         XCTAssertEqual(goal.traitCollection.textEnvironment, environment(.large))
-        XCTAssertEqual(title.traitCollection.textEnvironment, environment(.large))
+        XCTAssertEqual(title.text, environment(.large))
 
-        func settled(_ category: UIContentSizeCategory) -> Bool {
+        /// What isn't yet at `category`, or nil once all is.
+        func unsettled(_ category: UIContentSizeCategory) -> String? {
             chat.view.layoutIfNeeded()
             let text = environment(category)
-            guard goal.measure.applied?.input.text == text, rig.measure.applied?.input.text == text,
-                  title.measure.applied?.input.text == text, let goalPlan = goal.measure.plan, let rigPlan = rig.measure.plan else { return false }
-            return abs(goal.bounds.height - goalPlan.layout.size.height) < 0.5 && abs(rig.bounds.height - rigPlan.layout.size.height) < 0.5
+            var behind: [String] = []
+            if goal.measure.applied?.input.text != text { behind.append("goal plan \(String(describing: goal.measure.applied?.input.text))") }
+            if rig.measure.applied?.input.text != text { behind.append("rig plan \(String(describing: rig.measure.applied?.input.text))") }
+            if title.measure.applied?.input.text != text { behind.append("title plan \(String(describing: title.measure.applied?.input.text))") }
+            if let plan = goal.measure.plan, abs(goal.bounds.height - plan.layout.size.height) >= 0.5 {
+                behind.append("goal \(goal.bounds.height) of \(plan.layout.size.height)")
+            }
+            if let plan = rig.measure.plan, abs(rig.bounds.height - plan.layout.size.height) >= 0.5 {
+                behind.append("rig \(rig.bounds.height) of \(plan.layout.size.height)")
+            }
+            return behind.isEmpty ? nil : behind.joined(separator: "; ")
         }
-        let shown = try await until { settled(.large) }
-        XCTAssertTrue(shown, "the bars are in at the default size")
+        let shown = try await until { unsettled(.large) == nil }
+        XCTAssertTrue(shown, "the bars are in at the default size: \(unsettled(.large) ?? "")")
         let designed = dock.bounds.height
 
         window.traitOverrides.preferredContentSizeCategory = .accessibilityMedium
         window.updateTraitsIfNeeded()
-        let grown = try await until { settled(.accessibilityMedium) }
-        XCTAssertTrue(grown, "the bars are measured again at the new size")
+        let grown = try await until { unsettled(.accessibilityMedium) == nil }
+        XCTAssertTrue(grown, "the bars are measured again at the new size: \(unsettled(.accessibilityMedium) ?? "")")
+        // The bar holds the title view's own size to XXL; the header is
+        // handed the screen's.
+        XCTAssertEqual(title.text, environment(.accessibilityMedium), "the screen at \(chat.traitCollection.preferredContentSizeCategory.rawValue)")
         XCTAssertGreaterThan(dock.bounds.height, designed, "and the dock takes their new heights")
         XCTAssertEqual(title.measure.plan?.layout.size.height, 44)
         await account.signOut()

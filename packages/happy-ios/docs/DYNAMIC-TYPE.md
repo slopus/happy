@@ -320,6 +320,11 @@ Following now:
     it and spills past the bar's height, as RN's unclipped header content
     does. The pill grows with its label; its 14 glyphs stay. Until its
     first plan is in, a title shows nothing and the pill isn't placed.
+    UINavigationBar holds the text size its title view inherits to XXL
+    (its content view's `maximumContentSizeCategory`, on the iOS 26.5
+    simulator: 19.76 for a 16 title); Header.tsx's RN Text has no such
+    cap, so the screen hands the title views its own size
+    (`ChatHeaderTitleView.text`) and they plan at that.
   - The bars over the composer (InactiveArchivedHint, AgentGoalBar,
     AgentQuestionBanner, RigActivityBar), measured off main
     (`ChatDockBarMeasure`): each reads its words on main when it is shown
@@ -359,9 +364,13 @@ Following now:
     with no height until their plans are in and growing at each size, the
     capsule keeping 44 and cutting what spills, centred text laid out at
     its frame's width, and the fixture chat, its dock and the message
-    screen planned again at a new size) are built, not run: the Mac was
-    offline.
-    Not seen on a simulator or device.
+    screen planned again at a new size) pass on the iOS 26.5 simulator
+    (an iPhone at scale 3), all 26. Their first run there found the bar's
+    XXL cap on the title views (the header, message detail's title),
+    since fixed, and frames that differed from the plan's only by
+    floating-point readback (now compared to within 1e-6,
+    `assertSameFrame`). Nobody has looked at the screens on a simulator
+    or a device.
 
 - Diffs, on the Changes screen (`SessionChangesViewController`) and in the
   file viewer (`SessionFileViewController`), which opt in, and in the
@@ -457,6 +466,14 @@ the text size and is fitted again in the bar when the size changes
 (session info, machine and changes through `setPlainHeaderTitle`, which
 keeps `title` for the back button). On session info and machine only the title follows; their rows
 don't yet. Changes' rows follow (above).
+
+The bar holds the text size a title view inherits to XXL: its content view
+has `maximumContentSizeCategory` XXL (iOS 26.5 simulator), where RN's Text
+in Header.tsx goes on scaling. A title view's own trait override is past
+the cap. Message detail sets its title view's to the screen's
+(`MessageDetailViewController.updateTitleTextSize`), and the chat hands its
+header the screen's size (above). The other screens' title views still
+stop at XXL (19.76 for a 16 title).
 
 Fixed RN sizes stay fixed: icons, the wordmark, the checklist boxes,
 paddings, and minimum heights (rows 44, buttons 50/44/32, Get help 36),

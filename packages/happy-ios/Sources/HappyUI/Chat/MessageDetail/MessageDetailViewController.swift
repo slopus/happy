@@ -85,7 +85,9 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
         titleView.titleLabel.accessibilityTraits = .header
         titleView.traitOverrides.followsTextSize = true
         navigationItem.titleView = titleView
+        updateTitleTextSize()
         registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
+            self.updateTitleTextSize()
             self.view.setNeedsLayout()
         }
 
@@ -192,6 +194,14 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
         // Not `sizeToFit`, which would hold a longer title to the width of
         // the one before it.
         titleView.frame.size = titleView.intrinsicContentSize
+    }
+
+    /// The navigation bar holds the text size its title view inherits to
+    /// XXL; ToolHeader's RN Text has the screen's, past XXL too. The
+    /// controller's own traits: in its trait change its view's are still
+    /// the old ones.
+    private func updateTitleTextSize() {
+        titleView.traitOverrides.preferredContentSizeCategory = traitCollection.preferredContentSizeCategory
     }
 
     /// The title's style cuts a line at its tail; ToolHeader cuts it in the

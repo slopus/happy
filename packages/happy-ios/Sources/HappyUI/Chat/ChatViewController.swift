@@ -601,9 +601,15 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// ChatHeaderView over a transparent bar: the system back button, the
     /// title capsule, the avatar; the scrim is the screen's own.
     private func setUpHeader() {
-        // ChatHeaderView's text scales; the bar and its controls don't.
+        // ChatHeaderView's text scales; the bar and its controls don't. The
+        // bar holds its title view's own text size to XXL, so the header is
+        // handed the screen's.
         titleView.traitOverrides.followsTextSize = true
         plainTitleView.traitOverrides.followsTextSize = true
+        updateHeaderText()
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self, UITraitDisplayScale.self]) { (self: Self, _) in
+            self.updateHeaderText()
+        }
         titleView.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
         plainTitleView.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
         avatarControl.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
@@ -643,6 +649,15 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         navigationItem.rightBarButtonItems = items
         tabStrip.glass = !tablet // TabletBranches.worktreeStripGlass
         floatingDockChanged()
+    }
+
+    /// The header's text at the screen's text size (`ChatHeaderTitleView.text`).
+    /// The controller's own traits: in its trait change its view's are
+    /// still the old ones.
+    private func updateHeaderText() {
+        let text = TextEnvironment(traitCollection)
+        titleView.text = text
+        plainTitleView.text = text
     }
 
     private func updateHeader() {
