@@ -235,7 +235,8 @@ private fun CodeBlock(content: String, language: String?) {
             copied = false
         }
     }
-    val highlighted = remember(content, language, chat) { highlight(content, language, chat) }
+    // A row scrolled away loses its `remember`; the cache spares the tokenizer when it comes back.
+    val highlighted = remember(content, language, chat) { HighlightCache.get(content, language, chat) }
     Box(
         modifier = Modifier
             .padding(vertical = MarkdownSpec.codeMarginVertical)
@@ -282,6 +283,37 @@ private fun CodeBlock(content: String, language: String?) {
                 color = colors.text,
             )
         }
+    }
+}
+
+/**
+ * Highlighted code blocks by (code, language, palette), most recent first,
+ * so a block scrolling back into view isn't tokenized again. Bounded by
+ * count; blocks are capped by size elsewhere.
+ */
+internal object HighlightCache {
+    private const val MAX_ENTRIES = 64
+    private data class Key(val code: String, val language: String?, val colors: ChatColors)
+    private val entries = object : LinkedHashMap<Key, AnnotatedString>(MAX_ENTRIES, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Key, AnnotatedString>?) = size > MAX_ENTRIES
+    }
+
+    /** How many blocks were tokenized; tests read it. */
+    @Volatile
+    var misses = 0
+        private set
+
+    @Synchronized
+    fun get(code: String, language: String?, colors: ChatColors): AnnotatedString =
+        entries.getOrPut(Key(code, language, colors)) {
+            misses++
+            highlight(code, language, colors)
+        }
+
+    @Synchronized
+    fun clear() {
+        entries.clear()
+        misses = 0
     }
 }
 

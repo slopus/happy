@@ -23,6 +23,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -199,7 +201,7 @@ object ToolSpec {
     val fileName = happyTextStyle(fontSize = 13, weight = FontWeight.Medium, family = FontFamily.Default)
 }
 
-/** What every tool row reads from the session and the settings. */
+/** What every tool row reads from the session and the settings: it changes only with them. */
 @Immutable
 data class ToolEnvironment(
     val compactToolCalls: Boolean = false,
@@ -208,11 +210,17 @@ data class ToolEnvironment(
     val flavor: String? = null,
     /** The session's folder, for paths in titles. */
     val path: String? = null,
-    /** The session's agent state, for the forms request_user_input raised. */
-    val agentState: AgentState? = null,
 )
 
+/** Static: a change recomposes every row under it, so it holds only what rarely changes. */
 val LocalToolEnvironment = staticCompositionLocalOf { ToolEnvironment() }
+
+/**
+ * The session's agent state, for the forms request_user_input raised. Kept
+ * out of [ToolEnvironment] and tracked per reader: it changes with every
+ * permission request, and only those forms read it.
+ */
+val LocalToolAgentState = compositionLocalOf<AgentState?> { null }
 
 /** [ToolText] over the app's resources. */
 class ResourcesToolText(private val resources: Resources) : ToolText {
@@ -266,6 +274,7 @@ fun ToolIconView(icon: ToolIcon, size: Dp, color: Color, modifier: Modifier = Mo
  */
 @Composable
 fun ToolView(message: ChatMessage.ToolCallMessage, callbacks: MessageCallbacks, modifier: Modifier = Modifier) {
+    LocalChatRowObserver.current?.let { observe -> SideEffect { observe("tool:${message.id}") } }
     val env = LocalToolEnvironment.current
     val text = rememberToolText()
     val presentation = remember(message, env, text) { presentTool(message, text, env.compactToolCalls, env.flavor, env.path) } ?: return

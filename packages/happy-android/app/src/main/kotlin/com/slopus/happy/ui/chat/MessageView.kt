@@ -20,11 +20,13 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -135,9 +137,17 @@ class MessageCallbacks(
     val onCancelQuestion: suspend (communicationId: String, kind: String) -> Unit = { _, _ -> },
 )
 
+/**
+ * Called with a row's key every time that row composes (a tool's body
+ * reports "tool:" and its id too). Tests use it to pin that a changed
+ * message recomposes its own row and nothing else.
+ */
+val LocalChatRowObserver = staticCompositionLocalOf<((String) -> Unit)?> { null }
+
 /** One chat row, dispatched by kind (MessageView.tsx `RenderBlock`). */
 @Composable
 fun MessageView(row: ChatRow, bubble: BubblePalette, callbacks: MessageCallbacks, modifier: Modifier = Modifier) {
+    LocalChatRowObserver.current?.let { observe -> SideEffect { observe(row.key) } }
     // `messageContainer` / `messageContent`: each message centred and held to layout.maxWidth.
     val layout = LocalWindowLayout.current
     Box(modifier.fillMaxWidth()) {

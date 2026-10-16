@@ -61,9 +61,9 @@ class QuestionLayoutTest {
 
     private val askInput = """{"questions":[{"question":"Which colour?","header":"Colour","options":[{"label":"Red","description":"Warm"},{"label":"Blue"}],"multiSelect":false}]}"""
 
-    private fun show(message: ChatMessage.ToolCallMessage, callbacks: MessageCallbacks, env: ToolEnvironment = ToolEnvironment()) {
+    private fun show(message: ChatMessage.ToolCallMessage, callbacks: MessageCallbacks, agentState: AgentState? = null) {
         rule.setHappyContent {
-            CompositionLocalProvider(LocalToolEnvironment provides env) {
+            CompositionLocalProvider(LocalToolAgentState provides agentState) {
                 Column(Modifier.fillMaxWidth()) { MessageView(ChatRow.Tool(message), gray, callbacks) }
             }
         }
@@ -114,7 +114,7 @@ class QuestionLayoutTest {
         show(
             ChatMessage.ToolCallMessage("t", 0, tool),
             MessageCallbacks(onAnswerQuestion = { id, a, _ -> sent += id to a }),
-            ToolEnvironment(agentState = state),
+            state,
         )
         rule.onNodeWithText("Safe").performClick()
         rule.node(QuestionTags.SUBMIT).performClick()

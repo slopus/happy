@@ -463,9 +463,9 @@ fun AskUserQuestionView(message: ChatMessage.ToolCallMessage, callbacks: Message
  */
 @Composable
 fun RequestUserInputView(message: ChatMessage.ToolCallMessage, callbacks: MessageCallbacks) {
-    val env = LocalToolEnvironment.current
+    val agentState = LocalToolAgentState.current
     val tool = message.tool
-    val communication = remember(env.agentState, tool.callId) { selectAgentFormCommunication(env.agentState, tool.callId) } ?: return
+    val communication = remember(agentState, tool.callId) { selectAgentFormCommunication(agentState, tool.callId) } ?: return
     if (communication.questions.any { it.options.isEmpty() }) return
     val submitted: InlineQuestionAnswers? = when {
         communication.status == AgentFormStatus.Pending -> null

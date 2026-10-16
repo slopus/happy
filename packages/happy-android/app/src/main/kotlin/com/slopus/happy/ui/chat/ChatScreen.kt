@@ -252,13 +252,11 @@ fun ChatScreen(
     val colors = HappyTheme.colors
     val session = state.session
     val pending = slots.pending
-    val toolEnvironment = ToolEnvironment(
-        compactToolCalls = compactToolCalls,
-        showLineNumbers = showLineNumbersInToolViews,
-        flavor = session?.metadata?.flavor,
-        path = session?.metadata?.path,
-        agentState = session?.agentState,
-    )
+    val flavor = session?.metadata?.flavor
+    val path = session?.metadata?.path
+    val toolEnvironment = remember(compactToolCalls, showLineNumbersInToolViews, flavor, path) {
+        ToolEnvironment(compactToolCalls = compactToolCalls, showLineNumbers = showLineNumbersInToolViews, flavor = flavor, path = path)
+    }
     val listState = rememberLazyListState()
     val loadOlder by rememberUpdatedState(actions.loadOlder)
     val pager = remember(session?.id) { OlderPager { loadOlder() } }
@@ -341,7 +339,7 @@ fun ChatScreen(
                     session == null && pending != null -> pending.placeholder()
                     !state.sessionLoaded -> Spinner(Modifier.align(Alignment.Center).testTag(ChatScreenTags.LOADING))
                     session == null -> DeletedSession()
-                    state.snapshot.rows.isNotEmpty() -> CompositionLocalProvider(LocalToolEnvironment provides toolEnvironment) {
+                    state.snapshot.rows.isNotEmpty() -> CompositionLocalProvider(LocalToolEnvironment provides toolEnvironment, LocalToolAgentState provides session.agentState) {
                         ChatList(
                             rows = state.snapshot.rows,
                             hasMoreOlder = state.snapshot.hasMoreOlder,
