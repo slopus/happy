@@ -55,6 +55,18 @@ public struct ChatStorePage: Sendable {
 }
 
 extension LocalStore {
+    /// The sequence the chat's records start after (exclusive), or nil for
+    /// all of them: a newest page leaves disconnected older islands out.
+    static func chatWindowLowerBound(marker: ChatHistoryMarker?, seq: Int, syncedMessageSeq: Int) -> Int? {
+        guard let marker, marker.newestLoaded else { return nil }
+        if let oldest = marker.oldestRawSeq {
+            return syncedMessageSeq < oldest - 1 ? oldest - 1 : nil
+        }
+        // An empty newest page excludes older retained islands but still
+        // admits a later socket message immediately.
+        return syncedMessageSeq < seq ? marker.checkedThroughSeq : nil
+    }
+
     /// Reads appended plaintext records and the fields needed to render them.
     /// A rowid cursor catches lower-sequence records that arrive late.
     public func chatPage(sessionId: String, afterRowId: Int64 = 0) throws -> ChatStorePage {
@@ -118,15 +130,8 @@ extension LocalStore {
             ChatHistoryCoverage(sessionId: sessionId, seq: $0.seq,
                                 syncedMessageSeq: $0.syncedMessageSeq, marker: marker)
         }
-        var lower: Int?
-        if let marker, marker.newestLoaded, let session {
-            if let oldest = marker.oldestRawSeq {
-                if session.syncedMessageSeq < oldest - 1 { lower = oldest - 1 }
-            } else if session.syncedMessageSeq < session.seq {
-                // An empty newest page excludes older retained islands but
-                // still admits a later socket message immediately.
-                lower = marker.checkedThroughSeq
-            }
+        let lower = session.flatMap {
+            chatWindowLowerBound(marker: marker, seq: $0.seq, syncedMessageSeq: $0.syncedMessageSeq)
         }
         let counts = try Row.fetchOne(
             db,
