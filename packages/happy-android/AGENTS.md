@@ -269,10 +269,10 @@ Entry points other screens call (all in `ui/onboarding` and `ui/connect`):
   onTroubleshoot = { nav.navigate(TroubleshootRoute) }, onShowArchived = …)`.
 - **Troubleshoot's machine rows**: `onboardingRoutes(graph, nav, onOpenMachine = { id -> … })`
   in HappyApp; pass the machine screen's navigation.
-- **Settings › "Scan QR code to authenticate" / "Enter URL manually"**:
-  `val connect = rememberTerminalConnect(graph)`; the scan row calls
-  `connect.scan()` and shows `loading = connect.isLoading`; the URL row
-  shows `EnterTerminalUrlPrompt(connect, onDismiss = …)` while open.
+- **Settings › "Scan QR code to authenticate" / "Enter URL manually"**
+  (wired in `settingsRoutes`): `val connect = rememberTerminalConnect(graph)`;
+  the scan row calls `connect.scan()` and shows `loading = connect.isLoading`;
+  the URL row shows `EnterTerminalUrlPrompt(connect, onDismiss = …)` while open.
 - **Settings › Account › Link New Device**: `val link = rememberAccountLink(graph)`;
   the row calls `link.scan()`, subtitle `common_scanning` and disabled while
   `link.isLoading`. Both flows show their own alerts while composed.

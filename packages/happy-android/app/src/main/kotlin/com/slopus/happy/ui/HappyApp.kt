@@ -9,7 +9,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavHostController
@@ -17,7 +16,6 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.slopus.happy.AppGraph
-import com.slopus.happy.BuildConfig
 import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
 import com.slopus.happy.ui.components.Alert
@@ -30,9 +28,7 @@ import com.slopus.happy.ui.onboarding.RestoreManualScreen
 import com.slopus.happy.ui.onboarding.onboardingRoutes
 import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.server.ServerScreen
-import com.slopus.happy.ui.settings.AccountScreen
-import com.slopus.happy.ui.settings.AppearanceScreen
-import com.slopus.happy.ui.settings.SettingsScreen
+import com.slopus.happy.ui.settings.settingsRoutes
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
@@ -44,8 +40,6 @@ import kotlinx.serialization.Serializable
 @Serializable data object RestoreManualRoute
 @Serializable data object HomeRoute
 @Serializable data object SettingsRoute
-@Serializable data object AccountRoute
-@Serializable data object AppearanceRoute
 
 /**
  * The whole UI. Signed out and signed in are separate back stacks: when the
@@ -69,20 +63,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                 composable<ServerRoute> { Server(graph, nav) }
                 composable<RestoreManualRoute> { RestoreManual(graph, nav) }
                 composable<HomeRoute> { HomeScreen(onSettings = { nav.navigate(SettingsRoute) }) }
-                composable<SettingsRoute> {
-                    val uriHandler = LocalUriHandler.current
-                    SettingsScreen(
-                        versionName = BuildConfig.VERSION_NAME,
-                        onBack = { nav.popBackStack() },
-                        onAccount = { nav.navigate(AccountRoute) },
-                        onAppearance = { nav.navigate(AppearanceRoute) },
-                        onOpenUrl = uriHandler::openUri,
-                    )
-                }
-                composable<AccountRoute> { signedIn?.let { Account(graph, it, nav) } }
-                composable<AppearanceRoute> {
-                    AppearanceScreen(theme = theme, onThemeChange = graph.localSettings::setThemePreference, onBack = { nav.popBackStack() })
-                }
+                settingsRoutes(graph, nav)
                 onboardingRoutes(graph, nav)
                 connectRoutes(graph, nav)
             }
@@ -176,19 +157,4 @@ private fun RestoreManual(graph: AppGraph, nav: NavHostController) {
         onBack = { nav.popBackStack() },
     )
     alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
-}
-
-@Composable
-private fun Account(graph: AppGraph, account: AuthState.SignedIn, nav: NavHostController) {
-    val settings by graph.settings.settings.collectAsStateWithLifecycle()
-
-    AccountScreen(
-        anonId = account.encryption.anonId,
-        publicId = account.publicId,
-        formattedSecretKey = account.formattedSecretKey,
-        analyticsOptOut = settings.analyticsOptOut,
-        onAnalyticsOptOutChange = { optOut -> graph.settings.change { it.copy(analyticsOptOut = optOut) } },
-        onLogout = { graph.logout() },
-        onBack = { nav.popBackStack() },
-    )
 }

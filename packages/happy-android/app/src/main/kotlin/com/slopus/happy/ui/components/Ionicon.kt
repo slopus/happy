@@ -76,6 +76,7 @@ enum class Ionicon(val codepoint: Int) {
     LogoGithub(0xf3f3), // logo-github
     MicOutline(0xf45e), // mic-outline
     MoonOutline(0xf461), // moon-outline
+    OptionsOutline(0xf48b), // options-outline
     Pencil(0xf49c), // pencil
     PeopleOutline(0xf4a3), // people-outline
     PersonAddOutline(0xf4a7), // person-add-outline
