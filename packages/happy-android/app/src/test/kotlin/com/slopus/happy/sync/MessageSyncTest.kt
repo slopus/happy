@@ -188,7 +188,8 @@ class MessageSyncTest {
         }
         // Observers may skip a page that landed while they were busy, never see a partial one.
         assertTrue("$sizes", sizes.all { it in setOf(0, 100, 200, 250) } && sizes == sizes.sorted())
-        val paging = sync.paging("s").first()
-        assertEquals(MessagePaging(isLoaded = true, hasMoreOlder = false, isLoadingOlder = false), paging)
+        // The last page is stored a moment before its load clears the loading flag: wait for that, not the first value.
+        val settled = MessagePaging(isLoaded = true, hasMoreOlder = false, isLoadingOlder = false)
+        assertEquals(settled, withTimeout(5_000) { sync.paging("s").first { it == settled } })
     }
 }
