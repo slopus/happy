@@ -54,6 +54,9 @@ final class SessionFileViewController: UIViewController {
     private var planned: (source: FileLinesPlan.Source, width: CGFloat, maxWidth: CGFloat, text: TextEnvironment?)?
     /// The last diff and file plans, so the toggle flips between them at once.
     private var plans: [FileLinesPlan] = []
+    /// The line last kept at the top through a new measure, while the
+    /// reader is still there.
+    private var keptPlace = KeptPlace<(row: Int, fraction: CGFloat)>()
     /// Signals from the account's code colour: a file planned plain while
     /// it was being coloured is planned again after one.
     private var colourSignals = 0
@@ -407,14 +410,19 @@ final class SessionFileViewController: UIViewController {
         let isNew = plan !== previous
         // The same text measured again (another text size, width or its
         // colour) keeps the line at the top of the screen there.
-        let place = previous.flatMap { $0.source == plan.source ? $0.layout.place(at: lines.contentOffset.y) : nil }
+        let place = previous.flatMap { previous in
+            previous.source == plan.source ? keptPlace.place(at: lines.contentOffset.y) { previous.layout.place(at: $0) } : nil
+        }
         lines.show(plan)
         guard isNew else { return }
+        keptPlace.forget()
         // The scroll view keeps its offset across content, inside the new end.
         lines.layoutIfNeeded()
         let maxOffset = max(0, lines.contentSize.height - lines.bounds.height)
-        if let place, let y = plan.layout.y(of: place) { lines.contentOffset.y = y }
+        let restored = place.flatMap { place in plan.layout.y(of: place).map { (place, $0) } }
+        if let restored { lines.contentOffset.y = restored.1 }
         if lines.contentOffset.y > maxOffset { lines.contentOffset.y = maxOffset }
+        if let restored { keptPlace.put(restored.0, at: lines.contentOffset.y) }
         guard case .code = plan.source else { return }
         // file.tsx scrolls two lines above a requested line, at 20 a line.
         if scrollsToLine, let requestedLine, requestedLine > 0 {
