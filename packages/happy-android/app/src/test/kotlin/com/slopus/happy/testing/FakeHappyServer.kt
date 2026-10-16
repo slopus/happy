@@ -138,6 +138,10 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
         sessions[sessions.indexOf(session)] = session.copy(seq = maxOf(session.seq, seq), updatedAt = updatedAt)
     }
 
+    fun session(id: String): ApiSession? = synchronized(this) { sessions.firstOrNull { it.id == id } }
+
+    fun machine(id: String): ApiMachine? = synchronized(this) { machines.firstOrNull { it.id == id } }
+
     fun addMachine(id: String) = synchronized(this) {
         machines += ApiMachine(
             id = id, seq = 1, createdAt = 1, updatedAt = 1, active = true, activeAt = 1,
