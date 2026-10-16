@@ -10,6 +10,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -70,7 +71,7 @@ class AppFlowTest {
 
         rule.onNodeWithContentDescription("Settings").performClick()
         rule.onNodeWithText("Account").performClick()
-        rule.onNodeWithText("Logout").performClick()
+        rule.onNodeWithText("Logout").performScrollTo().performClick()
         rule.onNodeWithText("Are you sure you want to logout? Make sure you have backed up your secret key!").assertExists()
         rule.onNode(hasText("Logout") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
 

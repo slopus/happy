@@ -76,12 +76,14 @@ enum class Ionicon(val codepoint: Int) {
     LogoGithub(0xf3f3), // logo-github
     MicOutline(0xf45e), // mic-outline
     MoonOutline(0xf461), // moon-outline
+    NotificationsOutline(0xf47f), // notifications-outline
     OptionsOutline(0xf48b), // options-outline
     Pencil(0xf49c), // pencil
     PeopleOutline(0xf4a3), // people-outline
     PersonAddOutline(0xf4a7), // person-add-outline
     PersonCircleOutline(0xf4aa), // person-circle-outline
     PersonOutline(0xf4ac), // person-outline
+    PhonePortraitOutline(0xf4b5), // phone-portrait-outline
     PlayCircleOutline(0xf4ce), // play-circle-outline
     PowerOutline(0xf4e8), // power-outline
     PulseOutline(0xf4f7), // pulse-outline
