@@ -311,7 +311,7 @@ private fun FailedAction(label: String, tag: String, onClick: () -> Unit) {
             .padding(top = MessageSpec.statusMarginTop, bottom = MessageSpec.statusMarginBottom)
             .testTag(tag)
             .heightIn(min = MessageSpec.statusHeight)
-            .clickable(onClick = onClick),
+            .clickable(role = Role.Button, onClick = onClick),
     )
 }
 

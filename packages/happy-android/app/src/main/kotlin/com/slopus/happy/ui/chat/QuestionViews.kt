@@ -47,6 +47,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -341,7 +344,8 @@ private fun InlineOption(option: AgentQuestionOption, selected: Boolean, multiSe
             .clip(shape)
             .background(if (selected) colors.surfaceHighest else colors.surface)
             .border(1.dp, if (selected) radio else colors.divider, shape)
-            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = if (multiSelect) Role.Checkbox else Role.RadioButton, onClick = onClick)
+            .semantics { this.selected = selected }
             .padding(QuestionSpec.optionPadding),
         horizontalArrangement = Arrangement.spacedBy(QuestionSpec.optionGap),
     ) {
@@ -395,7 +399,7 @@ private fun SubmitButton(ready: Boolean, submitting: Boolean, onClick: () -> Uni
             .clip(shape)
             .background(colors.surfaceHighest)
             .border(1.dp, if (ready) ChatTheme.colors.radioActive else colors.divider, shape)
-            .clickable(enabled = ready, onClick = onClick)
+            .clickable(enabled = ready, role = Role.Button, onClick = onClick)
             .padding(horizontal = QuestionSpec.submitPaddingHorizontal, vertical = QuestionSpec.submitPaddingVertical),
         contentAlignment = Alignment.Center,
     ) {
@@ -551,7 +555,7 @@ fun AgentQuestionBannerView(
             .clip(shape)
             .background(colors.surface)
             .border(1.dp, if (unsupported != null) colors.divider else colors.textLink, shape)
-            .then(if (form != null) Modifier.clickable(onClick = onPress) else Modifier)
+            .then(if (form != null) Modifier.clickable(role = Role.Button, onClick = onPress) else Modifier)
             .padding(horizontal = QuestionSpec.bannerPaddingHorizontal, vertical = QuestionSpec.bannerPaddingVertical),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(QuestionSpec.bannerGap),
@@ -577,7 +581,7 @@ fun AgentQuestionBannerView(
                 stringResource(R.string.agent_question_dismiss),
                 style = QuestionSpec.bannerDismiss,
                 color = colors.textLink,
-                modifier = Modifier.testTag(QuestionTags.BANNER_DISMISS).clickable(onClick = onDismiss),
+                modifier = Modifier.testTag(QuestionTags.BANNER_DISMISS).clickable(role = Role.Button, onClick = onDismiss),
             )
         } else {
             Icon(Ionicon.ChevronForward, QuestionSpec.bannerChevron, colors.textSecondary)
@@ -651,7 +655,7 @@ fun AgentQuestionForm(
                 stringResource(R.string.common_cancel),
                 style = QuestionSpec.modalHeaderAction,
                 color = colors.textLink,
-                modifier = Modifier.width(QuestionSpec.modalHeaderSpacer).testTag(QuestionTags.MODAL_CANCEL).clickable(enabled = !submitting, onClick = onDismiss),
+                modifier = Modifier.width(QuestionSpec.modalHeaderSpacer).testTag(QuestionTags.MODAL_CANCEL).clickable(enabled = !submitting, role = Role.Button, onClick = onDismiss),
             )
             Text(
                 stringResource(R.string.agent_question_title),
@@ -698,7 +702,7 @@ fun AgentQuestionForm(
                     .alpha(if (ready && !submitting) 1f else QuestionSpec.MODAL_SUBMIT_DISABLED_OPACITY)
                     .clip(RoundedCornerShape(QuestionSpec.modalSubmitRadius))
                     .background(colors.textLink)
-                    .clickable(enabled = ready && !submitting) {
+                    .clickable(enabled = ready && !submitting, role = Role.Button) {
                         submitting = true
                         error = null
                         scope.launch {
@@ -745,7 +749,10 @@ private fun ModalQuestion(question: AgentQuestion, draft: AgentQuestionDraft, an
                     .clip(shape)
                     .background(colors.surface)
                     .border(1.dp, if (selected) colors.textLink else Color.Transparent, shape)
-                    .clickable(enabled = enabled) { onChange(toggleOption(draft, option.label, question.multiSelect)) }
+                    .clickable(enabled = enabled, role = if (question.multiSelect) Role.Checkbox else Role.RadioButton) {
+                        onChange(toggleOption(draft, option.label, question.multiSelect))
+                    }
+                    .semantics { this.selected = selected }
                     .padding(QuestionSpec.modalOptionPadding),
                 horizontalArrangement = Arrangement.spacedBy(QuestionSpec.modalOptionGap),
             ) {

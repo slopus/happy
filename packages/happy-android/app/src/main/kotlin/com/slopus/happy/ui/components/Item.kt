@@ -23,6 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -65,6 +66,8 @@ object ItemSpec {
  * detail 17 (tracking -0.41) with 6 before the chevron, a 20 spinner while
  * loading, then a 24 chevron 4 after. Dividers are 0 high on Android, so there
  * are none. Pressing shows a ripple; disabled rows are at 50% opacity.
+ * TalkBack reads a row as one stop, title then subtitle and detail; a
+ * control in [rightElement] (a switch) stays a stop of its own.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -104,7 +107,7 @@ fun Item(
             onLongClick = onLongClick,
         )
     } else {
-        Modifier
+        Modifier.semantics(mergeDescendants = true) {}
     }
 
     Row(

@@ -32,6 +32,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -242,7 +245,8 @@ fun DuplicateSheet(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(if (point.id == selectedId) colors.surfaceHigh else colors.surface.copy(alpha = 0f))
-                                    .clickable { selectedId = point.id }
+                                    .clickable(role = Role.RadioButton) { selectedId = point.id }
+                                    .semantics { this.selected = point.id == selectedId }
                                     .testTag(DuplicateSheetTags.ROW)
                                     .padding(horizontal = 20.dp, vertical = 12.dp),
                             ) {

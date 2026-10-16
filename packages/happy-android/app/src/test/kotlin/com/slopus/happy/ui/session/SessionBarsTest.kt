@@ -8,14 +8,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -35,11 +40,13 @@ import com.slopus.happy.model.SessionState
 import com.slopus.happy.model.WorktreeTabs
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
+import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.chat.AgentWorkGroupHeader
 import com.slopus.happy.ui.chat.AgentWorkGroupHeaderTags
+import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
@@ -99,6 +106,36 @@ class SessionBarsTest {
 
         rule.node(SessionBarTags.goalAction(AgentGoalAction.Clear)).performClick()
         assertEquals(listOf(AgentGoalAction.Clear), pressed)
+    }
+
+    /**
+     * TalkBack, as AgentGoalBar and WorktreeTabStrip label them: the bar is
+     * one stop reading "Current goal: …", its actions buttons named Edit,
+     * Stop and Clear goal; the tabs are tabs named after their chat, the
+     * open one selected, and `+` is the "New session" button.
+     */
+    @Test
+    fun theBarsReadForTalkBack() {
+        val tabs = WorktreeTabs(
+            tabs = listOf(SessionRowData("a", name = "Alpha"), SessionRowData("b", name = "Beta")),
+            pending = listOf(PendingChat(PENDING_CHAT_PREFIX + "p", "a", knownSessionIds = listOf("a", "b"), createdAt = 0)),
+        )
+        rule.mainClock.autoAdvance = false
+        rule.setHappyContent {
+            Column {
+                AgentGoalBar(AgentGoal("claude", "c", "Ship the port", allActions), onAction = {}, inFlight = null)
+                WorktreeTabStrip(tabs, "a", onSelect = {}, onMenu = { _, _ -> }, onNewTab = {}, listState = rememberLazyListState())
+            }
+        }
+        rule.mainClock.advanceTimeBy(100)
+        rule.onNodeWithTag(SessionBarTags.GOAL).assert(hasContentDescription("Current goal: Ship the port"))
+        for (label in listOf("Edit goal", "Stop goal", "Clear goal")) {
+            rule.onNode(hasContentDescription(label) and hasRole(Role.Button)).assertExists()
+        }
+        rule.onNodeWithTag(WorktreeTabTags.tab("a")).assert(hasRole(Role.Tab) and hasContentDescription("Alpha")).assertIsSelected()
+        rule.onNodeWithTag(WorktreeTabTags.tab("b")).assert(hasRole(Role.Tab)).assertIsNotSelected()
+        rule.onNode(hasContentDescription("New session") and hasRole(Role.Button)).assertExists()
+        rule.assertActionsLabelled()
     }
 
     @Test

@@ -129,7 +129,8 @@ private fun AttachmentThumbnail(image: AttachmentPreview, onRemove: (String) -> 
 /**
  * AgentInput's add-image button: 32 high, padded 8/6, radius 20 (Android),
  * image-outline 16 in the secondary button tint, or radio.active while
- * images are attached; 0.7 while pressed.
+ * images are attached; 0.7 while pressed. TalkBack reads AgentInput's
+ * literal "Add photo" (HomeDock's own button says "Add image").
  */
 @Composable
 fun AddImageButton(attached: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
@@ -144,7 +145,7 @@ fun AddImageButton(attached: Boolean, onClick: () -> Unit, modifier: Modifier = 
             .clip(RoundedCornerShape(AttachmentStripSpec.addRadius))
             .clickable(interaction, indication = null, role = Role.Button, onClick = onClick)
             .padding(horizontal = AttachmentStripSpec.addPaddingHorizontal, vertical = AttachmentStripSpec.addPaddingVertical)
-            .semantics { contentDescription = "Add image" },
+            .semantics { contentDescription = "Add photo" },
         contentAlignment = Alignment.Center,
     ) {
         Icon(

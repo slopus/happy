@@ -4,9 +4,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -22,9 +24,11 @@ import com.slopus.happy.chat.ToolState
 import com.slopus.happy.chat.tools.PermissionChoice
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
+import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import kotlinx.serialization.json.Json
@@ -221,6 +225,9 @@ class ToolLayoutTest {
         assertDp("7 apart", 7, all.top - yes.bottom)
         val deny = rule.node(PermissionTags.option(PermissionChoice.Deny)).bounds
         assertDp("8 below", 8, footer.bottom - deny.bottom)
+        // TalkBack: each choice is a button reading its text.
+        rule.onNode(hasText("Yes, allow all edits during this session") and hasRole(Role.Button)).assertExists()
+        rule.assertActionsLabelled()
         rule.onNodeWithText("Yes, allow all edits during this session").performClick()
         rule.waitForIdle()
         assertEquals(listOf(PermissionAnswer("r1", true, mode = "acceptEdits") to "acceptEdits"), answers)

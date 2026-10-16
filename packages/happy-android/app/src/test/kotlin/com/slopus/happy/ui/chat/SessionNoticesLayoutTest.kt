@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
@@ -75,6 +77,8 @@ class SessionNoticesLayoutTest {
         var resumed = 0
         rule.setHappyContent { InactiveArchivedHint(InactiveHint(canResume = true, resuming = true, resumeCommand = null), onResume = { resumed++ }) }
         rule.onNodeWithText("Resume Session").assertDoesNotExist()
+        // The spinner stands in for the label, but TalkBack still names the button.
+        rule.node(SessionNoticeTags.RESUME).assert(hasContentDescription("Resume Session"))
         rule.node(SessionNoticeTags.RESUME).performClick()
         assertEquals(0, resumed)
     }

@@ -27,6 +27,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
@@ -217,7 +220,8 @@ private fun DropdownOption(label: String, selected: Boolean, onClick: () -> Unit
         modifier = Modifier
             .fillMaxWidth()
             .background(if (selected) colors.glass.backgroundSubtle else Color.Transparent)
-            .clickable(onClick = onClick)
+            .clickable(role = Role.RadioButton, onClick = onClick)
+            .semantics { this.selected = selected }
             .defaultMinSize(minHeight = AppearanceSpec.optionMinHeight)
             .testTag(AppearanceTags.OPTION)
             .padding(horizontal = AppearanceSpec.optionPaddingHorizontal),
@@ -236,7 +240,7 @@ private fun SwitchItem(title: String, subtitle: String, icon: Ionicon, iconColor
         title = title,
         subtitle = subtitle,
         icon = { ItemIcon(icon, iconColor) },
-        rightElement = { HappySwitch(checked = checked, onCheckedChange = onChange) },
+        rightElement = { HappySwitch(checked = checked, onCheckedChange = onChange, label = title) },
     )
 }
 

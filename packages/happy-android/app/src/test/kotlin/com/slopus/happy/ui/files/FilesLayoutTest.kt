@@ -4,8 +4,12 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -25,12 +29,14 @@ import com.slopus.happy.sync.GitFileContent
 import com.slopus.happy.sync.GitState
 import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.PHONE_WIDTH
+import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.diff.DiffTags
 import com.slopus.happy.ui.diff.LocalDiffSyntax
+import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
@@ -77,6 +83,23 @@ class FilesLayoutTest {
         filesTruncated = truncated,
         scannedAt = 0.0,
     )
+
+    /** TalkBack over the changes screen: the title is a header, Back a named button, nothing actionable unnamed. */
+    @Test
+    fun changesReadForTalkBack() {
+        val status = GitFileStatus("a.kt", "src", "src/a.kt", GitFileStatusKind.Modified, false, 2, 1)
+        val state = LegacyChanges.State(
+            files = listOf(status),
+            results = mapOf("src/a.kt" to LegacyChanges.Result(status, LegacyChanges.Content.Patch("--- a/src/a.kt\n+++ b/src/a.kt\n@@ -1 +1 @@\n-a\n+b\n"), null)),
+            loadedOnce = true,
+        )
+        show { ChangesScreen(ChangesContent.Legacy(state), ChangesActions()) }
+        rule.onNode(hasText("View changes") and isHeading(), useUnmergedTree = true).assertExists()
+        rule.onNode(hasContentDescription("Back") and hasRole(Role.Button)).assertExists()
+        rule.node(DiffTags.HEADER).performClick()
+        rule.waitForIdle()
+        rule.assertActionsLabelled()
+    }
 
     @Test
     fun changesStartCollapsed() {

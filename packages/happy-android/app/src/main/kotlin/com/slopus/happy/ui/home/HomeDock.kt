@@ -70,6 +70,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -427,7 +428,9 @@ fun HomeDockFocus(state: HomeDockState, actions: HomeDockActions, modifier: Modi
                         Modifier.background(if (colors.dark) Color.Black.copy(alpha = 0.88f) else Color.White.copy(alpha = 0.88f))
                     },
                 )
-                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = backdropPress),
+                .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = backdropPress)
+                // Nothing to read: TalkBack closes focus mode with Back.
+                .semantics { hideFromAccessibility() },
         )
         // Session | Bot at the top of the screen, revealed first (HomeDock.tsx focusHeader).
         if (state.bot != null && !standalone) {

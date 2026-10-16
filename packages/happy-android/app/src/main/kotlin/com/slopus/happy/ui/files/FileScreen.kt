@@ -37,6 +37,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -327,7 +330,8 @@ private fun Tab(label: String, selected: Boolean, tag: String, onClick: () -> Un
             .testTag(tag)
             .clip(RoundedCornerShape(8.dp))
             .background(if (selected) colors.textLink.copy(alpha = 0x66 / 255f) else colors.glass.backgroundSubtle)
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Tab, onClick = onClick)
+            .semantics { this.selected = selected }
             .padding(horizontal = 16.dp, vertical = 8.dp),
     ) {
         Text(label, style = happyTextStyle(fontSize = 14, weight = FontWeight.SemiBold), color = if (selected) Color.White else colors.textSecondary)

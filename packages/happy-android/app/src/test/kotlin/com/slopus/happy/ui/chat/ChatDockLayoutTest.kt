@@ -5,8 +5,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
@@ -20,8 +23,10 @@ import com.slopus.happy.chat.ChatState
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.model.ResumeCommandBlock
 import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
@@ -66,8 +71,9 @@ class ChatDockLayoutTest {
         }
     }
 
-    // Faded-out details are placed far off screen; showing, they sit inside it.
-    private fun shown(tag: String) = rule.node(tag).bounds.left > (-1000).dp
+    // Faded-out details are placed far off screen and leave the accessibility tree; showing, they sit inside it.
+    private fun shown(tag: String) = rule.onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes()
+        .any { with(rule.density) { it.boundsInRoot.left.toDp() } > (-1000).dp }
 
     @Test
     @Config(qualifiers = PHONE)
@@ -108,7 +114,10 @@ class ChatDockLayoutTest {
         // The composer card itself stays.
         assertTrue(rule.node(ComposerTags.PANEL).bounds.left >= 0.dp)
         // The faded rows keep their room: the card doesn't move.
-        rule.node(ChatListTags.SCROLL_BUTTON).assertExists()
+        // TalkBack: the faded rows are gone from the tree, the scroll button is named.
+        rule.onAllNodesWithTag(GOAL).assertCountEquals(0)
+        rule.node(ChatListTags.SCROLL_BUTTON).assert(hasContentDescription("Scroll to bottom") and hasRole(Role.Button))
+        rule.assertActionsLabelled()
         val card = rule.node(ComposerTags.PANEL).bounds
         val button = rule.node(ChatListTags.SCROLL_BUTTON).bounds
         assertDp("scroll button 16 above the card", card.top - 16.dp, button.bottom)
