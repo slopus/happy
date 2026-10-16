@@ -8,6 +8,9 @@ final class CountingDraftStorage: ComposerStorage, @unchecked Sendable {
     private let lock = NSLock()
     private var draft: String
     private var written: [String] = []
+    private var holdNext = false
+    private let gate = DispatchSemaphore(value: 0)
+    private let entered = DispatchSemaphore(value: 0)
     weak var writer: ComposerDraftWriter?
 
     init(draft: String = "") {
@@ -16,6 +19,13 @@ final class CountingDraftStorage: ComposerStorage, @unchecked Sendable {
 
     var saves: [String] { lock.withLock { written } }
     var stored: String { lock.withLock { draft } }
+
+    /// The next save blocks, holding the writer's drain inside it, until
+    /// `release()`; `waitForHeldSave()` returns once it has started. What is
+    /// handed to the writer meanwhile waits as one run.
+    func holdTheNextSave() { lock.withLock { holdNext = true } }
+    func waitForHeldSave() { entered.wait() }
+    func release() { gate.signal() }
 
     /// Another device wrote the draft.
     func change(_ text: String) {
@@ -28,6 +38,14 @@ final class CountingDraftStorage: ComposerStorage, @unchecked Sendable {
     }
 
     func saveDraft(sessionId: String, text: String) throws {
+        let hold = lock.withLock {
+            defer { holdNext = false }
+            return holdNext
+        }
+        if hold {
+            entered.signal()
+            gate.wait()
+        }
         lock.withLock {
             draft = text
             written.append(text)
@@ -78,15 +96,33 @@ final class ComposerDraftPersistTests: XCTestCase {
     func testAnEditBackToTheSavedTextWritesNothing() async throws {
         let storage = CountingDraftStorage()
         let (writer, _) = try await start(storage)
+        // "a" is being written; "ab" and back to "a" are typed meanwhile
+        // and wait behind it as one run, which collapses to its newest.
+        storage.holdTheNextSave()
         writer.save(.init(text: "a", generation: 1, persist: .unlessSaved))
-        await writer.settle()
+        storage.waitForHeldSave()
         writer.save(.init(text: "ab", generation: 2, persist: .unlessSaved))
         writer.save(.init(text: "a", generation: 3, persist: .unlessSaved))
+        storage.release()
         await writer.settle()
         XCTAssertEqual(storage.saves, ["a"], "the newest is what was saved")
         writer.save(.init(text: "", generation: 4, persist: .unlessSaved))
         await writer.settle()
         XCTAssertEqual(storage.saves, ["a", ""])
+        writer.close()
+    }
+
+    /// Edits the drain reaches one by one are each written, in order: the
+    /// store ends at the newest, never at one typed over.
+    func testEditsLandingOneByOneAreWrittenInOrder() async throws {
+        let storage = CountingDraftStorage()
+        let (writer, _) = try await start(storage)
+        for (index, text) in ["a", "ab", "a"].enumerated() {
+            writer.save(.init(text: ComposerDraftText(text), generation: index + 1, persist: .unlessSaved))
+            await writer.settle()
+        }
+        XCTAssertEqual(storage.saves, ["a", "ab", "a"])
+        XCTAssertEqual(storage.stored, "a")
         writer.close()
     }
 
