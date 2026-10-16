@@ -18,6 +18,7 @@ import com.slopus.happy.R
 /** The Octicons glyphs happy-app uses (glyphmaps/Octicons.json). */
 enum class Octicon(val codepoint: Int) {
     ArrowDown(0xf107), // arrow-down
+    ArrowUp(0xf10d), // arrow-up
     Check(0xf11f), // check
     ChevronRight(0xf126), // chevron-right
     CommentDiscussion(0xf138), // comment-discussion
@@ -30,6 +31,7 @@ enum class Octicon(val codepoint: Int) {
     Gear(0xf184), // gear
     GitBranch(0xf186), // git-branch
     LightBulb(0xf1ac), // light-bulb
+    Pencil(0xf1d3), // pencil
     Plus(0xf1dd), // plus
     Rocket(0xf1f3), // rocket
     ScreenFull(0xf1f7), // screen-full

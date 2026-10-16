@@ -39,15 +39,18 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.chat.ChatRow
+import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonDisplay
 import com.slopus.happy.ui.components.RoundButtonSize
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
-import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -228,7 +231,7 @@ fun ChatList(
                     .clickable { scope.launch { state.animateScrollToItem(0) } },
                 contentAlignment = Alignment.Center,
             ) {
-                ChatIconView(ChatIcon.OctArrowDown, ChatListSpec.scrollIcon, colors.text)
+                Icon(Octicon.ArrowDown, ChatListSpec.scrollIcon, colors.text)
             }
         }
     }
@@ -287,7 +290,7 @@ fun ChatFooter(controlledByUser: Boolean, modifier: Modifier = Modifier) {
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(ChatListSpec.warningGap),
             ) {
-                ChatIconView(ChatIcon.InformationCircle, ChatListSpec.warningIcon, colors.boxWarning.text)
+                Icon(Ionicon.InformationCircle, ChatListSpec.warningIcon, colors.boxWarning.text)
                 Text(
                     // Literal in happy-app (ChatFooter.tsx).
                     text = "Permissions shown in terminal only. Reset or send a message to control from app.",

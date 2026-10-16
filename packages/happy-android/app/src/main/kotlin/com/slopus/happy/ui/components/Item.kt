@@ -19,8 +19,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.ui.theme.HappyTheme
@@ -79,6 +82,12 @@ fun Item(
     loading: Boolean = false,
     destructive: Boolean = false,
     showChevron: Boolean = true,
+    /** `titleStyle={{ color }}`; unspecified keeps the text (or destructive) colour. */
+    titleColor: Color = Color.Unspecified,
+    /** `detailStyle={{ color }}` */
+    detailColor: Color = Color.Unspecified,
+    /** `subtitleStyle`, e.g. the monospaced ids on the machine screen. */
+    subtitleStyle: TextStyle? = null,
 ) {
     val colors = HappyTheme.colors
     val interactive = onClick != null || onLongClick != null
@@ -122,7 +131,7 @@ fun Item(
             Text(
                 text = title,
                 style = ItemSpec.title,
-                color = if (destructive) colors.textDestructive else colors.text,
+                color = titleColor.takeOrElse { if (destructive) colors.textDestructive else colors.text },
                 maxLines = if (subtitle != null) 1 else 2,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.testTag(ItemTags.TITLE),
@@ -130,7 +139,7 @@ fun Item(
             if (subtitle != null) {
                 Text(
                     text = subtitle,
-                    style = ItemSpec.subtitle,
+                    style = subtitleStyle ?: ItemSpec.subtitle,
                     color = colors.textSecondary,
                     maxLines = if (subtitleLines <= 0) Int.MAX_VALUE else subtitleLines,
                     overflow = TextOverflow.Ellipsis,
@@ -147,7 +156,7 @@ fun Item(
                 Text(
                     text = detail,
                     style = ItemSpec.detail,
-                    color = colors.textSecondary,
+                    color = detailColor.takeOrElse { colors.textSecondary },
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier

@@ -1,6 +1,9 @@
 package com.slopus.happy.chat
 
 import com.slopus.happy.data.MessageRecord
+import com.slopus.happy.data.OutboxKind
+import com.slopus.happy.data.OutboxRecord
+import com.slopus.happy.data.OutboxState
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.model.SessionState
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +31,37 @@ class ChatFeedTest {
 
     private fun session(metadata: String? = """{"path":"/home/me/app","host":"box"}""", agentState: String? = null, active: Boolean = true) =
         SessionRecord("s", 0, 1, 1, active, 5, metadata, 1, agentState, 1, "", null)
+
+    private fun send(localId: String, text: String, state: OutboxState, error: String? = null) = OutboxRecord(
+        localId, "s", OutboxKind.USER, """{"role":"user","content":{"type":"text","text":${quote(text)}}}""", "", 5, state, 1, error, null, null,
+    )
+
+    /** A send shows from the outbox, then becomes its echo without a second row or a rebuild. */
+    @Test
+    fun anOutboxSendTurnsIntoItsEcho() {
+        val reduction = ChatReduction { 0 }
+        val info = ChatSessionInfo.from(session())
+        val queued = reduction.apply(ChatPage(emptyList(), outbox = listOf(send("L", "hi", OutboxState.QUEUED))), info)
+        val row = queued.rows.single() as ChatRow.User
+        assertTrue(row.message.pending)
+        val stored = reduction.apply(ChatPage(listOf(user("S", "hi", 6, localId = "L")), outbox = listOf(send("L", "hi", OutboxState.SENT))), info)
+        val echoed = stored.rows.single() as ChatRow.User
+        assertEquals(row.message.id, echoed.message.id)
+        assertFalse(echoed.message.pending)
+        assertEquals(1, reduction.apply(ChatPage(listOf(user("S", "hi", 6, localId = "L"))), info).rows.size)
+    }
+
+    @Test
+    fun aFailedSendCarriesItsErrorAndGoesWhenDiscarded() {
+        val reduction = ChatReduction { 0 }
+        val info = ChatSessionInfo.from(session())
+        val failed = reduction.apply(ChatPage(listOf(user("u1", "earlier", 1)), outbox = listOf(send("L", "hi", OutboxState.FAILED, "HTTP 500"))), info)
+        val row = failed.rows.first() as ChatRow.User
+        assertEquals("HTTP 500", row.message.sendError)
+        assertEquals("L", row.failedLocalId)
+        val discarded = reduction.apply(ChatPage(listOf(user("u1", "earlier", 1))), info)
+        assertEquals(listOf("earlier"), discarded.rows.map { (it as ChatRow.User).message.text })
+    }
 
     @Test
     fun rowsAreNewestFirstAndHideThinking() {

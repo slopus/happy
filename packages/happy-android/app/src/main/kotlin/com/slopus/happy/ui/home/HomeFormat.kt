@@ -28,3 +28,7 @@ fun formatSessionListTimestamp(
     val thisYear = Instant.ofEpochMilli(now).atZone(zone).year
     return if (date.year == thisYear) monthDay else String.format(Locale.ROOT, "%s/%02d", monthDay, date.year % 100)
 }
+
+/** `new Date(timestamp).toLocaleString()`: the date and the time with seconds, in the user's locale. */
+fun formatLocaleDateTime(timestamp: Long, zone: ZoneId = ZoneId.systemDefault(), locale: Locale = Locale.getDefault()): String =
+    DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT, FormatStyle.MEDIUM).withLocale(locale).format(Instant.ofEpochMilli(timestamp).atZone(zone))

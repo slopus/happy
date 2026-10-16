@@ -5,18 +5,21 @@ import android.content.ClipboardManager
 import android.content.Context
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
+import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.R
@@ -25,14 +28,38 @@ import com.slopus.happy.model.Session
 import com.slopus.happy.model.Settings
 import com.slopus.happy.model.WorkspaceOrigin
 import com.slopus.happy.model.forkSource
+import com.slopus.happy.model.parseJsonObject
+import com.slopus.happy.sync.OpResult
+import com.slopus.happy.ui.session.DuplicateSheet
+import com.slopus.happy.ui.session.LiveSessionContinuations
+import com.slopus.happy.ui.session.SessionContinuations
+import com.slopus.happy.ui.session.SessionInfoActions
+import com.slopus.happy.ui.session.SessionInfoControls
+import com.slopus.happy.ui.session.SessionInfoRoute
+import com.slopus.happy.ui.session.SessionInfoScreen
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.withContext
 import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.net.HappyJson
+import com.slopus.happy.sync.MachineOps
 import com.slopus.happy.sync.MachinePresence
 import com.slopus.happy.sync.SessionPresence
+import com.slopus.happy.sync.SpawnSessionResult
+import com.slopus.happy.sync.SyncEngine
+import com.slopus.happy.ui.machine.LiveMachineControls
+import com.slopus.happy.ui.machine.MachineRoute
+import com.slopus.happy.ui.machine.MachineScreen
+import com.slopus.happy.ui.machine.MachineScreenActions
+import com.slopus.happy.ui.machine.recentMachineSessions
+import com.slopus.happy.ui.onboarding.LinkComputerChecklist
+import com.slopus.happy.ui.onboarding.OnboardingLinkComputer
+import com.slopus.happy.ui.onboarding.OnboardingSettingsRoute
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.SettingsRoute
 import com.slopus.happy.ui.components.Alert
+import com.slopus.happy.ui.changelog.Changelog
 import com.slopus.happy.ui.settings.AppearanceRoute
+import com.slopus.happy.ui.settings.ChangelogRoute
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.AvatarSettings
 import com.slopus.happy.ui.components.AvatarStyle
@@ -49,6 +76,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -67,9 +96,25 @@ import java.util.WeakHashMap
 class HomeServices private constructor(graph: AppGraph) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    val sessionActions: SessionActions = ServerSessionActions { graph.account.value?.api }
-    val rpc: SessionRpc = SessionRpc.Unavailable
+    private val account = graph.account
+
+    val sessionActions: SessionActions = LiveSessionActions { account.value?.sessionOps }
     val archiver = SessionArchiver(sessionActions)
+
+    /** Resume, fork and spawn; null while signed out. */
+    val machineOps: MachineOps? get() = account.value?.machineOps
+
+    val continuations: SessionContinuations = LiveSessionContinuations { account.value?.machineOps }
+
+    val infoControls: SessionInfoControls = object : SessionInfoControls {
+        override suspend fun archive(session: Session): ArchiveResult = archiver.archive(session)
+
+        override suspend fun delete(session: Session): OpResult {
+            // Best effort: a running agent would otherwise keep writing into a deleted session.
+            if (session.isOnline) sessionActions.kill(session.id)
+            return sessionActions.delete(session.id)
+        }
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val snapshots: StateFlow<HomeSnapshot?> = graph.account
@@ -78,6 +123,10 @@ class HomeServices private constructor(graph: AppGraph) {
                 graph.store,
                 account?.presence?.sessions ?: flowOf(emptyMap<String, SessionPresence>()),
                 account?.presence?.machines ?: flowOf(emptyMap<String, MachinePresence>()),
+                // A full session listing has been stored once: every sync after the first.
+                synced = (account?.isSyncing ?: flowOf(false))
+                    .map { graph.store.cursor(SyncEngine.CURSOR_SESSIONS_LISTED_AT) != null }
+                    .flowOn(Dispatchers.IO),
             )
         }
         .stateIn(scope, SharingStarted.Eagerly, null)
@@ -131,17 +180,11 @@ suspend fun checkNativeUpdate(http: HappyHttp, appId: String, version: String): 
     null
 }
 
-/**
- * The home routes. [onOpenSession] belongs to the chat, [onLinkComputer],
- * [onConnectUrl] and [onTroubleshoot] to onboarding; they're wired in
- * HappyApp as those land.
- */
+/** The home routes. [onOpenSession] belongs to the chat, [onTroubleshoot] to onboarding. */
 fun NavGraphBuilder.homeRoutes(
     graph: AppGraph,
     nav: NavHostController,
     onOpenSession: (sessionId: String) -> Unit = {},
-    onLinkComputer: () -> Unit = {},
-    onConnectUrl: (url: String) -> Unit = {},
     onTroubleshoot: () -> Unit = {},
 ) {
     composable<HomeRoute> {
@@ -149,15 +192,69 @@ fun NavGraphBuilder.homeRoutes(
             graph = graph,
             onSettings = { nav.navigate(SettingsRoute) },
             onAppearance = { nav.navigate(AppearanceRoute) },
+            onWhatsNew = { nav.navigate(ChangelogRoute) },
+            onOnboardingSettings = { nav.navigate(OnboardingSettingsRoute) },
             onOpenSession = onOpenSession,
-            onLinkComputer = onLinkComputer,
-            onConnectUrl = onConnectUrl,
+            onOpenMachine = { id -> nav.navigate(MachineRoute(id)) },
             onTroubleshoot = onTroubleshoot,
             onNewSession = {},
-            onDetails = null,
+            onDetails = { id -> nav.navigate(SessionInfoRoute(id)) },
             onCreateWorkspace = {},
         )
     }
+    composable<SessionInfoRoute> { entry ->
+        SessionInfoRouteScreen(graph, entry.toRoute<SessionInfoRoute>().id, nav, onOpenSession)
+    }
+    composable<MachineRoute> { entry ->
+        val id = entry.toRoute<MachineRoute>().id
+        val services = remember(graph) { HomeServices.of(graph) }
+        val snapshot by services.snapshots.collectAsStateWithLifecycle()
+        val machine = snapshot?.machines?.find { it.id == id }
+        val sessions = remember(snapshot?.sessions, id) { recentMachineSessions(snapshot?.sessions.orEmpty(), id) }
+        val controls = remember(graph) { LiveMachineControls { graph.account.value } }
+        val actions = remember(nav, onOpenSession) {
+            MachineScreenActions(onBack = { nav.popBackStack() }, onOpenSession = onOpenSession, onDeleted = { nav.popBackStack() })
+        }
+        MachineScreen(machine, sessions, controls, actions)
+    }
+}
+
+@Composable
+private fun SessionInfoRouteScreen(graph: AppGraph, id: String, nav: NavHostController, onOpenSession: (String) -> Unit) {
+    val services = remember(graph) { HomeServices.of(graph) }
+    val snapshot by services.snapshots.collectAsStateWithLifecycle()
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val local by graph.localSettings.values.collectAsStateWithLifecycle()
+    val session = snapshot?.sessions?.find { it.id == id }
+    val machine = snapshot?.machines?.find { it.id == session?.metadata?.machineId }
+    // The chat owns the typed agent state; this screen only counts and shows it.
+    val agentState by produceState<JsonObject?>(null, session) {
+        value = withContext(Dispatchers.IO) { parseJsonObject(graph.store.session(id)?.agentStateJson) }
+    }
+    val context = LocalContext.current
+    val actions = remember(nav, onOpenSession, context) {
+        val home = { nav.popBackStack(HomeRoute, inclusive = false); Unit }
+        SessionInfoActions(
+            onBack = { nav.popBackStack() },
+            onOpenSession = onOpenSession,
+            onOpenMachine = { machineId -> nav.navigate(MachineRoute(machineId)) },
+            onChanges = null,
+            onArchived = home,
+            onDeleted = home,
+            copyToClipboard = { text -> copyToClipboard(context, text) },
+        )
+    }
+    SessionInfoScreen(
+        session = session,
+        ready = snapshot?.ready == true,
+        agentState = agentState,
+        machine = machine,
+        continuationExperiments = settings.expResumeSession,
+        devMode = BuildConfig.DEBUG || local.devModeEnabled,
+        controls = services.infoControls,
+        continuations = services.continuations,
+        actions = actions,
+    )
 }
 
 /** The synced avatar settings, for every avatar under [content]. */
@@ -179,12 +276,13 @@ private fun HomeRouteScreen(
     graph: AppGraph,
     onSettings: () -> Unit,
     onAppearance: () -> Unit,
+    onWhatsNew: () -> Unit,
+    onOnboardingSettings: () -> Unit,
     onOpenSession: (String) -> Unit,
-    onLinkComputer: () -> Unit,
-    onConnectUrl: (String) -> Unit,
+    onOpenMachine: (String) -> Unit,
     onTroubleshoot: () -> Unit,
     onNewSession: () -> Unit,
-    onDetails: ((String) -> Unit)?,
+    onDetails: (String) -> Unit,
     onCreateWorkspace: (WorkspaceOrigin) -> Unit,
 ) {
     val services = remember(graph) { HomeServices.of(graph) }
@@ -193,21 +291,31 @@ private fun HomeRouteScreen(
     val local by graph.localSettings.values.collectAsStateWithLifecycle()
     val connection by graph.connectionStatus.collectAsStateWithLifecycle()
     val updateUrl by services.updateUrl.collectAsStateWithLifecycle()
+    val resources = LocalResources.current
+    val latestChangelog = remember(resources) { Changelog.bundled(resources).latestTitle }
+    val lastViewedChangelog by graph.changelog.lastViewedTitle.collectAsStateWithLifecycle()
+    // useChangelog: a first install has seen everything so far; only what comes later is news.
+    LaunchedEffect(latestChangelog) {
+        if (graph.changelog.lastViewedTitle.value.isEmpty() && latestChangelog.isNotEmpty()) graph.changelog.markViewed(latestChangelog)
+    }
+    val update = HomeUpdate.resolve(updateUrl, lastViewedChangelog.isNotEmpty() && graph.changelog.hasUnread(latestChangelog))
     val uriHandler = LocalUriHandler.current
     var alert by remember { mutableStateOf<Alert?>(null) }
     val showAlert = remember { { next: Alert -> alert = next } }
+    var duplicating by remember { mutableStateOf<Session?>(null) }
     val menus = rememberSessionMenus(
         services = services,
         continuationExperiments = settings.expResumeSession,
         devMode = BuildConfig.DEBUG || local.devModeEnabled,
         onOpenSession = onOpenSession,
         onDetails = onDetails,
+        onDuplicate = { duplicating = it },
         showAlert = showAlert,
     )
     val createWorkspaceLabel = stringResource(R.string.home_create_workspace)
     val cancelLabel = stringResource(R.string.common_cancel)
 
-    val callbacks = remember(services, menus, onOpenSession, onCreateWorkspace) {
+    val callbacks = remember(services, menus, onOpenSession, onOpenMachine, onCreateWorkspace) {
         HomeListCallbacks(
             onOpen = onOpenSession,
             onMenu = menus::open,
@@ -216,23 +324,22 @@ private fun HomeRouteScreen(
             onToggleProject = { id ->
                 graph.localSettings.change { it.copy(expandedProjects = it.expandedProjects + (id to it.expandedProjects[id].let { open -> open != true })) }
             },
-            onOpenMachine = {},
+            onOpenMachine = onOpenMachine,
             onCreateWorkspace = onCreateWorkspace,
             onProjectMenu = { name, origin ->
                 alert = Alert(name, null, listOf(AlertButton(cancelLabel), AlertButton(createWorkspaceLabel) { onCreateWorkspace(origin) }))
             },
         )
     }
-    val actions = remember(onSettings, onAppearance, onNewSession, onLinkComputer, onConnectUrl, onTroubleshoot, uriHandler) {
+    val actions = remember(onSettings, onAppearance, onNewSession, onTroubleshoot, onWhatsNew, uriHandler) {
         HomeScreenActions(
             onSettings = onSettings,
             onAppearance = onAppearance,
             onSetGrouping = { grouping -> graph.settings.change { it.copy(sessionListGrouping = grouping) } },
             onNewSession = onNewSession,
-            onLinkComputer = onLinkComputer,
-            onConnectUrl = onConnectUrl,
             onTroubleshoot = onTroubleshoot,
             onOpenUrl = uriHandler::openUri,
+            onWhatsNew = onWhatsNew,
         )
     }
 
@@ -243,7 +350,19 @@ private fun HomeRouteScreen(
             grouping = settings.sessionListGrouping,
             callbacks = callbacks,
             actions = actions,
-            updateUrl = updateUrl,
+            update = update,
+            linkContent = { OnboardingLinkComputer(graph, onSettings = onOnboardingSettings) },
+            offlineContent = { computers, onShowArchived ->
+                LinkComputerChecklist(graph, computers = computers, onTroubleshoot = onTroubleshoot, onShowArchived = onShowArchived)
+            },
+        )
+    }
+    duplicating?.let { session ->
+        DuplicateSheet(
+            source = session.forkSource(),
+            continuations = services.continuations,
+            onDismiss = { duplicating = null },
+            onDuplicated = onOpenSession,
         )
     }
     alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
@@ -278,6 +397,7 @@ private fun rememberSessionMenus(
     devMode: Boolean,
     onOpenSession: (String) -> Unit,
     onDetails: ((String) -> Unit)?,
+    onDuplicate: (Session) -> Unit,
     showAlert: (Alert) -> Unit,
 ): SessionMenus {
     val context = LocalContext.current
@@ -306,8 +426,15 @@ private fun rememberSessionMenus(
         metadataCopied = stringResource(R.string.session_info_metadata_copied),
         success = stringResource(R.string.common_success),
     )
-    return remember(services, continuationExperiments, devMode, onOpenSession, onDetails, strings, context, scope, showAlert) {
+    return remember(services, continuationExperiments, devMode, onOpenSession, onDetails, onDuplicate, strings, context, scope, showAlert) {
         fun error(message: String) = showAlert(Alert(strings.error, message, listOf(AlertButton(strings.ok))))
+
+        // Resume and fork answer like a spawn; anything but a session is a failure here.
+        fun spawned(result: SpawnSessionResult, fallback: String) = when (result) {
+            is SpawnSessionResult.Success -> onOpenSession(result.sessionId)
+            is SpawnSessionResult.Error -> error(result.errorMessage.ifEmpty { fallback })
+            else -> error(fallback)
+        }
         lateinit var menus: SessionMenus
         menus = SessionMenus(
             services = services,
@@ -324,24 +451,19 @@ private fun rememberSessionMenus(
                                 error(availability.block?.let(strings.blocks::getValue) ?: strings.resumeFailed)
                             } else {
                                 scope.launch {
-                                    when (val result = services.rpc.resume(machineId, session.id)) {
-                                        is SpawnResult.Success -> onOpenSession(result.sessionId)
-                                        is SpawnResult.Failure -> error(result.message ?: strings.resumeFailed)
-                                    }
+                                    val ops = services.machineOps ?: return@launch error(strings.resumeFailed)
+                                    spawned(ops.resumeSession(machineId, session.id), strings.resumeFailed)
                                 }
                             }
                         }
                         SessionActionId.Fork -> AlertButton(strings.fork) {
                             val source = session.forkSource() ?: return@AlertButton
                             scope.launch {
-                                when (val result = services.rpc.fork(source)) {
-                                    is SpawnResult.Success -> onOpenSession(result.sessionId)
-                                    is SpawnResult.Failure -> error(result.message ?: strings.forkFailed)
-                                }
+                                val ops = services.machineOps ?: return@launch error(strings.forkFailed)
+                                spawned(ops.forkAndSpawn(source), strings.forkFailed)
                             }
                         }
-                        // DuplicateSheet lives on session info; offered once that screen is wired.
-                        SessionActionId.Duplicate -> onDetails?.let { AlertButton(strings.duplicate) { it(session.id) } }
+                        SessionActionId.Duplicate -> AlertButton(strings.duplicate) { onDuplicate(session) }
                         SessionActionId.CopyMetadata -> AlertButton(strings.copyMetadata) {
                             val metadata = session.metadata ?: return@AlertButton error(strings.error)
                             copyToClipboard(context, prettyJson.encodeToString(JsonObject.serializer(), metadata.raw))
@@ -380,7 +502,7 @@ private data class SessionMenuStrings(
 
 private val prettyJson = Json(HappyJson) { prettyPrint = true }
 
-private fun copyToClipboard(context: Context, text: String) {
+internal fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText("session metadata", text))
+    clipboard.setPrimaryClip(ClipData.newPlainText("Happy", text))
 }

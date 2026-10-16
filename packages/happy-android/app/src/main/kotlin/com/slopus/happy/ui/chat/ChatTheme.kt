@@ -3,13 +3,7 @@ package com.slopus.happy.ui.chat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.Font
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.unit.Dp
-import com.slopus.happy.R
-import com.slopus.happy.ui.components.GlyphIcon
 import com.slopus.happy.ui.theme.HappyTheme
 
 /**
@@ -122,79 +116,4 @@ fun userMessageBubblePalette(name: String?, dark: Boolean): BubblePalette {
     )
     val palettes = if (dark) darkPalettes else light
     return palettes[name] ?: palettes.getValue("gray")
-}
-
-/** The icon font a [ChatIcon] is drawn from. */
-enum class ChatIconFont { Ionicons, Octicons }
-
-/** The glyphs the chat draws (@expo/vector-icons 15.0.2 glyphmaps), named as in happy-app. */
-enum class ChatIcon(val codepoint: Int, val font: ChatIconFont = ChatIconFont.Ionicons) {
-    Add(0xf103),
-    AlertCircleOutline(0xf114),
-    ArrowDown(0xf12d),
-    ArrowUp(0xf145),
-    Checkmark(0xf21d),
-    CheckmarkCircle(0xf21e),
-    ChevronDown(0xf232),
-    ChevronForward(0xf23b),
-    ChevronUp(0xf241),
-    Close(0xf24a),
-    CloseCircle(0xf24b),
-    CodeSlashOutline(0xf26f),
-    ConstructOutline(0xf287),
-    CopyOutline(0xf290),
-    CreateOutline(0xf293),
-    DesktopOutline(0xf29f),
-    DocumentAttachOutline(0xf2ac),
-    DocumentTextOutline(0xf2b4),
-    EyeOutline(0xf2ea),
-    FolderOutline(0xf329),
-    GitBranchOutline(0xf33b),
-    GlobeOutline(0xf350),
-    HardwareChipOutline(0xf365),
-    HelpCircleOutline(0xf37e),
-    ImageOutline(0xf38f),
-    InformationCircle(0xf398),
-    LaptopOutline(0xf3ad),
-    ListOutline(0xf3bf),
-    LocateOutline(0xf3c2),
-    LockClosed(0xf3c7),
-    PencilOutline(0xf49d),
-    RadioButtonOff(0xf500),
-    RadioButtonOn(0xf503),
-    RemoveCircleOutline(0xf522),
-    RocketOutline(0xf548),
-    SearchOutline(0xf563),
-    ShieldCheckmarkOutline(0xf579),
-    SparklesOutline(0xf58d),
-    SquareOutline(0xf593),
-    Checkbox(0xf21a),
-    Stop(0xf59e),
-    TerminalOutline(0xf5c9),
-    TrashOutline(0xf5f6),
-    WarningOutline(0xf629),
-
-    // Octicons
-    OctArrowUp(0xf10d, ChatIconFont.Octicons),
-    OctArrowDown(0xf107, ChatIconFont.Octicons),
-    OctStop(0xf215, ChatIconFont.Octicons),
-}
-
-private val IoniconsFamily = FontFamily(Font(R.font.ionicons))
-private val OcticonsFamily = FontFamily(Font(R.font.octicons))
-
-/** A [size] box with the glyph centred, as `<Ionicons size>` / `<Octicons size>` render. */
-@Composable
-fun ChatIconView(
-    icon: ChatIcon,
-    size: Dp,
-    color: Color,
-    modifier: Modifier = Modifier,
-    contentDescription: String? = null,
-) {
-    val family = when (icon.font) {
-        ChatIconFont.Ionicons -> IoniconsFamily
-        ChatIconFont.Octicons -> OcticonsFamily
-    }
-    GlyphIcon(icon.codepoint, family, size, color, modifier, contentDescription)
 }

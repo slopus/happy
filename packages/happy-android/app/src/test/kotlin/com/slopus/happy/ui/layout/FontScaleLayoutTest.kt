@@ -110,7 +110,7 @@ class FontScaleLayoutTest {
 
     private val noon = LocalDate.of(2026, 10, 16).atTime(12, 0).toInstant(ZoneOffset.UTC).toEpochMilli()
     private val homeCallbacks = HomeListCallbacks({}, {}, {}, {}, {}, {}, {}, { _, _ -> })
-    private val homeActions = HomeScreenActions({}, {}, {}, {}, {}, {}, {}, {})
+    private val homeActions = HomeScreenActions({}, {}, {}, {}, {}, {}, {})
 
     private fun showLarge(content: @Composable () -> Unit) {
         rule.setHappyContent { CompositionLocalProvider(LocalDensity provides LARGE_TEXT, content = content) }

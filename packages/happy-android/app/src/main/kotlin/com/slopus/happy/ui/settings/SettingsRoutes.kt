@@ -39,6 +39,7 @@ import com.slopus.happy.model.settings.Languages
 import com.slopus.happy.ui.SettingsRoute
 import com.slopus.happy.ui.changelog.Changelog
 import com.slopus.happy.ui.changelog.ChangelogScreen
+import com.slopus.happy.ui.machine.MachineRoute
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -108,18 +109,13 @@ private fun Appearance(graph: AppGraph, nav: NavHostController) {
 private fun Agents(graph: AppGraph, nav: NavHostController) {
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
     val machines by rememberMachineChoices(graph)
-    val alerts = remember { Alerts() }
-    val ok = stringResource(R.string.common_ok)
-    val machineUnavailable = stringResource(R.string.settings_agents_machine_unavailable)
     AgentsScreen(
         machines = machines,
         overrides = settings.agentDefaultOverrides,
         onOverridesChange = { overrides -> graph.settings.change { it.copy(agentDefaultOverrides = overrides) } },
-        // STUB: there is no machine screen yet.
-        onMachine = { alerts.show(Alert(machineUnavailable, null, listOf(AlertButton(ok)))) },
+        onMachine = { nav.navigate(MachineRoute(it.id)) },
         onBack = { nav.popBackStack() },
     )
-    alerts.Host()
 }
 
 /**
