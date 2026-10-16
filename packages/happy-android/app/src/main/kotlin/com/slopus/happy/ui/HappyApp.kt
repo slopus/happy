@@ -20,6 +20,7 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
+import com.slopus.happy.ui.chat.chatRoutes
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -81,6 +82,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                     )
                 }
                 composable<AccountRoute> { signedIn?.let { Account(graph, it, nav) } }
+                chatRoutes(graph, nav)
                 composable<AppearanceRoute> {
                     AppearanceScreen(theme = theme, onThemeChange = graph.localSettings::setThemePreference, onBack = { nav.popBackStack() })
                 }
