@@ -49,13 +49,15 @@ import com.slopus.happy.chat.ChatRow
 import com.slopus.happy.chat.PermissionStatus
 import com.slopus.happy.chat.ToolState
 import com.slopus.happy.chat.UserDisplay
+import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.PlexMono
 import com.slopus.happy.ui.theme.happyTextStyle
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 object MessageTags {
     const val USER = "message.user"
@@ -239,7 +241,7 @@ fun UserMessage(row: ChatRow.User, bubble: BubblePalette, callbacks: MessageCall
                         horizontalArrangement = Arrangement.spacedBy(MessageSpec.goalGap),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        ChatIconView(ChatIcon.LocateOutline, MessageSpec.goalIcon, chat.agentEventText)
+                        Icon(Ionicon.LocateOutline, MessageSpec.goalIcon, chat.agentEventText)
                         Text(stringResource(R.string.message_sent_as_goal), style = MessageSpec.goalText, color = chat.agentEventText)
                     }
                 }
@@ -341,8 +343,8 @@ private fun MessageCopyButton(text: String) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        ChatIconView(
-            icon = if (copied) ChatIcon.Checkmark else ChatIcon.CopyOutline,
+        Icon(
+            icon = if (copied) Ionicon.Checkmark else Ionicon.CopyOutline,
             size = MessageSpec.copyIcon,
             color = HappyTheme.colors.text,
             contentDescription = stringResource(if (copied) R.string.common_copied else R.string.common_copy),
@@ -407,7 +409,7 @@ fun ToolRow(message: ChatMessage.ToolCallMessage, callbacks: MessageCallbacks, m
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(MessageSpec.toolRowGap),
         ) {
-            ChatIconView(ChatIcon.ConstructOutline, MessageSpec.toolIcon, colors.textSecondary, Modifier.size(MessageSpec.toolIconBox))
+            Icon(Ionicon.ConstructOutline, MessageSpec.toolIcon, colors.textSecondary, Modifier.size(MessageSpec.toolIconBox))
             Text(
                 text = toolActivityLabel(tool.name, tool.title, tool.description),
                 style = MessageSpec.toolLabel,
@@ -418,13 +420,13 @@ fun ToolRow(message: ChatMessage.ToolCallMessage, callbacks: MessageCallbacks, m
             )
             val denied = tool.permission?.status == PermissionStatus.Denied || tool.permission?.status == PermissionStatus.Canceled
             when {
-                denied -> ChatIconView(ChatIcon.RemoveCircleOutline, MessageSpec.toolStatusIcon, colors.textSecondary)
+                denied -> Icon(Ionicon.RemoveCircleOutline, MessageSpec.toolStatusIcon, colors.textSecondary)
                 tool.state == ToolState.Running -> CircularProgressIndicator(
                     modifier = Modifier.size(16.dp),
                     color = colors.text,
                     strokeWidth = 2.dp,
                 )
-                tool.state == ToolState.Error -> ChatIconView(ChatIcon.AlertCircleOutline, MessageSpec.toolStatusIcon, colors.warning)
+                tool.state == ToolState.Error -> Icon(Ionicon.AlertCircleOutline, MessageSpec.toolStatusIcon, colors.warning)
                 else -> Unit
             }
         }

@@ -21,9 +21,9 @@ import com.slopus.happy.chat.ChatState
 import com.slopus.happy.chat.NoLivePresence
 import com.slopus.happy.chat.StoreChatMessagesSource
 import com.slopus.happy.chat.StoreChatSessionSource
+import com.slopus.happy.chat.SyncChatActions
 import com.slopus.happy.chat.SyncChatMessagesSource
 import com.slopus.happy.chat.SyncChatPresenceSource
-import com.slopus.happy.chat.UnavailableChatActions
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -39,13 +39,14 @@ data class SessionRoute(val id: String)
 private val drafts = ChatDrafts()
 
 /**
- * The chat's destinations. [actions] is Sync's sender once it lands; until
- * then sending fails with a notice. [onInfo] opens `/session/{id}/info`.
+ * The chat's destinations. [actions] go to the signed-in account's session
+ * RPCs; sending fails with a notice until Sync's sender lands. [onInfo] opens
+ * `/session/{id}/info`.
  */
 fun NavGraphBuilder.chatRoutes(
     graph: AppGraph,
     nav: NavHostController,
-    actions: ChatActions = UnavailableChatActions,
+    actions: ChatActions = SyncChatActions { graph.account.value?.sessionOps },
     onInfo: (sessionId: String) -> Unit = {},
 ) {
     composable<SessionRoute> { entry ->

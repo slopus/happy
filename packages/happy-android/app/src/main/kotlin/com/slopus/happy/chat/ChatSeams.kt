@@ -4,7 +4,9 @@ import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.MessageRecord
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.sync.MessageSync
+import com.slopus.happy.sync.PermissionDecision as SyncPermissionDecision
 import com.slopus.happy.sync.Presence
+import com.slopus.happy.sync.SessionOps
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,7 +17,11 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 
 // The chat's seams to the rest of the app. The chat reads a session's stored
 // records and its live state through these, and acts on the session through
@@ -78,10 +84,10 @@ interface ChatActions {
 
     suspend fun answerPermission(sessionId: String, answer: PermissionAnswer)
 
-    /** Answers an agent question form ([buildAnswers]). */
-    suspend fun answerQuestion(sessionId: String, communicationId: String, answers: Map<String, AgentQuestionAnswer>)
+    /** Answers an agent question form ([buildAnswers]); [kind] is the one the agent published. */
+    suspend fun answerQuestion(sessionId: String, communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String = "form")
 
-    suspend fun cancelQuestion(sessionId: String, communicationId: String)
+    suspend fun cancelQuestion(sessionId: String, communicationId: String, kind: String = "form")
 
     /** Persists the composer's per-session mode picks (permission, model, effort). */
     suspend fun setModes(sessionId: String, permissionMode: String?, modelMode: String?, effortLevel: String?) = Unit
@@ -133,8 +139,50 @@ object UnavailableChatActions : ChatActions {
     override suspend fun send(sessionId: String, text: String, meta: JsonObject?) = unavailable()
     override suspend fun abort(sessionId: String) = unavailable()
     override suspend fun answerPermission(sessionId: String, answer: PermissionAnswer) = unavailable()
-    override suspend fun answerQuestion(sessionId: String, communicationId: String, answers: Map<String, AgentQuestionAnswer>) = unavailable()
-    override suspend fun cancelQuestion(sessionId: String, communicationId: String) = unavailable()
+    override suspend fun answerQuestion(sessionId: String, communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) =
+        unavailable()
+    override suspend fun cancelQuestion(sessionId: String, communicationId: String, kind: String) = unavailable()
+}
+
+/**
+ * The chat's actions over Sync's [SessionOps] RPCs, read at call time so a
+ * new sign-in is picked up. Sending stays unavailable until Sync's sender
+ * lands; per-session mode picks stay with the composer (happy-app keeps them
+ * in local storage and sends them with the next message).
+ */
+class SyncChatActions(private val ops: () -> SessionOps?) : ChatActions {
+    private fun ops(): SessionOps = ops.invoke() ?: throw IllegalStateException("Not signed in")
+
+    override suspend fun send(sessionId: String, text: String, meta: JsonObject?) = UnavailableChatActions.send(sessionId, text, meta)
+
+    override suspend fun abort(sessionId: String) = ops().abort(sessionId)
+
+    override suspend fun answerPermission(sessionId: String, answer: PermissionAnswer) {
+        val decision = answer.decision?.let { d -> SyncPermissionDecision.entries.first { it.wire == d.wire } }
+        if (answer.approved) {
+            ops().allow(sessionId, answer.requestId, answer.mode, answer.allowedTools, decision)
+        } else {
+            ops().deny(sessionId, answer.requestId, answer.mode, answer.allowedTools, decision)
+        }
+    }
+
+    override suspend fun answerQuestion(sessionId: String, communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) =
+        ops().answerQuestion(sessionId, communicationId, answersJson(answers), kind)
+
+    override suspend fun cancelQuestion(sessionId: String, communicationId: String, kind: String) =
+        ops().cancelCommunication(sessionId, communicationId, kind)
+
+    companion object {
+        /** `Record<string, AgentQuestionAnswer>` as JSON.stringify writes it: no `custom` when there is none. */
+        fun answersJson(answers: Map<String, AgentQuestionAnswer>): JsonObject = buildJsonObject {
+            for ((id, answer) in answers) {
+                put(id, buildJsonObject {
+                    put("options", JsonArray(answer.options.map(::JsonPrimitive)))
+                    answer.custom?.let { put("custom", it) }
+                })
+            }
+        }
+    }
 }
 
 /** Per-session composer drafts, kept for the life of the process (happy-app `session.draft`). */

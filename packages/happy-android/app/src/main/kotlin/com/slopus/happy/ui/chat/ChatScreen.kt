@@ -41,15 +41,16 @@ import com.slopus.happy.model.SessionState
 import com.slopus.happy.model.avatarId
 import com.slopus.happy.model.compactCount
 import com.slopus.happy.model.formatPathRelativeToHome
-import com.slopus.happy.model.isRigV1
 import com.slopus.happy.model.rigGitSummary
-import com.slopus.happy.model.rigHasRpcMethod
+import com.slopus.happy.sync.rigCanAbort
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.AvatarBadgeLocation
 import com.slopus.happy.ui.components.Header
 import com.slopus.happy.ui.components.HeaderBackButton
 import com.slopus.happy.ui.components.HeaderSpec
 import com.slopus.happy.ui.components.HeaderTags
+import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonDisplay
 import com.slopus.happy.ui.components.RoundButtonSize
@@ -204,8 +205,7 @@ private fun ChatComposerFor(
 ) {
     val sessionState = state.sessionState
     val metadata = session.metadata
-    val canAbort = sessionState != SessionState.Disconnected &&
-        (!metadata.isRigV1() || (metadata?.capabilities?.abort == true && metadata.rigHasRpcMethod("abort")))
+    val canAbort = sessionState != SessionState.Disconnected && metadata.rigCanAbort()
     val blocked = session.isRig && state.thinking && metadata?.capabilities?.steering != true
     val primary = resolvePrimaryAction(
         hasContent = draft.isNotBlank(),
@@ -320,7 +320,7 @@ private fun DeletedSession() {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ChatIconView(ChatIcon.TrashOutline, ChatScreenSpec.deletedIcon, colors.textSecondary, Modifier.testTag(ChatScreenTags.DELETED_ICON))
+        Icon(Ionicon.TrashOutline, ChatScreenSpec.deletedIcon, colors.textSecondary, Modifier.testTag(ChatScreenTags.DELETED_ICON))
         Text(
             stringResource(R.string.errors_session_deleted),
             style = ChatScreenSpec.deletedTitle,
@@ -340,13 +340,13 @@ private fun DeletedSession() {
     }
 }
 
-private fun osIcon(os: String?): ChatIcon {
-    val lower = os?.lowercase() ?: return ChatIcon.HardwareChipOutline
+private fun osIcon(os: String?): Ionicon {
+    val lower = os?.lowercase() ?: return Ionicon.HardwareChipOutline
     return when {
-        "darwin" in lower || "mac" in lower -> ChatIcon.LaptopOutline
-        "win" in lower -> ChatIcon.DesktopOutline
-        "linux" in lower -> ChatIcon.TerminalOutline
-        else -> ChatIcon.HardwareChipOutline
+        "darwin" in lower || "mac" in lower -> Ionicon.LaptopOutline
+        "win" in lower -> Ionicon.DesktopOutline
+        "linux" in lower -> Ionicon.TerminalOutline
+        else -> Ionicon.HardwareChipOutline
     }
 }
 
@@ -382,7 +382,7 @@ fun EmptyMessages(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ChatIconView(
+        Icon(
             osIcon(metadata?.os),
             ChatScreenSpec.emptyIcon,
             colors.textSecondary,
