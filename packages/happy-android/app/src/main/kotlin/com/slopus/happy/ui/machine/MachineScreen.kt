@@ -116,9 +116,12 @@ class LiveMachineControls(private val account: () -> AccountSync?) : MachineCont
     }
 }
 
-/** The recent sessions machine/[id].tsx lists: this machine's, last updated first, five of them. */
+/**
+ * The recent sessions machine/[id].tsx lists: this machine's, last updated
+ * first, five of them. Side chats aren't sessions there (useSessions skips them).
+ */
 fun recentMachineSessions(sessions: List<Session>, machineId: String): List<Session> =
-    sessions.filter { it.metadata?.machineId == machineId }
+    sessions.filter { it.metadata?.machineId == machineId && it.metadata.isSideChat != true }
         .sortedByDescending { it.updatedAt }
         .take(MachineSpec.RECENT_SESSIONS)
 
