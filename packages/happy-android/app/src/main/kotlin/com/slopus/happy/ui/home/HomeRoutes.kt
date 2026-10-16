@@ -113,6 +113,11 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.WeakHashMap
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.Flow
 
 /**
  * The home screens' long-lived state, one per [AppGraph]: the list derived
@@ -191,7 +196,10 @@ class HomeServices private constructor(private val graph: AppGraph) {
             graph.account.collect { next -> if (next !== account) { account = next; reads.reset() } }
         }
         scope.launch { snapshots.collect { snapshot -> if (snapshot != null) reads.observe(snapshot.sessions) } }
-        scope.launch { update.value = checkNativeUpdate(graph.http, BuildConfig.APPLICATION_ID, BuildConfig.VERSION_NAME) }
+        scope.launch {
+            nativeUpdateChecks(graph.isForeground) { checkNativeUpdate(graph.http, BuildConfig.APPLICATION_ID, BuildConfig.VERSION_NAME) }
+                .collect { update.value = it }
+        }
     }
 
     fun session(id: String): Session? = snapshots.value?.sessions?.find { it.id == id }
@@ -269,6 +277,14 @@ class HomeServices private constructor(private val graph: AppGraph) {
         fun of(graph: AppGraph): HomeServices = instances.getOrPut(graph) { HomeServices(graph) }
     }
 }
+
+/**
+ * sync.ts's nativeUpdateSync: [check] now, then again on every return to the
+ * foreground; a newer check replaces one still running.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+fun nativeUpdateChecks(foreground: StateFlow<Boolean>, check: suspend () -> String?): Flow<String?> =
+    foreground.drop(1).filter { it }.map { }.onStart { emit(Unit) }.mapLatest { check() }
 
 /**
  * sync.ts fetchNativeUpdate: POST /v1/version with this build; the store
