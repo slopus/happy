@@ -360,9 +360,13 @@ of the screen's (in the controller's trait change its view's are still the
 old ones). A screen not yet on a window leaves the view what it inherits
 until it is. The title views at five sizes up to the largest in a real
 navigation bar, a size change both ways, a title set before its screen is
-shown, and What's New's are UIKit tests (`NavigationTitleTextSizeTests`)
-that are built, not run: the Mac was offline. Message detail and the chat
-do the same in their own code (Chat's).
+shown, and What's New's are UIKit tests (`NavigationTitleTextSizeTests`),
+which pass on the iOS 26.5 simulator. The view is fitted to its label's
+box ceiled to the screen's pixels; the bar centres it in its 44 and
+rounds that frame out to whole pixels, so a title an odd number of pixels
+off the 44 gets one pixel more height than it measured (25 in 25⅓ at
+XXL, 71⅔ in 72 at AX-XXXL), never less, and the label keeps its box in
+it. Message detail and the chat do the same in their own code (Chat's).
 
 Fixed RN sizes stay fixed: icons, the wordmark, the checklist boxes,
 paddings, and minimum heights (rows 44, buttons 50/44/32, Get help 36),
