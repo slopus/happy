@@ -385,7 +385,12 @@ final class SheetLabel: UILabel {
     }
 
     /// Measured before its first trait update: measure what it will draw.
+    /// Its traits are brought up to date first; until then
+    /// `traitCollection` still holds the ones before its overrides
+    /// changed (Mac run: Large and no `FollowsTextSize` past an override
+    /// to AX-XXXL).
     override func sizeThatFits(_ size: CGSize) -> CGSize {
+        updateTraitsIfNeeded()
         syncTextSize()
         return super.sizeThatFits(size)
     }
