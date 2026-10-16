@@ -43,7 +43,7 @@ class PrismCorpusTest {
                 }
             }
             val actual = PrismHighlighter.highlightLines(source, language)
-            assertTrue("$language should colour something", actual.any { line -> line.any { it.kind != SpanKind.Plain } })
+            if (actual.none { line -> line.any { it.kind != SpanKind.Plain } }) failures.add("$language colours nothing")
             if (actual != expected) {
                 val line = expected.indices.firstOrNull { expected.getOrNull(it) != actual.getOrNull(it) } ?: -1
                 failures.add("$language (${e.getValue("file").jsonPrimitive.content}) line ${line + 1}: ${source.split('\n').getOrNull(line)}\n  expected ${expected.getOrNull(line)}\n  actual   ${actual.getOrNull(line)}")

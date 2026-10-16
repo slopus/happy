@@ -96,10 +96,30 @@ object Prism {
         return count
     }
 
-    /** The text's tokens in [language]'s grammar; null without one. */
+    /**
+     * The thread Prism runs on. java.util.regex recurses once per repetition
+     * of a group with alternatives, which Prism's patterns are full of
+     * (`(?:[^`\\]|\\.)*`), so a long string or code block overflows an
+     * ordinary stack where V8 would not. This one has 256 MB of it.
+     */
+    private const val STACK_BYTES = 256L * 1024 * 1024
+    @Volatile private var thread: Thread? = null
+    internal val executor: java.util.concurrent.ExecutorService = java.util.concurrent.Executors.newSingleThreadExecutor { task ->
+        Thread(null, task, "prism", STACK_BYTES).apply { isDaemon = true }.also { thread = it }
+    }
+
+    // By identity: coroutines' debug mode renames the threads it runs on.
+    private fun onWorker() = Thread.currentThread() === thread
+
+    /** The text's tokens in [language]'s grammar; null without one. Runs on Prism's own thread. */
     fun tokenize(text: String, language: String): List<Node>? {
         val index = table.languages[language] ?: return null
-        return Tokenizer(text, 0).tokenize(index)
+        if (onWorker()) return Tokenizer(text, 0).tokenize(index)
+        return try {
+            executor.submit<List<Node>> { Tokenizer(text, 0).tokenize(index) }.get()
+        } catch (e: java.util.concurrent.ExecutionException) {
+            throw e.cause ?: e
+        }
     }
 
     /**
