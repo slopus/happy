@@ -24,6 +24,8 @@ import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.chat.ChatScreenTags
 import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.home.FlatRowTags
+import com.slopus.happy.ui.home.HomeDockTags
+import com.slopus.happy.ui.home.NewSessionTags
 import com.slopus.happy.ui.home.HomeTags
 import com.slopus.happy.ui.node
 import kotlinx.coroutines.runBlocking
@@ -137,6 +139,18 @@ class TabletShellTest {
         rule.onAllNodesWithTag(ChatScreenTags.SCREEN, useUnmergedTree = true).assertCountEquals(0)
     }
 
+    // SidebarView.tsx: New session opens /new in the detail; the phone home's dock is not drawn on a tablet.
+    @Test
+    fun newSessionOpensInTheDetail() {
+        session("a", 200)
+        signIn()
+        waitFor(FlatRowTags.ROW)
+        rule.onAllNodesWithTag(HomeDockTags.DOCK, useUnmergedTree = true).assertCountEquals(0)
+        rule.node(TabletSidebarTags.NEW_SESSION).performClick()
+        waitFor(NewSessionTags.SCREEN)
+        assertDp("new session in the detail", 360, rule.node(NewSessionTags.SCREEN).bounds.left)
+    }
+
     @Test
     fun zenCollapsesTheSidebar() {
         session("a", 200)
@@ -199,6 +213,7 @@ class TabletShellTest {
         rule.onAllNodesWithTag(TabletSidebarTags.SIDEBAR, useUnmergedTree = true).assertCountEquals(0)
         rule.onAllNodesWithTag(TabletShellTags.HEADER, useUnmergedTree = true).assertCountEquals(0)
         rule.node(HomeTags.FILTER).assertExists()
+        rule.node(HomeDockTags.DOCK).assertExists()
         assertDp("home row from the left edge", 0, rule.node(FlatRowTags.ROW).bounds.left)
         rule.node(FlatRowTags.ROW).performClick()
         waitFor(ChatScreenTags.SCREEN)

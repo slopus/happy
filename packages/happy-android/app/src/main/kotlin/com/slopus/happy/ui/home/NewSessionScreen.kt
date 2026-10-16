@@ -1,0 +1,194 @@
+package com.slopus.happy.ui.home
+
+import android.content.res.Resources
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.slopus.happy.AppGraph
+import com.slopus.happy.R
+import com.slopus.happy.model.CUSTOM_PROJECT_PATH_KEY
+import com.slopus.happy.model.NewSessionLabels
+import com.slopus.happy.model.NewSessionPage
+import com.slopus.happy.ui.chat.formatLastSeen
+import com.slopus.happy.ui.components.Alert
+import com.slopus.happy.ui.components.AlertButton
+import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.components.Header
+import com.slopus.happy.ui.components.HeaderBackButton
+import com.slopus.happy.ui.components.Prompt
+import com.slopus.happy.ui.components.PromptModal
+import com.slopus.happy.ui.components.TitleAlignment
+import com.slopus.happy.ui.theme.HappyTheme
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
+
+/** new/index.tsx: the standalone new-session screen. */
+@Serializable
+data object NewSessionRoute
+
+object NewSessionTags {
+    const val SCREEN = "newSession"
+}
+
+/** HomeDock.tsx's HARNESS_SETUP_HELP_URL: where "Help" goes when the computer runs no harness. */
+const val HARNESS_SETUP_HELP_URL = "https://happy.engineering/docs/quick-start/"
+
+/** The picker words, from the resources. */
+fun newSessionLabels(resources: Resources, now: () -> Long = System::currentTimeMillis) = NewSessionLabels(
+    selectMachine = resources.getString(R.string.home_dock_select_machine),
+    project = resources.getString(R.string.home_dock_picker_project),
+    projects = resources.getString(R.string.home_dock_picker_projects),
+    noWorktree = resources.getString(R.string.home_dock_no_worktree),
+    main = resources.getString(R.string.home_dock_main),
+    createWorkspace = resources.getString(R.string.home_dock_create_workspace),
+    createWorktree = resources.getString(R.string.home_dock_create_worktree),
+    enterCustomPath = resources.getString(R.string.machine_launcher_enter_custom_path),
+    online = resources.getString(R.string.status_online),
+    notSupportedBy = { resources.getString(R.string.home_dock_not_supported_by, it) },
+    lastSeen = { resources.getString(R.string.status_last_seen, formatLastSeen(resources, it, now())) },
+)
+
+/** A composer bound to the draft and the starter, with the dialogs its start may raise. */
+@Immutable
+class NewSessionDock(val state: HomeDockState, val actions: HomeDockActions, val dialogs: @Composable () -> Unit)
+
+/**
+ * MainView's home prompt and useStartSessionFromDraft as the screen sees
+ * them: Send puts the text on the draft and starts; a refusal or failure
+ * is an alert ("Create Directory?" asks before a missing one is made);
+ * [onStarted] gets the new session, by then with its first message queued.
+ */
+@Composable
+fun rememberNewSessionDock(
+    graph: AppGraph,
+    focused: Boolean,
+    onFocusChange: (Boolean) -> Unit,
+    onStarted: (sessionId: String) -> Unit,
+    showScrim: Boolean = true,
+    initialPrompt: () -> String = { "" },
+): NewSessionDock {
+    val context = LocalContext.current
+    val resources = LocalResources.current
+    val services = remember(graph) { HomeServices.of(graph) }
+    val newSession = remember(services, context) { services.newSession(context.applicationContext) }
+    val options by newSession.options.collectAsStateWithLifecycle()
+    val phase by newSession.starter.phase.collectAsStateWithLifecycle()
+    val labels = remember(resources) { newSessionLabels(resources) }
+    var prompt by rememberSaveable { mutableStateOf(initialPrompt()) }
+    var alert by remember { mutableStateOf<Alert?>(null) }
+    var confirming by remember { mutableStateOf<Pair<String, CompletableDeferred<Boolean>>?>(null) }
+    var prompting by remember { mutableStateOf<Prompt?>(null) }
+    val scope = rememberCoroutineScope()
+    val uriHandler = LocalUriHandler.current
+    val strings = remember(resources) {
+        object {
+            val error = resources.getString(R.string.common_error)
+            val ok = resources.getString(R.string.common_ok)
+            val customPath = resources.getString(R.string.machine_launcher_enter_custom_path)
+            val customPathPlaceholder = resources.getString(R.string.home_dock_custom_path_placeholder)
+        }
+    }
+
+    val actions = remember(newSession, onFocusChange, onStarted, uriHandler, strings) {
+        HomeDockActions(
+            onPromptChange = { prompt = it },
+            onFocusChange = onFocusChange,
+            onSubmit = submit@{
+                val text = prompt.trim()
+                if (text.isEmpty() || newSession.starter.phase.value != null) return@submit
+                newSession.setInput(text)
+                scope.launch {
+                    val result = newSession.starter.start { directory ->
+                        CompletableDeferred<Boolean>().also { confirming = directory to it }.await()
+                    }
+                    when (result) {
+                        is StartResult.Started -> {
+                            prompt = ""
+                            onFocusChange(false)
+                            onStarted(result.sessionId)
+                        }
+                        is StartResult.Refused -> alert = Alert(strings.error, result.refusal.message, listOf(AlertButton(strings.ok)))
+                        is StartResult.Failed -> alert = Alert(strings.error, result.message, listOf(AlertButton(strings.ok)))
+                        StartResult.Abandoned -> Unit
+                    }
+                }
+            },
+            onCancel = { newSession.starter.cancel() },
+            onSelect = { page, key ->
+                if (page == NewSessionPage.Project && key == CUSTOM_PROJECT_PATH_KEY) {
+                    prompting = Prompt(
+                        title = strings.customPath,
+                        placeholder = strings.customPathPlaceholder,
+                        defaultValue = newSession.draft.value.selectedPath ?: "~",
+                        confirmText = strings.ok,
+                        onResult = { path -> path?.trim()?.takeIf { it.isNotEmpty() }?.let(newSession::selectPath) },
+                    )
+                } else {
+                    newSession.select(page, key)
+                }
+            },
+            onOpenPicker = newSession::onOpenPicker,
+            onHarnessHelp = { uriHandler.openUri(HARNESS_SETUP_HELP_URL) },
+        )
+    }
+    val state = HomeDockState(prompt, options, labels, phase, focused, showScrim)
+    return NewSessionDock(state, actions) {
+        alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
+        prompting?.let { PromptModal(it, onDismiss = { prompting = null }) }
+        confirming?.let { (directory, answer) ->
+            // A dismissal that pressed no button is a no.
+            DisposableEffect(answer) { onDispose { answer.complete(false) } }
+            HappyAlert(
+                Alert(
+                    stringResource(R.string.home_create_directory_title),
+                    stringResource(R.string.home_create_directory_message, directory),
+                    listOf(
+                        AlertButton(stringResource(R.string.common_cancel)) { answer.complete(false) },
+                        AlertButton(stringResource(R.string.common_create)) { answer.complete(true) },
+                    ),
+                ),
+                onDismiss = { confirming = null },
+            )
+        }
+    }
+}
+
+/**
+ * new/index.tsx on a phone, reached from the empty home's "Start New
+ * Session": the header (back, "Start New Session"), then the dock's
+ * focused composer as the screen itself — the rows over the composer at
+ * the bottom, a picker in their place, the progress line and Stop.
+ */
+@Composable
+fun NewSessionScreen(dock: NewSessionDock, onBack: () -> Unit, modifier: Modifier = Modifier) {
+    Column(modifier = modifier.fillMaxSize().background(HappyTheme.colors.grouped.background).testTag(NewSessionTags.SCREEN)) {
+        Header(
+            title = stringResource(R.string.new_session_title),
+            alignment = TitleAlignment.Center,
+            left = { HeaderBackButton(onClick = onBack) },
+        )
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            HomeDockFocus(dock.state, dock.actions, standalone = true)
+        }
+    }
+    dock.dialogs()
+}

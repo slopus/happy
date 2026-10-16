@@ -130,7 +130,8 @@ class HomeScreenActions(
  * filter menu and settings gear sharing one control), then the loading
  * spinner, the no-sessions state, [offlineContent] (the onboarding's
  * offline checklist, given the computers' names) or the list: the banners,
- * then the flat chat list or the project hierarchy.
+ * then the flat chat list or the project hierarchy. The [dock] rests over
+ * the bottom of all of these and, focused, covers the whole screen.
  */
 @Composable
 fun HomeScreen(
@@ -143,13 +144,34 @@ fun HomeScreen(
     update: HomeUpdate? = null,
     linkContent: @Composable () -> Unit = {},
     offlineContent: @Composable (computers: List<String>, onShowArchived: (() -> Unit)?) -> Unit = { _, _ -> },
+    dock: HomeDockState? = null,
+    dockActions: HomeDockActions? = null,
 ) {
     val colors = HappyTheme.colors
     if (state?.emptyState == HomeEmptyState.Link) {
         Box(modifier = modifier.fillMaxSize().testTag(HomeTags.LINK)) { linkContent() }
         return
     }
-    Column(modifier = modifier.fillMaxSize().background(colors.grouped.background)) {
+    Box(modifier = modifier.fillMaxSize()) {
+        HomeContent(state, connectionStatus, grouping, callbacks, actions, update, offlineContent, dock, dockActions)
+        if (dock != null && dockActions != null && dock.focused) HomeDockFocus(dock, dockActions)
+    }
+}
+
+@Composable
+private fun HomeContent(
+    state: HomeListState?,
+    connectionStatus: ConnectionStatus,
+    grouping: SessionListGrouping,
+    callbacks: HomeListCallbacks,
+    actions: HomeScreenActions,
+    update: HomeUpdate?,
+    offlineContent: @Composable (computers: List<String>, onShowArchived: (() -> Unit)?) -> Unit,
+    dock: HomeDockState?,
+    dockActions: HomeDockActions?,
+) {
+    val colors = HappyTheme.colors
+    Column(modifier = Modifier.fillMaxSize().background(colors.grouped.background)) {
         HomeHeader(connectionStatus, grouping, actions)
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             val showArchived = { callbacks.onSetArchiveHidden(false) }
@@ -176,6 +198,10 @@ fun HomeScreen(
                     contentTop = HomeSpec.contentTop,
                     bottomSpacer = { Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).height(HomeDockSpec.contentInset)) },
                 )
+            }
+            // The focused composer replaces the resting one rather than covering it.
+            if (dock != null && dockActions != null && !dock.focused) {
+                HomeDock(dock, dockActions, Modifier.align(Alignment.BottomCenter))
             }
         }
     }

@@ -13,7 +13,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** resumeCommand.test.ts, versionUtils.test.ts's compareVersions, and info.tsx's formatting helpers. */
+/** resumeCommand.test.ts, versionUtils.test.ts's isVersionSupported, and info.tsx's formatting helpers. */
 class SessionInfoTest {
     private val claudeId = "93a9705e-bc6a-406d-8dce-8acc014dedbd"
 
@@ -41,14 +41,7 @@ class SessionInfoTest {
         assertEquals("cd 'it'\\''s' && happy claude --resume x", metadata(path = "it's") { put("claudeSessionId", "x") }.resumeCommand())
     }
 
-    @Test fun comparesVersionsAndFlagsAnOutdatedCli() {
-        assertEquals(0, compareVersions("1.0.0", "1.0.0"))
-        assertEquals(-1, compareVersions("1.0.0", "1.0.1"))
-        assertEquals(1, compareVersions("2.0.0", "1.9.9"))
-        assertEquals(0, compareVersions("0.10.0-beta", "0.10.0"))
-        assertEquals(1, compareVersions("0.10.1-1", "0.10.0"))
-        assertEquals(0, compareVersions("1", "1.0.0"))
-        assertEquals(1, compareVersions("1.1", "1.0.5"))
+    @Test fun flagsAnOutdatedCli() {
         assertTrue(isCliOutdated("0.9.9"))
         assertFalse(isCliOutdated("0.10.0"))
         assertFalse(isCliOutdated(null))

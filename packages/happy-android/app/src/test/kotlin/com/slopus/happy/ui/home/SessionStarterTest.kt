@@ -4,7 +4,10 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.model.AgentType
+import com.slopus.happy.model.GitWorktree
+import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.HappyAgentSpawnTarget
+import com.slopus.happy.sync.SendException
 import com.slopus.happy.sync.OpResult
 import com.slopus.happy.sync.SpawnSessionOptions
 import com.slopus.happy.sync.SpawnSessionResult
@@ -94,6 +97,8 @@ class SessionStarterTest {
             return worktree
         }
 
+        override suspend fun listWorktrees(machineId: String, basePath: String): List<GitWorktree> = emptyList()
+
         override suspend fun stopSession(machineId: String, sessionId: String): OpResult {
             stopped += machineId to sessionId
             return OpResult(true)
@@ -107,13 +112,28 @@ class SessionStarterTest {
         override suspend fun delete(sessionId: String): OpResult = OpResult(true)
     }
 
+    private class FakeSender(private val onSend: suspend () -> Boolean) : FirstMessageSender {
+        val sent = mutableListOf<Pair<String, String>>()
+        val pinned = mutableListOf<Pair<String, Map<AgentModeField, String?>>>()
+
+        override suspend fun pinModes(sessionId: String, modes: Map<AgentModeField, String?>) {
+            pinned += sessionId to modes
+        }
+
+        override suspend fun send(sessionId: String, text: String, isCurrent: () -> Boolean): Boolean {
+            sent += sessionId to text
+            return onSend()
+        }
+    }
+
     private class Harness(
         val starter: SessionStarter,
         val drafts: NewSessionDraftStore,
         val machines: FakeMachines,
         val sessions: FakeSessions,
-        val sent: MutableList<Pair<String, String>>,
+        val sender: FakeSender,
     ) {
+        val sent get() = sender.sent
         val phases get() = machines.phases
     }
 
@@ -128,7 +148,7 @@ class SessionStarterTest {
         drafts.change { draft }
         val fakeMachines = FakeMachines()
         val fakeSessions = FakeSessions()
-        val sent = mutableListOf<Pair<String, String>>()
+        val sender = FakeSender { send(drafts) }
         val starter = SessionStarter(
             machines = { machines },
             sessions = { emptyList() },
@@ -136,13 +156,13 @@ class SessionStarterTest {
             drafts = drafts,
             machineActions = fakeMachines,
             sessionActions = fakeSessions,
-            sender = { id, text -> sent += id to text; send(drafts) },
+            sender = sender,
             awaitSession = { fakeMachines.phases += fakeMachines.phase(); true },
             scope = this,
             requestId = { "request-1" },
         )
         fakeMachines.phase = { starter.phase.value }
-        return Harness(starter, drafts, fakeMachines, fakeSessions, sent)
+        return Harness(starter, drafts, fakeMachines, fakeSessions, sender)
     }
 
     private val yes: suspend (String) -> Boolean = { true }
@@ -179,6 +199,32 @@ class SessionStarterTest {
         assertEquals("~/code", h.drafts.draft.value.selectedPath)
         assertEquals(listOf(StartPhase.Spawning, StartPhase.Opening), h.phases)
         assertNull(h.starter.phase.value)
+        // The launch picks are pinned on the session before the send (useStartSessionFromDraft).
+        val (pinnedId, modes) = h.sender.pinned.single()
+        assertEquals("s1", pinnedId)
+        assertEquals(request.permissionMode, modes[AgentModeField.PERMISSION_MODE])
+        assertTrue(modes.containsKey(AgentModeField.MODEL_MODE))
+    }
+
+    @Test fun aRefusedFirstMessageKeepsTheSessionForTheNextSend() = runTest {
+        var refuse = true
+        val h = harness(draft = NewSessionDraft(input = "hi", selectedMachineId = "m1")) {
+            if (refuse) throw SendException("The session has not synced yet.")
+            true
+        }
+        assertEquals(StartResult.Failed("The session has not synced yet."), h.starter.start(confirmDirectory = yes))
+        assertEquals("hi", h.drafts.draft.value.input)
+        refuse = false
+        assertEquals(StartResult.Started("s1"), h.starter.start(confirmDirectory = yes))
+        assertEquals("spawned once", 1, h.machines.spawns.size)
+        assertEquals(listOf("s1" to "hi", "s1" to "hi"), h.sent)
+        assertEquals("", h.drafts.draft.value.input)
+    }
+
+    @Test fun happyAgentPicksRideTheSpawnNotTheSession() = runTest {
+        val h = harness(listOf(rig), NewSessionDraft(input = "go", selectedMachineId = "r1", agentType = AgentType.Rig))
+        assertEquals(StartResult.Started("s1"), h.starter.start(confirmDirectory = yes))
+        assertTrue(h.sender.pinned.isEmpty())
     }
 
     @Test fun textTypedWhileStartingStaysInTheDraft() = runTest {
@@ -284,7 +330,7 @@ class SessionStarterTest {
         val sessions = FakeSessions()
         val starter = SessionStarter(
             { listOf(rig) }, { emptyList() }, { Settings() }, drafts, machines, sessions,
-            { _, _ -> true }, { opened.await() }, this,
+            FakeSender { true }, { opened.await() }, this,
         )
         val result = async { starter.start(confirmDirectory = yes) }
         runCurrent()

@@ -47,6 +47,7 @@ import com.slopus.happy.chat.markdown.SpanStyle
 import com.slopus.happy.chat.markdown.SyntaxTokenType
 import com.slopus.happy.chat.markdown.isHttpMarkdownLink
 import com.slopus.happy.chat.markdown.tokenizeCode
+import com.slopus.happy.ui.components.MarkdownImage
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.PlexMono
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -123,6 +124,7 @@ object MarkdownSpec {
  * - Tables: 1 divider border, radius 8, 8 above and below; columns sized
  *   by their longest text (8.5 per char + 24, clamped 80–360), cells padded
  *   12/8, header cells surfaceHigh and semibold; scrolls sideways.
+ * - Images: [MarkdownImage].
  */
 @Composable
 fun MarkdownView(
@@ -166,13 +168,7 @@ fun MarkdownView(
                 )
                 is MarkdownBlock.Options -> OptionsBlock(block.items, onOptionPress)
                 is MarkdownBlock.Table -> TableBlock(block)
-                is MarkdownBlock.Image -> Text(
-                    // Images are not loaded yet; the alt text stands in.
-                    text = block.alt.ifEmpty { block.url },
-                    style = happyTextStyle(fontSize = 14, lineHeight = 20),
-                    color = HappyTheme.colors.textSecondary,
-                    modifier = Modifier.padding(vertical = 8.dp),
-                )
+                is MarkdownBlock.Image -> MarkdownImage(block.alt, block.url)
             }
         }
     }

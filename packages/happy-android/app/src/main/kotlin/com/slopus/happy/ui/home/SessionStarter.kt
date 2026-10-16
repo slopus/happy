@@ -2,6 +2,7 @@ package com.slopus.happy.ui.home
 
 import android.content.SharedPreferences
 import com.slopus.happy.model.AgentType
+import com.slopus.happy.model.GitWorktree
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.NewSessionDraft
 import com.slopus.happy.model.RigModeOption
@@ -26,8 +27,13 @@ import com.slopus.happy.model.resolveWorktreeCreationMachine
 import com.slopus.happy.model.rigSessionCreation
 import com.slopus.happy.model.settings.AgentDefaults
 import com.slopus.happy.model.spawnConfiguration
+import com.slopus.happy.sync.AccountSync
+import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.MachineOps
 import com.slopus.happy.sync.OpResult
+import com.slopus.happy.sync.SendException
+import com.slopus.happy.sync.SendOptions
+import com.slopus.happy.sync.SendResult
 import com.slopus.happy.sync.SpawnSessionOptions
 import com.slopus.happy.sync.SpawnSessionResult
 import kotlinx.coroutines.CancellationException
@@ -36,6 +42,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +54,7 @@ import java.util.UUID
 interface MachineActions {
     suspend fun spawnSession(options: SpawnSessionOptions): SpawnSessionResult
     suspend fun createWorktree(machineId: String, basePath: String): WorktreeOutcome
+    suspend fun listWorktrees(machineId: String, basePath: String): List<GitWorktree>
     suspend fun stopSession(machineId: String, sessionId: String): OpResult
 }
 
@@ -60,6 +68,11 @@ class LiveMachineActions(private val ops: () -> MachineOps?) : MachineActions {
         return createWorktree(basePath) { command -> ops.bash(machineId, command, basePath) }
     }
 
+    override suspend fun listWorktrees(machineId: String, basePath: String): List<GitWorktree> {
+        val ops = ops() ?: return emptyList()
+        return listWorktrees { command -> ops.bash(machineId, command, basePath) }
+    }
+
     override suspend fun stopSession(machineId: String, sessionId: String): OpResult =
         ops()?.stopSession(machineId, sessionId) ?: OpResult(false, SIGNED_OUT)
 
@@ -68,10 +81,31 @@ class LiveMachineActions(private val ops: () -> MachineOps?) : MachineActions {
     }
 }
 
-/** The chat's sendMessage for a new session's first message. A seam until the chat lands. */
-fun interface FirstMessageSender {
-    /** True once the server accepted the message. */
-    suspend fun send(sessionId: String, text: String): Boolean
+/** How the first message reaches the new session (ops.ts sessionSetAgentModes, sync.ts sendMessage). */
+interface FirstMessageSender {
+    /** Pins the picks the session was started with, so the message's meta resolves from them. */
+    suspend fun pinModes(sessionId: String, modes: Map<AgentModeField, String?>)
+
+    /**
+     * True once [text] is in the outbox; false when [isCurrent] turned false first.
+     * @throws SendException with the user's words when nothing was queued.
+     */
+    suspend fun send(sessionId: String, text: String, isCurrent: () -> Boolean): Boolean
+}
+
+/** [FirstMessageSender] over the signed-in account's composer and sender. */
+class LiveFirstMessageSender(private val account: () -> AccountSync?) : FirstMessageSender {
+    override suspend fun pinModes(sessionId: String, modes: Map<AgentModeField, String?>) {
+        account()?.composer?.setAgentModes(sessionId, modes)
+    }
+
+    override suspend fun send(sessionId: String, text: String, isCurrent: () -> Boolean): Boolean {
+        val sender = account()?.sender ?: return false
+        return when (val result = sender.send(sessionId, text, SendOptions(source = "new_session", isCurrent = isCurrent))) {
+            is SendResult.Accepted -> true
+            is SendResult.NotSent -> result.message?.let { throw SendException(it) } ?: false
+        }
+    }
 }
 
 /** Why a start was refused before anything was asked of a machine (useStartSessionFromDraft's alerts). */
@@ -117,6 +151,9 @@ class NewSessionDraftStore(private val prefs: SharedPreferences, private val clo
 }
 
 private const val MAX_PENDING_RESULTS = 20
+
+/** git said no to the worktree; the message is git's. */
+private class WorktreeException(message: String) : Exception(message)
 private const val CONFIGURATION_UNAVAILABLE = "The selected agent configuration is unavailable"
 
 /**
@@ -147,6 +184,9 @@ class SessionStarter(
 
     private var run: Job? = null
     private val requestIds = HashMap<String, String>()
+
+    /** Sessions made for a start whose message did not go out: pressing Send again reuses them. */
+    private val createdSessions = HashMap<String, String>()
 
     fun cancel() {
         val current = run ?: return
@@ -203,6 +243,8 @@ class SessionStarter(
             val worktreeNew: Boolean,
             val publishedRetryAfterMs: Long?,
             val signature: String,
+            /** The code agent's picks, pinned on the session before the send; Happy Agent's ride the spawn. */
+            val modes: Map<AgentModeField, String?>?,
         ) : Prepared
     }
 
@@ -245,6 +287,7 @@ class SessionStarter(
         val worktree = if (target == null && worktreeMachine == null && requestedWorktree == WorktreeSelection.NEW) WorktreeSelection.NONE else requestedWorktree
         val spawnDirectory = if (worktree != WorktreeSelection.NONE && worktree != WorktreeSelection.NEW && target == null) worktree else directory
 
+        var modes: Map<AgentModeField, String?>? = null
         val options = if (rigCreation != null) {
             // Happy Agent's own catalog: what the machine published, the draft's picks where it still offers them.
             val model = resolveOption(rigCreation.models, RigModelOption::key, if (agentChanged) listOf(rigCreation.defaultModelKey) else listOf(draft.modelMode, rigCreation.defaultModelKey))
@@ -277,6 +320,12 @@ class SessionStarter(
             val permission = if (agentChanged) defaults.permissionMode else draft.permissionMode ?: defaults.permissionMode
             val model = if (agentChanged) defaults.modelMode else AgentDefaults.retireModelMode(agent.wire, draft.modelMode) ?: defaults.modelMode
             val effort = if (agentChanged) defaults.effortLevel else draft.effortLevel ?: defaults.effortLevel
+            // Pinned as launched: a later change of defaults must not rewrite this session's mode.
+            modes = mapOf(
+                AgentModeField.PERMISSION_MODE to permission,
+                AgentModeField.MODEL_MODE to model,
+                AgentModeField.EFFORT_LEVEL to effort,
+            )
             SpawnSessionOptions(
                 machineId = machine.id,
                 directory = spawnDirectory,
@@ -299,16 +348,60 @@ class SessionStarter(
             worktreeNew = worktree == WorktreeSelection.NEW && target == null,
             publishedRetryAfterMs = rigCreation?.pendingRetryAfterMs,
             signature = signature,
+            modes = modes,
         )
     }
 
-    @OptIn(ExperimentalCoroutinesApi::class)
     private suspend fun execute(prepared: Prepared.Ready, draft: NewSessionDraft, confirmDirectory: suspend (String) -> Boolean): StartResult {
+        val sessionId = createdSessions[prepared.signature] ?: when (val spawned = create(prepared, confirmDirectory)) {
+            is SpawnSessionResult.Success -> spawned.sessionId
+            is SpawnSessionResult.Error -> return StartResult.Failed(spawned.errorMessage)
+            is SpawnSessionResult.Pending -> return StartResult.Failed("The session was created, but it is still syncing. It should appear shortly.")
+            is SpawnSessionResult.RequestToApproveDirectoryCreation -> return StartResult.Abandoned
+        }
+        phaseState.value = StartPhase.Opening
+        val job = currentCoroutineContext()[Job]
+        try {
+            if (!awaitSession(sessionId)) {
+                createdSessions.remove(prepared.signature)
+                requestIds.remove(prepared.signature)
+                return StartResult.Failed("Failed to start session")
+            }
+            prepared.modes?.let { sender.pinModes(sessionId, it) }
+            val prompt = draft.input.trim()
+            val sent = try {
+                prompt.isEmpty() || sender.send(sessionId, prompt) { job?.isActive != false }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The session is kept for the next Send rather than spawned again.
+                createdSessions[prepared.signature] = sessionId
+                throw e
+            }
+            if (!sent) {
+                createdSessions[prepared.signature] = sessionId
+                return StartResult.Abandoned
+            }
+        } catch (e: CancellationException) {
+            createdSessions.remove(prepared.signature)
+            scope.launch { stopAbandoned(prepared, sessionId) }
+            throw e
+        }
+        createdSessions.remove(prepared.signature)
+        requestIds.remove(prepared.signature)
+        // Only what was consumed is cleared: text typed meanwhile stays.
+        drafts.change { current -> if (current.input == draft.input) current.copy(input = "") else current }
+        return StartResult.Started(sessionId)
+    }
+
+    /** The worktree, if one is asked for, then the spawn. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun create(prepared: Prepared.Ready, confirmDirectory: suspend (String) -> Boolean): SpawnSessionResult {
         var options = prepared.options
         if (prepared.worktreeNew) {
             phaseState.value = StartPhase.Worktree
             when (val created = machineActions.createWorktree(prepared.worktreeMachine!!.id, options.directory)) {
-                is WorktreeOutcome.Failed -> return StartResult.Failed(created.message)
+                is WorktreeOutcome.Failed -> throw WorktreeException(created.message)
                 is WorktreeOutcome.Created -> options = options.copy(directory = created.path)
             }
         }
@@ -326,28 +419,7 @@ class SessionStarter(
             }
             throw e
         }
-        val sessionId = when (spawned) {
-            is SpawnSessionResult.Success -> spawned.sessionId
-            is SpawnSessionResult.Error -> return StartResult.Failed(spawned.errorMessage)
-            is SpawnSessionResult.Pending -> return StartResult.Failed("The session was created, but it is still syncing. It should appear shortly.")
-            is SpawnSessionResult.RequestToApproveDirectoryCreation -> return StartResult.Abandoned
-        }
-        phaseState.value = StartPhase.Opening
-        try {
-            if (!awaitSession(sessionId)) {
-                requestIds.remove(prepared.signature)
-                return StartResult.Failed("Failed to start session")
-            }
-            val prompt = draft.input.trim()
-            if (prompt.isNotEmpty() && !sender.send(sessionId, prompt)) return StartResult.Abandoned
-        } catch (e: CancellationException) {
-            scope.launch { stopAbandoned(prepared, sessionId) }
-            throw e
-        }
-        requestIds.remove(prepared.signature)
-        // Only what was consumed is cleared: text typed meanwhile stays.
-        drafts.change { current -> if (current.input == draft.input) current.copy(input = "") else current }
-        return StartResult.Started(sessionId)
+        return spawned
     }
 
     private suspend fun spawn(options: SpawnSessionOptions, publishedRetryAfterMs: Long?, confirmDirectory: suspend (String) -> Boolean): SpawnSessionResult {
