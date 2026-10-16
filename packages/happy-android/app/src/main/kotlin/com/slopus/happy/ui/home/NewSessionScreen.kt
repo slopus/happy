@@ -2,35 +2,45 @@ package com.slopus.happy.ui.home
 
 import android.content.res.Resources
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.model.BotDraft
 import com.slopus.happy.model.BotRequest
-import com.slopus.happy.model.isValidBotName
 import com.slopus.happy.model.CUSTOM_PROJECT_PATH_KEY
 import com.slopus.happy.model.NewSessionLabels
 import com.slopus.happy.model.NewSessionPage
+import com.slopus.happy.model.isValidBotName
 import com.slopus.happy.ui.attachments.attachmentNoticeAlert
 import com.slopus.happy.ui.attachments.rememberImagePicker
 import com.slopus.happy.ui.chat.formatLastSeen
@@ -38,11 +48,13 @@ import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.Header
-import com.slopus.happy.ui.components.HeaderBackButton
+import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Prompt
 import com.slopus.happy.ui.components.PromptModal
 import com.slopus.happy.ui.components.TitleAlignment
 import com.slopus.happy.ui.theme.HappyTheme
+import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
@@ -53,6 +65,8 @@ data object NewSessionRoute
 
 object NewSessionTags {
     const val SCREEN = "newSession"
+    const val BACK = "newSession.back"
+    const val TITLE = "newSession.title"
 }
 
 /** HomeDock.tsx's HARNESS_SETUP_HELP_URL: where "Help" goes when the computer runs no harness. */
@@ -269,17 +283,42 @@ fun rememberNewSessionDock(
 
 /**
  * new/index.tsx on a phone, reached from the empty home's "Start New
- * Session": the header (back, "Start New Session"), then the dock's
- * focused composer as the screen itself — the rows over the composer at
- * the bottom, a picker in their place, the progress line and Stop.
+ * Session": the header (a 24 chevron-back in a 48 target, then "Start New
+ * Session" 16/20 semibold start-aligned, both in the text colour), then the
+ * dock's focused composer as the screen itself — the rows over the composer
+ * at the bottom, a picker in their place, the progress line and Stop.
+ *
+ * The back button is the screen's own, so it stays under the tablet shell
+ * too: happy-app draws it whenever the screen is native, and nothing hides it.
  */
 @Composable
 fun NewSessionScreen(dock: NewSessionDock, onBack: () -> Unit, modifier: Modifier = Modifier) {
-    Column(modifier = modifier.fillMaxSize().background(HappyTheme.colors.grouped.background).testTag(NewSessionTags.SCREEN)) {
+    val colors = HappyTheme.colors
+    Column(modifier = modifier.fillMaxSize().background(colors.grouped.background).testTag(NewSessionTags.SCREEN)) {
         Header(
-            title = stringResource(R.string.new_session_title),
-            alignment = TitleAlignment.Center,
-            left = { HeaderBackButton(onClick = onBack) },
+            alignment = TitleAlignment.Start,
+            left = {
+                val back = stringResource(R.string.common_back)
+                Box(
+                    modifier = Modifier
+                        .testTag(NewSessionTags.BACK)
+                        .size(48.dp)
+                        .clickable(role = Role.Button, onClick = onBack)
+                        .semantics { contentDescription = back },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Ionicon.ChevronBack, 24.dp, colors.text)
+                }
+            },
+            titleContent = {
+                Text(
+                    stringResource(R.string.new_session_title),
+                    style = happyTextStyle(fontSize = 16, lineHeight = 20, weight = FontWeight.SemiBold),
+                    color = colors.text,
+                    maxLines = 1,
+                    modifier = Modifier.testTag(NewSessionTags.TITLE).semantics { heading() },
+                )
+            },
         )
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
             HomeDockFocus(dock.state, dock.actions, standalone = true)

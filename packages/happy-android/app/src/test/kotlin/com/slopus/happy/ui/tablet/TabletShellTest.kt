@@ -139,7 +139,12 @@ class TabletShellTest {
         rule.onAllNodesWithTag(ChatScreenTags.SCREEN, useUnmergedTree = true).assertCountEquals(0)
     }
 
-    // SidebarView.tsx: New session opens /new in the detail; the phone home's dock is not drawn on a tablet.
+    /**
+     * SidebarView.tsx: New session opens /new in the detail; the phone home's
+     * dock is not drawn on a tablet. new/index.tsx draws its own back there,
+     * which nothing hides. `router.navigate('/new')` with /new on top stays
+     * one screen: a second tap adds no entry, so one Back leaves.
+     */
     @Test
     fun newSessionOpensInTheDetail() {
         session("a", 200)
@@ -149,6 +154,14 @@ class TabletShellTest {
         rule.node(TabletSidebarTags.NEW_SESSION).performClick()
         waitFor(NewSessionTags.SCREEN)
         assertDp("new session in the detail", 360, rule.node(NewSessionTags.SCREEN).bounds.left)
+        assertDp("its own back, 48 wide", 48, rule.node(NewSessionTags.BACK).bounds.let { it.right - it.left })
+
+        rule.node(TabletSidebarTags.NEW_SESSION).performClick()
+        rule.waitForIdle()
+        rule.onAllNodesWithTag(NewSessionTags.SCREEN, useUnmergedTree = true).assertCountEquals(1)
+        rule.node(NewSessionTags.BACK).performClick()
+        waitFor(HomeTags.TABLET_BLANK)
+        rule.onAllNodesWithTag(NewSessionTags.SCREEN, useUnmergedTree = true).assertCountEquals(0)
     }
 
     @Test

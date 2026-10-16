@@ -76,7 +76,8 @@ class HomeNavigation(
             onOpenSession = onOpenSession,
             onOpenMachine = { id -> nav.navigate(MachineRoute(id)) },
             onTroubleshoot = onTroubleshoot,
-            onNewSession = { nav.navigate(NewSessionRoute) },
+            // router.navigate('/new'): a second tap while it is on top stays one screen.
+            onNewSession = { nav.navigate(NewSessionRoute) { launchSingleTop = true } },
             onDetails = { id -> nav.navigate(SessionInfoRoute(id)) },
         )
     }

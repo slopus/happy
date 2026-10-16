@@ -69,7 +69,8 @@ import java.time.ZoneOffset
  * - Starting: an 18 high line in the gap above the composer names the
  *   step with "To interrupt press stop"; the backdrop refuses; Stop hands
  *   the composer back. The backdrop otherwise closes it.
- * - The new-session screen is the same composer under a back header. On
+ * - The new-session screen is the same composer under a back header (a
+ *   24 chevron-back in a 48 target, the title start-aligned after it). On
  *   an offline machine (new/index.tsx) the machine row is followed by the
  *   help: 12/10 in, a 14 cloud, "Machine is offline" 13 semibold 4 above
  *   the steps and "Switch machines" at 12/18; the rows under it fade to
@@ -305,6 +306,13 @@ class HomeDockTest {
         }
         rule.onNodeWithText("Start New Session").assertIsDisplayed()
         val header = rule.node(HeaderTags.BAR).bounds
+        // new/index.tsx's header: a 24 chevron-back in a 48 target 16 in, the title start-aligned 8 after it.
+        val back = rule.node(NewSessionTags.BACK).bounds
+        assertBox("back", back, 16.dp, back.top, 48.dp, 48.dp)
+        assertDp("title after the back", 16 + 48 + 8, rule.node(NewSessionTags.TITLE).bounds.left)
+        rule.node(NewSessionTags.BACK).performClick()
+        assertEquals(1, backs)
+        backs = 0
         val rows = rule.node(HomeDockTags.ROWS).bounds
         assertTrue("rows under the header", rows.top >= header.bottom)
         assertDp("composer 8 above the bottom", rootBottom - 8.dp, rule.node(HomeDockTags.COMPOSER).bounds.bottom)
