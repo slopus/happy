@@ -14,7 +14,8 @@ import UIKit
 /// Launch arguments: `-fixture <name>` picks the chat (`long` by default);
 /// `-keyboard` opens the keyboard once the rows are in; `-flash` keeps the
 /// scroll indicator showing while no finger is down, so a test can press on
-/// it.
+/// it; `-scrollTo <fraction>` goes that far back through the history once
+/// the rows are in, for screenshots.
 ///
 /// `ChatScrollProbe` reports the list to the tests as the accessibility value
 /// of an element named `chat-scroll-probe`.
@@ -59,10 +60,16 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
         let arguments = ProcessInfo.processInfo.arguments
         let fixture = arguments.firstIndex(of: "-fixture").flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil } ?? FixtureScenario.long.rawValue
-        Task { await self.open(fixture: fixture, in: window, keyboard: arguments.contains("-keyboard"), flash: arguments.contains("-flash")) }
+        let scrollTo = arguments.firstIndex(of: "-scrollTo").flatMap { arguments.indices.contains($0 + 1) ? Double(arguments[$0 + 1]) : nil }
+        Task {
+            await self.open(
+                fixture: fixture, in: window, keyboard: arguments.contains("-keyboard"), flash: arguments.contains("-flash"),
+                scrollTo: scrollTo.map { CGFloat($0) }
+            )
+        }
     }
 
-    private func open(fixture: String, in window: HarnessWindow, keyboard: Bool, flash: Bool) async {
+    private func open(fixture: String, in window: HarnessWindow, keyboard: Bool, flash: Bool, scrollTo: CGFloat?) async {
         let controller = AccountController(
             serverConfig: ServerConfig(storage: InMemoryKeyValueStore()),
             clientID: "ios/harness",
@@ -88,6 +95,7 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
         navigation.pushViewController(chat, animated: false)
         window.rootViewController = TabletShellViewController(context: context, detail: navigation)
         let probe = ChatScrollProbe(window: window, chat: chat, flash: flash)
+        probe.scrollTo = scrollTo
         self.probe = probe
         if keyboard { probe.focusComposerWhenFilled() }
     }
@@ -96,27 +104,46 @@ final class HarnessSceneDelegate: UIResponder, UIWindowSceneDelegate {
 /// Sees every touch before it is delivered, for the probe.
 final class HarnessWindow: UIWindow {
     var onTouch: ((UITouch) -> Void)?
+    /// The last touch events, as "phase x,y view", for the tests to read.
+    private(set) var events: [String] = []
 
     override func sendEvent(_ event: UIEvent) {
         if event.type == .touches, let touch = event.allTouches?.first {
+            let point = touch.location(in: self)
+            let view = touch.view.map { NSStringFromClass(type(of: $0)) } ?? "nil"
+            events.append("\(touch.phase.rawValue) \(Int(point.x)),\(Int(point.y)) \(view)")
+            if events.count > 40 { events.removeFirst(events.count - 40) }
             onTouch?(touch)
         }
         super.sendEvent(event)
     }
 }
 
-/// The chat list as the UI tests read it, sampled every frame: its offset,
-/// insets and content, UIKit's indicator and where `ChatScrollIndicatorLayout`
-/// says it must be, the keyboard and the dock, and what the last finger did.
+/// The probe's element: its value is worked out when it is read, so nothing
+/// runs between reads and the app can go idle for XCUITest.
+private final class ProbeElement: UIView {
+    var read: (() -> String)?
+
+    override var accessibilityValue: String? {
+        get { MainActor.assumeIsolated { read?() } }
+        set {}
+    }
+}
+
+/// The chat list as the UI tests read it: its offset, insets and content,
+/// UIKit's indicator and where `ChatScrollIndicatorLayout` says it must be,
+/// the keyboard and the dock, and what the last finger did, sampled every
+/// frame while it was down.
 @MainActor
 final class ChatScrollProbe: NSObject {
     private let window: HarnessWindow
     private weak var chat: UIViewController?
     private let flash: Bool
-    private let element = UIView(frame: CGRect(x: 0, y: 0, width: 2, height: 2))
+    private let element = ProbeElement(frame: CGRect(x: 0, y: 0, width: 2, height: 2))
+    /// Runs only while a finger is down.
     private var link: CADisplayLink?
+    private var timer: Timer?
     private var finger: CGPoint?
-    private var lastFlash = CACurrentMediaTime()
     /// Frames sampled while the current finger is down.
     private var samples: [Sample] = []
     private var lastTouch: [String: Any] = [:]
@@ -148,16 +175,26 @@ final class ChatScrollProbe: NSObject {
         element.accessibilityIdentifier = "chat-scroll-probe"
         element.isUserInteractionEnabled = false
         element.alpha = 0.02
+        element.read = { [weak self] in self?.currentReport() ?? "{}" }
         window.addSubview(element)
         window.onTouch = { [weak self] touch in self?.touched(touch) }
-        let link = CADisplayLink(target: self, selector: #selector(tick))
-        link.add(to: .main, forMode: .common)
-        self.link = link
+        // Slow enough to leave the app idle in between: the composer's focus
+        // once the rows are in, and, with `-flash`, the indicator kept
+        // showing.
+        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated { self?.idleTick() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        self.timer = timer
     }
 
     func focusComposerWhenFilled() {
         focusWhenFilled = true
     }
+
+    /// How far back through the history to go once the rows are in, as a
+    /// share of all there is.
+    var scrollTo: CGFloat?
 
     private var list: ChatListView? {
         chat.flatMap { Self.subview(ChatListView.self, in: $0.view) }
@@ -178,6 +215,11 @@ final class ChatScrollProbe: NSObject {
             finger = point
             samples = []
             sample()
+            if link == nil {
+                let link = CADisplayLink(target: self, selector: #selector(tick))
+                link.add(to: .main, forMode: .common)
+                self.link = link
+            }
         case .moved, .stationary:
             finger = point
         case .ended, .cancelled:
@@ -185,12 +227,18 @@ final class ChatScrollProbe: NSObject {
             sample()
             finishTouch()
             finger = nil
+            link?.invalidate()
+            link = nil
         default:
             break
         }
     }
 
     @objc private func tick() {
+        if finger != nil { sample() }
+    }
+
+    private func idleTick() {
         guard let chat, let list else { return }
         window.bringSubviewToFront(element)
         if focusWhenFilled, list.collectionView.numberOfItems(inSection: 0) > 20,
@@ -198,13 +246,20 @@ final class ChatScrollProbe: NSObject {
             focusWhenFilled = false
             card.textView.becomeFirstResponder()
         }
-        if finger != nil {
-            sample()
-        } else if flash, CACurrentMediaTime() - lastFlash > 0.4 {
-            lastFlash = CACurrentMediaTime()
+        if let share = scrollTo, list.collectionView.numberOfItems(inSection: 0) > 20 {
+            scrollTo = nil
+            let collection = list.collectionView
+            let maxDistance = collection.contentSize.height + collection.contentInset.top + collection.contentInset.bottom - collection.bounds.height
+            collection.contentOffset.y = max(0, maxDistance) * min(1, max(0, share)) - collection.contentInset.top
+        }
+        if flash, finger == nil {
             list.collectionView.flashScrollIndicators()
         }
-        element.accessibilityValue = report(list: list, chat: chat)
+    }
+
+    private func currentReport() -> String {
+        guard let chat, let list else { return "{}" }
+        return report(list: list, chat: chat)
     }
 
     /// UIKit's vertical indicator, as it shows on screen in `view`.
@@ -258,12 +313,16 @@ final class ChatScrollProbe: NSObject {
             offsetWithKeyboard += next.offset - previous.offset
         }
         var maxIndicatorGap: CGFloat = 0
+        var endIndicatorGap: CGFloat = .nan
         if let grab = samples.first(where: { $0.indicator != nil }), let grabFrame = grab.indicator {
-            // How far the indicator strayed from the finger once it had it.
+            // How far the indicator strayed from the finger once it had it,
+            // a frame or two behind it while it moves; and at the end, the
+            // finger held still.
             let hold = grabFrame.midY - grab.fingerY
             for sample in samples where sample.time - grab.time > 0.7 {
                 if let frame = sample.indicator {
                     maxIndicatorGap = max(maxIndicatorGap, abs(frame.midY - sample.fingerY - hold))
+                    endIndicatorGap = abs(frame.midY - sample.fingerY - hold)
                 }
             }
         }
@@ -288,6 +347,7 @@ final class ChatScrollProbe: NSObject {
         touch["contentStart"] = first.contentHeight
         touch["contentEnd"] = last.contentHeight
         touch["maxIndicatorGap"] = maxIndicatorGap
+        touch["endIndicatorGap"] = endIndicatorGap.isNaN ? -1 : endIndicatorGap
         touch["tracking"] = tracking
         touch["dragging"] = dragging
         touch["recognizers"] = recognizers.sorted()
@@ -345,6 +405,7 @@ final class ChatScrollProbe: NSObject {
         value["fingerDown"] = finger != nil
         value["expected"] = rect(model.frame) as Any
         value["lastTouch"] = lastTouch
+        value["events"] = window.events
         if let actual {
             value["actual"] = rect(actual.frame)
             value["actualAlpha"] = actual.alpha
