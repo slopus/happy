@@ -8,7 +8,8 @@ import kotlinx.serialization.json.JsonObject
 /**
  * The parts of a session's decrypted agent state the chat reads
  * (storageTypes.ts `AgentStateSchema`): permission requests, agent
- * communications, and whether the user drives the agent from the terminal.
+ * communications, whether the user drives the agent from the terminal, and
+ * the plan's rate-limit windows.
  *
  * Parsing is per entry: a malformed request or communication is skipped
  * without losing the rest, where zod would reject the whole state.
@@ -20,6 +21,8 @@ data class AgentState(
     val completedRequests: Map<String, CompletedPermissionRequest> = emptyMap(),
     val communications: Map<String, AgentCommunication> = emptyMap(),
     val completedCommunications: Map<String, CompletedAgentCommunication> = emptyMap(),
+    /** Ephemeral; null when absent or malformed, without touching the rest. */
+    val usageLimits: UsageLimits? = null,
 ) {
     @Immutable
     data class PermissionRequest(
@@ -83,6 +86,7 @@ data class AgentState(
                 },
                 communications = entries(o["communications"], AgentCommunication::parse),
                 completedCommunications = entries(o["completedCommunications"], CompletedAgentCommunication::parse),
+                usageLimits = UsageLimits.parse(o["usageLimits"]),
             )
         }
 
@@ -93,6 +97,47 @@ data class AgentState(
                 result[key] = parse(entry.obj ?: continue) ?: continue
             }
             return result
+        }
+    }
+}
+
+/**
+ * storageTypes.ts `UsageLimitsSchema`: the plan's rate-limit windows
+ * (`five_hour`, `seven_day`, provider-specific ones). [Window.utilization]
+ * is percent used. As with zod's `.catch(undefined)`, one malformed window
+ * drops the whole snapshot.
+ */
+@Immutable
+data class UsageLimits(val capturedAt: Double, val windows: List<Window>) {
+    @Immutable
+    data class Window(
+        val id: String,
+        val label: String? = null,
+        /** Kept as a string so statuses from newer CLIs degrade safely. */
+        val status: String? = null,
+        val utilization: Double? = null,
+        val resetsAt: Double? = null,
+    )
+
+    companion object {
+        fun parse(value: JsonElement?): UsageLimits? {
+            val o = value.obj ?: return null
+            val capturedAt = o["capturedAt"].num ?: return null
+            val windows = ArrayList<Window>()
+            for (entry in o["windows"].arr ?: return null) {
+                val w = entry.obj ?: return null
+                val label = w["label"]
+                val status = w["status"]
+                val utilization = w["utilization"]
+                val resetsAt = w["resetsAt"]
+                // label and status are optional (absent, not null); the numbers nullish.
+                if (label != null && label.str == null) return null
+                if (status != null && status.str == null) return null
+                if (!utilization.isNullOrAbsent && utilization.num == null) return null
+                if (!resetsAt.isNullOrAbsent && resetsAt.num == null) return null
+                windows += Window(w["id"].str ?: return null, label.str, status.str, utilization.num, resetsAt.num)
+            }
+            return UsageLimits(capturedAt, windows)
         }
     }
 }
