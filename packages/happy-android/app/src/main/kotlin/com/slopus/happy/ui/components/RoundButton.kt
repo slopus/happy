@@ -4,7 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -54,7 +56,8 @@ enum class RoundButtonDisplay { Default, Inverted }
  * size, fully rounded. Filled: label semibold, one line, light pill with dark
  * text in the dark theme. Inverted: no fill, 8 vertical padding so the label
  * can wrap, label regular in the secondary text colour. Disabled is 50%
- * opacity. While loading the label keeps its space but is hidden under a spinner.
+ * opacity. While loading the label keeps its space but is hidden under a spinner;
+ * with a [loadingTitle] the spinner sits 10 before that title instead.
  */
 @Composable
 fun RoundButton(
@@ -65,6 +68,7 @@ fun RoundButton(
     display: RoundButtonDisplay = RoundButtonDisplay.Default,
     enabled: Boolean = true,
     loading: Boolean = false,
+    loadingTitle: String? = null,
 ) {
     val colors = HappyTheme.colors
     val interactionSource = remember { MutableInteractionSource() }
@@ -102,23 +106,33 @@ fun RoundButton(
             .padding(horizontal = size.paddingHorizontal, vertical = if (inverted) 8.dp else 0.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = title,
-            style = happyTextStyle(
-                fontSize = size.fontSize,
-                lineHeight = size.lineHeight,
-                weight = if (inverted) FontWeight.Medium else FontWeight.SemiBold,
-            ),
-            color = textColor,
-            textAlign = TextAlign.Center,
-            maxLines = if (inverted) Int.MAX_VALUE else 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .alpha(if (loading) 0f else 1f)
-                .testTag(RoundButtonTags.LABEL),
-        )
-        if (loading) {
-            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = textColor, strokeWidth = 2.dp)
+        val label = @Composable { text: String, visible: Boolean ->
+            Text(
+                text = text,
+                style = happyTextStyle(
+                    fontSize = size.fontSize,
+                    lineHeight = size.lineHeight,
+                    weight = if (inverted) FontWeight.Medium else FontWeight.SemiBold,
+                ),
+                color = textColor,
+                textAlign = TextAlign.Center,
+                maxLines = if (inverted) Int.MAX_VALUE else 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier
+                    .alpha(if (visible) 1f else 0f)
+                    .testTag(RoundButtonTags.LABEL),
+            )
+        }
+        if (loading && loadingTitle != null) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = textColor, strokeWidth = 2.dp)
+                label(loadingTitle, true)
+            }
+        } else {
+            label(title, !loading)
+            if (loading) {
+                CircularProgressIndicator(modifier = Modifier.size(20.dp), color = textColor, strokeWidth = 2.dp)
+            }
         }
     }
 }

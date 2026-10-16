@@ -63,16 +63,19 @@ class AuthRepository(
     }
 
     /**
-     * Account link (restore/index.tsx, the QR the other phone scans) is not
-     * built: the request and approval calls exist in [AuthApi] and the
-     * crypto in [com.slopus.happy.crypto.AccountLink], but the screen that
-     * shows the QR code is a stub.
+     * restore/index.tsx after the other phone approved the link
+     * ([AccountLinkRequest]): the server already issued the token, so it is
+     * stored as is, as `auth.login(token, secret)` does.
      */
-    private suspend fun login(secret: ByteArray) {
-        val token = api.getToken(AuthChallenge.create(secret, random))
+    suspend fun signIn(token: String, secret: ByteArray) {
+        require(secret.size == 32) { "Invalid secret" }
         val credentials = AuthCredentials(token = token, secret = encodeBase64(secret, Base64Variant.Url))
         withContext(io) { credentialStore.write(credentials) }
         mutableState.value = signedIn(credentials)
+    }
+
+    private suspend fun login(secret: ByteArray) {
+        signIn(api.getToken(AuthChallenge.create(secret, random)), secret)
     }
 
     /** Forgets the credentials. Clearing local data is the caller's job (AppGraph.logout). */

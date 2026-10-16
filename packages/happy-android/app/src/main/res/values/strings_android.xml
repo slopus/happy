@@ -11,8 +11,6 @@
 
     <!-- QR scanning is not part of this build -->
     <string name="settings_account_link_new_device_unavailable">Linking a device needs the QR scanner, which this build of the Android app does not include yet. Use the secret key on the new device instead.</string>
-    <!-- shown where the QR code would be -->
-    <string name="onboarding_restore_qr_unavailable">Linking by QR code is coming to the Android app. For now, restore with your secret key.</string>
 
     <!-- literals in happy-app: SettingsView.tsx, hooks/useHappyAction.ts -->
     <string name="settings_agents">Agents</string>

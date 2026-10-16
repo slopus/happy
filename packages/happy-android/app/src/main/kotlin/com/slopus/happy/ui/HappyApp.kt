@@ -21,9 +21,11 @@ import com.slopus.happy.auth.AuthState
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.connect.DeepLinkEffect
+import com.slopus.happy.ui.connect.connectRoutes
 import com.slopus.happy.ui.home.HomeScreen
 import com.slopus.happy.ui.onboarding.RestoreManualScreen
-import com.slopus.happy.ui.onboarding.RestoreScreen
+import com.slopus.happy.ui.onboarding.onboardingRoutes
 import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.server.ServerScreen
 import com.slopus.happy.ui.settings.settingsRoutes
@@ -59,13 +61,13 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
             NavHost(navController = nav, startDestination = if (signedIn != null) HomeRoute else WelcomeRoute) {
                 composable<WelcomeRoute> { Welcome(graph, nav) }
                 composable<ServerRoute> { Server(graph, nav) }
-                composable<RestoreRoute> {
-                    RestoreScreen(onBack = { nav.popBackStack() }, onUseSecretKey = { nav.navigate(RestoreManualRoute) })
-                }
                 composable<RestoreManualRoute> { RestoreManual(graph, nav) }
                 composable<HomeRoute> { HomeScreen(onSettings = { nav.navigate(SettingsRoute) }) }
                 settingsRoutes(graph, nav)
+                onboardingRoutes(graph, nav)
+                connectRoutes(graph, nav)
             }
+            DeepLinkEffect(nav, signedIn = signedIn != null)
         }
     }
 }
