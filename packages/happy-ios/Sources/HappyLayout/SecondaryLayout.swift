@@ -87,6 +87,8 @@ public struct HorizontalStackLayout: Equatable, Sendable {
 /// components/CodeView.tsx as info.tsx places it inside an item group:
 /// `<View style={{ marginHorizontal: 16, marginBottom: 12 }}>` around a
 /// `surfaceHigh` box with radius 6 and padding 12, Menlo 12/18 inside.
+/// The text comes in pieces (`TextChunks`) stacked with no gap, so a block
+/// megabytes long is drawn only where it is near the screen.
 public struct CodeBlockLayout: Equatable, Sendable {
     public enum Metrics {
         public static let marginHorizontal: CGFloat = 16
@@ -100,13 +102,47 @@ public struct CodeBlockLayout: Equatable, Sendable {
     public var size: CGSize
     public var box: CGRect
     public var text: CGRect
+    /// Each piece of the text, top to bottom.
+    public var pieces: [CGRect]
 
-    public init(width: CGFloat, text: Measurable) {
+    /// The width the text wraps at in a block `width` wide.
+    public static func textWidth(_ width: CGFloat) -> CGFloat {
+        max(0, width - Metrics.marginHorizontal * 2 - Metrics.padding * 2)
+    }
+
+    /// `heights` are the pieces' heights at `textWidth(width)`.
+    public init(width: CGFloat, pieces heights: [CGFloat]) {
         typealias M = Metrics
         let boxWidth = max(0, width - M.marginHorizontal * 2)
-        let textHeight = text.height(fitting: max(0, boxWidth - M.padding * 2))
+        let textWidth = Self.textWidth(width)
+        var y = M.padding
+        pieces = heights.map { height in
+            defer { y += height }
+            return CGRect(x: M.marginHorizontal + M.padding, y: y, width: textWidth, height: height)
+        }
+        let textHeight = y - M.padding
         box = CGRect(x: M.marginHorizontal, y: 0, width: boxWidth, height: textHeight + M.padding * 2)
-        self.text = CGRect(x: M.marginHorizontal + M.padding, y: M.padding, width: max(0, boxWidth - M.padding * 2), height: textHeight)
+        text = CGRect(x: M.marginHorizontal + M.padding, y: M.padding, width: textWidth, height: textHeight)
         size = CGSize(width: max(0, width), height: box.height + M.marginBottom)
+    }
+
+    /// The pieces that meet `minY..<maxY`, in the block's coordinates.
+    public func pieces(from minY: CGFloat, to maxY: CGFloat) -> Range<Int> {
+        guard maxY > minY else { return 0..<0 }
+        // The first piece ending below `minY`, then the first starting at
+        // or below `maxY`; both by halving, as a block can have hundreds.
+        let first = firstPiece { $0.maxY > minY }
+        let last = firstPiece { $0.minY >= maxY }
+        return first..<max(first, last)
+    }
+
+    private func firstPiece(where isPast: (CGRect) -> Bool) -> Int {
+        var low = 0
+        var high = pieces.count
+        while low < high {
+            let middle = (low + high) / 2
+            if isPast(pieces[middle]) { high = middle } else { low = middle + 1 }
+        }
+        return low
     }
 }

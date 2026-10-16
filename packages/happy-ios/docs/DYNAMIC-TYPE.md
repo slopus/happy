@@ -200,7 +200,9 @@ Following now:
   and the raw JSON blocks, Menlo 12 on an 18 line, both × the
   multiplier). Their rows are measured from their labels as drawn when
   the list lays out, as Settings' are; a size change lays the list out
-  again. The glyphs, the 29 icon squares and the 44 row minimum keep
+  again. The raw JSON blocks are the exception: they are laid out off
+  the main thread at the text size (`CodeBlockView`), and the block grows
+  when its layout lands. The glyphs, the 29 icon squares and the 44 row minimum keep
   their size. Session info's duplicate sheet (DuplicateSheet.tsx) sets
   bare font sizes, so its text is the system font at its size × the
   multiplier and the row preview's 19 line likewise; the card, its list
