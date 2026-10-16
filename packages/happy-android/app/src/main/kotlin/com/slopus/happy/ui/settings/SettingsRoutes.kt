@@ -1,5 +1,16 @@
 package com.slopus.happy.ui.settings
 
+import android.os.Build
+import android.provider.Settings
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalResources
+import com.slopus.happy.model.settings.PushText
+import com.slopus.happy.model.settings.PushTokensApi
+import com.slopus.happy.model.settings.UnavailablePushRegistration
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -20,11 +31,13 @@ import com.slopus.happy.auth.AuthState
 import com.slopus.happy.model.Profile
 import com.slopus.happy.model.settings.ConnectApi
 import com.slopus.happy.model.settings.HttpConnectApi
+import com.slopus.happy.model.settings.Languages
 import com.slopus.happy.ui.SettingsRoute
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.connect.EnterTerminalUrlPrompt
+import com.slopus.happy.ui.connect.rememberAccountLink
 import com.slopus.happy.ui.connect.rememberTerminalConnect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -32,15 +45,47 @@ import kotlinx.serialization.Serializable
 
 @Serializable data object AccountRoute
 @Serializable data object AppearanceRoute
+@Serializable data object LanguageRoute
 
 /** Settings and its screens. [SettingsRoute] is the entry point. */
 fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
     composable<SettingsRoute> { SettingsIndex(graph, nav) }
     composable<AccountRoute> { Account(graph, nav) }
-    composable<AppearanceRoute> {
-        val theme by graph.localSettings.themePreference.collectAsStateWithLifecycle()
-        AppearanceScreen(theme = theme, onThemeChange = graph.localSettings::setThemePreference, onBack = { nav.popBackStack() })
+    composable<AppearanceRoute> { Appearance(graph, nav) }
+    composable<LanguageRoute> {
+        val settings by graph.settings.settings.collectAsStateWithLifecycle()
+        LanguageScreen(
+            preferredLanguage = settings.preferredLanguage,
+            detectedLanguageName = Languages.detectedName(graph.language.deviceLocales()),
+            onSelect = { code ->
+                graph.settings.change { it.copy(preferredLanguage = code) }
+                graph.language.apply(code)
+            },
+            onBack = { nav.popBackStack() },
+        )
     }
+}
+
+@Composable
+private fun Appearance(graph: AppGraph, nav: NavHostController) {
+    val theme by graph.localSettings.themePreference.collectAsStateWithLifecycle()
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val automatic = stringResource(R.string.settings_language_automatic)
+    val preferred = settings.preferredLanguage
+    val languageDetail = when {
+        preferred == null -> "$automatic (${Languages.detectedName(graph.language.deviceLocales())})"
+        Languages.byCode(preferred) != null -> Languages.byCode(preferred)!!.nativeName
+        else -> automatic
+    }
+    AppearanceScreen(
+        theme = theme,
+        onThemeChange = graph.localSettings::setThemePreference,
+        onBack = { nav.popBackStack() },
+        settings = settings,
+        onSettingsChange = graph.settings::change,
+        languageDetail = languageDetail,
+        onLanguage = { nav.navigate(LanguageRoute) },
+    )
 }
 
 /** The stored profile, re-read whenever the store changes. */
@@ -149,6 +194,56 @@ private fun Account(graph: AppGraph, nav: NavHostController) {
     val auth by graph.auth.state.collectAsStateWithLifecycle()
     val account = auth as? AuthState.SignedIn ?: return
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val profile by rememberProfile(graph)
+    val api = rememberConnectApi(graph)
+    val tokensApi = remember(graph) { PushTokensApi(graph.http) { (graph.auth.state.value as? AuthState.SignedIn)?.credentials?.token } }
+    val pushRegistration = remember(tokensApi) { UnavailablePushRegistration(tokensApi) }
+    val scope = rememberCoroutineScope()
+    val alerts = remember { Alerts() }
+    val onError = errorAlert(alerts)
+    val errorTitle = stringResource(R.string.common_error)
+    val successTitle = stringResource(R.string.common_success)
+    val ok = stringResource(R.string.common_ok)
+    val resources = LocalResources.current
+    fun showError(message: String) = alerts.show(Alert(errorTitle, message, listOf(AlertButton(ok))))
+    fun showSuccess(message: String) = alerts.show(Alert(successTitle, message, listOf(AlertButton(ok))))
+
+    val context = LocalContext.current
+    val (deviceLabel, appLabel) = remember {
+        PushText.deviceLabels(
+            // expo-device's deviceName: the user-set name, else the model.
+            deviceName = Settings.Global.getString(context.contentResolver, "device_name") ?: Build.MODEL,
+            modelName = Build.MODEL,
+            osVersion = Build.VERSION.RELEASE,
+            appVersion = BuildConfig.VERSION_NAME,
+            buildVersion = BuildConfig.VERSION_CODE.toString(),
+            emulator = Build.FINGERPRINT.contains("generic") || Build.HARDWARE.contains("ranchu"),
+        )
+    }
+    var push by remember { mutableStateOf(PushState(deviceLabel = deviceLabel, appLabel = appLabel)) }
+    var disconnectingService by remember { mutableStateOf<String?>(null) }
+    val link = rememberAccountLink(graph)
+
+    suspend fun loadPush(showErrors: Boolean = false) {
+        push = push.copy(loading = true)
+        try {
+            val tokens = tokensApi.list()
+            push = push.copy(tokens = tokens, permission = pushRegistration.permission(), currentToken = pushRegistration.currentToken())
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            if (showErrors) showError("Failed to load push notification settings.")
+        } finally {
+            push = push.copy(loading = false)
+        }
+    }
+    // Loaded on every visit (useFocusEffect).
+    LaunchedEffect(Unit) { loadPush() }
+
+    val disconnectGitHub = rememberHappyAction(onError) {
+        api.disconnectGitHub()
+        graph.requestSync()
+    }
 
     AccountScreen(
         anonId = account.encryption.anonId,
@@ -158,5 +253,88 @@ private fun Account(graph: AppGraph, nav: NavHostController) {
         onAnalyticsOptOutChange = { optOut -> graph.settings.change { it.copy(analyticsOptOut = optOut) } },
         onLogout = { graph.logout() },
         onBack = { nav.popBackStack() },
+        profile = profile,
+        gitHubBusy = disconnectGitHub.loading,
+        onDisconnectGitHub = disconnectGitHub::run,
+        disconnectingService = disconnectingService,
+        onDisconnectService = { service, name ->
+            scope.launch {
+                disconnectingService = service
+                try {
+                    api.disconnectService(service)
+                    graph.requestSync()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    showError(resources.getString(R.string.errors_disconnect_service_failed, name))
+                } finally {
+                    disconnectingService = null
+                }
+            }
+        },
+        push = push,
+        onRequestPush = {
+            scope.launch {
+                push = push.copy(requesting = true)
+                try {
+                    val result = pushRegistration.requestPermissionOrOpenSettings()
+                    push = push.copy(permission = result.permission)
+                    if (result.granted) {
+                        pushRegistration.syncCurrentToken()
+                        loadPush()
+                        showSuccess("Push notifications are enabled for this device.")
+                    } else {
+                        loadPush()
+                        if (result.openedSettings) {
+                            alerts.show(Alert("Open Settings", "The system will not show the permission prompt again, so Happy opened Settings instead.", listOf(AlertButton(ok))))
+                        } else {
+                            showError("Push notification permission was not granted.")
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    showError("Failed to request push notification permission.")
+                } finally {
+                    push = push.copy(requesting = false)
+                }
+            }
+        },
+        onRefreshPush = {
+            scope.launch {
+                push = push.copy(refreshing = true)
+                try {
+                    val result = pushRegistration.syncCurrentToken()
+                    push = push.copy(permission = result.permission)
+                    loadPush()
+                    if (result.permission.granted) showSuccess("This device push token was refreshed.")
+                    else showError("Push notifications are not enabled for this device yet.")
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    showError("Failed to refresh this device push token.")
+                } finally {
+                    push = push.copy(refreshing = false)
+                }
+            }
+        },
+        onDeletePushToken = { token ->
+            scope.launch {
+                push = push.copy(deletingToken = token.token)
+                try {
+                    pushRegistration.removeToken(token.token)
+                    loadPush()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    showError("Failed to delete push token.")
+                } finally {
+                    push = push.copy(deletingToken = null)
+                }
+            }
+        },
+        linkingDevice = link.isLoading,
+        onLinkNewDevice = link::scan,
     )
+    alerts.Host()
 }

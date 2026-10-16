@@ -116,6 +116,7 @@ data class Session(
             metadataVersion = record.metadataVersion,
             attention = AgentAttention.parse(record.agentStateJson),
             agentStateVersion = record.agentStateVersion,
+            lastMessageSentAt = record.lastMessageSentAt,
         )
     }
 }

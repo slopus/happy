@@ -26,12 +26,14 @@ enum class Ionicon(val codepoint: Int) {
     Add(0xf103), // add
     AddOutline(0xf107), // add-outline
     AnalyticsOutline(0xf11c), // analytics-outline
+    AppsOutline(0xf122), // apps-outline
     ArchiveOutline(0xf125), // archive-outline
     ArrowBack(0xf127), // arrow-back
     ArrowUp(0xf145), // arrow-up
     BugOutline(0xf1bb), // bug-outline
     BulbOutline(0xf1c1), // bulb-outline
     CalendarOutline(0xf1d6), // calendar-outline
+    ChatbubbleEllipsesOutline(0xf213), // chatbubble-ellipses-outline
     ChatbubblesOutline(0xf218), // chatbubbles-outline
     CheckboxOutline(0xf21b), // checkbox-outline
     Checkmark(0xf21d), // checkmark
@@ -45,6 +47,7 @@ enum class Ionicon(val codepoint: Int) {
     CodeOutline(0xf26c), // code-outline
     CodeWorkingOutline(0xf272), // code-working-outline
     ColorPaletteOutline(0xf27e), // color-palette-outline
+    ContractOutline(0xf28a), // contract-outline
     ContrastOutline(0xf28d), // contrast-outline
     CopyOutline(0xf290), // copy-outline
     CreateOutline(0xf293), // create-outline
@@ -69,19 +72,24 @@ enum class Ionicon(val codepoint: Int) {
     HourglassOutline(0xf386), // hourglass-outline
     InformationCircleOutline(0xf399), // information-circle-outline
     KeyOutline(0xf3a4), // key-outline
+    LanguageOutline(0xf3aa), // language-outline
     LaptopOutline(0xf3ad), // laptop-outline
+    LayersOutline(0xf3b0), // layers-outline
     LinkOutline(0xf3b9), // link-outline
+    ListOutline(0xf3bf), // list-outline
     LockClosedOutline(0xf3c8), // lock-closed-outline
     LogOutOutline(0xf3d1), // log-out-outline
     LogoGithub(0xf3f3), // logo-github
     MicOutline(0xf45e), // mic-outline
     MoonOutline(0xf461), // moon-outline
+    NotificationsOutline(0xf47f), // notifications-outline
     OptionsOutline(0xf48b), // options-outline
     Pencil(0xf49c), // pencil
     PeopleOutline(0xf4a3), // people-outline
     PersonAddOutline(0xf4a7), // person-add-outline
     PersonCircleOutline(0xf4aa), // person-circle-outline
     PersonOutline(0xf4ac), // person-outline
+    PhonePortraitOutline(0xf4b5), // phone-portrait-outline
     PlayCircleOutline(0xf4ce), // play-circle-outline
     PowerOutline(0xf4e8), // power-outline
     PulseOutline(0xf4f7), // pulse-outline

@@ -19,16 +19,20 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
 import com.slopus.happy.push.PushRegistrationEffect
+import com.slopus.happy.ui.chat.SessionRoute
+import com.slopus.happy.ui.chat.chatRoutes
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.connect.DeepLinkEffect
 import com.slopus.happy.ui.connect.connectRoutes
-import com.slopus.happy.ui.home.HomeScreen
+import com.slopus.happy.ui.home.homeRoutes
 import com.slopus.happy.ui.onboarding.RestoreManualScreen
+import com.slopus.happy.ui.onboarding.TroubleshootRoute
 import com.slopus.happy.ui.onboarding.onboardingRoutes
 import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.server.ServerScreen
+import com.slopus.happy.ui.settings.LocalizedContent
 import com.slopus.happy.ui.settings.settingsRoutes
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.CancellationException
@@ -51,8 +55,9 @@ import kotlinx.serialization.Serializable
 fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
     val theme by graph.localSettings.themePreference.collectAsStateWithLifecycle()
     val auth by graph.auth.state.collectAsStateWithLifecycle()
+    val language by graph.language.language.collectAsStateWithLifecycle()
 
-    HappyTheme(preference = theme) {
+    LocalizedContent(language.locale) { HappyTheme(preference = theme) {
         val dark = HappyTheme.colors.dark
         LaunchedEffect(dark) { onDarkThemeChange(dark) }
 
@@ -63,15 +68,21 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                 composable<WelcomeRoute> { Welcome(graph, nav) }
                 composable<ServerRoute> { Server(graph, nav) }
                 composable<RestoreManualRoute> { RestoreManual(graph, nav) }
-                composable<HomeRoute> { HomeScreen(onSettings = { nav.navigate(SettingsRoute) }) }
+                homeRoutes(
+                    graph,
+                    nav,
+                    onOpenSession = { id -> nav.navigate(SessionRoute(id)) },
+                    onTroubleshoot = { nav.navigate(TroubleshootRoute) },
+                )
                 settingsRoutes(graph, nav)
                 onboardingRoutes(graph, nav)
                 connectRoutes(graph, nav)
+                chatRoutes(graph, nav)
             }
-            DeepLinkEffect(nav, signedIn = signedIn != null)
+            DeepLinkEffect(nav, signedIn = signedIn != null, onOpenSession = { id -> nav.navigate(SessionRoute(id)) })
             PushRegistrationEffect(graph)
         }
-    }
+    } }
 }
 
 @Composable
