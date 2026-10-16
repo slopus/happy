@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -60,7 +61,7 @@ class DiffFileBody(
 
     private val selection get() = DiffLayout.selectVisibleRows(file.rows, showHunkHeaders, expanded, collapseAfter)
 
-    var hiddenCount by mutableStateOf(selection.hiddenCount)
+    var hiddenCount by mutableIntStateOf(selection.hiddenCount)
         private set
 
     /** The rows to draw, coloured where the syntax arrived in time. */

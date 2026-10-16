@@ -3,7 +3,7 @@ package com.slopus.happy.attachments
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.media.ExifInterface
+import androidx.exifinterface.media.ExifInterface
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -28,6 +28,9 @@ data class NormalizedImage(val file: File, val width: Int, val height: Int, val 
  * useImagePicker.ts normalizePickedAssetForUpload (its iOS path, which this
  * app uses everywhere): upright, the long edge at most 3072 with the aspect
  * kept, JPEG at quality 0.92, named `<stem>.jpg`, measured on disk.
+ * Orientation is read with androidx's ExifInterface, as expo-image-picker
+ * and expo-image-manipulator read it: JPEG, PNG, WebP, HEIF and raw
+ * formats alike.
  */
 object ImageNormalizer {
     /**
