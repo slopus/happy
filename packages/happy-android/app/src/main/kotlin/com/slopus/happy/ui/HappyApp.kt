@@ -25,6 +25,7 @@ import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.connect.DeepLinkEffect
+import com.slopus.happy.ui.tablet.TabletShell
 import com.slopus.happy.ui.connect.connectRoutes
 import com.slopus.happy.ui.home.homeRoutes
 import com.slopus.happy.ui.onboarding.RestoreManualScreen
@@ -66,20 +67,25 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
         val signedIn = auth as? AuthState.SignedIn
         key(signedIn != null) {
             val nav = rememberNavController()
-            NavHost(navController = nav, startDestination = if (signedIn != null) HomeRoute else WelcomeRoute) {
-                composable<WelcomeRoute> { Welcome(graph, nav) }
-                composable<ServerRoute> { Server(graph, nav) }
-                composable<RestoreManualRoute> { RestoreManual(graph, nav) }
-                homeRoutes(
-                    graph,
-                    nav,
-                    onOpenSession = { id -> nav.navigate(SessionRoute(id)) },
-                    onTroubleshoot = { nav.navigate(TroubleshootRoute) },
-                )
-                settingsRoutes(graph, nav)
-                onboardingRoutes(graph, nav, onOpenMachine = { id -> nav.navigate(MachineRoute(id)) })
-                connectRoutes(graph, nav)
-                chatRoutes(graph, nav, onInfo = { id -> nav.navigate(SessionInfoRoute(id)) })
+            val openSession = { id: String -> nav.navigate(SessionRoute(id)) }
+            val troubleshoot = { nav.navigate(TroubleshootRoute) }
+            // The tablet shell (sidebar beside the stack) or, on a phone, just the stack.
+            TabletShell(graph, nav, signedIn = signedIn != null, onOpenSession = openSession, onTroubleshoot = troubleshoot) {
+                NavHost(navController = nav, startDestination = if (signedIn != null) HomeRoute else WelcomeRoute) {
+                    composable<WelcomeRoute> { Welcome(graph, nav) }
+                    composable<ServerRoute> { Server(graph, nav) }
+                    composable<RestoreManualRoute> { RestoreManual(graph, nav) }
+                    homeRoutes(
+                        graph,
+                        nav,
+                        onOpenSession = openSession,
+                        onTroubleshoot = troubleshoot,
+                    )
+                    settingsRoutes(graph, nav)
+                    onboardingRoutes(graph, nav, onOpenMachine = { id -> nav.navigate(MachineRoute(id)) })
+                    connectRoutes(graph, nav)
+                    chatRoutes(graph, nav, onInfo = { id -> nav.navigate(SessionInfoRoute(id)) })
+                }
             }
             DeepLinkEffect(nav, signedIn = signedIn != null, onOpenSession = { id -> nav.navigate(SessionRoute(id)) })
             PushRegistrationEffect(graph)

@@ -55,6 +55,8 @@ import com.slopus.happy.chat.UserDisplay
 import com.slopus.happy.ui.attachments.FileMessageView
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.layout.LocalWindowLayout
+import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.PlexMono
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -138,12 +140,17 @@ class MessageCallbacks(
 /** One chat row, dispatched by kind (MessageView.tsx `RenderBlock`). */
 @Composable
 fun MessageView(row: ChatRow, bubble: BubblePalette, callbacks: MessageCallbacks, modifier: Modifier = Modifier) {
-    when (row) {
-        is ChatRow.User -> UserMessage(row, bubble, callbacks, modifier)
-        is ChatRow.AgentText -> AgentMessage(row, callbacks, modifier)
-        is ChatRow.Event -> EventMessage(row.message.event, modifier)
-        is ChatRow.Tool -> if (row.message.tool.name == "file") FileMessageView(row.message.tool.input, modifier) else ToolView(row.message, callbacks, modifier)
-        is ChatRow.Unsupported -> UnsupportedMessage(modifier)
+    // `messageContainer` / `messageContent`: each message centred and held to layout.maxWidth.
+    val layout = LocalWindowLayout.current
+    Box(modifier.fillMaxWidth()) {
+        val content = Modifier.contentMaxWidth(layout)
+        when (row) {
+            is ChatRow.User -> UserMessage(row, bubble, callbacks, content)
+            is ChatRow.AgentText -> AgentMessage(row, callbacks, content)
+            is ChatRow.Event -> EventMessage(row.message.event, content)
+            is ChatRow.Tool -> if (row.message.tool.name == "file") FileMessageView(row.message.tool.input, content) else ToolView(row.message, callbacks, content)
+            is ChatRow.Unsupported -> UnsupportedMessage(content)
+        }
     }
 }
 

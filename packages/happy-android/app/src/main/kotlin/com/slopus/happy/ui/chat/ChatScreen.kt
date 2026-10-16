@@ -39,11 +39,14 @@ import com.slopus.happy.R
 import com.slopus.happy.chat.AgentQuestionAnswer
 import com.slopus.happy.chat.ChatSessionInfo
 import com.slopus.happy.chat.ChatState
+import com.slopus.happy.chat.ComposerModes
 import com.slopus.happy.model.SessionState
 import com.slopus.happy.model.avatarId
 import com.slopus.happy.model.compactCount
 import com.slopus.happy.model.formatPathRelativeToHome
 import com.slopus.happy.model.rigGitSummary
+import com.slopus.happy.model.settings.ModeOption
+import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.rigCanAbort
 import com.slopus.happy.ui.attachments.ComposerAddImageButton
 import com.slopus.happy.ui.attachments.ComposerAttachmentStrip
@@ -61,6 +64,8 @@ import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonDisplay
 import com.slopus.happy.ui.components.RoundButtonSize
+import com.slopus.happy.ui.layout.CenteredInputWidth
+import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.launch
@@ -86,6 +91,9 @@ object ChatScreenTags {
 /** SessionView.tsx, ChatHeaderView.tsx and EmptyMessages.tsx on an Android phone. */
 object ChatScreenSpec {
     val avatar = 28.dp
+    /** SessionView.tsx `sessionInputHorizontalPadding`: around the bars over the composer. */
+    val inputPaddingHorizontal = 8.dp
+    val tabletInputPaddingHorizontal = 12.dp
     val gitText = happyTextStyle(fontSize = 11, weight = FontWeight.SemiBold)
     val gitGap = 4.dp
     val deletedIcon = 48.dp
@@ -122,6 +130,8 @@ class ChatScreenActions(
     val onDiscard: (String) -> Unit = {},
     val onAnswerQuestion: suspend (communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) -> Unit = { _, _, _ -> },
     val onCancelQuestion: suspend (communicationId: String, kind: String) -> Unit = { _, _ -> },
+    /** A pick from the composer's permission, model or effort sheet. */
+    val onModeChange: (AgentModeField, ModeOption) -> Unit = { _, _ -> },
 )
 
 /**
@@ -147,6 +157,7 @@ fun ChatScreen(
     now: Long = System.currentTimeMillis(),
     compactToolCalls: Boolean = false,
     showLineNumbersInToolViews: Boolean = false,
+    modes: ComposerModes = ComposerModes.None,
 ) {
     val colors = HappyTheme.colors
     val session = state.session
@@ -178,6 +189,9 @@ fun ChatScreen(
         else -> session.title ?: stringResource(R.string.session_new_chat)
     }
 
+    // SessionView.tsx: a tablet reaches session info through the title, so the avatar goes;
+    // the bars over the composer sit 12 in rather than 8 (`sessionInputHorizontalPadding`).
+    val tablet = LocalWindowLayout.current.isTablet
     Column(
         modifier = modifier
             .testTag(ChatScreenTags.SCREEN)
@@ -188,7 +202,7 @@ fun ChatScreen(
             scrolled = session != null && listState.canScrollForward,
             left = { HeaderBackButton(actions.onBack) },
             titleContent = { ChatHeaderTitle(title, session, onClick = if (session != null) actions.onInfo else null) },
-            right = if (session != null) {
+            right = if (session != null && !tablet) {
                 { HeaderAvatar(session, state.online, actions.onInfo) }
             } else {
                 null
@@ -221,8 +235,10 @@ fun ChatScreen(
             }
         }
         if (session != null) {
-            AgentQuestionBanner(state.pendingCommunications, actions.onAnswerQuestion, actions.onCancelQuestion)
-            ChatComposerFor(state, session, draft, actions, aborting, now)
+            CenteredInputWidth(horizontalPadding = if (tablet) ChatScreenSpec.tabletInputPaddingHorizontal else ChatScreenSpec.inputPaddingHorizontal) {
+                AgentQuestionBanner(state.pendingCommunications, actions.onAnswerQuestion, actions.onCancelQuestion)
+            }
+            ChatComposerFor(state, session, draft, actions, aborting, now, modes)
         }
     }
 }
@@ -235,6 +251,7 @@ private fun ChatComposerFor(
     actions: ChatScreenActions,
     aborting: Boolean,
     now: Long,
+    modes: ComposerModes,
 ) {
     val sessionState = state.sessionState
     val metadata = session.metadata
@@ -263,7 +280,13 @@ private fun ChatComposerFor(
         modifier = Modifier
             .windowInsetsPadding(WindowInsets.navigationBars)
             .imePadding(),
-        middle = { ComposerAddImageButton() },
+        middle = {
+            // [+] [permission ... model · effort]: the chips take what the add button leaves.
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ComposerSpec.actionRowGap)) {
+                ComposerAddImageButton()
+                ComposerModeChips(modes, metadata, actions.onModeChange, Modifier.weight(1f))
+            }
+        },
         top = { ComposerAttachmentStrip() },
         overlay = { ComposerSuggestions(autocomplete) },
         cursor = autocomplete.cursor,

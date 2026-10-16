@@ -21,6 +21,7 @@ import com.slopus.happy.R
 import com.slopus.happy.chat.ChatActions
 import com.slopus.happy.chat.ChatFeed
 import com.slopus.happy.chat.ChatState
+import com.slopus.happy.chat.ComposerModeResolver
 import com.slopus.happy.chat.NoLivePresence
 import com.slopus.happy.chat.PendingAgentCommunication
 import com.slopus.happy.chat.StoreChatMessagesSource
@@ -29,6 +30,7 @@ import com.slopus.happy.chat.SyncChatActions
 import com.slopus.happy.chat.SyncChatMessagesSource
 import com.slopus.happy.chat.SyncChatPresenceSource
 import com.slopus.happy.sync.AgentModeField
+import com.slopus.happy.sync.ComposerMirror
 import com.slopus.happy.ui.attachments.LocalComposerImages
 import com.slopus.happy.ui.attachments.LocalSessionAttachments
 import com.slopus.happy.ui.attachments.attachmentNoticeAlert
@@ -42,6 +44,7 @@ import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
@@ -78,7 +81,16 @@ private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, 
     }
     val state by remember(feed, sessionId) { feed.state(sessionId) }.collectAsStateWithLifecycle(ChatState())
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    val draft = rememberComposerDraft(account?.composer?.mirror(sessionId), onWrite = { text -> actions.setDraft(sessionId, text) })
+    // One flow per account and chat: a new one would start a new draft.
+    val mirrorFlow = remember(account, sessionId) { account?.composer?.mirror(sessionId) }
+    val mirror by remember(mirrorFlow) { mirrorFlow ?: flowOf(ComposerMirror()) }.collectAsStateWithLifecycle(ComposerMirror())
+    val draft = rememberComposerDraft(mirrorFlow, onWrite = { text -> actions.setDraft(sessionId, text) })
+    val resources = LocalResources.current
+    val metadata = state.session?.metadata
+    val modes = remember(metadata, mirror, settings.agentDefaultOverrides) {
+        ComposerModeResolver.resolve(metadata, mirror, settings.agentDefaultOverrides, resources::getString)
+    }
+    val latestMirror by rememberUpdatedState(mirror)
     val scope = rememberCoroutineScope()
     var aborting by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
@@ -87,7 +99,6 @@ private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, 
     val latestState by rememberUpdatedState(state)
     val images = rememberComposerImages(enabled = state.session != null && canUseAttachments(state.session?.metadata))
     val latestImages by rememberUpdatedState(images)
-    val resources = LocalResources.current
     val notices = remember { mutableStateListOf<Alert>() }
 
     fun report(e: Exception) {
@@ -151,6 +162,18 @@ private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, 
             onDiscard = { localId -> scope.launch { runCatching { actions.discard(sessionId, localId) } } },
             onAnswerQuestion = { id, answers, kind -> actions.answerQuestion(sessionId, id, answers, kind) },
             onCancelQuestion = { id, kind -> actions.cancelQuestion(sessionId, id, kind) },
+            onModeChange = { field, option ->
+                val patch = ComposerModeResolver.patch(field, option, latestState.session?.metadata, latestMirror)
+                scope.launch {
+                    try {
+                        actions.setModes(sessionId, patch)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        report(e)
+                    }
+                }
+            },
         )
     }
 
@@ -167,6 +190,7 @@ private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, 
             aborting = aborting,
             compactToolCalls = settings.compactToolCalls,
             showLineNumbersInToolViews = settings.showLineNumbersInToolViews,
+            modes = modes,
         )
     }
     notices.firstOrNull()?.let { HappyAlert(it, onDismiss = { notices.removeAt(0) }) }
