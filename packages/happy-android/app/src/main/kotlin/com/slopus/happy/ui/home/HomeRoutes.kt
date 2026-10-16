@@ -331,6 +331,21 @@ class HomeServices private constructor(private val graph: AppGraph) {
         NewSessionServices(drafts, snapshots, settings, machineActions, starter, newSessionLabels(resources), resources::getString, scope)
     }.also { newSessionServices = it }
 
+    private var reviewPrompter: ReviewPrompter? = null
+    private var playStoreReview: PlayStoreReview? = null
+
+    /** requestReview.ts: its stamps in the app's own preferences, its answer in the synced settings. */
+    @Synchronized
+    fun review(context: Context): Pair<ReviewPrompter, PlayStoreReview> {
+        val prompter = reviewPrompter ?: ReviewPrompter(
+            answered = { settings.value.let { it.reviewPromptAnswered to it.reviewPromptLikedApp } },
+            answer = { liked -> graph.settings.change { it.copy(reviewPromptAnswered = true, reviewPromptLikedApp = liked) } },
+            stamps = PrefsReviewStamps(context.getSharedPreferences(PrefsReviewStamps.PREFS_NAME, Context.MODE_PRIVATE)),
+        ).also { reviewPrompter = it }
+        val store = playStoreReview ?: PlayStoreReview(context.applicationContext).also { playStoreReview = it }
+        return prompter to store
+    }
+
     private var botFaces: BotFaces? = null
 
     /** The bundled bot faces, read from the assets once. */
@@ -653,6 +668,24 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean 
             if (withDock) dockFocused = true else navigation.onNewSession()
         }
     }
+    // SessionsList's requestReview(), once its list has sessions.
+    val reviewable = asksForReview(state, phone = withDock)
+    val reviewStrings = ReviewStrings(
+        title = stringResource(R.string.review_enjoying_app),
+        message = stringResource(R.string.review_feedback_prompt),
+        yes = stringResource(R.string.review_yes_i_love_it),
+        no = stringResource(R.string.review_not_really),
+    )
+    LaunchedEffect(reviewable) {
+        if (!reviewable) return@LaunchedEffect
+        val activity = context.findActivity() ?: return@LaunchedEffect
+        val (prompter, store) = services.review(context.applicationContext)
+        prompter.run(
+            isAvailable = store::isAvailable,
+            ask = { confirm(showAlert, reviewStrings.title, reviewStrings.message, confirmText = reviewStrings.yes, cancelText = reviewStrings.no) },
+            review = { store.request(activity) },
+        )
+    }
     val createWorkspaceLabel = stringResource(R.string.home_create_workspace)
     val cancelLabel = stringResource(R.string.common_cancel)
 
@@ -670,6 +703,7 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean 
             onProjectMenu = { name, origin ->
                 alert = Alert(name, null, listOf(AlertButton(cancelLabel), AlertButton(createWorkspaceLabel) { onCreateWorkspace(origin) }))
             },
+            onPressDown = { id -> graph.account.value?.messages?.preload(id) },
         )
     }
     val actions = remember(navigation, uriHandler) {

@@ -18,6 +18,7 @@ kotlinx-serialization = "1.11.0"
 okhttp = "5.5.0"
 bouncycastle = "1.86"
 play-services-code-scanner = "16.1.0"
+play-review = "2.0.2"
 zxing = "3.5.4"
 firebase-messaging = "25.0.1"
 coil = "3.6.3"
@@ -52,6 +53,7 @@ okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver3", version
 
 bouncycastle-prov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 
+play-review = { module = "com.google.android.play:review", version.ref = "play-review" }
 play-services-code-scanner = { module = "com.google.android.gms:play-services-code-scanner", version.ref = "play-services-code-scanner" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 firebase-messaging = { module = "com.google.firebase:firebase-messaging", version.ref = "firebase-messaging" }

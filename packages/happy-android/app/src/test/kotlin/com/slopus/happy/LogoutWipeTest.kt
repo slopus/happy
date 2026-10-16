@@ -18,6 +18,7 @@ import com.slopus.happy.ui.attachments.attachmentCacheDir
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
 import com.slopus.happy.ui.home.HomeServices
 import com.slopus.happy.ui.home.NewSessionDraftStore
+import com.slopus.happy.ui.home.PrefsReviewStamps
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -63,6 +64,7 @@ class LogoutWipeTest {
         graph.changelog.markViewed("1.0")
         val newSession = HomeServices.of(graph).newSession(context)
         newSession.setInput("draft for a new session")
+        PrefsReviewStamps(context.getSharedPreferences(PrefsReviewStamps.PREFS_NAME, Context.MODE_PRIVATE)).declinedAt = 1
         val picked = attachmentCacheDir(context).resolve("picked.jpg").apply { writeText("pixels") }
         val images = context.cacheDir.resolve("images").apply { mkdirs() }.resolve("cached").apply { writeText("png") }
 
@@ -90,6 +92,7 @@ class LogoutWipeTest {
         assertEquals("", graph.changelog.lastViewedTitle.value)
         assertTrue(context.getSharedPreferences(ChangelogReadMarker.PREFS_NAME, Context.MODE_PRIVATE).all.isEmpty())
         assertTrue(context.getSharedPreferences(NewSessionDraftStore.PREFS_NAME, Context.MODE_PRIVATE).all.isEmpty())
+        assertTrue(context.getSharedPreferences(PrefsReviewStamps.PREFS_NAME, Context.MODE_PRIVATE).all.isEmpty())
         assertEquals("", newSession.draft.value.input)
         assertFalse(picked.exists())
         assertFalse(images.exists())
