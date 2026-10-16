@@ -31,6 +31,7 @@ import com.slopus.happy.auth.AuthState
 import com.slopus.happy.model.Profile
 import com.slopus.happy.model.settings.ConnectApi
 import com.slopus.happy.model.settings.HttpConnectApi
+import com.slopus.happy.model.settings.Languages
 import com.slopus.happy.ui.SettingsRoute
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
@@ -41,15 +42,47 @@ import kotlinx.serialization.Serializable
 
 @Serializable data object AccountRoute
 @Serializable data object AppearanceRoute
+@Serializable data object LanguageRoute
 
 /** Settings and its screens. [SettingsRoute] is the entry point. */
 fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
     composable<SettingsRoute> { SettingsIndex(graph, nav) }
     composable<AccountRoute> { Account(graph, nav) }
-    composable<AppearanceRoute> {
-        val theme by graph.localSettings.themePreference.collectAsStateWithLifecycle()
-        AppearanceScreen(theme = theme, onThemeChange = graph.localSettings::setThemePreference, onBack = { nav.popBackStack() })
+    composable<AppearanceRoute> { Appearance(graph, nav) }
+    composable<LanguageRoute> {
+        val settings by graph.settings.settings.collectAsStateWithLifecycle()
+        LanguageScreen(
+            preferredLanguage = settings.preferredLanguage,
+            detectedLanguageName = Languages.detectedName(graph.language.deviceLocales()),
+            onSelect = { code ->
+                graph.settings.change { it.copy(preferredLanguage = code) }
+                graph.language.apply(code)
+            },
+            onBack = { nav.popBackStack() },
+        )
     }
+}
+
+@Composable
+private fun Appearance(graph: AppGraph, nav: NavHostController) {
+    val theme by graph.localSettings.themePreference.collectAsStateWithLifecycle()
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val automatic = stringResource(R.string.settings_language_automatic)
+    val preferred = settings.preferredLanguage
+    val languageDetail = when {
+        preferred == null -> "$automatic (${Languages.detectedName(graph.language.deviceLocales())})"
+        Languages.byCode(preferred) != null -> Languages.byCode(preferred)!!.nativeName
+        else -> automatic
+    }
+    AppearanceScreen(
+        theme = theme,
+        onThemeChange = graph.localSettings::setThemePreference,
+        onBack = { nav.popBackStack() },
+        settings = settings,
+        onSettingsChange = graph.settings::change,
+        languageDetail = languageDetail,
+        onLanguage = { nav.navigate(LanguageRoute) },
+    )
 }
 
 /** The stored profile, re-read whenever the store changes. */

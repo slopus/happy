@@ -26,6 +26,7 @@ import com.slopus.happy.ui.onboarding.RestoreManualScreen
 import com.slopus.happy.ui.onboarding.RestoreScreen
 import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.server.ServerScreen
+import com.slopus.happy.ui.settings.LocalizedContent
 import com.slopus.happy.ui.settings.settingsRoutes
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.CancellationException
@@ -48,8 +49,9 @@ import kotlinx.serialization.Serializable
 fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
     val theme by graph.localSettings.themePreference.collectAsStateWithLifecycle()
     val auth by graph.auth.state.collectAsStateWithLifecycle()
+    val language by graph.language.language.collectAsStateWithLifecycle()
 
-    HappyTheme(preference = theme) {
+    LocalizedContent(language.locale) { HappyTheme(preference = theme) {
         val dark = HappyTheme.colors.dark
         LaunchedEffect(dark) { onDarkThemeChange(dark) }
 
@@ -67,7 +69,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                 settingsRoutes(graph, nav)
             }
         }
-    }
+    } }
 }
 
 @Composable
