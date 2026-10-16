@@ -25,6 +25,22 @@ final class HomeDockView: UIView {
     private let entryLabel = StyledLabel(style: TextStyles.homeDockEntry, color: Palette.textSecondary, lines: 1)
     private var composerFrame: CGRect = .zero
 
+    /// How present the capsule's surface is, 0 to 1, while the dock fades
+    /// in (`HomeDockFade`): the blur by strength, the shadow and the rim by
+    /// opacity, the frost by alpha.
+    private(set) var presence: CGFloat = 1 {
+        didSet { if presence != oldValue { applyPresence() } }
+    }
+    /// How present the prompt, the send button and the scrim are (the
+    /// scrim's blur by strength). Neither this view nor the capsule's shell
+    /// takes either: an ancestor below full alpha turns the blur inside off
+    /// (HomeDock.tsx:166).
+    private(set) var contentPresence: CGFloat = 1 {
+        didSet { if contentPresence != oldValue { applyPresence() } }
+    }
+    private var fade: (run: HomeDockFade, start: CFTimeInterval)?
+    private var fadeLink: CADisplayLink?
+
     /// What was typed in the composer; the placeholder while empty.
     var prompt = "" {
         didSet { if prompt != oldValue { applyPrompt() } }
@@ -95,9 +111,61 @@ final class HomeDockView: UIView {
         let dark = traitCollection.userInterfaceStyle == .dark
         shell.layer.shadowOffset = CGSize(width: 0, height: dark ? ComposerShadow.darkOffsetY : ComposerShadow.lightOffsetY)
         shell.layer.shadowRadius = dark ? ComposerShadow.darkRadius : ComposerShadow.lightRadius
-        shell.layer.shadowOpacity = dark ? ComposerShadow.darkOpacity : ComposerShadow.lightOpacity
         surface.layer.borderWidth = hairline
-        surface.layer.borderColor = UIColor(Palette.glassBorder).resolvedColor(with: traitCollection).cgColor
+        applyPresence()
+    }
+
+    private func applyPresence() {
+        let dark = traitCollection.userInterfaceStyle == .dark
+        let border = UIColor(Palette.glassBorder).resolvedColor(with: traitCollection)
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        shell.layer.shadowOpacity = (dark ? ComposerShadow.darkOpacity : ComposerShadow.lightOpacity) * Float(presence)
+        surface.layer.borderColor = border.withAlphaComponent(border.cgColor.alpha * presence).cgColor
+        CATransaction.commit()
+        material.presence = presence
+        frosted.alpha = presence
+        scrim.presence = contentPresence
+        entryClip.alpha = contentPresence
+        sendButton.presence = contentPresence
+    }
+
+    /// Runs `fade`, or shows the dock in full at once when it is nil.
+    func fadeIn(_ fade: HomeDockFade?) {
+        guard let fade else { return finishFade() }
+        self.fade = (fade, CACurrentMediaTime())
+        apply(fade.presence(at: 0))
+        if fadeLink == nil {
+            let link = CADisplayLink(target: self, selector: #selector(fadeTick))
+            link.add(to: .main, forMode: .common)
+            fadeLink = link
+        }
+    }
+
+    /// Ends a fade where it would have ended: in full.
+    func finishFade() {
+        fadeLink?.invalidate()
+        fadeLink = nil
+        fade = nil
+        apply((1, 1))
+    }
+
+    private func apply(_ presence: (surface: CGFloat, content: CGFloat)) {
+        self.presence = presence.surface
+        contentPresence = presence.content
+    }
+
+    @objc private func fadeTick() {
+        guard let fade else { return finishFade() }
+        let elapsed = CACurrentMediaTime() - fade.start
+        apply(fade.run.presence(at: elapsed))
+        if fade.run.isFinished(at: elapsed) { finishFade() }
+    }
+
+    /// A dock that leaves the screen mid-fade is in full when it is back.
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window == nil, fade != nil { finishFade() }
     }
 
     /// One line of the entry at its text size, from the heights made off
@@ -145,6 +213,11 @@ final class HomeDockSendButton: ComposerPressableButton {
         didSet { if appearance != oldValue { apply() } }
     }
 
+    /// The dock's fade (`HomeDockView.contentPresence`), under the press's 0.7.
+    var presence: CGFloat = 1 {
+        didSet { if presence != oldValue { pressedAlphaChanged(isHighlighted && isEnabled) } }
+    }
+
     private let iconView = IconView(.ionicons("arrow-up"), size: HomeDockLayout.Metrics.sendIconSize)
     private let spinner = UIActivityIndicatorView(style: .medium)
 
@@ -163,6 +236,10 @@ final class HomeDockSendButton: ComposerPressableButton {
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    override func pressedAlphaChanged(_ pressed: Bool) {
+        alpha = (pressed ? 0.7 : 1) * presence
     }
 
     private func apply() {

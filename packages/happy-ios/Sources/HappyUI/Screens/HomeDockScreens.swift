@@ -93,11 +93,25 @@ final class HomeDockController: NSObject {
         }
     }
 
-    private func updateVisibility() {
+    /// `origin` is what a dock that comes into view comes back from.
+    private func updateVisibility(from origin: HomeDockFade.Origin = .appearing) {
         // The capsule is replaced rather than covered while the composer is
         // open: the composer sits higher, and the capsule's button showed
         // below it.
-        restingView.isHidden = !isAvailable || focus != nil
+        let hidden = !isAvailable || focus != nil
+        let appears = restingView.isHidden && !hidden
+        restingView.isHidden = hidden
+        if hidden {
+            restingView.finishFade()
+        } else if appears {
+            // It fades in where it is seen; off a window (home under a
+            // pushed screen) or with Reduce Motion it is there at once.
+            restingView.fadeIn(HomeDockFade.shown(
+                from: origin,
+                onWindow: restingView.window != nil,
+                reduceMotion: UIAccessibility.isReduceMotionEnabled
+            ))
+        }
     }
 
     /// A bot needs a name the daemon takes; a session, a prompt or a
@@ -139,7 +153,7 @@ final class HomeDockController: NSObject {
 
     func focusDidClose() {
         focus = nil
-        updateVisibility()
+        updateVisibility(from: .focus)
         render()
         showFaceOffers()
     }
