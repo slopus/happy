@@ -20,6 +20,7 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.chat.ChatActions
 import com.slopus.happy.chat.ChatFeed
+import com.slopus.happy.chat.ChatMessage
 import com.slopus.happy.chat.ChatState
 import com.slopus.happy.chat.ComposerModeResolver
 import com.slopus.happy.chat.NoLivePresence
@@ -41,6 +42,7 @@ import com.slopus.happy.ui.attachments.rememberSessionAttachments
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.files.toolPressRoute
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
@@ -62,12 +64,24 @@ fun NavGraphBuilder.chatRoutes(
 ) {
     composable<SessionRoute> { entry ->
         val route = entry.toRoute<SessionRoute>()
-        ChatRoute(graph, route.id, actions, onBack = { nav.popBackStack() }, onInfo = { onInfo(route.id) })
+        ChatRoute(
+            graph, route.id, actions,
+            onBack = { nav.popBackStack() },
+            onInfo = { onInfo(route.id) },
+            onToolPress = { message -> nav.navigate(toolPressRoute(route.id, message)) },
+        )
     }
 }
 
 @Composable
-private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, onBack: () -> Unit, onInfo: () -> Unit) {
+private fun ChatRoute(
+    graph: AppGraph,
+    sessionId: String,
+    actions: ChatActions,
+    onBack: () -> Unit,
+    onInfo: () -> Unit,
+    onToolPress: (ChatMessage.ToolCallMessage) -> Unit,
+) {
     val account by graph.account.collectAsStateWithLifecycle()
     val feed = remember(account) {
         val sync = account
@@ -107,6 +121,7 @@ private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, 
         ChatScreenActions(
             onBack = onBack,
             onInfo = onInfo,
+            onToolPress = onToolPress,
             onDraftChange = draft::set,
             onSend = onSend@{ text ->
                 val picked = latestImages?.images?.toList().orEmpty()

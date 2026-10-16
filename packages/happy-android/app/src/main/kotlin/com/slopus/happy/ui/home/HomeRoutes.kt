@@ -40,6 +40,7 @@ import com.slopus.happy.model.WorkspaceOrigin
 import com.slopus.happy.model.forkSource
 import com.slopus.happy.model.parseJsonObject
 import com.slopus.happy.sync.OpResult
+import com.slopus.happy.ui.files.SessionChangesRoute
 import com.slopus.happy.ui.session.DuplicateSheet
 import com.slopus.happy.ui.session.LiveSessionContinuations
 import com.slopus.happy.ui.session.SessionContinuations
@@ -336,7 +337,7 @@ private fun SessionInfoRouteScreen(graph: AppGraph, id: String, nav: NavHostCont
             onBack = { nav.popBackStack() },
             onOpenSession = onOpenSession,
             onOpenMachine = { machineId -> nav.navigate(MachineRoute(machineId)) },
-            onChanges = null,
+            onChanges = { id -> nav.navigate(SessionChangesRoute(id)) },
             onArchived = home,
             onDeleted = home,
             copyToClipboard = { text -> copyToClipboard(context, text) },
