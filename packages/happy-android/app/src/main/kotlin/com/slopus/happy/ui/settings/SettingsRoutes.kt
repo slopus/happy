@@ -51,6 +51,7 @@ import kotlinx.serialization.Serializable
 @Serializable data object AppearanceRoute
 @Serializable data object LanguageRoute
 @Serializable data object AgentsRoute
+@Serializable data object ConnectClaudeRoute
 
 /** Settings and its screens. [SettingsRoute] is the entry point. */
 fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
@@ -58,6 +59,7 @@ fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
     composable<AccountRoute> { Account(graph, nav) }
     composable<AppearanceRoute> { Appearance(graph, nav) }
     composable<AgentsRoute> { Agents(graph, nav) }
+    composable<ConnectClaudeRoute> { ConnectClaudeScreen(onBack = { nav.popBackStack() }) }
     composable<LanguageRoute> {
         val settings by graph.settings.settings.collectAsStateWithLifecycle()
         LanguageScreen(
@@ -218,7 +220,7 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
             gitHubBusy = connectGitHub.loading || disconnectGitHub.loading,
         ),
         onClaude = {
-            if ("anthropic" in profile.connectedServices) confirm(disconnectClaudeTitle, disconnectClaudeMessage, disconnectClaude) else terminalStub()
+            if ("anthropic" in profile.connectedServices) confirm(disconnectClaudeTitle, disconnectClaudeMessage, disconnectClaude) else nav.navigate(ConnectClaudeRoute)
         },
         onGitHub = {
             if (profile.github != null) confirm(disconnectGitHubTitle, disconnectGitHubMessage, disconnectGitHub) else connectGitHub.run()
