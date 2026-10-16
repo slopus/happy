@@ -145,6 +145,8 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
         val query = { name: String -> request.url.queryParameter(name) }
         if (path == "/" && request.method == "GET") return text("Welcome to Happy Server!")
         if (path == "/v1/auth" && request.method == "POST") return auth(request)
+        if (path == "/v1/auth/request/status" && request.method == "GET") return terminalStatus(query("publicKey"))
+        if (path == "/v1/auth/account/request" && request.method == "POST") return accountRequest(request)
         if (request.headers["Authorization"] != "Bearer $token") return json(401, """{"error":"Unauthorized"}""")
 
         return when {
@@ -184,6 +186,12 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
                 }
                 json(200, HappyJson.encodeToString(ApiSettingsUpdateResult.serializer(), result))
             }
+            path == "/v1/auth/response" && request.method == "POST" -> answer(request, terminalRequests.mapValues { it.value.response }) { key, response ->
+                terminalRequests.getValue(key).response = response
+            }
+            path == "/v1/auth/account/response" && request.method == "POST" -> answer(request, accountRequests) { key, response ->
+                accountRequests[key] = response
+            }
             else -> json(404, """{"error":"Not found"}""")
         }
     }
@@ -200,6 +208,52 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
         if (!Sodium.signVerifyDetached(signature, challenge, publicKey)) return json(401, """{"error":"Invalid signature"}""")
         authenticatedKeys += encodeBase64(publicKey)
         return json(200, """{"success":true,"token":"$token"}""")
+    }
+
+    // Device and terminal linking (authRoutes.ts)
+
+    class TerminalRequest(val supportsV2: Boolean, var response: String? = null)
+
+    /** Terminals waiting to be approved, by base64 box public key (what `/v1/auth/request` would create). */
+    val terminalRequests = mutableMapOf<String, TerminalRequest>()
+
+    /** New phones' account link requests, by base64 box public key, with the approval once given. */
+    val accountRequests = mutableMapOf<String, String?>()
+
+    fun addTerminalRequest(publicKey: ByteArray, supportsV2: Boolean) = synchronized(this) {
+        terminalRequests[encodeBase64(publicKey)] = TerminalRequest(supportsV2)
+    }
+
+    /** A phone that has the account approves a link request, as `/v1/auth/account/response` does. */
+    fun approveAccountRequest(publicKey: ByteArray, response: ByteArray) = synchronized(this) {
+        accountRequests[encodeBase64(publicKey)] = encodeBase64(response)
+    }
+
+    private fun boxKey(value: String?): String? =
+        value?.let { runCatching { decodeBase64(it) }.getOrNull() }?.takeIf { it.size == 32 }?.let { encodeBase64(it) }
+
+    private fun terminalStatus(publicKey: String?): MockResponse {
+        val request = boxKey(publicKey)?.let { terminalRequests[it] }
+            ?: return json(200, """{"status":"not_found","supportsV2":false}""")
+        if (request.response != null) return json(200, """{"status":"authorized","supportsV2":false}""")
+        return json(200, """{"status":"pending","supportsV2":${request.supportsV2}}""")
+    }
+
+    private fun accountRequest(request: RecordedRequest): MockResponse {
+        val body = HappyJson.parseToJsonElement(request.body!!.utf8()).jsonObject
+        val key = boxKey(body.getValue("publicKey").jsonPrimitive.content) ?: return json(401, """{"error":"Invalid public key"}""")
+        val response = accountRequests.getOrPut(key) { null }
+            ?: return json(200, """{"state":"requested"}""")
+        return json(200, """{"state":"authorized","token":"$token","response":"$response"}""")
+    }
+
+    /** `/v1/auth/response` and `/v1/auth/account/response`: the first answer to a known request sticks. */
+    private fun answer(request: RecordedRequest, pending: Map<String, String?>, store: (String, String) -> Unit): MockResponse {
+        val body = HappyJson.parseToJsonElement(request.body!!.utf8()).jsonObject
+        val key = boxKey(body.getValue("publicKey").jsonPrimitive.content) ?: return json(401, """{"error":"Invalid public key"}""")
+        if (key !in pending) return json(404, """{"error":"Request not found"}""")
+        if (pending[key] == null) store(key, body.getValue("response").jsonPrimitive.content)
+        return json(200, """{"success":true}""")
     }
 
     private fun json(code: Int, body: String) = MockResponse.Builder()
