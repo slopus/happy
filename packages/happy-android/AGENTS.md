@@ -25,9 +25,9 @@ architectures comparable (local store, delta sync, crypto layer).
 
 1. **UI is Jetpack Compose** (Material 3 is fine), with the theme and design
    tokens taken from happy-app (`sources/theme.ts`, `constants/Typography.ts`).
-   Use the Android branch where theme.ts uses `Platform.select`. Strings come
-   from `sources/text/translations/en.ts`; resource names are the key paths
-   with `_`.
+   Use the Android branch where theme.ts uses `Platform.select`. Strings are
+   generated from happy-app's catalogs (see Localization); never edit
+   `res/values*/strings.xml` by hand.
 2. **Gradle with the Kotlin DSL and the version catalog**
    (`gradle/libs.versions.toml`). The wrapper is committed; there is no Gradle
    on PATH.
@@ -62,8 +62,51 @@ app/
   net/      HappyHttp: OkHttp + kotlinx.serialization, X-Happy-Client header
   ui/       theme, components (Item, ItemGroup, RoundButton, Header, ...), screens
   AppGraph  hand-wired object graph; owns the signed-in sync loop
+  text/     Resources.plural / pluralResource, PluralExactNumbers (generated)
 tools/testvectors/   generates crypto test vectors by running happy-app's TypeScript
+tools/translations/  generates the string resources from happy-app's catalogs
 ```
+
+## Localization
+
+All UI text comes from happy-app's ten catalogs (`sources/text/_default.ts`,
+which serves English, and `translations/*.ts`), generated into
+`res/values/strings.xml` and `res/values-{ru,pl,es,it,pt,ca,ja,b+zh+Hans,b+zh+Hant}/strings.xml`.
+After happy-app's catalogs change, regenerate and commit the output:
+
+```
+cd tools/translations && npm run generate
+```
+
+`TranslationResourcesTest` fails until you do. A string happy-app doesn't
+have goes in `res/values/strings_android.xml` (English only); add it to
+happy-app's catalogs instead where you can.
+
+How a catalog entry becomes a resource:
+
+- **Name**: the key path, camelCase to snake_case, dots to `_`
+  (`settings.whatsNewSubtitle` → `settings_whats_new_subtitle`). If two keys
+  come out alike, the later one keeps its dots as `__`
+  (`settingsVoice.language.title` → `settings_voice__language__title`).
+- **String**: `stringResource(R.string.common_cancel)`.
+- **Function**: a format string whose arguments are the function's
+  parameters in `_default.ts`'s annotation order, text as `%n$s` and numbers
+  as `%n$d` (pass `Int`):
+  `stringResource(R.string.settings_github_connected, login)`.
+- **Function that picks words by a count**: `<plurals>`, rendered with
+  `pluralResource(R.plurals.time_minutes_ago, count, count)` (or
+  `resources.plural(…)`), never `pluralStringResource`: where a catalog
+  spells out a number its Android plural category doesn't cover (Japanese
+  `count === 1`, Portuguese 0), the generator adds a `<name>_n<number>`
+  string, and only `plural` knows to use it. The count is also a format
+  argument, in its place among the parameters.
+- **Function that picks words by a boolean or a fixed set of strings**: one
+  string per case, `<name>_true` / `<name>_false` or `<name>_<value>`
+  (`settings.featureToggled({ feature, enabled })` →
+  `settings_feature_toggled_true` / `_false`, each taking `feature` as
+  `%1$s`; `settings.machineStatus({ name, status })` →
+  `settings_machine_status_online` / `_offline`). Choose the resource in
+  Kotlin; the chooser is not a format argument.
 
 ## Credentials and upgrades from the React Native build
 
