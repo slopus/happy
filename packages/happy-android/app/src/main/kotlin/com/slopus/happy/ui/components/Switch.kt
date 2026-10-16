@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.ui.theme.HappyTheme
 
@@ -77,7 +78,8 @@ fun HappySwitch(
         )
         Box(
             Modifier
-                .offset(x = thumbOffset)
+                // Read at placement, so the slide neither recomposes nor remeasures.
+                .offset { IntOffset(thumbOffset.roundToPx(), 0) }
                 .size(SwitchSpec.thumb)
                 .shadow(2.dp, CircleShape)
                 .background(colors.thumbActive, CircleShape)
