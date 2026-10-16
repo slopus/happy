@@ -498,7 +498,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             headerAccessory: tabStrip.isHidden ? 0 : WorktreeTabStripLayout.Metrics.height
         ))
         list.setLayoutFrame(screen.list)
-        list.setEdgeInsets(newest: screen.newestEdgeInset, oldest: screen.oldestEdgeInset)
+        list.setEdgeInsets(newest: screen.newestEdgeInset, oldest: screen.oldestEdgeInset, indicator: screen.indicatorInsets)
         headerScrim.setLayoutFrame(screen.headerScrim)
         if let frame = screen.headerAccessory, !tabStrip.isHidden {
             tabStrip.maxWidth = ContentWidth.headerMaxWidth
