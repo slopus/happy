@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -159,12 +160,14 @@ fun ChatComposer(
     top: @Composable () -> Unit = {},
     /** Over the chat above the composer, taking no room (autocomplete suggestions). */
     overlay: @Composable () -> Unit = {},
-    /** Shares the cursor with [overlay]: reported as it moves, placed after an insert. */
+    /** Shares the cursor with [overlay]: reported as it moves, placed after an insert; it sees hardware keys first. */
     cursor: ComposerCursor? = null,
     /** Shakes the card (a refused send). */
     panelShake: ShakeState? = null,
     /** Shakes the primary button (a failed stop). */
     primaryShake: ShakeState? = null,
+    /** Under the card, inside the composer (the usage row: week quota and context gauge). */
+    bottom: @Composable () -> Unit = {},
 ) {
     val colors = HappyTheme.colors
     var field by remember { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
@@ -233,6 +236,7 @@ fun ChatComposer(
                     textStyle = ComposerSpec.input.copy(color = colors.input.text),
                     cursorBrush = SolidColor(colors.input.text),
                     modifier = Modifier
+                        .onPreviewKeyEvent { cursor?.onKey?.invoke(it) == true }
                         .testTag(ComposerTags.INPUT)
                         .fillMaxWidth()
                         .heightIn(max = ComposerSpec.inputMaxHeight),
@@ -264,6 +268,7 @@ fun ChatComposer(
                 PrimaryButton(primary, aborting, onPrimary, primaryShake)
             }
         }
+        bottom()
     }
 }
 

@@ -285,7 +285,7 @@ class HomeListTest {
             sessionActionIds(live, resumeMachine, continuationExperiments = true, devMode = false),
         )
         assertEquals(
-            listOf(SessionActionId.Details, SessionActionId.Resume, SessionActionId.CopyMetadata, SessionActionId.Archive),
+            listOf(SessionActionId.Details, SessionActionId.Resume, SessionActionId.CopyMetadata, SessionActionId.CopyMetadataAndLogs, SessionActionId.Archive),
             sessionActionIds(resumable(), resumeMachine, continuationExperiments = false, devMode = true),
         )
         assertTrue(live.forkSource() is ForkSource.Claude)

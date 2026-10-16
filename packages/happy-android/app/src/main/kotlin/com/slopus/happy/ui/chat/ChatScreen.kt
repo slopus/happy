@@ -72,6 +72,7 @@ import com.slopus.happy.ui.layout.CenteredInputWidth
 import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
+import com.slopus.happy.ui.usage.ComposerUsageRow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -301,6 +302,27 @@ private fun ChatComposerFor(
     val scope = rememberCoroutineScope()
     val panelShake = rememberShake()
     val primaryShake = rememberShake()
+    fun abort() {
+        if (aborting) return
+        haptics.error()
+        stopRequested = true
+        aborting = true
+        scope.launch {
+            try {
+                coroutineScope {
+                    launch { delay(ABORT_MIN_SPINNER_MS) }
+                    actions.onAbort()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                stopRequested = false
+                launch { primaryShake.shake() }
+            } finally {
+                aborting = false
+            }
+        }
+    }
     ChatComposer(
         text = draft,
         onTextChange = actions.onDraftChange,
@@ -309,26 +331,7 @@ private fun ChatComposerFor(
         aborting = aborting,
         onPrimary = {
             when (primary) {
-                PrimaryAction.Stop -> if (!aborting) {
-                    haptics.error()
-                    stopRequested = true
-                    aborting = true
-                    scope.launch {
-                        try {
-                            coroutineScope {
-                                launch { delay(ABORT_MIN_SPINNER_MS) }
-                                actions.onAbort()
-                            }
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            stopRequested = false
-                            launch { primaryShake.shake() }
-                        } finally {
-                            aborting = false
-                        }
-                    }
-                }
+                PrimaryAction.Stop -> abort()
                 PrimaryAction.Blocked -> {
                     haptics.error()
                     scope.launch { panelShake.shake() }
@@ -356,6 +359,7 @@ private fun ChatComposerFor(
         cursor = autocomplete.cursor,
         panelShake = panelShake,
         primaryShake = primaryShake,
+        bottom = { ComposerUsageRow(state.snapshot.usage, session.agentState?.usageLimits) },
     )
 }
 

@@ -40,4 +40,46 @@ class WorktreesTest {
             createWorktree("/tmp", bash = shell(BashResult(success = false, exitCode = -1)).second),
         )
     }
+
+    private val wt = "/repo/.dev/worktree/swift-ocean"
+
+    private fun cleanup(
+        status: BashResult,
+        answer: Boolean,
+        path: String? = wt,
+        others: List<com.slopus.happy.model.Session> = emptyList(),
+    ): Pair<List<Pair<String, String>>, Int> {
+        val calls = mutableListOf<Pair<String, String>>()
+        var asked = 0
+        runTest {
+            maybeCleanupWorktree(
+                "s1", path, "m1", others,
+                bash = { machineId, command, cwd ->
+                    assertEquals("m1", machineId)
+                    calls += command to cwd
+                    if (command.startsWith("git status")) status else ok
+                },
+                confirm = { asked++; answer },
+            )
+        }
+        return calls to asked
+    }
+
+    @Test fun aCleanWorktreeIsRemovedFromTheMainCheckoutWhenConfirmed() {
+        val (calls, asked) = cleanup(ok, answer = true)
+        assertEquals(1, asked)
+        assertEquals(listOf("git status --porcelain" to wt, "git worktree remove $wt --force" to "/repo"), calls)
+        assertEquals(listOf("git status --porcelain" to wt), cleanup(ok, answer = false).first)
+    }
+
+    @Test fun changesAFailedStatusOrAnotherActiveChatSkipThePrompt() {
+        assertEquals(0, cleanup(ok.copy(stdout = " M a.kt\n"), answer = true).second)
+        assertEquals(0, cleanup(BashResult(success = false, exitCode = -1), answer = true).second)
+        val other = com.slopus.happy.model.HomeModelFixtures.session("s2", com.slopus.happy.model.HomeModelFixtures.metadata(path = wt))
+        val (calls, asked) = cleanup(ok, answer = true, others = listOf(other))
+        assertEquals(0, asked)
+        assertEquals(emptyList<Pair<String, String>>(), calls)
+        // Not a Happy worktree: nothing runs.
+        assertEquals(emptyList<Pair<String, String>>(), cleanup(ok, answer = true, path = "/repo").first)
+    }
 }

@@ -1,6 +1,12 @@
 package com.slopus.happy.ui.files
 
-import com.slopus.happy.ui.files.GitStatusParser.FULL_FILE_CONTEXT
+import com.slopus.happy.model.GitFileStatus
+import com.slopus.happy.model.GitFileStatusKind
+import com.slopus.happy.model.GitStatusParser
+import com.slopus.happy.model.GitStatusParser.FULL_FILE_CONTEXT
+import com.slopus.happy.model.decodeGitPath
+import com.slopus.happy.model.parseNumStat
+import com.slopus.happy.model.parseStatusSummaryV2
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -17,11 +23,11 @@ class GitStatusFilesTest {
 
     @Test
     fun decodesQuotedUtf8OctalPaths() {
-        assertEquals("МОНЕТИЗАЦИЯ.md", GitStatusParser.decodeGitPath(escapedCyrillic))
-        assertEquals("packages/app/index.ts", GitStatusParser.decodeGitPath("packages/app/index.ts"))
-        assertEquals(listOf("МОНЕТИЗАЦИЯ.md"), GitStatusParser.parseStatus("? $escapedCyrillic").untracked)
-        assertEquals("МОНЕТИЗАЦИЯ.md", GitStatusParser.parseNumStat("3\t1\t$escapedCyrillic").keys.single())
-        assertEquals("a\"b\tc", GitStatusParser.decodeGitPath("\"a\\\"b\\tc\""))
+        assertEquals("МОНЕТИЗАЦИЯ.md", decodeGitPath(escapedCyrillic))
+        assertEquals("packages/app/index.ts", decodeGitPath("packages/app/index.ts"))
+        assertEquals(listOf("МОНЕТИЗАЦИЯ.md"), parseStatusSummaryV2("? $escapedCyrillic").notAdded)
+        assertEquals("МОНЕТИЗАЦИЯ.md", parseNumStat("3\t1\t$escapedCyrillic").files.single().file)
+        assertEquals("a\"b\tc", decodeGitPath("\"a\\\"b\\tc\""))
     }
 
     @Test
