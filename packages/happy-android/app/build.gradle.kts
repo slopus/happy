@@ -17,6 +17,20 @@ val applicationIds = mapOf(
     "release" to "com.ex3ndr.happy",
 )
 
+// The commit the build is from, for Settings > Version (happy-app
+// app.config.js loadBuildMetadata): the environment's, else git's.
+fun git(vararg args: String): String? = runCatching {
+    providers.exec {
+        commandLine("git", *args)
+        isIgnoreExitValue = true
+    }.standardOutput.asText.get().trim().ifEmpty { null }
+}.getOrNull()
+val buildCommitSha = providers.environmentVariable("HAPPY_BUILD_COMMIT_SHA").orNull
+    ?: providers.environmentVariable("GITHUB_SHA").orNull
+    ?: git("rev-parse", "HEAD")
+val buildCommitTimestamp = providers.environmentVariable("HAPPY_BUILD_COMMIT_TIMESTAMP").orNull
+    ?: git("show", "-s", "--format=%cI", buildCommitSha ?: "HEAD")
+
 android {
     namespace = "com.slopus.happy"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -29,6 +43,8 @@ android {
         versionName = "0.1.0"
 
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://api.cluster-fluster.com\"")
+        buildConfigField("String", "BUILD_COMMIT_SHA", buildCommitSha?.let { "\"$it\"" } ?: "null")
+        buildConfigField("String", "BUILD_COMMIT_TIMESTAMP", buildCommitTimestamp?.let { "\"$it\"" } ?: "null")
     }
 
     buildTypes {
@@ -114,6 +130,11 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
+
+    // QR codes (AGENTS.md "QR codes"): Google Code Scanner reads them, as
+    // expo-camera's launchScanner does on Android; ZXing's encoder draws them.
+    implementation(libs.play.services.code.scanner)
+    implementation(libs.zxing.core)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)

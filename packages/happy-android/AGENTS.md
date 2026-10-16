@@ -17,9 +17,10 @@ architectures comparable (local store, delta sync, crypto layer).
   server is only asked for what changed since the last sync.
 - **Tool outputs are hidden by default** once the chat UI exists.
 - Built so far: crypto, account auth, the server setting, an empty home
-  screen, Settings (Account, Appearance), and the local store with delta
-  sync and live updates. Not built: chat and session UI, camera and QR
-  screens, terminal connect, push.
+  screen, Settings (Account, Appearance), the local store with delta sync
+  and live updates, and onboarding and connect (restore by QR, Link Your
+  Computer, troubleshoot, terminal connect by QR, link and deep link). Not
+  built: chat and session UI, push.
 
 ## Rules
 
@@ -63,6 +64,9 @@ app/
   net/      HappyHttp (OkHttp + kotlinx.serialization, X-Happy-Client header),
             SocketIoClient (the /v1/updates socket)
   ui/       theme, components (Item, ItemGroup, RoundButton, Header, ...), screens
+            onboarding/ welcome, restore, Link Your Computer, onboarding settings
+            connect/    QR scanner and codes, connect flows, terminal screens, deep links
+            troubleshoot/
   AppGraph  hand-wired object graph; owns the signed-in sync loop
   model/    typed views of the stored JSON: Settings (sync/settings.ts);
             settings/ has agentDefaults.ts, local settings, SettingsRepository
@@ -255,9 +259,59 @@ happy-app's encryption:
 cd tools/testvectors && npm install && npm run generate
 ```
 
+## Onboarding and connect
+
+Entry points other screens call (all in `ui/onboarding` and `ui/connect`):
+
+- **Home, no computer linked** (`resolveHomeEmptyState` = link):
+  `OnboardingLinkComputer(graph, onSettings = { nav.navigate(OnboardingSettingsRoute) })`.
+  **Every computer offline**: `LinkComputerChecklist(graph, computers = choices.map { it.name },
+  onTroubleshoot = { nav.navigate(TroubleshootRoute) }, onShowArchived = …)`.
+- **Troubleshoot's machine rows**: `onboardingRoutes(graph, nav, onOpenMachine = { id -> … })`
+  in HappyApp; pass the machine screen's navigation.
+- **Settings › "Scan QR code to authenticate" / "Enter URL manually"**
+  (wired in `settingsRoutes`): `val connect = rememberTerminalConnect(graph)`;
+  the scan row calls `connect.scan()` and shows `loading = connect.isLoading`;
+  the URL row shows `EnterTerminalUrlPrompt(connect, onDismiss = …)` while open.
+- **Settings › Account › Link New Device**: `val link = rememberAccountLink(graph)`;
+  the row calls `link.scan()`, subtitle `common_scanning` and disabled while
+  `link.isLoading`. Both flows show their own alerts while composed.
+- **Deep links**: MainActivity offers every launching and new intent to
+  `DeepLinks.offer(intent)`; `DeepLinkEffect(nav, signedIn, onOpenSession)`
+  in HappyApp opens them once signed in. `onOpenSession` is the chat's.
+
+### QR codes
+
+happy-app scans with expo-camera's `CameraView.launchScanner`, which on
+Android is **Google Code Scanner** (`play-services-code-scanner`): Play
+services draws its own full-screen camera, so the app holds no CAMERA
+permission and shows no preview, and `useCheckCameraPermissions.ts` returns
+true on Android. `GmsQrScanner` does the same, behind the `QrScanner`
+interface (one call, decoded text out) so the flows are tested with a fake.
+Without the Play Store, or when the module fails, the scan returns
+`Failed` and nothing is shown, as in happy-app, whose scan listeners never
+see a rejected `launchScanner`; the paste-link and secret-key paths still
+work. The module is downloaded by Play services on first use, so devices
+without Play services (some Huawei, de-Googled ROMs) can't scan in either
+app. The merged manifest has no CAMERA permission.
+
+The restore screen draws its code with ZXing's encoder (`zxing-core`, no
+Android or camera parts), in QRCode.tsx's rounded style; `QrCodeTest`
+decodes the drawn pixels back to the link.
+
+### Deep links
+
+`happy://` links route as expo-router routes them for happy-app (the host
+is the first path segment): `happy://terminal?<key>` opens the confirm
+screen (terminal/index.tsx), `/terminal/connect` explains that the web link
+needs a browser, `/session/<id>` goes to `onOpenSession`. The release build
+adds app.config.js's production intent filter for
+`https://app.happy.engineering` (`src/release/AndroidManifest.xml`), with
+`autoVerify`; verification needs the release key's fingerprint in that
+site's `assetlinks.json`. Links while signed out are dropped.
+
 ## Stubs to replace
 
-- **Account link by QR.** Restore shows where the QR code goes and sends the
-  user to the secret key; Settings > Account > Link New Device explains that
-  the scanner is missing. The API calls (`AuthApi.requestAccountLink`,
-  `approveAccountLink`) and crypto (`AccountLink`) are done and tested.
+- **Settings › Account › Link New Device** still explains that the scanner
+  is missing (`settings_account_link_new_device_unavailable`); Settings wires
+  it to `rememberAccountLink` (above) and deletes that string.

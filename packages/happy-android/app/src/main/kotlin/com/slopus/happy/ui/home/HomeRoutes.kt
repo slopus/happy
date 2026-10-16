@@ -29,10 +29,10 @@ import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.net.HappyJson
 import com.slopus.happy.sync.MachinePresence
 import com.slopus.happy.sync.SessionPresence
-import com.slopus.happy.ui.AppearanceRoute
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.SettingsRoute
 import com.slopus.happy.ui.components.Alert
+import com.slopus.happy.ui.settings.AppearanceRoute
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.AvatarSettings
 import com.slopus.happy.ui.components.AvatarStyle
