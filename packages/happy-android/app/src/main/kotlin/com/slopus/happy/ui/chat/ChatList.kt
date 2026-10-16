@@ -29,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -48,7 +49,11 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.chat.ChatListItem
 import com.slopus.happy.chat.ChatRow
+import com.slopus.happy.chat.WorkGroupExpansion
+import com.slopus.happy.chat.chatListItems
+import com.slopus.happy.chat.groupChatRowsForDisplay
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Octicon
@@ -181,6 +186,13 @@ fun olderStatus(blocked: OlderBlock?, hasMoreOlder: Boolean, isLoadingOlder: Boo
  * is added under the newest row so it scrolls clear of the dock.
  * [onNewestVisibleChange] reports whether the reader is at the newest
  * message: false past 48 from it, true again within 16.
+ *
+ * Work groups (useGroupedMessages, with [groupToolCalls] on): a finished
+ * turn's work folds under one "Worked …" header above its answer (the
+ * current turn only once [currentTurnComplete]); tapping it lays the work
+ * out flat under it with a "Hide" header where the tap was. Turns watched
+ * live stay open when they finish; going to the background folds what
+ * has finished. Invisible rows are dropped either way.
  */
 @Composable
 fun ChatList(
@@ -196,6 +208,10 @@ fun ChatList(
     bottomInset: Dp = 0.dp,
     scrollButtonInset: Dp? = null,
     onNewestVisibleChange: ((Boolean) -> Unit)? = null,
+    sessionId: String = "",
+    groupToolCalls: Boolean = false,
+    currentTurnComplete: Boolean = true,
+    foreground: Boolean = true,
 ) {
     val colors = HappyTheme.colors
     val scope = rememberCoroutineScope()
@@ -240,6 +256,14 @@ fun ChatList(
         }
         DisposableEffect(Unit) { onDispose { report(true) } }
     }
+    val displayItems = remember(rows, groupToolCalls, currentTurnComplete) { groupChatRowsForDisplay(rows, groupToolCalls, currentTurnComplete) }
+    var expansion by remember { mutableStateOf(WorkGroupExpansion()) }
+    // ChatList.tsx's render-time bookkeeping: the same value back when nothing changed.
+    val observed = expansion.observed(sessionId, foreground, rows, currentTurnComplete)
+    SideEffect { if (observed !== expansion) expansion = observed }
+    val latestItems by rememberUpdatedState(displayItems)
+    LaunchedEffect(foreground) { if (!foreground) expansion = expansion.backgrounded(latestItems) }
+    val listItems = remember(displayItems, observed) { chatListItems(displayItems, observed::isExpanded) }
     val blocked = pager.blocked
     LaunchedEffect(nearOldest, hasMoreOlder, isLoadingOlder, blocked, rows) {
         if (nearOldest && hasMoreOlder && !isLoadingOlder && blocked == null) {
@@ -255,8 +279,17 @@ fun ChatList(
             modifier = Modifier.testTag(ChatListTags.LIST).fillMaxSize(),
         ) {
             item(key = "footer", contentType = "footer") { ChatFooter(controlledByUser) }
-            items(rows, key = { it.key }, contentType = { it::class }) { row ->
-                MessageView(row, bubble, callbacks)
+            items(listItems, key = { it.key }, contentType = { item -> if (item is ChatListItem.Row) item.row::class else WORK_HEADER }) { item ->
+                when (item) {
+                    is ChatListItem.Row -> MessageView(item.row, bubble, callbacks)
+                    // Toggled by the group, not the row: both headers of an open group drive one state.
+                    is ChatListItem.WorkHeader -> AgentWorkGroupHeader(
+                        group = item.group,
+                        expanded = observed.isExpanded(item.group),
+                        onToggle = { expansion = expansion.toggled(item.group) },
+                        placement = item.placement,
+                    )
+                }
             }
             item(key = "older", contentType = "older") {
                 OlderEnd(olderStatus(blocked, hasMoreOlder, isLoadingOlder), olderInset(), onRetry = pager::retry, onLoadMore = pager::loadMore)
@@ -281,6 +314,8 @@ fun ChatList(
         }
     }
 }
+
+private const val WORK_HEADER = "workHeader"
 
 /**
  * SessionView's `chatListTopContentInset` as the spacer beyond the oldest

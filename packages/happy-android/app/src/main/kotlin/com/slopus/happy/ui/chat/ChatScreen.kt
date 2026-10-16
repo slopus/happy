@@ -60,6 +60,7 @@ import com.slopus.happy.chat.AgentQuestionAnswer
 import com.slopus.happy.chat.ChatSessionInfo
 import com.slopus.happy.chat.ChatState
 import com.slopus.happy.chat.ComposerModes
+import com.slopus.happy.chat.isCurrentTurnComplete
 import com.slopus.happy.chat.resolveChatHeaderGit
 import com.slopus.happy.model.GitStatus
 import com.slopus.happy.model.SessionState
@@ -207,6 +208,10 @@ fun ChatScreen(
     modifier: Modifier = Modifier,
     now: Long = System.currentTimeMillis(),
     compactToolCalls: Boolean = false,
+    /** The `groupToolCalls` setting: a finished turn's work folds under one row. */
+    groupToolCalls: Boolean = false,
+    /** Whether the app is in the foreground, for which work groups stay open. */
+    foreground: Boolean = true,
     showLineNumbersInToolViews: Boolean = false,
     modes: ComposerModes = ComposerModes.None,
     gitStatus: GitStatus? = null,
@@ -313,6 +318,10 @@ fun ChatScreen(
                             bottomInset = dockInset,
                             scrollButtonInset = cardTop?.takeIf { docked }?.let { with(density) { (listBottom - it).coerceAtLeast(0f).toDp() } },
                             onNewestVisibleChange = if (floating) { visible -> atNewest = visible } else null,
+                            sessionId = session.id,
+                            groupToolCalls = groupToolCalls,
+                            currentTurnComplete = isCurrentTurnComplete(state.thinking, session.agentState),
+                            foreground = foreground,
                         )
                     }
                     state.snapshot.loaded -> EmptyMessages(

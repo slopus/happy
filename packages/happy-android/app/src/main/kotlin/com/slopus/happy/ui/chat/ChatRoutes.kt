@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -153,6 +154,8 @@ private fun ChatRoute(
     val images = rememberComposerImages(enabled = state.session != null && canUseAttachments(state.session?.metadata))
     val latestImages by rememberUpdatedState(images)
     val notices = remember { mutableStateListOf<Alert>() }
+    // Not lifecycle-bound: the change to the background is the one that matters.
+    val foreground by graph.isForeground.collectAsState()
 
     fun report(e: Exception) {
         failure = e.message?.takeIf { it.isNotBlank() } ?: notSent
@@ -269,6 +272,8 @@ private fun ChatRoute(
             bubbleColor = settings.userMessageBubbleColor,
             actions = screenActions,
             compactToolCalls = settings.compactToolCalls,
+            groupToolCalls = settings.groupToolCalls,
+            foreground = foreground,
             showLineNumbersInToolViews = settings.showLineNumbersInToolViews,
             modes = modes,
             gitStatus = gitStatus,
