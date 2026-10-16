@@ -50,6 +50,27 @@ final class NavigationTitleTextSizeTests: XCTestCase {
         }
     }
 
+    /// The view is fitted to its measured block, the label's box ceiled to
+    /// the screen's pixels (RN ceils a Text's box), and the label is laid
+    /// out at that box. The bar places the view by centring it in its 44
+    /// and rounding that box out to whole pixels, so a title an odd number
+    /// of pixels away from the 44 is given one pixel more height than it
+    /// measured, never less (Mac run: 25 at XXL in a 25⅓ frame, 71⅔ at
+    /// AX-XXXL in 72). That pixel is the bar's placement; the text keeps
+    /// its box in it.
+    private func assertFitted(_ view: NavigationTitleView, _ message: String = "", file: StaticString = #filePath, line: UInt = #line) {
+        let layout = view.layout(maxWidth: NavigationTitleView.defaultMaxWidth)
+        let pixel = 1 / view.layoutScale
+        XCTAssertEqual(view.intrinsicContentSize, layout.size, "measured, \(message)", file: file, line: line)
+        XCTAssertEqual(view.frame.width, layout.size.width, "width, \(message)", file: file, line: line)
+        let extra = view.frame.height - layout.size.height
+        XCTAssertTrue(abs(extra) < 0.0001 || abs(extra - pixel) < 0.0001, "height \(view.frame.height) for \(layout.size.height), \(message)", file: file, line: line)
+        view.layoutIfNeeded()
+        let title = layout.title?.height ?? 0
+        XCTAssertGreaterThanOrEqual(view.titleLabel.frame.height, title - 0.0001, "the title's box, \(message)", file: file, line: line)
+        XCTAssertLessThanOrEqual(view.titleLabel.frame.height, title + pixel + 0.0001, "the title's box, \(message)", file: file, line: line)
+    }
+
     private func headerTitleSize(_ category: UIContentSizeCategory) -> CGFloat {
         TextStyles.headerTitle.scaled(TextScale(TextSizeCategory(category))).size
     }
@@ -65,7 +86,7 @@ final class NavigationTitleTextSizeTests: XCTestCase {
             XCTAssertEqual(view.traitCollection.preferredContentSizeCategory, category, category.rawValue)
             // 16 × the multiplier: 57.1 at the largest, not the bar's 19.76.
             XCTAssertEqual(view.titleLabel.renderedStyle.size, headerTitleSize(category), accuracy: 0.0001, category.rawValue)
-            XCTAssertEqual(view.frame.size, view.layout(maxWidth: NavigationTitleView.defaultMaxWidth).size, category.rawValue)
+            assertFitted(view, category.rawValue)
         }
     }
 
@@ -81,7 +102,7 @@ final class NavigationTitleTextSizeTests: XCTestCase {
         XCTAssertEqual(view.traitCollection.preferredContentSizeCategory, .accessibilityExtraExtraExtraLarge)
         XCTAssertEqual(view.titleLabel.renderedStyle.size, headerTitleSize(.accessibilityExtraExtraExtraLarge), accuracy: 0.0001)
         XCTAssertGreaterThan(view.frame.height, large.height)
-        XCTAssertEqual(view.frame.size, view.layout(maxWidth: NavigationTitleView.defaultMaxWidth).size)
+        assertFitted(view)
         // And back.
         shown.window.traitOverrides.preferredContentSizeCategory = .large
         settle(shown.window, shown.navigation, controller)

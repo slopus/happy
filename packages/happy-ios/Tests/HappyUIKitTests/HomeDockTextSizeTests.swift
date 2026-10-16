@@ -23,9 +23,14 @@ final class HomeDockTextSizeTests: XCTestCase {
         TextEnvironment(scale: TextScale(TextSizeCategory(category)), displayScale: scale)
     }
 
-    /// A view that follows the text size at `category` on a `scale` screen.
-    private func host(_ category: UIContentSizeCategory, _ scale: CGFloat) -> UIView {
-        let host = UIView(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+    /// A window that follows the text size at `category` on a `scale`
+    /// screen, as a screen that follows it does. Out of a window, a view
+    /// put in a host whose traits were already updated keeps the traits it
+    /// had and never takes the host's, not even after it or the host is
+    /// updated again (the Mac run left the labels and the row at the
+    /// simulator's own Large and 3x); in a window it takes them.
+    private func host(_ category: UIContentSizeCategory, _ scale: CGFloat) -> UIWindow {
+        let host = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
         host.traitOverrides.followsTextSize = true
         host.traitOverrides.displayScale = scale
         host.traitOverrides.preferredContentSizeCategory = category
@@ -67,6 +72,35 @@ final class HomeDockTextSizeTests: XCTestCase {
                 }
             }
         }
+    }
+
+    /// The resting dock on home, whose screen doesn't follow the text size:
+    /// the dock follows on its own, draws its prompt at the size and lays
+    /// it out at the line made for it off the main thread.
+    func testTheRestingDockDrawsItsPromptAtTheTextSize() async throws {
+        for category in categories {
+            let m = TextScale(TextSizeCategory(category)).multiplier
+            let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+            window.traitOverrides.preferredContentSizeCategory = category
+            let home = UIView(frame: window.bounds)
+            window.addSubview(home)
+            let dock = HomeDockView(frame: home.bounds)
+            home.addSubview(dock)
+            dock.updateTraitsIfNeeded()
+            let entry = try XCTUnwrap(styledLabels(in: dock).first { $0.style == TextStyles.homeDockEntry })
+            entry.updateTraitsIfNeeded()
+            XCTAssertEqual(entry.renderedStyle.size, TextStyles.homeDockEntry.size * m, accuracy: 0.0001, category.rawValue)
+            // As home asks for it, from its own traits.
+            let text = await HomeDockText.make(HomeDockController.textKey(width: home.bounds.width, text: TextEnvironment(home.traitCollection)))
+            dock.text = text
+            dock.layoutIfNeeded()
+            XCTAssertEqual(text.entryLine, size(entry, .greatestFiniteMagnitude).height, category.rawValue)
+            XCTAssertEqual(entry.frame.height, text.entryLine, accuracy: 1 / dock.layoutScale + 0.0001, category.rawValue)
+        }
+    }
+
+    private func styledLabels(in view: UIView) -> [StyledLabel] {
+        view.subviews.flatMap { ($0 as? StyledLabel).map { [$0] } ?? styledLabels(in: $0) }
     }
 
     func testTheStoreLandsOnlyTheLatestKey() async {
@@ -195,6 +229,9 @@ final class HomeDockTextSizeTests: XCTestCase {
             XCTAssertEqual(composer.textView.font?.pointSize ?? 0, 16 * m, accuracy: 0.0001)
 
             composer.setText(lines(2))
+            // Not laid out yet, the composer starts measuring at its first
+            // layout, as the screen's.
+            _ = composer.layout(width: width)
             await composer.textMeasured()
             let input = composer.layout(width: width).input
             let twin = ComposerEditorGeometry.textKit1Twin(of: composer.textView)
@@ -226,6 +263,7 @@ final class HomeDockTextSizeTests: XCTestCase {
         window.addSubview(composer)
         composer.updateTraitsIfNeeded()
         composer.setText(lines(3))
+        _ = composer.layout(width: width)
         await composer.textMeasured()
         let before = composer.layout(width: width).input.height
         var changes = 0

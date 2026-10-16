@@ -122,9 +122,12 @@ final class HomeDockTextSizeLayoutTests: XCTestCase {
             let layout = composer(textHeight: promptLine, lineHeight: promptLine)
             XCTAssertEqual(layout.input.height, promptLine, "\(category)")
             // Centred in the field, which keeps its 44 until the line
-            // passes it.
+            // passes it, to the pixel above: it starts on a pixel, so its
+            // snapped frame keeps the line's height.
             let field = max(44, promptLine)
-            XCTAssertEqual(layout.input.midY, 6 + h + field / 2, accuracy: 0.0001, "\(category)")
+            XCTAssertEqual(layout.input.midY, 6 + h + field / 2, accuracy: h / 2 + 0.0001, "\(category)")
+            XCTAssertLessThanOrEqual(layout.input.midY, 6 + h + field / 2 + 0.0001, "\(category)")
+            XCTAssertEqual(layout.input.minY / h, (layout.input.minY / h).rounded(), accuracy: 0.001, "\(category)")
             XCTAssertEqual(layout.actionRow.height, 40)
             XCTAssertEqual(layout.agent.height, 36)
             XCTAssertEqual(layout.send.size, CGSize(width: 38, height: 38))
@@ -138,7 +141,9 @@ final class HomeDockTextSizeLayoutTests: XCTestCase {
         let promptLine = line(.extraSmall, lineHeight: 22)
         XCTAssertEqual(promptLine, 55.0 / 3)
         let layout = composer(textHeight: promptLine, lineHeight: promptLine)
-        assertFrame(layout.input, rect(18 + h, 6 + h + (44 - 55.0 / 3) / 2, 338 + h, 55.0 / 3))
+        // Centred, 12⅚ above, is half a pixel; it starts on the pixel
+        // above, 12⅔, so its snapped frame stays 18⅓ tall.
+        assertFrame(layout.input, rect(18 + h, 6 + h + 38.0 / 3, 338 + h, 55.0 / 3))
         assertSize(layout.size, CGSize(width: 369, height: 98))
         // The designed default stays the 22 line.
         XCTAssertEqual(composer(textHeight: 0, lineHeight: NewSessionComposerLayout.Metrics.lineHeight).input.height, 22)
