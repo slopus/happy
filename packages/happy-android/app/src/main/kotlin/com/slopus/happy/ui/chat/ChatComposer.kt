@@ -35,6 +35,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -145,7 +147,9 @@ fun resolvePrimaryAction(
  * lock-closed 14 textSecondary. A spinner replaces the glyph while
  * stopping. A locked button still takes taps (to refuse them); an idle one
  * doesn't. [panelShake] shakes the card and [primaryShake] the button
- * (Shaker.tsx).
+ * (Shaker.tsx). With [showDetails] false (reading older messages under
+ * the floating dock) the status row and the [bottom] row fade out in
+ * place (AnimatedFade).
  */
 @Composable
 fun ChatComposer(
@@ -171,6 +175,10 @@ fun ChatComposer(
     primaryShake: ShakeState? = null,
     /** Under the card, inside the composer (the usage row: week quota and context gauge). */
     bottom: @Composable () -> Unit = {},
+    /** `showStatusDetails`: false fades the status row and [bottom] out, keeping their room. */
+    showDetails: Boolean = true,
+    /** Where the card lands, for what floats just above it (the scroll-to-bottom button). */
+    onPanelPositioned: ((LayoutCoordinates) -> Unit)? = null,
 ) {
     val colors = HappyTheme.colors
     var field by remember { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
@@ -193,7 +201,7 @@ fun ChatComposer(
             .contentMaxWidth(layout),
     ) {
         Box(Modifier.fillMaxWidth().height(0.dp).wrapContentHeight(Alignment.Bottom, unbounded = true)) { overlay() }
-        if (status != null) {
+        if (status != null) AnimatedFade(showDetails) {
             Row(
                 modifier = Modifier
                     .testTag(ComposerTags.STATUS_ROW)
@@ -210,6 +218,7 @@ fun ChatComposer(
         }
         Column(
             modifier = Modifier
+                .then(if (onPanelPositioned != null) Modifier.onGloballyPositioned(onPanelPositioned) else Modifier)
                 .shake(panelShake)
                 .testTag(ComposerTags.PANEL)
                 .fillMaxWidth()
@@ -271,7 +280,7 @@ fun ChatComposer(
                 PrimaryButton(primary, aborting, onPrimary, primaryShake)
             }
         }
-        bottom()
+        AnimatedFade(showDetails) { bottom() }
     }
 }
 
