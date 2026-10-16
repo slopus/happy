@@ -1,7 +1,5 @@
 package com.slopus.happy.ui.attachments
 
-import android.net.Uri
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,19 +18,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -42,10 +35,8 @@ import androidx.compose.ui.zIndex
 import com.slopus.happy.attachments.AttachmentPreview
 import com.slopus.happy.ui.chat.ChatIcon
 import com.slopus.happy.ui.chat.ChatIconView
+import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.theme.HappyTheme
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.File
 
 object AttachmentStripSpec {
     val thumb = 64.dp
@@ -106,13 +97,6 @@ fun AttachmentStrip(images: List<AttachmentPreview>, onRemove: (String) -> Unit,
 private fun AttachmentThumbnail(image: AttachmentPreview, onRemove: (String) -> Unit) {
     val colors = HappyTheme.colors
     val shape = RoundedCornerShape(AttachmentStripSpec.radius)
-    val px = with(LocalDensity.current) { AttachmentStripSpec.thumb.roundToPx() }
-    var bitmap by remember(image.uri) { mutableStateOf<ImageBitmap?>(null) }
-    LaunchedEffect(image.uri, px) {
-        bitmap = withContext(Dispatchers.IO) {
-            Uri.parse(image.uri).path?.let { path -> runCatching { decodeSampled(File(path).readBytes(), px) }.getOrNull() }
-        }
-    }
     Box(modifier = Modifier.size(AttachmentStripSpec.thumb).testTag(AttachmentStripTags.THUMB)) {
         Box(
             modifier = Modifier
@@ -120,9 +104,7 @@ private fun AttachmentThumbnail(image: AttachmentPreview, onRemove: (String) -> 
                 .clip(shape)
                 .border(AttachmentStripSpec.border, colors.divider, shape),
         ) {
-            bitmap?.let {
-                Image(it, contentDescription = image.name, contentScale = ContentScale.Crop, modifier = Modifier.size(AttachmentStripSpec.thumb))
-            }
+            RemoteImage(image.uri, contentDescription = image.name, contentScale = ContentScale.Crop, modifier = Modifier.size(AttachmentStripSpec.thumb))
         }
         val interaction = remember { MutableInteractionSource() }
         val pressed by interaction.collectIsPressedAsState()
