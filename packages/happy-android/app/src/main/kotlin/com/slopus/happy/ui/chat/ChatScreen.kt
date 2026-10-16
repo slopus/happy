@@ -39,11 +39,14 @@ import com.slopus.happy.R
 import com.slopus.happy.chat.AgentQuestionAnswer
 import com.slopus.happy.chat.ChatSessionInfo
 import com.slopus.happy.chat.ChatState
+import com.slopus.happy.chat.ComposerModes
 import com.slopus.happy.model.SessionState
 import com.slopus.happy.model.avatarId
 import com.slopus.happy.model.compactCount
 import com.slopus.happy.model.formatPathRelativeToHome
 import com.slopus.happy.model.rigGitSummary
+import com.slopus.happy.model.settings.ModeOption
+import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.rigCanAbort
 import com.slopus.happy.ui.attachments.ComposerAddImageButton
 import com.slopus.happy.ui.attachments.ComposerAttachmentStrip
@@ -120,6 +123,8 @@ class ChatScreenActions(
     val onDiscard: (String) -> Unit = {},
     val onAnswerQuestion: suspend (communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) -> Unit = { _, _, _ -> },
     val onCancelQuestion: suspend (communicationId: String, kind: String) -> Unit = { _, _ -> },
+    /** A pick from the composer's permission, model or effort sheet. */
+    val onModeChange: (AgentModeField, ModeOption) -> Unit = { _, _ -> },
 )
 
 /**
@@ -145,6 +150,7 @@ fun ChatScreen(
     now: Long = System.currentTimeMillis(),
     compactToolCalls: Boolean = false,
     showLineNumbersInToolViews: Boolean = false,
+    modes: ComposerModes = ComposerModes.None,
 ) {
     val colors = HappyTheme.colors
     val session = state.session
@@ -220,7 +226,7 @@ fun ChatScreen(
         }
         if (session != null) {
             AgentQuestionBanner(state.pendingCommunications, actions.onAnswerQuestion, actions.onCancelQuestion)
-            ChatComposerFor(state, session, draft, actions, aborting, now)
+            ChatComposerFor(state, session, draft, actions, aborting, now, modes)
         }
     }
 }
@@ -233,6 +239,7 @@ private fun ChatComposerFor(
     actions: ChatScreenActions,
     aborting: Boolean,
     now: Long,
+    modes: ComposerModes,
 ) {
     val sessionState = state.sessionState
     val metadata = session.metadata
@@ -260,7 +267,13 @@ private fun ChatComposerFor(
         modifier = Modifier
             .windowInsetsPadding(WindowInsets.navigationBars)
             .imePadding(),
-        middle = { ComposerAddImageButton() },
+        middle = {
+            // [+] [permission ... model · effort]: the chips take what the add button leaves.
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ComposerSpec.actionRowGap)) {
+                ComposerAddImageButton()
+                ComposerModeChips(modes, metadata, actions.onModeChange, Modifier.weight(1f))
+            }
+        },
         top = { ComposerAttachmentStrip() },
     )
 }
