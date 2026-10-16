@@ -247,8 +247,15 @@ rendering the resulting `file` tool rows.
   insets that the chat keeps apart from the content insets: the keyboard and
   input panels at the newest end, the top chrome at the other, without the
   list's own padding. The list is rotated 180°, which mirrors it, so the
-  indicator is placed at the left to show on the right. It can't be
-  dragged.
+  indicator is placed at the left to show on the right. It takes no
+  touches, so it can't be dragged.
+- *Its newer list.* All of the above, and sections 1 to 4, describe the
+  classic list (`ListViewImpl`). The rotated chat history now runs by
+  default on a newer backend, `CoreListChatHistoryBackend`, kept behind a
+  server switch: a virtual list view with its own scrolling physics. It
+  draws no indicator at all; its indicator colour setting is stored and
+  never read. So Telegram has no draggable indicator to learn from, only
+  the rule for insets under the finger above.
 
 **What we do.**
 
@@ -259,10 +266,11 @@ rendering the resulting `file` tool rows.
   from how far back the reader is. A frame-by-frame Linux test
   (`ChatInsetChangeTests`) shows the old rule moving the conversation by the
   finger's travel plus the keyboard's.
-- UIKit's own indicator stays, because every row is measured before it is
-  in the list: the content size is exact, not an estimate. We keep its
-  fading, its accessibility and its long-press drag (iOS 13 and later). The
-  list is flipped only vertically, so the indicator stays on the right.
+- UIKit's own indicator stays, rather than one drawn as Telegram's is,
+  because every row is measured before it is in the list: the content size
+  is exact, not an estimate. We keep its fading, its accessibility and its
+  long-press drag (iOS 13 and later). The list is flipped only vertically,
+  so the indicator stays on the right.
 - Its insets are separate from the content insets, as in Telegram:
   `ChatScreenLayout.indicatorInsets` is what covers each end of the list
   (the dock and keyboard, the header and anything hanging under it; nothing
