@@ -22,10 +22,14 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -39,7 +43,11 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.model.MachineChoice
+import com.slopus.happy.model.SessionListGrouping
 import com.slopus.happy.model.collectMachineChoices
+import com.slopus.happy.ui.components.Alert
+import com.slopus.happy.ui.components.AlertButton
+import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.hairline
@@ -50,6 +58,17 @@ import com.slopus.happy.ui.home.HomeNavigation
 import com.slopus.happy.ui.home.HomeServices
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.ZoneId
 
 object TabletSidebarTags {
     const val SIDEBAR = "tablet.sidebar"
@@ -95,6 +114,8 @@ object TabletSidebarSpec {
  * - MainView.tsx's sidebar variant: a spinner until the first read, then
  *   [EmptySessionsTablet] or Home's list ([HomeList]) with the open session
  *   selected, flush at the top and 128 past the navigation bar at the end.
+ *   Grouped by project, it is SessionsList's own hierarchy
+ *   ([TabletGroupedList]), not home's project cards.
  * - The Settings row: a hairline on top, padded 14/16, an 18 glyph 10 before
  *   its 14 label.
  */
@@ -109,10 +130,60 @@ fun TabletSidebar(
     val services = remember(graph) { HomeServices.of(graph) }
     val snapshot by services.snapshots.collectAsStateWithLifecycle()
     val machines = remember(snapshot?.machines) { collectMachineChoices(snapshot?.machines.orEmpty()) }
-    HomeListHost(graph, navigation) { host ->
-        TabletSidebarContent(host, machines, selectedSessionId, headerHeight, modifier)
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var stopping by remember { mutableStateOf(emptySet<String>()) }
+    var alert by remember { mutableStateOf<Alert?>(null) }
+    val errorTitle = stringResource(R.string.common_error)
+    val ok = stringResource(R.string.common_ok)
+    val stopFailed = stringResource(R.string.session_info_failed_to_archive_session)
+    val unknown = stringResource(R.string.status_unknown)
+    val grouped = remember(services, navigation, context) {
+        TabletGroupedActions(
+            onStop = { id ->
+                if (id !in stopping) {
+                    stopping = stopping + id
+                    scope.launch {
+                        val result = try {
+                            services.sessionActions.kill(id)
+                        } finally {
+                            stopping = stopping - id
+                        }
+                        if (!result.success) alert = Alert(errorTitle, result.message ?: stopFailed, listOf(AlertButton(ok)))
+                    }
+                }
+            },
+            onNewInCheckout = { first ->
+                services.newSession(context.applicationContext).prepareCheckout(first?.machineId, first?.path, first?.homeDir)
+                navigation.onNewSession()
+            },
+        )
     }
+    HomeListHost(graph, navigation) { host ->
+        // Only derived while the sidebar is grouped by project.
+        val groupedRows = if (host.grouping == SessionListGrouping.Project) {
+            val rows = remember(services, unknown) { tabletGroupedRows(graph, services, unknown) }
+            rows.collectAsStateWithLifecycle(null).value
+        } else {
+            null
+        }
+        TabletSidebarContent(host, machines, selectedSessionId, headerHeight, modifier, groupedRows, grouped, stopping)
+    }
+    alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
 }
+
+/** SessionsList's grouped rows from Home's snapshot, derived off the main thread. */
+private fun tabletGroupedRows(graph: AppGraph, services: HomeServices, unknownText: String): Flow<List<TabletGroupedRow>> = combine(
+    services.snapshots.filterNotNull().filter { it.ready },
+    graph.settings.settings.map { it.hideInactiveSessions }.distinctUntilChanged(),
+    services.reads.unreadSessionIds,
+    services.archiver.archiving,
+) { snapshot, archiveHidden, unread, archiving ->
+    val zone = ZoneId.systemDefault()
+    deriveTabletGroupedList(snapshot, archiveHidden, unread, archiving, unknownText, zone, LocalDate.now(zone))
+}
+    .distinctUntilChanged()
+    .flowOn(Dispatchers.Default)
 
 @Composable
 fun TabletSidebarContent(
@@ -121,6 +192,9 @@ fun TabletSidebarContent(
     selectedSessionId: String?,
     headerHeight: Dp,
     modifier: Modifier = Modifier,
+    groupedRows: List<TabletGroupedRow>? = null,
+    grouped: TabletGroupedActions = TabletGroupedActions(onStop = {}, onNewInCheckout = {}),
+    stopping: Set<String> = emptySet(),
 ) {
     val colors = HappyTheme.colors
     val line = hairline()
@@ -164,6 +238,24 @@ fun TabletSidebarContent(
                     onNewSession = host.navigation.onNewSession,
                     onTroubleshoot = host.navigation.onTroubleshoot,
                 )
+                // MainView.tsx's sidebar mounts SessionsList, whose project grouping is its own.
+                host.grouping == SessionListGrouping.Project -> if (groupedRows == null) {
+                    Box(Modifier.fillMaxSize())
+                } else {
+                    TabletGroupedList(
+                        rows = groupedRows,
+                        offlineBanner = state.offlineBanner,
+                        update = host.update,
+                        callbacks = host.callbacks,
+                        actions = host.actions,
+                        grouped = grouped,
+                        selectedSessionId = selectedSessionId,
+                        bottomSpacer = {
+                            Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).height(TabletSidebarSpec.listBottomInset))
+                        },
+                        stopping = stopping,
+                    )
+                }
                 else -> HomeList(
                     state = state,
                     callbacks = host.callbacks,

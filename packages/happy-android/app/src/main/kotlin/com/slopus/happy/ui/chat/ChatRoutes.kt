@@ -57,6 +57,7 @@ import com.slopus.happy.ui.session.rememberPendingChatRoute
 import com.slopus.happy.ui.session.rememberSessionScreenSlots
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.files.MessageDetailRoute
 import com.slopus.happy.ui.files.toolPressRoute
 import com.slopus.happy.ui.home.resumeAvailability
 import com.slopus.happy.ui.usage.LocalUsageDisplay
@@ -89,6 +90,7 @@ fun NavGraphBuilder.chatRoutes(
             onBack = { nav.popBackStack() },
             onInfo = { onInfo(route.id) },
             onToolPress = { message -> nav.navigate(toolPressRoute(route.id, message)) },
+            onToolFilePress = { message, file -> nav.navigate(MessageDetailRoute(route.id, message.id, file = file)) },
             // A resume that comes back as another session, or another tab of the checkout, replaces this chat in place.
             onOpenSession = { id -> if (id != route.id) nav.navigate(SessionRoute(id)) { popUpTo<SessionRoute> { inclusive = true } } },
         )
@@ -103,6 +105,7 @@ private fun ChatRoute(
     onBack: () -> Unit,
     onInfo: () -> Unit,
     onToolPress: (ChatMessage.ToolCallMessage) -> Unit,
+    onToolFilePress: (ChatMessage.ToolCallMessage, String) -> Unit,
     onOpenSession: (String) -> Unit,
 ) {
     // A chat opened from a tab strip's `+` stands on its stand-in's id until the machine names it (Home's pending chats).
@@ -145,7 +148,6 @@ private fun ChatRoute(
     val machine by rememberMachine(graph, machineId)
     var resuming by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    var aborting by remember { mutableStateOf(false) }
     var sending by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<String?>(null) }
     val notSent = stringResource(R.string.errors_unknown_error)
@@ -164,6 +166,7 @@ private fun ChatRoute(
             onBack = onBack,
             onInfo = onInfo,
             onToolPress = onToolPress,
+            onToolFilePress = onToolFilePress,
             onDraftChange = draft::set,
             onSend = onSend@{ text ->
                 if (route.submit(text)) return@onSend draft.set("")
@@ -195,20 +198,8 @@ private fun ChatRoute(
                     }
                 }
             },
-            onAbort = {
-                scope.launch {
-                    aborting = true
-                    try {
-                        actions.abort(sessionId)
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        report(e)
-                    } finally {
-                        aborting = false
-                    }
-                }
-            },
+            // AgentInput.tsx: a failed stop shakes the button rather than raising an alert.
+            onAbort = { actions.abort(sessionId) },
             loadOlder = { account?.messages?.loadOlder(sessionId) ?: false },
             onPermission = { answer, mode ->
                 actions.answerPermission(sessionId, answer)
@@ -276,18 +267,20 @@ private fun ChatRoute(
         LocalSuggestionSource provides rememberSessionSuggestions(graph, sessionId, state.session?.metadata),
         LocalUsageDisplay provides UsageDisplay(settings.alwaysShowContextSize, settings.usageLimitShowRemaining),
     ) {
+        val slots = rememberSessionScreenSlots(graph, routeId, route.pending, state, onSwitch = onOpenSession, onBack = onBack)
         ChatScreen(
             state = state,
             draft = draft.text,
             bubbleColor = settings.userMessageBubbleColor,
             actions = screenActions,
-            aborting = aborting,
             compactToolCalls = settings.compactToolCalls,
             showLineNumbersInToolViews = settings.showLineNumbersInToolViews,
             modes = modes,
             gitStatus = gitStatus,
             showCliWarning = showCliWarning,
-            slots = rememberSessionScreenSlots(graph, routeId, route.pending, state, onSwitch = onOpenSession, onBack = onBack),
+            slots = slots.chat,
+            goalBar = slots.goalBar,
+            activityBar = slots.activityBar,
             inactiveHint = state.session?.let { session ->
                 // happy-app: a disconnected Happy CLI session; a Happy Agent session has its own lifecycle.
                 if (state.sessionState != SessionState.Disconnected || session.isRig) return@let null

@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -142,7 +143,9 @@ fun resolvePrimaryAction(
  * button.primary.background (dark #F5F5F5) with Octicons stop 16 white
  * (dark black); locked surfaceHigh with a 1 divider border and
  * lock-closed 14 textSecondary. A spinner replaces the glyph while
- * stopping.
+ * stopping. A locked button still takes taps (to refuse them); an idle one
+ * doesn't. [panelShake] shakes the card and [primaryShake] the button
+ * (Shaker.tsx).
  */
 @Composable
 fun ChatComposer(
@@ -160,6 +163,12 @@ fun ChatComposer(
     overlay: @Composable () -> Unit = {},
     /** Shares the cursor with [overlay]: reported as it moves, placed after an insert; it sees hardware keys first. */
     cursor: ComposerCursor? = null,
+    /** Hardware keys the [cursor] didn't take; true when used (the field then never sees it). */
+    onKey: (KeyEvent) -> Boolean = { false },
+    /** Shakes the card (a refused send). */
+    panelShake: ShakeState? = null,
+    /** Shakes the primary button (a failed stop). */
+    primaryShake: ShakeState? = null,
     /** Under the card, inside the composer (the usage row: week quota and context gauge). */
     bottom: @Composable () -> Unit = {},
 ) {
@@ -201,6 +210,7 @@ fun ChatComposer(
         }
         Column(
             modifier = Modifier
+                .shake(panelShake)
                 .testTag(ComposerTags.PANEL)
                 .fillMaxWidth()
                 .clip(shell)
@@ -229,7 +239,7 @@ fun ChatComposer(
                     textStyle = ComposerSpec.input.copy(color = colors.input.text),
                     cursorBrush = SolidColor(colors.input.text),
                     modifier = Modifier
-                        .onPreviewKeyEvent { cursor?.onKey?.invoke(it) == true }
+                        .onPreviewKeyEvent { cursor?.onKey?.invoke(it) == true || onKey(it) }
                         .testTag(ComposerTags.INPUT)
                         .fillMaxWidth()
                         .heightIn(max = ComposerSpec.inputMaxHeight),
@@ -258,7 +268,7 @@ fun ChatComposer(
                 }
                 // With the row gap on each side: 2 + 8 between the middle and the button, as in RN.
                 Spacer(Modifier.width(ComposerSpec.primaryMarginLeft - ComposerSpec.actionRowGap))
-                PrimaryButton(primary, aborting, onPrimary)
+                PrimaryButton(primary, aborting, onPrimary, primaryShake)
             }
         }
         bottom()
@@ -266,7 +276,7 @@ fun ChatComposer(
 }
 
 @Composable
-private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () -> Unit) {
+private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () -> Unit, shake: ShakeState?) {
     val colors = HappyTheme.colors
     val dark = colors.dark
     val background = when (action) {
@@ -275,11 +285,13 @@ private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () 
         PrimaryAction.Send -> colors.surfaceHighest
         PrimaryAction.Idle -> if (dark) Color(0xFF3A3A3C) else Color(0xFFD1D1D6)
     }
-    val enabled = action == PrimaryAction.Send || action == PrimaryAction.Stop
+    // A locked send still takes the tap, to refuse it.
+    val enabled = action != PrimaryAction.Idle
     // Literal in happy-app (AgentInput.tsx accessibilityLabel).
     val label = if (action == PrimaryAction.Stop) "Stop" else "Send"
     Box(
         modifier = Modifier
+            .shake(shake)
             .testTag(ComposerTags.PRIMARY)
             .size(ComposerSpec.primarySize)
             .clip(CircleShape)
@@ -292,7 +304,7 @@ private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () 
         when {
             aborting -> CircularProgressIndicator(
                 Modifier.size(20.dp),
-                color = if (dark) Color.Black else colors.text,
+                color = if (action == PrimaryAction.Stop && dark) Color.Black else colors.text,
                 strokeWidth = 2.dp,
             )
             action == PrimaryAction.Stop -> Icon(Octicon.Stop, ComposerSpec.primaryIcon, if (dark) Color.Black else Color.White)

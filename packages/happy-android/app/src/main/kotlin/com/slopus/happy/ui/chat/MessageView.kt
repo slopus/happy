@@ -123,6 +123,8 @@ class MessageCallbacks(
     /** Pressing an `<options>` choice sends it as the next message. */
     val onOptionPress: (String) -> Unit = {},
     val onToolPress: (ChatMessage.ToolCallMessage) -> Unit = {},
+    /** A patch tool's file card, by the patch's own file key; null leaves the cards inert. */
+    val onToolFilePress: ((ChatMessage.ToolCallMessage, String) -> Unit)? = null,
     /** Answers a tool's permission request; [mode] is the permission mode the composer switches to after. */
     val onPermission: PermissionHandler = { _, _ -> },
     /** A failed send, by its localId. */

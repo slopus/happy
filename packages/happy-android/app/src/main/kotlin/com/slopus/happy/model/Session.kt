@@ -22,10 +22,8 @@ data class AgentAttention(val permissionRequests: Int, val pendingCommunications
     companion object {
         val None = AgentAttention(0, 0)
 
-        fun parse(agentStateJson: String?): AgentAttention = from(parseJsonObject(agentStateJson))
-
-        fun from(state: JsonObject?): AgentAttention {
-            state ?: return None
+        fun parse(agentStateJson: String?): AgentAttention {
+            val state = parseJsonObject(agentStateJson) ?: return None
             val requests = (state["requests"] as? JsonObject)?.size ?: 0
             val communications = state["communications"] as? JsonObject ?: return AgentAttention(requests, 0)
             val completed = state["completedCommunications"] as? JsonObject
@@ -101,8 +99,6 @@ data class Session(
     val avatar: ProjectAvatar? = null,
     /** The session's own avatar as the server describes it; [avatar] once it is downloaded. */
     val avatarDescriptor: SessionAvatarDescriptor? = null,
-    /** The agent's active goal, whoever set it ([visibleAgentGoal] decides whether it shows). */
-    val goal: AgentGoal? = null,
 ) {
     /** "online" when active, else the last-seen time (storage.ts resolveSessionOnlineState). */
     val isOnline: Boolean get() = active
@@ -110,25 +106,21 @@ data class Session(
     val state: SessionState get() = resolveSessionState(attention, thinking, isOnline)
 
     companion object {
-        fun from(record: SessionRecord): Session {
-            val agentState = parseJsonObject(record.agentStateJson)
-            return Session(
-                id = record.id,
-                seq = record.seq,
-                createdAt = record.createdAt,
-                updatedAt = record.updatedAt,
-                active = record.active,
-                activeAt = record.activeAt,
-                projectId = record.projectId,
-                metadata = SessionMetadata.parse(record.metadataJson),
-                metadataVersion = record.metadataVersion,
-                attention = AgentAttention.from(agentState),
-                agentStateVersion = record.agentStateVersion,
-                lastMessageSentAt = record.lastMessageSentAt,
-                avatarDescriptor = SessionAvatarDescriptor.parse(record.avatarJson),
-                goal = AgentGoal.parse(agentState),
-            )
-        }
+        fun from(record: SessionRecord): Session = Session(
+            id = record.id,
+            seq = record.seq,
+            createdAt = record.createdAt,
+            updatedAt = record.updatedAt,
+            active = record.active,
+            activeAt = record.activeAt,
+            projectId = record.projectId,
+            metadata = SessionMetadata.parse(record.metadataJson),
+            metadataVersion = record.metadataVersion,
+            attention = AgentAttention.parse(record.agentStateJson),
+            agentStateVersion = record.agentStateVersion,
+            lastMessageSentAt = record.lastMessageSentAt,
+            avatarDescriptor = SessionAvatarDescriptor.parse(record.avatarJson),
+        )
     }
 }
 

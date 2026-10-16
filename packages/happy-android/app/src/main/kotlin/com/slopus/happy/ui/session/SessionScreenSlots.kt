@@ -2,6 +2,7 @@ package com.slopus.happy.ui.session
 
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -100,6 +101,14 @@ fun rememberPendingChatRoute(graph: AppGraph, routeId: String): PendingChatRoute
     return remember(services, routeId, key) { PendingChatRoute(services, routeId, pending) }
 }
 
+/** [chat] for ChatScreen's slots; [goalBar] and [activityBar] for its parameters of those names. */
+@Immutable
+class SessionScreenSlots(
+    val chat: ChatScreenSlots,
+    val goalBar: (@Composable () -> Unit)?,
+    val activityBar: (@Composable () -> Unit)?,
+)
+
 /**
  * What Home puts on the session screen (SessionView.tsx): grouped by
  * project, the checkout's tab strip under the header, which then names the
@@ -118,7 +127,7 @@ fun rememberSessionScreenSlots(
     state: ChatState,
     onSwitch: (String) -> Unit,
     onBack: () -> Unit,
-): ChatScreenSlots {
+): SessionScreenSlots {
     val services = remember(graph) { HomeServices.of(graph) }
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -210,7 +219,7 @@ fun rememberSessionScreenSlots(
     }
 
     // The agent's goal, while its agent session is the one running.
-    val goal = visibleAgentGoal(session?.session?.goal, state.online, metadata)
+    val goal = visibleAgentGoal(session?.agentState?.agentGoal, state.online, metadata)
     var inFlight by remember { mutableStateOf<AgentGoalAction?>(null) }
     val editTitle = stringResource(R.string.components_agent_goal_bar_edit_goal)
     val currentGoal = stringResource(R.string.components_agent_goal_bar_current_goal)
@@ -285,12 +294,14 @@ fun rememberSessionScreenSlots(
         )
     }
 
-    return ChatScreenSlots(
-        headerAccessory = strip,
-        headerTitle = headerTitle,
-        headerSubtitle = headerSubtitle,
-        aboveQuestions = goalBar,
-        aboveComposer = activityBar,
-        pending = pendingSlot,
+    return SessionScreenSlots(
+        chat = ChatScreenSlots(
+            headerAccessory = strip,
+            headerTitle = headerTitle,
+            headerSubtitle = headerSubtitle,
+            pending = pendingSlot,
+        ),
+        goalBar = goalBar,
+        activityBar = activityBar,
     )
 }

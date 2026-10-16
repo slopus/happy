@@ -8,12 +8,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -40,6 +44,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.chat.ChatRow
@@ -49,6 +54,7 @@ import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonDisplay
 import com.slopus.happy.ui.components.RoundButtonSize
+import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
@@ -59,6 +65,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 object ChatListTags {
     const val LIST = "chat.list"
     const val OLDER_END = "chat.list.older"
+    const val OLDER_INSET = "chat.list.olderInset"
     const val FOOTER = "chat.list.footer"
     const val CONTROLLED_WARNING = "chat.list.controlledWarning"
     const val SCROLL_BUTTON = "chat.list.scrollToBottom"
@@ -76,6 +83,10 @@ object ChatListSpec {
     /** Below the newest row (the inverted list's top padding). */
     val newestPadding = 8.dp
     val olderStatusHeight = 32.dp
+    /** Beyond the older-end slot in landscape on a phone, where the header doesn't overlap the list. */
+    val olderInsetLandscape = 12.dp
+    /** On a tablet the spacer is a header, the status bar and this more (OlderEnd's default inset). */
+    val olderInsetTabletExtra = 32.dp
     const val MAX_INVISIBLE_OLDER_PAGES = 5
     val footerPaddingTop = 4.dp
     val footerPaddingBottom = 2.dp
@@ -155,7 +166,7 @@ fun olderStatus(blocked: OlderBlock?, hasMoreOlder: Boolean, isLoadingOlder: Boo
  * the newest row the footer (ChatFooter), just past the oldest a 32-high
  * slot: a spinner while a page loads, "Retry" after a failure, "Load more"
  * once five pages in a row brought nothing visible (small inverted
- * RoundButtons). History is fetched whenever the oldest row is within a
+ * RoundButtons), with a spacer beyond it ([olderInset]). History is fetched whenever the oldest row is within a
  * viewport of the screen. Past 300 from the newest row a 32 round button
  * (surface at 0.9, 1 divider border, Octicons arrow-down 14) floats 16
  * above the composer, centred, and scrolls back down.
@@ -214,7 +225,7 @@ fun ChatList(
                 MessageView(row, bubble, callbacks)
             }
             item(key = "older", contentType = "older") {
-                OlderEnd(olderStatus(blocked, hasMoreOlder, isLoadingOlder), onRetry = pager::retry, onLoadMore = pager::loadMore)
+                OlderEnd(olderStatus(blocked, hasMoreOlder, isLoadingOlder), olderInset(), onRetry = pager::retry, onLoadMore = pager::loadMore)
             }
         }
         if (showScrollButton) {
@@ -237,8 +248,34 @@ fun ChatList(
     }
 }
 
+/**
+ * SessionView's `chatListTopContentInset` as the spacer beyond the oldest
+ * row. A phone in portrait runs the list under its 64 header with 52 + 12
+ * of inset, which ends where the header does: nothing here, as the list
+ * starts below the header. Landscape keeps 12. A tablet passes no inset,
+ * so OlderEnd's default holds: the header, the status bar and 32.
+ */
 @Composable
-private fun OlderEnd(status: OlderStatus, onRetry: () -> Unit, onLoadMore: () -> Unit) {
+private fun olderInset(): Dp {
+    val layout = LocalWindowLayout.current
+    return when {
+        layout.isTablet -> layout.headerHeight + WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + ChatListSpec.olderInsetTabletExtra
+        layout.isLandscape -> ChatListSpec.olderInsetLandscape
+        else -> 0.dp
+    }
+}
+
+/** OlderEnd: the spacer, then the 32 status slot against the oldest row. */
+@Composable
+private fun OlderEnd(status: OlderStatus, inset: Dp, onRetry: () -> Unit, onLoadMore: () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        if (inset > 0.dp) Spacer(Modifier.testTag(ChatListTags.OLDER_INSET).fillMaxWidth().height(inset))
+        OlderStatusSlot(status, onRetry, onLoadMore)
+    }
+}
+
+@Composable
+private fun OlderStatusSlot(status: OlderStatus, onRetry: () -> Unit, onLoadMore: () -> Unit) {
     Box(
         modifier = Modifier.testTag(ChatListTags.OLDER_END).fillMaxWidth().heightIn(min = ChatListSpec.olderStatusHeight),
         contentAlignment = Alignment.Center,
