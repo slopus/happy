@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.onboarding
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -15,14 +16,21 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
@@ -37,6 +45,10 @@ object OnboardingContentTags {
     const val WORDMARK = "onboarding.wordmark"
     const val HEADLINE = "onboarding.headline"
     const val PROPS = "onboarding.props"
+    const val LINK_TITLE = "onboarding.linkTitle"
+    const val INSTALL_ROW = "onboarding.installRow"
+    const val OPEN_ROW = "onboarding.openRow"
+    const val ERROR = "onboarding.error"
 }
 
 /** OnboardingContent.tsx */
@@ -113,66 +125,137 @@ fun WelcomeContent(modifier: Modifier = Modifier) {
     }
 }
 
+/** The two boxes of the link checklist (localSettings `linkComputerChecklist`). */
+enum class LinkChecklistStep(val key: String) { Install("install"), Open("open") }
+
 /**
- * The link checklist's layout, read-only and unticked. The Android app has
- * no link screen yet; [OnboardingScreen] only lays this under the welcome
- * content, invisibly, so the welcome actions sit where they do in happy-app.
+ * The link checklist and the line under it that reports a failed link
+ * (OnboardingContent.tsx LinkComputerContent). Title 28/34 semibold; the
+ * rows 24 below it; the error line 16 below the rows, 15/20 centred in
+ * warningCritical, one line, holding its height when empty so an error
+ * never moves the buttons. Without [onToggle] the rows are read-only and the
+ * site link is plain text.
  */
 @Composable
-fun LinkComputerContent(modifier: Modifier = Modifier) {
+fun LinkComputerContent(
+    modifier: Modifier = Modifier,
+    ticked: Set<LinkChecklistStep> = emptySet(),
+    onToggle: ((LinkChecklistStep) -> Unit)? = null,
+    disabled: Boolean = false,
+    error: String? = null,
+    onOpenDesktopSite: () -> Unit = {},
+) {
     val colors = HappyTheme.colors
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = stringResource(R.string.onboarding_link_title),
             style = cappedScale(OnboardingContentSpec.title, OnboardingContentSpec.TITLE_MAX_SCALE),
             color = colors.text,
+            modifier = Modifier.testTag(OnboardingContentTags.LINK_TITLE).semantics { heading() },
         )
         Column(modifier = Modifier.padding(top = OnboardingContentSpec.checklistGap)) {
-            ChecklistRow(title = stringResource(R.string.onboarding_install_step), last = false) {
-                Text(
-                    text = buildAnnotatedString {
-                        append(stringResource(R.string.onboarding_install_body_prefix))
-                        withStyle(SpanStyle(color = colors.text, textDecoration = TextDecoration.Underline)) {
-                            append(stringResource(R.string.onboarding_install_body_link))
-                        }
-                        append(stringResource(R.string.onboarding_install_body_suffix))
-                    },
-                    style = OnboardingContentSpec.body,
-                    color = colors.textSecondary,
-                )
+            ChecklistRow(
+                checked = LinkChecklistStep.Install in ticked,
+                title = stringResource(R.string.onboarding_install_step),
+                onToggle = onToggle?.let { { it(LinkChecklistStep.Install) } },
+                disabled = disabled,
+                modifier = Modifier.testTag(OnboardingContentTags.INSTALL_ROW),
+            ) {
+                val linkText = stringResource(R.string.onboarding_install_body_link)
+                val body = buildAnnotatedString {
+                    append(stringResource(R.string.onboarding_install_body_prefix))
+                    val style = TextLinkStyles(SpanStyle(color = colors.text, textDecoration = TextDecoration.Underline))
+                    if (onToggle != null) {
+                        withLink(LinkAnnotation.Clickable(DESKTOP_URL, style) { onOpenDesktopSite() }) { append(linkText) }
+                    } else {
+                        withStyle(style.style!!) { append(linkText) }
+                    }
+                    append(stringResource(R.string.onboarding_install_body_suffix))
+                }
+                Text(text = body, style = OnboardingContentSpec.body, color = colors.textSecondary)
             }
-            ChecklistRow(title = stringResource(R.string.onboarding_open_step), last = true) {
+            ChecklistRow(
+                checked = LinkChecklistStep.Open in ticked,
+                title = stringResource(R.string.onboarding_open_step),
+                onToggle = onToggle?.let { { it(LinkChecklistStep.Open) } },
+                disabled = disabled,
+                last = true,
+                modifier = Modifier.testTag(OnboardingContentTags.OPEN_ROW),
+            ) {
                 Text(text = stringResource(R.string.onboarding_open_body), style = OnboardingContentSpec.body, color = colors.textSecondary)
             }
         }
-        // A no-break space holds the error line's height.
+        // A no-break space holds one line of height while there is no error.
         Text(
-            text = "\u00a0",
+            text = error ?: "\u00a0",
             style = OnboardingContentSpec.error,
             color = colors.warningCritical,
             textAlign = TextAlign.Center,
             maxLines = 1,
-            modifier = Modifier.fillMaxWidth().padding(top = OnboardingContentSpec.errorGap),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = OnboardingContentSpec.errorGap)
+                .testTag(OnboardingContentTags.ERROR)
+                .then(if (error != null) Modifier.semantics { liveRegion = LiveRegionMode.Polite } else Modifier.clearAndSetSemantics {}),
         )
     }
 }
 
+/** happy.engineering, where the desktop app is downloaded. */
+const val DESKTOP_URL = "https://happy.engineering"
+
+/**
+ * One checklist row (ChecklistRow): a 26 checkbox (checkmark-circle in
+ * success when ticked, ellipse-outline in secondary otherwise) 12 before the
+ * title 17/22 semibold, at least 32 high; the body 38 in and 6 below; 20
+ * below the row unless it is the [last]. Ticking changes only the box.
+ * With [onToggle] the head is a checkbox; without it, read-only.
+ */
 @Composable
-private fun ChecklistRow(title: String, last: Boolean, body: @Composable () -> Unit) {
+fun ChecklistRow(
+    checked: Boolean,
+    title: String,
+    modifier: Modifier = Modifier,
+    onToggle: (() -> Unit)? = null,
+    disabled: Boolean = false,
+    last: Boolean = false,
+    body: (@Composable () -> Unit)? = null,
+) {
     val colors = HappyTheme.colors
-    Column(modifier = if (last) Modifier else Modifier.padding(bottom = OnboardingContentSpec.rowGap)) {
+    Column(modifier = modifier.then(if (last) Modifier else Modifier.padding(bottom = OnboardingContentSpec.rowGap))) {
         Row(
-            modifier = Modifier.defaultMinSize(minHeight = OnboardingContentSpec.rowHeadMinHeight),
+            modifier = Modifier
+                .defaultMinSize(minHeight = OnboardingContentSpec.rowHeadMinHeight)
+                .then(
+                    if (onToggle != null) {
+                        Modifier.toggleable(
+                            value = checked,
+                            enabled = !disabled,
+                            role = Role.Checkbox,
+                            interactionSource = null,
+                            indication = null,
+                            onValueChange = { onToggle() },
+                        )
+                    } else {
+                        Modifier
+                    },
+                ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(OnboardingContentSpec.rowHeadGap),
         ) {
             Box(modifier = Modifier.size(OnboardingContentSpec.checkbox), contentAlignment = Alignment.Center) {
-                Icon(icon = Ionicon.EllipseOutline, size = OnboardingContentSpec.checkbox, color = colors.textSecondary)
+                Icon(
+                    icon = if (checked) Ionicon.CheckmarkCircle else Ionicon.EllipseOutline,
+                    size = OnboardingContentSpec.checkbox,
+                    color = if (checked) colors.success else colors.textSecondary,
+                )
             }
             Text(text = title, style = OnboardingContentSpec.rowTitle, color = colors.text, modifier = Modifier.weight(1f))
         }
-        Box(modifier = Modifier.padding(start = OnboardingContentSpec.rowBodyIndent, top = OnboardingContentSpec.rowBodyGap)) {
-            body()
+        if (body != null) {
+            Box(modifier = Modifier.padding(start = OnboardingContentSpec.rowBodyIndent, top = OnboardingContentSpec.rowBodyGap)) {
+                body()
+            }
         }
     }
 }

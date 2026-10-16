@@ -254,11 +254,16 @@ fun GetHelpButton() {
 }
 
 /**
- * OnboardingHeader: no title, the server gear on the right, and for
+ * OnboardingHeader: no title, the gear on the right (Server on the welcome
+ * screen, the onboarding settings on Link Your Computer), and for
  * self-hosters the server's host underneath (11/14, secondary colour).
  */
 @Composable
-fun OnboardingHeader(customServerLabel: String?, onServer: () -> Unit) {
+fun OnboardingHeader(
+    customServerLabel: String?,
+    onServer: () -> Unit,
+    gearDescription: String = stringResource(R.string.server_title),
+) {
     val colors = HappyTheme.colors
     Header(
         alignment = TitleAlignment.Center,
@@ -278,7 +283,7 @@ fun OnboardingHeader(customServerLabel: String?, onServer: () -> Unit) {
         right = {
             HeaderIconButton(
                 icon = Ionicon.SettingsOutline,
-                contentDescription = stringResource(R.string.server_title),
+                contentDescription = gearDescription,
                 onClick = onServer,
             )
         },

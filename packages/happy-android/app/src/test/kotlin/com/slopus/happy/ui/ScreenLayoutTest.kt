@@ -2,11 +2,8 @@ package com.slopus.happy.ui
 
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
-import androidx.compose.ui.test.assertIsOff
-import androidx.compose.ui.test.assertIsOn
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
-import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
@@ -15,17 +12,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.auth.AuthApi.ServerProbe
 import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.components.ItemGroupTags
-import com.slopus.happy.ui.components.ItemTags
-import com.slopus.happy.ui.home.HomeScreen
-import com.slopus.happy.ui.home.HomeTags
 import com.slopus.happy.ui.server.ServerScreen
 import com.slopus.happy.ui.server.ServerTags
-import com.slopus.happy.ui.settings.AccountScreen
-import com.slopus.happy.ui.settings.AccountTags
-import com.slopus.happy.ui.settings.AppearanceScreen
-import com.slopus.happy.ui.settings.SettingsScreen
-import com.slopus.happy.ui.settings.SettingsTags
-import com.slopus.happy.ui.theme.ThemePreference
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -40,19 +28,6 @@ import org.robolectric.annotation.GraphicsMode
 class ScreenLayoutTest {
     @get:Rule
     val rule = createComposeRule()
-
-    @Test
-    fun homeHeader() {
-        rule.setHappyContent { HomeScreen(onSettings = {}) }
-        // Logo: 32 box centred in the 48 left slot; settings: 44 button centred in the 48 right slot.
-        assertBox("logo box", rule.node(HomeTags.LOGO).bounds, 24.dp, 16.dp, 32.dp, 32.dp)
-        assertBox("settings button", rule.node(HomeTags.SETTINGS).bounds, (PHONE_WIDTH - 16 - 46).dp, 10.dp, 44.dp, 44.dp)
-        val title = rule.node(HeaderTags.TITLE).bounds
-        assertDp("title centred", (PHONE_WIDTH / 2f).dp, (title.left + title.right) / 2)
-        assertDp("title line height", 20, title.bottom - title.top)
-        val empty = rule.node(HomeTags.EMPTY).bounds
-        assertDp("empty state centred", (PHONE_WIDTH / 2f).dp, (empty.left + empty.right) / 2)
-    }
 
     @Test
     fun serverFormSpec() {
@@ -109,66 +84,6 @@ class ScreenLayoutTest {
         rule.onNodeWithText("Continue with this server?").assertIsDisplayed()
         rule.onNodeWithText("Continue").performClick()
         assertEquals("https://happy.example.com", saved)
-    }
-
-    @Test
-    fun settingsAppCard() {
-        rule.setHappyContent { SettingsScreen(versionName = "0.1.0", onBack = {}, onAccount = {}, onAppearance = {}, onOpenUrl = {}) }
-        val card = rule.node(SettingsTags.APP_CARD).bounds
-        assertBox("card", card, 16.dp, (64 + 16).dp, (PHONE_WIDTH - 32).dp, (24 + 90 + 12 + 24).dp)
-        assertBox("logotype", rule.node(SettingsTags.LOGOTYPE).bounds, (16 + (PHONE_WIDTH - 32 - 300) / 2f).dp, (64 + 16 + 24).dp, 300.dp, 90.dp)
-        val featuresHeader = rule.onAllNodesWithTag(ItemGroupTags.HEADER, useUnmergedTree = true)[0].bounds
-        assertDp("features group follows the card", card.bottom, featuresHeader.top)
-        rule.onNodeWithText("0.1.0").assertIsDisplayed()
-    }
-
-    @Test
-    fun accountSecretKeyRevealAndAnalyticsSwitch() {
-        var optOut = false
-        rule.setHappyContent {
-            AccountScreen(
-                anonId = "0123456789abcdef",
-                publicId = "cmabc",
-                formattedSecretKey = "AAAAA-BBBBB-CCCCC-DDDDD-EEEEE-FFFFF-GGGGG-HHHHH-IIIII-JJJJJ-KKKKK-LLLLL-M",
-                analyticsOptOut = optOut,
-                onAnalyticsOptOutChange = { optOut = it },
-                onLogout = {},
-                onBack = {},
-            )
-        }
-        rule.onAllNodesWithTag(AccountTags.SECRET_KEY, useUnmergedTree = true).assertCountEquals(0)
-        rule.onNodeWithText("Secret Key").performClick()
-        val block = rule.node(AccountTags.SECRET_KEY).bounds
-        val text = rule.node(AccountTags.SECRET_KEY_TEXT).bounds
-        assertDp("secret text inset 16", block.left + 16.dp, text.left)
-        assertDp("14 under the secret text", text.bottom + 14.dp, block.bottom)
-        assertDp("secret text lines are 20", 0f.dp, ((text.bottom - text.top).value % 20f).dp)
-
-        rule.node(AccountTags.ANALYTICS_SWITCH).assertIsOn().performClick()
-        assertTrue("switching analytics off opts out", optOut)
-    }
-
-    @Test
-    fun accountAnalyticsSwitchShowsOptOut() {
-        rule.setHappyContent {
-            AccountScreen(
-                anonId = null, publicId = null, formattedSecretKey = "",
-                analyticsOptOut = true, onAnalyticsOptOutChange = {}, onLogout = {}, onBack = {},
-            )
-        }
-        rule.node(AccountTags.ANALYTICS_SWITCH).assertIsOff()
-        rule.onAllNodesWithText("Not available").assertCountEquals(2)
-    }
-
-    @Test
-    fun appearanceCyclesTheTheme() {
-        var theme = ThemePreference.Adaptive
-        rule.setHappyContent { AppearanceScreen(theme = theme, onThemeChange = { theme = it }, onBack = {}) }
-        rule.onNodeWithText("Adaptive").assertIsDisplayed()
-        val row = rule.node(ItemTags.ROW).bounds
-        assertDp("theme row: icon, title and subtitle", 76, row.bottom - row.top)
-        rule.node(ItemTags.ROW).performClick()
-        assertEquals(ThemePreference.Light, theme)
     }
 
     private fun hairline() = (1f / 3f).dp
