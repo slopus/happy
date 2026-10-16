@@ -2,8 +2,9 @@
 <!--
   Production only, as app.config.js adds the intent filter only when
   APP_ENV is production: https://app.happy.engineering links open the app.
-  Verification needs the release signing key's fingerprint in
-  https://app.happy.engineering/.well-known/assetlinks.json.
+  https://app.happy.engineering/.well-known/assetlinks.json already lists
+  com.ex3ndr.happy (happy-app's public/.well-known/assetlinks.json), so a
+  Play-signed build verifies as the React Native app does.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>

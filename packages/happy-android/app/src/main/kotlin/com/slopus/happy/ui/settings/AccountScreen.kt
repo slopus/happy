@@ -3,6 +3,8 @@ package com.slopus.happy.ui.settings
 import android.content.ClipData
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
@@ -45,11 +47,13 @@ import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Item
 import com.slopus.happy.ui.components.ItemGroup
 import com.slopus.happy.ui.components.ItemList
+import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.components.StackHeader
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.PlexMono
 import com.slopus.happy.ui.theme.happyTextStyle
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -57,6 +61,7 @@ object AccountTags {
     const val SECRET_KEY = "account.secretKey"
     const val SECRET_KEY_TEXT = "account.secretKeyText"
     const val ANALYTICS_SWITCH = "account.analyticsSwitch"
+    const val GITHUB_AVATAR = "account.githubAvatar"
 }
 
 /** settings/account.tsx */
@@ -145,9 +150,20 @@ fun AccountScreen(
     val resources = LocalResources.current
     fun copiedMessage(label: String): String = resources.getString(R.string.items_copied_to_clipboard, label)
 
-    fun copy(text: String, then: () -> Unit) {
+    val errorTitle = stringResource(R.string.common_error)
+    val secretCopyFailed = stringResource(R.string.settings_account_secret_key_copy_failed)
+
+    /** Copies [text]; a clipboard that refuses calls [failed] instead of crashing. */
+    fun copy(text: String, failed: () -> Unit = {}, then: () -> Unit) {
         scope.launch {
-            clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(text, text)))
+            try {
+                clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(text, text)))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                failed()
+                return@launch
+            }
             then()
         }
     }
@@ -189,7 +205,7 @@ fun AccountScreen(
             val disconnect = stringResource(R.string.modals_disconnect)
             val resourcesForConfirm = LocalResources.current
             fun confirmDisconnect(title: String, message: String, action: () -> Unit) {
-                alert = Alert(title, message, listOf(AlertButton(cancel), AlertButton(disconnect, destructive = true, onClick = action)))
+                alert = Alert(title, message, listOf(AlertButton(cancel), AlertButton(disconnect, destructive = true, onClick = action)), cancelable = false)
             }
 
             val displayName = profile.displayName
@@ -206,8 +222,15 @@ fun AccountScreen(
                             title = stringResource(R.string.settings_account_github),
                             detail = "@$gitHubLogin",
                             subtitle = stringResource(R.string.settings_account_tap_to_disconnect),
-                            // happy-app shows the uploaded avatar here when there is one; no URL image loader yet.
-                            icon = { ItemIcon(Ionicon.LogoGithub, colors.textSecondary) },
+                            // The uploaded avatar when there is one (no thumbhash placeholder), else the logo.
+                            icon = {
+                                val url = profile.avatar?.url?.takeIf { it.isNotEmpty() }
+                                if (url != null) {
+                                    RemoteImage(url, contentDescription = null, modifier = Modifier.size(SettingsSpec.itemIcon).clip(CircleShape).testTag(AccountTags.GITHUB_AVATAR))
+                                } else {
+                                    ItemIcon(Ionicon.LogoGithub, colors.textSecondary)
+                                }
+                            },
                             onClick = { confirmDisconnect(title, message, onDisconnectGitHub) },
                             loading = gitHubBusy,
                             showChevron = false,
@@ -267,7 +290,7 @@ fun AccountScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable {
-                                copy(formattedSecretKey) {
+                                copy(formattedSecretKey, failed = { alert = Alert(errorTitle, secretCopyFailed, listOf(AlertButton(ok))) }) {
                                     copiedRecently = true
                                     alert = Alert(successTitle, secretCopied, listOf(AlertButton(ok)))
                                 }
@@ -389,6 +412,7 @@ fun AccountScreen(
                                     "Delete Push Token",
                                     "Remove $fingerprint from your account?",
                                     listOf(AlertButton(cancel), AlertButton(delete, destructive = true) { onDeletePushToken(token) }),
+                                    cancelable = false,
                                 )
                             }
                         },
@@ -417,6 +441,7 @@ fun AccountScreen(
                             logoutTitle,
                             logoutConfirm,
                             listOf(AlertButton(cancel), AlertButton(logoutTitle, destructive = true, onClick = onLogout)),
+                            cancelable = false,
                         )
                     },
                 )
