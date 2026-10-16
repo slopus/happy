@@ -51,7 +51,7 @@ fun DiffImageView(before: String?, after: String?, modifier: Modifier = Modifier
         return
     }
     Row(
-        modifier = modifier.fillMaxWidth().background(palette.surface).padding(12.dp).testTag(DiffTags.IMAGE),
+        modifier = modifier.fillMaxWidth().testTag(DiffTags.IMAGE).background(palette.surface).padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (before != null) Pane(before, stringResource(R.string.diff_image_before), palette.markerDel, palette, Modifier.weight(1f))
