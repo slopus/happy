@@ -432,3 +432,42 @@ only if:
   different Firebase project needs its key uploaded to Expo);
 - the device has Play services (otherwise unsupported, as FCM has no
   token there).
+
+## Attachments and images
+
+- **Transfer** (`attachments/`): apiAttachments.ts over OkHttp. Local
+  storage is PUT/GET back to the server with the bearer token (only when
+  the URL is the server's); S3 is a presigned multipart POST (policy
+  fields, then `file`) and a presigned GET with no Happy headers. Every
+  failure is an `AttachmentDiagnosticError` whose message and diagnostic
+  went through attachmentDiagnostics.ts's redaction, so they can be logged.
+- **Crypto**: blobs are `encryptBlob` (secretbox, nonce || box) under the
+  session's blob key, `deriveKey(dataKey, "Happy Blobs", ["session"])`
+  (`SessionBlobKeys`, from the stored wrapped data key).
+- **Sending**: the composer's images are normalized at pick time (upright,
+  long edge ≤ 3072, JPEG 0.92, `<stem>.jpg`, ≤ 10 MB − 40 so the encrypted
+  blob fits), uploaded on send (`prepareAttachmentSend`: flavor and rig
+  policy, then upload; a failed image is counted, not fatal), and handed to
+  `ChatActions.send(..., attachments = fileEventRecords(uploaded))`, which
+  queues sync.ts's `file` session events ahead of the text.
+- **Picking**: the Android photo picker (`PickVisualMedia`), so no storage
+  permission (happy-app blocks READ_MEDIA_IMAGES); paste reads an image
+  URI from the clipboard. The add button always asks Paste or Library, as
+  useImagePicker does. No thumbhash on Android, as on happy-app native.
+- **Showing**: `file` tool rows render `FileMessageView`, which downloads
+  and decrypts on demand through `AttachmentTransfers` (50-entry LRU of
+  decrypted blobs, one download per ref).
+
+### Image loading
+
+One Coil 3 `ImageLoader` (`ui/components/RemoteImage.kt`) for every
+picture that isn't bundled: profile pictures by URL (`Avatar` with an
+http(s) `imageUri`), markdown images (`MarkdownImage`), and attachment
+thumbnails and file messages (decrypted bytes, keyed by ref). Coil because
+it is Compose-first and coroutine-based, sizes decodes to the view,
+brings the memory and disk caches expo-image gives happy-app, and plugs
+into our OkHttp; Glide is View-first with an annotation processor, and a
+hand-rolled loader would re-implement caching and downsampling. The
+loader uses its own OkHttp client without Happy headers (these URLs are
+third-party). Tests swap it through `LocalImageLoader` with coil-test's
+`FakeImageLoaderEngine`.

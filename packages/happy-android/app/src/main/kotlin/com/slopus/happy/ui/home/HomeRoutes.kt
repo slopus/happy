@@ -10,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
@@ -79,7 +80,9 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -97,6 +100,8 @@ class HomeServices private constructor(graph: AppGraph) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val account = graph.account
+    private val store = graph.store
+    private val settings = graph.settings.settings
 
     val sessionActions: SessionActions = LiveSessionActions { account.value?.sessionOps }
     val archiver = SessionArchiver(sessionActions)
@@ -156,6 +161,40 @@ class HomeServices private constructor(graph: AppGraph) {
 
     fun launch(block: suspend CoroutineScope.() -> Unit) = scope.launch(block = block)
 
+    private var newSessionServices: NewSessionServices? = null
+
+    /** The new-session composer, its draft in the app's own preferences. */
+    @Synchronized
+    fun newSession(context: Context): NewSessionServices = newSessionServices ?: run {
+        val drafts = NewSessionDraftStore(context.getSharedPreferences(NewSessionDraftStore.PREFS_NAME, Context.MODE_PRIVATE))
+        val machineActions = LiveMachineActions { account.value?.machineOps }
+        val starter = SessionStarter(
+            machines = { snapshots.value?.machines.orEmpty() },
+            sessions = { snapshots.value?.sessions.orEmpty() },
+            settings = { settings.value },
+            drafts = drafts,
+            machineActions = machineActions,
+            sessionActions = sessionActions,
+            sender = LiveFirstMessageSender { account.value },
+            awaitSession = ::awaitSession,
+            scope = scope,
+        )
+        val resources = context.resources
+        NewSessionServices(drafts, snapshots, settings, machineActions, starter, newSessionLabels(resources), resources::getString, scope)
+    }.also { newSessionServices = it }
+
+    /** sync.ts ensureSessionReady: the new session's row in the store, pulled in by a sync if need be. */
+    private suspend fun awaitSession(id: String): Boolean {
+        suspend fun stored() = withContext(Dispatchers.IO) { store.session(id) != null }
+        var attempt = 0
+        while (!stored() && attempt < 3) {
+            if (attempt > 0) delay(300L * attempt)
+            account.value?.let { withTimeoutOrNull(4_000) { it.syncNow() } }
+            attempt++
+        }
+        return stored()
+    }
+
     companion object {
         private val instances = WeakHashMap<AppGraph, HomeServices>()
 
@@ -197,10 +236,19 @@ fun NavGraphBuilder.homeRoutes(
             onOpenSession = onOpenSession,
             onOpenMachine = { id -> nav.navigate(MachineRoute(id)) },
             onTroubleshoot = onTroubleshoot,
-            onNewSession = {},
+            onNewSession = { nav.navigate(NewSessionRoute) },
             onDetails = { id -> nav.navigate(SessionInfoRoute(id)) },
-            onCreateWorkspace = {},
         )
+    }
+    composable<NewSessionRoute> {
+        val dock = rememberNewSessionDock(
+            graph,
+            focused = true,
+            onFocusChange = { focused -> if (!focused) nav.popBackStack() },
+            onStarted = onOpenSession,
+            initialPrompt = { HomeServices.of(graph).newSession(nav.context.applicationContext).draft.value.input },
+        )
+        NewSessionScreen(dock, onBack = { nav.popBackStack() })
     }
     composable<SessionInfoRoute> { entry ->
         SessionInfoRouteScreen(graph, entry.toRoute<SessionInfoRoute>().id, nav, onOpenSession)
@@ -283,7 +331,6 @@ private fun HomeRouteScreen(
     onTroubleshoot: () -> Unit,
     onNewSession: () -> Unit,
     onDetails: (String) -> Unit,
-    onCreateWorkspace: (WorkspaceOrigin) -> Unit,
 ) {
     val services = remember(graph) { HomeServices.of(graph) }
     val state by services.list.state.collectAsStateWithLifecycle()
@@ -312,6 +359,22 @@ private fun HomeRouteScreen(
         onDuplicate = { duplicating = it },
         showAlert = showAlert,
     )
+    var dockFocused by rememberSaveable { mutableStateOf(false) }
+    val dock = rememberNewSessionDock(
+        graph,
+        focused = dockFocused,
+        onFocusChange = { dockFocused = it },
+        onStarted = onOpenSession,
+        showScrim = state?.rows?.isNotEmpty() == true,
+    )
+    val context = LocalContext.current
+    // ProjectHomeList's "+": the dock opens on a new workspace of that project.
+    val onCreateWorkspace = remember(services, context) {
+        { origin: WorkspaceOrigin ->
+            services.newSession(context.applicationContext).prepareWorkspace(origin.machineId, origin.projectId, origin.path)
+            dockFocused = true
+        }
+    }
     val createWorkspaceLabel = stringResource(R.string.home_create_workspace)
     val cancelLabel = stringResource(R.string.common_cancel)
 
@@ -355,8 +418,11 @@ private fun HomeRouteScreen(
             offlineContent = { computers, onShowArchived ->
                 LinkComputerChecklist(graph, computers = computers, onTroubleshoot = onTroubleshoot, onShowArchived = onShowArchived)
             },
+            dock = dock.state,
+            dockActions = dock.actions,
         )
     }
+    dock.dialogs()
     duplicating?.let { session ->
         DuplicateSheet(
             source = session.forkSource(),
