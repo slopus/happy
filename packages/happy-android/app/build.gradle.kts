@@ -222,6 +222,84 @@ androidComponents {
     }
 }
 
+/**
+ * The release APK can't be run here, so after R8 this reads what it kept:
+ * every `@Serializable` type in the sources keeps a `serializer()` by rule
+ * (Navigation's routes and reified decoding look it up reflectively), the
+ * manifest's own components survive, and the merged manifest still has the
+ * Play Store `<queries>` entry, the App Link, the FCM service and the
+ * default notification channel. assembleRelease runs it.
+ */
+abstract class VerifyReleaseKeeps : DefaultTask() {
+    @get:InputFile abstract val seeds: RegularFileProperty
+    @get:InputFile abstract val manifest: RegularFileProperty
+    @get:InputFiles abstract val sources: ConfigurableFileCollection
+    @get:OutputFile abstract val report: RegularFileProperty
+
+    @TaskAction
+    fun verify() {
+        val problems = mutableListOf<String>()
+        val seedLines = seeds.get().asFile.readLines()
+        val withSerializer = seedLines
+            .filter { it.endsWith("kotlinx.serialization.KSerializer serializer()") }
+            .map { it.substringBefore(':').removeSuffix("\$Companion").split('.', '$').last() }
+            .toSet()
+        val declaration = Regex("""@Serializable\b(?:\([^)]*\))?(?:\s|@\w+(?:\([^)]*\))?)*(?:(?:public|internal|private|data|sealed|enum|value|abstract|open)\s+)*(?:class|object|interface)\s+(\w+)""")
+        val serializable = sources.files.filter { it.extension == "kt" }
+            .flatMap { file -> declaration.findAll(file.readText()).map { it.groupValues[1] }.toList() }
+            .toSortedSet()
+        if (serializable.isEmpty()) problems += "no @Serializable types found in the sources"
+        (serializable - withSerializer).forEach { problems += "R8 kept no serializer() for @Serializable $it" }
+
+        val xml = manifest.get().asFile.readText()
+        val kept = seedLines.filter { ':' !in it }.toSet()
+        Regex("""android:name="(com\.slopus\.happy\.[\w.]+)"""").findAll(xml).map { it.groupValues[1] }.toSet()
+            .filter { it !in kept }
+            .forEach { problems += "manifest component $it is not kept by R8" }
+        // The element: its opening tag alone when self-closed, else up to its closing tag.
+        fun component(tag: String, name: String): String? {
+            val open = Regex("""<$tag\s[^>]*?android:name="$name"[^>]*>""").find(xml) ?: return null
+            if (open.value.endsWith("/>")) return open.value
+            val end = xml.indexOf("</$tag>", open.range.last)
+            return if (end < 0) null else xml.substring(open.range.first, end)
+        }
+        if (!Regex("""<queries>[\s\S]*?<package android:name="com\.android\.vending"""").containsMatchIn(xml)) {
+            problems += "<queries> lost com.android.vending (QrScanner, ReviewPrompt look for the Play Store)"
+        }
+        val activity = component("activity", "com.slopus.happy.MainActivity")
+        if (activity == null || "android:exported=\"true\"" !in activity) problems += "MainActivity is not exported"
+        if (activity == null || !Regex("""autoVerify="true"[\s\S]*?android:host="app\.happy\.engineering"""").containsMatchIn(activity)) {
+            problems += "MainActivity lost the verified App Link for app.happy.engineering"
+        }
+        val messaging = component("service", "com.slopus.happy.push.HappyMessagingService")
+        if (messaging == null || "com.google.firebase.MESSAGING_EVENT" !in messaging || "android:exported=\"false\"" !in messaging) {
+            problems += "HappyMessagingService is missing, not on MESSAGING_EVENT, or exported"
+        }
+        val receiver = component("receiver", "com.slopus.happy.push.BackgroundSendReceiver")
+        if (receiver == null || "android:exported=\"false\"" !in receiver) problems += "BackgroundSendReceiver is missing or exported"
+        val channel = Regex("""const val DEFAULT = "([^"]+)"""").find(
+            sources.files.firstOrNull { it.name == "PushNotifications.kt" }?.readText().orEmpty(),
+        )?.groupValues?.get(1)
+        if (channel == null || !Regex("""default_notification_channel_id"\s+android:value="$channel"""").containsMatchIn(xml)) {
+            problems += "FCM's default_notification_channel_id is not NotificationChannels.DEFAULT ($channel)"
+        }
+
+        report.get().asFile.writeText(
+            if (problems.isEmpty()) "ok: ${serializable.size} serializable types, manifest checked\n" else problems.joinToString("\n"),
+        )
+        check(problems.isEmpty()) { "Release build safety:\n" + problems.joinToString("\n") { "- $it" } }
+    }
+}
+
+val verifyReleaseKeeps = tasks.register<VerifyReleaseKeeps>("verifyReleaseKeeps") {
+    dependsOn("minifyReleaseWithR8", "processReleaseMainManifest")
+    seeds.set(layout.buildDirectory.file("outputs/mapping/release/seeds.txt"))
+    manifest.set(layout.buildDirectory.file("intermediates/merged_manifest/release/processReleaseMainManifest/AndroidManifest.xml"))
+    sources.from(fileTree("src/main/kotlin"))
+    report.set(layout.buildDirectory.file("reports/verifyReleaseKeeps.txt"))
+}
+tasks.matching { it.name == "assembleRelease" }.configureEach { dependsOn(verifyReleaseKeeps) }
+
 kotlin {
     jvmToolchain(libs.versions.java.toolchain.get().toInt())
     compilerOptions {
