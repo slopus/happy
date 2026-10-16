@@ -269,9 +269,14 @@ public struct NewSessionComposerLayout: Equatable, Sendable {
         textScrolls = input.textHeight > M.inputMaxHeight
         let fieldY = border + M.paddingVertical
         let fieldHeight = max(M.fieldMinHeight, textHeight)
+        // Centred to the pixel above, so the input, whose height is on the
+        // pixel grid, keeps it when its frame is snapped; centred exactly,
+        // a scaled line (37 at XS in the 44) starts on half a pixel and
+        // snaps a pixel taller or shorter than its text.
+        let slack = (fieldHeight - textHeight) / 2
         self.input = CGRect(
             x: contentX + M.fieldPaddingLeft,
-            y: fieldY + (fieldHeight - textHeight) / 2,
+            y: fieldY + (border > 0 ? (slack / border + 0.001).rounded(.down) * border : slack),
             width: max(0, contentWidth - M.fieldPaddingLeft - M.fieldPaddingRight),
             height: textHeight
         )

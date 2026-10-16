@@ -306,7 +306,13 @@ Following now:
 - The new-session screen (new/index.tsx). The prompt draws at `16 × m`
   on a `22 × m` line, measured off the main thread with the scaled style
   and line in its key, so a new size measures it again; the typed text
-  is restyled in place, its selection kept. The 44 field, the 120 cap,
+  is restyled in place, its selection kept. Empty, it is one line up to
+  the screen's next pixel, as Fabric ceils an input's box, and it is
+  centred in the 44 field to the pixel above, so its snapped frame keeps
+  the height measured: centred exactly, a height an odd number of pixels
+  off the 44 starts on half a pixel, and the frame was a pixel taller or
+  shorter than the text (37⅓ for 37 at XS; and an empty line of 18.11
+  was snapped to 18). The 44 field, the 120 cap,
   the 40 action row, the 36 harness capsule and the 38 controls keep
   their size. Every label's size (the place rows, the offline help, the
   harness's name, the pickers' options, sections, notes and empty

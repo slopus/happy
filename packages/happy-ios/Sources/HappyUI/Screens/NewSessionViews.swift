@@ -475,18 +475,22 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
     private var agentLabel: Measurable {
         sizes?.measurable(agentButton.label) ?? agentButton.label.measurable
     }
-    /// The text size the prompt draws at, under `FollowsTextSize`; nil at
-    /// the designed size.
-    private var textScale: TextScale?
+    /// The text size and screen the prompt draws at, under
+    /// `FollowsTextSize`; nil at the designed size.
+    private var textEnvironment: TextEnvironment?
 
     /// `composerInput` at the text size: 16 on a 22 line, both × RN's
     /// multiplier. The 120 cap and the 44 minimum stay.
     private var inputStyle: TextStyle {
-        textScale.map { TextStyles.composerInput.scaled($0) } ?? TextStyles.composerInput
+        textEnvironment.map { TextStyles.composerInput.scaled($0.scale) } ?? TextStyles.composerInput
     }
 
+    /// One line of the prompt: at a text size `22 × m` up to the screen's
+    /// next pixel, as Fabric ceils a TextInput's measured box
+    /// (`RCTTextLayoutManager.mm` 391-392), so the frame it is given is on
+    /// the pixel grid and isn't rounded down under its text.
     private var inputLineHeight: CGFloat {
-        textScale.map { _ in inputStyle.lineHeightValue } ?? NewSessionComposerLayout.Metrics.lineHeight
+        textEnvironment.map { TextStyles.composerInput.oneLine(in: $0) } ?? NewSessionComposerLayout.Metrics.lineHeight
     }
 
     override init(frame: CGRect) {
@@ -509,7 +513,8 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
         for view in [agentButton, settingsButton, micButton, sendButton] as [UIView] {
             glass.contentView.addSubview(view)
         }
-        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+        // The line ends on the screen's pixels, so a new screen moves it too.
+        registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
             self.textSizeMayHaveChanged()
         }
     }
@@ -523,9 +528,9 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
     /// typed text is drawn again in place, its selection kept.
     @discardableResult
     private func syncTextSize() -> Bool {
-        let scale = traitCollection.textEnvironment?.scale
-        guard scale != textScale else { return false }
-        textScale = scale
+        let environment = traitCollection.textEnvironment
+        guard environment != textEnvironment else { return false }
+        textEnvironment = environment
         textView.font = inputStyle.font
         let selection = textView.selectedRange
         if textView.hasText {
