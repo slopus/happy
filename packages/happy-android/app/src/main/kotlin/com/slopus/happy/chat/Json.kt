@@ -38,4 +38,3 @@ internal val JsonElement?.strings: List<String>?
         return array.map { it.str ?: return null }
     }
 
-internal fun JsonObject.withoutKeys(vararg keys: String): JsonObject = JsonObject(this - keys.toSet())
