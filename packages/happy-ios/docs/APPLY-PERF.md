@@ -108,6 +108,44 @@ rule 8), and what the Linux benchmarks measure.
   runs no SQL; coming back reads the database afresh, and a value equal to
   the one on screen applies nothing.
 
+- Grouped lists (`GroupedListView`: Settings and its pages, session info,
+  the machine screen, troubleshooting, What's New) measure each section
+  once per width (`GroupedListCache`), and each `ItemGroupView` keeps its
+  layout per width (`WidthLayoutCache`).
+  - A scroll frame measures and places nothing: the list's layout pass
+    returns as soon as it finds the size, safe area and sections it placed
+    last.
+  - Installing sections measures only the ones that weren't there (Agents
+    and session info swap single groups). A group whose title, footer or
+    rows change, or whose row asks the card for layout, is measured alone.
+    Anything else asking the list for layout, a new text size among them
+    (`setNeedsLayoutUpTheTree`), measures every section once.
+  - UIKit asks a section for layout each time its safe area changes, which
+    is every frame while it crosses the bars' edges. Those calls come with
+    insets the view hasn't seen, and the group and its card don't take
+    them as content changing (`SafeAreaLayoutCalls`).
+  - A section whose height changes must say so: an `ItemRowView` setter, a
+    row's `superview?.setNeedsLayout()`, or the group's. Before, a stale
+    height was corrected by the next scroll; now it stays.
+- What's New (`ChangelogViewController`) is laid out off the main thread:
+  `ChangelogPlan` parses each release's markdown and lays out its title,
+  summary, paragraphs and bullets with TextKit 1 (`ChatTextLayout`) at the
+  list's width and text size, placed by `ChangelogEntryLayout`. The first
+  screen is planned on its own, then the releases after it, so the text is
+  in as the screen slides in. The main thread only hands each release its
+  plan; a new width or text size plans every release again, once, and the
+  old plan stays drawn until then.
+  - The text is drawn into bitmaps off the main thread too
+    (`ChangelogRaster`), only for releases within a screen of what shows
+    (`DrawnSections`, kept until two screens away), so a release scrolling
+    in costs the main thread its layers' contents. Until its bitmaps are in,
+    a release's text is blank; a new text size or width blanks it for
+    the moment its new bitmaps take.
+  - Links open on a tap (only http(s) ones in the markdown, as
+    `handleLinkPress` has it; any in the summary line), a long press on a
+    paragraph or bullet offers Copy as RN's `selectable` Text does, and
+    VoiceOver reads each text, with its links as actions, from the plan.
+
 ## Known gaps
 
 - Heading heights are one line of their style, read from a
@@ -117,8 +155,14 @@ rule 8), and what the Linux benchmarks measure.
 - The sidebar's stamps and day headings are written at the time of the
   derivation and catch up with the next store change; it does not use
   `ClockWake` yet.
-- None of the UIKit behaviour is verified: no simulator run, no device
-  timings.
+- None of the UIKit behaviour is verified on a device. What's New is
+  timed on the iOS 26.5 simulator only (below).
+- Troubleshooting's guide is a section of its own with `UITextView`
+  terminal lines that lay themselves out again whenever the guide's safe
+  area changes, so while it crosses the bar's edge. `ItemRowView` keeps
+  no layout either and measures its labels on those passes (14 label
+  measurements over a 41-frame scroll of six groups in
+  `GroupedListMeasureTests`). Neither moves a frame.
 
 ## Before and after
 
