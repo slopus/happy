@@ -664,7 +664,7 @@ private fun TodoView(message: ChatMessage.ToolCallMessage) {
  * (14 italic textSecondary at 0.7, padding 4). Nothing before the first.
  */
 @Composable
-private fun TaskView(message: ChatMessage.ToolCallMessage) {
+internal fun TaskView(message: ChatMessage.ToolCallMessage) {
     val text = rememberToolText()
     val tools = remember(message, text) { taskChildTools(message, text) }
     if (tools.isEmpty()) return
