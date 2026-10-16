@@ -2,16 +2,21 @@ package com.slopus.happy.chat
 
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.MessageRecord
+import com.slopus.happy.data.OutboxRecord
 import com.slopus.happy.data.SessionRecord
+import com.slopus.happy.sync.AccountSync
+import com.slopus.happy.sync.AgentModeField
+import com.slopus.happy.sync.MessageSender
 import com.slopus.happy.sync.MessageSync
 import com.slopus.happy.sync.PermissionDecision as SyncPermissionDecision
 import com.slopus.happy.sync.Presence
+import com.slopus.happy.sync.SendException
+import com.slopus.happy.sync.SendOptions
+import com.slopus.happy.sync.SendResult
+import com.slopus.happy.sync.SessionComposer
 import com.slopus.happy.sync.SessionOps
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
@@ -36,6 +41,8 @@ data class ChatPage(
     val isLoadingOlder: Boolean = false,
     /** False until the first read from the store finished. */
     val loaded: Boolean = true,
+    /** This device's accepted sends not yet echoed back, oldest first. */
+    val outbox: List<OutboxRecord> = emptyList(),
 )
 
 interface ChatMessagesSource {
@@ -77,8 +84,19 @@ data class PermissionAnswer(
  * and throws on failure so the screen can say so.
  */
 interface ChatActions {
-    /** Sends a user message; [meta] is the record's `meta` (typesMessageMeta.ts). */
-    suspend fun send(sessionId: String, text: String, meta: JsonObject? = null)
+    /**
+     * Queues a user message; [meta] is laid over the meta the sender resolves
+     * (typesMessageMeta.ts). Returns once it is in the outbox, or with
+     * [awaitDelivery] once the server has it. Throws [SendException] with a
+     * message for the user when nothing was queued.
+     */
+    suspend fun send(sessionId: String, text: String, meta: JsonObject? = null, awaitDelivery: Boolean = false)
+
+    /** A failed send goes back in the queue. */
+    suspend fun retry(sessionId: String, localId: String) = Unit
+
+    /** A failed send is dropped. */
+    suspend fun discard(sessionId: String, localId: String) = Unit
 
     suspend fun abort(sessionId: String)
 
@@ -89,18 +107,21 @@ interface ChatActions {
 
     suspend fun cancelQuestion(sessionId: String, communicationId: String, kind: String = "form")
 
-    /** Persists the composer's per-session mode picks (permission, model, effort); null leaves a pick as it is. */
-    suspend fun setModes(sessionId: String, permissionMode: String?, modelMode: String?, effortLevel: String?) = Unit
+    /** The composer's per-session mode picks, only the fields that changed; a null value resets that pick. */
+    suspend fun setModes(sessionId: String, patch: Map<AgentModeField, String?>) = Unit
+
+    /** The composer's text changed (a Happy Agent draft syncs to the session). */
+    suspend fun setDraft(sessionId: String, text: String) = Unit
 }
 
 /**
  * The session's records through [MessageSync]: collecting opens the chat
  * (newest page, catch-up, background history) and pages back on demand.
  */
-class SyncChatMessagesSource(private val sync: MessageSync) : ChatMessagesSource {
+class SyncChatMessagesSource(private val sync: MessageSync, private val sender: MessageSender) : ChatMessagesSource {
     override fun messages(sessionId: String): Flow<ChatPage> =
-        combine(sync.messages(sessionId), sync.paging(sessionId)) { records, paging ->
-            ChatPage(records, paging.hasMoreOlder, paging.isLoadingOlder, loaded = paging.isLoaded)
+        combine(sync.messages(sessionId), sync.paging(sessionId), sender.outbox(sessionId)) { records, paging, outbox ->
+            ChatPage(records, paging.hasMoreOlder, paging.isLoadingOlder, loaded = paging.isLoaded, outbox = outbox)
         }.distinctUntilChanged()
 
     override suspend fun loadOlder(sessionId: String): Boolean = sync.loadOlder(sessionId)
@@ -109,7 +130,9 @@ class SyncChatMessagesSource(private val sync: MessageSync) : ChatMessagesSource
 /** Every stored record of the session, without fetching: for signed-out previews and tests. */
 class StoreChatMessagesSource(private val store: HappyStore) : ChatMessagesSource {
     override fun messages(sessionId: String): Flow<ChatPage> =
-        store.messageChanges(sessionId).map { ChatPage(store.messages(sessionId)) }.distinctUntilChanged().flowOn(Dispatchers.IO)
+        combine(store.messageChanges(sessionId), store.outboxChanges(sessionId)) { _, _ ->
+            ChatPage(store.messages(sessionId), outbox = store.outbox(sessionId))
+        }.distinctUntilChanged().flowOn(Dispatchers.IO)
 
     override suspend fun loadOlder(sessionId: String): Boolean = false
 }
@@ -135,8 +158,8 @@ object NoLivePresence : ChatPresenceSource {
 
 /** Actions that only fail, for builds without Sync's sender. */
 object UnavailableChatActions : ChatActions {
-    private fun unavailable(): Nothing = throw UnsupportedOperationException("Sending is not available in this build yet")
-    override suspend fun send(sessionId: String, text: String, meta: JsonObject?) = unavailable()
+    private fun unavailable(): Nothing = throw UnsupportedOperationException("Not signed in")
+    override suspend fun send(sessionId: String, text: String, meta: JsonObject?, awaitDelivery: Boolean) = unavailable()
     override suspend fun abort(sessionId: String) = unavailable()
     override suspend fun answerPermission(sessionId: String, answer: PermissionAnswer) = unavailable()
     override suspend fun answerQuestion(sessionId: String, communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) =
@@ -145,15 +168,31 @@ object UnavailableChatActions : ChatActions {
 }
 
 /**
- * The chat's actions over Sync's [SessionOps] RPCs, read at call time so a
- * new sign-in is picked up. Sending stays unavailable until Sync's sender
- * lands; per-session mode picks stay with the composer (happy-app keeps them
- * in local storage and sends them with the next message).
+ * The chat's actions over the signed-in account ([AccountSync]): sends
+ * through its [MessageSender], mode picks and drafts through its
+ * [SessionComposer], the rest as [SessionOps] RPCs. Read at call time so a
+ * new sign-in is picked up.
  */
-class SyncChatActions(private val ops: () -> SessionOps?) : ChatActions {
-    private fun ops(): SessionOps = ops.invoke() ?: throw IllegalStateException("Not signed in")
+class SyncChatActions(private val account: () -> AccountSync?) : ChatActions {
+    private fun account(): AccountSync = account.invoke() ?: throw SendException("Not signed in")
+    private fun ops(): SessionOps = account().sessionOps
 
-    override suspend fun send(sessionId: String, text: String, meta: JsonObject?) = UnavailableChatActions.send(sessionId, text, meta)
+    override suspend fun send(sessionId: String, text: String, meta: JsonObject?, awaitDelivery: Boolean) {
+        val result = account().sender.send(sessionId, text, SendOptions(extraMeta = meta, awaitDelivery = awaitDelivery))
+        if (result is SendResult.NotSent) throw SendException(result.message ?: "The message was not sent.")
+    }
+
+    override suspend fun retry(sessionId: String, localId: String) = account().sender.retry(sessionId, localId)
+
+    override suspend fun discard(sessionId: String, localId: String) = account().sender.discard(sessionId, localId)
+
+    override suspend fun setModes(sessionId: String, patch: Map<AgentModeField, String?>) {
+        if (patch.isNotEmpty()) account().composer.setAgentModes(sessionId, patch)
+    }
+
+    override suspend fun setDraft(sessionId: String, text: String) {
+        account.invoke()?.composer?.setText(sessionId, text)
+    }
 
     override suspend fun abort(sessionId: String) = ops().abort(sessionId)
 
@@ -182,17 +221,5 @@ class SyncChatActions(private val ops: () -> SessionOps?) : ChatActions {
                 })
             }
         }
-    }
-}
-
-/** Per-session composer drafts, kept for the life of the process (happy-app `session.draft`). */
-class ChatDrafts {
-    private val drafts = MutableStateFlow<Map<String, String>>(emptyMap())
-    val all: StateFlow<Map<String, String>> = drafts.asStateFlow()
-
-    fun get(sessionId: String): String = drafts.value[sessionId].orEmpty()
-
-    fun set(sessionId: String, text: String) {
-        drafts.value = if (text.isEmpty()) drafts.value - sessionId else drafts.value + (sessionId to text)
     }
 }

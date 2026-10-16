@@ -111,6 +111,9 @@ class ChatScreenActions(
     val loadOlder: suspend () -> Boolean = { false },
     val onToolPress: (com.slopus.happy.chat.ChatMessage.ToolCallMessage) -> Unit = {},
     val onPermission: PermissionHandler = { _, _ -> },
+    /** A failed send, by its localId: queue it again, or drop it. */
+    val onRetry: (String) -> Unit = {},
+    val onDiscard: (String) -> Unit = {},
 )
 
 /**
@@ -149,7 +152,13 @@ fun ChatScreen(
     val loadOlder by rememberUpdatedState(actions.loadOlder)
     val pager = remember(session?.id) { OlderPager { loadOlder() } }
     val callbacks = remember(actions) {
-        MessageCallbacks(onOptionPress = { actions.onSend(it) }, onToolPress = actions.onToolPress, onPermission = actions.onPermission)
+        MessageCallbacks(
+            onOptionPress = { actions.onSend(it) },
+            onToolPress = actions.onToolPress,
+            onPermission = actions.onPermission,
+            onRetry = actions.onRetry,
+            onDiscard = actions.onDiscard,
+        )
     }
     val bubble = userMessageBubblePalette(bubbleColor, colors.dark)
     val title = when {
@@ -234,7 +243,7 @@ private fun ChatComposerFor(
         onPrimary = {
             when (primary) {
                 PrimaryAction.Stop -> actions.onAbort()
-                PrimaryAction.Send -> actions.onSend(draft.trim())
+                PrimaryAction.Send -> actions.onSend(draft)
                 else -> Unit
             }
         },

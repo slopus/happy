@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
@@ -65,6 +66,9 @@ object MessageTags {
     const val USER_BODY = "message.user.body"
     const val USER_BUBBLE = "message.user.bubble"
     const val USER_STATUS = "message.user.status"
+    const val USER_FAILED = "message.user.failed"
+    const val USER_RETRY = "message.user.retry"
+    const val USER_DISCARD = "message.user.discard"
     const val COMMAND_CHIP = "message.user.command"
     const val GOAL_ROW = "message.user.goal"
     const val AGENT = "message.agent"
@@ -89,6 +93,9 @@ object MessageSpec {
     val statusHeight = 14.dp
     val statusMarginTop = 2.dp
     val statusMarginBottom = 4.dp
+    /** A failed send's status, Retry and Discard sit 12 apart on the status line (Android only). */
+    val failedGap = 12.dp
+    val failedAction = happyTextStyle(fontSize = 11, lineHeight = 14, weight = FontWeight.SemiBold)
     val author = happyTextStyle(fontSize = 14, lineHeight = 20, weight = FontWeight.SemiBold)
     val authorMarginBottom = 4.dp
     val authorPaddingHorizontal = 12.dp
@@ -117,6 +124,9 @@ class MessageCallbacks(
     val onToolPress: (ChatMessage.ToolCallMessage) -> Unit = {},
     /** Answers a tool's permission request; [mode] is the permission mode the composer switches to after. */
     val onPermission: PermissionHandler = { _, _ -> },
+    /** A failed send, by its localId. */
+    val onRetry: (String) -> Unit = {},
+    val onDiscard: (String) -> Unit = {},
 )
 
 /** One chat row, dispatched by kind (MessageView.tsx `RenderBlock`). */
@@ -253,18 +263,52 @@ fun UserMessage(row: ChatRow.User, bubble: BubblePalette, callbacks: MessageCall
                 }
             }
         }
-        Text(
-            text = statusText,
-            style = MessageSpec.status,
-            color = if (message.sendError != null) colors.textDestructive else chat.agentEventText,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .padding(top = MessageSpec.statusMarginTop, bottom = MessageSpec.statusMarginBottom)
-                .testTag(MessageTags.USER_STATUS)
-                .height(MessageSpec.statusHeight),
-        )
+        val failed = row.failedLocalId
+        if (failed == null) {
+            StatusLine(statusText, if (message.sendError != null) colors.textDestructive else chat.agentEventText)
+        } else {
+            Row(
+                modifier = Modifier.testTag(MessageTags.USER_FAILED),
+                horizontalArrangement = Arrangement.spacedBy(MessageSpec.failedGap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StatusLine(statusText, colors.textDestructive, Modifier.weight(1f, fill = false))
+                FailedAction(stringResource(R.string.common_retry), MessageTags.USER_RETRY) { callbacks.onRetry(failed) }
+                FailedAction(stringResource(R.string.common_discard), MessageTags.USER_DISCARD) { callbacks.onDiscard(failed) }
+            }
+        }
     }
+}
+
+@Composable
+private fun StatusLine(text: String, color: Color, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = MessageSpec.status,
+        color = color,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+            .padding(top = MessageSpec.statusMarginTop, bottom = MessageSpec.statusMarginBottom)
+            .testTag(MessageTags.USER_STATUS)
+            .height(MessageSpec.statusHeight),
+    )
+}
+
+/** A failed send's Retry / Discard: the status line's size, semibold, in the text colour. */
+@Composable
+private fun FailedAction(label: String, tag: String, onClick: () -> Unit) {
+    Text(
+        text = label,
+        style = MessageSpec.failedAction,
+        color = HappyTheme.colors.text,
+        maxLines = 1,
+        modifier = Modifier
+            .padding(top = MessageSpec.statusMarginTop, bottom = MessageSpec.statusMarginBottom)
+            .testTag(tag)
+            .height(MessageSpec.statusHeight)
+            .clickable(onClick = onClick),
+    )
 }
 
 /** Puts plain text on the clipboard (expo-clipboard `setStringAsync`). */

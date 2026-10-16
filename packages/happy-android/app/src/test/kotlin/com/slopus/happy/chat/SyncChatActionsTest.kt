@@ -2,11 +2,16 @@ package com.slopus.happy.chat
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.sync.AccountHarness
+import com.slopus.happy.sync.AgentModeField
+import com.slopus.happy.sync.MessageSender
+import com.slopus.happy.sync.SendException
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
@@ -28,7 +33,7 @@ class SyncChatActionsTest {
     fun setUp() {
         h = AccountHarness()
         h.server.addSession("cli", updatedAt = 100, metadata = buildJsonObject { put("path", "/repo"); put("host", "mac") })
-        actions = SyncChatActions { h.account.sessionOps }
+        actions = SyncChatActions { h.account }
     }
 
     @After
@@ -76,11 +81,28 @@ class SyncChatActionsTest {
     }
 
     @Test
-    fun sendingIsNotAvailableYet() = runBlocking {
+    fun sendQueuesTheMessageWithTheChatsMetaOnTop() = runBlocking {
+        h.startAndSync()
+        actions.send("cli", "hello", buildJsonObject { put("displayText", "Hi") }, awaitDelivery = true)
+        val (_, record) = h.server.sentRecords("cli").single()
+        assertEquals("Hi", record["meta"]!!.jsonObject["displayText"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun aSendThatQueuedNothingSaysWhy() = runBlocking {
+        h.startAndSync()
         try {
-            actions.send("cli", "hello")
-            fail("send should not be available")
-        } catch (_: UnsupportedOperationException) {
+            actions.send("missing", "hello")
+            fail("nothing should be queued")
+        } catch (e: SendException) {
+            assertEquals(MessageSender.NOT_SYNCED, e.message)
         }
+    }
+
+    @Test
+    fun modePicksGoToTheComposer() = runBlocking {
+        h.startAndSync()
+        actions.setModes("cli", mapOf(AgentModeField.PERMISSION_MODE to "acceptEdits"))
+        assertEquals("acceptEdits", h.account.composer.mirrors.value["cli"]?.permissionMode)
     }
 }
