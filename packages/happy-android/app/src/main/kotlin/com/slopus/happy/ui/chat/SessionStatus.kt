@@ -3,7 +3,7 @@ package com.slopus.happy.ui.chat
 import android.content.res.Resources
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import com.slopus.happy.R
 import com.slopus.happy.model.SessionState
@@ -36,7 +36,7 @@ val VibingMessages = listOf(
  */
 @Composable
 fun rememberComposerStatus(state: SessionState, activeAt: Long, now: Long = System.currentTimeMillis()): ComposerStatus {
-    val resources = LocalContext.current.resources
+    val resources = LocalResources.current
     val vibing = remember(state) { VibingMessages.random().lowercase() + "…" }
     return when (state) {
         SessionState.Disconnected -> ComposerStatus(

@@ -8,7 +8,10 @@
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
-        <activity android:name=".MainActivity">
+        <!-- Exported in the main manifest already; repeated so this overlay stands alone for lint. -->
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.BROWSABLE" />

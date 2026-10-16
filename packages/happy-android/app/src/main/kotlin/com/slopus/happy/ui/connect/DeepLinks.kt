@@ -151,7 +151,7 @@ private fun firstParamName(rawQuery: String?): String? {
 }
 
 private fun decode(value: String): String = try {
-    URLDecoder.decode(value, Charsets.UTF_8)
+    URLDecoder.decode(value, "UTF-8") // The Charset overload is API 33.
 } catch (_: IllegalArgumentException) {
     value
 }

@@ -3,7 +3,7 @@
   Home strings with no happy-app catalog key (literals in its source), in
   English only. strings.xml is generated from the catalogs; this file is not.
 -->
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <!-- EmptyMainScreen.tsx -->
     <string name="home_no_sessions_title">No sessions yet</string>
     <string name="home_no_sessions_description">Start one on a connected machine.</string>

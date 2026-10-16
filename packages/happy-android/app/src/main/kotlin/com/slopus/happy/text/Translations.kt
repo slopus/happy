@@ -4,8 +4,7 @@ import android.content.res.Resources
 import androidx.annotation.PluralsRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 
 /**
  * happy-app's words for [count] from a generated `<plurals>`: the number's
@@ -23,6 +22,5 @@ fun Resources.plural(@PluralsRes id: Int, count: Int, vararg args: Any): String 
 @Composable
 @ReadOnlyComposable
 fun pluralResource(@PluralsRes id: Int, count: Int, vararg args: Any): String {
-    LocalConfiguration.current
-    return LocalContext.current.resources.plural(id, count, *args)
+    return LocalResources.current.plural(id, count, *args)
 }
