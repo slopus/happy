@@ -28,6 +28,17 @@ import com.slopus.happy.model.Session
 import com.slopus.happy.model.Settings
 import com.slopus.happy.model.WorkspaceOrigin
 import com.slopus.happy.model.forkSource
+import com.slopus.happy.model.parseJsonObject
+import com.slopus.happy.sync.OpResult
+import com.slopus.happy.ui.session.DuplicateSheet
+import com.slopus.happy.ui.session.LiveSessionContinuations
+import com.slopus.happy.ui.session.SessionContinuations
+import com.slopus.happy.ui.session.SessionInfoActions
+import com.slopus.happy.ui.session.SessionInfoControls
+import com.slopus.happy.ui.session.SessionInfoRoute
+import com.slopus.happy.ui.session.SessionInfoScreen
+import androidx.compose.runtime.produceState
+import kotlinx.coroutines.withContext
 import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.net.HappyJson
 import com.slopus.happy.sync.MachineOps
@@ -92,6 +103,18 @@ class HomeServices private constructor(graph: AppGraph) {
 
     /** Resume, fork and spawn; null while signed out. */
     val machineOps: MachineOps? get() = account.value?.machineOps
+
+    val continuations: SessionContinuations = LiveSessionContinuations { account.value?.machineOps }
+
+    val infoControls: SessionInfoControls = object : SessionInfoControls {
+        override suspend fun archive(session: Session): ArchiveResult = archiver.archive(session)
+
+        override suspend fun delete(session: Session): OpResult {
+            // Best effort: a running agent would otherwise keep writing into a deleted session.
+            if (session.isOnline) sessionActions.kill(session.id)
+            return sessionActions.delete(session.id)
+        }
+    }
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val snapshots: StateFlow<HomeSnapshot?> = graph.account
@@ -175,9 +198,12 @@ fun NavGraphBuilder.homeRoutes(
             onOpenMachine = { id -> nav.navigate(MachineRoute(id)) },
             onTroubleshoot = onTroubleshoot,
             onNewSession = {},
-            onDetails = null,
+            onDetails = { id -> nav.navigate(SessionInfoRoute(id)) },
             onCreateWorkspace = {},
         )
+    }
+    composable<SessionInfoRoute> { entry ->
+        SessionInfoRouteScreen(graph, entry.toRoute<SessionInfoRoute>().id, nav, onOpenSession)
     }
     composable<MachineRoute> { entry ->
         val id = entry.toRoute<MachineRoute>().id
@@ -191,6 +217,44 @@ fun NavGraphBuilder.homeRoutes(
         }
         MachineScreen(machine, sessions, controls, actions)
     }
+}
+
+@Composable
+private fun SessionInfoRouteScreen(graph: AppGraph, id: String, nav: NavHostController, onOpenSession: (String) -> Unit) {
+    val services = remember(graph) { HomeServices.of(graph) }
+    val snapshot by services.snapshots.collectAsStateWithLifecycle()
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val local by graph.localSettings.values.collectAsStateWithLifecycle()
+    val session = snapshot?.sessions?.find { it.id == id }
+    val machine = snapshot?.machines?.find { it.id == session?.metadata?.machineId }
+    // The chat owns the typed agent state; this screen only counts and shows it.
+    val agentState by produceState<JsonObject?>(null, session) {
+        value = withContext(Dispatchers.IO) { parseJsonObject(graph.store.session(id)?.agentStateJson) }
+    }
+    val context = LocalContext.current
+    val actions = remember(nav, onOpenSession, context) {
+        val home = { nav.popBackStack(HomeRoute, inclusive = false); Unit }
+        SessionInfoActions(
+            onBack = { nav.popBackStack() },
+            onOpenSession = onOpenSession,
+            onOpenMachine = { machineId -> nav.navigate(MachineRoute(machineId)) },
+            onChanges = null,
+            onArchived = home,
+            onDeleted = home,
+            copyToClipboard = { text -> copyToClipboard(context, text) },
+        )
+    }
+    SessionInfoScreen(
+        session = session,
+        ready = snapshot?.ready == true,
+        agentState = agentState,
+        machine = machine,
+        continuationExperiments = settings.expResumeSession,
+        devMode = BuildConfig.DEBUG || local.devModeEnabled,
+        controls = services.infoControls,
+        continuations = services.continuations,
+        actions = actions,
+    )
 }
 
 /** The synced avatar settings, for every avatar under [content]. */
@@ -218,7 +282,7 @@ private fun HomeRouteScreen(
     onOpenMachine: (String) -> Unit,
     onTroubleshoot: () -> Unit,
     onNewSession: () -> Unit,
-    onDetails: ((String) -> Unit)?,
+    onDetails: (String) -> Unit,
     onCreateWorkspace: (WorkspaceOrigin) -> Unit,
 ) {
     val services = remember(graph) { HomeServices.of(graph) }
@@ -238,12 +302,14 @@ private fun HomeRouteScreen(
     val uriHandler = LocalUriHandler.current
     var alert by remember { mutableStateOf<Alert?>(null) }
     val showAlert = remember { { next: Alert -> alert = next } }
+    var duplicating by remember { mutableStateOf<Session?>(null) }
     val menus = rememberSessionMenus(
         services = services,
         continuationExperiments = settings.expResumeSession,
         devMode = BuildConfig.DEBUG || local.devModeEnabled,
         onOpenSession = onOpenSession,
         onDetails = onDetails,
+        onDuplicate = { duplicating = it },
         showAlert = showAlert,
     )
     val createWorkspaceLabel = stringResource(R.string.home_create_workspace)
@@ -291,6 +357,14 @@ private fun HomeRouteScreen(
             },
         )
     }
+    duplicating?.let { session ->
+        DuplicateSheet(
+            source = session.forkSource(),
+            continuations = services.continuations,
+            onDismiss = { duplicating = null },
+            onDuplicated = onOpenSession,
+        )
+    }
     alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
 }
 
@@ -323,6 +397,7 @@ private fun rememberSessionMenus(
     devMode: Boolean,
     onOpenSession: (String) -> Unit,
     onDetails: ((String) -> Unit)?,
+    onDuplicate: (Session) -> Unit,
     showAlert: (Alert) -> Unit,
 ): SessionMenus {
     val context = LocalContext.current
@@ -351,7 +426,7 @@ private fun rememberSessionMenus(
         metadataCopied = stringResource(R.string.session_info_metadata_copied),
         success = stringResource(R.string.common_success),
     )
-    return remember(services, continuationExperiments, devMode, onOpenSession, onDetails, strings, context, scope, showAlert) {
+    return remember(services, continuationExperiments, devMode, onOpenSession, onDetails, onDuplicate, strings, context, scope, showAlert) {
         fun error(message: String) = showAlert(Alert(strings.error, message, listOf(AlertButton(strings.ok))))
 
         // Resume and fork answer like a spawn; anything but a session is a failure here.
@@ -388,8 +463,7 @@ private fun rememberSessionMenus(
                                 spawned(ops.forkAndSpawn(source), strings.forkFailed)
                             }
                         }
-                        // DuplicateSheet lives on session info; offered once that screen is wired.
-                        SessionActionId.Duplicate -> onDetails?.let { AlertButton(strings.duplicate) { it(session.id) } }
+                        SessionActionId.Duplicate -> AlertButton(strings.duplicate) { onDuplicate(session) }
                         SessionActionId.CopyMetadata -> AlertButton(strings.copyMetadata) {
                             val metadata = session.metadata ?: return@AlertButton error(strings.error)
                             copyToClipboard(context, prettyJson.encodeToString(JsonObject.serializer(), metadata.raw))
@@ -428,7 +502,7 @@ private data class SessionMenuStrings(
 
 private val prettyJson = Json(HappyJson) { prettyPrint = true }
 
-private fun copyToClipboard(context: Context, text: String) {
+internal fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText("session metadata", text))
+    clipboard.setPrimaryClip(ClipData.newPlainText("Happy", text))
 }

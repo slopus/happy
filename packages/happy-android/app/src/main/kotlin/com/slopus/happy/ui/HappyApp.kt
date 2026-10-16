@@ -31,6 +31,7 @@ import com.slopus.happy.ui.onboarding.RestoreManualScreen
 import com.slopus.happy.ui.onboarding.TroubleshootRoute
 import com.slopus.happy.ui.machine.MachineRoute
 import com.slopus.happy.ui.onboarding.onboardingRoutes
+import com.slopus.happy.ui.session.SessionInfoRoute
 import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.server.ServerScreen
 import com.slopus.happy.ui.settings.LocalizedContent
@@ -78,7 +79,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                 settingsRoutes(graph, nav)
                 onboardingRoutes(graph, nav, onOpenMachine = { id -> nav.navigate(MachineRoute(id)) })
                 connectRoutes(graph, nav)
-                chatRoutes(graph, nav)
+                chatRoutes(graph, nav, onInfo = { id -> nav.navigate(SessionInfoRoute(id)) })
             }
             DeepLinkEffect(nav, signedIn = signedIn != null, onOpenSession = { id -> nav.navigate(SessionRoute(id)) })
             PushRegistrationEffect(graph)

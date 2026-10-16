@@ -25,4 +25,25 @@
     <string name="machine_rename_placeholder">Enter machine name</string>
     <string name="machine_renamed">Machine renamed successfully</string>
     <string name="machine_rename_failed">Failed to rename machine</string>
+    <!-- session/[id]/info.tsx -->
+    <string name="home_info_resume_command">Resume Command</string>
+    <string name="home_info_client">Client</string>
+    <string name="home_info_model">Model</string>
+    <string name="home_info_sandbox">Sandbox</string>
+    <string name="home_info_skip_permissions">Dangerously Skip Permissions</string>
+    <string name="home_info_enabled">Enabled</string>
+    <string name="home_info_disabled">Disabled</string>
+    <string name="home_info_unknown">Unknown</string>
+    <string name="home_info_subagents">Subagents</string>
+    <string name="home_info_subagents_detail">%1$s running · %2$s queued</string>
+    <string name="home_info_workflows">Workflows</string>
+    <string name="home_info_processes">Background processes</string>
+    <string name="home_info_running">%1$s running</string>
+    <string name="home_info_tasks">Tasks</string>
+    <string name="home_info_tasks_detail">%1$s in progress · %2$s pending</string>
+    <string name="home_info_raw_json">Raw JSON (Dev Mode)</string>
+    <string name="home_info_raw_agent_state">Agent State</string>
+    <string name="home_info_raw_metadata">Metadata</string>
+    <string name="home_info_raw_status">Session Status</string>
+    <string name="home_info_raw_session">Full Session Object</string>
 </resources>
