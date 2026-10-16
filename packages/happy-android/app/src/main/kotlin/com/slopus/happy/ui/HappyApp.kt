@@ -18,6 +18,8 @@ import androidx.navigation.compose.rememberNavController
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
+import com.slopus.happy.ui.chat.SessionRoute
+import com.slopus.happy.ui.chat.chatRoutes
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -65,12 +67,18 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                 composable<WelcomeRoute> { Welcome(graph, nav) }
                 composable<ServerRoute> { Server(graph, nav) }
                 composable<RestoreManualRoute> { RestoreManual(graph, nav) }
-                homeRoutes(graph, nav, onTroubleshoot = { nav.navigate(TroubleshootRoute) })
+                homeRoutes(
+                    graph,
+                    nav,
+                    onOpenSession = { id -> nav.navigate(SessionRoute(id)) },
+                    onTroubleshoot = { nav.navigate(TroubleshootRoute) },
+                )
                 settingsRoutes(graph, nav)
                 onboardingRoutes(graph, nav)
                 connectRoutes(graph, nav)
+                chatRoutes(graph, nav)
             }
-            DeepLinkEffect(nav, signedIn = signedIn != null)
+            DeepLinkEffect(nav, signedIn = signedIn != null, onOpenSession = { id -> nav.navigate(SessionRoute(id)) })
         }
     } }
 }
