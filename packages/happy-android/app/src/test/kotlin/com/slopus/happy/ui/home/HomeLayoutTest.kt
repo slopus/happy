@@ -3,6 +3,13 @@ package com.slopus.happy.ui.home
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
+import com.slopus.happy.model.WorktreeToggle
+import com.slopus.happy.model.ProjectHomeRow
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.hapticfeedback.HapticFeedback
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -327,6 +334,36 @@ class HomeLayoutTest {
         rule.onNodeWithTag(ProjectListTags.WORKTREE).assert(hasRole(Role.Button) and hasText("Gdansk"))
         rule.onNode(hasContentDescription("Create workspace in happy", substring = true) and hasRole(Role.Button)).assertExists()
         rule.assertActionsLabelled()
+    }
+
+    /**
+     * ProjectHomeList.tsx's toggle: `hapticsLight()` on every flip, from a
+     * tap or from TalkBack's expand, before the project's worktrees change.
+     */
+    @Test
+    fun theWorktreeToggleTicksLightly() {
+        val ticks = mutableListOf<HapticFeedbackType>()
+        val toggled = mutableListOf<String>()
+        val haptics = object : HapticFeedback {
+            override fun performHapticFeedback(hapticFeedbackType: HapticFeedbackType) {
+                ticks += hapticFeedbackType
+            }
+        }
+        rule.setHappyContent {
+            CompositionLocalProvider(LocalHapticFeedback provides haptics) {
+                ProjectHomeRowContent(
+                    ProjectHomeRow.Toggle(WorktreeToggle("p1", worktreeCount = 5, hiddenCount = 2, expanded = false, unread = false, working = false, blocked = false)),
+                    HomeListCallbacks(
+                        onOpen = {}, onMenu = {}, onArchive = {}, onSetArchiveHidden = {}, onToggleProject = { toggled += it },
+                        onOpenMachine = {}, onCreateWorkspace = {}, onProjectMenu = { _, _ -> },
+                    ),
+                )
+            }
+        }
+        rule.node(ProjectListTags.TOGGLE).performClick()
+        rule.node(ProjectListTags.TOGGLE).performSemanticsAction(SemanticsActions.Expand)
+        assertEquals(listOf("p1", "p1"), toggled)
+        assertEquals(listOf(HapticFeedbackType.ContextClick, HapticFeedbackType.ContextClick), ticks)
     }
 
     @Test
