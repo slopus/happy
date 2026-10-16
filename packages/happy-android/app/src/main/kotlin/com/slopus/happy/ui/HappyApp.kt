@@ -18,6 +18,7 @@ import androidx.navigation.compose.rememberNavController
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
+import com.slopus.happy.push.PushRegistrationEffect
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -68,6 +69,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                 connectRoutes(graph, nav)
             }
             DeepLinkEffect(nav, signedIn = signedIn != null)
+            PushRegistrationEffect(graph)
         }
     }
 }

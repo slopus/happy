@@ -19,8 +19,8 @@ architectures comparable (local store, delta sync, crypto layer).
 - Built so far: crypto, account auth, the server setting, an empty home
   screen, Settings (Account, Appearance), the local store with delta sync
   and live updates, and onboarding and connect (restore by QR, Link Your
-  Computer, troubleshoot, terminal connect by QR, link and deep link). Not
-  built: chat and session UI, push.
+  Computer, troubleshoot, terminal connect by QR, link and deep link), and
+  push notifications. Not built: chat and session UI.
 
 ## Rules
 
@@ -309,6 +309,57 @@ adds app.config.js's production intent filter for
 `https://app.happy.engineering` (`src/release/AndroidManifest.xml`), with
 `autoVerify`; verification needs the release key's fingerprint in that
 site's `assetlinks.json`. Links while signed out are dropped.
+
+## Push
+
+What happy-app does with expo-notifications, without Expo:
+
+- **Token.** FCM token → Expo push token, exactly as expo-notifications
+  55's getExpoPushTokenAsync: `POST https://exp.host/--/api/v2/push/getExpoPushToken`,
+  only `content-type: application/json`, body
+  `{type:"fcm",deviceId,development:false,appId,deviceToken,projectId}` in
+  that key order (`ExpoPushTokenClient`). `deviceId` is expo's
+  InstallationId, read from the same no-backup file (and legacy places), so
+  an upgrade from the React Native build keeps its device id. The project
+  id is app.config.js's `extra.eas.projectId`. happy-server only knows Expo
+  tokens and sends through Expo, so this exchange is not optional.
+- **Registration** (`PushRegistrar`, pushRegistration.ts): register with
+  `POST /v1/push-tokens`, remember it, drop the previously registered token
+  if it changed; all happy-server calls retry like apiPush.ts's `backoff`.
+  `PushRegistrationEffect` in HappyApp runs it on sign-in and every return
+  to the foreground. It shows the POST_NOTIFICATIONS prompt only while the
+  system would still show it, never opens settings by itself, and forgets
+  the registration on sign-out. `HappyMessagingService.onNewToken`
+  re-registers a rotated FCM token.
+- **Showing.** Expo relays a push as an FCM data message (`title`,
+  `message`, `body` = the data as JSON, `channelId`); `presentPush` shows it
+  on its channel, silent while the app is in the foreground. Channels are
+  `_layout.tsx`'s: `default` (max) and `messages` (high, what happy-server
+  uses), vibration 0/250/250/250, light #FF231F7C.
+- **Tapping** opens MainActivity with `ACTION_OPEN_PUSH` and the session id
+  from notificationRouting.ts's rules (a `/session/<id>` url, else
+  `sessionId`); `DeepLinks.offer` turns it into `DeepLink.Session`, which
+  `DeepLinkEffect` hands to `onOpenSession` (the chat's).
+- **Settings rows** (push devices, permission): `PushServices.get(context)`
+  has `registrar.currentExpoToken()` / `remove(...)` and `PushApi.list`;
+  `rememberPushPermission().requestOrOpenSettings()` is
+  requestPushPermissionOrOpenSettings.
+
+**Firebase is optional at build time.** There is no google-services
+plugin: `app/build.gradle.kts` reads `app/google-services.json`, else
+happy-app's committed `packages/happy-app/google-services.json`, and
+generates the plugin's resources for the client matching each variant's
+application id. Without a file or a matching client the app builds and runs
+and push reports unsupported (no prompt, nothing registered). Pushes arrive
+only if:
+
+- the file has clients for `com.ex3ndr.happy`, `com.slopus.happy.preview`
+  and `com.slopus.happy.dev` (happy-app's has all three);
+- the Expo project above has that Firebase project's FCM V1 service
+  account key (it does for happy-app; a different Firebase project needs
+  its key uploaded to Expo);
+- the device has Play services (otherwise unsupported, as FCM has no
+  token there).
 
 ## Stubs to replace
 
