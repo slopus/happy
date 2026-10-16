@@ -76,6 +76,8 @@ class TabletJourneyTest {
         rule.waitFor(ChatScreenTags.SCREEN)
         assertDp("chat in the detail", 360, rule.node(ChatScreenTags.SCREEN).bounds.left)
         row("Tablet chat").assertIsSelected()
+        // The composer comes with the session, a beat after the screen.
+        rule.waitFor(ComposerTags.INPUT)
         rule.node(ComposerTags.INPUT).performTextInput("from the tablet")
         rule.node(ComposerTags.PRIMARY).performClick()
         rule.waitUntil(10_000) { server.sentRecords("a").any { "from the tablet" in it.second.toString() } }

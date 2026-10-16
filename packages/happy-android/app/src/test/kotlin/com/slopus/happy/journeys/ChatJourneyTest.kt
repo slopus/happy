@@ -142,9 +142,11 @@ class ChatJourneyTest {
         // A permission prompt, allowed.
         val permissions = journey.rpc("s1", "permission") { JsonPrimitive(true) }
         val rm = buildJsonObject { put("command", "rm -rf build") }
+        // Requests carry real times, as the CLI's do: one that lands before its tool call starts the row.
+        val asked = System.currentTimeMillis()
         journey.agent("s1", toolStart("c3", "Bash", "Clean", rm), turn = "t2")
         journey.agentState("s1", buildJsonObject {
-            putJsonObject("requests") { putJsonObject("c3") { put("tool", "Bash"); put("arguments", rm); put("createdAt", 1_000) } }
+            putJsonObject("requests") { putJsonObject("c3") { put("tool", "Bash"); put("arguments", rm); put("createdAt", asked) } }
         })
         rule.waitFor(PermissionTags.option(PermissionChoice.Allow))
         rule.assertActionsLabelled()
@@ -155,7 +157,7 @@ class ChatJourneyTest {
             putJsonObject("requests") {}
             putJsonObject("completedRequests") {
                 putJsonObject("c3") {
-                    put("tool", "Bash"); put("arguments", rm); put("createdAt", 1_000); put("completedAt", 1_001); put("status", "approved")
+                    put("tool", "Bash"); put("arguments", rm); put("createdAt", asked); put("completedAt", asked + 1); put("status", "approved")
                 }
             }
         })
@@ -179,7 +181,7 @@ class ChatJourneyTest {
         }
         journey.agent("s1", toolStart("c4", "AskUserQuestion", "Question", question), turn = "t3")
         journey.agentState("s1", buildJsonObject {
-            putJsonObject("requests") { putJsonObject("c4") { put("tool", "AskUserQuestion"); put("arguments", question); put("createdAt", 2_000) } }
+            putJsonObject("requests") { putJsonObject("c4") { put("tool", "AskUserQuestion"); put("arguments", question); put("createdAt", System.currentTimeMillis()) } }
         })
         rule.waitFor(QuestionTags.FORM)
         rule.onNodeWithText("Settings").performClick()
@@ -194,6 +196,8 @@ class ChatJourneyTest {
         )
         journey.agentState("s1", buildJsonObject { putJsonObject("requests") {} })
         journey.agent("s1", toolEnd("c4", "Settings"), turn = "t3")
+        // The pending question also shows Stop: wait for it to clear, so the Stop below is the turn's.
+        rule.waitUntilAtLeastOneExists(hasTestTag(ComposerTags.PRIMARY) and hasContentDescription("Send"), 10_000)
 
         // Thinking: the composer's button is Stop, and it aborts.
         val aborts = journey.rpc("s1", "abort") { JsonPrimitive(true) }
