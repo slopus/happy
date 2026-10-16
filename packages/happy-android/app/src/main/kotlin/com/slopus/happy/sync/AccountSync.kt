@@ -1,5 +1,6 @@
 package com.slopus.happy.sync
 
+import com.slopus.happy.chat.PlanModeFollower
 import com.slopus.happy.crypto.AccountEncryption
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.net.ConnectionStatus
@@ -115,7 +116,24 @@ class AccountSync(
     /** True while a delta sync is running. */
     val isSyncing: StateFlow<Boolean> = deltaSync.isRunning
 
+    // sync.ts applyMessages: the switch lands in the mirror and in metadata,
+    // so other devices see plan mode and the next metadata update keeps it.
+    private val planMode = PlanModeFollower { sessionId ->
+        composer.setAgentModes(sessionId, mapOf(AgentModeField.PERMISSION_MODE to "plan"))
+    }
+
     fun start() {
+        scope.launch {
+            messages.stored.collect { batch ->
+                try {
+                    planMode.onStored(batch)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // A batch that cannot be read changes no mode.
+                }
+            }
+        }
         scope.launch {
             for (event in socket.events) {
                 try {
