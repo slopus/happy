@@ -126,20 +126,13 @@ public struct ChatPlainHeaderLayout: Equatable, Sendable {
     /// view's.
     public init(bar: CGRect, size: CGSize, maxWidth: CGFloat, title: Measurable, subtitle: Measurable?, changes: CGSize?) {
         typealias M = Metrics
-        let barWidth = max(0, bar.width)
-        let row = min(barWidth, max(0, maxWidth))
-        let start = bar.minX + (barWidth - row) / 2 + M.paddingH
-        let end = start + max(0, row - 2 * M.paddingH)
-        let viewWidth = max(0, size.width)
-        let x = min(max(start, 0), viewWidth)
-        let width = max(0, min(end, viewWidth) - x)
+        let (x, width) = Self.row(bar: bar, size: size, maxWidth: maxWidth)
         let titleSize = title.size(fitting: width)
 
         var subtitleSize: CGSize?
         var rowHeight: CGFloat = 0
         if let subtitle {
-            let room = max(0, width - (changes.map { $0.width + M.rowGap } ?? 0))
-            let size = subtitle.size(fitting: room)
+            let size = subtitle.size(fitting: Self.subtitleWidth(textWidth: width, changes: changes))
             subtitleSize = size
             rowHeight = size.height
         }
@@ -155,5 +148,31 @@ public struct ChatPlainHeaderLayout: Equatable, Sendable {
             rowX += subtitleSize.width + M.rowGap
         }
         self.changes = changes.map { CGRect(x: rowX, y: rowTop + (rowHeight - $0.height) / 2, width: $0.width, height: $0.height) }
+    }
+
+    /// Where the column starts in the title view and what it has across:
+    /// the bar's row held to `maxWidth`, 16 in from its sides, clipped to
+    /// the view. The title is measured to this width.
+    private static func row(bar: CGRect, size: CGSize, maxWidth: CGFloat) -> (x: CGFloat, width: CGFloat) {
+        typealias M = Metrics
+        let barWidth = max(0, bar.width)
+        let row = min(barWidth, max(0, maxWidth))
+        let start = bar.minX + (barWidth - row) / 2 + M.paddingH
+        let end = start + max(0, row - 2 * M.paddingH)
+        let viewWidth = max(0, size.width)
+        let x = min(max(start, 0), viewWidth)
+        return (x, max(0, min(end, viewWidth) - x))
+    }
+
+    /// What the title is measured to, for measuring it ahead of the
+    /// layout (off the main thread).
+    public static func textWidth(bar: CGRect, size: CGSize, maxWidth: CGFloat) -> CGFloat {
+        row(bar: bar, size: size, maxWidth: maxWidth).width
+    }
+
+    /// What the subtitle is measured to: the column less the line changes
+    /// and the gap before them.
+    public static func subtitleWidth(textWidth: CGFloat, changes: CGSize?) -> CGFloat {
+        max(0, textWidth - (changes.map { $0.width + Metrics.rowGap } ?? 0))
     }
 }

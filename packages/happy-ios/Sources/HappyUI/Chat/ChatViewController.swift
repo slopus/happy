@@ -211,9 +211,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
         list.delegate = self
         list.olderEnd.onAction = { [weak self] in self?.historyPager?.olderAction() }
-        // The rows are planned at the list's text size (`ChatRowText`), and
-        // the placeholder measures its text as drawn; the rest of the
-        // screen keeps its own (docs/DYNAMIC-TYPE.md).
+        // The rows are planned at the list's text size (`ChatRowText`); the
+        // placeholder, the header, the CLI warning and the bars over the
+        // composer each carry the trait and measure their text off main at
+        // it; the composer and the worktree tab strip follow on their own
+        // (docs/DYNAMIC-TYPE.md).
         list.traitOverrides.followsTextSize = true
         list.registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { [weak self] (_: ChatListView, _) in
             self?.scheduleMeasure()
@@ -226,6 +228,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         headerScrim.overlayOpacity = ChatHeaderScrim.restingOpacity
         view.addSubview(headerScrim)
         cliWarning.isHidden = true
+        cliWarning.traitOverrides.followsTextSize = true
+        cliWarning.onNeedsLayout = { [weak self] in self?.view.setNeedsLayout() }
         cliWarning.addTarget(self, action: #selector(dismissCliWarning), for: .touchUpInside)
         view.addSubview(cliWarning)
         view.addSubview(scrim)
@@ -241,6 +245,13 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         goalBar.isHidden = true
         goalBar.onAction = { [weak self] action in self?.performGoalAction(action) }
         rigActivity.isHidden = true
+        inactiveHint.onNeedsLayout = { [weak self] in self?.dockBarMeasured() }
+        goalBar.onNeedsLayout = { [weak self] in self?.dockBarMeasured() }
+        questionBanner.onNeedsLayout = { [weak self] in self?.dockBarMeasured() }
+        rigActivity.onNeedsLayout = { [weak self] in self?.dockBarMeasured() }
+        for bar in [inactiveHint, goalBar, questionBanner, rigActivity] as [UIView] {
+            bar.traitOverrides.followsTextSize = true
+        }
         dock.addSubview(inactiveHint)
         dock.addSubview(goalBar)
         dock.addSubview(questionBanner)
@@ -516,8 +527,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             tabStrip.maxWidth = ContentWidth.headerMaxWidth
             tabStrip.setLayoutFrame(frame)
         }
-        if !cliWarning.isHidden {
-            cliWarning.place(CliWarningPillLayout(width: size.width, top: screen.headerBottom, label: cliWarning.labelMeasurable))
+        if !cliWarning.isHidden, let label = cliWarning.label(width: size.width) {
+            cliWarning.place(CliWarningPillLayout(width: size.width, top: screen.headerBottom, label: label))
         }
         // Loading the session and the deleted state take the whole screen;
         // an empty chat sits between the bar and the dock.
@@ -590,6 +601,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// ChatHeaderView over a transparent bar: the system back button, the
     /// title capsule, the avatar; the scrim is the screen's own.
     private func setUpHeader() {
+        // ChatHeaderView's text scales; the bar and its controls don't.
+        titleView.traitOverrides.followsTextSize = true
+        plainTitleView.traitOverrides.followsTextSize = true
         titleView.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
         plainTitleView.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
         avatarControl.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
@@ -1009,6 +1023,18 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
                 self.view.layoutIfNeeded()
             }
+        }
+    }
+
+    /// A bar's plan came in: the dock takes the bars' heights again, moving
+    /// the composer as a bar coming or going does. A bar is measured off
+    /// main, so one that just came, or a new text size, shows once its plan
+    /// is in.
+    private func dockBarMeasured() {
+        view.setNeedsLayout()
+        guard isViewLoaded, view.window != nil else { return }
+        UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+            self.view.layoutIfNeeded()
         }
     }
 

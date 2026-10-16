@@ -15,12 +15,12 @@ final class OffMainPlan<Input: Equatable & Sendable, Plan: Sendable> {
     private(set) var applied: (input: Input, plan: Plan)?
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private let make: @Sendable (Input) -> Plan
-    private lazy var pipeline = ApplyPipeline<Input?, Input?, (input: Input, plan: Plan)>(
+    /// Asked only for what is new (`request`), so every input is made.
+    private lazy var pipeline = ApplyPipeline<Input?, Void, (input: Input, plan: Plan)>(
         input: nil,
-        state: nil,
-        derive: { [make] input, applied in
-            guard let input, input != applied else { return nil }
-            return ((input, make(input)), input)
+        state: (),
+        derive: { [make] input, _ in
+            input.map { input in ((input, make(input)), ()) }
         },
         apply: { [weak self] result in self?.take(result) ?? false }
     )
@@ -48,6 +48,14 @@ final class OffMainPlan<Input: Equatable & Sendable, Plan: Sendable> {
     /// Whether the plan for what was asked last is in.
     var isCurrent: Bool { requested != nil && applied?.input == requested }
 
+    /// Forgets the plan and what was asked, so nothing old is drawn when
+    /// the view shows again (a bar that went away). A plan on its way is
+    /// refused.
+    func reset() {
+        requested = nil
+        applied = nil
+    }
+
     private func take(_ result: (input: Input, plan: Plan)) -> Bool {
         guard result.input == requested else { return false }
         applied = result
@@ -63,6 +71,18 @@ final class OffMainPlan<Input: Equatable & Sendable, Plan: Sendable> {
         guard requested != nil, !isCurrent else { return }
         await withCheckedContinuation { waiters.append($0) }
         if !isCurrent { await measured() }
+    }
+}
+
+extension UITraitCollection {
+    /// What a view's text is measured and drawn in: the person's text size
+    /// where it follows it (`FollowsTextSize`), the designed size
+    /// elsewhere, on this screen's pixels either way.
+    @MainActor
+    var measuredTextEnvironment: TextEnvironment {
+        var text = TextEnvironment(self)
+        if !self[FollowsTextSize.self] { text.scale = .standard }
+        return text
     }
 }
 #endif

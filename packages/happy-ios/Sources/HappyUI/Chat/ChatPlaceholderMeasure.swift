@@ -180,11 +180,15 @@ enum ChatPlaceholderMeasure {
             NoSessionsMeasure.measure(title, style: TextStyles.pendingChatTitle, lines: 1, alignment: .natural, environment: environment, width: width(padding))
         }
         plan.lines = model.lines.map { line in
-            let string = line.style.string(
+            let text = MeasuredText(line.style.string(
                 line.text, color: line.color, alignment: .center,
                 lineBreakMode: line.maxLines > 0 ? .byTruncatingTail : .byWordWrapping, in: environment
-            )
-            return ChatTextLayout(string, width: width(line.padding), maxLines: line.maxLines)
+            ), maxLines: line.maxLines)
+            // Drawn in a frame hugging it, so laid out at its own width:
+            // centred in the width it was measured at, it would sit off
+            // to the right.
+            let measured = text.layout(width: width(line.padding))
+            return text.layout(for: CGRect(origin: .zero, size: measured.size))
         }
         if let status = model.status {
             if let title = status.button {
