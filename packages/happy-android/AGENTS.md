@@ -260,7 +260,12 @@ the newest page (`before_seq`), catches up forward, then prefetches up to
 five older pages per session per sign-in. `loadOlder(sessionId)` loads one
 page on demand and returns whether the run moved back;
 `paging(sessionId)` gives `isLoaded`, `hasMoreOlder`, `isLoadingOlder`. A
-backward page that does not move the cursor ends history.
+backward page that does not move the cursor ends history. `preload(sessionId)`
+is Home's press-down (`HomeListCallbacks.onPressDown`, sync.ts
+`preloadSession`): the newest page only, one session at a time (another
+touch drops it), skipped for a chat that is open or already stored, never
+retried, and no visit, read or older history. A plan-mode switch in that page
+waits for the chat to open (`StoredSource.PRELOAD`/`OPENED`).
 
 **Sending** (`sync/MessageSender`, `account.sender`). `send(sessionId, text,
 meta)` builds the user record exactly as sync.ts `sendMessage` does (sentFrom

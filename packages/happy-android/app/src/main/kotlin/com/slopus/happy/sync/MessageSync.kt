@@ -6,9 +6,12 @@ import com.slopus.happy.net.HttpStatusException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -29,9 +32,21 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 
-/** One batch of a session's messages, oldest first, as stored. */
-data class StoredMessages(val sessionId: String, val messages: List<MessageRecord>)
+/**
+ * One batch of a session's messages, oldest first, as stored (sync.ts
+ * applyMessages' source). A [PRELOAD][StoredSource.PRELOAD] batch was
+ * fetched before the chat opened; [OPENED][StoredSource.OPENED] carries no
+ * messages and says the chat has since opened and caught up.
+ */
+data class StoredMessages(
+    val sessionId: String,
+    val messages: List<MessageRecord>,
+    val source: StoredSource = StoredSource.SYNC,
+)
+
+enum class StoredSource { SYNC, PRELOAD, OPENED }
 
 /** A chat's paging state (sync.ts sessionMessages: isLoaded, hasMoreOlder, isLoadingOlder). */
 data class MessagePaging(val isLoaded: Boolean, val hasMoreOlder: Boolean, val isLoadingOlder: Boolean)
@@ -60,6 +75,8 @@ class MessageSync(
     private val prefetchAttempts = ConcurrentHashMap<String, Int>()
     private val prefetching = ConcurrentHashMap.newKeySet<String>()
     private val viewing = ConcurrentHashMap<String, Int>()
+    private val preloadSlot = AtomicReference<Preload?>(null)
+    private val preloaded = ConcurrentHashMap.newKeySet<String>()
 
     private val loadingOlderState = MutableStateFlow<Set<String>>(emptySet())
 
@@ -80,8 +97,8 @@ class MessageSync(
      * newest first; the batch is reported oldest first, since a plan mode
      * entered and then left must not read as entered.
      */
-    fun noteStored(sessionId: String, messages: List<MessageRecord>) {
-        if (messages.isNotEmpty()) storedEvents.tryEmit(StoredMessages(sessionId, messages.sortedBy { it.seq }))
+    fun noteStored(sessionId: String, messages: List<MessageRecord>, source: StoredSource = StoredSource.SYNC) {
+        if (messages.isNotEmpty()) storedEvents.tryEmit(StoredMessages(sessionId, messages.sortedBy { it.seq }, source))
     }
 
     /** Sessions loading an older page right now. */
@@ -115,9 +132,59 @@ class MessageSync(
 
     /** The user opened the chat (sync.ts onSessionVisible): catch up, then fill in history. */
     fun onSessionVisible(sessionId: String) {
+        // The chat's catch-up now waits on a touch's page: another touch must not cancel it.
+        preloadSlot.getAndUpdate { if (it?.sessionId == sessionId) null else it }
         scope.launch {
             invalidateAndAwait(sessionId)
+            if (preloaded.remove(sessionId)) storedEvents.tryEmit(StoredMessages(sessionId, emptyList(), StoredSource.OPENED))
             prefetchOlder(sessionId)
+        }
+    }
+
+    /**
+     * A finger landed on the session's row (sync.ts preloadSession,
+     * sessionMessagePreloader.ts): its newest page starts loading so the chat
+     * opens on messages. One page, one session at a time; a touch on another
+     * row cancels it, and nothing happens for a chat already open, already
+     * loading or already stored. No retry: the chat's own catch-up covers a
+     * failure. Nothing here marks a visit, reads, or fetches older history.
+     */
+    fun preload(sessionId: String) {
+        if (viewing.containsKey(sessionId)) return
+        val current = preloadSlot.get()
+        if (current?.sessionId == sessionId) return
+        val job = scope.launch(start = CoroutineStart.LAZY) {
+            try {
+                preloadNewestPage(sessionId)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+            }
+        }
+        val next = Preload(sessionId, job)
+        if (!preloadSlot.compareAndSet(current, next)) {
+            job.cancel()
+            return
+        }
+        current?.job?.cancel()
+        job.invokeOnCompletion { preloadSlot.compareAndSet(next, null) }
+        job.start()
+    }
+
+    private suspend fun preloadNewestPage(sessionId: String) = lock(sessionId).withLock {
+        withContext(io) {
+            // Rechecked inside the lock: the chat's catch-up or an earlier touch may have stored it meanwhile.
+            val session = store.session(sessionId) ?: return@withContext
+            if (store.messageHistory(sessionId)?.isLoaded != false) return@withContext
+            val cipher = decoder.cipher(session.wrappedDataKey) ?: return@withContext
+            val page = api.messagesBefore(sessionId, SEQ_BACKWARD_INITIAL_SENTINEL, PAGE_SIZE)
+            val newest = page.messages.map { decoder.message(sessionId, it, cipher) }
+            // A page for a row touched since, or a session deleted while it decrypted, is dropped.
+            ensureActive()
+            if (store.session(sessionId) == null) return@withContext
+            store.applyNewestPage(sessionId, newest, page.hasMore)
+            preloaded.add(sessionId)
+            noteStored(sessionId, newest, StoredSource.PRELOAD)
         }
     }
 
@@ -134,6 +201,8 @@ class MessageSync(
 
     /** The session is gone: drop its in-memory state. */
     fun forget(sessionId: String) {
+        preloadSlot.get()?.takeIf { it.sessionId == sessionId }?.let { if (preloadSlot.compareAndSet(it, null)) it.job.cancel() }
+        preloaded.remove(sessionId)
         syncs.remove(sessionId)?.cancel()
         prefetchAttempts.remove(sessionId)
         locks.remove(sessionId)
@@ -248,6 +317,8 @@ class MessageSync(
     }
 
     private fun lock(sessionId: String): Mutex = locks.computeIfAbsent(sessionId) { Mutex() }
+
+    private class Preload(val sessionId: String, val job: Job)
 
     companion object {
         /** `before_seq` of a first backward fetch: above any seq (the server's seq is a Postgres int4). */
