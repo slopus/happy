@@ -24,6 +24,8 @@ import com.slopus.happy.auth.AuthState
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.connect.DeepLinkEffect
+import com.slopus.happy.ui.connect.connectRoutes
 import com.slopus.happy.ui.home.HomeScreen
 import com.slopus.happy.ui.onboarding.RestoreManualScreen
 import com.slopus.happy.ui.onboarding.onboardingRoutes
@@ -89,7 +91,9 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                     AppearanceScreen(theme = theme, onThemeChange = graph.localSettings::setThemePreference, onBack = { nav.popBackStack() })
                 }
                 onboardingRoutes(graph, nav)
+                connectRoutes(graph, nav)
             }
+            DeepLinkEffect(nav, signedIn = signedIn != null)
         }
     }
 }

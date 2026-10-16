@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Production only, as app.config.js adds the intent filter only when
+  APP_ENV is production: https://app.happy.engineering links open the app.
+  Verification needs the release signing key's fingerprint in
+  https://app.happy.engineering/.well-known/assetlinks.json.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <activity android:name=".MainActivity">
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="https" android:host="app.happy.engineering" android:pathPrefix="/" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
