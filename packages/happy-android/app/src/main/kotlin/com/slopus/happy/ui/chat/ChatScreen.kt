@@ -40,11 +40,12 @@ import com.slopus.happy.chat.AgentQuestionAnswer
 import com.slopus.happy.chat.ChatSessionInfo
 import com.slopus.happy.chat.ChatState
 import com.slopus.happy.chat.ComposerModes
+import com.slopus.happy.chat.resolveChatHeaderGit
+import com.slopus.happy.model.GitStatus
 import com.slopus.happy.model.SessionState
 import com.slopus.happy.model.avatarId
 import com.slopus.happy.model.compactCount
 import com.slopus.happy.model.formatPathRelativeToHome
-import com.slopus.happy.model.rigGitSummary
 import com.slopus.happy.model.settings.ModeOption
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.rigCanAbort
@@ -132,6 +133,10 @@ class ChatScreenActions(
     val onCancelQuestion: suspend (communicationId: String, kind: String) -> Unit = { _, _ -> },
     /** A pick from the composer's permission, model or effort sheet. */
     val onModeChange: (AgentModeField, ModeOption) -> Unit = { _, _ -> },
+    /** The CLI warning pill was tapped: this machine's CLI version is acknowledged. */
+    val onDismissCliWarning: () -> Unit = {},
+    /** Resume, from the inactive-session hint. */
+    val onResume: () -> Unit = {},
 )
 
 /**
@@ -158,6 +163,9 @@ fun ChatScreen(
     compactToolCalls: Boolean = false,
     showLineNumbersInToolViews: Boolean = false,
     modes: ComposerModes = ComposerModes.None,
+    gitStatus: GitStatus? = null,
+    showCliWarning: Boolean = false,
+    inactiveHint: InactiveHint? = null,
 ) {
     val colors = HappyTheme.colors
     val session = state.session
@@ -201,7 +209,7 @@ fun ChatScreen(
         Header(
             scrolled = session != null && listState.canScrollForward,
             left = { HeaderBackButton(actions.onBack) },
-            titleContent = { ChatHeaderTitle(title, session, onClick = if (session != null) actions.onInfo else null) },
+            titleContent = { ChatHeaderTitle(title, session, gitStatus, onClick = if (session != null) actions.onInfo else null) },
             right = if (session != null && !tablet) {
                 { HeaderAvatar(session, state.online, actions.onInfo) }
             } else {
@@ -233,9 +241,17 @@ fun ChatScreen(
                 )
                 else -> Spinner(Modifier.align(Alignment.Center).testTag(ChatScreenTags.LOADING))
             }
+            // Over the transcript, not in it; hidden on a landscape phone, as in happy-app.
+            if (session != null && showCliWarning && !(LocalWindowLayout.current.isLandscape && !tablet)) {
+                CliWarningPill(actions.onDismissCliWarning, Modifier.align(Alignment.TopCenter))
+            }
         }
         if (session != null) {
-            CenteredInputWidth(horizontalPadding = if (tablet) ChatScreenSpec.tabletInputPaddingHorizontal else ChatScreenSpec.inputPaddingHorizontal) {
+            val inputPadding = if (tablet) ChatScreenSpec.tabletInputPaddingHorizontal else ChatScreenSpec.inputPaddingHorizontal
+            if (inactiveHint != null) {
+                CenteredInputWidth(horizontalPadding = inputPadding) { InactiveArchivedHint(inactiveHint, actions.onResume) }
+            }
+            CenteredInputWidth(horizontalPadding = inputPadding) {
                 AgentQuestionBanner(state.pendingCommunications, actions.onAnswerQuestion, actions.onCancelQuestion)
             }
             ChatComposerFor(state, session, draft, actions, aborting, now, modes)
@@ -294,11 +310,11 @@ private fun ChatComposerFor(
 }
 
 @Composable
-private fun ChatHeaderTitle(title: String, session: ChatSessionInfo?, onClick: (() -> Unit)?) {
+private fun ChatHeaderTitle(title: String, session: ChatSessionInfo?, gitStatus: GitStatus?, onClick: (() -> Unit)?) {
     val colors = HappyTheme.colors
-    val metadata = session?.metadata
-    val subtitle = metadata?.workspace?.name?.trim()?.takeIf { it.isNotEmpty() } ?: metadata?.gitBranch?.trim()?.takeIf { it.isNotEmpty() }
-    val git = metadata.rigGitSummary()?.takeIf { it.insertions > 0 || it.deletions > 0 }
+    val header = remember(session?.metadata, gitStatus) { resolveChatHeaderGit(session?.metadata, gitStatus) }
+    val subtitle = header.subtitle
+    val git = header.changes
     Column(
         modifier = Modifier
             .testTag(ChatScreenTags.TITLE_BUTTON)
@@ -337,7 +353,7 @@ private fun ChatHeaderTitle(title: String, session: ChatSessionInfo?, onClick: (
                         modifier = Modifier.testTag(ChatScreenTags.GIT_CHANGES),
                         horizontalArrangement = Arrangement.spacedBy(ChatScreenSpec.gitGap),
                     ) {
-                        if (!git.countsExact) Text("≈", style = happyTextStyle(fontSize = 11), color = colors.textSecondary)
+                        if (git.approximate) Text("≈", style = happyTextStyle(fontSize = 11), color = colors.textSecondary)
                         if (git.insertions > 0) Text("+${compactCount(git.insertions)}", style = ChatScreenSpec.gitText, color = ChatTheme.colors.gitAdded)
                         if (git.deletions > 0) Text("-${compactCount(git.deletions)}", style = ChatScreenSpec.gitText, color = ChatTheme.colors.gitRemoved)
                     }

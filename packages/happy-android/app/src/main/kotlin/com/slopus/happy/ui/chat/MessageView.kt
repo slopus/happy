@@ -76,7 +76,6 @@ object MessageTags {
     const val AGENT = "message.agent"
     const val AGENT_COPY = "message.agent.copy"
     const val EVENT = "message.event"
-    const val UNSUPPORTED = "message.unsupported"
 }
 
 /** MessageView.tsx's stylesheet. */
@@ -146,7 +145,6 @@ fun MessageView(row: ChatRow, bubble: BubblePalette, callbacks: MessageCallbacks
             is ChatRow.AgentText -> AgentMessage(row, callbacks, content)
             is ChatRow.Event -> EventMessage(row.message.event, content)
             is ChatRow.Tool -> if (row.message.tool.name == "file") FileMessageView(row.message.tool.input, content) else ToolView(row.message, callbacks, content)
-            is ChatRow.Unsupported -> UnsupportedMessage(content)
         }
     }
 }
@@ -418,26 +416,3 @@ fun EventMessage(event: AgentEvent, modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * A record this build cannot show (a retired or unknown kind). happy-app
- * drops these; here a 14pt agentEventText line, centred with 8 side margins
- * and 8 above and below, says something is there.
- */
-@Composable
-fun UnsupportedMessage(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = MessageSpec.eventMarginHorizontal)
-            .testTag(MessageTags.UNSUPPORTED)
-            .padding(vertical = MessageSpec.eventPaddingVertical),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            stringResource(R.string.chat_message_unsupported),
-            style = MessageSpec.eventText,
-            color = ChatTheme.colors.agentEventText,
-            textAlign = TextAlign.Center,
-        )
-    }
-}

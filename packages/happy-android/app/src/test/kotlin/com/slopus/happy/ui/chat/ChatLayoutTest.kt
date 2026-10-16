@@ -177,12 +177,6 @@ class ChatLayoutTest {
         assertBox("row", row, 8.dp, 2.dp, (PHONE_WIDTH - 16).dp, 28.dp)
     }
 
-    @Test
-    fun unsupportedRecordsSaySo() {
-        rule.setHappyContent { MessageView(ChatRow.Unsupported(ChatMessage.Unsupported("x", 0, "agent.codex.message")), gray, MessageCallbacks()) }
-        rule.onNodeWithText("This message can't be shown in this version of the app").assertExists()
-    }
-
     // ChatFooter: 4 above; the warning 32 in from both sides and 4 lower.
     @Test
     fun footerWarning() {
