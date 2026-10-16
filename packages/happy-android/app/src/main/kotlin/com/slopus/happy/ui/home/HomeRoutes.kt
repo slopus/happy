@@ -19,6 +19,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
+import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.R
@@ -34,6 +35,11 @@ import com.slopus.happy.sync.MachinePresence
 import com.slopus.happy.sync.SessionPresence
 import com.slopus.happy.sync.SpawnSessionResult
 import com.slopus.happy.sync.SyncEngine
+import com.slopus.happy.ui.machine.LiveMachineControls
+import com.slopus.happy.ui.machine.MachineRoute
+import com.slopus.happy.ui.machine.MachineScreen
+import com.slopus.happy.ui.machine.MachineScreenActions
+import com.slopus.happy.ui.machine.recentMachineSessions
 import com.slopus.happy.ui.onboarding.LinkComputerChecklist
 import com.slopus.happy.ui.onboarding.OnboardingLinkComputer
 import com.slopus.happy.ui.onboarding.OnboardingSettingsRoute
@@ -166,11 +172,24 @@ fun NavGraphBuilder.homeRoutes(
             onWhatsNew = { nav.navigate(ChangelogRoute) },
             onOnboardingSettings = { nav.navigate(OnboardingSettingsRoute) },
             onOpenSession = onOpenSession,
+            onOpenMachine = { id -> nav.navigate(MachineRoute(id)) },
             onTroubleshoot = onTroubleshoot,
             onNewSession = {},
             onDetails = null,
             onCreateWorkspace = {},
         )
+    }
+    composable<MachineRoute> { entry ->
+        val id = entry.toRoute<MachineRoute>().id
+        val services = remember(graph) { HomeServices.of(graph) }
+        val snapshot by services.snapshots.collectAsStateWithLifecycle()
+        val machine = snapshot?.machines?.find { it.id == id }
+        val sessions = remember(snapshot?.sessions, id) { recentMachineSessions(snapshot?.sessions.orEmpty(), id) }
+        val controls = remember(graph) { LiveMachineControls { graph.account.value } }
+        val actions = remember(nav, onOpenSession) {
+            MachineScreenActions(onBack = { nav.popBackStack() }, onOpenSession = onOpenSession, onDeleted = { nav.popBackStack() })
+        }
+        MachineScreen(machine, sessions, controls, actions)
     }
 }
 
@@ -196,6 +215,7 @@ private fun HomeRouteScreen(
     onWhatsNew: () -> Unit,
     onOnboardingSettings: () -> Unit,
     onOpenSession: (String) -> Unit,
+    onOpenMachine: (String) -> Unit,
     onTroubleshoot: () -> Unit,
     onNewSession: () -> Unit,
     onDetails: ((String) -> Unit)?,
@@ -229,7 +249,7 @@ private fun HomeRouteScreen(
     val createWorkspaceLabel = stringResource(R.string.home_create_workspace)
     val cancelLabel = stringResource(R.string.common_cancel)
 
-    val callbacks = remember(services, menus, onOpenSession, onCreateWorkspace) {
+    val callbacks = remember(services, menus, onOpenSession, onOpenMachine, onCreateWorkspace) {
         HomeListCallbacks(
             onOpen = onOpenSession,
             onMenu = menus::open,
@@ -238,7 +258,7 @@ private fun HomeRouteScreen(
             onToggleProject = { id ->
                 graph.localSettings.change { it.copy(expandedProjects = it.expandedProjects + (id to it.expandedProjects[id].let { open -> open != true })) }
             },
-            onOpenMachine = {},
+            onOpenMachine = onOpenMachine,
             onCreateWorkspace = onCreateWorkspace,
             onProjectMenu = { name, origin ->
                 alert = Alert(name, null, listOf(AlertButton(cancelLabel), AlertButton(createWorkspaceLabel) { onCreateWorkspace(origin) }))

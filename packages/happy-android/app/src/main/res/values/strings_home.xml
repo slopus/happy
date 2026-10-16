@@ -13,4 +13,16 @@
     <!-- ProjectHomeList.tsx -->
     <string name="home_create_workspace">Create workspace</string>
     <string name="home_create_workspace_in">Create workspace in %1$s</string>
+    <!-- machine/[id].tsx -->
+    <string name="machine_not_found">Machine not found</string>
+    <string name="machine_unknown">unknown machine</string>
+    <string name="machine_stop_daemon_confirm_title">Stop Daemon?</string>
+    <string name="machine_stop_daemon_confirm_message">You will not be able to spawn new sessions on this machine until you restart the daemon on your computer again. Your current sessions will stay alive.</string>
+    <string name="machine_daemon_stopped">Daemon Stopped</string>
+    <string name="machine_stop_daemon_failed">Failed to stop daemon. It may not be running.</string>
+    <string name="machine_rename_title">Rename Machine</string>
+    <string name="machine_rename_message">Give this machine a custom name. Leave empty to use the default hostname.</string>
+    <string name="machine_rename_placeholder">Enter machine name</string>
+    <string name="machine_renamed">Machine renamed successfully</string>
+    <string name="machine_rename_failed">Failed to rename machine</string>
 </resources>
