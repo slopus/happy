@@ -7,6 +7,7 @@ import com.slopus.happy.data.HappyStore
 import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.testing.FakeHappyServer
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
@@ -47,7 +48,8 @@ class MessagePreloadTest {
         scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val api = SyncApi(HappyHttp(OkHttpClient(), serverUrl = { server.url }, clientId = "android/test"), server.token)
         sync = MessageSync(api, store, RecordDecoder(server.encryption), scope, Dispatchers.IO, prefetchPauseMs = 0)
-        scope.launch { sync.stored.collect { events += it } }
+        // UNDISPATCHED: subscribed before setUp returns, so no batch can beat the collector.
+        scope.launch(start = CoroutineStart.UNDISPATCHED) { sync.stored.collect { events += it } }
     }
 
     @After

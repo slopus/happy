@@ -337,7 +337,8 @@ class LiveUpdatesTest {
     @Test
     fun heartbeatsStayInMemoryAndOnlyFlipsAreShown() {
         h.startAndSync()
-        val shown = mutableListOf<Map<String, SessionPresence>>()
+        // Appended on the collector's thread while this one reads it.
+        val shown = java.util.concurrent.CopyOnWriteArrayList<Map<String, SessionPresence>>()
         val collector = Thread {
             runBlocking { kotlinx.coroutines.withTimeoutOrNull(3_000) { h.account.presence.sessions.collect { shown += it } } }
         }.apply { start() }

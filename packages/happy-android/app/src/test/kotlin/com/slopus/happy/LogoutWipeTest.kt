@@ -1,6 +1,8 @@
 package com.slopus.happy
 
 import android.content.Context
+import coil3.ColorImage
+import coil3.memory.MemoryCache
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.auth.AuthState
@@ -16,6 +18,7 @@ import com.slopus.happy.testing.FakeHappyServer
 import com.slopus.happy.testing.SoftwareKeys
 import com.slopus.happy.ui.attachments.attachmentCacheDir
 import com.slopus.happy.ui.changelog.ChangelogReadMarker
+import com.slopus.happy.ui.components.HappyImageLoader
 import com.slopus.happy.ui.home.HomeServices
 import com.slopus.happy.ui.home.NewSessionDraftStore
 import com.slopus.happy.ui.home.PrefsReviewStamps
@@ -66,7 +69,14 @@ class LogoutWipeTest {
         newSession.setInput("draft for a new session")
         PrefsReviewStamps(context.getSharedPreferences(PrefsReviewStamps.PREFS_NAME, Context.MODE_PRIVATE)).declinedAt = 1
         val picked = attachmentCacheDir(context).resolve("picked.jpg").apply { writeText("pixels") }
-        val images = context.cacheDir.resolve("images").apply { mkdirs() }.resolve("cached").apply { writeText("png") }
+        // Through the app's one loader: it is process-wide, so an earlier test may have built it on another context.
+        val images = HappyImageLoader.get(context)
+        images.diskCache!!.openEditor("cached")!!.apply {
+            images.diskCache!!.fileSystem.write(data) { writeUtf8("png") }
+            images.diskCache!!.fileSystem.write(metadata) { writeUtf8("{}") }
+            commit()
+        }
+        images.memoryCache!![MemoryCache.Key("cached")] = MemoryCache.Value(ColorImage())
 
         val order = Collections.synchronizedList(mutableListOf<String>())
         graph.beforeLogout { token ->
@@ -95,7 +105,8 @@ class LogoutWipeTest {
         assertTrue(context.getSharedPreferences(PrefsReviewStamps.PREFS_NAME, Context.MODE_PRIVATE).all.isEmpty())
         assertEquals("", newSession.draft.value.input)
         assertFalse(picked.exists())
-        assertFalse(images.exists())
+        assertNull(images.diskCache!!.openSnapshot("cached"))
+        assertNull(images.memoryCache!![MemoryCache.Key("cached")])
         // The server choice is the device's, not the account's.
         assertEquals(server.url, graph.serverConfig.url.value)
     }
