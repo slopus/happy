@@ -27,6 +27,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
@@ -73,6 +74,8 @@ data class HomeListState(
     val archiveHidden: Boolean,
     val rows: List<HomeRow>,
     val offlineBanner: OfflineBanner?,
+    /** The linked computers' names, for the offline checklist. */
+    val computers: List<String> = emptyList(),
 )
 
 /** Everything one derivation reads. */
@@ -114,6 +117,7 @@ fun deriveHomeList(inputs: HomeListInputs, zone: ZoneId, today: LocalDate): Home
         archiveHidden = inputs.archiveHidden,
         rows = rows,
         offlineBanner = if (shouldShowOfflineMachinesBanner(choices.size, online)) OfflineBanner(choices.singleOrNull()?.name) else null,
+        computers = choices.map { it.name },
     )
 }
 
@@ -155,7 +159,7 @@ fun reuseUnchanged(previous: HomeListState?, next: HomeListState): HomeListState
 /**
  * The home list, derived on [dispatcher] whenever an input changes and
  * diffed against the last one ([reuseUnchanged]). [state] is null until
- * the first snapshot is in.
+ * a snapshot that is [HomeSnapshot.ready] is in.
  */
 class HomeListModel(
     snapshots: Flow<HomeSnapshot?>,
@@ -168,7 +172,7 @@ class HomeListModel(
     zone: () -> ZoneId = ZoneId::systemDefault,
 ) {
     val state: StateFlow<HomeListState?> = combine(
-        snapshots.filterNotNull(),
+        snapshots.filterNotNull().filter { it.ready },
         settings.map { it.sessionListGrouping to it.hideInactiveSessions }.distinctUntilChanged(),
         localSettings.map { values -> values.expandedProjects.filterValues { it }.keys }.distinctUntilChanged(),
         unreadSessionIds,

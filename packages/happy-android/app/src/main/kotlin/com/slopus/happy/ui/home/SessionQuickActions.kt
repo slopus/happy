@@ -1,6 +1,5 @@
 package com.slopus.happy.ui.home
 
-import com.slopus.happy.model.ForkSource
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.forkSource
@@ -51,25 +50,4 @@ fun sessionActionIds(session: Session, machine: Machine?, continuationExperiment
     }
     if (devMode) add(SessionActionId.CopyMetadata)
     add(SessionActionId.Archive)
-}
-
-/** What starting a session on a machine produced (ops.ts SpawnSessionResult, as the screens use it). */
-sealed interface SpawnResult {
-    data class Success(val sessionId: String) : SpawnResult
-    data class Failure(val message: String?) : SpawnResult
-}
-
-/** The machine RPCs behind resume and fork; a seam until Sync's RPC lands. */
-interface SessionRpc {
-    /** machineResumeSession: the same session reconnects on its machine. */
-    suspend fun resume(machineId: String, sessionId: String): SpawnResult
-
-    /** forkAndSpawn: a copy of the provider session, started as a new Happy session. */
-    suspend fun fork(source: ForkSource): SpawnResult
-
-    /** No socket yet: nothing can be asked of a machine. */
-    object Unavailable : SessionRpc {
-        override suspend fun resume(machineId: String, sessionId: String): SpawnResult = SpawnResult.Failure(null)
-        override suspend fun fork(source: ForkSource): SpawnResult = SpawnResult.Failure(null)
-    }
 }
