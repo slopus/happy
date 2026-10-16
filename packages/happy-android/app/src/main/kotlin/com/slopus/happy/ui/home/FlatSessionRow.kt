@@ -54,6 +54,7 @@ import com.slopus.happy.model.FlatRowTopRight
 import com.slopus.happy.model.FlatSessionRowData
 import com.slopus.happy.model.SessionRowData
 import com.slopus.happy.model.SessionState
+import com.slopus.happy.model.VisibleGitChanges
 import com.slopus.happy.model.WorkspaceOrigin
 import com.slopus.happy.model.compactCount
 import com.slopus.happy.model.resolveFlatRowPresentation
@@ -348,7 +349,12 @@ private fun TopRight(timestamp: String, topRight: FlatRowTopRight, state: Sessio
 /** GitLineChanges: ≈ when approximate, +insertions, -deletions, 11 semibold, 4 apart. */
 @Composable
 fun GitChanges(session: SessionRowData, modifier: Modifier = Modifier) {
-    val changes = visibleGitChanges(session) ?: return
+    visibleGitChanges(session)?.let { GitChanges(it, modifier) }
+}
+
+/** GitLineChanges for counts from anywhere (the list rows, session info). */
+@Composable
+fun GitChanges(changes: VisibleGitChanges, modifier: Modifier = Modifier) {
     val colors = HappyTheme.colors
     Row(
         modifier = modifier.testTag(FlatRowTags.GIT),

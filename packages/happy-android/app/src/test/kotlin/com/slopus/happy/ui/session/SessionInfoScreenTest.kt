@@ -3,21 +3,29 @@ package com.slopus.happy.ui.session
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.slopus.happy.model.GitFileStatus
+import com.slopus.happy.model.GitFileStatusKind
+import com.slopus.happy.model.GitStatus
+import com.slopus.happy.model.GitStatusFiles
 import com.slopus.happy.model.HomeModelFixtures.cliAvailability
 import com.slopus.happy.model.HomeModelFixtures.machine
 import com.slopus.happy.model.HomeModelFixtures.machineMetadata
 import com.slopus.happy.model.HomeModelFixtures.metadata
 import com.slopus.happy.model.HomeModelFixtures.session
 import com.slopus.happy.model.Session
+import com.slopus.happy.model.SessionState
+import com.slopus.happy.sync.ComposerMirror
 import com.slopus.happy.sync.ForkOptions
 import com.slopus.happy.sync.ForkSource
 import com.slopus.happy.sync.OpResult
@@ -32,7 +40,12 @@ import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.home.ArchiveResult
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import org.junit.Assert.assertEquals
@@ -113,9 +126,16 @@ class SessionInfoScreenTest {
         clientLogs = { logs },
     )
 
-    private fun show(session: Session?, ready: Boolean = true, experiments: Boolean = true, fakes: Fakes = Fakes(), devMode: Boolean = false) {
+    private fun show(
+        session: Session?,
+        ready: Boolean = true,
+        experiments: Boolean = true,
+        fakes: Fakes = Fakes(),
+        debugBuild: Boolean = false,
+        live: SessionInfoLive = SessionInfoLive(),
+    ) {
         rule.setHappyContent {
-            SessionInfoScreen(session, ready, null, online, experiments, devMode, fakes, fakes, actions, zone = ZoneOffset.UTC)
+            SessionInfoScreen(session, ready, null, online, experiments, debugBuild, fakes, fakes, actions, zone = ZoneOffset.UTC, live = live)
         }
     }
 
@@ -296,9 +316,54 @@ class SessionInfoScreenTest {
     }
 
     @Test
-    fun devModeShowsTheRawJson() {
-        show(claudeSession(), devMode = true)
+    fun debugBuildsShowTheRawJson() {
+        show(claudeSession(), debugBuild = true)
         rule.node(SessionInfoTags.RAW_JSON).performScrollTo().assertExists()
+    }
+
+    @Test
+    fun rawJsonAsInfoTsxDumpsIt() {
+        val status = statusJson(SessionState.Waiting, "online")
+        assertEquals("""{"isConnected":true,"statusText":"online","statusColor":"#34C759","statusDotColor":"#34C759"}""", status.toString())
+        assertEquals(true, (statusJson(SessionState.Thinking, "vibing…")["isPulsing"] as JsonPrimitive).boolean)
+        val offline = claudeSession(active = false).copy(activeAt = 42)
+        val json = sessionJson(offline, null, ComposerMirror(permissionMode = "plan", modelMode = "opus", draft = "half"))
+        assertEquals(42L, json["presence"]!!.jsonPrimitive.long)
+        assertEquals("plan", json["permissionMode"]!!.jsonPrimitive.content)
+        assertEquals("opus", json["modelMode"]!!.jsonPrimitive.content)
+        assertEquals("half", json["draft"]!!.jsonPrimitive.content)
+        assertEquals(JsonNull, json["agentState"])
+        assertEquals("online", sessionJson(claudeSession(), null)["presence"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun liveGitCountsForACliSession() {
+        val files = GitStatusFiles(
+            stagedFiles = listOf(GitFileStatus("a.kt", "", "a.kt", GitFileStatusKind.Modified, true, 1, 0)),
+            unstagedFiles = listOf(
+                GitFileStatus("a.kt", "", "a.kt", GitFileStatusKind.Modified, false, 2, 0),
+                GitFileStatus("b.kt", "", "b.kt", GitFileStatusKind.Modified, false, 0, 0),
+            ),
+            branch = "main",
+        )
+        val status = GitStatus(
+            branch = "main", isDirty = true, modifiedCount = 2, untrackedCount = 0, stagedCount = 1, lastUpdatedAt = 1,
+            stagedLinesAdded = 0, stagedLinesRemoved = 0, unstagedLinesAdded = 0, unstagedLinesRemoved = 0,
+            linesAdded = 1200, linesRemoved = 0, linesChanged = 1200,
+        )
+        show(claudeSession(), live = SessionInfoLive(gitStatus = status, gitStatusFiles = files))
+        // Two files (a.kt counted once); +1.2k, and no "-0".
+        rule.onNodeWithText("2 changed files", useUnmergedTree = true).assertExists()
+        rule.onNodeWithText("+1.2k", useUnmergedTree = true).assertExists()
+        rule.onAllNodesWithText("-0", useUnmergedTree = true).assertCountEquals(0)
+        rule.onAllNodesWithText("≈", useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    @Test
+    fun aBypassingSessionSkipsPermissions() {
+        show(claudeSession(), live = SessionInfoLive(composer = ComposerMirror(permissionMode = "bypassPermissions")))
+        rule.onNodeWithText("Dangerously Skip Permissions").performScrollTo()
+        rule.onNode(hasText("Enabled") and hasAnyAncestor(hasTestTag(SessionInfoTags.SKIP_PERMISSIONS)), useUnmergedTree = true).assertExists()
     }
 
     @Test
