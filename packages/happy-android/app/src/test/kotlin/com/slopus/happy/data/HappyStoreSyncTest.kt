@@ -177,6 +177,10 @@ class HappyStoreSyncTest {
             assertEquals(false, store.messageHistory("empty")!!.isLoaded)
             assertEquals(2, store.messages("s").size)
             assertEquals(emptyList<OutboxRecord>(), store.outbox())
+            // Through version 3 as well: the composer table is there and bound to sessions.
+            store.saveComposer("s", "{}")
+            store.saveComposer("missing", "{}")
+            assertEquals(mapOf("s" to "{}"), store.composers())
         } finally {
             migrated.close()
             file.delete()

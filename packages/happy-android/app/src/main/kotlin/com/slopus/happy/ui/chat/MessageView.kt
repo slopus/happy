@@ -49,6 +49,7 @@ import com.slopus.happy.chat.ChatRow
 import com.slopus.happy.chat.PermissionStatus
 import com.slopus.happy.chat.ToolState
 import com.slopus.happy.chat.UserDisplay
+import com.slopus.happy.ui.attachments.FileMessageView
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.PlexMono
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -134,7 +135,7 @@ fun MessageView(row: ChatRow, bubble: BubblePalette, callbacks: MessageCallbacks
         is ChatRow.User -> UserMessage(row, bubble, callbacks, modifier)
         is ChatRow.AgentText -> AgentMessage(row, callbacks, modifier)
         is ChatRow.Event -> EventMessage(row.message.event, modifier)
-        is ChatRow.Tool -> ToolRow(row.message, callbacks, modifier)
+        is ChatRow.Tool -> if (row.message.tool.name == "file") FileMessageView(row.message.tool.input, modifier) else ToolRow(row.message, callbacks, modifier)
         is ChatRow.Unsupported -> UnsupportedMessage(modifier)
     }
 }

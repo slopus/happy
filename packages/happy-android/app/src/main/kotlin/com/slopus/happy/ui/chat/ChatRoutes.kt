@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.chat
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,6 +25,8 @@ import com.slopus.happy.chat.StoreChatSessionSource
 import com.slopus.happy.chat.SyncChatMessagesSource
 import com.slopus.happy.chat.SyncChatPresenceSource
 import com.slopus.happy.chat.UnavailableChatActions
+import com.slopus.happy.ui.attachments.LocalSessionAttachments
+import com.slopus.happy.ui.attachments.rememberSessionAttachments
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -115,13 +118,15 @@ private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, 
         )
     }
 
-    ChatScreen(
-        state = state,
-        draft = allDrafts[sessionId].orEmpty(),
-        bubbleColor = settings.userMessageBubbleColor,
-        actions = screenActions,
-        aborting = aborting,
-    )
+    CompositionLocalProvider(LocalSessionAttachments provides rememberSessionAttachments(graph, sessionId)) {
+        ChatScreen(
+            state = state,
+            draft = allDrafts[sessionId].orEmpty(),
+            bubbleColor = settings.userMessageBubbleColor,
+            actions = screenActions,
+            aborting = aborting,
+        )
+    }
     failure?.let { message ->
         HappyAlert(
             Alert(stringResource(R.string.common_error), message, listOf(AlertButton(stringResource(R.string.common_ok)))),

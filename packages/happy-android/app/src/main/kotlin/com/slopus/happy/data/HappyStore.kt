@@ -604,8 +604,25 @@ class HappyStore(private val helper: SQLiteOpenHelper) {
     fun saveProfile(profile: JsonObject) = putDocument(KEY_PROFILE, profile, null)
 
     /** Logout: everything goes, schema stays. */
+    /** Every session's stored composer document (sync/SessionComposer.kt), by session id. */
+    fun composers(): Map<String, String> = db.rawQuery("SELECT session_id, value FROM composer", null).use { c ->
+        buildMap { while (c.moveToNext()) put(c.getString(0), c.getString(1)) }
+    }
+
+    /** Stores a session's composer document, or removes it when [value] is null. A session not stored is ignored. */
+    fun saveComposer(sessionId: String, value: String?) {
+        if (value == null) {
+            db.delete("composer", "session_id = ?", arrayOf(sessionId))
+            return
+        }
+        db.execSQL(
+            "INSERT OR REPLACE INTO composer (session_id, value) SELECT id, ? FROM sessions WHERE id = ?",
+            arrayOf(value, sessionId),
+        )
+    }
+
     fun clearAll() = transaction {
-        listOf("outbox", "messages", "sessions", "machines", "account", "sync_state").forEach { db.delete(it, null, null) }
+        listOf("composer", "outbox", "messages", "sessions", "machines", "account", "sync_state").forEach { db.delete(it, null, null) }
         dirty().sessions = true
         dirty().sessionActivity = true
         dirty().machines = true

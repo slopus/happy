@@ -265,6 +265,17 @@ class SessionOpsTest {
     }
 
     @Test
+    fun aPickReachesTheServerThroughUpdateMetadata() = runBlocking {
+        h.startAndSync()
+        h.account.composer.setAgentModes("cli", mapOf(AgentModeField.MODEL_MODE to "opus"))
+        eventually(message = "metadata written") { server.session("cli")!!.metadataVersion == 2L }
+        val written = server.encryption.dataKeyCipher(server.dataKey("cli")).decryptFromBase64(server.session("cli")!!.metadata)
+        assertEquals(buildJsonObject { put("path", "/repo"); put("host", "mac"); put("modelMode", "opus") }, written)
+        eventually(message = "stored") { h.store.session("cli")!!.metadataVersion == 2L }
+        assertEquals("opus", h.account.composer.mirrors.value["cli"]?.modelMode)
+    }
+
+    @Test
     fun anUnreadableAnswerIsAFailureNotACrash() = runBlocking {
         h.startAndSync()
         respond("cli", "readFile", JsonPrimitive("nonsense"))
