@@ -250,6 +250,7 @@ class FakeHappyServer(secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByte() 
                 if (!machines.removeAll { it.id == id }) return json(404, """{"error":"Machine not found"}""")
                 json(200, """{"success":true}""")
             }
+            path.startsWith("/v1/push-tokens/") && request.method == "DELETE" -> json(200, """{"success":true}""")
             path == "/v1/machines" -> json(200, HappyJson.encodeToString(ListSerializer(ApiMachine.serializer()), machines))
             path == "/v1/account/profile" -> if (failProfile) json(500, """{"error":"boom"}""") else json(200, profile.toString())
             path == "/v1/account/settings" && request.method == "GET" ->
