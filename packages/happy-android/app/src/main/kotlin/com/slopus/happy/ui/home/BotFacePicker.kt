@@ -215,7 +215,7 @@ fun BotKindHeader(creatingBot: Boolean, onChange: (Boolean) -> Unit, modifier: M
                         .fillMaxSize()
                         .clip(RoundedCornerShape(BotFaceSpec.segmentItemRadius))
                         .background(if (selected) colors.surfaceHighest else Color.Transparent)
-                        .clickable(role = Role.Tab) { onChange(bot) }
+                        .clickable(role = Role.RadioButton) { onChange(bot) }
                         .semantics { this.selected = selected },
                     contentAlignment = Alignment.Center,
                 ) {
