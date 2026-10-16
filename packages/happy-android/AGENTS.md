@@ -504,3 +504,29 @@ hand-rolled loader would re-implement caching and downsampling. The
 loader uses its own OkHttp client without Happy headers (these URLs are
 third-party). Tests swap it through `LocalImageLoader` with coil-test's
 `FakeImageLoaderEngine`.
+
+### Mermaid
+
+`ui/components/MermaidView.kt` renders ```` ```mermaid ```` blocks the way
+happy-app's native MermaidRenderer does: a WebView loading mermaid@11 from
+jsdelivr, its height posted back through a `ReactNativeWebView` JS
+interface (200 until reported, capped at 600). Where there is no WebView
+(Robolectric, devices without a provider) `LocalMermaidWebView` is false and
+MarkdownView's code block shows instead; layout tests see the code block
+unless they provide `true`.
+
+## Autocomplete
+
+`@` file mentions and `/` commands in the chat composer. Logic is in
+`autocomplete/` (plain Kotlin, unit-tested against happy-app's own test
+cases): `findActiveWord`/`applySuggestion`, `searchCommands` (session
+metadata's slash commands and skills, minus `IGNORED_COMMANDS`), and
+`FileSearchCache` (`rg --files --follow` over Sync's session ripgrep RPC,
+kept 5 minutes). Ranking is `Fuse.kt`, a port of the Fuse.js 7.1 subset
+happy-app uses; `FuseTest` holds scores produced by fuse.js itself, so
+regenerate them from fuse.js if the options change rather than editing
+them by hand. The UI is `ui/autocomplete/`: ChatRoute provides
+`LocalSuggestionSource`, ChatScreen passes `ComposerSuggestions` into
+ChatComposer's `overlay` slot and the shared `ComposerCursor` into its
+`cursor` parameter (the composer reports the selection and places the cursor
+after an insert).

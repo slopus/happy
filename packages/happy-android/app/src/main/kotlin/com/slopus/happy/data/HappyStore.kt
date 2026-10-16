@@ -4,6 +4,8 @@ import android.content.ContentValues
 import android.database.Cursor
 import android.database.sqlite.SQLiteDatabase
 import android.database.sqlite.SQLiteOpenHelper
+import com.slopus.happy.model.StoredSessionAvatar
+import com.slopus.happy.model.mergeSessionAvatar
 import com.slopus.happy.net.HappyJson
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -179,6 +181,9 @@ class HappyStore(private val helper: SQLiteOpenHelper) {
                 put("agent_state_version", merged.agentStateVersion)
                 put("data_key", merged.wrappedDataKey)
                 put("project_id", merged.projectId)
+                put("avatar", merged.avatarJson)
+                put("avatar_revision", merged.avatarRevision)
+                put("avatar_update_seq", merged.avatarUpdateSeq)
             }
             // No UPSERT: it needs SQLite 3.24 (API 30), and INSERT OR REPLACE
             // would delete the row and cascade to its messages.
@@ -692,8 +697,15 @@ class HappyStore(private val helper: SQLiteOpenHelper) {
                 agentStateVersion = maxOf(existing.agentStateVersion, incoming.agentStateVersion),
                 wrappedDataKey = incoming.wrappedDataKey,
                 projectId = if (newerRecord) incoming.projectId else existing.projectId,
+            ).withAvatar(
+                mergeSessionAvatar(existing.storedAvatar, incoming.storedAvatar, listingIsNewer = incoming.updatedAt >= existing.updatedAt),
             )
         }
+
+        private val SessionRecord.storedAvatar get() = StoredSessionAvatar(avatarJson, avatarRevision, avatarUpdateSeq)
+
+        private fun SessionRecord.withAvatar(avatar: StoredSessionAvatar) =
+            copy(avatarJson = avatar.descriptorJson, avatarRevision = avatar.revision, avatarUpdateSeq = avatar.updateSeq)
 
         fun mergeMachine(existing: MachineRecord, incoming: MachineRecord): MachineRecord {
             val newerPresence = incoming.activeAt >= existing.activeAt
@@ -715,7 +727,7 @@ class HappyStore(private val helper: SQLiteOpenHelper) {
         }
 
         private const val SESSION_COLUMNS = "id, seq, created_at, updated_at, active, active_at, metadata, metadata_version, " +
-            "agent_state, agent_state_version, data_key, project_id, last_message_sent_at"
+            "agent_state, agent_state_version, data_key, project_id, last_message_sent_at, avatar, avatar_revision, avatar_update_seq"
         private const val MESSAGE_COLUMNS = "session_id, seq, id, local_id, content, created_at, updated_at"
         private const val MACHINE_COLUMNS = "id, seq, created_at, updated_at, active, active_at, metadata, metadata_version, " +
             "daemon_state, daemon_state_version, data_key"
@@ -740,6 +752,9 @@ class HappyStore(private val helper: SQLiteOpenHelper) {
             wrappedDataKey = getString(10),
             projectId = stringOrNull(11),
             lastMessageSentAt = longOrNull(12),
+            avatarJson = stringOrNull(13),
+            avatarRevision = longOrNull(14),
+            avatarUpdateSeq = longOrNull(15),
         )
 
         private fun Cursor.toMessage() = MessageRecord(

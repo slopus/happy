@@ -97,7 +97,7 @@ fun deriveHomeList(inputs: HomeListInputs, zone: ZoneId, today: LocalDate): Home
     val snapshot = inputs.snapshot
     val machines = snapshot.machines.associateBy { it.id }
     val all = buildSessionListViewData(
-        SessionListInputs(snapshot.sessions, machines, snapshot.projects, inputs.unreadSessionIds, inputs.archivingSessionIds),
+        SessionListInputs(snapshot.sessions, machines, snapshot.projects, inputs.unreadSessionIds, inputs.archivingSessionIds, snapshot.gitStatuses),
         zone,
         today,
     )

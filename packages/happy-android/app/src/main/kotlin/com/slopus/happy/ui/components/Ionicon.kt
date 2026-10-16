@@ -40,6 +40,7 @@ enum class Ionicon(val codepoint: Int) {
     CheckboxOutline(0xf21b), // checkbox-outline
     Checkmark(0xf21d), // checkmark
     CheckmarkCircle(0xf21e), // checkmark-circle
+    CheckmarkCircleOutline(0xf21f), // checkmark-circle-outline
     ChevronBack(0xf229), // chevron-back
     ChevronDown(0xf232), // chevron-down
     ChevronForward(0xf23b), // chevron-forward
@@ -48,6 +49,7 @@ enum class Ionicon(val codepoint: Int) {
     CloseCircle(0xf24b), // close-circle
     CloudOfflineOutline(0xf25b), // cloud-offline-outline
     CodeOutline(0xf26c), // code-outline
+    CodeSlash(0xf26e), // code-slash
     CodeWorkingOutline(0xf272), // code-working-outline
     ColorPaletteOutline(0xf27e), // color-palette-outline
     ConstructOutline(0xf287), // construct-outline
@@ -68,6 +70,7 @@ enum class Ionicon(val codepoint: Int) {
     Filter(0xf301), // filter
     FingerPrintOutline(0xf308), // finger-print-outline
     FlashOutline(0xf31a), // flash-outline
+    Folder(0xf325), // folder
     FolderOpenOutline(0xf327), // folder-open-outline
     FolderOutline(0xf329), // folder-outline
     GitBranchOutline(0xf33b), // git-branch-outline
@@ -90,6 +93,8 @@ enum class Ionicon(val codepoint: Int) {
     LocateOutline(0xf3c2), // locate-outline
     LockClosed(0xf3c7), // lock-closed
     LockClosedOutline(0xf3c8), // lock-closed-outline
+    LogIn(0xf3cd), // log-in
+    LogOut(0xf3d0), // log-out
     LogOutOutline(0xf3d1), // log-out-outline
     LogoGithub(0xf3f3), // logo-github
     MicOutline(0xf45e), // mic-outline

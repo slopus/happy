@@ -45,7 +45,7 @@ import com.slopus.happy.model.WorkspaceOrigin
 import com.slopus.happy.model.WorktreeToggle
 import com.slopus.happy.model.compactCount
 import com.slopus.happy.model.resolveFlatRowPresentation
-import com.slopus.happy.model.visibleGitChanges
+import com.slopus.happy.model.projectGitChanges
 import com.slopus.happy.model.workspaceOrigin
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.Icon
@@ -189,7 +189,7 @@ private fun AttentionDot(blocked: Boolean, unread: Boolean) {
 
 @Composable
 private fun ProjectGitChanges(session: SessionRowData?) {
-    val changes: VisibleGitChanges = session?.let(::visibleGitChanges) ?: return
+    val changes: VisibleGitChanges = session?.let(::projectGitChanges) ?: return
     val colors = HappyTheme.colors
     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
         if (changes.approximate) Text("≈", style = ProjectListSpec.gitApproximate, color = colors.textSecondary)

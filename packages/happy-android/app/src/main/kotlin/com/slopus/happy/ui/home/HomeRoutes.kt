@@ -40,6 +40,7 @@ import com.slopus.happy.model.WorkspaceOrigin
 import com.slopus.happy.model.forkSource
 import com.slopus.happy.model.parseJsonObject
 import com.slopus.happy.sync.OpResult
+import com.slopus.happy.ui.files.SessionChangesRoute
 import com.slopus.happy.ui.session.DuplicateSheet
 import com.slopus.happy.ui.session.LiveSessionContinuations
 import com.slopus.happy.ui.session.SessionContinuations
@@ -50,6 +51,9 @@ import com.slopus.happy.ui.session.SessionInfoScreen
 import androidx.compose.runtime.produceState
 import kotlinx.coroutines.withContext
 import com.slopus.happy.net.HappyHttp
+import com.slopus.happy.projects.GitStatusServices
+import com.slopus.happy.projects.ProjectServices
+import com.slopus.happy.projects.SessionAvatarServices
 import com.slopus.happy.net.HappyJson
 import com.slopus.happy.sync.MachineOps
 import com.slopus.happy.sync.MachinePresence
@@ -141,6 +145,9 @@ class HomeServices private constructor(graph: AppGraph) {
                 synced = (account?.isSyncing ?: flowOf(false))
                     .map { graph.store.cursor(SyncEngine.CURSOR_SESSIONS_LISTED_AT) != null }
                     .flowOn(Dispatchers.IO),
+                projects = ProjectServices.of(graph).projects,
+                sessionAvatars = SessionAvatarServices.of(graph).avatars,
+                gitStatuses = GitStatusServices.of(graph).statuses,
             )
         }
         .stateIn(scope, SharingStarted.Eagerly, null)
@@ -336,7 +343,7 @@ private fun SessionInfoRouteScreen(graph: AppGraph, id: String, nav: NavHostCont
             onBack = { nav.popBackStack() },
             onOpenSession = onOpenSession,
             onOpenMachine = { machineId -> nav.navigate(MachineRoute(machineId)) },
-            onChanges = null,
+            onChanges = { id -> nav.navigate(SessionChangesRoute(id)) },
             onArchived = home,
             onDeleted = home,
             copyToClipboard = { text -> copyToClipboard(context, text) },

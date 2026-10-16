@@ -251,6 +251,7 @@ for (const i of [1, 2]) {
         nonceHex: hex(nonce),
         wrappedDataKeyBase64: encodeBase64(wrapped),
         blobKeyHex: hex(await deriveKey(dataKey, 'Happy Blobs', ['session'])),
+        masterBlobKeyHex: hex(await deriveKey(masterSecret, 'Happy Blobs', ['master'])),
     });
 }
 

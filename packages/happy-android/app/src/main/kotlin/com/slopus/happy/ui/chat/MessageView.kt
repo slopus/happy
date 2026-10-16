@@ -1,12 +1,9 @@
 package com.slopus.happy.ui.chat
 
 import android.content.ClipData
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -168,9 +165,9 @@ fun MessageView(row: ChatRow, bubble: BubblePalette, callbacks: MessageCallbacks
  * Goal: the goal in the bubble, then locate-outline 16 and "Sent as goal"
  * (14, agentEventText) 8 apart at 0.72. Command: its args in a bubble if
  * any, then a chip "/name" (mono 13, input text) with padding 10/2, radius
- * 10, a 1 divider border, at 0.65. Long press copies the text.
+ * 10, a 1 divider border, at 0.65. Long press opens the Copy menu
+ * ([LongPressCopyable]).
  */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun UserMessage(row: ChatRow.User, bubble: BubblePalette, callbacks: MessageCallbacks, modifier: Modifier = Modifier) {
     val message = row.message
@@ -178,7 +175,6 @@ fun UserMessage(row: ChatRow.User, bubble: BubblePalette, callbacks: MessageCall
     val chat = ChatTheme.colors
     val fromOther = message.isOtherParticipant
     val showPending = rememberPendingStatusVisible(message.pending, message.meta?.queuedWhileBusy == true, message.createdAt)
-    val copy = rememberCopyText()
     val copyText = when (val display = row.display) {
         is UserDisplay.Text -> display.text
         is UserDisplay.Goal -> display.goal
@@ -230,16 +226,11 @@ fun UserMessage(row: ChatRow.User, bubble: BubblePalette, callbacks: MessageCall
                     .padding(horizontal = MessageSpec.authorPaddingHorizontal),
             )
         }
-        Column(
+        LongPressCopyable(
+            text = copyText,
             modifier = Modifier
                 .testTag(MessageTags.USER_BODY)
-                .alpha(if (showPending) MessageSpec.PENDING_OPACITY else 1f)
-                .combinedClickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {},
-                    onLongClick = { copy(copyText) },
-                ),
+                .alpha(if (showPending) MessageSpec.PENDING_OPACITY else 1f),
             horizontalAlignment = alignment,
         ) {
             when (val display = row.display) {

@@ -56,7 +56,6 @@ import com.slopus.happy.chat.arr
 import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
-import com.slopus.happy.chat.tools.FileChangeKind
 import com.slopus.happy.chat.tools.PatchEntry
 import com.slopus.happy.chat.tools.PatchInput
 import com.slopus.happy.chat.tools.ToolIcon
@@ -64,8 +63,6 @@ import com.slopus.happy.chat.tools.ToolPresentation
 import com.slopus.happy.chat.tools.ToolStatusIcon
 import com.slopus.happy.chat.tools.ToolText
 import com.slopus.happy.chat.tools.ToolViewKind
-import com.slopus.happy.chat.tools.countContentStats
-import com.slopus.happy.chat.tools.countPatchStats
 import com.slopus.happy.chat.tools.materializeUnifiedDiffPatch
 import com.slopus.happy.chat.tools.parseToolUseError
 import com.slopus.happy.chat.tools.patchChanges
@@ -76,6 +73,8 @@ import com.slopus.happy.chat.tools.resultText
 import com.slopus.happy.chat.tools.taskChildTools
 import com.slopus.happy.chat.tools.todoItems
 import com.slopus.happy.chat.tools.unifiedDiffFileName
+import com.slopus.happy.diff.DiffStats
+import com.slopus.happy.diff.FileChangeKind
 import com.slopus.happy.text.plural
 import com.slopus.happy.text.pluralResource
 import com.slopus.happy.ui.components.Icon
@@ -664,7 +663,7 @@ private fun TodoView(message: ChatMessage.ToolCallMessage) {
  * (14 italic textSecondary at 0.7, padding 4). Nothing before the first.
  */
 @Composable
-private fun TaskView(message: ChatMessage.ToolCallMessage) {
+internal fun TaskView(message: ChatMessage.ToolCallMessage) {
     val text = rememberToolText()
     val tools = remember(message, text) { taskChildTools(message, text) }
     if (tools.isEmpty()) return
@@ -742,10 +741,10 @@ private fun PatchFile(file: String, change: PatchEntry, env: ToolEnvironment, fo
         when (val input = patchInput(change)) {
             is PatchInput.Patch -> {
                 val patch = materializeUnifiedDiffPatch(input.patch, file, change.kindType)
-                DiffSource.Patch(patch) to countPatchStats(patch)
+                DiffSource.Patch(patch) to DiffStats.countPatch(patch)
             }
             is PatchInput.Pair -> (if (input.oldText.isEmpty() && input.newText.isEmpty()) null else DiffSource.Contents(fileName, input.oldText, input.newText)) to
-                countContentStats(input.oldText, input.newText)
+                DiffStats.countContents(input.oldText, input.newText)
             null -> null to null
         }
     }
@@ -760,8 +759,8 @@ private fun PatchFile(file: String, change: PatchEntry, env: ToolEnvironment, fo
                         change.kindType == "delete" -> FileChangeKind.Deleted
                         else -> FileChangeKind.Modified
                     },
-                    additions = diff.second?.first ?: 0,
-                    deletions = diff.second?.second ?: 0,
+                    additions = diff.second?.additions ?: 0,
+                    deletions = diff.second?.deletions ?: 0,
                 )
                 if (movePath != null) {
                     Text(
@@ -788,9 +787,9 @@ private fun CodexDiffView(input: Map<String, JsonElement>?, env: ToolEnvironment
     if (input == null) return
     val patch = input["unified_diff"].str ?: return
     val fileName = (input["path"] ?: input["filePath"]).str ?: unifiedDiffFileName(patch)
-    val stats = remember(patch) { countPatchStats(patch) }
+    val stats = remember(patch) { DiffStats.countPatch(patch) }
     ToolSection(fullWidth = true) {
-        if (fileName != null) DiffFileHeader(fileName, FileChangeKind.Modified, stats.first, stats.second)
+        if (fileName != null) DiffFileHeader(fileName, FileChangeKind.Modified, stats.additions, stats.deletions)
         DiffChunk(DiffSource.Patch(patch), env.showLineNumbers)
     }
 }

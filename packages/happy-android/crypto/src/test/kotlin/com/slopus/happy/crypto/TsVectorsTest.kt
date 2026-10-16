@@ -141,6 +141,7 @@ class TsVectorsTest {
             assertEquals(v.str("wrappedDataKeyBase64"), wrapped)
             assertEquals(v.str("dataKeyHex"), account.decryptDataEncryptionKey(v.str("wrappedDataKeyBase64"))?.toHex())
             assertEquals(v.str("blobKeyHex"), AccountEncryption.blobKeyForDataKey(v.hex("dataKeyHex")).toHex())
+            assertEquals(v.str("masterBlobKeyHex"), account.masterBlobKey.toHex())
         }
     }
 

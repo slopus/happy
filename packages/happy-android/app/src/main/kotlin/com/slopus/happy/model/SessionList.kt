@@ -32,6 +32,9 @@ data class SessionRowData(
     val gitDeletions: Long? = null,
     val gitInsertions: Long? = null,
     val gitBranch: String? = null,
+    /** The daemon's working-tree count for the session's checkout ([GitStatus]), 0 until one is in. */
+    val gitStatusLinesAdded: Long = 0,
+    val gitStatusLinesRemoved: Long = 0,
     val state: SessionState = SessionState.Waiting,
     /** Only on inactive sessions: an active one's activeAt moves with every heartbeat. */
     val activeAt: Long? = null,
@@ -85,6 +88,8 @@ data class SessionListInputs(
     val unreadSessionIds: Set<String> = emptySet(),
     /** Chats archived on this device that no machine has confirmed yet: they leave the list on the press. */
     val archivingSessionIds: Set<String> = emptySet(),
+    /** storage.ts pathGitStatus: by [gitStatusKey]. */
+    val gitStatuses: Map<String, GitStatus> = emptyMap(),
 )
 
 /**
@@ -106,6 +111,7 @@ fun buildSessionRowData(session: Session, inputs: SessionListInputs): SessionRow
     val linkedProject = projectId?.let { inputs.projects[it] }
     val projectAvatar = if (session.isHappyAgent()) linkedProject?.avatar else null
     val avatar = session.resolveAvatar(inputs.projects)
+    val gitStatus = gitStatusKey(machineId, metadata?.path)?.let { inputs.gitStatuses[it] }
     return SessionRowData(
         id = session.id,
         botId = metadata?.bot?.id,
@@ -126,6 +132,8 @@ fun buildSessionRowData(session: Session, inputs: SessionListInputs): SessionRow
         gitDeletions = rigGit?.deletions,
         gitInsertions = rigGit?.insertions,
         gitBranch = metadata?.gitBranch,
+        gitStatusLinesAdded = gitStatus?.linesAdded ?: 0,
+        gitStatusLinesRemoved = gitStatus?.linesRemoved ?: 0,
         state = session.state,
         activeAt = if (!session.active) session.activeAt else null,
         createdAt = session.createdAt,

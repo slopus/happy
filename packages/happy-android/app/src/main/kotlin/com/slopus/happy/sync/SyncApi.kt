@@ -3,6 +3,7 @@ package com.slopus.happy.sync
 import com.slopus.happy.net.HappyHttp
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 // Wire shapes of the happy-server routes the sync reads, as they are today
@@ -25,6 +26,9 @@ data class ApiSession(
     /** Null only on sessions from the retired protocol, which this app does not read. */
     val dataEncryptionKey: String? = null,
     val projectId: String? = null,
+    /** The session avatar's descriptor, validated by [com.slopus.happy.model.SessionAvatarDescriptor.parse]. */
+    val avatar: JsonElement? = null,
+    val avatarVersion: JsonElement? = null,
 )
 
 @Serializable
