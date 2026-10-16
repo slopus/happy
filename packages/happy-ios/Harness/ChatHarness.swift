@@ -216,10 +216,17 @@ final class ChatScrollProbe: NSObject {
     }
 
     private func activeRecognizers(_ collection: UICollectionView) -> [String] {
-        let views = [collection] + collection.subviews.filter { NSStringFromClass(type(of: $0)).contains("Indicator") }
-        return views.flatMap { $0.gestureRecognizers ?? [] }
-            .filter { $0.state == .began || $0.state == .changed }
-            .map { NSStringFromClass(type(of: $0)) }
+        var views: [UIView] = [collection]
+        for view in collection.subviews where NSStringFromClass(type(of: view)).contains("Indicator") {
+            views.append(view)
+        }
+        var names: [String] = []
+        for view in views {
+            for recognizer in view.gestureRecognizers ?? [] where recognizer.state == .began || recognizer.state == .changed {
+                names.append(NSStringFromClass(type(of: recognizer)))
+            }
+        }
+        return names
     }
 
     private func keyboardTop(_ chat: UIViewController) -> CGFloat {
@@ -260,24 +267,40 @@ final class ChatScrollProbe: NSObject {
                 }
             }
         }
-        lastTouch = [
-            "index": touches,
-            "samples": samples.count,
-            "fingerTravel": last.fingerY - first.fingerY,
-            "offsetTravel": last.offset - first.offset,
-            "keyboardTravel": last.keyboardTop - first.keyboardTop,
-            "fingerTravelWithKeyboard": fingerWithKeyboard,
-            "offsetTravelWithKeyboard": offsetWithKeyboard,
-            "rowsStart": first.rows,
-            "rowsEnd": last.rows,
-            "contentStart": first.contentHeight,
-            "contentEnd": last.contentHeight,
-            "maxIndicatorGap": maxIndicatorGap,
-            "tracking": samples.contains { $0.tracking },
-            "dragging": samples.contains { $0.dragging },
-            "recognizers": Array(Set(samples.flatMap(\.active))).sorted(),
-        ]
-        let trace = samples.map { "\($0.time),\($0.fingerY),\($0.offset),\($0.keyboardTop),\($0.contentHeight),\($0.rows),\($0.visibleMinY),\($0.indicator.map { "\($0.minY),\($0.height)" } ?? ",")" }
+        var recognizers = Set<String>()
+        var tracking = false
+        var dragging = false
+        for sample in samples {
+            recognizers.formUnion(sample.active)
+            tracking = tracking || sample.tracking
+            dragging = dragging || sample.dragging
+        }
+        var touch: [String: Any] = [:]
+        touch["index"] = touches
+        touch["samples"] = samples.count
+        touch["fingerTravel"] = last.fingerY - first.fingerY
+        touch["offsetTravel"] = last.offset - first.offset
+        touch["keyboardTravel"] = last.keyboardTop - first.keyboardTop
+        touch["fingerTravelWithKeyboard"] = fingerWithKeyboard
+        touch["offsetTravelWithKeyboard"] = offsetWithKeyboard
+        touch["rowsStart"] = first.rows
+        touch["rowsEnd"] = last.rows
+        touch["contentStart"] = first.contentHeight
+        touch["contentEnd"] = last.contentHeight
+        touch["maxIndicatorGap"] = maxIndicatorGap
+        touch["tracking"] = tracking
+        touch["dragging"] = dragging
+        touch["recognizers"] = recognizers.sorted()
+        lastTouch = touch
+        var trace: [String] = []
+        for sample in samples {
+            let indicator = sample.indicator.map { "\($0.minY),\($0.height)" } ?? ","
+            let fields: [String] = [
+                "\(sample.time)", "\(sample.fingerY)", "\(sample.offset)", "\(sample.keyboardTop)",
+                "\(sample.contentHeight)", "\(sample.rows)", "\(sample.visibleMinY)", indicator,
+            ]
+            trace.append(fields.joined(separator: ","))
+        }
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("touch-\(touches).csv")
         try? (["time,fingerY,offset,keyboardTop,contentHeight,rows,visibleMinY,indicatorY,indicatorHeight"] + trace)
             .joined(separator: "\n").write(to: url, atomically: true, encoding: .utf8)
@@ -295,33 +318,33 @@ final class ChatScrollProbe: NSObject {
             newestInset: collection.contentInset.top, oldestInset: collection.contentInset.bottom,
             // Flipped: the collection view's top is the screen's bottom.
             indicatorInsets: ChatIndicatorInsets(newest: indicatorInsets.top, oldest: indicatorInsets.bottom, side: indicatorInsets.right),
-            distanceFromNewest: list.visibleMinY
+            distanceFromNewest: list.visibleMinY, scale: list.traitCollection.displayScale
         ))
         let actual = indicator(list, in: list)
         let dock = Self.subview(ChatDockView.self, in: chat.view)
-        var value: [String: Any] = [
-            "offset": collection.contentOffset.y,
-            "visibleMinY": list.visibleMinY,
-            "maxDistance": model.maxDistance,
-            "contentHeight": collection.contentSize.height,
-            "rows": collection.numberOfItems(inSection: 0),
-            "newestInset": collection.contentInset.top,
-            "oldestInset": collection.contentInset.bottom,
-            "indicatorInsets": [indicatorInsets.top, indicatorInsets.bottom, indicatorInsets.right],
-            "autoIndicatorInsets": collection.automaticallyAdjustsScrollIndicatorInsets,
-            "safeArea": [chat.view.safeAreaInsets.top, chat.view.safeAreaInsets.left, chat.view.safeAreaInsets.bottom, chat.view.safeAreaInsets.right],
-            "list": rect(list.convert(list.bounds, to: window)) as Any,
-            "listSize": [list.bounds.width, list.bounds.height],
-            "dockMinY": dock.map { $0.convert($0.bounds, to: window).minY } as Any,
-            "keyboardTop": keyboardTop(chat),
-            "window": [window.bounds.width, window.bounds.height],
-            "tracking": collection.isTracking,
-            "dragging": collection.isDragging,
-            "decelerating": collection.isDecelerating,
-            "fingerDown": finger != nil,
-            "expected": rect(model.frame) as Any,
-            "lastTouch": lastTouch,
-        ]
+        var value: [String: Any] = [:]
+        value["offset"] = collection.contentOffset.y
+        value["visibleMinY"] = list.visibleMinY
+        value["maxDistance"] = model.maxDistance
+        value["contentHeight"] = collection.contentSize.height
+        value["rows"] = collection.numberOfItems(inSection: 0)
+        value["newestInset"] = collection.contentInset.top
+        value["oldestInset"] = collection.contentInset.bottom
+        value["indicatorInsets"] = [indicatorInsets.top, indicatorInsets.bottom, indicatorInsets.right]
+        value["autoIndicatorInsets"] = collection.automaticallyAdjustsScrollIndicatorInsets
+        let safe = chat.view.safeAreaInsets
+        value["safeArea"] = [safe.top, safe.left, safe.bottom, safe.right]
+        value["list"] = rect(list.convert(list.bounds, to: window)) as Any
+        value["listSize"] = [list.bounds.width, list.bounds.height]
+        value["dockMinY"] = dock.map { $0.convert($0.bounds, to: window).minY } as Any
+        value["keyboardTop"] = keyboardTop(chat)
+        value["window"] = [window.bounds.width, window.bounds.height]
+        value["tracking"] = collection.isTracking
+        value["dragging"] = collection.isDragging
+        value["decelerating"] = collection.isDecelerating
+        value["fingerDown"] = finger != nil
+        value["expected"] = rect(model.frame) as Any
+        value["lastTouch"] = lastTouch
         if let actual {
             value["actual"] = rect(actual.frame)
             value["actualAlpha"] = actual.alpha
