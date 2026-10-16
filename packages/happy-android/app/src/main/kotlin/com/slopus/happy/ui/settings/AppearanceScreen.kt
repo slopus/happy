@@ -33,17 +33,17 @@ fun AppearanceScreen(
                     title = stringResource(R.string.settings_appearance),
                     subtitle = stringResource(
                         when (theme) {
-                            ThemePreference.Adaptive -> R.string.settings_appearance_theme_description_adaptive
-                            ThemePreference.Light -> R.string.settings_appearance_theme_description_light
-                            ThemePreference.Dark -> R.string.settings_appearance_theme_description_dark
+                            ThemePreference.Adaptive -> R.string.settings_appearance_theme_descriptions_adaptive
+                            ThemePreference.Light -> R.string.settings_appearance_theme_descriptions_light
+                            ThemePreference.Dark -> R.string.settings_appearance_theme_descriptions_dark
                         },
                     ),
                     icon = { ItemIcon(Ionicon.ContrastOutline, HappyTheme.colors.status.connecting) },
                     detail = stringResource(
                         when (theme) {
-                            ThemePreference.Adaptive -> R.string.settings_appearance_theme_option_adaptive
-                            ThemePreference.Light -> R.string.settings_appearance_theme_option_light
-                            ThemePreference.Dark -> R.string.settings_appearance_theme_option_dark
+                            ThemePreference.Adaptive -> R.string.settings_appearance_theme_options_adaptive
+                            ThemePreference.Light -> R.string.settings_appearance_theme_options_light
+                            ThemePreference.Dark -> R.string.settings_appearance_theme_options_dark
                         },
                     ),
                     onClick = { onThemeChange(ThemePreference.entries[(theme.ordinal + 1) % ThemePreference.entries.size]) },

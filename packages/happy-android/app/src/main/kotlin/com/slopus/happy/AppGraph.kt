@@ -12,6 +12,7 @@ import com.slopus.happy.config.LocalSettings
 import com.slopus.happy.config.ServerConfig
 import com.slopus.happy.data.HappyDatabase
 import com.slopus.happy.data.HappyStore
+import com.slopus.happy.model.settings.SettingsRepository
 import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.sync.AccountSync
@@ -74,6 +75,9 @@ class AppGraph(
     val store = HappyStore(HappyDatabase(context, databaseName))
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** The account's synced settings; a change is uploaded by the next sync. */
+    val settings = SettingsRepository(store, scope, onChanged = ::requestSync)
     private val accountLock = Mutex()
     private val foreground = MutableStateFlow(false)
     private val accountState = MutableStateFlow<AccountSync?>(null)
