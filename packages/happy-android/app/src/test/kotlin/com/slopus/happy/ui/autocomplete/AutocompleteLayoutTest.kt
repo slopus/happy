@@ -10,7 +10,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.test.withKeyDown
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performClick
@@ -47,6 +56,7 @@ import java.util.concurrent.CopyOnWriteArrayList
  * most 320 tall. Picking a row swaps the whole active word for the pick
  * plus a space (none if one follows) and leaves the cursor after it.
  */
+@OptIn(ExperimentalTestApi::class)
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = PHONE)
 class AutocompleteLayoutTest {
@@ -210,5 +220,83 @@ class AutocompleteLayoutTest {
         rule.waitForIdle()
         assertEquals(0, rows().fetchSemanticsNodes().size)
         assertEquals("/co", text)
+    }
+
+    private fun row(text: String) =
+        rule.onNode(hasTestTag(AutocompleteTags.ROW) and hasAnyDescendant(hasText(text)), useUnmergedTree = true)
+
+    private fun press(key: Key, shift: Boolean = false) {
+        rule.node(ComposerTags.INPUT).performKeyInput {
+            if (shift) withKeyDown(Key.ShiftLeft) { pressKey(key) } else pressKey(key)
+        }
+        rule.waitForIdle()
+    }
+
+    // AgentInput handleKeyPress: arrows move (wrapping), Enter and Tab pick, Escape hides.
+    @Test
+    fun arrowsMoveTheSelectionAndWrap() {
+        setComposer()
+        rule.node(ComposerTags.INPUT).performTextInput("/co")
+        rule.waitUntil(5_000) { rows().fetchSemanticsNodes().size == 2 }
+        rows()[0].assertIsSelected()
+        press(Key.DirectionDown)
+        rows()[1].assertIsSelected()
+        press(Key.DirectionDown)
+        rows()[0].assertIsSelected()
+        press(Key.DirectionUp)
+        rows()[1].assertIsSelected()
+        press(Key.Enter)
+        assertEquals("/context ", text)
+        rule.waitUntil(5_000) { rows().fetchSemanticsNodes().isEmpty() }
+    }
+
+    @Test
+    fun tabPicksButShiftTabDoesNot() {
+        setComposer()
+        rule.node(ComposerTags.INPUT).performTextInput("/co")
+        rule.waitUntil(5_000) { rows().fetchSemanticsNodes().size == 2 }
+        press(Key.Tab, shift = true)
+        assertEquals("/co", text)
+        press(Key.Tab)
+        assertEquals("/compact ", text)
+    }
+
+    @Test
+    fun escapeHidesTheListUntilTheWordChanges() {
+        setComposer()
+        rule.node(ComposerTags.INPUT).performTextInput("/co")
+        rule.waitUntil(5_000) { rows().fetchSemanticsNodes().size == 2 }
+        press(Key.Escape)
+        rule.waitUntil(5_000) { rows().fetchSemanticsNodes().isEmpty() }
+        assertEquals("/co", text)
+        // With the list gone, Enter is the field's again.
+        press(Key.Enter)
+        assertEquals("/co\n", text)
+        rule.node(ComposerTags.INPUT).performTextReplacement("/con")
+        rule.node(ComposerTags.INPUT).performTextInputSelection(TextRange(4))
+        rule.waitUntil(5_000) { rows().fetchSemanticsNodes().size == 1 }
+    }
+
+    @Test
+    fun withoutAListKeysReachTheField() {
+        setComposer()
+        rule.node(ComposerTags.INPUT).performTextInput("hi")
+        press(Key.Enter)
+        assertEquals("hi\n", text)
+        assertEquals(emptyList<String>(), queries)
+    }
+
+    @Test
+    fun keyboardSelectionScrollsTheListToKeepItInView() {
+        val many = SuggestionSource { (1..20).map { Suggestion.Command("cmd$it", null) } }
+        setComposer(many)
+        rule.node(ComposerTags.INPUT).performTextInput("/")
+        rule.waitUntil(5_000) { rows().fetchSemanticsNodes().isNotEmpty() }
+        val list = rule.node(AutocompleteTags.LIST).bounds
+        press(Key.DirectionUp)
+        row("/cmd20").assertIsSelected()
+        assertDp("last row at the bottom edge", list.bottom, row("/cmd20").bounds.bottom)
+        press(Key.DirectionDown)
+        assertDp("first row back at the top", list.top, row("/cmd1").bounds.top)
     }
 }
