@@ -17,6 +17,7 @@ import com.slopus.happy.model.buildSessionListViewData
 import com.slopus.happy.model.collectMachineChoices
 import com.slopus.happy.model.hasArchivedSessions
 import com.slopus.happy.model.resolveHomeEmptyState
+import com.slopus.happy.model.shouldShowFirstRunInstall
 import com.slopus.happy.model.settings.LocalSettingsValues
 import com.slopus.happy.model.shouldShowOfflineMachinesBanner
 import com.slopus.happy.model.toFlatSessionRow
@@ -71,6 +72,8 @@ data class OfflineBanner(val machineName: String?)
 @Immutable
 data class HomeListState(
     val emptyState: HomeEmptyState,
+    /** No computer linked: the link page takes the home over, even over sessions. */
+    val showsInstallStep: Boolean = emptyState == HomeEmptyState.Link,
     val grouping: SessionListGrouping,
     val hasArchivedSessions: Boolean,
     val archiveHidden: Boolean,
@@ -116,6 +119,7 @@ fun deriveHomeList(inputs: HomeListInputs, zone: ZoneId, today: LocalDate): Home
     }
     return HomeListState(
         emptyState = resolveHomeEmptyState(visible.size, hasArchived, choices.size, online),
+        showsInstallStep = shouldShowFirstRunInstall(snapshot.machines.size),
         grouping = inputs.grouping,
         hasArchivedSessions = hasArchived,
         archiveHidden = inputs.archiveHidden,

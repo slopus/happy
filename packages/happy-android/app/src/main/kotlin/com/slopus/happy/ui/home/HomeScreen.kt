@@ -124,8 +124,8 @@ class HomeScreenActions(
 
 /**
  * Signed in, on a phone. With no computer linked, [linkContent] takes the
- * whole screen (index.tsx shouldShowFirstRunInstall: the onboarding's link
- * page, no home chrome). Otherwise the home header (logo; "Happy" centred
+ * whole screen, sessions or not (index.tsx shouldShowFirstRunInstall: the
+ * onboarding's link page, no home chrome). Otherwise the home header (logo; "Happy" centred
  * with the connection status under it while the socket isn't healthy; the
  * filter menu and settings gear sharing one control), then the loading
  * spinner, the no-sessions state, [offlineContent] (the onboarding's
@@ -148,7 +148,7 @@ fun HomeScreen(
     dockActions: HomeDockActions? = null,
 ) {
     val colors = HappyTheme.colors
-    if (state?.emptyState == HomeEmptyState.Link) {
+    if (state?.showsInstallStep == true) {
         Box(modifier = modifier.fillMaxSize().testTag(HomeTags.LINK)) { linkContent() }
         return
     }

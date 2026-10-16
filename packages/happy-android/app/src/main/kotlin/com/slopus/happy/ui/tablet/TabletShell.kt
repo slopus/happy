@@ -41,7 +41,6 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
-import com.slopus.happy.model.HomeEmptyState
 import com.slopus.happy.ui.chat.SessionRoute
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
@@ -139,7 +138,7 @@ fun TabletShell(
         val showsInstallStep = if (wide) {
             val services = remember(graph) { HomeServices.of(graph) }
             val state by services.list.state.collectAsStateWithLifecycle()
-            state?.emptyState == HomeEmptyState.Link
+            state?.showsInstallStep == true
         } else {
             false
         }

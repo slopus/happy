@@ -123,6 +123,16 @@ class HomeListTest {
         assertNull(derive(inputs(listOf(cli("a", noon)))).offlineBanner)
     }
 
+    /** index.tsx shouldShowFirstRunInstall: no computer at all, and the link page takes over even with sessions listed. */
+    @Test fun noComputerLinkedShowsTheLinkPageOverSessions() {
+        val unlinked = derive(inputs(listOf(cli("a", noon)), machines = emptyList()))
+        assertEquals(HomeEmptyState.List, unlinked.emptyState)
+        assertTrue(unlinked.showsInstallStep)
+        assertTrue(derive(inputs(emptyList(), machines = emptyList())).showsInstallStep)
+        // An offline computer is still linked.
+        assertFalse(derive(inputs(listOf(cli("a", noon)), machines = listOf(offline))).showsInstallStep)
+    }
+
     @Test fun offlinePlaqueNamesNoMachineWhenThereAreSeveral() {
         val two = listOf(offline, machine("m2", machineMetadata(host = "other"), active = false))
         assertEquals(OfflineBanner(null), derive(inputs(listOf(cli("a", noon)), machines = two)).offlineBanner)
