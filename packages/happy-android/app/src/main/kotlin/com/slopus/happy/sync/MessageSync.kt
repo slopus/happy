@@ -7,10 +7,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -25,6 +29,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
+
+/** One batch of a session's messages, oldest first, as stored. */
+data class StoredMessages(val sessionId: String, val messages: List<MessageRecord>)
 
 /** A chat's paging state (sync.ts sessionMessages: isLoaded, hasMoreOlder, isLoadingOlder). */
 data class MessagePaging(val isLoaded: Boolean, val hasMoreOlder: Boolean, val isLoadingOlder: Boolean)
@@ -55,6 +62,27 @@ class MessageSync(
     private val viewing = ConcurrentHashMap<String, Int>()
 
     private val loadingOlderState = MutableStateFlow<Set<String>>(emptySet())
+
+    private val storedEvents = MutableSharedFlow<StoredMessages>(
+        extraBufferCapacity = 64,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST,
+    )
+
+    /**
+     * Each batch of new messages as it is stored (sync.ts applyMessages with
+     * source 'sync'): the newest page, a forward page, a live message. Older
+     * history is not news and is not reported.
+     */
+    val stored: SharedFlow<StoredMessages> = storedEvents.asSharedFlow()
+
+    /**
+     * A batch was stored, here or by LiveUpdates' fast path. Pages arrive
+     * newest first; the batch is reported oldest first, since a plan mode
+     * entered and then left must not read as entered.
+     */
+    fun noteStored(sessionId: String, messages: List<MessageRecord>) {
+        if (messages.isNotEmpty()) storedEvents.tryEmit(StoredMessages(sessionId, messages.sortedBy { it.seq }))
+    }
 
     /** Sessions loading an older page right now. */
     val loadingOlder: StateFlow<Set<String>> = loadingOlderState.asStateFlow()
@@ -122,13 +150,17 @@ class MessageSync(
             try {
                 if (store.messageHistory(sessionId)?.isLoaded == false) {
                     val page = api.messagesBefore(sessionId, SEQ_BACKWARD_INITIAL_SENTINEL, PAGE_SIZE)
-                    store.applyNewestPage(sessionId, page.messages.map { decoder.message(sessionId, it, cipher) }, page.hasMore)
+                    val newest = page.messages.map { decoder.message(sessionId, it, cipher) }
+                    store.applyNewestPage(sessionId, newest, page.hasMore)
+                    noteStored(sessionId, newest)
                     if (store.messagesSeq(sessionId) >= session.seq) return@withContext
                 }
                 var afterSeq = store.messagesSeq(sessionId)
                 while (true) {
                     val page = api.messagesAfter(sessionId, afterSeq, FORWARD_PAGE_SIZE)
-                    store.insertMessages(sessionId, page.messages.map { decoder.message(sessionId, it, cipher) })
+                    val forward = page.messages.map { decoder.message(sessionId, it, cipher) }
+                    store.insertMessages(sessionId, forward)
+                    noteStored(sessionId, forward)
                     val maxSeq = page.messages.maxOfOrNull { it.seq } ?: afterSeq
                     // A page that does not move the cursor would be fetched forever.
                     if (!page.hasMore || maxSeq <= afterSeq) break

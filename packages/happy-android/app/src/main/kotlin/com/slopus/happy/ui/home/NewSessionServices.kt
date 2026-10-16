@@ -7,8 +7,10 @@ import com.slopus.happy.model.NewSessionOptions
 import com.slopus.happy.model.NewSessionPage
 import com.slopus.happy.model.Settings
 import com.slopus.happy.model.WorktreeListing
+import com.slopus.happy.model.WorktreePaths
 import com.slopus.happy.model.WorktreeSelection
 import com.slopus.happy.model.WorktreeTarget
+import com.slopus.happy.model.formatPathRelativeToHome
 import com.slopus.happy.model.resolveNewSessionOptions
 import com.slopus.happy.model.selectingAgent
 import com.slopus.happy.model.selectingProject
@@ -130,6 +132,22 @@ class NewSessionServices(
                 }
             }
             placed.selectingWorktree(WorktreeSelection.NEW)
+        }
+    }
+
+    /**
+     * ProjectGroup's "+" (the tablet sidebar grouped by project): the draft
+     * points at that exact checkout, a worktree by its own path, the rest by
+     * the repo's path from home. The machine goes first, as it clears the place.
+     */
+    fun prepareCheckout(machineId: String?, path: String?, homeDir: String?) {
+        val sessionPath = path.orEmpty()
+        val worktree = WorktreePaths.isWorktree(sessionPath)
+        val repoPath = if (worktree) WorktreePaths.repoPath(sessionPath) else sessionPath
+        drafts.change { draft ->
+            var next = if (machineId != null) draft.withMachine(machineId) else draft
+            if (repoPath.isNotEmpty()) next = next.withPath(formatPathRelativeToHome(repoPath, homeDir))
+            next.selectingWorktree(if (worktree) sessionPath else WorktreeSelection.NONE)
         }
     }
 
