@@ -29,6 +29,7 @@ import com.slopus.happy.ui.chat.PermissionTags
 import com.slopus.happy.ui.chat.QuestionTags
 import com.slopus.happy.ui.chat.ToolTags
 import com.slopus.happy.ui.components.HeaderTags
+import com.slopus.happy.ui.components.OptionMenuTags
 import com.slopus.happy.ui.files.MessageDetailTags
 import com.slopus.happy.ui.home.FlatRowTags
 import com.slopus.happy.ui.node
@@ -214,6 +215,7 @@ class ChatJourneyTest {
             putJsonObject("usageLimits") {
                 put("capturedAt", 1)
                 putJsonArray("windows") {
+                    add(buildJsonObject { put("id", "five_hour"); put("utilization", 12); put("resetsAt", 1.9e12) })
                     add(buildJsonObject { put("id", "seven_day"); put("utilization", 40); put("resetsAt", 1.9e12) })
                 }
             }
@@ -228,6 +230,14 @@ class ChatJourneyTest {
         rule.waitForText("40% week")
         assert(shown(UsageRowTags.ROW))
         rule.assertActionsLabelled()
+        // The week opens the session and week limits; picking one closes them.
+        rule.node(UsageRowTags.WEEK).performClick()
+        rule.waitFor(OptionMenuTags.item("usage", "session"))
+        rule.waitForText("Session · 12%", substring = true)
+        rule.waitForText("Week · 40%", substring = true)
+        rule.assertActionsLabelled()
+        rule.node(OptionMenuTags.item("usage", "week")).performClick()
+        rule.waitUntil(5_000) { rule.onAllNodesWithTag(OptionMenuTags.MENU, useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
 
         // Reading back fades the details; the scroll button brings them back.
         rule.node(ChatListTags.LIST).performTouchInput { swipeDown(startY = top + 200f, endY = bottom - 200f) }

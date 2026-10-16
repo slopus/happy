@@ -2,12 +2,17 @@ package com.slopus.happy.journeys
 
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasAnyDescendant
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.HappyApp
@@ -40,7 +45,9 @@ import org.robolectric.annotation.GraphicsMode
  * Journey 6, the core path on a tablet: the sessions in the sidebar beside a
  * blank detail; a chat opens in the detail with its row selected and a reply
  * goes out; New Session opens in the detail, starts a session whose chat
- * takes the detail with its new row selected; back retraces both.
+ * takes the detail with its new row selected; back retraces both. The open
+ * chat archived from its row menu leaves the sidebar but stays in the
+ * detail, inactive; back then reaches the blank.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -105,6 +112,19 @@ class TabletJourneyTest {
         rule.node(TabletShellTags.BACK).performClick()
         rule.waitForChatTitle("Tablet chat")
         row("Tablet chat").assertIsSelected()
+        // The open chat archived from its sidebar row's menu: the row leaves the sidebar, and
+        // the detail stays on the chat, now inactive (happy-app's row menu moves nothing).
+        row("Tablet chat").performTouchInput { longClick() }
+        rule.onNode(hasText("Archive") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
+        rule.waitUntil(10_000) { server.requestsTo("/v1/sessions/a/archive").isNotEmpty() }
+        rule.waitUntil(10_000) { rule.onAllNodes(hasTestTag(FlatRowTags.ROW) and hasAnyDescendant(hasText("Tablet chat")), useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
+        // The server says the session ended, as it does once the archive lands.
+        server.emitEphemeral(buildJsonObject {
+            put("type", "activity"); put("id", "a"); put("active", false); put("activeAt", System.currentTimeMillis()); put("thinking", false)
+        })
+        rule.waitForText("This session is inactive.")
+        rule.waitForChatTitle("Tablet chat")
+        row("Started on tablet").assertExists()
         rule.node(TabletShellTags.BACK).performClick()
         rule.waitFor(HomeTags.TABLET_BLANK)
     }
