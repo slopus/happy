@@ -1,14 +1,21 @@
 package com.slopus.happy.ui.settings
 
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.test.assertIsOff
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isHeading
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
 import com.slopus.happy.ui.components.ItemTags
+import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import com.slopus.happy.ui.theme.ThemePreference
@@ -33,6 +40,23 @@ import org.robolectric.annotation.GraphicsMode
 class AppearanceLayoutTest {
     @get:Rule
     val rule = createComposeRule()
+
+    /**
+     * TalkBack over Settings > Appearance: the title is a header, pressable
+     * rows are buttons, and each switch reads its row's title with its state
+     * (RN's platform switch is unnamed; the row is a stop of its own).
+     */
+    @Test
+    fun appearanceReadsForTalkBack() {
+        rule.setHappyContent {
+            AppearanceScreen(theme = ThemePreference.Light, onThemeChange = {}, onBack = {}, settings = Settings.Defaults, onSettingsChange = {})
+        }
+        rule.onNode(hasText("Appearance") and isHeading(), useUnmergedTree = true).assertExists()
+        rule.onNode(hasText("Appearance") and hasRole(Role.Button)).assertExists()
+        rule.onNode(hasContentDescription("Compact Tool Calls") and hasRole(Role.Switch)).performScrollTo().assertIsOff()
+        rule.onNode(hasContentDescription("Show Quota Remaining") and hasRole(Role.Switch)).assertExists()
+        rule.assertActionsLabelled()
+    }
 
     @Test
     fun appearanceCyclesTheTheme() {
