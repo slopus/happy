@@ -5,7 +5,8 @@ import HappyCore
 /// so both apps say the same thing. A string happy-app reads with `t(key)`
 /// is a getter for that key in the screens' language (`localized`), with
 /// the English kept beside it; one happy-app spells out in a component stays
-/// English, as it does there. Keys follow en.ts's grouping.
+/// English, as it does there, with the component and line that spell it out
+/// beside it. Keys follow en.ts's grouping.
 public enum Strings {
     public enum Common {
         public static var cancel: String { localized("common.cancel", "Cancel") }
@@ -58,7 +59,6 @@ public enum Strings {
         public static var pasteLinkConfirm: String { localized("onboarding.pasteLinkConfirm", "Link") }
         public static var linking: String { localized("onboarding.linking", "Linking…") }
         public static var linkFailed: String { localized("onboarding.linkFailed", "Couldn’t link. Scan the code again.") }
-        public static let terminalComment = "# Prefer the terminal?"
         public static var terminalInstall: String { localized("onboarding.terminalInstall", "npm install -g happy") }
         public static var terminalRun: String { localized("onboarding.terminalRun", "happy") }
         public static func offlineTitleOne(name: String) -> String { localized("onboarding.offlineTitleOne", ["name": .text(name)], "\(name) is offline") }
@@ -145,14 +145,12 @@ public enum Strings {
     public enum SessionInfo {
         public static var archiveSession: String { localized("sessionInfo.archiveSession", "Archive Session") }
         public static var failedToArchiveSession: String { localized("sessionInfo.failedToArchiveSession", "Failed to archive session") }
-        // useSessionQuickActions.ts, not in en.ts.
-        public static let botNeedsMachine = "Connect to the bot’s machine to archive it."
+        public static let botNeedsMachine = "Connect to the bot’s machine to archive it."  // useSessionQuickActions.ts:265, spelled out
     }
 
-    // components/EmptyMainScreen.tsx, not in en.ts.
     public enum EmptyMain {
-        public static let noSessionsTitle = "No sessions yet"
-        public static let noSessionsDescription = "Start one on a connected machine."
+        public static let noSessionsTitle = "No sessions yet"  // EmptyMainScreen.tsx:192, spelled out
+        public static let noSessionsDescription = "Start one on a connected machine."  // EmptyMainScreen.tsx:193, spelled out
     }
 
     public enum Connect {
@@ -172,8 +170,6 @@ public enum Strings {
         public static var accountSubtitle: String { localized("settings.accountSubtitle", "Manage your account details") }
         public static var appearance: String { localized("settings.appearance", "Appearance") }
         public static var appearanceSubtitle: String { localized("settings.appearanceSubtitle", "Customize how the app looks") }
-        public static var developer: String { localized("settings.developer", "Developer") }
-        public static var developerTools: String { localized("settings.developerTools", "Developer Tools") }
         public static var about: String { localized("settings.about", "About") }
         public static var aboutFooter: String { localized("settings.aboutFooter", "Happy Coder is a Codex and Claude Code mobile client. It's fully end-to-end encrypted and your account is stored only on your device. Not affiliated with Anthropic.") }
         public static var whatsNew: String { localized("settings.whatsNew", "What's New") }
@@ -184,18 +180,15 @@ public enum Strings {
         public static var eula: String { localized("settings.eula", "EULA") }
         public static func githubConnected(login: String) -> String { localized("settings.githubConnected", ["login": .text(login)], "Connected as @\(login)") }
         public static var connectGithubAccount: String { localized("settings.connectGithubAccount", "Connect your GitHub account") }
-        public static var usage: String { localized("settings.usage", "Usage") }
-        public static var usageSubtitle: String { localized("settings.usageSubtitle", "View your API usage and costs") }
-        // SettingsView.tsx, not in en.ts.
-        public static let agents = "Agents"
-        public static let agentsSubtitle = "Connected machines and agent defaults"
-        public static let claudeCode = "Claude Code"
+        public static let agents = "Agents"  // SettingsView.tsx:341, spelled out
+        public static let agentsSubtitle = "Connected machines and agent defaults"  // SettingsView.tsx:342, spelled out
+        public static let claudeCode = "Claude Code"  // SettingsView.tsx:275, spelled out
     }
 
     /// Where the About rows lead (SettingsView.tsx).
     public enum Links {
         public static let github = URL(string: "https://github.com/slopus/happy")!
-        public static let githubDetail = "slopus/happy"
+        public static let githubDetail = "slopus/happy"  // SettingsView.tsx:381, spelled out
         public static let issues = URL(string: "https://github.com/slopus/happy/issues")!
         public static let privacy = URL(string: "https://happy.engineering/privacy/")!
         public static let terms = URL(string: "https://happy.engineering/terms/")!
@@ -219,12 +212,12 @@ public enum Strings {
         public static var userMessageBubbleColorDescription: String { localized("settingsAppearance.userMessageBubbleColorDescription", "Make your messages easier to spot in long chats") }
         public static func bubbleColorName(_ color: String) -> String {
             switch color {
-            case "blue": "Blue"
-            case "green": "Green"
-            case "purple": "Purple"
-            case "rose": "Rose"
-            case "sand": "Sand"
-            default: "Gray"
+            case "blue": localized("settingsAppearance.userMessageBubbleColorOptions.blue", "Blue")
+            case "green": localized("settingsAppearance.userMessageBubbleColorOptions.green", "Green")
+            case "purple": localized("settingsAppearance.userMessageBubbleColorOptions.purple", "Purple")
+            case "rose": localized("settingsAppearance.userMessageBubbleColorOptions.rose", "Rose")
+            case "sand": localized("settingsAppearance.userMessageBubbleColorOptions.sand", "Sand")
+            default: localized("settingsAppearance.userMessageBubbleColorOptions.gray", "Gray")
             }
         }
         public static var display: String { localized("settingsAppearance.display", "Display") }
@@ -246,16 +239,15 @@ public enum Strings {
         public static var avatarStyle: String { localized("settingsAppearance.avatarStyle", "Avatar Style") }
         public static func avatarStyleName(_ style: String) -> String {
             switch style {
-            case "pixelated": "Pixelated"
-            case "gradient": "Gradient"
-            default: "Brutalist"
+            case "pixelated": localized("settingsAppearance.avatarStyleOptions.pixelated", "Pixelated")
+            case "gradient": localized("settingsAppearance.avatarStyleOptions.gradient", "Gradient")
+            default: localized("settingsAppearance.avatarStyleOptions.brutalist", "Brutalist")
             }
         }
         public static var avatarMonochrome: String { localized("settingsAppearance.avatarMonochrome", "Black & White Avatars") }
         public static var avatarMonochromeDescription: String { localized("settingsAppearance.avatarMonochromeDescription", "Render avatars without color") }
-        // appearance.tsx, not in en.ts.
-        public static let fileDiffsSidebar = "File Diffs Sidebar"
-        public static let fileDiffsSidebarDescription = "Show git changes next to the chat on desktop"
+        public static let fileDiffsSidebar = "File Diffs Sidebar"  // appearance.tsx:494, spelled out
+        public static let fileDiffsSidebarDescription = "Show git changes next to the chat on desktop"  // appearance.tsx:495, spelled out
     }
 
     public enum SessionsFilter {
@@ -265,13 +257,8 @@ public enum Strings {
     }
 
     public enum SettingsFeatures {
-        public static var experiments: String { localized("settingsFeatures.experiments", "Experimental") }
-        public static var experimentsDescription: String { localized("settingsFeatures.experimentsDescription", "Enable experimental features that are still in development. These features may be unstable or change without notice.") }
-        public static var experimentalFeatures: String { localized("settingsFeatures.experimentalFeatures", "Experimental Features") }
         public static var groupToolCalls: String { localized("settingsFeatures.groupToolCalls", "Group Tool Calls") }
         public static var groupToolCallsSubtitle: String { localized("settingsFeatures.groupToolCallsSubtitle", "Collapse consecutive tool calls into one container") }
-        // dev/index.tsx, not in en.ts.
-        public static let experimentalFeaturesSubtitle = "Rig file browser and Usage page"
     }
 
     public enum SettingsLanguage {
@@ -303,7 +290,6 @@ public enum Strings {
         public static var analyticsDisabled: String { localized("settingsAccount.analyticsDisabled", "No data is shared") }
         public static var analyticsEnabled: String { localized("settingsAccount.analyticsEnabled", "Usage data is shared") }
         public static var dangerZone: String { localized("settingsAccount.dangerZone", "Danger Zone") }
-        public static let server = "Server"
         public static var backup: String { localized("settingsAccount.backup", "Backup") }
         public static var backupDescription: String { localized("settingsAccount.backupDescription", "Your secret key is the only way to recover your account. Save it in a secure place like a password manager.") }
         public static var secretKey: String { localized("settingsAccount.secretKey", "Secret Key") }
@@ -318,68 +304,39 @@ public enum Strings {
 
     /// settings/account.tsx's push section, which en.ts does not cover.
     public enum Push {
-        public static let title = "Push Notifications"
-        public static let footer = "Shows every push token registered on your account. Tap an old token to delete it."
-        public static let permission = "Permission"
-        public static let loading = "Loading"
-        public static let allowed = "Allowed"
-        public static let denied = "Denied"
-        public static let notRequested = "Not requested"
-        public static let checking = "Checking push notification permissions for this device."
-        public static let canReceive = "This device can receive push notifications."
-        public static let canAskAgain = "The system prompt can still be shown again from the app."
-        public static let stoppedPrompting = "iOS has stopped prompting. Open system settings to enable notifications again."
-        public static let requestAgain = "Request Permission Again"
-        public static let requestAgainCanAsk = "Shows the system prompt again if iOS still allows it."
-        public static let requestAgainSettings = "Opens system settings when iOS will not prompt again."
-        public static let enabled = "Push notifications are enabled for this device."
-        public static let openSettingsTitle = "Open Settings"
-        public static let openedSettings = "The system will not show the permission prompt again, so Happy opened Settings instead."
-        public static let notGranted = "Push notification permission was not granted."
-        public static let requestFailed = "Failed to request push notification permission."
-        public static func registeredTokens(_ count: Int) -> String { "Registered Tokens (\(count))" }
-        public static let tokensFooter = "Current-device metadata comes from this phone. Older tokens use their token fingerprint plus server timestamps."
-        public static let noTokens = "No registered push tokens"
-        public static let noTokensSubtitle = "Once this device is registered, it will appear here."
-        public static let deleteTitle = "Delete Push Token"
-        public static func deleteMessage(_ fingerprint: String) -> String { "Remove \(fingerprint) from your account?" }
-        public static let deleteFailed = "Failed to delete push token."
-        public static let loadFailed = "Failed to load push notification settings."
+        public static let title = "Push Notifications"  // account.tsx:506, spelled out
+        public static let footer = "Shows every push token registered on your account. Tap an old token to delete it."  // account.tsx:507, spelled out
+        public static let permission = "Permission"  // account.tsx:510, spelled out
+        public static let requestAgain = "Request Permission Again"  // account.tsx:518, spelled out
+        public static let enabled = "Push notifications are enabled for this device."  // account.tsx:239, spelled out
+        public static let openSettingsTitle = "Open Settings"  // account.tsx:246, spelled out
+        public static let openedSettings = "The system will not show the permission prompt again, so Happy opened Settings instead."  // account.tsx:246, spelled out
+        public static let notGranted = "Push notification permission was not granted."  // account.tsx:250, spelled out
+        public static let requestFailed = "Failed to request push notification permission."  // account.tsx:253, spelled out
+        public static func registeredTokens(_ count: Int) -> String { "Registered Tokens (\(count))" }  // account.tsx:544, spelled out
+        public static let tokensFooter = "Current-device metadata comes from this phone. Older tokens use their token fingerprint plus server timestamps."  // account.tsx:545, spelled out
+        public static let noTokens = "No registered push tokens"  // account.tsx:549, spelled out
+        public static let noTokensSubtitle = "Once this device is registered, it will appear here."  // account.tsx:550, spelled out
+        public static let deleteTitle = "Delete Push Token"  // account.tsx:290, spelled out
+        public static func deleteMessage(_ fingerprint: String) -> String { "Remove \(fingerprint) from your account?" }  // account.tsx:291, spelled out
+        public static let deleteFailed = "Failed to delete push token."  // account.tsx:305, spelled out
+        public static let loadFailed = "Failed to load push notification settings."  // account.tsx:149, spelled out
     }
 
     /// app/(app)/settings/agents.tsx, which en.ts does not cover.
     public enum Agents {
         public static let machines = "Machines"
-        public static let noMachines = "No connected machines"
-        public static let noMachinesSubtitle = "Run Happy on a computer to connect it"
-        public static let defaults = "Defaults"
-        public static let clearOverrides = "Clear Overrides"
-        public static let clearOverridesSubtitle = "Return every agent to code defaults"
-        public static let permission = "Permission"
-        public static let model = "Model"
-        public static let effort = "Effort"
-        public static func defaultValue(_ name: String) -> String { "Default (\(name))" }
-        public static let useCodeDefault = "Use code default"
-        public static let customModel = "Custom model…"
-        public static let customModelSubtitle = "Enter an exact model ID"
-        public static let customModelTitle = "Custom Codex model"
-        public static let customModelMessage = "Enter an exact model ID. Availability depends on your Codex account or API configuration."
-        public static let customModelPlaceholder = "model-id"
-    }
-
-    public enum Usage {
-        public static var today: String { localized("usage.today", "Today") }
-        public static var last7Days: String { localized("usage.last7Days", "Last 7 days") }
-        public static var last30Days: String { localized("usage.last30Days", "Last 30 days") }
-        public static var totalTokens: String { localized("usage.totalTokens", "Total Tokens") }
-        public static var totalCost: String { localized("usage.totalCost", "Total Cost") }
-        public static var tokens: String { localized("usage.tokens", "Tokens") }
-        public static var cost: String { localized("usage.cost", "Cost") }
-        public static var usageOverTime: String { localized("usage.usageOverTime", "Usage over time") }
-        public static var byModel: String { localized("usage.byModel", "By Model") }
-        public static let noData = "No usage data available"
-        // UsagePanel.tsx, not in en.ts.
-        public static let loadFailed = "Failed to load usage data"
+        public static let noMachines = "No connected machines"  // agents.tsx:188, spelled out
+        public static let noMachinesSubtitle = "Run Happy on a computer to connect it"  // agents.tsx:189, spelled out
+        public static let defaults = "Defaults"  // agents.tsx:228, spelled out
+        public static let clearOverrides = "Clear Overrides"  // agents.tsx:231, spelled out
+        public static let clearOverridesSubtitle = "Return every agent to code defaults"  // agents.tsx:232, spelled out
+        public static let useCodeDefault = "Use code default"  // agents.tsx:153, spelled out
+        public static let customModel = "Custom model…"  // agents.tsx:168, spelled out
+        public static let customModelSubtitle = "Enter an exact model ID"  // agents.tsx:169, spelled out
+        public static let customModelTitle = "Custom Codex model"  // agents.tsx:91, spelled out
+        public static let customModelMessage = "Enter an exact model ID. Availability depends on your Codex account or API configuration."  // agents.tsx:92, spelled out
+        public static let customModelPlaceholder = "model-id"  // agents.tsx:95, spelled out
     }
 
     public enum Changelog {
@@ -388,21 +345,9 @@ public enum Strings {
 
     /// settings/connect/claude.tsx `OAuthViewUnsupported`.
     public enum ConnectClaude {
-        public static let title = "Connect Claude"
-        public static let instruction = "Run the following command in your terminal:"
-        public static let command = "happy connect claude"
-    }
-
-    /// The parts of app/(app)/dev/index.tsx this app has.
-    public enum Developer {
-        public static let appInformation = "App Information"
-        public static let version = "Version"
-        public static let buildNumber = "Build Number"
-        public static let platform = "Platform"
-        public static let anonymousId = "Anonymous ID"
-        public static let network = "Network"
-        public static let apiEndpoint = "API Endpoint"
-        public static let socketStatus = "Socket.IO Status"
+        public static let title = "Connect Claude"  // OAuthView.tsx:363 "Connect ", spelled out
+        public static let instruction = "Run the following command in your terminal:"  // OAuthView.tsx:364, spelled out
+        public static let command = "happy connect claude"  // connect/claude.tsx:54, spelled out
     }
 
     public enum Server {
@@ -421,7 +366,6 @@ public enum Strings {
         public static var failedToConnectToServer: String { localized("server.failedToConnectToServer", "Failed to connect to server") }
         public static var currentlyUsingCustomServer: String { localized("server.currentlyUsingCustomServer", "Currently using custom server") }
         public static var invalidFormat: String { localized("errors.invalidFormat", "Invalid format") }
-        public static let defaultServer = "Default"
     }
 
     public enum Modals {
@@ -429,7 +373,6 @@ public enum Strings {
         public static var pasteUrlFromTerminal: String { localized("modals.pasteUrlFromTerminal", "Paste the authentication URL from your terminal") }
         public static var invalidAuthUrl: String { localized("modals.invalidAuthUrl", "Invalid authentication URL") }
         public static var failedToConnectTerminal: String { localized("modals.failedToConnectTerminal", "Failed to connect terminal") }
-        public static let terminalConnectedSuccessfully = "Terminal connected successfully"
         public static var deviceLinkedSuccessfully: String { localized("modals.deviceLinkedSuccessfully", "Device linked successfully") }
         public static var failedToLinkDevice: String { localized("modals.failedToLinkDevice", "Failed to link device") }
         public static var cameraPermissionsRequiredToScanQr: String { localized("modals.cameraPermissionsRequiredToScanQr", "Camera permissions are required to scan QR codes") }
@@ -458,6 +401,5 @@ public enum Strings {
     public enum Errors {
         public static var authenticationFailed: String { localized("errors.authenticationFailed", "Authentication failed") }
         public static func disconnectServiceFailed(_ service: String) -> String { localized("errors.disconnectServiceFailed", ["service": .text(service)], "Failed to disconnect \(service)") }
-        public static let operationFailed = "Operation failed"
     }
 }

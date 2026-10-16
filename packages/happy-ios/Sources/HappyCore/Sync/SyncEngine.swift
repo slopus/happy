@@ -509,14 +509,11 @@ public actor SyncEngine {
         guard let session = try store.session(id: sessionId) else {
             throw SendingError.unknownSession
         }
-        let pending = try store.pendingOutbox(limit: Int.max).contains {
-            $0.sessionId == sessionId && $0.kind == .message && $0.state != .failed
-        }
         let composer = try store.composerState(sessionId: sessionId).values
         let settings = try AccountSettings(store.settingsSnapshot()).syncPayload
         let payload = try UserMessageEncoder.encode(
             message, session: session, composer: composer, settings: settings,
-            hasPendingUserMessage: pending, sentFrom: Self.sentFrom
+            hasPendingUserMessage: try hasPendingUserMessage(sessionId: sessionId), sentFrom: Self.sentFrom
         )
         let attachmentPlan = OutboxSender.attachmentPlan(message, session: session)
         if attachmentPlan.shouldShowUnsupportedAlert,
@@ -573,6 +570,16 @@ public actor SyncEngine {
         }
         await invalidate(.outbox)
         return localId
+    }
+
+    /// sync.ts's `hasPendingUserMessage`: text still in the outbox, or
+    /// delivered and not yet accepted by the daemon (the reducer's
+    /// `pending`), worked out from the chat's records in the store.
+    private func hasPendingUserMessage(sessionId: String) throws -> Bool {
+        let queued = try store.pendingOutbox(limit: Int.max).contains {
+            $0.sessionId == sessionId && $0.kind == .message && $0.state != .failed
+        }
+        return try queued || UnacceptedUserMessages.contains(store.acceptanceRecords(sessionId: sessionId))
     }
 
     private static var sentFrom: String {

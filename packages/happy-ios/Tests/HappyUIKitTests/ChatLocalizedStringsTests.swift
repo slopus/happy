@@ -5,8 +5,8 @@ import UIKit
 import XCTest
 
 /// The chat's main-thread words in the language the screens speak, its
-/// English as happy-app's _default.ts has it, and the rows' words, planned
-/// off the main thread, still English.
+/// English as happy-app's _default.ts has it. The rows' words are in the
+/// language their input carries (`ChatRowWordsTests`).
 @MainActor
 final class ChatLocalizedStringsTests: XCTestCase {
     override func tearDown() {
@@ -52,10 +52,9 @@ final class ChatLocalizedStringsTests: XCTestCase {
             XCTAssertEqual(Strings.AgentQuestion.moreQuestions(count), russian("agentQuestion.moreQuestions", ["count": .number(count)]))
         }
         XCTAssertNotEqual(Strings.Chat.retry, "Retry")
-        // Planned off the main thread: English until the rows carry their
-        // language.
-        XCTAssertEqual(Strings.ToolGroup.ran, "Ran")
-        XCTAssertEqual(Strings.ChatMessage.sending, "Sending…")
+        // The words a screen built now hands its rows.
+        XCTAssertEqual(ChatWords(catalog: AppLocalization.screens).toolActions.ran, russian("toolGroup.ran"))
+        XCTAssertEqual(ChatWords(catalog: AppLocalization.screens).sending, russian("message.sending"))
     }
 
     func testAViewBuiltInAnotherLanguageSpeaksIt() async {

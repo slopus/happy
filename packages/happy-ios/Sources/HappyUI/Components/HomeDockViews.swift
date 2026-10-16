@@ -8,7 +8,9 @@ import UIKit
 /// capsule holding the prompt and a send button, over a scrim that rises
 /// from the screen's foot. A tap on the capsule opens the composer; the
 /// button sends what was typed there. It fills home and takes touches only
-/// on the capsule; `HomeDockLayout` places everything.
+/// on the capsule; `HomeDockLayout` places everything. Its text follows
+/// the person's text size in a capsule that keeps its 56, cut at the
+/// capsule as `composerSurface`'s `overflow: 'hidden'` cuts it.
 final class HomeDockView: UIView {
     let scrim = HeaderScrimView(edge: .bottom)
     let entryButton = UIControl()
@@ -17,12 +19,21 @@ final class HomeDockView: UIView {
     private let surface = UIView()
     private let material = PartialBlurView(fraction: ComposerShadow.materialFraction)
     private let frosted = UIView()
+    /// The capsule's shape over the entry, which cuts a line taller than
+    /// the capsule; it takes no touches of its own.
+    private let entryClip = UIView()
     private let entryLabel = StyledLabel(style: TextStyles.homeDockEntry, color: Palette.textSecondary, lines: 1)
     private var composerFrame: CGRect = .zero
 
     /// What was typed in the composer; the placeholder while empty.
     var prompt = "" {
         didSet { if prompt != oldValue { applyPrompt() } }
+    }
+
+    /// The heights made off the main thread for the dock; the entry's line
+    /// comes from here once it is for the text size this view draws at.
+    var text: HomeDockText? {
+        didSet { if text != oldValue { setNeedsLayout() } }
     }
 
     /// The scrim shows only over a list that can scroll under it.
@@ -32,6 +43,9 @@ final class HomeDockView: UIView {
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        // HomeDock.tsx's prompt is a Text, which scales; the capsule keeps
+        // its 56.
+        traitOverrides.followsTextSize = true
         scrim.isHidden = true
         addSubview(scrim)
         shell.layer.shadowColor = UIColor(Palette.shadow).cgColor
@@ -48,7 +62,10 @@ final class HomeDockView: UIView {
         entryButton.addSubview(entryLabel)
         entryButton.isAccessibilityElement = true
         entryButton.accessibilityTraits = .button
-        addSubview(entryButton)
+        entryClip.clipsToBounds = true
+        entryClip.layer.cornerCurve = .continuous
+        entryClip.addSubview(entryButton)
+        addSubview(entryClip)
         addSubview(sendButton)
         applyPrompt()
         applyAppearance()
@@ -83,13 +100,20 @@ final class HomeDockView: UIView {
         surface.layer.borderColor = UIColor(Palette.glassBorder).resolvedColor(with: traitCollection).cgColor
     }
 
+    /// One line of the entry at its text size, from the heights made off
+    /// the main thread; the label measures itself only until they land.
+    private var entry: Measurable {
+        guard let text, text.key.text == TextEnvironment(traitCollection) else { return entryLabel.measurable }
+        return HomeDockText.line(entryLabel, text.entryLine)
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         let layout = HomeDockLayout(.init(
             size: bounds.size,
             safeBottom: safeAreaInsets.bottom,
             hairline: hairline,
-            entry: entryLabel.measurable
+            entry: entry
         ))
         composerFrame = layout.composer
         scrim.setLayoutFrame(layout.scrim)
@@ -100,7 +124,9 @@ final class HomeDockView: UIView {
         surface.layer.cornerRadius = radius
         material.frame = surface.bounds
         frosted.frame = surface.bounds
-        entryButton.setLayoutFrame(layout.entry)
+        entryClip.setLayoutFrame(layout.composer)
+        entryClip.layer.cornerRadius = radius
+        entryButton.setLayoutFrame(layout.entry.offsetBy(dx: -layout.composer.minX, dy: -layout.composer.minY))
         entryLabel.setLayoutFrame(layout.entryText.offsetBy(dx: -layout.entry.minX, dy: -layout.entry.minY))
         sendButton.setLayoutFrame(layout.send)
     }
@@ -196,6 +222,13 @@ final class HomeDockRowView: UIView {
         blocker.isHidden = true
         addSubview(blocker)
         applyValue()
+        // The link's value is the app's text, at the person's text size;
+        // the menu's is the system's body font, which follows on its own.
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            guard self.isLink else { return }
+            self.applyValue()
+            self.setNeedsLayoutUpTheTree()
+        }
     }
 
     @available(*, unavailable)
@@ -212,7 +245,8 @@ final class HomeDockRowView: UIView {
 
     private func applyValue() {
         if isLink {
-            valueLabel.attributedText = TextStyles.homeDockRowValue.attributedString(value, color: UIColor(Palette.text), lineBreakMode: .byTruncatingTail)
+            let style = traitCollection.textEnvironment.map { TextStyles.homeDockRowValue.scaled($0.scale) } ?? TextStyles.homeDockRowValue
+            valueLabel.attributedText = style.attributedString(value, color: UIColor(Palette.text), lineBreakMode: .byTruncatingTail)
         } else {
             valueLabel.attributedText = nil
             valueLabel.font = UIFont.preferredFont(forTextStyle: .body)

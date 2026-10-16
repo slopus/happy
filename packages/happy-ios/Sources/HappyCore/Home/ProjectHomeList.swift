@@ -73,7 +73,10 @@ public struct ProjectHomeData: Equatable, Sendable {
     /// The archive, newest first, when it is shown.
     public var archived: [ArchivedItem]
 
-    public init(_ snapshot: HomeSnapshot, clock: SessionList.Clock = SessionList.Clock()) {
+    /// `unknownMachine` is `status.unknown` in the screens' language, read
+    /// on the main thread: the section of chats that name no computer is
+    /// `<unknown>` (ProjectHomeList.tsx 128).
+    public init(_ snapshot: HomeSnapshot, clock: SessionList.Clock = SessionList.Clock(), unknownMachine: String = ProjectHomeData.unknownMachineText) {
         let settings = AccountSettings(snapshot.settings)
         let machines = Dictionary(snapshot.machines.machines.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         let projects = Dictionary(snapshot.projects.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
@@ -158,7 +161,7 @@ public struct ProjectHomeData: Equatable, Sendable {
             let name = nonEmpty(machine?.metadata?["displayName"]?.stringValue)
                 ?? nonEmpty(machine?.metadata?["host"]?.stringValue)
                 ?? machineId
-                ?? "<\(Self.unknownMachineText)>"
+                ?? "<\(unknownMachine)>"
             order.append(machineId)
             return MachineSection(
                 machineId: machineId,
@@ -225,8 +228,9 @@ public struct ProjectHomeData: Equatable, Sendable {
         self.archived = archived
     }
 
-    /// `status.unknown`, in `<unknown>` for a chat that names no computer.
-    static let unknownMachineText = "unknown"
+    /// `status.unknown` in English, in `<unknown>` for a chat that names no
+    /// computer; the screens pass their own language's.
+    public static let unknownMachineText = "unknown"
 
     private static func rank(_ section: MachineSection) -> Int {
         if section.machineId == nil { return 2 }

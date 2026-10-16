@@ -18,25 +18,29 @@ struct DiffHeaderPlan: @unchecked Sendable {
     let layout: DiffFileHeaderLayout
 
     /// `toggles: false` is a header without `onToggle`, so without the
-    /// chevron (the chat's patch cards).
-    init(path: String, kind: FileChangeKind, additions: Int, deletions: Int, collapsed: Bool, width: CGFloat, scale: CGFloat, toggles: Bool = true) {
+    /// chevron (the chat's patch cards). `scale` is the screen's, for the
+    /// chevron; `text` the text size the header draws at (nil, the
+    /// designed size): the path, badge and counts grow with it, the
+    /// chevron, the file icon and the paddings keep their size.
+    init(path: String, kind: FileChangeKind, additions: Int, deletions: Int, collapsed: Bool, width: CGFloat, scale: CGFloat, toggles: Bool = true, text: TextEnvironment? = nil) {
+        let textScale = DiffStyle.textScale(text)
         let lastSlash = path.lastIndex(of: "/")
         let tail = lastSlash.map { String(path[path.index(after: $0)...]) } ?? path
         let name = tail.isEmpty ? path : tail
         let dirText = String(path.dropLast(name.count))
         self.name = name
-        let dirStyle = DiffTextStyles.headerDir
-        let nameStyle = DiffTextStyles.headerFileName
+        let dirStyle = DiffTextStyles.headerDir.scaled(textScale)
+        let nameStyle = DiffTextStyles.headerFileName.scaled(textScale)
         dir = dirStyle.attributedString(dirText, color: UIColor(DiffStyle.textSecondary), lineBreakMode: .byTruncatingHead)
         fileName = nameStyle.attributedString(name, color: UIColor(DiffStyle.text), lineBreakMode: .byTruncatingTail)
-        let badgeStyle = DiffTextStyles.headerBadge
+        let badgeStyle = DiffTextStyles.headerBadge.scaled(textScale)
         switch kind {
         case .added: badge = badgeStyle.attributedString(Strings.DiffDetail.badgeNew, color: UIColor(DiffPalette.markerAdded))
         case .deleted: badge = badgeStyle.attributedString(Strings.DiffDetail.badgeDeleted, color: UIColor(DiffPalette.markerRemoved))
         case .renamed: badge = badgeStyle.attributedString(Strings.DiffDetail.badgeRenamed, color: UIColor(DiffStyle.textSecondary))
         default: badge = nil
         }
-        let countStyle = DiffTextStyles.headerCount
+        let countStyle = DiffTextStyles.headerCount.scaled(textScale)
         self.additions = additions > 0 ? countStyle.attributedString("+\(additions)", color: UIColor(DiffPalette.markerAdded)) : nil
         self.deletions = deletions > 0 ? countStyle.attributedString("−\(deletions)", color: UIColor(DiffPalette.markerRemoved)) : nil
         chevron = .ionicons(collapsed ? "chevron-forward" : "chevron-down")
@@ -147,11 +151,14 @@ final class DiffImagePanesView: UIView {
         fatalError("init(coder:) is not supported")
     }
 
-    /// `sides` are (label, tint, picture), in order.
-    func apply(sides: [(String, ColorToken, UIImage?)], layout: DiffImageLayout) {
+    /// `sides` are (label, tint, picture), in order; `textScale` is the
+    /// text size the plan measured them at, which the labels draw at
+    /// rather than their traits'.
+    func apply(sides: [(String, ColorToken, UIImage?)], layout: DiffImageLayout, textScale: TextScale = .standard) {
         self.layout = layout
         while labels.count < sides.count {
             let label = StyledLabel(style: DiffTextStyles.imageLabel, color: DiffStyle.textSecondary, lines: 1)
+            label.traitOverrides.followsTextSize = false
             let box = UIView()
             box.backgroundColor = UIColor(DiffStyle.hunkBackground)
             box.layer.borderWidth = DiffImageLayout.Metrics.boxBorder
@@ -171,6 +178,7 @@ final class DiffImagePanesView: UIView {
             labels[index].isHidden = !shown
             boxes[index].isHidden = !shown
             guard shown else { continue }
+            labels[index].style = DiffTextStyles.imageLabel.scaled(textScale)
             labels[index].string = sides[index].0
             labels[index].color = sides[index].1
             images[index].image = sides[index].2

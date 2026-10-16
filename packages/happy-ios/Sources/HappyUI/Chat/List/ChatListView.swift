@@ -48,6 +48,10 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
         collectionView.transform = ChatCollectionLayout.flip
         collectionView.backgroundColor = .clear
         collectionView.contentInsetAdjustmentBehavior = .never
+        // The indicator's insets are the screen's (`setEdgeInsets`), safe
+        // area included. UIKit would add the safe area again, at the
+        // unflipped ends.
+        collectionView.automaticallyAdjustsScrollIndicatorInsets = false
         collectionView.keyboardDismissMode = .interactive
         collectionView.alwaysBounceVertical = true
         collectionView.showsHorizontalScrollIndicator = false
@@ -116,16 +120,35 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     var distanceFromNewest: CGFloat { max(0, visibleMinY) }
 
     /// Insets at both ends: the newest edge clears the dock, the oldest the
-    /// navigation bar. What the reader sees at the newest edge stays put,
-    /// so a rising keyboard carries the conversation up with the composer.
-    func setEdgeInsets(newest: CGFloat, oldest: CGFloat) {
+    /// navigation bar, and the scroll indicator runs between what covers
+    /// them (`indicator`). What the reader sees at the newest edge stays
+    /// put, so a rising keyboard carries the conversation up with the
+    /// composer; under the reader's finger, as in an interactive dismiss,
+    /// the conversation stays with the finger
+    /// (`ChatScrollAnchor.visibleMinY(afterNewestInsetChange:…)`).
+    func setEdgeInsets(newest: CGFloat, oldest: CGFloat, indicator: ChatIndicatorInsets) {
+        // On the pixels the header and the dock were snapped to, or the
+        // offset, and UIKit's rounding of the indicator, land between them.
+        let scale = window?.screen.scale ?? traitCollection.displayScale
+        let indicator = indicator.snapped(scale: scale)
+        let newest = PixelGrid.round(newest, scale: scale)
+        let oldest = PixelGrid.round(oldest, scale: scale)
+        // Flipped: the collection view's top is the screen's bottom.
+        let indicatorInsets = UIEdgeInsets(top: indicator.newest, left: 0, bottom: indicator.oldest, right: indicator.side)
+        if collectionView.verticalScrollIndicatorInsets != indicatorInsets {
+            collectionView.verticalScrollIndicatorInsets = indicatorInsets
+        }
         let inset = UIEdgeInsets(top: newest, left: 0, bottom: oldest, right: 0)
         guard collectionView.contentInset != inset else { return }
-        let anchor = visibleMinY
+        let current = visibleMinY
+        let delta = newest - collectionView.contentInset.top
         collectionView.contentInset = inset
-        collectionView.verticalScrollIndicatorInsets = inset
-        let target = min(max(0, anchor), maxVisibleMinY(layout.model))
-        collectionView.contentOffset.y = target - newest
+        let target = ChatScrollAnchor.visibleMinY(
+            afterNewestInsetChange: delta, from: current, maxVisibleMinY: maxVisibleMinY(layout.model), tracking: collectionView.isTracking
+        )
+        if collectionView.contentOffset.y != target - newest {
+            collectionView.contentOffset.y = target - newest
+        }
     }
 
     func scrollToNewest(animated: Bool) {

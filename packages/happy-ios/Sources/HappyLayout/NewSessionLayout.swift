@@ -229,13 +229,17 @@ public struct NewSessionComposerLayout: Equatable, Sendable {
         public var textHeight: CGFloat
         public var agentLabel: Measurable
         public var showsSettings: Bool
+        /// The prompt's line at the text size: 22 × RN's multiplier. The
+        /// text is never shorter; the 44 field and the 120 cap stay.
+        public var lineHeight: CGFloat
 
-        public init(width: CGFloat, hairline: CGFloat, textHeight: CGFloat, agentLabel: Measurable, showsSettings: Bool) {
+        public init(width: CGFloat, hairline: CGFloat, textHeight: CGFloat, agentLabel: Measurable, showsSettings: Bool, lineHeight: CGFloat = Metrics.lineHeight) {
             self.width = width
             self.hairline = hairline
             self.textHeight = textHeight
             self.agentLabel = agentLabel
             self.showsSettings = showsSettings
+            self.lineHeight = lineHeight
         }
     }
 
@@ -261,13 +265,18 @@ public struct NewSessionComposerLayout: Equatable, Sendable {
         let contentX = border + M.paddingLeft
         let contentWidth = max(0, width - 2 * border - M.paddingLeft - M.paddingRight)
 
-        let textHeight = min(M.inputMaxHeight, max(M.lineHeight, input.textHeight))
+        let textHeight = min(M.inputMaxHeight, max(input.lineHeight, input.textHeight))
         textScrolls = input.textHeight > M.inputMaxHeight
         let fieldY = border + M.paddingVertical
         let fieldHeight = max(M.fieldMinHeight, textHeight)
+        // Centred to the pixel above, so the input, whose height is on the
+        // pixel grid, keeps it when its frame is snapped; centred exactly,
+        // a scaled line (37 at XS in the 44) starts on half a pixel and
+        // snaps a pixel taller or shorter than its text.
+        let slack = (fieldHeight - textHeight) / 2
         self.input = CGRect(
             x: contentX + M.fieldPaddingLeft,
-            y: fieldY + (fieldHeight - textHeight) / 2,
+            y: fieldY + (border > 0 ? (slack / border + 0.001).rounded(.down) * border : slack),
             width: max(0, contentWidth - M.fieldPaddingLeft - M.fieldPaddingRight),
             height: textHeight
         )

@@ -32,17 +32,25 @@ final class ChatLabel {
 
 /// The card above the composer for a request the chat can't show inline:
 /// a form opens the answer sheet; an unknown kind can only be dismissed.
+/// Its text follows the text size, laid out off the main thread
+/// (`ChatDockBarMeasure.questionBanner`) at the width the dock offers;
+/// until its plan is in it has no height. The glyph and the chevron keep
+/// their size.
 final class ChatQuestionBannerView: UIView {
     var onOpen: (() -> Void)?
     var onDismiss: (() -> Void)?
+    /// Its plan came in: the dock is laid out again with its height.
+    var onNeedsLayout: (() -> Void)?
 
     private(set) var pending: PendingAgentCommunication?
+    private var model: ChatQuestionBannerModel?
+    let measure = OffMainPlan<ChatDockBarInput<ChatQuestionBannerModel>, ChatQuestionBannerPlan> { ChatDockBarMeasure.questionBanner($0) }
     private let card = UIView()
     private let icon = UIImageView()
-    private let title = ChatLabel(MeasuredText(NSAttributedString()))
-    private let subtitle = ChatLabel(MeasuredText(NSAttributedString()))
-    private let trailing = ChatLabel(MeasuredText(NSAttributedString()))
-    private let chevron = UIImageView(image: .icon(.ionicons("chevron-forward"), size: 18))
+    private let title = ChatTextView()
+    private let subtitle = ChatTextView()
+    private let trailing = ChatTextView()
+    private let chevron = UIImageView(image: .icon(.ionicons("chevron-forward"), size: ChatDockBarMeasure.chevronSize))
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -54,11 +62,20 @@ final class ChatQuestionBannerView: UIView {
         icon.contentMode = .center
         chevron.contentMode = .center
         chevron.tintColor = UIColor(Palette.textSecondary)
-        for view in [icon, title.view, subtitle.view, trailing.view, chevron] { addSubview(view) }
+        for view in [title, subtitle, trailing] { view.isAccessibilityElement = false }
+        for view in [icon, title, subtitle, trailing, chevron] { addSubview(view) }
         addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(tapped(_:))))
         isAccessibilityElement = true
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
             self.updateBorder()
+        }
+        measure.onApply = { [weak self] in
+            self?.setNeedsLayout()
+            self?.onNeedsLayout?()
+        }
+        // A new size is measured when the dock next asks for its height.
+        registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
+            self.setNeedsLayoutUpTheTree()
         }
     }
 
@@ -67,32 +84,39 @@ final class ChatQuestionBannerView: UIView {
         fatalError("init(coder:) is not supported")
     }
 
+    /// Gone, it forgets its plan, so it comes back with nothing old in it.
+    override var isHidden: Bool {
+        didSet { if isHidden { measure.reset() } }
+    }
+
     func show(_ pending: PendingAgentCommunication) {
         guard pending != self.pending else { return }
         self.pending = pending
+        let model: ChatQuestionBannerModel
         switch pending.kind {
         case .unsupported(let rawKind, let titleText):
             icon.image = .icon(.ionicons("alert-circle-outline"), size: 20)
             icon.tintColor = UIColor(Palette.textSecondary)
-            title.update(MeasuredText(ChatTextStyles.bannerTitle.string(titleText ?? Strings.AgentQuestion.unsupportedTitle, color: Palette.text, lineBreakMode: .byTruncatingTail), maxLines: 1))
-            subtitle.update(MeasuredText(ChatTextStyles.bannerSubtitle.string(Strings.AgentQuestion.unsupportedDescription(rawKind), color: Palette.textSecondary, lineBreakMode: .byTruncatingTail), maxLines: 2))
-            trailing.update(MeasuredText(ChatTextStyles.bannerDismiss.string(Strings.AgentQuestion.dismiss, color: Palette.textLink), maxLines: 1))
-            chevron.isHidden = true
-            trailing.view.isHidden = false
+            model = ChatQuestionBannerModel(
+                title: titleText ?? Strings.AgentQuestion.unsupportedTitle,
+                subtitle: Strings.AgentQuestion.unsupportedDescription(rawKind),
+                dismiss: Strings.AgentQuestion.dismiss
+            )
             accessibilityTraits = .staticText
         case .form(let questions):
             icon.image = .icon(.ionicons("help-circle-outline"), size: 20)
             icon.tintColor = UIColor(Palette.textLink)
             let first = questions.first
             let remaining = questions.count - 1
-            title.update(MeasuredText(ChatTextStyles.bannerTitle.string(first?.header ?? Strings.AgentQuestion.title, color: Palette.text, lineBreakMode: .byTruncatingTail), maxLines: 1))
-            let line = remaining > 0 ? Strings.AgentQuestion.moreQuestions(remaining) : (first?.question ?? "")
-            subtitle.update(MeasuredText(ChatTextStyles.bannerSubtitle.string(line, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail), maxLines: 2))
-            chevron.isHidden = false
-            trailing.view.isHidden = true
+            model = ChatQuestionBannerModel(
+                title: first?.header ?? Strings.AgentQuestion.title,
+                subtitle: remaining > 0 ? Strings.AgentQuestion.moreQuestions(remaining) : (first?.question ?? ""),
+                dismiss: nil
+            )
             accessibilityTraits = .button
         }
-        accessibilityLabel = [title.text.string.string, subtitle.text.string.string].joined(separator: ", ")
+        self.model = model
+        accessibilityLabel = [model.title, model.subtitle].joined(separator: ", ")
         updateBorder()
         setNeedsLayout()
     }
@@ -102,28 +126,35 @@ final class ChatQuestionBannerView: UIView {
         return false
     }
 
-    private var trailingMeasurable: Measurable {
-        isForm ? .fixed(width: 18, height: 18) : trailing.measurable
-    }
-
-    /// The banner's height at a width, for the dock.
+    /// The banner's height at a width, for the dock: its plan's, asked for
+    /// at that width; the last one's until that is in, or none.
     var bannerMeasurable: Measurable {
         Measurable { [self] width in
-            QuestionBannerLayout(width: width, title: title.measurable, subtitle: subtitle.measurable, trailing: trailingMeasurable).size
+            guard let model else { return .zero }
+            measure.request(ChatDockBarInput(model: model, width: width, text: traitCollection.measuredTextEnvironment))
+            return measure.plan?.layout.size ?? .zero
         }
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let layout = QuestionBannerLayout(width: bounds.width, title: title.measurable, subtitle: subtitle.measurable, trailing: trailingMeasurable)
+        let plan = measure.plan
+        for view in [card, icon, title, subtitle] { view.isHidden = plan == nil }
+        chevron.isHidden = plan == nil || plan?.dismiss != nil
+        trailing.isHidden = plan?.dismiss == nil
+        guard let plan else { return }
+        let layout = plan.layout
         card.setLayoutFrame(layout.card)
         icon.setLayoutFrame(layout.icon)
-        title.place(layout.title)
-        subtitle.place(layout.subtitle)
-        if isForm {
-            chevron.setLayoutFrame(layout.trailing)
+        title.setLayoutFrame(layout.title)
+        title.layout = plan.title
+        subtitle.setLayoutFrame(layout.subtitle)
+        subtitle.layout = plan.subtitle
+        if let dismiss = plan.dismiss {
+            trailing.setLayoutFrame(layout.trailing)
+            trailing.layout = dismiss
         } else {
-            trailing.place(layout.trailing)
+            chevron.setLayoutFrame(layout.trailing)
         }
         dismissTarget = layout.trailing.insetBy(dx: -10, dy: -10)
     }

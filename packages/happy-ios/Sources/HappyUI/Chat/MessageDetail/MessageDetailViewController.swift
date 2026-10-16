@@ -10,6 +10,10 @@ import UIKit
 ///
 /// A spinner until the session and its messages have loaded; once they
 /// have, a message that isn't there sends the reader back.
+///
+/// Its text follows the person's text size: the plan is measured off main
+/// at the screen's (`ChatRowText`), and a new size plans it again, keeping
+/// the text at the top of the screen there (`MessageDetailReadingPlace`).
 final class MessageDetailViewController: UIViewController, UIScrollViewDelegate, UIGestureRecognizerDelegate {
     private let context: AppContext
     private let sessionId: String
@@ -23,9 +27,11 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     private let canvas = MessageDetailCanvas()
     private let spinner = UIActivityIndicatorView(style: .medium)
     /// ToolHeader's title. Its RN Text scales with the person's text size
-    /// in a header that keeps its height, so only the title follows it; the
-    /// rows below are planned at the designed size.
+    /// in a header that keeps its height.
     private let titleView = NavigationTitleView()
+    /// The screen's words, in the language the screens spoke when it was
+    /// built.
+    private let words = ChatWords(catalog: AppLocalization.screens)
     private let measurer = MessageDetailMeasurer()
     private let holdRecognizer = UILongPressGestureRecognizer()
     private let copyCallout = ChatCopyCallout()
@@ -42,6 +48,9 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
     private var measuring = false
     private var needsMeasure = false
     private var lastLayoutWidth: CGFloat = 0
+    private var lastLayoutText: TextEnvironment?
+    /// The text size the plan on screen was measured at.
+    private var shownText: TextEnvironment?
     private var leaving = false
 
     init(context: AppContext, session account: AccountSession, sessionId: String, messageId: String, file: String? = nil) {
@@ -66,6 +75,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        followsTextSize()
         view.backgroundColor = UIColor(Palette.groupedBackground)
         showsBackTitle()
         navigationItem.largeTitleDisplayMode = .never
@@ -75,6 +85,11 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
         titleView.titleLabel.accessibilityTraits = .header
         titleView.traitOverrides.followsTextSize = true
         navigationItem.titleView = titleView
+        updateTitleTextSize()
+        registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
+            self.updateTitleTextSize()
+            self.view.setNeedsLayout()
+        }
 
         scrollView.alwaysBounceVertical = true
         scrollView.delegate = self
@@ -121,8 +136,10 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
         scrollView.frame = view.bounds
         let safe = view.safeAreaLayoutGuide.layoutFrame
         spinner.center = CGPoint(x: safe.midX, y: safe.midY)
-        if view.bounds.width != lastLayoutWidth {
+        let text = view.traitCollection.textEnvironment
+        if view.bounds.width != lastLayoutWidth || text != lastLayoutText {
             lastLayoutWidth = view.bounds.width
+            lastLayoutText = text
             scheduleMeasure()
         }
     }
@@ -168,15 +185,23 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
 
     /// ToolHeader: the tool's title, or "Message", including while loading.
     private func updateTitle() {
-        var title = Strings.Tools.message
+        var title = words.message
         if case .toolCall(let call)? = message {
             let root = session.metadata?["path"]?.stringValue
-            title = Strings.Tools.text(ToolFullPresentation.title(call.tool, root: root, words: Strings.ToolGroup.words))
+            title = words.text(ToolFullPresentation.title(call.tool, root: root, words: words.toolActions))
         }
         titleView.title = title
         // Not `sizeToFit`, which would hold a longer title to the width of
         // the one before it.
         titleView.frame.size = titleView.intrinsicContentSize
+    }
+
+    /// The navigation bar holds the text size its title view inherits to
+    /// XXL; ToolHeader's RN Text has the screen's, past XXL too. The
+    /// controller's own traits: in its trait change its view's are still
+    /// the old ones.
+    private func updateTitleTextSize() {
+        titleView.traitOverrides.preferredContentSizeCategory = traitCollection.preferredContentSizeCategory
     }
 
     /// The title's style cuts a line at its tail; ToolHeader cuts it in the
@@ -237,6 +262,7 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
             diffExpanded: diffExpanded,
             maxContentWidth: maxContentWidth,
             focusFile: focusFile,
+            text: ChatRowText(environment: view.traitCollection.textEnvironment, words: words),
             render: render
         )
         let width = view.bounds.width
@@ -250,17 +276,31 @@ final class MessageDetailViewController: UIViewController, UIScrollViewDelegate,
                 self.scheduleMeasure()
             }
             // A newer input is on its way; this one may still be the right
-            // message at the right width, so show it meanwhile. One planned
-            // while the account stopped is plain or empty: never shown.
-            guard plan.id == self.message?.id, width == self.view.bounds.width, !input.render.isClosed else { return }
-            self.show(plan)
+            // message at the right width and text size, so show it
+            // meanwhile. One planned while the account stopped is plain or
+            // empty, and one in a language the screens no longer speak is
+            // another screen's: never shown.
+            guard plan.id == self.message?.id, width == self.view.bounds.width,
+                  input.text.environment == self.view.traitCollection.textEnvironment, !input.render.isClosed,
+                  self.words.language == AppLocalization.language else { return }
+            self.show(plan, text: input.text.environment)
         }
     }
 
-    private func show(_ plan: ChatRowPlan) {
+    private func show(_ plan: ChatRowPlan, text: TextEnvironment?) {
+        // A new text size moves every piece: the one at the top of the
+        // screen stays there.
+        let inset = scrollView.adjustedContentInset.top
+        let place = text != shownText ? MessageDetailReadingPlace(top: scrollView.contentOffset.y + inset, pieces: canvas.textFrames) : nil
+        shownText = text
         canvas.frame = CGRect(origin: .zero, size: plan.size)
         canvas.apply(plan)
         scrollView.contentSize = plan.size
+        if let top = place?.top(in: canvas.textFrames) {
+            let bottom = scrollView.adjustedContentInset.bottom
+            let maxY = max(-inset, plan.size.height + bottom - scrollView.bounds.height)
+            scrollView.contentOffset.y = min(max(-inset, top - inset), maxY)
+        }
         canvas.visibleRect = scrollView.bounds
         updateState()
     }
@@ -320,6 +360,9 @@ final class MessageDetailCanvas: UIView {
     private(set) var plan: ChatRowPlan?
     private let background = ChatPlanView()
     private var texts: [(layout: ChatTextLayout, frame: CGRect)] = []
+
+    /// Where the plan's text pieces are, in order.
+    var textFrames: [CGRect] { texts.map(\.frame) }
     private var shown: [Int: ChatTextView] = [:]
     private var spare: [ChatTextView] = []
 

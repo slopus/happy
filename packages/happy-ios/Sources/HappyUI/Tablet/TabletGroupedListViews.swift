@@ -228,6 +228,8 @@ final class TabletChatCell: UITableViewCell {
     private let rowClip = UIView()
     let titleLabel = StyledLabel(style: TextStyles.tabletChatTitle, color: Palette.text, lines: 2)
     let dot = StatusDotView()
+    /// A waiting, read chat's draft, in the dot's slot.
+    let draftIcon = IconView(.ionicons("create-outline"), size: 14, tint: Palette.textSecondary)
     let divider = UIView()
     private(set) var row: TabletChatRow?
 
@@ -244,6 +246,7 @@ final class TabletChatCell: UITableViewCell {
         rowClip.isUserInteractionEnabled = false
         rowClip.addSubview(titleLabel)
         rowClip.addSubview(dot)
+        rowClip.addSubview(draftIcon)
         for view in [card, rowClip, divider] { contentView.addSubview(view) }
         isAccessibilityElement = true
         accessibilityTraits = .button
@@ -266,6 +269,13 @@ final class TabletChatCell: UITableViewCell {
             dot.isHidden = false
             dot.backgroundColor = UIColor(TabletStatusColors.color(tone))
             dot.isPulsing = pulsing
+        }
+        // `renderTrailingIndicator`: after the needs-action and unread
+        // dots, a draft takes the waiting chat's slot.
+        draftIcon.isHidden = !row.hasDraft
+        if row.hasDraft {
+            dot.isHidden = true
+            dot.isPulsing = false
         }
         divider.isHidden = !row.showsBorder
         accessibilityLabel = titleLabel.string
@@ -296,6 +306,7 @@ final class TabletChatCell: UITableViewCell {
         rowClip.setLayoutFrame(layout.row)
         titleLabel.setLayoutFrame(layout.title.offsetBy(dx: -layout.row.minX, dy: -layout.row.minY))
         dot.setLayoutFrame(layout.dot.offsetBy(dx: -layout.row.minX, dy: -layout.row.minY))
+        draftIcon.setLayoutFrame(layout.indicator.offsetBy(dx: -layout.row.minX, dy: -layout.row.minY))
         if let frame = layout.divider { divider.setLayoutFrame(frame) }
     }
 
@@ -316,6 +327,8 @@ final class TabletArchivedCell: UITableViewCell {
 
     let card = TabletCardSegmentView()
     let avatar = AvatarView()
+    /// `draftIconOverlay`: the 12 glyph over the avatar's corner.
+    let draftIcon = IconView(.ionicons("create-outline"), size: 12, tint: Palette.textSecondary)
     let titleLabel = StyledLabel(style: TextStyles.tabletArchivedTitle, color: Palette.text, lines: 1)
     let subtitleLabel = StyledLabel(style: TextStyles.tabletArchivedSubtitle, color: Palette.textSecondary, lines: 1)
     let providerIcon = ProviderIconView(size: TabletArchivedRowLayout.Metrics.providerIconSize)
@@ -334,7 +347,7 @@ final class TabletArchivedCell: UITableViewCell {
         card.fill.layer.cornerRadius = TabletArchivedRowLayout.Metrics.radius
         contentView.addSubview(card)
         // Inside the card, which clips them; over its selected fill.
-        for view in [avatar, titleLabel, providerIcon, subtitleLabel, dot, statusLabel] as [UIView] {
+        for view in [avatar, draftIcon, titleLabel, providerIcon, subtitleLabel, dot, statusLabel] as [UIView] {
             view.isUserInteractionEnabled = false
             card.addSubview(view)
         }
@@ -358,6 +371,7 @@ final class TabletArchivedCell: UITableViewCell {
         card.layer.maskedCorners = corners
         card.fill.layer.maskedCorners = corners
         avatar.content = .init(avatar: row.avatar, style: style, monochrome: monochrome || !row.connected)
+        draftIcon.isHidden = !row.hasDraft
         titleLabel.string = row.title ?? Strings.Session.newChat
         titleLabel.color = row.connected ? Palette.text : Palette.textSecondary
         switch row.subtitle {
@@ -404,6 +418,7 @@ final class TabletArchivedCell: UITableViewCell {
         func inCard(_ frame: CGRect) -> CGRect { frame.offsetBy(dx: -layout.card.minX, dy: -layout.card.minY) }
         card.fill.setLayoutFrame(inCard(layout.row))
         avatar.setLayoutFrame(inCard(layout.avatar))
+        draftIcon.setLayoutFrame(inCard(layout.draftOverlay))
         titleLabel.setLayoutFrame(inCard(layout.title))
         subtitleLabel.setLayoutFrame(inCard(layout.subtitle))
         if let frame = layout.subtitleIcon { providerIcon.setLayoutFrame(inCard(frame)) }

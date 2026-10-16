@@ -94,6 +94,22 @@ public enum PixelGrid {
         let height = rect.height > 0 ? max(maxY - minY, 1) / scale : 0
         return CGRect(x: minX / scale, y: minY / scale, width: width, height: height)
     }
+
+    /// Up to the screen's next pixel, as React Native ceils a measured
+    /// Text's box (`RCTTextLayoutManager.mm` 391-392); a `scale` of 0 is
+    /// whole points. A thousandth of a pixel over is float noise in
+    /// TextKit's sum of lines, not a pixel (`FileLinesLayout.textHeight`).
+    public static func ceil(_ value: CGFloat, scale: CGFloat) -> CGFloat {
+        let scale = scale > 0 ? scale : 1
+        return ((value * scale) - 0.001).rounded(.up) / scale
+    }
+
+    /// Rounds a length to the nearest device pixel, for an inset measured
+    /// to a snapped edge, so it lands where `snap` put that edge.
+    public static func round(_ value: CGFloat, scale: CGFloat) -> CGFloat {
+        guard scale > 0, value.isFinite else { return value }
+        return (value * scale).rounded() / scale
+    }
 }
 
 extension CGRect {

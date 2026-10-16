@@ -201,8 +201,20 @@ public enum HomeDerivation {
         /// presence clock: that one stands still while nothing is
         /// disconnected, and headings and stamps would go stale with it.
         public var clock: SessionList.Clock?
+        /// `status.unknown` in the screens' language, read on the main
+        /// thread when the screen is built; a new language builds the
+        /// screens again, and with them this.
+        public var unknownMachine: String
 
-        public init(snapshot: HomeSnapshot? = nil, expandedProjects: Set<String> = [], includesDock: Bool = false, clock: SessionList.Clock? = nil, draftSessionIds: Set<String> = []) {
+        public init(
+            snapshot: HomeSnapshot? = nil,
+            expandedProjects: Set<String> = [],
+            includesDock: Bool = false,
+            clock: SessionList.Clock? = nil,
+            draftSessionIds: Set<String> = [],
+            unknownMachine: String = ProjectHomeData.unknownMachineText
+        ) {
+            self.unknownMachine = unknownMachine
             self.snapshot = snapshot
             self.expandedProjects = expandedProjects
             self.draftSessionIds = draftSessionIds
@@ -227,7 +239,7 @@ public enum HomeDerivation {
     /// Nil when the screen already shows exactly this.
     public static func derive(_ input: Input, applied: Applied) -> (output: HomeUpdate, state: Applied)? {
         guard let snapshot = input.snapshot else { return nil }
-        let state = HomeState(snapshot, clock: input.clock ?? SessionList.Clock())
+        let state = HomeState(snapshot, clock: input.clock ?? SessionList.Clock(), unknownMachine: input.unknownMachine)
         let content = HomeContent(state, expandedProjects: input.expandedProjects, draftSessionIds: input.draftSessionIds)
         let dock = input.includesDock ? NewSessionSnapshot.rendered(snapshot) : nil
         let dockChanged = dock != nil && dock != applied.dock

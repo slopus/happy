@@ -11,28 +11,63 @@ import UIKit
 /// The navigation bar's title view: the session's name over its workspace
 /// or branch and the line changes, hugged by a glass capsule as tall as
 /// the controls beside it (`ChatHeaderTitleLayout`). Tapping it opens the
-/// session's info.
+/// session's info. Its text follows the screen's text size (`text`), laid
+/// out off the main thread (`ChatHeaderMeasure.title`), and the capsule
+/// asks the bar for the size its plan says; until the first is in it asks
+/// for none. The capsule keeps RN's 44 and cuts text taller than that, as
+/// `mobileTitlePillGlass`'s `overflow: 'hidden'` does.
 final class ChatHeaderTitleView: UIControl {
     private let glass = HeaderGlassView()
-    private let title = ChatLabel(MeasuredText(NSAttributedString()))
-    private let subtitle = ChatLabel(MeasuredText(NSAttributedString()))
-    private let changes = GitChangesView()
-    private var hasSubtitle = false
+    /// The capsule's inside, cut to its shape.
+    private let content = UIView()
+    private let title = ChatTextView()
+    private let subtitle = ChatTextView()
+    private let changes = ChatGitChangesView()
+    private var model: ChatHeaderTitleModel?
+    let measure = OffMainPlan<ChatHeaderTitleInput, ChatHeaderTitlePlan> { ChatHeaderMeasure.title($0) }
+    /// The last plan made at `maxWidth`: the size the capsule asks for.
+    private var wanted: (input: ChatHeaderTitleInput, size: CGSize)?
+
+    /// The screen's text size and pixels, handed over by the screen: the
+    /// navigation bar holds its title view's own text size to XXL, and
+    /// RN's header, a plain view, has no such limit. Until it is set, its
+    /// own traits'.
+    var text: TextEnvironment? {
+        didSet {
+            guard text != oldValue else { return }
+            requestPlan()
+            setNeedsLayout()
+        }
+    }
 
     /// How wide the capsule may grow; set from the screen's width.
     var maxWidth: CGFloat = ChatHeaderTitleLayout.maxWidth(headerWidth: 393) {
-        didSet { if maxWidth != oldValue { invalidate() } }
+        didSet {
+            guard maxWidth != oldValue else { return }
+            requestPlan()
+            setNeedsLayout()
+        }
     }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         glass.isUserInteractionEnabled = false
         addSubview(glass)
-        for view in [title.view, subtitle.view, changes] {
-            glass.addSubview(view)
+        content.isUserInteractionEnabled = false
+        content.clipsToBounds = true
+        glass.addSubview(content)
+        for view in [title, subtitle] {
+            view.isAccessibilityElement = false
+            content.addSubview(view)
         }
+        content.addSubview(changes)
         isAccessibilityElement = true
         accessibilityTraits = [.button, .header]
+        measure.onApply = { [weak self] in self?.planned() }
+        registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
+            self.requestPlan()
+            self.setNeedsLayout()
+        }
     }
 
     @available(*, unavailable)
@@ -43,57 +78,120 @@ final class ChatHeaderTitleView: UIControl {
     /// `title || subtitle` heads the capsule, as in happy-app.
     func update(title: String, subtitle: String?, changes: SessionDetails.LineChanges?) {
         let heading = title.isEmpty ? (subtitle ?? "") : title
-        self.title.update(MeasuredText(ChatTextStyles.headerTitle.string(heading, color: Palette.headerTint, alignment: .center, lineBreakMode: .byTruncatingTail), maxLines: 1))
-        hasSubtitle = subtitle != nil
-        self.subtitle.update(MeasuredText(ChatTextStyles.headerSubtitle.string(subtitle ?? "", color: Palette.headerGlassSubtitle, lineBreakMode: .byTruncatingTail), maxLines: 1))
-        self.subtitle.view.isHidden = subtitle == nil
-        self.changes.changes = changes.map { GitLineChanges(approximate: $0.approximate, insertions: $0.insertions, deletions: $0.deletions) }
-        self.changes.isHidden = changes == nil
+        model = ChatHeaderTitleModel(
+            heading: heading, subtitle: subtitle,
+            changes: changes.map { GitLineChanges(approximate: $0.approximate, insertions: $0.insertions, deletions: $0.deletions) }
+        )
         accessibilityLabel = heading
         accessibilityValue = subtitle
-        invalidate()
-    }
-
-    private func invalidate() {
-        invalidateIntrinsicContentSize()
+        requestPlan()
         setNeedsLayout()
     }
 
-    private func layout(maxWidth: CGFloat) -> ChatHeaderTitleLayout {
-        ChatHeaderTitleLayout(
-            maxWidth: maxWidth,
-            title: title.measurable,
-            subtitle: hasSubtitle ? subtitle.measurable : nil,
-            changes: changes.isHidden ? nil : changes.sizeThatFits(.zero)
-        )
+    /// What it is planned from at `width`. Reads, no measuring.
+    private func input(width: CGFloat) -> ChatHeaderTitleInput? {
+        model.map { ChatHeaderTitleInput(model: $0, width: width, text: text ?? traitCollection.measuredTextEnvironment) }
+    }
+
+    /// Asks for the capsule at `maxWidth`, or at what the bar handed over
+    /// when that is less than the capsule asked for.
+    private func requestPlan() {
+        guard let widest = input(width: maxWidth) else { return }
+        let room = min(bounds.width, maxWidth)
+        if let wanted, wanted.input == widest, bounds.width > 0, room < wanted.size.width - 0.5, let squeezed = input(width: room) {
+            measure.request(squeezed)
+        } else {
+            measure.request(widest)
+        }
+    }
+
+    /// A plan came in: one at `maxWidth` is what the capsule now asks for.
+    private func planned() {
+        if let applied = measure.applied, applied.input.width == maxWidth {
+            let size = applied.plan.layout.size
+            let changed = wanted?.size != size
+            wanted = (applied.input, size)
+            if changed {
+                invalidateIntrinsicContentSize()
+                frame.size = size
+                superview?.setNeedsLayout()
+            }
+        }
+        setNeedsLayout()
     }
 
     override var intrinsicContentSize: CGSize {
-        layout(maxWidth: maxWidth).size
+        wanted?.size ?? CGSize(width: 0, height: ChatHeaderTitleLayout.Metrics.height)
     }
 
     override func sizeThatFits(_ size: CGSize) -> CGSize {
-        layout(maxWidth: size.width > 0 ? min(size.width, maxWidth) : maxWidth).size
+        let wanted = intrinsicContentSize
+        return size.width > 0 ? CGSize(width: min(size.width, wanted.width), height: wanted.height) : wanted
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        requestPlan()
+        glass.isHidden = measure.plan == nil
+        guard let plan = measure.plan else { return }
+        let layout = plan.layout
         // The bar may hand over less room than asked for, or more: the
         // capsule fits what it gets and stays centred in it.
-        let layout = layout(maxWidth: min(bounds.width, maxWidth))
         glass.setLayoutFrame(CGRect(
             x: (bounds.width - layout.size.width) / 2,
             y: (bounds.height - layout.size.height) / 2,
             width: layout.size.width,
             height: layout.size.height
         ))
-        title.place(layout.title)
-        if let frame = layout.subtitle { subtitle.place(frame) }
-        if let frame = layout.changes { changes.setLayoutFrame(frame) }
+        content.frame = glass.bounds
+        content.layer.cornerRadius = glass.bounds.height / 2
+        title.setLayoutFrame(layout.title)
+        title.layout = plan.title
+        subtitle.isHidden = plan.subtitle == nil
+        if let frame = layout.subtitle, let text = plan.subtitle {
+            subtitle.setLayoutFrame(frame)
+            subtitle.layout = text
+        }
+        changes.isHidden = plan.changes == nil
+        if let frame = layout.changes, let parts = plan.changes {
+            changes.setLayoutFrame(frame)
+            changes.apply(parts)
+        }
     }
 
     override var isHighlighted: Bool {
         didSet { glass.alpha = isHighlighted ? 0.68 : 1 }
+    }
+}
+
+/// GitLineChanges as planned (`ChatGitChangesPlan`): "≈", the lines added
+/// and the lines removed, each where the plan puts it. Measures nothing.
+final class ChatGitChangesView: UIView {
+    private let parts = [ChatTextView(), ChatTextView(), ChatTextView()]
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isUserInteractionEnabled = false
+        for part in parts {
+            part.isAccessibilityElement = false
+            addSubview(part)
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) is not supported")
+    }
+
+    func apply(_ plan: ChatGitChangesPlan) {
+        let planned = [(plan.approximate, plan.layout.approximate), (plan.added, plan.layout.added), (plan.removed, plan.layout.removed)]
+        for (view, part) in zip(parts, planned) {
+            view.isHidden = part.0 == nil || part.1 == nil
+            if let text = part.0, let frame = part.1 {
+                view.setLayoutFrame(frame)
+                view.layout = text
+            }
+        }
     }
 }
 
@@ -102,12 +200,22 @@ final class ChatHeaderTitleView: UIControl {
 /// (`ChatPlainHeaderLayout`), the subtitle in `textSecondary`. The view
 /// stretches across the navigation bar and places the column from the bar's
 /// own edges, wherever the bar put it. Tapping it opens the session's info.
+/// Its text follows the screen's text size (`text`), measured off the main
+/// thread at the column's width (`ChatHeaderMeasure.plain`); until the
+/// first plan is in it shows nothing. Taller text spills past the bar's
+/// height, as RN's header content, which doesn't clip, lets it.
 final class ChatPlainHeaderTitleView: UIControl {
     private let column = UIView()
-    private let title = ChatLabel(MeasuredText(NSAttributedString()))
-    private let subtitle = ChatLabel(MeasuredText(NSAttributedString()))
-    private let changes = GitChangesView()
-    private var hasSubtitle = false
+    private let title = ChatTextView()
+    private let subtitle = ChatTextView()
+    private let changes = ChatGitChangesView()
+    private var model: ChatHeaderTitleModel?
+    let measure = OffMainPlan<ChatPlainHeaderInput, ChatPlainHeaderPlan> { ChatHeaderMeasure.plain($0) }
+
+    /// The screen's text size and pixels, as `ChatHeaderTitleView.text`.
+    var text: TextEnvironment? {
+        didSet { if text != oldValue { setNeedsLayout() } }
+    }
 
     /// `layout.headerMaxWidth`.
     var maxWidth: CGFloat = .greatestFiniteMagnitude {
@@ -118,11 +226,17 @@ final class ChatPlainHeaderTitleView: UIControl {
         super.init(frame: frame)
         column.isUserInteractionEnabled = false
         addSubview(column)
-        for view in [title.view, subtitle.view, changes] {
+        for view in [title, subtitle] {
+            view.isAccessibilityElement = false
             column.addSubview(view)
         }
+        column.addSubview(changes)
         isAccessibilityElement = true
         accessibilityTraits = [.button, .header]
+        measure.onApply = { [weak self] in self?.setNeedsLayout() }
+        registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
+            self.setNeedsLayout()
+        }
     }
 
     @available(*, unavailable)
@@ -132,12 +246,10 @@ final class ChatPlainHeaderTitleView: UIControl {
 
     func update(title: String, subtitle: String?, changes: SessionDetails.LineChanges?) {
         let heading = title.isEmpty ? (subtitle ?? "") : title
-        self.title.update(MeasuredText(ChatTextStyles.headerTitle.string(heading, color: Palette.headerTint, lineBreakMode: .byTruncatingTail), maxLines: 1))
-        hasSubtitle = subtitle != nil
-        self.subtitle.update(MeasuredText(ChatTextStyles.headerPlainSubtitle.string(subtitle ?? "", color: Palette.textSecondary, lineBreakMode: .byTruncatingTail), maxLines: 1))
-        self.subtitle.view.isHidden = subtitle == nil
-        self.changes.changes = changes.map { GitLineChanges(approximate: $0.approximate, insertions: $0.insertions, deletions: $0.deletions) }
-        self.changes.isHidden = changes == nil
+        model = ChatHeaderTitleModel(
+            heading: heading, subtitle: subtitle,
+            changes: changes.map { GitLineChanges(approximate: $0.approximate, insertions: $0.insertions, deletions: $0.deletions) }
+        )
         accessibilityLabel = heading
         accessibilityValue = subtitle
         setNeedsLayout()
@@ -157,17 +269,33 @@ final class ChatPlainHeaderTitleView: UIControl {
         // The row is the bar's, not this view's: UIKit insets a title view.
         var bar: UIView? = superview
         while let current = bar, !(current is UINavigationBar) { bar = current.superview }
+        let barFrame = bar.map { $0.convert($0.bounds, to: self) } ?? bounds
+        if let model {
+            let width = ChatPlainHeaderLayout.textWidth(bar: barFrame, size: bounds.size, maxWidth: maxWidth)
+            measure.request(ChatPlainHeaderInput(model: model, width: width, text: text ?? traitCollection.measuredTextEnvironment))
+        }
+        column.isHidden = measure.plan == nil
+        guard let plan = measure.plan else { return }
         let layout = ChatPlainHeaderLayout(
-            bar: bar.map { $0.convert($0.bounds, to: self) } ?? bounds, size: bounds.size, maxWidth: maxWidth,
-            title: title.measurable, subtitle: hasSubtitle ? subtitle.measurable : nil,
-            changes: changes.isHidden ? nil : changes.sizeThatFits(.zero)
+            bar: barFrame, size: bounds.size, maxWidth: maxWidth,
+            title: .fixed(plan.title.size), subtitle: plan.subtitle.map { .fixed($0.size) },
+            changes: plan.changes?.layout.size
         )
         // Bounds and centre rather than a frame: the column scales when pressed.
         column.bounds = CGRect(origin: .zero, size: layout.column.size)
         column.center = CGPoint(x: layout.column.midX, y: layout.column.midY)
-        title.place(layout.title)
-        if let rect = layout.subtitle { subtitle.place(rect) }
-        if let rect = layout.changes { changes.setLayoutFrame(rect) }
+        title.setLayoutFrame(layout.title)
+        title.layout = plan.title
+        subtitle.isHidden = plan.subtitle == nil
+        if let rect = layout.subtitle, let text = plan.subtitle {
+            subtitle.setLayoutFrame(rect)
+            subtitle.layout = text
+        }
+        changes.isHidden = plan.changes == nil
+        if let rect = layout.changes, let parts = plan.changes {
+            changes.setLayoutFrame(rect)
+            changes.apply(parts)
+        }
     }
 
     /// BubblePressable's `bubbleScale={1.012}`.
@@ -225,13 +353,18 @@ final class ChatHeaderAvatarControl: UIControl {
 
 /// SessionView's CLI version warning: "CLI Update Required" in an amber
 /// pill under the header. A tap dismisses it for that version on that
-/// machine.
+/// machine. Its label follows the text size, laid out off the main thread
+/// (`ChatHeaderMeasure.cliWarning`); until its plan is in the screen
+/// doesn't place it. The glyphs keep their 14.
 final class ChatCliWarningPill: UIControl {
     var warning: CliVersionWarning?
+    /// Its plan came in: the screen places it again.
+    var onNeedsLayout: (() -> Void)?
 
     private let icon = UIImageView(image: .icon(.ionicons("warning-outline"), size: CliWarningPillLayout.Metrics.iconSize))
-    private let label = ChatLabel(MeasuredText(ChatTextStyles.cliWarning.string(Strings.SessionDetail.cliVersionOutdated, color: Palette.cliWarningText), maxLines: 1))
+    private let label = ChatTextView()
     private let close = UIImageView(image: .icon(.ionicons("close"), size: CliWarningPillLayout.Metrics.iconSize))
+    let measure = OffMainPlan<ChatCliWarningInput, ChatTextLayout> { ChatHeaderMeasure.cliWarning($0) }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -242,7 +375,8 @@ final class ChatCliWarningPill: UIControl {
         layer.shadowOffset = CGSize(width: 0, height: CliWarningPillLayout.Metrics.shadowOffsetY)
         icon.tintColor = UIColor(Palette.cliWarningIcon)
         close.tintColor = UIColor(Palette.cliWarningText)
-        for view in [icon, label.view, close] {
+        label.isAccessibilityElement = false
+        for view in [icon, label, close] {
             view.contentMode = .center
             view.isUserInteractionEnabled = false
             addSubview(view)
@@ -250,6 +384,11 @@ final class ChatCliWarningPill: UIControl {
         isAccessibilityElement = true
         accessibilityTraits = .button
         accessibilityLabel = Strings.SessionDetail.cliVersionOutdated
+        measure.onApply = { [weak self] in self?.onNeedsLayout?() }
+        // A new size is measured when the screen next places it.
+        registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
+            self.superview?.setNeedsLayout()
+        }
     }
 
     @available(*, unavailable)
@@ -257,7 +396,12 @@ final class ChatCliWarningPill: UIControl {
         fatalError("init(coder:) is not supported")
     }
 
-    var labelMeasurable: Measurable { label.measurable }
+    /// The label's size on a screen `width` wide, as planned: asked for at
+    /// that width, the last plan's until that is in, nil before the first.
+    func label(width: CGFloat) -> Measurable? {
+        measure.request(ChatCliWarningInput(label: Strings.SessionDetail.cliVersionOutdated, width: width, text: traitCollection.measuredTextEnvironment))
+        return measure.plan.map { .fixed($0.size) }
+    }
 
     /// Places the pill and its insides, from the screen's layout.
     func place(_ layout: CliWarningPillLayout) {
@@ -266,7 +410,8 @@ final class ChatCliWarningPill: UIControl {
         layer.shadowPath = UIBezierPath(roundedRect: CGRect(origin: .zero, size: layout.pill.size), cornerRadius: layout.pill.height / 2).cgPath
         let origin = layout.pill.origin
         icon.setLayoutFrame(layout.icon.offsetBy(dx: -origin.x, dy: -origin.y))
-        label.place(layout.label.offsetBy(dx: -origin.x, dy: -origin.y))
+        label.setLayoutFrame(layout.label.offsetBy(dx: -origin.x, dy: -origin.y))
+        label.layout = measure.plan
         close.setLayoutFrame(layout.close.offsetBy(dx: -origin.x, dy: -origin.y))
     }
 
@@ -354,9 +499,14 @@ final class ChatStatusBarStrip: UIView {
 /// What fills the chat when there is no conversation to show: a spinner
 /// while it loads, EmptyMessages for a chat with nothing in it yet,
 /// PendingChatPlaceholder for one that hasn't started yet, or the deleted
-/// state (SessionView.tsx). Centred in the frame it is given.
+/// state (SessionView.tsx). Centred in the frame it is given. What it says
+/// is read on main when it is shown; its text is measured and laid out off
+/// the main thread at its traits' text size (`ChatPlaceholderMeasure`), and
+/// again for a new frame or size. Each plan is drawn whole, its words and
+/// buttons with it, so until the first is in nothing shows, and after a
+/// change the last one stays until the next is. The glyphs keep their size.
 final class ChatPlaceholderView: UIView {
-    enum Content: Equatable {
+    enum Content: Equatable, Sendable {
         case loading
         /// The chat's first page failed: Retry in the spinner's place.
         case loadFailed
@@ -377,21 +527,21 @@ final class ChatPlaceholderView: UIView {
     let button = RoundButton(title: Strings.Chat.retry, size: .small, display: .inverted)
     /// EmptyMessages' spinner while it pages back, in the column.
     let pagingSpinner = UIActivityIndicatorView(style: .medium)
-    /// Where the button or the paging spinner sits among `labels`, and
-    /// the space above it: the title's.
-    private var statusIndex: Int?
-    private var statusSpacing: CGFloat = 0
     private let icon = IconView(size: 72, tint: Palette.textSecondary)
     /// PendingChatPlaceholder's "Starting a new chat…".
     private let shimmer = ShimmerLabel(style: TextStyles.pendingChatTitle)
-    private var labels: [(label: ChatLabel, spacing: CGFloat, padding: CGFloat)] = []
+    /// The lines' views, reused from plan to plan.
+    private var texts: [ChatTextView] = []
+    private var model: ChatPlaceholderModel?
+    let measure = OffMainPlan<ChatPlaceholderInput, ChatPlaceholderPlan> { ChatPlaceholderMeasure.plan($0) }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         spinner.color = UIColor(Palette.textSecondary)
+        spinner.hidesWhenStopped = true
         addSubview(spinner)
+        icon.isHidden = true
         addSubview(icon)
-        shimmer.string = Strings.Chat.startingChat
         shimmer.isHidden = true
         addSubview(shimmer)
         button.isHidden = true
@@ -400,6 +550,10 @@ final class ChatPlaceholderView: UIView {
         pagingSpinner.color = UIColor(Palette.textSecondary)
         pagingSpinner.hidesWhenStopped = true
         addSubview(pagingSpinner)
+        measure.onApply = { [weak self] in self?.setNeedsLayout() }
+        registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
+            self.setNeedsLayout()
+        }
     }
 
     @available(*, unavailable)
@@ -410,136 +564,66 @@ final class ChatPlaceholderView: UIView {
     func show(_ content: Content) {
         guard content != self.content else { return }
         self.content = content
-        for entry in labels { entry.label.view.removeFromSuperview() }
-        labels = []
-        statusIndex = nil
-        button.isHidden = true
-        pagingSpinner.stopAnimating()
-        spinner.isHidden = content != .loading
-        icon.isHidden = content == .loading || content == .loadFailed
-        shimmer.isHidden = !isPendingChat
-        shimmer.isShimmering = isPendingChat
-        switch content {
-        case .loading:
-            spinner.startAnimating()
-        case .loadFailed:
-            spinner.stopAnimating()
-            button.title = Strings.Chat.retry
-            button.isHidden = false
-        case .empty(let state, let status):
-            spinner.stopAnimating()
-            icon.icon = .ionicons(state.osIcon)
-            icon.size = 72
-            // EmptyMessages' margins: each line sits the previous line's
-            // marginBottom below it (icon 12, host 4, path 40, status 8).
-            var spacing: CGFloat = 12
-            if let host = state.host {
-                add(ChatTextStyles.emptyHost, host, color: Palette.text, spacing: spacing, padding: 48)
-                spacing = 4
-            }
-            if let path = state.path {
-                add(ChatTextStyles.emptyPath, path, color: Palette.textSecondary, spacing: spacing, padding: 48)
-                spacing = 40
-            }
-            // The title and the spinner keep 8 under them; RoundButton
-            // has no margin.
-            var createdSpacing: CGFloat = 8
-            switch status {
-            case .noMessages:
-                add(ChatTextStyles.emptyTitle, Strings.Chat.noMessages, color: Palette.textSecondary, spacing: spacing, padding: 48)
-            case .loading:
-                statusIndex = labels.count
-                statusSpacing = spacing
-                pagingSpinner.startAnimating()
-            case .error, .loadMore:
-                statusIndex = labels.count
-                statusSpacing = spacing
-                button.title = status == .error ? Strings.Chat.retry : Strings.Chat.loadMore
-                button.isHidden = false
-                createdSpacing = 0
-            }
-            add(ChatTextStyles.emptyCreated, Strings.Chat.created(Strings.Chat.age(state.created)), color: Palette.textSecondary, spacing: createdSpacing, padding: 48)
-        case .pendingChat(let model):
-            spinner.stopAnimating()
-            icon.icon = .ionicons("chatbubbles-outline")
-            icon.size = 64
-            switch model.detail {
-            case .queued(let text)?:
-                let label = ChatLabel(MeasuredText(
-                    ChatTextStyles.pendingQueued.string(text, color: Palette.text, alignment: .center, lineBreakMode: .byTruncatingTail),
-                    maxLines: 6
-                ))
-                addSubview(label.view)
-                labels.append((label, 10, 48))
-            case .path(let path)?:
-                let label = ChatLabel(MeasuredText(
-                    ChatTextStyles.emptyPath.string(path, color: Palette.textSecondary, alignment: .center, lineBreakMode: .byTruncatingTail),
-                    maxLines: 1
-                ))
-                addSubview(label.view)
-                labels.append((label, 6, 48))
-            case nil:
-                break
-            }
-        case .deleted:
-            spinner.stopAnimating()
-            icon.icon = .ionicons("trash-outline")
-            icon.size = 48
-            add(ChatTextStyles.deletedTitle, Strings.SessionDetail.sessionDeleted, color: Palette.text, spacing: 16, padding: 0)
-            add(ChatTextStyles.deletedBody, Strings.SessionDetail.sessionDeletedDescription, color: Palette.textSecondary, spacing: 8, padding: 32)
-        }
+        model = ChatPlaceholderModel(content)
         setNeedsLayout()
     }
 
-    private func add(_ style: ChatTextStyle, _ text: String, color: ColorToken, spacing: CGFloat, padding: CGFloat) {
-        let label = ChatLabel(MeasuredText(style.string(text, color: color, alignment: .center)))
-        addSubview(label.view)
-        labels.append((label, spacing, padding))
-    }
-
-    private var isPendingChat: Bool {
-        if case .pendingChat = content { return true }
-        return false
+    /// What the placeholder is measured from now. Reads, no measuring.
+    private var measureInput: ChatPlaceholderInput? {
+        guard let model, bounds.width > 0 else { return nil }
+        return ChatPlaceholderInput(model: model, width: bounds.width, text: traitCollection.measuredTextEnvironment, spinner: pagingSpinner.intrinsicContentSize)
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
+        if let input = measureInput { measure.request(input) }
+        guard let applied = measure.applied else { return }
+        let model = applied.input.model
+        let plan = applied.plan
+        let frames = plan.layout(model, size: bounds.size)
         spinner.center = CGPoint(x: bounds.midX, y: bounds.midY)
-        if content == .loadFailed {
-            let size = button.sizeThatFits(CGSize(width: bounds.width, height: .greatestFiniteMagnitude))
-            button.setLayoutFrame(CGRect(x: (bounds.width - size.width) / 2, y: (bounds.height - size.height) / 2, width: size.width, height: size.height))
-            return
+        if model.loading { spinner.startAnimating() } else { spinner.stopAnimating() }
+
+        icon.isHidden = frames.icon == nil
+        if let frame = frames.icon, let glyph = model.icon {
+            icon.icon = glyph.icon
+            icon.size = glyph.size
+            icon.setLayoutFrame(frame)
         }
-        guard content != .loading, content != nil else { return }
-        var items = [CenteredStackLayout.Item(.fixed(icon.sizeThatFits(.zero)))]
-        if isPendingChat {
-            // The icon's marginBottom, and the placeholder's paddingHorizontal.
-            let title = Measurable { [shimmer] width in
-                shimmer.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
-            }
-            items.append(CenteredStackLayout.Item(title, spacingBefore: 16, horizontalPadding: 48))
+        shimmer.isHidden = frames.title == nil
+        shimmer.isShimmering = frames.title != nil
+        if let frame = frames.title, let title = model.title {
+            if shimmer.string != title { shimmer.string = title }
+            shimmer.setLayoutFrame(frame)
         }
-        var labelItems = labels.map { CenteredStackLayout.Item($0.label.measurable, spacingBefore: $0.spacing, horizontalPadding: $0.padding) }
-        // EmptyMessages' status in the title's place: the path's 40 above
-        // it; the spinner's own marginBottom of 8 above the date, as the
-        // title's.
-        let control: UIView? = statusIndex == nil ? nil : (button.isHidden ? pagingSpinner : button)
-        if let index = statusIndex, let control {
-            let measurable = Measurable { [weak control] width in
-                control?.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude)) ?? .zero
-            }
-            labelItems.insert(CenteredStackLayout.Item(measurable, spacingBefore: statusSpacing, horizontalPadding: 48), at: index)
+
+        while texts.count < plan.lines.count {
+            let view = ChatTextView()
+            view.isAccessibilityElement = false
+            addSubview(view)
+            texts.append(view)
         }
-        items += labelItems
-        var frames = CenteredStackLayout(.init(size: bounds.size, items: items)).items[...]
-        icon.setLayoutFrame(frames.removeFirst())
-        if isPendingChat { shimmer.setLayoutFrame(frames.removeFirst()) }
-        var placed = Array(frames)
-        if let index = statusIndex, let control, index < placed.count {
-            control.setLayoutFrame(placed.remove(at: index))
+        for (index, view) in texts.enumerated() {
+            view.isHidden = index >= frames.lines.count
+            guard index < frames.lines.count else { continue }
+            view.setLayoutFrame(frames.lines[index])
+            view.layout = plan.lines[index]
         }
-        for (entry, frame) in zip(labels, placed) {
-            entry.label.place(frame)
+
+        // The status where the plan puts it: the button, its label measured
+        // for its width, or the paging spinner.
+        let buttonTitle = model.status?.button ?? model.button
+        button.isHidden = buttonTitle == nil || frames.status == nil
+        if let buttonTitle, let frame = frames.status {
+            if button.title != buttonTitle { button.title = buttonTitle }
+            button.measuredLabelSize = plan.buttonLabel
+            button.setLayoutFrame(frame)
+        }
+        if model.status != nil, model.status?.button == nil, let frame = frames.status {
+            pagingSpinner.setLayoutFrame(frame)
+            if !pagingSpinner.isAnimating { pagingSpinner.startAnimating() }
+        } else {
+            pagingSpinner.stopAnimating()
         }
     }
 }

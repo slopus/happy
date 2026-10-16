@@ -6,19 +6,57 @@ import CoreGraphics
 /// components/diff/DiffMetrics.tsx: the mono font's size, line and advance.
 /// IBM Plex Mono is 0.6 em wide, the first-frame estimate; views pass the
 /// measured advance once they have it.
+///
+/// At a text size the font and its line grow by React Native's multiplier,
+/// as RN scales a Text's `fontSize` and `lineHeight`, and the advance is
+/// measured at the size drawn, so the gutter and code widths grow with the
+/// text; the gutter's padding and the code's inset stay fixed. A row is the
+/// text's line, up to the screen's next pixel, as RN measures a one-line
+/// Text. That differs from DiffFileView.tsx on purpose: its rows also set
+/// `height: metrics.lineHeight`, a Yoga size RN never scales, so above the
+/// default size its text is cut to an 18pt strip (docs/DYNAMIC-TYPE.md).
 public struct DiffMetrics: Equatable, Sendable {
     /// `DEFAULT_DIFF_FONT_SIZE` on a phone.
     public static let defaultFontSize: CGFloat = 12
     public static let nominalRatio: CGFloat = 0.6
 
+    /// The designed font size (DiffFileView's `fontSize`).
     public var fontSize: CGFloat
+    /// The text size the rows are drawn at.
+    public var scale: TextScale
+    /// The rows' text line: `Math.round(fontSize * 1.5)`, times the
+    /// multiplier, unrounded, as RN scales a `lineHeight`.
+    public var textLineHeight: CGFloat
+    /// One row: the text's line, up to the screen's next pixel.
     public var lineHeight: CGFloat
     public var charWidth: CGFloat
 
-    public init(fontSize: CGFloat = DiffMetrics.defaultFontSize, charWidth: CGFloat? = nil) {
+    /// `displayScale` is the screen's pixels per point, which a row's
+    /// height is rounded up to; 0 leaves it unrounded. Without a measured
+    /// `charWidth`, the advance is 0.6 em of the size drawn.
+    public init(fontSize: CGFloat = DiffMetrics.defaultFontSize, scale: TextScale = .standard, displayScale: CGFloat = 0, charWidth: CGFloat? = nil) {
         self.fontSize = fontSize
-        lineHeight = (fontSize * 1.5).rounded()
-        self.charWidth = charWidth ?? fontSize * Self.nominalRatio
+        self.scale = scale
+        textLineHeight = (fontSize * 1.5).rounded() * scale.multiplier
+        lineHeight = displayScale > 0 ? (textLineHeight * displayScale).rounded(.up) / displayScale : textLineHeight
+        self.charWidth = charWidth ?? fontSize * scale.multiplier * Self.nominalRatio
+    }
+
+    /// The font size drawn.
+    public var drawnFontSize: CGFloat {
+        fontSize * scale.multiplier
+    }
+
+    /// MonoProbe's check on a measured advance: a font that hasn't loaded
+    /// measures outside 0.35 to 1.2 em, and keeps the estimate. Here the em
+    /// is the size drawn. MonoProbe compares the scaled width with its
+    /// designed `fontSize`, so from the multiplier 2 up (1.2 / 0.6) it
+    /// refuses every measurement and keeps 0.6 em of the designed size,
+    /// with the gutter and code too narrow for their text; and it keeps
+    /// the first measurement per designed size for good, through a text
+    /// size change. Neither is ported.
+    public static func acceptsAdvance(_ advance: CGFloat, drawnFontSize: CGFloat) -> Bool {
+        advance >= drawnFontSize * 0.35 && advance <= drawnFontSize * 1.2
     }
 
     /// layout.ts `gutterWidthFor`: the +/- column always, line numbers sized

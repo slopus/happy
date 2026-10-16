@@ -110,7 +110,52 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.hosted-uikit-tests
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/HappyUIKitTestHost.app/HappyUIKitTestHost"
         BUNDLE_LOADER: "$(TEST_HOST)"
+  HappyChatHarness:
+    # One fixture chat, offline, under the app's own root, for the UI tests
+    # that drive it with a finger (Harness/ChatHarness.swift). Debug only.
+    type: application
+    platform: iOS
+    sources:
+      - path: Harness
+        excludes:
+          - Info.plist
+    dependencies:
+      - package: HappyIOS
+        product: HappyKit
+    settings:
+      base:
+        PRODUCT_NAME: HappyChatHarness
+        ASSETCATALOG_COMPILER_APPICON_NAME: ""
+        PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.chat-harness
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_FILE: Harness/Info.plist
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_DEBUG_DYLIB: NO
+  HappyChatUITests:
+    # Gestures UIKit can only take from another process: an interactive
+    # keyboard dismiss, a long press and drag on the scroll indicator.
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Tests/HappyChatUITests
+    dependencies:
+      - target: HappyChatHarness
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.slopus.happy.chat-ui-tests
+        TEST_TARGET_NAME: HappyChatHarness
 schemes:
+  HappyChatUI:
+    build:
+      targets:
+        HappyChatHarness: [test]
+        HappyChatUITests: [test]
+    test:
+      config: Debug
+      targets:
+        - HappyChatUITests
   HappyUIKitHosted:
     build:
       targets:

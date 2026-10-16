@@ -90,6 +90,9 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// What the rows were last asked for, so an unchanged layout pass asks
     /// for nothing.
     private var sentRowsView = ChatRowsView()
+    /// The rows' words, in the language the screens spoke when this one was
+    /// built; the screens are built again in another.
+    private let words = ChatWords(catalog: AppLocalization.screens)
     /// The next time a waiting user message's status is due to show.
     private var graceEnd: Int64?
     private let graceTask = TaskHolder()
@@ -208,13 +211,25 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
 
         list.delegate = self
         list.olderEnd.onAction = { [weak self] in self?.historyPager?.olderAction() }
+        // The rows are planned at the list's text size (`ChatRowText`); the
+        // placeholder, the header, the CLI warning and the bars over the
+        // composer each carry the trait and measure their text off main at
+        // it; the composer and the worktree tab strip follow on their own
+        // (docs/DYNAMIC-TYPE.md).
+        list.traitOverrides.followsTextSize = true
+        list.registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { [weak self] (_: ChatListView, _) in
+            self?.scheduleMeasure()
+        }
         view.addSubview(list)
+        placeholder.traitOverrides.followsTextSize = true
         placeholder.isHidden = true
         placeholder.onAction = { [weak self] in self?.placeholderAction() }
         view.addSubview(placeholder)
         headerScrim.overlayOpacity = ChatHeaderScrim.restingOpacity
         view.addSubview(headerScrim)
         cliWarning.isHidden = true
+        cliWarning.traitOverrides.followsTextSize = true
+        cliWarning.onNeedsLayout = { [weak self] in self?.view.setNeedsLayout() }
         cliWarning.addTarget(self, action: #selector(dismissCliWarning), for: .touchUpInside)
         view.addSubview(cliWarning)
         view.addSubview(scrim)
@@ -230,6 +245,13 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         goalBar.isHidden = true
         goalBar.onAction = { [weak self] action in self?.performGoalAction(action) }
         rigActivity.isHidden = true
+        inactiveHint.onNeedsLayout = { [weak self] in self?.dockBarMeasured() }
+        goalBar.onNeedsLayout = { [weak self] in self?.dockBarMeasured() }
+        questionBanner.onNeedsLayout = { [weak self] in self?.dockBarMeasured() }
+        rigActivity.onNeedsLayout = { [weak self] in self?.dockBarMeasured() }
+        for bar in [inactiveHint, goalBar, questionBanner, rigActivity] as [UIView] {
+            bar.traitOverrides.followsTextSize = true
+        }
         dock.addSubview(inactiveHint)
         dock.addSubview(goalBar)
         dock.addSubview(questionBanner)
@@ -347,7 +369,8 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
                 // account that is no longer the open one or is stopping (its
                 // code drawn plain, its diffs empty), never land.
                 guard let self, self.chatGeneration == generation, self.chatId == chatId,
-                      self.context.account.session === self.account, !render.isClosed else { return false }
+                      self.context.account.session === self.account, !render.isClosed,
+                      self.words.language == AppLocalization.language else { return false }
                 return self.applyRows(update)
             }
         )
@@ -467,7 +490,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         updateHeaderVisibility(animated: false)
         layoutScreen()
         updatePermissionListMaxHeight()
-        if list.bounds.width != sentRowsView.width {
+        if list.bounds.width != sentRowsView.width || list.traitCollection.textEnvironment != sentRowsView.text.environment {
             scheduleMeasure()
         }
     }
@@ -498,14 +521,14 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             headerAccessory: tabStrip.isHidden ? 0 : WorktreeTabStripLayout.Metrics.height
         ))
         list.setLayoutFrame(screen.list)
-        list.setEdgeInsets(newest: screen.newestEdgeInset, oldest: screen.oldestEdgeInset)
+        list.setEdgeInsets(newest: screen.newestEdgeInset, oldest: screen.oldestEdgeInset, indicator: screen.indicatorInsets)
         headerScrim.setLayoutFrame(screen.headerScrim)
         if let frame = screen.headerAccessory, !tabStrip.isHidden {
             tabStrip.maxWidth = ContentWidth.headerMaxWidth
             tabStrip.setLayoutFrame(frame)
         }
-        if !cliWarning.isHidden {
-            cliWarning.place(CliWarningPillLayout(width: size.width, top: screen.headerBottom, label: cliWarning.labelMeasurable))
+        if !cliWarning.isHidden, let label = cliWarning.label(width: size.width) {
+            cliWarning.place(CliWarningPillLayout(width: size.width, top: screen.headerBottom, label: label))
         }
         // Loading the session and the deleted state take the whole screen;
         // an empty chat sits between the bar and the dock.
@@ -578,6 +601,15 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     /// ChatHeaderView over a transparent bar: the system back button, the
     /// title capsule, the avatar; the scrim is the screen's own.
     private func setUpHeader() {
+        // ChatHeaderView's text scales; the bar and its controls don't. The
+        // bar holds its title view's own text size to XXL, so the header is
+        // handed the screen's.
+        titleView.traitOverrides.followsTextSize = true
+        plainTitleView.traitOverrides.followsTextSize = true
+        updateHeaderText()
+        registerForTraitChanges([UITraitPreferredContentSizeCategory.self, UITraitDisplayScale.self]) { (self: Self, _) in
+            self.updateHeaderText()
+        }
         titleView.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
         plainTitleView.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
         avatarControl.addTarget(self, action: #selector(openInfo), for: .touchUpInside)
@@ -617,6 +649,15 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         navigationItem.rightBarButtonItems = items
         tabStrip.glass = !tablet // TabletBranches.worktreeStripGlass
         floatingDockChanged()
+    }
+
+    /// The header's text at the screen's text size (`ChatHeaderTitleView.text`).
+    /// The controller's own traits: in its trait change its view's are
+    /// still the old ones.
+    private func updateHeaderText() {
+        let text = TextEnvironment(traitCollection)
+        titleView.text = text
+        plainTitleView.text = text
     }
 
     private func updateHeader() {
@@ -1000,6 +1041,18 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
         }
     }
 
+    /// A bar's plan came in: the dock takes the bars' heights again, moving
+    /// the composer as a bar coming or going does. A bar is measured off
+    /// main, so one that just came, or a new text size, shows once its plan
+    /// is in.
+    private func dockBarMeasured() {
+        view.setNeedsLayout()
+        guard isViewLoaded, view.window != nil else { return }
+        UIView.animate(withDuration: 0.25, delay: 0, options: [.beginFromCurrentState, .allowUserInteraction]) {
+            self.view.layoutIfNeeded()
+        }
+    }
+
     /// AgentQuestionBanner: the first request the chat can't show inline.
     /// An answer from another device closes the sheet here too.
     private func updateQuestionBanner() {
@@ -1100,10 +1153,11 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
     }
 
     /// Applies what the rows' derivation worked out. Refused when the list
-    /// was planned for another width or layout: the next pass has the new
-    /// one.
+    /// was planned for another width, layout or text size: the next pass
+    /// has the new one.
     private func applyRows(_ update: ChatRowsUpdate) -> Bool {
-        if update.list != nil, update.width != list.bounds.width || update.tablet != isTabletLayout {
+        if update.list != nil,
+           update.width != list.bounds.width || update.tablet != isTabletLayout || update.text != list.traitCollection.textEnvironment {
             return false
         }
         ApplyPerf.measure(.chatList) {
@@ -1164,6 +1218,7 @@ final class ChatViewController: UIViewController, ChatListViewDelegate, ChatComp
             width: list.bounds.width,
             maxContentWidth: maxContentWidth,
             tablet: isTabletLayout,
+            text: ChatRowText(environment: list.traitCollection.textEnvironment, words: words),
             permissionListMaxHeight: permissionListMaxHeight,
             inForeground: inForeground,
             permissionBusy: permissionBusy,

@@ -138,6 +138,10 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
         public static let iconSize: CGFloat = 21
         /// The native trigger's `Spacer(minLength: 8)` after the value.
         public static let valueTrailing: CGFloat = 8
+        /// `focusConfigTriggerValue`, the hidden RN copy of the value that
+        /// sizes the native trigger: 17 with no line height, so Plex's own
+        /// 1.3 em at the designed size.
+        public static let triggerLine: CGFloat = 22.1
         public static let composerPaddingHorizontal: CGFloat = 16
         /// Above the safe area, or above the keyboard.
         public static let composerPaddingBottom: CGFloat = 8
@@ -158,6 +162,9 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
         public var composerHeight: CGFloat
         /// Each picker row's value, on one line.
         public var rows: [Measurable]
+        /// One line of `focusConfigTriggerValue` at the text size: what
+        /// holds a row up past its 42, whatever the menu draws in it.
+        public var triggerLine: CGFloat
         /// "Starting Claude Code…", while a start runs.
         public var progress: Measurable?
         /// "To interrupt press stop", while Stop can stop it.
@@ -171,6 +178,7 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
             maxWidth: CGFloat = .greatestFiniteMagnitude,
             composerHeight: CGFloat,
             rows: [Measurable],
+            triggerLine: CGFloat = Metrics.triggerLine,
             progress: Measurable? = nil,
             hint: Measurable? = nil,
             faces: BotFacePickerLayout.Text? = nil
@@ -180,6 +188,7 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
             self.maxWidth = maxWidth
             self.composerHeight = composerHeight
             self.rows = rows
+            self.triggerLine = triggerLine
             self.progress = progress
             self.hint = hint
             self.faces = faces
@@ -268,7 +277,9 @@ public struct HomeDockFocusLayout: Equatable, Sendable {
         let triggerWidth = max(0, rowX + rowWidth - M.rowPaddingHorizontal - triggerX)
         let valueLane = max(0, triggerWidth - M.valueTrailing)
         let values = input.rows.map { $0.size(fitting: valueLane) }
-        let heights = values.map { max(M.rowMinHeight, M.iconBox, $0.height) }
+        // RN's row is its 42, the icon's box or the trigger's sizing copy;
+        // the menu's own label (the system's body font) is centred in it.
+        let heights = values.map { _ in max(M.rowMinHeight, M.iconBox, input.triggerLine) }
         let picker = input.faces.map { BotFacePickerLayout(width: rowWidth - 2 * M.facesPaddingHorizontal, text: $0) }
         let facesHeight = picker.map { M.facesPaddingTop + $0.size.height + M.facesPaddingBottom }
         let lines = heights + (facesHeight.map { [$0] } ?? [])
@@ -358,7 +369,7 @@ public struct HomeDockHeaderLayout: Equatable, Sendable {
         segment = CGRect(x: left + (contentWidth - segmentWidth) / 2, y: top, width: segmentWidth, height: M.segmentHeight)
         var bottom = segment.maxY
         if let text = input.lede {
-            let ledeLane = min(M.ledeMaxWidth, contentWidth)
+            let ledeLane = Self.ledeWidth(width: input.width, maxWidth: input.maxWidth)
             let size = text.size(fitting: ledeLane)
             let width = min(size.width, ledeLane)
             let frame = CGRect(x: left + (contentWidth - width) / 2, y: segment.maxY + M.gap, width: width, height: size.height)
@@ -368,6 +379,14 @@ public struct HomeDockHeaderLayout: Equatable, Sendable {
             lede = nil
         }
         content = CGRect(x: left, y: top, width: contentWidth, height: bottom - top)
+    }
+
+    /// The lane the lede wraps in on a screen `width` wide: what to measure
+    /// it at ahead of the layout.
+    public static func ledeWidth(width: CGFloat, maxWidth: CGFloat = .greatestFiniteMagnitude) -> CGFloat {
+        typealias M = Metrics
+        let lane = max(0, width - 2 * M.paddingHorizontal)
+        return min(M.ledeMaxWidth, min(maxWidth, lane))
     }
 }
 

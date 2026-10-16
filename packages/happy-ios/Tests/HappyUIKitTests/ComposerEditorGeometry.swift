@@ -101,9 +101,9 @@ enum ComposerEditorGeometry {
     /// 38523578708), in a window with a scene, shown or not.
     ///
     /// `reference`, a TextKit 1 twin's carets at the same offsets, lets a
-    /// caret reach where the twin's does past the bounds: with no insets the
-    /// first caret starts above the view and the last ends below it in
-    /// TextKit 1 and 2 alike.
+    /// caret reach where the twin's does past the bounds, or past the
+    /// content when it scrolls: with no insets the first caret starts above
+    /// the view and the last ends below it in TextKit 1 and 2 alike.
     static func caretProblems(_ view: UITextView, offsets: [Int], reference: [Int: CGRect]? = nil) -> [String] {
         var problems: [String] = []
         func caret(_ offset: Int) -> CGRect? {
@@ -132,15 +132,21 @@ enum ComposerEditorGeometry {
             view.setContentOffset(.zero, animated: false)
             view.layoutIfNeeded()
             if let first = offsets.first { check(first, "at the top") }
+            // The content, or as far as the twin's caret reaches past it.
+            func reach(_ offset: Int) -> (low: CGFloat, high: CGFloat) {
+                let twin = reference?[offset]
+                return (min(0, twin?.minY ?? 0), max(view.contentSize.height, twin?.maxY ?? 0))
+            }
             for offset in offsets {
                 view.scrollRangeToVisible(NSRange(location: offset, length: 0))
                 view.layoutIfNeeded()
                 guard let caret = caret(offset) else { continue }
-                if caret.minY < 0 || caret.maxY > view.contentSize.height || caret.height > view.bounds.height {
+                let reach = reach(offset)
+                if caret.minY < reach.low || caret.maxY > reach.high || caret.height > view.bounds.height {
                     problems.append("caret \(offset) \(describe(caret)) out of reach in content \(view.contentSize.height) through \(view.bounds.height)")
                 }
             }
-            if let last = offsets.last, let caret = caret(last), caret.maxY > view.contentSize.height {
+            if let last = offsets.last, let caret = caret(last), caret.maxY > reach(last).high {
                 problems.append("end caret \(describe(caret)) past content \(view.contentSize.height)")
             }
             if view.contentOffset.y > max(0, view.contentSize.height - view.bounds.height) {

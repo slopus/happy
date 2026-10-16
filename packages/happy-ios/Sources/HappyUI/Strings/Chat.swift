@@ -4,9 +4,8 @@ import HappyCore
 // The chat's copy. What happy-app reads with `t('key')` is read from the
 // screens' catalog under that key (`localized`, main thread only), its
 // English copied from _default.ts; what it writes as a literal stays
-// English, with the file it comes from. The rows' words (`ChatMessage`,
-// `ToolGroup`, `Markdown`) are planned off the main thread and stay
-// English until their language is part of the rows' input.
+// English, with the file it comes from. The rows' words are planned off
+// the main thread in the language the chat was built in: `ChatWords`.
 
 extension Strings {
     /// textSelection (app/(app)/_layout.tsx's title, text-selection.tsx)
@@ -90,38 +89,5 @@ extension Strings {
             case .clear: clearGoal
             }
         }
-    }
-
-    /// en.ts `message`
-    public enum ChatMessage {
-        public static func switchedToMode(_ mode: String) -> String { "Switched to \(mode) mode" }
-        public static let unknownEvent = "Unknown event"
-        public static func usageLimitUntil(_ time: String) -> String { "Usage limit reached until \(time)" }
-        public static let sentAsGoal = "Sent as goal"
-        public static let sendsAfterThisTurn = "Sends after this turn"
-        public static let sending = "Sending…"
-        public static func sendFailed(_ reason: String) -> String { "Not sent: \(reason)" }
-        public static let unknownTime = "unknown time"
-    }
-
-    /// en.ts `toolGroup`
-    public enum ToolGroup {
-        public static let ran = "Ran"
-        public static let edited = "Edited"
-        public static let read = "Read"
-        public static let searched = "Searched"
-        public static let fetched = "Fetched"
-        public static let ranTask = "Ran task"
-        public static func workedFor(_ duration: String) -> String { "Worked \(duration)" }
-        public static let hide = "Hide"
-
-        public static let words = ToolActionWords(ran: ran, edited: edited, read: read, searched: searched, fetched: fetched, ranTask: ranTask)
-    }
-
-    /// en.ts `markdown`
-    public enum Markdown {
-        public static let codeCopied = "Code copied"
-        public static let copyFailed = "Failed to copy"
-        public static let mermaidRenderFailed = "Failed to render mermaid diagram"
     }
 }

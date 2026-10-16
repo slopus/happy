@@ -31,8 +31,7 @@ public final class WelcomeViewController: UIViewController {
     public override func viewDidLoad() {
         super.viewDidLoad()
         // OnboardingHeader's title, which scales in a header that doesn't.
-        titleView.traitOverrides.followsTextSize = true
-        navigationItem.titleView = titleView
+        setScaledTitleView(titleView)
         showsBackTitle()
         // Signed out, the gear leads straight to the server: self-hosters
         // set it before creating an account.

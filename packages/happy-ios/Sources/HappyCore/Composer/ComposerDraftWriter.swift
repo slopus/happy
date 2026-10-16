@@ -41,10 +41,16 @@ public struct ComposerStoreDelivery: Equatable, Sendable {
     /// the read. A failed write doesn't count. A read older than the composer's newest write says nothing about the
     /// draft: it may show text the composer has since replaced.
     public var generation: Int
+    /// The draft is the text of that write, compared off the main thread:
+    /// what the composer last saved, as far as `generation` goes. A draft
+    /// that isn't, in a read as new as the composer's writes, was written
+    /// by someone else.
+    public var draftIsSaved: Bool
 
-    public init(value: ComposerStoreValue, generation: Int) {
+    public init(value: ComposerStoreValue, generation: Int, draftIsSaved: Bool = false) {
         self.value = value
         self.generation = generation
+        self.draftIsSaved = draftIsSaved
     }
 }
 
@@ -65,12 +71,15 @@ public protocol ComposerStorage: Sendable {
 ///
 /// The composer hands over draft writes, sends and read requests on the
 /// main thread; a single drain runs them in that order on a background task:
-///   - consecutive writes collapse into the newest text;
+///   - consecutive writes collapse into the newest text, which is read
+///     here (a snapshot of the field is copied out off the main thread)
+///     and compared with what is saved or stored, as its `Persist` asks;
 ///   - a send waits for the writes before it and holds back the writes
 ///     after it, so a Happy Agent send reads the stamp of the text it sends,
 ///     and typing during a send is written after the send's clear;
 ///   - reads move to the end of their run and are tagged with the newest
-///     write the store holds (`ComposerStoreDelivery.generation`);
+///     write the store holds (`ComposerStoreDelivery.generation`) and
+///     whether the draft is its text (`draftIsSaved`);
 ///   - the store observation only wakes the drain. A value the composer
 ///     already holds (its own write coming back) is dropped without a read;
 ///     anything else is read again in order and delivered only if it
@@ -119,7 +128,7 @@ public final class ComposerDraftWriter: @unchecked Sendable {
     public static let defaultRetryDelays: [Duration] = [.milliseconds(250), .seconds(1), .seconds(4)]
 
     private enum Command {
-        case save(String, generation: Int)
+        case save(ComposerDraftText, generation: Int, persist: ComposerDraftModel.Write.Persist)
         case read(forced: Bool, observed: ComposerStoreValue?)
         case send(OutgoingMessage, AsyncThrowingStream<String, any Error>.Continuation)
         case barrier(CheckedContinuation<Settled, Never>)
@@ -152,7 +161,10 @@ public final class ComposerDraftWriter: @unchecked Sendable {
         var generation: Int
     }
     /// The newest write handed over that hasn't landed.
-    private var unsaved: (text: String, generation: Int)?
+    private var unsaved: (text: String, generation: Int, persist: ComposerDraftModel.Write.Persist)?
+    /// The text of the newest write that landed: what the composer last
+    /// saved, once its generation is `settled`.
+    private var lastWrite = ""
     private var retries = 0
     private var retryScheduled = false
     /// What the composer holds: the last delivery, with each later saved
@@ -239,9 +251,15 @@ public final class ComposerDraftWriter: @unchecked Sendable {
         enqueue(.read(forced: false, observed: value))
     }
 
-    /// A draft write, numbered by the composer (`ComposerDraftModel`).
+    /// A draft write, numbered by the composer, written whatever the
+    /// store holds.
     public func save(_ text: String, generation: Int) {
-        enqueue(.save(text, generation: generation))
+        enqueue(.save(ComposerDraftText(text), generation: generation, persist: .always))
+    }
+
+    /// A `ComposerDraftModel` write.
+    public func save(_ write: ComposerDraftModel.Write) {
+        enqueue(.save(write.text, generation: write.generation, persist: write.persist))
     }
 
     /// Reads and delivers the store's value even if nothing changed: an
@@ -322,13 +340,13 @@ public final class ComposerDraftWriter: @unchecked Sendable {
             var run = Run()
             for command in batch {
                 switch command {
-                case .save(let text, let generation):
-                    run.save = (text, generation)
+                case .save(let text, let generation, let persist):
+                    run.save = (text, generation, persist)
                 case .read(let forced, let observed):
                     // An observed value is checked where it was queued,
                     // against what the composer holds by then.
                     var holding = held
-                    if let save = run.save { holding?.draft = save.text }
+                    if let save = run.save { holding?.draft = await save.text.resolve() }
                     if forced || observed != holding {
                         run.read = (run.read ?? false) || forced
                     }
@@ -371,7 +389,7 @@ public final class ComposerDraftWriter: @unchecked Sendable {
     /// The commands between two sends: only the newest write and one read
     /// (forced if any was) remain, the read after the write.
     private struct Run {
-        var save: (text: String, generation: Int)?
+        var save: (text: ComposerDraftText, generation: Int, persist: ComposerDraftModel.Write.Persist)?
         /// Whether the read is forced.
         var read: Bool?
         /// A retry timer fired.
@@ -380,7 +398,7 @@ public final class ComposerDraftWriter: @unchecked Sendable {
 
     private func finish(_ run: Run) async {
         if let save = run.save {
-            unsaved = save
+            unsaved = (await save.text.resolve(), save.generation, save.persist)
             retries = 0
         }
         if run.save != nil || run.retry {
@@ -395,8 +413,17 @@ public final class ComposerDraftWriter: @unchecked Sendable {
     @discardableResult
     private func commitUnsaved() async -> (any Error)? {
         guard let write = unsaved else { return nil }
+        let stored: Bool
+        switch write.persist {
+        case .always: stored = false
+        case .unlessSaved: stored = write.text == lastWrite
+        case .unlessStored: stored = write.text == held?.draft
+        case .never: stored = true
+        }
         do {
-            try await storage.saveDraft(sessionId: sessionId, text: write.text)
+            if !stored {
+                try await storage.saveDraft(sessionId: sessionId, text: write.text)
+            }
         } catch {
             onFailure(Failure(operation: .save, error: error))
             scheduleRetry()
@@ -405,6 +432,7 @@ public final class ComposerDraftWriter: @unchecked Sendable {
         unsaved = nil
         retries = 0
         settled = write.generation
+        lastWrite = write.text
         held?.draft = write.text
         return nil
     }
@@ -431,7 +459,7 @@ public final class ComposerDraftWriter: @unchecked Sendable {
         }
         if !forced, value == held { return }
         held = value
-        let delivery = ComposerStoreDelivery(value: value, generation: settled)
+        let delivery = ComposerStoreDelivery(value: value, generation: settled, draftIsSaved: value.draft == lastWrite)
         // Checked again on the main thread, where the composer closes it.
         await MainActor.run {
             guard let deliver = self.lock.withLock({ self.closed ? nil : self.deliver }) else { return }
@@ -482,28 +510,52 @@ extension OutboxSender: ComposerStorage {
 /// send's clear or a `retarget()` either), so a read from before the newest
 /// write is never taken for a remote edit, and it decides what each
 /// delivery changes on screen.
+///
+/// It never reads, copies or compares the field's text, whose cost would
+/// grow with it: an edit tells it only whether the text is blank, and a
+/// write carries the field as a snapshot the writer reads off the main
+/// thread. Everything that becomes the text the composer counts as saved
+/// is a write, numbered like the others: one that loads or takes a stored
+/// draft, or clears the field after a send that cleared the store, just
+/// isn't written again (`Persist.never`). So whenever a read is as new as
+/// the composer's writes, the writer has the text it last saved to compare
+/// the stored draft with.
 public struct ComposerDraftModel: Equatable, Sendable {
     /// A write to hand to the writer.
     public struct Write: Equatable, Sendable {
-        public var text: String
-        public var generation: Int
+        /// Whether the writer writes the text to the store.
+        public enum Persist: Equatable, Sendable {
+            case always
+            /// Unless it is the text last saved: useDraft's
+            /// `value !== lastSavedValue`, for an edit.
+            case unlessSaved
+            /// Unless the store, as last read, holds it already.
+            case unlessStored
+            /// The store holds it already: it is only counted as saved.
+            case never
+        }
 
-        public init(text: String, generation: Int) {
+        public var text: ComposerDraftText
+        public var generation: Int
+        public var persist: Persist
+
+        public init(text: ComposerDraftText, generation: Int, persist: Persist = .always) {
             self.text = text
             self.generation = generation
+            self.persist = persist
         }
     }
 
     /// What a delivery changes on screen.
     public struct Change: Equatable, Sendable {
-        /// The text view's new text, caret at the end.
+        /// The text view's new text, caret at the end. Set it at once: the
+        /// change it makes is the model's own (`textChanged` ignores it).
         public var text: String?
         /// The session's picks, moved in the store.
         public var picks: ComposerPicks?
         /// Uploads that failed since the last look, for the alert.
         public var newlyFailedAttachments = 0
-        /// A write to hand to the writer: the text a retargeted composer
-        /// holds, which its new store doesn't.
+        /// A write to hand to the writer.
         public var write: Write?
 
         public init(text: String? = nil, picks: ComposerPicks? = nil, newlyFailedAttachments: Int = 0, write: Write? = nil) {
@@ -514,7 +566,7 @@ public struct ComposerDraftModel: Equatable, Sendable {
         }
     }
 
-    public private(set) var autosave = DraftAutosave(loaded: "")
+    public private(set) var autosave = DraftAutosave()
     /// Writes handed over so far.
     public private(set) var generation = 0
     /// The first read has arrived.
@@ -529,6 +581,9 @@ public struct ComposerDraftModel: Equatable, Sendable {
     private var retargeted = false
     /// A retargeted composer's first read came during a send.
     private var loadDeferred = false
+    /// The next text change is the composer setting text the model gave
+    /// it or cleared, already counted.
+    private var awaitsOwnText = false
 
     public init() {}
 
@@ -550,33 +605,58 @@ public struct ComposerDraftModel: Equatable, Sendable {
         return loadDeferred
     }
 
-    /// A text change. `.saveNow` comes back as a write; `.saveLater` leaves
-    /// `autosave.pending` and asks for the debounce (`flush` when it ends).
-    public mutating func textChanged(_ text: String, synced: Bool) -> (write: Write?, debounce: Bool) {
-        switch autosave.textChanged(text, synced: synced) {
+    /// A text change that left the field blank or not; `text` is the field
+    /// (a snapshot), asked for only if it is written now. `.saveNow` comes
+    /// back as a write; `.saveLater` leaves `autosave.hasPending` and asks
+    /// for the debounce (`flush` when it ends).
+    public mutating func textChanged(isBlank: Bool, synced: Bool, text: @autoclosure () -> ComposerDraftText) -> (write: Write?, debounce: Bool) {
+        if awaitsOwnText {
+            awaitsOwnText = false
+            return (nil, false)
+        }
+        switch autosave.textChanged(isBlank: isBlank, synced: synced) {
         case .none: return (nil, false)
-        case .saveNow(let value): return (write(value), false)
+        case .saveNow: return (write(text(), .unlessSaved), false)
         case .saveLater: return (nil, true)
         }
     }
 
+    /// `textChanged` for a caller holding the text as a string.
+    public mutating func textChanged(_ text: String, synced: Bool) -> (write: Write?, debounce: Bool) {
+        textChanged(isBlank: DraftAutosave.isBlank(text), synced: synced, text: ComposerDraftText(text))
+    }
+
     /// The debounce ran out, the app is leaving the foreground, a send is
     /// about to go or the composer is going away: the pending edit, if any.
-    public mutating func flush() -> Write? {
-        guard let text = autosave.flush() else { return nil }
-        return write(text)
+    /// `text` is the field, which holds it.
+    public mutating func flush(text: @autoclosure () -> ComposerDraftText) -> Write? {
+        guard autosave.flush() else { return nil }
+        return write(text(), .unlessSaved)
     }
 
-    /// `clearDraft`, after a send. `stored`: delete the stored draft too.
-    public mutating func clear(stored: Bool) -> Write? {
+    /// `clearDraft`, after a send; the composer empties the field next.
+    /// `stored`: delete the stored draft too. Otherwise the send already
+    /// emptied it, which is only counted.
+    public mutating func clear(stored: Bool) -> Write {
         autosave.clear()
-        return stored ? write("") : nil
+        awaitsOwnText = true
+        return write("", stored ? .always : .never)
     }
 
-    /// A read from the writer. `text` and `composing` describe the text
-    /// view; `synced` is a Happy Agent session, whose draft others edit;
+    /// A read from the writer. `field` is the text view's text (a
+    /// snapshot), asked for only when it is to be written; `fieldIsEmpty`
+    /// and `fieldIsBlank` describe it. `synced` is a Happy Agent session,
+    /// whose draft others edit; `composing`, an input method is composing;
     /// `sending`, a send is in flight.
-    public mutating func receive(_ delivery: ComposerStoreDelivery, text: String, synced: Bool, composing: Bool, sending: Bool = false) -> Change {
+    public mutating func receive(
+        _ delivery: ComposerStoreDelivery,
+        field: @autoclosure () -> ComposerDraftText,
+        fieldIsEmpty: Bool,
+        fieldIsBlank: Bool,
+        synced: Bool,
+        composing: Bool,
+        sending: Bool = false
+    ) -> Change {
         let value = delivery.value
         var change = Change()
         if !isLoaded, retargeted, sending {
@@ -598,32 +678,47 @@ public struct ComposerDraftModel: Equatable, Sendable {
             let behind = delivery.generation != generation
             if typed {
                 // Its own writes follow this read.
-            } else if retargeted, !text.isEmpty || behind {
+            } else if retargeted, !fieldIsEmpty || behind {
                 // Carried over from the old store: the text is the truth
-                // (SessionView's ChatComposer), so the new store gets it,
-                // and a store behind gets it again to catch the numbering up.
-                autosave = DraftAutosave(loaded: text)
-                if value.draft != text || behind {
-                    change.write = write(text)
-                }
-            } else if text.isEmpty, !value.draft.isEmpty {
+                // (SessionView's ChatComposer), so the new store gets it
+                // unless it holds it already, and a store behind gets it
+                // again to catch the numbering up.
+                autosave = DraftAutosave(loadedIsBlank: fieldIsBlank)
+                change.write = write(field(), behind ? .always : .unlessStored)
+            } else if fieldIsEmpty, !value.draft.isEmpty {
                 // useDraft's load: only into a composer nobody has written
                 // in, and never over text the composer holds.
-                autosave = DraftAutosave(loaded: value.draft)
-                change.text = value.draft
+                take(value.draft, into: &change)
             }
             return change
         }
         change.newlyFailedAttachments = max(0, value.failedAttachments - knownFailedAttachments)
         knownFailedAttachments = value.failedAttachments
-        if synced, delivery.generation == generation {
-            change.text = autosave.storeChanged(value.draft, composing: composing)
+        if synced, delivery.generation == generation,
+           autosave.storeChanged(isSaved: delivery.draftIsSaved, composing: composing) {
+            take(value.draft, into: &change)
         }
         return change
     }
 
-    private mutating func write(_ text: String) -> Write {
+    /// `receive` for a caller holding the field as a string.
+    public mutating func receive(_ delivery: ComposerStoreDelivery, text: String, synced: Bool, composing: Bool, sending: Bool = false) -> Change {
+        receive(
+            delivery, field: ComposerDraftText(text), fieldIsEmpty: text.isEmpty,
+            fieldIsBlank: DraftAutosave.isBlank(text), synced: synced, composing: composing, sending: sending
+        )
+    }
+
+    /// A stored draft becomes the text: it is shown, and counted as saved.
+    private mutating func take(_ draft: String, into change: inout Change) {
+        autosave.took(isBlank: DraftAutosave.isBlank(draft))
+        awaitsOwnText = true
+        change.text = draft
+        change.write = write(ComposerDraftText(draft), .never)
+    }
+
+    private mutating func write(_ text: ComposerDraftText, _ persist: Write.Persist) -> Write {
         generation += 1
-        return Write(text: text, generation: generation)
+        return Write(text: text, generation: generation, persist: persist)
     }
 }

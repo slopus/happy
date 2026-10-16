@@ -146,6 +146,14 @@ final class NewSessionTitleView: UIView {
         isAccessibilityElement = true
         accessibilityLabel = title
         accessibilityTraits = .header
+        // Header.tsx's pill title is a Text, which scales; the capsule
+        // keeps its 44 and grows as wide as the title. It sits in the bar,
+        // outside the screen's views, so it follows on its own.
+        traitOverrides.followsTextSize = true
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.frame.size = self.sizeThatFits(.zero)
+            self.invalidateIntrinsicContentSize()
+        }
     }
 
     @available(*, unavailable)
@@ -460,6 +468,30 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
     /// draft that comes back unchanged opens at its height. Its own until
     /// the screen hands it its account's.
     var heights = MeasuredDraftMemo()
+    /// The screen's label sizes, measured off the main thread at its text
+    /// size; nil measures the harness's name on the label.
+    weak var sizes: MeasuredLabelSizes?
+
+    private var agentLabel: Measurable {
+        sizes?.measurable(agentButton.label) ?? agentButton.label.measurable
+    }
+    /// The text size and screen the prompt draws at, under
+    /// `FollowsTextSize`; nil at the designed size.
+    private var textEnvironment: TextEnvironment?
+
+    /// `composerInput` at the text size: 16 on a 22 line, both × RN's
+    /// multiplier. The 120 cap and the 44 minimum stay.
+    private var inputStyle: TextStyle {
+        textEnvironment.map { TextStyles.composerInput.scaled($0.scale) } ?? TextStyles.composerInput
+    }
+
+    /// One line of the prompt: at a text size `22 × m` up to the screen's
+    /// next pixel, as Fabric ceils a TextInput's measured box
+    /// (`RCTTextLayoutManager.mm` 391-392), so the frame it is given is on
+    /// the pixel grid and isn't rounded down under its text.
+    private var inputLineHeight: CGFloat {
+        textEnvironment.map { TextStyles.composerInput.oneLine(in: $0) } ?? NewSessionComposerLayout.Metrics.lineHeight
+    }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -468,8 +500,8 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
         textView.isScrollEnabled = false
-        textView.font = TextStyles.composerInput.font
-        textView.typingAttributes = TextStyles.composerInput.attributes(color: UIColor(Palette.inputText))
+        textView.font = inputStyle.font
+        textView.typingAttributes = inputStyle.attributes(color: UIColor(Palette.inputText))
         textView.tintColor = UIColor(Palette.radioActive)
         textView.delegate = self
         glass.contentView.addSubview(textView)
@@ -481,6 +513,40 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
         for view in [agentButton, settingsButton, micButton, sendButton] as [UIView] {
             glass.contentView.addSubview(view)
         }
+        // The line ends on the screen's pixels, so a new screen moves it too.
+        registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
+            self.textSizeMayHaveChanged()
+        }
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        textSizeMayHaveChanged()
+    }
+
+    /// Takes up the text size the traits now give; true if it moved. The
+    /// typed text is drawn again in place, its selection kept.
+    @discardableResult
+    private func syncTextSize() -> Bool {
+        let environment = traitCollection.textEnvironment
+        guard environment != textEnvironment else { return false }
+        textEnvironment = environment
+        textView.font = inputStyle.font
+        let selection = textView.selectedRange
+        if textView.hasText {
+            textView.attributedText = inputStyle.attributedString(text, color: UIColor(Palette.inputText))
+            textView.selectedRange = selection
+        }
+        textView.typingAttributes = inputStyle.attributes(color: UIColor(Palette.inputText))
+        return true
+    }
+
+    /// A new text size: the prompt is measured again at it (its key holds
+    /// the scaled style), and the screen lays out again.
+    private func textSizeMayHaveChanged() {
+        guard syncTextSize() else { return }
+        onHeightChange?()
+        setNeedsLayout()
     }
 
     @available(*, unavailable)
@@ -501,8 +567,9 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
     func setText(_ text: String) {
         guard text != self.text, textView.markedTextRange == nil else { return }
         textGeneration += 1
-        textView.attributedText = TextStyles.composerInput.attributedString(text, color: UIColor(Palette.inputText))
-        textView.typingAttributes = TextStyles.composerInput.attributes(color: UIColor(Palette.inputText))
+        syncTextSize()
+        textView.attributedText = inputStyle.attributedString(text, color: UIColor(Palette.inputText))
+        textView.typingAttributes = inputStyle.attributes(color: UIColor(Palette.inputText))
         // `textChanged` moves the revision to this text's.
         seed = heights.entry(for: text).flatMap { entry in
             (entry.key as? ComposerTextHeights.Key).map { (textRevision + 1, $0, CGFloat(entry.height)) }
@@ -519,8 +586,9 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
             width: width,
             hairline: hairline,
             textHeight: height,
-            agentLabel: agentButton.label.measurable,
-            showsSettings: showsSettings
+            agentLabel: agentLabel,
+            showsSettings: showsSettings,
+            lineHeight: inputLineHeight
         ))
     }
 
@@ -551,10 +619,12 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
 
     private func textStamp(inputWidth: CGFloat) -> ComposerTextHeights.Stamp {
         typealias M = NewSessionComposerLayout.Metrics
+        // Measured before its first trait update: measure what it will draw.
+        syncTextSize()
         let key = ComposerTextHeights.Key(
             width: inputWidth,
-            style: TextStyles.composerInput,
-            lineHeight: M.lineHeight,
+            style: inputStyle,
+            lineHeight: inputLineHeight,
             paddingTop: 0,
             paddingBottom: 0,
             maxHeight: M.inputMaxHeight
@@ -613,7 +683,7 @@ final class NewSessionComposerView: UIView, UITextViewDelegate {
         if textView.isScrollEnabled != layout.textScrolls {
             textView.isScrollEnabled = layout.textScrolls
         }
-        let line = NewSessionComposerLayout.Metrics.lineHeight
+        let line = inputLineHeight
         placeholder.setLayoutFrame(CGRect(x: layout.input.minX, y: layout.input.minY, width: layout.input.width, height: line))
         placeholder.isHidden = textView.hasText
         agentButton.setLayoutFrame(layout.agent)
@@ -765,7 +835,12 @@ final class NewSessionOptionRow: UIControl {
     }
 
     var element: NewSessionPickerContentLayout.Element {
-        .option(icon: iconSize, label: label.measurable, detail: detail?.measurable, trailing: trailingSize)
+        element { $0.measurable }
+    }
+
+    /// The row with its labels measured by `measure`.
+    func element(_ measure: (StyledLabel) -> Measurable) -> NewSessionPickerContentLayout.Element {
+        .option(icon: iconSize, label: measure(label), detail: detail.map(measure), trailing: trailingSize)
     }
 
     func apply(_ frame: NewSessionPickerContentLayout.ElementFrame) {
@@ -794,16 +869,31 @@ final class NewSessionFieldRow: UIView {
     let iconView: IconView
     let field = UITextField()
     let isPath: Bool
+    private let placeholder: String
+
+    /// `newSessionOption` at the text size where the screen follows it.
+    private var style: TextStyle {
+        traitCollection.textEnvironment.map { TextStyles.newSessionOption.scaled($0.scale) } ?? TextStyles.newSessionOption
+    }
+
+    private func applyTextSize() {
+        field.font = style.font
+        field.attributedPlaceholder = style.attributedString(placeholder, color: UIColor(Palette.textSecondary))
+    }
 
     init(icon: Icon, placeholder: String, isPath: Bool) {
         iconView = IconView(icon, size: NewSessionPickerContentLayout.Metrics.searchIconSize, tint: Palette.textSecondary)
         self.isPath = isPath
+        self.placeholder = placeholder
         super.init(frame: .zero)
         addSubview(iconView)
-        field.font = TextStyles.newSessionOption.font
         field.textColor = UIColor(Palette.text)
         field.tintColor = UIColor(Palette.radioActive)
-        field.attributedPlaceholder = TextStyles.newSessionOption.attributedString(placeholder, color: UIColor(Palette.textSecondary))
+        applyTextSize()
+        registerForTraitChanges(UIView.textSizeTraits) { (self: Self, _) in
+            self.applyTextSize()
+            self.setNeedsLayoutUpTheTree()
+        }
         field.autocapitalizationType = .none
         field.autocorrectionType = .no
         field.spellCheckingType = .no
@@ -816,9 +906,11 @@ final class NewSessionFieldRow: UIView {
         fatalError("init(coder:) is not supported")
     }
 
-    /// The field's one line, as a single-line TextInput sizes it.
+    /// The field's one line, as a single-line TextInput sizes it: the
+    /// font's line at the text size, up to the screen's pixel (a font
+    /// metric, no text laid out).
     var fieldHeight: CGFloat {
-        ceil(TextStyles.newSessionOption.font.lineHeight)
+        traitCollection.textEnvironment.map { TextStyles.newSessionOption.oneLine(in: $0) } ?? ceil(TextStyles.newSessionOption.font.lineHeight)
     }
 
     var element: NewSessionPickerContentLayout.Element {
@@ -851,7 +943,11 @@ final class NewSessionBackRow: UIView {
     }
 
     var element: NewSessionPickerContentLayout.Element {
-        .back(title: title.measurable)
+        element { $0.measurable }
+    }
+
+    func element(_ measure: (StyledLabel) -> Measurable) -> NewSessionPickerContentLayout.Element {
+        .back(title: measure(title))
     }
 
     func apply(_ frame: NewSessionPickerContentLayout.ElementFrame) {
@@ -885,13 +981,18 @@ final class NewSessionPickerContentView: UIView {
         }
 
         var element: NewSessionPickerContentLayout.Element {
+            element { $0.measurable }
+        }
+
+        /// The element with its labels measured by `measure`.
+        func element(_ measure: (StyledLabel) -> Measurable) -> NewSessionPickerContentLayout.Element {
             switch self {
-            case .option(let row): row.element
+            case .option(let row): row.element(measure)
             case .field(let row): row.element
-            case .text(let label): .text(label.measurable)
+            case .text(let label): .text(measure(label))
             case .divider: .divider
-            case .empty(let label): .empty(label.measurable)
-            case .back(let row): row.element
+            case .empty(let label): .empty(measure(label))
+            case .back(let row): row.element(measure)
             }
         }
 
@@ -915,6 +1016,9 @@ final class NewSessionPickerContentView: UIView {
     var listMaxHeight: CGFloat? = NewSessionPickerContentLayout.Metrics.listMaxHeight
     var paddingTop: CGFloat = 0
     var paddingBottom: CGFloat = NewSessionPickerContentLayout.Metrics.embeddedPaddingBottom
+    /// The screen's label sizes, measured off the main thread at its text
+    /// size; nil measures the labels themselves.
+    weak var sizes: MeasuredLabelSizes?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -951,10 +1055,11 @@ final class NewSessionPickerContentView: UIView {
     }
 
     func layout(width: CGFloat) -> NewSessionPickerContentLayout {
-        NewSessionPickerContentLayout(.init(
+        let measure: (StyledLabel) -> Measurable = sizes.map { sizes in { sizes.measurable($0) } } ?? { $0.measurable }
+        return NewSessionPickerContentLayout(.init(
             width: width,
-            header: header.map(\.element),
-            list: list.map(\.element),
+            header: header.map { $0.element(measure) },
+            list: list.map { $0.element(measure) },
             listMaxHeight: listMaxHeight,
             paddingTop: paddingTop,
             paddingBottom: paddingBottom
