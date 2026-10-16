@@ -724,6 +724,7 @@ export const zhHant: TranslationStructure = {
         send: '提問',
         close: '關閉',
         answering: 'Claude 正在回答…',
+        queued: '正在等待上一個問題的回答…',
         noAnswer: 'Claude 沒有給出回答。',
         terminalMode: '此工作階段正在終端中執行。請在終端中使用 /btw，或從應用程式傳送一則訊息以接手控制。',
         notStarted: '此工作階段中的 Claude 尚未執行。請先傳送一則訊息——之後即使 Claude 正在忙碌，也可以使用 /btw。',

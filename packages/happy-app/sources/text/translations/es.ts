@@ -724,6 +724,7 @@ export const es: TranslationStructure = {
         send: 'Preguntar',
         close: 'Cerrar',
         answering: 'Claude está respondiendo…',
+        queued: 'Esperando la respuesta anterior…',
         noAnswer: 'Claude no tiene respuesta.',
         terminalMode: 'Esta sesión se está ejecutando en la terminal. Usa /btw allí o envía un mensaje desde la app para tomar el control.',
         notStarted: 'Claude aún no se está ejecutando en esta sesión. Envía primero un mensaje — después, /btw funciona incluso mientras Claude está ocupado.',

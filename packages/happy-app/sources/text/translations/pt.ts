@@ -723,6 +723,7 @@ export const pt: TranslationStructure = {
         send: 'Perguntar',
         close: 'Fechar',
         answering: 'Claude está respondendo…',
+        queued: 'Aguardando a resposta anterior…',
         noAnswer: 'Claude não teve resposta.',
         terminalMode: 'Esta sessão está em execução no terminal. Use /btw lá ou envie uma mensagem pelo app para assumir o controle.',
         notStarted: 'O Claude ainda não está em execução nesta sessão. Envie uma mensagem primeiro — depois disso, /btw funciona mesmo enquanto o Claude está ocupado.',

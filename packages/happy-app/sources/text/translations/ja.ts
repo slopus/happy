@@ -725,6 +725,7 @@ export const ja: TranslationStructure = {
         send: '質問する',
         close: '閉じる',
         answering: 'Claude が回答中…',
+        queued: '前の質問への回答を待っています…',
         noAnswer: 'Claude からの回答はありませんでした。',
         terminalMode: 'このセッションはターミナルで実行中です。ターミナルで /btw を使うか、アプリからメッセージを送って操作を引き継いでください。',
         notStarted: 'このセッションではまだ Claude が起動していません。先にメッセージを送ってください — その後は Claude の作業中でも /btw を使えます。',

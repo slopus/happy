@@ -724,6 +724,7 @@ export const ca: TranslationStructure = {
         send: 'Pregunta',
         close: 'Tanca',
         answering: 'Claude està responent…',
+        queued: 'Esperant la resposta anterior…',
         noAnswer: 'Claude no té cap resposta.',
         terminalMode: 'Aquesta sessió s’està executant al terminal. Fes servir /btw allà o envia un missatge des de l’app per prendre’n el control.',
         notStarted: 'Claude encara no s’està executant en aquesta sessió. Envia primer un missatge — després, /btw funciona fins i tot mentre Claude està ocupat.',

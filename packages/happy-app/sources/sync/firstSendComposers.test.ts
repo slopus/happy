@@ -148,18 +148,18 @@ describe('chat composer callback boundary', () => {
             sendingSessionsRef: { current: new Set() }, currentSessionIdRef: { current: 'original-session' as string | null },
             selectedImages: [{ id: 'image' }], removeImage: vi.fn(), pendingCommunications: [{ id: 'question', kind: 'question' }],
             sessionCancelCommunication: vi.fn(), sync: { sendMessage: vi.fn() },
-            supportsSideQuestions, parseSideQuestionCommand, showSideQuestionSheet: vi.fn(),
+            supportsSideQuestions, parseSideQuestionCommand, openSideQuestion: vi.fn(),
         };
         return { scope, composer, session, send: callbackAt(chatScreen, sendCallback, scope) as () => void };
     }
 
-    it('opens /btw in the side-question sheet instead of sending it in a Claude chat', () => {
+    it('asks /btw in the side-question panel instead of sending it in a Claude chat', () => {
         const { scope, composer, send } = chatBoundary({
             message: '/btw what changed?',
             metadata: { path: '/project', host: 'localhost', flavor: 'claude' },
         });
         send();
-        expect(scope.showSideQuestionSheet).toHaveBeenCalledWith('original-session', 'what changed?');
+        expect(scope.openSideQuestion).toHaveBeenCalledWith('original-session', 'what changed?');
         expect(composer.clearMessage).toHaveBeenCalledOnce();
         expect(scope.sync.sendMessage).not.toHaveBeenCalled();
     });
