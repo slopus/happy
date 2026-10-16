@@ -33,8 +33,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import com.slopus.happy.attachments.AttachmentPreview
-import com.slopus.happy.ui.chat.ChatIcon
-import com.slopus.happy.ui.chat.ChatIconView
+import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.theme.HappyTheme
 
@@ -121,7 +121,7 @@ private fun AttachmentThumbnail(image: AttachmentPreview, onRemove: (String) -> 
                 .semantics { contentDescription = "Remove ${image.name}" },
             contentAlignment = Alignment.Center,
         ) {
-            ChatIconView(ChatIcon.Close, AttachmentStripSpec.removeIcon, colors.text)
+            Icon(Ionicon.Close, AttachmentStripSpec.removeIcon, colors.text)
         }
     }
 }
@@ -147,8 +147,8 @@ fun AddImageButton(attached: Boolean, onClick: () -> Unit, modifier: Modifier = 
             .semantics { contentDescription = "Add image" },
         contentAlignment = Alignment.Center,
     ) {
-        ChatIconView(
-            ChatIcon.ImageOutline,
+        Icon(
+            Ionicon.ImageOutline,
             AttachmentStripSpec.addIcon,
             if (attached) AttachmentStripSpec.radioActive(colors.dark) else colors.button.secondaryTint,
         )

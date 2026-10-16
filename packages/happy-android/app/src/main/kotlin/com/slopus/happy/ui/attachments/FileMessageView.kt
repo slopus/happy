@@ -29,10 +29,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.AppGraph
 import com.slopus.happy.attachments.AttachmentServices
-import com.slopus.happy.ui.chat.ChatIcon
+import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RemoteImage
 import com.slopus.happy.ui.components.RemoteImageState
-import com.slopus.happy.ui.chat.ChatIconView
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
@@ -208,7 +208,7 @@ fun FileMessageView(input: JsonElement?, modifier: Modifier = Modifier) {
                         .testTag(FileMessageTags.ERROR),
                     contentAlignment = Alignment.Center,
                 ) {
-                    ChatIconView(ChatIcon.AlertCircleOutline, FileMessageSpec.errorIcon, colors.textSecondary)
+                    Icon(Ionicon.AlertCircleOutline, FileMessageSpec.errorIcon, colors.textSecondary)
                 }
             }
         }

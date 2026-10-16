@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalDensity
@@ -50,13 +51,15 @@ import com.slopus.happy.chat.PermissionStatus
 import com.slopus.happy.chat.ToolState
 import com.slopus.happy.chat.UserDisplay
 import com.slopus.happy.ui.attachments.FileMessageView
+import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.PlexMono
 import com.slopus.happy.ui.theme.happyTextStyle
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 object MessageTags {
     const val USER = "message.user"
@@ -64,12 +67,14 @@ object MessageTags {
     const val USER_BODY = "message.user.body"
     const val USER_BUBBLE = "message.user.bubble"
     const val USER_STATUS = "message.user.status"
+    const val USER_FAILED = "message.user.failed"
+    const val USER_RETRY = "message.user.retry"
+    const val USER_DISCARD = "message.user.discard"
     const val COMMAND_CHIP = "message.user.command"
     const val GOAL_ROW = "message.user.goal"
     const val AGENT = "message.agent"
     const val AGENT_COPY = "message.agent.copy"
     const val EVENT = "message.event"
-    const val TOOL = "message.tool"
     const val UNSUPPORTED = "message.unsupported"
 }
 
@@ -89,6 +94,9 @@ object MessageSpec {
     val statusHeight = 14.dp
     val statusMarginTop = 2.dp
     val statusMarginBottom = 4.dp
+    /** A failed send's status, Retry and Discard sit 12 apart on the status line (Android only). */
+    val failedGap = 12.dp
+    val failedAction = happyTextStyle(fontSize = 11, lineHeight = 14, weight = FontWeight.SemiBold)
     val author = happyTextStyle(fontSize = 14, lineHeight = 20, weight = FontWeight.SemiBold)
     val authorMarginBottom = 4.dp
     val authorPaddingHorizontal = 12.dp
@@ -108,17 +116,6 @@ object MessageSpec {
     val eventMarginHorizontal = 8.dp
     val eventPaddingVertical = 8.dp
     val eventText = happyTextStyle(fontSize = 14)
-    val toolMarginHorizontal = 8.dp
-    val toolRowMinHeight = 28.dp
-    val toolRowPaddingHorizontal = 8.dp
-    val toolRowPaddingVertical = 3.dp
-    val toolRowMarginVertical = 2.dp
-    val toolRowGap = 10.dp
-    val toolIconBox = 20.dp
-    val toolIcon = 18.dp
-    val toolLabel = happyTextStyle(fontSize = 15, lineHeight = 20)
-    val toolElapsed = happyTextStyle(fontSize = 13, family = PlexMono)
-    val toolStatusIcon = 20.dp
 }
 
 /** What a row needs from the screen. */
@@ -126,6 +123,11 @@ class MessageCallbacks(
     /** Pressing an `<options>` choice sends it as the next message. */
     val onOptionPress: (String) -> Unit = {},
     val onToolPress: (ChatMessage.ToolCallMessage) -> Unit = {},
+    /** Answers a tool's permission request; [mode] is the permission mode the composer switches to after. */
+    val onPermission: PermissionHandler = { _, _ -> },
+    /** A failed send, by its localId. */
+    val onRetry: (String) -> Unit = {},
+    val onDiscard: (String) -> Unit = {},
 )
 
 /** One chat row, dispatched by kind (MessageView.tsx `RenderBlock`). */
@@ -135,7 +137,7 @@ fun MessageView(row: ChatRow, bubble: BubblePalette, callbacks: MessageCallbacks
         is ChatRow.User -> UserMessage(row, bubble, callbacks, modifier)
         is ChatRow.AgentText -> AgentMessage(row, callbacks, modifier)
         is ChatRow.Event -> EventMessage(row.message.event, modifier)
-        is ChatRow.Tool -> if (row.message.tool.name == "file") FileMessageView(row.message.tool.input, modifier) else ToolRow(row.message, callbacks, modifier)
+        is ChatRow.Tool -> if (row.message.tool.name == "file") FileMessageView(row.message.tool.input, modifier) else ToolView(row.message, callbacks, modifier)
         is ChatRow.Unsupported -> UnsupportedMessage(modifier)
     }
 }
@@ -240,7 +242,7 @@ fun UserMessage(row: ChatRow.User, bubble: BubblePalette, callbacks: MessageCall
                         horizontalArrangement = Arrangement.spacedBy(MessageSpec.goalGap),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        ChatIconView(ChatIcon.LocateOutline, MessageSpec.goalIcon, chat.agentEventText)
+                        Icon(Ionicon.LocateOutline, MessageSpec.goalIcon, chat.agentEventText)
                         Text(stringResource(R.string.message_sent_as_goal), style = MessageSpec.goalText, color = chat.agentEventText)
                     }
                 }
@@ -262,18 +264,52 @@ fun UserMessage(row: ChatRow.User, bubble: BubblePalette, callbacks: MessageCall
                 }
             }
         }
-        Text(
-            text = statusText,
-            style = MessageSpec.status,
-            color = if (message.sendError != null) colors.textDestructive else chat.agentEventText,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
-                .padding(top = MessageSpec.statusMarginTop, bottom = MessageSpec.statusMarginBottom)
-                .testTag(MessageTags.USER_STATUS)
-                .height(MessageSpec.statusHeight),
-        )
+        val failed = row.failedLocalId
+        if (failed == null) {
+            StatusLine(statusText, if (message.sendError != null) colors.textDestructive else chat.agentEventText)
+        } else {
+            Row(
+                modifier = Modifier.testTag(MessageTags.USER_FAILED),
+                horizontalArrangement = Arrangement.spacedBy(MessageSpec.failedGap),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                StatusLine(statusText, colors.textDestructive, Modifier.weight(1f, fill = false))
+                FailedAction(stringResource(R.string.common_retry), MessageTags.USER_RETRY) { callbacks.onRetry(failed) }
+                FailedAction(stringResource(R.string.common_discard), MessageTags.USER_DISCARD) { callbacks.onDiscard(failed) }
+            }
+        }
     }
+}
+
+@Composable
+private fun StatusLine(text: String, color: Color, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = MessageSpec.status,
+        color = color,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+            .padding(top = MessageSpec.statusMarginTop, bottom = MessageSpec.statusMarginBottom)
+            .testTag(MessageTags.USER_STATUS)
+            .height(MessageSpec.statusHeight),
+    )
+}
+
+/** A failed send's Retry / Discard: the status line's size, semibold, in the text colour. */
+@Composable
+private fun FailedAction(label: String, tag: String, onClick: () -> Unit) {
+    Text(
+        text = label,
+        style = MessageSpec.failedAction,
+        color = HappyTheme.colors.text,
+        maxLines = 1,
+        modifier = Modifier
+            .padding(top = MessageSpec.statusMarginTop, bottom = MessageSpec.statusMarginBottom)
+            .testTag(tag)
+            .height(MessageSpec.statusHeight)
+            .clickable(onClick = onClick),
+    )
 }
 
 /** Puts plain text on the clipboard (expo-clipboard `setStringAsync`). */
@@ -342,8 +378,8 @@ private fun MessageCopyButton(text: String) {
             },
         contentAlignment = Alignment.Center,
     ) {
-        ChatIconView(
-            icon = if (copied) ChatIcon.Checkmark else ChatIcon.CopyOutline,
+        Icon(
+            icon = if (copied) Ionicon.Checkmark else Ionicon.CopyOutline,
             size = MessageSpec.copyIcon,
             color = HappyTheme.colors.text,
             contentDescription = stringResource(if (copied) R.string.common_copied else R.string.common_copy),
@@ -378,63 +414,6 @@ fun EventMessage(event: AgentEvent, modifier: Modifier = Modifier) {
         Text(text, style = MessageSpec.eventText, color = ChatTheme.colors.agentEventText, textAlign = TextAlign.Center)
     }
 }
-
-/**
- * A tool call as ToolView's compact activity row (tool outputs are hidden
- * by default; the full view opens on press). Spec: 8 side margins, 2 above
- * and below; the row at least 28 high, padded 8/3, radius 4; a 20 icon box
- * (18 glyph), then 10 apart the label (15/20 textSecondary, one line), the
- * elapsed seconds while running (mono 13 secondary, 8 in), and the status:
- * a spinner while running, alert-circle-outline 20 in the warning colour on
- * error, remove-circle-outline 20 when denied or cancelled.
- */
-@Composable
-fun ToolRow(message: ChatMessage.ToolCallMessage, callbacks: MessageCallbacks, modifier: Modifier = Modifier) {
-    val tool = message.tool
-    val colors = HappyTheme.colors
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = MessageSpec.toolMarginHorizontal, vertical = MessageSpec.toolRowMarginVertical)
-            .testTag(MessageTags.TOOL),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .defaultMinSize(minHeight = MessageSpec.toolRowMinHeight)
-                .clip(RoundedCornerShape(4.dp))
-                .clickable { callbacks.onToolPress(message) }
-                .padding(horizontal = MessageSpec.toolRowPaddingHorizontal, vertical = MessageSpec.toolRowPaddingVertical),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(MessageSpec.toolRowGap),
-        ) {
-            ChatIconView(ChatIcon.ConstructOutline, MessageSpec.toolIcon, colors.textSecondary, Modifier.size(MessageSpec.toolIconBox))
-            Text(
-                text = toolActivityLabel(tool.name, tool.title, tool.description),
-                style = MessageSpec.toolLabel,
-                color = colors.textSecondary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f),
-            )
-            val denied = tool.permission?.status == PermissionStatus.Denied || tool.permission?.status == PermissionStatus.Canceled
-            when {
-                denied -> ChatIconView(ChatIcon.RemoveCircleOutline, MessageSpec.toolStatusIcon, colors.textSecondary)
-                tool.state == ToolState.Running -> CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    color = colors.text,
-                    strokeWidth = 2.dp,
-                )
-                tool.state == ToolState.Error -> ChatIconView(ChatIcon.AlertCircleOutline, MessageSpec.toolStatusIcon, colors.warning)
-                else -> Unit
-            }
-        }
-    }
-}
-
-/** The label until the tool registry is ported: the protocol title, the description, or the name. */
-private fun toolActivityLabel(name: String, title: String?, description: String?): String =
-    title?.trim()?.takeIf { it.isNotEmpty() } ?: description?.trim()?.takeIf { it.isNotEmpty() } ?: name
 
 /**
  * A record this build cannot show (a retired or unknown kind). happy-app

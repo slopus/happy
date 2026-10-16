@@ -1,6 +1,9 @@
 package com.slopus.happy.chat
 
 import androidx.compose.runtime.Immutable
+import com.slopus.happy.data.MessageRecord
+import com.slopus.happy.data.OutboxKind
+import com.slopus.happy.data.OutboxState
 import com.slopus.happy.model.SessionState
 import com.slopus.happy.chat.markdown.MarkdownBlock
 import com.slopus.happy.chat.markdown.parseMarkdown
@@ -26,10 +29,14 @@ sealed interface ChatRow {
     val message: ChatMessage
     val key: String get() = message.id
 
-    /** A user bubble. [display] is what the wrapper parsing left to show. */
+    /**
+     * A user bubble. [display] is what the wrapper parsing left to show;
+     * [failedLocalId] names a send that failed, for retry and discard.
+     */
     data class User(
         override val message: ChatMessage.UserText,
         val display: UserDisplay,
+        val failedLocalId: String? = null,
     ) : ChatRow
 
     data class AgentText(override val message: ChatMessage.AgentText, val blocks: List<MarkdownBlock>) : ChatRow
@@ -77,10 +84,20 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
     private var lastAgentState: AgentState? = null
     private var lastClaude = true
     private var snapshot = ChatSnapshot()
+    private var lastDelivery: Map<String, Pair<OutboxState, String?>> = emptyMap()
 
     fun apply(page: ChatPage, session: ChatSessionInfo?): ChatSnapshot {
-        if (fed.isNotEmpty() && !page.records.mapTo(HashSet()) { it.id }.containsAll(fed)) {
-            // Records were deleted: start over rather than unwind the reducer.
+        // This device's sends stand in for their echo until it is stored
+        // (sync.ts enqueues the local copy under its localId).
+        val echoed = page.records.mapNotNullTo(HashSet()) { it.localId }
+        val sends = page.outbox.filter { it.localId !in echoed }
+            .map { MessageRecord(it.sessionId, seq = -1, id = it.localId, localId = it.localId, contentJson = it.recordJson, createdAt = it.createdAt, updatedAt = it.createdAt) }
+        val records = page.records + sends
+        val present = records.mapTo(HashSet()) { it.id }
+        // A send whose echo arrived is the same message under its server id.
+        fed.removeAll { it !in present && it in echoed }
+        if (fed.isNotEmpty() && !present.containsAll(fed)) {
+            // Records were deleted (or a failed send discarded): start over rather than unwind the reducer.
             reducer = ReducerState(now)
             fed.clear()
             messages.clear()
@@ -93,7 +110,7 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
             rows.clear()
             lastClaude = claude
         }
-        val incoming = page.records.filter { fed.add(it.id) }.mapNotNull(ChatNormalizer::normalize)
+        val incoming = records.filter { fed.add(it.id) }.mapNotNull(ChatNormalizer::normalize)
         var changed = false
         if (incoming.isNotEmpty() || agentState != lastAgentState || !snapshot.loaded) {
             lastAgentState = agentState
@@ -105,13 +122,23 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
             for (message in result.messages) messages[message.id] = message
             changed = result.messages.isNotEmpty() || !snapshot.loaded
         }
+        val delivery = page.outbox.filter { it.kind == OutboxKind.USER }.associate { it.localId to (it.state to it.error) }
+        if (delivery != lastDelivery) {
+            lastDelivery = delivery
+            changed = true
+        }
         if (!changed && snapshot.hasMoreOlder == page.hasMoreOlder && snapshot.isLoadingOlder == page.isLoadingOlder &&
             snapshot.loaded == page.loaded
         ) {
             return snapshot
         }
         val visible = if (changed || rows.isEmpty()) {
-            messages.values.sortedByDescending { it.sortKey }.mapNotNull { row(it) }
+            messages.values.sortedByDescending { it.sortKey }.mapNotNull { message ->
+                val shown = withDelivery(message, delivery)
+                val row = row(shown)
+                val failed = (shown as? ChatMessage.UserText)?.localId?.takeIf { delivery[it]?.first == OutboxState.FAILED }
+                if (failed != null && row is ChatRow.User) row.copy(failedLocalId = failed) else row
+            }
         } else {
             snapshot.rows
         }
@@ -126,6 +153,17 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
         return snapshot
     }
 
+    /** A send still in the outbox reads as pending; a failed one carries its error. */
+    private fun withDelivery(message: ChatMessage, delivery: Map<String, Pair<OutboxState, String?>>): ChatMessage {
+        if (message !is ChatMessage.UserText) return message
+        val (state, error) = message.localId?.let(delivery::get) ?: return message
+        return when (state) {
+            OutboxState.QUEUED, OutboxState.SENDING -> message.copy(pending = true)
+            OutboxState.FAILED -> message.copy(pending = false, sendError = error?.ifEmpty { null } ?: SEND_FAILED)
+            OutboxState.SENT -> message
+        }
+    }
+
     private fun row(message: ChatMessage): ChatRow? {
         rows[message.id]?.let { (built, row) -> if (built == message) return row }
         val row = buildRow(message, lastClaude)
@@ -134,6 +172,9 @@ class ChatReduction(private val now: () -> Long = System::currentTimeMillis) {
     }
 
     companion object {
+        /** A failed send without a reason of its own. */
+        const val SEND_FAILED = "Message failed to send."
+
         fun buildRow(message: ChatMessage, isClaudeFlavor: Boolean): ChatRow? = when (message) {
             is ChatMessage.UserText -> userRow(message, isClaudeFlavor)
             is ChatMessage.AgentText -> if (message.isThinking) null else ChatRow.AgentText(message, parseMarkdown(message.text))
