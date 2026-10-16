@@ -97,12 +97,20 @@ final class MessageDetailTextSizeTests: XCTestCase {
         return sizes
     }
 
-    func testAtTheDesignedSizeTheScreenIsAsItWas() {
+    /// The designed size's fonts, its boxes on the screen's pixels: none
+    /// taller, none a point shorter.
+    func testAtTheDesignedSizeTheScreenIsAsItWasToThePixel() {
         for (name, message) in messages() {
             let before = plan(message, text: .designed)
             let after = plan(message, text: ChatRowText(environment: environment(.large), words: .english))
-            XCTAssertEqual(after.size, before.size, name)
-            XCTAssertEqual(texts(after).map(\.frame), texts(before).map(\.frame), name)
+            XCTAssertEqual(after.size.width, before.size.width, name)
+            XCTAssertLessThanOrEqual(after.size.height, before.size.height + 0.001, name)
+            XCTAssertEqual(texts(after).count, texts(before).count, name)
+            for (text, was) in zip(texts(after), texts(before)) {
+                XCTAssertLessThanOrEqual(text.layout.size.height, was.layout.size.height, name)
+                XCTAssertGreaterThan(text.layout.size.height, was.layout.size.height - 1, name)
+                XCTAssertEqual((text.layout.size.height * 3).rounded(), text.layout.size.height * 3, accuracy: 0.0001, name)
+            }
             XCTAssertEqual(texts(after).map { fonts($0.layout.string) }, texts(before).map { fonts($0.layout.string) }, name)
         }
     }
@@ -242,7 +250,10 @@ final class MessageDetailTextSizeTests: XCTestCase {
         XCTAssertGreaterThan(canvas.frame.height, height)
         let scroll = try XCTUnwrap(find(UIScrollView.self, in: screen.view))
         XCTAssertEqual(scroll.contentSize, canvas.frame.size)
-        XCTAssertEqual(title.titleLabel.renderedStyle.size, TextStyles.headerTitle.scaled(TextScale(TextSizeCategory(category))).size, accuracy: 0.0001)
+        // The bar holds its title view's own size to XXL; the screen hands
+        // it its own.
+        XCTAssertEqual(title.titleLabel.renderedStyle.size, TextStyles.headerTitle.scaled(TextScale(TextSizeCategory(category))).size, accuracy: 0.0001,
+                       "the title at \(title.traitCollection.preferredContentSizeCategory.rawValue), the screen at \(screen.traitCollection.preferredContentSizeCategory.rawValue)")
         await account.signOut()
     }
     #endif

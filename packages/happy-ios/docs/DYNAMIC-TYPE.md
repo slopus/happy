@@ -320,10 +320,11 @@ Following now:
   path fields are one line of their style. The header's pill grows with
   its title in a 44 capsule.
 
-- The chat's rows and message detail. The list (`ChatListView`) carries
-  the trait itself, and so does the placeholder over it; the screen around
-  them doesn't, because its header and the bars over the composer are laid
-  out there at the designed size. Message detail calls
+- The chat's rows, its header and the bars over its composer, and message
+  detail. The list (`ChatListView`) carries the trait itself, and so do
+  the placeholder over it, the header's title views, the CLI warning and
+  each bar over the composer; the screen's own view doesn't (the composer
+  and the worktree tab strip set it on their own). Message detail calls
   `followsTextSize()`. happy-app sets no cap in the chat
   (`maxFontSizeMultiplier` appears only in `OnboardingContent.tsx`), so
   nothing is capped.
@@ -354,21 +355,82 @@ Following now:
     (`MessageDetailReadingPlace`). Until the new plans land the old ones
     stay drawn whole: the text is in the plan, so a row never mixes sizes.
   - The placeholder (EmptyMessages, the pending chat's and the deleted
-    state) is measured on the main thread when it lays out, as it was at
-    the designed size, and made again when the size changes; its 72 glyph
-    stays.
-  - Difference: a row's text box is ceiled to whole points
-    (`ChatTextLayout`), where RN ceils it to the screen's pixels, so a
-    text can be up to ⅔ pt taller here on a 3x screen, at every size.
+    state) is measured off main (`ChatPlaceholderMeasure`, through
+    `OffMainPlan`): its words are read on main when it is shown, then a
+    background task measures them at its width, text size and screen
+    scale, and only a plan for what was asked last is drawn, whole. Its
+    height only centres the column (`ChatPlaceholderLayout`), so the
+    keyboard moving the dock measures nothing. Until the first plan is in
+    it shows nothing, the loading spinner included; after a change the
+    last plan stays until the next. Its glyphs (72, 64, 48), margins and
+    paddings, the paging spinner and RoundButton's 32 stay.
+  - The header (ChatHeaderView) and the CLI warning under it, measured
+    off main (`ChatHeaderMeasure`, through `OffMainPlan`): what they say
+    is read on main, a background task lays their text out at the width
+    they have, the text size and the screen, and the view draws the plan
+    for what it asked last. On a phone the capsule asks the bar for the
+    size its plan made at its widest says, and is planned again at what
+    the bar hands over when that is less; it keeps
+    `MOBILE_GLASS_CONTROL_SIZE`'s 44 at every size, the title and its row
+    centred on its middle, and cuts what runs past it, as
+    `mobileTitlePillGlass`'s `overflow: 'hidden'` does (from XXXL, or
+    XXL with line changes, the two lines are taller than 44). The line changes are drawn
+    from the plan too (`ChatGitChangesPlan`), in the project list's
+    styles. On a tablet the column is measured to the row the bar leaves
+    it and spills past the bar's height, as RN's unclipped header content
+    does. The pill grows with its label; its 14 glyphs stay. Until its
+    first plan is in, a title shows nothing and the pill isn't placed.
+    UINavigationBar holds the text size its title view inherits to XXL
+    (its content view's `maximumContentSizeCategory`, on the iOS 26.5
+    simulator: 19.76 for a 16 title); Header.tsx's RN Text has no such
+    cap, so the screen hands the title views its own size
+    (`ChatHeaderTitleView.text`) and they plan at that.
+  - The bars over the composer (InactiveArchivedHint, AgentGoalBar,
+    AgentQuestionBanner, RigActivityBar), measured off main
+    (`ChatDockBarMeasure`): each reads its words on main when it is shown
+    and is laid out by its HappyLayout layout at the width the dock asks
+    for. The dock takes a bar's height from its plan, so a bar that comes
+    has no height until its plan is in; then it tells the screen, which
+    lays the dock out again, animated as a bar coming or going is. A new
+    text size marks the screen for layout, which asks each bar for its
+    height at the new size. A bar that goes forgets its plan, so it comes
+    back with nothing old in it. What stays: the glyphs (the
+    banner's 20 and its 18 chevron, the goal's 18 and its 30 pt buttons,
+    the rig's 12, the copy glyph's 16), the paddings and margins, Resume's
+    44, which its label (SF 15, a line of about 17.9) spills out of from
+    AX-XL as RN's fixed `height` lets it, and the commands' 48 minimum, which they grow past. The
+    dock's height feeds the list's newest-edge inset and the scroll
+    button's place (`ChatScreenLayout`), which follow it.
+  - A text box ends on the screen's next pixel, as RN's does
+    (`ChatTextLayout`, `PixelGrid.ceil`): the screen's scale comes with
+    the text size (`TextEnvironment.displayScale`) on every string made at
+    it. Text made at the designed size names no screen and still ends on
+    the next whole point (the answer sheet, the copy menu).
+  - Centred text drawn in a frame hugging it is laid out at that frame's
+    width (`MeasuredText.layout(for:)`, `ChatTextLayout.leading`):
+    measured wider, TextKit puts it in the middle of the wider width, and
+    a frame hugging it would draw it off to the right and cut it. It was
+    so before for the event lines, the placeholder and the capsule's
+    title.
   - Tested on Linux: the layouts at XS, the default, XXXL, AX-M and
-    AX-XXXL (`ChatTextSizeLayoutTests`), the changesets
+    AX-XXXL (`ChatTextSizeLayoutTests`, `ChatPlaceholderLayoutTests`,
+    `ChatChromeTextSizeLayoutTests`), the changesets
     (`ApplyPerfChatTextSizeTests`) and the reading place. UIKit tests
     (`ChatRowsTextSizeTests`, `MessageDetailTextSizeTests`,
-    `ChatRowWordsTests`: the plans' text at the multiplier and fitting its
-    frames, the designed size unchanged, the cells drawing their plans,
-    the placeholder made again, and the fixture chat and message screen
-    planned again at a new size) are built, not run: the Mac was offline.
-    Not seen on a simulator or device.
+    `ChatRowWordsTests`, `ChatHistoryViewsTests`, `ChatChromeTextSizeTests`:
+    the plans' text at the multiplier and fitting its frames, the designed
+    size unchanged, the cells drawing their plans, the placeholder
+    measured again at a new size or width but not a new height, the bars
+    with no height until their plans are in and growing at each size, the
+    capsule keeping 44 and cutting what spills, centred text laid out at
+    its frame's width, and the fixture chat, its dock and the message
+    screen planned again at a new size) pass on the iOS 26.5 simulator
+    (an iPhone at scale 3), all 26. Their first run there found the bar's
+    XXL cap on the title views (the header, message detail's title),
+    since fixed, and frames that differed from the plan's only by
+    floating-point readback (now compared to within 1e-6,
+    `assertSameFrame`). Nobody has looked at the screens on a simulator
+    or a device.
 
 - Diffs, on the Changes screen (`SessionChangesViewController`) and in the
   file viewer (`SessionFileViewController`), which opt in, and in the
@@ -465,6 +527,14 @@ the text size and is fitted again in the bar when the size changes
 keeps `title` for the back button). Session info and machine follow the
 text size in their rows too, and so do changes' (above).
 
+The bar holds the text size a title view inherits to XXL: its content view
+has `maximumContentSizeCategory` XXL (iOS 26.5 simulator), where RN's Text
+in Header.tsx goes on scaling. A title view's own trait override is past
+the cap. Message detail sets its title view's to the screen's
+(`MessageDetailViewController.updateTitleTextSize`), and the chat hands its
+header the screen's size (above). The other screens' title views still
+stop at XXL (19.76 for a 16 title).
+
 Fixed RN sizes stay fixed: icons, the wordmark, the checklist boxes,
 paddings, and minimum heights (rows 44, buttons 50/44/32, Get help 36),
 which taller text grows past. In the composer: the 44 and 40 input
@@ -476,10 +546,8 @@ past; in the 42 row it is cut by the middle box, as RN's
 
 ## Not yet wired
 
-- The rest of the chat screen: its header (the title and subtitle, and
-  the CLI warning pill; RN `<Text>`s that scale in RN), what sits over the
-  composer (the goal bar, the question banner, the rig activity bar, the
-  inactive hint) and the copy menu, which is UIKit's.
+- The rest of the chat screen: the answer sheet (AgentQuestionModal,
+  whose RN `<Text>`s scale) and the copy menu, which is UIKit's.
 - On a device: the composer at each size, the chips' native menus over
   their scaled labels, and a size change while typing (the typed text is
   restyled in place, which may end an IME composition in progress) have
@@ -518,5 +586,5 @@ past; in the 42 row it is cut by the middle box, as RN's
     at M: 120 in 120) is checked as scrolling with its content as tall as
     the view, as RN scrolls from the cap (`MultiTextInputLayout`).
   - Thai, Devanagari and Korean join the texts, under the same checks.
-- Measured text boxes ceil to pixels as RN's do (the chat's still ceil to
-  whole points).
+- Measured text boxes ceil to pixels as RN's do (the chat's text at the
+  designed size still ceils to whole points).

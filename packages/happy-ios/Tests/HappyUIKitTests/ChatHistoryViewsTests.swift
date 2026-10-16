@@ -94,24 +94,29 @@ final class ChatHistoryViewsTests: XCTestCase {
         ChatEmptyState(metadata: .object(["host": .string("mac"), "path": .string("/p")]), createdAt: 0, now: 60_000)
     }
 
-    func testEmptyMessagesShowsWhatItsPagingSays() {
+    /// Shows `content` once its plan, made off the main thread, is in.
+    private func show(_ content: ChatPlaceholderView.Content, in placeholder: ChatPlaceholderView) async {
+        placeholder.show(content)
+        placeholder.layoutIfNeeded()
+        await placeholder.measure.measured()
+        placeholder.layoutIfNeeded()
+    }
+
+    func testEmptyMessagesShowsWhatItsPagingSays() async {
         let placeholder = ChatPlaceholderView(frame: CGRect(x: 0, y: 0, width: 393, height: 600))
         var actions = 0
         placeholder.onAction = { actions += 1 }
 
-        placeholder.show(.empty(state(), .noMessages))
-        placeholder.layoutIfNeeded()
+        await show(.empty(state(), .noMessages), in: placeholder)
         XCTAssertTrue(placeholder.button.isHidden)
         XCTAssertFalse(placeholder.pagingSpinner.isAnimating)
 
-        placeholder.show(.empty(state(), .loading))
-        placeholder.layoutIfNeeded()
+        await show(.empty(state(), .loading), in: placeholder)
         XCTAssertTrue(placeholder.button.isHidden)
         XCTAssertTrue(placeholder.pagingSpinner.isAnimating)
         XCTAssertGreaterThan(placeholder.pagingSpinner.frame.height, 0)
 
-        placeholder.show(.empty(state(), .error))
-        placeholder.layoutIfNeeded()
+        await show(.empty(state(), .error), in: placeholder)
         XCTAssertFalse(placeholder.button.isHidden)
         XCTAssertEqual(placeholder.button.title, Strings.Chat.retry)
         XCTAssertFalse(placeholder.pagingSpinner.isAnimating)
@@ -119,26 +124,47 @@ final class ChatHistoryViewsTests: XCTestCase {
         placeholder.button.onTap?()
         XCTAssertEqual(actions, 1)
 
-        placeholder.show(.empty(state(), .loadMore))
-        placeholder.layoutIfNeeded()
+        await show(.empty(state(), .loadMore), in: placeholder)
         XCTAssertEqual(placeholder.button.title, Strings.Chat.loadMore)
         XCTAssertFalse(placeholder.button.isHidden)
     }
 
-    func testAFailedFirstLoadOffersRetryInTheSpinnersPlace() {
+    func testAFailedFirstLoadOffersRetryInTheSpinnersPlace() async {
         let placeholder = ChatPlaceholderView(frame: CGRect(x: 0, y: 0, width: 393, height: 600))
         var actions = 0
         placeholder.onAction = { actions += 1 }
-        placeholder.show(.loadFailed)
-        placeholder.layoutIfNeeded()
+        await show(.loadFailed, in: placeholder)
         XCTAssertFalse(placeholder.button.isHidden)
         XCTAssertEqual(placeholder.button.title, Strings.Chat.retry)
         XCTAssertEqual(placeholder.button.center.y, 300, accuracy: 1)
         placeholder.button.onTap?()
         XCTAssertEqual(actions, 1)
 
-        placeholder.show(.loading)
+        await show(.loading, in: placeholder)
         XCTAssertTrue(placeholder.button.isHidden)
+    }
+
+    /// The plan is measured off the main thread for the width, and laid
+    /// out on main for the height: a new height (the keyboard moving the
+    /// dock) recentres the column and measures nothing.
+    func testANewHeightMeasuresNothing() async {
+        let placeholder = ChatPlaceholderView(frame: CGRect(x: 0, y: 0, width: 393, height: 600))
+        await show(.empty(state(), .noMessages), in: placeholder)
+        let requested = placeholder.measure.requested
+        let tall = placeholder.subviews.compactMap { $0 as? ChatTextView }.filter { !$0.isHidden }.map(\.frame)
+        XCTAssertFalse(tall.isEmpty)
+        placeholder.frame.size.height = 400
+        placeholder.layoutIfNeeded()
+        XCTAssertEqual(placeholder.measure.requested, requested)
+        XCTAssertTrue(placeholder.measure.isCurrent)
+        let short = placeholder.subviews.compactMap { $0 as? ChatTextView }.filter { !$0.isHidden }.map(\.frame)
+        XCTAssertEqual(short.map(\.size), tall.map(\.size))
+        for (moved, was) in zip(short, tall) {
+            XCTAssertEqual(moved.minY, was.minY - 100, accuracy: 0.5)
+        }
+        placeholder.frame.size.width = 320
+        placeholder.layoutIfNeeded()
+        XCTAssertNotEqual(placeholder.measure.requested, requested)
     }
 }
 #endif

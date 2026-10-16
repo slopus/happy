@@ -179,23 +179,55 @@ final class ChatRowsTextSizeTests: XCTestCase {
     // MARK: Plans
 
     /// RN's multiplier at the designed size is 1: planned in an
-    /// environment there, every row is what it was planned without one.
-    func testAtTheDesignedSizeEveryRowIsAsItWas() {
+    /// environment there, every row has the fonts and glyphs it had without
+    /// one. Its text boxes end on the screen's pixels, not the next point,
+    /// so no box is taller and none is a point shorter.
+    func testAtTheDesignedSizeEveryRowIsAsItWasToThePixel() {
         for scale: CGFloat in [2, 3] {
             for (designed, large) in zip(rows(.designed), rows(text(.large, scale: scale))) {
                 let before = ChatRowRenderer.plan(designed.input, width: width)
                 let after = ChatRowRenderer.plan(large.input, width: width)
                 let at = "\(large.name) @\(scale)x"
-                XCTAssertEqual(after.size, before.size, at)
+                XCTAssertEqual(after.size.width, before.size.width, at)
+                XCTAssertLessThanOrEqual(after.size.height, before.size.height + 0.001, at)
                 let was = drawn(before)
                 let now = drawn(after)
-                XCTAssertEqual(now.texts.map(\.frame), was.texts.map(\.frame), at)
+                XCTAssertEqual(now.texts.count, was.texts.count, at)
+                for (text, before) in zip(now.texts, was.texts) {
+                    XCTAssertLessThanOrEqual(text.layout.size.height, before.layout.size.height, at)
+                    XCTAssertGreaterThan(text.layout.size.height, before.layout.size.height - 1, at)
+                }
                 XCTAssertEqual(now.texts.map { fonts($0.layout.string) }, was.texts.map { fonts($0.layout.string) }, at)
                 XCTAssertEqual(now.icons, was.icons, at)
             }
         }
         let footer = ChatRowRenderer.footer(controlledByUser: true, width: width, in: environment(.large))
-        XCTAssertEqual(footer.size, ChatRowRenderer.footer(controlledByUser: true, width: width, in: nil).size)
+        XCTAssertEqual(footer.size.width, ChatRowRenderer.footer(controlledByUser: true, width: width, in: nil).size.width)
+    }
+
+    /// Every text box ends on its screen's next pixel, as RN ceils a Text's
+    /// box: within a pixel of TextKit's own, where whole points would add
+    /// up to a point.
+    func testEveryTextBoxEndsOnTheScreensPixels() {
+        for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
+            for scale: CGFloat in [2, 3] {
+                for row in rows(text(category, scale: scale)) {
+                    let at = "\(row.name) at \(category.rawValue) @\(scale)x"
+                    for text in drawn(ChatRowRenderer.plan(row.input, width: width)).texts {
+                        let size = text.layout.size
+                        XCTAssertEqual((size.height * scale).rounded(), size.height * scale, accuracy: 0.0001, at)
+                        XCTAssertEqual((size.width * scale).rounded(), size.width * scale, accuracy: 0.0001, at)
+                        // The same text with no screen is rounded to points.
+                        let points = NSMutableAttributedString(attributedString: text.layout.string)
+                        points.removeAttribute(.chatDisplayScale, range: NSRange(location: 0, length: points.length))
+                        let whole = ChatTextLayout(points, width: text.layout.width, maxLines: text.layout.maxLines).size
+                        XCTAssertEqual(whole.height, whole.height.rounded(), at)
+                        XCTAssertLessThanOrEqual(size.height, whole.height, at)
+                        XCTAssertGreaterThan(size.height, whole.height - 1, at)
+                    }
+                }
+            }
+        }
     }
 
     /// At every size, every row's text is its designed text at RN's
@@ -246,7 +278,12 @@ final class ChatRowsTextSizeTests: XCTestCase {
                 for (name, before) in zip(now.headerNames, was.headerNames) {
                     XCTAssertEqual(fonts(name).first?.pointSize ?? 0, (fonts(before).first?.pointSize ?? 0) * scale, accuracy: 0.0001, at)
                 }
+                // Taller text grows a row past its minimum: not at every size
+                // (the todos row holds its 64 at XXXL), but by the largest.
                 if category > .large, !now.texts.isEmpty {
+                    XCTAssertGreaterThanOrEqual(plan.size.height, designed[index].1.height, "\(at) grows")
+                }
+                if category == .accessibilityExtraExtraExtraLarge, !now.texts.isEmpty {
                     XCTAssertGreaterThan(plan.size.height, designed[index].1.height, "\(at) grows")
                 }
             }
@@ -301,7 +338,7 @@ final class ChatRowsTextSizeTests: XCTestCase {
                 XCTAssertEqual(texts.count, planned.count, at)
                 for (view, (layout, frame)) in zip(texts, planned) {
                     XCTAssertTrue(view.layout === layout, at)
-                    XCTAssertEqual(view.frame, PixelGrid.snap(frame, scale: 3), at)
+                    assertSameFrame(view.frame, PixelGrid.snap(frame, scale: 3), at)
                 }
                 for label in shown.compactMap({ $0 as? ChatElapsedLabel }) {
                     XCTAssertEqual(label.environment, environment, at)
@@ -319,14 +356,23 @@ final class ChatRowsTextSizeTests: XCTestCase {
     // MARK: The placeholder
 
     private func placeholderFonts(_ view: ChatPlaceholderView) -> [CGFloat] {
-        view.subviews.compactMap { $0 as? ChatTextView }.filter { $0.superview != nil }.flatMap { view in
+        view.subviews.compactMap { $0 as? ChatTextView }.filter { !$0.isHidden }.flatMap { view in
             view.layout.map { fonts($0.string).map(\.pointSize) } ?? []
         }
     }
 
-    /// EmptyMessages is measured as drawn, on main: at its traits' size,
-    /// and made again when they change, without being shown again.
-    func testThePlaceholderIsMadeAgainAtANewSize() {
+    /// Lays the placeholder out and waits for the plan it asks for, made
+    /// off the main thread.
+    private func measured(_ placeholder: ChatPlaceholderView) async {
+        placeholder.updateTraitsIfNeeded()
+        placeholder.layoutIfNeeded()
+        await placeholder.measure.measured()
+        placeholder.layoutIfNeeded()
+    }
+
+    /// EmptyMessages is measured off main at its traits' size, and again
+    /// when they change, without being shown again.
+    func testThePlaceholderIsMadeAgainAtANewSize() async {
         let placeholder = ChatPlaceholderView(frame: CGRect(x: 0, y: 0, width: 393, height: 700))
         placeholder.traitOverrides.followsTextSize = true
         placeholder.traitOverrides.preferredContentSizeCategory = .large
@@ -338,30 +384,30 @@ final class ChatRowsTextSizeTests: XCTestCase {
         placeholder.updateTraitsIfNeeded()
         let state = ChatEmptyState(metadata: .object(["host": .string("mac"), "path": .string("/p")]), createdAt: 0, now: 60_000)
         placeholder.show(.empty(state, .noMessages))
-        placeholder.layoutIfNeeded()
+        await measured(placeholder)
         let designed = placeholderFonts(placeholder)
         // The host, the path, "No messages yet" and the date.
         XCTAssertEqual(designed, [18, 14, 20, 16])
 
         placeholder.traitOverrides.preferredContentSizeCategory = .accessibilityExtraExtraExtraLarge
-        placeholder.updateTraitsIfNeeded()
-        placeholder.layoutIfNeeded()
+        await measured(placeholder)
         let scale = multiplier(.accessibilityExtraExtraExtraLarge)
         let grown = placeholderFonts(placeholder)
         XCTAssertEqual(grown.count, designed.count)
         for (size, before) in zip(grown, designed) {
             XCTAssertEqual(size, before * scale, accuracy: 0.0001)
         }
-        for view in placeholder.subviews.compactMap({ $0 as? ChatTextView }) {
+        for view in placeholder.subviews.compactMap({ $0 as? ChatTextView }) where !view.isHidden {
             guard let layout = view.layout else { continue }
             XCTAssertLessThanOrEqual(layout.size.height, view.frame.height + 0.5, layout.string.string)
+            // Ceiled to the screen's pixels.
+            XCTAssertEqual((layout.size.height * 3).rounded(), layout.size.height * 3, accuracy: 0.0001)
         }
         XCTAssertEqual(placeholder.content, .empty(state, .noMessages))
 
         // Without the trait, the designed size.
         placeholder.traitOverrides.followsTextSize = false
-        placeholder.updateTraitsIfNeeded()
-        placeholder.layoutIfNeeded()
+        await measured(placeholder)
         XCTAssertEqual(placeholderFonts(placeholder), designed)
     }
 

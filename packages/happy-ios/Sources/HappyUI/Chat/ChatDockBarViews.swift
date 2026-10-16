@@ -23,37 +23,38 @@ final class ChatDockView: UIView {
 
 /// InactiveArchivedHint: "This session is inactive.", then Resume (a
 /// spinner while it runs), or "To resume it from the terminal:" and the
-/// commands, which a tap copies; their glyph ticks for two seconds.
+/// commands, which a tap copies; their glyph ticks for two seconds. Its
+/// text follows the text size, laid out off the main thread
+/// (`ChatDockBarMeasure.inactiveHint`) at the width the dock offers; until
+/// its plan is in it has no height. Resume keeps RN's 44, which taller
+/// text spills out of, and the commands their 48 at least.
 final class ChatInactiveHintView: UIView {
     var onResume: (() -> Void)?
+    /// Its plan came in: the dock is laid out again with its height.
+    var onNeedsLayout: (() -> Void)?
 
     private(set) var hint: InactiveSessionHint?
     private var resuming = false
     private var copied = false
     private var copiedReset: Task<Void, Never>?
-    private let notice = ChatLabel(MeasuredText(ChatTextStyles.inactiveHint.string(Strings.Chat.inactiveArchived, color: Palette.agentEventText)))
-    private let terminalNotice = ChatLabel(MeasuredText(ChatTextStyles.inactiveHint.string(Strings.Chat.resumeFromTerminal, color: Palette.agentEventText)))
+    private var model: ChatInactiveHintModel?
+    let measure = OffMainPlan<ChatDockBarInput<ChatInactiveHintModel>, ChatInactiveHintPlan> { ChatDockBarMeasure.inactiveHint($0) }
+    private let notice = ChatTextView()
+    private let terminalNotice = ChatTextView()
     private let button = ChatHintCard(fill: Palette.surfaceHigh)
-    private let buttonLabel = ChatLabel(MeasuredText(
-        ChatTextStyles.resumeButton.string(Strings.SessionDetail.resumeSession, color: Palette.text, lineBreakMode: .byTruncatingTail),
-        maxLines: 1
-    ))
+    private let buttonLabel = ChatTextView()
     private let spinner = UIActivityIndicatorView(style: .medium)
     private let command = ChatHintCard(fill: Palette.surface)
-    private let commandText = ChatLabel(MeasuredText(NSAttributedString()))
+    private let commandText = ChatTextView()
     private let commandIcon = UIImageView()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
-        for label in [notice, terminalNotice] {
-            label.view.isAccessibilityElement = true
-            label.view.accessibilityTraits = .staticText
-            label.view.accessibilityLabel = label.text.string.string
-            addSubview(label.view)
-        }
+        for label in [notice, terminalNotice] { addSubview(label) }
         spinner.color = UIColor(Palette.text)
         spinner.hidesWhenStopped = true
-        for view in [buttonLabel.view, spinner] {
+        buttonLabel.isAccessibilityElement = false
+        for view in [buttonLabel, spinner] {
             view.isUserInteractionEnabled = false
             button.addSubview(view)
         }
@@ -61,17 +62,31 @@ final class ChatInactiveHintView: UIView {
         button.addAction(UIAction { [weak self] _ in self?.onResume?() }, for: .touchUpInside)
         addSubview(button)
         commandIcon.contentMode = .center
-        for view in [commandText.view, commandIcon] {
+        commandText.isAccessibilityElement = false
+        for view in [commandText, commandIcon] {
             view.isUserInteractionEnabled = false
             command.addSubview(view)
         }
         command.addAction(UIAction { [weak self] _ in self?.copyCommand() }, for: .touchUpInside)
         addSubview(command)
+        measure.onApply = { [weak self] in
+            self?.setNeedsLayout()
+            self?.onNeedsLayout?()
+        }
+        // A new size is measured when the dock next asks for its height.
+        registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
+            self.setNeedsLayoutUpTheTree()
+        }
     }
 
     @available(*, unavailable)
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
+    }
+
+    /// Gone, it forgets its plan, so it comes back with nothing old in it.
+    override var isHidden: Bool {
+        didSet { if isHidden { measure.reset() } }
     }
 
     func show(_ hint: InactiveSessionHint, resuming: Bool) {
@@ -80,58 +95,69 @@ final class ChatInactiveHintView: UIView {
             copied = false
             copiedReset?.cancel()
             if case .command(let lines) = hint.action {
-                commandText.update(MeasuredText(ChatTextStyles.resumeCommand.string(lines.joined(separator: "\n"), color: Palette.text)))
                 command.accessibilityLabel = lines.joined(separator: ", ")
             }
         }
         self.hint = hint
         self.resuming = resuming
         let isCommand = hint.copyText != nil
-        terminalNotice.view.isHidden = !isCommand
-        command.isHidden = !isCommand
-        button.isHidden = hint.action != .resume
+        let action: ChatInactiveHintModel.Action = switch hint.action {
+        case .resume: .resume(Strings.SessionDetail.resumeSession)
+        case .command(let lines): .command(lines.joined(separator: "\n"))
+        case .noticeOnly: .none
+        }
+        model = ChatInactiveHintModel(notice: Strings.Chat.inactiveArchived, terminalNotice: isCommand ? Strings.Chat.resumeFromTerminal : nil, action: action)
         button.isEnabled = !resuming
         button.alpha = resuming ? InactiveHintLayout.Metrics.resumingOpacity : 1
-        buttonLabel.view.isHidden = resuming
+        buttonLabel.isHidden = resuming
         if resuming { spinner.startAnimating() } else { spinner.stopAnimating() }
         updateIcon()
-        accessibilityElements = [notice.view] + (isCommand ? [terminalNotice.view, command] : []) + (button.isHidden ? [] : [button])
         setNeedsLayout()
     }
 
+    /// The hint's height at a width, for the dock: its plan's, asked for
+    /// at that width; the last one's until that is in, or none.
     var barMeasurable: Measurable {
-        Measurable { [self] width in layout(width).size }
-    }
-
-    private func layout(_ width: CGFloat) -> InactiveHintLayout {
-        let action: InactiveHintLayout.Action = switch hint?.action {
-        case .resume?: .resume(label: buttonLabel.measurable)
-        case .command?: .command(commandText.measurable)
-        default: .none
+        Measurable { [self] width in
+            guard let model else { return .zero }
+            measure.request(ChatDockBarInput(model: model, width: width, text: traitCollection.measuredTextEnvironment))
+            return measure.plan?.layout.size ?? .zero
         }
-        return InactiveHintLayout(
-            width: width,
-            notice: notice.measurable,
-            terminalNotice: terminalNotice.view.isHidden ? nil : terminalNotice.measurable,
-            action: action
-        )
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let layout = layout(bounds.width)
-        notice.place(layout.notice)
-        if let frame = layout.terminalNotice { terminalNotice.place(frame) }
-        if let frame = layout.button {
+        let plan = measure.plan
+        let layout = plan?.layout
+        notice.isHidden = plan == nil
+        if let plan, let layout {
+            notice.setLayoutFrame(layout.notice)
+            notice.layout = plan.notice
+        }
+        terminalNotice.isHidden = plan?.terminalNotice == nil
+        if let frame = layout?.terminalNotice, let text = plan?.terminalNotice {
+            terminalNotice.setLayoutFrame(frame)
+            terminalNotice.layout = text
+        }
+        button.isHidden = layout?.button == nil
+        if let frame = layout?.button {
             button.setLayoutFrame(frame)
-            if let label = layout.buttonLabel { buttonLabel.place(label.offsetBy(dx: -frame.minX, dy: -frame.minY)) }
+            if let label = layout?.buttonLabel, let text = plan?.buttonLabel {
+                buttonLabel.setLayoutFrame(label.offsetBy(dx: -frame.minX, dy: -frame.minY))
+                buttonLabel.layout = text
+            }
             spinner.center = CGPoint(x: frame.width / 2, y: frame.height / 2)
         }
-        if let frame = layout.command {
+        command.isHidden = layout?.command == nil
+        if let frame = layout?.command {
             command.setLayoutFrame(frame)
-            if let text = layout.commandText { commandText.place(text.offsetBy(dx: -frame.minX, dy: -frame.minY)) }
-            if let icon = layout.commandIcon { commandIcon.setLayoutFrame(icon.offsetBy(dx: -frame.minX, dy: -frame.minY)) }
+            if let rect = layout?.commandText, let text = plan?.command {
+                commandText.setLayoutFrame(rect.offsetBy(dx: -frame.minX, dy: -frame.minY))
+                commandText.layout = text
+            }
+            if let icon = layout?.commandIcon { commandIcon.setLayoutFrame(icon.offsetBy(dx: -frame.minX, dy: -frame.minY)) }
         }
+        accessibilityElements = [notice, terminalNotice, command, button].filter { !$0.isHidden }
     }
 
     private func copyCommand() {
@@ -194,16 +220,23 @@ private final class ChatHintCard: UIControl {
 
 /// AgentGoalBar.tsx: the goal the agent is working towards, with the
 /// actions the agent allows. A button whose action is on its way shows a
-/// spinner and can't be pressed again.
+/// spinner and can't be pressed again. Its text follows the text size,
+/// laid out off the main thread (`ChatDockBarMeasure.goalBar`) at the width
+/// the dock offers; until its plan is in it has no height. The glyph and
+/// the 30 pt buttons keep their size.
 final class ChatGoalBarView: UIView {
     var onAction: ((SessionGoalAction) -> Void)?
+    /// Its plan came in: the dock is laid out again with its height.
+    var onNeedsLayout: (() -> Void)?
 
     private(set) var goal: VisibleAgentGoal?
     private var inFlight: SessionGoalAction?
+    private var model: ChatGoalBarModel?
+    let measure = OffMainPlan<ChatDockBarInput<ChatGoalBarModel>, ChatGoalBarPlan> { ChatDockBarMeasure.goalBar($0) }
     private let card = UIView()
     private let icon = UIImageView(image: .icon(.ionicons("locate-outline"), size: GoalBarLayout.Metrics.iconSize))
-    private let label = ChatLabel(MeasuredText(ChatTextStyles.goalLabel.string(Strings.AgentGoal.currentGoal, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail), maxLines: 1))
-    private let text = ChatLabel(MeasuredText(NSAttributedString()))
+    private let label = ChatTextView()
+    private let text = ChatTextView()
     private var buttons: [ChatGoalActionButton] = []
 
     override init(frame: CGRect) {
@@ -215,10 +248,19 @@ final class ChatGoalBarView: UIView {
         addSubview(card)
         icon.contentMode = .center
         icon.tintColor = UIColor(Palette.textSecondary)
-        for view in [icon, label.view, text.view] { addSubview(view) }
+        for view in [label, text] { view.isAccessibilityElement = false }
+        for view in [icon, label, text] { addSubview(view) }
         updateBorder()
         registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (self: Self, _) in
             self.updateBorder()
+        }
+        measure.onApply = { [weak self] in
+            self?.setNeedsLayout()
+            self?.onNeedsLayout?()
+        }
+        // A new size is measured when the dock next asks for its height.
+        registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
+            self.setNeedsLayoutUpTheTree()
         }
     }
 
@@ -227,11 +269,13 @@ final class ChatGoalBarView: UIView {
         fatalError("init(coder:) is not supported")
     }
 
+    /// Gone, it forgets its plan, so it comes back with nothing old in it.
+    override var isHidden: Bool {
+        didSet { if isHidden { measure.reset() } }
+    }
+
     func show(_ goal: VisibleAgentGoal, inFlight: SessionGoalAction?) {
         guard goal != self.goal || inFlight != self.inFlight else { return }
-        if goal.text != self.goal?.text {
-            text.update(MeasuredText(ChatTextStyles.goalText.string(goal.text, color: Palette.text, lineBreakMode: .byTruncatingTail), maxLines: 1))
-        }
         if goal.actions != self.goal?.actions {
             for button in buttons { button.removeFromSuperview() }
             buttons = goal.actions.map { action in
@@ -243,6 +287,7 @@ final class ChatGoalBarView: UIView {
         }
         self.goal = goal
         self.inFlight = inFlight
+        model = ChatGoalBarModel(label: Strings.AgentGoal.currentGoal, text: goal.text, actionCount: buttons.count)
         for button in buttons { button.busy = button.action == inFlight }
         isAccessibilityElement = false
         card.isAccessibilityElement = true
@@ -251,20 +296,28 @@ final class ChatGoalBarView: UIView {
         setNeedsLayout()
     }
 
-    /// The bar's height at a width, for the dock.
+    /// The bar's height at a width, for the dock: its plan's, asked for at
+    /// that width; the last one's until that is in, or none.
     var barMeasurable: Measurable {
         Measurable { [self] width in
-            GoalBarLayout(width: width, label: label.measurable, text: text.measurable, actionCount: buttons.count).size
+            guard let model else { return .zero }
+            measure.request(ChatDockBarInput(model: model, width: width, text: traitCollection.measuredTextEnvironment))
+            return measure.plan?.layout.size ?? .zero
         }
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let layout = GoalBarLayout(width: bounds.width, label: label.measurable, text: text.measurable, actionCount: buttons.count)
+        let plan = measure.plan
+        for view in [card, icon, label, text] { view.isHidden = plan == nil }
+        guard let plan else { return }
+        let layout = plan.layout
         card.setLayoutFrame(layout.card)
         icon.setLayoutFrame(layout.icon)
-        label.place(layout.label)
-        text.place(layout.text)
+        label.setLayoutFrame(layout.label)
+        label.layout = plan.label
+        text.setLayoutFrame(layout.text)
+        text.layout = plan.text
         for (button, frame) in zip(buttons, layout.actions) { button.setLayoutFrame(frame) }
     }
 
@@ -332,16 +385,32 @@ final class ChatGoalActionButton: UIControl {
 
 /// RigActivityBar.tsx: "2 agents · 1 processes", each with its glyph,
 /// wrapping onto more lines when it must. Full width, under the other bars.
+/// Its counts follow the text size, laid out off the main thread
+/// (`ChatDockBarMeasure.rigActivity`) at the width the dock offers; until
+/// its plan is in it has no height. The 12 pt glyphs keep their size.
 final class ChatRigActivityView: UIView {
+    /// Its plan came in: the dock is laid out again with its height.
+    var onNeedsLayout: (() -> Void)?
+
     private(set) var indicators: [RigActivityIndicator] = []
+    private var model: ChatRigActivityModel?
+    let measure = OffMainPlan<ChatDockBarInput<ChatRigActivityModel>, ChatRigActivityPlan> { ChatDockBarMeasure.rigActivity($0) }
     private var icons: [UIImageView] = []
-    private var labels: [ChatLabel] = []
+    private var labels: [ChatTextView] = []
 
     override init(frame: CGRect) {
         super.init(frame: frame)
         isUserInteractionEnabled = false
         isAccessibilityElement = true
         accessibilityTraits = .staticText
+        measure.onApply = { [weak self] in
+            self?.setNeedsLayout()
+            self?.onNeedsLayout?()
+        }
+        // A new size is measured when the dock next asks for its height.
+        registerForTraitChanges(UIView.textSizeTraits + [UITraitDisplayScale.self]) { (self: Self, _) in
+            self.setNeedsLayoutUpTheTree()
+        }
     }
 
     @available(*, unavailable)
@@ -349,11 +418,15 @@ final class ChatRigActivityView: UIView {
         fatalError("init(coder:) is not supported")
     }
 
+    /// Gone, it forgets its plan, so it comes back with nothing old in it.
+    override var isHidden: Bool {
+        didSet { if isHidden { measure.reset() } }
+    }
+
     func show(_ indicators: [RigActivityIndicator]) {
         guard indicators != self.indicators else { return }
         self.indicators = indicators
         for view in icons { view.removeFromSuperview() }
-        for label in labels { label.view.removeFromSuperview() }
         icons = indicators.map { indicator in
             let name = switch indicator.kind {
             case .subagents: "people-outline"
@@ -367,24 +440,43 @@ final class ChatRigActivityView: UIView {
             addSubview(view)
             return view
         }
-        labels = indicators.map { indicator in
-            let label = ChatLabel(MeasuredText(ChatTextStyles.rigActivity.string(Strings.Chat.rigActivity(indicator), color: Palette.textSecondary), maxLines: 1))
-            addSubview(label.view)
-            return label
-        }
-        accessibilityLabel = indicators.map(Strings.Chat.rigActivity).joined(separator: ", ")
+        let words = indicators.map(Strings.Chat.rigActivity)
+        model = ChatRigActivityModel(labels: words)
+        accessibilityLabel = words.joined(separator: ", ")
         setNeedsLayout()
     }
 
     var barMeasurable: Measurable {
-        Measurable { [self] width in RigActivityLayout(width: width, labels: labels.map(\.measurable)).size }
+        Measurable { [self] width in
+            guard let model else { return .zero }
+            measure.request(ChatDockBarInput(model: model, width: width, text: traitCollection.measuredTextEnvironment))
+            return measure.plan?.layout.size ?? .zero
+        }
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        let layout = RigActivityLayout(width: bounds.width, labels: labels.map(\.measurable))
-        for (view, frame) in zip(icons, layout.icons) { view.setLayoutFrame(frame) }
-        for (label, frame) in zip(labels, layout.labels) { label.place(frame) }
+        let plan = measure.plan
+        while labels.count < plan?.labels.count ?? 0 {
+            let label = ChatTextView()
+            label.isAccessibilityElement = false
+            addSubview(label)
+            labels.append(label)
+        }
+        let placed = plan?.layout.icons ?? []
+        for (index, view) in icons.enumerated() {
+            view.isHidden = index >= placed.count
+            if index < placed.count { view.setLayoutFrame(placed[index]) }
+        }
+        for (index, label) in labels.enumerated() {
+            guard let plan, index < plan.labels.count, index < plan.layout.labels.count else {
+                label.isHidden = true
+                continue
+            }
+            label.isHidden = false
+            label.setLayoutFrame(plan.layout.labels[index])
+            label.layout = plan.labels[index]
+        }
     }
 }
 #endif

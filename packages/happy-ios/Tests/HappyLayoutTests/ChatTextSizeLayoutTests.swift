@@ -10,7 +10,8 @@ import XCTest
 /// the icons, paddings, minimum heights and fixed lines (the status line,
 /// OlderEnd's slot) do not, and taller text grows a row past its minimum.
 /// Text here is the stand-in `text(_:advance:lineHeight:)`, its line the
-/// style's scaled line up to the whole point, as `ChatTextLayout` ceils it.
+/// style's scaled line up to a 3x screen's next pixel, as `ChatTextLayout`
+/// ceils it (`PixelGrid.ceil`).
 final class ChatTextSizeLayoutTests: XCTestCase {
     private let scales: [TextScale] = [
         TextScale(.extraSmall), .standard, TextScale(.extraExtraExtraLarge),
@@ -18,14 +19,34 @@ final class ChatTextSizeLayoutTests: XCTestCase {
     ]
     private let largest = TextScale(.accessibilityExtraExtraExtraLarge)
 
+    /// Up to a 3x screen's next pixel.
+    private func pixels(_ value: CGFloat) -> CGFloat {
+        PixelGrid.ceil(value, scale: 3)
+    }
+
     /// One line of `style` at `scale`, as the rows measure it.
     private func line(_ style: ChatTextStyle, _ scale: TextScale) -> CGFloat {
-        (style.scaled(scale).lineHeight ?? 0).rounded(.up)
+        pixels(style.scaled(scale).lineHeight ?? 0)
     }
 
     /// `string` in `style` at `scale`: 8 a character at the designed size.
     private func words(_ string: String, _ style: ChatTextStyle, _ scale: TextScale, maxLines: Int = 0) -> Measurable {
         text(string, advance: 8 * scale.multiplier, lineHeight: line(style, scale), maxLines: maxLines)
+    }
+
+    /// A text box ends on the screen's next pixel, as RN's does, not the
+    /// next point; float noise over a pixel stays on it.
+    func testATextBoxRoundsUpToTheScreensPixels() {
+        XCTAssertEqual(PixelGrid.ceil(89.275, scale: 3), 268.0 / 3)
+        XCTAssertEqual(PixelGrid.ceil(89.275, scale: 2), 89.5)
+        XCTAssertEqual(PixelGrid.ceil(89.275, scale: 0), 90)
+        XCTAssertEqual(PixelGrid.ceil(236.0 / 3, scale: 3), 236.0 / 3)
+        XCTAssertEqual(PixelGrid.ceil(236.0 / 3 + 1e-9, scale: 3), 236.0 / 3)
+        XCTAssertEqual(PixelGrid.ceil(20, scale: 3), 20)
+        XCTAssertEqual(PixelGrid.ceil(0, scale: 3), 0)
+        // A 22 line at AX-XXXL, 78.56, is 236 pixels where whole points
+        // would be 79.
+        XCTAssertEqual(PixelGrid.ceil(22 * largest.multiplier, scale: 3), 236.0 / 3)
     }
 
     func testEveryRowStyleScalesByOneFactorUncapped() {
@@ -74,11 +95,11 @@ final class ChatTextSizeLayoutTests: XCTestCase {
             assertFrame(layout.status, rect(16, bubble.maxY + 4 + 2, 361, 14))
             XCTAssertEqual(layout.size.height, 6 + bubble.height + 4 + 2 + 14 + 4, accuracy: 0.001)
         }
-        // At the largest size the 25 line is 89.275, 90 measured.
+        // At the largest size the 25 line is 89.275, measured 268 pixels.
         let largest = UserMessageLayout(.init(width: 393, content: .text([.text(words("Hello", ChatTextStyles.markdownText, largest))])))
-        assertFrame(largest.bubble, rect(210.16, 6, 166.84, 116))
-        assertFrame(largest.status, rect(16, 128, 361, 14))
-        XCTAssertEqual(largest.size.height, 146, accuracy: 0.001)
+        assertFrame(largest.bubble, rect(210.16, 6, 166.84, 346.0 / 3))
+        assertFrame(largest.status, rect(16, 382.0 / 3, 361, 14))
+        XCTAssertEqual(largest.size.height, 436.0 / 3, accuracy: 0.001)
     }
 
     func testAGoalKeepsItsGlyphAndCentresItOnTheGrownLabel() {
@@ -106,19 +127,20 @@ final class ChatTextSizeLayoutTests: XCTestCase {
             XCTAssertEqual(layout.chevron.midY, layout.header.midY, accuracy: 0.001)
             XCTAssertEqual(layout.size.height, height + 16, accuracy: 0.001)
         }
-        // Designed: the 28 minimum holds a 20 line; at XXXL 27.06 is 28, and 36.
+        // Designed: the 28 minimum holds a 20 line; at XXXL 27.06 is 82
+        // pixels, and 35⅓.
         XCTAssertEqual(WorkGroupHeaderLayout(width: 393, label: words("Hide", ChatTextStyles.workGroup, .standard)).size.height, 44)
-        XCTAssertEqual(WorkGroupHeaderLayout(width: 393, label: words("Hide", ChatTextStyles.workGroup, TextScale(.extraExtraExtraLarge))).size.height, 52)
+        XCTAssertEqual(WorkGroupHeaderLayout(width: 393, label: words("Hide", ChatTextStyles.workGroup, TextScale(.extraExtraExtraLarge))).size.height, 154.0 / 3, accuracy: 0.001)
     }
 
     func testAToolCardsHeaderGrowsWithItsTitleAndKeepsItsGlyphs() {
         typealias M = ToolCardLayout.Metrics
         for scale in scales {
             // toolName and toolDescription have no line height of their
-            // own: their font's line, here 1.2 em up to the point.
-            let titleLine = (14 * 1.2 * scale.multiplier).rounded(.up)
-            let descriptionLine = (13 * 1.2 * scale.multiplier).rounded(.up)
-            let elapsed = CGSize(width: (6 * 7.8 * scale.multiplier).rounded(.up), height: (13 * 1.2 * scale.multiplier).rounded(.up))
+            // own: their font's line, here 1.2 em up to the pixel.
+            let titleLine = pixels(14 * 1.2 * scale.multiplier)
+            let descriptionLine = pixels(13 * 1.2 * scale.multiplier)
+            let elapsed = CGSize(width: pixels(6 * 7.8 * scale.multiplier), height: pixels(13 * 1.2 * scale.multiplier))
             let layout = ToolCardLayout(.init(
                 width: 393,
                 header: .init(
@@ -163,8 +185,12 @@ final class ChatTextSizeLayoutTests: XCTestCase {
             XCTAssertEqual(layout.label.height, label)
             XCTAssertEqual(layout.size.height, height + 4, accuracy: 0.001)
         }
-        // 20 at the designed size sits in the 28; 72 at the largest.
-        XCTAssertEqual(CompactToolRowLayout(width: 393, label: words("Ran", ChatTextStyles.compactActivity, largest), elapsed: nil, statusIcon: nil, footer: nil).header.height, 78)
+        // 20 at the designed size sits in the 28; 71.43 at the largest,
+        // 215 pixels.
+        XCTAssertEqual(
+            CompactToolRowLayout(width: 393, label: words("Ran", ChatTextStyles.compactActivity, largest), elapsed: nil, statusIcon: nil, footer: nil).header.height,
+            233.0 / 3, accuracy: 0.001
+        )
     }
 
     func testPermissionButtonsGrowPast34WithTheirLabels() {
@@ -184,14 +210,15 @@ final class ChatTextSizeLayoutTests: XCTestCase {
             XCTAssertEqual(layout.labels[0].height, label)
             XCTAssertEqual(layout.buttons[1].minY - layout.buttons[0].maxY, M.gap)
         }
-        // The long label wraps to its two lines at the largest size: 2 × 65.
+        // The long label wraps to its two lines at the largest size: 2 ×
+        // 64.28, each 193 pixels.
         let large = PermissionFooterLayout(width: 377, labels: [words("Yes, allow all edits during this session", ChatTextStyles.permissionButton, largest, maxLines: 2)])
-        XCTAssertEqual(large.buttons[0].height, 2 * 65 + 16)
+        XCTAssertEqual(large.buttons[0].height, 2 * 193.0 / 3 + 16, accuracy: 0.001)
     }
 
     func testTheFootersWarningGrowsAroundItsFixedGlyph() {
         for scale in scales {
-            let warningLine = (12 * 1.3 * scale.multiplier).rounded(.up)
+            let warningLine = pixels(12 * 1.3 * scale.multiplier)
             let layout = ChatFooterLayout(width: 393, warning: text("Permissions shown in terminal only.", advance: 6 * scale.multiplier, lineHeight: warningLine))
             let box = try! XCTUnwrap(layout.warning)
             let icon = try! XCTUnwrap(layout.icon)
@@ -208,7 +235,7 @@ final class ChatTextSizeLayoutTests: XCTestCase {
     func testOlderEndsSlotStays32AndItsButtonSpillsCentred() {
         for scale in scales {
             // RoundButton small: its label's line and 17 and 8 around it.
-            let button = CGSize(width: 361, height: (16 * 1.3 * scale.multiplier).rounded(.up) + 25)
+            let button = CGSize(width: 361, height: pixels(16 * 1.3 * scale.multiplier) + 25)
             let layout = ChatOlderEndLayout(width: 393, control: button)
             XCTAssertEqual(layout.size, CGSize(width: 393, height: 32))
             XCTAssertEqual(layout.control.midY, 16, accuracy: 0.001)
@@ -219,7 +246,7 @@ final class ChatTextSizeLayoutTests: XCTestCase {
 
     func testAnEventLineGrowsAndKeepsItsMargins() {
         for scale in scales {
-            let eventLine = (14 * 1.2 * scale.multiplier).rounded(.up)
+            let eventLine = pixels(14 * 1.2 * scale.multiplier)
             let layout = ChatEventLayout(width: 393, label: text("Switched to plan mode", advance: 7 * scale.multiplier, lineHeight: eventLine))
             XCTAssertEqual(layout.label.minY, 8)
             XCTAssertEqual(layout.size.height, layout.label.height + 16, accuracy: 0.001)
@@ -287,7 +314,7 @@ final class ChatTextSizeLayoutTests: XCTestCase {
     /// between pieces are padding and keep their size.
     func testTheMessageScreenKeepsItsReadingPlace() throws {
         func pieces(_ scale: TextScale) -> [CGRect] {
-            let line = (24 * scale.multiplier).rounded(.up)
+            let line = pixels(24 * scale.multiplier)
             var y: CGFloat = 16
             return (0..<4).map { _ in
                 defer { y += 10 * line + 12 }
