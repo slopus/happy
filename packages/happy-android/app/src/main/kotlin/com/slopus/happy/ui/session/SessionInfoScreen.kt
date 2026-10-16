@@ -50,6 +50,8 @@ import com.slopus.happy.model.resumeCommand
 import com.slopus.happy.model.rigIdentity
 import com.slopus.happy.model.sandboxSummary
 import com.slopus.happy.model.shortId
+import com.slopus.happy.resume.ResumeOutcome
+import com.slopus.happy.resume.rememberResumeTexts
 import com.slopus.happy.sync.ComposerMirror
 import com.slopus.happy.sync.OpResult
 import com.slopus.happy.sync.SpawnSessionResult
@@ -317,6 +319,7 @@ private fun SessionInfoContent(
         ResumeBlock.MachineOffline -> stringResource(R.string.session_info_resume_session_machine_offline)
         null -> stringResource(R.string.session_info_resume_session_subtitle)
     }
+    val resumeTexts = rememberResumeTexts()
     val forkFailed = stringResource(R.string.session_fork_error_generic)
     val missingMetadata = stringResource(R.string.session_fork_error_missing_metadata)
     val archiveFailed = stringResource(R.string.session_info_failed_to_archive_session)
@@ -372,7 +375,13 @@ private fun SessionInfoContent(
                         if (!resume.canResume || machineId == null) {
                             show(errorTitle, resumeSubtitle)
                         } else {
-                            scope.launch { spawned(continuations.resume(machineId, session.id), resumeSubtitle) }
+                            scope.launch {
+                                when (val outcome = continuations.resume(machineId, session.id, metadata, resumeTexts)) {
+                                    is ResumeOutcome.Resumed -> actions.onOpenSession(outcome.sessionId)
+                                    is ResumeOutcome.Failed -> show(errorTitle, outcome.message)
+                                    ResumeOutcome.InFlight -> Unit
+                                }
+                            }
                         }
                     },
                     modifier = Modifier.testTag(SessionInfoTags.RESUME),

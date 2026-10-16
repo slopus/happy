@@ -40,10 +40,12 @@ import com.slopus.happy.model.gitStatusKey
 import com.slopus.happy.model.isCliOutdated
 import com.slopus.happy.model.resumeCommandBlock
 import com.slopus.happy.projects.GitStatusServices
+import com.slopus.happy.resume.ChatResumeOps
+import com.slopus.happy.resume.ResumeOutcome
+import com.slopus.happy.resume.SessionResumer
+import com.slopus.happy.resume.rememberResumeTexts
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.ComposerMirror
-import com.slopus.happy.sync.MessageMetaResolver
-import com.slopus.happy.sync.SpawnSessionResult
 import com.slopus.happy.ui.attachments.LocalComposerImages
 import com.slopus.happy.ui.attachments.LocalSessionAttachments
 import com.slopus.happy.ui.attachments.attachmentNoticeAlert
@@ -54,6 +56,8 @@ import com.slopus.happy.ui.attachments.rememberSessionAttachments
 import com.slopus.happy.ui.autocomplete.LocalSuggestionSource
 import com.slopus.happy.ui.autocomplete.rememberSessionSuggestions
 import com.slopus.happy.ui.components.Alert
+import com.slopus.happy.ui.session.rememberPendingChatRoute
+import com.slopus.happy.ui.session.rememberSessionScreenSlots
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.files.MessageDetailRoute
@@ -91,7 +95,7 @@ fun NavGraphBuilder.chatRoutes(
             onInfo = { onInfo(route.id) },
             onToolPress = { message -> nav.navigate(toolPressRoute(route.id, message)) },
             onToolFilePress = { message, file -> nav.navigate(MessageDetailRoute(route.id, message.id, file = file)) },
-            // A resume that comes back as another session replaces this chat, as navigateToSession does.
+            // A resume that comes back as another session, or another tab of the checkout, replaces this chat in place.
             onOpenSession = { id -> if (id != route.id) nav.navigate(SessionRoute(id)) { popUpTo<SessionRoute> { inclusive = true } } },
         )
     }
@@ -100,7 +104,7 @@ fun NavGraphBuilder.chatRoutes(
 @Composable
 private fun ChatRoute(
     graph: AppGraph,
-    sessionId: String,
+    routeId: String,
     actions: ChatActions,
     onBack: () -> Unit,
     onInfo: () -> Unit,
@@ -108,6 +112,9 @@ private fun ChatRoute(
     onToolFilePress: (ChatMessage.ToolCallMessage, String) -> Unit,
     onOpenSession: (String) -> Unit,
 ) {
+    // A chat opened from a tab strip's `+` stands on its stand-in's id until the machine names it (Home's pending chats).
+    val route = rememberPendingChatRoute(graph, routeId)
+    val sessionId = route.sessionId
     val account by graph.account.collectAsStateWithLifecycle()
     val feed = remember(account) {
         val sync = account
@@ -122,7 +129,8 @@ private fun ChatRoute(
     // One flow per account and chat: a new one would start a new draft.
     val mirrorFlow = remember(account, sessionId) { account?.composer?.mirror(sessionId) }
     val mirror by remember(mirrorFlow) { mirrorFlow ?: flowOf(ComposerMirror()) }.collectAsStateWithLifecycle(ComposerMirror())
-    val draft = rememberComposerDraft(mirrorFlow, onWrite = { text -> actions.setDraft(sessionId, text) })
+    val draft = rememberComposerDraft(mirrorFlow, onWrite = { text -> if (!route.writeDraft(text)) actions.setDraft(sessionId, text) })
+    route.SeedDraft(draft)
     val resources = LocalResources.current
     val metadata = state.session?.metadata
     val modes = remember(metadata, mirror, settings.agentDefaultOverrides) {
@@ -145,6 +153,8 @@ private fun ChatRoute(
     val showCliWarning = isCliOutdated(cliVersion) && !(machineId != null && local.acknowledgedCliVersions[machineId] == cliVersion)
     val machine by rememberMachine(graph, machineId)
     var resuming by remember { mutableStateOf(false) }
+    val resumer = remember(graph) { SessionResumer.of(graph) }
+    val resumeTexts = rememberResumeTexts()
     val scope = rememberCoroutineScope()
     var sending by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<String?>(null) }
@@ -161,7 +171,7 @@ private fun ChatRoute(
         failure = e.message?.takeIf { it.isNotBlank() } ?: notSent
     }
 
-    val screenActions = remember(sessionId, actions, feed, draft, resources) {
+    val screenActions = remember(sessionId, actions, feed, draft, resources, route) {
         ChatScreenActions(
             onBack = onBack,
             onInfo = onInfo,
@@ -169,6 +179,7 @@ private fun ChatRoute(
             onToolFilePress = onToolFilePress,
             onDraftChange = draft::set,
             onSend = onSend@{ text ->
+                if (route.submit(text)) return@onSend draft.set("")
                 val picked = latestImages?.images?.toList().orEmpty()
                 if ((text.isBlank() && picked.isEmpty()) || sending) return@onSend
                 // Questions the agent is blocked on are dismissed once the
@@ -222,24 +233,12 @@ private fun ChatRoute(
                 resuming = true
                 scope.launch {
                     try {
-                        // useSessionQuickActions performResume: the picks the session would send with.
-                        val meta = MessageMetaResolver.mode(session.metadata, latestMirror, latestSettings.agentDefaultOverrides)
-                        when (val result = actions.resume(sessionId, machine, meta.model?.value, meta.permissionMode)) {
-                            is SpawnSessionResult.Success -> {
-                                latestMirror.permissionMode?.let { mode ->
-                                    runCatching { actions.setModes(result.sessionId, mapOf(AgentModeField.PERMISSION_MODE to mode)) }
-                                }
-                                onOpenSession(result.sessionId)
-                            }
-                            is SpawnSessionResult.RequestToApproveDirectoryCreation ->
-                                failure = resources.getString(R.string.session_info_resume_session_unexpected_directory_prompt)
-                            is SpawnSessionResult.Error -> failure = result.errorMessage.ifEmpty { notSent }
-                            is SpawnSessionResult.Pending -> failure = notSent
+                        val ops = ChatResumeOps(actions, { latestMirror }, { latestSettings.agentDefaultOverrides })
+                        when (val outcome = resumer.resume(ops, sessionId, machine, session.metadata, resumeTexts)) {
+                            is ResumeOutcome.Resumed -> onOpenSession(outcome.sessionId)
+                            is ResumeOutcome.Failed -> failure = outcome.message
+                            ResumeOutcome.InFlight -> Unit
                         }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        report(e)
                     } finally {
                         resuming = false
                     }
@@ -266,6 +265,7 @@ private fun ChatRoute(
         LocalSuggestionSource provides rememberSessionSuggestions(graph, sessionId, state.session?.metadata),
         LocalUsageDisplay provides UsageDisplay(settings.alwaysShowContextSize, settings.usageLimitShowRemaining),
     ) {
+        val slots = rememberSessionScreenSlots(graph, routeId, route.pending, state, onSwitch = onOpenSession, onBack = onBack)
         ChatScreen(
             state = state,
             draft = draft.text,
@@ -278,6 +278,9 @@ private fun ChatRoute(
             modes = modes,
             gitStatus = gitStatus,
             showCliWarning = showCliWarning,
+            slots = slots.chat,
+            goalBar = slots.goalBar,
+            activityBar = slots.activityBar,
             inactiveHint = state.session?.let { session ->
                 // happy-app: a disconnected Happy CLI session; a Happy Agent session has its own lifecycle.
                 if (state.sessionState != SessionState.Disconnected || session.isRig) return@let null

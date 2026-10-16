@@ -22,6 +22,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -175,6 +176,28 @@ class ChatScreenActions(
 )
 
 /**
+ * What the session screen carries besides the chat (SessionView.tsx), filled
+ * by Home: [headerAccessory] under the header (the checkout's tab strip),
+ * with [headerTitle] and [headerSubtitle] naming the checkout while it shows;
+ * [pending] while the route stands on a chat no machine has answered for yet.
+ */
+@Immutable
+class ChatScreenSlots(
+    val headerAccessory: (@Composable () -> Unit)? = null,
+    val headerTitle: String? = null,
+    val headerSubtitle: String? = null,
+    val pending: ChatPendingSlot? = null,
+)
+
+/**
+ * A chat being started: "New chat" in the header, [placeholder] in place of
+ * the transcript, and the composer under it, its chips read from [anchor]
+ * (the chat it was opened beside, which decides how it runs).
+ */
+@Immutable
+class ChatPendingSlot(val anchor: ChatSessionInfo?, val placeholder: @Composable () -> Unit)
+
+/**
  * One chat (SessionView.tsx). Spec: the header (back; the title, 16/20
  * semibold, with the workspace or branch and the git counts under it in
  * 12/16 secondary; the 28 avatar, monochrome while offline, in the right
@@ -217,6 +240,7 @@ fun ChatScreen(
     gitStatus: GitStatus? = null,
     showCliWarning: Boolean = false,
     inactiveHint: InactiveHint? = null,
+    slots: ChatScreenSlots = ChatScreenSlots(),
     /** The goal bar (AgentGoalBar), between the inactive hint and the question banner; fades with the details. */
     goalBar: (@Composable () -> Unit)? = null,
     /** The activity bar (RigActivityBar), just over the composer; fades with the details. */
@@ -224,6 +248,7 @@ fun ChatScreen(
 ) {
     val colors = HappyTheme.colors
     val session = state.session
+    val pending = slots.pending
     val toolEnvironment = ToolEnvironment(
         compactToolCalls = compactToolCalls,
         showLineNumbers = showLineNumbersInToolViews,
@@ -248,6 +273,8 @@ fun ChatScreen(
     }
     val bubble = userMessageBubblePalette(bubbleColor, colors.dark)
     val title = when {
+        // A chat on its way to a machine has no name yet, and is emphatically not a deleted one.
+        pending != null -> stringResource(R.string.session_new_chat)
         !state.sessionLoaded -> ""
         session == null -> stringResource(R.string.errors_session_deleted)
         else -> session.title ?: stringResource(R.string.session_new_chat)
@@ -265,15 +292,20 @@ fun ChatScreen(
         Header(
             scrolled = session != null && listState.canScrollForward,
             left = { HeaderBackButton(actions.onBack) },
-            titleContent = { ChatHeaderTitle(title, session, gitStatus, onClick = if (session != null) actions.onInfo else null) },
+            titleContent = {
+                ChatHeaderTitle(slots.headerTitle ?: title, session, gitStatus, onClick = if (session != null) actions.onInfo else null, subtitleOverride = slots.headerSubtitle)
+            },
             right = if (session != null && !tablet) {
                 { HeaderAvatar(session, state.online, actions.onInfo) }
             } else {
                 null
             },
         )
+        slots.headerAccessory?.invoke()
         val floating = !tablet && !LocalWindowLayout.current.isLandscape
-        val docked = floating && session != null
+        // A pending chat's composer runs as the chat it was opened beside.
+        val composerSession = session ?: pending?.anchor
+        val docked = floating && composerSession != null
         // SessionView `isChatAtBottom`, reset for each chat.
         var atNewest by remember(session?.id) { mutableStateOf(true) }
         val showDetails = !floating || atNewest
@@ -285,9 +317,9 @@ fun ChatScreen(
         val showsList = session != null && state.sessionLoaded && state.snapshot.rows.isNotEmpty()
         val inputPadding = if (tablet) ChatScreenSpec.tabletInputPaddingHorizontal else ChatScreenSpec.inputPaddingHorizontal
         val dock = @Composable { dockModifier: Modifier, composerModifier: Modifier ->
-            if (session != null) {
+            if (composerSession != null) {
                 ChatDock(
-                    state, session, draft, actions, now, modes, inactiveHint, goalBar, activityBar, inputPadding, showDetails,
+                    state, composerSession, draft, actions, now, modes, inactiveHint.takeIf { session != null }, goalBar, activityBar, inputPadding, showDetails,
                     onPanelPositioned = if (docked) { coordinates -> cardTop = coordinates.positionInRoot().y } else null,
                     modifier = dockModifier,
                     composerModifier = composerModifier,
@@ -303,6 +335,7 @@ fun ChatScreen(
             // The list runs under the floating dock; anything else keeps to the room above it.
             Box(Modifier.fillMaxSize().padding(bottom = if (showsList) 0.dp else dockInset)) {
                 when {
+                    session == null && pending != null -> pending.placeholder()
                     !state.sessionLoaded -> Spinner(Modifier.align(Alignment.Center).testTag(ChatScreenTags.LOADING))
                     session == null -> DeletedSession()
                     state.snapshot.rows.isNotEmpty() -> CompositionLocalProvider(LocalToolEnvironment provides toolEnvironment) {
@@ -520,10 +553,16 @@ private fun ChatComposerFor(
 private const val ABORT_MIN_SPINNER_MS = 300L
 
 @Composable
-private fun ChatHeaderTitle(title: String, session: ChatSessionInfo?, gitStatus: GitStatus?, onClick: (() -> Unit)?) {
+private fun ChatHeaderTitle(
+    title: String,
+    session: ChatSessionInfo?,
+    gitStatus: GitStatus?,
+    onClick: (() -> Unit)?,
+    subtitleOverride: String? = null,
+) {
     val colors = HappyTheme.colors
     val header = remember(session?.metadata, gitStatus) { resolveChatHeaderGit(session?.metadata, gitStatus) }
-    val subtitle = header.subtitle
+    val subtitle = subtitleOverride ?: header.subtitle
     val git = header.changes
     Column(
         modifier = Modifier
