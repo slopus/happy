@@ -2,7 +2,7 @@ package com.slopus.happy.ui.home
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.EaseOutCubic
+import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -65,6 +65,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -105,7 +106,9 @@ import com.slopus.happy.ui.components.hairline
 import com.slopus.happy.ui.theme.HappyColors
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 object HomeDockTags {
     const val DOCK = "homeDock"
@@ -142,6 +145,16 @@ object HomeDockSpec {
     // The resting capsule (resolveMobileCollapsedComposerGeometry).
     val shellHeight = 56.dp
     val shellRadius = 28.dp
+
+    /** openFocusMode starts focusPresentation one 16 ms timer after the composer mounts. */
+    const val FOCUS_OPEN_DELAY_MS = 16L
+    const val FOCUS_OPEN_MS = 340
+    /** closeFocusMode. */
+    const val FOCUS_CLOSE_MS = 180
+    /** Easing.out(Easing.cubic), exactly; Compose's EaseOutCubic is a Bézier near it. */
+    val focusOpenEasing = Easing { 1 - (1 - it) * (1 - it) * (1 - it) }
+    /** Easing.in(Easing.cubic). */
+    val focusCloseEasing = Easing { it * it * it }
     val contentPadding = 7.dp
     val contentGap = 4.dp
     /** Puts the text at the tangent where the capsule's round end meets its straight edge. */
@@ -260,6 +273,10 @@ private fun sendBackground(colors: HappyColors) = if (colors.dark) Color(0xFFF5F
 
 private fun sendIconColor(colors: HappyColors) = if (colors.dark) Color(0xFF111111) else colors.button.primaryTint
 
+/** focusedComposerAnimationStyle's height: the resting dock's [resting] at 0, the composer's [full] at 1. */
+internal fun composerShellHeight(resting: Float, full: Int, progress: Float): Int =
+    (resting + (full - resting) * progress.coerceIn(0f, 1f)).roundToInt()
+
 /** How far along [progress] a piece of the reveal is, between [start] and [end]. */
 private fun reveal(progress: Float, start: Float, end: Float) = ((progress - start) / (end - start)).coerceIn(0f, 1f)
 
@@ -373,7 +390,13 @@ fun HomeDock(state: HomeDockState, actions: HomeDockActions, modifier: Modifier 
  * stop) or a spinner, filled for Send and Stop. While starting, an 18
  * high line sits in the gap above the composer: a 6 pulsing connecting
  * dot, 6 on the step in 11pt, and "To interrupt press stop" at the end
- * while Stop is offered. Rows reveal one after another as it opens.
+ * while Stop is offered. Opening (openFocusMode, a frame after mounting,
+ * 340 ms ease-out cubic): the backdrop fades in over the first 35%; the
+ * composer's shell grows from the resting dock's 56 to its height with the
+ * composer anchored to its bottom, from 0.96 wide and 0.72 opaque (opaque
+ * by 12%); the input and attachments rise 8 into place over 22-60%, the
+ * action row 7 over 46-82%, and the rows one after another. Closing runs
+ * it back in 180 ms ease-in cubic (closeFocusMode) before the dock returns.
  * [standalone] is the new-session screen: nothing is dimmed, and only
  * Back leaves.
  */
@@ -385,7 +408,10 @@ fun HomeDockFocus(state: HomeDockState, actions: HomeDockActions, modifier: Modi
     // An open picker comes back with a recreated activity, as the composer's do.
     var page by rememberSaveable { mutableStateOf<NewSessionPage?>(null) }
     val progress = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { progress.animateTo(1f, tween(340, easing = EaseOutCubic)) }
+    LaunchedEffect(Unit) {
+        delay(HomeDockSpec.FOCUS_OPEN_DELAY_MS)
+        progress.animateTo(1f, tween(HomeDockSpec.FOCUS_OPEN_MS, easing = HomeDockSpec.focusOpenEasing))
+    }
     val refusal = remember { Animatable(0f) }
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
@@ -399,7 +425,19 @@ fun HomeDockFocus(state: HomeDockState, actions: HomeDockActions, modifier: Modi
             refusal.animateTo(0f, tween(340))
         }
     }
-    val close = { actions.onFocusChange(false) }
+    val focusManager = LocalFocusManager.current
+    // The standalone screen leaves with its navigation transition.
+    val close: () -> Unit = {
+        if (standalone) {
+            actions.onFocusChange(false)
+        } else {
+            focusManager.clearFocus()
+            scope.launch {
+                progress.animateTo(0f, tween(HomeDockSpec.FOCUS_CLOSE_MS, easing = HomeDockSpec.focusCloseEasing))
+                actions.onFocusChange(false)
+            }
+        }
+    }
     // resolveHomeDockPickerBackAction / resolveHomeDockBackdropPressAction (Android draws no native menus).
     val back = {
         when {
@@ -703,6 +741,13 @@ private fun FocusedComposer(
             }
             .shadow(if (colors.dark) 4.dp else 2.dp, shape)
             .clip(shape)
+            // focusedComposerAnimationShell: the shell grows from the resting dock's height to
+            // the composer's, and the composer stays anchored to its bottom (focusedComposerAnchored).
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                val shell = composerShellHeight(HomeDockSpec.shellHeight.toPx(), placeable.height, progress)
+                layout(placeable.width, shell) { placeable.place(0, shell - placeable.height) }
+            }
             .background(colors.input.background)
             .border(hairline(), ChatTheme.colors.glassBorder, shape)
             .padding(horizontal = HomeDockSpec.composerInset, vertical = HomeDockSpec.composerPaddingVertical),
