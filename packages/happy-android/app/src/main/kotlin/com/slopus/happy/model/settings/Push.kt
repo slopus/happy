@@ -24,8 +24,8 @@ data class PushTokenSync(val registered: Boolean, val token: String?, val permis
 
 /**
  * This device's push registration (sync/pushRegistration.ts): permission,
- * the current Expo push token, and registering it with the server. The Push
- * workstream implements it over FCM; until then [UnavailablePushRegistration].
+ * the current Expo push token, and registering it with the server.
+ * Implemented over FCM by `push/AppPushRegistration`.
  */
 interface PushRegistration {
     suspend fun permission(): PushPermission
@@ -33,19 +33,6 @@ interface PushRegistration {
     suspend fun currentToken(): String?
     suspend fun syncCurrentToken(): PushTokenSync
     suspend fun removeToken(token: String)
-}
-
-/**
- * No push in this build: permission reads as undetermined (what happy-app
- * shows when expo-notifications fails), there is no token, and nothing is
- * registered. Removing another device's token still works.
- */
-class UnavailablePushRegistration(private val tokens: PushTokensApi) : PushRegistration {
-    override suspend fun permission() = PushPermission.Undetermined
-    override suspend fun requestPermissionOrOpenSettings() = PushPermissionRequest(granted = false, openedSettings = false, permission = PushPermission.Undetermined)
-    override suspend fun currentToken(): String? = null
-    override suspend fun syncCurrentToken() = PushTokenSync(registered = false, token = null, permission = PushPermission.Undetermined)
-    override suspend fun removeToken(token: String) = tokens.unregister(token)
 }
 
 /** apiPush.ts `PushTokenSchema`. */
