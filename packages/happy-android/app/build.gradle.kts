@@ -115,6 +115,11 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
 
+    // QR codes (AGENTS.md "QR codes"): Google Code Scanner reads them, as
+    // expo-camera's launchScanner does on Android; ZXing's encoder draws them.
+    implementation(libs.play.services.code.scanner)
+    implementation(libs.zxing.core)
+
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(libs.androidx.test.core)
