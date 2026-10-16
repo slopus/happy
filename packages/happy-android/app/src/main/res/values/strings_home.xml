@@ -82,7 +82,6 @@
     <!-- useStartSessionFromDraft.ts -->
     <string name="home_create_directory_title">Create Directory?</string>
     <string name="home_create_directory_message">The directory \'%1$s\' does not exist. Would you like to create it?</string>
-    <string name="home_start_failed">Failed to start session</string>
     <string name="home_dock_kind_session">Session</string>
     <string name="home_dock_kind_bot">Bot</string>
     <string name="home_dock_bot_kind">What to create</string>
