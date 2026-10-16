@@ -52,12 +52,12 @@ final class HostedChatScrollIndicatorTests: XCTestCase {
         return ChatScrollIndicatorLayout(.init(
             viewport: list.bounds.size, contentHeight: collection.contentSize.height,
             newestInset: collection.contentInset.top, oldestInset: collection.contentInset.bottom,
-            indicatorInsets: insets, distanceFromNewest: list.visibleMinY
+            indicatorInsets: insets, distanceFromNewest: list.visibleMinY, scale: list.traitCollection.displayScale
         ))
     }
 
-    /// Pixels: UIKit rounds the indicator to the screen's.
-    private let accuracy: CGFloat = 0.5
+    /// The model rounds as UIKit does; this is floating point only.
+    private let accuracy: CGFloat = 0.01
 
     private func assertIndicator(_ list: ChatListView, _ insets: ChatIndicatorInsets, _ label: String, file: StaticString = #filePath, line: UInt = #line) {
         let layout = expected(list, insets)

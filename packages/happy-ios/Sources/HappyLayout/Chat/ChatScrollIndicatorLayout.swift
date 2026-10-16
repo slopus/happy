@@ -42,9 +42,11 @@ public struct ChatIndicatorInsets: Equatable, Sendable {
 /// by the overscroll, down to `minimumSquashedLength`. Dragging it is the
 /// inverse: `distanceFromNewest(indicatorMinY:)`.
 ///
-/// Frames are in the list's own coordinates as it shows on screen, y down
-/// from its top; `frameInScrollView` is the same frame where UIKit puts the
-/// indicator view, inside the flipped collection view.
+/// UIKit rounds the length to the screen's pixels, and the position too, in
+/// the scroll view's own coordinates: those of the flipped collection view,
+/// where y runs up the screen. So the frame is worked out there
+/// (`frameInScrollView`, where UIKit puts the indicator view) and turned
+/// over for the screen (`frame`, y down from the list's top).
 public struct ChatScrollIndicatorLayout: Equatable, Sendable {
     /// UIKit's indicator. Its constants are the only ones here that come
     /// from UIKit rather than from the screen; `standard` says where they
@@ -66,8 +68,10 @@ public struct ChatScrollIndicatorLayout: Equatable, Sendable {
             self.minimumSquashedLength = minimumSquashedLength
         }
 
-        /// Not yet measured: UIKit's long-standing values, to be checked on
-        /// the iOS 26 and iOS 18 simulators (`HostedChatScrollIndicatorTests`).
+        /// Measured on the iOS 26.5 simulator (iPhone 17 Pro, @3x) by reading
+        /// UIKit's indicator view back over a matrix of offsets and insets,
+        /// plain and flipped; the same on iOS 26.3. No earlier runtime was
+        /// at hand.
         public static let standard = Style(thickness: 3, endInset: 3, sideInset: 3, minimumLength: 36, minimumSquashedLength: 7)
     }
 
@@ -83,10 +87,13 @@ public struct ChatScrollIndicatorLayout: Equatable, Sendable {
         /// (`visibleMinY`): 0 at the newest message, below 0 while pulled
         /// past it.
         public var distanceFromNewest: CGFloat
+        /// The screen's scale, which UIKit rounds the indicator to; 0 rounds
+        /// nothing.
+        public var scale: CGFloat
 
         public init(
             viewport: CGSize, contentHeight: CGFloat, newestInset: CGFloat, oldestInset: CGFloat,
-            indicatorInsets: ChatIndicatorInsets, distanceFromNewest: CGFloat
+            indicatorInsets: ChatIndicatorInsets, distanceFromNewest: CGFloat, scale: CGFloat
         ) {
             self.viewport = viewport
             self.contentHeight = contentHeight
@@ -94,6 +101,7 @@ public struct ChatScrollIndicatorLayout: Equatable, Sendable {
             self.oldestInset = oldestInset
             self.indicatorInsets = indicatorInsets
             self.distanceFromNewest = distanceFromNewest
+            self.scale = scale
         }
     }
 
@@ -112,7 +120,13 @@ public struct ChatScrollIndicatorLayout: Equatable, Sendable {
     public var length: CGFloat
     /// 0 at the newest message, 1 at the oldest.
     public var progress: CGFloat
+    /// On screen, in the list's coordinates.
     public var frame: CGRect
+    /// The indicator view's frame inside the flipped collection view, in
+    /// content coordinates: y grows from the newest edge, with
+    /// `contentOffset.y` (`distanceFromNewest - newestInset`) at the list's
+    /// bottom edge on screen.
+    public var frameInScrollView: CGRect
 
     public init(_ input: Input, style: Style = .standard) {
         self.input = input
@@ -126,31 +140,33 @@ public struct ChatScrollIndicatorLayout: Equatable, Sendable {
         let bottom = max(top, height - insets.newest - style.endInset)
         let x = max(0, input.viewport.width) - insets.side - style.sideInset - style.thickness
         track = CGRect(x: x, y: top, width: style.thickness, height: bottom - top)
+        let scale = input.scale
+        func pixel(_ value: CGFloat) -> CGFloat {
+            scale > 0 ? (value * scale).rounded() / scale : value
+        }
         let share = span > 0 ? track.height * height / span : track.height
-        length = min(track.height, max(style.minimumLength, share))
+        length = min(track.height, max(style.minimumLength, pixel(share)))
         let distance = input.distanceFromNewest
         progress = scrolls ? min(1, max(0, distance / maxDistance)) : 0
+        // In the collection view, the track starts at the newest end.
+        let offset = distance - max(0, input.newestInset)
+        let start = offset + insets.newest + style.endInset
+        let y: CGFloat
+        let shown: CGFloat
         if distance < 0 {
-            // Pulled past the newest message: squashed onto the bottom.
-            let squashed = min(length, max(style.minimumSquashedLength, length + distance))
-            frame = CGRect(x: x, y: bottom - squashed, width: style.thickness, height: squashed)
+            // Pulled past the newest message: squashed onto that end.
+            shown = min(length, max(style.minimumSquashedLength, pixel(length + distance)))
+            y = pixel(start)
         } else if distance > maxDistance {
-            // Past the oldest: squashed onto the top.
-            let squashed = min(length, max(style.minimumSquashedLength, length - (distance - maxDistance)))
-            frame = CGRect(x: x, y: top, width: style.thickness, height: squashed)
+            // Past the oldest: squashed onto the far end.
+            shown = min(length, max(style.minimumSquashedLength, pixel(length - (distance - maxDistance))))
+            y = pixel(start + track.height - shown)
         } else {
-            frame = CGRect(x: x, y: bottom - length - progress * (track.height - length), width: style.thickness, height: length)
+            shown = length
+            y = pixel(start + progress * (track.height - length))
         }
-    }
-
-    /// The indicator's frame inside the flipped collection view, as its
-    /// `frame` reads: in content coordinates, where y grows from the newest
-    /// edge, `contentOffset.y` (`distanceFromNewest - newestInset`) at the
-    /// screen's bottom edge of the list.
-    public var frameInScrollView: CGRect {
-        let offset = input.distanceFromNewest - input.newestInset
-        let height = max(0, input.viewport.height)
-        return CGRect(x: frame.minX, y: offset + height - frame.maxY, width: frame.width, height: frame.height)
+        frameInScrollView = CGRect(x: x, y: y, width: style.thickness, height: shown)
+        frame = CGRect(x: x, y: offset + height - y - shown, width: style.thickness, height: shown)
     }
 
     /// Dragging the indicator: how far back from the newest edge the reader
