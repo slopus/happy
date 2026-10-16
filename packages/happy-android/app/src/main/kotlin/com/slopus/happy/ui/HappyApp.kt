@@ -23,7 +23,7 @@ import com.slopus.happy.auth.AuthState
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
-import com.slopus.happy.ui.home.HomeScreen
+import com.slopus.happy.ui.home.homeRoutes
 import com.slopus.happy.ui.onboarding.RestoreManualScreen
 import com.slopus.happy.ui.onboarding.RestoreScreen
 import com.slopus.happy.ui.onboarding.WelcomeScreen
@@ -69,7 +69,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                     RestoreScreen(onBack = { nav.popBackStack() }, onUseSecretKey = { nav.navigate(RestoreManualRoute) })
                 }
                 composable<RestoreManualRoute> { RestoreManual(graph, nav) }
-                composable<HomeRoute> { HomeScreen(onSettings = { nav.navigate(SettingsRoute) }) }
+                homeRoutes(graph, nav)
                 composable<SettingsRoute> {
                     val uriHandler = LocalUriHandler.current
                     SettingsScreen(

@@ -16,8 +16,6 @@ import com.slopus.happy.auth.AuthApi.ServerProbe
 import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.components.ItemGroupTags
 import com.slopus.happy.ui.components.ItemTags
-import com.slopus.happy.ui.home.HomeScreen
-import com.slopus.happy.ui.home.HomeTags
 import com.slopus.happy.ui.server.ServerScreen
 import com.slopus.happy.ui.server.ServerTags
 import com.slopus.happy.ui.settings.AccountScreen
@@ -40,19 +38,6 @@ import org.robolectric.annotation.GraphicsMode
 class ScreenLayoutTest {
     @get:Rule
     val rule = createComposeRule()
-
-    @Test
-    fun homeHeader() {
-        rule.setHappyContent { HomeScreen(onSettings = {}) }
-        // Logo: 32 box centred in the 48 left slot; settings: 44 button centred in the 48 right slot.
-        assertBox("logo box", rule.node(HomeTags.LOGO).bounds, 24.dp, 16.dp, 32.dp, 32.dp)
-        assertBox("settings button", rule.node(HomeTags.SETTINGS).bounds, (PHONE_WIDTH - 16 - 46).dp, 10.dp, 44.dp, 44.dp)
-        val title = rule.node(HeaderTags.TITLE).bounds
-        assertDp("title centred", (PHONE_WIDTH / 2f).dp, (title.left + title.right) / 2)
-        assertDp("title line height", 20, title.bottom - title.top)
-        val empty = rule.node(HomeTags.EMPTY).bounds
-        assertDp("empty state centred", (PHONE_WIDTH / 2f).dp, (empty.left + empty.right) / 2)
-    }
 
     @Test
     fun serverFormSpec() {

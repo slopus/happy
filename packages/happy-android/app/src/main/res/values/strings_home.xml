@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Home strings with no happy-app catalog key (literals in its source), in
+  English only. strings.xml is generated from the catalogs; this file is not.
+-->
+<resources>
+    <!-- EmptyMainScreen.tsx -->
+    <string name="home_no_sessions_title">No sessions yet</string>
+    <string name="home_no_sessions_description">Start one on a connected machine.</string>
+    <string name="home_start_new_session">Start New Session</string>
+    <!-- sync/ops.ts sessionKill / sessionArchive for a bot -->
+    <string name="home_bot_archive_offline">Connect to the bot’s machine to archive it.</string>
+    <!-- ProjectHomeList.tsx -->
+    <string name="home_create_workspace">Create workspace</string>
+    <string name="home_create_workspace_in">Create workspace in %1$s</string>
+</resources>

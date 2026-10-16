@@ -3,6 +3,7 @@ package com.slopus.happy.ui
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isDialog
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -20,6 +21,7 @@ import com.slopus.happy.crypto.SecretKeyBackup
 import com.slopus.happy.crypto.encodeBase64
 import com.slopus.happy.testing.FakeHappyServer
 import com.slopus.happy.testing.SoftwareKeys
+import com.slopus.happy.ui.home.HomeTags
 import com.slopus.happy.ui.onboarding.RestoreTags
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -65,7 +67,7 @@ class AppFlowTest {
     @Test
     fun createAccountThenLogout() {
         rule.onNodeWithText("Create account").performClick()
-        rule.waitUntilAtLeastOneExists(hasText("Your sessions will appear here."), 5_000)
+        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.FILTER), 5_000)
         assertTrue(graph.auth.state.value is AuthState.SignedIn)
 
         rule.onNodeWithContentDescription("Settings").performClick()
@@ -90,7 +92,7 @@ class AppFlowTest {
             .performTextReplacement(SecretKeyBackup.format(encodeBase64(server.secret, Base64Variant.Url)))
         rule.onNodeWithText("Restore").performClick()
 
-        rule.waitUntilAtLeastOneExists(hasText("Your sessions will appear here."), 5_000)
+        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.FILTER), 5_000)
         rule.waitUntil(5_000) { graph.store.sessionIds() == setOf("s1") && graph.store.settings() != null }
         assertEquals(server.publicKey, server.authenticatedKeys.single())
     }
