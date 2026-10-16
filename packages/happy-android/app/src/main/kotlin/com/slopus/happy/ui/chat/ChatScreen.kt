@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.chat.AgentQuestionAnswer
 import com.slopus.happy.chat.ChatSessionInfo
 import com.slopus.happy.chat.ChatState
 import com.slopus.happy.model.SessionState
@@ -114,6 +115,8 @@ class ChatScreenActions(
     /** A failed send, by its localId: queue it again, or drop it. */
     val onRetry: (String) -> Unit = {},
     val onDiscard: (String) -> Unit = {},
+    val onAnswerQuestion: suspend (communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) -> Unit = { _, _, _ -> },
+    val onCancelQuestion: suspend (communicationId: String, kind: String) -> Unit = { _, _ -> },
 )
 
 /**
@@ -147,6 +150,7 @@ fun ChatScreen(
         showLineNumbers = showLineNumbersInToolViews,
         flavor = session?.metadata?.flavor,
         path = session?.metadata?.path,
+        agentState = session?.agentState,
     )
     val listState = rememberLazyListState()
     val loadOlder by rememberUpdatedState(actions.loadOlder)
@@ -158,6 +162,8 @@ fun ChatScreen(
             onPermission = actions.onPermission,
             onRetry = actions.onRetry,
             onDiscard = actions.onDiscard,
+            onAnswerQuestion = actions.onAnswerQuestion,
+            onCancelQuestion = actions.onCancelQuestion,
         )
     }
     val bubble = userMessageBubblePalette(bubbleColor, colors.dark)
@@ -210,6 +216,7 @@ fun ChatScreen(
             }
         }
         if (session != null) {
+            AgentQuestionBanner(state.pendingCommunications, actions.onAnswerQuestion, actions.onCancelQuestion)
             ChatComposerFor(state, session, draft, actions, aborting, now)
         }
     }

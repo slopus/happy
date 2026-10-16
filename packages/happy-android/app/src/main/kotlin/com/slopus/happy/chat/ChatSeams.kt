@@ -76,6 +76,8 @@ data class PermissionAnswer(
     /** "Don't ask again" grants (`allowTools`). */
     val allowedTools: List<String>? = null,
     val decision: PermissionDecision? = null,
+    /** The tool input as the user completed it (AskUserQuestion's answers). */
+    val updatedInput: JsonObject? = null,
 )
 
 /**
@@ -208,7 +210,7 @@ class SyncChatActions(private val account: () -> AccountSync?) : ChatActions {
     override suspend fun answerPermission(sessionId: String, answer: PermissionAnswer) {
         val decision = answer.decision?.let { d -> SyncPermissionDecision.entries.first { it.wire == d.wire } }
         if (answer.approved) {
-            ops().allow(sessionId, answer.requestId, answer.mode, answer.allowedTools, decision)
+            ops().allow(sessionId, answer.requestId, answer.mode, answer.allowedTools, decision, answer.updatedInput)
         } else {
             ops().deny(sessionId, answer.requestId, answer.mode, answer.allowedTools, decision)
         }

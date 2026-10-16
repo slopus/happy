@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.chat.AgentEvent
+import com.slopus.happy.chat.AgentQuestionAnswer
 import com.slopus.happy.chat.ChatMessage
 import com.slopus.happy.chat.ChatRow
 import com.slopus.happy.chat.PermissionStatus
@@ -129,6 +130,9 @@ class MessageCallbacks(
     /** A failed send, by its localId. */
     val onRetry: (String) -> Unit = {},
     val onDiscard: (String) -> Unit = {},
+    /** Answers / dismisses an agent communication; throws on failure. */
+    val onAnswerQuestion: suspend (communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) -> Unit = { _, _, _ -> },
+    val onCancelQuestion: suspend (communicationId: String, kind: String) -> Unit = { _, _ -> },
 )
 
 /** One chat row, dispatched by kind (MessageView.tsx `RenderBlock`). */
