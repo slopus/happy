@@ -63,6 +63,9 @@ class HappyHttp(
         return HappyJson.decodeFromString(response, execute(request, acceptStatus))
     }
 
+    suspend fun <T> delete(path: String, response: KSerializer<T>, token: String? = null): T =
+        HappyJson.decodeFromString(response, execute(request(token).url(serverUrl() + path).delete().build()))
+
     /** GET an absolute URL as text (server probe). */
     suspend fun getText(url: String): String =
         execute(Request.Builder().url(url).header("Accept", "text/plain").get().build())

@@ -38,13 +38,16 @@ enum class Ionicon(val codepoint: Int) {
     EyeOutline(0xf2ea), // eye-outline
     HelpCircleOutline(0xf37e), // help-circle-outline
     InformationCircleOutline(0xf399), // information-circle-outline
+    LinkOutline(0xf3b9), // link-outline
     LogOutOutline(0xf3d1), // log-out-outline
     LogoGithub(0xf3f3), // logo-github
+    OptionsOutline(0xf48b), // options-outline
     PersonCircleOutline(0xf4aa), // person-circle-outline
     QrCodeOutline(0xf4fd), // qr-code-outline
     ServerOutline(0xf569), // server-outline
     SettingsOutline(0xf56c), // settings-outline
     ShieldCheckmarkOutline(0xf579), // shield-checkmark-outline
+    SparklesOutline(0xf58d), // sparkles-outline
 }
 
 private val IoniconsFamily = FontFamily(Font(R.font.ionicons))
