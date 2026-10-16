@@ -93,8 +93,9 @@ class HappyStoreTest {
             store.setCursor("x", 1)
         }
         assertEquals(before + 1, store.changes.value)
+        // Watermarks are bookkeeping nothing displays: writing one wakes no observer.
         store.setCursor("x", 2)
-        assertEquals(before + 2, store.changes.value)
+        assertEquals(before + 1, store.changes.value)
         assertEquals(2L, store.cursor("x"))
     }
 

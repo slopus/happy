@@ -12,15 +12,21 @@ import com.slopus.happy.config.LocalSettings
 import com.slopus.happy.config.ServerConfig
 import com.slopus.happy.data.HappyDatabase
 import com.slopus.happy.data.HappyStore
+import com.slopus.happy.net.ConnectionStatus
 import com.slopus.happy.net.HappyHttp
-import com.slopus.happy.sync.InvalidateSync
-import com.slopus.happy.sync.SyncApi
-import com.slopus.happy.sync.SyncEngine
+import com.slopus.happy.sync.AccountSync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -32,12 +38,13 @@ import java.util.concurrent.TimeUnit
  * The app's object graph, built once in [HappyApplication]. Hand-wired: the
  * graph is small enough that a DI framework would cost more than it saves.
  *
- * While signed in it owns one sync loop for the account; signing out stops
- * it before local data is cleared.
+ * While signed in it owns one [AccountSync] for the account (delta sync,
+ * live updates, presence, history); signing out stops it before local data
+ * is cleared.
  */
 class AppGraph(
     context: Context,
-    clientId: String,
+    private val clientId: String,
     defaultServerUrl: String,
     secureStoreKeys: SecureStoreKeys = AndroidKeyStoreKeys(),
     databaseName: String? = HappyDatabase.NAME,
@@ -68,8 +75,17 @@ class AppGraph(
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val accountLock = Mutex()
-    private var accountJob: Job? = null
-    @Volatile private var sync: InvalidateSync? = null
+    private val foreground = MutableStateFlow(false)
+    private val accountState = MutableStateFlow<AccountSync?>(null)
+
+    /** The signed-in account's sync, or null when signed out. */
+    val account: StateFlow<AccountSync?> = accountState.asStateFlow()
+
+    /** The updates socket's state; disconnected when signed out. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val connectionStatus: StateFlow<ConnectionStatus> = accountState
+        .flatMapLatest { it?.connectionStatus ?: flowOf(ConnectionStatus.DISCONNECTED) }
+        .stateIn(scope, SharingStarted.Eagerly, ConnectionStatus.DISCONNECTED)
 
     init {
         scope.launch {
@@ -79,7 +95,12 @@ class AppGraph(
 
     /** Ask for a delta sync now (sign-in, app back in the foreground). No-op when signed out. */
     fun requestSync() {
-        sync?.invalidate()
+        accountState.value?.requestSync()
+    }
+
+    /** The app came to the foreground or left it (MainActivity onStart/onStop). */
+    fun setForeground(value: Boolean) {
+        foreground.value = value
     }
 
     /**
@@ -89,9 +110,7 @@ class AppGraph(
      */
     fun logout(): Job = scope.launch {
         accountLock.withLock {
-            accountJob?.cancelAndJoin()
-            accountJob = null
-            sync = null
+            stopAccount()
             withContext(Dispatchers.IO) { store.clearAll() }
             localSettings.clear()
             auth.logout()
@@ -99,17 +118,26 @@ class AppGraph(
     }
 
     private suspend fun switchAccount(state: AuthState) {
-        accountJob?.cancelAndJoin()
-        accountJob = null
-        sync = null
+        stopAccount()
         if (state !is AuthState.SignedIn) return
+        val account = AccountSync(
+            http = http,
+            okHttp = okHttp,
+            serverUrl = { serverConfig.url.value },
+            clientId = clientId,
+            token = state.credentials.token,
+            encryption = state.encryption,
+            store = store,
+            parent = scope.coroutineContext[Job]!!,
+            foreground = foreground,
+        )
+        accountState.value = account
+        account.start()
+    }
 
-        val job = SupervisorJob(scope.coroutineContext[Job])
-        val engine = SyncEngine(SyncApi(http, state.credentials.token), store, state.encryption)
-        sync = InvalidateSync(CoroutineScope(scope.coroutineContext + job)) {
-            val failures = engine.syncAll()
-            if (failures.isNotEmpty()) throw failures.first()
-        }.also { it.invalidate() }
-        accountJob = job
+    private suspend fun stopAccount() {
+        val account = accountState.value ?: return
+        accountState.value = null
+        account.stop()
     }
 }
