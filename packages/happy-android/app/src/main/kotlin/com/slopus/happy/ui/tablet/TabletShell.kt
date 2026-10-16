@@ -44,6 +44,9 @@ import com.slopus.happy.R
 import com.slopus.happy.ui.chat.SessionRoute
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.files.MessageDetailRoute
+import com.slopus.happy.ui.files.SessionChangesRoute
+import com.slopus.happy.ui.files.SessionFileRoute
 import com.slopus.happy.ui.home.HomeNavigation
 import com.slopus.happy.ui.home.HomeServices
 import com.slopus.happy.ui.home.LocalHomeInSidebar
@@ -93,12 +96,18 @@ object TabletShellRule {
     fun showsShell(signedIn: Boolean, isTablet: Boolean, showsInstallStep: Boolean, isOnboardingRoute: Boolean): Boolean =
         signedIn && isTablet && !suppressesShell(signedIn, isTablet, showsInstallStep, isOnboardingRoute)
 
-    /** SessionsList.tsx `selectedSessionId`: the session under `/session/<id>`, the chat or its info. */
+    /**
+     * SessionsList.tsx `selectedSessionId`: the session under `/session/<id>/…`,
+     * the chat and every screen under it (info, changes, a file, a message).
+     */
     fun selectedSessionId(entry: NavBackStackEntry?): String? {
         val destination = entry?.destination ?: return null
         return when {
             destination.hasRoute<SessionRoute>() -> entry.toRoute<SessionRoute>().id
             destination.hasRoute<SessionInfoRoute>() -> entry.toRoute<SessionInfoRoute>().id
+            destination.hasRoute<SessionChangesRoute>() -> entry.toRoute<SessionChangesRoute>().id
+            destination.hasRoute<SessionFileRoute>() -> entry.toRoute<SessionFileRoute>().id
+            destination.hasRoute<MessageDetailRoute>() -> entry.toRoute<MessageDetailRoute>().id
             else -> null
         }
     }
