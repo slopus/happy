@@ -285,7 +285,7 @@ private fun CodeBlock(content: String, language: String?) {
 }
 
 /** SimpleSyntaxHighlighter's colours by token type. */
-private fun highlight(code: String, language: String?, colors: ChatColors): AnnotatedString = buildAnnotatedString {
+internal fun highlight(code: String, language: String?, colors: ChatColors): AnnotatedString = buildAnnotatedString {
     for (token in tokenizeCode(code, language)) {
         val color = when (token.type) {
             SyntaxTokenType.Keyword, SyntaxTokenType.ControlFlow, SyntaxTokenType.Type, SyntaxTokenType.Modifier,
