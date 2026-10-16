@@ -46,4 +46,38 @@
     <string name="home_info_raw_metadata">Metadata</string>
     <string name="home_info_raw_status">Session Status</string>
     <string name="home_info_raw_session">Full Session Object</string>
+    <!-- HomeDock.tsx, homeDockInteraction.ts, newSessionProgress.ts -->
+    <string name="home_dock_placeholder">Plan, ask, build…</string>
+    <string name="home_dock_ask">Ask %1$s</string>
+    <string name="home_dock_send">Send</string>
+    <string name="home_dock_stop">Stop</string>
+    <string name="home_dock_interrupt_hint">To interrupt press stop</string>
+    <string name="home_dock_row_machine">MACHINE</string>
+    <string name="home_dock_row_project">PROJECT</string>
+    <string name="home_dock_row_worktree">WORKTREE</string>
+    <string name="home_dock_row_workspace">WORKSPACE</string>
+    <string name="home_dock_row_harness">HARNESS</string>
+    <string name="home_dock_harness_help">Help</string>
+    <string name="home_dock_harness_help_label">Harness setup help</string>
+    <string name="home_dock_picker_machine">Machine</string>
+    <string name="home_dock_picker_project">Project</string>
+    <string name="home_dock_picker_projects">Projects</string>
+    <string name="home_dock_picker_worktree">Worktree</string>
+    <string name="home_dock_picker_workspace">Workspace</string>
+    <string name="home_dock_picker_harness">Harness</string>
+    <string name="home_dock_select_machine">Select machine</string>
+    <string name="home_dock_no_worktree">No worktree</string>
+    <string name="home_dock_main">Main</string>
+    <string name="home_dock_create_workspace">Create New Workspace</string>
+    <string name="home_dock_create_worktree">Create New Worktree</string>
+    <string name="home_dock_not_supported_by">Not supported by %1$s</string>
+    <string name="home_dock_custom_path_placeholder">~/path/to/project</string>
+    <string name="home_dock_creating_workspace">Creating workspace…</string>
+    <string name="home_dock_creating_worktree">Creating worktree…</string>
+    <string name="home_dock_starting">Starting %1$s…</string>
+    <string name="home_dock_opening">Opening session…</string>
+    <!-- useStartSessionFromDraft.ts -->
+    <string name="home_create_directory_title">Create Directory?</string>
+    <string name="home_create_directory_message">The directory \'%1$s\' does not exist. Would you like to create it?</string>
+    <string name="home_start_failed">Failed to start session</string>
 </resources>
