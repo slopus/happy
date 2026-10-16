@@ -12,6 +12,9 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.AppGraph
 import com.slopus.happy.data.MessageRecord
+import com.slopus.happy.data.OutboxKind
+import com.slopus.happy.data.OutboxRecord
+import com.slopus.happy.data.OutboxState
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.testing.SoftwareKeys
 import com.slopus.happy.ui.PHONE
@@ -82,13 +85,30 @@ class ChatRouteTest {
     }
 
     @Test
-    fun sendingWithoutSyncSaysSoAndKeepsTheDraft() {
+    fun sendingSignedOutSaysSoAndKeepsTheDraft() {
         open("s1")
         rule.waitUntilAtLeastOneExists(hasText("Ported, with tests."), 5_000)
         rule.node(ComposerTags.INPUT).performTextInput("next step")
         rule.node(ComposerTags.PRIMARY).performClick()
-        rule.waitUntilAtLeastOneExists(hasText("Sending from the Android app is not available yet"), 5_000)
+        rule.waitUntilAtLeastOneExists(hasText("Not signed in"), 5_000)
         rule.onNodeWithText("next step").assertExists()
+    }
+
+    /** Outbox rows stand in for their echo: queued ones dim, failed ones offer retry and discard. */
+    @Test
+    fun outboxRowsShowTheirDelivery() {
+        fun row(localId: String, text: String, state: OutboxState, error: String? = null) = OutboxRecord(
+            localId = localId, sessionId = "s1", kind = OutboxKind.USER,
+            recordJson = """{"role":"user","content":{"type":"text","text":"$text"}}""", content = "",
+            createdAt = 10, state = state, attempts = 1, error = error, serverId = null, serverSeq = null,
+        )
+        graph.store.enqueueOutbox(listOf(row("o1", "queued one", OutboxState.QUEUED), row("o2", "broken one", OutboxState.FAILED, "HTTP 500")))
+        open("s1")
+        rule.waitUntilAtLeastOneExists(hasText("broken one"), 5_000)
+        rule.onNodeWithText("queued one").assertExists()
+        rule.onNodeWithText("Not sent: HTTP 500").assertExists()
+        rule.node(MessageTags.USER_RETRY).assertExists()
+        rule.node(MessageTags.USER_DISCARD).assertExists()
     }
 
     @Test

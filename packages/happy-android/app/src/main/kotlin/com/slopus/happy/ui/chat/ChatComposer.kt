@@ -36,6 +36,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.model.SessionState
+import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.components.StatusDot
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -207,11 +210,11 @@ fun ChatComposer(
                 )
             }
             Row(
-                modifier = Modifier.testTag(ComposerTags.ACTION_ROW).fillMaxWidth().height(ComposerSpec.actionRowHeight),
+                modifier = Modifier.testTag(ComposerTags.ACTION_ROW).fillMaxWidth().heightIn(min = ComposerSpec.actionRowHeight),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(ComposerSpec.actionRowGap),
             ) {
-                Box(modifier = Modifier.weight(1f).height(ComposerSpec.actionRowHeight), contentAlignment = Alignment.CenterStart) {
+                Box(modifier = Modifier.weight(1f).heightIn(min = ComposerSpec.actionRowHeight), contentAlignment = Alignment.CenterStart) {
                     middle()
                 }
                 // With the row gap on each side: 2 + 8 between the middle and the button, as in RN.
@@ -252,10 +255,10 @@ private fun PrimaryButton(action: PrimaryAction, aborting: Boolean, onClick: () 
                 color = if (dark) Color.Black else colors.text,
                 strokeWidth = 2.dp,
             )
-            action == PrimaryAction.Stop -> ChatIconView(ChatIcon.OctStop, ComposerSpec.primaryIcon, if (dark) Color.Black else Color.White)
-            action == PrimaryAction.Blocked -> ChatIconView(ChatIcon.LockClosed, ComposerSpec.lockIcon, colors.textSecondary)
-            else -> ChatIconView(
-                ChatIcon.OctArrowUp,
+            action == PrimaryAction.Stop -> Icon(Octicon.Stop, ComposerSpec.primaryIcon, if (dark) Color.Black else Color.White)
+            action == PrimaryAction.Blocked -> Icon(Ionicon.LockClosed, ComposerSpec.lockIcon, colors.textSecondary)
+            else -> Icon(
+                Octicon.ArrowUp,
                 ComposerSpec.primaryIcon,
                 if (action == PrimaryAction.Send) colors.text else colors.textSecondary,
             )

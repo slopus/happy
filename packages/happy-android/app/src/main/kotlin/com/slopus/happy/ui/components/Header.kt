@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
@@ -79,7 +80,11 @@ fun Header(
 ) {
     val colors = HappyTheme.colors
     val titleBlock: @Composable () -> Unit = titleContent ?: {
-        Column(horizontalAlignment = if (alignment == TitleAlignment.Center) Alignment.CenterHorizontally else Alignment.Start) {
+        // The bar stays 64 at any font scale, as in RN; large text overflows it, centred, rather than clipping.
+        Column(
+            modifier = Modifier.wrapContentHeight(unbounded = true),
+            horizontalAlignment = if (alignment == TitleAlignment.Center) Alignment.CenterHorizontally else Alignment.Start,
+        ) {
             if (title != null) {
                 Text(
                     text = title,

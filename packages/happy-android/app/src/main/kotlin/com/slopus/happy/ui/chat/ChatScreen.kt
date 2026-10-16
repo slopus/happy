@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -35,21 +36,23 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.chat.AgentQuestionAnswer
 import com.slopus.happy.chat.ChatSessionInfo
 import com.slopus.happy.chat.ChatState
 import com.slopus.happy.model.SessionState
 import com.slopus.happy.model.avatarId
 import com.slopus.happy.model.compactCount
 import com.slopus.happy.model.formatPathRelativeToHome
-import com.slopus.happy.model.isRigV1
 import com.slopus.happy.model.rigGitSummary
-import com.slopus.happy.model.rigHasRpcMethod
+import com.slopus.happy.sync.rigCanAbort
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.AvatarBadgeLocation
 import com.slopus.happy.ui.components.Header
 import com.slopus.happy.ui.components.HeaderBackButton
 import com.slopus.happy.ui.components.HeaderSpec
 import com.slopus.happy.ui.components.HeaderTags
+import com.slopus.happy.ui.components.Icon
+import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonDisplay
 import com.slopus.happy.ui.components.RoundButtonSize
@@ -108,6 +111,12 @@ class ChatScreenActions(
     val onAbort: () -> Unit = {},
     val loadOlder: suspend () -> Boolean = { false },
     val onToolPress: (com.slopus.happy.chat.ChatMessage.ToolCallMessage) -> Unit = {},
+    val onPermission: PermissionHandler = { _, _ -> },
+    /** A failed send, by its localId: queue it again, or drop it. */
+    val onRetry: (String) -> Unit = {},
+    val onDiscard: (String) -> Unit = {},
+    val onAnswerQuestion: suspend (communicationId: String, answers: Map<String, AgentQuestionAnswer>, kind: String) -> Unit = { _, _, _ -> },
+    val onCancelQuestion: suspend (communicationId: String, kind: String) -> Unit = { _, _ -> },
 )
 
 /**
@@ -131,14 +140,31 @@ fun ChatScreen(
     modifier: Modifier = Modifier,
     aborting: Boolean = false,
     now: Long = System.currentTimeMillis(),
+    compactToolCalls: Boolean = false,
+    showLineNumbersInToolViews: Boolean = false,
 ) {
     val colors = HappyTheme.colors
     val session = state.session
+    val toolEnvironment = ToolEnvironment(
+        compactToolCalls = compactToolCalls,
+        showLineNumbers = showLineNumbersInToolViews,
+        flavor = session?.metadata?.flavor,
+        path = session?.metadata?.path,
+        agentState = session?.agentState,
+    )
     val listState = rememberLazyListState()
     val loadOlder by rememberUpdatedState(actions.loadOlder)
     val pager = remember(session?.id) { OlderPager { loadOlder() } }
     val callbacks = remember(actions) {
-        MessageCallbacks(onOptionPress = { actions.onSend(it) }, onToolPress = actions.onToolPress)
+        MessageCallbacks(
+            onOptionPress = { actions.onSend(it) },
+            onToolPress = actions.onToolPress,
+            onPermission = actions.onPermission,
+            onRetry = actions.onRetry,
+            onDiscard = actions.onDiscard,
+            onAnswerQuestion = actions.onAnswerQuestion,
+            onCancelQuestion = actions.onCancelQuestion,
+        )
     }
     val bubble = userMessageBubblePalette(bubbleColor, colors.dark)
     val title = when {
@@ -167,16 +193,18 @@ fun ChatScreen(
             when {
                 !state.sessionLoaded -> Spinner(Modifier.align(Alignment.Center).testTag(ChatScreenTags.LOADING))
                 session == null -> DeletedSession()
-                state.snapshot.rows.isNotEmpty() -> ChatList(
-                    rows = state.snapshot.rows,
-                    hasMoreOlder = state.snapshot.hasMoreOlder,
-                    isLoadingOlder = state.snapshot.isLoadingOlder,
-                    controlledByUser = session.usesControlledSessionUi && session.agentState?.controlledByUser == true,
-                    bubble = bubble,
-                    callbacks = callbacks,
-                    pager = pager,
-                    state = listState,
-                )
+                state.snapshot.rows.isNotEmpty() -> CompositionLocalProvider(LocalToolEnvironment provides toolEnvironment) {
+                    ChatList(
+                        rows = state.snapshot.rows,
+                        hasMoreOlder = state.snapshot.hasMoreOlder,
+                        isLoadingOlder = state.snapshot.isLoadingOlder,
+                        controlledByUser = session.usesControlledSessionUi && session.agentState?.controlledByUser == true,
+                        bubble = bubble,
+                        callbacks = callbacks,
+                        pager = pager,
+                        state = listState,
+                    )
+                }
                 state.snapshot.loaded -> EmptyMessages(
                     session = session,
                     hasMoreOlder = state.snapshot.hasMoreOlder,
@@ -188,6 +216,7 @@ fun ChatScreen(
             }
         }
         if (session != null) {
+            AgentQuestionBanner(state.pendingCommunications, actions.onAnswerQuestion, actions.onCancelQuestion)
             ChatComposerFor(state, session, draft, actions, aborting, now)
         }
     }
@@ -204,8 +233,7 @@ private fun ChatComposerFor(
 ) {
     val sessionState = state.sessionState
     val metadata = session.metadata
-    val canAbort = sessionState != SessionState.Disconnected &&
-        (!metadata.isRigV1() || (metadata?.capabilities?.abort == true && metadata.rigHasRpcMethod("abort")))
+    val canAbort = sessionState != SessionState.Disconnected && metadata.rigCanAbort()
     val blocked = session.isRig && state.thinking && metadata?.capabilities?.steering != true
     val primary = resolvePrimaryAction(
         hasContent = draft.isNotBlank(),
@@ -222,7 +250,7 @@ private fun ChatComposerFor(
         onPrimary = {
             when (primary) {
                 PrimaryAction.Stop -> actions.onAbort()
-                PrimaryAction.Send -> actions.onSend(draft.trim())
+                PrimaryAction.Send -> actions.onSend(draft)
                 else -> Unit
             }
         },
@@ -320,7 +348,7 @@ private fun DeletedSession() {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ChatIconView(ChatIcon.TrashOutline, ChatScreenSpec.deletedIcon, colors.textSecondary, Modifier.testTag(ChatScreenTags.DELETED_ICON))
+        Icon(Ionicon.TrashOutline, ChatScreenSpec.deletedIcon, colors.textSecondary, Modifier.testTag(ChatScreenTags.DELETED_ICON))
         Text(
             stringResource(R.string.errors_session_deleted),
             style = ChatScreenSpec.deletedTitle,
@@ -340,13 +368,13 @@ private fun DeletedSession() {
     }
 }
 
-private fun osIcon(os: String?): ChatIcon {
-    val lower = os?.lowercase() ?: return ChatIcon.HardwareChipOutline
+private fun osIcon(os: String?): Ionicon {
+    val lower = os?.lowercase() ?: return Ionicon.HardwareChipOutline
     return when {
-        "darwin" in lower || "mac" in lower -> ChatIcon.LaptopOutline
-        "win" in lower -> ChatIcon.DesktopOutline
-        "linux" in lower -> ChatIcon.TerminalOutline
-        else -> ChatIcon.HardwareChipOutline
+        "darwin" in lower || "mac" in lower -> Ionicon.LaptopOutline
+        "win" in lower -> Ionicon.DesktopOutline
+        "linux" in lower -> Ionicon.TerminalOutline
+        else -> Ionicon.HardwareChipOutline
     }
 }
 
@@ -382,7 +410,7 @@ fun EmptyMessages(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ChatIconView(
+        Icon(
             osIcon(metadata?.os),
             ChatScreenSpec.emptyIcon,
             colors.textSecondary,

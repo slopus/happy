@@ -20,6 +20,7 @@ import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.chat.userMessageBubblePalette
 import com.slopus.happy.ui.chat.MessageCallbacks
 import com.slopus.happy.ui.chat.MessageTags
+import com.slopus.happy.ui.chat.ToolTags
 import com.slopus.happy.ui.chat.MessageView
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
@@ -147,6 +148,7 @@ class FileMessageLayoutTest {
             }
         }
         rule.node(FileMessageTags.ROW).assertExists()
-        rule.node(MessageTags.TOOL).assertDoesNotExist()
+        rule.node(ToolTags.INLINE).assertDoesNotExist()
+        rule.node(ToolTags.COMPACT).assertDoesNotExist()
     }
 }
