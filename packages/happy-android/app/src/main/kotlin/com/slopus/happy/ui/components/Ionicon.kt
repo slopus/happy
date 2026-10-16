@@ -32,19 +32,27 @@ enum class Ionicon(val codepoint: Int) {
     ColorPaletteOutline(0xf27e), // color-palette-outline
     ContrastOutline(0xf28d), // contrast-outline
     CopyOutline(0xf290), // copy-outline
+    DesktopOutline(0xf29f), // desktop-outline
     DocumentTextOutline(0xf2b4), // document-text-outline
     EllipseOutline(0xf2cc), // ellipse-outline
     EyeOffOutline(0xf2e8), // eye-off-outline
     EyeOutline(0xf2ea), // eye-outline
     HelpCircleOutline(0xf37e), // help-circle-outline
     InformationCircleOutline(0xf399), // information-circle-outline
+    KeyOutline(0xf3a4), // key-outline
+    LaptopOutline(0xf3ad), // laptop-outline
+    LinkOutline(0xf3b9), // link-outline
+    LockClosedOutline(0xf3c8), // lock-closed-outline
     LogOutOutline(0xf3d1), // log-out-outline
     LogoGithub(0xf3f3), // logo-github
+    MoonOutline(0xf461), // moon-outline
     PersonCircleOutline(0xf4aa), // person-circle-outline
     QrCodeOutline(0xf4fd), // qr-code-outline
     ServerOutline(0xf569), // server-outline
     SettingsOutline(0xf56c), // settings-outline
     ShieldCheckmarkOutline(0xf579), // shield-checkmark-outline
+    TerminalOutline(0xf5c9), // terminal-outline
+    WarningOutline(0xf629), // warning-outline
 }
 
 private val IoniconsFamily = FontFamily(Font(R.font.ionicons))

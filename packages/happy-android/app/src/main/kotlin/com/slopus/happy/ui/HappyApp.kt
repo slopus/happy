@@ -26,7 +26,7 @@ import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.home.HomeScreen
 import com.slopus.happy.ui.onboarding.RestoreManualScreen
-import com.slopus.happy.ui.onboarding.RestoreScreen
+import com.slopus.happy.ui.onboarding.onboardingRoutes
 import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.server.ServerScreen
 import com.slopus.happy.ui.settings.AccountScreen
@@ -72,9 +72,6 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
             NavHost(navController = nav, startDestination = if (signedIn != null) HomeRoute else WelcomeRoute) {
                 composable<WelcomeRoute> { Welcome(graph, nav) }
                 composable<ServerRoute> { Server(graph, nav) }
-                composable<RestoreRoute> {
-                    RestoreScreen(onBack = { nav.popBackStack() }, onUseSecretKey = { nav.navigate(RestoreManualRoute) })
-                }
                 composable<RestoreManualRoute> { RestoreManual(graph, nav) }
                 composable<HomeRoute> { HomeScreen(onSettings = { nav.navigate(SettingsRoute) }) }
                 composable<SettingsRoute> {
@@ -91,6 +88,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                 composable<AppearanceRoute> {
                     AppearanceScreen(theme = theme, onThemeChange = graph.localSettings::setThemePreference, onBack = { nav.popBackStack() })
                 }
+                onboardingRoutes(graph, nav)
             }
         }
     }
