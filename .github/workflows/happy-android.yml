@@ -1,0 +1,46 @@
+name: happy-android
+
+on:
+  pull_request:
+    paths: ['packages/happy-android/**', 'packages/happy-app/app.config.js', '.github/workflows/happy-android.yml']
+  push:
+    branches: [main]
+    paths: ['packages/happy-android/**', 'packages/happy-app/app.config.js', '.github/workflows/happy-android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: happy-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: packages/happy-android
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+      # No signing secrets: release builds unsigned, preview debug-signed.
+      - name: Build and test
+        run: ./gradlew --console=plain assembleDebug assembleRelease testDebugUnitTest :crypto:test
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: happy-android-test-reports
+          path: |
+            packages/happy-android/app/build/reports/tests/
+            packages/happy-android/crypto/build/reports/tests/
+          retention-days: 7
