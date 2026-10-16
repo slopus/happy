@@ -406,16 +406,24 @@ decodes the drawn pixels back to the link.
 ### Deep links
 
 `happy://` links route as expo-router routes them for happy-app (the host
-is the first path segment): `happy://terminal?<key>` opens the confirm
-screen (terminal/index.tsx), `/terminal/connect` explains that the web link
-needs a browser, `/session/<id>` goes to `onOpenSession`. The release build
-adds app.config.js's production intent filter for
+is the first path segment), and so do `https://app.happy.engineering/<path>`
+links. Every app path maps to its Compose route (`parseDeepLink` in
+`ui/connect/DeepLinks.kt`): `terminal?<key>` opens the confirm screen,
+`/terminal/connect` explains that the web link needs a browser,
+`/session/<id>` goes to `onOpenSession`, and `/session/<id>/info|changes|
+file?path=<btoa>|message/<mid>`, `/machine/<id>`, `/new`, `/settings/*`,
+`/server`, `/restore[/manual]`, `/troubleshoot`, `/changelog` and
+`/onboarding/settings` open their screens. Paths with no Android screen
+(excluded features, `session/recent`, the files browser) open Home. The
+release build adds app.config.js's production intent filter for
 `https://app.happy.engineering` (`src/release/AndroidManifest.xml`), with
 `autoVerify`. The site's `assetlinks.json` (happy-app's
 `public/.well-known/assetlinks.json`) already lists `com.ex3ndr.happy` with
 one fingerprint, presumably Play's app-signing key that the React Native app
 verifies with, so a Play-distributed build should verify as it does; a build
-signed with only the upload key won't. Links while signed out are dropped.
+signed with only the upload key won't. Signed out, only the screens that need
+no account (server, restore, troubleshoot, changelog, onboarding settings)
+open; other links are dropped rather than pushed onto empty signed-in screens.
 
 ## Push
 

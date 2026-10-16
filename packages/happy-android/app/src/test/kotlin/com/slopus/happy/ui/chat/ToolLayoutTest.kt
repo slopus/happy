@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertHasNoClickAction
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -176,6 +177,31 @@ class ToolLayoutTest {
         rule.onNodeWithText("+1").assertExists()
         // Patch tools draw no card header of their own.
         rule.onAllNodesWithTag(ToolTags.HEADER, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    // CodexPatchView.tsx: a file's header opens that file's diff, by the patch's own key; the chevron ends the header.
+    @Test
+    fun patchFilesOpenTheirDiff() {
+        val pressed = mutableListOf<Pair<String, String>>()
+        show(
+            tool("apply_patch", """{"changes":{"/repo/src/a.ts":{"type":"update","unified_diff":"@@ -1 +1 @@\n-a\n+b"},"/repo/b.ts":{"type":"add","content":"x"}}}"""),
+            callbacks = MessageCallbacks(onToolFilePress = { message, file -> pressed += message.id to file }),
+        )
+        rule.onAllNodesWithTag(ToolTags.FILE_CHEVRON, useUnmergedTree = true).assertCountEquals(2)
+        val header = rule.onAllNodesWithTag(ToolTags.FILE_HEADER, useUnmergedTree = true)[1]
+        val chevron = rule.onAllNodesWithTag(ToolTags.FILE_CHEVRON, useUnmergedTree = true)[1].bounds
+        assertDp("chevron 14", 14, chevron.right - chevron.left)
+        assertTrue("chevron at the header's end", chevron.right <= header.bounds.right && header.bounds.right - chevron.right <= 16.dp)
+        header.performClick()
+        assertEquals(listOf("t" to "/repo/b.ts"), pressed)
+    }
+
+    // Without a way to open them (no route), the file headers stay inert and show no chevron.
+    @Test
+    fun patchFilesAreInertWithoutARoute() {
+        show(tool("apply_patch", """{"changes":{"/repo/src/a.ts":{"type":"update","unified_diff":"@@ -1 +1 @@\n-a\n+b"}}}"""))
+        rule.onAllNodesWithTag(ToolTags.FILE_CHEVRON, useUnmergedTree = true).assertCountEquals(0)
+        rule.node(ToolTags.FILE_HEADER).assertHasNoClickAction()
     }
 
     // PermissionFooter: padding 6 / 4 above / 8 below; buttons 7 apart, at least 34 high.
