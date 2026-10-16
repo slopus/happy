@@ -161,6 +161,8 @@ class GitStatusServices private constructor(graph: AppGraph) {
         launch { sync.statuses.collect { send(it) } }
         launch { account.live.sessionDataUpdates.collect(sync::refresh) }
         launch { account.live.agentStateUpdates.collect(sync::invalidate) }
+        // sync.ts refreshSessionData for the open chat on resume and on reconnect.
+        launch { account.viewingRefreshed.collect { ids -> ids.forEach(sync::refresh) } }
         launch {
             var known = emptySet<String>()
             store.versions.map { it.sessions }.distinctUntilChanged().collect {

@@ -16,7 +16,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
@@ -170,7 +174,7 @@ class AccountSync(
                 if (active) {
                     socket.reconnectNow()
                     requestSync()
-                    messages.invalidateViewing()
+                    refreshViewing()
                 }
             }
         }
@@ -187,6 +191,21 @@ class AccountSync(
         job.cancelAndJoin()
     }
 
+    private val viewingRefreshes = MutableSharedFlow<Set<String>>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /**
+     * The open chats, each time they are refreshed after a reconnect or a
+     * return to the foreground (sync.ts onSessionVisible for
+     * currentViewingSessionId): their messages here, their git status by
+     * whoever follows this.
+     */
+    val viewingRefreshed: SharedFlow<Set<String>> = viewingRefreshes.asSharedFlow()
+
+    private fun refreshViewing() {
+        messages.invalidateViewing()
+        messages.viewingSessionIds().takeIf { it.isNotEmpty() }?.let(viewingRefreshes::tryEmit)
+    }
+
     /** Ask for a delta sync now. */
     fun requestSync() = deltaSync.invalidate()
 
@@ -200,7 +219,7 @@ class AccountSync(
         // The handshake carried the state for the first connect; this covers reconnects.
         socket.emit("app-state", appState(foreground.value))
         deltaSync.invalidate()
-        messages.invalidateViewing()
+        refreshViewing()
         scope.launch { composer.flushAhead() }
         scope.launch { sender.resume() }
     }
