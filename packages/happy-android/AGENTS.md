@@ -169,7 +169,8 @@ against ours in both directions.
 the same applicationId and is signed with the same certificate as the Play
 build.** A different certificate cannot install over it at all, and a
 reinstall loses the Keystore key. Release and preview builds must be signed
-with the existing EAS/Play signing key; no signing config is checked in.
+with the existing EAS/Play signing key; no signing config is checked in
+(see "Versions and signing").
 
 The custom server URL is not carried over: happy-app keeps it in MMKV
 (`server-config`), which this app does not read.
@@ -318,6 +319,29 @@ cd packages/happy-android
 Build types map to happy-app's variants and application ids: `debug` →
 `com.slopus.happy.dev`, `preview` → `com.slopus.happy.preview`, `release` →
 `com.ex3ndr.happy`.
+
+### Versions and signing
+
+- `versionName` is happy-app's `version`, read from `app.config.js` at
+  configuration time, so the two apps never drift. `HAPPY_VERSION_NAME` or
+  `-Phappy.versionName` overrides it.
+- `versionCode` is EAS's remote, auto-incremented build number
+  (`eas.json` `appVersionSource: remote`). There is no counter in the repo:
+  a store build passes the next number as `HAPPY_VERSION_CODE` or
+  `-Phappy.versionCode`, above the last RN upload. Local builds get 1.
+- Signing comes from the environment (`HAPPY_RELEASE_KEYSTORE`,
+  `_KEYSTORE_PASSWORD`, `_KEY_ALIAS`, `_KEY_PASSWORD`, and the same with
+  `HAPPY_PREVIEW_`) or a gitignored `keystore.properties`
+  (`keystore.properties.example` lists the keys). Without them `release`
+  builds unsigned and `preview` debug-signed, so `assembleRelease` works
+  anywhere, CI included.
+- A signed release or preview build without an explicit versionCode fails in
+  `pre<Variant>Build`, before R8, rather than at the Play console.
+- Shipping goes through the `release` skill like every other release.
+- CI: `.github/workflows/happy-android.yml` runs `assembleDebug
+  assembleRelease testDebugUnitTest :crypto:test` on changes under
+  `packages/happy-android/` (and happy-app's `app.config.js`, which sets the
+  version). It has no signing secrets.
 
 The JDK toolchain (21) is provisioned by the foojay resolver if the machine
 only has a JRE. In the agent sandbox Gradle needs network and local sockets:
