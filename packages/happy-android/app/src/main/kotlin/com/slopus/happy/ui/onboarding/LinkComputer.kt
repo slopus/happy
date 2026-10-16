@@ -1,7 +1,5 @@
 package com.slopus.happy.ui.onboarding
 
-import android.content.Context
-import android.content.SharedPreferences
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,7 +19,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -33,7 +30,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.slopus.happy.AppGraph
 import com.slopus.happy.R
 import com.slopus.happy.config.LocalSettings
-import com.slopus.happy.net.HappyJson
 import com.slopus.happy.ui.components.Prompt
 import com.slopus.happy.ui.components.PromptModal
 import com.slopus.happy.ui.components.RoundButton
@@ -44,48 +40,15 @@ import com.slopus.happy.ui.connect.rememberTerminalConnect
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlin.time.Duration.Companion.seconds
 
-/**
- * The ticked boxes of the link checklist, localSettings'
- * `linkComputerChecklist` (`{install?: boolean, open?: boolean}`). Kept in
- * [LocalSettings]' preferences file so logout clears it with the rest of the
- * device-only settings, as `mmkv.clearAll()` does.
- */
-class LinkChecklistStore(private val prefs: SharedPreferences) {
-    private val state = MutableStateFlow(read())
-    val ticked: StateFlow<Set<LinkChecklistStep>> = state.asStateFlow()
+/** The ticked boxes as localSettings' `linkComputerChecklist` (`{install?: boolean, open?: boolean}`) holds them. */
+fun linkChecklistTicked(checklist: Map<String, Boolean>): Set<LinkChecklistStep> =
+    LinkChecklistStep.entries.filter { checklist[it.key] == true }.toSet()
 
-    fun toggle(step: LinkChecklistStep) {
-        val next = if (step in state.value) state.value - step else state.value + step
-        val json = JsonObject(LinkChecklistStep.entries.associate { it.key to JsonPrimitive(it in next) })
-        prefs.edit().putString(KEY, json.toString()).apply()
-        state.value = next
-    }
-
-    private fun read(): Set<LinkChecklistStep> {
-        val json = try {
-            prefs.getString(KEY, null)?.let { HappyJson.parseToJsonElement(it).jsonObject }
-        } catch (_: IllegalArgumentException) {
-            null
-        } ?: return emptySet()
-        return LinkChecklistStep.entries.filter { json[it.key]?.jsonPrimitive?.booleanOrNull == true }.toSet()
-    }
-
-    companion object {
-        const val KEY = "linkComputerChecklist"
-
-        fun from(context: Context) =
-            LinkChecklistStore(context.getSharedPreferences(LocalSettings.PREFS_NAME, Context.MODE_PRIVATE))
-    }
+/** `setTicked({ ...ticked, [step]: !ticked[step] })` */
+fun LocalSettings.toggleLinkChecklist(step: LinkChecklistStep) = change { values ->
+    values.copy(linkComputerChecklist = values.linkComputerChecklist + (step.key to (values.linkComputerChecklist[step.key] != true)))
 }
 
 /**
@@ -162,10 +125,9 @@ fun OnboardingLinkComputerScreen(
  */
 @Composable
 fun OnboardingLinkComputer(graph: AppGraph, onSettings: () -> Unit) {
-    val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
-    val store = remember(context) { LinkChecklistStore.from(context) }
-    val ticked by store.ticked.collectAsStateWithLifecycle()
+    val localSettings by graph.localSettings.values.collectAsStateWithLifecycle()
+    val ticked = remember(localSettings.linkComputerChecklist) { linkChecklistTicked(localSettings.linkComputerChecklist) }
     val serverUrl by graph.serverConfig.url.collectAsStateWithLifecycle()
     val customServerLabel = remember(serverUrl) { graph.serverConfig.customHostLabel }
     var approved by rememberApproved()
@@ -177,7 +139,7 @@ fun OnboardingLinkComputer(graph: AppGraph, onSettings: () -> Unit) {
     OnboardingLinkComputerScreen(
         customServerLabel = customServerLabel,
         ticked = ticked,
-        onToggle = store::toggle,
+        onToggle = graph.localSettings::toggleLinkChecklist,
         busy = connect.isLoading || approved,
         error = error,
         onScan = {

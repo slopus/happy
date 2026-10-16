@@ -226,17 +226,19 @@ class LinkComputerLayoutTest {
     }
 
     @Test
-    fun checklistTicksPersistInTheLocalSettingsFile() {
+    fun checklistTicksAreTheLocalSetting() {
         val prefs = ApplicationProvider.getApplicationContext<Context>()
             .getSharedPreferences(LocalSettings.PREFS_NAME, Context.MODE_PRIVATE)
             .also { it.edit().clear().commit() }
-        val store = LinkChecklistStore(prefs)
-        assertEquals(emptySet<LinkChecklistStep>(), store.ticked.value)
-        store.toggle(LinkChecklistStep.Install)
-        assertEquals("""{"install":true,"open":false}""", prefs.getString(LinkChecklistStore.KEY, null))
-        assertEquals(setOf(LinkChecklistStep.Install), LinkChecklistStore(prefs).ticked.value)
-        // Logout clears LocalSettings' file, and the checklist with it.
-        LocalSettings(prefs).clear()
-        assertEquals(emptySet<LinkChecklistStep>(), LinkChecklistStore(prefs).ticked.value)
+        val settings = LocalSettings(prefs)
+        assertEquals(emptySet<LinkChecklistStep>(), linkChecklistTicked(settings.values.value.linkComputerChecklist))
+        settings.toggleLinkChecklist(LinkChecklistStep.Install)
+        assertEquals(mapOf("install" to true), settings.values.value.linkComputerChecklist)
+        settings.toggleLinkChecklist(LinkChecklistStep.Open)
+        settings.toggleLinkChecklist(LinkChecklistStep.Install)
+        assertEquals(setOf(LinkChecklistStep.Open), linkChecklistTicked(LocalSettings(prefs).values.value.linkComputerChecklist))
+        // Logout clears the local settings, and the checklist with them.
+        settings.clear()
+        assertEquals(emptySet<LinkChecklistStep>(), linkChecklistTicked(LocalSettings(prefs).values.value.linkComputerChecklist))
     }
 }
