@@ -140,6 +140,11 @@ public struct ChatScreenLayout: Equatable, Sendable {
     public var newestEdgeInset: CGFloat
     /// Inset at the oldest edge (under the navigation bar).
     public var oldestEdgeInset: CGFloat
+    /// What covers the list at each end, for its scroll indicator: on a
+    /// phone, the dock and keyboard and the header; nothing where the list
+    /// stops at them. The safe area keeps it off a sideways phone's
+    /// rounded corner and island.
+    public var indicatorInsets: ChatIndicatorInsets
     public var dock: CGRect
     /// Accessory frames, in the dock.
     public var accessories: [CGRect]
@@ -193,6 +198,7 @@ public struct ChatScreenLayout: Equatable, Sendable {
         headerBottom = input.safeArea.top + accessory
         newestEdgeInset = max(0, height - dock.minY) + M.newerEdgeExtra
         oldestEdgeInset = headerBottom + M.olderEdgeExtra
+        indicatorInsets = ChatIndicatorInsets(newest: height - dock.minY, oldest: headerBottom, side: input.safeArea.right)
         scrollButton = CGRect(
             x: (width - M.scrollButtonSize) / 2,
             y: dock.minY + composer.minY + min(max(0, input.composerCardOffset), composer.height) - M.scrollButtonGap - M.scrollButtonSize,
@@ -210,6 +216,7 @@ public struct ChatScreenLayout: Equatable, Sendable {
             list = CGRect(x: 0, y: top + accessory, width: width, height: max(0, dock.minY - top - accessory))
             newestEdgeInset = M.newerEdgeExtra
             oldestEdgeInset = input.hidesHeader ? M.headerlessOlderEdgeExtra : top + M.dockedOlderEdgeExtra
+            indicatorInsets = ChatIndicatorInsets(side: input.safeArea.right)
             scrollButton.origin.y = list.maxY - M.dockedScrollButtonGap - M.scrollButtonSize
             scrim = CGRect(x: 0, y: dock.minY, width: width, height: 0)
             headerScrim = CGRect(x: 0, y: 0, width: width, height: 0)

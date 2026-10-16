@@ -155,6 +155,22 @@ public struct ChatScrollAnchor: Equatable, Sendable {
         return ChatScrollAnchor(kind: .rowEnd(id: id, distance: layout.frame(ofRow: index).maxY - visibleMinY))
     }
 
+    /// Where the visible min y goes when the inset at the newest edge
+    /// changes by `delta` (the keyboard, the dock growing).
+    ///
+    /// Left alone, the reader keeps what they see at the newest edge: it
+    /// rides up or down with the dock, inside the keyboard's animation.
+    /// Under the reader's finger the content stays where the finger has it:
+    /// the offset doesn't move, so the change only adds or takes away that
+    /// much to scroll back. Telegram's list keeps its anchor only when not
+    /// tracking, too. During an interactive dismiss the keyboard follows the
+    /// finger, and keeping the anchor would add the keyboard's travel to the
+    /// drag's: the conversation would run at twice the finger's speed.
+    public static func visibleMinY(afterNewestInsetChange delta: CGFloat, from visibleMinY: CGFloat, maxVisibleMinY: CGFloat, tracking: Bool) -> CGFloat {
+        if tracking { return visibleMinY + delta }
+        return min(max(0, visibleMinY), max(0, maxVisibleMinY))
+    }
+
     /// Where the visible min y must be after the update. `maxVisibleMinY`
     /// is the furthest the list can scroll (content height minus the
     /// visible height), so the anchor never asks for an overscroll.
