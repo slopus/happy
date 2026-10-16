@@ -19,8 +19,8 @@ architectures comparable (local store, delta sync, crypto layer).
 - Built so far: crypto, account auth, the server setting, an empty home
   screen, Settings (Account, Appearance), the local store with delta sync
   and live updates, and onboarding and connect (restore by QR, Link Your
-  Computer, troubleshoot, terminal connect by QR, link and deep link). Not
-  built: chat and session UI, push.
+  Computer, troubleshoot, terminal connect by QR, link and deep link), and
+  push notifications. Not built: chat and session UI.
 
 ## Rules
 
@@ -60,7 +60,9 @@ app/
   config/   server URL (survives logout), device-only settings (theme)
   data/     HappyDatabase (schema), HappyStore (typed access + change ticks)
   sync/     AccountSync (per-account owner), SyncEngine (delta sync), LiveUpdates,
-            Presence, MessageSync (history), SyncApi + UpdateTypes (wire types)
+            Presence, MessageSync (history), MessageSender (outbox), MessageMeta,
+            RpcClient + SessionOps + MachineOps (ops.ts), SessionComposer (picks
+            and drafts), HappyAgentGit, RigCapabilities, SyncApi + UpdateTypes
   net/      HappyHttp (OkHttp + kotlinx.serialization, X-Happy-Client header),
             SocketIoClient (the /v1/updates socket)
   ui/       theme, components (Item, ItemGroup, RoundButton, Header, ...), screens
@@ -71,7 +73,7 @@ app/
   model/    typed views of the stored JSON: Settings (sync/settings.ts);
             settings/ has agentDefaults.ts, local settings, SettingsRepository
   text/     Resources.plural / pluralResource, PluralExactNumbers (generated)
-tools/testvectors/   generates crypto test vectors by running happy-app's TypeScript
+tools/testvectors/   generates crypto and send vectors by running happy-app's TypeScript
 tools/translations/  generates the string resources from happy-app's catalogs
 ```
 
@@ -220,6 +222,49 @@ page on demand and returns whether the run moved back;
 `paging(sessionId)` gives `isLoaded`, `hasMoreOlder`, `isLoadingOlder`. A
 backward page that does not move the cursor ends history.
 
+**Sending** (`sync/MessageSender`, `account.sender`). `send(sessionId, text,
+meta)` builds the user record exactly as sync.ts `sendMessage` does (sentFrom
+`android`, delivery meta, `appendSystemPrompt`, the mode fields, displayText;
+`meta` is laid over it), seals it with the session key, writes it to the
+`outbox` table and returns the localId; it throws `SendException` when
+nothing was queued (session not synced, a permission mode the session's CLI
+cannot parse). The mode and delivery meta are resolved as messageMeta.ts
+does (`MessageMetaResolver`) from the composer mirror, agent defaults and
+presence. A per-session loop POSTs everything queued to
+`/v3/sessions/:id/messages` with backoff. `send(..., attachments = records)`
+queues pre-built plaintext records (attachment `file` events) ahead of the
+text, in order, sealed and retried the same way; rows go `QUEUED` → `SENDING` →
+`SENT` (stored, waiting for its echo) and are deleted when the echo is
+stored. `FAILED` (a 4xx the server will repeat, or still unsent 30 s into
+the background) waits for `retry` or `discard`. Rows survive restarts; an
+interrupted send is re-queued at start (the server dedupes on localId). The
+POST answer never moves the message cursor; it asks for a catch-up. Chat
+reads delivery state from `sender.outbox(sessionId)` / `store.outbox`. The
+record is checked byte for byte against happy-app's own `sendMessage`
+(`tools/testvectors/send.mjs` → `app/src/test/resources/happy-ts-send-vectors.json`).
+
+**Ops** (`account.sessionOps`, `account.machineOps`). ops.ts over
+`rpc-call` (params and result sealed with the session's or machine's data
+key, 50 s ack timeout) and HTTP. Session: abort, allow/deny with mode,
+allowed tools and decision, question answers, kill, archive, delete,
+switch, goal action, avatar, bash and files. Happy Agent sessions are asked
+only what they advertise (`RigCapabilities.kt`, rig.ts gates). Machine:
+spawn (incl. Happy Agent's `happy-agent-spawn`), resume with the data-key
+fallback, stop session/daemon, bash, delete, rename, Claude/Codex fork,
+duplicate and rewind points, `forkAndSpawn`, side chats. Commands throw
+`RpcException`; calls with a result type return the failure in it.
+`account.git` is Happy Agent's native Git changes (happyAgentGit.ts).
+
+**Composer** (`sync/SessionComposer`, `account.composer`). Each session's
+draft and picks (`ComposerMirror`: storage.ts's mirror fields), stored in
+the `composer` table. `setAgentModes(id, mapOf(field to value))` is ops.ts
+`sessionSetAgentModes`: applied at once and pushed with `update-metadata`
+(kept while in flight, then metadata wins). On a Happy Agent session the
+picks and text are one stamped draft written per rigComposer.ts: typing
+debounced 250 ms, picks and clears at once, one write in flight, adopt a
+remote draft stamped the same or later, restore from disk and flush on
+reconnect. `setText`, `clearDraft`, `mirrors` / `mirror(id)`.
+
 ## Settings
 
 `AppGraph.settings` (`SettingsRepository`) is the account's settings as
@@ -232,6 +277,13 @@ does). Read `settings.settings` (a `StateFlow<Settings>`); change with
 top-level keys as pending and asks for a sync. Device-only preferences
 (localSettings.ts) are `AppGraph.localSettings.values`, stored as one JSON
 document in SharedPreferences.
+
+What's New reads `res/raw/changelog.json`, a byte-for-byte copy of
+happy-app's `sources/changelog/changelog.json`, with its images in
+`res/drawable-nodpi/changelog_*`. When happy-app's changes, copy it over
+(`ChangelogTest` fails until you do); a new image also needs an entry in
+`Changelog.images`. `AppGraph.changelog` is the read marker Home's update
+banner needs.
 
 ## Build and test
 
@@ -257,6 +309,13 @@ happy-app's encryption:
 
 ```
 cd tools/testvectors && npm install && npm run generate
+```
+
+The send vectors are generated the same way, from sync.ts's `sendMessage`
+itself; regenerate after changing it or the system prompt:
+
+```
+cd tools/testvectors && npm install && npm run generate:send
 ```
 
 ## Onboarding and connect
@@ -310,8 +369,54 @@ adds app.config.js's production intent filter for
 `autoVerify`; verification needs the release key's fingerprint in that
 site's `assetlinks.json`. Links while signed out are dropped.
 
-## Stubs to replace
+## Push
 
-- **Settings › Account › Link New Device** still explains that the scanner
-  is missing (`settings_account_link_new_device_unavailable`); Settings wires
-  it to `rememberAccountLink` (above) and deletes that string.
+What happy-app does with expo-notifications, without Expo:
+
+- **Token.** FCM token → Expo push token, exactly as expo-notifications
+  55's getExpoPushTokenAsync: `POST https://exp.host/--/api/v2/push/getExpoPushToken`,
+  only `content-type: application/json`, body
+  `{type:"fcm",deviceId,development:false,appId,deviceToken,projectId}` in
+  that key order (`ExpoPushTokenClient`). `deviceId` is expo's
+  InstallationId, read from the same no-backup file (and legacy places), so
+  an upgrade from the React Native build keeps its device id. The project
+  id is app.config.js's `extra.eas.projectId`. happy-server only knows Expo
+  tokens and sends through Expo, so this exchange is not optional.
+- **Registration** (`PushRegistrar`, pushRegistration.ts): register with
+  `POST /v1/push-tokens`, remember it, drop the previously registered token
+  if it changed; all happy-server calls retry like apiPush.ts's `backoff`.
+  `PushRegistrationEffect` in HappyApp runs it on sign-in and every return
+  to the foreground. It shows the POST_NOTIFICATIONS prompt only while the
+  system would still show it, never opens settings by itself, and forgets
+  the registration on sign-out. `HappyMessagingService.onNewToken`
+  re-registers a rotated FCM token.
+- **Showing.** Expo relays a push as an FCM data message (`title`,
+  `message`, `body` = the data as JSON, `channelId`); `presentPush` shows it
+  on its channel, silent while the app is in the foreground. Channels are
+  `_layout.tsx`'s: `default` (max) and `messages` (high, what happy-server
+  uses), vibration 0/250/250/250, light #FF231F7C.
+- **Tapping** opens MainActivity with `ACTION_OPEN_PUSH` and the session id
+  from notificationRouting.ts's rules (a `/session/<id>` url, else
+  `sessionId`); `DeepLinks.offer` turns it into `DeepLink.Session`, which
+  `DeepLinkEffect` hands to `onOpenSession` (the chat's).
+- **Settings › Account's push rows** use `rememberPushRegistration(graph)`,
+  Settings' `PushRegistration` over the same registrar and permission
+  (pushRegistration.ts's getPushPermissionInfo,
+  requestPushPermissionOrOpenSettings, getCurrentExpoPushToken,
+  syncCurrentPushToken, removePushToken).
+
+**Firebase is optional at build time.** There is no google-services
+plugin: `app/build.gradle.kts` reads `app/google-services.json`, else
+happy-app's committed `packages/happy-app/google-services.json`, and
+generates the plugin's resources for the client matching each variant's
+application id. Without a file or a matching client the app builds and runs
+and push reports unsupported (no prompt, nothing registered). Pushes arrive
+only if:
+
+- the file has clients for `com.ex3ndr.happy`, `com.slopus.happy.preview`
+  and `com.slopus.happy.dev` (happy-app's has all three);
+- the Expo project above has that Firebase project's FCM V1 service
+  account key (happy-app's Android pushes already depend on it; a
+  different Firebase project needs its key uploaded to Expo);
+- the device has Play services (otherwise unsupported, as FCM has no
+  token there).
