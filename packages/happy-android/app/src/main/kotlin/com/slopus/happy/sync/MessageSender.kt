@@ -340,14 +340,24 @@ class MessageSender internal constructor(
     private fun flushFor(sessionId: String): InvalidateSync =
         flushes.computeIfAbsent(sessionId) { InvalidateSync(scope) { flush(sessionId) } }
 
-    /** sync.ts `flushOutbox`: everything queued for the session, in one POST. */
-    private suspend fun flush(sessionId: String) = withContext(io) {
+    /**
+     * sync.ts `flushOutbox`: everything queued for the session, in order, in
+     * POSTs of at most [MAX_BATCH] (the server refuses a longer body with a
+     * 400, which would fail every row and fail again on Retry).
+     */
+    private suspend fun flush(sessionId: String) {
+        while (flushBatch(sessionId)) Unit
+    }
+
+    /** One POST of the oldest queued rows; false once there is nothing left to send. */
+    private suspend fun flushBatch(sessionId: String): Boolean = withContext(io) {
         // Read and claimed in one write transaction: a row failed meanwhile is not picked up again.
         val batch = store.transaction {
             store.outbox(sessionId).filter { it.state == OutboxState.QUEUED || it.state == OutboxState.SENDING }
+                .take(MAX_BATCH)
                 .also { rows -> store.setOutboxState(sessionId, rows.map { it.localId }, OutboxState.SENDING) }
         }
-        if (batch.isEmpty()) return@withContext
+        if (batch.isEmpty()) return@withContext false
         val ids = batch.map { it.localId }
         val stored = try {
             api.sendMessages(sessionId, batch.map { ApiOutgoingMessage(it.localId, it.content) })
@@ -358,7 +368,7 @@ class MessageSender internal constructor(
             if (e.status in 400..499 && e.status != 408 && e.status != 429) {
                 // Asking again gets the same answer: the user decides.
                 settleSending(sessionId, ids, OutboxState.FAILED, failureMessage(e))
-                return@withContext
+                return@withContext true
             }
             settleSending(sessionId, ids, OutboxState.QUEUED, failureMessage(e))
             maybeStartWatchdog()
@@ -374,6 +384,7 @@ class MessageSender internal constructor(
         val unanswered = ids.filter { it !in answered }
         if (unanswered.isNotEmpty()) store.setOutboxState(sessionId, unanswered, OutboxState.SENT)
         messages.invalidate(sessionId)
+        true
     }
 
     /** Rows of a failed POST that are still SENDING; one failed meanwhile (the watchdog) stays failed. */
@@ -393,6 +404,9 @@ class MessageSender internal constructor(
          * chat's first page, as much as happy-app has loaded when it asks.
          */
         const val RECEIPT_WINDOW = MessageSync.PAGE_SIZE
+
+        /** v3SessionRoutes.ts sendMessagesBodySchema: `messages` holds 1 to 100. */
+        const val MAX_BATCH = 100
 
         private fun failureMessage(e: HttpStatusException) = "Server error: ${e.status}"
 

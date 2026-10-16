@@ -198,6 +198,8 @@ class FakeHappyServer(val secret: ByteArray = ByteArray(32) { (it * 7 + 1).toByt
                 failSends.removeFirstOrNull()?.let { return json(it, """{"error":"boom"}""") }
                 if (sessions.none { it.id == id }) return json(404, """{"error":"Session not found"}""")
                 val body = HappyJson.decodeFromString(ApiOutgoingMessages.serializer(), request.body!!.utf8())
+                // sendMessagesBodySchema: 1 to 100 messages.
+                if (body.messages.size !in 1..100) return json(400, """{"error":"Invalid body"}""")
                 json(200, HappyJson.encodeToString(ApiStoredMessages.serializer(), ApiStoredMessages(storeSent(id, body))))
             }
             path.startsWith("/v3/sessions/") && path.endsWith("/messages") -> {
