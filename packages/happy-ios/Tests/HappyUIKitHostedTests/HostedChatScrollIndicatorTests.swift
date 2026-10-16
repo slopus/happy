@@ -65,9 +65,20 @@ final class HostedChatScrollIndicatorTests: XCTestCase {
             XCTFail("\(label): no vertical indicator", file: file, line: line)
             return
         }
+        print("HostedChatScrollIndicatorTests \(label): list \(list.bounds.size) distance \(list.visibleMinY) insets \(insets) indicator \(actual) expected \(layout.frame)")
         XCTAssertEqual(actual.minX, layout.frame.minX, accuracy: accuracy, "\(label): side", file: file, line: line)
         XCTAssertEqual(actual.minY, layout.frame.minY, accuracy: accuracy, "\(label): top", file: file, line: line)
         XCTAssertEqual(actual.height, layout.frame.height, accuracy: accuracy, "\(label): length", file: file, line: line)
+    }
+
+    /// The collection view's indicator insets are the screen's, flipped:
+    /// its top is the screen's bottom.
+    private func assertIndicatorInsets(_ list: ChatListView, _ insets: ChatIndicatorInsets, file: StaticString = #filePath, line: UInt = #line) {
+        let actual = list.collectionView.verticalScrollIndicatorInsets
+        XCTAssertEqual(actual.top, insets.newest, accuracy: accuracy, "newest", file: file, line: line)
+        XCTAssertEqual(actual.bottom, insets.oldest, accuracy: accuracy, "oldest", file: file, line: line)
+        XCTAssertEqual(actual.right, insets.side, accuracy: accuracy, "side", file: file, line: line)
+        XCTAssertEqual(actual.left, 0, file: file, line: line)
     }
 
     // MARK: The list alone
@@ -182,7 +193,7 @@ final class HostedChatScrollIndicatorTests: XCTestCase {
         let typing = screen(test.root, keyboardTop: height - 336)
         list.setEdgeInsets(newest: typing.newestEdgeInset, oldest: typing.oldestEdgeInset, indicator: typing.indicatorInsets)
         XCTAssertEqual(list.visibleMinY, place, accuracy: 0.001)
-        XCTAssertEqual(list.collectionView.verticalScrollIndicatorInsets, UIEdgeInsets(top: typing.indicatorInsets.newest, left: 0, bottom: typing.indicatorInsets.oldest, right: typing.indicatorInsets.side))
+        assertIndicatorInsets(list, typing.indicatorInsets)
         assertIndicator(list, typing.indicatorInsets, "keyboard up")
 
         // The composer grows to three lines.
@@ -288,7 +299,7 @@ final class HostedChatScrollIndicatorTests: XCTestCase {
 
         var insets = shownInsets(chat, dock: dock)
         XCTAssertGreaterThan(insets.oldest, 0)
-        XCTAssertEqual(list.collectionView.verticalScrollIndicatorInsets, UIEdgeInsets(top: insets.newest, left: 0, bottom: insets.oldest, right: insets.side))
+        assertIndicatorInsets(list, insets)
         assertIndicator(list, insets, "resting")
 
         // The software keyboard, where this simulator shows one.

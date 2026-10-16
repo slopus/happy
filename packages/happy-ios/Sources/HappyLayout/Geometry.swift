@@ -103,6 +103,13 @@ public enum PixelGrid {
         let scale = scale > 0 ? scale : 1
         return ((value * scale) - 0.001).rounded(.up) / scale
     }
+
+    /// Rounds a length to the nearest device pixel, for an inset measured
+    /// to a snapped edge, so it lands where `snap` put that edge.
+    public static func round(_ value: CGFloat, scale: CGFloat) -> CGFloat {
+        guard scale > 0, value.isFinite else { return value }
+        return (value * scale).rounded() / scale
+    }
 }
 
 extension CGRect {

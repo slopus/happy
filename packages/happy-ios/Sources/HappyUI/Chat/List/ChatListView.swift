@@ -127,6 +127,12 @@ final class ChatListView: UIView, UICollectionViewDataSource, UICollectionViewDe
     /// the conversation stays with the finger
     /// (`ChatScrollAnchor.visibleMinY(afterNewestInsetChange:…)`).
     func setEdgeInsets(newest: CGFloat, oldest: CGFloat, indicator: ChatIndicatorInsets) {
+        // On the pixels the header and the dock were snapped to, or the
+        // offset, and UIKit's rounding of the indicator, land between them.
+        let scale = window?.screen.scale ?? traitCollection.displayScale
+        let indicator = indicator.snapped(scale: scale)
+        let newest = PixelGrid.round(newest, scale: scale)
+        let oldest = PixelGrid.round(oldest, scale: scale)
         // Flipped: the collection view's top is the screen's bottom.
         let indicatorInsets = UIEdgeInsets(top: indicator.newest, left: 0, bottom: indicator.oldest, right: indicator.side)
         if collectionView.verticalScrollIndicatorInsets != indicatorInsets {
