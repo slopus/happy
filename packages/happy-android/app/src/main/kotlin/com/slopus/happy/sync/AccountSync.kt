@@ -77,6 +77,14 @@ class AccountSync(
 
     val live = LiveUpdates(store, decoder, presence, messages, requestSync = deltaSync::invalidate)
 
+    private val rpc = RpcClient(socket, store, decoder, io)
+
+    /** Abort, permissions, kill, archive, delete, files and shell for one session (ops.ts). */
+    val sessionOps = SessionOps(rpc, api, store, io)
+
+    /** Spawn, resume, stop, fork and the daemon's shell (ops.ts). */
+    val machineOps = MachineOps(rpc, api, store, decoder, refreshSessions = ::syncNow, io = io)
+
     /** The socket's state, as Home's header shows it (homeConnectionStatus.ts). */
     val connectionStatus: StateFlow<ConnectionStatus> = socket.status
 

@@ -10,11 +10,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -23,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -31,6 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.ui.components.HappyTextField
+import com.slopus.happy.ui.connect.QrCode
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonDisplay
 import com.slopus.happy.ui.components.RoundButtonSize
@@ -45,6 +48,8 @@ object RestoreTags {
     const val INSTRUCTION = "restore.instruction"
     const val PATH = "restore.path"
     const val QR_SLOT = "restore.qrSlot"
+    const val QR_FRAME = "restore.qrFrame"
+    const val QR_CODE = "restore.qrCode"
     const val USE_KEY = "restore.useKey"
     const val KEY_INPUT = "restore.keyInput"
     const val KEY_BODY = "restore.keyBody"
@@ -58,6 +63,8 @@ object RestoreSpec {
     val pathGap = 32.dp
     val qrSize = 260.dp
     val qrRadius = 16.dp
+    val qrFramePadding = 12.dp
+    val spinner = 20.dp
     val buttonWidth = 280.dp
     val buttonGap = 32.dp
     val instruction = happyTextStyle(fontSize = 17, lineHeight = 22)
@@ -74,17 +81,18 @@ object RestoreSpec {
 }
 
 /**
- * Restore by linking from a phone that already has the account. In
- * happy-app this screen shows a QR code for the other phone to scan.
+ * Restore by linking from a phone that already has the account
+ * (restore/index.tsx). The other phone scans the code shown here; this one
+ * waits for its answer (see [com.slopus.happy.auth.AccountLinkRequest]).
  *
- * STUB: the Android app does not draw the QR code or run the link exchange
- * yet. The slot where the code goes says so, and the way forward is the
- * secret key. Layout as in happy-app: centred column, 32/24 padding,
- * instruction 17/22, path 15/20 secondary, the 260 square slot (radius 16,
- * surfaceHigh), and a 280 wide quiet button 32 below.
+ * Spec: centred column, 32/24 padding; instruction 17/22, 8 above the path
+ * 15/20 secondary, 32 above the code. Until the request is registered
+ * ([qrUrl] null) a 260 square, radius 16, surfaceHigh, holds a small
+ * spinner; then the 260 code sits in a white frame with 12 padding and
+ * radius 16. A 280 wide quiet button 32 below.
  */
 @Composable
-fun RestoreScreen(onBack: () -> Unit, onUseSecretKey: () -> Unit) {
+fun RestoreScreen(qrUrl: String?, onBack: () -> Unit, onUseSecretKey: () -> Unit) {
     val colors = HappyTheme.colors
     Screen(header = { StackHeader(stringResource(R.string.onboarding_restore_title), onBack, TitleAlignment.Center) }) {
         BoxWithConstraints {
@@ -112,26 +120,37 @@ fun RestoreScreen(onBack: () -> Unit, onUseSecretKey: () -> Unit) {
                     textAlign = TextAlign.Center,
                     modifier = Modifier.padding(bottom = RestoreSpec.pathGap).testTag(RestoreTags.PATH),
                 )
-                Box(
-                    modifier = Modifier
-                        .size(RestoreSpec.qrSize)
-                        .testTag(RestoreTags.QR_SLOT)
-                        .clip(RoundedCornerShape(RestoreSpec.qrRadius))
-                        .background(colors.surfaceHigh)
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = stringResource(R.string.onboarding_restore_qr_unavailable),
-                        style = RestoreSpec.path,
-                        color = colors.textSecondary,
-                        textAlign = TextAlign.Center,
-                    )
+                if (qrUrl == null) {
+                    Box(
+                        modifier = Modifier
+                            .size(RestoreSpec.qrSize)
+                            .testTag(RestoreTags.QR_SLOT)
+                            .clip(RoundedCornerShape(RestoreSpec.qrRadius))
+                            .background(colors.surfaceHigh),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(RestoreSpec.spinner),
+                            color = colors.text,
+                            strokeWidth = 2.dp,
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .testTag(RestoreTags.QR_FRAME)
+                            .clip(RoundedCornerShape(RestoreSpec.qrRadius))
+                            .background(Color.White)
+                            .padding(RestoreSpec.qrFramePadding),
+                    ) {
+                        QrCode(data = qrUrl, size = RestoreSpec.qrSize, modifier = Modifier.testTag(RestoreTags.QR_CODE))
+                    }
                 }
                 Box(
                     modifier = Modifier
                         .padding(top = RestoreSpec.buttonGap)
-                        .width(RestoreSpec.buttonWidth)
+                        .widthIn(max = RestoreSpec.buttonWidth)
+                        .fillMaxWidth()
                         .testTag(RestoreTags.USE_KEY),
                 ) {
                     RoundButton(

@@ -36,6 +36,8 @@ import com.slopus.happy.ui.SettingsRoute
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
+import com.slopus.happy.ui.connect.EnterTerminalUrlPrompt
+import com.slopus.happy.ui.connect.rememberTerminalConnect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -151,16 +153,19 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
     fun confirm(title: String, message: String, action: HappyAction) = alerts.show(
         Alert(title, message, listOf(AlertButton(cancel), AlertButton(disconnect, destructive = true, onClick = action::run))),
     )
-    // STUB: terminal connect (QR scanner, URL prompt) belongs to the connect flow.
+    // STUB: the screens these rows open are not built yet.
     val terminalStub = { alerts.show(Alert(terminalUnavailable, null, listOf(AlertButton(ok)))) }
+    val connect = rememberTerminalConnect(graph)
+    var enteringUrl by remember { mutableStateOf(false) }
 
     SettingsScreen(
         versionName = BuildConfig.VERSION_NAME,
         versionSubtitle = buildSubtitle(BuildConfig.BUILD_COMMIT_SHA, BuildConfig.BUILD_COMMIT_TIMESTAMP),
         profile = profile,
         onBack = { nav.popBackStack() },
-        onScanQr = terminalStub,
-        onEnterUrl = terminalStub,
+        connectingTerminal = connect.isLoading,
+        onScanQr = connect::scan,
+        onEnterUrl = { enteringUrl = true },
         accounts = ConnectedAccounts(
             claudeConnected = "anthropic" in profile.connectedServices,
             claudeBusy = disconnectClaude.loading,
@@ -179,6 +184,7 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
         onWhatsNew = terminalStub,
         onOpenUrl = uriHandler::openUri,
     )
+    if (enteringUrl) EnterTerminalUrlPrompt(connect, onDismiss = { enteringUrl = false })
     alerts.Host()
 }
 
