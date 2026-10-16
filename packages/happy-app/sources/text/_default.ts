@@ -755,7 +755,7 @@ export const en = {
     sideQuestion: {
         title: 'Side question',
         usage: 'Usage: /btw <your question>',
-        subtitle: 'Answered from this chat — nothing here is added to it.',
+        subtitle: 'Claude answers from this chat. Nothing asked or answered here appears in the chat.',
         followUpPlaceholder: 'Ask a follow-up…',
         send: 'Ask',
         close: 'Close',
