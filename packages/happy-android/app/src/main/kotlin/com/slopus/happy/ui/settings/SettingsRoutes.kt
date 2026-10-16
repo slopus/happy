@@ -28,7 +28,11 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.R
 import com.slopus.happy.auth.AuthState
+import com.slopus.happy.model.Machine
+import com.slopus.happy.model.MachineChoice
 import com.slopus.happy.model.Profile
+import com.slopus.happy.model.collectMachineChoices
+import kotlinx.coroutines.flow.MutableStateFlow
 import com.slopus.happy.model.settings.ConnectApi
 import com.slopus.happy.model.settings.HttpConnectApi
 import com.slopus.happy.model.settings.Languages
@@ -46,12 +50,14 @@ import kotlinx.serialization.Serializable
 @Serializable data object AccountRoute
 @Serializable data object AppearanceRoute
 @Serializable data object LanguageRoute
+@Serializable data object AgentsRoute
 
 /** Settings and its screens. [SettingsRoute] is the entry point. */
 fun NavGraphBuilder.settingsRoutes(graph: AppGraph, nav: NavHostController) {
     composable<SettingsRoute> { SettingsIndex(graph, nav) }
     composable<AccountRoute> { Account(graph, nav) }
     composable<AppearanceRoute> { Appearance(graph, nav) }
+    composable<AgentsRoute> { Agents(graph, nav) }
     composable<LanguageRoute> {
         val settings by graph.settings.settings.collectAsStateWithLifecycle()
         LanguageScreen(
@@ -86,6 +92,44 @@ private fun Appearance(graph: AppGraph, nav: NavHostController) {
         languageDetail = languageDetail,
         onLanguage = { nav.navigate(LanguageRoute) },
     )
+}
+
+@Composable
+private fun Agents(graph: AppGraph, nav: NavHostController) {
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
+    val machines by rememberMachineChoices(graph)
+    val alerts = remember { Alerts() }
+    val ok = stringResource(R.string.common_ok)
+    val machineUnavailable = stringResource(R.string.settings_agents_machine_unavailable)
+    AgentsScreen(
+        machines = machines,
+        overrides = settings.agentDefaultOverrides,
+        onOverridesChange = { overrides -> graph.settings.change { it.copy(agentDefaultOverrides = overrides) } },
+        // STUB: there is no machine screen yet.
+        onMachine = { alerts.show(Alert(machineUnavailable, null, listOf(AlertButton(ok)))) },
+        onBack = { nav.popBackStack() },
+    )
+    alerts.Host()
+}
+
+/**
+ * The account's computers in Settings › Agents order, re-read whenever the
+ * store changes, with live presence over the stored online state.
+ */
+@Composable
+private fun rememberMachineChoices(graph: AppGraph): State<List<MachineChoice>> {
+    val changes by graph.store.changes.collectAsStateWithLifecycle()
+    val account by graph.account.collectAsStateWithLifecycle()
+    val presenceFlow = remember(account) { account?.presence?.machines ?: MutableStateFlow(emptyMap()) }
+    val presence by presenceFlow.collectAsStateWithLifecycle()
+    return produceState(emptyList(), changes, presence) {
+        val machines = withContext(Dispatchers.IO) { graph.store.machines().map(Machine::from) }
+        value = sortAgentMachines(
+            collectMachineChoices(
+                machines.map { machine -> presence[machine.id]?.let { machine.copy(active = it.active, activeAt = it.activeAt) } ?: machine },
+            ),
+        )
+    }
 }
 
 /** The stored profile, re-read whenever the store changes. */
@@ -181,7 +225,7 @@ private fun SettingsIndex(graph: AppGraph, nav: NavHostController) {
         },
         onAccount = { nav.navigate(AccountRoute) },
         onAppearance = { nav.navigate(AppearanceRoute) },
-        onAgents = terminalStub,
+        onAgents = { nav.navigate(AgentsRoute) },
         onWhatsNew = terminalStub,
         onOpenUrl = uriHandler::openUri,
     )
