@@ -3,12 +3,16 @@ package com.slopus.happy.ui.chat
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.pressKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.chat.ChatSessionInfo
 import com.slopus.happy.chat.ChatSnapshot
@@ -124,6 +128,26 @@ class ComposerFeelTest {
         rule.waitForIdle()
         assertEquals(resting, rule.node(ComposerTags.PANEL).bounds.left)
         assertEquals(emptyList<String>(), sent)
+    }
+
+    // AgentInput handleKeyPress: a hardware Escape stops a busy agent; an idle one ignores it.
+    @OptIn(ExperimentalTestApi::class)
+    @Test
+    fun escapeStops() {
+        var thinking by mutableStateOf(true)
+        var aborts = 0
+        rule.setHappyContent {
+            ChatScreen(state(thinking), draft = "", bubbleColor = "gray", actions = ChatScreenActions(onAbort = { aborts++ }))
+        }
+        rule.node(ComposerTags.INPUT).performClick()
+        rule.node(ComposerTags.INPUT).performKeyInput { pressKey(Key.Escape) }
+        rule.waitForIdle()
+        assertEquals(1, aborts)
+        thinking = false
+        rule.waitForIdle()
+        rule.node(ComposerTags.INPUT).performKeyInput { pressKey(Key.Escape) }
+        rule.waitForIdle()
+        assertEquals(1, aborts)
     }
 
     @Test

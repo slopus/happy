@@ -30,6 +30,10 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
@@ -271,7 +275,8 @@ fun ChatScreen(
  * least 300 ms, and once the agent took it Stop stays away until the agent
  * is no longer busy; if it failed, the button shakes and Stop comes back.
  * A refused send (a busy agent that can't be steered): an error haptic and
- * the card shakes. Send: a light haptic.
+ * the card shakes. Send: a light haptic. A hardware Escape, when the
+ * suggestion list doesn't take it, stops a busy agent.
  */
 @Composable
 private fun ChatComposerFor(
@@ -323,6 +328,8 @@ private fun ChatComposerFor(
             }
         }
     }
+    // AgentInput handleKeyPress: with no suggestions up, Escape stops a busy agent.
+    val canEscape = showAbort && sessionState != SessionState.Disconnected && metadata.rigCanAbort()
     ChatComposer(
         text = draft,
         onTextChange = actions.onDraftChange,
@@ -357,6 +364,9 @@ private fun ChatComposerFor(
         top = { ComposerAttachmentStrip() },
         overlay = { ComposerSuggestions(autocomplete) },
         cursor = autocomplete.cursor,
+        onKey = { event ->
+            (event.key == Key.Escape && canEscape && !aborting).also { if (it && event.type == KeyEventType.KeyDown) abort() }
+        },
         panelShake = panelShake,
         primaryShake = primaryShake,
         bottom = { ComposerUsageRow(state.snapshot.usage, session.agentState?.usageLimits) },

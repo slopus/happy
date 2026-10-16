@@ -33,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -162,6 +163,8 @@ fun ChatComposer(
     overlay: @Composable () -> Unit = {},
     /** Shares the cursor with [overlay]: reported as it moves, placed after an insert; it sees hardware keys first. */
     cursor: ComposerCursor? = null,
+    /** Hardware keys the [cursor] didn't take; true when used (the field then never sees it). */
+    onKey: (KeyEvent) -> Boolean = { false },
     /** Shakes the card (a refused send). */
     panelShake: ShakeState? = null,
     /** Shakes the primary button (a failed stop). */
@@ -236,7 +239,7 @@ fun ChatComposer(
                     textStyle = ComposerSpec.input.copy(color = colors.input.text),
                     cursorBrush = SolidColor(colors.input.text),
                     modifier = Modifier
-                        .onPreviewKeyEvent { cursor?.onKey?.invoke(it) == true }
+                        .onPreviewKeyEvent { cursor?.onKey?.invoke(it) == true || onKey(it) }
                         .testTag(ComposerTags.INPUT)
                         .fillMaxWidth()
                         .heightIn(max = ComposerSpec.inputMaxHeight),
