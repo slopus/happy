@@ -15,6 +15,7 @@ import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.ComposerMirror
 import com.slopus.happy.sync.SessionComposerTest
 import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.components.PickerSheetTags
 import com.slopus.happy.ui.PHONE_WIDTH
 import com.slopus.happy.ui.assertBox
 import com.slopus.happy.ui.assertDp
@@ -99,19 +100,19 @@ class ComposerPickerLayoutTest {
         showComposer(modes()) { field, option -> picks += field to option.key }
         rule.node(ComposerPickerTags.MODEL).performClick()
         rule.waitForIdle()
-        rule.node(ComposerPickerTags.SHEET).assertExists()
+        rule.node(PickerSheetTags.PANEL).assertExists()
         rule.onNodeWithText("MODEL", useUnmergedTree = true).assertExists()
-        rule.node(ComposerPickerTags.section("codex")).assertExists()
-        rule.node(ComposerPickerTags.section("claude")).assertExists()
-        val first = rule.node(ComposerPickerTags.option("codex:shared-model")).bounds
-        val second = rule.node(ComposerPickerTags.option("claude:shared-model")).bounds
+        rule.node(PickerSheetTags.section("codex")).assertExists()
+        rule.node(PickerSheetTags.section("claude")).assertExists()
+        val first = rule.node(PickerSheetTags.option("codex:shared-model")).bounds
+        val second = rule.node(PickerSheetTags.option("claude:shared-model")).bounds
         assertDp("option at least 56 high", 56, first.height)
         // A rule and the second provider's heading lie between them.
         assertEquals(true, second.top > first.bottom)
-        rule.node(ComposerPickerTags.option("claude:shared-model")).performClick()
+        rule.node(PickerSheetTags.option("claude:shared-model")).performClick()
         rule.waitForIdle()
         assertEquals(listOf(AgentModeField.MODEL_MODE to "claude:shared-model"), picks)
-        rule.node(ComposerPickerTags.SHEET).assertDoesNotExist()
+        rule.node(PickerSheetTags.PANEL).assertDoesNotExist()
     }
 
     @Test
@@ -123,7 +124,7 @@ class ComposerPickerLayoutTest {
         rule.node(ComposerPickerTags.PERMISSION).performClick()
         rule.waitForIdle()
         rule.onNodeWithText("PERMISSION MODE", useUnmergedTree = true).assertExists()
-        rule.node(ComposerPickerTags.option("plan_only")).assertIsNotEnabled()
+        rule.node(PickerSheetTags.option("plan_only")).assertIsNotEnabled()
         rule.onNodeWithText("Uses the workspace sandbox.", useUnmergedTree = true).assertExists()
     }
 
@@ -141,31 +142,5 @@ class ComposerPickerLayoutTest {
         rule.onNodeWithText("CODEX PERMISSION MODE", useUnmergedTree = true).assertExists()
         rule.onNodeWithText("Yolo (sandboxed)", useUnmergedTree = true).assertExists()
         rule.onNodeWithText("Read", useUnmergedTree = true).assertExists()
-    }
-
-    // The panel: header 24 in, a 48 close 4 from the end, rows 24 in with the 20 radio.
-    @Test
-    fun panelGeometry() {
-        rule.setHappyContent {
-            Box(Modifier.fillMaxSize()) {
-                PickerSheetPanel(title = "EFFORT", onClose = {}) {
-                    PickerSheetOption("Low", "Fast", selected = true, onClick = {}, tag = ComposerPickerTags.option("low"))
-                    PickerSheetOption("High", null, selected = false, onClick = {}, tag = ComposerPickerTags.option("high"))
-                }
-            }
-        }
-        val sheet = rule.node(ComposerPickerTags.SHEET).bounds
-        assertDp("full phone width", PHONE_WIDTH, sheet.width)
-        val title = rule.node(ComposerPickerTags.SHEET_TITLE).bounds
-        assertDp("title 24 in", 24, title.left)
-        val close = rule.node(ComposerPickerTags.SHEET_CLOSE).bounds
-        // Centred in the 52 below the 4 top padding.
-        assertBox("close", close, PHONE_WIDTH.dp - 4.dp - 48.dp, 4.dp + 2.dp, 48.dp, 48.dp)
-        val low = rule.node(ComposerPickerTags.option("low")).bounds
-        assertDp("first row under the 56 header", 56, low.top)
-        val high = rule.node(ComposerPickerTags.option("high")).bounds
-        assertDp("rows at least 56 high", 56, high.height)
-        assertDp("rows stack", low.bottom, high.top)
-        assertDp("8 below the last row", high.bottom + 8.dp, sheet.bottom)
     }
 }

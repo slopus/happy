@@ -206,20 +206,9 @@ object ModeOptions {
     private fun metadataModels(models: List<ModelEntry>?): List<ModeOption> =
         models.orEmpty().map { ModeOption(it.code, it.value, it.description) }
 
-    /**
-     * modeSupportedByCli: no version is permissive (not happy-cli); a
-     * present but unparseable one hides tagged modes, being more likely old.
-     */
-    fun modeSupportedByCli(mode: ModeOption, cliVersion: String?): Boolean {
-        val since = mode.sinceCliVersion
-        if (since == null || cliVersion.isNullOrEmpty()) return true
-        if (!Versions.isWellFormed(cliVersion)) return false
-        return Versions.compareWithPrerelease(cliVersion, since) >= 0
-    }
-
     /** filterPermissionModesForCli: the hardcoded lists only; a published catalog matches its own CLI. */
     fun filterPermissionModesForCli(modes: List<ModeOption>, cliVersion: String?): List<ModeOption> =
-        modes.filter { modeSupportedByCli(it, cliVersion) }
+        modes.filter { com.slopus.happy.model.modeSupportedByCli(it, cliVersion) }
 
     /** modeHacks.ts `hackMode`: OpenCode's doubled "build, build" and "plan/plan" names. */
     fun hackMode(mode: ModeOption): ModeOption {
@@ -235,6 +224,7 @@ object ModeOptions {
     fun hackModes(modes: List<ModeOption>): List<ModeOption> = modes.map(::hackMode)
 
     // permissionModeLabels.ts: pick order by a name's first word, lowest first.
+    // Home's sortPermissionModes ranks the machine catalog's RigModeOption the same way.
     private val permissionRanks = mapOf(
         "auto" to 10, "edits" to 15, "plan" to 20, "workspace" to 30,
         "read" to 40, "yolo" to 50, "full" to 50, "default" to 100,
@@ -243,8 +233,8 @@ object ModeOptions {
 
     private fun firstWord(name: String): String = name.trim().split(Regex("\\s+")).firstOrNull().orEmpty()
 
-    /** getPermissionModeShortLabel: the one word on the composer chip. */
-    fun permissionModeShortLabel(mode: ModeOption?): String? = mode?.let { firstWord(it.name) }?.takeIf { it.isNotEmpty() }
+    /** getPermissionModeShortLabel: the one word on the composer chip (Home's, by name). */
+    fun permissionModeShortLabel(mode: ModeOption?): String? = com.slopus.happy.model.permissionModeShortLabel(mode?.name)
 
     /** getPermissionModeRank */
     fun permissionModeRank(mode: ModeOption): Int = permissionRanks[firstWord(mode.name).lowercase()] ?: UNRANKED

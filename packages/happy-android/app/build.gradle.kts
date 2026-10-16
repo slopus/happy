@@ -169,6 +169,8 @@ dependencies {
 
     // Push (AGENTS.md "Push"): FCM, configured from google-services.json when it is there.
     implementation(libs.firebase.messaging)
+    implementation(libs.coil.compose)
+    implementation(libs.coil.network.okhttp)
 
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
@@ -178,4 +180,5 @@ dependencies {
     testImplementation(libs.compose.ui.test.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.coil.test)
 }

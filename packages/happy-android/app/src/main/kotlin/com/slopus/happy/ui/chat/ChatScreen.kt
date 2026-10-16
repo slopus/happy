@@ -48,6 +48,9 @@ import com.slopus.happy.model.rigGitSummary
 import com.slopus.happy.model.settings.ModeOption
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.rigCanAbort
+import com.slopus.happy.ui.attachments.ComposerAddImageButton
+import com.slopus.happy.ui.attachments.ComposerAttachmentStrip
+import com.slopus.happy.ui.attachments.hasComposerImages
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.AvatarBadgeLocation
 import com.slopus.happy.ui.components.Header
@@ -243,7 +246,7 @@ private fun ChatComposerFor(
     val canAbort = sessionState != SessionState.Disconnected && metadata.rigCanAbort()
     val blocked = session.isRig && state.thinking && metadata?.capabilities?.steering != true
     val primary = resolvePrimaryAction(
-        hasContent = draft.isNotBlank(),
+        hasContent = draft.isNotBlank() || hasComposerImages(),
         showAbort = showsAbort(sessionState),
         canAbort = canAbort,
         blocked = blocked,
@@ -264,7 +267,14 @@ private fun ChatComposerFor(
         modifier = Modifier
             .windowInsetsPadding(WindowInsets.navigationBars)
             .imePadding(),
-        middle = { ComposerModeChips(modes, metadata, actions.onModeChange) },
+        middle = {
+            // [+] [permission ... model · effort]: the chips take what the add button leaves.
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(ComposerSpec.actionRowGap)) {
+                ComposerAddImageButton()
+                ComposerModeChips(modes, metadata, actions.onModeChange, Modifier.weight(1f))
+            }
+        },
+        top = { ComposerAttachmentStrip() },
     )
 }
 

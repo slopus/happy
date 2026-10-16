@@ -126,8 +126,9 @@ fun Avatar(
     val shape = if (square) RectangleShape else CircleShape
 
     Box(modifier = modifier.size(size).testTag(AvatarTags.AVATAR)) {
-        val image = imageUri?.let { rememberDataUriImage(it) }
+        val image = imageUri?.takeUnless(::isRemoteImageUrl)?.let { rememberDataUriImage(it) }
         when {
+            isRemoteImageUrl(imageUri) -> RemoteImage(imageUri, null, Modifier.size(size).clip(shape), background = colors.surfaceHigh)
             imageUri != null && image != null -> Image(
                 bitmap = image,
                 contentDescription = null,
@@ -310,7 +311,7 @@ private fun rememberAssetImage(path: String): ImageBitmap? {
 
 /**
  * A picture given as a data URI (project and session avatars are
- * materialized as `data:` URIs by sync). Remote URLs are not loaded here.
+ * materialized as `data:` URIs by sync). Remote URLs go to [RemoteImage].
  */
 @Composable
 private fun rememberDataUriImage(uri: String): ImageBitmap? = rememberCachedImage(uri) { decodeDataUri(uri) }

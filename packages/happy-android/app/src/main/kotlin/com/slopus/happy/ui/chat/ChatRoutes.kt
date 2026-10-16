@@ -3,12 +3,13 @@ package com.slopus.happy.ui.chat
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraphBuilder
@@ -30,7 +31,12 @@ import com.slopus.happy.chat.SyncChatMessagesSource
 import com.slopus.happy.chat.SyncChatPresenceSource
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.ComposerMirror
+import com.slopus.happy.ui.attachments.LocalComposerImages
 import com.slopus.happy.ui.attachments.LocalSessionAttachments
+import com.slopus.happy.ui.attachments.attachmentNoticeAlert
+import com.slopus.happy.ui.attachments.canUseAttachments
+import com.slopus.happy.ui.attachments.prepareComposerAttachments
+import com.slopus.happy.ui.attachments.rememberComposerImages
 import com.slopus.happy.ui.attachments.rememberSessionAttachments
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
@@ -77,7 +83,7 @@ private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, 
     val mirrorFlow = remember(account, sessionId) { account?.composer?.mirror(sessionId) }
     val mirror by remember(mirrorFlow) { mirrorFlow ?: flowOf(ComposerMirror()) }.collectAsStateWithLifecycle(ComposerMirror())
     val draft = rememberComposerDraft(mirrorFlow, onWrite = { text -> actions.setDraft(sessionId, text) })
-    val resources = LocalContext.current.resources
+    val resources = LocalResources.current
     val metadata = state.session?.metadata
     val modes = remember(metadata, mirror, settings.agentDefaultOverrides) {
         ComposerModeResolver.resolve(metadata, mirror, settings.agentDefaultOverrides, resources::getString)
@@ -89,25 +95,33 @@ private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, 
     var failure by remember { mutableStateOf<String?>(null) }
     val notSent = stringResource(R.string.errors_unknown_error)
     val latestState by rememberUpdatedState(state)
+    val images = rememberComposerImages(enabled = state.session != null && canUseAttachments(state.session?.metadata))
+    val latestImages by rememberUpdatedState(images)
+    val notices = remember { mutableStateListOf<Alert>() }
 
     fun report(e: Exception) {
         failure = e.message?.takeIf { it.isNotBlank() } ?: notSent
     }
 
-    val screenActions = remember(sessionId, actions, feed, draft) {
+    val screenActions = remember(sessionId, actions, feed, draft, resources) {
         ChatScreenActions(
             onBack = onBack,
             onInfo = onInfo,
             onDraftChange = draft::set,
             onSend = onSend@{ text ->
-                if (text.isBlank() || sending) return@onSend
+                val picked = latestImages?.images?.toList().orEmpty()
+                if ((text.isBlank() && picked.isEmpty()) || sending) return@onSend
                 // Questions the agent is blocked on are dismissed once the
                 // message is delivered: it stands as the user's answer.
                 val questions = latestState.pendingCommunications
                 sending = true
                 scope.launch {
                     try {
-                        actions.send(sessionId, text, awaitDelivery = questions.isNotEmpty())
+                        val plan = prepareComposerAttachments(graph, sessionId, latestState.session?.metadata, text, latestImages)
+                        plan.notices.forEach { notices += attachmentNoticeAlert(it, resources) }
+                        if (!plan.send || (text.isBlank() && plan.records.isEmpty())) return@launch
+                        actions.send(sessionId, text, attachments = plan.records, awaitDelivery = questions.isNotEmpty())
+                        picked.forEach { latestImages?.remove(it.id) }
                         // The composer empties once the text is accepted, unless it was edited meanwhile.
                         if (draft.text == text) draft.set("")
                         for (question in questions) {
@@ -161,7 +175,10 @@ private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, 
         )
     }
 
-    CompositionLocalProvider(LocalSessionAttachments provides rememberSessionAttachments(graph, sessionId)) {
+    CompositionLocalProvider(
+        LocalSessionAttachments provides rememberSessionAttachments(graph, sessionId),
+        LocalComposerImages provides images,
+    ) {
         ChatScreen(
             state = state,
             draft = draft.text,
@@ -173,6 +190,7 @@ private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, 
             modes = modes,
         )
     }
+    notices.firstOrNull()?.let { HappyAlert(it, onDismiss = { notices.removeAt(0) }) }
     failure?.let { message ->
         HappyAlert(
             Alert(stringResource(R.string.common_error), message, listOf(AlertButton(stringResource(R.string.common_ok)))),
