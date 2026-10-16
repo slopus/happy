@@ -1,25 +1,16 @@
 package com.slopus.happy.ui.chat
 
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.sp
 import com.slopus.happy.R
+import com.slopus.happy.ui.components.GlyphIcon
 import com.slopus.happy.ui.theme.HappyTheme
-import com.slopus.happy.ui.theme.RnLineHeightStyle
 
 /**
  * The chat's colours from happy-app's theme.ts that the shared palette does
@@ -133,12 +124,11 @@ fun userMessageBubblePalette(name: String?, dark: Boolean): BubblePalette {
     return palettes[name] ?: palettes.getValue("gray")
 }
 
-/**
- * Ionicons glyphs the chat draws (@expo/vector-icons 15.0.2 glyphmap). Where
- * happy-app uses an Octicons glyph (send arrow, stop, scroll-down), the
- * Ionicons glyph of the same name stands in until the Octicons font lands.
- */
-enum class ChatIcon(val codepoint: Int) {
+/** The icon font a [ChatIcon] is drawn from. */
+enum class ChatIconFont { Ionicons, Octicons }
+
+/** The glyphs the chat draws (@expo/vector-icons 15.0.2 glyphmaps), named as in happy-app. */
+enum class ChatIcon(val codepoint: Int, val font: ChatIconFont = ChatIconFont.Ionicons) {
     Add(0xf103),
     AlertCircleOutline(0xf114),
     ArrowDown(0xf12d),
@@ -172,6 +162,7 @@ enum class ChatIcon(val codepoint: Int) {
     PencilOutline(0xf49d),
     RadioButtonOff(0xf500),
     RadioButtonOn(0xf503),
+    RemoveCircleOutline(0xf522),
     RocketOutline(0xf548),
     SearchOutline(0xf563),
     ShieldCheckmarkOutline(0xf579),
@@ -182,11 +173,17 @@ enum class ChatIcon(val codepoint: Int) {
     TerminalOutline(0xf5c9),
     TrashOutline(0xf5f6),
     WarningOutline(0xf629),
+
+    // Octicons
+    OctArrowUp(0xf10d, ChatIconFont.Octicons),
+    OctArrowDown(0xf107, ChatIconFont.Octicons),
+    OctStop(0xf215, ChatIconFont.Octicons),
 }
 
 private val IoniconsFamily = FontFamily(Font(R.font.ionicons))
+private val OcticonsFamily = FontFamily(Font(R.font.octicons))
 
-/** A [size] box with the glyph centred, as `<Ionicons size>` renders. */
+/** A [size] box with the glyph centred, as `<Ionicons size>` / `<Octicons size>` render. */
 @Composable
 fun ChatIconView(
     icon: ChatIcon,
@@ -195,24 +192,9 @@ fun ChatIconView(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
 ) {
-    val fontSize = with(LocalDensity.current) { (size.value / fontScale).sp }
-    Box(
-        modifier = modifier
-            .size(size)
-            .then(if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(
-            text = String(Character.toChars(icon.codepoint)),
-            style = TextStyle(
-                fontFamily = IoniconsFamily,
-                fontSize = fontSize,
-                lineHeight = fontSize,
-                lineHeightStyle = RnLineHeightStyle,
-                color = color,
-            ),
-            maxLines = 1,
-            softWrap = false,
-        )
+    val family = when (icon.font) {
+        ChatIconFont.Ionicons -> IoniconsFamily
+        ChatIconFont.Octicons -> OcticonsFamily
     }
+    GlyphIcon(icon.codepoint, family, size, color, modifier, contentDescription)
 }

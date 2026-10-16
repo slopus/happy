@@ -1,6 +1,7 @@
 package com.slopus.happy.chat
 
 import androidx.compose.runtime.Immutable
+import com.slopus.happy.model.SessionState
 import com.slopus.happy.chat.markdown.MarkdownBlock
 import com.slopus.happy.chat.markdown.parseMarkdown
 import kotlinx.coroutines.Dispatchers
@@ -8,6 +9,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
@@ -174,18 +177,17 @@ data class ChatState(
 class ChatFeed(
     private val messages: ChatMessagesSource,
     private val sessions: ChatSessionSource,
-    private val presence: SessionPresence,
+    private val presence: ChatPresenceSource,
 ) {
-    fun state(sessionId: String): Flow<ChatState> {
+    fun state(sessionId: String): Flow<ChatState> = flow {
+        // One reduction per collector: it holds the reducer's state for this view.
         val reduction = ChatReduction()
         val session = sessions.session(sessionId).map { it?.let(ChatSessionInfo::from) }.distinctUntilChanged()
-        return combine(
+        val combined = combine(
             messages.messages(sessionId),
             session.map { true to it }.onStart { emit(false to null) },
             presence.presence(sessionId).onStart { emit(null) },
-        ) { page, (sessionLoaded, info), live ->
-            Triple(page, sessionLoaded to info, live)
-        }
+        ) { page, (sessionLoaded, info), live -> Triple(page, sessionLoaded to info, live) }
             .conflate()
             .map { (page, loadedAndInfo, live) ->
                 val (sessionLoaded, info) = loadedAndInfo
@@ -193,12 +195,13 @@ class ChatFeed(
                     snapshot = reduction.apply(page, info),
                     session = info,
                     sessionLoaded = sessionLoaded,
-                    online = live?.online ?: (info?.active == true),
+                    online = live?.online ?: (info?.session?.active == true),
                     thinking = live?.thinking ?: false,
-                    activeAt = live?.activeAt?.takeIf { it > 0 } ?: info?.activeAt ?: 0,
+                    activeAt = live?.activeAt?.takeIf { it > 0 } ?: info?.session?.activeAt ?: 0,
                 )
             }
-            .distinctUntilChanged()
-            .flowOn(Dispatchers.Default)
+        emitAll(combined)
     }
+        .distinctUntilChanged()
+        .flowOn(Dispatchers.Default)
 }

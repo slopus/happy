@@ -3,11 +3,14 @@ package com.slopus.happy.chat
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.MessageRecord
 import com.slopus.happy.data.SessionRecord
+import com.slopus.happy.sync.MessageSync
+import com.slopus.happy.sync.Presence
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.flowOn
@@ -17,7 +20,7 @@ import kotlinx.serialization.json.JsonObject
 // The chat's seams to the rest of the app. The chat reads a session's stored
 // records and its live state through these, and acts on the session through
 // ChatActions; Sync implements them over the socket, the outbox and RPC.
-// StoreChat* below are the implementations over what HappyStore holds today.
+// Sync* adapt AccountSync; Store* read the store alone.
 
 /** The stored records of one session, oldest first, and the paging state for older ones. */
 data class ChatPage(
@@ -45,7 +48,8 @@ interface ChatSessionSource {
 /** Ephemeral session state from the socket (happy-app `session.presence`, `thinking`). */
 data class SessionPresenceState(val online: Boolean, val thinking: Boolean = false, val activeAt: Long = 0)
 
-interface SessionPresence {
+interface ChatPresenceSource {
+    /** Null until the socket has said anything about the session. */
     fun presence(sessionId: String): Flow<SessionPresenceState?>
 }
 
@@ -83,21 +87,43 @@ interface ChatActions {
     suspend fun setModes(sessionId: String, permissionMode: String?, modelMode: String?, effortLevel: String?) = Unit
 }
 
-/** Every stored record of the session, re-read whenever the store changes. No paging: all of it is local. */
+/**
+ * The session's records through [MessageSync]: collecting opens the chat
+ * (newest page, catch-up, background history) and pages back on demand.
+ */
+class SyncChatMessagesSource(private val sync: MessageSync) : ChatMessagesSource {
+    override fun messages(sessionId: String): Flow<ChatPage> =
+        combine(sync.messages(sessionId), sync.paging(sessionId)) { records, paging ->
+            ChatPage(records, paging.hasMoreOlder, paging.isLoadingOlder, loaded = paging.isLoaded)
+        }.distinctUntilChanged()
+
+    override suspend fun loadOlder(sessionId: String): Boolean = sync.loadOlder(sessionId)
+}
+
+/** Every stored record of the session, without fetching: for signed-out previews and tests. */
 class StoreChatMessagesSource(private val store: HappyStore) : ChatMessagesSource {
     override fun messages(sessionId: String): Flow<ChatPage> =
-        store.changes.map { ChatPage(store.messages(sessionId)) }.distinctUntilChanged().flowOn(Dispatchers.IO)
+        store.messageChanges(sessionId).map { ChatPage(store.messages(sessionId)) }.distinctUntilChanged().flowOn(Dispatchers.IO)
 
     override suspend fun loadOlder(sessionId: String): Boolean = false
 }
 
 class StoreChatSessionSource(private val store: HappyStore) : ChatSessionSource {
     override fun session(sessionId: String): Flow<SessionRecord?> =
-        store.changes.map { store.session(sessionId) }.distinctUntilChanged().flowOn(Dispatchers.IO)
+        store.versions.map { it.sessions }.distinctUntilChanged().map { store.session(sessionId) }.distinctUntilChanged()
+            .flowOn(Dispatchers.IO)
 }
 
-/** Until the socket exists: the server's `active` flag stands in for presence. */
-object NoLivePresence : SessionPresence {
+/** The socket's activity and thinking flags ([Presence.sessions]). */
+class SyncChatPresenceSource(private val presence: Presence) : ChatPresenceSource {
+    override fun presence(sessionId: String): Flow<SessionPresenceState?> =
+        presence.sessions.map { sessions ->
+            sessions[sessionId]?.let { SessionPresenceState(online = it.active, thinking = it.thinking, activeAt = it.activeAt) }
+        }.distinctUntilChanged()
+}
+
+/** No socket: the stored `active` flag stands in for presence. */
+object NoLivePresence : ChatPresenceSource {
     override fun presence(sessionId: String): Flow<SessionPresenceState?> = flowOf(null)
 }
 
