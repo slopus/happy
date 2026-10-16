@@ -36,7 +36,9 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -427,7 +429,8 @@ fun ArchiveToggleRow(hidden: Boolean, banded: Boolean, callbacks: HomeListCallba
             .fillMaxWidth()
             .testTag(HomeTags.ARCHIVE_TOGGLE)
             .then(if (banded) Modifier.background(flatListBackground(colors)) else Modifier)
-            .clickable { callbacks.onSetArchiveHidden(!hidden) }
+            .clickable(role = Role.Button) { callbacks.onSetArchiveHidden(!hidden) }
+            .semantics { selected = !hidden }
             .padding(
                 start = HomeSpec.sectionPaddingHorizontal,
                 end = HomeSpec.sectionPaddingHorizontal,

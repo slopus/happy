@@ -28,6 +28,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.collapse
+import androidx.compose.ui.semantics.expand
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -138,7 +142,7 @@ private fun MachineHeaderRow(machineId: String?, machineName: String, callbacks:
         modifier = Modifier
             .fillMaxWidth()
             .testTag(ProjectListTags.MACHINE)
-            .then(if (machineId != null) Modifier.clickable { callbacks.onOpenMachine(machineId) } else Modifier)
+            .then(if (machineId != null) Modifier.clickable(role = Role.Button) { callbacks.onOpenMachine(machineId) } else Modifier)
             .padding(start = ProjectListSpec.rowPaddingX, end = ProjectListSpec.rowPaddingX, top = 14.dp, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -219,6 +223,7 @@ private fun ProjectCardRow(project: ProjectHomeEntry, callbacks: HomeListCallbac
             .testTag(ProjectListTags.PROJECT)
             .combinedClickable(
                 enabled = session != null || origin != null,
+                role = Role.Button,
                 onClick = { session?.let { callbacks.onOpen(it.id) } },
                 onLongClick = origin?.let { { callbacks.onProjectMenu(project.name, it) } },
             )
@@ -253,7 +258,7 @@ private fun ProjectCardRow(project: ProjectHomeEntry, callbacks: HomeListCallbac
                     modifier = Modifier
                         .size(ProjectListSpec.addButtonWidth, ProjectListSpec.addButtonHeight)
                         .testTag(ProjectListTags.PROJECT_ADD)
-                        .clickable { callbacks.onCreateWorkspace(origin) },
+                        .clickable(role = Role.Button) { callbacks.onCreateWorkspace(origin) },
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(Ionicon.Add, size = 18.dp, color = colors.textSecondary, contentDescription = stringResource(R.string.home_create_workspace_in, project.name))
@@ -295,7 +300,7 @@ private fun WorktreeRow(worktree: ProjectWorktree, last: Boolean, callbacks: Hom
             .fillMaxWidth()
             .height(ProjectListSpec.worktreeRow)
             .testTag(ProjectListTags.WORKTREE)
-            .clickable { callbacks.onOpen(worktree.session.id) }
+            .clickable(role = Role.Button) { callbacks.onOpen(worktree.session.id) }
             .padding(horizontal = ProjectListSpec.rowPaddingX),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -323,7 +328,12 @@ private fun WorktreeToggleRow(toggle: WorktreeToggle, callbacks: HomeListCallbac
             .fillMaxWidth()
             .height(ProjectListSpec.worktreeRow)
             .testTag(ProjectListTags.TOGGLE)
-            .clickable { callbacks.onToggleProject(toggle.projectId) }
+            .clickable(role = Role.Button) { callbacks.onToggleProject(toggle.projectId) }
+            .semantics {
+                // accessibilityState={{ expanded }}
+                if (toggle.expanded) collapse { callbacks.onToggleProject(toggle.projectId); true }
+                else expand { callbacks.onToggleProject(toggle.projectId); true }
+            }
             .padding(horizontal = ProjectListSpec.rowPaddingX),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -351,7 +361,7 @@ private fun ChatRow(session: SessionRowData, bot: Boolean, archived: Boolean, ca
             .height(ProjectListSpec.botRow)
             .alpha(if (archived) ProjectListSpec.ARCHIVED_ALPHA else 1f)
             .testTag(ProjectListTags.CHAT)
-            .clickable { callbacks.onOpen(session.id) }
+            .clickable(role = Role.Button) { callbacks.onOpen(session.id) }
             .padding(horizontal = ProjectListSpec.rowPaddingX),
         verticalAlignment = Alignment.CenterVertically,
     ) {
