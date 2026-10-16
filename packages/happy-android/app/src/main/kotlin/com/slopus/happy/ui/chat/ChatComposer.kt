@@ -213,11 +213,11 @@ fun ChatComposer(
                 )
             }
             Row(
-                modifier = Modifier.testTag(ComposerTags.ACTION_ROW).fillMaxWidth().height(ComposerSpec.actionRowHeight),
+                modifier = Modifier.testTag(ComposerTags.ACTION_ROW).fillMaxWidth().heightIn(min = ComposerSpec.actionRowHeight),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(ComposerSpec.actionRowGap),
             ) {
-                Box(modifier = Modifier.weight(1f).height(ComposerSpec.actionRowHeight), contentAlignment = Alignment.CenterStart) {
+                Box(modifier = Modifier.weight(1f).heightIn(min = ComposerSpec.actionRowHeight), contentAlignment = Alignment.CenterStart) {
                     middle()
                 }
                 // With the row gap on each side: 2 + 8 between the middle and the button, as in RN.

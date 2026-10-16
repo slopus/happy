@@ -147,6 +147,8 @@ private fun ChatRoute(graph: AppGraph, sessionId: String, actions: ChatActions, 
             },
             onRetry = { localId -> scope.launch { runCatching { actions.retry(sessionId, localId) } } },
             onDiscard = { localId -> scope.launch { runCatching { actions.discard(sessionId, localId) } } },
+            onAnswerQuestion = { id, answers, kind -> actions.answerQuestion(sessionId, id, answers, kind) },
+            onCancelQuestion = { id, kind -> actions.cancelQuestion(sessionId, id, kind) },
         )
     }
 

@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.slopus.happy.R
+import com.slopus.happy.chat.AgentState
 import com.slopus.happy.chat.ChatMessage
 import com.slopus.happy.chat.PermissionStatus
 import com.slopus.happy.chat.ToolState
@@ -202,6 +203,8 @@ data class ToolEnvironment(
     val flavor: String? = null,
     /** The session's folder, for paths in titles. */
     val path: String? = null,
+    /** The session's agent state, for the forms request_user_input raised. */
+    val agentState: AgentState? = null,
 )
 
 val LocalToolEnvironment = staticCompositionLocalOf { ToolEnvironment() }
@@ -302,7 +305,7 @@ fun ToolView(message: ChatMessage.ToolCallMessage, callbacks: MessageCallbacks, 
             else CardHeader(presentation, tool.createdAt, tool.state) { callbacks.onToolPress(message) }
         }
         if (!presentation.compact) {
-            ToolContent(message, presentation, env, footer)
+            ToolContent(message, presentation, env, callbacks, footer)
         }
         if (presentation.view != ToolViewKind.CodexPatch || presentation.compact) footer?.invoke()
     }
@@ -428,6 +431,7 @@ private fun ToolContent(
     message: ChatMessage.ToolCallMessage,
     p: ToolPresentation,
     env: ToolEnvironment,
+    callbacks: MessageCallbacks,
     footer: (@Composable () -> Unit)?,
 ) {
     val tool = message.tool
@@ -442,7 +446,7 @@ private fun ToolContent(
     ) {
         val view = p.view
         if (view != null) {
-            ToolSpecificView(view, message, env, footer)
+            ToolSpecificView(view, message, env, callbacks, footer)
             if (error != null && !p.hideDefaultError) ToolError(error)
         } else if (error != null && !p.isToolUseError) {
             ToolError(error)
@@ -465,7 +469,13 @@ private val PrettyJson = Json { prettyPrint = true; prettyPrintIndent = "  " }
 private fun prettyJson(element: JsonElement): String = PrettyJson.encodeToString(JsonElement.serializer(), element)
 
 @Composable
-private fun ToolSpecificView(view: ToolViewKind, message: ChatMessage.ToolCallMessage, env: ToolEnvironment, footer: (@Composable () -> Unit)?) {
+private fun ToolSpecificView(
+    view: ToolViewKind,
+    message: ChatMessage.ToolCallMessage,
+    env: ToolEnvironment,
+    callbacks: MessageCallbacks,
+    footer: (@Composable () -> Unit)?,
+) {
     val input = message.tool.input.obj
     when (view) {
         ToolViewKind.Edit -> {
@@ -496,10 +506,11 @@ private fun ToolSpecificView(view: ToolViewKind, message: ChatMessage.ToolCallMe
         ToolViewKind.CodexPatch -> CodexPatchView(message, env, footer)
         ToolViewKind.CodexDiff -> CodexDiffView(input, env)
         ToolViewKind.File -> FileView(input)
+        ToolViewKind.AskUserQuestion -> AskUserQuestionView(message, callbacks)
+        ToolViewKind.RequestUserInput -> RequestUserInputView(message, callbacks)
         // Terminal tools are always activity rows in the chat; their command
-        // view is the tool detail page's. Questions answer in their own form.
-        ToolViewKind.Bash, ToolViewKind.CodexBash, ToolViewKind.GeminiExecute,
-        ToolViewKind.AskUserQuestion, ToolViewKind.RequestUserInput -> Unit
+        // view is the tool detail page's.
+        ToolViewKind.Bash, ToolViewKind.CodexBash, ToolViewKind.GeminiExecute -> Unit
     }
 }
 
