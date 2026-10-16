@@ -1,5 +1,6 @@
 package com.slopus.happy.model
 
+import com.slopus.happy.model.settings.Versions
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -12,23 +13,8 @@ import kotlinx.serialization.json.booleanOrNull
 /** versionUtils.ts `MINIMUM_CLI_VERSION` */
 const val MINIMUM_CLI_VERSION = "0.10.0"
 
-/** versionUtils.ts `compareVersions`: dotted numbers, a `-suffix` ignored, missing parts as 0. */
-fun compareVersions(a: String, b: String): Int {
-    fun parts(v: String) = v.substringBefore('-').split('.').map { it.toDoubleOrNull() ?: Double.NaN }
-    val left = parts(a)
-    val right = parts(b)
-    for (i in 0 until maxOf(left.size, right.size)) {
-        val l = left.getOrElse(i) { 0.0 }
-        val r = right.getOrElse(i) { 0.0 }
-        // NaN compares neither way in JS: the part is skipped.
-        if (l > r) return 1
-        if (l < r) return -1
-    }
-    return 0
-}
-
 /** info.tsx `isCliOutdated`: a CLI version below [MINIMUM_CLI_VERSION]. */
-fun isCliOutdated(version: String?): Boolean = !version.isNullOrEmpty() && compareVersions(version, MINIMUM_CLI_VERSION) < 0
+fun isCliOutdated(version: String?): Boolean = !version.isNullOrEmpty() && Versions.compare(version, MINIMUM_CLI_VERSION) < 0
 
 /** resumeCommand.ts `ResumeCommandBlock` */
 data class ResumeCommandBlock(val lines: List<String>, val copyText: String)
