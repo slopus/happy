@@ -81,4 +81,22 @@
     <string name="home_create_directory_title">Create Directory?</string>
     <string name="home_create_directory_message">The directory \'%1$s\' does not exist. Would you like to create it?</string>
     <string name="home_start_failed">Failed to start session</string>
+    <string name="home_dock_kind_session">Session</string>
+    <string name="home_dock_kind_bot">Bot</string>
+    <string name="home_dock_bot_kind">What to create</string>
+    <string name="home_dock_bot_lede">Bots are virtual colleagues great for recurring work like releases, competitor analysis, or to own a large feature across several projects and worktrees</string>
+    <string name="home_dock_bot_name_placeholder">Name your bot</string>
+    <string name="home_dock_create_bot">Create bot</string>
+    <string name="home_dock_bot_avatar">Avatar</string>
+    <string name="home_dock_bot_face">Face %1$d</string>
+    <string name="home_dock_bot_roll">Roll four new faces</string>
+    <string name="home_dock_bot_art_by">Art by</string>
+    <string name="home_dock_creating_bot">Creating bot…</string>
+    <string name="home_dock_bot_avatar_progress">Putting on a face…</string>
+    <string name="home_dock_opening_bot">Opening bot…</string>
+    <string name="home_dock_bot_face_failed_title">Picture not set</string>
+    <string name="home_dock_bot_face_upload_failed">%1$s is ready, but its picture couldn’t be uploaded. You can try again without creating another bot.</string>
+    <string name="home_dock_bot_face_failed">%1$s is ready, but its picture couldn\'t be set. Try again.</string>
+    <string name="home_dock_bot_not_now">Not now</string>
+    <string name="home_dock_bot_try_again">Try again</string>
 </resources>

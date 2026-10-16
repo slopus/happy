@@ -3,6 +3,7 @@ package com.slopus.happy.ui.home
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -113,6 +114,8 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.slopus.happy.attachments.AttachmentPreview
+import com.slopus.happy.model.BOT_FACE_PAINT_SIZE
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -321,10 +324,47 @@ class HomeServices private constructor(private val graph: AppGraph) {
             ),
             awaitSession = ::awaitSession,
             scope = scope,
+            faces = botFaceWearer(context),
         )
         val resources = context.resources
         NewSessionServices(drafts, snapshots, settings, machineActions, starter, newSessionLabels(resources), resources::getString, scope)
     }.also { newSessionServices = it }
+
+    private var botFaces: BotFaces? = null
+
+    /** The bundled bot faces, read from the assets once. */
+    @Synchronized
+    fun botFaces(context: Context): BotFaces = botFaces ?: BotFaces.assets(context.applicationContext).also { botFaces = it }
+
+    /**
+     * wearBotFace: painted here, uploaded as the bot's attachment `face.png`,
+     * then worn (setAvatar). Each step fails under its own name.
+     */
+    private fun botFaceWearer(context: Context) = BotFaceWearer { sessionId, seed ->
+        val bytes = try {
+            botFaces(context).paint(seed)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            return@BotFaceWearer BotFaceFailure(BotFaceLeg.Painting, e.message ?: "The face could not be painted.")
+        }
+        val face = AttachmentPreview("face-$seed", "", BOT_FACE_PAINT_SIZE, BOT_FACE_PAINT_SIZE, "image/png", bytes.size.toLong(), "face.png")
+        val uploaded = AttachmentServices.of(graph).transfers?.upload(sessionId, listOf(face)) { bytes }?.uploaded?.singleOrNull()
+            ?: return@BotFaceWearer BotFaceFailure(BotFaceLeg.Uploading, "The picture could not be uploaded.")
+        val ops = account.value?.sessionOps ?: return@BotFaceWearer BotFaceFailure(BotFaceLeg.Wearing, "Not signed in")
+        try {
+            ops.setAvatar(sessionId, uploaded.ref, bytes.size.toLong(), "image/png")
+            null
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.e("HomeServices", "[bot] The face could not be put on the bot: ${e.message}")
+            BotFaceFailure(BotFaceLeg.Wearing, e.message ?: "The picture could not be set.")
+        }
+    }
+
+    /** offerBotFaceRetry's Try again: only the face, on the bot already made. */
+    suspend fun retryBotFace(context: Context, sessionId: String, seed: String): BotFaceFailure? = botFaceWearer(context).wear(sessionId, seed)
 
     /** sync.ts ensureSessionReady: the new session's row in the store, pulled in by a sync if need be. */
     private suspend fun awaitSession(id: String): Boolean {

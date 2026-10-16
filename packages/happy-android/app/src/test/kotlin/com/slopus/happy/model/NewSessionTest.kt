@@ -187,7 +187,7 @@ class NewSessionTest {
         assertNull(resolveStartProgress(null, "Codex", picksWorkspaces = false))
         assertEquals(StartProgress.CreatingWorkspace(false), resolveStartProgress(StartPhase.Worktree, "Codex", picksWorkspaces = false))
         assertEquals(StartProgress.Starting("Codex"), resolveStartProgress(StartPhase.Spawning, "Codex", picksWorkspaces = false))
-        assertEquals(StartProgress.Opening, resolveStartProgress(StartPhase.Opening, "Codex", picksWorkspaces = false))
+        assertEquals(StartProgress.Opening(), resolveStartProgress(StartPhase.Opening, "Codex", picksWorkspaces = false))
         // A Happy Agent worktree is a workspace.
         assertEquals(StartProgress.CreatingWorkspace(true), resolveStartProgress(StartPhase.Worktree, "Happy", picksWorkspaces = true))
     }

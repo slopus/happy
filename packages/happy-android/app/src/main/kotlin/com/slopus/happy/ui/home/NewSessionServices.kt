@@ -1,5 +1,9 @@
 package com.slopus.happy.ui.home
 
+import com.slopus.happy.model.BotDraft
+import com.slopus.happy.model.rollBotFaceSeeds
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import com.slopus.happy.model.AgentType
 import com.slopus.happy.model.NewSessionDraft
 import com.slopus.happy.model.NewSessionLabels
@@ -153,4 +157,22 @@ class NewSessionServices(
 
     /** The dock's text becomes the draft's at Send (MainView handleHomePromptSubmit). */
     fun setInput(text: String) = drafts.change { it.copy(input = text) }
+
+    private val botState = MutableStateFlow(BotDraft(seeds = rollBotFaceSeeds()))
+
+    /** useNewSessionDraft's bot fields, in memory: a restarted app offers a session. */
+    val bot: StateFlow<BotDraft> = botState.asStateFlow()
+
+    fun setCreatesBot(creating: Boolean) = botState.update { it.copy(creating = creating) }
+
+    fun setBotName(name: String) = botState.update { it.copy(name = name) }
+
+    fun pickBotFace(slot: Int) = botState.update { if (slot in it.seeds.indices) it.copy(slot = slot) else it }
+
+    fun rollBotFaces() = botState.update { it.copy(seeds = rollBotFaceSeeds()) }
+
+    /** A bot was made from [made]: the next starts from a clean name and fresh faces, and offers a session. */
+    fun botCreated(made: BotDraft) = botState.update { current ->
+        BotDraft(name = if (current.name == made.name) "" else current.name, seeds = rollBotFaceSeeds())
+    }
 }
