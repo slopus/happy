@@ -4,10 +4,13 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -26,10 +29,12 @@ import com.slopus.happy.ui.PHONE
 import com.slopus.happy.ui.assertActionsLabelled
 import com.slopus.happy.ui.assertDp
 import com.slopus.happy.ui.bounds
+import com.slopus.happy.ui.components.HeaderTags
 import com.slopus.happy.ui.hasRole
 import com.slopus.happy.ui.layout.ProvideWindowLayout
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -156,6 +161,28 @@ class ChatDockLayoutTest {
         rule.node(ChatListTags.LIST).performTouchInput { swipeDown() }
         rule.waitForIdle()
         assertTrue("nothing fades", shown(GOAL))
+    }
+
+    // SessionView `contentRunsUnderHeader`: the header tints surfaceHigh over older rows on a portrait phone only.
+    @Test
+    @Config(qualifiers = PHONE)
+    fun aPortraitHeaderTintsOverOlderRows() {
+        show(rowCount = 60, withHint = false)
+        assertEquals(Color(0xFFF8F8F8), headerColor())
+    }
+
+    @Test
+    @Config(qualifiers = "w740dp-h360dp-xxhdpi")
+    fun aLandscapeHeaderStaysPlainOverOlderRows() {
+        show(rowCount = 60, withHint = false)
+        rule.node(ChatListTags.LIST).performTouchInput { swipeDown() }
+        rule.waitForIdle()
+        assertEquals(Color.White, headerColor())
+    }
+
+    private fun headerColor(): Color {
+        val pixels = rule.node(HeaderTags.BAR).captureToImage().toPixelMap()
+        return pixels[pixels.width / 2, 1]
     }
 
     @Test
