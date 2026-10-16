@@ -90,6 +90,7 @@ class OfflineJourneyTest {
     }
 
     private fun send(text: String) {
+        rule.waitFor(ComposerTags.INPUT)
         rule.node(ComposerTags.INPUT).performTextInput(text)
         rule.node(ComposerTags.PRIMARY).performClick()
     }
