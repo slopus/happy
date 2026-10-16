@@ -50,6 +50,8 @@ fun homeSnapshots(
     projects: Flow<Map<String, Project>> = flowOf(emptyMap()),
     sessionAvatars: Flow<Map<String, ProjectAvatar>> = flowOf(emptyMap()),
     gitStatuses: Flow<Map<String, GitStatus>> = flowOf(emptyMap()),
+    /** Each session's composer draft ([com.slopus.happy.sync.SessionComposer.mirrors]), for the rows' draft glyph. */
+    drafts: Flow<Map<String, String>> = flowOf(emptyMap()),
     io: CoroutineDispatcher = Dispatchers.IO,
 ): Flow<HomeSnapshot> {
     val records = flow {
@@ -59,8 +61,12 @@ fun homeSnapshots(
             .distinctUntilChanged()
             .collect { emit(reader.read(store)) }
     }.flowOn(io)
-    val withAvatars = combine(records, sessionAvatars) { (sessions, machines), avatars ->
-        sessions.map { session -> avatars[session.id]?.let { session.copy(avatar = it) } ?: session } to machines
+    val withAvatars = combine(records, sessionAvatars, drafts.distinctUntilChanged()) { (sessions, machines), avatars, texts ->
+        sessions.map { session ->
+            val avatar = avatars[session.id]
+            val draft = texts[session.id]
+            if (avatar == null && draft == null) session else session.copy(avatar = avatar ?: session.avatar, draft = draft)
+        } to machines
     }
     val catalogs = combine(projects, gitStatuses, ::Pair)
     return combine(withAvatars, sessionPresence, machinePresence, synced.distinctUntilChanged(), catalogs) { (sessions, machines), sessionLive, machineLive, wasSynced, (catalog, git) ->
