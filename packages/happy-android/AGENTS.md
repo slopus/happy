@@ -217,6 +217,14 @@ the database, local settings, the What's New marker, the new-session draft
 image loader's caches; then the credentials. The server choice stays
 (`LogoutWipeTest`).
 
+**Large sessions** (`perf/LargeDataTest`, `perf/ChatDisplayTimingTest`).
+The reducer, ChatFeed and HomeListModel derive off the collecting thread
+and stay linear. What still runs in ChatList's composition per snapshot was
+measured at 5040 rows (JVM, median after warm-up): `groupChatRowsForDisplay`
+1.3–2.6 ms, `chatListItems` 0.5–0.8 ms, `WorkGroupExpansion.observed`
+0.2 ms. Below the 8 ms line, so it stays on the main thread; the guard fails
+only at 50 ms, a quadratic rather than noise.
+
 **Live updates** (`net/SocketIoClient`, `sync/LiveUpdates`). The
 `/v1/updates` socket (apiSocket.ts) with `clientType: user-scoped`, the
 token, `happyClient` and `appState` read at every connect; `app-state` is
