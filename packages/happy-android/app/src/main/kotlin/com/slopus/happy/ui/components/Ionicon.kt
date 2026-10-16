@@ -14,7 +14,6 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Dp
-import androidx.compose.ui.unit.sp
 import com.slopus.happy.R
 import com.slopus.happy.ui.theme.RnLineHeightStyle
 
@@ -139,7 +138,7 @@ fun GlyphIcon(
     modifier: Modifier = Modifier,
     contentDescription: String? = null,
 ) {
-    val fontSize = with(LocalDensity.current) { (size.value / fontScale).sp }
+    val fontSize = with(LocalDensity.current) { size.toSp() }
     Box(
         modifier = modifier
             .size(size)

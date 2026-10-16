@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -270,7 +271,7 @@ fun UserMessage(row: ChatRow.User, bubble: BubblePalette, callbacks: MessageCall
             modifier = Modifier
                 .padding(top = MessageSpec.statusMarginTop, bottom = MessageSpec.statusMarginBottom)
                 .testTag(MessageTags.USER_STATUS)
-                .height(MessageSpec.statusHeight),
+                .heightIn(min = MessageSpec.statusHeight),
         )
     }
 }
