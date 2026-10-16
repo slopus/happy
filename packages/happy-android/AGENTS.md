@@ -417,10 +417,13 @@ file?path=<btoa>|message/<mid>`, `/machine/<id>`, `/new`, `/settings/*`,
 (excluded features, `session/recent`, the files browser) open Home. The
 release build adds app.config.js's production intent filter for
 `https://app.happy.engineering` (`src/release/AndroidManifest.xml`), with
-`autoVerify`; verification needs the release key's fingerprint in that
-site's `assetlinks.json`. Signed out, only the screens that need no account
-(server, restore, troubleshoot, changelog, onboarding settings) open; other
-links are dropped rather than pushed onto empty signed-in screens.
+`autoVerify`. The site's `assetlinks.json` (happy-app's
+`public/.well-known/assetlinks.json`) already lists `com.ex3ndr.happy` with
+one fingerprint, presumably Play's app-signing key that the React Native app
+verifies with, so a Play-distributed build should verify as it does; a build
+signed with only the upload key won't. Signed out, only the screens that need
+no account (server, restore, troubleshoot, changelog, onboarding settings)
+open; other links are dropped rather than pushed onto empty signed-in screens.
 
 ## Push
 

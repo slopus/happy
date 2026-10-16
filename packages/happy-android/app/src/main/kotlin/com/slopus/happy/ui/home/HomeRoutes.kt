@@ -700,7 +700,8 @@ private data class SessionMenuStrings(
     val success: String,
 )
 
-private val prettyJson = Json(HappyJson) { prettyPrint = true }
+/** JSON.stringify(value, null, 2). */
+private val prettyJson = Json(HappyJson) { prettyPrint = true; prettyPrintIndent = "  " }
 
 internal fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

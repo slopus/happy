@@ -46,6 +46,7 @@ object SettingsTags {
     const val AVATAR = "settings.avatar"
     const val NAME = "settings.name"
     const val BIO = "settings.bio"
+    const val VERSION = "settings.version"
 }
 
 /** SettingsView.tsx, Android */
@@ -133,6 +134,10 @@ data class ConnectedAccounts(
  * (Claude Code, GitHub; no chevrons), Features (Account, Appearance,
  * Agents), About (What's New, GitHub, Report an Issue, Privacy Policy,
  * Terms of Service, Version with the commit as a two-line subtitle).
+ *
+ * The Version detail is "versionName (versionCode)": happy-app shows
+ * "version / runtime N", its OTA runtime, and a native build has none; the
+ * version code is what identifies this build instead.
  */
 @Composable
 fun SettingsScreen(
@@ -151,6 +156,8 @@ fun SettingsScreen(
     onGitHub: () -> Unit = {},
     onAgents: () -> Unit = {},
     onWhatsNew: () -> Unit = {},
+    /** A tap on Version; ten in a row toggle developer mode (useMultiClick). */
+    onVersion: () -> Unit = {},
     avatar: @Composable (Profile, Dp) -> Unit = { p, size -> ProfileAvatar(p, size) },
 ) {
     val colors = HappyTheme.colors
@@ -305,6 +312,8 @@ fun SettingsScreen(
                     detail = versionName,
                     icon = { ItemIcon(Ionicon.InformationCircleOutline, colors.textSecondary) },
                     showChevron = false,
+                    onClick = onVersion,
+                    modifier = Modifier.testTag(SettingsTags.VERSION),
                 )
             }
         }
