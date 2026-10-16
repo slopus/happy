@@ -83,14 +83,18 @@ object BackgroundSendNotifications {
     @Synchronized
     fun start(context: Context, graph: AppGraph) {
         if (job != null) return
-        val app = context.applicationContext
-        val watch = BackgroundSendWatch(AndroidBackgroundSendNotices(app))
+        job = watch(context, graph, CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate))
+    }
+
+    /** [start]'s watch in [scope]; tests run one per graph. */
+    internal fun watch(context: Context, graph: AppGraph, scope: CoroutineScope): Job {
+        val watch = BackgroundSendWatch(AndroidBackgroundSendNotices(context.applicationContext))
         val outbox: Flow<List<OutboxRecord>> = graph.store.versions
             .map { it.outbox }
             .distinctUntilChanged()
             .map { graph.store.outbox() }
             .flowOn(Dispatchers.IO)
-        job = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate).launch {
+        return scope.launch {
             combine(graph.isForeground, outbox) { foreground, rows -> foreground to rows }
                 .collect { (foreground, rows) -> watch.update(foreground, rows) }
         }
