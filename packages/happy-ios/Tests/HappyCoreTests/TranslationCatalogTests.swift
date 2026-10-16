@@ -206,7 +206,7 @@ final class TranslationCatalogTests: XCTestCase {
             counts[name] = (strings, calls - strings)
         }
         // Home's: Strings.swift, Strings/Home.swift, Strings/SettingsPages.swift.
-        XCTAssertEqual(counts["Strings.swift"]?.strings, 247)
+        XCTAssertEqual(counts["Strings.swift"]?.strings, 231)
         XCTAssertEqual(counts["Strings.swift"]?.functions, 10)
         XCTAssertEqual(counts["Home.swift"]?.strings, 36)
         XCTAssertEqual(counts["Home.swift"]?.functions, 1)
@@ -224,7 +224,8 @@ final class TranslationCatalogTests: XCTestCase {
     /// `// account.tsx:49, spelled out`. The component is found in happy-app's
     /// sources and still holds the string, so one happy-app has since moved to
     /// the catalog or dropped is noticed. The line is not compared, as
-    /// happy-app's own edits move it. Home's three files, as above.
+    /// happy-app's own edits move it. Home's three files, as above, and the pages
+    /// HappyCore writes English for.
     func testEverySpelledOutStringIsStillSpelledOutByHappyApp() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
@@ -235,11 +236,13 @@ final class TranslationCatalogTests: XCTestCase {
         let components = (walk.allObjects as! [URL]).filter { ["ts", "tsx"].contains($0.pathExtension) }
         var contents: [String: String] = [:]
         let marker = try NSRegularExpression(pattern: #"//\s*([A-Za-z0-9_()/.\-]+\.tsx?):(\d+)(?: "([^"]*)")?, spelled out"#)
-        let literal = try NSRegularExpression(pattern: #"(?:=|\{)\s*"((?:[^"\\]|\\.)*)""#)
-        let ui = root.appendingPathComponent("Sources/HappyUI")
+        let literal = try NSRegularExpression(pattern: #"(?:=|\{|return)\s*"((?:[^"\\]|\\.)*)""#)
         var counts: [String: Int] = [:]
-        for name in ["Strings.swift", "Strings/Home.swift", "Strings/SettingsPages.swift"] {
-            let source = try String(contentsOf: ui.appendingPathComponent(name), encoding: .utf8)
+        // Home's three files, and the settings pages HappyCore writes English for.
+        let files = ["HappyUI/Strings.swift", "HappyUI/Strings/Home.swift", "HappyUI/Strings/SettingsPages.swift",
+                     "HappyCore/Settings/SettingsPages.swift", "HappyCore/Settings/AgentsPage.swift"]
+        for name in files {
+            let source = try String(contentsOf: root.appendingPathComponent("Sources").appendingPathComponent(name), encoding: .utf8)
             for (offset, line) in source.components(separatedBy: "\n").enumerated() {
                 let range = NSRange(line.startIndex..., in: line)
                 guard let found = marker.firstMatch(in: line, range: range) else { continue }
@@ -268,9 +271,11 @@ final class TranslationCatalogTests: XCTestCase {
                 XCTAssertTrue(body.contains(english), "\(at): \(english.debugDescription) is not in it any more")
             }
         }
-        XCTAssertEqual(counts["Strings.swift"], 65)
-        XCTAssertEqual(counts["Strings/Home.swift"], 43)
-        XCTAssertEqual(counts["Strings/SettingsPages.swift"], 7)
+        XCTAssertEqual(counts["HappyUI/Strings.swift"], 40)
+        XCTAssertEqual(counts["HappyUI/Strings/Home.swift"], 43)
+        XCTAssertEqual(counts["HappyUI/Strings/SettingsPages.swift"], 7)
+        XCTAssertEqual(counts["HappyCore/Settings/SettingsPages.swift"], 15)
+        XCTAssertEqual(counts["HappyCore/Settings/AgentsPage.swift"], 4)
     }
 
     /// A Swift string literal's text.

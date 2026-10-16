@@ -81,7 +81,7 @@ final class LocalizedStringsTests: XCTestCase {
         AppLocalization.use(await TranslationCatalog.load("ru"))
         XCTAssertEqual(Strings.Push.title, "Push Notifications")
         XCTAssertEqual(Strings.Push.registeredTokens(2), "Registered Tokens (2)")
-        XCTAssertEqual(Strings.Agents.model, "Model")
+        XCTAssertEqual(Strings.Agents.clearOverrides, "Clear Overrides")
         XCTAssertEqual(Strings.Home.dockPlaceholder, "Plan, ask, build…")
         XCTAssertEqual(Strings.Home.createWorkspaceIn("happy"), "Create workspace in happy")
         XCTAssertEqual(Strings.SettingsTitles.connectClaude, "Connect to Claude")

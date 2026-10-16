@@ -170,8 +170,6 @@ public enum Strings {
         public static var accountSubtitle: String { localized("settings.accountSubtitle", "Manage your account details") }
         public static var appearance: String { localized("settings.appearance", "Appearance") }
         public static var appearanceSubtitle: String { localized("settings.appearanceSubtitle", "Customize how the app looks") }
-        public static var developer: String { localized("settings.developer", "Developer") }
-        public static var developerTools: String { localized("settings.developerTools", "Developer Tools") }
         public static var about: String { localized("settings.about", "About") }
         public static var aboutFooter: String { localized("settings.aboutFooter", "Happy Coder is a Codex and Claude Code mobile client. It's fully end-to-end encrypted and your account is stored only on your device. Not affiliated with Anthropic.") }
         public static var whatsNew: String { localized("settings.whatsNew", "What's New") }
@@ -182,8 +180,6 @@ public enum Strings {
         public static var eula: String { localized("settings.eula", "EULA") }
         public static func githubConnected(login: String) -> String { localized("settings.githubConnected", ["login": .text(login)], "Connected as @\(login)") }
         public static var connectGithubAccount: String { localized("settings.connectGithubAccount", "Connect your GitHub account") }
-        public static var usage: String { localized("settings.usage", "Usage") }
-        public static var usageSubtitle: String { localized("settings.usageSubtitle", "View your API usage and costs") }
         public static let agents = "Agents"  // SettingsView.tsx:341, spelled out
         public static let agentsSubtitle = "Connected machines and agent defaults"  // SettingsView.tsx:342, spelled out
         public static let claudeCode = "Claude Code"  // SettingsView.tsx:275, spelled out
@@ -261,12 +257,8 @@ public enum Strings {
     }
 
     public enum SettingsFeatures {
-        public static var experiments: String { localized("settingsFeatures.experiments", "Experimental") }
-        public static var experimentsDescription: String { localized("settingsFeatures.experimentsDescription", "Enable experimental features that are still in development. These features may be unstable or change without notice.") }
-        public static var experimentalFeatures: String { localized("settingsFeatures.experimentalFeatures", "Experimental Features") }
         public static var groupToolCalls: String { localized("settingsFeatures.groupToolCalls", "Group Tool Calls") }
         public static var groupToolCallsSubtitle: String { localized("settingsFeatures.groupToolCallsSubtitle", "Collapse consecutive tool calls into one container") }
-        public static let experimentalFeaturesSubtitle = "Rig file browser and Usage page"  // dev/index.tsx:232, spelled out
     }
 
     public enum SettingsLanguage {
@@ -315,17 +307,7 @@ public enum Strings {
         public static let title = "Push Notifications"  // account.tsx:506, spelled out
         public static let footer = "Shows every push token registered on your account. Tap an old token to delete it."  // account.tsx:507, spelled out
         public static let permission = "Permission"  // account.tsx:510, spelled out
-        public static let loading = "Loading"  // account.tsx:38, spelled out
-        public static let allowed = "Allowed"  // account.tsx:44, spelled out
-        public static let denied = "Denied"  // account.tsx:47, spelled out
-        public static let notRequested = "Not requested"  // account.tsx:49, spelled out
-        public static let checking = "Checking push notification permissions for this device."  // account.tsx:54, spelled out
-        public static let canReceive = "This device can receive push notifications."  // account.tsx:60, spelled out
-        public static let canAskAgain = "The system prompt can still be shown again from the app."  // account.tsx:63, spelled out
-        public static let stoppedPrompting = "iOS has stopped prompting. Open system settings to enable notifications again."  // account.tsx:65, spelled out
         public static let requestAgain = "Request Permission Again"  // account.tsx:518, spelled out
-        public static let requestAgainCanAsk = "Shows the system prompt again if iOS still allows it."  // account.tsx:522, spelled out
-        public static let requestAgainSettings = "Opens system settings when iOS will not prompt again."  // account.tsx:523, spelled out
         public static let enabled = "Push notifications are enabled for this device."  // account.tsx:239, spelled out
         public static let openSettingsTitle = "Open Settings"  // account.tsx:246, spelled out
         public static let openedSettings = "The system will not show the permission prompt again, so Happy opened Settings instead."  // account.tsx:246, spelled out
@@ -349,30 +331,12 @@ public enum Strings {
         public static let defaults = "Defaults"  // agents.tsx:228, spelled out
         public static let clearOverrides = "Clear Overrides"  // agents.tsx:231, spelled out
         public static let clearOverridesSubtitle = "Return every agent to code defaults"  // agents.tsx:232, spelled out
-        public static let permission = "Permission"  // agents.tsx:253, spelled out
-        public static let model = "Model"  // agents.tsx:260, spelled out
-        public static let effort = "Effort"  // agents.tsx:267, spelled out
-        public static func defaultValue(_ name: String) -> String { "Default (\(name))" }  // agents.tsx:133, spelled out
         public static let useCodeDefault = "Use code default"  // agents.tsx:153, spelled out
         public static let customModel = "Custom model…"  // agents.tsx:168, spelled out
         public static let customModelSubtitle = "Enter an exact model ID"  // agents.tsx:169, spelled out
         public static let customModelTitle = "Custom Codex model"  // agents.tsx:91, spelled out
         public static let customModelMessage = "Enter an exact model ID. Availability depends on your Codex account or API configuration."  // agents.tsx:92, spelled out
         public static let customModelPlaceholder = "model-id"  // agents.tsx:95, spelled out
-    }
-
-    public enum Usage {
-        public static var today: String { localized("usage.today", "Today") }
-        public static var last7Days: String { localized("usage.last7Days", "Last 7 days") }
-        public static var last30Days: String { localized("usage.last30Days", "Last 30 days") }
-        public static var totalTokens: String { localized("usage.totalTokens", "Total Tokens") }
-        public static var totalCost: String { localized("usage.totalCost", "Total Cost") }
-        public static var tokens: String { localized("usage.tokens", "Tokens") }
-        public static var cost: String { localized("usage.cost", "Cost") }
-        public static var usageOverTime: String { localized("usage.usageOverTime", "Usage over time") }
-        public static var byModel: String { localized("usage.byModel", "By Model") }
-        public static let noData = "No usage data available"  // UsageChart.tsx:71, spelled out
-        public static let loadFailed = "Failed to load usage data"  // UsagePanel.tsx:169, spelled out
     }
 
     public enum Changelog {
@@ -384,18 +348,6 @@ public enum Strings {
         public static let title = "Connect Claude"  // OAuthView.tsx:363 "Connect ", spelled out
         public static let instruction = "Run the following command in your terminal:"  // OAuthView.tsx:364, spelled out
         public static let command = "happy connect claude"  // connect/claude.tsx:54, spelled out
-    }
-
-    /// The parts of app/(app)/dev/index.tsx this app has.
-    public enum Developer {
-        public static let appInformation = "App Information"  // dev/index.tsx:162, spelled out
-        public static let version = "Version"  // dev/index.tsx:164, spelled out
-        public static let buildNumber = "Build Number"  // dev/index.tsx:168, spelled out
-        public static let platform = "Platform"  // dev/index.tsx:176, spelled out
-        public static let anonymousId = "Anonymous ID"  // dev/index.tsx:180, spelled out
-        public static let network = "Network"  // dev/index.tsx:439, spelled out
-        public static let apiEndpoint = "API Endpoint"  // dev/index.tsx:441, spelled out
-        public static let socketStatus = "Socket.IO Status"  // dev/index.tsx:454, spelled out
     }
 
     public enum Server {
