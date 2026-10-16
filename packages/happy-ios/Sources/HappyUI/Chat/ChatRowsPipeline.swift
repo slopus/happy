@@ -11,6 +11,9 @@ struct ChatRowsView: Equatable, Sendable {
     var width: CGFloat = 0
     var maxContentWidth: CGFloat = .greatestFiniteMagnitude
     var tablet = false
+    /// The list's text size and the screen's words: every row is planned
+    /// in them.
+    var text = ChatRowText.designed
     var permissionListMaxHeight = PermissionFooterLayout.Metrics.maxListHeight
     var inForeground = true
     var permissionBusy: [String: PermissionButton.Kind] = [:]
@@ -59,6 +62,7 @@ struct ChatRowsApplied: Sendable {
     struct Footer: Sendable {
         var controlledByUser: Bool
         var width: CGFloat
+        var text: TextEnvironment?
         var plan: ChatRowPlan
     }
 
@@ -88,9 +92,11 @@ struct ChatListUpdate: Sendable {
 /// One chat update for the main thread. Every optional is nil when its
 /// part of the screen keeps what it shows.
 struct ChatRowsUpdate: Sendable {
-    /// What the list was planned for; another width or layout is refused.
+    /// What the list was planned for; another width, layout or text size
+    /// is refused.
     var width: CGFloat
     var tablet: Bool
+    var text: TextEnvironment?
     var list: ChatListUpdate?
     var facts: ChatSnapshotFacts?
     var questionForms: [String: ChatQuestionForm]?
@@ -121,7 +127,7 @@ enum ChatRows {
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         var state = applied
         var update = ChatRowsUpdate(
-            width: view.width, tablet: view.tablet, graceEnd: applied.graceEnd, now: now,
+            width: view.width, tablet: view.tablet, text: view.text.environment, graceEnd: applied.graceEnd, now: now,
             grows: applied.window.grows, reachesOldest: false, measured: 0
         )
         // A grace tick always answers, so the screen sets its next timer
@@ -157,6 +163,7 @@ enum ChatRows {
             showLineNumbers: session.settings.bool("showLineNumbersInToolViews"),
             tablet: view.tablet,
             permissionListMaxHeight: view.permissionListMaxHeight,
+            text: view.text,
             render: input.render
         )
         var graceEnd: Int64?
@@ -198,12 +205,13 @@ enum ChatRows {
 
         var footer: ChatRowPlan?
         let footerPlan: ChatRowPlan
-        if let cached = applied.footer, cached.controlledByUser == session.controlledByUser, cached.width == view.width {
+        let environment = view.text.environment
+        if let cached = applied.footer, cached.controlledByUser == session.controlledByUser, cached.width == view.width, cached.text == environment {
             footerPlan = cached.plan
         } else {
-            footerPlan = ChatRowRenderer.footer(controlledByUser: session.controlledByUser, width: view.width)
+            footerPlan = ChatRowRenderer.footer(controlledByUser: session.controlledByUser, width: view.width, in: environment)
             footer = footerPlan
-            state.footer = ChatRowsApplied.Footer(controlledByUser: session.controlledByUser, width: view.width, plan: footerPlan)
+            state.footer = ChatRowsApplied.Footer(controlledByUser: session.controlledByUser, width: view.width, text: environment, plan: footerPlan)
         }
         let model = ChatListLayout(
             width: view.width,

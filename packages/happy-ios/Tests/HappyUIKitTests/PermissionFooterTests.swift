@@ -13,7 +13,7 @@ final class PermissionFooterTests: XCTestCase {
     private func footer(maxListHeight: CGFloat) -> (items: [ChatDrawItem], hits: [ChatHit]) {
         let permission = ToolPermission(id: "p1", status: .pending)
         let tool = ToolCall(name: "Bash", state: .running, input: .object(["command": .string("ls")]), createdAt: 0, permission: permission)
-        let piece = ChatRowRenderer.permissionFooter(permission, tool: tool, busy: nil, flavor: nil, maxListHeight: maxListHeight)
+        let piece = ChatRowRenderer.permissionFooter(permission, tool: tool, busy: nil, flavor: nil, maxListHeight: maxListHeight, text: .designed)
         let size = piece.measurable.size(fitting: 377)
         return piece.draw(CGRect(origin: CGPoint(x: 8, y: 100), size: size))
     }

@@ -20,26 +20,29 @@ struct ChatQuestionState: Equatable, Sendable {
 // MARK: InlineQuestionForm.tsx
 
 extension ChatRowRenderer {
-    static func questionForm(_ state: ChatQuestionState, toolId: String) -> ChatStackEntry {
+    /// Its text at the rows' size; the marks, the 44 minimum and the
+    /// paddings keep theirs.
+    static func questionForm(_ state: ChatQuestionState, toolId: String, text: ChatRowText) -> ChatStackEntry {
         if let submitted = state.submitted {
             return section(nil, .stack(state.form.questions.map { question in
-                submittedLine(question, answer: submitted[question.id])
-            }, gap: 8))
+                submittedLine(question, answer: submitted[question.id], text: text)
+            }, gap: 8), text: text)
         }
         var sections = state.form.questions.map { question in
-            questionSection(question, state: state, toolId: toolId)
+            questionSection(question, state: state, toolId: toolId, text: text)
         }
         if state.canInteract {
-            sections.append(submitButton(state, toolId: toolId))
+            sections.append(submitButton(state, toolId: toolId, text: text))
         }
-        return section(nil, .stack(sections, gap: 16))
+        return section(nil, .stack(sections, gap: 16), text: text)
     }
 
     /// "Header: answer", the header in secondary semibold.
-    static func submittedLine(_ question: InlineQuestion, answer: [String]?) -> ChatStackEntry {
-        let header = MeasuredText(ChatTextStyles.inlineSubmittedHeader.string("\(question.header):", color: Palette.textSecondary), maxLines: 1)
+    static func submittedLine(_ question: InlineQuestion, answer: [String]?, text: ChatRowText) -> ChatStackEntry {
+        let environment = text.environment
+        let header = MeasuredText(ChatTextStyles.inlineSubmittedHeader.string("\(question.header):", color: Palette.textSecondary, in: environment), maxLines: 1)
         let joined = answer?.joined(separator: ", ") ?? ""
-        let value = MeasuredText(ChatTextStyles.inlineSubmittedValue.string(joined.isEmpty ? "—" : joined, color: Palette.text))
+        let value = MeasuredText(ChatTextStyles.inlineSubmittedValue.string(joined.isEmpty ? "—" : joined, color: Palette.text, in: environment))
         let row = ChatPiece(measurable: Measurable { width in
             ChatAccessoryRowLayout(width: width, leading: header.layout(width: width / 2).size, text: value.measurable, alignment: .top).size
         }) { frame in
@@ -52,9 +55,10 @@ extension ChatRowRenderer {
     }
 
     /// The header chip, the question, then its options 4 apart.
-    static func questionSection(_ question: InlineQuestion, state: ChatQuestionState, toolId: String) -> ChatStackEntry {
-        let chip = MeasuredText(ChatTextStyles.inlineQuestionHeader.string(question.header.uppercased(), color: Palette.textSecondary), maxLines: 1)
-        let text = MeasuredText(ChatTextStyles.inlineQuestionText.string(question.question, color: Palette.text))
+    static func questionSection(_ question: InlineQuestion, state: ChatQuestionState, toolId: String, text rowText: ChatRowText) -> ChatStackEntry {
+        let environment = rowText.environment
+        let chip = MeasuredText(ChatTextStyles.inlineQuestionHeader.string(question.header.uppercased(), color: Palette.textSecondary, in: environment), maxLines: 1)
+        let text = MeasuredText(ChatTextStyles.inlineQuestionText.string(question.question, color: Palette.text, in: environment))
         var entries = [
             ChatStackEntry(
                 piece: .text(chip), marginBottom: 4, padding: LayoutInsets(top: 4, left: 8, bottom: 4, right: 8), placement: .leading,
@@ -64,7 +68,7 @@ extension ChatRowRenderer {
         ]
         let options = question.options.enumerated().map { index, option in
             optionButton(option, selected: state.selections.isSelected(question, option: index), multiSelect: question.multiSelect,
-                         enabled: state.canInteract, action: .questionOption(toolId: toolId, questionId: question.id, option: index))
+                         enabled: state.canInteract, action: .questionOption(toolId: toolId, questionId: question.id, option: index), text: rowText)
         }
         entries.append(ChatStackEntry(piece: .stack(options, gap: 4)))
         return ChatStackEntry(piece: .stack(entries, gap: 8))
@@ -72,9 +76,14 @@ extension ChatRowRenderer {
 
     /// An outlined option: a radio or a checkbox, then the label and its
     /// description. 12 in, 10 between, at least 44 tall.
-    static func optionButton(_ option: AgentQuestionOption, selected: Bool, multiSelect: Bool, enabled: Bool, action: ChatRowAction) -> ChatStackEntry {
-        let label = MeasuredText(ChatTextStyles.inlineOptionLabel.string(option.label, color: Palette.text))
-        let description = option.description.flatMap { $0.isEmpty ? nil : MeasuredText(ChatTextStyles.inlineOptionDescription.string($0, color: Palette.textSecondary)) }
+    static func optionButton(
+        _ option: AgentQuestionOption, selected: Bool, multiSelect: Bool, enabled: Bool, action: ChatRowAction, text: ChatRowText
+    ) -> ChatStackEntry {
+        let environment = text.environment
+        let label = MeasuredText(ChatTextStyles.inlineOptionLabel.string(option.label, color: Palette.text, in: environment))
+        let description = option.description.flatMap {
+            $0.isEmpty ? nil : MeasuredText(ChatTextStyles.inlineOptionDescription.string($0, color: Palette.textSecondary, in: environment))
+        }
         let column = ChatPiece.stack([ChatStackEntry(piece: .text(label))] + (description.map { [ChatStackEntry(piece: .text($0), marginTop: 2)] } ?? []))
         let mark = CGSize(width: 20, height: 22)
         let alpha: CGFloat = enabled ? 1 : 0.6
@@ -116,9 +125,9 @@ extension ChatRowRenderer {
 
     /// "Submit Answer", right-aligned; outlined in blue once every required
     /// question has an answer, a spinner while it goes.
-    static func submitButton(_ state: ChatQuestionState, toolId: String) -> ChatStackEntry {
+    static func submitButton(_ state: ChatQuestionState, toolId: String, text rowText: ChatRowText) -> ChatStackEntry {
         let ready = state.selections.allAnswered(state.form.questions) && !state.submitting
-        let title = MeasuredText(ChatTextStyles.inlineSubmit.string(Strings.Tools.submitAnswer, color: Palette.text), maxLines: 1)
+        let title = MeasuredText(ChatTextStyles.inlineSubmit.string(rowText.words.submitAnswer, color: Palette.text, in: rowText.environment), maxLines: 1)
         let alpha: CGFloat = ready ? 1 : 0.5
         let button = ChatPiece(measurable: Measurable { width in
             let size = title.layout(width: width).size

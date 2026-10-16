@@ -27,7 +27,7 @@ final class ChatSyntaxTests: XCTestCase {
 
     func testTheCodeBlockColoursEveryTokenAsTheFileViewerDoes() {
         let code = "@cached\ndef f(a, b):\n    return [a == (b or 1)]"
-        let string = ChatSyntax.string(code, language: "python", service: CodeSyntaxService())
+        let string = ChatSyntax.string(code, language: "python", service: CodeSyntaxService(), in: nil)
         XCTAssertEqual(string.string, code)
         let light = UITraitCollection(userInterfaceStyle: .light)
         var offset = 0
@@ -49,10 +49,10 @@ final class ChatSyntaxTests: XCTestCase {
     /// keeps its height when the colour comes in.
     func testAPlainBlockTakesTheColouredBlocksSize() {
         let code = "@cached\ndef f(a, b):\n    return [a == (b or 1)]\nclass Widget: pass"
-        let coloured = ChatSyntax.string(code, language: "python", service: CodeSyntaxService())
+        let coloured = ChatSyntax.string(code, language: "python", service: CodeSyntaxService(), in: nil)
         let closed = CodeSyntaxService()
         closed.close()
-        let plain = ChatSyntax.string(code, language: "python", service: closed)
+        let plain = ChatSyntax.string(code, language: "python", service: closed, in: nil)
         XCTAssertEqual(plain.string, code)
         let light = UITraitCollection(userInterfaceStyle: .light)
         let color = plain.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? UIColor
@@ -65,7 +65,7 @@ final class ChatSyntaxTests: XCTestCase {
     func testTerminalTokensTakeTheDarkDiffColours() {
         let string = MessageDetailRenderer.terminalString(
             [("echo", .function), (" hi ", .plain), ("# note", .comment)],
-            style: ChatTextStyles.terminal, color: Palette.terminalStdout, lineBreakMode: .byCharWrapping
+            style: ChatTextStyles.terminal, color: Palette.terminalStdout, lineBreakMode: .byCharWrapping, in: nil
         )
         XCTAssertEqual(string.string, "echo hi # note")
         let light = UITraitCollection(userInterfaceStyle: .light)

@@ -31,36 +31,52 @@ extension ChatTextStyle {
         lineHeight ?? font.lineHeight.rounded(.up)
     }
 
+    /// `font` where text is drawn in `environment`: at its text size, or
+    /// as designed where there is none. Safe off main.
+    func font(in environment: TextEnvironment?) -> UIFont {
+        environment.map { font(in: $0) } ?? font
+    }
+
     /// Like `TextStyle.attributes`: a fixed line height centres the glyphs in
-    /// the line the way React Native does.
-    func attributes(color: UIColor, font: UIFont? = nil, alignment: NSTextAlignment = .natural, lineBreakMode: NSLineBreakMode = .byWordWrapping) -> [NSAttributedString.Key: Any] {
-        let font = font ?? self.font
+    /// the line the way React Native does. In an `environment`, the size and
+    /// the line height grow by RN's multiplier and the kern stays as given
+    /// (`scaled(_:)`); `font` is then the caller's font at that size.
+    func attributes(
+        color: UIColor, font: UIFont? = nil, alignment: NSTextAlignment = .natural, lineBreakMode: NSLineBreakMode = .byWordWrapping,
+        in environment: TextEnvironment? = nil
+    ) -> [NSAttributedString.Key: Any] {
+        let style = environment.map { scaled($0.scale) } ?? self
+        let font = font ?? self.font(in: environment)
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = alignment
         paragraph.lineBreakMode = lineBreakMode
         var attributes: [NSAttributedString.Key: Any] = [.font: font, .foregroundColor: color, .paragraphStyle: paragraph]
-        if let lineHeight {
+        if let lineHeight = style.lineHeight {
             paragraph.minimumLineHeight = lineHeight
             paragraph.maximumLineHeight = lineHeight
             attributes[.baselineOffset] = (lineHeight - font.lineHeight) / 4
         }
-        if letterSpacing != 0 { attributes[.kern] = letterSpacing }
+        if style.letterSpacing != 0 { attributes[.kern] = style.letterSpacing }
         return attributes
     }
 
-    func string(_ text: String, color: ColorToken, alignment: NSTextAlignment = .natural, lineBreakMode: NSLineBreakMode = .byWordWrapping) -> NSAttributedString {
+    func string(
+        _ text: String, color: ColorToken, alignment: NSTextAlignment = .natural, lineBreakMode: NSLineBreakMode = .byWordWrapping,
+        in environment: TextEnvironment? = nil
+    ) -> NSAttributedString {
         NSAttributedString(
             string: uppercase ? text.uppercased() : text,
-            attributes: attributes(color: UIColor(color), alignment: alignment, lineBreakMode: lineBreakMode)
+            attributes: attributes(color: UIColor(color), alignment: alignment, lineBreakMode: lineBreakMode, in: environment)
         )
     }
 }
 
 /// Markdown spans as one attributed paragraph in a block's style: bold and
 /// italic swap the face, inline code takes the mono style, links are
-/// underlined and carry their URL (`RenderSpans`).
+/// underlined and carry their URL (`RenderSpans`). In an `environment`,
+/// every face is at its text size.
 enum ChatSpans {
-    static func string(_ spans: [MarkdownSpan], style: ChatTextStyle, color: ColorToken) -> NSAttributedString {
+    static func string(_ spans: [MarkdownSpan], style: ChatTextStyle, color: ColorToken, in environment: TextEnvironment?) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let uiColor = UIColor(color)
         for span in spans {
@@ -73,7 +89,7 @@ enum ChatSpans {
             } else if span.styles.contains(.italic) {
                 spanStyle = style.with(.plex(.italic))
             }
-            var attributes = style.attributes(color: uiColor, font: spanStyle.font)
+            var attributes = style.attributes(color: uiColor, font: spanStyle.font(in: environment), in: environment)
             if let url = span.url, Markdown.isHTTPLink(url) {
                 attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
                 attributes[.chatLink] = url

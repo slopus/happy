@@ -4,6 +4,17 @@ import HappyIcons
 import HappyLayout
 import UIKit
 
+/// What every row's text is drawn in: the person's text size, read from
+/// the list's traits on the main thread (nil: the designed size), and the
+/// words of the language the screen was built in. Part of every row's
+/// input, so a new size plans every row again, as a new width does.
+struct ChatRowText: Equatable, Sendable {
+    var environment: TextEnvironment?
+    var words: ChatWords
+
+    static let designed = ChatRowText(environment: nil, words: .english)
+}
+
 /// The settings and session facts that change how every row looks.
 struct ChatRowStyle: Equatable, Sendable {
     var bubble: BubbleColor = .gray
@@ -22,6 +33,7 @@ struct ChatRowStyle: Equatable, Sendable {
     /// PermissionFooter's `optionsScroll` maxHeight, min(260, 35% of the
     /// window): a taller list of buttons scrolls.
     var permissionListMaxHeight = PermissionFooterLayout.Metrics.maxListHeight
+    var text = ChatRowText.designed
     /// The account's diff documents and syntax colour.
     var render: RenderServices
 }
@@ -96,11 +108,11 @@ enum ChatRowRenderer {
     /// ChatFooter, just past the newest message: padding only, or the
     /// "permissions shown in terminal only" box while the terminal has
     /// control.
-    static func footer(controlledByUser: Bool, width: CGFloat) -> ChatRowPlan {
+    static func footer(controlledByUser: Bool, width: CGFloat, in environment: TextEnvironment?) -> ChatRowPlan {
         guard controlledByUser else {
             return ChatRowPlan(id: footerId, size: ChatFooterLayout(width: width, warning: nil).size, items: [])
         }
-        let text = MeasuredText(ChatTextStyles.chatFooterWarning.string(Strings.Chat.controlledByTerminal, color: Palette.boxWarningText))
+        let text = MeasuredText(ChatTextStyles.chatFooterWarning.string(Strings.Chat.controlledByTerminal, color: Palette.boxWarningText, in: environment))
         let layout = ChatFooterLayout(width: width, warning: text.measurable)
         var items: [ChatDrawItem] = []
         if let box = layout.warning, let icon = layout.icon, let label = layout.label {
@@ -130,8 +142,10 @@ enum ChatRowRenderer {
         width: CGFloat, style: ChatRowStyle
     ) -> ChatRowPlan {
         let palette = bubblePalette(style.bubble)
+        let text = style.text
+        let environment = text.environment
         let author = message.author.flatMap { $0.owner == true ? nil : $0 }
-        let authorText = author.map { MeasuredText(ChatTextStyles.userAuthor.string($0.name, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail), maxLines: 1) }
+        let authorText = author.map { MeasuredText(ChatTextStyles.userAuthor.string($0.name, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail, in: environment), maxLines: 1) }
 
         let parsed = LocalCommandMessage(message.displayText ?? message.text)
         var markdown: MarkdownPiece?
@@ -141,22 +155,22 @@ enum ChatRowRenderer {
         let copyText: String
         switch parsed {
         case .goalRun(let goal):
-            let piece = MarkdownPiece(goal, color: Palette.userMessageText, selectable: false, diagrams: diagrams, syntax: style.render.codeSyntax)
-            sentText = MeasuredText(ChatTextStyles.goalSent.string(Strings.ChatMessage.sentAsGoal, color: Palette.textSecondary))
+            let piece = MarkdownPiece(goal, color: Palette.userMessageText, selectable: false, diagrams: diagrams, syntax: style.render.codeSyntax, in: environment)
+            sentText = MeasuredText(ChatTextStyles.goalSent.string(text.words.sentAsGoal, color: Palette.textSecondary, in: environment))
             content = .goal(piece.blocks, sentLabel: sentText!.measurable)
             markdown = piece
             copyText = goal
         case .commandRun(let name, let arguments):
-            chipText = MeasuredText(ChatTextStyles.commandChip.string("/\(name)", color: Palette.userMessageText), maxLines: 1)
-            let piece = arguments.map { MarkdownPiece($0, color: Palette.userMessageText, selectable: false, diagrams: diagrams, syntax: style.render.codeSyntax) }
+            chipText = MeasuredText(ChatTextStyles.commandChip.string("/\(name)", color: Palette.userMessageText, in: environment), maxLines: 1)
+            let piece = arguments.map { MarkdownPiece($0, color: Palette.userMessageText, selectable: false, diagrams: diagrams, syntax: style.render.codeSyntax, in: environment) }
             content = .command(chip: chipText!.measurable, arguments: piece?.blocks)
             markdown = piece
             copyText = arguments.map { "/\(name) \($0)" } ?? "/\(name)"
-        case .text(let text):
-            let piece = MarkdownPiece(text, color: Palette.userMessageText, selectable: false, diagrams: diagrams, syntax: style.render.codeSyntax)
+        case .text(let markdownText):
+            let piece = MarkdownPiece(markdownText, color: Palette.userMessageText, selectable: false, diagrams: diagrams, syntax: style.render.codeSyntax, in: environment)
             content = .text(piece.blocks)
             markdown = piece
-            copyText = text
+            copyText = markdownText
         case .caveat, .goalConfirmation:
             return ChatRowPlan(id: message.id, size: CGSize(width: width, height: 0), items: [])
         }
@@ -189,21 +203,26 @@ enum ChatRowRenderer {
         }
 
         // The status line is always there at one line's height, so a row
-        // never changes height when a message settles.
+        // never changes height when a message settles. Its height is RN's
+        // fixed 14 at every text size (`pendingStatusText`), so a larger
+        // size's text is cut at it.
         let status: String
         var failed = false
         switch messageStatus.line {
         case .none: status = ""
-        case .sending: status = Strings.ChatMessage.sending
-        case .sendsAfterThisTurn: status = Strings.ChatMessage.sendsAfterThisTurn
+        case .sending: status = text.words.sending
+        case .sendsAfterThisTurn: status = text.words.sendsAfterThisTurn
         case .failed(let reason):
-            status = Strings.ChatMessage.sendFailed(reason)
+            status = text.words.sendFailed(reason)
             failed = true
         }
         if !status.isEmpty {
             let color = failed ? Palette.statusError : Palette.textSecondary
-            let text = ChatTextLayout(ChatTextStyles.pendingStatus.string(status, color: color, alignment: layout.alignsLeft ? .left : .right, lineBreakMode: .byTruncatingTail), width: layout.status.width, maxLines: 1)
-            items.append(.text(text, layout.status))
+            let line = ChatTextLayout(
+                ChatTextStyles.pendingStatus.string(status, color: color, alignment: layout.alignsLeft ? .left : .right, lineBreakMode: .byTruncatingTail, in: environment),
+                width: layout.status.width, maxLines: 1
+            )
+            items.append(.text(line, layout.status))
             if case .failed = delivery, let localId = message.localId {
                 hits.insert(ChatHit(frame: layout.status, action: .retry(localId: localId)), at: 0)
             }
@@ -227,7 +246,7 @@ enum ChatRowRenderer {
     /// MessageView's agent text: the markdown, then the copy button, which
     /// shows a tick for a moment after copying.
     static func agentText(_ message: AgentTextMessage, copied: Bool, diagrams: ChatMermaidHeights, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
-        let markdown = MarkdownPiece(message.text, color: Palette.text, diagrams: diagrams, syntax: style.render.codeSyntax)
+        let markdown = MarkdownPiece(message.text, color: Palette.text, diagrams: diagrams, syntax: style.render.codeSyntax, in: style.text.environment)
         let layout = AgentTextLayout(width: width, maxContentWidth: style.maxContentWidth, blocks: markdown.blocks)
         let drawn = markdown.draw(layout.markdown, origin: layout.markdownOrigin)
         let slop = AgentTextLayout.Metrics.copyHitSlop
@@ -244,35 +263,37 @@ enum ChatRowRenderer {
     }
 
     static func agentEvent(_ message: AgentEventMessage, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
+        let words = style.text.words
         let label: String
         switch message.event {
-        case .modeSwitch(let mode): label = Strings.ChatMessage.switchedToMode(mode)
+        case .modeSwitch(let mode): label = words.switchedToMode(mode)
         case .message(let text): label = text
         case .limitReached(let endsAt):
             let formatter = DateFormatter()
             formatter.timeStyle = .short
             formatter.dateStyle = .none
-            label = Strings.ChatMessage.usageLimitUntil(formatter.string(from: Date(timeIntervalSince1970: TimeInterval(endsAt))))
-        default: label = Strings.ChatMessage.unknownEvent
+            label = words.usageLimitUntil(formatter.string(from: Date(timeIntervalSince1970: TimeInterval(endsAt))))
+        default: label = words.unknownEvent
         }
-        return centredLine(message.id, label, style: ChatTextStyles.agentEvent, color: Palette.agentEventText, width: width, maxContentWidth: style.maxContentWidth)
+        return centredLine(message.id, label, style: ChatTextStyles.agentEvent, color: Palette.agentEventText, width: width, rowStyle: style)
     }
 
     static func unsupportedRow(_ message: UnsupportedMessage, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
-        centredLine(message.id, Strings.Chat.unsupported(message.kind), style: ChatTextStyles.unsupported, color: Palette.textSecondary, width: width, maxContentWidth: style.maxContentWidth)
+        centredLine(message.id, Strings.Chat.unsupported(message.kind), style: ChatTextStyles.unsupported, color: Palette.textSecondary, width: width, rowStyle: style)
     }
 
-    static func centredLine(_ id: String, _ label: String, style textStyle: ChatTextStyle, color: ColorToken, width: CGFloat, maxContentWidth: CGFloat) -> ChatRowPlan {
-        let text = MeasuredText(textStyle.string(label, color: color, alignment: .center))
-        let layout = ChatEventLayout(width: width, maxContentWidth: maxContentWidth, label: text.measurable)
+    static func centredLine(_ id: String, _ label: String, style textStyle: ChatTextStyle, color: ColorToken, width: CGFloat, rowStyle: ChatRowStyle) -> ChatRowPlan {
+        let text = MeasuredText(textStyle.string(label, color: color, alignment: .center, in: rowStyle.text.environment))
+        let layout = ChatEventLayout(width: width, maxContentWidth: rowStyle.maxContentWidth, label: text.measurable)
         return ChatRowPlan(id: id, size: layout.size, items: [.text(text.layout(for: layout.label), layout.label)], accessibilityLabel: label)
     }
 
     static func workHeader(_ id: String, group: ChatWorkGroup, placement: ChatListItem.Placement, expanded: Bool, width: CGFloat, style: ChatRowStyle) -> ChatRowPlan {
         let trailing = placement == .trailing
         let duration = (group.completedAt ?? group.startedAt) - group.startedAt
-        let label = trailing ? Strings.ToolGroup.hide : Strings.ToolGroup.workedFor(ChatDisplay.formatWorkDuration(milliseconds: duration))
-        let text = MeasuredText(ChatTextStyles.workGroup.string(label, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail), maxLines: 1)
+        let words = style.text.words
+        let label = trailing ? words.hide : words.workedFor(ChatDisplay.formatWorkDuration(milliseconds: duration))
+        let text = MeasuredText(ChatTextStyles.workGroup.string(label, color: Palette.textSecondary, lineBreakMode: .byTruncatingTail, in: style.text.environment), maxLines: 1)
         let layout = WorkGroupHeaderLayout(width: width, maxContentWidth: style.maxContentWidth, label: text.measurable)
         let chevron: Icon = trailing || expanded ? .ionicons("chevron-up") : .ionicons("chevron-forward")
         return ChatRowPlan(
@@ -301,8 +322,11 @@ struct MarkdownPiece {
     /// answers a long press (MarkdownView's `selectable` Text). Off where
     /// the message copies as a whole instead (`externalCopyHandler`).
     /// `diagrams`: the row the markdown is in, and the heights its
-    /// diagrams' pages reported. `syntax` colours its code blocks.
-    init(_ markdown: String, color: ColorToken, selectable: Bool = true, diagrams: ChatMermaidHeights, syntax: CodeSyntaxService) {
+    /// diagrams' pages reported. `syntax` colours its code blocks. The text
+    /// is at `environment`'s size; the block margins, the code's padding,
+    /// the tables' estimated columns, the images' and the diagrams' boxes
+    /// keep theirs, as RN's do.
+    init(_ markdown: String, color: ColorToken, selectable: Bool = true, diagrams: ChatMermaidHeights, syntax: CodeSyntaxService, in environment: TextEnvironment?) {
         var blocks: [MarkdownLayout.Block] = []
         var drawers: [(MarkdownLayout.Placed, CGPoint) -> ([ChatDrawItem], [ChatHit])] = []
 
@@ -321,12 +345,12 @@ struct MarkdownPiece {
         for block in Markdown.parse(markdown) {
             switch block {
             case .text(let spans):
-                let measured = MeasuredText(ChatSpans.string(spans, style: ChatTextStyles.markdownText, color: color))
+                let measured = MeasuredText(ChatSpans.string(spans, style: ChatTextStyles.markdownText, color: color, in: environment))
                 blocks.append(.text(measured.measurable))
                 drawers.append(text(measured))
 
             case .header(let level, let spans):
-                let measured = MeasuredText(ChatSpans.string(spans, style: ChatTextStyles.markdownHeader(level), color: color))
+                let measured = MeasuredText(ChatSpans.string(spans, style: ChatTextStyles.markdownHeader(level), color: color, in: environment))
                 blocks.append(.header(level: level, measured.measurable))
                 drawers.append(text(measured))
 
@@ -338,22 +362,22 @@ struct MarkdownPiece {
 
             case .list(let items):
                 let rows = items.map { item in
-                    (MeasuredText(ChatTextStyles.markdownText.string(Self.bullets[min(item.depth, Self.bullets.count - 1)], color: color)),
-                     MeasuredText(ChatSpans.string(item.spans, style: ChatTextStyles.markdownText, color: color)), item.depth)
+                    (MeasuredText(ChatTextStyles.markdownText.string(Self.bullets[min(item.depth, Self.bullets.count - 1)], color: color, in: environment)),
+                     MeasuredText(ChatSpans.string(item.spans, style: ChatTextStyles.markdownText, color: color, in: environment)), item.depth)
                 }
                 blocks.append(.list(rows.map { .init(depth: $0.2, marker: $0.0.measurable, text: $0.1.measurable) }))
                 drawers.append(Self.listDrawer(rows.map { ($0.0, $0.1) }, hold: hold))
 
             case .numberedList(let items):
                 let rows = items.map { item in
-                    (MeasuredText(ChatTextStyles.markdownText.string("\(item.number).", color: color)),
-                     MeasuredText(ChatSpans.string(item.spans, style: ChatTextStyles.markdownText, color: color)), item.depth)
+                    (MeasuredText(ChatTextStyles.markdownText.string("\(item.number).", color: color, in: environment)),
+                     MeasuredText(ChatSpans.string(item.spans, style: ChatTextStyles.markdownText, color: color, in: environment)), item.depth)
                 }
                 blocks.append(.list(rows.map { .init(depth: $0.2, marker: $0.0.measurable, text: $0.1.measurable) }))
                 drawers.append(Self.listDrawer(rows.map { ($0.0, $0.1) }, hold: hold))
 
             case .codeBlock(let language, let content):
-                Self.code(language: language, content: content, syntax: syntax, blocks: &blocks, drawers: &drawers, hold: hold)
+                Self.code(language: language, content: content, syntax: syntax, environment: environment, blocks: &blocks, drawers: &drawers, hold: hold)
 
             case .mermaid(let content):
                 // MermaidRenderer: the diagram drawn by mermaid in a web page,
@@ -366,7 +390,7 @@ struct MarkdownPiece {
                 }
 
             case .options(let options):
-                let labels = options.map { MeasuredText(ChatTextStyles.option.string($0, color: color)) }
+                let labels = options.map { MeasuredText(ChatTextStyles.option.string($0, color: color, in: environment)) }
                 blocks.append(.options(labels.map(\.measurable)))
                 drawers.append { placed, origin in
                     guard case .options(_, let buttons, let frames) = placed else { return ([], []) }
@@ -384,7 +408,7 @@ struct MarkdownPiece {
             case .table(let headers, let rows):
                 let all = [headers] + rows
                 let measured = all.enumerated().map { rowIndex, row in
-                    row.map { MeasuredText(ChatSpans.string($0, style: rowIndex == 0 ? ChatTextStyles.tableHeader : ChatTextStyles.tableCell, color: color)) }
+                    row.map { MeasuredText(ChatSpans.string($0, style: rowIndex == 0 ? ChatTextStyles.tableHeader : ChatTextStyles.tableCell, color: color, in: environment)) }
                 }
                 let lengths = all.map { row in row.map { $0.reduce(0) { $0 + $1.text.utf16.count } } }
                 blocks.append(.table(.init(columnWidths: MarkdownLayout.columnWidths(lengths: lengths), rows: measured.map { $0.map(\.measurable) })))
@@ -418,7 +442,7 @@ struct MarkdownPiece {
                 }
 
             case .image(let alt, let url):
-                let caption = alt.isEmpty ? nil : MeasuredText(ChatTextStyles.imageCaption.string(alt, color: Palette.textSecondary))
+                let caption = alt.isEmpty ? nil : MeasuredText(ChatTextStyles.imageCaption.string(alt, color: Palette.textSecondary, in: environment))
                 let source = URL(string: url)
                 blocks.append(.image(caption: caption?.measurable))
                 drawers.append { placed, origin in
@@ -471,11 +495,11 @@ struct MarkdownPiece {
     /// A code block, unwrapped like happy-app's: the language on top, the
     /// code scrolling sideways under it.
     private static func code(
-        language: String?, content: String, syntax: CodeSyntaxService, blocks: inout [MarkdownLayout.Block],
+        language: String?, content: String, syntax: CodeSyntaxService, environment: TextEnvironment?, blocks: inout [MarkdownLayout.Block],
         drawers: inout [(MarkdownLayout.Placed, CGPoint) -> ([ChatDrawItem], [ChatHit])], hold: @escaping (CGRect, String) -> [ChatHit]
     ) {
-        let label = language.map { MeasuredText(ChatTextStyles.codeLanguage.string($0, color: Palette.textSecondary), maxLines: 1) }
-        let code = ChatTextLayout(unwrapped: ChatSyntax.string(content, language: language, service: syntax))
+        let label = language.map { MeasuredText(ChatTextStyles.codeLanguage.string($0, color: Palette.textSecondary, in: environment), maxLines: 1) }
+        let code = ChatTextLayout(unwrapped: ChatSyntax.string(content, language: language, service: syntax, in: environment))
         blocks.append(.code(language: label?.measurable, code: code.size))
         drawers.append { placed, origin in
             guard case .code(let placedCode) = placed else { return ([], []) }
@@ -497,12 +521,13 @@ enum ChatSyntax {
     /// The block coloured from the account's `service`, or plain when it
     /// has no language, is past the limits, or isn't coloured yet (the row
     /// is drawn again once it is). Every weight of the mono face has the
-    /// same advance, so plain and coloured take the same size.
-    static func string(_ code: String, language: String?, service: CodeSyntaxService) -> NSAttributedString {
+    /// same advance, so plain and coloured take the same size. In an
+    /// `environment`, at its text size.
+    static func string(_ code: String, language: String?, service: CodeSyntaxService, in environment: TextEnvironment?) -> NSAttributedString {
         let style = ChatTextStyles.codeBlock
         let result = NSMutableAttributedString()
-        let regular = style.font
-        let bold = style.with(.plex(.monoSemiBold)).font
+        let regular = style.font(in: environment)
+        let bold = style.with(.plex(.monoSemiBold)).font(in: environment)
         let tokens: [SyntaxToken]
         if case .highlighted(let coloured) = service.tokens(code, language: language) {
             tokens = coloured
@@ -510,7 +535,7 @@ enum ChatSyntax {
             tokens = [SyntaxToken(code, .plain)]
         }
         for token in tokens {
-            let attributes = style.attributes(color: UIColor(FileSyntax.color(token)), font: token.isBold ? bold : regular)
+            let attributes = style.attributes(color: UIColor(FileSyntax.color(token)), font: token.isBold ? bold : regular, in: environment)
             result.append(NSAttributedString(string: token.text, attributes: attributes))
         }
         return result

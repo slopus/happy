@@ -260,9 +260,59 @@ Following now:
   row's `workspaceMeta` gap stays open. The glyph keeps its 13 at every
   size, under the row's 18, so it would not change a height.
 
+- The chat's rows and message detail. The list (`ChatListView`) carries
+  the trait itself, and so does the placeholder over it; the screen around
+  them doesn't, because its header and the bars over the composer are laid
+  out there at the designed size. Message detail calls
+  `followsTextSize()`. happy-app sets no cap in the chat
+  (`maxFontSizeMultiplier` appears only in `OnboardingContent.tsx`), so
+  nothing is capped.
+  - Planned off main at the size: the list's `TextEnvironment` and the
+    rows' words go into every row's input (`ChatRowText` in
+    `ChatRowStyle`; `MessageDetailInput.text`), so `RowPlanner`, which
+    keys on the input and the width, measures every row again once on a
+    new size: one off-main pass and one apply, all reconfigures, nothing
+    inserted or moved. A streamed token after it still measures only its
+    own bubble. A result planned for another size is refused; the next
+    pass has the new one.
+  - What grows: every chat style's size and line by the multiplier, the
+    kern as given (`ChatTextStyle.attributes(in:)`), the spans' faces and
+    inline code (`ChatSpans`), code blocks and their syntax runs
+    (`ChatSyntax.string(in:)`), the running tool's timer (it draws at its
+    row's size, not its traits', in the room the row measured for "000.0s"),
+    and the diffs inside tool cards (`DiffChunkPlan(text:)`,
+    `DiffHeaderPlan(text:)`). What stays: the glyphs (the tool header's 24
+    and 20, the status 16, the goal's 16, the chevrons), the paddings and
+    margins, the 32 older end, the markdown table's 8.5 a character column
+    estimate, and the minimums (the 44 work header, the 34 permission
+    buttons, the 44 options), which taller text grows past. The user
+    bubble's status line keeps `pendingStatusText`'s fixed 14, and its
+    text is cut there from a little past the default size; RN's `height:
+    14` also stops it growing (read from MessageView.tsx, not seen in RN).
+  - A new size keeps the reader's row where it was (`ChatScrollAnchor`)
+    and message detail the text at the top of the screen
+    (`MessageDetailReadingPlace`). Until the new plans land the old ones
+    stay drawn whole: the text is in the plan, so a row never mixes sizes.
+  - The placeholder (EmptyMessages, the pending chat's and the deleted
+    state) is measured on the main thread when it lays out, as it was at
+    the designed size, and made again when the size changes; its 72 glyph
+    stays.
+  - Difference: a row's text box is ceiled to whole points
+    (`ChatTextLayout`), where RN ceils it to the screen's pixels, so a
+    text can be up to ⅔ pt taller here on a 3x screen, at every size.
+  - Tested on Linux: the layouts at XS, the default, XXXL, AX-M and
+    AX-XXXL (`ChatTextSizeLayoutTests`), the changesets
+    (`ApplyPerfChatTextSizeTests`) and the reading place. UIKit tests
+    (`ChatRowsTextSizeTests`, `MessageDetailTextSizeTests`,
+    `ChatRowWordsTests`: the plans' text at the multiplier and fitting its
+    frames, the designed size unchanged, the cells drawing their plans,
+    the placeholder made again, and the fixture chat and message screen
+    planned again at a new size) are built, not run: the Mac was offline.
+    Not seen on a simulator or device.
+
 - Diffs, on the Changes screen (`SessionChangesViewController`) and in the
   file viewer (`SessionFileViewController`), which opt in, and in the
-  chat's tool cards once the chat hands its environment to
+  chat's and message detail's tool cards, which hand their environment to
   `DiffChunkPlan(text:)` and `DiffHeaderPlan(text:)` (nil is the designed
   size, so a caller that passes nothing is unchanged). happy-app sets no
   cap anywhere in `components/diff/*`, `DiffMetrics.tsx`, `CodeView`,
@@ -348,11 +398,11 @@ happy-app has two kinds of header on iOS (`app/(app)/_layout.tsx`):
 
 Here the bar's own title is react-native-screens' (IBMPlexSans-SemiBold
 17, a font and a colour: `AppCoordinator.nativeTitleAttributes`) and never
-scales. Settings, What's New, Welcome, Home, session info, machine and
-changes put their title in a title view that follows the text size and is
-fitted again in the bar when the size changes (session info, machine and
-changes through `setPlainHeaderTitle`, which keeps `title` for the back
-button). On session info and machine only the title follows; their rows
+scales. Settings, What's New, Welcome, Home, session info, machine,
+changes and message detail put their title in a title view that follows
+the text size and is fitted again in the bar when the size changes
+(session info, machine and changes through `setPlainHeaderTitle`, which
+keeps `title` for the back button). On session info and machine only the title follows; their rows
 don't yet. Changes' rows follow (above).
 
 Fixed RN sizes stay fixed: icons, the wordmark, the checklist boxes,
@@ -367,15 +417,16 @@ past; in the 42 row it is cut by the middle box, as RN's
 ## Not yet wired
 
 - The rest of the sidebar (the grouped list's bots and the notices over
-  them), the chat (its diff cards included, until it passes its
-  environment to `DiffChunkPlan`) and message detail: their heights are
-  planned off main at the designed size.
-  Their measurers take a `TextEnvironment` as an input and cache key, a
+  them): its heights are planned off main at the designed size.
+  Its measurers take a `TextEnvironment` as an input and cache key, a
   text size change invalidates every height as a width change does, and
-  then their screens opt in.
+  then it opts in.
+- The rest of the chat screen: its header (the title and subtitle, and
+  the CLI warning pill; RN `<Text>`s that scale in RN), what sits over the
+  composer (the goal bar, the question banner, the rig activity bar, the
+  inactive hint) and the copy menu, which is UIKit's.
 - Home's dock (the same card, under a screen that doesn't follow, so it
   stays at the designed size) and the new-session screen.
-- The `createPlainHeader` title of message detail (Chat's).
 - The rows of session info and machine.
 - On a device: the composer at each size, the chips' native menus over
   their scaled labels, and a size change while typing (the typed text is
@@ -415,6 +466,6 @@ past; in the 42 row it is cut by the middle box, as RN's
     at M: 120 in 120) is checked as scrolling with its content as tall as
     the view, as RN scrolls from the cap (`MultiTextInputLayout`).
   - Thai, Devanagari and Korean join the texts, under the same checks.
-- Measured text boxes ceil to pixels as RN's do.
-- Fonts made outside `TextStyle` (session info's duplicate sheet, code
-  blocks).
+- Measured text boxes ceil to pixels as RN's do (the chat's still ceil to
+  whole points).
+- Fonts made outside `TextStyle` (session info's duplicate sheet).
