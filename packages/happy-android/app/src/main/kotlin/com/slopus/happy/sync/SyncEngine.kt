@@ -3,6 +3,7 @@ package com.slopus.happy.sync
 import com.slopus.happy.crypto.AccountEncryption
 import com.slopus.happy.crypto.PayloadCipher
 import com.slopus.happy.data.HappyStore
+import com.slopus.happy.model.Settings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -87,12 +88,13 @@ class SyncEngine(
             }
             attempts++
             val base = store.settings()
-            val merged = JsonObject((base?.value ?: EMPTY) + pending)
-            val result = api.updateSettings(cipher.encryptToBase64(merged), base?.version ?: 0)
+            // sync.ts: settingsToSyncPayload(applySettings(settings, pending)).
+            val payload = Settings.syncPayload(Settings.apply(base?.value ?: EMPTY, pending))
+            val result = api.updateSettings(cipher.encryptToBase64(payload), base?.version ?: 0)
             when {
                 result.success -> {
                     store.transaction {
-                        store.saveSettings(merged, result.version ?: ((base?.version ?: 0) + 1))
+                        store.saveSettings(payload, result.version ?: ((base?.version ?: 0) + 1))
                         // Changes made while the request was in flight stay pending.
                         store.savePendingSettings(JsonObject(store.pendingSettings().filter { (key, value) -> pending[key] != value }))
                     }
