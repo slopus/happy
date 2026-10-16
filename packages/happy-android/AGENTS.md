@@ -259,10 +259,14 @@ from the update itself), `update-session` (metadata/agentState with their
 versions, three-state `projectId`; control hand-off refetches messages),
 `delete-session`, `new-machine` (carries its data key), `update-machine`,
 `delete-machine`, `update-account` (profile fields, settings with version;
-pending local settings stay on top), `delete-project` (resync). Projects,
-artifacts, friends and feed updates are ignored until those features
-exist; KV updates are ignored because KV is unused by happy-app (nothing
-imports apiKv.ts). Anything that cannot be applied alone (unknown session
+pending local settings stay on top), `new-project`/`update-project` (the
+project catalog refetches, `ProjectServices`), `delete-project` (the catalog
+and a resync). Artifacts, friends (`relationship-updated`) and feed updates
+are ignored until those features exist; KV updates are ignored because KV is
+unused by happy-app (nothing imports apiKv.ts). Not copied on purpose:
+`update-session`'s account `seq` (here a session's `seq` is its message
+counter, which history sync relies on), and the `session-event` ephemeral
+(happy-app's browser-tab unread counter). Anything that cannot be applied alone (unknown session
 or machine, a `new-session` body that does not decode) asks for the delta
 sync instead of guessing.
 
