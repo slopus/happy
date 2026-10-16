@@ -84,11 +84,14 @@ data class WindowLayout(
     val isTablet: Boolean,
     val isLandscape: Boolean,
     val deviceType: DeviceType,
-    /** `layout.maxWidth`: the chat, the composer, item groups. Also `layout.headerMaxWidth`. */
+    /** `layout.maxWidth`: the chat, the composer, item groups. */
     val contentMaxWidth: Dp,
     /** `useHeaderHeight`; on Android it takes the device type from [isTablet]. */
     val headerHeight: Dp,
 ) {
+    /** `layout.headerMaxWidth`: the same as [contentMaxWidth] off the Mac. */
+    val headerMaxWidth: Dp get() = contentMaxWidth
+
     companion object {
         fun of(width: Dp, height: Dp): WindowLayout {
             val isTablet = TabletBreakpoint.isTablet(width)
@@ -120,3 +123,9 @@ fun ProvideWindowLayout(modifier: Modifier = Modifier, content: @Composable () -
         CompositionLocalProvider(LocalWindowLayout provides layout, content = content)
     }
 }
+
+/**
+ * True under the tablet shell (SidebarNavigator.tsx `isDesktopLayout`): its
+ * persistent header carries back, so screen headers drop their own.
+ */
+val LocalTabletShell = staticCompositionLocalOf { false }

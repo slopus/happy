@@ -41,6 +41,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.model.DayTitle
@@ -71,6 +72,8 @@ object HomeTags {
     const val LOADING = "home.loading"
     /** The first-run link page standing in for the whole home screen. */
     const val LINK = "home.link"
+    /** The tablet detail with no session open: blank, as MainView.tsx leaves it. */
+    const val TABLET_BLANK = "home.tabletBlank"
     const val LIST = "home.list"
     const val ARCHIVE_TOGGLE = "home.archiveToggle"
     const val DAY_HEADER = "home.dayHeader"
@@ -165,7 +168,14 @@ fun HomeScreen(
                     offlineContent(state.computers, if (state.hasArchivedSessions) showArchived else null)
                 state.emptyState == HomeEmptyState.NoSessions ->
                     NoSessionsState(onNewSession = actions.onNewSession, onShowArchived = if (state.hasArchivedSessions) showArchived else null)
-                else -> HomeList(state, callbacks, actions, update)
+                else -> HomeList(
+                    state,
+                    callbacks,
+                    actions,
+                    update,
+                    contentTop = HomeSpec.contentTop,
+                    bottomSpacer = { Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).height(HomeDockSpec.contentInset)) },
+                )
             }
         }
     }
@@ -310,8 +320,21 @@ private val ConnectionStatus.label: Int
         ConnectionStatus.ERROR -> R.string.status_error
     }
 
+/**
+ * SessionsList: the banners, then the rows. The phone home starts it 12 under
+ * its header and ends it over the dock; the tablet sidebar starts it flush and
+ * marks [selectedSessionId], the session open beside it.
+ */
 @Composable
-private fun HomeList(state: HomeListState, callbacks: HomeListCallbacks, actions: HomeScreenActions, update: HomeUpdate?) {
+fun HomeList(
+    state: HomeListState,
+    callbacks: HomeListCallbacks,
+    actions: HomeScreenActions,
+    update: HomeUpdate?,
+    contentTop: Dp,
+    bottomSpacer: @Composable () -> Unit,
+    selectedSessionId: String? = null,
+) {
     val colors = HappyTheme.colors
     val flat = state.grouping == SessionListGrouping.Flat
     LazyColumn(
@@ -319,7 +342,7 @@ private fun HomeList(state: HomeListState, callbacks: HomeListCallbacks, actions
             .fillMaxSize()
             .background(if (flat) flatListBackground(colors) else colors.grouped.background)
             .testTag(HomeTags.LIST),
-        contentPadding = PaddingValues(top = HomeSpec.contentTop),
+        contentPadding = PaddingValues(top = contentTop),
     ) {
         if (state.offlineBanner != null || update != null) {
             item(key = "banners", contentType = "banners") {
@@ -328,15 +351,13 @@ private fun HomeList(state: HomeListState, callbacks: HomeListCallbacks, actions
         }
         items(state.rows, key = { it.key }, contentType = { it::class }) { row ->
             when (row) {
-                is HomeRow.Chat -> FlatSessionRow(row.row, row.showBorder, row.archived, callbacks)
+                is HomeRow.Chat -> FlatSessionRow(row.row, row.showBorder, row.archived, callbacks, selected = row.row.session.id == selectedSessionId)
                 is HomeRow.ArchiveToggle -> ArchiveToggleRow(row.hidden, row.banded, callbacks)
                 is HomeRow.DayHeader -> DayHeaderRow(row.title, flat)
                 is HomeRow.Project -> ProjectHomeRowContent(row.row, callbacks)
             }
         }
-        item(key = "bottom", contentType = "bottom") {
-            Spacer(Modifier.windowInsetsPadding(WindowInsets.navigationBars).height(HomeDockSpec.contentInset))
-        }
+        item(key = "bottom", contentType = "bottom") { bottomSpacer() }
     }
 }
 
