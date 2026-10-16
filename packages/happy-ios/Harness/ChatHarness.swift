@@ -316,16 +316,20 @@ final class ChatScrollProbe: NSObject {
         var endIndicatorGap: CGFloat = .nan
         if let grab = samples.first(where: { $0.indicator != nil }), let grabFrame = grab.indicator {
             // How far the indicator strayed from the finger once it had it,
-            // a frame or two behind it while it moves; and at the end, the
-            // finger held still.
+            // until older rows joined; and at the end, the finger held still.
             let hold = grabFrame.midY - grab.fingerY
             for sample in samples where sample.time - grab.time > 0.7 {
                 if let frame = sample.indicator {
-                    maxIndicatorGap = max(maxIndicatorGap, abs(frame.midY - sample.fingerY - hold))
-                    endIndicatorGap = abs(frame.midY - sample.fingerY - hold)
+                    let gap = abs(frame.midY - sample.fingerY - hold)
+                    if sample.rows == grab.rows { maxIndicatorGap = max(maxIndicatorGap, gap) }
+                    endIndicatorGap = gap
                 }
             }
         }
+        // Where the finger ended on the indicator: from its middle, and its
+        // length, so a test can tell whether the finger is still on it.
+        let end = samples.last(where: { $0.indicator != nil })
+        let endFingerFromIndicator = end.map { $0.fingerY - ($0.indicator?.midY ?? 0) } ?? .nan
         var recognizers = Set<String>()
         var tracking = false
         var dragging = false
@@ -348,6 +352,8 @@ final class ChatScrollProbe: NSObject {
         touch["contentEnd"] = last.contentHeight
         touch["maxIndicatorGap"] = maxIndicatorGap
         touch["endIndicatorGap"] = endIndicatorGap.isNaN ? -1 : endIndicatorGap
+        touch["endFingerFromIndicator"] = endFingerFromIndicator.isNaN ? 9999 : endFingerFromIndicator
+        touch["endIndicatorLength"] = end?.indicator?.height ?? 0
         touch["tracking"] = tracking
         touch["dragging"] = dragging
         touch["recognizers"] = recognizers.sorted()
