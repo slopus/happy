@@ -142,6 +142,8 @@ fun ServerScreen(
                         strings.changeServer,
                         strings.continueWithServer,
                         listOf(AlertButton(strings.cancel), AlertButton(strings.continueLabel, destructive = true) { onSave(url) }),
+                        // Modal.confirm: only a button answers it.
+                        cancelable = false,
                     )
                 }
             }
@@ -159,6 +161,7 @@ fun ServerScreen(
                     input = ""
                 },
             ),
+            cancelable = false,
         )
     }
 
