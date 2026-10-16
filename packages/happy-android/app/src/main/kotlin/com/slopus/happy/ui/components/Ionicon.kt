@@ -27,6 +27,7 @@ enum class Ionicon(val codepoint: Int) {
     AlertCircleOutline(0xf114), // alert-circle-outline
     AnalyticsOutline(0xf11c), // analytics-outline
     AppsOutline(0xf122), // apps-outline
+    Archive(0xf124), // archive
     ArchiveOutline(0xf125), // archive-outline
     ArrowBack(0xf127), // arrow-back
     ArrowUp(0xf145), // arrow-up
@@ -67,6 +68,7 @@ enum class Ionicon(val codepoint: Int) {
     Filter(0xf301), // filter
     FingerPrintOutline(0xf308), // finger-print-outline
     FlashOutline(0xf31a), // flash-outline
+    FolderOpenOutline(0xf327), // folder-open-outline
     FolderOutline(0xf329), // folder-outline
     GitBranchOutline(0xf33b), // git-branch-outline
     GitCommitOutline(0xf33e), // git-commit-outline

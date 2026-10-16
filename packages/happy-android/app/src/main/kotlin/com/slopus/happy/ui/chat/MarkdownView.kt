@@ -48,6 +48,7 @@ import com.slopus.happy.chat.markdown.SyntaxTokenType
 import com.slopus.happy.chat.markdown.isHttpMarkdownLink
 import com.slopus.happy.chat.markdown.tokenizeCode
 import com.slopus.happy.ui.components.MarkdownImage
+import com.slopus.happy.ui.components.MermaidView
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.PlexMono
 import com.slopus.happy.ui.theme.happyTextStyle
@@ -117,7 +118,8 @@ object MarkdownSpec {
  *   button (12/16 on surfaceHighest with a divider border, radius 4) sits
  *   8 from the top right; on phones it is always there. It turns success
  *   green and reads "Copied" for 1.5 s (happy-app alerts instead).
- * - Mermaid stays a code block (no diagram renderer on Android yet).
+ * - Mermaid: a diagram in a WebView (see MermaidView); the code block where
+ *   there is no WebView to use.
  * - Rule: 1 high, divider colour, 8 above and below.
  * - Options: a column 8 apart, 8 above and below; each a surfaceHighest row,
  *   radius 12, padding 12/8, 16/24 text; pressing sends it.
@@ -157,7 +159,7 @@ fun MarkdownView(
                 )
                 is MarkdownBlock.NumberedList -> ListBlock(block.items.map { Triple("${it.number}.", it.depth, it.spans) })
                 is MarkdownBlock.CodeBlock -> CodeBlock(block.content, block.language)
-                is MarkdownBlock.Mermaid -> CodeBlock(block.content, "mermaid")
+                is MarkdownBlock.Mermaid -> MermaidView(block.content) { CodeBlock(block.content, "mermaid") }
                 MarkdownBlock.HorizontalRule -> Box(
                     Modifier
                         .padding(vertical = MarkdownSpec.ruleMargin)

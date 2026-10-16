@@ -98,9 +98,10 @@ class OnboardingFlowTest {
 
         rule.waitUntilAtLeastOneExists(hasText("Accept Connection"), 5_000)
         rule.onNodeWithText("Accept Connection").performClick()
-        // The confirm screen closes once the terminal has its answer.
-        rule.waitUntilDoesNotExist(hasText("Accept Connection"), 5_000)
-        val response = server.terminalRequests.getValue(encodeBase64(terminal.publicKey)).response!!
+        // The button reads "Connecting" at once, so wait for the answer itself.
+        val key = encodeBase64(terminal.publicKey)
+        rule.waitUntil(5_000) { synchronized(server) { server.terminalRequests.getValue(key).response != null } }
+        val response = synchronized(server) { server.terminalRequests.getValue(key).response!! }
         assertArrayEquals(account.credentials.secretBytes(), decryptBox(decodeBase64(response), terminal.secretKey))
         assertNull(DeepLinks.pending.value)
     }
