@@ -23,12 +23,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -70,6 +77,9 @@ import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import com.slopus.happy.ui.usage.ComposerUsageRow
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 object ChatScreenTags {
@@ -123,7 +133,8 @@ class ChatScreenActions(
     val onInfo: () -> Unit = {},
     val onDraftChange: (String) -> Unit = {},
     val onSend: (String) -> Unit = {},
-    val onAbort: () -> Unit = {},
+    /** Stop: returns once the agent took it, throws if it didn't. */
+    val onAbort: suspend () -> Unit = {},
     val loadOlder: suspend () -> Boolean = { false },
     val onToolPress: (com.slopus.happy.chat.ChatMessage.ToolCallMessage) -> Unit = {},
     val onPermission: PermissionHandler = { _, _ -> },
@@ -159,7 +170,6 @@ fun ChatScreen(
     bubbleColor: String,
     actions: ChatScreenActions,
     modifier: Modifier = Modifier,
-    aborting: Boolean = false,
     now: Long = System.currentTimeMillis(),
     compactToolCalls: Boolean = false,
     showLineNumbersInToolViews: Boolean = false,
@@ -255,32 +265,71 @@ fun ChatScreen(
             CenteredInputWidth(horizontalPadding = inputPadding) {
                 AgentQuestionBanner(state.pendingCommunications, actions.onAnswerQuestion, actions.onCancelQuestion)
             }
-            ChatComposerFor(state, session, draft, actions, aborting, now, modes)
+            ChatComposerFor(state, session, draft, actions, now, modes)
         }
     }
 }
 
+/**
+ * AgentInput.tsx's press handling. Stop: an error haptic, a spinner for at
+ * least 300 ms, and once the agent took it Stop stays away until the agent
+ * is no longer busy; if it failed, the button shakes and Stop comes back.
+ * A refused send (a busy agent that can't be steered): an error haptic and
+ * the card shakes. Send: a light haptic. A hardware Escape, when the
+ * suggestion list doesn't take it, stops a busy agent.
+ */
 @Composable
 private fun ChatComposerFor(
     state: ChatState,
     session: ChatSessionInfo,
     draft: String,
     actions: ChatScreenActions,
-    aborting: Boolean,
     now: Long,
     modes: ComposerModes,
 ) {
     val sessionState = state.sessionState
     val metadata = session.metadata
-    val canAbort = sessionState != SessionState.Disconnected && metadata.rigCanAbort()
+    val showAbort = showsAbort(sessionState)
+    var aborting by remember { mutableStateOf(false) }
+    // A local acknowledgement: the status update can trail the abort RPC.
+    var stopRequested by remember { mutableStateOf(false) }
+    LaunchedEffect(showAbort) { if (!showAbort) stopRequested = false }
+    val canAbort = sessionState != SessionState.Disconnected && metadata.rigCanAbort() && !stopRequested
     val blocked = session.isRig && state.thinking && metadata?.capabilities?.steering != true
     val primary = resolvePrimaryAction(
         hasContent = draft.isNotBlank() || hasComposerImages(),
-        showAbort = showsAbort(sessionState),
+        showAbort = showAbort,
         canAbort = canAbort,
         blocked = blocked,
     )
     val autocomplete = rememberComposerAutocomplete(draft, actions.onDraftChange)
+    val haptics = LocalHapticFeedback.current
+    val scope = rememberCoroutineScope()
+    val panelShake = rememberShake()
+    val primaryShake = rememberShake()
+    fun abort() {
+        if (aborting) return
+        haptics.error()
+        stopRequested = true
+        aborting = true
+        scope.launch {
+            try {
+                coroutineScope {
+                    launch { delay(ABORT_MIN_SPINNER_MS) }
+                    actions.onAbort()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                stopRequested = false
+                launch { primaryShake.shake() }
+            } finally {
+                aborting = false
+            }
+        }
+    }
+    // AgentInput handleKeyPress: with no suggestions up, Escape stops a busy agent.
+    val canEscape = showAbort && sessionState != SessionState.Disconnected && metadata.rigCanAbort()
     ChatComposer(
         text = draft,
         onTextChange = actions.onDraftChange,
@@ -289,9 +338,17 @@ private fun ChatComposerFor(
         aborting = aborting,
         onPrimary = {
             when (primary) {
-                PrimaryAction.Stop -> actions.onAbort()
-                PrimaryAction.Send -> actions.onSend(draft)
-                else -> Unit
+                PrimaryAction.Stop -> abort()
+                PrimaryAction.Blocked -> {
+                    haptics.error()
+                    scope.launch { panelShake.shake() }
+                }
+                PrimaryAction.Send -> {
+                    haptics.light()
+                    stopRequested = false
+                    actions.onSend(draft)
+                }
+                PrimaryAction.Idle -> Unit
             }
         },
         modifier = Modifier
@@ -307,9 +364,17 @@ private fun ChatComposerFor(
         top = { ComposerAttachmentStrip() },
         overlay = { ComposerSuggestions(autocomplete) },
         cursor = autocomplete.cursor,
+        onKey = { event ->
+            (event.key == Key.Escape && canEscape && !aborting).also { if (it && event.type == KeyEventType.KeyDown) abort() }
+        },
+        panelShake = panelShake,
+        primaryShake = primaryShake,
         bottom = { ComposerUsageRow(state.snapshot.usage, session.agentState?.usageLimits) },
     )
 }
+
+/** AgentInput.tsx: Stop's spinner shows at least this long. */
+private const val ABORT_MIN_SPINNER_MS = 300L
 
 @Composable
 private fun ChatHeaderTitle(title: String, session: ChatSessionInfo?, gitStatus: GitStatus?, onClick: (() -> Unit)?) {
