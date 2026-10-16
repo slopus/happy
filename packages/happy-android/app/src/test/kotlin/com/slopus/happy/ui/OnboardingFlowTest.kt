@@ -21,6 +21,7 @@ import com.slopus.happy.testing.FakeHappyServer
 import com.slopus.happy.testing.SoftwareKeys
 import com.slopus.happy.ui.connect.DeepLink
 import com.slopus.happy.ui.connect.DeepLinks
+import com.slopus.happy.ui.home.HomeTags
 import com.slopus.happy.ui.onboarding.RestoreTags
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
@@ -77,7 +78,7 @@ class OnboardingFlowTest {
         // The other phone approves.
         server.approveAccountRequest(decodeBase64(publicKey), AccountLink.sealSecret(server.secret, decodeBase64(publicKey)))
 
-        rule.waitUntilAtLeastOneExists(hasText("Your sessions will appear here."), 10_000)
+        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.FILTER), 10_000)
         val signedIn = graph.auth.state.value as AuthState.SignedIn
         assertArrayEquals(server.secret, signedIn.credentials.secretBytes())
         assertEquals(server.token, signedIn.credentials.token)
@@ -88,7 +89,7 @@ class OnboardingFlowTest {
     @Test
     fun aTerminalLinkOpensTheConfirmScreenAndAcceptConnectsIt() {
         rule.onNodeWithText("Create account").performClick()
-        rule.waitUntilAtLeastOneExists(hasText("Your sessions will appear here."), 5_000)
+        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.FILTER), 5_000)
         val account = graph.auth.state.value as AuthState.SignedIn
 
         val terminal = Sodium.boxKeypair()
@@ -98,7 +99,7 @@ class OnboardingFlowTest {
         rule.waitUntilAtLeastOneExists(hasText("Accept Connection"), 5_000)
         rule.onNodeWithText("Accept Connection").performClick()
         // Back home once the terminal has its answer.
-        rule.waitUntilAtLeastOneExists(hasText("Your sessions will appear here."), 5_000)
+        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.FILTER), 5_000)
         val response = server.terminalRequests.getValue(encodeBase64(terminal.publicKey)).response!!
         assertArrayEquals(account.credentials.secretBytes(), decryptBox(decodeBase64(response), terminal.secretKey))
         assertNull(DeepLinks.pending.value)
