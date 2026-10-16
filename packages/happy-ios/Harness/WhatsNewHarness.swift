@@ -26,7 +26,7 @@ final class WhatsNewProbe: NSObject {
     private var screen: ChangelogViewController?
     private var link: CADisplayLink?
     private var report: [String: Any] = [:]
-    private var opens: [[String: Double]] = []
+    private var opens: [[String: Any]] = []
     private var openStart: CFTimeInterval = 0
     private let element = UIView(frame: CGRect(x: 0, y: 0, width: 2, height: 2))
 
@@ -38,6 +38,13 @@ final class WhatsNewProbe: NSObject {
     private var layoutMs: [Double] = []
     private var frameMs: [Double] = []
     private var intervals: [Double] = []
+    private var plannedBeforeScroll = 0
+    /// How long the main thread ran between waits, while scrolling: every
+    /// block, the display link's ticks and the bitmaps landing alike.
+    private var busyMs: [Double] = []
+    private var busyStart: CFTimeInterval?
+    private var observer: CFRunLoopObserver?
+    private var offsets: [Double] = []
 
     init(window: UIWindow, arguments: [String]) {
         self.window = window
@@ -87,15 +94,16 @@ final class WhatsNewProbe: NSObject {
         CATransaction.flush()
         let committed = CACurrentMediaTime()
         self.screen = screen
-        var open: [String: Double] = [
+        var open: [String: Any] = [
             "layoutMs": (laidOut - start) * 1000,
             "commitMs": (committed - laidOut) * 1000,
             "totalMs": (committed - start) * 1000,
         ]
         #if DEBUG
-        for (site, count) in MeasureCounters.snapshot() { open["count." + site] = Double(count) }
+        for (site, count) in MeasureCounters.snapshot() { open["count." + site] = count }
         #endif
         opens.append(open)
+        timePlans(of: screen, pushedAt: start, open: opens.count - 1)
         if times > 1 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self.open(times: times - 1) }
         } else {
@@ -108,11 +116,59 @@ final class WhatsNewProbe: NSObject {
         }
     }
 
+    /// The plan landing after the push: when, and what applying it,
+    /// laying out and committing cost on the main thread.
+    private func timePlans(of screen: ChangelogViewController, pushedAt start: CFTimeInterval, open index: Int) {
+        guard !screen.entryViews.isEmpty else { return }
+        #if DEBUG
+        let plannedBefore = ChangelogPlan.planned.value
+        #endif
+        let original = screen.plans.onApply
+        var applies: [[String: Double]] = []
+        screen.plans.onApply = { [weak self, weak screen] in
+            guard let self, let screen else { return }
+            let began = CACurrentMediaTime()
+            original?()
+            screen.view.layoutIfNeeded()
+            let laidOut = CACurrentMediaTime()
+            CATransaction.flush()
+            let committed = CACurrentMediaTime()
+            applies.append([
+                "sincePushMs": (began - start) * 1000,
+                "applyAndLayoutMs": (laidOut - began) * 1000,
+                "commitMs": (committed - laidOut) * 1000,
+                "planned": Double(screen.entryViews.filter { $0.plan != nil }.count),
+            ])
+            self.opens[index]["applies"] = applies
+            if screen.entryViews.allSatisfy({ $0.plan != nil }) {
+                self.opens[index]["allContentMs"] = (committed - start) * 1000
+                #if DEBUG
+                self.opens[index]["entriesPlanned"] = ChangelogPlan.planned.value - plannedBefore
+                #endif
+            }
+        }
+    }
+
     private func startScrolling() {
         guard speed != nil else { return finish() }
         #if DEBUG
         MeasureCounters.reset()
+        plannedBeforeScroll = ChangelogPlan.planned.value
         #endif
+        let observer = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.afterWaiting.rawValue | CFRunLoopActivity.beforeWaiting.rawValue, true, 0) { [weak self] _, activity in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                let now = CACurrentMediaTime()
+                if activity == .afterWaiting {
+                    self.busyStart = now
+                } else if let start = self.busyStart {
+                    self.busyMs.append((now - start) * 1000)
+                    self.busyStart = nil
+                }
+            }
+        }
+        CFRunLoopAddObserver(CFRunLoopGetMain(), observer, .commonModes)
+        self.observer = observer
         let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
         link.add(to: .main, forMode: .common)
         self.link = link
@@ -142,6 +198,7 @@ final class WhatsNewProbe: NSObject {
         let committed = CACurrentMediaTime()
         layoutMs.append((laidOut - start) * 1000)
         frameMs.append((committed - start) * 1000)
+        offsets.append(Double(offset))
         if done {
             link.invalidate()
             self.link = nil
@@ -150,6 +207,15 @@ final class WhatsNewProbe: NSObject {
     }
 
     private func finish() {
+        if let observer {
+            CFRunLoopRemoveObserver(CFRunLoopGetMain(), observer, .commonModes)
+            self.observer = nil
+        }
+        report["opens"] = opens
+        if let list {
+            report["contentHeight"] = list.contentSize.height
+            report["sectionHeights"] = list.sections.map { Double($0.frame.height) }
+        }
         if !layoutMs.isEmpty {
             report["scroll"] = [
                 "speed": Double(speed ?? 0),
@@ -161,10 +227,18 @@ final class WhatsNewProbe: NSObject {
                 // A frame that took longer than one and a half display frames.
                 "hitches": intervals.filter { $0 > nominal * 1.5 }.count,
                 "framesOverBudget4_2ms": frameMs.filter { $0 > 4.2 }.count,
+                "mainBusyMs": Self.stats(busyMs),
+                "mainBlocks": busyMs.count,
+                "mainBlocksOver4_2ms": busyMs.filter { $0 > 4.2 }.count,
+                "mainBlocksOver4_2": busyMs.filter { $0 > 4.2 }.prefix(40).map { ($0 * 10).rounded() / 10 },
+                "slowFrames": zip(frameMs, zip(layoutMs, offsets)).filter { $0.0 > 4.2 }.prefix(40).map { [$0.0, $0.1.0, $0.1.1] },
             ] as [String: Any]
         }
         #if DEBUG
-        report["scrollCounters"] = MeasureCounters.snapshot()
+        var counters: [String: Int] = MeasureCounters.snapshot()
+        counters["entriesPlanned"] = ChangelogPlan.planned.value - plannedBeforeScroll
+        counters["drawnEntries"] = screen?.entryViews.filter(\.drawsText).count ?? -1
+        report["scrollCounters"] = counters
         #endif
         let data = (try? JSONSerialization.data(withJSONObject: report, options: [.sortedKeys])) ?? Data()
         let json = String(decoding: data, as: UTF8.self)
