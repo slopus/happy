@@ -146,7 +146,8 @@ fun DiffFileView(
  * scrolls sideways with [DiffFileBody.scroll], so the code still slides as
  * one under the pinned gutter. [palette] and [metrics] come from the
  * caller's composition ([diffPalette], [rememberDiffMetrics]); the caller
- * starts the body ([DiffFileBody.start]).
+ * starts the body ([DiffFileBody.start]). [rowModifier] goes on every row
+ * (DiffFilesList holds them to the content width with it).
  */
 fun LazyListScope.diffFileItems(
     body: DiffFileBody,
@@ -156,6 +157,7 @@ fun LazyListScope.diffFileItems(
     showLineNumbers: Boolean = true,
     layout: DiffLayoutMode = DiffLayoutMode.Scroll,
     onExpandContext: (() -> Unit)? = null,
+    rowModifier: Modifier = Modifier,
 ) {
     val file = body.file
     val gutterWidth = metrics.gutterWidth(file.maxLineNo, showLineNumbers)
@@ -165,7 +167,7 @@ fun LazyListScope.diffFileItems(
             val codeWidth = codeWidth(file, metrics)
             items(body.rows.size, key = { "$keyPrefix:${body.rows[it].key}" }, contentType = { "diff.row" }) { index ->
                 val row = body.rows[index]
-                Row(modifier = Modifier.fillMaxWidth().background(palette.surface).syntaxGate(pending)) {
+                Row(modifier = rowModifier.fillMaxWidth().background(palette.surface).syntaxGate(pending)) {
                     DiffRowGutter(row, palette, metrics, gutterWidth, showLineNumbers)
                     Box(
                         modifier = Modifier
@@ -178,20 +180,20 @@ fun LazyListScope.diffFileItems(
             }
         }
         DiffLayoutMode.Wrap -> items(body.rows.size, key = { "$keyPrefix:${body.rows[it].key}" }, contentType = { "diff.row" }) { index ->
-            Box(Modifier.background(palette.surface).syntaxGate(pending)) {
+            Box(rowModifier.background(palette.surface).syntaxGate(pending)) {
                 DiffRowInline(body.rows[index], palette, metrics, gutterWidth, showLineNumbers, onExpandContext)
             }
         }
         DiffLayoutMode.Split -> {
             val split = buildSplitRows(body.rows)
             items(split.size, key = { "$keyPrefix:${split[it].key}" }, contentType = { "diff.row" }) { index ->
-                Box(Modifier.background(palette.surface).syntaxGate(pending)) {
+                Box(rowModifier.background(palette.surface).syntaxGate(pending)) {
                     DiffSplitRow(split[index], palette, metrics, gutterWidth, showLineNumbers, onExpandContext)
                 }
             }
         }
     }
-    if (body.hiddenCount > 0) item(key = "$keyPrefix:showMore") { ShowMoreBar(body, palette) }
+    if (body.hiddenCount > 0) item(key = "$keyPrefix:showMore") { Box(rowModifier) { ShowMoreBar(body, palette) } }
 }
 
 /** Laid out but invisible while the syntax gate holds. */

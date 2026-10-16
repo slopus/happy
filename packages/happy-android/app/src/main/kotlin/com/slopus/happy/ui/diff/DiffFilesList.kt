@@ -39,6 +39,8 @@ import com.slopus.happy.diff.DiffSource
 import com.slopus.happy.diff.FileChangeKind
 import com.slopus.happy.diff.syntax.SyntaxService
 import com.slopus.happy.text.pluralResource
+import com.slopus.happy.ui.layout.LocalWindowLayout
+import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -152,6 +154,8 @@ fun DiffFilesList(
 ) {
     val palette = diffPalette()
     val metrics = rememberDiffMetrics(fontSize)
+    // FileSection: each file held to layout.maxWidth, centred.
+    val width = Modifier.contentMaxWidth(LocalWindowLayout.current)
     val syntax = LocalDiffSyntax.current
     val scope = rememberCoroutineScope()
     val sections = remember(syntax) { DiffSections(scope, syntax) }
@@ -175,7 +179,7 @@ fun DiffFilesList(
         if (items.isEmpty()) {
             item(key = "diff.list.empty") {
                 Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-                    Text(emptyText ?: stringResource(R.string.diff_no_changes), style = happyTextStyle(fontSize = 15), color = palette.textSecondary)
+                    Text(emptyText ?: stringResource(R.string.diff_no_changes), style = happyTextStyle(fontSize = 14), color = palette.textSecondary)
                 }
             }
         }
@@ -186,13 +190,12 @@ fun DiffFilesList(
             val showSizeHint = isCollapsed && tooBig(item)
             item(key = "file:${item.id}", contentType = "diff.fileHeader") {
                 if (!isCollapsed) LaunchedEffect(item.source) { sections.ensure(item) }
-                DiffFileHeader(item.summary, collapsed = isCollapsed, onToggle = { overrides[item.path] = !isCollapsed })
+                DiffFileHeader(item.summary, width, collapsed = isCollapsed, onToggle = { overrides[item.path] = !isCollapsed })
             }
             when {
                 isCollapsed -> if (showSizeHint) item(key = "hint:${item.id}") {
                     Box(
-                        Modifier
-                            .fillMaxWidth()
+                        width
                             .background(tint)
                             .testTag(DiffTags.SIZE_HINT)
                             .clickable { overrides[item.path] = false }
@@ -203,22 +206,22 @@ fun DiffFilesList(
                         Text(pluralResource(R.plurals.diff_tap_to_expand, count, count), style = happyTextStyle(fontSize = 13), color = palette.textSecondary)
                     }
                 }
-                item.error != null -> item(key = "body:${item.id}") { SectionMessage(item.error, palette, tint) }
-                item.message != null -> item(key = "body:${item.id}") { SectionMessage(item.message, palette, tint) }
-                item.image != null -> item(key = "body:${item.id}") { DiffImageView(item.image.before, item.image.after) }
+                item.error != null -> item(key = "body:${item.id}") { SectionMessage(item.error, palette, tint, width) }
+                item.message != null -> item(key = "body:${item.id}") { SectionMessage(item.message, palette, tint, width) }
+                item.image != null -> item(key = "body:${item.id}") { DiffImageView(item.image.before, item.image.after, width) }
                 item.source == null -> item(key = "body:${item.id}") {
                     LaunchedEffect(item.path) { if (requested.add(item.path)) runCatching { requestContent?.invoke(item.path) } }
-                    Spinner(palette, tint)
+                    Spinner(palette, tint, width)
                 }
                 else -> {
                     val document = sections[item]?.document
                     val bodies = sections[item]?.bodies.orEmpty()
                     val hasTextRows = document?.files?.any { file -> file.rows.any { it is DiffRow.Line } } == true
                     when {
-                        document == null -> item(key = "body:${item.id}") { Spinner(palette, tint) }
-                        document.error != null -> item(key = "body:${item.id}") { SectionMessage(document.error, palette, tint) }
+                        document == null -> item(key = "body:${item.id}") { Spinner(palette, tint, width) }
+                        document.error != null -> item(key = "body:${item.id}") { SectionMessage(document.error, palette, tint, width) }
                         document.files.isEmpty() || (item.source is DiffSource.Contents && !hasTextRows) ->
-                            item(key = "body:${item.id}") { SectionMessage(stringResource(R.string.diff_no_changes), palette, tint) }
+                            item(key = "body:${item.id}") { SectionMessage(stringResource(R.string.diff_no_changes), palette, tint, width) }
                         else -> bodies.forEachIndexed { index, body ->
                             diffFileItems(
                                 body,
@@ -228,12 +231,13 @@ fun DiffFilesList(
                                 showLineNumbers = showLineNumbers,
                                 layout = layout,
                                 onExpandContext = onExpandContext?.let { expand -> { expand(item.path) } },
+                                rowModifier = width.background(tint),
                             )
                         }
                     }
                 }
             }
-            item(key = "end:${item.id}", contentType = "diff.fileEnd") { HorizontalDivider(thickness = 1.dp, color = palette.divider) }
+            item(key = "end:${item.id}", contentType = "diff.fileEnd") { HorizontalDivider(width, thickness = 1.dp, color = palette.divider) }
         }
     }
 
@@ -261,15 +265,15 @@ fun DiffFilesList(
 }
 
 @Composable
-private fun SectionMessage(text: String, palette: DiffPalette, tint: Color) {
-    Box(Modifier.fillMaxWidth().background(tint).padding(vertical = 16.dp).testTag(DiffTags.MESSAGE), contentAlignment = Alignment.Center) {
+private fun SectionMessage(text: String, palette: DiffPalette, tint: Color, modifier: Modifier) {
+    Box(modifier.background(tint).padding(vertical = 16.dp).testTag(DiffTags.MESSAGE), contentAlignment = Alignment.Center) {
         Text(text, style = happyTextStyle(fontSize = 13), color = palette.textSecondary)
     }
 }
 
 @Composable
-private fun Spinner(palette: DiffPalette, tint: Color) {
-    Box(Modifier.fillMaxWidth().background(tint).padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
+private fun Spinner(palette: DiffPalette, tint: Color, modifier: Modifier) {
+    Box(modifier.background(tint).padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
         CircularProgressIndicator(modifier = Modifier.size(20.dp).testTag(DiffTags.SPINNER), color = palette.textSecondary, strokeWidth = 2.dp)
     }
 }
