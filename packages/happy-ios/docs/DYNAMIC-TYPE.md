@@ -483,10 +483,16 @@ Following now:
     by how far into a header or the rest of a section
     (`DiffReadingPlace`). The file viewer does the same by line
     (`FileLinesLayout.place`), also across a new width or its colour
-    landing. Until the new plans land the old ones stay drawn: the rows,
-    the header, the bar and the list's notices draw at their plan's size,
-    not their traits' (the bar's and notices' labels opt out of the
-    trait), so a diff never mixes sizes. The Changes and file screens'
+    landing. The offset is put on the nearest of the screen's pixels
+    (`ScrollPlace.offset`), so the place is at most half a pixel off;
+    while the offset is still the one it was put at, the next size
+    starts from the place kept, not one found again from that offset
+    (`KeptPlace`), so a run of sizes doesn't add up their half pixels,
+    and back at the first size the line is where it was. Once the reader
+    scrolls, the place is found afresh. Until the new plans land the old
+    ones stay drawn: the rows, the header, the bar and the list's notices
+    draw at their plan's size, not their traits' (the bar's and notices'
+    labels opt out of the trait), so a diff never mixes sizes. The Changes and file screens'
     own labels (the retry and loading states, the file viewer's path and
     Diff/File buttons) follow the trait and are measured on main when
     they lay out, as Settings' are.
@@ -506,9 +512,11 @@ Following now:
     at six sizes from XS to AX-XXXL, every row's text, number and marker
     fitting its frame, the drawn rows equal to the plan's, the bar at its
     plan's size, the header, the section cache keyed on the size, the
-    list keeping the reader's place through three sizes, the file
-    viewer's lines against a label) are built, not run: the Mac was
-    offline. Not seen on a simulator or device.
+    list keeping the reader's place through three sizes to within half
+    a pixel and back at Large exactly, the file viewer's lines against a
+    label) pass on the iOS 26.5 simulator; drawn frames are compared to
+    the plan's within 1e-6, as UIKit reads a frame back an ulp off. Not
+    seen on a device.
 
 ## Header titles
 
