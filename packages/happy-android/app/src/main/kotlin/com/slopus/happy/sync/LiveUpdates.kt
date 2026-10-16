@@ -106,7 +106,8 @@ class LiveUpdates(
             // Fast path only for the next seq; anything else is fetched.
             LiveMessageResult.GAP -> messages.invalidate(sessionId)
             LiveMessageResult.UNKNOWN_SESSION -> requestSync()
-            LiveMessageResult.APPENDED, LiveMessageResult.KNOWN -> Unit
+            LiveMessageResult.APPENDED -> messages.noteStored(sessionId, listOf(message))
+            LiveMessageResult.KNOWN -> Unit
         }
         sessionDataEvents.tryEmit(sessionId)
     }

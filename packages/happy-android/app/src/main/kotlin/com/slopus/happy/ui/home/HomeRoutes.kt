@@ -64,6 +64,7 @@ import com.slopus.happy.projects.GitStatusServices
 import com.slopus.happy.projects.ProjectServices
 import com.slopus.happy.projects.SessionAvatarServices
 import com.slopus.happy.net.HappyJson
+import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.sync.MachineOps
 import com.slopus.happy.sync.MachinePresence
 import com.slopus.happy.sync.SessionPresence
@@ -159,16 +160,22 @@ class HomeServices private constructor(private val graph: AppGraph) {
                 projects = ProjectServices.of(graph).projects,
                 sessionAvatars = SessionAvatarServices.of(graph).avatars,
                 gitStatuses = GitStatusServices.of(graph).statuses,
+                // storage.ts updateSessionDraft: a blank draft is no draft.
+                drafts = account?.composer?.mirrors
+                    ?.map { mirrors -> mirrors.mapNotNull { (id, mirror) -> mirror.draft?.takeIf { it.isNotBlank() }?.let { id to it } }.toMap() }
+                    ?: flowOf(emptyMap()),
             )
         }
         .stateIn(scope, SharingStarted.Eagerly, null)
+
+    /** Unread chats and the chat on screen ([SessionViewingEffect]); per account, in memory. */
+    val reads = SessionReadState()
 
     val list = HomeListModel(
         snapshots = snapshots,
         settings = graph.settings.settings,
         localSettings = graph.localSettings.values,
-        // Read state belongs to the chat; nothing is unread until it lands.
-        unreadSessionIds = flowOf(emptySet()),
+        unreadSessionIds = reads.unreadSessionIds,
         archivingSessionIds = archiver.archiving,
         scope = scope,
     )
@@ -179,6 +186,11 @@ class HomeServices private constructor(private val graph: AppGraph) {
     val updateUrl: StateFlow<String?> = update.asStateFlow()
 
     init {
+        scope.launch {
+            var account: AccountSync? = null
+            graph.account.collect { next -> if (next !== account) { account = next; reads.reset() } }
+        }
+        scope.launch { snapshots.collect { snapshot -> if (snapshot != null) reads.observe(snapshot.sessions) } }
         scope.launch { update.value = checkNativeUpdate(graph.http, BuildConfig.APPLICATION_ID, BuildConfig.VERSION_NAME) }
     }
 
