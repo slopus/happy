@@ -67,6 +67,8 @@ fun ItemGroup(
     modifier: Modifier = Modifier,
     title: String? = null,
     footer: String? = null,
+    /** The space above an untitled card (`headerStyle` paddingTop). */
+    noTitleSpacer: Dp = ItemGroupSpec.noTitleSpacer,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val colors = HappyTheme.colors
@@ -88,7 +90,7 @@ fun ItemGroup(
                 Text(text = title.uppercase(), style = ItemGroupSpec.header, color = colors.grouped.sectionTitle)
             }
         } else {
-            Spacer(modifier = Modifier.height(ItemGroupSpec.noTitleSpacer))
+            Spacer(modifier = Modifier.height(noTitleSpacer))
         }
 
         Column(

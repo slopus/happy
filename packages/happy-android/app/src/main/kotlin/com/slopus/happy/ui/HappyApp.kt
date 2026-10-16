@@ -23,8 +23,9 @@ import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.connect.DeepLinkEffect
 import com.slopus.happy.ui.connect.connectRoutes
-import com.slopus.happy.ui.home.HomeScreen
+import com.slopus.happy.ui.home.homeRoutes
 import com.slopus.happy.ui.onboarding.RestoreManualScreen
+import com.slopus.happy.ui.onboarding.TroubleshootRoute
 import com.slopus.happy.ui.onboarding.onboardingRoutes
 import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.server.ServerScreen
@@ -64,7 +65,7 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                 composable<WelcomeRoute> { Welcome(graph, nav) }
                 composable<ServerRoute> { Server(graph, nav) }
                 composable<RestoreManualRoute> { RestoreManual(graph, nav) }
-                composable<HomeRoute> { HomeScreen(onSettings = { nav.navigate(SettingsRoute) }) }
+                homeRoutes(graph, nav, onTroubleshoot = { nav.navigate(TroubleshootRoute) })
                 settingsRoutes(graph, nav)
                 onboardingRoutes(graph, nav)
                 connectRoutes(graph, nav)
