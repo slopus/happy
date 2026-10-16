@@ -5,6 +5,7 @@ import com.slopus.happy.data.MachineRecord
 import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.Project
+import com.slopus.happy.model.ProjectAvatar
 import com.slopus.happy.model.Session
 import com.slopus.happy.sync.MachinePresence
 import com.slopus.happy.sync.SessionPresence
@@ -44,6 +45,7 @@ fun homeSnapshots(
     machinePresence: Flow<Map<String, MachinePresence>>,
     synced: Flow<Boolean> = flowOf(true),
     projects: Flow<Map<String, Project>> = flowOf(emptyMap()),
+    sessionAvatars: Flow<Map<String, ProjectAvatar>> = flowOf(emptyMap()),
     io: CoroutineDispatcher = Dispatchers.IO,
 ): Flow<HomeSnapshot> {
     val records = flow {
@@ -53,7 +55,10 @@ fun homeSnapshots(
             .distinctUntilChanged()
             .collect { emit(reader.read(store)) }
     }.flowOn(io)
-    return combine(records, sessionPresence, machinePresence, synced.distinctUntilChanged(), projects) { (sessions, machines), sessionLive, machineLive, wasSynced, catalog ->
+    val withAvatars = combine(records, sessionAvatars) { (sessions, machines), avatars ->
+        sessions.map { session -> avatars[session.id]?.let { session.copy(avatar = it) } ?: session } to machines
+    }
+    return combine(withAvatars, sessionPresence, machinePresence, synced.distinctUntilChanged(), projects) { (sessions, machines), sessionLive, machineLive, wasSynced, catalog ->
         HomeSnapshot(
             sessions = sessions.map { session -> sessionLive[session.id]?.let(session::withPresence) ?: session },
             machines = machines.map { machine -> machineLive[machine.id]?.let(machine::withPresence) ?: machine },

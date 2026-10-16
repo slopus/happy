@@ -3,6 +3,10 @@ package com.slopus.happy.sync
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.LiveMessageResult
 import com.slopus.happy.data.SessionRecord
+import com.slopus.happy.model.SessionAvatarDescriptor
+import com.slopus.happy.model.StoredSessionAvatar
+import com.slopus.happy.model.mergeSessionAvatar
+import com.slopus.happy.model.parseSessionAvatarRevision
 import com.slopus.happy.net.HappyJson
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -110,7 +114,27 @@ class LiveUpdates(
             requestSync()
             return
         }
+        if ("avatar" in body) {
+            val descriptor = SessionAvatarDescriptor.parse(body["avatar"])
+            val incoming = StoredSessionAvatar(
+                descriptor?.toJson()?.toString(),
+                parseSessionAvatarRevision(body["avatarVersion"]) ?: descriptor?.version,
+                container.seq,
+            )
+            val current = StoredSessionAvatar(session.avatarJson, session.avatarRevision, session.avatarUpdateSeq)
+            val avatarChanged = mergeSessionAvatar(current, incoming, listingIsNewer = false) != current
+            // An avatar update that changes nothing, and carries nothing else, is not news.
+            if (!avatarChanged && update.metadata == null && update.agentState == null && "projectId" !in body) return
+        }
         var next = session.copy(updatedAt = maxOf(session.updatedAt, container.createdAt))
+        if ("avatar" in body) {
+            val descriptor = SessionAvatarDescriptor.parse(body["avatar"])
+            next = next.copy(
+                avatarJson = descriptor?.toJson()?.toString(),
+                avatarRevision = parseSessionAvatarRevision(body["avatarVersion"]) ?: descriptor?.version,
+                avatarUpdateSeq = container.seq,
+            )
+        }
         update.metadata?.let { metadata ->
             val value = metadata.value?.let { cipher.decryptFromBase64(it) }
             if (value != null) next = next.copy(metadataJson = value.toString(), metadataVersion = metadata.version)

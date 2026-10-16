@@ -44,11 +44,12 @@ class HappyDatabase(context: Context, name: String? = NAME) :
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
-        if (oldVersion !in 1..2) return startOver(db)
+        if (oldVersion !in 1..3) return startOver(db)
         // Version 1 synced every message from seq 0, so what it stored is
         // complete history: the oldest stored seq is the floor.
         if (oldVersion == 1) MIGRATE_1_TO_2.forEach(db::execSQL)
-        MIGRATE_2_TO_3.forEach(db::execSQL)
+        if (oldVersion <= 2) MIGRATE_2_TO_3.forEach(db::execSQL)
+        MIGRATE_3_TO_4.forEach(db::execSQL)
     }
 
     // Nothing newer can be read safely; everything but the outbox can be fetched again.
@@ -61,7 +62,7 @@ class HappyDatabase(context: Context, name: String? = NAME) :
 
     companion object {
         const val NAME = "happy.db"
-        const val VERSION = 3
+        const val VERSION = 4
 
         // Messages accepted on this device and not yet echoed back by the
         // server. `content` is the ciphertext exactly as it is POSTed (so a
@@ -118,7 +119,10 @@ class HappyDatabase(context: Context, name: String? = NAME) :
                 messages_seq INTEGER NOT NULL DEFAULT 0,
                 messages_oldest_seq INTEGER,
                 messages_has_older INTEGER NOT NULL DEFAULT 0,
-                last_message_sent_at INTEGER
+                last_message_sent_at INTEGER,
+                avatar TEXT,
+                avatar_revision INTEGER,
+                avatar_update_seq INTEGER
             )
             """,
             "CREATE INDEX sessions_by_updated ON sessions (updated_at DESC)",
@@ -176,6 +180,14 @@ class HappyDatabase(context: Context, name: String? = NAME) :
 
         private val MIGRATE_2_TO_3
             get() = listOf(COMPOSER).map(String::trimIndent)
+
+        // Session avatars (sessionAvatarTypes.ts): the sealed descriptor and how new it is.
+        private val MIGRATE_3_TO_4
+            get() = listOf(
+                "ALTER TABLE sessions ADD COLUMN avatar TEXT",
+                "ALTER TABLE sessions ADD COLUMN avatar_revision INTEGER",
+                "ALTER TABLE sessions ADD COLUMN avatar_update_seq INTEGER",
+            )
 
         private val DROP = listOf(
             "DROP TABLE IF EXISTS composer",
