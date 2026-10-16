@@ -35,6 +35,12 @@ October 2026), read as raw files over the web:
 - `submodules/AttachmentUI/Sources/AttachmentController.swift` and
   `submodules/MediaPickerUI/Sources/MediaPickerScreen.swift`: the attachment
   sheet and its media picker.
+- `submodules/Display/Source/ListViewScroller.swift`, and in `ListView.swift`
+  `updateScroller`, the inset update in the transaction code, the vertical
+  scroll indicator's frame and the tracking state; in
+  `ChatControllerNode.swift` the list's insets and scroll indicator insets
+  and `dismissedInputByDragging`; in `WindowContent.swift` the keyboard pan
+  and `dismissedKeyboardByCurrentGesture` (section 6).
 
 ## 1. The inverted list and keeping the scroll position
 
@@ -212,6 +218,71 @@ into the account's `files/` directory and becomes an `OutgoingAttachment`,
 previewed in the strip and sent with the text through `ChatSending`. The
 chat's part is only the container the composer lives in (section 4) and
 rendering the resulting `file` tool rows.
+
+## 6. The scroll indicator, and insets under the finger
+
+**What Telegram does.**
+
+- *Insets while the finger is down.* When the list's insets change (the
+  input panel and the keyboard sit at the rotated list's scroll origin),
+  `ListView` normally shifts every row by the change, so what is at the
+  newest edge rides with the input panel. While the finger is tracking the
+  list it doesn't, unless a caller opts in (`allowInsetFixWhileTracking`):
+  the rows stay where the finger put them, and only how far the list can
+  scroll changes. In an interactive dismiss the keyboard's top follows the
+  finger, so its travel is never added to the drag's. Once the finger lifts,
+  the next pass is not tracking, and the rest of the dismissal carries the
+  rows down with the panel.
+- *After the release.* The window notes whether the release itself
+  finished dismissing the keyboard (`dismissedKeyboardByCurrentGesture`),
+  so the list can decline to fling on top of it (`shouldStopScrolling`). A
+  drag that began within 10 points of the newest edge and dismissed the
+  input returns to the newest message (`didInteractivelyDragFromTopOrigin`).
+- *The indicator.* The scroller is a hidden `UIScrollView` with a huge
+  content size that only supplies the pan and the deceleration, so UIKit's
+  indicators would mean nothing. `ListView` draws its own: a 3-point
+  rounded bar 3 points in from the side and the ends. It is placed from
+  the visible rows' indices times an average height of 44, because rows
+  outside the window are not measured. It runs between scroll indicator
+  insets that the chat keeps apart from the content insets: the keyboard and
+  input panels at the newest end, the top chrome at the other, without the
+  list's own padding. The list is rotated 180°, which mirrors it, so the
+  indicator is placed at the left to show on the right. It takes no
+  touches, so it can't be dragged.
+- *Its newer list.* All of the above, and sections 1 to 4, describe the
+  classic list (`ListViewImpl`). The rotated chat history now runs by
+  default on a newer backend, `CoreListChatHistoryBackend`, kept behind a
+  server switch: a virtual list view with its own scrolling physics. It
+  draws no indicator at all; its indicator colour setting is stored and
+  never read. So Telegram has no draggable indicator to learn from, only
+  the rule for insets under the finger above.
+
+**What we do.**
+
+- The same rule for insets under the finger:
+  `ChatScrollAnchor.visibleMinY(afterNewestInsetChange:…)` keeps the
+  reader's anchor only while the collection view is not tracking. Under
+  the finger the offset stays, and the inset change only adds to or takes
+  from how far back the reader is. A frame-by-frame Linux test
+  (`ChatInsetChangeTests`) shows the old rule moving the conversation by the
+  finger's travel plus the keyboard's.
+- UIKit's own indicator stays, rather than one drawn as Telegram's is,
+  because every row is measured before it is in the list: the content size
+  is exact, not an estimate. We keep its fading, its accessibility and its
+  long-press drag (iOS 13 and later). The list is flipped only vertically,
+  so the indicator stays on the right.
+- Its insets are separate from the content insets, as in Telegram:
+  `ChatScreenLayout.indicatorInsets` is what covers each end of the list
+  (the dock and keyboard, the header and anything hanging under it; nothing
+  where the list stops at them, on a tablet and a sideways phone), plus the
+  safe area on the indicator's side.
+  `automaticallyAdjustsScrollIndicatorInsets` is off: UIKit would add the
+  safe area a second time, and on the flipped list at the swapped ends.
+- `ChatScrollIndicatorLayout` (HappyLayout) says where the indicator must
+  be for an offset, a content height and the insets, and where a drag puts
+  the reader for an indicator position. Linux tests check its frames; hosted
+  UIKit tests and the harness's UI tests check UIKit's real indicator
+  against it.
 
 ## What we deliberately don't copy
 
