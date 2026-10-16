@@ -343,6 +343,21 @@ changes through `setPlainHeaderTitle`, which keeps `title` for the back
 button). Session info and machine follow the text size in their rows
 too; on changes only the title follows.
 
+UINavigationBar holds the text size a title view inherits to XXL: its
+content view has `maximumContentSizeCategory` XXL (found by the chat's run
+on the iOS 26.5 simulator: 19.76 for a 16 title), where the RN Text in
+Header.tsx and OnboardingHeader goes on scaling. A title view's own trait
+override is past the cap, so those seven screens put theirs in the bar
+through `setScaledTitleView`, which sets the view's size category to the
+screen's, read from the controller's own traits, and again on each change
+of the screen's (in the controller's trait change its view's are still the
+old ones). A screen not yet on a window leaves the view what it inherits
+until it is. The title views at five sizes up to the largest in a real
+navigation bar, a size change both ways, a title set before its screen is
+shown, and What's New's are UIKit tests (`NavigationTitleTextSizeTests`)
+that are built, not run: the Mac was offline. Message detail and the chat
+do the same in their own code (Chat's).
+
 Fixed RN sizes stay fixed: icons, the wordmark, the checklist boxes,
 paddings, and minimum heights (rows 44, buttons 50/44/32, Get help 36),
 which taller text grows past. In the composer: the 44 and 40 input
