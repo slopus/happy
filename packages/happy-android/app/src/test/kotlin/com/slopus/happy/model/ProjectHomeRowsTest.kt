@@ -352,4 +352,25 @@ class ProjectHomeRowsTest {
         assertEquals("12k", compactCount(12_345))
         assertEquals("0", compactCount(-3))
     }
+
+    /** ProjectHomeList useGitChanges: Happy Agent's counts first, the daemon's working tree only without them. */
+    @Test fun theCheckoutsLineCountsPreferHappyAgentsComparison() {
+        val live = SessionRowData("a", gitStatusLinesAdded = 5, gitStatusLinesRemoved = 2)
+        assertEquals(VisibleGitChanges(false, 5, 2), projectGitChanges(live))
+        val rig = live.copy(gitChangedFiles = 1, gitInsertions = 9, gitDeletions = 0, gitCountsExact = false)
+        assertEquals(VisibleGitChanges(true, 9, 0), projectGitChanges(rig))
+        assertNull("a clean Happy Agent comparison hides the daemon's", projectGitChanges(rig.copy(gitInsertions = 0)))
+        assertNull(projectGitChanges(SessionRowData("b")))
+        assertNull("the flat row reads Happy Agent's only", visibleGitChanges(live))
+    }
+
+    @Test fun aRowCarriesItsCheckoutsStatus() {
+        val sessions = listOf(HomeModelFixtures.session("a", HomeModelFixtures.metadata("/repo") { put("machineId", "m1") }))
+        val status = parseGitStatus("", "4\t1\tx.ts", "1\t0\ty.ts", 0)
+        val row = buildSessionRowData(sessions[0], SessionListInputs(sessions, emptyMap(), gitStatuses = mapOf("m1:/repo" to status)))
+        assertEquals(5L, row.gitStatusLinesAdded)
+        assertEquals(1L, row.gitStatusLinesRemoved)
+        val elsewhere = buildSessionRowData(sessions[0], SessionListInputs(sessions, emptyMap(), gitStatuses = mapOf("m2:/repo" to status)))
+        assertEquals(0L, elsewhere.gitStatusLinesAdded)
+    }
 }

@@ -247,6 +247,34 @@ class LiveUpdatesTest {
     }
 
     @Test
+    fun messagesAndAgentStateReachTheGitStatusRefresh() {
+        server.appendMessage("s1", text(1))
+        h.startAndSync()
+        eventually { store.messages("s1").size == 1 }
+        val data = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val state = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
+        val jobs = listOf(
+            scope.launch { h.account.live.sessionDataUpdates.collect { data.add(it) } },
+            scope.launch { h.account.live.agentStateUpdates.collect { state.add(it) } },
+        )
+        try {
+            Thread.sleep(50)
+            server.emitUpdate(server.newMessageBody("s1", server.appendMessage("s1", text(2))))
+            eventually { data == listOf("s1") }
+            server.emitUpdate(buildJsonObject {
+                put("t", "update-session")
+                put("id", "s1")
+                put("agentState", buildJsonObject { put("version", 5); put("value", server.seal("s1", buildJsonObject { put("requests", buildJsonObject {}) })) })
+            })
+            eventually { state == listOf("s1") }
+            assertEquals("no handoff, so no second refresh", listOf("s1"), data.toList())
+        } finally {
+            jobs.forEach { it.cancel() }
+        }
+    }
+
+    @Test
     fun deleteSessionRemovesItsRowsAndPresence() {
         server.appendMessage("s1", text(1))
         h.startAndSync()

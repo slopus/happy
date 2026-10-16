@@ -41,6 +41,7 @@ import com.slopus.happy.ui.session.SessionInfoScreen
 import androidx.compose.runtime.produceState
 import kotlinx.coroutines.withContext
 import com.slopus.happy.net.HappyHttp
+import com.slopus.happy.projects.GitStatusServices
 import com.slopus.happy.projects.ProjectServices
 import com.slopus.happy.projects.SessionAvatarServices
 import com.slopus.happy.net.HappyJson
@@ -136,6 +137,7 @@ class HomeServices private constructor(graph: AppGraph) {
                     .flowOn(Dispatchers.IO),
                 projects = ProjectServices.of(graph).projects,
                 sessionAvatars = SessionAvatarServices.of(graph).avatars,
+                gitStatuses = GitStatusServices.of(graph).statuses,
             )
         }
         .stateIn(scope, SharingStarted.Eagerly, null)

@@ -49,6 +49,15 @@ class LiveUpdates(
     /** A project was created, changed or deleted; the catalog endpoint says how (sync.ts projectsSync). */
     val projectChanges: SharedFlow<Unit> = projectEvents.asSharedFlow()
 
+    private val sessionDataEvents = MutableSharedFlow<String>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    private val agentStateEvents = MutableSharedFlow<String>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /** sync.ts onSessionDataUpdated: a message arrived for a known session, or control moved. Git status refreshes on it. */
+    val sessionDataUpdates: SharedFlow<String> = sessionDataEvents.asSharedFlow()
+
+    /** A session's agent state changed, so its files may have (sync.ts gitStatusSync.invalidate). */
+    val agentStateUpdates: SharedFlow<String> = agentStateEvents.asSharedFlow()
+
     fun handle(name: String, payload: JsonElement?) {
         val body = payload as? JsonObject ?: return
         when (name) {
@@ -99,6 +108,7 @@ class LiveUpdates(
             LiveMessageResult.UNKNOWN_SESSION -> requestSync()
             LiveMessageResult.APPENDED, LiveMessageResult.KNOWN -> Unit
         }
+        sessionDataEvents.tryEmit(sessionId)
     }
 
     /** The server sends the whole record; storing it saves a listing round trip. */
@@ -150,7 +160,11 @@ class LiveUpdates(
 
         // Control moved between the terminal and the phone: the side taking
         // over catches up on what was said while it was passive.
-        if (update.agentState != null && !isRig(next) && handoff(session, next)) messages.invalidate(update.id)
+        if (update.agentState != null) agentStateEvents.tryEmit(update.id)
+        if (update.agentState != null && !isRig(next) && handoff(session, next)) {
+            messages.invalidate(update.id)
+            sessionDataEvents.tryEmit(update.id)
+        }
     }
 
     private fun deleteSession(sessionId: String) {

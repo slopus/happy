@@ -3,6 +3,7 @@ package com.slopus.happy.ui.home
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.MachineRecord
 import com.slopus.happy.data.SessionRecord
+import com.slopus.happy.model.GitStatus
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.Project
 import com.slopus.happy.model.ProjectAvatar
@@ -24,6 +25,8 @@ data class HomeSnapshot(
     val sessions: List<Session>,
     val machines: List<Machine>,
     val projects: Map<String, Project> = emptyMap(),
+    /** The daemon's working-tree status by checkout ([com.slopus.happy.model.gitStatusKey]). */
+    val gitStatuses: Map<String, GitStatus> = emptyMap(),
     /**
      * useIsDataReady: a computer is known, or the first sync has finished.
      * Until then no machines means "not read yet", not "link a computer".
@@ -46,6 +49,7 @@ fun homeSnapshots(
     synced: Flow<Boolean> = flowOf(true),
     projects: Flow<Map<String, Project>> = flowOf(emptyMap()),
     sessionAvatars: Flow<Map<String, ProjectAvatar>> = flowOf(emptyMap()),
+    gitStatuses: Flow<Map<String, GitStatus>> = flowOf(emptyMap()),
     io: CoroutineDispatcher = Dispatchers.IO,
 ): Flow<HomeSnapshot> {
     val records = flow {
@@ -58,11 +62,13 @@ fun homeSnapshots(
     val withAvatars = combine(records, sessionAvatars) { (sessions, machines), avatars ->
         sessions.map { session -> avatars[session.id]?.let { session.copy(avatar = it) } ?: session } to machines
     }
-    return combine(withAvatars, sessionPresence, machinePresence, synced.distinctUntilChanged(), projects) { (sessions, machines), sessionLive, machineLive, wasSynced, catalog ->
+    val catalogs = combine(projects, gitStatuses, ::Pair)
+    return combine(withAvatars, sessionPresence, machinePresence, synced.distinctUntilChanged(), catalogs) { (sessions, machines), sessionLive, machineLive, wasSynced, (catalog, git) ->
         HomeSnapshot(
             sessions = sessions.map { session -> sessionLive[session.id]?.let(session::withPresence) ?: session },
             machines = machines.map { machine -> machineLive[machine.id]?.let(machine::withPresence) ?: machine },
             projects = catalog,
+            gitStatuses = git,
             ready = wasSynced || machines.isNotEmpty(),
         )
     }
