@@ -51,6 +51,7 @@ import com.slopus.happy.chat.PermissionStatus
 import com.slopus.happy.chat.ToolState
 import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.chat.obj
+import com.slopus.happy.chat.prettyJson
 import com.slopus.happy.chat.str
 import com.slopus.happy.chat.tools.ToolIcon
 import com.slopus.happy.chat.tools.ToolPresentation
@@ -65,8 +66,6 @@ import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
-import kotlinx.serialization.json.Json
-import kotlinx.serialization.json.JsonElement
 
 object ToolTags {
     const val CARD = "tool.card"
@@ -454,10 +453,6 @@ private fun ToolContent(
         }
     }
 }
-
-private val PrettyJson = Json { prettyPrint = true; prettyPrintIndent = "  " }
-
-private fun prettyJson(element: JsonElement): String = PrettyJson.encodeToString(JsonElement.serializer(), element)
 
 @Composable
 private fun ToolSpecificView(

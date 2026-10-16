@@ -15,6 +15,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.chat.prettyJson
 import com.slopus.happy.diagnostics.ClientLogs
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.Session
@@ -381,7 +382,7 @@ internal fun SessionInfoContent(
                 Item(
                     title = stringResource(R.string.session_info_copy_metadata),
                     icon = { Icon(Ionicon.CopyOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
-                    onClick = { copy(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), metadataCopied, metadataFailed) },
+                    onClick = { copy(prettyJson(metadata.raw), metadataCopied, metadataFailed) },
                     modifier = Modifier.testTag(SessionInfoTags.COPY_METADATA),
                 )
                 Item(
@@ -390,7 +391,7 @@ internal fun SessionInfoContent(
                     onClick = {
                         scope.launch {
                             val logs = actions.clientLogs()
-                            copy(ClientLogs.metadataAndLogs(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), logs), metadataCopied, metadataFailed)
+                            copy(ClientLogs.metadataAndLogs(prettyJson(metadata.raw), logs), metadataCopied, metadataFailed)
                         }
                     },
                     modifier = Modifier.testTag(SessionInfoTags.COPY_METADATA_AND_LOGS),

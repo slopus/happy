@@ -29,6 +29,7 @@ import com.slopus.happy.chat.ChatMessage
 import com.slopus.happy.chat.ToolCall
 import com.slopus.happy.chat.ToolState
 import com.slopus.happy.chat.obj
+import com.slopus.happy.chat.prettyJson
 import com.slopus.happy.chat.str
 import com.slopus.happy.chat.tools.ToolCategory
 import com.slopus.happy.chat.tools.isTerminalToolName
@@ -48,7 +49,6 @@ import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.layout.contentMaxWidth
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -104,7 +104,7 @@ fun ToolFullView(message: ChatMessage.ToolCallMessage, env: MessageDetailEnviron
             }
             if (env.devMode) {
                 FullSection(Ionicon.CodeSlash, Color(0xFFFF9500), stringResource(R.string.tools_full_view_raw_json_dev_mode), Modifier.testTag(MessageDetailTags.RAW_JSON)) {
-                    CodeView(pretty(rawJson(message)))
+                    CodeView(prettyJson(rawJson(message)))
                 }
             }
         }
@@ -160,11 +160,11 @@ private fun GenericFullView(tool: ToolCall) {
         }
     }
     if (tool.input != null) {
-        FullSection(Ionicon.LogIn, FullViewSpec.accent, stringResource(R.string.tools_full_view_input_params)) { CodeView(pretty(tool.input)) }
+        FullSection(Ionicon.LogIn, FullViewSpec.accent, stringResource(R.string.tools_full_view_input_params)) { CodeView(prettyJson(tool.input)) }
     }
     if (tool.state == ToolState.Completed && tool.result != null) {
         FullSection(Ionicon.LogOut, Color(0xFF34C759), stringResource(R.string.tools_full_view_output)) {
-            CodeView(tool.result.str ?: pretty(tool.result))
+            CodeView(tool.result.str ?: prettyJson(tool.result))
         }
     }
     if (tool.state == ToolState.Error && tool.result != null) {
@@ -202,10 +202,6 @@ private fun FullSection(icon: Ionicon, tint: Color, title: String, modifier: Mod
         content()
     }
 }
-
-private val PrettyJson = Json { prettyPrint = true; prettyPrintIndent = "  " }
-
-private fun pretty(element: JsonElement) = PrettyJson.encodeToString(JsonElement.serializer(), element)
 
 /** The dev-mode dump: the call's fields as stored. Children are listed by id. */
 private fun rawJson(message: ChatMessage.ToolCallMessage): JsonElement {
