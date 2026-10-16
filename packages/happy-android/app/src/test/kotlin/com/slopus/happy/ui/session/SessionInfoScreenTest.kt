@@ -18,6 +18,9 @@ import com.slopus.happy.model.HomeModelFixtures.machineMetadata
 import com.slopus.happy.model.HomeModelFixtures.metadata
 import com.slopus.happy.model.HomeModelFixtures.session
 import com.slopus.happy.model.Session
+import com.slopus.happy.model.SessionMetadata
+import com.slopus.happy.resume.ResumeOutcome
+import com.slopus.happy.resume.ResumeTexts
 import com.slopus.happy.sync.ForkOptions
 import com.slopus.happy.sync.ForkSource
 import com.slopus.happy.sync.OpResult
@@ -74,7 +77,8 @@ class SessionInfoScreenTest {
             if (cleanupAnswer != null) calls += "cleanup:${confirm()}"
         }
         override suspend fun delete(session: Session): OpResult = OpResult(true).also { calls += "delete:${session.id}" }
-        override suspend fun resume(machineId: String, sessionId: String) = SpawnSessionResult.Success("resumed").also { calls += "resume" }
+        override suspend fun resume(machineId: String, sessionId: String, metadata: SessionMetadata?, texts: ResumeTexts): ResumeOutcome =
+            ResumeOutcome.Resumed("resumed").also { calls += "resume" }
         override suspend fun fork(source: ForkSource, options: ForkOptions): SpawnSessionResult {
             calls += "fork:${options.cutAfterUuid}"
             return SpawnSessionResult.Success("forked")

@@ -39,10 +39,12 @@ import com.slopus.happy.model.gitStatusKey
 import com.slopus.happy.model.isCliOutdated
 import com.slopus.happy.model.resumeCommandBlock
 import com.slopus.happy.projects.GitStatusServices
+import com.slopus.happy.resume.ChatResumeOps
+import com.slopus.happy.resume.ResumeOutcome
+import com.slopus.happy.resume.SessionResumer
+import com.slopus.happy.resume.rememberResumeTexts
 import com.slopus.happy.sync.AgentModeField
 import com.slopus.happy.sync.ComposerMirror
-import com.slopus.happy.sync.MessageMetaResolver
-import com.slopus.happy.sync.SpawnSessionResult
 import com.slopus.happy.ui.attachments.LocalComposerImages
 import com.slopus.happy.ui.attachments.LocalSessionAttachments
 import com.slopus.happy.ui.attachments.attachmentNoticeAlert
@@ -141,6 +143,8 @@ private fun ChatRoute(
     val showCliWarning = isCliOutdated(cliVersion) && !(machineId != null && local.acknowledgedCliVersions[machineId] == cliVersion)
     val machine by rememberMachine(graph, machineId)
     var resuming by remember { mutableStateOf(false) }
+    val resumer = remember(graph) { SessionResumer.of(graph) }
+    val resumeTexts = rememberResumeTexts()
     val scope = rememberCoroutineScope()
     var sending by remember { mutableStateOf(false) }
     var failure by remember { mutableStateOf<String?>(null) }
@@ -216,24 +220,12 @@ private fun ChatRoute(
                 resuming = true
                 scope.launch {
                     try {
-                        // useSessionQuickActions performResume: the picks the session would send with.
-                        val meta = MessageMetaResolver.mode(session.metadata, latestMirror, latestSettings.agentDefaultOverrides)
-                        when (val result = actions.resume(sessionId, machine, meta.model?.value, meta.permissionMode)) {
-                            is SpawnSessionResult.Success -> {
-                                latestMirror.permissionMode?.let { mode ->
-                                    runCatching { actions.setModes(result.sessionId, mapOf(AgentModeField.PERMISSION_MODE to mode)) }
-                                }
-                                onOpenSession(result.sessionId)
-                            }
-                            is SpawnSessionResult.RequestToApproveDirectoryCreation ->
-                                failure = resources.getString(R.string.session_info_resume_session_unexpected_directory_prompt)
-                            is SpawnSessionResult.Error -> failure = result.errorMessage.ifEmpty { notSent }
-                            is SpawnSessionResult.Pending -> failure = notSent
+                        val ops = ChatResumeOps(actions, { latestMirror }, { latestSettings.agentDefaultOverrides })
+                        when (val outcome = resumer.resume(ops, sessionId, machine, session.metadata, resumeTexts)) {
+                            is ResumeOutcome.Resumed -> onOpenSession(outcome.sessionId)
+                            is ResumeOutcome.Failed -> failure = outcome.message
+                            ResumeOutcome.InFlight -> Unit
                         }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        report(e)
                     } finally {
                         resuming = false
                     }

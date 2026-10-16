@@ -118,6 +118,10 @@ import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.Flow
+import com.slopus.happy.resume.ResumeOutcome
+import com.slopus.happy.resume.ResumeTexts
+import com.slopus.happy.resume.SessionResumer
+import com.slopus.happy.resume.rememberResumeTexts
 
 /**
  * The home screens' long-lived state, one per [AppGraph]: the list derived
@@ -137,7 +141,8 @@ class HomeServices private constructor(private val graph: AppGraph) {
     /** Resume, fork and spawn; null while signed out. */
     val machineOps: MachineOps? get() = account.value?.machineOps
 
-    val continuations: SessionContinuations = LiveSessionContinuations { account.value?.machineOps }
+    val continuations: SessionContinuations =
+        LiveSessionContinuations({ account.value?.machineOps }, SessionResumer.of(graph)) { SessionResumer.ops(graph) }
 
     val infoControls: SessionInfoControls = object : SessionInfoControls {
         override suspend fun archive(session: Session): ArchiveResult = archiver.archive(session)
@@ -626,6 +631,7 @@ private fun rememberSessionMenus(
         ),
         metadataCopied = stringResource(R.string.session_info_metadata_copied),
         success = stringResource(R.string.common_success),
+        resumeTexts = rememberResumeTexts(),
     )
     return remember(services, continuationExperiments, devMode, onOpenSession, onDetails, onDuplicate, strings, context, scope, showAlert) {
         fun error(message: String) = showAlert(Alert(strings.error, message, listOf(AlertButton(strings.ok))))
@@ -652,8 +658,11 @@ private fun rememberSessionMenus(
                                 error(availability.block?.let(strings.blocks::getValue) ?: strings.resumeFailed)
                             } else {
                                 scope.launch {
-                                    val ops = services.machineOps ?: return@launch error(strings.resumeFailed)
-                                    spawned(ops.resumeSession(machineId, session.id), strings.resumeFailed)
+                                    when (val outcome = services.continuations.resume(machineId, session.id, session.metadata, strings.resumeTexts)) {
+                                        is ResumeOutcome.Resumed -> onOpenSession(outcome.sessionId)
+                                        is ResumeOutcome.Failed -> error(outcome.message)
+                                        ResumeOutcome.InFlight -> Unit
+                                    }
                                 }
                             }
                         }
@@ -714,6 +723,7 @@ private data class SessionMenuStrings(
     val blocks: Map<ResumeBlock, String>,
     val metadataCopied: String,
     val success: String,
+    val resumeTexts: ResumeTexts,
 )
 
 private val prettyJson = Json(HappyJson) { prettyPrint = true }
