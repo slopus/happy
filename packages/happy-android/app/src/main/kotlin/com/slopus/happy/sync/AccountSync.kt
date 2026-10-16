@@ -85,6 +85,9 @@ class AccountSync(
     /** Spawn, resume, stop, fork and the daemon's shell (ops.ts). */
     val machineOps = MachineOps(rpc, api, store, decoder, refreshSessions = ::syncNow, io = io)
 
+    /** Happy Agent's native Git changes: snapshot and file sides (happyAgentGit.ts). */
+    val git = HappyAgentGit(rpc, store, io)
+
     /** Each session's draft and picks, synced through its metadata (ops.ts sessionSetAgentModes, rigComposer.ts). */
     val composer = SessionComposer(
         store,
