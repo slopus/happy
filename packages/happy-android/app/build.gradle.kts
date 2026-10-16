@@ -1,3 +1,4 @@
+import java.util.Properties
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
@@ -31,6 +32,47 @@ val buildCommitSha = providers.environmentVariable("HAPPY_BUILD_COMMIT_SHA").orN
 val buildCommitTimestamp = providers.environmentVariable("HAPPY_BUILD_COMMIT_TIMESTAMP").orNull
     ?: git("show", "-s", "--format=%cI", buildCommitSha ?: "HEAD")
 
+// Versions follow happy-app (app.config.js, eas.json): versionName is the
+// app's `version`, read from app.config.js so the two never drift; versionCode
+// is EAS's remote, auto-incremented build number, which a store build must
+// pass in (HAPPY_VERSION_CODE or -Phappy.versionCode) so it lands above the
+// React Native build it replaces. Local builds default to 1.
+val happyAppVersion = Regex("""\bversion:\s*"([^"]+)"""")
+    .find(providers.fileContents(layout.projectDirectory.file("../../happy-app/app.config.js")).asText.orNull.orEmpty())
+    ?.groupValues?.get(1)
+val versionNameValue = providers.environmentVariable("HAPPY_VERSION_NAME").orNull
+    ?: providers.gradleProperty("happy.versionName").orNull
+    ?: happyAppVersion
+    ?: "0.0.0"
+val versionCodeValue = (providers.environmentVariable("HAPPY_VERSION_CODE").orNull
+    ?: providers.gradleProperty("happy.versionCode").orNull)
+    ?.let { requireNotNull(it.toIntOrNull()?.takeIf { code -> code > 0 }) { "versionCode must be a positive integer, got '$it'" } }
+
+// Signing for the store variants, from the environment or a gitignored
+// keystore.properties beside settings.gradle.kts (keystore.properties.example
+// lists the keys). Nothing is checked in. Without them release builds
+// unsigned and preview debug-signed, so local builds keep working.
+val keystoreProperties = Properties().apply {
+    providers.fileContents(rootProject.layout.projectDirectory.file("keystore.properties")).asText.orNull?.let { load(it.reader()) }
+}
+
+class SigningKey(val storeFile: File, val storePassword: String, val keyAlias: String, val keyPassword: String)
+
+fun signingKey(variant: String): SigningKey? {
+    val env = "HAPPY_${variant.uppercase()}"
+    fun value(envName: String, property: String): String? =
+        providers.environmentVariable("${env}_$envName").orNull?.ifEmpty { null } ?: keystoreProperties.getProperty("$variant.$property")?.ifEmpty { null }
+    val store = value("KEYSTORE", "storeFile") ?: return null
+    return SigningKey(
+        storeFile = rootProject.file(store),
+        storePassword = requireNotNull(value("KEYSTORE_PASSWORD", "storePassword")) { "$variant signing: storePassword is missing" },
+        keyAlias = requireNotNull(value("KEY_ALIAS", "keyAlias")) { "$variant signing: keyAlias is missing" },
+        keyPassword = requireNotNull(value("KEY_PASSWORD", "keyPassword")) { "$variant signing: keyPassword is missing" },
+    )
+}
+val releaseKey = signingKey("release")
+val previewKey = signingKey("preview")
+
 android {
     namespace = "com.slopus.happy"
     compileSdk = libs.versions.android.compileSdk.get().toInt()
@@ -39,12 +81,31 @@ android {
         applicationId = applicationIds.getValue("release")
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = versionCodeValue ?: 1
+        versionName = versionNameValue
 
         buildConfigField("String", "DEFAULT_SERVER_URL", "\"https://api.cluster-fluster.com\"")
         buildConfigField("String", "BUILD_COMMIT_SHA", buildCommitSha?.let { "\"$it\"" } ?: "null")
         buildConfigField("String", "BUILD_COMMIT_TIMESTAMP", buildCommitTimestamp?.let { "\"$it\"" } ?: "null")
+    }
+
+    signingConfigs {
+        releaseKey?.let { key ->
+            create("release") {
+                storeFile = key.storeFile
+                storePassword = key.storePassword
+                keyAlias = key.keyAlias
+                keyPassword = key.keyPassword
+            }
+        }
+        previewKey?.let { key ->
+            create("preview") {
+                storeFile = key.storeFile
+                storePassword = key.storePassword
+                keyAlias = key.keyAlias
+                keyPassword = key.keyPassword
+            }
+        }
     }
 
     buildTypes {
@@ -56,6 +117,7 @@ android {
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             resValue("string", "app_name", "Happy")
+            signingConfig = signingConfigs.findByName("release")
         }
         create("preview") {
             isMinifyEnabled = true
@@ -63,6 +125,7 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             matchingFallbacks += "release"
             resValue("string", "app_name", "Happy (preview)")
+            signingConfig = signingConfigs.findByName("preview") ?: signingConfigs.getByName("debug")
         }
     }
 
@@ -123,6 +186,22 @@ fun firebaseResources(applicationId: String): Map<String, String> {
         apiKey?.let { "google_api_key" to it },
         apiKey?.let { "google_crash_reporting_api_key" to it },
     ).toMap()
+}
+
+// A signed store build with the default versionCode would collide with every
+// earlier upload: refuse it rather than find out at the Play console.
+// The check runs first in the variant's build (pre<Variant>Build), not after R8.
+tasks.configureEach {
+    if (name == "preReleaseBuild" || name == "prePreviewBuild") {
+        val taskName = if (name == "preReleaseBuild") "release build" else "preview build"
+        val signed = if (name == "preReleaseBuild") releaseKey != null else previewKey != null
+        val versionCodeSet = versionCodeValue != null
+        doFirst {
+            check(!signed || versionCodeSet) {
+                "A signed $taskName needs a versionCode above the last store upload: set HAPPY_VERSION_CODE or -Phappy.versionCode"
+            }
+        }
+    }
 }
 
 androidComponents {

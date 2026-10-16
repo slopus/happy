@@ -8,3 +8,6 @@ captures/
 .externalNativeBuild/
 .cxx/
 tools/testvectors/node_modules/
+keystore.properties
+*.jks
+*.keystore

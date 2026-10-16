@@ -65,16 +65,15 @@ class AppFlowTest {
     @After
     fun tearDown() = server.close()
 
+    // A new account has no computer, so the link page takes the home over (index.tsx); its gear logs out.
     @Test
     fun createAccountThenLogout() {
         rule.onNodeWithText("Create account").performClick()
-        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.FILTER), 5_000)
+        rule.waitUntilAtLeastOneExists(hasTestTag(HomeTags.LINK), 5_000)
         assertTrue(graph.auth.state.value is AuthState.SignedIn)
 
         rule.onNodeWithContentDescription("Settings").performClick()
-        rule.onNodeWithText("Account").performClick()
-        rule.onNodeWithText("Logout").performScrollTo().performClick()
-        rule.onNodeWithText("Are you sure you want to logout? Make sure you have backed up your secret key!").assertExists()
+        rule.onNodeWithText("Log out and start over").performScrollTo().performClick()
         rule.onNode(hasText("Logout") and hasClickAction() and hasAnyAncestor(isDialog())).performClick()
 
         rule.waitUntilAtLeastOneExists(hasText("Create account"), 5_000)
