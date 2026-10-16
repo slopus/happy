@@ -15,6 +15,7 @@ import com.slopus.happy.sync.SendOptions
 import com.slopus.happy.sync.SendResult
 import com.slopus.happy.sync.SessionComposer
 import com.slopus.happy.sync.SessionOps
+import com.slopus.happy.sync.SpawnSessionResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
@@ -121,6 +122,17 @@ interface ChatActions {
 
     /** The composer's text changed (a Happy Agent draft syncs to the session). */
     suspend fun setDraft(sessionId: String, text: String) = Unit
+
+    /**
+     * Resume a disconnected Happy CLI session on [machineId] (ops.ts
+     * machineResumeSession), with the model and permission mode it would
+     * send with; null leaves the agent's own.
+     */
+    suspend fun resume(sessionId: String, machineId: String, model: String?, permissionMode: String?): SpawnSessionResult =
+        SpawnSessionResult.Error("Not signed in")
+
+    /** sync.refreshSessions: the account's sessions fetched again, as after a resume. */
+    suspend fun refreshSessions() = Unit
 }
 
 /**
@@ -203,6 +215,13 @@ class SyncChatActions(private val account: () -> AccountSync?) : ChatActions {
 
     override suspend fun setDraft(sessionId: String, text: String) {
         account.invoke()?.composer?.setText(sessionId, text)
+    }
+
+    override suspend fun resume(sessionId: String, machineId: String, model: String?, permissionMode: String?): SpawnSessionResult =
+        account().machineOps.resumeSession(machineId, sessionId, model = model, permissionMode = permissionMode)
+
+    override suspend fun refreshSessions() {
+        account.invoke()?.syncNow()
     }
 
     override suspend fun abort(sessionId: String) = ops().abort(sessionId)

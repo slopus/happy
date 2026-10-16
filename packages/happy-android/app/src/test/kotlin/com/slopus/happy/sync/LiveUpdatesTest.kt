@@ -10,6 +10,7 @@ import com.slopus.happy.net.HappyJson
 import com.slopus.happy.testing.FakeHappyServer
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -212,6 +213,64 @@ class LiveUpdatesTest {
         server.emitUpdate(buildJsonObject { put("t", "update-session"); put("id", "s1"); put("projectId", kotlinx.serialization.json.JsonNull) })
         eventually { store.session("s1")!!.projectId == null }
         assertEquals("""{"path":"/new"}""", store.session("s1")!!.metadataJson)
+    }
+
+    @Test
+    fun anAvatarUpdateNewerByRevisionWinsAndAStaleOneDoesNot() {
+        h.startAndSync()
+        fun avatar(ref: String, version: Int) = buildJsonObject { put("ref", ref); put("preview", "sealed"); put("version", version) }
+        server.emitUpdate(buildJsonObject { put("t", "update-session"); put("id", "s1"); put("avatar", avatar("r3", 3)); put("avatarVersion", 3) })
+        eventually { store.session("s1")!!.avatarRevision == 3L }
+        assertTrue(store.session("s1")!!.avatarJson!!.contains("r3"))
+        // Delivered out of order: revision 2 after 3.
+        server.emitUpdate(buildJsonObject { put("t", "update-session"); put("id", "s1"); put("avatar", avatar("r2", 2)); put("avatarVersion", 2) })
+        // A malformed descriptor is a removal, ordered by the descriptor-less revision.
+        server.emitUpdate(buildJsonObject { put("t", "update-session"); put("id", "s1"); put("avatar", kotlinx.serialization.json.JsonNull); put("avatarVersion", 4) })
+        eventually { store.session("s1")!!.avatarRevision == 4L }
+        assertEquals(null, store.session("s1")!!.avatarJson)
+    }
+
+    @Test
+    fun projectEventsReachTheCatalog() {
+        h.startAndSync()
+        val seen = java.util.concurrent.atomic.AtomicInteger()
+        // UNDISPATCHED: subscribed before launch returns, so the event can't beat the collector.
+        val job = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) {
+            h.account.live.projectChanges.collect { seen.incrementAndGet() }
+        }
+        try {
+            server.emitUpdate(buildJsonObject { put("t", "update-project"); put("id", "p1") })
+            eventually { seen.get() >= 1 }
+        } finally {
+            job.cancel()
+        }
+    }
+
+    @Test
+    fun messagesAndAgentStateReachTheGitStatusRefresh() {
+        server.appendMessage("s1", text(1))
+        h.startAndSync()
+        eventually { store.messages("s1").size == 1 }
+        val data = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val state = java.util.concurrent.CopyOnWriteArrayList<String>()
+        val scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO)
+        val jobs = listOf(
+            scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { h.account.live.sessionDataUpdates.collect { data.add(it) } },
+            scope.launch(start = kotlinx.coroutines.CoroutineStart.UNDISPATCHED) { h.account.live.agentStateUpdates.collect { state.add(it) } },
+        )
+        try {
+            server.emitUpdate(server.newMessageBody("s1", server.appendMessage("s1", text(2))))
+            eventually { data == listOf("s1") }
+            server.emitUpdate(buildJsonObject {
+                put("t", "update-session")
+                put("id", "s1")
+                put("agentState", buildJsonObject { put("version", 5); put("value", server.seal("s1", buildJsonObject { put("requests", buildJsonObject {}) })) })
+            })
+            eventually { state == listOf("s1") }
+            assertEquals("no handoff, so no second refresh", listOf("s1"), data.toList())
+        } finally {
+            jobs.forEach { it.cancel() }
+        }
     }
 
     @Test

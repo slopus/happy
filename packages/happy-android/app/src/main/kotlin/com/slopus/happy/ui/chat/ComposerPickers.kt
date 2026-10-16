@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
@@ -30,12 +31,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -44,6 +47,8 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -62,6 +67,7 @@ import com.slopus.happy.R
 import com.slopus.happy.chat.ComposerModes
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.isRig
+import com.slopus.happy.model.providerIconKind
 import com.slopus.happy.model.settings.ModeOption
 import com.slopus.happy.model.settings.ModeOptions
 import com.slopus.happy.sync.AgentModeField
@@ -70,8 +76,11 @@ import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.PickerSheetOption
 import com.slopus.happy.ui.components.PickerSheetPanel
 import com.slopus.happy.ui.components.PickerSheetSection
+import com.slopus.happy.ui.components.ProviderIcon
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -89,6 +98,8 @@ object ComposerPickerTags {
 
 /** agentInputLayout.ts's chip geometry and PickerSheet.tsx's stylesheet. */
 object ComposerPickerSpec {
+    /** AgentInput.tsx: the longest a picker waits for the keyboard to go. */
+    const val OPEN_AFTER_KEYBOARD_MS = 420L
     val chipHeight = 40.dp
     val chipGap = 2.dp
     val chipText = happyTextStyle(fontSize = 14)
@@ -102,6 +113,7 @@ object ComposerPickerSpec {
 
     const val sheetMaxHeightFraction = 0.7f
     val scrim = Color(0x52000000)
+    val sectionIcon = 16.dp
     val empty = happyTextStyle(fontSize = 14)
     val emptyPaddingHorizontal = 24.dp
     val emptyPaddingVertical = 12.dp
@@ -123,6 +135,14 @@ internal fun SessionMetadata?.sandboxEnabled(): Boolean = when (val sandbox = th
     else -> true
 }
 
+/** AgentInput.tsx `permissionKindIcon` */
+internal fun permissionKindIcon(kind: String): Ionicon = when (kind) {
+    "read-only" -> Ionicon.LockClosedOutline
+    "safe-yolo" -> Ionicon.ShieldCheckmarkOutline
+    "yolo" -> Ionicon.WarningOutline
+    else -> Ionicon.FolderOpenOutline
+}
+
 /**
  * The compact composer's permission, model and effort chips (AgentInput.tsx
  * `mobileActionMiddle`, Android's popup pickers), filling the action row's
@@ -134,7 +154,10 @@ internal fun SessionMetadata?.sandboxEnabled(): Boolean = when (val sandbox = th
  * 14 textSecondary; then the effort level (or "EFFORT") in a 64 chip padded
  * 2 at the start; effort only when the model has levels and it can change.
  * A chip with nothing to pick is drawn at 0.58. Each chip opens its
- * [PickerSheet], after dropping the keyboard.
+ * [PickerSheet]: at once with no keyboard up, else once the keyboard has
+ * gone (or after 420 ms); tapping it again, opening or open, closes it.
+ * Permission rows carry their kind's glyph, model groups their provider's
+ * icon. A light haptic on each chip press and each pick.
  */
 @Composable
 fun ComposerModeChips(
@@ -145,7 +168,19 @@ fun ComposerModeChips(
 ) {
     val colors = HappyTheme.colors
     val keyboard = LocalSoftwareKeyboardController.current
+    val focus = LocalFocusManager.current
+    val haptics = LocalHapticFeedback.current
+    val density = LocalDensity.current
+    val ime = WindowInsets.ime
     var open by rememberSaveable { mutableStateOf<ComposerPicker?>(null) }
+    // A picker waiting for the keyboard to go (AgentInput.tsx pickerOpeningRef).
+    var opening by remember { mutableStateOf<ComposerPicker?>(null) }
+    LaunchedEffect(opening) {
+        val picker = opening ?: return@LaunchedEffect
+        withTimeoutOrNull(ComposerPickerSpec.OPEN_AFTER_KEYBOARD_MS) { snapshotFlow { ime.getBottom(density) > 0 }.first { !it } }
+        opening = null
+        open = picker
+    }
     val rig = metadata.isRig()
     val codex = !rig && metadata?.flavor == "codex"
     val gemini = metadata?.flavor == "gemini"
@@ -163,11 +198,17 @@ fun ComposerModeChips(
     val canOpenModel = modes.canChangeModel && modes.availableModels.isNotEmpty()
     val showEffort = modes.canChangeEffort && modes.availableEffortLevels.isNotEmpty()
     fun toggle(picker: ComposerPicker) {
-        open = if (open == picker) {
-            null
+        haptics.light()
+        val again = open == picker || opening == picker
+        open = null
+        opening = null
+        if (again) return
+        if (ime.getBottom(density) == 0) {
+            open = picker
         } else {
+            opening = picker
+            focus.clearFocus()
             keyboard?.hide()
-            picker
         }
     }
 
@@ -254,6 +295,7 @@ fun ComposerModeChips(
         onClose = close,
     ) {
         ComposerPickerOptions(picker, modes, metadata) { field, option ->
+            haptics.light()
             close()
             onSelect(field, option)
         }
@@ -281,6 +323,7 @@ private fun ComposerPickerOptions(
                     description = mode.description,
                     selected = selectedKey == mode.key,
                     disabled = !modes.canChangePermission || mode.disabled,
+                    labelIcon = mode.semanticKind?.let(::permissionKindIcon),
                     onClick = { onSelect(AgentModeField.PERMISSION_MODE, mode) },
                 )
             }
@@ -297,7 +340,9 @@ private fun ComposerPickerOptions(
                 )
             }
             ModeOptions.groupModelsByProvider(modes.availableModels).forEachIndexed { index, group ->
-                PickerSheetSection(group.key, group.title, separated = index > 0)
+                PickerSheetSection(group.key, group.title, separated = index > 0) {
+                    ProviderIcon(providerIconKind(group.models.firstOrNull()?.providerKind), size = ComposerPickerSpec.sectionIcon)
+                }
                 for (model in group.models) {
                     PickerSheetOption(
                         key = model.key,

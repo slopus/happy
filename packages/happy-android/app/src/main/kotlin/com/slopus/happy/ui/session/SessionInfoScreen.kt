@@ -29,10 +29,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.diagnostics.ClientLogs
+import com.slopus.happy.model.GitStatus
+import com.slopus.happy.model.GitStatusFiles
 import com.slopus.happy.model.InfoSetting
 import com.slopus.happy.model.Machine
 import com.slopus.happy.model.SandboxSummary
 import com.slopus.happy.model.Session
+import com.slopus.happy.model.SessionState
 import com.slopus.happy.model.aiProviderName
 import com.slopus.happy.model.dangerouslySkipPermissions
 import com.slopus.happy.model.displayName
@@ -46,9 +50,13 @@ import com.slopus.happy.model.resumeCommand
 import com.slopus.happy.model.rigIdentity
 import com.slopus.happy.model.sandboxSummary
 import com.slopus.happy.model.shortId
+import com.slopus.happy.resume.ResumeOutcome
+import com.slopus.happy.resume.rememberResumeTexts
+import com.slopus.happy.sync.ComposerMirror
 import com.slopus.happy.sync.OpResult
 import com.slopus.happy.sync.SpawnSessionResult
 import com.slopus.happy.text.pluralResource
+import com.slopus.happy.ui.chat.rememberComposerStatus
 import com.slopus.happy.ui.components.Alert
 import com.slopus.happy.ui.components.AlertButton
 import com.slopus.happy.ui.components.HappyAlert
@@ -62,19 +70,22 @@ import com.slopus.happy.ui.components.ItemList
 import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.components.Screen
 import com.slopus.happy.ui.components.TitleAlignment
+import com.slopus.happy.ui.components.confirm
 import com.slopus.happy.ui.home.ArchiveResult
+import com.slopus.happy.ui.home.GitChanges
 import com.slopus.happy.ui.home.ResumeBlock
 import com.slopus.happy.ui.home.canForkSession
 import com.slopus.happy.ui.home.formatLocaleDateTime
-import com.slopus.happy.ui.home.gitAddedColor
-import com.slopus.happy.ui.home.gitRemovedColor
 import com.slopus.happy.ui.home.resumeAvailability
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.PlexMono
 import com.slopus.happy.ui.theme.happyTextStyle
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -100,7 +111,9 @@ object SessionInfoTags {
     const val SESSION_ID = "sessionInfo.sessionId"
     const val RESUME_COMMAND = "sessionInfo.resumeCommand"
     const val COPY_METADATA = "sessionInfo.copyMetadata"
+    const val COPY_METADATA_AND_LOGS = "sessionInfo.copyMetadataAndLogs"
     const val RAW_JSON = "sessionInfo.rawJson"
+    const val SKIP_PERMISSIONS = "sessionInfo.skipPermissions"
 }
 
 /** info.tsx's icon colours (iOS system colours) and sizes. */
@@ -121,6 +134,18 @@ object SessionInfoSpec {
     const val UPDATE_COMMAND = "npm install -g happy@latest"
 }
 
+/**
+ * What session info reads live beside the stored session: the checkout's
+ * git status and file list (useSessionGitStatus, useSessionGitStatusFiles)
+ * and the session's picks and draft (its composer mirror).
+ */
+@Immutable
+data class SessionInfoLive(
+    val gitStatus: GitStatus? = null,
+    val gitStatusFiles: GitStatusFiles? = null,
+    val composer: ComposerMirror = ComposerMirror(),
+)
+
 /** What info.tsx runs against the session; tests use a fake. */
 interface SessionInfoControls {
     /** useSessionQuickActions' archive: kill, or retire on the server when the agent is gone. */
@@ -128,6 +153,9 @@ interface SessionInfoControls {
 
     /** sessionDelete, after a best-effort kill of a session still running. */
     suspend fun delete(session: Session): OpResult
+
+    /** maybeCleanupWorktree, before an archive or delete: [confirm] asks whether to delete the worktree. */
+    suspend fun cleanupWorktree(session: Session, confirm: suspend () -> Boolean) {}
 }
 
 @Immutable
@@ -135,13 +163,22 @@ class SessionInfoActions(
     val onBack: () -> Unit,
     val onOpenSession: (String) -> Unit,
     val onOpenMachine: (String) -> Unit,
-    /** The session's changes screen; null while the app has none. */
-    val onChanges: ((String) -> Unit)?,
-    /** Archived: leave this screen and the chat behind it. */
-    val onArchived: () -> Unit,
-    /** Deleted: likewise. */
+    /** The session's changes screen. */
+    val onChanges: (String) -> Unit,
+    /**
+     * Archived: leave this screen, and the chat behind it for [successor],
+     * the checkout's neighbouring tab, when there is one ([tabSuccessor]).
+     */
+    val onArchived: (successor: String?) -> Unit,
+    /** Deleted: leave this screen and the chat behind it. */
     val onDeleted: () -> Unit,
     val copyToClipboard: (String) -> Unit,
+    /** useWorktreeTabSuccessor, read when archive is pressed, before the chat leaves its checkout. */
+    val tabSuccessor: (sessionId: String) -> String? = { null },
+    /** log.getLogs() for "Copy session metadata & Client Logs". */
+    val clientLogs: suspend () -> List<String> = { withContext(Dispatchers.IO) { ClientLogs.read() } },
+    /** replaceToSession: a duplicated session takes this screen's place. */
+    val onReplaceWithSession: (String) -> Unit = onOpenSession,
 )
 
 /**
@@ -152,10 +189,17 @@ class SessionInfoActions(
  * outdated-CLI warning, the session's ids and times (each id copies), its
  * metadata, agent state, activity and, in dev mode, the raw JSON.
  *
- * Not ported: the worktree cleanup prompt before archive and delete,
- * copying client logs (this app keeps none), and the live git status (only
- * Happy Agent's published summary is shown). A delete waits for the server
- * instead of leaving first, so a failure can still be shown here.
+ * Archive and delete first offer to delete a clean worktree nobody else is
+ * in (maybeCleanupWorktree). An archived chat that was one tab of a
+ * checkout hands over to its neighbouring tab.
+ *
+ * The Changes row counts Happy Agent's published comparison, else the
+ * checkout's live git status ([SessionInfoLive]). The raw JSON group is for
+ * debug builds only, as info.tsx's `__DEV__`.
+ *
+ * Deviations: a delete waits for the server instead of leaving first, so a
+ * failure can still be shown here (there is no app-wide alert to show it
+ * after leaving). Client logs are the app's own logcat.
  */
 @Composable
 fun SessionInfoScreen(
@@ -164,12 +208,13 @@ fun SessionInfoScreen(
     agentState: JsonObject?,
     machine: Machine?,
     continuationExperiments: Boolean,
-    devMode: Boolean,
+    debugBuild: Boolean,
     controls: SessionInfoControls,
     continuations: SessionContinuations,
     actions: SessionInfoActions,
     modifier: Modifier = Modifier,
     zone: ZoneId = ZoneId.systemDefault(),
+    live: SessionInfoLive = SessionInfoLive(),
 ) {
     val colors = HappyTheme.colors
     val newChat = stringResource(R.string.session_new_chat)
@@ -206,7 +251,7 @@ fun SessionInfoScreen(
                     modifier = Modifier.padding(top = 8.dp).padding(horizontal = 32.dp),
                 )
             }
-            else -> SessionInfoContent(session, agentState, machine, continuationExperiments, devMode, controls, continuations, actions, zone)
+            else -> SessionInfoContent(session, agentState, machine, continuationExperiments, debugBuild, controls, continuations, actions, zone, live)
         }
     }
 }
@@ -229,11 +274,12 @@ private fun SessionInfoContent(
     agentState: JsonObject?,
     machine: Machine?,
     continuationExperiments: Boolean,
-    devMode: Boolean,
+    debugBuild: Boolean,
     controls: SessionInfoControls,
     continuations: SessionContinuations,
     actions: SessionInfoActions,
     zone: ZoneId,
+    live: SessionInfoLive,
 ) {
     val colors = HappyTheme.colors
     val scope = rememberCoroutineScope()
@@ -254,6 +300,13 @@ private fun SessionInfoContent(
         actions.copyToClipboard(text)
         show(successTitle, confirmation)
     }
+    val cleanupTitle = stringResource(R.string.session_info_worktree_cleanup_title)
+    val cleanupMessage = stringResource(R.string.session_info_worktree_cleanup_message)
+    val cleanupDelete = stringResource(R.string.session_info_worktree_cleanup_delete)
+    val cleanupKeep = stringResource(R.string.session_info_worktree_cleanup_keep)
+    suspend fun cleanupWorktree() = controls.cleanupWorktree(session) {
+        confirm({ alert = it }, cleanupTitle, cleanupMessage, cleanupDelete, cleanupKeep, destructive = true)
+    }
 
     val resume = resumeAvailability(session, machine)
     val canFork = canForkSession(session, machine, continuationExperiments)
@@ -266,6 +319,7 @@ private fun SessionInfoContent(
         ResumeBlock.MachineOffline -> stringResource(R.string.session_info_resume_session_machine_offline)
         null -> stringResource(R.string.session_info_resume_session_subtitle)
     }
+    val resumeTexts = rememberResumeTexts()
     val forkFailed = stringResource(R.string.session_fork_error_generic)
     val missingMetadata = stringResource(R.string.session_fork_error_missing_metadata)
     val archiveFailed = stringResource(R.string.session_info_failed_to_archive_session)
@@ -282,7 +336,7 @@ private fun SessionInfoContent(
 
     ItemList {
         ItemGroup(title = stringResource(R.string.session_info_quick_actions)) {
-            val git = metadata.gitPresentation()
+            val git = metadata.gitPresentation(live.gitStatus, live.gitStatusFiles)
             Item(
                 title = stringResource(R.string.files_changes),
                 icon = { Icon(Octicon.FileDiff, size = SessionInfoSpec.changesIcon, color = SessionInfoSpec.blue) },
@@ -292,18 +346,14 @@ private fun SessionInfoContent(
                             git.changedFileCount?.let {
                                 Text(pluralResource(R.plurals.files_changed_files, it.toInt(), it.toInt()), style = happyTextStyle(fontSize = 12), color = colors.textSecondary)
                             }
-                            git.changes?.let { changes ->
-                                val prefix = if (changes.approximate) "~" else ""
-                                Text("$prefix+${changes.insertions}", style = happyTextStyle(fontSize = 12), color = gitAddedColor(colors))
-                                Text("$prefix-${changes.deletions}", style = happyTextStyle(fontSize = 12), color = gitRemovedColor(colors))
-                            }
-                            if (actions.onChanges != null) Icon(Ionicon.ChevronForward, size = 17.dp, color = colors.grouped.chevron)
+                            git.changes?.let { GitChanges(it) }
+                            Icon(Ionicon.ChevronForward, size = 17.dp, color = colors.grouped.chevron)
                         }
                     }
                 } else {
                     null
                 },
-                onClick = actions.onChanges?.let { open -> { open(session.id) } },
+                onClick = { actions.onChanges(session.id) },
                 modifier = Modifier.testTag(SessionInfoTags.CHANGES),
             )
             metadata?.machineId?.ifEmpty { null }?.let { machineId ->
@@ -325,7 +375,13 @@ private fun SessionInfoContent(
                         if (!resume.canResume || machineId == null) {
                             show(errorTitle, resumeSubtitle)
                         } else {
-                            scope.launch { spawned(continuations.resume(machineId, session.id), resumeSubtitle) }
+                            scope.launch {
+                                when (val outcome = continuations.resume(machineId, session.id, metadata, resumeTexts)) {
+                                    is ResumeOutcome.Resumed -> actions.onOpenSession(outcome.sessionId)
+                                    is ResumeOutcome.Failed -> show(errorTitle, outcome.message)
+                                    ResumeOutcome.InFlight -> Unit
+                                }
+                            }
                         }
                     },
                     modifier = Modifier.testTag(SessionInfoTags.RESUME),
@@ -374,10 +430,12 @@ private fun SessionInfoContent(
                 loading = archiving,
                 onClick = {
                     archiving = true
+                    val successor = actions.tabSuccessor(session.id)
                     scope.launch {
                         try {
+                            if (metadata?.bot == null) cleanupWorktree()
                             when (val result = controls.archive(session)) {
-                                ArchiveResult.Archived -> actions.onArchived()
+                                ArchiveResult.Archived -> actions.onArchived(successor)
                                 is ArchiveResult.Failed -> show(errorTitle, result.message ?: if (result.bot) botArchiveFailed else archiveFailed)
                             }
                         } finally {
@@ -403,6 +461,7 @@ private fun SessionInfoContent(
                                     deleting = true
                                     scope.launch {
                                         try {
+                                            cleanupWorktree()
                                             val result = controls.delete(session)
                                             if (result.success) actions.onDeleted() else show(errorTitle, result.message ?: deleteFailed)
                                         } finally {
@@ -515,8 +574,9 @@ private fun SessionInfoContent(
                     InfoRow(stringResource(R.string.home_info_sandbox), sandboxText(sandboxSummary(metadata.sandbox, metadata.homeDir)), Ionicon.ShieldOutline)
                     InfoRow(
                         stringResource(R.string.home_info_skip_permissions),
-                        settingText(dangerouslySkipPermissions(metadata.dangerouslySkipPermissions, metadata.flavor, metadata.sandbox)),
+                        settingText(dangerouslySkipPermissions(metadata.dangerouslySkipPermissions, metadata.flavor, metadata.sandbox, live.composer.permissionMode)),
                         Ionicon.WarningOutline,
+                        Modifier.testTag(SessionInfoTags.SKIP_PERMISSIONS),
                     )
                 }
                 metadata.hostPid?.takeIf { it != 0.0 }?.let { pid ->
@@ -531,6 +591,17 @@ private fun SessionInfoContent(
                     icon = { Icon(Ionicon.CopyOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
                     onClick = { copy(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), metadataCopied) },
                     modifier = Modifier.testTag(SessionInfoTags.COPY_METADATA),
+                )
+                Item(
+                    title = stringResource(R.string.session_info_copy_metadata) + "\n& Client Logs",
+                    icon = { Icon(Ionicon.DocumentTextOutline, size = SessionInfoSpec.icon, color = SessionInfoSpec.blue) },
+                    onClick = {
+                        scope.launch {
+                            val logs = actions.clientLogs()
+                            copy(ClientLogs.metadataAndLogs(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), logs), metadataCopied)
+                        }
+                    },
+                    modifier = Modifier.testTag(SessionInfoTags.COPY_METADATA_AND_LOGS),
                 )
             }
         }
@@ -595,7 +666,8 @@ private fun SessionInfoContent(
             }
         }
 
-        if (devMode) {
+        // info.tsx gates the dump on __DEV__ alone: debug builds, whatever the dev mode setting.
+        if (debugBuild) {
             ItemGroup(title = stringResource(R.string.home_info_raw_json), modifier = Modifier.testTag(SessionInfoTags.RAW_JSON)) {
                 agentState?.let {
                     RawJson(stringResource(R.string.home_info_raw_agent_state), Ionicon.CodeWorkingOutline, SessionInfoSpec.orange, it)
@@ -607,12 +679,9 @@ private fun SessionInfoContent(
                     stringResource(R.string.home_info_raw_status),
                     Ionicon.AnalyticsOutline,
                     SessionInfoSpec.blue,
-                    buildJsonObject {
-                        put("isConnected", session.isOnline)
-                        put("state", session.state.name)
-                    },
+                    statusJson(session.state, rememberComposerStatus(session.state, session.activeAt).text),
                 )
-                RawJson(stringResource(R.string.home_info_raw_session), Ionicon.DocumentTextOutline, SessionInfoSpec.online, sessionJson(session, agentState))
+                RawJson(stringResource(R.string.home_info_raw_session), Ionicon.DocumentTextOutline, SessionInfoSpec.online, sessionJson(session, agentState, live.composer))
             }
         }
     }
@@ -622,16 +691,17 @@ private fun SessionInfoContent(
             source = forkSource,
             continuations = continuations,
             onDismiss = { duplicating = false },
-            onDuplicated = actions.onOpenSession,
+            onDuplicated = actions.onReplaceWithSession,
         )
     }
     alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
 }
 
 @Composable
-private fun InfoRow(title: String, subtitle: String, icon: Ionicon) {
+private fun InfoRow(title: String, subtitle: String, icon: Ionicon, modifier: Modifier = Modifier) {
     Item(
         title = title,
+        modifier = modifier,
         subtitle = subtitle,
         icon = { Icon(icon, size = SessionInfoSpec.icon, color = SessionInfoSpec.purple) },
         showChevron = false,
@@ -719,20 +789,53 @@ private fun settingText(setting: InfoSetting): String = stringResource(
 private fun formatNumber(value: Double): String =
     if (value == Math.floor(value) && !value.isInfinite()) value.toLong().toString() else value.toString()
 
-/** The session as stored, for the dev-mode dump (JSON.stringify(session)). */
-private fun sessionJson(session: Session, agentState: JsonObject?): JsonObject = buildJsonObject {
+/**
+ * useSessionStatus as info.tsx dumps it: undefined fields left out, as
+ * JSON.stringify does (isPulsing only while it pulses).
+ */
+internal fun statusJson(state: SessionState, statusText: String): JsonObject = buildJsonObject {
+    val (color, pulsing) = when (state) {
+        SessionState.Disconnected -> "#999" to false
+        SessionState.PermissionRequired, SessionState.InputRequired -> "#FF9500" to true
+        SessionState.Thinking -> "#007AFF" to true
+        SessionState.Waiting -> "#34C759" to false
+    }
+    put("isConnected", state != SessionState.Disconnected)
+    put("statusText", statusText)
+    put("statusColor", color)
+    put("statusDotColor", color)
+    if (pulsing) put("isPulsing", true)
+}
+
+/**
+ * The session as the store holds it, for the dump (JSON.stringify(session)):
+ * storageTypes.ts `Session`'s fields this app has, the picks and draft from
+ * its composer mirror. latestUsage lives in the chat's reducer and todos
+ * aren't kept, so both are left out.
+ */
+internal fun sessionJson(session: Session, agentState: JsonObject?, composer: ComposerMirror = ComposerMirror()): JsonObject = buildJsonObject {
     put("id", session.id)
+    session.avatarDescriptor?.let { put("avatarDescriptor", it.toJson()) }
     put("seq", session.seq)
     put("createdAt", session.createdAt)
     put("updatedAt", session.updatedAt)
     put("active", session.active)
     put("activeAt", session.activeAt)
-    session.metadata?.let { put("metadata", it.raw) }
+    put("projectId", session.projectId)
+    put("metadata", session.metadata?.raw ?: JsonNull)
     put("metadataVersion", session.metadataVersion)
-    agentState?.let { put("agentState", it) }
+    put("agentState", agentState ?: JsonNull)
     put("agentStateVersion", session.agentStateVersion)
     put("thinking", session.thinking)
     put("thinkingAt", session.thinkingAt)
+    if (session.isOnline) put("presence", "online") else put("presence", session.activeAt)
+    (composer.draft ?: session.draft)?.let { put("draft", it) }
+    composer.draftUpdatedAt?.let { put("draftUpdatedAt", it) }
+    composer.permissionMode?.let { put("permissionMode", it) }
+    composer.modelMode?.let { put("modelMode", it) }
+    composer.effortLevel?.let { put("effortLevel", it) }
+    session.lastMessageSentAt?.let { put("lastMessageSentAt", it) }
 }
 
-private val prettyJson = Json { prettyPrint = true }
+/** JSON.stringify(value, null, 2). */
+private val prettyJson = Json { prettyPrint = true; prettyPrintIndent = "  " }

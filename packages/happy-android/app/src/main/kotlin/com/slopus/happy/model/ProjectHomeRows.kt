@@ -287,6 +287,19 @@ fun buildProjectHomeRows(
     return rows
 }
 
+/** Every project chat's checkout, by session id (one [findProjectWorktree] per chat, in one pass). */
+fun projectWorktreesBySession(items: List<SessionListItem>): Map<String, ProjectWorktree> {
+    val result = HashMap<String, ProjectWorktree>()
+    for (item in items) {
+        if (item !is SessionListItem.ProjectItem) continue
+        for (workspace in item.project.workspaces) {
+            val worktree = toWorktree(item.project, workspace) ?: continue
+            workspace.sessions.forEach { result[it.id] = worktree }
+        }
+    }
+    return result
+}
+
 /** The checkout a chat runs in, with its sibling chats as tabs; null for bots and unknown chats. */
 fun findProjectWorktree(items: List<SessionListItem>?, sessionId: String): ProjectWorktree? {
     for (item in items ?: return null) {
@@ -318,4 +331,14 @@ fun visibleGitChanges(row: SessionRowData): VisibleGitChanges? {
     val deletions = row.gitDeletions ?: 0
     if (insertions == 0L && deletions == 0L) return null
     return VisibleGitChanges(!row.gitCountsExact, insertions, deletions)
+}
+
+/**
+ * ProjectHomeList useGitChanges: Happy Agent's whole-checkout comparison
+ * when it published one, else the daemon's working-tree count.
+ */
+fun projectGitChanges(row: SessionRowData): VisibleGitChanges? {
+    if (row.gitChangedFiles != null) return visibleGitChanges(row)
+    if (row.gitStatusLinesAdded <= 0 && row.gitStatusLinesRemoved <= 0) return null
+    return VisibleGitChanges(false, row.gitStatusLinesAdded, row.gitStatusLinesRemoved)
 }

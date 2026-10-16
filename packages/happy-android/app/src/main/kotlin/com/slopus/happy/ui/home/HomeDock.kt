@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -57,6 +58,7 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
@@ -70,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.max
 import androidx.compose.ui.unit.min
 import com.slopus.happy.R
+import com.slopus.happy.attachments.AttachmentPreview
 import com.slopus.happy.model.AgentType
 import com.slopus.happy.model.NewSessionLabels
 import com.slopus.happy.model.NewSessionOptions
@@ -79,6 +82,8 @@ import com.slopus.happy.model.StartPhase
 import com.slopus.happy.model.StartProgress
 import com.slopus.happy.model.resolveStartButton
 import com.slopus.happy.model.resolveStartProgress
+import com.slopus.happy.ui.attachments.AttachmentStrip
+import com.slopus.happy.ui.attachments.AttachmentStripSpec
 import com.slopus.happy.ui.chat.ChatTheme
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
@@ -110,6 +115,7 @@ object HomeDockTags {
     const val MODEL = "homeDock.model"
     const val EFFORT = "homeDock.effort"
     const val PRIMARY = "homeDock.primary"
+    const val ADD_IMAGE = "homeDock.addImage"
     const val PROGRESS = "homeDock.progress"
     const val PROGRESS_TEXT = "homeDock.progress.text"
     const val PROGRESS_HINT = "homeDock.progress.hint"
@@ -168,6 +174,9 @@ object HomeDockSpec {
     val primaryMarginStart = 8.dp
     val chipHeight = 40.dp
     val effortMinWidth = 64.dp
+    /** The add-image button (MOBILE_ICON_ACTION_GEOMETRY): a 42 circle around a 26 add glyph. */
+    val addSize = 42.dp
+    val addIcon = 26.dp
     val chip = happyTextStyle(fontSize = 14)
 
     // The Android picker panel's share of the window with the keyboard down.
@@ -188,6 +197,10 @@ class HomeDockState(
     /** The scrim behind the resting capsule, only over a list. */
     val showScrim: Boolean = true,
     val canCancel: Boolean = true,
+    /** The images going with the first message. */
+    val images: List<AttachmentPreview> = emptyList(),
+    /** False while making a bot: a bot takes no first message, so no images either. */
+    val canAttachImages: Boolean = true,
 )
 
 @Immutable
@@ -202,9 +215,14 @@ class HomeDockActions(
     /** A picker is opening (the worktree one lists git worktrees again). */
     val onOpenPicker: (NewSessionPage) -> Unit,
     val onHarnessHelp: () -> Unit,
+    /** The add-image chooser (paste or pick). */
+    val onAddImage: () -> Unit = {},
+    val onRemoveImage: (id: String) -> Unit = {},
 )
 
-private fun HomeDockState.canSubmit() = phase == null && prompt.isNotBlank()
+private val HomeDockState.attachedImages get() = if (canAttachImages) images else emptyList()
+
+private fun HomeDockState.canSubmit() = phase == null && (prompt.isNotBlank() || attachedImages.isNotEmpty())
 
 private fun sendBackground(colors: HappyColors) = if (colors.dark) Color(0xFFF5F5F5) else colors.button.primaryBackground
 
@@ -313,9 +331,11 @@ fun HomeDock(state: HomeDockState, actions: HomeDockActions, modifier: Modifier 
  * max(168, min(half the window, the window less the status bar, 320 and
  * the keyboard)) high. Then the composer, 16 either side and 8 over the
  * nav bar or keyboard: radius 30, input.background, hairline glass
- * border, 10 in, 8 above and below; the input box at least 44, 8/4 in,
+ * border, 10 in, 8 above and below; the attached images' strip over the
+ * input (AgentInputAttachmentStrip); the input box at least 44, 8/4 in,
  * text 16/22 up to 120 ("Ask Claude Code", "Ask Codex", "Ask {name}");
- * the 42 action row: the permission word (40 high, 4/8 in, 14pt), then
+ * the 42 action row: the 42 round add-image button (add 26), 2 on the
+ * permission word (40 high, 4/8 in, 14pt), then
  * pushed right the model (12/4 in, the one that gives way) · effort (at
  * least 64, 4/6 in); 10 on, the 42 primary button: Send, Stop (Octicons
  * stop) or a spinner, filled for Send and Stop. While starting, an 18
@@ -571,6 +591,27 @@ private fun FocusedComposer(
             .padding(horizontal = HomeDockSpec.composerInset, vertical = HomeDockSpec.composerPaddingVertical),
     ) {
         val inputShown = reveal(progress, 0.22f, 0.6f)
+        val images = state.attachedImages
+        if (images.isNotEmpty()) {
+            AttachmentStrip(
+                images,
+                onRemove = { id -> if (state.phase != null) refuse() else actions.onRemoveImage(id) },
+                modifier = Modifier
+                    // The strip keeps room for the remove buttons above and below its
+                    // thumbnails; the composer grows by the thumbnails and the 8 under
+                    // them only (attachmentExtraHeight 72), the buttons reaching into
+                    // the shell's padding as they do in happy-app.
+                    .layout { measurable, constraints ->
+                        val placeable = measurable.measure(constraints)
+                        val overflow = AttachmentStripSpec.removeOffset.roundToPx()
+                        layout(placeable.width, (placeable.height - 2 * overflow).coerceAtLeast(0)) { placeable.place(0, -overflow) }
+                    }
+                    .graphicsLayer {
+                        alpha = inputShown
+                        translationY = 8.dp.toPx() * (1 - inputShown)
+                    },
+            )
+        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -617,6 +658,10 @@ private fun FocusedComposer(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(HomeDockSpec.actionRowGap),
         ) {
+            // A bot is made from a name and a face: images belong to a first message.
+            if (state.canAttachImages) {
+                AddImageButton(onClick = { if (state.phase != null) refuse() else actions.onAddImage() })
+            }
             // Every chip lives in this one box; send is its sibling, so nothing inside reaches it.
             Row(
                 modifier = Modifier.weight(1f).height(HomeDockSpec.actionRowHeight).clipToBounds(),
@@ -689,6 +734,27 @@ private fun Chip(
         contentAlignment = alignment,
     ) {
         Text(text, style = HomeDockSpec.chip, color = HappyTheme.colors.text, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+/** HomeDock's add button: a 42 circle, add 26 in text, glass backgroundSubtle while pressed. */
+@Composable
+private fun AddImageButton(onClick: () -> Unit) {
+    val colors = HappyTheme.colors
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val label = stringResource(R.string.home_dock_add_image)
+    Box(
+        modifier = Modifier
+            .testTag(HomeDockTags.ADD_IMAGE)
+            .size(HomeDockSpec.addSize)
+            .clip(CircleShape)
+            .background(if (pressed) colors.glass.backgroundSubtle else Color.Transparent)
+            .clickable(interaction, indication = null, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = label },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(Ionicon.Add, HomeDockSpec.addIcon, colors.text)
     }
 }
 

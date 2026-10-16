@@ -3,7 +3,15 @@ package com.slopus.happy.sync
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.LiveMessageResult
 import com.slopus.happy.data.SessionRecord
+import com.slopus.happy.model.SessionAvatarDescriptor
+import com.slopus.happy.model.StoredSessionAvatar
+import com.slopus.happy.model.mergeSessionAvatar
+import com.slopus.happy.model.parseSessionAvatarRevision
 import com.slopus.happy.net.HappyJson
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.JsonElement
@@ -36,6 +44,20 @@ class LiveUpdates(
     private val requestSync: () -> Unit,
     private val onSessionDeleted: (String) -> Unit = {},
 ) {
+    private val projectEvents = MutableSharedFlow<Unit>(extraBufferCapacity = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /** A project was created, changed or deleted; the catalog endpoint says how (sync.ts projectsSync). */
+    val projectChanges: SharedFlow<Unit> = projectEvents.asSharedFlow()
+
+    private val sessionDataEvents = MutableSharedFlow<String>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+    private val agentStateEvents = MutableSharedFlow<String>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /** sync.ts onSessionDataUpdated: a message arrived for a known session, or control moved. Git status refreshes on it. */
+    val sessionDataUpdates: SharedFlow<String> = sessionDataEvents.asSharedFlow()
+
+    /** A session's agent state changed, so its files may have (sync.ts gitStatusSync.invalidate). */
+    val agentStateUpdates: SharedFlow<String> = agentStateEvents.asSharedFlow()
+
     fun handle(name: String, payload: JsonElement?) {
         val body = payload as? JsonObject ?: return
         when (name) {
@@ -48,7 +70,8 @@ class LiveUpdates(
         val body = update.body
         when (body["t"]?.jsonPrimitive?.contentOrNull) {
             "new-message" -> decode(ApiNewMessageUpdate.serializer(), body)?.let(::newMessage)
-            "new-session" -> decode(ApiSession.serializer(), body)?.let(::newSession)
+            // happy-app only invalidates its listing here: a body this app can't read still means a session to fetch.
+            "new-session" -> decode(ApiSession.serializer(), body)?.let(::newSession) ?: requestSync()
             "update-session" -> decode(ApiSessionUpdate.serializer(), body)?.let { updateSession(it, body, update) }
             "delete-session" -> decode(ApiDeleteSessionUpdate.serializer(), body)?.let { deleteSession(it.sid) }
             "new-machine" -> decode(ApiNewMachineUpdate.serializer(), body)?.let(::newMachine)
@@ -58,9 +81,13 @@ class LiveUpdates(
                 presence.removeMachine(it.machineId)
             }
             "update-account" -> decode(ApiAccountUpdate.serializer(), body)?.let { updateAccount(it, body, update) }
+            "new-project", "update-project" -> projectEvents.tryEmit(Unit)
             // Deleting a project also unlinks its sessions on the server.
-            "delete-project" -> requestSync()
-            // Projects, artifacts, friends, feed and KV are not part of this app yet.
+            "delete-project" -> {
+                projectEvents.tryEmit(Unit)
+                requestSync()
+            }
+            // Artifacts, friends and feed are not part of this app yet; KV is unused by happy-app.
             else -> Unit
         }
     }
@@ -80,8 +107,10 @@ class LiveUpdates(
             // Fast path only for the next seq; anything else is fetched.
             LiveMessageResult.GAP -> messages.invalidate(sessionId)
             LiveMessageResult.UNKNOWN_SESSION -> requestSync()
-            LiveMessageResult.APPENDED, LiveMessageResult.KNOWN -> Unit
+            LiveMessageResult.APPENDED -> messages.noteStored(sessionId, listOf(message))
+            LiveMessageResult.KNOWN -> Unit
         }
+        sessionDataEvents.tryEmit(sessionId)
     }
 
     /** The server sends the whole record; storing it saves a listing round trip. */
@@ -97,7 +126,27 @@ class LiveUpdates(
             requestSync()
             return
         }
+        if ("avatar" in body) {
+            val descriptor = SessionAvatarDescriptor.parse(body["avatar"])
+            val incoming = StoredSessionAvatar(
+                descriptor?.toJson()?.toString(),
+                parseSessionAvatarRevision(body["avatarVersion"]) ?: descriptor?.version,
+                container.seq,
+            )
+            val current = StoredSessionAvatar(session.avatarJson, session.avatarRevision, session.avatarUpdateSeq)
+            val avatarChanged = mergeSessionAvatar(current, incoming, listingIsNewer = false) != current
+            // An avatar update that changes nothing, and carries nothing else, is not news.
+            if (!avatarChanged && update.metadata == null && update.agentState == null && "projectId" !in body) return
+        }
         var next = session.copy(updatedAt = maxOf(session.updatedAt, container.createdAt))
+        if ("avatar" in body) {
+            val descriptor = SessionAvatarDescriptor.parse(body["avatar"])
+            next = next.copy(
+                avatarJson = descriptor?.toJson()?.toString(),
+                avatarRevision = parseSessionAvatarRevision(body["avatarVersion"]) ?: descriptor?.version,
+                avatarUpdateSeq = container.seq,
+            )
+        }
         update.metadata?.let { metadata ->
             val value = metadata.value?.let { cipher.decryptFromBase64(it) }
             if (value != null) next = next.copy(metadataJson = value.toString(), metadataVersion = metadata.version)
@@ -113,7 +162,11 @@ class LiveUpdates(
 
         // Control moved between the terminal and the phone: the side taking
         // over catches up on what was said while it was passive.
-        if (update.agentState != null && !isRig(next) && handoff(session, next)) messages.invalidate(update.id)
+        if (update.agentState != null) agentStateEvents.tryEmit(update.id)
+        if (update.agentState != null && !isRig(next) && handoff(session, next)) {
+            messages.invalidate(update.id)
+            sessionDataEvents.tryEmit(update.id)
+        }
     }
 
     private fun deleteSession(sessionId: String) {

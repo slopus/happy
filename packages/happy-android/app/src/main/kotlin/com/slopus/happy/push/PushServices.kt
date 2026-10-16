@@ -36,6 +36,11 @@ class PushServices(context: Context, graph: AppGraph) {
     companion object {
         @Volatile private var instance: PushServices? = null
 
+        /** AuthContext.tsx logout: [graph]'s logout drops this device's push token first. */
+        fun unregisterOnLogout(context: Context, graph: AppGraph) = graph.beforeLogout { authToken ->
+            get(context).registrar.unregisterOnLogout(authToken)
+        }
+
         fun get(context: Context): PushServices = instance ?: synchronized(this) {
             instance ?: run {
                 val app = context.applicationContext

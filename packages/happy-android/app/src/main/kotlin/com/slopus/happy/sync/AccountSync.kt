@@ -1,5 +1,6 @@
 package com.slopus.happy.sync
 
+import com.slopus.happy.chat.PlanModeFollower
 import com.slopus.happy.crypto.AccountEncryption
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.net.ConnectionStatus
@@ -15,7 +16,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.map
@@ -75,7 +80,10 @@ class AccountSync(
         auth = ::handshake,
     )
 
-    val live = LiveUpdates(store, decoder, presence, messages, requestSync = deltaSync::invalidate)
+    /** The file viewer's and changes screen's last reads, shown while they fetch again. */
+    val fileCache = SessionFileCache()
+
+    val live = LiveUpdates(store, decoder, presence, messages, requestSync = deltaSync::invalidate, onSessionDeleted = fileCache::forgetSession)
 
     private val rpc = RpcClient(socket, store, decoder, io)
 
@@ -115,7 +123,24 @@ class AccountSync(
     /** True while a delta sync is running. */
     val isSyncing: StateFlow<Boolean> = deltaSync.isRunning
 
+    // sync.ts applyMessages: the switch lands in the mirror and in metadata,
+    // so other devices see plan mode and the next metadata update keeps it.
+    private val planMode = PlanModeFollower { sessionId ->
+        composer.setAgentModes(sessionId, mapOf(AgentModeField.PERMISSION_MODE to "plan"))
+    }
+
     fun start() {
+        scope.launch {
+            messages.stored.collect { batch ->
+                try {
+                    planMode.onStored(batch)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // A batch that cannot be read changes no mode.
+                }
+            }
+        }
         scope.launch {
             for (event in socket.events) {
                 try {
@@ -149,7 +174,7 @@ class AccountSync(
                 if (active) {
                     socket.reconnectNow()
                     requestSync()
-                    messages.invalidateViewing()
+                    refreshViewing()
                 }
             }
         }
@@ -166,6 +191,21 @@ class AccountSync(
         job.cancelAndJoin()
     }
 
+    private val viewingRefreshes = MutableSharedFlow<Set<String>>(extraBufferCapacity = 8, onBufferOverflow = BufferOverflow.DROP_OLDEST)
+
+    /**
+     * The open chats, each time they are refreshed after a reconnect or a
+     * return to the foreground (sync.ts onSessionVisible for
+     * currentViewingSessionId): their messages here, their git status by
+     * whoever follows this.
+     */
+    val viewingRefreshed: SharedFlow<Set<String>> = viewingRefreshes.asSharedFlow()
+
+    private fun refreshViewing() {
+        messages.invalidateViewing()
+        messages.viewingSessionIds().takeIf { it.isNotEmpty() }?.let(viewingRefreshes::tryEmit)
+    }
+
     /** Ask for a delta sync now. */
     fun requestSync() = deltaSync.invalidate()
 
@@ -179,7 +219,7 @@ class AccountSync(
         // The handshake carried the state for the first connect; this covers reconnects.
         socket.emit("app-state", appState(foreground.value))
         deltaSync.invalidate()
-        messages.invalidateViewing()
+        refreshViewing()
         scope.launch { composer.flushAhead() }
         scope.launch { sender.resume() }
     }

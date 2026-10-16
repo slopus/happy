@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
@@ -30,9 +31,22 @@ import androidx.navigation.toRoute
 import com.slopus.happy.AppGraph
 import com.slopus.happy.BuildConfig
 import com.slopus.happy.R
+import com.slopus.happy.attachments.AttachmentServices
+import com.slopus.happy.attachments.AttachmentUploadResult
+import com.slopus.happy.attachments.readAttachmentBytes
+import com.slopus.happy.diagnostics.ClientLogs
 import com.slopus.happy.model.Machine
+import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.SessionListGrouping
+import com.slopus.happy.model.SessionListInputs
+import com.slopus.happy.model.buildSessionListViewData
+import com.slopus.happy.model.gitStatusKey
+import com.slopus.happy.model.worktreeTabSuccessor
 import com.slopus.happy.net.ConnectionStatus
+import com.slopus.happy.sync.ComposerMirror
+import com.slopus.happy.ui.chat.SessionRoute
+import com.slopus.happy.ui.components.confirm
+import com.slopus.happy.ui.session.SessionInfoLive
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.Settings
@@ -40,6 +54,10 @@ import com.slopus.happy.model.WorkspaceOrigin
 import com.slopus.happy.model.forkSource
 import com.slopus.happy.model.parseJsonObject
 import com.slopus.happy.sync.OpResult
+import com.slopus.happy.sync.SendException
+import com.slopus.happy.sync.SendOptions
+import com.slopus.happy.sync.SendResult
+import com.slopus.happy.ui.files.SessionChangesRoute
 import com.slopus.happy.ui.session.DuplicateSheet
 import com.slopus.happy.ui.session.LiveSessionContinuations
 import com.slopus.happy.ui.session.SessionContinuations
@@ -50,7 +68,11 @@ import com.slopus.happy.ui.session.SessionInfoScreen
 import androidx.compose.runtime.produceState
 import kotlinx.coroutines.withContext
 import com.slopus.happy.net.HappyHttp
+import com.slopus.happy.projects.GitStatusServices
+import com.slopus.happy.projects.ProjectServices
+import com.slopus.happy.projects.SessionAvatarServices
 import com.slopus.happy.net.HappyJson
+import com.slopus.happy.sync.AccountSync
 import com.slopus.happy.sync.MachineOps
 import com.slopus.happy.sync.MachinePresence
 import com.slopus.happy.sync.SessionPresence
@@ -99,13 +121,22 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.WeakHashMap
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.Flow
+import com.slopus.happy.resume.ResumeOutcome
+import com.slopus.happy.resume.ResumeTexts
+import com.slopus.happy.resume.SessionResumer
+import com.slopus.happy.resume.rememberResumeTexts
 
 /**
  * The home screens' long-lived state, one per [AppGraph]: the list derived
  * in the background and kept warm between visits, the archive in flight,
  * and the store-version check.
  */
-class HomeServices private constructor(graph: AppGraph) {
+class HomeServices private constructor(private val graph: AppGraph) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     private val account = graph.account
@@ -118,7 +149,8 @@ class HomeServices private constructor(graph: AppGraph) {
     /** Resume, fork and spawn; null while signed out. */
     val machineOps: MachineOps? get() = account.value?.machineOps
 
-    val continuations: SessionContinuations = LiveSessionContinuations { account.value?.machineOps }
+    val continuations: SessionContinuations =
+        LiveSessionContinuations({ account.value?.machineOps }, SessionResumer.of(graph)) { SessionResumer.ops(graph) }
 
     val infoControls: SessionInfoControls = object : SessionInfoControls {
         override suspend fun archive(session: Session): ArchiveResult = archiver.archive(session)
@@ -128,6 +160,8 @@ class HomeServices private constructor(graph: AppGraph) {
             if (session.isOnline) sessionActions.kill(session.id)
             return sessionActions.delete(session.id)
         }
+
+        override suspend fun cleanupWorktree(session: Session, confirm: suspend () -> Boolean) = this@HomeServices.cleanupWorktree(session, confirm)
     }
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -141,16 +175,25 @@ class HomeServices private constructor(graph: AppGraph) {
                 synced = (account?.isSyncing ?: flowOf(false))
                     .map { graph.store.cursor(SyncEngine.CURSOR_SESSIONS_LISTED_AT) != null }
                     .flowOn(Dispatchers.IO),
+                projects = ProjectServices.of(graph).projects,
+                sessionAvatars = SessionAvatarServices.of(graph).avatars,
+                gitStatuses = GitStatusServices.of(graph).statuses,
+                // storage.ts updateSessionDraft: a blank draft is no draft.
+                drafts = account?.composer?.mirrors
+                    ?.map { mirrors -> mirrors.mapNotNull { (id, mirror) -> mirror.draft?.takeIf { it.isNotBlank() }?.let { id to it } }.toMap() }
+                    ?: flowOf(emptyMap()),
             )
         }
         .stateIn(scope, SharingStarted.Eagerly, null)
+
+    /** Unread chats and the chat on screen ([SessionViewingEffect]); per account, in memory. */
+    val reads = SessionReadState()
 
     val list = HomeListModel(
         snapshots = snapshots,
         settings = graph.settings.settings,
         localSettings = graph.localSettings.values,
-        // Read state belongs to the chat; nothing is unread until it lands.
-        unreadSessionIds = flowOf(emptySet()),
+        unreadSessionIds = reads.unreadSessionIds,
         archivingSessionIds = archiver.archiving,
         scope = scope,
     )
@@ -161,7 +204,15 @@ class HomeServices private constructor(graph: AppGraph) {
     val updateUrl: StateFlow<String?> = update.asStateFlow()
 
     init {
-        scope.launch { update.value = checkNativeUpdate(graph.http, BuildConfig.APPLICATION_ID, BuildConfig.VERSION_NAME) }
+        scope.launch {
+            var account: AccountSync? = null
+            graph.account.collect { next -> if (next !== account) { account = next; reads.reset() } }
+        }
+        scope.launch { snapshots.collect { snapshot -> if (snapshot != null) reads.observe(snapshot.sessions) } }
+        scope.launch {
+            nativeUpdateChecks(graph.isForeground) { checkNativeUpdate(graph.http, BuildConfig.APPLICATION_ID, BuildConfig.VERSION_NAME) }
+                .collect { update.value = it }
+        }
     }
 
     fun session(id: String): Session? = snapshots.value?.sessions?.find { it.id == id }
@@ -170,7 +221,84 @@ class HomeServices private constructor(graph: AppGraph) {
 
     fun launch(block: suspend CoroutineScope.() -> Unit) = scope.launch(block = block)
 
+    /** maybeCleanupWorktree over the session's machine shell, against the chats active now. */
+    suspend fun cleanupWorktree(session: Session, confirm: suspend () -> Boolean) {
+        val ops = machineOps ?: return
+        val active = snapshots.value?.sessions.orEmpty().filter { it.active }
+        maybeCleanupWorktree(session.id, session.metadata?.path, session.metadata?.machineId, active, ops::bash, confirm)
+    }
+
+    /** useWorktreeTabSuccessor, read now: the archived chat's neighbouring tab in the project layout. */
+    fun tabSuccessor(sessionId: String): String? {
+        val grouping = settings.value.sessionListGrouping
+        if (grouping != SessionListGrouping.Project) return null
+        val snapshot = snapshots.value ?: return null
+        val inputs = SessionListInputs(
+            snapshot.sessions,
+            snapshot.machines.associateBy { it.id },
+            snapshot.projects,
+            archivingSessionIds = archiver.archiving.value,
+            gitStatuses = snapshot.gitStatuses,
+        )
+        return worktreeTabSuccessor(buildSessionListViewData(inputs), sessionId, grouping)
+    }
+
     private var newSessionServices: NewSessionServices? = null
+
+    /** pendingChats.ts: chats opened from a tab strip's `+` that no machine has answered for yet. */
+    val pendingChats = PendingChatStore()
+
+    private val pendingFailures = MutableStateFlow<String?>(null)
+
+    /** A strip start that failed, in its own words, until the screen has shown it. */
+    val pendingChatFailure: StateFlow<String?> = pendingFailures.asStateFlow()
+
+    fun dismissPendingChatFailure() {
+        pendingFailures.value = null
+    }
+
+    val pendingChatHandover = PendingChatHandover(
+        pendingChats,
+        object : PendingChatSessions {
+            override suspend fun send(sessionId: String, text: String): Boolean {
+                val sender = account.value?.sender ?: return false
+                return when (val result = sender.send(sessionId, text, SendOptions(source = "new_session"))) {
+                    is SendResult.Accepted -> true
+                    is SendResult.NotSent -> result.message?.let { throw SendException(it) } ?: false
+                }
+            }
+
+            override fun draft(sessionId: String): String? = account.value?.composer?.mirrors?.value?.get(sessionId)?.draft
+
+            override suspend fun writeDraft(sessionId: String, text: String) {
+                account.value?.composer?.setText(sessionId, text)
+            }
+
+            override fun exists(sessionId: String): Boolean = session(sessionId) != null
+
+            override fun alert(message: String) {
+                pendingFailures.value = message
+            }
+        },
+    )
+
+    /** Where each checkout's tab strip was scrolled to (first item, offset), across the screens that show it. */
+    val stripOffsets = java.util.concurrent.ConcurrentHashMap<String, Pair<Int, Int>>()
+
+    private var pendingChatStarter: PendingChatStarter? = null
+
+    /** The tab strip's `+`, starting with the new-session [SessionStarter] one start at a time. */
+    @Synchronized
+    fun pendingChatStarter(context: Context): PendingChatStarter = pendingChatStarter ?: run {
+        val starter = newSession(context).starter
+        PendingChatStarter(
+            pendingChats,
+            pendingChatHandover,
+            scope,
+            start = { request -> starter.start(request.draft, target = request.target) { false } },
+            failed = { pendingFailures.value = it },
+        )
+    }.also { pendingChatStarter = it }
 
     /** The new-session composer, its draft in the app's own preferences. */
     @Synchronized
@@ -184,7 +312,13 @@ class HomeServices private constructor(graph: AppGraph) {
             drafts = drafts,
             machineActions = machineActions,
             sessionActions = sessionActions,
-            sender = LiveFirstMessageSender { account.value },
+            sender = LiveFirstMessageSender(
+                account = { account.value },
+                metadata = { id -> withContext(Dispatchers.IO) { store.session(id)?.metadataJson?.let(SessionMetadata::parse) } },
+                upload = { id, images ->
+                    AttachmentServices.of(graph).transfers?.upload(id, images, ::readAttachmentBytes) ?: AttachmentUploadResult(emptyList(), images.size)
+                },
+            ),
             awaitSession = ::awaitSession,
             scope = scope,
         )
@@ -211,6 +345,14 @@ class HomeServices private constructor(graph: AppGraph) {
         fun of(graph: AppGraph): HomeServices = instances.getOrPut(graph) { HomeServices(graph) }
     }
 }
+
+/**
+ * sync.ts's nativeUpdateSync: [check] now, then again on every return to the
+ * foreground; a newer check replaces one still running.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+fun nativeUpdateChecks(foreground: StateFlow<Boolean>, check: suspend () -> String?): Flow<String?> =
+    foreground.drop(1).filter { it }.map { }.onStart { emit(Unit) }.mapLatest { check() }
 
 /**
  * sync.ts fetchNativeUpdate: POST /v1/version with this build; the store
@@ -322,24 +464,37 @@ private fun SessionInfoRouteScreen(graph: AppGraph, id: String, nav: NavHostCont
     val services = remember(graph) { HomeServices.of(graph) }
     val snapshot by services.snapshots.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    val local by graph.localSettings.values.collectAsStateWithLifecycle()
     val session = snapshot?.sessions?.find { it.id == id }
     val machine = snapshot?.machines?.find { it.id == session?.metadata?.machineId }
     // The chat owns the typed agent state; this screen only counts and shows it.
     val agentState by produceState<JsonObject?>(null, session) {
         value = withContext(Dispatchers.IO) { parseJsonObject(graph.store.session(id)?.agentStateJson) }
     }
+    // What the screen reads live: the checkout's git status and files, the session's picks.
+    val account by graph.account.collectAsStateWithLifecycle()
+    val git = remember(graph) { GitStatusServices.of(graph) }
+    LaunchedEffect(git, id, account) { if (account != null) git.sessionVisible(id) }
+    val statuses by git.statuses.collectAsStateWithLifecycle()
+    val pathKey = gitStatusKey(session?.metadata?.machineId, session?.metadata?.path)
+    val mirror by remember(account, id) { account?.composer?.mirror(id) ?: flowOf(ComposerMirror()) }.collectAsStateWithLifecycle(ComposerMirror())
+    val live = SessionInfoLive(
+        gitStatus = pathKey?.let(statuses::get),
+        gitStatusFiles = pathKey?.let { account?.fileCache?.statusFiles(it)?.files },
+        composer = mirror,
+    )
     val context = LocalContext.current
-    val actions = remember(nav, onOpenSession, context) {
-        val home = { nav.popBackStack(HomeRoute, inclusive = false); Unit }
+    val actions = remember(nav, onOpenSession, context, services, id) {
         SessionInfoActions(
             onBack = { nav.popBackStack() },
             onOpenSession = onOpenSession,
             onOpenMachine = { machineId -> nav.navigate(MachineRoute(machineId)) },
-            onChanges = null,
-            onArchived = home,
-            onDeleted = home,
+            onChanges = { sessionId -> nav.navigate(SessionChangesRoute(sessionId)) },
+            onArchived = { successor -> nav.leaveSessionInfo(id, successor, onOpenSession) },
+            onDeleted = { nav.leaveSessionInfo(id, null, onOpenSession) },
             copyToClipboard = { text -> copyToClipboard(context, text) },
+            tabSuccessor = services::tabSuccessor,
+            // DuplicateSheet's replaceToSession: the copy takes this screen's place.
+            onReplaceWithSession = { sessionId -> nav.navigate(SessionRoute(sessionId)) { popUpTo<SessionInfoRoute> { inclusive = true } } },
         )
     }
     SessionInfoScreen(
@@ -348,11 +503,30 @@ private fun SessionInfoRouteScreen(graph: AppGraph, id: String, nav: NavHostCont
         agentState = agentState,
         machine = machine,
         continuationExperiments = settings.expResumeSession,
-        devMode = BuildConfig.DEBUG || local.devModeEnabled,
+        debugBuild = BuildConfig.DEBUG,
         controls = services.infoControls,
         continuations = services.continuations,
         actions = actions,
+        live = live,
     )
+}
+
+/**
+ * info.tsx's exit after an archive or delete: leave session info, then the
+ * chat behind it (`router.back()` twice), so the user lands where the chat
+ * was opened from. With a [successor] (the checkout's neighbouring tab) the
+ * chat is replaced by it instead. Opened from anywhere but its chat (the
+ * home menu's Details), only session info goes, and a successor opens on top.
+ */
+internal fun NavHostController.leaveSessionInfo(sessionId: String, successor: String?, openSession: (String) -> Unit) {
+    popBackStack()
+    val top = currentBackStackEntry
+    val chatBehind = top?.destination?.hasRoute<SessionRoute>() == true && top.toRoute<SessionRoute>().id == sessionId
+    when {
+        successor != null && chatBehind -> navigate(SessionRoute(successor)) { popUpTo<SessionRoute> { inclusive = true } }
+        successor != null -> openSession(successor)
+        chatBehind -> popBackStack()
+    }
 }
 
 /** The synced avatar settings, for every avatar under [content]. */
@@ -489,6 +663,10 @@ class SessionMenus(
     private val services: HomeServices,
     private val buildMenu: (Session) -> Alert?,
     private val showError: (String?, Boolean) -> Unit,
+    /** maybeCleanupWorktree's "Delete Worktree?". */
+    private val confirmCleanup: suspend () -> Boolean = { false },
+    /** On the press, before the machine is asked: a screen standing on the chat leaves first. */
+    private val onBeforeArchive: (sessionId: String) -> Unit = {},
 ) {
     /** useSessionActionAlert: "Session", one button per action, then Cancel. */
     fun open(sessionId: String) {
@@ -499,15 +677,16 @@ class SessionMenus(
     /** useSessionArchiveAction: the same archive the menu runs. */
     fun archive(sessionId: String) {
         val session = services.session(sessionId) ?: return
+        onBeforeArchive(sessionId)
         services.launch {
-            val result = services.archiver.archive(session)
+            val result = services.archiver.archive(session) { services.cleanupWorktree(session, confirmCleanup) }
             if (result is ArchiveResult.Failed) showError(result.message, result.bot)
         }
     }
 }
 
 @Composable
-private fun rememberSessionMenus(
+internal fun rememberSessionMenus(
     services: HomeServices,
     continuationExperiments: Boolean,
     devMode: Boolean,
@@ -515,6 +694,7 @@ private fun rememberSessionMenus(
     onDetails: ((String) -> Unit)?,
     onDuplicate: (Session) -> Unit,
     showAlert: (Alert) -> Unit,
+    onBeforeArchive: (sessionId: String) -> Unit = {},
 ): SessionMenus {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -525,6 +705,10 @@ private fun rememberSessionMenus(
         fork = stringResource(R.string.session_fork_action),
         duplicate = stringResource(R.string.session_duplicate_action),
         copyMetadata = stringResource(R.string.session_info_copy_metadata),
+        cleanupTitle = stringResource(R.string.session_info_worktree_cleanup_title),
+        cleanupMessage = stringResource(R.string.session_info_worktree_cleanup_message),
+        cleanupDelete = stringResource(R.string.session_info_worktree_cleanup_delete),
+        cleanupKeep = stringResource(R.string.session_info_worktree_cleanup_keep),
         archive = stringResource(R.string.session_archive_action),
         cancel = stringResource(R.string.common_cancel),
         error = stringResource(R.string.common_error),
@@ -541,8 +725,9 @@ private fun rememberSessionMenus(
         ),
         metadataCopied = stringResource(R.string.session_info_metadata_copied),
         success = stringResource(R.string.common_success),
+        resumeTexts = rememberResumeTexts(),
     )
-    return remember(services, continuationExperiments, devMode, onOpenSession, onDetails, onDuplicate, strings, context, scope, showAlert) {
+    return remember(services, continuationExperiments, devMode, onOpenSession, onDetails, onDuplicate, strings, context, scope, showAlert, onBeforeArchive) {
         fun error(message: String) = showAlert(Alert(strings.error, message, listOf(AlertButton(strings.ok))))
 
         // Resume and fork answer like a spawn; anything but a session is a failure here.
@@ -567,8 +752,11 @@ private fun rememberSessionMenus(
                                 error(availability.block?.let(strings.blocks::getValue) ?: strings.resumeFailed)
                             } else {
                                 scope.launch {
-                                    val ops = services.machineOps ?: return@launch error(strings.resumeFailed)
-                                    spawned(ops.resumeSession(machineId, session.id), strings.resumeFailed)
+                                    when (val outcome = services.continuations.resume(machineId, session.id, session.metadata, strings.resumeTexts)) {
+                                        is ResumeOutcome.Resumed -> onOpenSession(outcome.sessionId)
+                                        is ResumeOutcome.Failed -> error(outcome.message)
+                                        ResumeOutcome.InFlight -> Unit
+                                    }
                                 }
                             }
                         }
@@ -585,12 +773,24 @@ private fun rememberSessionMenus(
                             copyToClipboard(context, prettyJson.encodeToString(JsonObject.serializer(), metadata.raw))
                             showAlert(Alert(strings.success, strings.metadataCopied, listOf(AlertButton(strings.ok))))
                         }
+                        SessionActionId.CopyMetadataAndLogs -> AlertButton(strings.copyMetadata + " & Client Logs") {
+                            val metadata = session.metadata ?: return@AlertButton error(strings.error)
+                            scope.launch {
+                                val logs = withContext(Dispatchers.IO) { ClientLogs.read() }
+                                copyToClipboard(context, ClientLogs.metadataAndLogs(prettyJson.encodeToString(JsonObject.serializer(), metadata.raw), logs))
+                                showAlert(Alert(strings.success, strings.metadataCopied, listOf(AlertButton(strings.ok))))
+                            }
+                        }
                         SessionActionId.Archive -> AlertButton(strings.archive, destructive = true) { menus.archive(session.id) }
                     }
                 }
                 Alert(strings.title, null, buttons + AlertButton(strings.cancel)).also(showAlert)
             },
             showError = { message, bot -> error(message ?: if (bot) strings.botArchiveFailed else strings.archiveFailed) },
+            confirmCleanup = {
+                confirm(showAlert, strings.cleanupTitle, strings.cleanupMessage, strings.cleanupDelete, strings.cleanupKeep, destructive = true)
+            },
+            onBeforeArchive = onBeforeArchive,
         )
         menus
     }
@@ -603,6 +803,10 @@ private data class SessionMenuStrings(
     val fork: String,
     val duplicate: String,
     val copyMetadata: String,
+    val cleanupTitle: String,
+    val cleanupMessage: String,
+    val cleanupDelete: String,
+    val cleanupKeep: String,
     val archive: String,
     val cancel: String,
     val error: String,
@@ -614,9 +818,11 @@ private data class SessionMenuStrings(
     val blocks: Map<ResumeBlock, String>,
     val metadataCopied: String,
     val success: String,
+    val resumeTexts: ResumeTexts,
 )
 
-private val prettyJson = Json(HappyJson) { prettyPrint = true }
+/** JSON.stringify(value, null, 2). */
+private val prettyJson = Json(HappyJson) { prettyPrint = true; prettyPrintIndent = "  " }
 
 internal fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

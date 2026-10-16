@@ -150,7 +150,7 @@ fun presentPush(context: Context, push: RemotePush) {
     }
 }
 
-private fun isAppInForeground(): Boolean {
+internal fun isAppInForeground(): Boolean {
     val info = ActivityManager.RunningAppProcessInfo()
     ActivityManager.getMyMemoryState(info)
     return info.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND

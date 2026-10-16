@@ -5,6 +5,8 @@ import com.slopus.happy.model.DayTitle
 import com.slopus.happy.model.FlatSessionRowData
 import com.slopus.happy.model.HomeEmptyState
 import com.slopus.happy.model.ProjectHomeRow
+import com.slopus.happy.model.ProjectWorktree
+import com.slopus.happy.model.projectWorktreesBySession
 import com.slopus.happy.model.SessionListGrouping
 import com.slopus.happy.model.SessionListInputs
 import com.slopus.happy.model.SessionListItem
@@ -76,6 +78,8 @@ data class HomeListState(
     val offlineBanner: OfflineBanner?,
     /** The linked computers' names, for the offline checklist. */
     val computers: List<String> = emptyList(),
+    /** Grouped by project: each chat's checkout, whose chats the session screen shows as tabs. */
+    val worktrees: Map<String, ProjectWorktree> = emptyMap(),
 )
 
 /** Everything one derivation reads. */
@@ -97,7 +101,7 @@ fun deriveHomeList(inputs: HomeListInputs, zone: ZoneId, today: LocalDate): Home
     val snapshot = inputs.snapshot
     val machines = snapshot.machines.associateBy { it.id }
     val all = buildSessionListViewData(
-        SessionListInputs(snapshot.sessions, machines, snapshot.projects, inputs.unreadSessionIds, inputs.archivingSessionIds),
+        SessionListInputs(snapshot.sessions, machines, snapshot.projects, inputs.unreadSessionIds, inputs.archivingSessionIds, snapshot.gitStatuses),
         zone,
         today,
     )
@@ -118,6 +122,7 @@ fun deriveHomeList(inputs: HomeListInputs, zone: ZoneId, today: LocalDate): Home
         rows = rows,
         offlineBanner = if (shouldShowOfflineMachinesBanner(choices.size, online)) OfflineBanner(choices.singleOrNull()?.name) else null,
         computers = choices.map { it.name },
+        worktrees = if (inputs.grouping == SessionListGrouping.Project) projectWorktreesBySession(all) else emptyMap(),
     )
 }
 

@@ -363,7 +363,8 @@
       "ephemeralSecretKeyHex": "1204a2e1074c11164254da393a0925a331523bfaaaaa0a2c39d9b63e0aadd2c6",
       "nonceHex": "6a7621b07bc50ed4b84111c20689d8c1fa81ec8e6f0a5a5e",
       "wrappedDataKeyBase64": "ANdxAn/jOhnWSzuOAdNeHYdYhMYv6PxsbndXUDNfxRJ6anYhsHvFDtS4QRHCBonYwfqB7I5vClpeKMjR9kriaqghmivXbkrZks6/omHEQsPZYaYUkXJIw+ttTIQ7oUA5A3sK6A/uZxO9",
-      "blobKeyHex": "35ad79ba8da8852016a2219632a5b60c71b5304af7f7714352c7a6d190c16a9f"
+      "blobKeyHex": "35ad79ba8da8852016a2219632a5b60c71b5304af7f7714352c7a6d190c16a9f",
+      "masterBlobKeyHex": "d7a70a114021b6768e4b9355fa09bd0ced22b2a777385e3aff40955892113928"
     },
     {
       "masterSecretHex": "39925159c988fdca46965cfe2217056dfd00ba3407f2aabba97fd98ffb23ebe4",
@@ -374,7 +375,8 @@
       "ephemeralSecretKeyHex": "196db535e0436bd4f0486796c8a4110b3ba44ab15583afb067d02eba17849f5a",
       "nonceHex": "919d152cd10deaa76f59f79bc4bfabeaade9d816ab7291fd",
       "wrappedDataKeyBase64": "AL8Ozj+DqUivhEXh6pXLSyJS5KFSIU68T8tv2Q9L7rZfkZ0VLNEN6qdvWfebxL+r6q3p2BarcpH93wn8jxSQTEmuYl5T+D7i3+COz3xloqqoM/zZpQZ/Pth4LC4GQ041RJT2Htqn0oPk",
-      "blobKeyHex": "4e6bdb884ca52f72ab12571448fb3435c836c052ac028f486fad46c9a21e6ac7"
+      "blobKeyHex": "4e6bdb884ca52f72ab12571448fb3435c836c052ac028f486fad46c9a21e6ac7",
+      "masterBlobKeyHex": "3ace925c6a4f78795d6289c254ff494ab8ef999a61ee83581c242fee126c40a0"
     }
   ],
   "authChallenge": [

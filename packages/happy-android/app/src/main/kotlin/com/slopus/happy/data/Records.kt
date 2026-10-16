@@ -22,6 +22,12 @@ data class SessionRecord(
     val projectId: String?,
     /** Device-local: when this device last had a message accepted for the session (storage.ts markSessionMessageSent). */
     val lastMessageSentAt: Long? = null,
+    /** The session avatar's descriptor JSON as the server sent it (its preview still sealed), or null. */
+    val avatarJson: String? = null,
+    /** The avatar's server revision (`avatarVersion`), when known. */
+    val avatarRevision: Long? = null,
+    /** The seq of the live update that last set the avatar; null when a listing did. */
+    val avatarUpdateSeq: Long? = null,
 )
 
 data class MessageRecord(

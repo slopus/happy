@@ -35,6 +35,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 
 /**
@@ -111,9 +112,23 @@ class AppGraph(
         accountState.value?.requestSync()
     }
 
+    /** Whether the app is in the foreground (MainActivity started). */
+    val isForeground: StateFlow<Boolean> = foreground.asStateFlow()
+
     /** The app came to the foreground or left it (MainActivity onStart/onStop). */
     fun setForeground(value: Boolean) {
         foreground.value = value
+    }
+
+    private val logoutHooks = CopyOnWriteArrayList<suspend (authToken: String) -> Unit>()
+
+    /**
+     * [hook] runs first on every logout, while the account's token still
+     * works (AuthContext.tsx unregisters the push token there). It must be
+     * bounded and must not throw.
+     */
+    fun beforeLogout(hook: suspend (authToken: String) -> Unit) {
+        logoutHooks += hook
     }
 
     /**
@@ -123,6 +138,7 @@ class AppGraph(
      */
     fun logout(): Job = scope.launch {
         accountLock.withLock {
+            (auth.state.value as? AuthState.SignedIn)?.let { signedIn -> logoutHooks.forEach { it(signedIn.credentials.token) } }
             stopAccount()
             withContext(Dispatchers.IO) { store.clearAll() }
             localSettings.clear()

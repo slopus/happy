@@ -40,6 +40,7 @@ enum class Ionicon(val codepoint: Int) {
     CheckboxOutline(0xf21b), // checkbox-outline
     Checkmark(0xf21d), // checkmark
     CheckmarkCircle(0xf21e), // checkmark-circle
+    CheckmarkCircleOutline(0xf21f), // checkmark-circle-outline
     ChevronBack(0xf229), // chevron-back
     ChevronDown(0xf232), // chevron-down
     ChevronForward(0xf23b), // chevron-forward
@@ -48,6 +49,7 @@ enum class Ionicon(val codepoint: Int) {
     CloseCircle(0xf24b), // close-circle
     CloudOfflineOutline(0xf25b), // cloud-offline-outline
     CodeOutline(0xf26c), // code-outline
+    CodeSlash(0xf26e), // code-slash
     CodeWorkingOutline(0xf272), // code-working-outline
     ColorPaletteOutline(0xf27e), // color-palette-outline
     ConstructOutline(0xf287), // construct-outline
@@ -91,12 +93,15 @@ enum class Ionicon(val codepoint: Int) {
     LocateOutline(0xf3c2), // locate-outline
     LockClosed(0xf3c7), // lock-closed
     LockClosedOutline(0xf3c8), // lock-closed-outline
+    LogIn(0xf3cd), // log-in
+    LogOut(0xf3d0), // log-out
     LogOutOutline(0xf3d1), // log-out-outline
     LogoGithub(0xf3f3), // logo-github
     MicOutline(0xf45e), // mic-outline
     MoonOutline(0xf461), // moon-outline
     NotificationsOutline(0xf47f), // notifications-outline
     OptionsOutline(0xf48b), // options-outline
+    PauseOutline(0xf497), // pause-outline
     Pencil(0xf49c), // pencil
     PeopleOutline(0xf4a3), // people-outline
     PersonAddOutline(0xf4a7), // person-add-outline

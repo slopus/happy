@@ -5,6 +5,8 @@ import com.slopus.happy.crypto.PayloadCipher
 import com.slopus.happy.data.MachineRecord
 import com.slopus.happy.data.MessageRecord
 import com.slopus.happy.data.SessionRecord
+import com.slopus.happy.model.SessionAvatarDescriptor
+import com.slopus.happy.model.parseSessionAvatarRevision
 
 /**
  * Turns the server's encrypted records into stored rows. Data keys arrive
@@ -50,6 +52,8 @@ class RecordDecoder(val encryption: AccountEncryption) {
             agentStateVersion = session.agentStateVersion,
             wrappedDataKey = wrapped,
             projectId = session.projectId,
+            avatarJson = SessionAvatarDescriptor.parse(session.avatar)?.toJson()?.toString(),
+            avatarRevision = parseSessionAvatarRevision(session.avatarVersion),
         )
     }
 

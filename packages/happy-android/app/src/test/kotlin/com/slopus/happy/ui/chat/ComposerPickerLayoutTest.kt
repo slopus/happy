@@ -104,6 +104,8 @@ class ComposerPickerLayoutTest {
         rule.onNodeWithText("MODEL", useUnmergedTree = true).assertExists()
         rule.node(PickerSheetTags.section("codex")).assertExists()
         rule.node(PickerSheetTags.section("claude")).assertExists()
+        // The provider's 16 icon, 8 before its name, 24 in.
+        assertDp("heading after the icon", 24 + 16 + 8, rule.onNodeWithText("OpenAI Codex", useUnmergedTree = true).bounds.left)
         val first = rule.node(PickerSheetTags.option("codex:shared-model")).bounds
         val second = rule.node(PickerSheetTags.option("claude:shared-model")).bounds
         assertDp("option at least 56 high", 56, first.height)
@@ -126,6 +128,8 @@ class ComposerPickerLayoutTest {
         rule.onNodeWithText("PERMISSION MODE", useUnmergedTree = true).assertExists()
         rule.node(PickerSheetTags.option("plan_only")).assertIsNotEnabled()
         rule.onNodeWithText("Uses the workspace sandbox.", useUnmergedTree = true).assertExists()
+        // The kind's 14 glyph 6 before the label, after the 20 radio and its 16 gap.
+        assertDp("label after the kind glyph", 24 + 20 + 16 + 14 + 6, rule.onNodeWithText("Read only", useUnmergedTree = true).bounds.left)
     }
 
     @Test

@@ -169,7 +169,8 @@ against ours in both directions.
 the same applicationId and is signed with the same certificate as the Play
 build.** A different certificate cannot install over it at all, and a
 reinstall loses the Keystore key. Release and preview builds must be signed
-with the existing EAS/Play signing key; no signing config is checked in.
+with the existing EAS/Play signing key; no signing config is checked in
+(see "Versions and signing").
 
 The custom server URL is not carried over: happy-app keeps it in MMKV
 (`server-config`), which this app does not read.
@@ -222,9 +223,11 @@ versions, three-state `projectId`; control hand-off refetches messages),
 `delete-session`, `new-machine` (carries its data key), `update-machine`,
 `delete-machine`, `update-account` (profile fields, settings with version;
 pending local settings stay on top), `delete-project` (resync). Projects,
-artifacts, friends, feed and KV updates are ignored until those features
-exist. Anything that cannot be applied alone (unknown session or machine)
-asks for the delta sync instead of guessing.
+artifacts, friends and feed updates are ignored until those features
+exist; KV updates are ignored because KV is unused by happy-app (nothing
+imports apiKv.ts). Anything that cannot be applied alone (unknown session
+or machine, a `new-session` body that does not decode) asks for the delta
+sync instead of guessing.
 
 **Presence** (`sync/Presence`, `account.presence`). `activity` and
 `machine-activity` ephemerals and `usage` live in memory only, never in
@@ -319,6 +322,29 @@ Build types map to happy-app's variants and application ids: `debug` →
 `com.slopus.happy.dev`, `preview` → `com.slopus.happy.preview`, `release` →
 `com.ex3ndr.happy`.
 
+### Versions and signing
+
+- `versionName` is happy-app's `version`, read from `app.config.js` at
+  configuration time, so the two apps never drift. `HAPPY_VERSION_NAME` or
+  `-Phappy.versionName` overrides it.
+- `versionCode` is EAS's remote, auto-incremented build number
+  (`eas.json` `appVersionSource: remote`). There is no counter in the repo:
+  a store build passes the next number as `HAPPY_VERSION_CODE` or
+  `-Phappy.versionCode`, above the last RN upload. Local builds get 1.
+- Signing comes from the environment (`HAPPY_RELEASE_KEYSTORE`,
+  `_KEYSTORE_PASSWORD`, `_KEY_ALIAS`, `_KEY_PASSWORD`, and the same with
+  `HAPPY_PREVIEW_`) or a gitignored `keystore.properties`
+  (`keystore.properties.example` lists the keys). Without them `release`
+  builds unsigned and `preview` debug-signed, so `assembleRelease` works
+  anywhere, CI included.
+- A signed release or preview build without an explicit versionCode fails in
+  `pre<Variant>Build`, before R8, rather than at the Play console.
+- Shipping goes through the `release` skill like every other release.
+- CI: `.github/workflows/happy-android.yml` runs `assembleDebug
+  assembleRelease testDebugUnitTest :crypto:test` on changes under
+  `packages/happy-android/` (and happy-app's `app.config.js`, which sets the
+  version). It has no signing secrets.
+
 The JDK toolchain (21) is provisioned by the foojay resolver if the machine
 only has a JRE. In the agent sandbox Gradle needs network and local sockets:
 run it with full access and keep caches in the workspace, e.g.
@@ -382,13 +408,24 @@ decodes the drawn pixels back to the link.
 ### Deep links
 
 `happy://` links route as expo-router routes them for happy-app (the host
-is the first path segment): `happy://terminal?<key>` opens the confirm
-screen (terminal/index.tsx), `/terminal/connect` explains that the web link
-needs a browser, `/session/<id>` goes to `onOpenSession`. The release build
-adds app.config.js's production intent filter for
+is the first path segment), and so do `https://app.happy.engineering/<path>`
+links. Every app path maps to its Compose route (`parseDeepLink` in
+`ui/connect/DeepLinks.kt`): `terminal?<key>` opens the confirm screen,
+`/terminal/connect` explains that the web link needs a browser,
+`/session/<id>` goes to `onOpenSession`, and `/session/<id>/info|changes|
+file?path=<btoa>|message/<mid>`, `/machine/<id>`, `/new`, `/settings/*`,
+`/server`, `/restore[/manual]`, `/troubleshoot`, `/changelog` and
+`/onboarding/settings` open their screens. Paths with no Android screen
+(excluded features, `session/recent`, the files browser) open Home. The
+release build adds app.config.js's production intent filter for
 `https://app.happy.engineering` (`src/release/AndroidManifest.xml`), with
-`autoVerify`; verification needs the release key's fingerprint in that
-site's `assetlinks.json`. Links while signed out are dropped.
+`autoVerify`. The site's `assetlinks.json` (happy-app's
+`public/.well-known/assetlinks.json`) already lists `com.ex3ndr.happy` with
+one fingerprint, presumably Play's app-signing key that the React Native app
+verifies with, so a Play-distributed build should verify as it does; a build
+signed with only the upload key won't. Signed out, only the screens that need
+no account (server, restore, troubleshoot, changelog, onboarding settings)
+open; other links are dropped rather than pushed onto empty signed-in screens.
 
 ## Push
 
@@ -420,6 +457,14 @@ What happy-app does with expo-notifications, without Expo:
   from notificationRouting.ts's rules (a `/session/<id>` url, else
   `sessionId`); `DeepLinks.offer` turns it into `DeepLink.Session`, which
   `DeepLinkEffect` hands to `onOpenSession` (the chat's).
+- **Background sends** (sync.ts's watchdog notifications,
+  `push/BackgroundSendNotifications.kt`): MessageSender's watchdog fails
+  rows unsent 30 s into the background; this observer of the store's
+  outbox and `AppGraph.isForeground` schedules "Message not sent" with an
+  inexact AlarmManager alarm (`BackgroundSendReceiver`) when the app leaves
+  with unsent rows, cancels it on return or once they are sent, and posts
+  "Message failed" when rows fail with `MessageSender.BACKGROUND_FAILURE`.
+  Both go on the `default` channel and open the app.
 - **Settings › Account's push rows** use `rememberPushRegistration(graph)`,
   Settings' `PushRegistration` over the same registrar and permission
   (pushRegistration.ts's getPushPermissionInfo,
@@ -504,5 +549,6 @@ regenerate them from fuse.js if the options change rather than editing
 them by hand. The UI is `ui/autocomplete/`: ChatRoute provides
 `LocalSuggestionSource`, ChatScreen passes `ComposerSuggestions` into
 ChatComposer's `overlay` slot and the shared `ComposerCursor` into its
-`cursor` parameter (the composer reports the selection and places the cursor
-after an insert).
+`cursor` parameter (the composer reports the selection, places the cursor
+after an insert, and offers hardware keys to `cursor.onKey` first: arrows,
+Enter/Tab and Escape drive the list while it shows).

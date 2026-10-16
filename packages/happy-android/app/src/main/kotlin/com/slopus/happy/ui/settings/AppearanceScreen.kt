@@ -251,6 +251,13 @@ private fun SwitchItem(title: String, subtitle: String, icon: Ionicon, iconColor
  * icons in the header and the list). Rows are standard [Item]s with 29 icons
  * and [HappySwitch]es; a dropdown opens under its row, 6 padding above and
  * below its options, and opening one closes the other.
+ *
+ * Not ported: a theme change doesn't set the platform's night mode
+ * (happy-app's Appearance.setColorScheme). Compose and the system bars
+ * follow the setting; only platform-drawn chrome such as the text selection
+ * toolbar keeps the system's. Doing it needs UiModeManager (API 31+) plus
+ * recreating the activity for its window theme, which MainActivity avoids
+ * by handling uiMode itself.
  */
 @Composable
 fun AppearanceScreen(

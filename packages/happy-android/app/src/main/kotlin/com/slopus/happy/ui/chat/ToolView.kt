@@ -1,6 +1,7 @@
 package com.slopus.happy.ui.chat
 
 import android.content.res.Resources
+import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -36,6 +37,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -56,7 +58,6 @@ import com.slopus.happy.chat.arr
 import com.slopus.happy.chat.markdown.parseMarkdown
 import com.slopus.happy.chat.obj
 import com.slopus.happy.chat.str
-import com.slopus.happy.chat.tools.FileChangeKind
 import com.slopus.happy.chat.tools.PatchEntry
 import com.slopus.happy.chat.tools.PatchInput
 import com.slopus.happy.chat.tools.ToolIcon
@@ -64,8 +65,6 @@ import com.slopus.happy.chat.tools.ToolPresentation
 import com.slopus.happy.chat.tools.ToolStatusIcon
 import com.slopus.happy.chat.tools.ToolText
 import com.slopus.happy.chat.tools.ToolViewKind
-import com.slopus.happy.chat.tools.countContentStats
-import com.slopus.happy.chat.tools.countPatchStats
 import com.slopus.happy.chat.tools.materializeUnifiedDiffPatch
 import com.slopus.happy.chat.tools.parseToolUseError
 import com.slopus.happy.chat.tools.patchChanges
@@ -76,6 +75,8 @@ import com.slopus.happy.chat.tools.resultText
 import com.slopus.happy.chat.tools.taskChildTools
 import com.slopus.happy.chat.tools.todoItems
 import com.slopus.happy.chat.tools.unifiedDiffFileName
+import com.slopus.happy.diff.DiffStats
+import com.slopus.happy.diff.FileChangeKind
 import com.slopus.happy.text.plural
 import com.slopus.happy.text.pluralResource
 import com.slopus.happy.ui.components.Icon
@@ -83,10 +84,9 @@ import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
+import kotlin.math.roundToInt
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
-import kotlin.math.roundToInt
-import androidx.compose.animation.core.withInfiniteAnimationFrameMillis
 
 object ToolTags {
     const val CARD = "tool.card"
@@ -109,6 +109,8 @@ object ToolTags {
     const val TASK_MORE = "tool.taskMore"
     const val PLAN = "tool.plan"
     const val FILE = "tool.file"
+    const val FILE_HEADER = "tool.file.header"
+    const val FILE_CHEVRON = "tool.file.chevron"
 }
 
 /** ToolView.tsx and its parts' stylesheets. Text without a family in happy-app is the system font. */
@@ -142,6 +144,9 @@ object ToolSpec {
     val contentPaddingHorizontal = 12.dp
     val contentPaddingTop = 8.dp
     const val PRESSED_OPACITY = 0.8f
+    /** CodexPatchView.tsx `fileHeaderPressed`. */
+    const val FILE_PRESSED_OPACITY = 0.6f
+    val fileChevron = 14.dp
 
     val sectionMarginBottom = 12.dp
     val sectionTitle = happyTextStyle(fontSize = 13, weight = FontWeight.SemiBold, family = FontFamily.Default)
@@ -312,9 +317,9 @@ fun ToolView(message: ChatMessage.ToolCallMessage, callbacks: MessageCallbacks, 
 }
 
 @Composable
-private fun pressedAlpha(interaction: MutableInteractionSource): Float {
+private fun pressedAlpha(interaction: MutableInteractionSource, pressedOpacity: Float = ToolSpec.PRESSED_OPACITY): Float {
     val pressed by interaction.collectIsPressedAsState()
-    return if (pressed) ToolSpec.PRESSED_OPACITY else 1f
+    return if (pressed) pressedOpacity else 1f
 }
 
 @Composable
@@ -503,7 +508,7 @@ private fun ToolSpecificView(
             }
         }
         ToolViewKind.Task -> TaskView(message)
-        ToolViewKind.CodexPatch -> CodexPatchView(message, env, footer)
+        ToolViewKind.CodexPatch -> CodexPatchView(message, env, footer, callbacks.onToolFilePress?.let { press -> { file: String -> press(message, file) } })
         ToolViewKind.CodexDiff -> CodexDiffView(input, env)
         ToolViewKind.File -> FileView(input)
         ToolViewKind.AskUserQuestion -> AskUserQuestionView(message, callbacks)
@@ -664,7 +669,7 @@ private fun TodoView(message: ChatMessage.ToolCallMessage) {
  * (14 italic textSecondary at 0.7, padding 4). Nothing before the first.
  */
 @Composable
-private fun TaskView(message: ChatMessage.ToolCallMessage) {
+internal fun TaskView(message: ChatMessage.ToolCallMessage) {
     val text = rememberToolText()
     val tools = remember(message, text) { taskChildTools(message, text) }
     if (tools.isEmpty()) return
@@ -709,10 +714,17 @@ private fun TaskView(message: ChatMessage.ToolCallMessage) {
  * RENAMED, +/− counts; the destination of a move under it in mono 12
  * textSecondary, 12 in, 9 below) and the file's diff; the permission
  * footer after the last file, 12 in and 8 down. A patch whose files cannot
- * be read shows "Update file" over the raw patch.
+ * be read shows "Update file" over the raw patch. With [onFilePress] a
+ * file's header opens that file's diff: chevron-right 14 textSecondary at
+ * its end, 0.6 while pressed; without it the header is inert.
  */
 @Composable
-private fun CodexPatchView(message: ChatMessage.ToolCallMessage, env: ToolEnvironment, footer: (@Composable () -> Unit)?) {
+private fun CodexPatchView(
+    message: ChatMessage.ToolCallMessage,
+    env: ToolEnvironment,
+    footer: (@Composable () -> Unit)?,
+    onFilePress: ((String) -> Unit)?,
+) {
     val tool = message.tool
     val changes = remember(tool.input) { patchChanges(tool.input)?.entries?.toList().orEmpty() }
     val error = resultText(tool.result)?.takeIf { tool.state == ToolState.Error }
@@ -728,12 +740,12 @@ private fun CodexPatchView(message: ChatMessage.ToolCallMessage, env: ToolEnviro
     }
     if (error != null) ToolError(error)
     changes.forEachIndexed { index, (file, change) ->
-        PatchFile(file, change, env, if (index == changes.lastIndex) footer else null)
+        PatchFile(file, change, env, if (index == changes.lastIndex) footer else null, onFilePress?.let { press -> { press(file) } })
     }
 }
 
 @Composable
-private fun PatchFile(file: String, change: PatchEntry, env: ToolEnvironment, footer: (@Composable () -> Unit)?) {
+private fun PatchFile(file: String, change: PatchEntry, env: ToolEnvironment, footer: (@Composable () -> Unit)?, onPress: (() -> Unit)?) {
     val palette = if (HappyTheme.colors.dark) DarkDiffPalette else LightDiffPalette
     val path = resolvePath(file, env.path)
     val movePath = change.movePath?.let { resolvePath(it, env.path) }
@@ -742,16 +754,30 @@ private fun PatchFile(file: String, change: PatchEntry, env: ToolEnvironment, fo
         when (val input = patchInput(change)) {
             is PatchInput.Patch -> {
                 val patch = materializeUnifiedDiffPatch(input.patch, file, change.kindType)
-                DiffSource.Patch(patch) to countPatchStats(patch)
+                DiffSource.Patch(patch) to DiffStats.countPatch(patch)
             }
             is PatchInput.Pair -> (if (input.oldText.isEmpty() && input.newText.isEmpty()) null else DiffSource.Contents(fileName, input.oldText, input.newText)) to
-                countContentStats(input.oldText, input.newText)
+                DiffStats.countContents(input.oldText, input.newText)
             null -> null to null
         }
     }
     ToolSection(fullWidth = true) {
         Column(modifier = Modifier.fillMaxWidth().background(HappyTheme.colors.surface).testTag(ToolTags.FILE)) {
-            Column(modifier = Modifier.background(palette.hunkBg)) {
+            val interaction = remember { MutableInteractionSource() }
+            Column(
+                modifier = Modifier
+                    .then(
+                        if (onPress != null) {
+                            Modifier
+                                .testTag(ToolTags.FILE_HEADER)
+                                .alpha(pressedAlpha(interaction, ToolSpec.FILE_PRESSED_OPACITY))
+                                .clickable(interactionSource = interaction, indication = null, role = Role.Button, onClick = onPress)
+                        } else {
+                            Modifier.testTag(ToolTags.FILE_HEADER)
+                        },
+                    )
+                    .background(palette.hunkBg),
+            ) {
                 DiffFileHeader(
                     path = path,
                     kind = when {
@@ -760,8 +786,13 @@ private fun PatchFile(file: String, change: PatchEntry, env: ToolEnvironment, fo
                         change.kindType == "delete" -> FileChangeKind.Deleted
                         else -> FileChangeKind.Modified
                     },
-                    additions = diff.second?.first ?: 0,
-                    deletions = diff.second?.second ?: 0,
+                    additions = diff.second?.additions ?: 0,
+                    deletions = diff.second?.deletions ?: 0,
+                    right = if (onPress != null) {
+                        { Icon(Octicon.ChevronRight, ToolSpec.fileChevron, HappyTheme.colors.textSecondary, Modifier.testTag(ToolTags.FILE_CHEVRON)) }
+                    } else {
+                        null
+                    },
                 )
                 if (movePath != null) {
                     Text(
@@ -788,9 +819,9 @@ private fun CodexDiffView(input: Map<String, JsonElement>?, env: ToolEnvironment
     if (input == null) return
     val patch = input["unified_diff"].str ?: return
     val fileName = (input["path"] ?: input["filePath"]).str ?: unifiedDiffFileName(patch)
-    val stats = remember(patch) { countPatchStats(patch) }
+    val stats = remember(patch) { DiffStats.countPatch(patch) }
     ToolSection(fullWidth = true) {
-        if (fileName != null) DiffFileHeader(fileName, FileChangeKind.Modified, stats.first, stats.second)
+        if (fileName != null) DiffFileHeader(fileName, FileChangeKind.Modified, stats.additions, stats.deletions)
         DiffChunk(DiffSource.Patch(patch), env.showLineNumbers)
     }
 }

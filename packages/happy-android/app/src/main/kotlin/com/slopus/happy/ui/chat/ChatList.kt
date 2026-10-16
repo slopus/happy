@@ -8,12 +8,16 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
@@ -23,7 +27,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -40,15 +46,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
+import com.slopus.happy.chat.ChatListItem
 import com.slopus.happy.chat.ChatRow
+import com.slopus.happy.chat.WorkGroupExpansion
+import com.slopus.happy.chat.chatListItems
+import com.slopus.happy.chat.groupChatRowsForDisplay
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
 import com.slopus.happy.ui.components.Octicon
 import com.slopus.happy.ui.components.RoundButton
 import com.slopus.happy.ui.components.RoundButtonDisplay
 import com.slopus.happy.ui.components.RoundButtonSize
+import com.slopus.happy.ui.layout.LocalWindowLayout
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
@@ -59,6 +71,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 object ChatListTags {
     const val LIST = "chat.list"
     const val OLDER_END = "chat.list.older"
+    const val OLDER_INSET = "chat.list.olderInset"
     const val FOOTER = "chat.list.footer"
     const val CONTROLLED_WARNING = "chat.list.controlledWarning"
     const val SCROLL_BUTTON = "chat.list.scrollToBottom"
@@ -71,11 +84,20 @@ object ChatListSpec {
     val scrollButton = 32.dp
     val scrollIcon = 14.dp
     const val SCROLL_BUTTON_OPACITY = 0.9f
-    /** The button's gap above the composer. */
+    /** The button's gap above the floating composer's card (`SCROLL_BUTTON_COMPOSER_GAP`). */
     val scrollButtonGap = 16.dp
+    /** Its gap above the list's end where the composer sits below the list (`SCROLL_BUTTON_DOCK_GAP`). */
+    val scrollButtonDockGap = 4.dp
+    /** `DOCK_DETAILS_SHOW_OFFSET` / `DOCK_DETAILS_HIDE_OFFSET`: the dock's details hide past 48 from the newest message and come back within 16. */
+    val dockDetailsShowOffset = 16.dp
+    val dockDetailsHideOffset = 48.dp
     /** Below the newest row (the inverted list's top padding). */
     val newestPadding = 8.dp
     val olderStatusHeight = 32.dp
+    /** Beyond the older-end slot in landscape on a phone, where the header doesn't overlap the list. */
+    val olderInsetLandscape = 12.dp
+    /** On a tablet the spacer is a header, the status bar and this more (OlderEnd's default inset). */
+    val olderInsetTabletExtra = 32.dp
     const val MAX_INVISIBLE_OLDER_PAGES = 5
     val footerPaddingTop = 4.dp
     val footerPaddingBottom = 2.dp
@@ -155,10 +177,22 @@ fun olderStatus(blocked: OlderBlock?, hasMoreOlder: Boolean, isLoadingOlder: Boo
  * the newest row the footer (ChatFooter), just past the oldest a 32-high
  * slot: a spinner while a page loads, "Retry" after a failure, "Load more"
  * once five pages in a row brought nothing visible (small inverted
- * RoundButtons). History is fetched whenever the oldest row is within a
+ * RoundButtons), with a spacer beyond it ([olderInset]). History is fetched whenever the oldest row is within a
  * viewport of the screen. Past 300 from the newest row a 32 round button
- * (surface at 0.9, 1 divider border, Octicons arrow-down 14) floats 16
- * above the composer, centred, and scrolls back down.
+ * (surface at 0.9, 1 divider border, Octicons arrow-down 14), centred,
+ * scrolls back down: 16 above the composer card when the dock floats over
+ * the list ([scrollButtonInset], the card's distance from the list's
+ * bottom), else 4 above the list's end. [bottomInset] (the floating dock)
+ * is added under the newest row so it scrolls clear of the dock.
+ * [onNewestVisibleChange] reports whether the reader is at the newest
+ * message: false past 48 from it, true again within 16.
+ *
+ * Work groups (useGroupedMessages, with [groupToolCalls] on): a finished
+ * turn's work folds under one "Worked …" header above its answer (the
+ * current turn only once [currentTurnComplete]); tapping it lays the work
+ * out flat under it with a "Hide" header where the tap was. Turns watched
+ * live stay open when they finish; going to the background folds what
+ * has finished. Invisible rows are dropped either way.
  */
 @Composable
 fun ChatList(
@@ -171,6 +205,13 @@ fun ChatList(
     pager: OlderPager,
     modifier: Modifier = Modifier,
     state: LazyListState = rememberLazyListState(),
+    bottomInset: Dp = 0.dp,
+    scrollButtonInset: Dp? = null,
+    onNewestVisibleChange: ((Boolean) -> Unit)? = null,
+    sessionId: String = "",
+    groupToolCalls: Boolean = false,
+    currentTurnComplete: Boolean = true,
+    foreground: Boolean = true,
 ) {
     val colors = HappyTheme.colors
     val scope = rememberCoroutineScope()
@@ -195,6 +236,34 @@ fun ChatList(
             last >= info.totalItemsCount - 1 - info.visibleItemsInfo.size
         }
     }
+    if (onNewestVisibleChange != null) {
+        val report by rememberUpdatedState(onNewestVisibleChange)
+        val showPx = with(density) { ChatListSpec.dockDetailsShowOffset.toPx() }
+        val hidePx = with(density) { ChatListSpec.dockDetailsHideOffset.toPx() }
+        LaunchedEffect(state) {
+            var visible = true
+            report(true)
+            // The inverted list's offset from the newest end; a row or more back is far.
+            snapshotFlow { if (state.firstVisibleItemIndex == 0) state.firstVisibleItemScrollOffset.toFloat() else Float.MAX_VALUE }
+                .collect { distance ->
+                    // Hysteresis: no flicker while resting or bouncing near the newest message.
+                    val next = if (visible) distance <= hidePx else distance <= showPx
+                    if (next != visible) {
+                        visible = next
+                        report(next)
+                    }
+                }
+        }
+        DisposableEffect(Unit) { onDispose { report(true) } }
+    }
+    val displayItems = remember(rows, groupToolCalls, currentTurnComplete) { groupChatRowsForDisplay(rows, groupToolCalls, currentTurnComplete) }
+    var expansion by remember { mutableStateOf(WorkGroupExpansion()) }
+    // ChatList.tsx's render-time bookkeeping: the same value back when nothing changed.
+    val observed = expansion.observed(sessionId, foreground, rows, currentTurnComplete)
+    SideEffect { if (observed !== expansion) expansion = observed }
+    val latestItems by rememberUpdatedState(displayItems)
+    LaunchedEffect(foreground) { if (!foreground) expansion = expansion.backgrounded(latestItems) }
+    val listItems = remember(displayItems, observed) { chatListItems(displayItems, observed::isExpanded) }
     val blocked = pager.blocked
     LaunchedEffect(nearOldest, hasMoreOlder, isLoadingOlder, blocked, rows) {
         if (nearOldest && hasMoreOlder && !isLoadingOlder && blocked == null) {
@@ -206,22 +275,31 @@ fun ChatList(
         LazyColumn(
             state = state,
             reverseLayout = true,
-            contentPadding = PaddingValues(bottom = ChatListSpec.newestPadding),
+            contentPadding = PaddingValues(bottom = ChatListSpec.newestPadding + bottomInset),
             modifier = Modifier.testTag(ChatListTags.LIST).fillMaxSize(),
         ) {
             item(key = "footer", contentType = "footer") { ChatFooter(controlledByUser) }
-            items(rows, key = { it.key }, contentType = { it::class }) { row ->
-                MessageView(row, bubble, callbacks)
+            items(listItems, key = { it.key }, contentType = { item -> if (item is ChatListItem.Row) item.row::class else WORK_HEADER }) { item ->
+                when (item) {
+                    is ChatListItem.Row -> MessageView(item.row, bubble, callbacks)
+                    // Toggled by the group, not the row: both headers of an open group drive one state.
+                    is ChatListItem.WorkHeader -> AgentWorkGroupHeader(
+                        group = item.group,
+                        expanded = observed.isExpanded(item.group),
+                        onToggle = { expansion = expansion.toggled(item.group) },
+                        placement = item.placement,
+                    )
+                }
             }
             item(key = "older", contentType = "older") {
-                OlderEnd(olderStatus(blocked, hasMoreOlder, isLoadingOlder), onRetry = pager::retry, onLoadMore = pager::loadMore)
+                OlderEnd(olderStatus(blocked, hasMoreOlder, isLoadingOlder), olderInset(), onRetry = pager::retry, onLoadMore = pager::loadMore)
             }
         }
         if (showScrollButton) {
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = ChatListSpec.scrollButtonGap)
+                    .padding(bottom = scrollButtonInset?.let { it + ChatListSpec.scrollButtonGap } ?: (ChatListSpec.scrollButtonDockGap + bottomInset))
                     .testTag(ChatListTags.SCROLL_BUTTON)
                     .size(ChatListSpec.scrollButton)
                     .clip(CircleShape)
@@ -237,8 +315,36 @@ fun ChatList(
     }
 }
 
+private const val WORK_HEADER = "workHeader"
+
+/**
+ * SessionView's `chatListTopContentInset` as the spacer beyond the oldest
+ * row. A phone in portrait runs the list under its 64 header with 52 + 12
+ * of inset, which ends where the header does: nothing here, as the list
+ * starts below the header. Landscape keeps 12. A tablet passes no inset,
+ * so OlderEnd's default holds: the header, the status bar and 32.
+ */
 @Composable
-private fun OlderEnd(status: OlderStatus, onRetry: () -> Unit, onLoadMore: () -> Unit) {
+private fun olderInset(): Dp {
+    val layout = LocalWindowLayout.current
+    return when {
+        layout.isTablet -> layout.headerHeight + WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + ChatListSpec.olderInsetTabletExtra
+        layout.isLandscape -> ChatListSpec.olderInsetLandscape
+        else -> 0.dp
+    }
+}
+
+/** OlderEnd: the spacer, then the 32 status slot against the oldest row. */
+@Composable
+private fun OlderEnd(status: OlderStatus, inset: Dp, onRetry: () -> Unit, onLoadMore: () -> Unit) {
+    Column(Modifier.fillMaxWidth()) {
+        if (inset > 0.dp) Spacer(Modifier.testTag(ChatListTags.OLDER_INSET).fillMaxWidth().height(inset))
+        OlderStatusSlot(status, onRetry, onLoadMore)
+    }
+}
+
+@Composable
+private fun OlderStatusSlot(status: OlderStatus, onRetry: () -> Unit, onLoadMore: () -> Unit) {
     Box(
         modifier = Modifier.testTag(ChatListTags.OLDER_END).fillMaxWidth().heightIn(min = ChatListSpec.olderStatusHeight),
         contentAlignment = Alignment.Center,

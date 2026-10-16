@@ -27,6 +27,7 @@ import com.slopus.happy.ui.components.HappyAlert
 import com.slopus.happy.ui.connect.DeepLinkEffect
 import com.slopus.happy.ui.tablet.TabletShell
 import com.slopus.happy.ui.connect.connectRoutes
+import com.slopus.happy.ui.files.filesRoutes
 import com.slopus.happy.ui.home.homeRoutes
 import com.slopus.happy.ui.onboarding.RestoreManualScreen
 import com.slopus.happy.ui.onboarding.TroubleshootRoute
@@ -36,6 +37,7 @@ import com.slopus.happy.ui.session.SessionInfoRoute
 import com.slopus.happy.ui.onboarding.WelcomeScreen
 import com.slopus.happy.ui.server.ServerScreen
 import com.slopus.happy.ui.settings.LocalizedContent
+import com.slopus.happy.ui.home.ProvideAvatarSettings
 import com.slopus.happy.ui.settings.settingsRoutes
 import com.slopus.happy.ui.theme.HappyTheme
 import kotlinx.coroutines.CancellationException
@@ -59,8 +61,10 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
     val theme by graph.localSettings.themePreference.collectAsStateWithLifecycle()
     val auth by graph.auth.state.collectAsStateWithLifecycle()
     val language by graph.language.language.collectAsStateWithLifecycle()
+    val settings by graph.settings.settings.collectAsStateWithLifecycle()
 
-    LocalizedContent(language.locale) { HappyTheme(preference = theme) {
+    // Avatar.tsx reads the avatar settings everywhere: the chat header and Settings as well as Home.
+    LocalizedContent(language.locale) { HappyTheme(preference = theme) { ProvideAvatarSettings(settings) {
         val dark = HappyTheme.colors.dark
         LaunchedEffect(dark) { onDarkThemeChange(dark) }
 
@@ -85,14 +89,20 @@ fun HappyApp(graph: AppGraph, onDarkThemeChange: (Boolean) -> Unit = {}) {
                     onboardingRoutes(graph, nav, onOpenMachine = { id -> nav.navigate(MachineRoute(id)) })
                     connectRoutes(graph, nav)
                     chatRoutes(graph, nav, onInfo = { id -> nav.navigate(SessionInfoRoute(id)) })
+                    filesRoutes(graph, nav)
                 }
             }
             DeepLinkEffect(nav, signedIn = signedIn != null, onOpenSession = { id -> nav.navigate(SessionRoute(id)) })
             PushRegistrationEffect(graph)
         }
-    } }
+    } } }
 }
 
+/**
+ * The signed-out start (index.tsx NotAuthenticated). A failed "Create
+ * account" shows "Error / Authentication failed"; happy-app only logs it and
+ * the button stops spinning, which leaves the user with no word of why.
+ */
 @Composable
 private fun Welcome(graph: AppGraph, nav: NavHostController) {
     val scope = rememberCoroutineScope()
