@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
@@ -78,8 +79,13 @@ object ChatListSpec {
     val scrollButton = 32.dp
     val scrollIcon = 14.dp
     const val SCROLL_BUTTON_OPACITY = 0.9f
-    /** The button's gap above the composer. */
+    /** The button's gap above the floating composer's card (`SCROLL_BUTTON_COMPOSER_GAP`). */
     val scrollButtonGap = 16.dp
+    /** Its gap above the list's end where the composer sits below the list (`SCROLL_BUTTON_DOCK_GAP`). */
+    val scrollButtonDockGap = 4.dp
+    /** `DOCK_DETAILS_SHOW_OFFSET` / `DOCK_DETAILS_HIDE_OFFSET`: the dock's details hide past 48 from the newest message and come back within 16. */
+    val dockDetailsShowOffset = 16.dp
+    val dockDetailsHideOffset = 48.dp
     /** Below the newest row (the inverted list's top padding). */
     val newestPadding = 8.dp
     val olderStatusHeight = 32.dp
@@ -168,8 +174,13 @@ fun olderStatus(blocked: OlderBlock?, hasMoreOlder: Boolean, isLoadingOlder: Boo
  * once five pages in a row brought nothing visible (small inverted
  * RoundButtons), with a spacer beyond it ([olderInset]). History is fetched whenever the oldest row is within a
  * viewport of the screen. Past 300 from the newest row a 32 round button
- * (surface at 0.9, 1 divider border, Octicons arrow-down 14) floats 16
- * above the composer, centred, and scrolls back down.
+ * (surface at 0.9, 1 divider border, Octicons arrow-down 14), centred,
+ * scrolls back down: 16 above the composer card when the dock floats over
+ * the list ([scrollButtonInset], the card's distance from the list's
+ * bottom), else 4 above the list's end. [bottomInset] (the floating dock)
+ * is added under the newest row so it scrolls clear of the dock.
+ * [onNewestVisibleChange] reports whether the reader is at the newest
+ * message: false past 48 from it, true again within 16.
  */
 @Composable
 fun ChatList(
@@ -182,6 +193,9 @@ fun ChatList(
     pager: OlderPager,
     modifier: Modifier = Modifier,
     state: LazyListState = rememberLazyListState(),
+    bottomInset: Dp = 0.dp,
+    scrollButtonInset: Dp? = null,
+    onNewestVisibleChange: ((Boolean) -> Unit)? = null,
 ) {
     val colors = HappyTheme.colors
     val scope = rememberCoroutineScope()
@@ -206,6 +220,26 @@ fun ChatList(
             last >= info.totalItemsCount - 1 - info.visibleItemsInfo.size
         }
     }
+    if (onNewestVisibleChange != null) {
+        val report by rememberUpdatedState(onNewestVisibleChange)
+        val showPx = with(density) { ChatListSpec.dockDetailsShowOffset.toPx() }
+        val hidePx = with(density) { ChatListSpec.dockDetailsHideOffset.toPx() }
+        LaunchedEffect(state) {
+            var visible = true
+            report(true)
+            // The inverted list's offset from the newest end; a row or more back is far.
+            snapshotFlow { if (state.firstVisibleItemIndex == 0) state.firstVisibleItemScrollOffset.toFloat() else Float.MAX_VALUE }
+                .collect { distance ->
+                    // Hysteresis: no flicker while resting or bouncing near the newest message.
+                    val next = if (visible) distance <= hidePx else distance <= showPx
+                    if (next != visible) {
+                        visible = next
+                        report(next)
+                    }
+                }
+        }
+        DisposableEffect(Unit) { onDispose { report(true) } }
+    }
     val blocked = pager.blocked
     LaunchedEffect(nearOldest, hasMoreOlder, isLoadingOlder, blocked, rows) {
         if (nearOldest && hasMoreOlder && !isLoadingOlder && blocked == null) {
@@ -217,7 +251,7 @@ fun ChatList(
         LazyColumn(
             state = state,
             reverseLayout = true,
-            contentPadding = PaddingValues(bottom = ChatListSpec.newestPadding),
+            contentPadding = PaddingValues(bottom = ChatListSpec.newestPadding + bottomInset),
             modifier = Modifier.testTag(ChatListTags.LIST).fillMaxSize(),
         ) {
             item(key = "footer", contentType = "footer") { ChatFooter(controlledByUser) }
@@ -232,7 +266,7 @@ fun ChatList(
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
-                    .padding(bottom = ChatListSpec.scrollButtonGap)
+                    .padding(bottom = scrollButtonInset?.let { it + ChatListSpec.scrollButtonGap } ?: (ChatListSpec.scrollButtonDockGap + bottomInset))
                     .testTag(ChatListTags.SCROLL_BUTTON)
                     .size(ChatListSpec.scrollButton)
                     .clip(CircleShape)
