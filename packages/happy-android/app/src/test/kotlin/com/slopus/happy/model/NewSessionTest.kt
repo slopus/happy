@@ -2,6 +2,7 @@ package com.slopus.happy.model
 
 import com.slopus.happy.model.HomeModelFixtures.metadata
 import com.slopus.happy.model.HomeModelFixtures.session
+import com.slopus.happy.sync.HappyAgentSpawnTarget
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject

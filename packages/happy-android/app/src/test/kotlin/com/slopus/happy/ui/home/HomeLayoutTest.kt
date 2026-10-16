@@ -1,9 +1,12 @@
 package com.slopus.happy.ui.home
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -37,9 +40,11 @@ import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.put
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -98,8 +103,6 @@ class HomeLayoutTest {
         onAppearance = {},
         onSetGrouping = {},
         onNewSession = { newSession++ },
-        onLinkComputer = {},
-        onConnectUrl = {},
         onTroubleshoot = {},
         onOpenUrl = {},
     )
@@ -222,7 +225,14 @@ class HomeLayoutTest {
     @Test
     fun loadingAndEmptyStates() {
         var current by mutableStateOf<HomeListState?>(null)
-        rule.setHappyContent { HomeScreen(current, ConnectionStatus.CONNECTED, SessionListGrouping.Flat, callbacks, actions) }
+        var offlineComputers: List<String>? = null
+        rule.setHappyContent {
+            HomeScreen(
+                current, ConnectionStatus.CONNECTED, SessionListGrouping.Flat, callbacks, actions,
+                linkContent = { Box(Modifier.fillMaxSize()) },
+                offlineContent = { computers, _ -> offlineComputers = computers },
+            )
+        }
         rule.node(HomeTags.LOADING).assertExists()
 
         current = state(emptyList())
@@ -232,10 +242,18 @@ class HomeLayoutTest {
         rule.node(HomeStateTags.NEW_SESSION).performClick()
         assertEquals(1, newSession)
 
+        current = state(emptyList(), machines = listOf(studio.copy(active = false)))
+        rule.waitForIdle()
+        assertEquals(listOf("Studio"), offlineComputers)
+
+        // No computer at all: the first-run link page replaces the whole screen, header included.
         current = state(emptyList(), machines = emptyList())
         rule.waitForIdle()
-        rule.node(HomeStateTags.OPEN_CAMERA).assertExists()
-        rule.node(HomeStateTags.ENTER_URL).assertExists()
+        rule.node(HomeTags.LINK).assertExists()
+        rule.onAllNodesWithTag(HomeTags.FILTER, useUnmergedTree = true).assertCountEquals(0)
+        val link = rule.node(HomeTags.LINK).bounds
+        assertDp("link page from the top", 0, link.top)
+        assertDp("link page full width", PHONE_WIDTH, link.right - link.left)
     }
 
     @Test
@@ -295,5 +313,9 @@ class HomeLayoutTest {
         assertTrue(session.thinking)
         assertEquals("/repo", session.metadata?.path)
         assertNull(snapshot.machines.firstOrNull())
+        assertTrue(snapshot.ready)
+
+        // Before the first sync, no machines is "not read yet", not "link a computer".
+        assertFalse(homeSnapshots(store, presence, MutableStateFlow(emptyMap()), synced = flowOf(false)).first().ready)
     }
 }

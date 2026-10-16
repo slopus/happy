@@ -1,5 +1,6 @@
 package com.slopus.happy.model
 
+import com.slopus.happy.sync.HappyAgentSpawnTarget
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -169,13 +170,6 @@ fun collectSessionWorkspaces(machineIds: Collection<String>, projectId: String?,
         byId.getOrPut(workspace.id) { SessionWorkspace(workspace.id, path, workspace.name, path, project) }
     }
     return byId.values.toList()
-}
-
-/** happyAgentSpawn.ts `HappyAgentSpawnTarget`: a catalog destination for Happy Agent's spawn. */
-sealed interface HappyAgentSpawnTarget {
-    data class Project(val id: String) : HappyAgentSpawnTarget
-    data class Workspace(val id: String) : HappyAgentSpawnTarget
-    data class NewWorkspace(val projectId: String) : HappyAgentSpawnTarget
 }
 
 class UnavailableWorkspaceException : IllegalStateException("The selected Happy Agent workspace is no longer available.")

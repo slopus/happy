@@ -4,6 +4,7 @@ import com.slopus.happy.model.HomeModelFixtures.machine
 import com.slopus.happy.model.HomeModelFixtures.metadata
 import com.slopus.happy.model.HomeModelFixtures.rigMetadata
 import com.slopus.happy.model.HomeModelFixtures.session
+import com.slopus.happy.sync.ForkSource
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import org.junit.Assert.assertEquals

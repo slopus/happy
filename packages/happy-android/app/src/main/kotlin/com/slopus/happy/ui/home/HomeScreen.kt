@@ -69,6 +69,8 @@ object HomeTags {
     const val TITLE = "home.title"
     const val STATUS = "home.status"
     const val LOADING = "home.loading"
+    /** The first-run link page standing in for the whole home screen. */
+    const val LINK = "home.link"
     const val LIST = "home.list"
     const val ARCHIVE_TOGGLE = "home.archiveToggle"
     const val DAY_HEADER = "home.dayHeader"
@@ -112,18 +114,19 @@ class HomeScreenActions(
     val onAppearance: () -> Unit,
     val onSetGrouping: (SessionListGrouping) -> Unit,
     val onNewSession: () -> Unit,
-    val onLinkComputer: () -> Unit,
-    val onConnectUrl: (String) -> Unit,
     val onTroubleshoot: () -> Unit,
     val onOpenUrl: (String) -> Unit,
 )
 
 /**
- * Signed in, on a phone: the home header (logo; "Happy" centred with the
- * connection status under it while the socket isn't healthy; the filter
- * menu and settings gear sharing one control), then the loading spinner, the
- * link or no-sessions state, the offline checklist, or the list: the
- * banners, then the flat chat list or the project hierarchy.
+ * Signed in, on a phone. With no computer linked, [linkContent] takes the
+ * whole screen (index.tsx shouldShowFirstRunInstall: the onboarding's link
+ * page, no home chrome). Otherwise the home header (logo; "Happy" centred
+ * with the connection status under it while the socket isn't healthy; the
+ * filter menu and settings gear sharing one control), then the loading
+ * spinner, the no-sessions state, [offlineContent] (the onboarding's
+ * offline checklist, given the computers' names) or the list: the banners,
+ * then the flat chat list or the project hierarchy.
  */
 @Composable
 fun HomeScreen(
@@ -134,9 +137,14 @@ fun HomeScreen(
     actions: HomeScreenActions,
     modifier: Modifier = Modifier,
     updateUrl: String? = null,
-    offlineContent: @Composable (onShowArchived: (() -> Unit)?) -> Unit = { DefaultOfflineContent(state, actions, it) },
+    linkContent: @Composable () -> Unit = {},
+    offlineContent: @Composable (computers: List<String>, onShowArchived: (() -> Unit)?) -> Unit = { _, _ -> },
 ) {
     val colors = HappyTheme.colors
+    if (state?.emptyState == HomeEmptyState.Link) {
+        Box(modifier = modifier.fillMaxSize().testTag(HomeTags.LINK)) { linkContent() }
+        return
+    }
     Column(modifier = modifier.fillMaxSize().background(colors.grouped.background)) {
         HomeHeader(connectionStatus, grouping, actions)
         Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
@@ -153,9 +161,7 @@ fun HomeScreen(
                     )
                 }
                 state.emptyState == HomeEmptyState.Offline ->
-                    offlineContent(if (state.hasArchivedSessions) showArchived else null)
-                state.emptyState == HomeEmptyState.Link ->
-                    LinkComputerState(actions, onShowArchived = if (state.hasArchivedSessions) showArchived else null)
+                    offlineContent(state.computers, if (state.hasArchivedSessions) showArchived else null)
                 state.emptyState == HomeEmptyState.NoSessions ->
                     NoSessionsState(onNewSession = actions.onNewSession, onShowArchived = if (state.hasArchivedSessions) showArchived else null)
                 else -> HomeList(state, callbacks, actions, updateUrl)

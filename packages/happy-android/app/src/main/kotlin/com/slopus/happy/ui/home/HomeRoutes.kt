@@ -27,8 +27,14 @@ import com.slopus.happy.model.WorkspaceOrigin
 import com.slopus.happy.model.forkSource
 import com.slopus.happy.net.HappyHttp
 import com.slopus.happy.net.HappyJson
+import com.slopus.happy.sync.MachineOps
 import com.slopus.happy.sync.MachinePresence
 import com.slopus.happy.sync.SessionPresence
+import com.slopus.happy.sync.SpawnSessionResult
+import com.slopus.happy.sync.SyncEngine
+import com.slopus.happy.ui.onboarding.LinkComputerChecklist
+import com.slopus.happy.ui.onboarding.OnboardingLinkComputer
+import com.slopus.happy.ui.onboarding.OnboardingSettingsRoute
 import com.slopus.happy.ui.HomeRoute
 import com.slopus.happy.ui.SettingsRoute
 import com.slopus.happy.ui.components.Alert
@@ -49,6 +55,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.Json
@@ -67,9 +75,13 @@ import java.util.WeakHashMap
 class HomeServices private constructor(graph: AppGraph) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    val sessionActions: SessionActions = ServerSessionActions { graph.account.value?.api }
-    val rpc: SessionRpc = SessionRpc.Unavailable
+    private val account = graph.account
+
+    val sessionActions: SessionActions = LiveSessionActions { account.value?.sessionOps }
     val archiver = SessionArchiver(sessionActions)
+
+    /** Resume, fork and spawn; null while signed out. */
+    val machineOps: MachineOps? get() = account.value?.machineOps
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val snapshots: StateFlow<HomeSnapshot?> = graph.account
@@ -78,6 +90,10 @@ class HomeServices private constructor(graph: AppGraph) {
                 graph.store,
                 account?.presence?.sessions ?: flowOf(emptyMap<String, SessionPresence>()),
                 account?.presence?.machines ?: flowOf(emptyMap<String, MachinePresence>()),
+                // A full session listing has been stored once: every sync after the first.
+                synced = (account?.isSyncing ?: flowOf(false))
+                    .map { graph.store.cursor(SyncEngine.CURSOR_SESSIONS_LISTED_AT) != null }
+                    .flowOn(Dispatchers.IO),
             )
         }
         .stateIn(scope, SharingStarted.Eagerly, null)
@@ -131,17 +147,11 @@ suspend fun checkNativeUpdate(http: HappyHttp, appId: String, version: String): 
     null
 }
 
-/**
- * The home routes. [onOpenSession] belongs to the chat, [onLinkComputer],
- * [onConnectUrl] and [onTroubleshoot] to onboarding; they're wired in
- * HappyApp as those land.
- */
+/** The home routes. [onOpenSession] belongs to the chat, [onTroubleshoot] to onboarding. */
 fun NavGraphBuilder.homeRoutes(
     graph: AppGraph,
     nav: NavHostController,
     onOpenSession: (sessionId: String) -> Unit = {},
-    onLinkComputer: () -> Unit = {},
-    onConnectUrl: (url: String) -> Unit = {},
     onTroubleshoot: () -> Unit = {},
 ) {
     composable<HomeRoute> {
@@ -149,9 +159,8 @@ fun NavGraphBuilder.homeRoutes(
             graph = graph,
             onSettings = { nav.navigate(SettingsRoute) },
             onAppearance = { nav.navigate(AppearanceRoute) },
+            onOnboardingSettings = { nav.navigate(OnboardingSettingsRoute) },
             onOpenSession = onOpenSession,
-            onLinkComputer = onLinkComputer,
-            onConnectUrl = onConnectUrl,
             onTroubleshoot = onTroubleshoot,
             onNewSession = {},
             onDetails = null,
@@ -179,9 +188,8 @@ private fun HomeRouteScreen(
     graph: AppGraph,
     onSettings: () -> Unit,
     onAppearance: () -> Unit,
+    onOnboardingSettings: () -> Unit,
     onOpenSession: (String) -> Unit,
-    onLinkComputer: () -> Unit,
-    onConnectUrl: (String) -> Unit,
     onTroubleshoot: () -> Unit,
     onNewSession: () -> Unit,
     onDetails: ((String) -> Unit)?,
@@ -223,14 +231,12 @@ private fun HomeRouteScreen(
             },
         )
     }
-    val actions = remember(onSettings, onAppearance, onNewSession, onLinkComputer, onConnectUrl, onTroubleshoot, uriHandler) {
+    val actions = remember(onSettings, onAppearance, onNewSession, onTroubleshoot, uriHandler) {
         HomeScreenActions(
             onSettings = onSettings,
             onAppearance = onAppearance,
             onSetGrouping = { grouping -> graph.settings.change { it.copy(sessionListGrouping = grouping) } },
             onNewSession = onNewSession,
-            onLinkComputer = onLinkComputer,
-            onConnectUrl = onConnectUrl,
             onTroubleshoot = onTroubleshoot,
             onOpenUrl = uriHandler::openUri,
         )
@@ -244,6 +250,10 @@ private fun HomeRouteScreen(
             callbacks = callbacks,
             actions = actions,
             updateUrl = updateUrl,
+            linkContent = { OnboardingLinkComputer(graph, onSettings = onOnboardingSettings) },
+            offlineContent = { computers, onShowArchived ->
+                LinkComputerChecklist(graph, computers = computers, onTroubleshoot = onTroubleshoot, onShowArchived = onShowArchived)
+            },
         )
     }
     alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
@@ -308,6 +318,13 @@ private fun rememberSessionMenus(
     )
     return remember(services, continuationExperiments, devMode, onOpenSession, onDetails, strings, context, scope, showAlert) {
         fun error(message: String) = showAlert(Alert(strings.error, message, listOf(AlertButton(strings.ok))))
+
+        // Resume and fork answer like a spawn; anything but a session is a failure here.
+        fun spawned(result: SpawnSessionResult, fallback: String) = when (result) {
+            is SpawnSessionResult.Success -> onOpenSession(result.sessionId)
+            is SpawnSessionResult.Error -> error(result.errorMessage.ifEmpty { fallback })
+            else -> error(fallback)
+        }
         lateinit var menus: SessionMenus
         menus = SessionMenus(
             services = services,
@@ -324,20 +341,16 @@ private fun rememberSessionMenus(
                                 error(availability.block?.let(strings.blocks::getValue) ?: strings.resumeFailed)
                             } else {
                                 scope.launch {
-                                    when (val result = services.rpc.resume(machineId, session.id)) {
-                                        is SpawnResult.Success -> onOpenSession(result.sessionId)
-                                        is SpawnResult.Failure -> error(result.message ?: strings.resumeFailed)
-                                    }
+                                    val ops = services.machineOps ?: return@launch error(strings.resumeFailed)
+                                    spawned(ops.resumeSession(machineId, session.id), strings.resumeFailed)
                                 }
                             }
                         }
                         SessionActionId.Fork -> AlertButton(strings.fork) {
                             val source = session.forkSource() ?: return@AlertButton
                             scope.launch {
-                                when (val result = services.rpc.fork(source)) {
-                                    is SpawnResult.Success -> onOpenSession(result.sessionId)
-                                    is SpawnResult.Failure -> error(result.message ?: strings.forkFailed)
-                                }
+                                val ops = services.machineOps ?: return@launch error(strings.forkFailed)
+                                spawned(ops.forkAndSpawn(source), strings.forkFailed)
                             }
                         }
                         // DuplicateSheet lives on session info; offered once that screen is wired.

@@ -4,7 +4,10 @@ import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.slopus.happy.model.AgentType
-import com.slopus.happy.model.HappyAgentSpawnTarget
+import com.slopus.happy.sync.HappyAgentSpawnTarget
+import com.slopus.happy.sync.OpResult
+import com.slopus.happy.sync.SpawnSessionOptions
+import com.slopus.happy.sync.SpawnSessionResult
 import com.slopus.happy.model.HomeModelFixtures.cliAvailability
 import com.slopus.happy.model.HomeModelFixtures.machine
 import com.slopus.happy.model.HomeModelFixtures.machineMetadata
@@ -22,6 +25,9 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.add
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -51,23 +57,35 @@ class SessionStarterTest {
         machineMetadata {
             put("machineKind", "rig")
             putJsonObject("capabilities") { put("newSession", true); put("worktrees", true) }
+            putJsonObject("defaults") { put("providerId", "codex"); put("modelId", "gpt"); put("permissionMode", "auto") }
+            putJsonArray("models") {
+                addJsonObject {
+                    put("code", "gpt"); put("value", "GPT"); put("providerId", "codex"); put("id", "gpt")
+                    putJsonArray("thinkingLevels") { add("low"); add("high") }
+                    put("defaultThinkingLevel", "high")
+                }
+            }
+            putJsonArray("operatingModes") {
+                addJsonObject { put("code", "auto"); put("value", "Auto") }
+                addJsonObject { put("code", "read_only"); put("value", "Read only") }
+            }
         },
     )
 
     private class FakeMachines : MachineActions {
-        val spawns = mutableListOf<SpawnRequest>()
+        val spawns = mutableListOf<SpawnSessionOptions>()
         val worktrees = mutableListOf<Pair<String, String>>()
         val stopped = mutableListOf<Pair<String, String>>()
-        var answers = ArrayDeque<suspend () -> SpawnOutcome>()
-        var worktree: WorktreeOutcome = WorktreeOutcome.Created("/Users/dev/code/.worktrees/w")
+        var answers = ArrayDeque<suspend () -> SpawnSessionResult>()
+        var worktree: WorktreeOutcome = WorktreeOutcome.Created("/Users/dev/code/.dev/worktree/calm-river", "calm-river")
         /** The starter's phase each time it asked for something. */
         val phases = mutableListOf<StartPhase?>()
         var phase: () -> StartPhase? = { null }
 
-        override suspend fun spawnSession(request: SpawnRequest): SpawnOutcome {
+        override suspend fun spawnSession(options: SpawnSessionOptions): SpawnSessionResult {
             phases += phase()
-            spawns += request
-            return answers.removeFirstOrNull()?.invoke() ?: SpawnOutcome.Success("s1")
+            spawns += options
+            return answers.removeFirstOrNull()?.invoke() ?: SpawnSessionResult.Success("s1")
         }
 
         override suspend fun createWorktree(machineId: String, basePath: String): WorktreeOutcome {
@@ -76,19 +94,17 @@ class SessionStarterTest {
             return worktree
         }
 
-        override suspend fun stopSession(machineId: String, sessionId: String): ActionResult {
+        override suspend fun stopSession(machineId: String, sessionId: String): OpResult {
             stopped += machineId to sessionId
-            return ActionResult.Success
+            return OpResult(true)
         }
-
-        override suspend fun stopDaemon(machineId: String): ActionResult = ActionResult.Success
     }
 
     private class FakeSessions : SessionActions {
         val killed = mutableListOf<String>()
-        override suspend fun kill(sessionId: String): ActionResult = ActionResult.Success.also { killed += sessionId }
-        override suspend fun archiveOnServer(sessionId: String): ActionResult = ActionResult.Success
-        override suspend fun delete(sessionId: String): ActionResult = ActionResult.Success
+        override suspend fun kill(sessionId: String): OpResult = OpResult(true).also { killed += sessionId }
+        override suspend fun archiveOnServer(sessionId: String): OpResult = OpResult(true)
+        override suspend fun delete(sessionId: String): OpResult = OpResult(true)
     }
 
     private class Harness(
@@ -153,7 +169,7 @@ class SessionStarterTest {
         assertEquals(StartResult.Started("s1"), h.starter.start(confirmDirectory = yes))
         val request = h.machines.spawns.single()
         assertEquals("m1", request.machineId)
-        assertEquals(AgentType.Codex, request.agent)
+        assertEquals("codex", request.agent)
         assertEquals("/Users/dev/code", request.directory)
         assertFalse(request.approvedNewDirectoryCreation)
         assertNull(request.happyAgentTarget)
@@ -176,7 +192,7 @@ class SessionStarterTest {
 
     @Test fun retriesPendingAnswersWithTheSameRequestId() = runTest {
         val h = harness(draft = NewSessionDraft(selectedMachineId = "m1"))
-        h.machines.answers.addAll(listOf({ SpawnOutcome.Pending(500) }, { SpawnOutcome.Pending(null) }))
+        h.machines.answers.addAll(listOf({ SpawnSessionResult.Pending("request-1", 500) }, { SpawnSessionResult.Pending("request-1", 0) }))
         assertEquals(StartResult.Started("s1"), h.starter.start(confirmDirectory = yes))
         assertEquals(3, h.machines.spawns.size)
         assertEquals(setOf("request-1"), h.machines.spawns.map { it.clientRequestId }.toSet())
@@ -186,14 +202,14 @@ class SessionStarterTest {
 
     @Test fun offersToCreateAMissingDirectory() = runTest {
         val approved = harness(draft = NewSessionDraft(selectedMachineId = "m1", selectedPath = "/new"))
-        approved.machines.answers.add { SpawnOutcome.ApproveDirectory("/new") }
+        approved.machines.answers.add { SpawnSessionResult.RequestToApproveDirectoryCreation("/new") }
         val asked = mutableListOf<String>()
         assertEquals(StartResult.Started("s1"), approved.starter.start { asked += it; true })
         assertEquals(listOf("/new"), asked)
         assertEquals(listOf(false, true), approved.machines.spawns.map { it.approvedNewDirectoryCreation })
 
         val declined = harness(draft = NewSessionDraft(selectedMachineId = "m1", selectedPath = "/new"))
-        declined.machines.answers.add { SpawnOutcome.ApproveDirectory("/new") }
+        declined.machines.answers.add { SpawnSessionResult.RequestToApproveDirectoryCreation("/new") }
         assertEquals(StartResult.Abandoned, declined.starter.start { false })
         assertEquals(1, declined.machines.spawns.size)
     }
@@ -204,7 +220,7 @@ class SessionStarterTest {
         )
         assertEquals(StartResult.Started("s1"), h.starter.start(confirmDirectory = yes))
         assertEquals(listOf("m1" to "/Users/dev/code"), h.machines.worktrees)
-        assertEquals("/Users/dev/code/.worktrees/w", h.machines.spawns.single().directory)
+        assertEquals("/Users/dev/code/.dev/worktree/calm-river", h.machines.spawns.single().directory)
         assertEquals(listOf(StartPhase.Worktree, StartPhase.Spawning, StartPhase.Opening), h.phases)
 
         val failed = harness(draft = h.drafts.draft.value)
@@ -214,19 +230,35 @@ class SessionStarterTest {
     }
 
     @Test fun happyAgentStartsInItsProjectByIdentity() = runTest {
-        val h = harness(listOf(rig), NewSessionDraft(selectedMachineId = "r1", selectedProjectId = "p1", agentType = AgentType.Claude))
+        val h = harness(
+            listOf(rig),
+            NewSessionDraft(selectedMachineId = "r1", selectedProjectId = "p1", agentType = AgentType.Claude, modelMode = "claude-opus-5-5", permissionMode = "read_only"),
+        )
         assertEquals(StartResult.Started("s1"), h.starter.start(confirmDirectory = yes))
         val request = h.machines.spawns.single()
-        assertEquals(AgentType.Rig, request.agent)
+        assertEquals("rig", request.agent)
         assertEquals(HappyAgentSpawnTarget.Project("p1"), request.happyAgentTarget)
-        // Happy Agent resolves its own catalog defaults.
+        // The harness changed, so Happy Agent's own catalog defaults apply, not Claude's picks.
+        assertEquals(listOf("codex", "gpt", "auto", "high"), listOf(request.providerId, request.modelId, request.permissionMode, request.effort))
         assertNull(request.modelMode)
         assertTrue(h.machines.worktrees.isEmpty())
     }
 
+    @Test fun happyAgentKeepsThePicksItsCatalogStillOffers() = runTest {
+        val h = harness(
+            listOf(rig),
+            NewSessionDraft(selectedMachineId = "r1", agentType = AgentType.Rig, modelMode = "codex:gone", permissionMode = "read_only", effortLevel = "low"),
+        )
+        assertEquals(StartResult.Started("s1"), h.starter.start(confirmDirectory = yes))
+        val request = h.machines.spawns.single()
+        assertEquals(listOf("codex", "gpt", "read_only", "low"), listOf(request.providerId, request.modelId, request.permissionMode, request.effort))
+        // A plain directory: no catalog destination.
+        assertNull(request.happyAgentTarget)
+    }
+
     @Test fun stopHandsBackAtOnceAndStopsTheSessionThatArrivesLater() = runTest {
         val h = harness(draft = NewSessionDraft(input = "hi", selectedMachineId = "m1"))
-        val late = CompletableDeferred<SpawnOutcome>()
+        val late = CompletableDeferred<SpawnSessionResult>()
         h.machines.answers.add { late.await() }
         val result = async { h.starter.start(confirmDirectory = yes) }
         runCurrent()
@@ -236,7 +268,7 @@ class SessionStarterTest {
         runCurrent()
         assertEquals(StartResult.Abandoned, result.await())
 
-        late.complete(SpawnOutcome.Success("late"))
+        late.complete(SpawnSessionResult.Success("late"))
         advanceUntilIdle()
         assertEquals(listOf("m1" to "late"), h.machines.stopped)
         assertTrue(h.sent.isEmpty())
