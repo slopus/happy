@@ -1,5 +1,6 @@
 package com.slopus.happy.ui.home
 
+import com.slopus.happy.model.GitWorktree
 import com.slopus.happy.model.WorktreePaths
 import com.slopus.happy.sync.BashResult
 import kotlin.random.Random
@@ -44,4 +45,25 @@ suspend fun createWorktree(basePath: String, random: Random = Random, bash: susp
         }
     }
     return WorktreeOutcome.Failed(result.stderr.ifEmpty { "Failed to create worktree" })
+}
+
+/**
+ * utils/worktree.ts listWorktrees: `git worktree list --porcelain` in
+ * [basePath], the main checkout left out. A worktree without a branch is
+ * named by its path; any failure is no worktrees.
+ */
+suspend fun listWorktrees(bash: suspend (command: String) -> BashResult): List<GitWorktree> {
+    val result = bash("git worktree list --porcelain")
+    if (!result.success) return emptyList()
+    return result.stdout.split("\n\n").drop(1).mapNotNull { block ->
+        var path = ""
+        var branch = ""
+        for (line in block.split("\n")) {
+            when {
+                line.startsWith("worktree ") -> path = line.removePrefix("worktree ")
+                line.startsWith("branch refs/heads/") -> branch = line.removePrefix("branch refs/heads/")
+            }
+        }
+        path.takeIf { it.isNotEmpty() }?.let { GitWorktree(it, branch.ifEmpty { it }) }
+    }
 }
