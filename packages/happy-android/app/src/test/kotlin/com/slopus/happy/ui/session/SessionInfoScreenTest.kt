@@ -120,6 +120,7 @@ class SessionInfoScreenTest {
 
     private val opened = mutableListOf<String>()
     private val copied = mutableListOf<String>()
+    private var clipboardWorks = true
     private var left = 0
     private var successor: String? = null
     private var archivedTo: String? = null
@@ -131,7 +132,7 @@ class SessionInfoScreenTest {
         onChanges = { opened += "changes:$it" },
         onArchived = { archivedTo = it; left++ },
         onDeleted = { left++ },
-        copyToClipboard = { copied += it },
+        copyToClipboard = { copied += it; clipboardWorks },
         tabSuccessor = { successor },
         clientLogs = { logs },
     )
@@ -295,6 +296,17 @@ class SessionInfoScreenTest {
         rule.onNodeWithText("session-...9-abcdef").assertExists()
         rule.node(SessionInfoTags.SESSION_ID).performScrollTo().performClick()
         assertEquals(listOf("session-0123456789-abcdef"), copied)
+        rule.onNodeWithText("Happy Session ID copied to clipboard").assertExists()
+    }
+
+    /** info.tsx: a clipboard that refuses says so (sessionInfo.failedToCopy*), not "copied". */
+    @Test
+    fun aRefusedCopySaysSo() {
+        clipboardWorks = false
+        show(claudeSession())
+        rule.node(SessionInfoTags.SESSION_ID).performScrollTo().performClick()
+        rule.onNodeWithText("Failed to copy Happy Session ID").assertExists()
+        rule.onNodeWithText("Happy Session ID copied to clipboard").assertDoesNotExist()
     }
 
     @Test
