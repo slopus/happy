@@ -230,6 +230,14 @@ the database, local settings, the What's New marker, the new-session draft
 image loader's caches; then the credentials. The server choice stays
 (`LogoutWipeTest`).
 
+**Large sessions** (`perf/LargeDataTest`, `perf/ChatDisplayTimingTest`).
+The reducer, ChatFeed and HomeListModel derive off the collecting thread
+and stay linear. What still runs in ChatList's composition per snapshot was
+measured at 5040 rows (JVM, median after warm-up): `groupChatRowsForDisplay`
+1.3–2.6 ms, `chatListItems` 0.5–0.8 ms, `WorkGroupExpansion.observed`
+0.2 ms. Below the 8 ms line, so it stays on the main thread; the guard fails
+only at 50 ms, a quadratic rather than noise.
+
 **Live updates** (`net/SocketIoClient`, `sync/LiveUpdates`). The
 `/v1/updates` socket (apiSocket.ts) with `clientType: user-scoped`, the
 token, `happyClient` and `appState` read at every connect; `app-state` is
@@ -251,10 +259,14 @@ from the update itself), `update-session` (metadata/agentState with their
 versions, three-state `projectId`; control hand-off refetches messages),
 `delete-session`, `new-machine` (carries its data key), `update-machine`,
 `delete-machine`, `update-account` (profile fields, settings with version;
-pending local settings stay on top), `delete-project` (resync). Projects,
-artifacts, friends and feed updates are ignored until those features
-exist; KV updates are ignored because KV is unused by happy-app (nothing
-imports apiKv.ts). Anything that cannot be applied alone (unknown session
+pending local settings stay on top), `new-project`/`update-project` (the
+project catalog refetches, `ProjectServices`), `delete-project` (the catalog
+and a resync). Artifacts, friends (`relationship-updated`) and feed updates
+are ignored until those features exist; KV updates are ignored because KV is
+unused by happy-app (nothing imports apiKv.ts). Not copied on purpose:
+`update-session`'s account `seq` (here a session's `seq` is its message
+counter, which history sync relies on), and the `session-event` ephemeral
+(happy-app's browser-tab unread counter). Anything that cannot be applied alone (unknown session
 or machine, a `new-session` body that does not decode) asks for the delta
 sync instead of guessing.
 
@@ -273,7 +285,12 @@ the newest page (`before_seq`), catches up forward, then prefetches up to
 five older pages per session per sign-in. `loadOlder(sessionId)` loads one
 page on demand and returns whether the run moved back;
 `paging(sessionId)` gives `isLoaded`, `hasMoreOlder`, `isLoadingOlder`. A
-backward page that does not move the cursor ends history.
+backward page that does not move the cursor ends history. `preload(sessionId)`
+is Home's press-down (`HomeListCallbacks.onPressDown`, sync.ts
+`preloadSession`): the newest page only, one session at a time (another
+touch drops it), skipped for a chat that is open or already stored, never
+retried, and no visit, read or older history. A plan-mode switch in that page
+waits for the chat to open (`StoredSource.PRELOAD`/`OPENED`).
 
 **Sending** (`sync/MessageSender`, `account.sender`). `send(sessionId, text,
 meta)` builds the user record exactly as sync.ts `sendMessage` does (sentFrom

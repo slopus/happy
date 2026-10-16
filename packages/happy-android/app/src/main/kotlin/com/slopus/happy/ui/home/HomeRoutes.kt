@@ -703,6 +703,7 @@ fun HomeListHost(graph: AppGraph, navigation: HomeNavigation, withDock: Boolean 
             onProjectMenu = { name, origin ->
                 alert = Alert(name, null, listOf(AlertButton(cancelLabel), AlertButton(createWorkspaceLabel) { onCreateWorkspace(origin) }))
             },
+            onPressDown = { id -> graph.account.value?.messages?.preload(id) },
         )
     }
     val actions = remember(navigation, uriHandler) {
