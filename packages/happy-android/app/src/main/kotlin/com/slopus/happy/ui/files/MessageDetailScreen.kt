@@ -122,6 +122,9 @@ fun messageDetailTitle(message: ChatMessage?, env: MessageDetailEnvironment): St
  * centred, back), then a spinner until the session and its messages are in
  * and [message] is found. A tool call is its ToolFullView; agent and user
  * text is the text alone, 16/24, padded 16.
+ *
+ * Deviation: the text scrolls and is selectable. happy-app's is a plain
+ * Text in a non-scrolling view, which cuts off a long message.
  */
 @Composable
 fun MessageDetailScreen(

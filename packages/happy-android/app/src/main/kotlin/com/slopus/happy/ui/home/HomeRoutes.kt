@@ -23,6 +23,7 @@ import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
@@ -39,9 +40,13 @@ import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.SessionListGrouping
 import com.slopus.happy.model.SessionListInputs
 import com.slopus.happy.model.buildSessionListViewData
+import com.slopus.happy.model.gitStatusKey
 import com.slopus.happy.model.worktreeTabSuccessor
 import com.slopus.happy.net.ConnectionStatus
+import com.slopus.happy.sync.ComposerMirror
+import com.slopus.happy.ui.chat.SessionRoute
 import com.slopus.happy.ui.components.confirm
+import com.slopus.happy.ui.session.SessionInfoLive
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.Settings
@@ -113,6 +118,11 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonPrimitive
 import java.util.WeakHashMap
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.flow.Flow
 
 /**
  * The home screens' long-lived state, one per [AppGraph]: the list derived
@@ -191,7 +201,10 @@ class HomeServices private constructor(private val graph: AppGraph) {
             graph.account.collect { next -> if (next !== account) { account = next; reads.reset() } }
         }
         scope.launch { snapshots.collect { snapshot -> if (snapshot != null) reads.observe(snapshot.sessions) } }
-        scope.launch { update.value = checkNativeUpdate(graph.http, BuildConfig.APPLICATION_ID, BuildConfig.VERSION_NAME) }
+        scope.launch {
+            nativeUpdateChecks(graph.isForeground) { checkNativeUpdate(graph.http, BuildConfig.APPLICATION_ID, BuildConfig.VERSION_NAME) }
+                .collect { update.value = it }
+        }
     }
 
     fun session(id: String): Session? = snapshots.value?.sessions?.find { it.id == id }
@@ -269,6 +282,14 @@ class HomeServices private constructor(private val graph: AppGraph) {
         fun of(graph: AppGraph): HomeServices = instances.getOrPut(graph) { HomeServices(graph) }
     }
 }
+
+/**
+ * sync.ts's nativeUpdateSync: [check] now, then again on every return to the
+ * foreground; a newer check replaces one still running.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+fun nativeUpdateChecks(foreground: StateFlow<Boolean>, check: suspend () -> String?): Flow<String?> =
+    foreground.drop(1).filter { it }.map { }.onStart { emit(Unit) }.mapLatest { check() }
 
 /**
  * sync.ts fetchNativeUpdate: POST /v1/version with this build; the store
@@ -380,29 +401,37 @@ private fun SessionInfoRouteScreen(graph: AppGraph, id: String, nav: NavHostCont
     val services = remember(graph) { HomeServices.of(graph) }
     val snapshot by services.snapshots.collectAsStateWithLifecycle()
     val settings by graph.settings.settings.collectAsStateWithLifecycle()
-    val local by graph.localSettings.values.collectAsStateWithLifecycle()
     val session = snapshot?.sessions?.find { it.id == id }
     val machine = snapshot?.machines?.find { it.id == session?.metadata?.machineId }
     // The chat owns the typed agent state; this screen only counts and shows it.
     val agentState by produceState<JsonObject?>(null, session) {
         value = withContext(Dispatchers.IO) { parseJsonObject(graph.store.session(id)?.agentStateJson) }
     }
+    // What the screen reads live: the checkout's git status and files, the session's picks.
+    val account by graph.account.collectAsStateWithLifecycle()
+    val git = remember(graph) { GitStatusServices.of(graph) }
+    LaunchedEffect(git, id, account) { if (account != null) git.sessionVisible(id) }
+    val statuses by git.statuses.collectAsStateWithLifecycle()
+    val pathKey = gitStatusKey(session?.metadata?.machineId, session?.metadata?.path)
+    val mirror by remember(account, id) { account?.composer?.mirror(id) ?: flowOf(ComposerMirror()) }.collectAsStateWithLifecycle(ComposerMirror())
+    val live = SessionInfoLive(
+        gitStatus = pathKey?.let(statuses::get),
+        gitStatusFiles = pathKey?.let { account?.fileCache?.statusFiles(it)?.files },
+        composer = mirror,
+    )
     val context = LocalContext.current
-    val actions = remember(nav, onOpenSession, context, services) {
-        val home = { nav.popBackStack(HomeRoute, inclusive = false); Unit }
+    val actions = remember(nav, onOpenSession, context, services, id) {
         SessionInfoActions(
             onBack = { nav.popBackStack() },
             onOpenSession = onOpenSession,
             onOpenMachine = { machineId -> nav.navigate(MachineRoute(machineId)) },
-            onChanges = { id -> nav.navigate(SessionChangesRoute(id)) },
-            // A tab of a checkout hands over to its neighbour instead of dropping to home.
-            onArchived = { successor ->
-                home()
-                if (successor != null) onOpenSession(successor)
-            },
-            onDeleted = home,
+            onChanges = { sessionId -> nav.navigate(SessionChangesRoute(sessionId)) },
+            onArchived = { successor -> nav.leaveSessionInfo(id, successor, onOpenSession) },
+            onDeleted = { nav.leaveSessionInfo(id, null, onOpenSession) },
             copyToClipboard = { text -> copyToClipboard(context, text) },
             tabSuccessor = services::tabSuccessor,
+            // DuplicateSheet's replaceToSession: the copy takes this screen's place.
+            onReplaceWithSession = { sessionId -> nav.navigate(SessionRoute(sessionId)) { popUpTo<SessionInfoRoute> { inclusive = true } } },
         )
     }
     SessionInfoScreen(
@@ -411,11 +440,30 @@ private fun SessionInfoRouteScreen(graph: AppGraph, id: String, nav: NavHostCont
         agentState = agentState,
         machine = machine,
         continuationExperiments = settings.expResumeSession,
-        devMode = BuildConfig.DEBUG || local.devModeEnabled,
+        debugBuild = BuildConfig.DEBUG,
         controls = services.infoControls,
         continuations = services.continuations,
         actions = actions,
+        live = live,
     )
+}
+
+/**
+ * info.tsx's exit after an archive or delete: leave session info, then the
+ * chat behind it (`router.back()` twice), so the user lands where the chat
+ * was opened from. With a [successor] (the checkout's neighbouring tab) the
+ * chat is replaced by it instead. Opened from anywhere but its chat (the
+ * home menu's Details), only session info goes, and a successor opens on top.
+ */
+internal fun NavHostController.leaveSessionInfo(sessionId: String, successor: String?, openSession: (String) -> Unit) {
+    popBackStack()
+    val top = currentBackStackEntry
+    val chatBehind = top?.destination?.hasRoute<SessionRoute>() == true && top.toRoute<SessionRoute>().id == sessionId
+    when {
+        successor != null && chatBehind -> navigate(SessionRoute(successor)) { popUpTo<SessionRoute> { inclusive = true } }
+        successor != null -> openSession(successor)
+        chatBehind -> popBackStack()
+    }
 }
 
 /** The synced avatar settings, for every avatar under [content]. */
@@ -700,7 +748,8 @@ private data class SessionMenuStrings(
     val success: String,
 )
 
-private val prettyJson = Json(HappyJson) { prettyPrint = true }
+/** JSON.stringify(value, null, 2). */
+private val prettyJson = Json(HappyJson) { prettyPrint = true; prettyPrintIndent = "  " }
 
 internal fun copyToClipboard(context: Context, text: String) {
     val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

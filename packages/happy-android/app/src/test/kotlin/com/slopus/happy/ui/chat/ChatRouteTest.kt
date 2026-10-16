@@ -23,6 +23,7 @@ import com.slopus.happy.data.SessionRecord
 import com.slopus.happy.sync.SpawnSessionResult
 import com.slopus.happy.testing.SoftwareKeys
 import com.slopus.happy.ui.PHONE
+import com.slopus.happy.ui.home.HomeServices
 import com.slopus.happy.ui.node
 import com.slopus.happy.ui.setHappyContent
 import org.junit.Assert.assertEquals
@@ -120,6 +121,13 @@ class ChatRouteTest {
         rule.onNodeWithText("Not sent: HTTP 500").assertExists()
         rule.node(MessageTags.USER_RETRY).assertExists()
         rule.node(MessageTags.USER_DISCARD).assertExists()
+    }
+
+    // useSessionVisibility: the open chat is the viewed session.
+    @Test
+    fun theOpenChatIsViewed() {
+        open("s1")
+        rule.waitUntil(5_000) { HomeServices.of(graph).reads.viewingSessionId.value == "s1" }
     }
 
     @Test

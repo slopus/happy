@@ -136,7 +136,9 @@ class MachineScreenTest {
     fun recentSessionsOpenTheirChat() {
         val sessions = (1..7).map { i ->
             session("s$i", metadata = metadata(path = "/Users/dev/p$i") { put("machineId", "m1") }).copy(updatedAt = i.toLong())
-        } + session("other", metadata = metadata { put("machineId", "m2") })
+        } + session("other", metadata = metadata { put("machineId", "m2") }) +
+            // The newest of all, but a side chat: not a session here.
+            session("side", metadata = metadata { put("machineId", "m1"); put("isSideChat", true) }).copy(updatedAt = 99)
         val recent = recentMachineSessions(sessions, "m1")
         assertEquals(listOf("s7", "s6", "s5", "s4", "s3"), recent.map { it.id })
         show(studio, recent)
