@@ -53,7 +53,7 @@ class ConfigTest {
         val settings = LocalSettings(prefs)
         assertEquals(ThemePreference.Adaptive, settings.themePreference.value)
         settings.setThemePreference(ThemePreference.Dark)
-        assertEquals("stored the way happy-app stores it", "dark", prefs.getString("themePreference", null))
+        assertTrue("stored the way happy-app stores it", prefs.getString("local-settings", null)!!.contains("\"themePreference\":\"dark\""))
         assertEquals(ThemePreference.Dark, LocalSettings(prefs).themePreference.value)
         settings.clear()
         assertEquals(ThemePreference.Adaptive, settings.themePreference.value)
