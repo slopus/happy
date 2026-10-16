@@ -1,9 +1,5 @@
 package com.slopus.happy.ui.attachments
 
-import android.graphics.BitmapFactory
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,12 +20,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,11 +31,11 @@ import com.slopus.happy.AppGraph
 import com.slopus.happy.attachments.AttachmentServices
 import com.slopus.happy.ui.components.Icon
 import com.slopus.happy.ui.components.Ionicon
+import com.slopus.happy.ui.components.RemoteImage
+import com.slopus.happy.ui.components.RemoteImageState
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -139,7 +131,6 @@ object FileMessageSpec {
     val errorSize = 24.dp
     val errorIcon = 20.dp
     val filename = happyTextStyle(fontSize = 13, weight = FontWeight.Medium)
-    const val FADE_MS = 150
 }
 
 object FileMessageTags {
@@ -154,7 +145,8 @@ object FileMessageTags {
  * rather than in a tool card (ToolView's inline attachment). Spec: 8 side
  * margins and 1 above and below; inside, padding 12/8 and 4 between the
  * picture and the name. The picture is [fileImageDisplaySize], radius 8,
- * left-aligned, cropped to fill, fading in over 150 ms once decrypted;
+ * left-aligned, cropped to fill, fading in over 150 ms once decrypted
+ * (by the shared image loader);
  * before that the space is empty. If it can't be loaded, a 24 circle in
  * surfaceHigh sits 4 in from its top right with alert-circle-outline 20 in
  * textSecondary. The name: 13 medium textSecondary, one line. Nothing at
@@ -166,24 +158,20 @@ fun FileMessageView(input: JsonElement?, modifier: Modifier = Modifier) {
     val attachments = LocalSessionAttachments.current
     val colors = HappyTheme.colors
     val (width, height) = fileImageDisplaySize(file.image)
-    val maxPixels = with(LocalDensity.current) { maxOf(width, height).roundToPx() }
-
-    var bitmap by remember(file.ref, attachments) { mutableStateOf<ImageBitmap?>(null) }
+    var bytes by remember(file.ref, attachments) { mutableStateOf<ByteArray?>(null) }
     var failed by remember(file.ref, attachments) { mutableStateOf(false) }
-    LaunchedEffect(file.ref, attachments, maxPixels) {
+    LaunchedEffect(file.ref, attachments) {
         if (attachments == null) return@LaunchedEffect
-        val bytes = try {
+        val loaded = try {
             attachments.cached(file.ref) ?: attachments.load(file.ref)
         } catch (e: CancellationException) {
             throw e
         } catch (_: Exception) {
             null
         }
-        val decoded = bytes?.let { withContext(Dispatchers.Default) { decodeSampled(it, maxPixels) } }
-        bitmap = decoded
-        failed = decoded == null
+        bytes = loaded
+        failed = loaded == null
     }
-    val alpha by animateFloatAsState(if (bitmap != null) 1f else 0f, tween(FileMessageSpec.FADE_MS), label = "file-fade")
 
     Column(
         modifier = modifier
@@ -199,15 +187,18 @@ fun FileMessageView(input: JsonElement?, modifier: Modifier = Modifier) {
                 .clip(RoundedCornerShape(FileMessageSpec.radius))
                 .testTag(FileMessageTags.IMAGE),
         ) {
-            bitmap?.let {
-                Image(
-                    bitmap = it,
+            bytes?.let {
+                // The shared loader decodes it at the displayed size, once per ref.
+                RemoteImage(
+                    model = it,
                     contentDescription = file.name,
                     contentScale = ContentScale.Crop,
-                    modifier = Modifier.size(width, height).alpha(alpha),
+                    cacheKey = "attachment:${file.ref}",
+                    modifier = Modifier.size(width, height),
+                    onState = { state -> if (state == RemoteImageState.Error) failed = true },
                 )
             }
-            if (failed && bitmap == null) {
+            if (failed) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
@@ -230,16 +221,4 @@ fun FileMessageView(input: JsonElement?, modifier: Modifier = Modifier) {
             modifier = Modifier.testTag(FileMessageTags.NAME),
         )
     }
-}
-
-/** Decodes [bytes] at [maxPixels] to twice that on the long edge. Null if they aren't an image. */
-internal fun decodeSampled(bytes: ByteArray, maxPixels: Int): ImageBitmap? {
-    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-    BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
-    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
-    var sample = 1
-    val longEdge = maxOf(bounds.outWidth, bounds.outHeight)
-    while (longEdge / (sample * 2) >= maxPixels) sample *= 2
-    val options = BitmapFactory.Options().apply { inSampleSize = sample }
-    return BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)?.asImageBitmap()
 }

@@ -142,6 +142,8 @@ fun ChatComposer(
     modifier: Modifier = Modifier,
     aborting: Boolean = false,
     middle: @Composable () -> Unit = {},
+    /** Above the input inside the panel (the attachment strip). */
+    top: @Composable () -> Unit = {},
 ) {
     val colors = HappyTheme.colors
     val hairline = with(LocalDensity.current) { 1f.toDp() }
@@ -177,6 +179,7 @@ fun ChatComposer(
                 .padding(horizontal = ComposerSpec.shellInset)
                 .padding(top = ComposerSpec.shellPaddingTop, bottom = ComposerSpec.shellPaddingBottom),
         ) {
+            top()
             Box(
                 modifier = Modifier
                     .testTag(ComposerTags.INPUT_CONTAINER)

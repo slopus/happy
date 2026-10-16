@@ -76,6 +76,7 @@ enum class Ionicon(val codepoint: Int) {
     HelpCircleOutline(0xf37e), // help-circle-outline
     HomeOutline(0xf383), // home-outline
     HourglassOutline(0xf386), // hourglass-outline
+    ImageOutline(0xf38f), // image-outline
     InformationCircle(0xf398), // information-circle
     InformationCircleOutline(0xf399), // information-circle-outline
     KeyOutline(0xf3a4), // key-outline

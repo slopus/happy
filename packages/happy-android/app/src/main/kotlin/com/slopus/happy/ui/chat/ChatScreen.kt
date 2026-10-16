@@ -45,6 +45,9 @@ import com.slopus.happy.model.compactCount
 import com.slopus.happy.model.formatPathRelativeToHome
 import com.slopus.happy.model.rigGitSummary
 import com.slopus.happy.sync.rigCanAbort
+import com.slopus.happy.ui.attachments.ComposerAddImageButton
+import com.slopus.happy.ui.attachments.ComposerAttachmentStrip
+import com.slopus.happy.ui.attachments.hasComposerImages
 import com.slopus.happy.ui.components.Avatar
 import com.slopus.happy.ui.components.AvatarBadgeLocation
 import com.slopus.happy.ui.components.Header
@@ -236,7 +239,7 @@ private fun ChatComposerFor(
     val canAbort = sessionState != SessionState.Disconnected && metadata.rigCanAbort()
     val blocked = session.isRig && state.thinking && metadata?.capabilities?.steering != true
     val primary = resolvePrimaryAction(
-        hasContent = draft.isNotBlank(),
+        hasContent = draft.isNotBlank() || hasComposerImages(),
         showAbort = showsAbort(sessionState),
         canAbort = canAbort,
         blocked = blocked,
@@ -257,6 +260,8 @@ private fun ChatComposerFor(
         modifier = Modifier
             .windowInsetsPadding(WindowInsets.navigationBars)
             .imePadding(),
+        middle = { ComposerAddImageButton() },
+        top = { ComposerAttachmentStrip() },
     )
 }
 

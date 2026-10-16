@@ -88,14 +88,10 @@ fun ItemIcon(icon: Ionicon, color: Color) {
     Icon(icon = icon, size = SettingsSpec.itemIcon, color = color)
 }
 
-/**
- * The profile avatar: generated from the account id. happy-app shows the
- * uploaded or GitHub picture by URL when there is one; this app has no URL
- * image loader yet.
- */
+/** The profile avatar: the uploaded or GitHub picture when there is one, else generated from the account id. */
 @Composable
 fun ProfileAvatar(profile: Profile, size: Dp) {
-    Avatar(id = profile.id, size = size)
+    Avatar(id = profile.id, size = size, imageUri = profile.avatarUrl)
 }
 
 /**
