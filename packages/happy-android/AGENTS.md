@@ -223,9 +223,11 @@ versions, three-state `projectId`; control hand-off refetches messages),
 `delete-session`, `new-machine` (carries its data key), `update-machine`,
 `delete-machine`, `update-account` (profile fields, settings with version;
 pending local settings stay on top), `delete-project` (resync). Projects,
-artifacts, friends, feed and KV updates are ignored until those features
-exist. Anything that cannot be applied alone (unknown session or machine)
-asks for the delta sync instead of guessing.
+artifacts, friends and feed updates are ignored until those features
+exist; KV updates are ignored because KV is unused by happy-app (nothing
+imports apiKv.ts). Anything that cannot be applied alone (unknown session
+or machine, a `new-session` body that does not decode) asks for the delta
+sync instead of guessing.
 
 **Presence** (`sync/Presence`, `account.presence`). `activity` and
 `machine-activity` ephemerals and `usage` live in memory only, never in

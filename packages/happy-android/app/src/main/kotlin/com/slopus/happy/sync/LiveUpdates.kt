@@ -87,7 +87,7 @@ class LiveUpdates(
                 projectEvents.tryEmit(Unit)
                 requestSync()
             }
-            // Artifacts, friends, feed and KV are not part of this app yet.
+            // Artifacts, friends and feed are not part of this app yet; KV is unused by happy-app.
             else -> Unit
         }
     }
