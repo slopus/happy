@@ -1,24 +1,15 @@
 package com.slopus.happy.ui.home
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.Orientation
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.draggable
-import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,23 +17,16 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -52,7 +36,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.slopus.happy.R
 import com.slopus.happy.model.FlatRowTopRight
@@ -60,7 +43,6 @@ import com.slopus.happy.model.FlatSessionRowData
 import com.slopus.happy.model.SessionRowData
 import com.slopus.happy.model.SessionState
 import com.slopus.happy.model.VisibleGitChanges
-import com.slopus.happy.model.WorkspaceOrigin
 import com.slopus.happy.model.compactCount
 import com.slopus.happy.model.resolveFlatRowPresentation
 import com.slopus.happy.model.visibleGitChanges
@@ -75,8 +57,6 @@ import com.slopus.happy.ui.theme.HappyColors
 import com.slopus.happy.ui.theme.HappyTheme
 import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
-import kotlin.math.roundToInt
 
 object FlatRowTags {
     const val ROW = "flatRow.row"
@@ -130,44 +110,6 @@ val UnreadDotColor = Color(0xFF007AFF)
 /** theme.ts gitAddedText / gitRemovedText. */
 fun gitAddedColor(colors: HappyColors) = if (colors.dark) Color(0xFF34C759) else Color(0xFF22C55E)
 fun gitRemovedColor(colors: HappyColors) = if (colors.dark) Color(0xFFFF453A) else Color(0xFFEF4444)
-
-/**
- * Called with a row's session id every time that row composes. Tests use it
- * to pin that a changed session recomposes its own row and nothing else.
- */
-val LocalHomeRowObserver = staticCompositionLocalOf<((String) -> Unit)?> { null }
-
-/** What the list's rows ask of it; one instance for the whole list, so rows skip on equal data. */
-@Immutable
-class HomeListCallbacks(
-    val onOpen: (sessionId: String) -> Unit,
-    val onMenu: (sessionId: String) -> Unit,
-    val onArchive: (sessionId: String) -> Unit,
-    val onSetArchiveHidden: (Boolean) -> Unit,
-    val onToggleProject: (projectId: String) -> Unit,
-    val onOpenMachine: (machineId: String) -> Unit,
-    val onCreateWorkspace: (WorkspaceOrigin) -> Unit,
-    val onProjectMenu: (projectName: String, origin: WorkspaceOrigin) -> Unit,
-    /** A finger landed on a session's row, before it is a tap (useSessionPressHandlers' onPressIn). */
-    val onPressDown: (sessionId: String) -> Unit = {},
-)
-
-/**
- * Reports a finger landing on a session's row to [HomeListCallbacks.onPressDown],
- * so its chat starts loading before the tap completes. It only watches: the
- * tap, long press, scroll and swipe still belong to the row's own handlers.
- */
-fun Modifier.sessionPressDown(sessionId: String?, callbacks: HomeListCallbacks): Modifier =
-    if (sessionId == null) {
-        this
-    } else {
-        pointerInput(sessionId, callbacks) {
-            awaitEachGesture {
-                awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                callbacks.onPressDown(sessionId)
-            }
-        }
-    }
 
 /**
  * One session in the flat home list: 60 avatar centred in a row padded 16
@@ -392,66 +334,5 @@ fun GitChanges(changes: VisibleGitChanges, modifier: Modifier = Modifier) {
         if (changes.approximate) Text("≈", style = FlatRowSpec.gitCount.copy(fontWeight = FontWeight.Normal), color = colors.textSecondary)
         if (changes.insertions > 0) Text("+${compactCount(changes.insertions)}", style = FlatRowSpec.gitCount, color = gitAddedColor(colors))
         if (changes.deletions > 0) Text("-${compactCount(changes.deletions)}", style = FlatRowSpec.gitCount, color = gitRemovedColor(colors))
-    }
-}
-
-/**
- * Swipeable with a right action: dragging left uncovers a 112 Archive
- * button (error red, white archive glyph over "Archive Session") and stops
- * there; it never overshoots. Releasing past half way leaves it open.
- */
-@Composable
-internal fun SwipeToArchive(
-    enabled: Boolean,
-    onArchive: () -> Unit,
-    modifier: Modifier = Modifier,
-    content: @Composable androidx.compose.foundation.layout.BoxScope.() -> Unit,
-) {
-    val colors = HappyTheme.colors
-    val actionWidth = with(LocalDensity.current) { FlatRowSpec.swipeAction.toPx() }
-    val offset = remember { Animatable(0f) }
-    val scope = rememberCoroutineScope()
-    Box(modifier = modifier.fillMaxWidth().clipToBounds()) {
-        Box(modifier = Modifier.matchParentSize(), contentAlignment = Alignment.CenterEnd) {
-            Column(
-                modifier = Modifier
-                    .width(FlatRowSpec.swipeAction)
-                    .fillMaxHeight()
-                    .testTag(FlatRowTags.ARCHIVE_ACTION)
-                    .background(colors.status.error)
-                    .clickable(enabled = enabled) {
-                        scope.launch { offset.animateTo(0f) }
-                        onArchive()
-                    },
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-            ) {
-                Icon(Ionicon.ArchiveOutline, size = FlatRowSpec.swipeIcon, color = Color.White)
-                Text(
-                    text = stringResource(R.string.session_info_archive_session),
-                    style = FlatRowSpec.swipeText,
-                    color = Color.White,
-                    textAlign = TextAlign.Center,
-                    maxLines = 2,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-        }
-        Box(
-            modifier = Modifier
-                .offset { IntOffset(offset.value.roundToInt(), 0) }
-                .draggable(
-                    enabled = enabled,
-                    orientation = Orientation.Horizontal,
-                    state = rememberDraggableState { delta ->
-                        scope.launch { offset.snapTo((offset.value + delta).coerceIn(-actionWidth, 0f)) }
-                    },
-                    onDragStopped = { velocity ->
-                        val open = offset.value < -actionWidth / 2 || velocity < -1000f
-                        offset.animateTo(if (open) -actionWidth else 0f)
-                    },
-                ),
-            content = content,
-        )
     }
 }
