@@ -23,6 +23,7 @@ import {
     type SideQuestionThread,
 } from '@/sync/sideQuestionThreads';
 import { MarkdownView } from './markdown/MarkdownView';
+import { MessageCopyButton } from './MessageView';
 import { MobileGlassSurface } from './MobileGlass';
 
 const sideQuestionThreads = createSideQuestionThreads({
@@ -205,7 +206,14 @@ function ExchangeAnswer({ exchange, sessionId }: { exchange: SideQuestionExchang
             if (state.synthetic) {
                 return <Text style={styles.mutedText}>{state.response}</Text>;
             }
-            return <MarkdownView markdown={state.response} sessionId={sessionId} />;
+            // Copies the answer alone, as `c` does in Claude Code's panel, to
+            // paste into the chat
+            return (
+                <View>
+                    <MarkdownView markdown={state.response} sessionId={sessionId} />
+                    <MessageCopyButton text={state.response} />
+                </View>
+            );
     }
 }
 

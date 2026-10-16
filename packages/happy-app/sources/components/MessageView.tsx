@@ -282,7 +282,8 @@ function AgentTextBlock(props: {
 // The glyph is deliberately small, so widen the touch target well past it.
 const COPY_HIT_SLOP = { top: 14, bottom: 14, left: 14, right: 20 };
 
-function MessageCopyButton(props: { text: string }) {
+/** Copies `text`, showing a tick for a moment. Under agent messages and side-question answers. */
+export function MessageCopyButton(props: { text: string }) {
   const { theme } = useUnistyles();
   const [copied, setCopied] = React.useState(false);
   const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
