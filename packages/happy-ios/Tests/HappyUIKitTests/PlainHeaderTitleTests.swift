@@ -54,20 +54,22 @@ final class PlainHeaderTitleTests: XCTestCase {
 
     func testItDrawsAtTheTextSize() throws {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
-        let host = UIView(frame: window.bounds)
-        host.traitOverrides.preferredContentSizeCategory = .accessibilityMedium
-        window.addSubview(host)
+        window.traitOverrides.preferredContentSizeCategory = .accessibilityMedium
+        // The title takes the screen's size, so the screen is on the window.
         let controller = UIViewController()
+        window.rootViewController = controller
+        window.isHidden = false
+        controller.updateTraitsIfNeeded()
         controller.setPlainHeaderTitle("Changes")
         let view = try titleView(controller)
-        host.addSubview(view)
-        host.updateTraitsIfNeeded()
+        controller.view.addSubview(view)
+        controller.view.updateTraitsIfNeeded()
         view.updateTraitsIfNeeded()
         for subview in view.subviews { subview.updateTraitsIfNeeded() }
         let font = view.titleLabel.attributedText?.attribute(.font, at: 0, effectiveRange: nil) as? UIFont
         XCTAssertEqual(try XCTUnwrap(font).pointSize, 16 * TextScale(.accessibilityMedium).multiplier, accuracy: 0.0001)
         XCTAssertEqual(view.frame.size, view.layout(maxWidth: NavigationTitleView.defaultMaxWidth).size)
-        withExtendedLifetime(window) {}
+        window.isHidden = true
     }
 }
 #endif

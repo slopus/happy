@@ -42,9 +42,8 @@ public final class SettingsViewController: UIViewController {
         // createPlainHeader: Header.tsx's own title, which scales, where the
         // pages under Settings get UIKit's, which doesn't.
         let titleView = NavigationTitleView(title: Strings.Settings.title)
-        titleView.traitOverrides.followsTextSize = true
         titleView.sizeToFit()
-        navigationItem.titleView = titleView
+        setScaledTitleView(titleView)
         showsBackTitle()
         dropsBackButtonOnTablet() // Tablet (HappyUI/Tablet): navigation/Header.tsx
         observation = context.account.session?.store.observeSettings { [weak self] snapshot in

@@ -56,8 +56,7 @@ public final class HomeViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = UIColor(Palette.groupedBackground)
         // OnboardingHeader's title, which scales; the rows below don't yet.
-        titleView.traitOverrides.followsTextSize = true
-        navigationItem.titleView = titleView
+        setScaledTitleView(titleView)
         showsBackTitle()
         header.isHidden = true
         header.settingsButton.addAction(UIAction { [weak self] _ in self?.openSettings() }, for: .primaryActionTriggered)
