@@ -186,3 +186,45 @@ measure UIKit. "Before" is a model of the b1247fce screens:
 | Streaming 50 tokens into a 2000-message chat (46-row window) | window, grouping and row inputs built on the main thread per update; 1 row measured; every visible cell handed its plan | 0 main-thread derivation; 1 row measured and 1 reconfigure per token; 0 for an unchanged snapshot |
 | A page of older history | — | only the added rows measured, inserted after the oldest |
 | 300-odd inputs in 340 ms, 2 ms per apply | — | at most 22 applies, each starting at least 16.67 ms after the last one ended (wall clock) |
+
+### What's New on the simulator
+
+Timed by the chat harness (`-screen whatsnew -autoscroll 4000`,
+`Harness/WhatsNewHarness.swift`) on an iPhone 17 Pro, iOS 26.5 simulator,
+Debug build, two runs each. "Before" is 8f1e2c3f: an `ItemGroupView` per
+release holding a `UITextView` per paragraph, in a list that measured every
+section on every layout pass. A "block" is the main thread's run between
+waits, timed by a run-loop observer; a hitch is a display-link interval
+over 1.5 frames. The scroll goes to the end and back at 4000 pt/s.
+
+| | Before, Large | After, Large | Before, AX-XXXL | After, AX-XXXL |
+| --- | --- | --- | --- | --- |
+| Opening (push, warm, median) | 295 ms | 14 ms | 303 ms | 14 ms |
+| Every release laid out, from the push | in the push | 48 ms, off main | in the push | 50 ms, off main |
+| Main thread per scroll frame (median) | 45.7 ms | 1.05 ms | 43.3 ms | 0.52 ms |
+| Hitches over the scroll | 255 of 258 frames | 0 of 798 | 679 of 682 | 0 of 8328 |
+| Blocks over 4.2 ms | 255 | 5 of 2550 (longest 7.7) | 679 | 7 of 25788 (longest 4.8) |
+| `UITextView` measurements per scroll frame | 132 | 0 (none left) | 132 | 0 |
+
+Built with `-O` (`SWIFT_OPTIMIZATION_LEVEL=-O`; the harness's fixtures
+are Debug only, so there is no Release harness) it is the same picture:
+the scroll frame 49.8 to 0.93 ms at Large and 46.8 to 0.73 ms at AX-XXXL,
+no hitches after (0 of 532 and 0 of 5552 frames), 5 of 1695 and 1 of 17212
+blocks over 4.2 ms (the longest 5.4 and 4.4 ms). The push stays one block
+of 13 to 14 ms; What's New's own share is about 2 ms of it (making the
+list and its empty releases, placing them), the rest UIKit's navigation and
+the title's picture.
+
+Where the time went before (`sample`, 1 ms): per scroll frame, 54% was
+`UITextView`'s own TextKit 2 viewport layout, 28% the list measuring every
+`UITextView` again through each group and card, and 18% UIKit's selection
+caret caches; opening made about 130 `UITextView`s and measured each 4
+times (512 measurements). Drawing a release's text in `draw(_:)` on main,
+the first cut of the fix, still cost 8 to 33 ms on the frame a release came
+in; `ChangelogRaster` moved that off.
+
+AX-XXXL is four times taller after: before, the paragraphs stayed at the
+designed 16 pt there (their text views never took the text size) while
+the titles and bullets grew; now every text is at RN's 3.571 multiplier.
+At Large a paragraph's line is 25, as RN lays it out, where the
+`UITextView` laid 24.
