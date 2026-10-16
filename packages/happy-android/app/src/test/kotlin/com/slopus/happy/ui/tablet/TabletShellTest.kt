@@ -3,6 +3,7 @@ package com.slopus.happy.ui.tablet
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -148,7 +149,8 @@ class TabletShellTest {
         signIn()
         waitFor(FlatRowTags.ROW)
         rule.node(FlatRowTags.ROW).performClick()
-        waitFor(ChatScreenTags.TITLE_BUTTON)
+        // The title is drawn before the session has loaded, and opens its info only after.
+        rule.waitUntilAtLeastOneExists(hasTestTag(ChatScreenTags.TITLE_BUTTON) and hasClickAction(), 5_000)
         rule.node(ChatScreenTags.TITLE_BUTTON).performClick()
         waitFor(SessionInfoTags.CHANGES)
         rule.node(FlatRowTags.ROW).assertIsSelected()
