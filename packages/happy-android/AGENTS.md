@@ -60,7 +60,9 @@ app/
   config/   server URL (survives logout), device-only settings (theme)
   data/     HappyDatabase (schema), HappyStore (typed access + change ticks)
   sync/     AccountSync (per-account owner), SyncEngine (delta sync), LiveUpdates,
-            Presence, MessageSync (history), SyncApi + UpdateTypes (wire types)
+            Presence, MessageSync (history), MessageSender (outbox), MessageMeta,
+            RpcClient + SessionOps + MachineOps (ops.ts), SessionComposer (picks
+            and drafts), HappyAgentGit, RigCapabilities, SyncApi + UpdateTypes
   net/      HappyHttp (OkHttp + kotlinx.serialization, X-Happy-Client header),
             SocketIoClient (the /v1/updates socket)
   ui/       theme, components (Item, ItemGroup, RoundButton, Header, ...), screens
@@ -71,7 +73,7 @@ app/
   model/    typed views of the stored JSON: Settings (sync/settings.ts);
             settings/ has agentDefaults.ts, local settings, SettingsRepository
   text/     Resources.plural / pluralResource, PluralExactNumbers (generated)
-tools/testvectors/   generates crypto test vectors by running happy-app's TypeScript
+tools/testvectors/   generates crypto and send vectors by running happy-app's TypeScript
 tools/translations/  generates the string resources from happy-app's catalogs
 ```
 
@@ -220,6 +222,47 @@ page on demand and returns whether the run moved back;
 `paging(sessionId)` gives `isLoaded`, `hasMoreOlder`, `isLoadingOlder`. A
 backward page that does not move the cursor ends history.
 
+**Sending** (`sync/MessageSender`, `account.sender`). `send(sessionId, text,
+meta)` builds the user record exactly as sync.ts `sendMessage` does (sentFrom
+`android`, delivery meta, `appendSystemPrompt`, the mode fields, displayText;
+`meta` is laid over it), seals it with the session key, writes it to the
+`outbox` table and returns the localId; it throws `SendException` when
+nothing was queued (session not synced, a permission mode the session's CLI
+cannot parse). The mode and delivery meta are resolved as messageMeta.ts
+does (`MessageMetaResolver`) from the composer mirror, agent defaults and
+presence. A per-session loop POSTs everything queued to
+`/v3/sessions/:id/messages` with backoff; rows go `QUEUED` → `SENDING` →
+`SENT` (stored, waiting for its echo) and are deleted when the echo is
+stored. `FAILED` (a 4xx the server will repeat, or still unsent 30 s into
+the background) waits for `retry` or `discard`. Rows survive restarts; an
+interrupted send is re-queued at start (the server dedupes on localId). The
+POST answer never moves the message cursor; it asks for a catch-up. Chat
+reads delivery state from `sender.outbox(sessionId)` / `store.outbox`. The
+record is checked byte for byte against happy-app's own `sendMessage`
+(`tools/testvectors/send.mjs` → `app/src/test/resources/happy-ts-send-vectors.json`).
+
+**Ops** (`account.sessionOps`, `account.machineOps`). ops.ts over
+`rpc-call` (params and result sealed with the session's or machine's data
+key, 50 s ack timeout) and HTTP. Session: abort, allow/deny with mode,
+allowed tools and decision, question answers, kill, archive, delete,
+switch, goal action, avatar, bash and files. Happy Agent sessions are asked
+only what they advertise (`RigCapabilities.kt`, rig.ts gates). Machine:
+spawn (incl. Happy Agent's `happy-agent-spawn`), resume with the data-key
+fallback, stop session/daemon, bash, delete, rename, Claude/Codex fork,
+duplicate and rewind points, `forkAndSpawn`, side chats. Commands throw
+`RpcException`; calls with a result type return the failure in it.
+`account.git` is Happy Agent's native Git changes (happyAgentGit.ts).
+
+**Composer** (`sync/SessionComposer`, `account.composer`). Each session's
+draft and picks (`ComposerMirror`: storage.ts's mirror fields), stored in
+the `composer` table. `setAgentModes(id, mapOf(field to value))` is ops.ts
+`sessionSetAgentModes`: applied at once and pushed with `update-metadata`
+(kept while in flight, then metadata wins). On a Happy Agent session the
+picks and text are one stamped draft written per rigComposer.ts: typing
+debounced 250 ms, picks and clears at once, one write in flight, adopt a
+remote draft stamped the same or later, restore from disk and flush on
+reconnect. `setText`, `clearDraft`, `mirrors` / `mirror(id)`.
+
 ## Settings
 
 `AppGraph.settings` (`SettingsRepository`) is the account's settings as
@@ -257,6 +300,13 @@ happy-app's encryption:
 
 ```
 cd tools/testvectors && npm install && npm run generate
+```
+
+The send vectors are generated the same way, from sync.ts's `sendMessage`
+itself; regenerate after changing it or the system prompt:
+
+```
+cd tools/testvectors && npm install && npm run generate:send
 ```
 
 ## Onboarding and connect

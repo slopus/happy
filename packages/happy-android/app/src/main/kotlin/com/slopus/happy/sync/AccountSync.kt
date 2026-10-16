@@ -99,6 +99,16 @@ class AccountSync(
         clock = clock,
     )
 
+    /** Sending and the stored outbox (sync.ts sendMessage, flushOutbox). */
+    val sender = MessageSender(
+        api, store, decoder, messages, composer,
+        isThinking = { presence.sessions.value[it]?.thinking == true },
+        scope = scope,
+        refreshSessions = ::syncNow,
+        io = io,
+        clock = clock,
+    )
+
     /** The socket's state, as Home's header shows it (homeConnectionStatus.ts). */
     val connectionStatus: StateFlow<ConnectionStatus> = socket.status
 
@@ -135,6 +145,7 @@ class AccountSync(
         scope.launch {
             foreground.drop(1).collect { active ->
                 socket.emit("app-state", appState(active))
+                sender.setForeground(active)
                 if (active) {
                     socket.reconnectNow()
                     requestSync()
@@ -143,6 +154,8 @@ class AccountSync(
             }
         }
         composer.start()
+        sender.setForeground(foreground.value)
+        scope.launch { sender.resume() }
         socket.connect()
         deltaSync.invalidate()
     }
@@ -168,6 +181,7 @@ class AccountSync(
         deltaSync.invalidate()
         messages.invalidateViewing()
         scope.launch { composer.flushAhead() }
+        scope.launch { sender.resume() }
     }
 
     /** Read at every connect, so a reconnect in the background does not claim the app is active. */
