@@ -1,15 +1,15 @@
 package com.slopus.happy.ui.onboarding
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
@@ -32,6 +32,8 @@ import com.slopus.happy.ui.troubleshoot.TroubleshootSession
 import com.slopus.happy.ui.troubleshoot.buildOfflineMachineTroubleshooting
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 
@@ -81,38 +83,56 @@ fun NavGraphBuilder.onboardingRoutes(
  * restore/index.tsx: registers a link request, shows its QR code and waits
  * for the other phone. Approval signs in, which replaces the signed-out
  * screens with home (happy-app's `router.dismissTo('/')`). A failure is an
- * alert and leaves the spinner, as in happy-app.
+ * alert and leaves the spinner, as in happy-app. The request lives as long
+ * as the screen is on the back stack ([RestoreLink]): "Use secret key"
+ * covers it without ending the wait, so an approval made meanwhile still
+ * signs in.
  */
 @Composable
 private fun Restore(graph: AppGraph, nav: NavHostController) {
-    val request = remember { AccountLinkRequest(graph.authApi) }
-    var ready by remember { mutableStateOf(false) }
-    var alert by remember { mutableStateOf<Alert?>(null) }
+    val link = viewModel { RestoreLink(graph) }
+    val ready by link.ready.collectAsStateWithLifecycle()
+    val failedNow by link.failed.collectAsStateWithLifecycle()
     val failed = Alert(
         stringResource(R.string.common_error),
         stringResource(R.string.errors_authentication_failed),
         listOf(AlertButton(stringResource(R.string.common_ok))),
     )
-    LaunchedEffect(request) {
-        try {
-            request.start()
-            ready = true
-            val linked = request.awaitApproval()
-            if (linked != null) graph.auth.signIn(linked.token, linked.secret) else alert = failed
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Exception) {
-            alert = failed
-        } finally {
-            ready = false
-        }
-    }
     RestoreScreen(
-        qrUrl = request.url.takeIf { ready },
+        qrUrl = link.request.url.takeIf { ready },
         onBack = { nav.popBackStack() },
         onUseSecretKey = { nav.navigate(RestoreManualRoute) },
     )
-    alert?.let { HappyAlert(it, onDismiss = { alert = null }) }
+    if (failedNow) HappyAlert(failed, onDismiss = { link.failed.value = false })
+}
+
+/**
+ * [Restore]'s link request and its wait, kept by the Restore back stack
+ * entry: expo-router leaves restore/index mounted under restore/manual, and
+ * a covered Compose destination would otherwise drop both. Popping the
+ * screen cancels the wait.
+ */
+internal class RestoreLink(graph: AppGraph) : ViewModel() {
+    val request = AccountLinkRequest(graph.authApi)
+    val ready = MutableStateFlow(false)
+    val failed = MutableStateFlow(false)
+
+    init {
+        viewModelScope.launch {
+            try {
+                request.start()
+                ready.value = true
+                val linked = request.awaitApproval()
+                if (linked != null) graph.auth.signIn(linked.token, linked.secret) else failed.value = true
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                failed.value = true
+            } finally {
+                ready.value = false
+            }
+        }
+    }
 }
 
 private data class TroubleshootInput(val computers: List<TroubleshootComputer>, val sessions: List<TroubleshootSession>)
