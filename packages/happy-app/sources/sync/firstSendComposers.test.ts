@@ -147,8 +147,8 @@ describe('chat composer callback boundary', () => {
             sessionId: 'original-session', composerHandleRef: { current: composer },
             sendingSessionsRef: { current: new Set() }, currentSessionIdRef: { current: 'original-session' as string | null },
             selectedImages: [{ id: 'image' }], removeImage: vi.fn(), pendingCommunications: [{ id: 'question', kind: 'question' }],
-            sessionCancelCommunication: vi.fn(), sync: { sendMessage: vi.fn() },
-            supportsSideQuestions, parseSideQuestionCommand, openSideQuestion: vi.fn(),
+            sessionCancelCommunication: vi.fn(), sync: { sendMessage: vi.fn(), showLocalNotice: vi.fn() },
+            supportsSideQuestions, parseSideQuestionCommand, openSideQuestion: vi.fn(), t: (key: string) => key,
         };
         return { scope, composer, session, send: callbackAt(chatScreen, sendCallback, scope) as () => void };
     }
@@ -160,6 +160,18 @@ describe('chat composer callback boundary', () => {
         });
         send();
         expect(scope.openSideQuestion).toHaveBeenCalledWith('original-session', 'what changed?');
+        expect(composer.clearMessage).toHaveBeenCalledOnce();
+        expect(scope.sync.sendMessage).not.toHaveBeenCalled();
+    });
+
+    it('answers a bare /btw with its usage, as Claude Code does, without opening the panel', () => {
+        const { scope, composer, send } = chatBoundary({
+            message: '/btw',
+            metadata: { path: '/project', host: 'localhost', flavor: 'claude' },
+        });
+        send();
+        expect(scope.sync.showLocalNotice).toHaveBeenCalledWith('original-session', 'sideQuestion.usage');
+        expect(scope.openSideQuestion).not.toHaveBeenCalled();
         expect(composer.clearMessage).toHaveBeenCalledOnce();
         expect(scope.sync.sendMessage).not.toHaveBeenCalled();
     });

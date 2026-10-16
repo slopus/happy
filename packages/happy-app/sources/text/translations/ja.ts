@@ -718,8 +718,8 @@ export const ja: TranslationStructure = {
 
     sideQuestion: {
         title: 'サイド質問',
+        usage: '使い方: /btw <質問>',
         subtitle: 'このチャットの内容をもとに回答します — ここでのやり取りはチャットに追加されません。',
-        placeholder: 'このチャットについて質問…',
         followUpPlaceholder: '続けて質問…',
         send: '質問する',
         close: '閉じる',

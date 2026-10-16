@@ -715,8 +715,8 @@ export const it: TranslationStructure = {
 
     sideQuestion: {
         title: 'Domanda a margine',
+        usage: 'Uso: /btw <la tua domanda>',
         subtitle: 'Risposta basata su questa chat — nulla di qui viene aggiunto alla conversazione.',
-        placeholder: 'Chiedi qualcosa su questa chat…',
         followUpPlaceholder: 'Fai un’altra domanda…',
         send: 'Chiedi',
         close: 'Chiudi',

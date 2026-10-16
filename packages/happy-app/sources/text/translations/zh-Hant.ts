@@ -717,8 +717,8 @@ export const zhHant: TranslationStructure = {
 
     sideQuestion: {
         title: '順便提問',
+        usage: '用法：/btw <你的問題>',
         subtitle: '根據此聊天作答——這裡的內容不會加入對話。',
-        placeholder: '詢問關於此聊天的問題…',
         followUpPlaceholder: '繼續追問…',
         send: '提問',
         close: '關閉',

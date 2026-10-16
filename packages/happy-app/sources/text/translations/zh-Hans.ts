@@ -718,8 +718,8 @@ export const zhHans: TranslationStructure = {
 
     sideQuestion: {
         title: '顺便提问',
+        usage: '用法：/btw <你的问题>',
         subtitle: '基于此聊天作答——这里的内容不会加入对话。',
-        placeholder: '询问关于此聊天的问题…',
         followUpPlaceholder: '继续追问…',
         send: '提问',
         close: '关闭',

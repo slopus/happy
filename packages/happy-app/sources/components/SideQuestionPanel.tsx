@@ -31,9 +31,9 @@ const sideQuestionThreads = createSideQuestionThreads({
 });
 
 /**
- * `/btw` in a chat: shows the chat's side thread and asks `question` in it; an
- * empty question only opens it, ready to type one. The thread stays until its
- * panel is closed, whatever screens the user visits in between.
+ * `/btw <question>` in a chat: shows the chat's side thread and asks
+ * `question` in it. The thread stays until its panel is closed, whatever
+ * screens the user visits in between.
  */
 export const openSideQuestion = sideQuestionThreads.open;
 
@@ -77,7 +77,6 @@ function SideQuestionPanelView({ sessionId, top, thread }: {
     const keyboard = useKeyboardState();
     const [room, setRoom] = React.useState(0);
     const scrollRef = React.useRef<ScrollView>(null);
-    const inputRef = React.useRef<TextInput>(null);
     const hasScrolled = React.useRef(false);
 
     // The keyboard rises over the screen rather than shrinking it, so the
@@ -89,15 +88,6 @@ function SideQuestionPanelView({ sessionId, top, thread }: {
         const height = Math.round(event.nativeEvent.layout.height);
         setRoom((current) => (current === height ? current : height));
     }, []);
-
-    // Only a bare `/btw` takes the keyboard. Coming back to the chat must not
-    // pull it away from the composer.
-    React.useEffect(() => {
-        if (thread.wantsFocus) {
-            inputRef.current?.focus();
-            sideQuestionThreads.focused(sessionId);
-        }
-    }, [thread.wantsFocus, sessionId]);
 
     const handleContentSizeChange = React.useCallback(() => {
         // A thread shown again on the way back starts at its latest answer
@@ -165,11 +155,10 @@ function SideQuestionPanelView({ sessionId, top, thread }: {
 
                     <View style={styles.composer}>
                         <TextInput
-                            ref={inputRef}
                             style={styles.input}
                             value={thread.draft}
                             onChangeText={handleChangeDraft}
-                            placeholder={thread.exchanges.length > 0 ? t('sideQuestion.followUpPlaceholder') : t('sideQuestion.placeholder')}
+                            placeholder={t('sideQuestion.followUpPlaceholder')}
                             placeholderTextColor={theme.colors.input.placeholder}
                             returnKeyType="send"
                             submitBehavior="submit"

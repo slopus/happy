@@ -733,8 +733,8 @@ export const pl: TranslationStructure = {
 
     sideQuestion: {
         title: 'Pytanie na boku',
+        usage: 'Użycie: /btw <twoje pytanie>',
         subtitle: 'Odpowiedź na podstawie tego czatu — nic z tego nie trafi do rozmowy.',
-        placeholder: 'Zapytaj o ten czat…',
         followUpPlaceholder: 'Zadaj pytanie uzupełniające…',
         send: 'Zapytaj',
         close: 'Zamknij',
