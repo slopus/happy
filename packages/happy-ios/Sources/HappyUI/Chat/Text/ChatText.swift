@@ -40,7 +40,8 @@ extension ChatTextStyle {
     /// Like `TextStyle.attributes`: a fixed line height centres the glyphs in
     /// the line the way React Native does. In an `environment`, the size and
     /// the line height grow by RN's multiplier and the kern stays as given
-    /// (`scaled(_:)`); `font` is then the caller's font at that size.
+    /// (`scaled(_:)`); `font` is then the caller's font at that size, and the
+    /// text carries its screen's pixels (`chatDisplayScale`).
     func attributes(
         color: UIColor, font: UIFont? = nil, alignment: NSTextAlignment = .natural, lineBreakMode: NSLineBreakMode = .byWordWrapping,
         in environment: TextEnvironment? = nil
@@ -57,6 +58,7 @@ extension ChatTextStyle {
             attributes[.baselineOffset] = (lineHeight - font.lineHeight) / 4
         }
         if style.letterSpacing != 0 { attributes[.kern] = style.letterSpacing }
+        if let environment { attributes[.chatDisplayScale] = environment.displayScale }
         return attributes
     }
 
@@ -104,6 +106,10 @@ extension NSAttributedString.Key {
     /// A tappable http(s) link's URL. Not `.link`: that one makes TextKit
     /// recolour the run.
     static let chatLink = NSAttributedString.Key("HappyChatLink")
+    /// The pixels per point of the screen text made at a text size is drawn
+    /// on (`TextEnvironment.displayScale`), so `ChatTextLayout` rounds its
+    /// box up to that screen's pixels. TextKit ignores it.
+    static let chatDisplayScale = NSAttributedString.Key("HappyChatDisplayScale")
 }
 
 /// Text laid out once at one width and then only drawn.
@@ -115,7 +121,9 @@ final class ChatTextLayout: @unchecked Sendable {
     /// The width the text was wrapped at.
     let width: CGFloat
     let maxLines: Int
-    /// The used size, rounded up to whole points.
+    /// The used size, rounded up to the screen's pixels as React Native
+    /// rounds a Text's box, or to whole points for text made at the
+    /// designed size, which says no screen (`chatDisplayScale`).
     let size: CGSize
     let string: NSAttributedString
     private let manager: NSLayoutManager
@@ -139,7 +147,8 @@ final class ChatTextLayout: @unchecked Sendable {
         } else {
             manager.ensureLayout(for: container)
             let used = manager.usedRect(for: container)
-            size = CGSize(width: min(ceil(used.width), max(0, width)), height: ceil(used.height))
+            let scale = string.attribute(.chatDisplayScale, at: 0, effectiveRange: nil) as? CGFloat ?? 0
+            size = CGSize(width: min(PixelGrid.ceil(used.width, scale: scale), max(0, width)), height: PixelGrid.ceil(used.height, scale: scale))
         }
     }
 

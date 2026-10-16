@@ -297,9 +297,12 @@ Following now:
     state) is measured on the main thread when it lays out, as it was at
     the designed size, and made again when the size changes; its 72 glyph
     stays.
-  - Difference: a row's text box is ceiled to whole points
-    (`ChatTextLayout`), where RN ceils it to the screen's pixels, so a
-    text can be up to ⅔ pt taller here on a 3x screen, at every size.
+  - A text box ends on the screen's next pixel, as RN's does
+    (`ChatTextLayout`, `PixelGrid.ceil`): the screen's scale comes with
+    the text size (`TextEnvironment.displayScale`) on every string made at
+    it. Text made at the designed size names no screen and still ends on
+    the next whole point (the header, the bars over the composer, the
+    question sheet, the copy menu).
   - Tested on Linux: the layouts at XS, the default, XXXL, AX-M and
     AX-XXXL (`ChatTextSizeLayoutTests`), the changesets
     (`ApplyPerfChatTextSizeTests`) and the reading place. UIKit tests
@@ -466,6 +469,6 @@ past; in the 42 row it is cut by the middle box, as RN's
     at M: 120 in 120) is checked as scrolling with its content as tall as
     the view, as RN scrolls from the cap (`MultiTextInputLayout`).
   - Thai, Devanagari and Korean join the texts, under the same checks.
-- Measured text boxes ceil to pixels as RN's do (the chat's still ceil to
-  whole points).
+- Measured text boxes ceil to pixels as RN's do (the chat's text at the
+  designed size still ceils to whole points).
 - Fonts made outside `TextStyle` (session info's duplicate sheet).

@@ -179,23 +179,55 @@ final class ChatRowsTextSizeTests: XCTestCase {
     // MARK: Plans
 
     /// RN's multiplier at the designed size is 1: planned in an
-    /// environment there, every row is what it was planned without one.
-    func testAtTheDesignedSizeEveryRowIsAsItWas() {
+    /// environment there, every row has the fonts and glyphs it had without
+    /// one. Its text boxes end on the screen's pixels, not the next point,
+    /// so no box is taller and none is a point shorter.
+    func testAtTheDesignedSizeEveryRowIsAsItWasToThePixel() {
         for scale: CGFloat in [2, 3] {
             for (designed, large) in zip(rows(.designed), rows(text(.large, scale: scale))) {
                 let before = ChatRowRenderer.plan(designed.input, width: width)
                 let after = ChatRowRenderer.plan(large.input, width: width)
                 let at = "\(large.name) @\(scale)x"
-                XCTAssertEqual(after.size, before.size, at)
+                XCTAssertEqual(after.size.width, before.size.width, at)
+                XCTAssertLessThanOrEqual(after.size.height, before.size.height + 0.001, at)
                 let was = drawn(before)
                 let now = drawn(after)
-                XCTAssertEqual(now.texts.map(\.frame), was.texts.map(\.frame), at)
+                XCTAssertEqual(now.texts.count, was.texts.count, at)
+                for (text, before) in zip(now.texts, was.texts) {
+                    XCTAssertLessThanOrEqual(text.layout.size.height, before.layout.size.height, at)
+                    XCTAssertGreaterThan(text.layout.size.height, before.layout.size.height - 1, at)
+                }
                 XCTAssertEqual(now.texts.map { fonts($0.layout.string) }, was.texts.map { fonts($0.layout.string) }, at)
                 XCTAssertEqual(now.icons, was.icons, at)
             }
         }
         let footer = ChatRowRenderer.footer(controlledByUser: true, width: width, in: environment(.large))
-        XCTAssertEqual(footer.size, ChatRowRenderer.footer(controlledByUser: true, width: width, in: nil).size)
+        XCTAssertEqual(footer.size.width, ChatRowRenderer.footer(controlledByUser: true, width: width, in: nil).size.width)
+    }
+
+    /// Every text box ends on its screen's next pixel, as RN ceils a Text's
+    /// box: within a pixel of TextKit's own, where whole points would add
+    /// up to a point.
+    func testEveryTextBoxEndsOnTheScreensPixels() {
+        for category in [UIContentSizeCategory.large, .accessibilityExtraExtraExtraLarge] {
+            for scale: CGFloat in [2, 3] {
+                for row in rows(text(category, scale: scale)) {
+                    let at = "\(row.name) at \(category.rawValue) @\(scale)x"
+                    for text in drawn(ChatRowRenderer.plan(row.input, width: width)).texts {
+                        let size = text.layout.size
+                        XCTAssertEqual((size.height * scale).rounded(), size.height * scale, accuracy: 0.0001, at)
+                        XCTAssertEqual((size.width * scale).rounded(), size.width * scale, accuracy: 0.0001, at)
+                        // The same text with no screen is rounded to points.
+                        let points = NSMutableAttributedString(attributedString: text.layout.string)
+                        points.removeAttribute(.chatDisplayScale, range: NSRange(location: 0, length: points.length))
+                        let whole = ChatTextLayout(points, width: text.layout.width, maxLines: text.layout.maxLines).size
+                        XCTAssertEqual(whole.height, whole.height.rounded(), at)
+                        XCTAssertLessThanOrEqual(size.height, whole.height, at)
+                        XCTAssertGreaterThan(size.height, whole.height - 1, at)
+                    }
+                }
+            }
+        }
     }
 
     /// At every size, every row's text is its designed text at RN's
