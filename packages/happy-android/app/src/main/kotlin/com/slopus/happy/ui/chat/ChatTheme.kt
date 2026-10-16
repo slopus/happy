@@ -83,7 +83,8 @@ val DarkChatColors = ChatColors(
     selectedBackground = c(0x1C1C1E), selectedBorder = c(0x38383A), selectedText = c(0xFFFFFF),
     terminalBackground = c(0x1E1E1E), terminalPrompt = c(0x32D74B), terminalStdout = c(0xE0E0E0), terminalStderr = c(0xFFB86C),
     radioActive = c(0x0A84FF), radioInactive = c(0x48484A),
-    glassBorder = Color(0x2EFFFFFF),
+    // glass.border, rgba(255, 255, 255, 0.14).
+    glassBorder = Color(0x24FFFFFF),
     gitAdded = c(0x34C759), gitRemoved = c(0xFF453A),
 )
 
