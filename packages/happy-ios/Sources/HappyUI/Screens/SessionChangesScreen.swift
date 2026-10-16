@@ -9,6 +9,9 @@ import UIKit
 /// the session's changes as one scrolling diff. A Happy Agent session
 /// compares its workspace with the branch base (HappyAgentDiffView); a CLI
 /// session shows its uncommitted files from git status.
+///
+/// Follows the person's text size: the list measures its sections at it
+/// off the main thread and keeps the reader's place when it changes.
 final class SessionChangesViewController: UIViewController {
     private let context: AppContext
     private let session: AccountSession
@@ -47,6 +50,7 @@ final class SessionChangesViewController: UIViewController {
         self.sessionId = sessionId
         list = DiffFilesListView(render: RenderServices(session))
         super.init(nibName: nil, bundle: nil)
+        followsTextSize()
         setPlainHeaderTitle(Strings.ChangesDetail.title)
     }
 

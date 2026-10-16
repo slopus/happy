@@ -29,6 +29,8 @@ final class DiffFilePlan: @unchecked Sendable {
     let rows: [DiffRow]
     let hiddenCount: Int
     let options: DiffViewOptions
+    /// The text size it was measured at; nil is the designed size.
+    let text: TextEnvironment?
     let metrics: DiffMetrics
     let layout: DiffFileLayout
     let expanded: Bool
@@ -54,21 +56,25 @@ final class DiffFilePlan: @unchecked Sendable {
     /// Plans for one screen share a deadline, as happy-app's rows reveal
     /// together; nil plans no colour, as a measurement pass does.
     /// `syntax` is the account's: its cache, its background queue.
+    /// `text` is the text size the view draws at (its traits'
+    /// `textEnvironment`); nil, the designed size.
     init(
         file: DiffFile,
         width: CGFloat,
         syntax: DiffSyntaxService,
         options: DiffViewOptions = DiffViewOptions(),
         expanded: Bool = false,
-        syntaxDeadline: ContinuousClock.Instant? = DiffFilePlan.syntaxDeadline()
+        syntaxDeadline: ContinuousClock.Instant? = DiffFilePlan.syntaxDeadline(),
+        text: TextEnvironment? = nil
     ) {
         let selection = DiffRowSelection.select(file.rows, showHunkHeaders: options.showHunkHeaders, expanded: expanded, collapseAfter: options.collapseAfter)
-        let metrics = DiffStyle.metrics(fontSize: options.fontSize)
+        let metrics = DiffStyle.metrics(fontSize: options.fontSize, text: text)
         self.file = file
         rows = syntaxDeadline.map { syntax.colour(file, displayed: selection.rows, until: $0) } ?? selection.rows
         hiddenCount = selection.hiddenCount
         expansionNeedsSyntax = syntaxDeadline != nil && selection.hiddenCount > 0 && syntax.isMissing(file, rows: file.rows)
         self.options = options
+        self.text = text
         self.metrics = metrics
         self.expanded = expanded
         layout = DiffFileLayout(.init(
@@ -80,7 +86,7 @@ final class DiffFilePlan: @unchecked Sendable {
             maxLineNo: file.maxLineNo,
             showLineNumbers: options.showLineNumbers,
             paddingVertical: options.paddingVertical,
-            showMoreTextHeight: DiffStyle.lineHeight(DiffTextStyles.showMore)
+            showMoreTextHeight: DiffStyle.lineHeight(DiffTextStyles.showMore.scaled(metrics.scale))
         ))
     }
 
@@ -165,6 +171,7 @@ final class DiffFileView: UIView, UIScrollViewDelegate, UIGestureRecognizerDeleg
         shownRows = 0..<0
         if !keepOffset { scrollView.contentOffset = .zero }
         showMore.text = Strings.DiffDetail.showMoreLines(plan.hiddenCount)
+        showMore.textStyle = DiffTextStyles.showMore.scaled(plan.metrics.scale)
         setNeedsLayout()
     }
 
@@ -527,11 +534,20 @@ private final class DiffTextDrawingView: UIView {
 }
 
 /// DiffFileView.tsx's "Show N more lines": a 1pt divider over a `hunkBg`
-/// bar, semibold 13 centred.
+/// bar, semibold 13 centred. It draws at its plan's text size, not its
+/// traits', so a size change redraws it with the plan that measured it.
 final class DiffShowMoreBar: UIControl {
     var text = "" {
         didSet {
             label.string = text
+            setNeedsLayout()
+        }
+    }
+
+    /// The plan's style, already scaled.
+    var textStyle = DiffTextStyles.showMore {
+        didSet {
+            label.style = textStyle
             setNeedsLayout()
         }
     }
@@ -566,6 +582,7 @@ final class DiffShowMoreBar: UIControl {
         border.backgroundColor = UIColor(DiffStyle.divider)
         border.isUserInteractionEnabled = false
         label.isUserInteractionEnabled = false
+        label.traitOverrides.followsTextSize = false
         spinner.color = UIColor(DiffStyle.hunkText)
         spinner.isHidden = true
         spinner.isUserInteractionEnabled = false

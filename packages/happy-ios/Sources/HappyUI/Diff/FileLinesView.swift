@@ -4,8 +4,9 @@ import HappyCore
 import HappyLayout
 import UIKit
 
-/// The file viewer's content measured for one width: each line's text,
-/// colours and wrapped height. Built away from the main thread.
+/// The file viewer's content measured for one width and text size: each
+/// line's text, colours and wrapped height. Built away from the main
+/// thread.
 final class FileLinesPlan: @unchecked Sendable {
     enum Source: Equatable, Sendable {
         /// DiffDisplay over `git diff` output.
@@ -23,6 +24,8 @@ final class FileLinesPlan: @unchecked Sendable {
     let source: Source
     let width: CGFloat
     let maxWidth: CGFloat
+    /// The text size it was measured at; nil is the designed size.
+    let text: TextEnvironment?
     let rows: [Row]
     let layout: FileLinesLayout
     /// The code is drawn plain while the account's syntax colours it; plan
@@ -30,16 +33,20 @@ final class FileLinesPlan: @unchecked Sendable {
     let syntaxPending: Bool
 
     /// `syntax`: the account's code colour. A file past its limits stays
-    /// plain.
-    init(source: Source, width: CGFloat, maxWidth: CGFloat, syntax: CodeSyntaxService) {
+    /// plain. `text` is the text size the screen draws at (nil, the
+    /// designed size): the mono 14 on its 20 line grow with it, the
+    /// paddings and the diff's bar keep their size.
+    init(source: Source, width: CGFloat, maxWidth: CGFloat, syntax: CodeSyntaxService, text: TextEnvironment? = nil) {
         self.source = source
         self.width = width
         self.maxWidth = maxWidth
+        self.text = text
+        let styles = Styles(text)
         let insets: FileLinesLayout.RowInsets
         switch source {
         case .diff(let diff):
             insets = .diff
-            rows = FileViewer.diffLines(diff).map { Self.diffRow($0.text, $0.kind) }
+            rows = FileViewer.diffLines(diff).map { Self.diffRow($0.text, $0.kind, styles: styles) }
             syntaxPending = false
         case .code(let content, let language):
             insets = .code
@@ -50,19 +57,37 @@ final class FileLinesPlan: @unchecked Sendable {
             } else {
                 tokens = [SyntaxToken(content, .plain)]
             }
-            rows = FileViewer.codeLines(tokens).map { Row(text: Self.codeText($0)) }
+            rows = FileViewer.codeLines(tokens).map { Row(text: Self.codeText($0, styles: styles)) }
             syntaxPending = outcome == .pending
         }
         let plain = FileLinesLayout.textWidth(width: width, maxWidth: maxWidth, insets: insets, bar: false)
         let barred = FileLinesLayout.textWidth(width: width, maxWidth: maxWidth, insets: insets, bar: true)
-        let heights = rows.map { Self.height($0.text, width: $0.bar == nil ? plain : barred) }
+        let heights = rows.map { Self.height($0.text, width: $0.bar == nil ? plain : barred, styles: styles) }
         layout = FileLinesLayout(width: width, maxWidth: maxWidth, insets: insets, textHeights: heights, bars: rows.map { $0.bar != nil })
     }
 
     // MARK: Rows
 
+    /// The two faces at the plan's text size, their line and their advance.
+    private struct Styles {
+        let code: TextStyle
+        let codeBold: TextStyle
+        let line: CGFloat
+        let advance: CGFloat?
+        let displayScale: CGFloat
+
+        init(_ text: TextEnvironment?) {
+            let scale = DiffStyle.textScale(text)
+            code = FileViewerTextStyles.code.scaled(scale)
+            codeBold = FileViewerTextStyles.codeBold.scaled(scale)
+            line = code.lineHeightValue
+            advance = FileLinesPlan.advance(code, codeBold)
+            displayScale = text?.displayScale ?? 0
+        }
+    }
+
     /// DiffDisplay's colours by line.
-    private static func diffRow(_ text: String, _ kind: FileViewer.DiffLineKind) -> Row {
+    private static func diffRow(_ text: String, _ kind: FileViewer.DiffLineKind, styles: Styles) -> Row {
         let color: ColorToken
         var background: ColorToken?
         var bar: ColorToken?
@@ -83,14 +108,14 @@ final class FileLinesPlan: @unchecked Sendable {
         case .context:
             color = DiffPalette.contextText
         }
-        let style = kind.isBold ? FileViewerTextStyles.codeBold : FileViewerTextStyles.code
+        let style = kind.isBold ? styles.codeBold : styles.code
         return Row(text: style.attributedString(text, color: UIColor(color)), background: background, bar: bar)
     }
 
-    private static func codeText(_ tokens: [SyntaxToken]) -> NSAttributedString {
+    private static func codeText(_ tokens: [SyntaxToken], styles: Styles) -> NSAttributedString {
         let result = NSMutableAttributedString()
         for token in tokens {
-            let style = token.isBold ? FileViewerTextStyles.codeBold : FileViewerTextStyles.code
+            let style = token.isBold ? styles.codeBold : styles.code
             result.append(style.attributedString(token.text, color: UIColor(FileSyntax.color(token))))
         }
         return result
@@ -98,33 +123,39 @@ final class FileLinesPlan: @unchecked Sendable {
 
     // MARK: Measuring
 
-    private static let lineHeight = FileViewerTextStyles.code.lineHeightValue
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var advances: [CGFloat: CGFloat?] = [:]
 
-    /// The mono advance, when the regular and semibold faces share it;
-    /// lines of plain ASCII that clearly fit then skip measuring.
-    private static let advance: CGFloat? = {
+    /// The mono advance at a size, when the regular and semibold faces
+    /// share it; lines of plain ASCII that clearly fit then skip measuring.
+    /// Measured once per size.
+    private static func advance(_ code: TextStyle, _ codeBold: TextStyle) -> CGFloat? {
+        lock.lock()
+        if let advance = advances[code.size] {
+            lock.unlock()
+            return advance
+        }
+        lock.unlock()
         let sample = String(repeating: "M", count: 50) as NSString
-        let regular = sample.size(withAttributes: [.font: FileViewerTextStyles.code.font]).width / 50
-        let bold = sample.size(withAttributes: [.font: FileViewerTextStyles.codeBold.font]).width / 50
-        return regular > 0 && abs(regular - bold) < 0.001 ? regular : nil
-    }()
-
-    /// A line's height wrapped at `width`: whole 20pt lines, one at least.
-    private static func height(_ text: NSAttributedString, width: CGFloat) -> CGFloat {
-        guard text.length > 0 else { return lineHeight }
-        if let advance, fitsOneLine(text.string, advance: advance, width: width) { return lineHeight }
-        let rect = text.boundingRect(with: CGSize(width: max(1, width), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin], context: nil)
-        return max(lineHeight, ceil(rect.height))
+        let regular = sample.size(withAttributes: [.font: code.font]).width / 50
+        let bold = sample.size(withAttributes: [.font: codeBold.font]).width / 50
+        let advance: CGFloat? = regular > 0 && abs(regular - bold) < 0.001 ? regular : nil
+        lock.lock()
+        advances[code.size] = advance
+        lock.unlock()
+        return advance
     }
 
-    /// Printable ASCII a character short of the width can't wrap.
-    private static func fitsOneLine(_ string: String, advance: CGFloat, width: CGFloat) -> Bool {
-        var count = 0
-        for unit in string.utf16 {
-            guard unit >= 0x20, unit < 0x7F else { return false }
-            count += 1
+    /// A line's height wrapped at `width`: whole lines, one at least, up
+    /// to the screen's next pixel.
+    private static func height(_ text: NSAttributedString, width: CGFloat, styles: Styles) -> CGFloat {
+        func box(_ measured: CGFloat) -> CGFloat {
+            FileLinesLayout.textHeight(measured: measured, line: styles.line, displayScale: styles.displayScale)
         }
-        return CGFloat(count + 1) * advance <= width
+        guard text.length > 0 else { return box(0) }
+        if let advance = styles.advance, FileLinesLayout.fitsOneLine(text.string, advance: advance, width: width) { return box(0) }
+        let rect = text.boundingRect(with: CGSize(width: max(1, width), height: .greatestFiniteMagnitude), options: [.usesLineFragmentOrigin], context: nil)
+        return box(rect.height)
     }
 }
 
