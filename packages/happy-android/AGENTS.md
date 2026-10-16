@@ -528,5 +528,6 @@ regenerate them from fuse.js if the options change rather than editing
 them by hand. The UI is `ui/autocomplete/`: ChatRoute provides
 `LocalSuggestionSource`, ChatScreen passes `ComposerSuggestions` into
 ChatComposer's `overlay` slot and the shared `ComposerCursor` into its
-`cursor` parameter (the composer reports the selection and places the cursor
-after an insert).
+`cursor` parameter (the composer reports the selection, places the cursor
+after an insert, and offers hardware keys to `cursor.onKey` first: arrows,
+Enter/Tab and Escape drive the list while it shows).
