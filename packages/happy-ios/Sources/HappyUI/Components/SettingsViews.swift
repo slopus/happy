@@ -569,6 +569,13 @@ final class LinkTextView: UITextView {
     required init?(coder: NSCoder) {
         fatalError("init(coder:) is not supported")
     }
+
+    #if DEBUG
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        MeasureCounters.count("text.measure")
+        return super.sizeThatFits(size)
+    }
+    #endif
 }
 
 /// One What's New card's content (changelog.tsx `cardContent`): the summary
@@ -631,6 +638,9 @@ public final class ChangelogCardView: UIView {
     }
 
     public func layout(width: CGFloat) -> ChangelogBodyLayout {
+        #if DEBUG
+        MeasureCounters.count("card.layout")
+        #endif
         let bulletSize = bullets.lazy.compactMap { $0 }.first?.sizeThatFits(CGSize(width: CGFloat.greatestFiniteMagnitude, height: .greatestFiniteMagnitude)) ?? .zero
         return ChangelogBodyLayout(
             width: width,

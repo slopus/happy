@@ -59,7 +59,10 @@ public final class ItemGroupView: UIView {
     }
 
     public func layout(width: CGFloat) -> ItemGroupLayout {
-        ItemGroupLayout(.init(
+        #if DEBUG
+        MeasureCounters.count("group.layout")
+        #endif
+        return ItemGroupLayout(.init(
             width: width,
             title: title == nil ? nil : headerLabel.measurable,
             footer: footer == nil ? nil : footerLabel.measurable,
@@ -157,8 +160,18 @@ public final class GroupedListView: UIScrollView {
         setNeedsLayout()
     }
 
+    #if DEBUG
+    public override func setNeedsLayout() {
+        MeasureCounters.count("list.setNeedsLayout")
+        super.setNeedsLayout()
+    }
+    #endif
+
     public func layout() -> GroupedListLayout {
-        GroupedListLayout(.init(size: bounds.size, safeArea: LayoutInsets(safeAreaInsets), sections: sections.map(\.measurable)))
+        #if DEBUG
+        MeasureCounters.count("list.layout")
+        #endif
+        return GroupedListLayout(.init(size: bounds.size, safeArea: LayoutInsets(safeAreaInsets), sections: sections.map(\.measurable)))
     }
 
     public override func layoutSubviews() {
