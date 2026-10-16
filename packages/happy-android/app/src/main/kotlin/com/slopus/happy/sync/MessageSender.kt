@@ -1,5 +1,7 @@
 package com.slopus.happy.sync
 
+import com.slopus.happy.chat.ChatNormalizer
+import com.slopus.happy.chat.hasUnreceiptedUserMessage
 import com.slopus.happy.data.HappyStore
 import com.slopus.happy.data.OutboxKind
 import com.slopus.happy.data.OutboxRecord
@@ -170,9 +172,10 @@ class MessageSender internal constructor(
             session.agentStateJson,
             thinking = isThinking(sessionId),
             isNewSession = options.source == "new_session",
-            // Stored but not yet echoed counts too: happy-app holds it pending until its receipt.
+            // Queued or in flight, or echoed with no receipt yet: happy-app holds all of them pending.
             hasPendingUserMessage = withContext(io) {
-                store.outbox(sessionId).any { it.kind == OutboxKind.USER && it.state != OutboxState.FAILED }
+                store.outbox(sessionId).any { it.kind == OutboxKind.USER && it.state != OutboxState.FAILED } ||
+                    hasUnreceiptedUserMessage(store.messages(sessionId, RECEIPT_WINDOW).mapNotNull(ChatNormalizer::normalize))
             },
         )
 
@@ -385,6 +388,11 @@ class MessageSender internal constructor(
         const val BACKGROUND_SEND_TIMEOUT_MS = 30_000L
         const val BACKGROUND_FAILURE = "Message failed to send in background after 30s. Please retry."
         const val NOT_SYNCED = "The message was not sent: this session has not finished syncing. Please try again."
+        /**
+         * The newest rows searched for a send still waiting on its receipt: a
+         * chat's first page, as much as happy-app has loaded when it asks.
+         */
+        const val RECEIPT_WINDOW = MessageSync.PAGE_SIZE
 
         private fun failureMessage(e: HttpStatusException) = "Server error: ${e.status}"
 
