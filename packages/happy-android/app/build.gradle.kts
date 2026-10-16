@@ -246,6 +246,9 @@ dependencies {
     implementation(libs.play.services.code.scanner)
     implementation(libs.zxing.core)
 
+    // The review ask (utils/requestReview.ts): expo-store-review's Play in-app review.
+    implementation(libs.play.review)
+
     // Push (AGENTS.md "Push"): FCM, configured from google-services.json when it is there.
     implementation(libs.firebase.messaging)
     implementation(libs.coil.compose)
