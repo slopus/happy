@@ -15,6 +15,7 @@ import com.slopus.happy.model.RigSpawnException
 import com.slopus.happy.model.Session
 import com.slopus.happy.model.SessionMetadata
 import com.slopus.happy.model.SessionType
+import com.slopus.happy.model.SpawnTargetOverride
 import com.slopus.happy.model.Settings
 import com.slopus.happy.model.StartPhase
 import com.slopus.happy.model.UnavailableWorkspaceException
@@ -221,15 +222,18 @@ class SessionStarter(
     /**
      * Starts from the stored draft, or from [draft] when a caller names its
      * own place, with [attachments] going out with the first message.
+     * [target] is a Happy Agent destination the caller already knows (a
+     * chat opened beside another), used instead of resolving the draft's.
      * [confirmDirectory] asks whether to create a missing one.
      */
     suspend fun start(
         draft: NewSessionDraft = drafts.draft.value,
         attachments: List<AttachmentPreview> = emptyList(),
+        target: SpawnTargetOverride? = null,
         confirmDirectory: suspend (String) -> Boolean,
     ): StartResult {
         if (run != null) return StartResult.Abandoned
-        val prepared = when (val result = prepare(draft)) {
+        val prepared = when (val result = prepare(draft, target)) {
             is Prepared.Refused -> return StartResult.Refused(result.refusal)
             is Prepared.Unavailable -> return StartResult.Failed(result.message)
             is Prepared.Ready -> result
@@ -277,7 +281,7 @@ class SessionStarter(
     private fun <T> resolveOption(options: List<T>, key: (T) -> String, preferred: List<String?>): T? =
         preferred.firstNotNullOfOrNull { wanted -> wanted?.let { options.find { option -> key(option) == wanted } } } ?: options.firstOrNull()
 
-    private fun prepare(draft: NewSessionDraft): Prepared {
+    private fun prepare(draft: NewSessionDraft, targetOverride: SpawnTargetOverride?): Prepared {
         val machines = machines()
         val choice = findMachineChoice(collectMachineChoices(machines), draft.selectedMachineId)
             ?: return Prepared.Refused(if (draft.selectedMachineId != null) StartRefusal.UnknownMachine else StartRefusal.NoMachine)
@@ -298,7 +302,9 @@ class SessionStarter(
         val selectedProjectId = draftProjectId
             ?: collectSessionPlaces(choice.machineIds, sessions, selectedPath).find { it.path == selectedPath }?.projectId
         val requestedWorktree = if (draft.sessionType == SessionType.Worktree) draft.worktreeKey ?: WorktreeSelection.NEW else WorktreeSelection.NONE
-        val target = if (rig) {
+        val target = if (rig && targetOverride != null) {
+            targetOverride.target
+        } else if (rig) {
             try {
                 resolveHappyAgentSpawnTarget(selectedProjectId, requestedWorktree, collectSessionWorkspaces(choice.machineIds, selectedProjectId, sessions))
             } catch (_: UnavailableWorkspaceException) {

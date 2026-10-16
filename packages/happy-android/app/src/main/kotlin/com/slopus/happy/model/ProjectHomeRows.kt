@@ -287,6 +287,19 @@ fun buildProjectHomeRows(
     return rows
 }
 
+/** Every project chat's checkout, by session id (one [findProjectWorktree] per chat, in one pass). */
+fun projectWorktreesBySession(items: List<SessionListItem>): Map<String, ProjectWorktree> {
+    val result = HashMap<String, ProjectWorktree>()
+    for (item in items) {
+        if (item !is SessionListItem.ProjectItem) continue
+        for (workspace in item.project.workspaces) {
+            val worktree = toWorktree(item.project, workspace) ?: continue
+            workspace.sessions.forEach { result[it.id] = worktree }
+        }
+    }
+    return result
+}
+
 /** The checkout a chat runs in, with its sibling chats as tabs; null for bots and unknown chats. */
 fun findProjectWorktree(items: List<SessionListItem>?, sessionId: String): ProjectWorktree? {
     for (item in items ?: return null) {
