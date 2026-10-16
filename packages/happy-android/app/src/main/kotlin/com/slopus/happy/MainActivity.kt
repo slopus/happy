@@ -7,6 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import com.slopus.happy.push.BackgroundSendNotifications
 import com.slopus.happy.ui.HappyApp
 import com.slopus.happy.ui.connect.DeepLinks
 
@@ -17,6 +18,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) DeepLinks.offer(intent)
+        BackgroundSendNotifications.start(this, graph)
         setContent {
             // System bar icons follow the app's theme, which can differ from the system's.
             HappyApp(graph, onDarkThemeChange = { dark ->
