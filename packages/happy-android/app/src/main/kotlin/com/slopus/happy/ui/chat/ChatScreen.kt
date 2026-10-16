@@ -137,6 +137,8 @@ class ChatScreenActions(
     val onAbort: suspend () -> Unit = {},
     val loadOlder: suspend () -> Boolean = { false },
     val onToolPress: (com.slopus.happy.chat.ChatMessage.ToolCallMessage) -> Unit = {},
+    /** A patch tool's file card: that file's diff in the message detail. */
+    val onToolFilePress: ((com.slopus.happy.chat.ChatMessage.ToolCallMessage, String) -> Unit)? = null,
     val onPermission: PermissionHandler = { _, _ -> },
     /** A failed send, by its localId: queue it again, or drop it. */
     val onRetry: (String) -> Unit = {},
@@ -194,6 +196,7 @@ fun ChatScreen(
         MessageCallbacks(
             onOptionPress = { actions.onSend(it) },
             onToolPress = actions.onToolPress,
+            onToolFilePress = actions.onToolFilePress,
             onPermission = actions.onPermission,
             onRetry = actions.onRetry,
             onDiscard = actions.onDiscard,
