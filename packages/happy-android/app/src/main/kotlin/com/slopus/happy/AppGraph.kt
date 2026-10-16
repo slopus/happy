@@ -111,6 +111,9 @@ class AppGraph(
         accountState.value?.requestSync()
     }
 
+    /** Whether the app is in the foreground (MainActivity started). */
+    val isForeground: StateFlow<Boolean> = foreground.asStateFlow()
+
     /** The app came to the foreground or left it (MainActivity onStart/onStop). */
     fun setForeground(value: Boolean) {
         foreground.value = value

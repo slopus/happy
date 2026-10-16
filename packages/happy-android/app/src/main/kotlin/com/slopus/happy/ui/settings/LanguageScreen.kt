@@ -43,7 +43,8 @@ fun LanguageScreen(
 
     fun choose(code: String?) {
         if (code == current) return
-        alert = Alert(title, message, listOf(AlertButton(cancel), AlertButton(ok) { onSelect(code) }))
+        // Modal.confirm: only a button closes it.
+        alert = Alert(title, message, listOf(AlertButton(cancel), AlertButton(ok) { onSelect(code) }), cancelable = false)
     }
 
     @Composable
