@@ -344,6 +344,28 @@ class MessageSenderTest {
     }
 
     @Test
+    fun attachmentRecordsGoOutAheadOfTheTextInOrder() = runBlocking {
+        server.echoSentMessages = false
+        server.failSends += 503
+        h.startAndSync()
+        fun file(ref: String) = buildJsonObject {
+            put("role", "session")
+            put("content", buildJsonObject { put("type", "session"); put("ref", ref) })
+        }
+        val localId = sender.send("s1", "look", null, attachments = listOf(file("a"), file("b")))
+        val rows = outbox()
+        assertEquals(listOf(OutboxKind.ATTACHMENT, OutboxKind.ATTACHMENT, OutboxKind.USER), rows.map { it.kind })
+        assertEquals(localId, rows.last().localId)
+        // One failed POST, then all three go out together, in order, once.
+        eventually(message = "sent") { server.sentRecords("s1").size == 3 }
+        val sent = server.sentRecords("s1")
+        assertEquals(rows.map { it.localId }, sent.map { it.first })
+        assertEquals(listOf(file("a"), file("b")), sent.take(2).map { it.second })
+        assertEquals("look", sent[2].second["content"]!!.jsonObject["text"]!!.jsonPrimitive.content)
+        assertEquals(2, server.requestsTo("/v3/sessions/s1/messages").count { it.method == "POST" })
+    }
+
+    @Test
     fun theOutboxIsObservable() = runBlocking {
         server.failSends += 400
         h.startAndSync()

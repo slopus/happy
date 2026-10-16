@@ -231,7 +231,9 @@ nothing was queued (session not synced, a permission mode the session's CLI
 cannot parse). The mode and delivery meta are resolved as messageMeta.ts
 does (`MessageMetaResolver`) from the composer mirror, agent defaults and
 presence. A per-session loop POSTs everything queued to
-`/v3/sessions/:id/messages` with backoff; rows go `QUEUED` → `SENDING` →
+`/v3/sessions/:id/messages` with backoff. `send(..., attachments = records)`
+queues pre-built plaintext records (attachment `file` events) ahead of the
+text, in order, sealed and retried the same way; rows go `QUEUED` → `SENDING` →
 `SENT` (stored, waiting for its echo) and are deleted when the echo is
 stored. `FAILED` (a 4xx the server will repeat, or still unsent 30 s into
 the background) waits for `retry` or `discard`. Rows survive restarts; an

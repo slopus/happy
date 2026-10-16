@@ -61,6 +61,12 @@ data class SendOptions(
     val deliveryMeta: MessageDeliveryMeta? = null,
     /** Meta fields laid over the built `meta`, replacing any of the same name. */
     val extraMeta: JsonObject? = null,
+    /**
+     * Pre-built plaintext records (session-protocol `file` events for uploaded
+     * attachments) queued ahead of the text, in order, under the same
+     * retry and delivery rules. Sealed with the session key here.
+     */
+    val attachments: List<JsonObject> = emptyList(),
     /** Return only once the server has stored it (or the send failed for good). */
     val awaitDelivery: Boolean = false,
     /** Checked up to the moment of acceptance: false means the user has moved on, and nothing is sent. */
@@ -133,8 +139,8 @@ class MessageSender internal constructor(
      *
      * @throws SendException when nothing was queued.
      */
-    suspend fun send(sessionId: String, text: String, meta: JsonObject?): String =
-        when (val result = send(sessionId, text, SendOptions(extraMeta = meta))) {
+    suspend fun send(sessionId: String, text: String, meta: JsonObject?, attachments: List<JsonObject> = emptyList()): String =
+        when (val result = send(sessionId, text, SendOptions(extraMeta = meta, attachments = attachments))) {
             is SendResult.Accepted -> result.localId
             is SendResult.NotSent -> throw SendException(result.message ?: "The message was not sent.")
         }
@@ -172,6 +178,11 @@ class MessageSender internal constructor(
 
         val localId = newLocalId()
         val record = userRecord(text, sentFrom, options.copy(modeMeta = modeMeta, deliveryMeta = deliveryMeta))
+        // Every record is sealed before any is queued: a failure here must not
+        // leave file events in the outbox for a retry to send twice.
+        val staged = withContext(io) {
+            options.attachments.map { attachment -> Triple(newLocalId(), attachment, cipher.encryptToBase64(attachment)) }
+        }
         val content = withContext(io) { cipher.encryptToBase64(record) }
 
         // Nothing suspends between this check and acceptance. A navigation,
@@ -179,20 +190,25 @@ class MessageSender internal constructor(
         val accepted = withContext(io) {
             if (!options.isCurrent() || store.session(sessionId) == null) return@withContext false
             val now = clock()
+            fun row(id: String, kind: OutboxKind, json: JsonObject, sealed: String) = OutboxRecord(
+                localId = id,
+                sessionId = sessionId,
+                kind = kind,
+                recordJson = json.toString(),
+                content = sealed,
+                createdAt = now,
+                state = OutboxState.QUEUED,
+                attempts = 0,
+                error = null,
+                serverId = null,
+                serverSeq = null,
+            )
             store.transaction {
-                store.enqueueOutbox(listOf(OutboxRecord(
-                    localId = localId,
-                    sessionId = sessionId,
-                    kind = OutboxKind.USER,
-                    recordJson = record.toString(),
-                    content = content,
-                    createdAt = now,
-                    state = OutboxState.QUEUED,
-                    attempts = 0,
-                    error = null,
-                    serverId = null,
-                    serverSeq = null,
-                )))
+                // Attachments first, in order, then the text (sync.ts: file events precede the message).
+                store.enqueueOutbox(
+                    staged.map { (id, json, sealed) -> row(id, OutboxKind.ATTACHMENT, json, sealed) } +
+                        row(localId, OutboxKind.USER, record, content),
+                )
                 // Local activity time: the opt-in activity sort follows the user, not agent output.
                 store.markMessageSent(sessionId, now)
             }
