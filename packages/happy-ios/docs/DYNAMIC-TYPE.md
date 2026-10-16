@@ -260,6 +260,78 @@ Following now:
   row's `workspaceMeta` gap stays open. The glyph keeps its 13 at every
   size, under the row's 18, so it would not change a height.
 
+- Diffs, on the Changes screen (`SessionChangesViewController`) and in the
+  file viewer (`SessionFileViewController`), which opt in, and in the
+  chat's tool cards once the chat hands its environment to
+  `DiffChunkPlan(text:)` and `DiffHeaderPlan(text:)` (nil is the designed
+  size, so a caller that passes nothing is unchanged). happy-app sets no
+  cap anywhere in `components/diff/*`, `DiffMetrics.tsx`, `CodeView`,
+  `file.tsx` or `SimpleSyntaxHighlighter`.
+  - What grows: DiffFileView's mono `fontSize` (12, its numbers and hunk
+    rows 11) and its line, `Math.round(fontSize × 1.5)`, both times the
+    multiplier as RN scales a `fontSize` and a `lineHeight`
+    (`DiffMetrics(scale:)`); MonoProbe's advance, measured over 50 "M"s
+    at the size drawn (`DiffStyle.metrics(text:)`, kept per drawn size),
+    and with it the gutter's columns, the marker's two columns and the
+    code's width; the header's path, badge and counts, the hint and
+    messages, "Show N more lines", the image labels, the notices and the
+    empty text. What stays: the gutter's 12 (or 4) of padding, the code's
+    6 inset, the hunk dots' 6, the bar's 1 + 10 + 10 and its spinner, the
+    header's paddings, its 16 file icon and 14 chevron, the 160 image
+    boxes, the 20 section spinner.
+  - Two deliberate differences. DiffFileView.tsx gives each scroll-mode
+    row `height: metrics.lineHeight` as well as `lineHeight`; the height is
+    a Yoga size, which RN never scales, so above the default size RN's
+    rows stay 18 tall and cut a taller line, and its gutter rows overlap.
+    Here a row is its scaled line, up to the screen's next pixel, as RN
+    measures a one-line Text (at the largest size on 3x, 64⅓). And
+    MonoProbe refuses a measurement outside 0.35 to 1.2 em of its
+    designed `fontSize`, while measuring a scaled Text, so from the
+    multiplier 2 up (AX-L and larger) it keeps 0.6 em of 12 and RN's
+    gutter and code width are too narrow for their text; it also keeps
+    the first advance per designed size for good, through a size change.
+    Here the window is of the size drawn and a new size measures again
+    (`DiffMetrics.acceptsAdvance`).
+  - Off the main thread: every plan is measured for its width and text
+    size (`DiffFilePlan`, `DiffChunkPlan`, `DiffSectionPlan`,
+    `FileLinesPlan`), and the caches compare the environment as they
+    compare the width (`DiffSectionMeasurer`, the file viewer's plans). The
+    Changes list's notices and empty text are measured there too, with
+    the sections. The parsed diff documents hold no measurement and are
+    not keyed on it.
+  - A new text size: the list measures every section again and, when the
+    same files come back, puts the code line that was at the top of the
+    screen back there, by section, file, row and how far into the row, or
+    by how far into a header or the rest of a section
+    (`DiffReadingPlace`). The file viewer does the same by line
+    (`FileLinesLayout.place`), also across a new width or its colour
+    landing. Until the new plans land the old ones stay drawn: the rows,
+    the header, the bar and the list's notices draw at their plan's size,
+    not their traits' (the bar's and notices' labels opt out of the
+    trait), so a diff never mixes sizes. The Changes and file screens'
+    own labels (the retry and loading states, the file viewer's path and
+    Diff/File buttons) follow the trait and are measured on main when
+    they lay out, as Settings' are.
+  - The file viewer's lines (mono 14 on 20, scaled) are measured
+    wrapped at their row's width and ceiled to the screen's pixels as RN
+    ceils a Text's box (`FileLinesLayout.textHeight`); the 16 padding,
+    DiffDisplay's 8 and 1 and its 3 bar stay. Jumping to a line keeps
+    file.tsx's `(line − 1) × 20 − 40`, unscaled, as RN does, so at a
+    larger size it lands short of the line, as RN's does.
+  - Still on main, as at the designed size: a shown code row's text
+    width (to window a long line), the bar's label width and the file
+    viewer's header. No height depends on them.
+  - Tested: the arithmetic on Linux at five sizes (the metrics, the rows,
+    gutters and markers with the estimate and with a fixed advance, the
+    bar, a chunk, the reading place, the file viewer's boxes and its
+    place). UIKit tests (`DiffTextSizeTests`: the advance against UIKit's
+    at six sizes from XS to AX-XXXL, every row's text, number and marker
+    fitting its frame, the drawn rows equal to the plan's, the bar at its
+    plan's size, the header, the section cache keyed on the size, the
+    list keeping the reader's place through three sizes, the file
+    viewer's lines against a label) are built, not run: the Mac was
+    offline. Not seen on a simulator or device.
+
 ## Header titles
 
 happy-app has two kinds of header on iOS (`app/(app)/_layout.tsx`):
@@ -280,7 +352,8 @@ scales. Settings, What's New, Welcome, Home, session info, machine and
 changes put their title in a title view that follows the text size and is
 fitted again in the bar when the size changes (session info, machine and
 changes through `setPlainHeaderTitle`, which keeps `title` for the back
-button). On those three only the title follows; their rows don't yet.
+button). On session info and machine only the title follows; their rows
+don't yet. Changes' rows follow (above).
 
 Fixed RN sizes stay fixed: icons, the wordmark, the checklist boxes,
 paddings, and minimum heights (rows 44, buttons 50/44/32, Get help 36),
@@ -294,15 +367,16 @@ past; in the 42 row it is cut by the middle box, as RN's
 ## Not yet wired
 
 - The rest of the sidebar (the grouped list's bots and the notices over
-  them), the chat, message detail, diffs and the file viewer: their
-  heights are planned off main at the designed size.
+  them), the chat (its diff cards included, until it passes its
+  environment to `DiffChunkPlan`) and message detail: their heights are
+  planned off main at the designed size.
   Their measurers take a `TextEnvironment` as an input and cache key, a
   text size change invalidates every height as a width change does, and
   then their screens opt in.
 - Home's dock (the same card, under a screen that doesn't follow, so it
   stays at the designed size) and the new-session screen.
 - The `createPlainHeader` title of message detail (Chat's).
-- The rows of session info, machine and changes.
+- The rows of session info and machine.
 - On a device: the composer at each size, the chips' native menus over
   their scaled labels, and a size change while typing (the typed text is
   restyled in place, which may end an IME composition in progress) have

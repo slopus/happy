@@ -216,6 +216,46 @@ public struct FileLinesLayout: Equatable, Sendable {
         )
     }
 
+    /// One line's text box: its measured height, at least the style's
+    /// line, up to the screen's next pixel as RN ceils a Text's box
+    /// (`displayScale` 0 rounds up to whole points). A thousandth of a
+    /// pixel over is float noise in TextKit's sum of lines, not a pixel.
+    public static func textHeight(measured: CGFloat, line: CGFloat, displayScale: CGFloat) -> CGFloat {
+        let height = max(line, measured)
+        let scale = displayScale > 0 ? displayScale : 1
+        return ((height * scale) - 0.001).rounded(.up) / scale
+    }
+
+    /// Whether a line can't wrap at `width` without measuring it: printable
+    /// ASCII, a character short of the width at the mono advance.
+    public static func fitsOneLine(_ string: String, advance: CGFloat, width: CGFloat) -> Bool {
+        var count = 0
+        for unit in string.utf16 {
+            guard unit >= 0x20, unit < 0x7F else { return false }
+            count += 1
+        }
+        return CGFloat(count + 1) * advance <= width
+    }
+
+    /// The row at `y` and how far down it (0 to 1), so a layout made again
+    /// at another text size or width can put the same line at the top.
+    /// Nil with no rows or above the first (the top padding, which keeps
+    /// its offset); past the last it is the last's end.
+    public func place(at y: CGFloat) -> (row: Int, fraction: CGFloat)? {
+        guard count > 0, y >= offsets[0] else { return nil }
+        if y >= offsets[count] { return (count - 1, 1) }
+        let index = rows(from: y, to: y + 1).lowerBound
+        let frame = row(index)
+        return (index, frame.height > 0 ? (y - frame.minY) / frame.height : 0)
+    }
+
+    /// Where `place` is in this layout; nil when its row is gone.
+    public func y(of place: (row: Int, fraction: CGFloat)) -> CGFloat? {
+        guard place.row >= 0, place.row < count else { return nil }
+        let frame = row(place.row)
+        return frame.minY + place.fraction * frame.height
+    }
+
     /// Rows that meet `minY..<maxY`, found by binary search.
     public func rows(from minY: CGFloat, to maxY: CGFloat) -> Range<Int> {
         guard count > 0, maxY > minY else { return 0..<0 }

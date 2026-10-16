@@ -40,11 +40,17 @@ final class DiffChunkPlan: @unchecked Sendable {
     /// Files the reader opened with "show more", by index.
     let expanded: Set<Int>
     let syntaxDeadline: ContinuousClock.Instant?
+    /// The text size it was measured at; nil is the designed size.
+    let text: TextEnvironment?
 
     /// DiffChunk's defaults: line numbers on, 80 rows before "show more",
     /// hunk separators only when a file has more than one hunk. Rows are
     /// syntax-coloured until `syntaxDeadline` (see `DiffFilePlan`); give
-    /// the plans of one pass the same deadline, or nil for none.
+    /// the plans of one pass the same deadline, or nil for none. `text` is
+    /// the text size the chat draws at (its traits' `textEnvironment`):
+    /// the rows' font, line and advance grow with it. Nil, the designed
+    /// size. A plan is for one width and one text size; plan again when
+    /// either changes.
     init(
         source: DiffChunkSource,
         width: CGFloat,
@@ -53,9 +59,11 @@ final class DiffChunkPlan: @unchecked Sendable {
         collapseAfter: Int = DiffChunkLayout.collapseAfter,
         fontSize: CGFloat = DiffMetrics.defaultFontSize,
         expanded: Set<Int> = [],
-        syntaxDeadline: ContinuousClock.Instant? = DiffFilePlan.syntaxDeadline()
+        syntaxDeadline: ContinuousClock.Instant? = DiffFilePlan.syntaxDeadline(),
+        text: TextEnvironment? = nil
     ) {
         self.source = source
+        self.text = text
         self.render = render
         self.expanded = expanded
         self.syntaxDeadline = syntaxDeadline
@@ -66,7 +74,7 @@ final class DiffChunkPlan: @unchecked Sendable {
                 return count
             }
             let options = DiffViewOptions(fontSize: fontSize, showLineNumbers: showLineNumbers, showHunkHeaders: hunks > 1, collapseAfter: collapseAfter)
-            return DiffFilePlan(file: file, width: width, syntax: render.diffSyntax, options: options, expanded: expanded.contains(index), syntaxDeadline: syntaxDeadline)
+            return DiffFilePlan(file: file, width: width, syntax: render.diffSyntax, options: options, expanded: expanded.contains(index), syntaxDeadline: syntaxDeadline, text: text)
         }
         layout = DiffChunkLayout(files.map(\.layout.input))
     }
@@ -76,7 +84,7 @@ final class DiffChunkPlan: @unchecked Sendable {
 
     var size: CGSize { layout.size }
 
-    /// The same diff with file `index` opened in full.
+    /// The same diff with file `index` opened in full, at the same text size.
     func expanding(_ index: Int, width: CGFloat) -> DiffChunkPlan {
         let first = files.first?.options
         return DiffChunkPlan(
@@ -87,7 +95,8 @@ final class DiffChunkPlan: @unchecked Sendable {
             collapseAfter: first?.collapseAfter ?? DiffChunkLayout.collapseAfter,
             fontSize: first?.fontSize ?? DiffMetrics.defaultFontSize,
             expanded: expanded.union([index]),
-            syntaxDeadline: syntaxDeadline == nil ? nil : DiffFilePlan.syntaxDeadline()
+            syntaxDeadline: syntaxDeadline == nil ? nil : DiffFilePlan.syntaxDeadline(),
+            text: text
         )
     }
 }

@@ -309,3 +309,81 @@ public struct DiffChunkLayout: Equatable, Sendable {
         size = CGSize(width: width, height: y)
     }
 }
+
+/// Where the reader is in the changes list, so a new text size (which moves
+/// every height) keeps the same line at the top of the screen: the section
+/// there and, inside it, the code row and how far into it, or else how far
+/// into the header or the rest of the section.
+public struct DiffReadingPlace: Equatable, Sendable {
+    /// One section's frames, in its own coordinates: the section and the
+    /// layout of each built file, in order.
+    public struct Section: Equatable, Sendable {
+        public var layout: DiffSectionLayout
+        public var files: [DiffFileLayout]
+
+        public init(layout: DiffSectionLayout, files: [DiffFileLayout] = []) {
+            self.layout = layout
+            self.files = files
+        }
+    }
+
+    public enum Part: Equatable, Sendable {
+        /// In the header, this far down it (0 to 1).
+        case header(CGFloat)
+        /// On row `row` of built file `file`, this far down the row.
+        case row(file: Int, row: Int, fraction: CGFloat)
+        /// Anywhere else in the section, this far down it.
+        case section(CGFloat)
+    }
+
+    /// The section's index.
+    public var section: Int
+    public var part: Part
+
+    public init(section: Int, part: Part) {
+        self.section = section
+        self.part = part
+    }
+
+    /// The place at `y` in the list's content; nil above the first section
+    /// (the notices) or past the last.
+    public init?(y: CGFloat, list: DiffFilesListLayout, sections: [Section]) {
+        guard let index = list.sections.firstIndex(where: { $0.minY <= y && y < $0.maxY }), index < sections.count else { return nil }
+        let section = sections[index]
+        let local = y - list.sections[index].minY
+        self.section = index
+        let header = section.layout.header
+        if local < header.maxY {
+            part = .header(header.height > 0 ? (local - header.minY) / header.height : 0)
+            return
+        }
+        for (file, frame) in section.layout.files.enumerated() where file < section.files.count {
+            let layout = section.files[file]
+            let inCanvas = local - frame.minY - layout.canvas.minY
+            guard frame.minY <= local, local < frame.maxY, let row = layout.rowIndex(at: inCanvas) else { continue }
+            part = .row(file: file, row: row, fraction: (inCanvas - layout.row(row).minY) / layout.lineHeight)
+            return
+        }
+        let height = section.layout.height
+        part = .section(height > 0 ? local / height : 0)
+    }
+
+    /// The same place in a list laid out again; nil when its section or
+    /// row is no longer there.
+    public func y(list: DiffFilesListLayout, sections: [Section]) -> CGFloat? {
+        guard section < list.sections.count, section < sections.count else { return nil }
+        let top = list.sections[section].minY
+        let layout = sections[section].layout
+        switch part {
+        case .header(let fraction):
+            return top + layout.header.minY + fraction * layout.header.height
+        case .row(let file, let row, let fraction):
+            guard file < layout.files.count, file < sections[section].files.count else { return nil }
+            let fileLayout = sections[section].files[file]
+            guard row < fileLayout.input.rowCount else { return nil }
+            return top + layout.files[file].minY + fileLayout.canvas.minY + fileLayout.row(row).minY + fraction * fileLayout.lineHeight
+        case .section(let fraction):
+            return top + fraction * layout.height
+        }
+    }
+}
