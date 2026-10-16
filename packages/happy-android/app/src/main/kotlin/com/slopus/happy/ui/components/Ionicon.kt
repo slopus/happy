@@ -67,6 +67,7 @@ enum class Ionicon(val codepoint: Int) {
     Filter(0xf301), // filter
     FingerPrintOutline(0xf308), // finger-print-outline
     FlashOutline(0xf31a), // flash-outline
+    FolderOpenOutline(0xf327), // folder-open-outline
     FolderOutline(0xf329), // folder-outline
     GitBranchOutline(0xf33b), // git-branch-outline
     GitCommitOutline(0xf33e), // git-commit-outline
