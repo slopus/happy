@@ -129,6 +129,9 @@ class MessageSync(
     /** Catch-ups for the open chats: after a reconnect or a return to the foreground they missed what was said meanwhile. */
     fun invalidateViewing() = viewing.keys.forEach(::invalidate)
 
+    /** The chats open right now (sync.ts currentViewingSessionId). */
+    fun viewingSessionIds(): Set<String> = viewing.keys.toSet()
+
     /** The session is gone: drop its in-memory state. */
     fun forget(sessionId: String) {
         syncs.remove(sessionId)?.cancel()

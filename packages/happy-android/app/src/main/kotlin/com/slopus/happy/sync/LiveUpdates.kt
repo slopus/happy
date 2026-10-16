@@ -70,7 +70,8 @@ class LiveUpdates(
         val body = update.body
         when (body["t"]?.jsonPrimitive?.contentOrNull) {
             "new-message" -> decode(ApiNewMessageUpdate.serializer(), body)?.let(::newMessage)
-            "new-session" -> decode(ApiSession.serializer(), body)?.let(::newSession)
+            // happy-app only invalidates its listing here: a body this app can't read still means a session to fetch.
+            "new-session" -> decode(ApiSession.serializer(), body)?.let(::newSession) ?: requestSync()
             "update-session" -> decode(ApiSessionUpdate.serializer(), body)?.let { updateSession(it, body, update) }
             "delete-session" -> decode(ApiDeleteSessionUpdate.serializer(), body)?.let { deleteSession(it.sid) }
             "new-machine" -> decode(ApiNewMachineUpdate.serializer(), body)?.let(::newMachine)
@@ -86,7 +87,7 @@ class LiveUpdates(
                 projectEvents.tryEmit(Unit)
                 requestSync()
             }
-            // Artifacts, friends, feed and KV are not part of this app yet.
+            // Artifacts, friends and feed are not part of this app yet; KV is unused by happy-app.
             else -> Unit
         }
     }
