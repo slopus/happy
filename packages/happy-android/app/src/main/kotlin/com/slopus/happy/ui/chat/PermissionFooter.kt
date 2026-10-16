@@ -33,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -56,6 +55,7 @@ import com.slopus.happy.ui.theme.happyTextStyle
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
+import kotlin.math.roundToInt
 
 object PermissionTags {
     const val FOOTER = "permission.footer"
@@ -112,7 +112,8 @@ fun PermissionFooter(
     var loading by remember { mutableStateOf<PermissionChoice?>(null) }
     val scope = rememberCoroutineScope()
     val pending = permission.status == PermissionStatus.Pending
-    val maxHeight = minOf(PermissionSpec.maxHeight, (LocalConfiguration.current.screenHeightDp * 0.35f).dp)
+    // `Math.min(260, Math.round(windowHeight * 0.35))`, from the window the app is laid out in.
+    val maxHeight = minOf(PermissionSpec.maxHeight, (LocalWindowLayout.current.height.value * 0.35f).roundToInt().dp)
     // `buttonContainer.alignItems`: a tablet hugs each button to its label at the trailing edge; a phone stretches them.
     val stretch = !LocalWindowLayout.current.isTablet
     Column(
